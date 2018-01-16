@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 set -x
@@ -30,17 +30,20 @@ mch=""
 # Debug flag
 debug=0
 
+node=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()')
+echo "Working with node $node"
+
 # Insert a bunch of records
 echo "Inserting records"
 
 while [[ $j -lt 100 ]]; do
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(id) values($j)" >/dev/null 2>&1
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1
     let j=j+1
 done
 
 echo "Tell database to do a partial write and exit"
 
-x=$(cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("badwrite_intvl 2")')
+x=$(cdb2sql ${CDB2_OPTIONS} $dbnm --host $node 'exec procedure sys.cmd.send("badwrite_intvl 2")')
 
 
 if [[ "$x" == *"unknown command"* ]]; then
@@ -51,8 +54,8 @@ fi
 while [[ $? == 0 ]]; do
     let j=j+1 
     sleep 1
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(id) values($j)" >/dev/null 2>&1 &
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('flush')"
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1 &
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('flush')"
 done
 
 #TODO: for clustered which node are we checking if up or not; need to restart same
@@ -62,38 +65,59 @@ if [[ -z "$CLUSTER" ]]; then
     pgrep comdb2 -a | grep "$dbnm" || exited=1
 else
     #what to do?
-    pgrep comdb2 -a | grep "$dbnm" || exited=1
+    ssh $node "pgrep comdb2 -a" | grep "$dbnm" || exited=1
 fi
 echo exited $exited
 
-# If the master is still up, 
+# If node is still up, 
 if [[ $exited -eq 0 ]]; then
     echo "Database $dbnm never exited!"
     echo "Testcase failed."
     exit 1
 fi
 
+
+restart_node()
+{
+    node=$1
+    delay=$2
+    pushd $DBDIR
+
+    if [ -n "$CLUSTER" ] ; then
+        mv --backup=numbered $TESTDIR/logs/${DBNAME}.${node}.db $TESTDIR/logs/${DBNAME}.${node}.db.1
+        sleep $delay
+        if [ $node != `hostname` ] ; then
+            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
+            echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
+        else
+            $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
+        fi
+    else
+        mv --backup=numbered $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.1
+        sleep $delay
+        echo "$DBNAME: starting single node"
+        echo "$COMDB2_EXE $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
+        $COMDB2_EXE $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
+    fi
+
+    popd
+
+    out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
+    # wait until we can query it
+    echo "$DBNAME: waiting until ready"
+    while [[ "$out" != "1" ]]; do
+        sleep 2
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
+    done
+}
+
 echo "Bring up the database"
+restart_node $node 0
 
-if [[ -z "$CLUSTER" ]]; then
-    comdb2 ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.db.2 -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
-else
-    comdb2 ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db.2 -pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 &
-fi
-
-sleep 3
-
-echo "Wait for this to come up, or timeout (failure case)."
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("stat")'
-
-while [[ $? != 0 ]]; do
-    sleep 5
-    cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("stat")'
-done
 
 echo "We are up!  Insert a few records as a final sanity check."
 while [[ $j -lt 100 ]]; do
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(id) values($j)" >/dev/null 2>&1
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1
 
     if [[ $? != 0 ]]; then
         echo "Error inserting into database!"

@@ -18,6 +18,7 @@
 #define _OSQL_SHADTBL_H_
 
 #include <comdb2.h>
+#include "bpfunc.pb-c.h"
 
 struct BtCursor;
 struct sql_thread;
@@ -57,7 +58,12 @@ struct shad_tbl {
 
     unsigned long long seq; /* used to generate uniq row ids */
     struct dbenv *env;
-    struct db *db; /* TODO: db has dbenv, chop it */
+    char tablename[MAXTABLELEN];
+    int tableversion;
+    int nix;
+    int ix_expr;
+    int ix_partial;
+    struct dbtable *db; /* TODO: db has dbenv, chop it */
     int dbnum;
     int nblobs;
     int updcols; /* 1 if we have update columns */
@@ -90,7 +96,7 @@ int osql_save_updcols(struct BtCursor *pCur, struct sql_thread *thd,
                       int *updCols);
 int osql_save_dbq_consume(struct sqlclntstate *, const char *spname, genid_t);
 
-void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct db *db);
+void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct dbtable *db);
 int osql_fetch_shadblobs_by_genid(struct BtCursor *pCur, int *blobnum,
                                   blob_status_t *blobs, int *bdberr);
 int osql_get_shadowdata(struct BtCursor *pCur, unsigned long long genid,
@@ -141,10 +147,30 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
                           unsigned long long genid);
 
 /**
+ * Check if a genid was recorded
+ */
+int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
+                      unsigned long long genid);
+
+/**
+ * Record a schemachange for this transaction
+ *
+ */
+int osql_save_schemachange(struct sql_thread *thd,
+                           struct schema_change_type *sc, int usedb);
+
+/**
+ * Record a schemachange for this transaction
+ *
+ */
+int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg);
+
+/**
  * Process shadow tables
  *
  */
-int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr);
+int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
+                         int restarting);
 
 /**
  *  Check of a shadow table transaction has cached selectv records

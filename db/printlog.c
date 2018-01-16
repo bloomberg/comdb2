@@ -22,23 +22,23 @@
 
 #include <arpa/inet.h>
 
-#include "db.h"
-#include "db_int.h"
-#include "db_page.h"
+#include <build/db.h>
+#include <build/db_int.h>
 
-#include "dbinc/fop.h"
-#include "dbinc/hash.h"
-#include "dbinc/log.h"
-#include "dbinc/qam.h"
-#include "dbinc/txn.h"
+#include <dbinc/btree.h>
+#include <dbinc_auto/btree_auto.h>
+#include <dbinc/db_page.h>
+#include <dbinc/db_swap.h>
+#include <dbinc/fop.h>
+#include <dbinc/hash.h>
+#include <dbinc/log.h>
+#include <dbinc/qam.h>
+#include <dbinc/txn.h>
 
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 #include "llog_auto.h"
 
-#include "btree.h"
-#include "db_swap.h"
-#include "dbinc_auto/btree_auto.h"
 
 #include "bdb_int.h"
 #include "plhash.h"
@@ -54,7 +54,7 @@ struct fname {
     int index;
     int dta;
     int stripe;
-    struct db *db;
+    struct dbtable *db;
 };
 
 struct fnames {
@@ -277,7 +277,7 @@ void set_table_info_from_filename(DB_ENV *dbenv, struct fname *newname,
     newname->table = calloc(1, end - start + 1);
     strncpy(newname->table, start, end - start);
 
-    newname->db = getdbbyname(newname->table);
+    newname->db = get_dbtable_by_name(newname->table);
 }
 
 int print_register(DB_ENV *dbenv, DBT *logdta, DB_LSN *lsn, db_recops op,
@@ -318,8 +318,8 @@ int print_register(DB_ENV *dbenv, DBT *logdta, DB_LSN *lsn, db_recops op,
     }
 
     printf("%u:%u register %x %d->%.*s%s\n", lsn->file, lsn->offset,
-           args->txnid->txnid, args->fileid, args->name.size, args->name.data,
-           newname ? " (new/changed)" : "");
+           args->txnid->txnid, args->fileid, args->name.size,
+           (char *)args->name.data, newname ? " (new/changed)" : "");
 
     free(args);
 

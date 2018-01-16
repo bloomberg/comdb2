@@ -1,4 +1,5 @@
 #include "db_wrap.h"
+#include "db_page.h"
 #include "error.h"
 
 #include <iostream>
@@ -88,8 +89,8 @@ bool DB_Wrap::get_sparse() const
 {
    int rc;
    struct stat statbuf;
-   
-   
+
+
    rc = stat(m_filename.c_str(), &statbuf);
    if (rc != 0)
    {
@@ -102,7 +103,7 @@ bool DB_Wrap::get_sparse() const
 
    if (statbuf.st_size > (statbuf.st_blocks * statbuf.st_blksize))
       return true;
-   
+
    return false;
 }
 
@@ -111,15 +112,24 @@ bool DB_Wrap::get_swapped() const
 	return m_swapped;
 }
 
-bool verify_checksum(uint8_t *page, size_t pagesize, bool crypto, bool swapped)
+void verify_checksum(uint8_t *page, size_t pagesize, bool crypto, bool swapped,
+                        bool *verify_bool, uint32_t *verify_cksum)
 // Verify the checksum on a regular Berkeley DB page.  Returns true if
 // the checksum is correct, false otherwise
+//
+// Also call storeIncrData to store the LSN + Checksum in a file to be
+// compared against
 {
-    if (pagesize <= 4096)
-        return true;
+    if (pagesize <= 4096) {
+        *verify_bool = true;
+        uint32_t calc = IS_CRC32C(page) ? crc32c(page, pagesize)
+                                        : __ham_func4(page, pagesize);
+        *verify_cksum = calc;
+        return;
+    }
 
-    uint8_t *chksum_ptr = page;
     PAGE *pagep = (PAGE *)page;
+    uint8_t *chksum_ptr = page;
 
     switch (PTYPE(pagep)) {
     case P_HASHMETA:
@@ -133,6 +143,8 @@ bool verify_checksum(uint8_t *page, size_t pagesize, bool crypto, bool swapped)
                              : SIZEOF_PAGE + SSZA(PG_CHKSUM, chksum);
         break;
     }
+
+
     uint32_t orig_chksum, chksum;
     orig_chksum = chksum = *(uint32_t *)chksum_ptr;
     if (swapped)
@@ -140,8 +152,22 @@ bool verify_checksum(uint8_t *page, size_t pagesize, bool crypto, bool swapped)
     *(uint32_t *)chksum_ptr = 0;
     uint32_t calc = IS_CRC32C(page) ? crc32c(page, pagesize)
                                     : __ham_func4(page, pagesize);
+    *verify_cksum = calc;
     *(uint32_t *)chksum_ptr = orig_chksum;
-    if (calc == chksum)
-        return true;
-    return false;
+    *verify_bool = (calc == chksum);
+    return;
 }
+
+// uint32_t calculate_checksum(uint8_t *page, size_t pagesize){
+//     PAGE *pagep = (PAGE *)page;
+//
+//     switch (PTYPE(pagep)) {
+//     case P_HASHMETA:
+//     case P_BTREEMETA:
+//     case P_QAMMETA:
+//         pagesize = DBMETASIZE;
+//         break;
+//     }
+//
+//     return IS_CRC32C(page) ? crc32c(page, pagesize): __ham_func4(page, pagesize);
+// }

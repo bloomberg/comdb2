@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 ################################################################################
@@ -9,7 +9,7 @@ bash -n "$0" | exit 1
 a_dbn=$1
 
 # find input files
-files=$( find . -type f -name \*.req | sort )
+files=$( find . -type f -name \*.test | sort )
 
 # counter 
 nfiles=0
@@ -113,11 +113,13 @@ for testcase in $files ; do
     testcase=${testcase##*/}
     
     # see if the prefix has changed
-    new_batch=${testcase%%_*}
+    new_batch=${testcase%.*}
 
     # set output
-    output=$testcase.res
+    output=$new_batch.res
     
+    echo "$testcase running $new_batch"
+
     # fastinit if requested
     if [[ $new_batch != $last_batch ]] ; then
 
@@ -129,23 +131,29 @@ for testcase in $files ; do
     # Check for run-stepper
     if [[ -f $new_batch.runstepper ]] ; then
 
-        runstepper $a_dbn $testcase $output
+        runstepper $a_dbn $new_batch.req $output
 
     elif [[ -f $new_batch.tool ]] ; then
 
         tool=$( cat $new_batch.tool )
         args=$( cat $new_batch.args )
-        runtool $tool "$args" $a_dbn $testcase default ${TESTDIR}/log.txt notused ${TESTDIR} $output
+        runtool $tool "$args" $a_dbn $new_batch default ${TESTDIR}/log.txt notused ${TESTDIR} $output
+
+    elif [[ -f $new_batch.req ]] ; then
+
+        # Be verbose
+        cmd="cdb2sql ${CDB2_OPTIONS} $a_dbn default - < $new_batch.req > $output 2>&1"
+        echo $cmd
+        # run command
+        eval $cmd
 
     else
 
         # Be verbose
-        cmd="cdb2sql ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
+        cmd="cdb2sql ${CDB2_OPTIONS} $a_dbn default - < comdb2sys.req > $output 2>&1"
         echo $cmd
-
         # run command
         eval $cmd
-
 
     fi
 
@@ -165,25 +173,26 @@ for testcase in $files ; do
         mv $output.postprocess $output
     fi
 
+    expected=comdb2sys
+    if [[ -f ${new_batch}.expected ]] ; then
+        expected=$new_batch
+    fi
+
     # get testcase output
     testcase_output=$(cat $output | perl -pe "s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;")
 
     # get expected output
-    expected_output=$(cat $testcase.out | perl -pe "s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;")
-
-    expected_output2=$(cat $testcase.out2 2> /dev/null | perl -pe "s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;")
-
-    expected_output3=$(cat $testcase.out3 2> /dev/null | perl -pe "s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;")
+    expected_output=$(cat ${expected}.expected | perl -pe "s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;")
 
     # verify 
-    if [[ "$testcase_output" != "$expected_output" ]] && [[ "$testcase_output" != "$expected_output2" ]] && [[ "$testcase_output" != "$expected_output3" ]] ; then
+    if [[ "$testcase_output" != "$expected_output" ]] ; then
         echo "  ^^^^^^^^^^^^"
         echo "The above testcase (${testcase}) has failed!!!"
         echo " "
         echo "Use 'diff <expected-output> <my-output>' to see why:"
-        echo "> diff ${PWD}/{$testcase.out,$output}"
+        echo "> diff ${PWD}/{${expected}.expected,$output}"
         echo " "
-        diff $testcase.out $output
+        diff ${expected}.expected $output
         echo " "
         exit 1
 

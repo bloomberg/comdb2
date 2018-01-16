@@ -203,9 +203,9 @@ public class Comdb2Connection implements Connection {
         SSL_MODE sslmode;
         if ("REQUIRE".equalsIgnoreCase(mode))
             sslmode = SSL_MODE.REQUIRE;
-        else if ("VERIFY-CA".equalsIgnoreCase(mode))
+        else if ("VERIFY_CA".equalsIgnoreCase(mode))
             sslmode = SSL_MODE.VERIFY_CA;
-        else if ("VERIFY-HOSTNAME".equalsIgnoreCase(mode))
+        else if ("VERIFY_HOSTNAME".equalsIgnoreCase(mode))
             sslmode = SSL_MODE.VERIFY_HOSTNAME;
         else
             sslmode = SSL_MODE.ALLOW;
@@ -234,6 +234,36 @@ public class Comdb2Connection implements Connection {
 
     public void setSSLCAType(String catype) {
         hndl.setSSLCAType(catype);
+    }
+
+    public void setAllowPmuxRoute(String val) {
+        if ("true".equalsIgnoreCase(val)
+                || "1".equalsIgnoreCase(val)
+                || "T".equalsIgnoreCase(val)
+                || "on".equalsIgnoreCase(val))
+            hndl.setAllowPmuxRoute(true);
+        else
+            hndl.setAllowPmuxRoute(false);
+    }
+
+    public void setStatementQueryEffects(String val) {
+        if ("true".equalsIgnoreCase(val)
+                || "1".equalsIgnoreCase(val)
+                || "T".equalsIgnoreCase(val)
+                || "on".equalsIgnoreCase(val))
+            hndl.setStatementQueryEffects(true);
+        else
+            hndl.setStatementQueryEffects(false);
+    }
+
+    public void setVerifyRetry(String val) {
+        if ("true".equalsIgnoreCase(val)
+                || "1".equalsIgnoreCase(val)
+                || "T".equalsIgnoreCase(val)
+                || "on".equalsIgnoreCase(val))
+            hndl.setVerifyRetry(true);
+        else
+            hndl.setVerifyRetry(false);
     }
 
     public ArrayList<String> getDbHosts() throws NoDbHostFoundException{
@@ -725,6 +755,7 @@ public class Comdb2Connection implements Connection {
             case Constants.Errors.CDB2ERR_RECORD_OUT_OF_RANGE:
             case Constants.Errors.CDB2ERR_INVALID_ID:
             case Constants.Errors.CDB2ERR_NOMASTER:
+            case Constants.Errors.CDB2ERR_NOTSERIAL:
             case Constants.Errors.CDB2ERR_CHANGENODE:
             case Constants.Errors.CDB2ERR_FASTSEED:
             case Constants.Errors.CDB2ERR_UNTAGGED_DATABASE:

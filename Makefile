@@ -1,149 +1,116 @@
-PACKAGE=comdb2
-VERSION?=$(shell grep ^comdb2 deb/changelog  | sed 's/^comdb2 .//; s/-.*//g')
-include main.mk
-include libs.mk
+#######################################################
+# Makefile for backward compatibility with test suite #
+#######################################################
+.PHONY: test_tools
+test_tools: compat_install
+	@cd build && $(MAKE) -s -j blob bound cdb2_client cdb2api_caller cdb2bind comdb2_blobtest comdb2_sqltest crle hatest insert_lots_mt leakcheck localrep overflow_blobtest ptrantest recom selectv serial sicountbug sirace simple_ssl stepper utf8 insert register breakloop multithd
+	@ln -f build/tests/tools/blob tests/bloballoc.test/blob
+	@ln -f build/tests/tools/bound tests/tools/bound
+	@ln -f build/tests/tools/cdb2_client tests/cdb2api_so.test/cdb2_client
+	@ln -f build/tests/tools/cdb2api_caller tests/tools/cdb2api_caller
+	@ln -f build/tests/tools/cdb2bind tests/cdb2bind.test/cdb2bind
+	@ln -f build/tests/tools/comdb2_blobtest tests/blob_size_limit.test/comdb2_blobtest
+	@ln -f build/tests/tools/comdb2_sqltest tests/sqlite.test/comdb2_sqltest
+	@ln -f build/tests/tools/crle tests/tools/crle
+	@ln -f build/tests/tools/hatest tests/tools/hatest
+	@ln -f build/tests/tools/insert_lots_mt tests/insert_lots.test/insert_lots_mt
+	@ln -f build/tests/tools/leakcheck tests/leakcheck.test/leakcheck
+	@ln -f build/tests/tools/localrep tests/tools/localrep
+	@ln -f build/tests/tools/overflow_blobtest tests/tools/overflow_blobtest
+	@ln -f build/tests/tools/ptrantest tests/tools/ptrantest
+	@ln -f build/tests/tools/recom tests/tools/recom
+	@ln -f build/tests/tools/selectv tests/tools/selectv
+	@ln -f build/tests/tools/serial tests/tools/serial
+	@ln -f build/tests/tools/sicountbug tests/sicountbug.test/sicountbug
+	@ln -f build/tests/tools/sirace tests/sirace.test/sirace
+	@ln -f build/tests/tools/multithd tests/multithd.test/multithd
+	@ln -f build/tests/tools/simple_ssl tests/simple_ssl.test/simple_ssl
+	@ln -f build/tests/tools/stepper tests/tools/stepper
+	@ln -f build/tests/tools/utf8 tests/tools/utf8
+	@ln -f build/tests/tools/insert tests/tools/insert
+	@ln -f build/tests/tools/register tests/tools/register
+	@ln -f build/tests/tools/breakloop tests/tools/breakloop
 
-export SRCHOME=.
-export DESTDIR
-export PREFIX
+.PHONY: compat_install
+compat_install: all
+	@ln -f build/db/comdb2 cdb2_dump
+	@ln -f build/db/comdb2 cdb2_printlog
+	@ln -f build/db/comdb2 cdb2_stat
+	@ln -f build/db/comdb2 cdb2_verify
+	@ln -f build/db/comdb2 comdb2
+	@ln -f build/tools/cdb2_sqlreplay/cdb2_sqlreplay cdb2_sqlreplay
+	@ln -f build/tools/cdb2sockpool/cdb2sockpool cdb2sockpool
+	@ln -f build/tools/cdb2sql/cdb2sql cdb2sql
+	@ln -f build/tools/comdb2ar/comdb2ar comdb2ar
+	@ln -f build/tools/pmux/pmux pmux
 
-# Common CFLAGS
-CPPFLAGS+=-I$(SRCHOME)/dlmalloc $(OPTBBINCLUDE)
-#CFLAGS+=$(OPT_CFLAGS)
+.PHONY: all
+all: build
+	@cd build && $(MAKE) -s -j
 
-# Variables that will be modified by included files
-ARS:=
-OBJS:=
-GENC:=
-GENH:=
-GENMISC:=
-TASKS:=
-
-# Humble start
-all:
-
-# Rules for common low level libraries
-include common.mk
-include mem.mk
-include sqlite/sqlite_common.defines
-
-modules:=net comdb2rle cdb2api csc2 schemachange berkdb sqlite bdb	\
-lua tools db sockpool
-include $(addsuffix /module.mk,$(modules))
-
-# The following object files make into cdb2api static (libcdb2api.a) as
-# well as dynamic (libcdb2api.so) libraries and thus, need an additional
-# -fPIC flag.
-SPECIAL_OBJS:= cdb2api/cdb2api.o cdb2api/comdb2buf.o
-ifeq ($(arch),Linux)
-$(SPECIAL_OBJS): EXTRA_FLAGS := -fPIC
+CMAKE3 := $(shell command -v cmake3 2> /dev/null)
+build:
+ifdef CMAKE3
+	@mkdir build && cd build && cmake3 ..
 else
-ifeq ($(arch),SunOS)
-$(SPECIAL_OBJS): EXTRA_FLAGS := -xcode=pic13
+	@mkdir build && cd build && cmake ..
 endif
-endif
-
-# Generate dependencies while building object files
-%.o : %.c
-	$(CC) $(DEPFLAGS) $(CPPFLAGS) $(CFLAGS) $(EXTRA_FLAGS) -c -o $@ $<
-	$(POSTCOMPILE)
-
-%.o : %.cpp
-	$(CXX) $(DEPFLAGS) $(CPPFLAGS) $(CXXFLAGS) -c -o $@ $<
-	$(POSTCOMPILE)
-
-%.d: ;
-.PRESCIOUS: $(OBJS:.o=.d)
-
--include $(OBJS:.o=.d)
-
-# Build binaries
-all: comdb2
 
 .PHONY: clean
 clean:
-	rm -f $(TASKS) $(ARS) $(OBJS) $(GENC) $(GENH) $(GENMISC)
+	@rm -rf build
+	@rm -rf build-*
+	@rm -f cdb2_dump
+	@rm -f cdb2_printlog
+	@rm -f cdb2_stat
+	@rm -f cdb2_verify
+	@rm -f comdb2
+	@rm -f cdb2_sqlreplay
+	@rm -f cdb2sockpool
+	@rm -f cdb2sql
+	@rm -f comdb2ar
+	@rm -f pmux
+	@rm -f tests/bloballoc.test/blob
+	@rm -f tests/tools/bound
+	@rm -f tests/cdb2api_so.test/cdb2_client
+	@rm -f tests/tools/cdb2api_caller
+	@rm -f tests/cdb2bind.test/cdb2bind
+	@rm -f tests/blob_size_limit.test/comdb2_blobtest
+	@rm -f tests/sqlite.test/comdb2_sqltest
+	@rm -f tests/tools/crle
+	@rm -f tests/tools/hatest
+	@rm -f tests/insert_lots.test/insert_lots_mt
+	@rm -f tests/leakcheck.test/leakcheck
+	@rm -f tests/tools/localrep
+	@rm -f tests/tools/overflow_blobtest
+	@rm -f tests/tools/ptrantest
+	@rm -f tests/tools/recom
+	@rm -f tests/tools/selectv
+	@rm -f tests/tools/serial
+	@rm -f tests/sicountbug.test/sicountbug
+	@rm -f tests/sirace.test/sirace
+	@rm -f tests/multithd.test/multithd
+	@rm -f tests/simple_ssl.test/simple_ssl
+	@rm -f tests/tools/stepper
+	@rm -f tests/tools/utf8
+	@rm -f tests/tools/insert
+	@rm -f tests/tools/register
+	@rm -f tests/tools/breakloop
 
-# Supply our own deb builder to make packaging easier.  In case
-# there's ever an official Debian package being maintained, use 'deb'
-# as the debian directory (and we/they wouldn't use this target)
-deb-current: clean deb-clean
-	rm -fr debian
-	cp -r deb debian
-	rm -f ../$(PACKAGE)_$(VERSION).orig.tar.gz
-	tar acf ../$(PACKAGE)_$(VERSION).orig.tar.gz *
-	dpkg-buildpackage -us -uc
-	@ls -l ../$(PACKAGE)_$(VERSION)*.deb
-	@rm -fr debian
+.PHONY: deb-current
+deb-current: package
 
-rpm-current: clean rpm-clean
-	-mkdir -p ${HOME}/rpmbuild/BUILD ${HOME}/rpmbuild/BUILDROOT ${HOME}/rpmbuild/RPMS ${HOME}/rpmbuild/SOURCES ${HOME}/rpmbuild/SPECS ${HOME}/rpmbuild/SRPMS
-	tar --transform="s|\\./|$(PACKAGE)-$(VERSION)/|" -acf ${HOME}/rpmbuild/SOURCES/$(PACKAGE)-$(VERSION).tar.gz .
-	sed s'/VVEERRSSIIOONN/$(VERSION)/' rpmbuild/comdb2.spec > ${HOME}/rpmbuild/SPECS/$(PACKAGE)-$(VERSION).spec
-	rpmbuild -bb ${HOME}/rpmbuild/SPECS/$(PACKAGE)-$(VERSION).spec
-	@ls -l ${HOME}/rpmbuild/RPMS/*/$(PACKAGE)-$(VERSION)*.rpm
+.PHONY: rpm-current
+rpm-current: package
 
-rpm-clean:
-	rm -f ${HOME}/rpmbuild/SOURCES/$(PACKAGE)_$(VERSION)*
+.PHONY: package
+package: all
+	@cd build && $(MAKE) -s -j package
 
-deb-clean:
-	rm -f ../$(PACKAGE)_$(VERSION)*
-
-test: $(TASKS)
-	$(MAKE) -C tests
-
+.PHONY: install
 install: all
-	install -D comdb2 $(DESTDIR)$(PREFIX)/bin/comdb2
-	sed "s|^PREFIX=|PREFIX=$(PREFIX)|" db/copycomdb2 > db/copycomdb2.q
-	install -D db/copycomdb2.q $(DESTDIR)$(PREFIX)/bin/copycomdb2
-	rm -f db/copycomdb2.q
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_printlog && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_printlog || true
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_verify && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_verify || true
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_dump && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_dump || true
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_stat && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_stat || true
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_sqlreplay && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_sqlreplay || true
-	install -D cdb2sockpool $(DESTDIR)$(PREFIX)/bin/cdb2sockpool
-	install -D cdb2sql $(DESTDIR)$(PREFIX)/bin/cdb2sql
-	install -D comdb2ar $(DESTDIR)$(PREFIX)/bin/comdb2ar
-	install -D pmux $(DESTDIR)$(PREFIX)/bin/pmux
-	install -D tools/pmux/pmux.service $(DESTDIR)$(PREFIX)/lib/systemd/system/pmux.service
-	install -D tools/cdb2sockpool/cdb2sockpool.service $(DESTDIR)$(PREFIX)/lib/systemd/system/cdb2sockpool.service
-	install -D contrib/comdb2admin/supervisor_cdb2.service $(DESTDIR)$(PREFIX)/lib/systemd/system/supervisor_cdb2.service
-	install -D cdb2api/cdb2api.pc $(DESTDIR)$(PREFIX)/usr/local/lib/pkgconfig/cdb2api.pc
-	install -D db/comdb2dumpcsc $(DESTDIR)$(PREFIX)/bin/comdb2dumpcsc
-	mkdir -p $(DESTDIR)$(PREFIX)/var/cdb2/ $(DESTDIR)$(PREFIX)/etc/cdb2 $(DESTDIR)$(PREFIX)/var/log/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/rtcpu $(DESTDIR)$(PREFIX)/var/lib/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/config/comdb2.d/  $(DESTDIR)$(PREFIX)/tmp/cdb2/ $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/conf.d $(DESTDIR)$(PREFIX)/etc/cdb2_supervisor/conf.d/ $(DESTDIR)$(PREFIX)/var/run $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/
-	[ -z "$(DESTDIR)" ] && chown $(USER):$(GROUP) $(DESTDIR)$(PREFIX)/var/cdb2/ $(DESTDIR)$(PREFIX)/etc/cdb2 $(DESTDIR)$(PREFIX)/var/log/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/rtcpu $(DESTDIR)$(PREFIX)/var/lib/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/config/comdb2.d/ $(DESTDIR)$(PREFIX)/etc/cdb2/config/ $(DESTDIR)$(PREFIX)/tmp/cdb2/ $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/conf.d $(DESTDIR)$(PREFIX)/etc/cdb2_supervisor/conf.d/  $(DESTDIR)$(PREFIX)/var/run $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/ || true  
-	[ -z "$(DESTDIR)" ] && chmod 755 $(DESTDIR)$(PREFIX)/var/cdb2/ $(DESTDIR)$(PREFIX)/etc/cdb2 $(DESTDIR)$(PREFIX)/var/log/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/rtcpu $(DESTDIR)$(PREFIX)/var/lib/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/config/comdb2.d/ $(DESTDIR)$(PREFIX)/etc/cdb2/config/ $(DESTDIR)$(PREFIX)/tmp/cdb2/ $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/conf.d $(DESTDIR)$(PREFIX)/etc/cdb2_supervisor/conf.d/  $(DESTDIR)$(PREFIX)/var/run $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/ || true
-	install -D cdb2api/cdb2api.h $(DESTDIR)$(PREFIX)/include/cdb2api.h
-	install -D cdb2api/libcdb2api.a $(DESTDIR)$(PREFIX)/lib/libcdb2api.a
-	install -D cdb2api/libcdb2api.so $(DESTDIR)$(PREFIX)/lib/libcdb2api.so
-	install -D protobuf/libcdb2protobuf.a $(DESTDIR)$(PREFIX)/lib/libcdb2protobuf.a
-	install -D contrib/comdb2admin/supervisord_cdb2.conf $(DESTDIR)$(PREFIX)/etc/supervisord_cdb2.conf
-	install -D contrib/comdb2admin/comdb2admin $(DESTDIR)$(PREFIX)/bin/comdb2admin
-	install -D contrib/comdb2makecluster $(DESTDIR)$(PREFIX)/bin/comdb2makecluster
-	-[ -z "$(DESTDIR)" ] && . db/installinfo || true
+	@cd build && $(MAKE) -s -j install
 
-# Build a container for building the database
-build-build-container:
-	docker build -t comdb2-build:$(VERSION) -f contrib/docker/Dockerfile.build .
-
-docker-clean:
-	rm -fr contrib/docker/build/*
-
-docker-dev: docker-standalone
-	docker build -t comdb2-dev:$(VERSION) -f contrib/docker/Dockerfile.dev .
-	docker tag comdb2-dev:$(VERSION) comdb2-dev:latest
-
-docker-standalone: docker-build
-	docker build -t comdb2-standalone:$(VERSION) -f contrib/docker/Dockerfile.standalone contrib/docker
-
-# Build the database in the build container
-docker-build: build-build-container
-	mkdir -p $(realpath $(SRCHOME))/contrib/docker/build
-	docker run --user $(shell id -u):$(shell id -g) \
-		--env HOME=/tmp \
-		-v $(realpath $(SRCHOME))/contrib/docker/build:/comdb2 \
-		-v $(realpath $(SRCHOME)):/comdb2.build \
-		-w /comdb2.build \
-		comdb2-build:$(VERSION) \
-        make DESTDIR=/comdb2 -j3 install
+.PHONY: test
+test: test_tools
+	$(MAKE) -C tests

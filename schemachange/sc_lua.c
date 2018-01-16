@@ -1,5 +1,8 @@
+#include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_lua.h"
 #include "translistener.h"
 
@@ -28,8 +31,7 @@ int dump_spfile(char *path, const char *dbname, char *file_name)
         rc = bdb_get_sp_name(NULL, old_sp, new_sp, &bdberr);
         if (rc || (strcmp(old_sp, new_sp) <= 0)) {
             sbuf2close(sb_out);
-            if (has_sp)
-                return 1;
+            if (has_sp) return 1;
 
             return 0;
         }
@@ -41,7 +43,7 @@ int dump_spfile(char *path, const char *dbname, char *file_name)
             fd_out = open(file, O_WRONLY | O_CREAT | O_TRUNC, 0666);
             if (fd_out == -1) {
                 logmsg(LOGMSG_USER, "%s: cannot open '%s' for writing %d %s\n",
-                        __func__, file, errno, strerror(errno));
+                       __func__, file, errno, strerror(errno));
                 return 0;
             }
 
@@ -58,8 +60,7 @@ int dump_spfile(char *path, const char *dbname, char *file_name)
                 bdb_get_sp_get_default_version(new_sp, &bdberr);
             for (;;) {
                 bdb_get_lua_highest(NULL, new_sp, &lua_ver, version, &bdberr);
-                if (lua_ver < 1)
-                    break;
+                if (lua_ver < 1) break;
                 char *lua_file;
                 int size;
                 if (bdb_get_sp_lua_source(NULL, NULL, new_sp, &lua_file,
@@ -153,8 +154,7 @@ static void show_all_versioned_sps(struct schema_change_type *sc)
     SBUF2 *sb = sc->sb;
     char **names;
     int count;
-    if (bdb_get_default_versioned_sps(&names, &count) != 0)
-        return;
+    if (bdb_get_default_versioned_sps(&names, &count) != 0) return;
     for (int i = 0; i < count; ++i) {
         char *vstr;
         int vnum, bdberr;
@@ -177,8 +177,7 @@ static void show_versioned_sp(struct schema_change_type *sc, int *num)
     int rc;
     if ((rc = bdb_get_all_for_versioned_sp(name, &versions, num)) != 0)
         goto out;
-    if (*num == 0)
-        goto out;
+    if (*num == 0) goto out;
     for (int i = 0; i < *num; ++i) {
         sbuf2printf(sb, ">Version: '%s'\n", versions[i]);
     }
@@ -209,7 +208,21 @@ static int show_versioned_sp_src(struct schema_change_type *sc)
 }
 static int add_versioned_sp(struct schema_change_type *sc)
 {
-    return bdb_add_versioned_sp(sc->table, sc->fname, sc->newcsc2);
+    int rc, bdberr;
+    char *spname = sc->table;
+    char *version = sc->fname;
+    int default_ver_num = bdb_get_sp_get_default_version(spname, &bdberr);
+    char *default_ver_str = NULL;
+    bdb_get_default_versioned_sp(spname, &default_ver_str);
+    free(default_ver_str);
+
+    tran_type *tran = sc->tran;
+    rc = bdb_add_versioned_sp(tran, spname, version, sc->newcsc2);
+    if (default_ver_num <= 0 && default_ver_str == NULL) {
+        // first version - set it default as well
+        return bdb_set_default_versioned_sp(tran, spname, version);
+    }
+    return rc;
 }
 static int chk_versioned_sp(char *name, char *version, struct ireq *iq)
 {
@@ -227,16 +240,14 @@ static int chk_versioned_sp(char *name, char *version, struct ireq *iq)
 static int del_versioned_sp(struct schema_change_type *sc, struct ireq *iq)
 {
     int rc;
-    if ((rc = chk_versioned_sp(sc->table, sc->fname, iq)) != 0)
-        return rc;
+    if ((rc = chk_versioned_sp(sc->table, sc->fname, iq)) != 0) return rc;
     return bdb_del_versioned_sp(sc->table, sc->fname);
 }
 static int default_versioned_sp(struct schema_change_type *sc, struct ireq *iq)
 {
     int rc;
-    if ((rc = chk_versioned_sp(sc->table, sc->fname, iq)) != 0)
-        return rc;
-    return bdb_set_default_versioned_sp(sc->table, sc->fname);
+    if ((rc = chk_versioned_sp(sc->table, sc->fname, iq)) != 0) return rc;
+    return bdb_set_default_versioned_sp(sc->tran, sc->table, sc->fname);
 }
 
 // ----------------
@@ -281,8 +292,7 @@ static void show_sp(struct schema_change_type *sc, int *num, int *has_default)
     *has_default = -1;
     for (;;) {
         bdb_get_lua_highest(NULL, sc->table, &lua_ver, version, &bdberr);
-        if (lua_ver < 1)
-            break;
+        if (lua_ver < 1) break;
         ++(*num);
         sbuf2printf(sb, ">Version: %d\n", lua_ver);
         version = lua_ver;
@@ -516,36 +526,51 @@ int do_default_sp(struct schema_change_type *sc, struct ireq *iq)
     do {                                                                       \
         for (int i = 0; i < thedb->num_lua_##pfx##funcs; ++i) {                \
             free(thedb->lua_##pfx##funcs[i]);                                  \
+            thedb->lua_##pfx##funcs[i] = NULL;                                 \
         }                                                                      \
         free(thedb->lua_##pfx##funcs);                                         \
+        thedb->lua_##pfx##funcs = NULL;                                        \
         return llmeta_load_lua_##pfx##funcs();                                 \
     } while (0)
 
-int reload_lua_sfuncs() { reload_lua_funcs(s); }
+int reload_lua_sfuncs()
+{
+    reload_lua_funcs(s);
+}
 
-int reload_lua_afuncs() { reload_lua_funcs(a); }
+int reload_lua_afuncs()
+{
+    reload_lua_funcs(a);
+}
 
 #define finalize_lua_func(pfx)                                                 \
     do {                                                                       \
         int rc = reload_lua_##pfx##funcs();                                    \
-        if (rc != 0)                                                           \
-            return rc;                                                         \
+        if (rc != 0) return rc;                                                \
         int bdberr;                                                            \
         return bdb_llog_luafunc(thedb->bdb_env, lua_##pfx##func, 1, &bdberr);  \
     } while (0)
 
-int finalize_lua_sfunc() { finalize_lua_func(s); }
+int finalize_lua_sfunc()
+{
+    finalize_lua_func(s);
+}
 
-int finalize_lua_afunc() { finalize_lua_func(a); }
+int finalize_lua_afunc()
+{
+    finalize_lua_func(a);
+}
 
 #define do_lua_func(sc, rc, pfx)                                               \
     do {                                                                       \
         int bdberr;                                                            \
         if (sc->addonly) {                                                     \
-            logmsg(LOGMSG_DEBUG, "%s -- adding lua sql func:%s\n", __func__, sc->spname);    \
+            logmsg(LOGMSG_DEBUG, "%s -- adding lua sql func:%s\n", __func__,   \
+                   sc->spname);                                                \
             bdb_llmeta_add_lua_##pfx##func(sc->spname, &bdberr);               \
         } else {                                                               \
-            logmsg(LOGMSG_DEBUG, "%s -- dropping lua sql func:%s\n", __func__, sc->spname);  \
+            logmsg(LOGMSG_DEBUG, "%s -- dropping lua sql func:%s\n", __func__, \
+                   sc->spname);                                                \
             bdb_llmeta_del_lua_##pfx##func(sc->spname, &bdberr);               \
         }                                                                      \
         if (sc->finalize)                                                      \
@@ -571,4 +596,3 @@ int do_lua_afunc(struct schema_change_type *sc)
     unlock_schema_lk();
     return rc;
 }
-

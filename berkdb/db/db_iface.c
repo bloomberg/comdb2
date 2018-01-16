@@ -229,11 +229,12 @@ __db_associate_arg(dbp, sdbp, callback, flags)
  * __db_close_pp --
  *	DB->close pre/post processing.
  *
- * PUBLIC: int __db_close_pp __P((DB *, u_int32_t));
+ * PUBLIC: int __db_close_pp __P((DB *, DB_TXN *, u_int32_t));
  */
 int
-__db_close_pp(dbp, flags)
+__db_close_pp(dbp, txn, flags)
 	DB *dbp;
+	DB_TXN *txn;
 	u_int32_t flags;
 {
 	DB_ENV *dbenv;
@@ -261,7 +262,7 @@ __db_close_pp(dbp, flags)
 	    (t_ret = __db_rep_enter(dbp, 0, 0)) != 0 && ret == 0)
 		ret = t_ret;
 
-	if ((t_ret = __db_close(dbp, NULL, flags)) != 0 && ret == 0)
+	if ((t_ret = __db_close(dbp, txn, flags)) != 0 && ret == 0)
 		ret = t_ret;
 
 	/* Release replication block. */
@@ -439,8 +440,8 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 					void *stack[MAXSTACKDEPTH];
 
 					fprintf(stderr,
-					    "ERROR thread %d opened 2 cursors w/ 2 lockerids %d %d\n",
-					    pthread_self(), l, d->locker);
+					    "ERROR thread %p opened 2 cursors w/ 2 lockerids %d %d\n",
+					    (void *)pthread_self(), l, d->locker);
 
 					fprintf(stderr, "First stack:\n");
 					for (i = SKIPFRAMES; i < vptr->nframes;
@@ -449,7 +450,7 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 						    i - SKIPFRAMES,
 						    vptr->stack[i]);
 
-#ifndef __linux
+#ifndef __linux__
 					rc = stack_pc_getlist(NULL, stack,
 					    MAXSTACKDEPTH, &nframes);
 					if (!rc) {
@@ -470,7 +471,7 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 			vptr->lockerid = d->locker;
 			vptr->nframes = 0;
 			/* save the first stack */
-#ifndef __linux
+#ifndef __linux__
 			stack_pc_getlist(NULL, vptr->stack, MAXSTACKDEPTH,
 			    &vptr->nframes);
 #endif
@@ -949,15 +950,15 @@ __db_get_pp(dbp, txn, key, data, flags)
 		lid = vptr->lockerid;
 		if (lid && debug_switch_check_multiple_lockers()) {
 			fprintf(stderr,
-			    "ERROR thread %d called __db_get_pp with an open "
-			    "cursor (lockerid %d)\n", pthread_self(), lid);
+			    "ERROR thread %p called __db_get_pp with an open "
+			    "cursor (lockerid %d)\n", (void *)pthread_self(), lid);
 			fprintf(stderr, "First stack:\n");
 			for (i = SKIPFRAMES; i < vptr->nframes; i++)
 				fprintf(stderr, " %d %p", i - SKIPFRAMES,
 				    vptr->stack[i]);
 			printf("\n");
 
-#ifndef __linux
+#ifndef __linux__
 			rc = stack_pc_getlist(NULL, stack, MAXSTACKDEPTH,
 			    &nframes);
 			if (!rc) {

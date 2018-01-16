@@ -27,7 +27,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/statvfs.h>
-#ifdef _LINUX_SOURCE
+#ifdef __linux__
 #include <sys/vfs.h>
 #endif
 #include <sys/msg.h>
@@ -42,7 +42,7 @@
 
 #include <plhash.h>
 #include "comdb2.h"
-#include "util.h"
+#include "util.h" /* the .h file for this .c */
 
 #include <limits.h>
 #include <float.h>
@@ -106,46 +106,6 @@ u_int strhashfunc(u_char **keyp, int len)
     for (hash = 0; *key; key++)
         hash = ((hash % 8388013) << 8) + (TOUPPER(*key));
     return hash;
-}
-
-int gooddir(char *d)
-{
-#ifndef _LINUX_SOURCE
-    struct statvfs buf;
-#else
-    struct statfs buf;
-#endif
-    int rc;
-
-#ifndef _LINUX_SOURCE
-    rc = statvfs(d, &buf);
-#else
-    rc = statfs(d, &buf);
-#endif
-
-    if (gbl_force_bad_directory) {
-        return 1;
-    }
-
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "* * * INVALID DATA DIRECTORY * * *\n");
-        logmsg(LOGMSG_ERROR, "* * * STATVFS FAILED * * *\n");
-        return 0;
-    }
-
-#ifndef _LINUX_SOURCE
-    /* expected types: nfs, nfs3 */
-    if (!strncmp(buf.f_basetype, "nfs", 3)) {
-#else
-    /* TODO: there must be a #define for the NFS magic value somewhere */
-    if (buf.f_type == 0x6969 /*NFS_SUPER_MAGIC*/) {
-#endif
-        logmsg(LOGMSG_ERROR, "* * * INVALID DATA DIRECTORY * * *\n");
-        logmsg(LOGMSG_ERROR, "* * * %s IS A NFS DIRECTORY! * * *\n", d);
-        return 0;
-    }
-
-    return 1;
 }
 
 void xorbufcpy(char *dest, const char *src, size_t len)
@@ -217,8 +177,8 @@ char *load_text_file(const char *filename)
 
     buf = malloc(buflen + 1);
     if (!buf) {
-        logmsg(LOGMSG_ERROR, "load_text_file: '%s' out of memory, need %u\n",
-                filename, buflen);
+        logmsg(LOGMSG_ERROR, "load_text_file: '%s' out of memory, need %zu\n",
+               filename, buflen);
         return NULL;
     }
 
@@ -241,8 +201,9 @@ char *load_text_file(const char *filename)
             buflen += bytesread;
             newbuf = realloc(buf, buflen + 1);
             if (!newbuf) {
-                logmsg(LOGMSG_ERROR, "load_text_file: '%s' out of memory, need %u\n",
-                        filename, buflen);
+                logmsg(LOGMSG_ERROR,
+                       "load_text_file: '%s' out of memory, need %zu\n",
+                       filename, buflen);
                 free(buf);
                 close(fd);
                 return NULL;
@@ -334,8 +295,6 @@ int rewrite_lrl_remove_tables(const char *lrlname)
         if (ltok && tokcmp(tok, ltok, "sfuncs") == 0)
             continue;
         if (ltok && tokcmp(tok, ltok, "afuncs") == 0)
-            continue;
-        if (ltok && tokcmp(tok, ltok, "num_qdbs") == 0)
             continue;
         if (ltok && tokcmp(tok, ltok, "queuedb") == 0)
             continue;
@@ -444,6 +403,10 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
 
     /* add table definitions */
     for (i = 0; i < num_tables; ++i) {
+        if (strncmp(p_table_names[i], "sqlite_stat",
+                    sizeof("sqlite_stat") - 1) == 0)
+            continue;
+
         sbuf2printf(sb_out, "table %s %s", p_table_names[i], p_csc2_paths[i]);
 
         if (table_nums[i])
@@ -458,9 +421,8 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
         sbuf2printf(sb_out, "\n");
     }
 
-    if (thedb->num_qdbs)
-        sbuf2printf(sb_out, "num_qdbs %d\n", thedb->num_qdbs);
-    for (int i = 0; i < thedb->num_qdbs; ++i)
+    for (int i = 0;
+         i < thedb->num_qdbs && thedb->qdbs[i]->dbtype == DBTYPE_QUEUEDB; ++i)
         sbuf2printf(sb_out, "queuedb " REPOP_QDB_FMT "\n", out_lrl_dir,
                     thedb->envname, i);
 
@@ -630,4 +592,39 @@ char *get_full_filename(char *path, int pathlen, enum dirtype type, char *name,
     vsnprintf(path, pathlen, name, args);
     va_end(args);
     return ret;
+}
+
+static inline char hex(unsigned char a)
+{
+    if (a < 10)
+        return '0' + a;
+    return 'a' + (a - 10);
+}
+
+void hexdumpbuf(char *key, int keylen, char **buf)
+{
+    char *mem;
+    char *output;
+
+    mem = malloc((2 * keylen) + 2);
+    output = util_tohex(mem, key, keylen);
+
+    *buf = output;
+}
+
+/* Return a hex string
+ * output buffer should be appropriately sized */
+char *util_tohex(char *out, const char *in, size_t len)
+{
+    char *beginning = out;
+    char hex[] = "0123456789abcdef";
+    const char *end = in + len;
+    while (in != end) {
+        char i = *(in++);
+        *(out++) = hex[(i & 0xf0) >> 4];
+        *(out++) = hex[i & 0x0f];
+    }
+    *out = 0;
+
+    return beginning;
 }

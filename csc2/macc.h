@@ -75,7 +75,7 @@ extern char *maccfuncpath;
 
 /* MAXINDEX HAS BECOME OBSOLETE - FOR NOW, JUST KLUDGE TO FIX */
 #define MAXKEYS 256  /* maximum # of keys with cases */
-#define MAXINDEX 256 /* max # of indices */
+//#define MAXINDEX 256 /* max # of indices */
 
 #define EXPRMAX 1024    /* maximum pieces of an expression */
 #define EXPRTABMAX 1024 /* maximum number of expressions */
@@ -233,7 +233,6 @@ extern int maxrngsz;                /* the biggest range's size          */
 extern int rngrrnoff[MAXRNGS];      /* rrn offset in rbuf for each range */
 extern int any_errors;              /* flag                              */
 extern int current_line;            /* for printing errors               */
-extern time_t ctm;                  /* compile time                      */
 extern char includename[256];       /* tolower'ed include name           */
 extern char includefiles[MAX_INCLUDES][MAX_INC_NAME];
 extern int includetypes[MAX_INCLUDES];

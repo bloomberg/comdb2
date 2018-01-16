@@ -53,7 +53,7 @@
 #include <assert.h>
 #include <alloca.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 
 #include <ctrace.h>
@@ -796,32 +796,6 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
 }
 
 
-static char hex(unsigned char a)
-{
-    if (a < 10)
-        return '0' + a;
-    return 'a' + (a - 10);
-}
-/* Return a hex string */
-static char *tohex(char *output, char *key, int keylen)
-{
-    int i = 0;
-    char byte[3];
-
-    output[0] = '\0';
-    byte[2] = '\0';
-
-    for (i = 0; i < keylen; i++) {
-        snprintf(byte, sizeof(byte), "%c%c", hex(((unsigned char)key[i]) / 16),
-                 hex(((unsigned char)key[i]) % 16));
-        strcat(output, byte);
-    }
-
-    return output;
-}
-
-
-
 int ll_key_add(bdb_state_type *bdb_state, unsigned long long ingenid,
                tran_type *tran, int ixnum, DBT *dbt_key, DBT *dbt_data)
 {
@@ -1141,7 +1115,7 @@ ll_dta_upd_int(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
            were told to verify the data */
         if (verify_dta) {
             rc = 0;
-            if (memcmp(oldrec, verify_dta->data, oldsz) != 0) {
+            if (oldrec && memcmp(oldrec, verify_dta->data, oldsz) != 0) {
                 /* in this case we return a bdb return code since there's no
                    corresponding berkdb return code */
                 rc = BDBERR_DTA_MISMATCH;
@@ -1395,6 +1369,8 @@ ll_dta_upd_int(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
         rc = phys_dta_upd(bdb_state, rrn, oldgenid, newgenid, dbp, tran,
                           dtafile, dtastripe, verify_dta, dta);
         break;
+    default:
+        break;
     }
 
 done:
@@ -1495,6 +1471,8 @@ int ll_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
     case TRANCLASS_LOGICAL:
         rc = phys_rowlocks_log_bench_lk(bdb_state, tran, op, arg1, arg2,
                                         payload, paylen);
+        break;
+    default:
         break;
     }
     return rc;

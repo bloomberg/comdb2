@@ -395,6 +395,7 @@ static void substrFunc(
   }
 }
 
+extern int comdb2_sql_tick();
 /* COMDB2 MODIFICATION */
 /*
 ** Implementation of the sleep() function
@@ -411,8 +412,15 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
     sqlite3_result_int(context, -1);
     return;
   }
-  rc = sleep(n);
-  sqlite3_result_int(context, n);
+  int i;
+  for(i = 0; i < n; i++) {
+    sleep(1);
+    if( comdb2_sql_tick() )
+      break;  
+    /* We could also return error by doing
+     * sqlite3_result_error(context, "Interrupted", -1); */
+  }
+  sqlite3_result_int(context, i);
 }
 
 /*
@@ -708,6 +716,16 @@ static void comdb2HostFunc(
   sqlite3_result_text(context, gbl_myhostname, -1, SQLITE_STATIC);
 }
 
+extern int comdb2_get_server_port();
+static void comdb2PortFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+  sqlite3_result_int64(context, comdb2_get_server_port());
+}
+
 
 static void comdb2DbnameFunc(
   sqlite3_context *context,
@@ -738,7 +756,7 @@ static void tableVersionFunc(
     return;
   }
 
-  tablename = sqlite3_value_text(argv[0]);
+  tablename = (const char *)sqlite3_value_text(argv[0]);
 
   version = comdb2_table_version(tablename);
   if (version<0) {
@@ -768,12 +786,12 @@ static void partitionInfoFunc(
   if( sqlite3_value_type(argv[0]) != SQLITE_TEXT ){
     return;
   }
-  partition_name = sqlite3_value_text(argv[0]);
+  partition_name = (const char *)sqlite3_value_text(argv[0]);
   
   if( sqlite3_value_type(argv[1]) != SQLITE_TEXT ){
     return;
   }
-  option = sqlite3_value_text(argv[1]);
+  option = (const char *)sqlite3_value_text(argv[1]);
 
   info = comdb2_partition_info(partition_name, option);
 
@@ -2183,6 +2201,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(table_version,     1, 0, 0, tableVersionFunc),
     FUNCTION(partition_info,    2, 0, 0, partitionInfoFunc),
     FUNCTION(comdb2_host,       0, 0, 0, comdb2HostFunc),
+    FUNCTION(comdb2_port,       0, 0, 0, comdb2PortFunc),
     FUNCTION(comdb2_dbname,     0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost,0,0,0, comdb2PrevquerycostFunc),
 #endif

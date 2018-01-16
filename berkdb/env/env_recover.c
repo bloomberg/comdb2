@@ -314,7 +314,7 @@ __db_find_earliest_recover_point(dbenv, outlsn)
 		LOGCOPY_32(&type, rec.data);
 		if (type == DB___db_debug) {
 			int optype = 0;
-			if(ret = __db_debug_read(dbenv, rec.data, &debug_args))
+			if((ret = __db_debug_read(dbenv, rec.data, &debug_args)) != 0)
 				goto err;
 			LOGCOPY_32(&optype, debug_args->op.data);
 			__os_free(dbenv, debug_args);
@@ -589,6 +589,36 @@ full_recovery_check(DB_ENV *dbenv, DB_LSN *max_lsn)
 }
 
 /*
+  Log the progress of database recovery process.
+*/
+void log_recovery_progress(int stage, int progress)
+{
+	static int last_stage = -1;
+	static int last_reported = -1;
+	const int step = 10;
+
+	/* End-of-stage marker */
+	if (last_stage == stage && progress == -1) {
+		logmsg(LOGMSG_WARN, " .. done\n");
+		return;
+	}
+
+	/* Begin-of-stage marker */
+	if (stage > last_stage) {
+		logmsg(LOGMSG_WARN, "Recovery pass #%d\n", stage);
+		last_stage = stage;
+		last_reported = -1;
+		return;
+	}
+
+	if ((progress > last_reported) && ((progress % step) == 0)) {
+		last_reported = progress;
+		logmsg(LOGMSG_WARN, " %d%%", progress);
+	}
+}
+
+
+/*
  * __db_apprec --
  *	Perform recovery.  If max_lsn is non-NULL, then we are trying
  * to synchronize this system up with another system that has a max
@@ -815,6 +845,8 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	 * Get the first LSN in the log; it's an initial default
 	 * even if this is not a catastrophic recovery.
 	 */
+	log_recovery_progress(0, -1);
+
 	if ((ret = __log_c_get(logc, &ckp_lsn, &data, DB_FIRST)) != 0) {
 		if (ret == DB_NOTFOUND)
 			ret = 0;
@@ -933,18 +965,16 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		goto err;
 	}
 
-	if (dbenv->db_feedback != NULL) {
-		if (last_lsn.file == first_lsn.file)
-			nfiles = (double)
-			    (last_lsn.offset - first_lsn.offset) / log_size;
-		else
-			nfiles = (double)(last_lsn.file - first_lsn.file) +
-			    (double)(log_size - first_lsn.offset +
-			    last_lsn.offset) / log_size;
-		/* We are going to divide by nfiles; make sure it isn't 0. */
-		if (nfiles == 0)
-			nfiles = (double)0.001;
-	}
+	if (last_lsn.file == first_lsn.file)
+		nfiles = (double)
+		    (last_lsn.offset - first_lsn.offset) / log_size;
+	else
+		nfiles = (double)(last_lsn.file - first_lsn.file) +
+		    (double)(log_size - first_lsn.offset +
+		    last_lsn.offset) / log_size;
+	/* We are going to divide by nfiles; make sure it isn't 0. */
+	if (nfiles == 0)
+		nfiles = (double)0.001;
 
 	/* Find a low txnid. */
 	ret = 0;
@@ -978,13 +1008,14 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 
 	__fileid_track_init(dbenv);
 
-	logmsg(LOGMSG_WARN, "Recovery done with pass #0\n");
+	log_recovery_progress(0, -1);
 	dbenv->recovery_pass = DB_TXN_OPENFILES;
 
 	/*
 	 * Pass #1
 	 * Run forward through the log starting at the first relevant lsn.
 	 */
+	log_recovery_progress(1, -1);
 	logmsg(LOGMSG_WARN, "running forward pass from %u:%u -> %u:%u\n",
 	    first_lsn.file, first_lsn.offset, last_lsn.file, last_lsn.offset);
 	if ((ret = __env_openfiles(dbenv, logc,
@@ -1004,7 +1035,7 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		__dbreg_recovery_pages(dbenv);
 	}
 
-	logmsg(LOGMSG_WARN, "Recovery done with pass #1\n");
+	log_recovery_progress(1, -1);
 	dbenv->recovery_pass = DB_TXN_BACKWARD_ROLL;
 
 	/*
@@ -1013,12 +1044,12 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	 * We used first_lsn to tell us how far back we need to recover,
 	 * use it here.
 	 */
+	log_recovery_progress(2, -1);
 
 #if 0
 	printf("lsn ranges at end of pass #1\n");
 	__fileid_track_dump(dbenv);
 #endif
-
 
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_RECOVERY))
 		__db_err(dbenv, "Recovery starting from [%lu][%lu]",
@@ -1032,11 +1063,18 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	    first_lsn.file, first_lsn.offset, lsn.file, lsn.offset);
 	for (; ret == 0 && log_compare(&lsn, &first_lsn) >= 0;
 	    ret = __log_c_get(logc, &lsn, &data, DB_PREV)) {
+#if 0
+		progress = 34 + (int)(33 * (__lsn_diff(&first_lsn,
+#else
+		progress = (int)(100 * (__lsn_diff(&first_lsn,
+#endif
+			&last_lsn, &lsn, log_size, 0) / nfiles));
+		log_recovery_progress(2, progress);
+
 		if (dbenv->db_feedback != NULL) {
-			progress = 34 + (int)(33 * (__lsn_diff(&first_lsn,
-				    &last_lsn, &lsn, log_size, 0) / nfiles));
 			dbenv->db_feedback(dbenv, DB_RECOVER, progress);
 		}
+
 		ret = __db_dispatch(dbenv, dbenv->recover_dtab,
 		    dbenv->recover_dtab_size, &data, &lsn,
 		    DB_TXN_BACKWARD_ROLL, txninfo);
@@ -1049,14 +1087,14 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		if (dbenv->lsn_undone_callback)
 			dbenv->lsn_undone_callback(dbenv, &lsn);
 	}
+
 	if (ret != 0 && ret != DB_NOTFOUND)
 		goto err;
 
 	ret = __fileid_track_free(dbenv);
 	if (ret)
 		goto err;
-
-	logmsg(LOGMSG_WARN, "Recovery done with pass #2\n");
+	log_recovery_progress(2, -1);
 
 	/*
 	 * Pass #3.  If we are recovering to a timestamp or to an LSN,
@@ -1068,13 +1106,14 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	 * derive a real stop_lsn that tells how far the forward pass
 	 * should go.
 	 */
+	log_recovery_progress(3, -1);
 	pass = "forward";
 	dbenv->recovery_pass = DB_TXN_FORWARD_ROLL;
 	stop_lsn = last_lsn;
 	if (max_lsn != NULL ||dbenv->tx_timestamp != 0)
 		stop_lsn = ((DB_TXNHEAD *)txninfo)->maxlsn;
 
-	logmsg(LOGMSG_INFO, "running forward pass from %u:%u -> %u:%u\n",
+	logmsg(LOGMSG_WARN, "running forward pass from %u:%u -> %u:%u\n",
 	    lsn.file, lsn.offset, stop_lsn.file, stop_lsn.offset);
 	for (ret = __log_c_get(logc, &lsn, &data, DB_NEXT);
 	    ret == 0; ret = __log_c_get(logc, &lsn, &data, DB_NEXT)) {
@@ -1086,10 +1125,15 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 
 		if (log_compare(&lsn, &stop_lsn) > 0)
 			break;
+#if 0
+		progress = 67 + (int)(33 * (__lsn_diff(&first_lsn,
+#else
+		progress = (int)(100 * (__lsn_diff(&first_lsn,
+#endif
+			&last_lsn, &lsn, log_size, 1) / nfiles));
+		log_recovery_progress(3, progress);
 
 		if (dbenv->db_feedback != NULL) {
-			progress = 67 + (int)(33 * (__lsn_diff(&first_lsn,
-			    &last_lsn, &lsn, log_size, 1) / nfiles));
 			dbenv->db_feedback(dbenv, DB_RECOVER, progress);
 		}
 
@@ -1104,6 +1148,7 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		}
 
 	}
+
 	if (ret != 0 && ret != DB_NOTFOUND)
 		goto err;
 	dbenv->recovery_pass = DB_TXN_NOT_IN_RECOVERY;
@@ -1127,7 +1172,7 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		logc = NULL;
 
 		/* Flush everything to disk, we are losing the log. */
-		if ((ret = __memp_sync(dbenv, NULL, NULL)) != 0)
+		if ((ret = __memp_sync(dbenv, NULL)) != 0)
 			 goto err;
 
 		region->last_ckp = ((DB_TXNHEAD *)txninfo)->ckplsn;
@@ -1280,7 +1325,7 @@ done:
 		    (u_long) region->last_ckp.file,
 		    (u_long) region->last_ckp.offset);
 	}
-	logmsg(LOGMSG_WARN, "Recovery done with pass #3\n");
+	log_recovery_progress(3, -1);
 
 	if (0) {
 msgerr:	__db_err(dbenv,
@@ -1624,12 +1669,21 @@ __env_openfiles(dbenv, logc, txninfo,
 	logmsg(LOGMSG_INFO, "%s: open files from lsn %u:%u\n", __func__, open_lsn->file,
 	    open_lsn->offset);
 	lsn = *open_lsn;
+
 	for (;;) {
-		if (in_recovery && dbenv->db_feedback != NULL) {
+		if (in_recovery) {
 			DB_ASSERT(last_lsn != NULL);
+#if 0
 			progress = (int)(33 * (__lsn_diff(open_lsn,
-				    last_lsn, &lsn, log_size, 1) / nfiles));
-			dbenv->db_feedback(dbenv, DB_RECOVER, progress);
+#else
+			progress = (int)(100 * (__lsn_diff(open_lsn,
+#endif
+				last_lsn, &lsn, log_size, 1) / nfiles));
+			log_recovery_progress(1, progress);
+
+			if (dbenv->db_feedback != NULL) {
+				dbenv->db_feedback(dbenv, DB_RECOVER, progress);
+			}
 		}
 		ret = __db_dispatch(dbenv,
 		    dbenv->recover_dtab, dbenv->recover_dtab_size, data, &lsn,
@@ -1742,7 +1796,7 @@ __recover_logfile_pglogs(dbenv)
 					bdb_set_gbl_recoverable_lsn(&lsn,
 					    ckp_args->timestamp);
 					got_recoverable_lsn = 1;
-					logmsg(LOGMSG_ERROR, "set gbl_recoverable_lsn as [%d][%d]\n",
+					logmsg(LOGMSG_WARN, "set gbl_recoverable_lsn as [%d][%d]\n",
 					    lsn.file, lsn.offset);
 				}
 			}

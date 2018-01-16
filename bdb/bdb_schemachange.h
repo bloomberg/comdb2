@@ -23,15 +23,15 @@ extern volatile int gbl_lua_version;
 extern volatile int gbl_analyze_gen;
 extern volatile int gbl_views_gen;
 
-typedef enum {
+typedef enum scdone {
     alter,
     fastinit,
-    add = fastinit, /* but, getdbbyname == NULL */
+    add = fastinit, /* but, get_dbtable_by_name == NULL */
     drop,
     bulkimport,
     setcompr,
     luareload,
-    analyze,
+    sc_analyze,
     bthash,
     rowlocks_on,
     rowlocks_on_master_only,
@@ -44,8 +44,11 @@ typedef enum {
     genid48_disable,
     lua_sfunc,
     lua_afunc,
+    rename_table,
 } scdone_t;
 
+int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
+                         tran_type *tran, const char *origtable, int *bdberr);
 int bdb_llog_scdone(bdb_state_type *, scdone_t, int wait, int *bdberr);
 int bdb_llog_luareload(bdb_state_type *, int wait, int *bdberr);
 int bdb_llog_analyze(bdb_state_type *, int wait, int *bdberr);
@@ -56,7 +59,8 @@ int bdb_reload_rowlocks(bdb_state_type *, scdone_t, int *bdberr);
 int bdb_llog_luafunc(bdb_state_type *, scdone_t, int wait, int *bdberr);
 /* run on the replecants after the master is done so that they can reload/update
  * their copies of the modified database */
-typedef int (*SCDONEFP)(const char table[], scdone_t);
+typedef int (*SCDONEFP)(bdb_state_type *, const char table[], void *arg,
+                        scdone_t);
 /* aborts a schema change if one is in progress and waits for it to finish */
 typedef void (*SCABORTFP)(void);
 

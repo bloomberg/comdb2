@@ -972,6 +972,14 @@ bytearray_copy(const void *in, int inlen, const struct field_conv_opts *inopts,
     return 0;
 }
 
+#ifdef _LINUX_SOURCE
+#define CHECK_FLIP(opts, flip)                                                 \
+    if (!(opts && opts->flags & FLD_CONV_LENDIAN)) flip = 1;
+#else
+#define CHECK_FLIP(opts, flip)                                                 \
+    if ((opts && opts->flags & FLD_CONV_LENDIAN)) flip = 1;
+#endif
+
 TYPES_INLINE int CLIENT_UINT_to_CLIENT_UINT(
     const void *in, int inlen, const struct field_conv_opts *inopts,
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
@@ -980,30 +988,24 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_UINT(
     unsigned long long from_8;
     unsigned int from_4;
     unsigned short from_2;
-    int from_little = 0;
+    int from_flip = 0;
 
     unsigned long long to_8;
     unsigned int to_4;
     unsigned short to_2;
-    int to_little = 0;
+    int to_flip = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     *outdtsz = 0;
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
-
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -1011,11 +1013,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_UINT(
         case 8:
             to_8 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -1024,11 +1024,10 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_UINT(
                 return -1;
             to_4 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
 
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -1037,11 +1036,10 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_UINT(
                 return -1;
             to_2 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
 
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -1053,9 +1051,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_UINT(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
-
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -1063,22 +1059,19 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_UINT(
         case 8:
             to_8 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
         case 4:
             to_4 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
 
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -1087,11 +1080,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_UINT(
                 return -1;
             to_2 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
-
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -1103,9 +1094,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_UINT(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
-
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
@@ -1113,33 +1102,27 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_UINT(
         case 8:
             to_8 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
         case 4:
             to_4 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
         case 2:
             to_2 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
-
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -1165,30 +1148,25 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_INT(
     unsigned long long from_8;
     unsigned int from_4;
     unsigned short from_2;
-    int from_little = 0;
+    int from_flip = 0;
 
     signed long long to_8;
     signed int to_4;
     signed short to_2;
-    int to_little = 0;
+    int to_flip = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     *outdtsz = 0;
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
 
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -1198,11 +1176,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_INT(
                 return -1;
             to_8 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -1211,11 +1187,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_INT(
                 return -1;
             to_4 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -1224,11 +1198,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_INT(
                 return -1;
             to_2 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
-
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -1240,9 +1212,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_INT(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
-
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -1250,11 +1220,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_INT(
         case 8:
             to_8 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -1263,11 +1231,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_INT(
                 return -1;
             to_4 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -1276,11 +1242,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_INT(
                 return -1;
             to_2 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
-
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -1292,32 +1256,25 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_INT(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
-
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
         switch (outlen) {
         case 8:
             to_8 = from_2;
-
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
         case 4:
             to_4 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -1326,11 +1283,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_INT(
                 return -1;
             to_2 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
-
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -1359,26 +1314,20 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
 
     double to_8;
     float to_4;
-    int from_little = 0;
-    int to_little = 0;
+    int from_flip = 0;
+    int to_flip = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     *outdtsz = 0;
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
-
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -1388,11 +1337,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
                 return -1;
             to_8 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_dblflip(to_8);
             }
-
-            to_8 = flibc_htond(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -1401,11 +1348,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
                 return -1;
             to_4 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_floatflip(to_4);
             }
-
-            to_4 = flibc_htonf(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -1417,9 +1362,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
-
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -1429,11 +1372,10 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
                 return -1;
             to_8 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_dblflip(to_8);
             }
 
-            to_8 = flibc_htond(to_8);
             *outdtsz = 8;
             memcpy(out, &to_8, 8);
             break;
@@ -1442,11 +1384,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
                 return -1;
             to_4 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_floatflip(to_4);
             }
-
-            to_4 = flibc_htonf(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -1458,9 +1398,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
-
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
@@ -1470,22 +1408,18 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
                 return -1;
             to_8 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_dblflip(to_8);
             }
-
-            to_8 = flibc_htond(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
         case 4:
             to_4 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_floatflip(to_4);
             }
-
-            to_4 = flibc_htonf(to_4);
             memcpy(out, &to_4, 4);
             if (REAL_OUTOFRANGE(from_2, FLT_MAX))
                 return -1;
@@ -1519,12 +1453,11 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_CSTR(
 
     int i;
 
-    int from_little = 0;
+    int from_flip = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
+
     /* To-little doesn't matter for strings. */
 
     to = (char *)out;
@@ -1534,9 +1467,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_CSTR(
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
-
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -1545,9 +1476,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_CSTR(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
-
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -1556,9 +1485,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_CSTR(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
-
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
@@ -1599,12 +1526,10 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_PSTR(
 
     int i;
 
-    int from_little = 0;
+    int from_flip = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     *outdtsz = 0;
     outbuf = alloca(outlen + 1);
@@ -1614,8 +1539,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_PSTR(
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
         rc = snprintf(outbuf, outlen + 1, "%llu", from_8);
@@ -1623,8 +1547,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_PSTR(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
         rc = snprintf(outbuf, outlen + 1, "%u", from_4);
@@ -1632,8 +1555,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_PSTR(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
         rc = snprintf(outbuf, outlen + 1, "%hu", from_2);
@@ -1676,12 +1598,10 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_PSTR2(
 
     int i;
 
-    int from_little = 0;
+    int from_flip = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     outbuf = alloca(outlen + 1);
 
@@ -1690,9 +1610,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_PSTR2(
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
-
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -1701,9 +1619,8 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_PSTR2(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
 
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -1712,9 +1629,8 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_PSTR2(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
 
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
@@ -1759,31 +1675,26 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
     signed long long from_8;
     signed int from_4;
     signed short from_2;
-    int from_little = 0;
+    int from_flip = 0;
 
     unsigned long long to_8;
     unsigned int to_4;
     unsigned short to_2;
-    int to_little = 0;
+    int to_flip = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     *outdtsz = 0;
 
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
 
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -1793,11 +1704,9 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
         case 8:
             to_8 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -1806,11 +1715,9 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
                 return -1;
             to_4 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -1819,11 +1726,10 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
                 return -1;
             to_2 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
 
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -1835,9 +1741,8 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
 
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -1846,19 +1751,17 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
         switch (outlen) {
         case 8:
             to_8 = from_4;
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
         case 4:
             to_4 = from_4;
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -1866,10 +1769,9 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
             if (from_4 > USHRT_MAX)
                 return -1;
             to_2 = from_4;
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -1881,9 +1783,7 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
-
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
@@ -1893,33 +1793,29 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
         case 8:
             to_8 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
         case 4:
             to_4 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
 
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
         case 2:
             to_2 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
 
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -1947,31 +1843,25 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_INT(const void *in, int inlen,
     signed long long from_8;
     signed int from_4;
     signed short from_2;
-    int from_little = 0;
+    int from_flip = 0;
 
     signed long long to_8;
     signed int to_4;
     signed short to_2;
-    int to_little = 0;
+    int to_flip = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     *outdtsz = 0;
 
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
-
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -1979,11 +1869,9 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_INT(const void *in, int inlen,
         case 8:
             to_8 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -1992,11 +1880,9 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_INT(const void *in, int inlen,
                 return -1;
             to_4 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -2005,11 +1891,9 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_INT(const void *in, int inlen,
                 return -1;
             to_2 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
-
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -2021,9 +1905,7 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_INT(const void *in, int inlen,
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
-
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -2031,22 +1913,18 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_INT(const void *in, int inlen,
         case 8:
             to_8 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
         case 4:
             to_4 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -2055,11 +1933,9 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_INT(const void *in, int inlen,
                 return -1;
             to_2 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
-
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -2071,9 +1947,7 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_INT(const void *in, int inlen,
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
-
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
@@ -2081,33 +1955,27 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_INT(const void *in, int inlen,
         case 8:
             to_8 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
         case 4:
             to_4 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
         case 2:
             to_2 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
-
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -2133,30 +2001,24 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_REAL(
     signed long long from_8;
     signed int from_4;
     signed short from_2;
-    int from_little = 0;
-    int to_little = 0;
+    int from_flip = 0;
+    int to_flip = 0;
 
     double to_8;
     float to_4;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     *outdtsz = 0;
 
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
-
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -2166,11 +2028,9 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_REAL(
                 return -1;
             to_8 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_dblflip(to_8);
             }
-
-            to_8 = flibc_htond(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -2179,11 +2039,9 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_REAL(
                 return -1;
             to_4 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_floatflip(to_4);
             }
-
-            to_4 = flibc_htonf(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -2195,9 +2053,8 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_REAL(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
 
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -2207,11 +2064,10 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_REAL(
                 return -1;
             to_8 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_dblflip(to_8);
             }
 
-            to_8 = flibc_htond(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -2219,10 +2075,9 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_REAL(
             if (REAL_OUTOFRANGE(from_4, FLT_MAX))
                 return -1;
             to_4 = from_4;
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_floatflip(to_4);
             }
-            to_4 = flibc_htonf(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -2234,9 +2089,8 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_REAL(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
 
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
@@ -2246,11 +2100,10 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_REAL(
                 return -1;
             to_8 = (double)from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_dblflip(to_8);
             }
 
-            to_8 = flibc_htond(to_8);
             memcpy(out, &to_8, outlen);
             *outdtsz = 8;
             break;
@@ -2260,11 +2113,10 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_REAL(
                 return -1;
             to_4 = (float)from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_floatflip(to_4);
             }
 
-            to_4 = flibc_htonf(to_4);
             memcpy(out, &to_4, outlen);
             *outdtsz = 4;
             break;
@@ -2291,7 +2143,7 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_CSTR(
     signed int from_4;
     signed short from_2;
     int rc;
-    int from_little = 0;
+    int from_flip = 0;
 
     char *to;
 
@@ -2300,17 +2152,14 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_CSTR(
     to = (char *)out;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     *outdtsz = 0;
 
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
         rc = snprintf(out, outlen, "%lld", from_8);
@@ -2318,8 +2167,7 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_CSTR(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -2328,8 +2176,7 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_CSTR(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
         rc = snprintf(out, outlen, "%hd", from_2);
@@ -2362,7 +2209,7 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_PSTR(
     signed int from_4;
     signed short from_2;
     int rc;
-    int from_little = 0;
+    int from_flip = 0;
 
     char *to;
 
@@ -2371,9 +2218,7 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_PSTR(
     int i;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     outbuf = alloca(outlen + 1);
 
@@ -2384,9 +2229,7 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_PSTR(
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
-
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -2395,9 +2238,8 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_PSTR(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
 
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -2406,9 +2248,8 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_PSTR(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
 
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
@@ -2444,7 +2285,7 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_PSTR2(
     signed int from_4;
     signed short from_2;
     int rc;
-    int from_little = 0;
+    int from_flip = 0;
 
     char *to;
 
@@ -2452,9 +2293,7 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_PSTR2(
 
     int i;
 
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     outbuf = alloca(outlen + 1);
 
@@ -2463,9 +2302,8 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_PSTR2(
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
 
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -2474,9 +2312,8 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_PSTR2(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
 
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -2485,9 +2322,8 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_PSTR2(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
 
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
@@ -2536,27 +2372,22 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_UINT(
     unsigned int to_4;
     unsigned short to_2;
 
-    int from_little = 0;
-    int to_little = 0;
+    int from_flip = 0;
+    int to_flip = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     *outdtsz = 0;
 
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohd(from_8);
 
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_dblflip(from_8);
         }
 
@@ -2568,11 +2399,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_UINT(
                 return -1;
             to_8 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -2583,11 +2412,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_UINT(
                 return -1;
             to_4 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -2598,11 +2425,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_UINT(
                 return -1;
             to_2 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
-
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -2615,9 +2440,8 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_UINT(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = flibc_ntohf(from_4);
 
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_floatflip(from_4);
         }
 
@@ -2629,11 +2453,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_UINT(
                 return -1;
             to_8 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -2644,11 +2466,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_UINT(
                 return -1;
             to_4 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -2659,11 +2479,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_UINT(
                 return -1;
             to_2 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
-
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -2694,27 +2512,22 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_INT(
     signed int to_4;
     signed short to_2;
 
-    int from_little = 0;
-    int to_little = 0;
+    int from_flip = 0;
+    int to_flip = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     *outdtsz = 0;
 
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohd(from_8);
 
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_dblflip(from_8);
         }
 
@@ -2726,11 +2539,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_INT(
                 return -1;
             to_8 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -2741,11 +2552,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_INT(
                 return -1;
             to_4 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -2756,11 +2565,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_INT(
                 return -1;
             to_2 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
-
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -2773,9 +2580,8 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_INT(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = flibc_ntohf(from_4);
 
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_floatflip(from_4);
         }
 
@@ -2787,11 +2593,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_INT(
                 return -1;
             to_8 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -2802,11 +2606,9 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_INT(
                 return -1;
             to_4 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -2817,11 +2619,10 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_INT(
                 return -1;
             to_2 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
 
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -2848,7 +2649,7 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_CSTR(
     double from_8;
     float from_4;
     int rc;
-    int from_little = 0;
+    int from_flip = 0;
 
     char *to;
 
@@ -2856,18 +2657,14 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_CSTR(
     *outdtsz = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     to = (char *)out;
 
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohd(from_8);
-
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_dblflip(from_8);
         }
 
@@ -2876,9 +2673,8 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_CSTR(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = flibc_ntohf(from_4);
 
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_floatflip(from_4);
         }
 
@@ -2912,7 +2708,7 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_PSTR(
     double from_8;
     float from_4;
     int rc;
-    int from_little = 0;
+    int from_flip = 0;
 
     char *to;
 
@@ -2923,18 +2719,14 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_PSTR(
     outbuf = alloca(outlen + 1);
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     to = (char *)out;
     *outdtsz = 0;
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohd(from_8);
-
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_dblflip(from_8);
         }
 
@@ -2943,9 +2735,8 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_PSTR(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = flibc_ntohf(from_4);
 
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_floatflip(from_4);
         }
 
@@ -2986,7 +2777,7 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_PSTR2(
 
     char *outbuf;
 
-    int from_little = 0;
+    int from_flip = 0;
     int i;
     *outdtsz = 0;
     outbuf = alloca(outlen + 1);
@@ -2994,16 +2785,13 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_PSTR2(
     to = (char *)out;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohd(from_8);
 
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_dblflip(from_8);
         }
 
@@ -3012,9 +2800,8 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_PSTR2(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = flibc_ntohf(from_4);
 
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_floatflip(from_4);
         }
 
@@ -3060,25 +2847,20 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_REAL(
 
     *outdtsz = 0;
 
-    int from_little = 0;
-    int to_little = 0;
+    int from_flip = 0;
+    int to_flip = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     switch (inlen) {
     case 4:
         memcpy(&from_4, in, inlen);
-        from_4 = flibc_ntohf(from_4);
 
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_floatflip(from_4);
         }
 
@@ -3086,9 +2868,8 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_REAL(
         break;
     case 8:
         memcpy(&from_8, in, inlen);
-        from_8 = flibc_ntohd(from_8);
 
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_dblflip(from_8);
         }
 
@@ -3103,22 +2884,19 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_REAL(
             return -1;
         to_4 = (float)from_8;
 
-        if (to_little) {
+        if (to_flip) {
             to_4 = flibc_floatflip(to_4);
         }
 
-        to_4 = flibc_htonf(to_4);
         memcpy(out, &to_4, outlen);
         *outdtsz = 4;
         break;
     case 8:
         to_8 = from_8;
 
-        if (to_little) {
+        if (to_flip) {
             to_8 = flibc_dblflip(to_8);
         }
-
-        to_8 = flibc_htond(to_8);
         memcpy(out, &to_8, outlen);
         *outdtsz = 8;
         break;
@@ -3136,17 +2914,14 @@ TYPES_INLINE int CLIENT_UINT_to_SERVER_UINT(
     unsigned long long from_8;
     unsigned int from_4;
     unsigned short from_2;
-    int from_little = 0;
+    int from_flip = 0;
 
     unsigned long long to_8;
     unsigned int to_4;
     unsigned short to_2;
-    int to_little = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     /* Never store server-side data in little-endian. */
 
@@ -3160,9 +2935,8 @@ TYPES_INLINE int CLIENT_UINT_to_SERVER_UINT(
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
 
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -3197,9 +2971,8 @@ TYPES_INLINE int CLIENT_UINT_to_SERVER_UINT(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
 
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -3232,9 +3005,8 @@ TYPES_INLINE int CLIENT_UINT_to_SERVER_UINT(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
 
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
@@ -3281,12 +3053,10 @@ TYPES_INLINE int CLIENT_CSTR_to_CLIENT_UINT(
     unsigned short to_2;
     char *endptr;
     int rc;
-    int to_little = 0;
+    int to_flip = 0;
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     /*   (from manpage)
          Because 0 and ULONG_MAX are returned on error and  are  also
@@ -3311,11 +3081,9 @@ TYPES_INLINE int CLIENT_CSTR_to_CLIENT_UINT(
 
     switch (outlen) {
     case 8:
-        if (to_little) {
+        if (to_flip) {
             to_8 = flibc_llflip(to_8);
         }
-
-        to_8 = flibc_htonll(to_8);
         memcpy(out, &to_8, outlen);
         *outdtsz = 8;
         break;
@@ -3323,11 +3091,9 @@ TYPES_INLINE int CLIENT_CSTR_to_CLIENT_UINT(
         if (to_8 > UINT_MAX)
             return -1;
         to_4 = (unsigned int)to_8;
-        if (to_little) {
+        if (to_flip) {
             to_4 = flibc_intflip(to_4);
         }
-
-        to_4 = htonl(to_4);
         memcpy(out, &to_4, outlen);
         *outdtsz = 4;
         break;
@@ -3335,11 +3101,10 @@ TYPES_INLINE int CLIENT_CSTR_to_CLIENT_UINT(
         if (to_8 > USHRT_MAX)
             return -1;
         to_2 = (unsigned short)to_8;
-        if (to_little) {
+        if (to_flip) {
             to_2 = flibc_shortflip(to_2);
         }
 
-        to_2 = htons(to_2);
         memcpy(out, &to_2, outlen);
         *outdtsz = 2;
         break;
@@ -3362,12 +3127,10 @@ TYPES_INLINE int CLIENT_CSTR_to_CLIENT_INT(
     char *endptr;
     int rc;
     *outdtsz = 0;
-    int to_little = 0;
+    int to_flip = 0;
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     rc = cstrlenlim(in, inlen);
     if (rc >= inlen) /* not a valid C string of len inlen */
@@ -3386,10 +3149,9 @@ TYPES_INLINE int CLIENT_CSTR_to_CLIENT_INT(
 
     switch (outlen) {
     case 8:
-        if (to_little) {
+        if (to_flip) {
             to_8 = flibc_llflip(to_8);
         }
-        to_8 = flibc_htonll(to_8);
         memcpy(out, &to_8, outlen);
         *outdtsz = 8;
         break;
@@ -3397,10 +3159,9 @@ TYPES_INLINE int CLIENT_CSTR_to_CLIENT_INT(
         if (to_8 > INT_MAX || to_8 < INT_MIN)
             return -1;
         to_4 = (int)to_8;
-        if (to_little) {
+        if (to_flip) {
             to_4 = flibc_intflip(to_4);
         }
-        to_4 = htonl(to_4);
         memcpy(out, &to_4, outlen);
         *outdtsz = 4;
         break;
@@ -3408,10 +3169,9 @@ TYPES_INLINE int CLIENT_CSTR_to_CLIENT_INT(
         if (to_8 > SHRT_MAX || to_8 < SHRT_MIN)
             return -1;
         to_2 = (short)to_8;
-        if (to_little) {
+        if (to_flip) {
             to_2 = flibc_shortflip(to_2);
         }
-        to_2 = htons(to_2);
         memcpy(out, &to_2, outlen);
         *outdtsz = 2;
         break;
@@ -3432,12 +3192,10 @@ TYPES_INLINE int CLIENT_CSTR_to_CLIENT_REAL(
     float to_4;
     char *endptr;
     int rc;
-    int to_little = 0;
+    int to_flip = 0;
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     *outdtsz = 0;
 
@@ -3457,11 +3215,9 @@ TYPES_INLINE int CLIENT_CSTR_to_CLIENT_REAL(
     switch (outlen) {
     case 8:
 
-        if (to_little) {
+        if (to_flip) {
             to_8 = flibc_dblflip(to_8);
         }
-
-        to_8 = flibc_htond(to_8);
         memcpy(out, &to_8, outlen);
         *outdtsz = 8;
         break;
@@ -3470,11 +3226,9 @@ TYPES_INLINE int CLIENT_CSTR_to_CLIENT_REAL(
             return -1;
         to_4 = (float)to_8;
 
-        if (to_little) {
+        if (to_flip) {
             to_4 = flibc_floatflip(to_4);
         }
-
-        to_4 = flibc_htonf(to_4);
         memcpy(out, &to_4, outlen);
         *outdtsz = 4;
         break;
@@ -4194,33 +3948,28 @@ TYPES_INLINE int CLIENT_INT_to_SERVER_BINT(
     int16_t from_2, to_2;
     int32_t from_4, to_4;
     int64_t from_8, to_8;
-    int from_little = 0;
+    int from_flip = 0;
 
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     switch (inlen) {
     case 2:
         memcpy(&from_2, in, inlen);
-        from_2 = ntohs(from_2);
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
         from_8 = (int64_t)from_2;
         break;
     case 4:
         memcpy(&from_4, in, inlen);
-        from_4 = ntohl(from_4);
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
         from_8 = (int64_t)from_4;
         break;
     case 8:
         memcpy(&from_8, in, inlen);
-        from_8 = flibc_ntohll(from_8);
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
         break;
@@ -4307,18 +4056,15 @@ TYPES_INLINE int CLIENT_REAL_to_SERVER_BREAL(
     unsigned long to_4;
     unsigned long long to_8;
 
-    int from_little = 0;
+    int from_flip = 0;
 
     /* Determine if the from-data is little endian. */
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     switch (inlen) {
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = flibc_ntohf(from_4);
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_floatflip(from_4);
         }
         /* DON'T GO THROUGH DOUBLE WHEN GOING FLOAT->FLOAT! */
@@ -4326,8 +4072,8 @@ TYPES_INLINE int CLIENT_REAL_to_SERVER_BREAL(
             from_8 = (double)from_4;
         break;
     case 8:
-        *(uint64_t *)&from_8 = flibc_ntohll(*(uint64_t *)in);
-        if (from_little) {
+        memcpy(&from_8, in, 8);
+        if (from_flip) {
             from_8 = flibc_dblflip(from_8);
         }
         break;
@@ -4526,14 +4272,12 @@ TYPES_INLINE int SERVER_UINT_to_CLIENT_UINT(
 
     unsigned int to_4;
     unsigned short to_2;
-    int to_little = 0;
+    int to_flip = 0;
 
     void *cint;
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     cint = (void *)(((char *)in) + 1);
 
@@ -4570,11 +4314,9 @@ TYPES_INLINE int SERVER_UINT_to_CLIENT_UINT(
             return -1;
         to_2 = (unsigned short)from_8;
 
-        if (to_little) {
+        if (to_flip) {
             to_2 = flibc_shortflip(to_2);
         }
-
-        to_2 = htons(to_2);
         memcpy(out, &to_2, outlen);
         *outdtsz = 2;
         break;
@@ -4583,21 +4325,17 @@ TYPES_INLINE int SERVER_UINT_to_CLIENT_UINT(
             return -1;
         to_4 = (unsigned int)from_8;
 
-        if (to_little) {
+        if (to_flip) {
             to_4 = flibc_intflip(to_4);
         }
-
-        to_4 = htonl(to_4);
         memcpy(out, &to_4, outlen);
         *outdtsz = 4;
         break;
     case 8:
 
-        if (to_little) {
+        if (to_flip) {
             from_8 = flibc_llflip(from_8);
         }
-
-        from_8 = flibc_htonll(from_8);
         memcpy(out, &from_8, outlen);
         *outdtsz = 8;
         break;
@@ -4620,17 +4358,15 @@ TYPES_INLINE int SERVER_BINT_to_CLIENT_INT(
     long long from_8b;
     int from_4b;
     short from_2b;
-    int to_little = 0;
+    int to_flip = 0;
 
-    int to_4;
-    short to_2;
+    int *to_4;
+    short *to_2;
 
     void *cint;
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     cint = (void *)(((char *)in) + 1);
     *outdtsz = 0;
@@ -4668,35 +4404,29 @@ TYPES_INLINE int SERVER_BINT_to_CLIENT_INT(
     case 2:
         if (from_8 < SHRT_MIN || from_8 > SHRT_MAX)
             return -1;
-        to_2 = (short)from_8;
+        to_2 = out;
+        *to_2 = (short)from_8;
 
-        if (to_little) {
-            to_2 = flibc_shortflip(to_2);
+        if (to_flip) {
+            *to_2 = flibc_shortflip(*to_2);
         }
-
-        to_2 = htons(to_2);
-        memcpy(out, &to_2, outlen);
         *outdtsz = 2;
         break;
     case 4:
         if (from_8 < INT_MIN || from_8 > INT_MAX)
             return -1;
-        to_4 = (int)from_8;
+        to_4 = out;
+        *to_4 = (int)from_8;
 
-        if (to_little) {
-            to_4 = flibc_intflip(to_4);
+        if (to_flip) {
+            *to_4 = flibc_intflip(*to_4);
         }
-
-        to_4 = htonl(to_4);
-        memcpy(out, &to_4, outlen);
         *outdtsz = 4;
         break;
     case 8:
-        if (to_little) {
+        if (to_flip) {
             from_8 = flibc_llflip(from_8);
         }
-
-        from_8 = flibc_htonll(from_8);
         memcpy(out, &from_8, outlen);
         *outdtsz = 8;
         break;
@@ -4715,17 +4445,14 @@ TYPES_INLINE int SERVER_BREAL_to_CLIENT_REAL(
     double from_8;
     ieee4b from_4b;
     ieee8b from_8b;
-    double to_8;
 
     float to_4;
     void *cin;
-    int to_little = 0;
+    int to_flip = 0;
     *outdtsz = 0;
 
     /* Determine if the to-data is little endian. */
-    if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
-    }
+    CHECK_FLIP(outopts, to_flip);
 
     cin = (void *)(((char *)in) + 1);
 
@@ -4762,22 +4489,17 @@ TYPES_INLINE int SERVER_BREAL_to_CLIENT_REAL(
         } else
             to_4 = from_4;
 
-        if (to_little) {
+        if (to_flip) {
             to_4 = flibc_floatflip(to_4);
         }
-
-        to_4 = flibc_htonf(to_4);
         memcpy(out, &to_4, outlen);
         *outdtsz = 4;
         break;
     case 8:
-        to_8 = flibc_htond(from_8);
-
-        if (to_little) {
-            to_8 = flibc_dblflip(to_8);
+        if (to_flip) {
+            from_8 = flibc_dblflip(from_8);
         }
-
-        memcpy(out, &to_8, outlen);
+        memcpy(out, &from_8, outlen);
         *outdtsz = 8;
         break;
     default:
@@ -4976,9 +4698,8 @@ TYPES_INLINE int SERVER_UINT_to_CLIENT_BYTEARRAY(
     SERVER_##sfrom##_to_CLIENT_##sto(in, inlen, inopts, inblob, tmpbuf,        \
                                      inlen - 1, outnull, outdtsz, outopts,     \
                                      outblob);                                 \
-    if (*outnull)                                                              \
-        return 0;                                                              \
-    return CLIENT_##sto##_to_CLIENT_##cto(tmpbuf, inlen - 1, inopts, inblob,   \
+    if (*outnull) return 0;                                                    \
+    return CLIENT_##sto##_to_CLIENT_##cto(tmpbuf, inlen - 1, outopts, inblob,  \
                                           out, outlen, outdtsz, outopts,       \
                                           outblob);
 
@@ -4988,9 +4709,8 @@ TYPES_INLINE int SERVER_UINT_to_CLIENT_BYTEARRAY(
     *outnull = 0;                                                              \
     SERVER_##sfrom##_to_CLIENT_##sto(in, inlen, inopts, inblob, tmpbuf, inlen, \
                                      outnull, outdtsz, outopts, outblob);      \
-    if (*outnull)                                                              \
-        return 0;                                                              \
-    return CLIENT_##sto##_to_CLIENT_##cto(tmpbuf, inlen, inopts, inblob, out,  \
+    if (*outnull) return 0;                                                    \
+    return CLIENT_##sto##_to_CLIENT_##cto(tmpbuf, inlen, outopts, inblob, out, \
                                           outlen, outdtsz, outopts, outblob);
 
 TYPES_INLINE int SERVER_BCSTR_to_CLIENT_INT(
@@ -5323,15 +5043,13 @@ TYPES_INLINE int CLIENT_INT_to_SERVER_UINT(
     int64_t from_8;
     int32_t from_4;
     int16_t from_2;
-    int from_little = 0;
+    int from_flip = 0;
 
     uint64_t to_8;
     uint32_t to_4;
     uint16_t to_2;
 
-    if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
-    }
+    CHECK_FLIP(inopts, from_flip);
 
     uint8_t hdr = 0;
     bset(&hdr, data_bit);
@@ -5339,24 +5057,21 @@ TYPES_INLINE int CLIENT_INT_to_SERVER_UINT(
     switch (inlen) {
     case 2:
         memcpy(&from_2, in, inlen);
-        from_2 = ntohs(from_2);
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
         from_8 = (int64_t)from_2;
         break;
     case 4:
         memcpy(&from_4, in, inlen);
-        from_4 = ntohl(from_4);
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
         from_8 = (int64_t)from_4;
         break;
     case 8:
         memcpy(&from_8, in, inlen);
-        from_8 = flibc_ntohll(from_8);
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
         break;
@@ -7345,7 +7060,7 @@ static int twochar2int(char *str)
 }
 
 /* TODO: handle +offset format, and validate the TZNAME */
-int get_tzname(char *dst, char *src, int len)
+static int get_tzname(char *dst, char *src, int len)
 {
 
     int tzname_len =
@@ -7611,6 +7326,8 @@ int string2structdatetimeus_ISO(char *in, int len,
 }
 
 #define structtm2string_ISO_func_body(dt, UDT, prec, frac, fracdt)             \
+    if (in->tm.tm_year + 1900 > 9999 || in->tm.tm_year + 1900 < -9999)         \
+        return -1;                                                             \
     snprintf(out, outlen, "%4.4d-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%*.*u %s",        \
              in->tm.tm_year + 1900, in->tm.tm_mon + 1, in->tm.tm_mday,         \
              in->tm.tm_hour, in->tm.tm_min, in->tm.tm_sec, prec, prec,         \
@@ -7618,8 +7335,7 @@ int string2structdatetimeus_ISO(char *in, int len,
     return 0;                                                                  \
 /* END OF structm2string_ISO_func_body */
 
-static int structdatetime2string_ISO(cdb2_client_datetime_t *in, char *out,
-                                     int outlen)
+int structdatetime2string_ISO(cdb2_client_datetime_t *in, char *out, int outlen)
 {
     structtm2string_ISO_func_body(datetime, DATETIME, 3, msec, unsigned short);
 }
@@ -7661,7 +7377,8 @@ static int structdatetimeus2string_ISO(cdb2_client_datetimeus_t *in, char *out,
         const uint8_t *p_out_start = out;                                      \
         const uint8_t *p_out_end = (const uint8_t *)out + outlen;              \
                                                                                \
-        if (ret = string2struct##dt##_ISO(((char *)in) + 1, inlen - 1, &cdt))  \
+        if ((ret = string2struct##dt##_ISO(((char *)in) + 1, inlen - 1,        \
+                                           &cdt)) != 0)                        \
             return ret;                                                        \
                                                                                \
         if (!cdt.tzname[0])                                                    \
@@ -7754,7 +7471,10 @@ int SERVER_BCSTR_to_CLIENT_DATETIMEUS(S2C_FUNKY_ARGS)
     if (!client_##dt##_get_switch(&cdt, p_dt_buf, p_dt_buf_end, to_little))    \
         return -1;                                                             \
                                                                                \
-    struct##dt##2string_ISO(&cdt, out, outlen);                                \
+    ret = struct##dt##2string_ISO(&cdt, out, outlen);                          \
+    if (ret) {                                                                 \
+        return ret;                                                            \
+    }                                                                          \
     *outdtsz = strlen(out) + 1;                                                \
     *outnull = 0;                                                              \
                                                                                \
@@ -7848,6 +7568,23 @@ static TYPES_INLINE int CLIENT_to_SERVER_NO_CONV(C2S_FUNKY_ARGS) { return -1; }
 #define CLIENT_BYTEARRAY_to_SERVER_DATETIMEUS CLIENT_to_SERVER_NO_CONV
 #define CLIENT_BLOB_to_SERVER_DATETIMEUS CLIENT_to_SERVER_NO_CONV
 
+int datetime_check_range(long long secs, int fracs)
+{
+    if (gbl_mifid2_datetime_range) {
+        if (secs < -377673580801ll || secs > 253402300799ll) {
+            fprintf(stderr, "%s:%d Value %lld %d\n", __func__, __LINE__, secs,
+                    fracs);
+            return -1;
+        }
+    } else {
+        if (!debug_switch_unlimited_datetime_range() &&
+            (secs < -377705030401ll || secs > 253402214400ll))
+            return -1;
+    }
+
+    return 0;
+}
+
 #define CLIENT_DT_to_SERVER_DT_func_body(from_dt, FROM_UDT, from_prec,         \
                                          from_frac, from_fracdt, to_dt,        \
                                          TO_UDT, to_prec, to_frac, to_fracdt)  \
@@ -7921,10 +7658,7 @@ static TYPES_INLINE int CLIENT_to_SERVER_NO_CONV(C2S_FUNKY_ARGS) { return -1; }
     sdt.sec += (cdt.from_frac * IPOW10(to_prec) / IPOW10(from_prec)) /         \
                IPOW10(to_prec);                                                \
                                                                                \
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT]  \
-     */                                                                        \
-    if (!debug_switch_unlimited_datetime_range() &&                            \
-        (sdt.sec < -377705030401ll || sdt.sec > 253402214400ll))               \
+    if (datetime_check_range(sdt.sec, sdt.to_frac))                            \
         return -1;                                                             \
                                                                                \
     int8_to_int8b(sdt.sec, (int8b *)&sdt.sec);                                 \
@@ -8058,7 +7792,7 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
                                                                                \
         bzero(&cdt, sizeof(cdt));                                              \
                                                                                \
-        if (ret = string2struct##dt##_ISO((char *)in, inlen, &cdt)) {          \
+        if ((ret = string2struct##dt##_ISO((char *)in, inlen, &cdt)) != 0) {   \
             return ret;                                                        \
         }                                                                      \
                                                                                \
@@ -8088,10 +7822,10 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
             return -1;                                                         \
         }                                                                      \
                                                                                \
-        if (ret = CLIENT_##UDT##_to_SERVER_##UDT(                              \
-                &cdt_buf, sizeof(cdt_buf), 0,                                  \
-                (struct field_conv_opts *)&tzopts, NULL, out, outlen, outdtsz, \
-                outopts, NULL)) {                                              \
+        if ((ret = CLIENT_##UDT##_to_SERVER_##UDT(                             \
+                 &cdt_buf, sizeof(cdt_buf), 0,                                 \
+                 (struct field_conv_opts *)&tzopts, NULL, out, outlen,         \
+                 outdtsz, outopts, NULL)) != 0) {                              \
             return ret;                                                        \
         }                                                                      \
                                                                                \
@@ -8103,7 +7837,7 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
         /* time was DST, and cdt is now changed, time transform again this */  \
         /* time with DST set*/                                                 \
         bzero(&cdt, sizeof(cdt));                                              \
-        if (ret = string2struct##dt##_ISO((char *)in, inlen, &cdt)) {          \
+        if ((ret = string2struct##dt##_ISO((char *)in, inlen, &cdt)) != 0) {   \
             return ret;                                                        \
         }                                                                      \
         cdt.tm.tm_isdst = 1;                                                   \
@@ -8143,10 +7877,7 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
         sdt.flag = 0;                                                          \
         bset(&sdt, data_bit);                                                  \
                                                                                \
-        /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000   \
-         * GMT] */                                                             \
-        if (!debug_switch_unlimited_datetime_range() &&                        \
-            (sdt.sec < -377705030401ll || sdt.sec > 253402214400ll))           \
+        if (datetime_check_range(sdt.sec, sdt.frac))                           \
             return -1;                                                         \
                                                                                \
         int8_to_int8b(sdt.sec, (int8b *)&sdt.sec);                             \
@@ -8211,15 +7942,12 @@ int CLIENT_PSTR2_to_SERVER_DATETIMEUS(C2S_FUNKY_ARGS)
     if (!tmp)                                                                  \
         return -1;                                                             \
                                                                                \
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT]  \
-     */                                                                        \
     rc = CLIENT_UINT_to_CLIENT_INT(in, inlen, inopts, inblob, &dbtime,         \
                                    sizeof(dbtime), &outtmp, NULL, NULL);       \
     if (isnull || rc)                                                          \
         return rc;                                                             \
     dbtime = flibc_ntohll(dbtime);                                             \
-    if (!debug_switch_unlimited_datetime_range() &&                            \
-        (dbtime < -377705030401ll || dbtime > 253402214400ll))                 \
+    if (datetime_check_range(dbtime, 0))                                       \
         return -1;                                                             \
                                                                                \
     rc = CLIENT_UINT_to_SERVER_UINT(in, inlen, isnull, inopts, inblob, tmp,    \
@@ -8254,15 +7982,12 @@ static TYPES_INLINE int CLIENT_UINT_to_SERVER_DATETIMEUS(C2S_FUNKY_ARGS)
     if (!tmp)                                                                  \
         return -1;                                                             \
                                                                                \
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT]  \
-     */                                                                        \
     rc = CLIENT_INT_to_CLIENT_INT(in, inlen, inopts, inblob, &dbtime,          \
                                   sizeof(dbtime), &outtmp, NULL, NULL);        \
     if (isnull || rc)                                                          \
         return rc;                                                             \
     dbtime = flibc_ntohll(dbtime);                                             \
-    if (!debug_switch_unlimited_datetime_range() &&                            \
-        (dbtime < -377705030401ll || dbtime > 253402214400ll))                 \
+    if (datetime_check_range(dbtime, 0))                                       \
         return -1;                                                             \
                                                                                \
     rc = CLIENT_INT_to_SERVER_BINT(in, inlen, isnull, inopts, inblob, tmp,     \
@@ -8300,10 +8025,7 @@ TYPES_INLINE int CLIENT_INT_to_SERVER_DATETIMEUS(C2S_FUNKY_ARGS)
         return -1;                                                             \
     int8b_to_int8(sdt.sec, (comdb2_int8 *)&sdt.sec);                           \
                                                                                \
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT]  \
-     */                                                                        \
-    if (!debug_switch_unlimited_datetime_range() &&                            \
-        (sdt.sec < -377705030401ll || sdt.sec > 253402214400ll))               \
+    if (datetime_check_range(sdt.sec, sdt.frac))                               \
         return -1;                                                             \
     return 0;
 /* END OF check_server_dt_func_body */
@@ -8677,13 +8399,8 @@ static TYPES_INLINE int SERVER_BINT_to_SERVER_DATETIMEUS(S2S_FUNKY_ARGS)
     tmp = flibc_ntohd(tmp);                                                    \
     if (_splitReal_##prec(tmp, &sdt.sec, &sdt.frac))                           \
         return -1;                                                             \
-                                                                               \
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT]  \
-     */                                                                        \
-    if (!debug_switch_unlimited_datetime_range() &&                            \
-        (sdt.sec < -377705030401ll || sdt.sec > 253402214400ll))               \
+    if (datetime_check_range(sdt.sec, sdt.frac))                               \
         return -1;                                                             \
-                                                                               \
     int8_to_int8b(sdt.sec, (int8b *)&sdt.sec);                                 \
     if (!(p_out = server_##dt##_put(&sdt, p_out, p_out_end)))                  \
         return -1;                                                             \
@@ -8863,7 +8580,6 @@ enum intv_enum {
         sec = -sec;                                                            \
         if (frac) {                                                            \
             sec--;                                                             \
-            frac = IPOW10(prec) - frac;                                        \
         }                                                                      \
     }                                                                          \
                                                                                \
@@ -9660,7 +9376,7 @@ int make_order_decimal32(server_decimal32_t *pdec32)
                   (2 * i + ((pdec32->coef[i] & 0x0F0) ? 0 : 1)) -
                   1 /*sign nibble*/;
 
-        shift_coefficient_to_ondisk(DECSINGLE_PACKED_COEF, pdec32->coef,
+        shift_coefficient_to_ondisk(DECSINGLE_PACKED_COEF, (char *)pdec32->coef,
                                     &tailzero);
 
         /* update exponent */
@@ -9802,7 +9518,7 @@ int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
                   (2 * i + ((pdec64->coef[i] & 0x0F0) ? 0 : 1)) -
                   1 /*sign nibble*/;
 
-        shift_coefficient_to_ondisk(DECDOUBLE_PACKED_COEF, pdec64->coef,
+        shift_coefficient_to_ondisk(DECDOUBLE_PACKED_COEF, (char *)pdec64->coef,
                                     &tailzero);
 
         /* update exponent */
@@ -9853,11 +9569,11 @@ int dec64_exponent_is_outrageous(server_decimal64_t *pdec64, char *decimals)
         ;
 
     if (i >= sizeof(pdec64->coef) - 1) {
-        char highnibble = (*(char *)(&pdec64->exp)) & 0x0F0;
+        unsigned char highnibble = (*(char *)(&pdec64->exp)) & 0x0F0;
 
         /* check range for negative exponents; first nibble is 7 for new format!
          */
-        if ((highnibble & 0x080 == 0) && (highnibble != 0x070)) {
+        if ((highnibble & 0x080) == 0 && (highnibble != 0x070)) {
             return 0;
         }
         /* check range for positive exponents; first nibble is 8 for new format!
@@ -10021,7 +9737,7 @@ int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
                   (2 * i + ((pdec128->coef[i] & 0x0F0) ? 0 : 1)) -
                   1 /*sign nibble*/;
 
-        shift_coefficient_to_ondisk(DECQUAD_PACKED_COEF, pdec128->coef,
+        shift_coefficient_to_ondisk(DECQUAD_PACKED_COEF, (char *)pdec128->coef,
                                     &tailzero);
 
         /* update exponent */
@@ -10217,7 +9933,7 @@ static void decimal32_ondisk_to_single(server_decimal32_t *pdec32,
         exponent ^= 0x080;
     }
 
-    decSingleFromPacked(dn, exponent, decimals);
+    decSingleFromPacked(dn, exponent, (uint8_t *)decimals);
 }
 
 static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
@@ -10259,7 +9975,7 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
         }
     }
 
-    decDoubleFromPacked(dn, exponent, decimals);
+    decDoubleFromPacked(dn, exponent, (uint8_t *)decimals);
 }
 
 void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
@@ -10301,7 +10017,7 @@ void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
         }
     }
 
-    decQuadFromPacked(dn, exponent, decimals);
+    decQuadFromPacked(dn, exponent, (uint8_t *)decimals);
 }
 
 int decimal_ondisk_to_sqlite(const void *in, int len, decQuad *dn, int *outnull)
@@ -10828,7 +10544,6 @@ int SERVER_INTVDSUS_to_CLIENT_PSTR2(S2C_FUNKY_ARGS)
         sec = -sec;                                                            \
         if (from_frac) {                                                       \
             sec--;                                                             \
-            from_frac = IPOW10(from_prec) - from_frac;                         \
         }                                                                      \
     }                                                                          \
                                                                                \
@@ -11967,7 +11682,6 @@ int CLIENT_INTVDSUS_to_SERVER_BCSTR(C2S_FUNKY_ARGS)
                                                                                \
     if (cin.sign == -1 && cin.from_frac) {                                     \
         sec--;                                                                 \
-        from_frac = IPOW10(from_prec) - from_frac;                             \
     }                                                                          \
                                                                                \
     int8_to_int8b(sec, (int8b *)&sec);                                         \
@@ -13588,15 +13302,12 @@ void _setIntervalDSUS(intv_ds_t *ds, long long sec, int usec)
     bzero(opts, sizeof(*opts));                                                \
     opts->flags |= 2 /*FLD_CONV_TZONE*/;                                       \
     strncpy(opts->tzname, tz, sizeof(opts->tzname));                           \
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT]  \
-     */                                                                        \
-    if (!debug_switch_unlimited_datetime_range() &&                            \
-        (in->dttz_sec < -377705030401ll || in->dttz_sec > 253402214400ll))     \
-        return 1;                                                              \
+    if (datetime_check_range(in->dttz_sec, in->dttz_frac))                     \
+        return -1;                                                             \
     /* brr, ugly */                                                            \
     tmpin[0] = 8; /* data_bit */                                               \
     sec = flibc_htonll(in->dttz_sec);                                          \
-    if (in->dttz_frac == prec)                                                 \
+    if (in->dttz_prec == prec)                                                 \
         frac = in->dttz_frac;                                                  \
     else                                                                       \
         frac = in->dttz_frac * POW10(prec) /                                   \
@@ -13662,9 +13373,6 @@ int real_to_dttz(double d, dttz_t *dt, int precision)
     /* a real is alway convertible to any precision */
     dt->dttz_conv = 1;
     dt->dttz_sec = d;
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT] */
-    if ((dt->dttz_sec < -377705030401ll || dt->dttz_sec > 253402214400ll))
-        return 1;
     if ((long long)(d * 1000) == d * 1000) {
         dt->dttz_frac = (d - (long long)d) * 1E3 + 0.5;
         dt->dttz_prec = DTTZ_PREC_MSEC;
@@ -13679,6 +13387,9 @@ int real_to_dttz(double d, dttz_t *dt, int precision)
         dt->dttz_prec = DTTZ_PREC_USEC;
     }
 
+    if (datetime_check_range(dt->dttz_sec, dt->dttz_frac))
+        return -1;
+
     return 0;
 }
 
@@ -13688,10 +13399,10 @@ int int_to_dttz(int64_t i, dttz_t *dt, int precision)
     /* an integer is alway convertible to any precision */
     dt->dttz_conv = 1;
     dt->dttz_sec = i;
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT] */
-    if (!debug_switch_unlimited_datetime_range() &&
-        (dt->dttz_sec < -377705030401ll || dt->dttz_sec > 253402214400ll))
-        return 1;
+
+    if (datetime_check_range(dt->dttz_sec, 0))
+        return -1;
+
     /* converting an int to a datetime will have 0 msec */
     dt->dttz_frac = 0;
     return 0;
@@ -13722,12 +13433,10 @@ int str_to_dttz(const char *z, int n, const char *tz, dttz_t *dt, int precision)
         tmp[1] ^= 0x80;
         /* server to native */
         dt->dttz_sec = flibc_ntohll(*(unsigned long long *)&tmp[1]);
-        /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000
-         * GMT] */
-        if (!debug_switch_unlimited_datetime_range() &&
-            (dt->dttz_sec < -377705030401ll || dt->dttz_sec > 253402214400ll))
-            return 1;
         dt->dttz_frac = ntohl(*(unsigned int *)&tmp[9]);
+
+        if (datetime_check_range(dt->dttz_sec, dt->dttz_frac))
+            return -1;
     } else {
         dt->dttz_prec = DTTZ_PREC_MSEC;
         tmp = alloca(SERVER_DATETIME_LEN);
@@ -13739,12 +13448,10 @@ int str_to_dttz(const char *z, int n, const char *tz, dttz_t *dt, int precision)
         tmp[1] ^= 0x80;
         /* server to native */
         dt->dttz_sec = flibc_ntohll(*(unsigned long long *)&tmp[1]);
-        /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000
-         * GMT] */
-        if (!debug_switch_unlimited_datetime_range() &&
-            (dt->dttz_sec < -377705030401ll || dt->dttz_sec > 253402214400ll))
-            return 1;
         dt->dttz_frac = ntohs(*(unsigned short *)&tmp[9]);
+
+        if (datetime_check_range(dt->dttz_sec, dt->dttz_frac))
+            return -1;
     }
     /* We have to make a compromise here by make strings always convertible -
        We have seen people do "insert into datetime values(cast(now() as text)".
@@ -13777,6 +13484,8 @@ int dttz_to_client_datetime(const dttz_t *in, const char *tz,
     /* unpack into 'out' buffer in host byte order */
     if (!client_datetime_get(out, (uint8_t *)&tmp, (uint8_t *)(&tmp + 1)))
         return 1;
+    if (out->tm.tm_year + 1900 > 9999 || out->tm.tm_year + 1900 < -9999)
+        return -1;
     return 0;
 }
 
@@ -13799,6 +13508,8 @@ int dttz_to_client_datetimeus(const dttz_t *in, const char *tz,
     /* unpack into 'out' buffer in host byte order */
     if (!client_datetimeus_get(out, (uint8_t *)&tmp, (uint8_t *)(&tmp + 1)))
         return 1;
+    if (out->tm.tm_year + 1900 > 9999 || out->tm.tm_year + 1900 < -9999)
+        return -1;
     return 0;
 }
 
@@ -13863,24 +13574,25 @@ int client_datetimeus_to_dttz(const cdb2_client_datetimeus_t *in,
     client_dt_to_dttz_func_body(datetimeus, DATETIMEUS, 6, usec, unsigned int);
 }
 
-int get_int_field(struct field *f, const uint8_t *buf, int debug, int64_t *out)
+extern int gbl_dump_sql_dispatched; /* for the following get_field()s */
+int get_int_field(struct field *f, const uint8_t *buf, int64_t *out)
 {
     int rc = 0;
     switch (f->datalen) {
     case sizeof(short):
         *out = (short)htons(*(short *)(buf + f->offset));
-        if (debug)
-            logmsg(LOGMSG_USER, "short: %lld\n", *out);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "short: %ld\n", *out);
         break;
     case sizeof(int):
         *out = (int)htonl(*(int *)(buf + f->offset));
-        if (debug)
-           logmsg(LOGMSG_USER, "int: %lld\n", *out);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "int: %ld\n", *out);
         break;
     case sizeof(long long):
         *out = (long long)flibc_htonll(*(long long *)(buf + f->offset));
-        if (debug)
-           logmsg(LOGMSG_USER, "long long: %lld\n", *out);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "long long: %ld\n", *out);
         break;
     default:
         rc = -1;
@@ -13889,8 +13601,7 @@ int get_int_field(struct field *f, const uint8_t *buf, int debug, int64_t *out)
     return rc;
 }
 
-int get_uint_field(struct field *f, const uint8_t *buf, int debug,
-                   uint64_t *out)
+int get_uint_field(struct field *f, const uint8_t *buf, uint64_t *out)
 {
     int rc = 0;
     int64_t ival;
@@ -13898,13 +13609,13 @@ int get_uint_field(struct field *f, const uint8_t *buf, int debug,
     switch (f->datalen) {
     case sizeof(unsigned short):
         ival = (long long)(unsigned short)htons(*(short *)(buf + f->offset));
-        if (debug)
-           logmsg(LOGMSG_USER, "unsigned short: %lld\n", ival);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "unsigned short: %ld\n", ival);
         break;
     case sizeof(unsigned int):
         ival = (long long)(unsigned int)htonl(*(int *)(buf + f->offset));
-        if (debug)
-           logmsg(LOGMSG_USER, "unsigned int: %lld\n", ival);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "unsigned int: %ld\n", ival);
         break;
     case sizeof(unsigned long long):
         uival = (uint64_t)flibc_htonll(*(uint64_t *)(buf + f->offset));
@@ -13913,8 +13624,8 @@ int get_uint_field(struct field *f, const uint8_t *buf, int debug,
             break;
         }
         ival = uival;
-        if (debug)
-           logmsg(LOGMSG_USER, "unsigned long long: %lld\n", ival);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "unsigned long long: %ld\n", ival);
         break;
     default:
         rc = -1;
@@ -13924,20 +13635,19 @@ int get_uint_field(struct field *f, const uint8_t *buf, int debug,
     return rc;
 }
 
-int get_real_field(struct field *f, const uint8_t *buf, int debug, double *out)
+int get_real_field(struct field *f, const uint8_t *buf, double *out)
 {
     int rc = 0;
     double dval;
     switch (f->datalen) {
     case sizeof(float):
         dval = (double)flibc_htonf(*(float *)(buf + f->offset));
-        if (debug)
-           logmsg(LOGMSG_USER, "float: %hf\n", dval);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "float: %f\n", dval);
         break;
     case sizeof(double):
         dval = (double)flibc_htond(*(double *)(buf + f->offset));
-        if (debug)
-           logmsg(LOGMSG_USER, "double: %f\n", dval);
+        if (gbl_dump_sql_dispatched) logmsg(LOGMSG_USER, "double: %f\n", dval);
         break;
     default:
         rc = 1;
@@ -13946,8 +13656,7 @@ int get_real_field(struct field *f, const uint8_t *buf, int debug, double *out)
     return rc;
 }
 
-int get_str_field(struct field *f, const uint8_t *buf, int debug, char **out,
-                  int *outlen)
+int get_str_field(struct field *f, const uint8_t *buf, char **out, int *outlen)
 {
     int rc = 0;
     *out = (char *)buf + f->offset;
@@ -13962,29 +13671,27 @@ int get_str_field(struct field *f, const uint8_t *buf, int debug, char **out,
     return rc;
 }
 
-int get_byte_field(struct field *f, const uint8_t *buf, int debug, void **out,
-                   int *outlen)
+int get_byte_field(struct field *f, const uint8_t *buf, void **out, int *outlen)
 {
     int rc = 0;
     *out = (void *)buf + f->offset;
     *outlen = f->datalen;
-    if (debug) {
-       logmsg(LOGMSG_USER, "byte:\n");
+    if (gbl_dump_sql_dispatched) {
+        logmsg(LOGMSG_USER, "byte:\n");
         fsnapf(stdout, *out, *outlen);
     }
     return rc;
 }
 
-int get_blob_field(int blobno, int numblobs, void **blobs, int *bloblens,
-                   int debug, void **out, int *outlen)
+int get_blob_field(int blobno, struct sqlclntstate *clnt, void **out,
+                   int *outlen)
 {
     int rc = 0;
-    if (blobno >= numblobs)
-        return -1;
-    *out = blobs[blobno];
-    *outlen = bloblens[blobno];
-    if (debug) {
-       logmsg(LOGMSG_USER, "blob:\n");
+    if (blobno >= clnt->numblobs) return -1;
+    *out = clnt->blobs[blobno];
+    *outlen = clnt->bloblens[blobno];
+    if (gbl_dump_sql_dispatched) {
+        logmsg(LOGMSG_USER, "blob:\n");
         fsnapf(stdout, *out, *outlen);
     }
     return rc;
@@ -14398,7 +14105,7 @@ void decimal_quantum_set(char *pdec, int len, short *pquantum, int *sign)
                     pdec64->coef[DECDOUBLE_PACKED_COEF - 1] = 1;
                 }
             } else {
-                int2b_to_int2(exp, &pdec64->exp);
+                int2b_to_int2(exp, (comdb2_int2 *)&pdec64->exp);
                 pdec64->coef[DECDOUBLE_PACKED_COEF - 1] = 1;
             }
         } else {
@@ -14448,7 +14155,7 @@ void decimal_quantum_set(char *pdec, int len, short *pquantum, int *sign)
                     pdec128->coef[DECQUAD_PACKED_COEF - 1] = 1;
                 }
             } else {
-                int2b_to_int2(exp, &pdec128->exp);
+                int2b_to_int2(exp, (comdb2_int2 *)&pdec128->exp);
                 pdec128->coef[DECQUAD_PACKED_COEF - 1] = 1;
             }
         } else {

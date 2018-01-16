@@ -5,7 +5,7 @@
  *	Sleepycat Software.  All rights reserved.
  */
 
-#include "db_config.h"
+#include "build/db_config.h"
 
 #ifndef lint
 static const char copyright[] =
@@ -34,7 +34,7 @@ static const char revid[] =
 #include <unistd.h>
 #endif
 
-#include "db_int.h"
+#include "build/db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/txn.h"
 #include <crc32c.h>
@@ -65,7 +65,6 @@ int	 txn_stats __P((DB_ENV *, u_int32_t));
 void	 txn_xid_stats __P((DB_TXN_ACTIVE *));
 int	 cdb2_stat_usage __P((void));
 int	 cdb2_stat_version_check __P((const char *));
-extern int io_override_init(void);
 extern int io_override_set_std(FILE *f);
 extern int comdb2ma_init(size_t init_sz, size_t max_cap);
 
@@ -223,8 +222,6 @@ argcombo:			fprintf(stderr,
 	__db_util_siginit();
 
 
-    if (io_override_init())
-        goto shutdown;
     io_override_set_std(stdout);
 
 
@@ -284,7 +281,7 @@ retry:	if ((ret = db_env_create(&dbenv, env_flags)) != 0) {
 			    __db_util_cache(dbenv, dbp, &cache, &resize)) != 0)
 				goto shutdown;
 			if (resize) {
-				(void)dbp->close(dbp, DB_NOSYNC);
+				(void)dbp->close(dbp, NULL, DB_NOSYNC);
 				dbp = NULL;
 
 				(void)dbenv->close(dbenv, 0);
@@ -318,11 +315,11 @@ retry:	if ((ret = db_env_create(&dbenv, env_flags)) != 0) {
 			    db, subdb, DB_UNKNOWN, DB_RDONLY, 0)) != 0) {
 				dbenv->err(dbenv,
 				   ret, "DB->open: %s:%s", db, subdb);
-				(void)alt_dbp->close(alt_dbp, DB_NOSYNC);
+				(void)alt_dbp->close(alt_dbp, NULL, DB_NOSYNC);
 				goto shutdown;
 			}
 
-			(void)dbp->close(dbp, DB_NOSYNC);
+			(void)dbp->close(dbp, NULL, DB_NOSYNC);
 			dbp = alt_dbp;
 
 			/* Need to run again to update counts */
@@ -381,7 +378,7 @@ retry:	if ((ret = db_env_create(&dbenv, env_flags)) != 0) {
 	if (0) {
 shutdown:	exitval = 1;
 	}
-	if (dbp != NULL && (ret = dbp->close(dbp, DB_NOSYNC)) != 0) {
+	if (dbp != NULL && (ret = dbp->close(dbp, NULL, DB_NOSYNC)) != 0) {
 		exitval = 1;
 		dbenv->err(dbenv, ret, "close");
 	}

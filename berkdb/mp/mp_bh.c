@@ -13,6 +13,7 @@ static const char revid[] = "$Id: mp_bh.c,v 11.86 2003/07/02 20:02:37 mjc Exp $"
 
 #ifndef NO_SYSTEM_INCLUDES
 #include <alloca.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -316,6 +317,7 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	int ret, i, pgidx, free_buf, ftype;
 	u_int32_t n_cache;
 	db_pgno_t inpg;
+	DB_TXN *thrtxn;
 
 	dbenv = dbmfp->dbenv;
 	mfp = dbmfp->mfp;
@@ -416,6 +418,10 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	F_SET(bhp, BH_DIRTY);
 	F_CLR(bhp, BH_TRASH);
 
+	/* The page was clean before getting in here, so update the LSN. */
+    if (dbenv->tx_perfect_ckp)
+		bhp->first_dirty_tx_begin_lsn = __txn_get_first_dirty_begin_lsn(largest_lsn);
+
 	logmsg(LOGMSG_INFO, "Found recovery page %d lsn %d:%d at idx %d\n",
 	    pgno, largest_lsn.file, largest_lsn.offset, pgidx);
 
@@ -510,7 +516,7 @@ __memp_pgread(dbmfp, hp, bhp, can_create, is_recovery_page)
 
 	if (0) {
 recover_page:
-		if (ret = __memp_recover_page(dbmfp, hp, bhp, bhp->pgno)) {
+		if (__memp_recover_page(dbmfp, hp, bhp, bhp->pgno)) {
 			/* This is a catastrophic error: panic the database. */
 			__db_err(dbenv,
 			    "checksum error: page %lu: catastrophic "
@@ -570,8 +576,7 @@ berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
 	DIR *d;
 	int filenum = 0;
 	struct dirent *ent;
-	char dir[512];
-
+	char dir[PATH_MAX];
 	bdb_trans(dbenv->db_home, dir);
 
 	pthread_mutex_lock(&verifylk);
@@ -1096,12 +1101,9 @@ file_dead:
 			atomic_dec(env, &hp->hash_page_dirty);
 			atomic_dec(env, &c_mp->stat.st_page_dirty);
 
-			if (dbenv->mp_perfect_ckp) {
+			if (dbenv->tx_perfect_ckp) {
 				/* Clear first_dirty_lsn. */
-				bhp->first_dirty_lsn = (DB_LSN){
-					.file = UINT32_T_MAX,
-					.offset = UINT32_T_MAX
-				};
+				MAX_LSN(bhp->first_dirty_tx_begin_lsn);
 			}
 
 			F_CLR(bhp, BH_DIRTY | BH_DIRTY_CREATE);
@@ -1129,18 +1131,18 @@ file_dead:
  * Bloomberg hack - record a hit to memp_fget, with the time taken
  */
 static void
-bb_memp_pg_hit(int start_time_ms)
+bb_memp_pg_hit(uint64_t start_time_us)
 {
-	int time_diff = bb_berkdb_fasttime() - start_time_ms;
+	uint64_t time_diff = bb_berkdb_fasttime() - start_time_us;
 	struct bb_berkdb_thread_stats *stats;
 
 	stats = bb_berkdb_get_thread_stats();
 	stats->n_memp_pgs++;
-	stats->memp_pg_time_ms += time_diff;
+	stats->memp_pg_time_us += time_diff;
 
 	stats = bb_berkdb_get_process_stats();
 	stats->n_memp_pgs++;
-	stats->memp_pg_time_ms += time_diff;
+	stats->memp_pg_time_us += time_diff;
 }
 
 
@@ -1164,14 +1166,14 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
 	MPOOLFILE *mfp;
 	int ftype, ret;
 
-	int start_time_ms;
+	uint64_t start_time_us;
 
 	dbenv = dbmfp->dbenv;
 	dbmp = dbenv->mp_handle;
 	mfp = dbmfp->mfp;
 
 	if (gbl_bb_berkdb_enable_memp_pg_timing)
-		start_time_ms = bb_berkdb_fasttime();
+		start_time_us = bb_berkdb_fasttime();
 
 	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
 
@@ -1204,14 +1206,14 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
 		MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 
 	if (gbl_bb_berkdb_enable_memp_pg_timing)
-		bb_memp_pg_hit(start_time_ms);
+		bb_memp_pg_hit(start_time_us);
 	return (0);
 
 err:	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 	__db_err(dbenv, "%s: %s failed for page %lu",
 	    __memp_fn(dbmfp), is_pgin ? "pgin" : "pgout", (u_long) pgno);
 	if (gbl_bb_berkdb_enable_memp_pg_timing)
-		bb_memp_pg_hit(start_time_ms);
+		bb_memp_pg_hit(start_time_us);
 	return (ret);
 }
 

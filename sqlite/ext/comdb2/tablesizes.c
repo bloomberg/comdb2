@@ -111,8 +111,8 @@ static int systblTblSizeColumn(
   int i
 ){
   systbl_tblsize_cursor *pCur = (systbl_tblsize_cursor*)cur;
-  struct db *pDb = thedb->dbs[pCur->iRowid];
-  char *x = pDb->dbname;
+  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
+  char *x = pDb->tablename;
 
   switch( i ){
     case STTS_TABLE: {

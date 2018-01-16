@@ -111,8 +111,7 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 		goto out;
 
 	/* we're in a forward recovery pass opening files - */
-	if (op == DB_TXN_OPENFILES || 
-	    op == DB_TXN_POPENFILES && 
+	if ((op == DB_TXN_OPENFILES || op == DB_TXN_POPENFILES) &&
 	    dbenv->attr.apprec_track_lsn_ranges) {
 		struct fileid_track *ft;
 		int i;

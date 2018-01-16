@@ -27,6 +27,9 @@
 #include <strings.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #if SBUF2_SERVER
 #  ifndef SBUF2_DFL_SIZE
@@ -103,10 +106,6 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
     sslio_close(sb, 1);
 #endif
     sb->fd = -1;
-    if (sb->cert) {
-        X509_free(sb->cert);
-        sb->cert = NULL;
-    }
     if (sb->rbuf) {
         free(sb->rbuf);
         sb->rbuf = NULL;
@@ -124,9 +123,12 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
         sb->dbgout = NULL;
     }
 #if SBUF2_SERVER
-    comdb2ma_destroy(sb->allocator);
+    comdb2ma alloc = sb->allocator;
 #endif
     free(sb);
+#if SBUF2_SERVER
+    comdb2ma_destroy(alloc);
+#endif
     return 0;
 }
 
@@ -243,7 +245,6 @@ int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
     left = nbytes;
     while (left > 0) {
         int towrite = 0;
-        int more = 0;
 
         if ((sb->whd == sb->lbuf - 1 && sb->wtl == 0) ||
             (sb->whd == sb->wtl - 1)) {
@@ -263,7 +264,6 @@ int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
                 towrite++;
             if (towrite > left)
                 towrite = left;
-            more = sb->wtl;
         }
 
         memcpy(&sb->wbuf[sb->whd], &ptr[off], towrite);
@@ -460,7 +460,7 @@ int SBUF2_FUNC(sbuf2fread_timeout)(char *ptr, int size, int nitems, SBUF2 *sb,
     return sbuf2fread_int(ptr, size, nitems, sb, was_timeout);
 }
 
-int SBUF2_FUNC(sbuf2printf)(SBUF2 *sb, char *fmt, ...)
+int SBUF2_FUNC(sbuf2printf)(SBUF2 *sb, const char *fmt, ...)
 {
     /*just do sprintf to local buf (limited to 1k),
       and then emit through sbuf2*/
@@ -722,35 +722,50 @@ void SBUF2_FUNC(sbuf2setflags)(SBUF2 *sb, int flags)
 
 SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
 {
+    if (fd < 0) {
+        return NULL;
+    }
     SBUF2 *sb = NULL;
-
-    /* Check for 'valid' file descriptor */
-    if (fd >= 0) {
-        sb = (SBUF2 *)calloc(1, sizeof(SBUF2));
-        if (!sb)
-            return NULL;
-        sb->fd = fd;
-        sb->flags = flags;
+#if SBUF2_SERVER
+    comdb2ma alloc = comdb2ma_create(0, 0, "sbuf2", 0);
+    if (alloc == NULL) {
+        goto error;
+    }
+    /* get malloc to work in server-mode */
+    SBUF2 dummy = {.allocator = alloc};
+    sb = &dummy;
+#endif
+    sb = malloc(sizeof(SBUF2));
+    if (sb == NULL) {
+        goto error;
+    }
+    memset(sb, 0, sizeof(SBUF2));
+    sb->fd = fd;
+    sb->flags = flags;
+#if SBUF2_SERVER
+    sb->allocator = alloc;
+#endif
 
 #if SBUF2_UNGETC
-        sb->ungetc_buf_len = 0;
-        memset(sb->ungetc_buf, EOF, SBUF2UNGETC_BUF_MAX);
+    sb->ungetc_buf_len = 0;
+    memset(sb->ungetc_buf, EOF, SBUF2UNGETC_BUF_MAX);
 #endif
-        sb->write = swrite; /*default writer/reader*/
-        sb->read = sread;
-#if SBUF2_SERVER
-        comdb2ma alloc = comdb2ma_create(0, 0, "sbuf2", 0);
-        if (alloc != NULL) {
-            sb->allocator = alloc;
-        } else {
-            free(sb);
-            sb = NULL;
-        }
-#endif
-        if (sbuf2setbufsize(sb, SBUF2_DFL_SIZE) != 0)
-            return NULL;
+    /* default writer/reader */
+    sb->write = swrite;
+    sb->read = sread;
+    if (sbuf2setbufsize(sb, SBUF2_DFL_SIZE) == 0) {
+        return sb;
     }
-    return sb;
+error:
+    if (sb) {
+        free(sb);
+    }
+#if SBUF2_SERVER
+    if (alloc) {
+        comdb2ma_destroy(alloc);
+    }
+#endif
+    return NULL;
 }
 
 char *SBUF2_FUNC(sbuf2dbgin)(SBUF2 *sb)
@@ -798,6 +813,189 @@ void SBUF2_FUNC(sbuf2setuserptr)(SBUF2 *sb, void *userptr)
 void *SBUF2_FUNC(sbuf2getuserptr)(SBUF2 *sb)
 {
     return sb->userptr;
+}
+
+#if SBUF2_SERVER
+#include <lockmacro.h> /* LOCK & UNLOCK */
+#include <plhash.h>    /* hash_t */
+#include <logmsg.h>    /* logmsg */
+#define logi(...) logmsg(LOGMSG_INFO, ##__VA_ARGS__)
+#define loge(...) logmsg(LOGMSG_ERROR, ##__VA_ARGS__)
+static pthread_mutex_t peer_lk = PTHREAD_MUTEX_INITIALIZER;
+static hash_t *peer_hash = NULL;
+struct peer_info {
+    /* Key (must come first in struct) */
+    struct in_addr addr;
+    short family;
+    /* (don't forget to bzero the key area as the member fields may not
+     * be aligned) */
+
+    /* Data */
+    char *host;
+};
+#else
+/* Keep quiet in client mode. */
+#define logi(...)
+#define loge(...)
+/* Don't cache host info in client mode. */
+#ifdef LOCK
+#undef LOCK
+#endif /* LOCK */
+#define LOCK(arg)
+#ifdef UNLOCK
+#undef UNLOCK
+#endif /* UNLOCK */
+#define UNLOCK(arg)
+#endif /* SBUF2_SERVER */
+
+char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
+{
+    int fd;
+    char *funcname;
+    struct sockaddr_in peeraddr;
+    socklen_t len = sizeof(peeraddr);
+    char *host;
+#if SBUF2_SERVER
+    struct peer_info *info;
+    struct peer_info key;
+#else
+    void *info = NULL;
+#endif
+
+    if (sb == NULL)
+        return "???";
+
+    fd = sb->fd;
+
+    if (fd == -1)
+        return "???";
+
+    bzero(&peeraddr, sizeof(peeraddr));
+    if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
+        loge("%s:getpeername failed fd %d: %d %s\n", __func__, fd, errno,
+             strerror(errno));
+        return "???";
+    }
+
+#if SBUF2_SERVER
+    bzero(&key, offsetof(struct peer_info, host));
+    memcpy(&key.addr, &peeraddr.sin_addr, sizeof(key.addr));
+    key.family = peeraddr.sin_family;
+#endif
+
+    LOCK(&peer_lk)
+    {
+#if SBUF2_SERVER
+        if (!peer_hash) {
+            peer_hash = hash_init(offsetof(struct peer_info, host));
+            if (!peer_hash) {
+                loge("%s:hash_init failed\n", __func__);
+                errUNLOCK(&peer_lk);
+                return "???";
+            }
+        }
+
+        info = hash_find(peer_hash, &key);
+#endif
+        if (!info) {
+            /* Do a slow lookup of this internet address in the host database
+             * to get a hostname, and then search the bigsnd node list to
+             * map this to a node number. */
+            struct hostent *hp = NULL, rslt;
+            char hnm[256] = {0};
+            char *h_name = NULL;
+            int node, rc;
+            int error_num = 0;
+            int goodrc = 0;
+
+#ifdef _LINUX_SOURCE
+            funcname = "getnameinfo";
+            rc = getnameinfo((struct sockaddr *)&peeraddr, sizeof(peeraddr),
+                             hnm, sizeof(hnm), NULL, 0, 0);
+
+            if (0 == rc) {
+                goodrc = 1;
+                h_name = hnm;
+            } else {
+                error_num = errno;
+            }
+#else
+            funcname = "getipnodebyaddr";
+            hp = getipnodebyaddr(&peeraddr.sin_addr, sizeof(peeraddr.sin_addr),
+                                 peeraddr.sin_family, &error_num);
+            if (hp) {
+                goodrc = 1;
+                h_name = hp->h_name;
+            }
+#endif
+
+            if (0 == goodrc) {
+                char addrstr[64] = "";
+                inet_ntop(peeraddr.sin_family, &peeraddr.sin_addr, addrstr,
+                          sizeof(addrstr));
+                loge("%s:%s failed fd %d (%s): error_num %d", __func__,
+                     funcname, fd, addrstr, error_num);
+                switch (error_num) {
+                case HOST_NOT_FOUND:
+                    loge(" HOST_NOT_FOUND\n");
+                    break;
+                case NO_DATA:
+                    loge(" NO_DATA\n");
+                    break;
+                case NO_RECOVERY:
+                    loge(" NO_RECOVERY\n");
+                    break;
+                case TRY_AGAIN:
+                    loge(" TRY_AGAIN\n");
+                    break;
+                default:
+                    loge(" ???\n");
+                    break;
+                }
+                host = strdup(addrstr);
+            } else {
+                host = strdup(h_name);
+            }
+
+#if SBUF2_SERVER
+            info = calloc(1, sizeof(struct peer_info));
+            if (!info) {
+                errUNLOCK(&peer_lk);
+                loge("%s: out of memory\n", __func__);
+                free(host);
+                host = NULL;
+                return "???";
+            }
+
+            memcpy(info, &key, sizeof(key));
+            info->host = host;
+            if (hash_add(peer_hash, info) != 0) {
+                errUNLOCK(&peer_lk);
+                loge("%s: hash_add failed\n", __func__);
+                free(info);
+                return host;
+            }
+#endif
+        }
+    }
+    UNLOCK(&peer_lk);
+
+#if SBUF2_SERVER
+    return (info != NULL) ? info->host : "???";
+#else
+    return (host != NULL) ? host : "???";
+#endif
+}
+
+void SBUF2_FUNC(cleanup_peer_hash)()
+{
+#if SBUF2_SERVER
+    if (peer_hash) {
+        hash_clear(peer_hash);
+        hash_free(peer_hash);
+        peer_hash = NULL;
+    }
+#endif
 }
 
 #if WITH_SSL

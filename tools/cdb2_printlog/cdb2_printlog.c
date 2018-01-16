@@ -5,7 +5,7 @@
  *	Sleepycat Software.  All rights reserved.
  */
 
-#include "db_config.h"
+#include "build/db_config.h"
 
 #ifndef lint
 static const char copyright[] =
@@ -25,8 +25,8 @@ static const char revid[] =
 #include <sys/stat.h>
 
 /*#include "list.h"*/
-#include "db.h"
-#include "db_int.h"
+#include "build/db.h"
+#include "build/db_int.h"
 #include "dbinc/db_page.h"
 
 #if (! _SUN_SOURCE )
@@ -45,7 +45,7 @@ __bam_init_print(DB_ENV *dbenv, int (***dtabp) (DB_ENV *, DBT *, DB_LSN *,
 #include "dbinc/txn.h"
 
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 
 #include "bdb_int.h"
 #include <crc32c.h>
@@ -166,7 +166,7 @@ int tool_cdb2_printlog_main(argc, argv)
 			/* Printing only a few of the logs. */
 			int start, end;
 			char *p;
-			if (p = strchr(optarg, '-')) {
+			if ((p = strchr(optarg, '-')) != NULL) {
 				*p = '\0';
 				start = atoi(optarg);
 				end = atoi(&p[1]);
@@ -363,7 +363,7 @@ shutdown:	exitval = 1;
 	if (dbc != NULL && (ret = dbc->c_close(dbc)) != 0)
 		exitval = 1;
 
-	if (dbp != NULL && (ret = dbp->close(dbp, 0)) != 0)
+	if (dbp != NULL && (ret = dbp->close(dbp, NULL, 0)) != 0)
 		exitval = 1;
 
 	/*
@@ -495,6 +495,6 @@ open_rep_db(dbenv, dbpp, dbcp)
 	return (0);
 
 err:	if (*dbpp != NULL)
-		(void)(*dbpp)->close(*dbpp, 0);
+		(void)(*dbpp)->close(*dbpp, NULL, 0);
 	return (ret);
 }

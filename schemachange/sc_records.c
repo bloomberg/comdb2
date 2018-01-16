@@ -14,24 +14,27 @@
    limitations under the License.
  */
 
+#include <unistd.h>
+#include <stdbool.h>
+#include <poll.h>
+
+#include <bdb_fetch.h>
+
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_records.h"
+#include "sc_global.h"
+#include "sc_schema.h"
 #include "comdb2_atomic.h"
 #include "logmsg.h"
 
 extern int gbl_partial_indexes;
-
-/* Hopefully this goes to a proper header at one point */
-extern unsigned long long get_genid(bdb_state_type *bdb_state, int dtastripe);
 
 // Increase max threads to do SC -- called when no contention is detected
 // A simple atomic add sufices here since this function is called from one
 // place at any given time, currently from lkcounter_check() once per sec
 static inline void increase_max_threads(int *maxthreads, int sc_threads)
 {
-    if (*maxthreads >= sc_threads)
-        return;
+    if (*maxthreads >= sc_threads) return;
     ATOMIC_ADD((*maxthreads), 1);
 }
 
@@ -41,11 +44,9 @@ static inline void increase_max_threads(int *maxthreads, int sc_threads)
 // We also make certain that maxthreads does not go less than 1
 static inline void decrease_max_threads(int *maxthreads)
 {
-    if (*maxthreads <= 1)
-        return;
+    if (*maxthreads <= 1) return;
     /* ADDING -1 */
-    if (ATOMIC_ADD((*maxthreads), -1) < 1)
-        XCHANGE((*maxthreads), 1);
+    if (ATOMIC_ADD((*maxthreads), -1) < 1) XCHANGE((*maxthreads), 1);
 }
 
 // increment number of rebuild threads in use
@@ -53,8 +54,7 @@ static inline void decrease_max_threads(int *maxthreads)
 // if we were successful we return 0
 static inline int use_rebuild_thr(int *thrcount, int *maxthreads)
 {
-    if (*thrcount >= *maxthreads)
-        return 1;
+    if (*thrcount >= *maxthreads) return 1;
     ATOMIC_ADD((*thrcount), 1);
     return 0;
 }
@@ -86,8 +86,7 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
     int copy_total_lasttime = total_lasttime;
 
     /* Do work without locking */
-    if (now < copy_total_lasttime + sc_report_freq)
-        return 0;
+    if (now < copy_total_lasttime + sc_report_freq) return 0;
 
     /* If time is up to print, atomically set total_lastime
      * if this thread successful in setting, it can continue
@@ -95,8 +94,7 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
      */
 
     bool res = CAS(total_lasttime, copy_total_lasttime, now);
-    if (!res)
-        return 0;
+    if (!res) return 0;
 
     /* number of adds after schema cursor (by definition, all adds)
      * number of updates before cursor
@@ -110,8 +108,7 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
                   gbl_sc_adds + gbl_sc_updates);
 
     /* totals across all threads */
-    if (data->scanmode != SCAN_PARALLEL)
-        return 1;
+    if (data->scanmode != SCAN_PARALLEL) return 1;
 
     long long total_nrecs_diff = gbl_sc_nrecs - gbl_sc_prev_nrecs;
     gbl_sc_prev_nrecs = gbl_sc_nrecs;
@@ -129,16 +126,14 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
     int lkcounter_freq = bdb_attr_get(data->from->dbenv->bdb_attr,
                                       BDB_ATTR_SC_CHECK_LOCKWAITS_SEC);
     /* Do work without locking */
-    if (now < copy_lasttime + lkcounter_freq)
-        return;
+    if (now < copy_lasttime + lkcounter_freq) return;
 
     /* If time is up to do work, atomically set total_lastime
      * if this thread successful in setting, it can continue
      * to adjust num threads. If it failed, another thread is doing that work.
      */
     bool res = CAS(data->cmembers->lkcountercheck_lasttime, copy_lasttime, now);
-    if (!res)
-        return;
+    if (!res) return;
 
     /* check lock waits -- there is no way to differentiate lock waits because
      * of
@@ -157,7 +152,7 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
     data->cmembers->nlockwaits = nlockwaits;
     logmsg(
         LOGMSG_INFO,
-        "%s: diff_deadlocks=%lld, diff_lockwaits=%lld, maxthr=%d, currthr=%d\n",
+        "%s: diff_deadlocks=%ld, diff_lockwaits=%ld, maxthr=%d, currthr=%d\n",
         __func__, diff_deadlocks, diff_lockwaits, data->cmembers->maxthreads,
         data->cmembers->thrcount);
     increase_max_threads(
@@ -165,7 +160,7 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
         bdb_attr_get(data->from->dbenv->bdb_attr, BDB_ATTR_SC_USE_NUM_THREADS));
 }
 
-void live_sc_enter_exclusive_all(bdb_state_type *bdb_state, void *trans)
+void live_sc_enter_exclusive_all(bdb_state_type *bdb_state, tran_type *trans)
 {
     unsigned stripe;
     for (stripe = 0; stripe < gbl_dtastripe; ++stripe) {
@@ -178,7 +173,7 @@ void live_sc_enter_exclusive_all(bdb_state_type *bdb_state, void *trans)
  * stripe.
  * If the schema change is not resuming it sets them all to zero
  * If success it returns 0, if failure it returns <0 */
-int init_sc_genids(struct db *db, struct schema_change_type *s)
+int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
 {
     void *rec;
     int orglen, bdberr, stripe;
@@ -199,7 +194,7 @@ int init_sc_genids(struct db *db, struct schema_change_type *s)
     if (!s->resume) {
         /* if we may have to resume this schema change, clear the progress in
          * llmeta */
-        if (bdb_clear_high_genid(NULL /*input_trans*/, db->dbname,
+        if (bdb_clear_high_genid(NULL /*input_trans*/, db->tablename,
                                  db->dtastripe, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "init_sc_genids: failed to clear high "
@@ -225,11 +220,11 @@ int init_sc_genids(struct db *db, struct schema_change_type *s)
          * if we have been rebuilding the data files we can grab the genids
          * straight from there, otherwise we look in the llmeta table */
         if (is_dta_being_rebuilt(db->plan))
-            rc = bdb_find_newest_genid(db->handle, NULL /*tran*/, stripe, rec,
-                                       &dtalen, dtalen, &sc_genids[stripe],
-                                       &ver, &bdberr);
+            rc = bdb_find_newest_genid(db->handle, NULL, stripe, rec, &dtalen,
+                                       dtalen, &sc_genids[stripe], &ver,
+                                       &bdberr);
         else
-            rc = bdb_get_high_genid(db->dbname, stripe, &sc_genids[stripe],
+            rc = bdb_get_high_genid(db->tablename, stripe, &sc_genids[stripe],
                                     &bdberr);
         if (rc < 0 || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "init_sc_genids: failed to find newest genid for "
@@ -263,6 +258,7 @@ static inline int convert_server_record_cachedmap(
     if (rc) {
         convert_failure_reason_str(&reason, table, from->tag, to->tag, err,
                                    sizeof(err));
+        if (s->iq) reqerrstr(s->iq, ERR_SC, "cannot convert data %s", err);
         sc_errf(s, "convert_server_record_cachedmap: cannot convert data %s\n",
                 err);
         return rc;
@@ -279,14 +275,14 @@ static int convert_server_record_blobs(const void *inbufp, const char *from_tag,
     struct convert_failure reason;
     char err[1024];
 
-    if (from_tag == NULL)
-        from_tag = ".ONDISK";
+    if (from_tag == NULL) from_tag = ".ONDISK";
 
     int rc = stag_to_stag_buf_blobs(db->table, from_tag, inbuf, db->tag,
                                     db->recbuf, &reason, blobs, maxblobs, 1);
     if (rc) {
         convert_failure_reason_str(&reason, db->table, from_tag, db->tag, err,
                                    sizeof(err));
+        if (s->iq) reqerrstr(s->iq, ERR_SC, "cannot convert data %s", err);
         sc_errf(s, "convert_server_record_blobs: cannot convert data %s\n",
                 err);
         return 1;
@@ -342,7 +338,7 @@ static void delay_sc_if_needed(struct convert_record_data *data,
     if ((data->nrecs % data->num_records_per_trans) == 0) {
         if ((rc = trans_wait_for_seqnum(&data->iq, gbl_mynode, ss)) != 0) {
             sc_errf(data->s, "delay_sc_if_needed: error waiting for "
-                    "replication rcode %d\n",
+                             "replication rcode %d\n",
                     rc);
         } else if (gbl_sc_inco_chk) { /* committed successfully */
             int num;
@@ -363,8 +359,7 @@ static void delay_sc_if_needed(struct convert_record_data *data,
         }
     }
 
-    if (inco_delay)
-        poll(NULL, 0, inco_delay * mult);
+    if (inco_delay) poll(NULL, 0, inco_delay * mult);
 
     /* if we're in commitdelay mode, magnify the delay by 5 here */
     int delay = bdb_attr_get(data->from->dbenv->bdb_attr, BDB_ATTR_COMMITDELAY);
@@ -423,7 +418,7 @@ static int convert_record(struct convert_record_data *data)
     void *dta = NULL;
 
     if (gbl_sc_thd_failed) {
-        if (!data->s->retry_bad_genids == 1)
+        if (!data->s->retry_bad_genids)
             sc_errf(data->s, "Stoping work on stripe %d because the thread for "
                              "stripe %d failed\n",
                     data->stripe, gbl_sc_thd_failed - 1);
@@ -456,7 +451,7 @@ static int convert_record(struct convert_record_data *data)
     }
     pthread_mutex_unlock(&gbl_sc_lock);
     if (data->iq.debug) {
-        reqlog_new_request(&data->iq);
+        reqlog_new_request(&data->iq); // TODO: cleanup (reset) logger
         reqpushprefixf(&data->iq, "0x%llx: CONVERT_REC ", pthread_self());
     }
 
@@ -505,9 +500,25 @@ static int convert_record(struct convert_record_data *data)
             // bdb_dump_active_locks(data->to->handle, stdout);
             data->sc_genids[data->stripe] = -1ULL;
 
-            sc_printf(data->s, "finished stripe %d, setting genid %llx\n",
-                      data->stripe, data->sc_genids[data->stripe]);
-            return 0;
+            int usellmeta = 0;
+            if (!data->to->plan) {
+                usellmeta = 1; /* new dta does not have old genids */
+            } else if (data->to->plan->dta_plan) {
+                usellmeta = 0; /* the genid is in new dta */
+            } else {
+                usellmeta = 1; /* dta is not being built */
+            }
+            rc = 0;
+            if (usellmeta && !is_dta_being_rebuilt(data->to->plan)) {
+                int bdberr;
+                rc = bdb_set_high_genid_stripe(NULL, data->to->tablename,
+                                               data->stripe, -1ULL, &bdberr);
+                if (rc != 0) rc = -1; // convert_record expects -1
+            }
+            sc_printf(data->s,
+                      "finished stripe %d, setting genid %llx, rc %d\n",
+                      data->stripe, data->sc_genids[data->stripe], rc);
+            return rc;
         } else if (rc == RC_INTERNAL_RETRY) {
             trans_abort(&data->iq, data->trans);
             data->trans = NULL;
@@ -635,7 +646,7 @@ static int convert_record(struct convert_record_data *data)
             return -2;
         }
         rc = check_and_repair_blob_consistency(
-            &data->iq, data->iq.usedb->dbname, ".ONDISK", &data->blb, dta);
+            &data->iq, data->iq.usedb->tablename, ".ONDISK", &data->blb, dta);
 
         if (data->s->force_rebuild || data->s->use_old_blobs_on_rebuild) {
             for (int ii = 0; ii < data->from->numblobs; ii++) {
@@ -672,17 +683,18 @@ static int convert_record(struct convert_record_data *data)
     }
 
     int dta_needs_conversion = 1;
-    if (usellmeta && data->s->rebuild_index)
-        dta_needs_conversion = 0;
+    if (usellmeta && data->s->rebuild_index) dta_needs_conversion = 0;
 
     if (dta_needs_conversion) {
-        if (!data->s->force_rebuild &&  !data->s->use_old_blobs_on_rebuild)/* We have correct blob data in this. */
+        if (!data->s->force_rebuild &&
+            !data->s->use_old_blobs_on_rebuild) /* We have correct blob data in
+                                                   this. */
             bzero(data->wrblb, sizeof(data->wrblb));
 
         /* convert current.  this converts blob fields, but we need to make sure
          * we add the right blobs separately. */
         rc = convert_server_record_cachedmap(
-            data->to->dbname, data->tagmap, dta, data->rec->recbuf, data->s,
+            data->to->tablename, data->tagmap, dta, data->rec->recbuf, data->s,
             data->from->schema, data->to->schema, data->wrblb,
             sizeof(data->wrblb) / sizeof(data->wrblb[0]));
         if (rc) {
@@ -739,24 +751,22 @@ static int convert_record(struct convert_record_data *data)
         }
     }
 
-
     if (data->s->use_new_genids) {
         assert(!gbl_use_plan);
         ngenid = get_genid(thedb->bdb_env, get_dtafile_from_genid(check_genid));
     } else {
         ngenid = check_genid;
     }
-    if (ngenid != genid)
-        data->n_genids_changed++;
+    if (ngenid != genid) data->n_genids_changed++;
 
     /* Write record to destination table */
     data->iq.usedb = data->to;
 
     int addflags = RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_CONSTRAINTS |
-               RECFLAGS_NEW_SCHEMA | RECFLAGS_ADD_FROM_SC | RECFLAGS_KEEP_GENID;
+                   RECFLAGS_NEW_SCHEMA | RECFLAGS_ADD_FROM_SC |
+                   RECFLAGS_KEEP_GENID;
 
-    if (data->to->plan && gbl_use_plan)
-        addflags |= RECFLAGS_NO_BLOBS;
+    if (data->to->plan && gbl_use_plan) addflags |= RECFLAGS_NO_BLOBS;
 
     int rebuild = (data->to->plan && data->to->plan->dta_plan) ||
                   schema_change == SC_CONSTRAINT_CHANGE;
@@ -786,15 +796,13 @@ static int convert_record(struct convert_record_data *data)
     rc = verify_record_constraint(&data->iq, data->to, data->trans, p_buf_data,
                                   dirty_keys, data->wrblb, MAXBLOBS,
                                   ".NEW..ONDISK", rebuild, 0);
-    if (rc)
-        goto err;
+    if (rc) goto err;
 
     if (gbl_partial_indexes && data->to->ix_partial) {
         rc = verify_partial_rev_constraint(data->from, data->to, data->trans,
                                            p_buf_data, dirty_keys,
                                            ".NEW..ONDISK");
-        if (rc)
-            goto err;
+        if (rc) goto err;
     }
 
     if (schema_change != SC_CONSTRAINT_CHANGE) {
@@ -808,8 +816,7 @@ static int convert_record(struct convert_record_data *data)
             0,            /* blkpos */
             addflags);
 
-        if (rc)
-            goto err;
+        if (rc) goto err;
     }
 
     /* if we have been rebuilding the data files we're gonna
@@ -818,7 +825,8 @@ static int convert_record(struct convert_record_data *data)
         (data->nrecs %
          BDB_ATTR_GET(thedb->bdb_attr, INDEXREBUILD_SAVE_EVERY_N)) == 0) {
         int bdberr;
-        rc = bdb_set_high_genid(data->trans, data->to->dbname, genid, &bdberr);
+        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid,
+                                &bdberr);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)
                 rc = RC_INTERNAL_RETRY;
@@ -862,21 +870,38 @@ err: /*if (is_schema_change_doomed())*/
             return 1;
         }
 
+        if (data->s->iq)
+            reqerrstr(
+                data->s->iq, ERR_SC,
+                "Could not add duplicate entry in index %d rrn %d genid 0x%llx",
+                ixfailnum, rrn, genid);
         sc_errf(data->s, "Could not add duplicate entry in index %d "
                          "rrn %d genid 0x%llx\n",
                 ixfailnum, rrn, genid);
         return -2;
     } else if (rc == ERR_CONSTR) {
+        if (data->s->iq)
+            reqerrstr(data->s->iq, ERR_SC,
+                      "Error verifying constraints changed rrn %d genid 0x%llx",
+                      rrn, genid);
         sc_errf(data->s, "Error verifying constraints changed!"
                          " rrn %d genid 0x%llx\n",
                 rrn, genid);
         return -2;
     } else if (rc == ERR_VERIFY_PI) {
+        if (data->s->iq)
+            reqerrstr(data->s->iq, ERR_SC,
+                      "Error verifying partial indexes rrn %d genid 0x%llx",
+                      rrn, genid);
         sc_errf(data->s, "Error verifying partial indexes!"
                          " rrn %d genid 0x%llx\n",
                 rrn, genid);
         return -2;
     } else if (rc != 0) {
+        if (data->s->iq)
+            reqerrstr(data->s->iq, ERR_SC,
+                      "Error adding record rc %d rrn %d genid 0x%llx", rc, rrn,
+                      genid);
         sc_errf(data->s, "Error adding record rcode %d opfailcode %d "
                          "ixfailnum %d rrn %d genid 0x%llx\n",
                 rc, opfailcode, ixfailnum, rrn, genid);
@@ -889,7 +914,7 @@ err: /*if (is_schema_change_doomed())*/
         data->sc_genids[data->stripe] = genid;
     }
 
-    //now do the commit
+    // now do the commit
     db_seqnum_type ss;
     if (data->live) {
         rc = trans_commit_seqnum(&data->iq, data->trans, &ss);
@@ -907,18 +932,15 @@ err: /*if (is_schema_change_doomed())*/
         return -2;
     }
 
-    if (data->live)
-        delay_sc_if_needed(data, &ss);
+    if (data->live) delay_sc_if_needed(data, &ss);
 
     gbl_sc_nrecs++;
 
     int now = time_epoch();
-    if ((rc = report_sc_progress(data, now)))
-        return rc;
+    if ((rc = report_sc_progress(data, now))) return rc;
 
     // do the following check every second or so
-    if (data->cmembers->is_decrease_thrds)
-        lkcounter_check(data, now);
+    if (data->cmembers->is_decrease_thrds) lkcounter_check(data, now);
 
     return 1;
 }
@@ -939,8 +961,7 @@ void *convert_records_thd(struct convert_record_data *data)
     enum thrtype oldtype = THRTYPE_UNKNOWN;
     int rc = 1;
 
-    if (data->isThread)
-        thread_started("convert records");
+    if (data->isThread) thread_started("convert records");
 
     if (thr_self) {
         oldtype = thrman_get_type(thr_self);
@@ -957,7 +978,7 @@ void *convert_records_thd(struct convert_record_data *data)
     data->outrc = -1;
     data->curkey = data->key1;
     data->lastkey = data->key2;
-    data->rec = allocate_db_record(data->to->dbname, ".NEW..ONDISK");
+    data->rec = allocate_db_record(data->to->tablename, ".NEW..ONDISK");
     data->dta_buf = malloc(data->from->lrl);
     if (!data->dta_buf) {
         sc_errf(data->s, "convert_records_thd: ran out of memory trying to "
@@ -997,7 +1018,7 @@ void *convert_records_thd(struct convert_record_data *data)
             release_rebuild_thr(&data->cmembers->thrcount);
 
         if (stopsc) { // set from downgrade
-            data->outrc = rc;
+            data->outrc = SC_MASTER_DOWNGRADE;
             goto cleanup_no_msg;
         }
     }
@@ -1032,8 +1053,9 @@ void *convert_records_thd(struct convert_record_data *data)
 cleanup:
     if (data->outrc == 0) {
         sc_printf(data->s,
-                  "successfully converted %lld records with %d retries\n",
-                  data->nrecs, data->totnretries);
+                  "successfully converted %lld records with %d retries "
+                  "stripe %d\n",
+                  data->nrecs, data->totnretries, data->stripe);
     } else {
         if (gbl_sc_abort) {
             sc_errf(data->s,
@@ -1053,17 +1075,15 @@ cleanup:
 cleanup_no_msg:
     convert_record_data_cleanup(data);
 
-    if (data->isThread)
-        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    if (data->isThread) backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
     /* restore our  thread type to what it was before */
-    if (oldtype != THRTYPE_UNKNOWN)
-        thrman_change_type(thr_self, oldtype);
+    if (oldtype != THRTYPE_UNKNOWN) thrman_change_type(thr_self, oldtype);
 
     return NULL;
 }
 
-int convert_all_records(struct db *from, struct db *to,
+int convert_all_records(struct dbtable *from, struct dbtable *to,
                         unsigned long long *sc_genids,
                         struct schema_change_type *s)
 {
@@ -1111,17 +1131,18 @@ int convert_all_records(struct db *from, struct db *to,
         for (ii = 0; ii < data.blb.numcblobs; ii++) {
             data.blb.cblob_disk_ixs[ii] = ii;
             data.blb.cblob_tag_ixs[ii] =
-                get_schema_blob_field_idx(data.from->dbname, ".ONDISK", ii);
+                get_schema_blob_field_idx(data.from->tablename, ".ONDISK", ii);
         }
         for (ii = 0; ii < data.to->numblobs; ii++) {
             int map;
-            map = tbl_blob_no_to_tbl_blob_no(data.to->dbname, ".NEW..ONDISK",
-                                             ii, data.from->dbname, ".ONDISK");
+            map =
+                tbl_blob_no_to_tbl_blob_no(data.to->tablename, ".NEW..ONDISK",
+                                           ii, data.from->tablename, ".ONDISK");
             if (map < 0 && map != -3) {
                 sc_errf(data.s,
                         "convert_all_records: error mapping blob %d "
                         "from %s:%s to %s:%s blob_no_to_blob_no rcode %d\n",
-                        ii, data.from->dbname, ".ONDISK", data.to->dbname,
+                        ii, data.from->tablename, ".ONDISK", data.to->tablename,
                         ".NEW..ONDISK", map);
                 return -1;
             }
@@ -1157,6 +1178,7 @@ int convert_all_records(struct db *from, struct db *to,
         outrc = data.outrc;
     } else {
         struct convert_record_data threadData[gbl_dtastripe];
+        int threadSkipped[gbl_dtastripe];
         pthread_attr_t attr;
         int rc = 0;
 
@@ -1173,6 +1195,14 @@ int convert_all_records(struct db *from, struct db *to,
              */
             threadData[ii] = data;
             threadData[ii].stripe = ii;
+
+            if (sc_genids[ii] == -1ULL) {
+                sc_printf(threadData[ii].s, "stripe %d was done\n",
+                          threadData[ii].stripe);
+                threadSkipped[ii] = 1;
+                continue;
+            } else
+                threadSkipped[ii] = 0;
 
             sc_printf(threadData[ii].s, "starting thread for stripe: %d\n",
                       threadData[ii].stripe);
@@ -1198,6 +1228,8 @@ int convert_all_records(struct db *from, struct db *to,
         for (ii = 0; ii < gbl_dtastripe; ++ii) {
             void *ret;
 
+            if (threadSkipped[ii]) continue;
+
             /* if the threadid is NULL, skip this one */
             if (!threadData[ii].tid) {
                 sc_errf(threadData[ii].s, "skip joining thread failed for "
@@ -1219,8 +1251,7 @@ int convert_all_records(struct db *from, struct db *to,
             }
 
             /* if thread's conversions failed return error code */
-            if (threadData[ii].outrc != 0)
-                outrc = threadData[ii].outrc;
+            if (threadData[ii].outrc != 0) outrc = threadData[ii].outrc;
         }
 
         /* destroy attr */
@@ -1414,8 +1445,7 @@ static int upgrade_records(struct convert_record_data *data)
             }
         }
 
-        if (inco_delay)
-            poll(0, 0, inco_delay * mult);
+        if (inco_delay) poll(0, 0, inco_delay * mult);
 
         /* if we're in commitdelay mode, magnify the delay by 5 here */
         if ((commitdelay = bdb_attr_get(data->from->dbenv->bdb_attr,
@@ -1427,8 +1457,7 @@ static int upgrade_records(struct convert_record_data *data)
             poll(NULL, 0, 100);
 
         /* snooze for a bit if writes have been coming in */
-        if (gbl_sc_last_writer_time >= time_epoch() - 5)
-            usleep(gbl_sc_usleep);
+        if (gbl_sc_last_writer_time >= time_epoch() - 5) usleep(gbl_sc_usleep);
         break;
     } // end of rc check
 
@@ -1482,8 +1511,7 @@ static void *upgrade_records_thd(void *vdata)
     enum thrtype oldtype = THRTYPE_UNKNOWN;
 
     // transfer thread type
-    if (data->isThread)
-        thread_started("upgrade records");
+    if (data->isThread) thread_started("upgrade records");
 
     if (thr_self) {
         oldtype = thrman_get_type(thr_self);
@@ -1541,15 +1569,13 @@ cleanup:
 
     convert_record_data_cleanup(data);
 
-    if (data->isThread)
-        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    if (data->isThread) backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
-    if (oldtype != THRTYPE_UNKNOWN)
-        thrman_change_type(thr_self, oldtype);
+    if (oldtype != THRTYPE_UNKNOWN) thrman_change_type(thr_self, oldtype);
     return NULL;
 }
 
-int upgrade_all_records(struct db *db, unsigned long long *sc_genids,
+int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
                         struct schema_change_type *s)
 {
     int idx;
@@ -1628,8 +1654,7 @@ int upgrade_all_records(struct db *db, unsigned long long *sc_genids,
                 }
 
                 /* if thread's conversions failed return error code */
-                if (thread_data[idx].outrc != 0)
-                    outrc = thread_data[idx].outrc;
+                if (thread_data[idx].outrc != 0) outrc = thread_data[idx].outrc;
             }
         }
 

@@ -103,6 +103,7 @@ __rep_dbenv_create(dbenv)
 		dbenv->rep_elect = __rep_elect;
 		dbenv->rep_flush = __rep_flush;
 		dbenv->rep_process_message = __rep_process_message;
+		dbenv->rep_verify_will_recover = __rep_verify_will_recover;
 		dbenv->rep_start = __rep_start;
 		dbenv->rep_stat = __rep_stat;
 		dbenv->get_rep_gen = __rep_get_gen;
@@ -508,7 +509,7 @@ __rep_client_dbinit(dbenv, startup)
 			goto err;
 
 		for (i = 0; i < dircnt; i++) {
-			if (p = strrchr(namesp[i], '/'))
+			if ((p = strrchr(namesp[i], '/')) != NULL)
 				p++;
 			else
 				p = &namesp[i][0];
@@ -542,7 +543,7 @@ __rep_client_dbinit(dbenv, startup)
 
 	/* Set the pagesize. */
 	if (dbenv->rep_db_pagesize > 0) {
-		if ((ret = dbp->set_pagesize(dbp, dbenv->rep_db_pagesize)))
+		if ((ret = dbp->set_pagesize(dbp, dbenv->rep_db_pagesize)) != 0)
 			goto err;
 	}
 
@@ -550,7 +551,7 @@ __rep_client_dbinit(dbenv, startup)
 	if ((ret = __os_malloc(dbenv, strlen(REPDBBASE) + 32, &repdbname)) != 0)
 		goto err;
 
-	sprintf(repdbname, "%s.%d.%d", REPDBBASE, time(NULL),
+	sprintf(repdbname, "%s.%ld.%d", REPDBBASE, time(NULL),
 	    db_rep->repdbcnt++);
 
 	if ((ret = __db_open(dbp, NULL,
@@ -904,16 +905,16 @@ __rep_elect(dbenv, nsites, priority, timeout, eidp)
 	rep = db_rep->region;
 	dblp = dbenv->lg_handle;
 
-	if (use_committed_gen = dbenv->attr.elect_highest_committed_gen) {
+	/* This sets 'use_committed_gen' and feature-tests simultaneously */
+	if ((use_committed_gen = dbenv->attr.elect_highest_committed_gen)) {
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-        lsn = rep->committed_lsn;
+		lsn = rep->committed_lsn;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-    }
-    else {
-        R_LOCK(dbenv, &dblp->reginfo);
-        lsn = ((LOG *)dblp->reginfo.primary)->lsn; 
-        R_UNLOCK(dbenv, &dblp->reginfo);
-    }
+	} else {
+		R_LOCK(dbenv, &dblp->reginfo);
+		lsn = ((LOG *)dblp->reginfo.primary)->lsn;
+		R_UNLOCK(dbenv, &dblp->reginfo);
+	}
 
 	orig_tally = 0;
 	if ((ret = __rep_elect_init(dbenv,
@@ -992,12 +993,17 @@ restart:
 	committed_gen = rep->committed_gen;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
-	if (use_committed_gen)
+	if (use_committed_gen) {
+		logmsg(LOGMSG_USER, "%s line %d sending REP_GEN_VOTE1 from %s with committed-gen=%d\n",
+			__func__, __LINE__, *eidp, committed_gen);
 		__rep_send_gen_vote(dbenv, &lsn, nsites, priority, tiebreaker,
-		    egen, committed_gen, db_eid_broadcast, REP_GEN_VOTE1);
-	else
+			egen, committed_gen, db_eid_broadcast, REP_GEN_VOTE1);
+	} else {
+		logmsg(LOGMSG_USER, "%s line %d sending REP_VOTE1 from %s (committed-gen=0)\n",
+			__func__, __LINE__, *eidp);
 		__rep_send_vote(dbenv, &lsn, nsites, priority, tiebreaker, egen,
-		    db_eid_broadcast, REP_VOTE1);
+			db_eid_broadcast, REP_VOTE1);
+	}
 
 	ret = __rep_wait(dbenv, timeout, eidp, REP_F_EPHASE1);
 	switch (ret) {
@@ -1082,14 +1088,18 @@ restart:
 			    send_vote != rep->eid)
 				__db_err(dbenv, "Sending vote");
 #endif
-			if (use_committed_gen)
+			if (use_committed_gen) {
+				logmsg(LOGMSG_USER, "%s line %d sending REP_GEN_VOTE2 from %s "
+						"with committed-gen=%d\n", __func__, __LINE__, *eidp,
+						committed_gen);
 				__rep_send_gen_vote(dbenv, NULL, 0, 0, 0, egen,
-				    committed_gen, send_vote, REP_GEN_VOTE2);
-
-			else
+					committed_gen, send_vote, REP_GEN_VOTE2);
+			} else {
+				logmsg(LOGMSG_USER, "%s line %d sending REP_VOTE2 from %s "
+						"(committed-gen=0)\n", __func__, __LINE__, *eidp);
 				__rep_send_vote(dbenv, NULL, 0, 0, 0, egen,
-				    send_vote, REP_VOTE2);
-
+					send_vote, REP_VOTE2);
+			}
 		}
 phase2:
 		ret = __rep_wait(dbenv, timeout, eidp, REP_F_EPHASE2);
@@ -1337,9 +1347,10 @@ __rep_get_eid(dbenv, eid_out)
  *	Fetch replication statistics.
  */
 int
-__rep_get_master(dbenv, master_out)
+__rep_get_master(dbenv, master_out, egen)
 	DB_ENV *dbenv;
 	char **master_out;
+	u_int32_t *egen;
 {
 	char *master = db_eid_invalid;
 	DB_REP *db_rep;
@@ -1376,6 +1387,8 @@ __rep_get_master(dbenv, master_out)
 #endif
 
 	master = rep->master_id;
+	if (egen)
+		*egen = rep->egen;
 
 #if 0
 	if (dolock) {

@@ -44,7 +44,7 @@
             (rc) = errno;                                                      \
     }
 
-#elif defined __linux
+#elif defined __linux__
 
 #define PTHD_TESTINTR(rc) (rc) = pthread_testcancel()
 #define PTHD_INTR_DISABLE(rc)                                                  \

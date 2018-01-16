@@ -17,12 +17,12 @@
 #include "bdb_api.h"
 #include "bdb_int.h"
 
-#include "db_int.h"
+#include <build/db_int.h>
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 #include "printformats.h"
 
-#include <db_swap.h>
+#include <dbinc/db_swap.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -76,6 +76,49 @@ static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
     return db;
 }
 
+int bdb_cleanup_private_blkseq(bdb_state_type *bdb_state)
+{
+    for (int stripe = 0; stripe < bdb_state->attr->private_blkseq_stripes;
+         stripe++) {
+        if (bdb_state->blkseq_env[stripe]) {
+            pthread_mutex_destroy(&bdb_state->blkseq_lk[stripe]);
+            for (int i = 0; i < 2; i++) {
+                DB *to_be_deleted = bdb_state->blkseq[i][stripe];
+                to_be_deleted->close(to_be_deleted, NULL, DB_NOSYNC);
+            }
+
+            free(bdb_state->blkseq_env[stripe]);
+            bdb_state->blkseq_env[stripe] = NULL;
+        }
+    }
+
+    if (bdb_state->blkseq_env) {
+        free(bdb_state->blkseq_env);
+        bdb_state->blkseq_env = NULL;
+    }
+
+    if (bdb_state->blkseq_lk) {
+        free(bdb_state->blkseq_lk);
+        bdb_state->blkseq_lk = NULL;
+    }
+    if (bdb_state->blkseq[0]) {
+        free(bdb_state->blkseq[0]);
+        bdb_state->blkseq[0] = NULL;
+    }
+    if (bdb_state->blkseq[1]) {
+        free(bdb_state->blkseq[1]);
+        bdb_state->blkseq[1] = NULL;
+    }
+    if (bdb_state->blkseq_last_lsn[0]) {
+        free(bdb_state->blkseq_last_lsn[0]);
+        bdb_state->blkseq_last_lsn[0] = NULL;
+    }
+    if (bdb_state->blkseq_last_lsn[1]) {
+        free(bdb_state->blkseq_last_lsn[1]);
+        bdb_state->blkseq_last_lsn[1] = NULL;
+    }
+}
+
 int bdb_create_private_blkseq(bdb_state_type *bdb_state)
 {
     DB_ENV *env;
@@ -107,8 +150,8 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
             logmsg(LOGMSG_ERROR, "db_env_create rc %d\n", rc);
             return rc;
         }
-        bdb_state->blkseq_env[stripe] = env;
 
+        bdb_state->blkseq_env[stripe] = env;
         env->set_errfile(env, stderr);
 
         rc = env->set_cachesize(env, 0, bdb_state->attr->private_blkseq_cachesz,
@@ -137,7 +180,6 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
                 return -1;
             bzero(&bdb_state->blkseq_last_lsn[i][stripe], sizeof(DB_LSN));
         }
-        bdb_state->blkseq_env[stripe] = env;
     }
     bdb_state->blkseq_last_roll_time = time_epoch();
 
@@ -170,11 +212,11 @@ int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
 
     // printf("at "PR_LSN", blkseq\n", PARM_LSNP(lsn));
     if (op == DB_TXN_PRINT) {
-        printf("[%lu][%lu] CUSTOM: add_blkseq: rec: %lu txnid %lx"
+        printf("[%u][%u] CUSTOM: add_blkseq: rec: %u txnid %x"
                " prevlsn[" PR_LSN "]\n",
                lsn->file, lsn->offset, rectype, args->txnid->txnid,
                PARM_LSN(args->prev_lsn));
-        printf("\ttime:     %llu\n", args->time);
+        printf("\ttime:     %" PRId64 "\n", args->time);
         printf("\tkey:      ");
         hexdumpdbt(&args->key);
         printf("\n");
@@ -451,7 +493,7 @@ int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
     } else
         oldname = strdup(oldname);
 
-    to_be_deleted->close(to_be_deleted, DB_NOSYNC);
+    to_be_deleted->close(to_be_deleted, NULL, DB_NOSYNC);
 
     if (oldname) {
         DB *db;
@@ -605,8 +647,9 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                 k = (int *)blkseq->key.data;
                 if ((now - blkseq->time) >
                     bdb_state->attr->private_blkseq_maxage) {
-                    logmsg(LOGMSG_INFO, "Stopping at " PR_LSN ", blkseq age %d > max %d\n",
-                           lsn, now - blkseq->time,
+                    logmsg(LOGMSG_INFO,
+                           "Stopping at " PR_LSN ", blkseq age %ld > max %d\n",
+                           PARM_LSN(lsn), now - blkseq->time,
                            bdb_state->attr->private_blkseq_maxage);
                     break;
                 }

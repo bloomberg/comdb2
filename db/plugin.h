@@ -17,9 +17,7 @@
 #ifndef INCLUDED_PLUGIN_H
 #define INCLUDED_PLUGIN_H
 
-#include "comdb2.h"
-
 int process_plugin_command(struct dbenv *dbenv, char *line, int llen, int st,
                            int ltok);
 
-#endif
+#endif /* INCLUDED_PLUGIN_H */

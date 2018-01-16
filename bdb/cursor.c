@@ -76,7 +76,7 @@ as long as there was a successful move in the past
 #include <poll.h>
 #include <netinet/in.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <fsnap.h>
 #include <ctrace.h>
 
@@ -91,6 +91,7 @@ as long as there was a successful move in the past
 #include <list.h>
 #include <plhash.h>
 #include "logmsg.h"
+#include "util.h"
 
 #include "genid.h"
 #define MERGE_DEBUG (0)
@@ -100,29 +101,6 @@ struct datacopy_info {
     int size;
 };
 
-static char hex(unsigned char a)
-{
-    if (a < 10)
-        return '0' + a;
-    return 'a' + (a - 10);
-}
-/* Return a hex string */
-static char *tohex(char *output, char *key, int keylen)
-{
-    int i = 0;
-    char byte[3];
-
-    output[0] = '\0';
-    byte[2] = '\0';
-
-    for (i = 0; i < keylen; i++) {
-        snprintf(byte, sizeof(byte), "%c%c", hex(((unsigned char)key[i]) / 16),
-                 hex(((unsigned char)key[i]) % 16));
-        strcat(output, byte);
-    }
-
-    return output;
-}
 
 static void hexdump(loglvl lvl, char *key, int keylen)
 {
@@ -130,25 +108,12 @@ static void hexdump(loglvl lvl, char *key, int keylen)
         logmsg(LOGMSG_ERROR, "NULL(%d)\n", keylen);
         return;
     }
-    char *mem;
-    char *output;
-
-    mem = alloca((2 * keylen) + 2);
-    output = tohex(mem, key, keylen);
+    char *mem = alloca((2 * keylen) + 2);
+    char *output = util_tohex(mem, key, keylen);
 
     logmsg(lvl, "%s\n", output);
 }
 
-static void hexdumpbuf(char *key, int keylen, char **buf)
-{
-    char *mem;
-    char *output;
-
-    mem = malloc((2 * keylen) + 2);
-    output = tohex(mem, key, keylen);
-
-    *buf = output;
-}
 
 pthread_mutex_t pr_lk = PTHREAD_MUTEX_INITIALIZER;
 
@@ -216,6 +181,8 @@ extern DB_LSN bdb_asof_current_lsn;
 extern DB_LSN bdb_latest_commit_lsn;
 extern uint32_t bdb_latest_commit_gen;
 extern pthread_cond_t bdb_asof_current_lsn_cond;
+
+extern int db_is_stopped(void);
 
 static int bdb_switch_stripe(bdb_cursor_impl_t *cur, int dtafile, int *bdberr);
 static int bdb_cursor_find_merge(bdb_cursor_impl_t *cur, void *key, int keylen,
@@ -497,7 +464,7 @@ static inline int pageorder_skip_trace(bdb_cursor_impl_t *cur)
     }
 
     /* Irrelavant skip-stats */
-    if (rc = cur->rl->get_skip_stat(cur->rl, &nextcount, &skipcount)) {
+    if ((rc = cur->rl->get_skip_stat(cur->rl, &nextcount, &skipcount)) != 0) {
         logmsg(LOGMSG_USER, "%s: get_skip_stat returned %d\n", __func__, rc);
         return 0;
     }
@@ -515,10 +482,11 @@ static inline int pageorder_skip_trace(bdb_cursor_impl_t *cur)
                 cur->state->name);
     }
 
-    logmsg(LOGMSG_USER, "Table scan for table '%s' skipcount = %llu nextcount = %llu "
-            "ratio = %llu (threshold = %d)\n",
-            cur->state->name, skipcount, nextcount, ratio,
-            cur->state->attr->disable_pgorder_threshold);
+    logmsg(LOGMSG_USER,
+           "Table scan for table '%s' skipcount = %lu nextcount = %lu "
+           "ratio = %lu (threshold = %d)\n",
+           cur->state->name, skipcount, nextcount, ratio,
+           cur->state->attr->disable_pgorder_threshold);
 
     return 0;
 }
@@ -550,7 +518,7 @@ static inline int verify_pageorder_tablescan(bdb_cursor_impl_t *cur)
         return 0;
 
     /* Irrelavant skip-stats */
-    if (rc = cur->rl->get_skip_stat(cur->rl, &nextcount, &skipcount))
+    if ((rc = cur->rl->get_skip_stat(cur->rl, &nextcount, &skipcount)) != 0)
         return 0;
 
     /* Skip to next ratio */
@@ -566,10 +534,11 @@ static inline int verify_pageorder_tablescan(bdb_cursor_impl_t *cur)
 
     /* Ratio of skips to nexts */
     if (ratio > cur->state->attr->disable_pgorder_threshold) {
-        logmsg(LOGMSG_WARN, "Disable page-order tablescan for table %s skipcount = "
-                "%llu nextcount = %llu ratio = %llu%% threshold = %d%%\n",
-                cur->state->name, skipcount, nextcount, ratio,
-                cur->state->attr->disable_pgorder_threshold);
+        logmsg(LOGMSG_WARN,
+               "Disable page-order tablescan for table %s skipcount = "
+               "%lu nextcount = %lu ratio = %lu%% threshold = %d%%\n",
+               cur->state->name, skipcount, nextcount, ratio,
+               cur->state->attr->disable_pgorder_threshold);
 
         /* Disable pageorder tablescan */
         cur->state->disable_page_order_tablescan = 1;
@@ -630,7 +599,8 @@ bdb_cursor_ifn_t *bdb_cursor_open(
 
     pcur_ifn = calloc(1, sizeof(bdb_cursor_ifn_t) + sizeof(bdb_cursor_impl_t));
     if (!pcur_ifn) {
-        logmsg(LOGMSG_ERROR, "%s: malloc %d\n", __func__, sizeof(bdb_cursor_impl_t));
+        logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
+               sizeof(bdb_cursor_impl_t));
         *bdberr = BDBERR_MALLOC;
         return NULL;
     }
@@ -669,8 +639,8 @@ bdb_cursor_ifn_t *bdb_cursor_open(
             cur->datacopy =
                 malloc(bdb_state->lrl + 2 * sizeof(unsigned long long));
             if (!cur->datacopy) {
-                logmsg(LOGMSG_ERROR, "%s: malloc %d\n", __func__,
-                        bdb_state->lrl + 2 * sizeof(unsigned long long));
+                logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
+                       bdb_state->lrl + 2 * sizeof(unsigned long long));
                 *bdberr = BDBERR_MALLOC;
                 return NULL;
             }
@@ -1570,7 +1540,7 @@ void bdb_delete_logfile_pglogs(bdb_state_type *bdb_state, int filenum)
     pthread_mutex_lock(&logfile_pglogs_repo_mutex);
     for (i = last_logfile; i <= filenum; i++) {
         struct logfile_pglogs_entry *e;
-        if (e = hash_find(logfile_pglogs_repo, &i)) {
+        if ((e = hash_find(logfile_pglogs_repo, &i)) != NULL) {
             hash_del(logfile_pglogs_repo, e);
             pthread_mutex_lock(&e->pglogs_mutex);
             bdb_return_logical_pglogs_hashtbl(e->pglogs_hashtbl);
@@ -1696,7 +1666,7 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
     return 0;
 }
 
-static inline void set_del_lsn(const unsigned char *func, unsigned int line,
+static inline void set_del_lsn(const char *func, unsigned int line,
                                DB_LSN *old_del_lsn, DB_LSN *new_del_lsn)
 {
     *old_del_lsn = *new_del_lsn;
@@ -1710,7 +1680,7 @@ static void *pglogs_asof_thread(void *arg)
     struct commit_list *lcommit, *bcommit, *next;
     int pollms, ret;
 
-    while (1) {
+    while (!db_is_stopped()) {
         // Remove list
         int count, i, dont_poll = 0, drain_limit;
         DB_LSN new_asof_lsn, lsn, del_lsn = {0};
@@ -1834,7 +1804,7 @@ static void *pglogs_asof_thread(void *arg)
                 pthread_mutex_lock(&pglogs_queue_lk);
                 hash_del(pglogs_fileid_hash, queue);
                 pthread_mutex_unlock(&pglogs_queue_lk);
-                while (qe = listc_rtl(&queue->queue_keys))
+                while ((qe = listc_rtl(&queue->queue_keys)))
                     return_pglogs_queue_key(qe);
                 return_shadows_fileid_pglogs_queue(queue);
                 assert(cur);
@@ -2614,7 +2584,7 @@ static int bdb_update_pglogs_fileid_queues(
         }
 
         // Sanity
-        if (chk = fileid_queue->queue_keys.bot)
+        if ((chk = fileid_queue->queue_keys.bot) != 0)
             assert(log_compare(&qearray[j]->commit_lsn, &chk->commit_lsn) >= 0);
 
         listc_abl(&fileid_queue->queue_keys, qearray[j]);
@@ -2665,7 +2635,7 @@ int bdb_remove_fileid_pglogs_queue(bdb_state_type *bdb_state,
     pthread_mutex_unlock(&del_queue_lk);
 
     if (fileid_queue) {
-        while (qe = listc_rtl(&fileid_queue->queue_keys))
+        while ((qe = listc_rtl(&fileid_queue->queue_keys)) != NULL)
             return_pglogs_queue_key(qe);
         return_shadows_fileid_pglogs_queue(fileid_queue);
     }
@@ -2852,7 +2822,7 @@ static int transfer_txn_relinks_to_queues(void *bdb_state,
             qe->commit_lsn = commit_lsn;
 
             // Sanity
-            if (chk = fileid_queue->queue_keys.top)
+            if ((chk = fileid_queue->queue_keys.top) != 0)
                 assert(log_compare(&qe->commit_lsn, &chk->commit_lsn) >= 0);
 
             listc_abl(&fileid_queue->queue_keys, qe);
@@ -2899,7 +2869,7 @@ static int transfer_txn_pglogs_to_queues(void *bdb_state,
             qe->lsn = lsnent->lsn;
             qe->commit_lsn = commit_lsn;
 
-            if (chk = fileid_queue->queue_keys.top)
+            if ((chk = fileid_queue->queue_keys.top) != 0)
                 assert(log_compare(&qe->commit_lsn, &chk->commit_lsn) >= 0);
             listc_abl(&fileid_queue->queue_keys, qe);
         }
@@ -3137,7 +3107,7 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
 
     pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
 
-    bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master);
+    bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master, NULL);
     bdb_state->dbenv->get_rep_eid(bdb_state->dbenv, &eid);
 
     // We are under the log lock here.  If we are writing logs, there has to
@@ -3285,12 +3255,12 @@ int bdb_transfer_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
         }
     }
 
-    if (rc = transfer_txn_pglogs_to_queues(bdb_state, logical_tranid,
-                                           pglogs_hashtbl, commit_lsn))
+    if ((rc = transfer_txn_pglogs_to_queues(bdb_state, logical_tranid,
+                                            pglogs_hashtbl, commit_lsn)) != 0)
         abort();
 
-    if (rc = transfer_txn_relinks_to_queues(bdb_state, logical_tranid,
-                                            relinks_hashtbl, commit_lsn))
+    if ((rc = transfer_txn_relinks_to_queues(bdb_state, logical_tranid,
+                                             relinks_hashtbl, commit_lsn)) != 0)
         abort();
 
     return 0;
@@ -4082,7 +4052,7 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
         }
 
         if (gbl_new_snapisol && cur->rl == berkdb && update_shadows) {
-            rc2 = cur->rl->pageindex(cur->rl, &pgno, NULL, bdberr);
+            rc2 = cur->rl->pageindex(cur->rl, (int *)&pgno, NULL, bdberr);
             if (rc2 < 0) {
                 logmsg(LOGMSG_FATAL, "get pgno failed\n");
                 abort();
@@ -4207,7 +4177,7 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
                 howcrt == DB_LAST || rc != IX_FND || cmprc != 0) {
                 done_update_shadows = 1;
 
-                rc2 = cur->rl->pageindex(cur->rl, &pgno, NULL, bdberr);
+                rc2 = cur->rl->pageindex(cur->rl, (int *)&pgno, NULL, bdberr);
                 if (rc2 < 0) {
                     logmsg(LOGMSG_FATAL, "get pgno failed\n");
                     abort();
@@ -4289,7 +4259,7 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
         /* The found row is marked deleted, update shadow */
         if (rc && gbl_new_snapisol && cur->rl == berkdb && update_shadows &&
             !done_update_shadows) {
-            rc2 = cur->rl->pageindex(cur->rl, &pgno, NULL, bdberr);
+            rc2 = cur->rl->pageindex(cur->rl, (int *)&pgno, NULL, bdberr);
             if (rc2 < 0) {
                 logmsg(LOGMSG_FATAL, "get pgno failed\n");
                 abort();
@@ -4514,6 +4484,8 @@ step1:
         /* Find my record. */
         rc = bdb_temp_table_find_exact(cur->state, cur->addcur, fndkey, keylen,
                                        bdberr);
+        if (rc != IX_FND)
+            free(fndkey);
         if (rc < 0)
             return rc;
 
@@ -4587,6 +4559,7 @@ step1:
                                         "updated row rc=%d bdberr=%d\n",
                                 __func__, rc, *bdberr);
                         rc = -1; /* we have to find this row back */
+                        free(pgenid);
                     }
 
                     /* Retrieve the header. */
@@ -5310,6 +5283,7 @@ step1:
                                     "rc=%d bdberr=%d\n",
                             __func__, rc, *bdberr);
                     rc = -1; /* we have to find this row back */
+                    free(pgenid);
                 }
 
                 /* Retrieve the header. */
@@ -6208,14 +6182,14 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
     int rrn = 0;
     unsigned long long genid = 0;
     int fidlen = (DB_FILE_ID_LEN * 2) + 1;
-    unsigned char fileid[DB_FILE_ID_LEN] = {0};
+    char _fileid[DB_FILE_ID_LEN] = {0};
     char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
 
     if (cur->trak) {
         int bdberr = 0;
-        cur->rl->fileid(cur->rl, fileid, &bdberr);
+        cur->rl->fileid(cur->rl, _fileid, &bdberr);
         hex_fid[fidlen - 1] = '\0';
-        tohex(hex_fid, fileid, DB_FILE_ID_LEN);
+        util_tohex(hex_fid, _fileid, DB_FILE_ID_LEN);
     }
 
     bdb_state_type *bdb_state;
@@ -6298,7 +6272,7 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
 
         if (cur->trak) {
             char *mem = alloca((2 * datalen_rl) + 2);
-            tohex(mem, data_rl, datalen_rl);
+            util_tohex(mem, data_rl, datalen_rl);
             lkprintf(LOGMSG_ERROR, "shadtrn %p cur %p fid %s merging stripe %d %s "
                              "(real) len=%d dta=0x%s\n",
                      cur->shadow_tran, cur, hex_fid, cur->idx,
@@ -6341,7 +6315,7 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
 
         if (cur->trak) {
             char *mem = alloca((2 * datalen_sd) + 2);
-            tohex(mem, data_sd, datalen_sd);
+            util_tohex(mem, data_sd, datalen_sd);
             lkprintf(LOGMSG_USER, "shadtrn %p cur %p fid %s merging stripe %d %s "
                              "(shadow) len=%d dta=0x%s\n",
                      cur->shadow_tran, cur, hex_fid, cur->idx,
@@ -6432,8 +6406,8 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
             char *real_mem = alloca((2 * datalen_rl) + 2);
             char *shadow_mem = alloca((2 * datalen_sd) + 2);
 
-            tohex(real_mem, data_rl, datalen_rl);
-            tohex(shadow_mem, data_sd, datalen_sd);
+            util_tohex(real_mem, data_rl, datalen_rl);
+            util_tohex(shadow_mem, data_sd, datalen_sd);
 
             lkprintf(LOGMSG_USER, "shadtrn %p cur %p fid %s merging stripe %d %s "
                              "(both->real) len=%d dta=0x%s vs len=%d "
@@ -6481,8 +6455,8 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
             char *real_mem = alloca((2 * datalen_rl) + 2);
             char *shadow_mem = alloca((2 * datalen_sd) + 2);
 
-            tohex(real_mem, data_rl, datalen_rl);
-            tohex(shadow_mem, data_sd, datalen_sd);
+            util_tohex(real_mem, data_rl, datalen_rl);
+            util_tohex(shadow_mem, data_sd, datalen_sd);
 
             lkprintf(LOGMSG_USER, "shadtrn %p cur %p fid %s merging stripe %d %s "
                              "(both->shadow) len=%d dta=0x%s vs len=%d "
@@ -7209,7 +7183,7 @@ out:
       int len = (DB_FILE_ID_LEN * 2) + 1;
       char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
       hex_fid[len - 1] = '\0';
-      tohex(hex_fid, infileid, DB_FILE_ID_LEN);
+      util_tohex(hex_fid, infileid, DB_FILE_ID_LEN);
 
       if (maxlsn.file)
       {
@@ -7477,7 +7451,7 @@ static int update_pglogs_from_global_queues_int(
       int len = (DB_FILE_ID_LEN * 2) + 1;
       char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
       hex_fid[len - 1] = '\0';
-      tohex(hex_fid, qcur->fileid, DB_FILE_ID_LEN);
+      util_tohex(hex_fid, qcur->fileid, DB_FILE_ID_LEN);
       lkprintf(stderr, "shadtrn %p cur %p upd_pglogs_from_queue: %s updated to [%d][%d]\n",
             cur->shadow_tran, cur, hex_fid, last_lsn.file, last_lsn.offset);
    }
@@ -7507,7 +7481,7 @@ static int update_pglogs_from_global_queues(bdb_cursor_impl_t *cur,
         abort();
 
     // Update pagelogs for this fileid
-    if (ret = update_pglogs_from_global_queues_int(cur, qcur, bdberr))
+    if ((ret = update_pglogs_from_global_queues_int(cur, qcur, bdberr)) != 0)
         abort();
 
     // Cache cursor
@@ -7713,6 +7687,12 @@ int bdb_osql_trak(char *sql, unsigned int *status)
         *status |= SQL_DBG_SHADOW;
         return 0;
     }
+
+    if (strncasecmp(sql, "OFF", 3) == 0) {
+        *status = 0;
+        return 0;
+    }
+
     return -1;
 }
 
@@ -8144,12 +8124,19 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
         if (parallel_count) {
             pthread_join(thds[i], &ret);
         }
-        rc |= args[i].rc;
+        if (args[i].rc == DB_LOCK_DEADLOCK) {
+            rc = BDBERR_DEADLOCK;
+            break;
+        } else if (args[i].rc != DB_NOTFOUND) {
+            rc = -1;
+            break;
+        }
+        rc = 0;
         count += args[i].count;
     }
     if (parallel_count) {
         pthread_attr_destroy(&attr);
     }
-    *rcnt = count;
-    return rc == DB_NOTFOUND ? 0 : -1;
+    if (rc == 0) *rcnt = count;
+    return rc;
 }

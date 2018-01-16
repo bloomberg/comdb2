@@ -27,8 +27,8 @@ BEGIN undo_add_dta 10003
 DBT table     DBT s
 ARG dtafile   short hd
 ARG dtastripe short hd
-ARG genid     genid_t llx
-ARG ltranid   genid_t llx
+ARG genid     genid_t lx
+ARG ltranid   genid_t lx
 POINTER prevllsn  DB_LSN * lu
 DBT lock      DBT s
 END
@@ -36,23 +36,23 @@ END
 BEGIN undo_add_ix 10004
 DBT table     DBT s
 ARG ix        short hd
-ARG genid     genid_t llx
-ARG ltranid   genid_t llx
+ARG genid     genid_t lx
+ARG ltranid   genid_t lx
 POINTER prevllsn  DB_LSN * lu
 ARG keylen    int d
 ARG dtalen    int d
 END
 
 BEGIN ltran_commit 10005
-ARG ltranid        genid_t llx
+ARG ltranid        genid_t lx
 POINTER prevllsn   DB_LSN * lu
-ARG gblcontext     genid_t llx
+ARG gblcontext     genid_t lx
 ARG isabort        short hd
 END
 
 /* Berkeley log_put decomposes this record, so be careful changing it  */
 BEGIN ltran_start 10006
-ARG ltranid         genid_t llx
+ARG ltranid         genid_t lx
 /* needed for distributed locks */
 ARG ownerdb   int d
 /* no previous lsn necessary */
@@ -63,7 +63,7 @@ END
    is the lsn of a record this compensates 
    for. */
 BEGIN ltran_comprec 10007
-ARG ltranid   genid_t llx
+ARG ltranid   genid_t lx
 POINTER prevllsn  DB_LSN * lu
 POINTER complsn   DB_LSN * lu
 END
@@ -72,8 +72,8 @@ END
    the index/data record. */
 BEGIN undo_del_dta 10008
 DBT table     DBT s
-ARG genid     genid_t llx
-ARG ltranid   genid_t llx
+ARG genid     genid_t lx
+ARG ltranid   genid_t lx
 POINTER prevllsn  DB_LSN * lu
 ARG dtafile   short hd
 ARG dtastripe short hd
@@ -83,9 +83,9 @@ END
 
 BEGIN undo_del_ix 10009
 DBT table     DBT s
-ARG genid     genid_t llx
+ARG genid     genid_t lx
 ARG ix        short hd
-ARG ltranid   genid_t llx
+ARG ltranid   genid_t lx
 POINTER prevllsn  DB_LSN * lu
 DBT keylock   DBT s
 ARG keylen    int d
@@ -94,9 +94,9 @@ END
 
 BEGIN undo_upd_dta 10010
 DBT table     DBT s
-ARG oldgenid  genid_t llx
-ARG newgenid  genid_t llx
-ARG ltranid   genid_t llx
+ARG oldgenid  genid_t lx
+ARG newgenid  genid_t lx
+ARG ltranid   genid_t lx
 POINTER prevllsn  DB_LSN * lu
 ARG dtafile   short hd
 ARG dtastripe short hd
@@ -107,9 +107,9 @@ END
 
 BEGIN undo_upd_ix 10011
 DBT table     DBT s
-ARG oldgenid  genid_t llx
-ARG newgenid  genid_t llx
-ARG ltranid   genid_t llx
+ARG oldgenid  genid_t lx
+ARG newgenid  genid_t lx
+ARG ltranid   genid_t lx
 POINTER prevllsn  DB_LSN * lu
 ARG ix        short hd
 DBT key       DBT s
@@ -140,8 +140,8 @@ BEGIN undo_add_dta_lk 10013
 DBT table     DBT s
 ARG dtafile   short hd
 ARG dtastripe short hd
-ARG genid     genid_t llx
-ARG ltranid   genid_t llx
+ARG genid     genid_t lx
+ARG ltranid   genid_t lx
 POINTER prevllsn  DB_LSN * lu
 END
 
@@ -152,8 +152,8 @@ END
 BEGIN undo_add_ix_lk 10014
 DBT table     DBT s
 ARG ix        short hd
-ARG genid     genid_t llx
-ARG ltranid   genid_t llx
+ARG genid     genid_t lx
+ARG ltranid   genid_t lx
 POINTER prevllsn  DB_LSN * lu
 DBT key       DBT s
 ARG dtalen    int d
@@ -166,8 +166,8 @@ END
  */
 BEGIN undo_del_dta_lk 10015
 DBT table     DBT s
-ARG genid     genid_t llx
-ARG ltranid   genid_t llx
+ARG genid     genid_t lx
+ARG ltranid   genid_t lx
 POINTER prevllsn  DB_LSN * lu
 ARG dtafile   short hd
 ARG dtastripe short hd
@@ -182,9 +182,9 @@ END
  */
 BEGIN undo_del_ix_lk 10016
 DBT table     DBT s
-ARG genid     genid_t llx
+ARG genid     genid_t lx
 ARG ix        short hd
-ARG ltranid   genid_t llx
+ARG ltranid   genid_t lx
 POINTER prevllsn  DB_LSN * lu
 ARG keylen    int d
 ARG dtalen    int d
@@ -198,9 +198,9 @@ END
  */
 BEGIN undo_upd_dta_lk 10017
 DBT table     DBT s
-ARG oldgenid  genid_t llx
-ARG newgenid  genid_t llx
-ARG ltranid   genid_t llx
+ARG oldgenid  genid_t lx
+ARG newgenid  genid_t lx
+ARG ltranid   genid_t lx
 POINTER prevllsn  DB_LSN * lu
 ARG dtafile   short hd
 ARG dtastripe short hd
@@ -215,9 +215,9 @@ END
  */
 BEGIN undo_upd_ix_lk 10018
 DBT table     DBT s
-ARG oldgenid  genid_t llx
-ARG newgenid  genid_t llx
-ARG ltranid   genid_t llx
+ARG oldgenid  genid_t lx
+ARG newgenid  genid_t lx
+ARG ltranid   genid_t lx
 POINTER prevllsn  DB_LSN * lu
 ARG ix        short hd
 DBT key       DBT s
@@ -241,7 +241,7 @@ BEGIN rowlocks_log_bench 10020
 ARG op        int d
 ARG arg1      int d
 ARG arg2      int d
-ARG ltranid   genid_t llx
+ARG ltranid   genid_t lx
 DBT payload   DBT s
 DBT lock1     DBT s
 DBT lock2     DBT s
@@ -257,7 +257,7 @@ BEGIN commit_log_bench 10021
 ARG op        int d
 ARG arg1      int d
 ARG arg2      int d
-ARG ltranid   genid_t llx
+ARG ltranid   genid_t lx
 DBT payload   DBT s
 DBT lock1     DBT s
 DBT lock2     DBT s

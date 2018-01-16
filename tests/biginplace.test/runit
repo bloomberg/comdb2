@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 # This test verifies that si-snapshots work correctly against 'big' berkley 
@@ -13,15 +13,17 @@ db=$1
 debug=0
 cppid=-1
 
-TMPDIR=${TMPDIR:-/tmp}
-cdb2sql ${CDB2_OPTIONS} $db default "select comdb2_host()"
+#set -x
+set -e
 
+TMPDIR=${TMPDIR:-/tmp}
 
 
 # Artificially torque the pagesize down to 4096
 cdb2sql ${CDB2_OPTIONS} $db default "truncate t1"
 master=`cdb2sql --tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
 echo "master node is $master"
+cdb2sql ${CDB2_OPTIONS} --host $master $db "select comdb2_host()"
 cdb2sql ${CDB2_OPTIONS} --host $master $db 'exec procedure sys.cmd.send("pagesize set t1 blob 4096")'
 cdb2sql ${CDB2_OPTIONS} $db default "rebuild t1"
 
@@ -62,7 +64,7 @@ echo "begin" >&${COPROC[1]}
 echo >&${COPROC[1]} "@redirect $results1"
 echo >&${COPROC[1]} "select * from t1"
 echo >&${COPROC[1]} "@redirect"
-cdb2sql ${CDB2_OPTIONS} $db default "update t1 set b1=x'$bigrec1' where a=1" >/dev/null 2>&1
+cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set b1=x'$bigrec1' where a=1" &>/dev/null
 
 results2=${TMPDIR}/cdb2tst_big.$$.$RANDOM.tmp.2
 echo >&${COPROC[1]} "@redirect $results2"
@@ -86,7 +88,7 @@ echo >&${COPROC[1]} "begin"
 echo >&${COPROC[1]} "@redirect $results1"
 echo >&${COPROC[1]} "select * from t1"
 echo >&${COPROC[1]} "@redirect"
-cdb2sql ${CDB2_OPTIONS} $db default "update t1 set b1=x'$bigrec2' where a=1" >/dev/null 2>&1
+cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set b1=x'$bigrec2' where a=1" &>/dev/null
 
 results2=${TMPDIR}/cdb2tst_big.$$.$RANDOM.tmp.2
 echo >&${COPROC[1]} "@redirect $results2"
@@ -109,7 +111,7 @@ echo >&${COPROC[1]} "begin"
 echo >&${COPROC[1]} "@redirect $results1"
 echo >&${COPROC[1]} "select * from t1"
 echo >&${COPROC[1]} "@redirect"
-cdb2sql ${CDB2_OPTIONS} $db default "update t1 set b1=x'1234' where a=1" >/dev/null 2>&1
+cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set b1=x'1234' where a=1" &>/dev/null
 
 results2=${TMPDIR}/cdb2tst_big.$$.$RANDOM.tmp.2
 echo >&${COPROC[1]} "@redirect $results2"

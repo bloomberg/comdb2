@@ -68,8 +68,8 @@ static int systblTablesDisconnect(sqlite3_vtab *pVtab){
 
 static int checkRowidAccess(systbl_tables_cursor *pCur) {
   while (pCur->iRowid < thedb->num_dbs) {
-    struct db *pDb = thedb->dbs[pCur->iRowid];
-    char *x = pDb->dbname;
+    struct dbtable *pDb = thedb->dbs[pCur->iRowid];
+    char *x = pDb->tablename;
     int bdberr;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     int rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->sqlclntstate->user, x, ACCESS_READ, &bdberr);
@@ -121,8 +121,8 @@ static int systblTablesColumn(
   int i
 ){
   systbl_tables_cursor *pCur = (systbl_tables_cursor*)cur;
-  struct db *pDb = thedb->dbs[pCur->iRowid];
-  char *x = pDb->dbname;
+  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
+  char *x = pDb->tablename;
 
   sqlite3_result_text(ctx, x, -1, NULL);
   return SQLITE_OK;
@@ -229,6 +229,16 @@ int comdb2SystblInit(
     rc = sqlite3_create_module(db, "comdb2_tablepermissions", &systblTablePermissionsModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_triggers", &systblTriggersModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_keywords", &systblKeywordsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_limits", &systblLimitsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_tunables", &systblTunablesModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_threadpools", &systblThreadPoolsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_completion", &completionModule, 0);
 #endif
   return rc;
 }

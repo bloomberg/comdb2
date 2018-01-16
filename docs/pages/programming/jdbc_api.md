@@ -17,10 +17,12 @@ Cdb2jdbc is a JDBC Type 4 driver, which means that the driver is a platform-inde
 
 To check out the source, please follow [the instructions](install.html#installing-from-source).
 
+#### Maven
+
 To install cdb2jdbc from source, the following additional software packages are required:
 
 *   JDK 1.6 or above
-*   [Protocol Buffers compiler 2.6 or above](https://developers.google.com/protocol-buffers/). Make sure that Protocol Buffers compiler is included in your `PATH`.
+*   [Protocol Buffers compiler 3.2](https://developers.google.com/protocol-buffers/). Make sure that Protocol Buffers compiler is included in your `PATH`.
 *   [Maven 3.x](https://maven.apache.org/)
 
 Once you check out the source and have all the required software installed on the system, change directory to cdb2jdbc under comdb2 source and type `mvn clean install`.
@@ -30,15 +32,41 @@ cd cdb2jdbc
 mvn clean install
 ```
 
-Cdb2jdbc should be successfully installed in your local Maven repository.
+cdb2jdbc should be successfully installed in your local Maven repository.
 The JAR files normally can be found in `~/.m2/repository/com/bloomberg/comdb2/cdb2jdbc/`.
 
+**A word of caution**: the build can fail if the version of protocol buffers installed on the system mismatches the version specified in
+`cdb2jdbc/pom.xml`.  If you encounter problems, update the protobuf-java version in the .pom file to match what's on the system.
+Another option is to build the driver inside a Docker container by running `make jdbc-docker-build` in `cdb2jdbc` (JAR files will be written
+to `cdb2jdbc/maven.m2/repository/com/bloomberg/comdb2/cdb2jdbc/2.0.0/`)
+
+#### Gradle
+
+Another way to install cdb2jdbc from source is the gradle wrapper. The following software packages are required:
+
+*   JDK 1.7 or above
+
+> Note that existing installations of gradle and protocol buffers **are not** required for the gradle build
+
+Once you check out the source and have all the required software installed on the system, change directory to cdb2jdbc under comdb2 source and type `./gradlew install` or `./gradlew.bat install` for Windows.
+
+```shell
+cd cdb2jdbc
+./gradlew install
+```
+
+> You can also use an existing install of gradle instead of the wrapper. At least version 2.12 is required.
+
+This build will install cdb2jdbc into your *local Maven* repository.
+The JAR files normally can be found in `~/.m2/repository/com/bloomberg/comdb2/cdb2jdbc/`.
 
 ## Setting up Cdb2jdbc
 
-There are 2 approaches to set up cdb2jdbc: with or without Maven.
+There are 2 approaches to set up cdb2jdbc: using build tools or setting the classpath.
 
-### With Maven
+### Build tools
+
+#### As a Maven dependency
 
 To introduce cdb2jdbc in your applications as a Maven dependency, add the following to `pom.xml`, with the version available from your Maven repository.
 
@@ -50,7 +78,21 @@ To introduce cdb2jdbc in your applications as a Maven dependency, add the follow
 </dependency>
 ```
 
-### Without Maven
+#### As a Gradle dependency
+
+If you followed the steps above to install cdb2jdbc form source, it should be in your local Maven repository. Add the following to your `build.gradle` with the version replaced to the cdb2jdbc version. 
+
+```groovy
+repositories {
+    mavenLocal()
+}
+
+dependencies {
+    compile 'com.bloomberg.comdb2:cdb2jdbc:major.minor.patch'
+}
+```
+
+### Setting the Classpath
 
 By default, an uber JAR is built along with cdb2jdbc and is named `cdb2jdbc-<version>-shaded.jar`.
 An uber JAR is a JAR file which contains all its dependencies. To use the JAR without Maven, you would include it in `CLASSPATH`.
@@ -168,9 +210,9 @@ The parameters are as follows:
 
         * REQUIRE
 
-        * VERIFY-CA
+        * VERIFY_CA
 
-        * VERIFY-HOSTNAME
+        * VERIFY_HOSTNAME
       
     * _key_store_=String
 
@@ -195,6 +237,15 @@ The parameters are as follows:
     * _trust_store_type_=String
 
       Type of the trusted CA keystore. The default is `"JKS"`.
+
+    * _allow_pmux_route_=Boolean
+
+      Allow connection forwarding via `pmux`. The default is `false`.
+        
+    * _verify_retry_=Boolean
+
+      Toggle verifyretry. The default is `false`. See also [optimistic concurrency control](transaction_model.html#optimistic-concurrency-control).
+
         
     \* _To define multiple options, separate them by ampersands._
 
@@ -285,6 +336,48 @@ To load the trusted CA JKS into the driver, the JDBC URL looks like this:
 
 ```
 jdbc:comdb2//<hostname>/<database>?trust_store=<path/to/jks>&trust_store_password=<passwd>
+```
+
+
+## Comdb2 Extensions to the JDBC API
+
+### Executing Typed Queries
+
+A typed query gives applications more control over return types.
+The database will coerce the types of the resulting columns to the types specified by the application.
+If the types aren’t compatible, an exception will be thrown.
+
+To access the extension, you would need to cast the `java.sql.Statement` object to `com.bloomberg.comdb2.jdbc.Comdb2Statement`.
+For example:
+
+```java
+conn = DriverManager.getConnection("jdbc:comdb2:/localhost/testdb");
+stmt = conn.createStatement();
+comdb2stmt = (Comdb2Statement)stmt;
+String sql = "select now()";
+rset = comdb2stmt.executeQuery(sql, Arrays.asList(java.sql.Types.VARCHAR));
+```
+
+In the example above, the row will come back as a `java.lang.String` instead of a `java.sql.TIMESTAMP`.
+
+
+### Using Intervals
+
+JDBC standard does not define data types for intervals. You could work it around using Comdb2 interval types.
+For example, to bind an INTERVALDS (interval day to second) value, you would use:
+
+```
+// Load driver, get connection and create a parepared statement...
+// bind an interval year-month (+3 mon)
+stmt.setObject(1, new Cdb2Types.IntervalYearMonth(1, 0, 3));
+```
+
+### Using Named Parameters for PreparedStatement
+
+Comdb2 has built-in support for named parameters. You would simply use `@param_name` instead of `?` in your queries:
+
+```
+PreparedStatement stmt = conn.prepareStatement("insert into employee values (@id, @firstname, @lastname)");
 ```
 
 

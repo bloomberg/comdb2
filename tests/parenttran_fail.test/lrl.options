@@ -1,7 +1,7 @@
 table t1 t1.csc2
 
 off sql_release_locks_on_si_lockwait
-off sql_release_locks_on_emit_row
+off sql_release_locks_on_emit_row_lockwait
 off sql_release_locks_on_slow_reader
 off sql_release_locks_in_update_shadows
 off release_locks_trace

@@ -24,7 +24,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <limits.h>
+#ifndef __APPLE__
 #include <malloc.h>
+#endif
 #include <sys/mman.h>
 
 #include "comdb2_pthread_create.h"
@@ -36,6 +38,8 @@
 #define STACK_FREE_DELAY 5
 #define FREE_THR_INTV 5
 #define MIN_MMAP_THRESH 128 * 1024
+
+extern int db_is_stopped();
 
 typedef struct thr_arg {
     void *(*func)(void *); /* actual pthread routine */
@@ -79,8 +83,7 @@ static void *free_stack_thr(void *unused)
     ** [3] sleep for a few seconds and free # elems from stack_list
     */
 
-    while (1) {
-
+    while (!db_is_stopped()) {
         //![1]
         rc = pthread_mutex_lock(&pthr_mutex);
         if (rc != 0) {
@@ -105,7 +108,8 @@ static void *free_stack_thr(void *unused)
         //![3]
         rc = sleep(STACK_FREE_DELAY);
         if (rc != 0) {
-            logmsg(LOGMSG_INFO, "%s:%d interrupted while sleeping.\n", __func__,
+            logmsg(LOGMSG_INFO,
+                   "%s:%d interrupted with rc %d while sleeping.\n", __func__,
                    __LINE__, rc);
             continue;
         }

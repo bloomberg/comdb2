@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 dbnm=$1
@@ -14,7 +14,7 @@ exit 1
 fi
 
 echo "Running t2.req"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table dtus" &> /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "drop table dtus" &> /dev/null
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table dtus { `cat t_dtus.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} -s -f t2.req $dbnm default >t2.actual 2> t2.err
 diff t2.expected t2.actual
@@ -73,7 +73,7 @@ exit 1
 fi
 
 echo "Running vesselalerts.req"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table vesselalerts" &> /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "drop table vesselalerts" &> /dev/null
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table vesselalerts { `cat vesselalerts.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} -s -f vesselalerts.req $dbnm default &> vesselalerts.actual
 diff vesselalerts.expected vesselalerts.actual
@@ -100,10 +100,24 @@ echo "client typed (server milli -> client micro) query failed."
 exit 1
 fi
 
+cnt=`cdb2sql ${CDB2_OPTIONS} $dbnm default 'select cast("2017-07-14T183510.006" as datetime)' 9 | grep -c '2017-07-14T183510.006000'`
+if [[ $cnt -ne 1 ]]
+then
+echo "client typed (server milli -> client micro) query failed."
+exit 1
+fi
+
 cnt=`cdb2sql ${CDB2_OPTIONS} $dbnm default 'select now(6)' 6 | cut -d' ' -f1 | cut -d'.' -f2 | wc -c`
 if [[ $cnt -ne 4 ]]
 then
 echo "client typed (server micro -> client milli) query failed."
+exit 1
+fi
+
+cnt=`cdb2sql ${CDB2_OPTIONS} $dbnm default 'select cast("2017-07-14T183510.000003" as datetime)' 6 | grep -c '2017-07-14T183510.000'`
+if [[ $cnt -ne 1 ]]
+then
+echo "client typed (server milli -> client micro) query failed."
 exit 1
 fi
 

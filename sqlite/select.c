@@ -65,6 +65,7 @@ struct SortCtx {
 static void fingerprintSelectInt(sqlite3 *db, MD5Context *c, Select *p);
 static void fingerprintExpr(sqlite3 *db, MD5Context *c, Expr *p);
 static void fingerprintExprList(sqlite3 *db, MD5Context *c, ExprList *l);
+static void fingerprintWith(sqlite3 *db, MD5Context *c, With *pWith);
 
 static void fingerprintExprList(sqlite3 *db, MD5Context *c, ExprList *l) {
   int i;
@@ -76,6 +77,16 @@ static void fingerprintExprList(sqlite3 *db, MD5Context *c, ExprList *l) {
   }
 }
 
+static void fingerprintSubqueryList(sqlite3 *db, MD5Context *c, ExprList *l) {
+  int i;
+  struct ExprList_item *pItem;
+  if (l == NULL) return;
+  for(pItem=l->a, i=0; i<l->nExpr; i++, pItem++){
+    if( ExprHasProperty(pItem->pExpr, EP_Subquery) )
+      fingerprintExpr(db, c, pItem->pExpr);
+  }
+}
+
 static void fingerprintTable(sqlite3 *db, MD5Context *c, Table *pTab) {
     if (pTab == NULL)
         return;
@@ -84,30 +95,87 @@ static void fingerprintTable(sqlite3 *db, MD5Context *c, Table *pTab) {
 }
 
 static void fingerprintExpr(sqlite3 *db, MD5Context *c, Expr *p) {
-    if (p == NULL)
+    if (p == NULL || p->visited)
         return;
 
-  // printf("op %d flags %x iTable %d iColumn %d op2 %d\n", (int) p->op, p->flags, p->iTable, p->iColumn, (int) p->op2);
-  MD5Update(c, (const unsigned char*) &p->op, sizeof(u8));
-  MD5Update(c, (const unsigned char*) &p->flags, sizeof(u32));
-  MD5Update(c, (const unsigned char*) &p->iTable, sizeof(int));
-  MD5Update(c, (const unsigned char*) &p->iColumn, sizeof(ynVar));
-  MD5Update(c, (const unsigned char*) &p->iAgg, sizeof(i16));
-  MD5Update(c, (const unsigned char*) &p->iRightJoinTable, sizeof(i16));
-  MD5Update(c, (const unsigned char*) &p->op2, sizeof(u8));
-  fingerprintTable(db, c, p->pTab);
+    p->visited = 1;
 
-  if (p == NULL)
-    return;
-  if( !ExprHasProperty(p, (EP_TokenOnly)) ){
-    if( p->pLeft) fingerprintExpr(db, c, p->pLeft);
-    fingerprintExpr(db, c, p->pRight);
-    if( ExprHasProperty(p, EP_xIsSelect) ){
-      fingerprintSelectInt(db, c, p->x.pSelect);
-    }else{
-      fingerprintExprList(db, c, p->x.pList);
+    // printf("op %d flags %x iTable %d iColumn %d op2 %d\n", (int) p->op, p->flags, p->iTable, p->iColumn, (int) p->op2);
+    MD5Update(c, (const unsigned char*) &p->op, sizeof(u8));
+    MD5Update(c, (const unsigned char*) &p->flags, sizeof(u32));
+    MD5Update(c, (const unsigned char*) &p->iTable, sizeof(int));
+    MD5Update(c, (const unsigned char*) &p->iColumn, sizeof(ynVar));
+    MD5Update(c, (const unsigned char*) &p->iAgg, sizeof(i16));
+    MD5Update(c, (const unsigned char*) &p->iRightJoinTable, sizeof(i16));
+    MD5Update(c, (const unsigned char*) &p->op2, sizeof(u8));
+    if (p->iTable == TK_COLUMN)
+        fingerprintTable(db, c, p->pTab);
+
+    if( !ExprHasProperty(p, (EP_TokenOnly|EP_Leaf)) ){
+        if( p->pLeft) fingerprintExpr(db, c, p->pLeft);
+        fingerprintExpr(db, c, p->pRight);
+        if( ExprHasProperty(p, EP_xIsSelect) ){
+            fingerprintSelectInt(db, c, p->x.pSelect);
+        }else if( p->op == TK_IN ){
+            if( !ExprHasProperty(p, EP_Subquery) ) return;
+            fingerprintSubqueryList(db, c, p->x.pList);
+        }else{
+            fingerprintExprList(db, c, p->x.pList);
+        }
     }
-  }
+}
+
+static void fingerprintBitmask(sqlite3 *db, MD5Context *c, Bitmask b) {
+#ifdef SQLITE_BITMASK_TYPE
+    MD5Update(c, (u8*) &b, sizeof(SQLITE_BITMASK_TYPE));
+#else
+    MD5Update(c, (u8*) &b, sizeof(u64));
+#endif
+}
+
+static void fingerprintIdList(sqlite3 *db, MD5Context *c, IdList *l) {
+    int i;
+
+    if (l == NULL)
+        return;
+
+    for (i = 0; i < l->nId; i++) {
+        if (l->a[i].zName)
+            MD5Update(c, (unsigned char *)l->a[i].zName, strlen(l->a[i].zName));
+        MD5Update(c, (u8*) &l->a[i].idx, sizeof(int));
+    }
+}
+
+static void fingerprintSrcListItem(sqlite3 *db, MD5Context *c, struct SrcList_item *src) {
+    /* TODO: src->Schema - select ... from a.tbl,   select .. from tbl   are different */
+    if (src->zDatabase)
+        MD5Update(c, (const unsigned char *)src->zDatabase, strlen(src->zDatabase));
+    if (src->zName)
+        MD5Update(c, (const unsigned char *)src->zName, strlen(src->zName));
+    /* alias part - skip?  select a as b   same as select ? */
+    if (src->pSelect)
+        fingerprintSelectInt(db, c, src->pSelect);
+    MD5Update(c, (u8*) &src->addrFillSub, sizeof(int));
+    MD5Update(c, (u8*) &src->regReturn, sizeof(int));
+    MD5Update(c, (u8*) &src->regResult, sizeof(int));
+    MD5Update(c, (u8*) &src->fg, sizeof(src->fg));
+    MD5Update(c, (u8*) &src->iCursor, sizeof(src->iCursor));
+    fingerprintExpr(db, c, src->pOn);
+    fingerprintIdList(db, c, src->pUsing);
+    fingerprintBitmask(db, c, src->colUsed);
+    if (src->fg.isIndexedBy)
+        MD5Update(c, (const unsigned char *)src->u1.zIndexedBy, strlen(src->u1.zIndexedBy));
+    else if (src->fg.isTabFunc)
+        fingerprintExprList(db, c, src->u1.pFuncArg);
+}
+
+static void fingerprintSrcList(sqlite3 *db, MD5Context *c, SrcList *src) {
+    int i;
+    if (src == NULL)
+        return;
+    for (i = 0; i < src->nSrc; i++) {
+        fingerprintSrcListItem(db, c, &src->a[i]);
+    }
 }
 
 static void fingerprintSelectInt(sqlite3 *db, MD5Context *c, Select *p) {
@@ -115,12 +183,14 @@ static void fingerprintSelectInt(sqlite3 *db, MD5Context *c, Select *p) {
         return;
     fingerprintExprList(db, c, p->pEList);
     fingerprintExpr(db, c, p->pWhere);
+    fingerprintSrcList(db, c, p->pSrc);
     fingerprintExprList(db, c, p->pGroupBy);
     fingerprintExpr(db, c, p->pHaving);
     fingerprintExprList(db, c, p->pOrderBy);
     fingerprintSelectInt(db, c, p->pNext);
     fingerprintExpr(db, c, p->pLimit);
     fingerprintExpr(db, c, p->pOffset);
+    fingerprintWith(db, c, p->pWith);
 }
 
 /* This is just like clearSelect, except we recursively checksum all
@@ -128,11 +198,73 @@ static void fingerprintSelectInt(sqlite3 *db, MD5Context *c, Select *p) {
 void sqlite3FingerprintSelect(sqlite3 *db, Select *p) {
     MD5Context c;
 
+    if (!db->should_fingerprint || db->init.busy)
+        return;
+
     MD5Init(&c);
     fingerprintSelectInt(db, &c, p);
-    MD5Final(db->fingerprint, &c);
+    MD5Final((unsigned char *)db->fingerprint, &c);
 }
 
+static void fingerprintWith(sqlite3 *db, MD5Context *c, With *pWith) {
+    int i;
+    if (pWith == NULL)
+        return;
+    for (i = 0; i < pWith->nCte; i++) {
+        MD5Update(c, (const unsigned char *)pWith->a[i].zName, strlen(pWith->a[i].zName));
+        fingerprintExprList(db, c, pWith->a[i].pCols);
+        /* we don't do pWith->a[i].pSelect - we expect fingerprintSelectInt to
+           be called on the corresponding select which will point back to us */
+    }
+}
+
+static void fingerprintInsertInt(sqlite3 *db, MD5Context *c, SrcList *pTabList, Select *pSelect, IdList *pColumn, With *pWith) {
+    fingerprintSrcList(db,c, pTabList);
+    fingerprintSelectInt(db, c, pSelect);
+    fingerprintIdList(db, c, pColumn);
+    fingerprintWith(db, c, pWith);
+}
+
+#include <fsnapf.h>
+
+/* Why isn't this in insert.c?  Because Insert doesn't introduce any new structures 
+   that aren't already processed here */
+void sqlite3FingerprintInsert(sqlite3 *db, SrcList *pTabList, Select *pSelect, IdList *pColumn, With *pWith) {
+    MD5Context c;
+
+    if (!db->should_fingerprint || db->init.busy)
+        return;
+
+    MD5Init(&c);
+    fingerprintInsertInt(db, &c, pTabList, pSelect, pColumn, pWith);
+    MD5Final((unsigned char *)db->fingerprint, &c);
+}
+
+void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere) {
+    MD5Context c;
+
+    if (!db->should_fingerprint || db->init.busy)
+        return;
+
+    MD5Init(&c);
+    fingerprintSrcList(db, &c, pTabList);
+    fingerprintExpr(db, &c, pWhere);
+    MD5Final((unsigned char *)db->fingerprint, &c);
+}
+
+void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges, Expr *pWhere, int onError) {
+    MD5Context c;
+
+    if (!db->should_fingerprint || db->init.busy)
+        return;
+
+    MD5Init(&c);
+    fingerprintSrcList(db, &c, pTabList);
+    fingerprintExprList(db, &c, pChanges);
+    fingerprintExpr(db, &c, pWhere);
+    MD5Update(&c, (u8*) &onError, sizeof(int));
+    MD5Final((unsigned char *)db->fingerprint, &c);
+}
 
 
 /*
@@ -4912,6 +5044,110 @@ static void explainSimpleCount(
 # define explainSimpleCount(a,b,c)
 #endif
 
+#ifdef SQLITE_COUNTOFVIEW_OPTIMIZATION
+/*
+** Attempt to transform a query of the form
+**
+**    SELECT count(*) FROM (SELECT x FROM t1 UNION ALL SELECT y FROM t2)
+**
+** Into this:
+**
+**    SELECT (SELECT count(*) FROM t1)+(SELECT count(*) FROM t2)
+**
+** The transformation only works if all of the following are true:
+**
+**   *  The subquery is a UNION ALL of two or more terms
+**   *  There is no WHERE or GROUP BY or HAVING clauses on the subqueries
+**   *  The outer query is a simple count(*)
+**
+** Return TRUE if the optimization is undertaken.
+*/
+static int countOfViewOptimization(Parse *pParse, Select *p){
+  Select *pSub, *pPrior;
+  Expr *pExpr;
+  Expr *pCount;
+  sqlite3 *db;
+  if( (p->selFlags & SF_Aggregate)==0 ) return 0;   /* This is an aggregate query */
+  if( p->pEList->nExpr!=1 ) return 0;               /* Single result column */
+  pExpr = p->pEList->a[0].pExpr;
+  if( pExpr->op!=TK_AGG_FUNCTION ) return 0;        /* Result is an aggregate */
+  if( sqlite3_stricmp(pExpr->u.zToken,"count") ) return 0;  /* Must be count() */
+  if( pExpr->x.pList!=0 ) return 0;                 /* Must be count(*) */
+  if( p->pSrc->nSrc!=1 ) return 0;                  /* One table in the FROM clause */
+  pSub = p->pSrc->a[0].pSelect;
+  if( pSub==0 ) return 0;                           /* The FROM is a subquery */
+  if( pSub->pPrior==0 ) return 0;                   /* Must be a compound subquery */
+  do{
+    if( pSub->op!=TK_ALL && pSub->pPrior ) return 0;  /* Must be UNION ALL */
+    if( pSub->pWhere ) return 0;                      /* No WHERE clause */
+    if( pSub->selFlags & SF_Aggregate ) return 0;     /* Not an aggregate */
+    pSub = pSub->pPrior;                              /* Repeat over compound terms */
+  }while( pSub );
+
+  /* If we reach this point, that means it is OK to perform the transformation */
+
+  db = pParse->db;
+  pCount = pExpr;
+  pExpr = 0;
+  pSub = p->pSrc->a[0].pSelect;
+  p->pSrc->a[0].pSelect = 0;
+  sqlite3SrcListDelete(db, p->pSrc);
+  p->pSrc = sqlite3DbMallocZero(pParse->db, sizeof(*p->pSrc));
+  while( pSub ){
+    Expr *pTerm;
+    pPrior = pSub->pPrior;
+    pSub->pPrior = 0;
+    pSub->pNext = 0;
+    pSub->selFlags |= SF_Aggregate;
+    pSub->selFlags &= ~SF_Compound;
+    pSub->nSelectRow = 0;
+    sqlite3ExprListDelete(db, pSub->pEList);
+    pTerm = pPrior ? sqlite3ExprDup(db, pCount, 0) : pCount;
+    pSub->pEList = sqlite3ExprListAppend(pParse, 0, pTerm);
+    pTerm = sqlite3PExpr(pParse, TK_SELECT, 0, 0, 0);
+    sqlite3PExprAddSelect(pParse, pTerm, pSub);
+    if( pExpr==0 ){
+      pExpr = pTerm;
+    }else{
+      pExpr = sqlite3PExpr(pParse, TK_PLUS, pTerm, pExpr, 0);
+    }
+    pSub = pPrior;
+  }
+  p->pEList->a[0].pExpr = pExpr;
+  p->selFlags &= ~SF_Aggregate;
+
+#if SELECTTRACE_ENABLED
+  if( sqlite3SelectTrace & 0x400 ){
+    SELECTTRACE(0x400,pParse,p,("After count-of-view optimization:\n"));
+    sqlite3TreeViewSelect(0, p, 0);
+  }
+#endif
+  return 1;
+}
+#endif /* SQLITE_COUNTOFVIEW_OPTIMIZATION */
+
+/*
+** COMDB2 MODIFICATION
+** Check list of identified source tables and check to see any of them is remote
+**
+*/
+static int sql_has_remotes(
+  Parse *pParse,       /* The parsing context */
+  SrcList *pList        /* The source list */
+) {
+  int i;
+
+  for(i=0;i<pList->nSrc; i++){
+    extern const char *comdb2_get_dbname(void);
+    char *dbname = pList->a[i].zDatabase;
+    if(dbname && strcasecmp(dbname,"main") && strcasecmp(dbname, "temp") &&
+            strcasecmp(dbname, comdb2_get_dbname())) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
 /*
 ** Generate code for the SELECT statement given in the p argument.  
 **
@@ -4985,6 +5221,14 @@ int sqlite3Select(
   sSort.pOrderBy = p->pOrderBy;
   pTabList = p->pSrc;
   if( pParse->nErr || db->mallocFailed ){
+    if( pParse->checkSchema == 1 /* parsing error */ && 
+            pParse->zErrMsg && strncasecmp(pParse->zErrMsg, "no such column", 
+                strlen("no such column")) == 0){
+      extern void comdb2_set_verify_remote_schemas(void);
+      if (sql_has_remotes(pParse, p->pSrc)) {
+        comdb2_set_verify_remote_schemas();
+      }
+    }
     goto select_end;
   }
   assert( p->pEList!=0 );
@@ -5182,6 +5426,16 @@ int sqlite3Select(
   if( sqlite3SelectTrace & 0x400 ){
     SELECTTRACE(0x400,pParse,p,("After all FROM-clause analysis:\n"));
     sqlite3TreeViewSelect(0, p, 0);
+  }
+#endif
+
+#ifdef SQLITE_COUNTOFVIEW_OPTIMIZATION
+  if( OptimizationEnabled(db, SQLITE_QueryFlattener|SQLITE_CountOfView)
+   && countOfViewOptimization(pParse, p)
+  ){
+    if( db->mallocFailed ) goto select_end;
+    pEList = p->pEList;
+    pTabList = p->pSrc;
   }
 #endif
 

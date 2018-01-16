@@ -2,18 +2,13 @@
 
 #usage
 if [[ "$#" -lt "3" ]]; then
-    print "$0 usage: <root> <hext-file> <cfile> [ <cfile2> <cfile3> .. ]"
+    echo "$0 usage: <root> <hext-file> <cfile> [ <cfile2> <cfile3> .. ]"
     exit 1
 fi
 
 #executables
-s_awk=/opt/swt/bin/gawk
-s_inc=${SRCHOME}/berkdb/dist/gen_inc.awk
-if [[ ! -x $s_awk ]]; then
-    s_awk=$(which awk)
-fi
-
-
+s_awk=awk
+s_inc=dist/gen_inc.awk
 
 #temp files
 t_edf=/tmp/__db_a.$$
@@ -80,7 +75,7 @@ function s_tail
 }
 
 #source some useful variables
-. ${SRCHOME}/berkdb/dist/RELEASE
+. dist/RELEASE
 
 #trap directive
 trap 'rm -f $t_edf $t_epf $t_idf $t_ipf ; exit 0' 0 1 2 3 13 15
@@ -111,7 +106,7 @@ s_tail "_${s_rot}_ext_h" >> $t_ipf
 #move into place
 cmp $t_ipf $a_ext > /dev/null 2>&1 ||
 (
-    echo "Building $a_ext"
+    #echo "Building $a_ext"
     rm -f $a_ext
     cp $t_ipf $a_ext
     chmod 444 $a_ext

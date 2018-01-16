@@ -52,14 +52,16 @@ oflags(int flags, char *o_flags)
 		strcat(o_flags, "O_FSYNC ");
 	if (flags & O_ASYNC)
 		strcat(o_flags, "O_ASYNC ");
-	if (flags & O_DIRECT)
-		strcat(o_flags, "O_DIRECT ");
 	if (flags & O_DIRECTORY)
 		strcat(o_flags, "O_DIRECTORY ");
 	if (flags & O_NOFOLLOW)
 		strcat(o_flags, "O_NOFOLLOW ");
+	#ifdef __linux__
+	if (flags & O_DIRECT)
+		strcat(o_flags, "O_DIRECT ");
 	if (flags & O_NOATIME)
 		strcat(o_flags, "O_NOATIME ");
+	#endif
 #endif
 	return o_flags;
 }
@@ -96,9 +98,11 @@ ___os_openhandle(dbenv, name, flags, mode, fhpp)
 		F_CLR(fhp, DB_FH_DIRECT);
 		flags &= ~O_SYNC;
 	}
-#ifdef _LINUX_SOURCE
+#ifdef __linux__
 	if (flags & O_DIRECT)
 		F_SET(fhp, DB_FH_DIRECT);
+#endif
+#ifdef _LINUX_SOURCE
 	if (flags & O_SYNC)
 		F_SET(fhp, DB_FH_SYNC);
 #endif

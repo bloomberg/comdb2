@@ -21,7 +21,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <db.h> /* berk db.h */
+#include <build/db.h> /* berk db.h */
 #include <net.h>
 #include <sbuf2.h>
 #include "bdb_int.h"
@@ -97,7 +97,7 @@ int bdb_temp_hash_destroy(struct bdb_temp_hash *h)
 {
     int rc;
     int outrc = 0;
-    rc = h->db->close(h->db,
+    rc = h->db->close(h->db, NULL,
                       DB_NOSYNC); /* don't care if it ever makes it to
                                      disk since the db is about to be removed */
 

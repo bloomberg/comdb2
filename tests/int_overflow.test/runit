@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+# Run unit test
+./test

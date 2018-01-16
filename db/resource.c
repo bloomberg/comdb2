@@ -61,17 +61,18 @@ char *strdup(char *str1)
 
 void initresourceman(const char *newlrlname)
 {
-    char *resource_string;
-
     listc_init(&list, offsetof(struct resource, link));
-    if (newlrlname) {
-        lrlname = realpath(newlrlname, NULL);
+    if (!newlrlname)
+        return;
 
-        /* lrl file is always known as "lrl" */
-        if (lrlname) {
-            addresource("lrl", lrlname);
-        }
-    }
+    if (lrlname) // free before assigning new one
+        free(lrlname);
+
+    lrlname = realpath(newlrlname, NULL);
+
+    /* lrl file is always known as "lrl" */
+    if (lrlname)
+        addresource("lrl", lrlname);
 }
 
 /* Gets the path of the child file (usually a .lrl or .csc2 relative to a
@@ -110,24 +111,14 @@ char *getdbrelpath(const char *relpath)
 
 void addresource(const char *name, const char *filepath)
 {
-    char *relpath;
-    struct resource *res;
-    int namelen, pathlen;
-    const char *nameptr;
-
-    relpath = getdbrelpath(filepath);
-    pathlen = strlen(relpath) + 1;
-
     if (!name)
         name = filepath;
 
-    namelen = strlen(name) + 1;
-    nameptr = name;
-
+    struct resource *res;
     /* look for this name and remove it if it is already present */
     LISTC_FOR_EACH(&list, res, link)
     {
-        if (strcmp(res->name, nameptr) == 0) {
+        if (strcmp(res->name, name) == 0) {
             logmsg(LOGMSG_INFO, "removing resource %s -> %s\n", res->name, res->filepath);
             listc_rfl(&list, res);
             free(res);
@@ -135,6 +126,9 @@ void addresource(const char *name, const char *filepath)
         }
     }
 
+    int namelen = strlen(name) + 1;
+    char *relpath = getdbrelpath(filepath);
+    int pathlen = strlen(relpath) + 1;
     res = malloc(sizeof(struct resource) + namelen + pathlen);
 
     bzero(res, sizeof(struct resource));

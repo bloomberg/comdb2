@@ -70,7 +70,6 @@
 #include "eventlog.h"
 #include "reqlog_int.h"
 
-
 /*
 ** ugh - constants are variable
 ** comdb2 assumption #define MAXNODES 32768
@@ -93,6 +92,7 @@ static pthread_mutex_t rules_mutex;
 static LISTC_T(struct logrule) rules;
 static LISTC_T(struct output) outputs;
 
+static int reqlog_init_off = 0;
 static int long_request_count = 0;
 static int last_long_request_epoch = 0;
 static int longest_long_request_ms = 0;
@@ -100,7 +100,7 @@ static int shortest_long_request_ms = -1;
 
 static struct output *default_out;
 
-static int diffstat_thresh = 60;  /* every minute */
+int diffstat_thresh = 60; /* every minute */
 static struct output *stat_request_out = NULL;
 
 /* These global lockless variables define what we will log for all requests
@@ -112,7 +112,7 @@ static struct list master_opcode_inv_list = {0};
 static int master_table_rules = 0;
 static char master_stmts[NUMSTMTS][MAXSTMT + 1];
 static int master_num_stmts = 0;
-static int reqltruncate = 1;
+int reqltruncate = 1;
 
 /* sometimes you have to debug the debugger */
 static int verbose = 0;
@@ -214,7 +214,7 @@ static void flushdump(struct reqlogger *logger, struct output *out)
         if (append_duration) {
             iov[niov].iov_base = durstr;
             iov[niov].iov_len = snprintf(durstr, sizeof(durstr), " TIME +%d",
-                                         time_epochms() - logger->startms);
+                                         U2M(time_epochus() - logger->startus));
             niov++;
         }
         iov[niov].iov_base = "\n";
@@ -222,7 +222,8 @@ static void flushdump(struct reqlogger *logger, struct output *out)
         niov++;
         if (out == default_out) {
             for (int i = 0; i < niov; i++)
-                logmsg(LOGMSG_INFO, iov[i].iov_base);
+                logmsg(LOGMSG_USER, "%.*s", (int)iov[i].iov_len,
+                       (char *)iov[i].iov_base);
         } else {
             int dum = writev(out->fd, iov, niov);
         }
@@ -279,8 +280,7 @@ static void dumpf(struct reqlogger *logger, struct output *out, const char *fmt,
     dump(logger, out, (buf_slow) ? buf_slow : buf,
          len); /* don't dump the terminating \0 */
 
-    if (buf_slow)
-        free(buf_slow);
+    if (buf_slow) free(buf_slow);
 }
 
 static void init_range(struct range *range)
@@ -366,8 +366,8 @@ static struct output *get_output_ll(const char *filename)
     }
     fd = open(filename, O_WRONLY | O_APPEND | O_CREAT, 0666);
     if (fd == -1) {
-        logmsg(LOGMSG_ERROR, "error opening '%s' for logging: %d %s\n", filename,
-                errno, strerror(errno));
+        logmsg(LOGMSG_ERROR, "error opening '%s' for logging: %d %s\n",
+               filename, errno, strerror(errno));
         default_out->refcount++;
         return default_out;
     }
@@ -468,11 +468,11 @@ static void printrule(struct logrule *rule, FILE *fh, const char *p)
     char b[32];
     int rc, opcode;
     logmsgf(LOGMSG_USER, fh, "%sRULE '%s'", p, rule->name);
-    if (!rule->active)
-        logmsgf(LOGMSG_USER, fh, " (INACTIVE)");
+    if (!rule->active) logmsgf(LOGMSG_USER, fh, " (INACTIVE)");
     logmsgf(LOGMSG_USER, fh, "\n");
     if (rule->count)
-        logmsgf(LOGMSG_USER, fh, "%s  Log next %d requests where:\n", p, rule->count);
+        logmsgf(LOGMSG_USER, fh, "%s  Log next %d requests where:\n", p,
+                rule->count);
     else
         logmsgf(LOGMSG_USER, fh, "%s  Log all requests where:\n", p);
     if (rule->duration.from >= 0 || rule->duration.to >= 0)
@@ -501,10 +501,12 @@ static void printrule(struct logrule *rule, FILE *fh, const char *p)
         logmsgf(LOGMSG_USER, fh, "\n");
     }
     if (rule->tablename[0]) {
-        logmsgf(LOGMSG_USER, fh, "%s    touches table '%s'\n", p, rule->tablename);
+        logmsgf(LOGMSG_USER, fh, "%s    touches table '%s'\n", p,
+                rule->tablename);
     }
     if (rule->stmt[0]) {
-        logmsgf(LOGMSG_USER, fh, "%s    sql statement like '%%%s%%'\n", p, rule->stmt);
+        logmsgf(LOGMSG_USER, fh, "%s    sql statement like '%%%s%%'\n", p,
+                rule->stmt);
     }
     if (rule->event_mask & REQL_TRACE)
         logmsgf(LOGMSG_USER, fh, "%s  Logging detailed trace\n", p);
@@ -573,9 +575,12 @@ static void scanrules_ll(void)
     master_table_rules = table_rules;
     master_all_requests = log_all_reqs;
     if (verbose) {
-        logmsg(LOGMSG_USER, "%s: master_event_mask=0x%x\n", __func__, master_event_mask);
-        logmsg(LOGMSG_USER, "%s: master_table_rules=%d\n", __func__, master_table_rules);
-        logmsg(LOGMSG_USER, "%s: master_all_requests=%d\n", __func__, master_all_requests);
+        logmsg(LOGMSG_USER, "%s: master_event_mask=0x%x\n", __func__,
+               master_event_mask);
+        logmsg(LOGMSG_USER, "%s: master_table_rules=%d\n", __func__,
+               master_table_rules);
+        logmsg(LOGMSG_USER, "%s: master_all_requests=%d\n", __func__,
+               master_all_requests);
         logmsg(LOGMSG_USER, "%s: master_opcode_inv_list: ", __func__);
         printlist(stdout, &master_opcode_inv_list, NULL);
         logmsg(LOGMSG_USER, "\n");
@@ -583,7 +588,8 @@ static void scanrules_ll(void)
         printlist(stdout, &master_opcode_list, NULL);
         logmsg(LOGMSG_USER, "\n");
         for (ii = 0; ii < master_num_stmts; ii++) {
-           logmsg(LOGMSG_USER, "master_stmts[%d] = '%s'\n", ii, master_stmts[ii]);
+            logmsg(LOGMSG_USER, "master_stmts[%d] = '%s'\n", ii,
+                   master_stmts[ii]);
         }
     }
 }
@@ -618,7 +624,7 @@ int reqlog_init(const char *dbname)
     stat_request_out = get_output_ll(filename);
     free(filename);
 
-    eventlog_init(dbname);
+    eventlog_init();
 
     scanrules_ll();
     return 0;
@@ -626,13 +632,24 @@ int reqlog_init(const char *dbname)
 
 static const char *help_text[] = {
     "Request logging framework commands",
+    "reql off                     - request logging turn off for performance",
     "reql longrequest #           - set long request threshold in msec",
     "reql longsqlrequest #        - set long SQL request threshold in msec",
-    "reql logallsql [on|off]      - log every sql request",
     "reql longreqfile <filename>  - set file to log long requests in",
     "reql diffstat #              - set diff stat threshold in sec",
     "reql truncate #              - set request truncation",
-    "reql stat               - status, print rules",
+    "reql stat                    - status, print rules",
+    "reql events                  - event logging",
+    "   Subcommands for events: ",
+    "       on               - turn on event logging",
+    "       off              - turn off event logging",
+    "       roll             - roll over log file",
+    "       keep N           - keep N log files",
+    "       detailed on/off  - turn on/off detailed mode (ex. sql bound param)",
+    "       rollat N         - roll when log file size larger than N bytes",
+    "       every N          - log only every Nth event, 0 logs all",
+    "       verbose on/off   - turn on/off verbose mode",
+    "       flush            - flush log file to disk",
     "reql [rulename] ...     - add/modify rules.  The default rule is '0'.",
     "                          Valid rule names begin with a digit or '.'.",
     "   General commands:", "       delete           - delete named rule",
@@ -706,8 +723,7 @@ static int parse_dblrange_tok(struct dblrange *dblrange, char *tok, int ltok)
     int rc;
 
     rc = parse_range_tok(&range, tok, ltok);
-    if (rc)
-        return rc;
+    if (rc) return rc;
     dblrange->from = range.from;
     dblrange->to = range.to;
     return 0;
@@ -773,10 +789,14 @@ void reqlog_process_message(char *line, int st, int lline)
     char *tok;
     int ltok;
     tok = segtok(line, lline, &st, &ltok);
-    if (tokcmp(tok, ltok, "longrequest") == 0) {
+    if (tokcmp(tok, ltok, "off") == 0) {
+        logmsg(LOGMSG_USER, "Turn off Request logging\n");
+        reqlog_init_off = 1;
+    } else if (tokcmp(tok, ltok, "longrequest") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         long_request_ms = toknum(tok, ltok);
-        logmsg(LOGMSG_USER, "Long request threshold now %d msec\n", long_request_ms);
+        logmsg(LOGMSG_USER, "Long request threshold now %d msec\n",
+               long_request_ms);
     } else if (tokcmp(tok, ltok, "longsqlrequest") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         gbl_sql_time_threshold = toknum(tok, ltok);
@@ -817,7 +837,7 @@ void reqlog_process_message(char *line, int st, int lline)
     } else if (ltok == 0) {
         logmsg(LOGMSG_ERROR, "huh?\n");
     } else if (tokcmp(tok, ltok, "events") == 0) {
-                eventlog_process_message(line, lline, &st);
+        eventlog_process_message(line, lline, &st);
     } else {
         char rulename[32];
         struct logrule *rule;
@@ -929,8 +949,8 @@ void reqlog_process_message(char *line, int st, int lline)
             } else if (tokcmp(tok, ltok, "results") == 0) {
                 rule->event_mask |= REQL_RESULTS;
             } else {
-                logmsg(LOGMSG_ERROR, "unknown rule command <%*.*s>\n", ltok, ltok,
-                        tok);
+                logmsg(LOGMSG_ERROR, "unknown rule command <%*.*s>\n", ltok,
+                       ltok, tok);
             }
             tok = segtok(line, lline, &st, &ltok);
         }
@@ -948,9 +968,11 @@ void reqlog_stat(void)
     struct output *out;
     logmsg(LOGMSG_USER, "Long request threshold : %d msec (%dmsec  for SQL)\n",
            long_request_ms, gbl_sql_time_threshold);
-    logmsg(LOGMSG_USER, "Long request log file  : %s\n", long_request_out->filename);
+    logmsg(LOGMSG_USER, "Long request log file  : %s\n",
+           long_request_out->filename);
     logmsg(LOGMSG_USER, "diffstat threshold     : %d s\n", diffstat_thresh);
-    logmsg(LOGMSG_USER, "diffstat log file      : %s\n", stat_request_out->filename);
+    logmsg(LOGMSG_USER, "diffstat log file      : %s\n",
+           stat_request_out->filename);
     logmsg(LOGMSG_USER, "request truncation     : %s\n",
            reqltruncate ? "enabled" : "disabled");
     logmsg(LOGMSG_USER, "SQL cost thresholds    :\n");
@@ -961,10 +983,15 @@ void reqlog_stat(void)
         logmsg(LOGMSG_USER, "%f\n", gbl_sql_cost_error_threshold);
     pthread_mutex_lock(&rules_mutex);
     logmsg(LOGMSG_USER, "%d rules currently active\n", rules.count);
-    LISTC_FOR_EACH(&rules, rule, linkv) { printrule(rule, stdout, ""); }
-    LISTC_FOR_EACH(&outputs, out, linkv) {
+    LISTC_FOR_EACH(&rules, rule, linkv)
+    {
+        printrule(rule, stdout, "");
+    }
+    LISTC_FOR_EACH(&outputs, out, linkv)
+    {
         logmsg(LOGMSG_USER, "Output file open: %s\n", out->filename);
     }
+    eventlog_status();
     pthread_mutex_unlock(&rules_mutex);
 }
 
@@ -986,21 +1013,30 @@ static void reqlog_free_all(struct reqlogger *logger)
     struct print_event *pevent;
     struct tablelist *table;
 
-    if (logger->stmt) free(logger->stmt);
+    if (logger->error) {
+        free(logger->error);
+        logger->error = NULL;
+    }
+    if (logger->stmt) {
+        free(logger->stmt);
+        logger->stmt = NULL;
+    }
 
-    while (event = logger->events) {
+    while ((event = logger->events) != NULL) {
         logger->events = event->next;
         if (event->type == EVENT_PRINT) {
-            pevent = (struct print_event*)event;
+            pevent = (struct print_event *)event;
             free(pevent->text);
         }
         free(event);
     }
+    assert(logger->events == NULL);
 
-    while (table = logger->tables) {
+    while ((table = logger->tables) != NULL) {
         logger->tables = table->next;
         free(table);
     }
+    assert(logger->tables == NULL);
 }
 
 void reqlog_free(struct reqlogger *logger)
@@ -1044,8 +1080,7 @@ int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
     int nchars;
     va_list args_c;
 
-    if (logger == NULL)
-        return 0;
+    if (logger == NULL) return 0;
 
     len = 256;
     s = malloc(len);
@@ -1058,14 +1093,16 @@ int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
     nchars = vsnprintf(s, len, fmt, args);
     if (nchars >= len && reqltruncate == 0) {
         len = nchars + 1;
-        s = realloc(s, len);
-        if (!s) {
+        char *news = realloc(s, len);
+        if (!news) {
             fprintf(stderr, "%s:realloc(%d) failed\n", __func__, len);
+            free(s);
             return -1;
         }
+        s = news;
         len = vsnprintf(s, len, fmt, args_c);
     } else {
-        len = nchars;
+        len = strlen(s);
     }
     va_end(args_c);
 
@@ -1080,6 +1117,7 @@ int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
         event = malloc(sizeof(struct push_prefix_event));
         if (!event) {
             logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
+            free(s);
             return -1;
         }
         event->length = len;
@@ -1153,8 +1191,7 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
     int nchars;
     va_list args_c;
 
-    if (logger == NULL)
-        return 0;
+    if (logger == NULL) return 0;
 
     len = 256;
     s = malloc(len);
@@ -1167,14 +1204,17 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
     nchars = vsnprintf(s, len, fmt, args);
     if (nchars >= len && reqltruncate == 0) {
         len = nchars + 1;
-        s = realloc(s, len);
-        if (!s) {
+        char *news = realloc(s, len);
+        if (!news) {
             logmsg(LOGMSG_ERROR, "%s:realloc(%d) failed\n", __func__, len);
+            va_end(args_c);
+            free(s);
             return -1;
         }
+        s = news;
         len = vsnprintf(s, len, fmt, args_c);
     } else {
-        len = nchars;
+        len = strlen(s);
     }
     va_end(args_c);
 
@@ -1188,6 +1228,7 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
         event = malloc(sizeof(struct print_event));
         if (!event) {
             logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
+            free(s);
             return -1;
         }
         event->event_flag = event_flag;
@@ -1227,16 +1268,24 @@ int reqlog_logf(struct reqlogger *logger, unsigned event_flag, const char *fmt,
     return 0;
 }
 
-/* Log a string literal. Wrapper for logf */
+/* Log a string literal. */
 int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s)
 {
     if (logger && (logger->mask & event_flag)) {
-        if ((logger->dump_mask & event_flag) &&
-            ((logger->event_mask & event_flag) == 0)) {
-            /* Just dump, don't bother allocating */
-	  logmsg(LOGMSG_ERROR, NULL, s, strlen(s));
-        } else if (logger->event_mask & event_flag) {
-            reqlog_logf(logger, event_flag, s);
+        if (logger->event_mask & event_flag) {
+            struct print_event *event;
+            event = malloc(sizeof(struct print_event));
+            if (!event) {
+                logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
+                return -1;
+            }
+            event->event_flag = event_flag;
+            event->length = -1; /* to indicate length is unknown */
+            event->text = strdup(s);
+            reqlog_append_event(logger, EVENT_PRINT, event);
+        }
+        if (logger->dump_mask & event_flag) {
+            dump(logger, NULL, s, strlen(s));
         }
     }
     return 0;
@@ -1248,12 +1297,9 @@ int reqlog_loghex(struct reqlogger *logger, unsigned event_flag, const void *d,
     if (logger && (logger->mask & event_flag)) {
         struct print_event *event;
         char *hexstr;
-        char *hexpos;
-        const unsigned char *dptr = d;
-        size_t ii;
-        static const char *hexchars = "0123456789abcdef";
+        const char *dptr = d;
 
-        hexstr = malloc(len * 2);
+        hexstr = malloc(len * 2 + 1);
         if (!hexstr) {
             logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
             return -1;
@@ -1272,16 +1318,9 @@ int reqlog_loghex(struct reqlogger *logger, unsigned event_flag, const void *d,
             reqlog_append_event(logger, EVENT_PRINT, event);
         }
 
-        hexpos = hexstr;
-        for (ii = 0; ii < len; ii++) {
-            *hexpos = hexchars[((*dptr) >> 4) & 0xf];
-            hexpos++;
-            *hexpos = hexchars[(*dptr) & 0xf];
-            hexpos++;
-            dptr++;
-        }
-
+        util_tohex(hexstr, dptr, len);
         if (logger->dump_mask & event_flag) {
+            assert(strlen(hexstr) + 1 >= len * 2);
             dump(logger, NULL, hexstr, len * 2);
         }
     }
@@ -1294,7 +1333,7 @@ void reqlog_usetable(struct reqlogger *logger, const char *tablename)
         struct tablelist *table;
         int len;
         if (verbose) {
-           logmsg(LOGMSG_USER, "%s: table %s\n", __func__, tablename);
+            logmsg(LOGMSG_USER, "%s: table %s\n", __func__, tablename);
         }
         for (table = logger->tables; table; table = table->next) {
             if (strcasecmp(table->name, tablename) == 0) {
@@ -1339,8 +1378,9 @@ static void reqlog_start_request(struct reqlogger *logger)
         logger->dump_mask = REQL_TRACE;
     }
 
-    /* always gather info */
-    logger->event_mask |= REQL_INFO;
+    /* always gather info if global not set */
+    if (!reqlog_init_off)
+        logger->event_mask |= REQL_INFO;
 
     /* try to filter out this request based on opcode */
     gather = 0;
@@ -1377,8 +1417,8 @@ static void reqlog_start_request(struct reqlogger *logger)
     logger->in_request = 1;
 
     if (verbose) {
-       logmsg(LOGMSG_USER, "gather=%d opcode=%d mask=0x%x\n", gather, logger->opcode,
-               logger->mask);
+        logmsg(LOGMSG_USER, "gather=%d opcode=%d mask=0x%x\n", gather,
+               logger->opcode, logger->mask);
     }
 }
 
@@ -1392,9 +1432,7 @@ void reqlog_new_request(struct ireq *iq)
         return;
     }
 
-    reqlog_reset_logger(logger);
-    logger->startms = iq->nowms;
-    logger->startus = time_epochus();
+    logger->startus = iq->nowus;
     logger->iq = iq;
     logger->opcode = iq->opcode;
     if (iq->is_fromsocket) {
@@ -1405,140 +1443,28 @@ void reqlog_new_request(struct ireq *iq)
     reqlog_start_request(logger);
 }
 
-void reqlog_dump_tags(struct reqlogger *logger, char *tags, void *tagbuf,
-                      int bufsz, void *nullbits, int numbits)
-{
-
-    /* don't do the work if we're not going to log this */
-    if (!(logger && logger->mask & REQL_INFO))
-        return;
-
-    struct schema *s;
-    s = new_dynamic_schema(NULL, tags, strlen(tags), 0);
-    /* can't decode? */
-    if (s == NULL)
-        return;
-
-    for (int fldnum = 0; fldnum < s->nmembers; fldnum++) {
-        struct field *f;
-        f = &s->member[fldnum];
-
-        if (btst(nullbits, fldnum)) {
-            reqlog_logf(logger, REQL_INFO, " %s null", f->name);
-        } else {
-            if (f->offset + f->len > bufsz)
-                continue;
-
-            switch (f->type) {
-            case CLIENT_INT: {
-                long long ival;
-                if (f->len != 8)
-                    continue;
-                buf_get(&ival, 8, (uint8_t *)tagbuf + f->offset,
-                        (uint8_t *)tagbuf + f->offset + f->len);
-                reqlog_logf(logger, REQL_INFO, " %s int %lld", f->name, ival);
-                break;
-            }
-            case CLIENT_REAL: {
-                double dval;
-                if (f->len != 8)
-                    continue;
-                buf_get(&dval, 8, (uint8_t *)tagbuf + f->offset,
-                        (uint8_t *)tagbuf + f->offset + f->len);
-                reqlog_logf(logger, REQL_INFO, " %s real %f", f->name, dval);
-                break;
-            }
-            case CLIENT_DATETIME: {
-                /* TODO */
-                struct cdb2_client_datetime dt;
-                if (f->len != sizeof(struct cdb2_client_datetime))
-                    continue;
-                memcpy(&dt, (uint8_t *)tagbuf + f->offset, f->len);
-                dt.msec = ntohl(dt.msec);
-                dt.tm.tm_sec = ntohl(dt.tm.tm_sec);
-                dt.tm.tm_min = ntohl(dt.tm.tm_min);
-                dt.tm.tm_hour = ntohl(dt.tm.tm_hour);
-                dt.tm.tm_mday = ntohl(dt.tm.tm_mday);
-                dt.tm.tm_mon = ntohl(dt.tm.tm_mon);
-                dt.tm.tm_year = ntohl(dt.tm.tm_year);
-                dt.tm.tm_wday = ntohl(dt.tm.tm_wday);
-                dt.tm.tm_yday = ntohl(dt.tm.tm_yday);
-                dt.tm.tm_isdst = ntohl(dt.tm.tm_isdst);
-                reqlog_logf(logger, REQL_INFO,
-                            " datetime %02d/%02d/%d %02d:%02d:%02d.%03d %s",
-                            dt.tm.tm_mon + 1, dt.tm.tm_mday,
-                            1900 + dt.tm.tm_year, dt.tm.tm_hour, dt.tm.tm_min,
-                            dt.tm.tm_sec, dt.msec, dt.tzname);
-                break;
-            }
-            case CLIENT_DATETIMEUS: {
-                /* TODO */
-                struct cdb2_client_datetimeus dt;
-                if (f->len != sizeof(struct cdb2_client_datetimeus))
-                    continue;
-                memcpy(&dt, (uint8_t *)tagbuf + f->offset, f->len);
-                dt.usec = ntohl(dt.usec);
-                dt.tm.tm_sec = ntohl(dt.tm.tm_sec);
-                dt.tm.tm_min = ntohl(dt.tm.tm_min);
-                dt.tm.tm_hour = ntohl(dt.tm.tm_hour);
-                dt.tm.tm_mday = ntohl(dt.tm.tm_mday);
-                dt.tm.tm_mon = ntohl(dt.tm.tm_mon);
-                dt.tm.tm_year = ntohl(dt.tm.tm_year);
-                dt.tm.tm_wday = ntohl(dt.tm.tm_wday);
-                dt.tm.tm_yday = ntohl(dt.tm.tm_yday);
-                dt.tm.tm_isdst = ntohl(dt.tm.tm_isdst);
-                reqlog_logf(logger, REQL_INFO,
-                            " datetimeus %02d/%02d/%d %02d:%02d:%02d.%06d %s",
-                            dt.tm.tm_mon + 1, dt.tm.tm_mday,
-                            1900 + dt.tm.tm_year, dt.tm.tm_hour, dt.tm.tm_min,
-                            dt.tm.tm_sec, dt.usec, dt.tzname);
-                break;
-            }
-            case CLIENT_CSTR: {
-                reqlog_logf(logger, REQL_INFO, " %s text \"%.*s\"", f->name,
-                            f->len, (uint8_t *)tagbuf + f->offset);
-                break;
-            }
-            case CLIENT_BLOB:
-            case CLIENT_BYTEARRAY: {
-                uint8_t *b = (uint8_t *)tagbuf + f->offset;
-                reqlog_logf(logger, REQL_INFO, " %s blob ", f->name);
-                reqlog_loghex(logger, REQL_INFO, b, f->len);
-                break;
-            }
-            }
-        }
-        reqlog_logf(logger, REQL_INFO, "\n");
-    }
-    free_tag_schema(s);
-}
-
-void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt)
+void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt)
 {
     if (sqlstmt) {
         if (logger->stmt) free(logger->stmt);
         logger->stmt = strdup(sqlstmt);
     }
-    if (logger->stmt)
-        reqlog_logf(logger, REQL_INFO, "sql=%s", logger->stmt);
+    if (logger->stmt) reqlog_logf(logger, REQL_INFO, "sql=%s", logger->stmt);
 }
 
-void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt,
-                            char *tags, void *tagbuf, int tagbufsz,
-                            void *nullbits, int numbits)
+void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
 {
     if (!logger) {
         return;
     }
-    reqlog_reset_logger(logger);
     logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
-    logger->startms = time_epochms();
     logger->startus = time_epochus();
     reqlog_start_request(logger);
 
     logger->nsqlreqs = ATOMIC_LOAD(gbl_nnewsql);
-    reqlog_set_sql(logger, sqlstmt);
+    if (sqlstmt)
+        reqlog_set_sql(logger, sqlstmt);
 }
 
 void reqlog_diffstat_init(struct reqlogger *logger)
@@ -1550,8 +1476,10 @@ void reqlog_diffstat_init(struct reqlogger *logger)
     reqlog_reset_logger(logger);
     logger->request_type = "stat dump";
     logger->opcode = OP_DEBUG;
-    logger->mask = REQL_INFO;
-    logger->event_mask = REQL_INFO;
+    if (!reqlog_init_off) {
+        logger->mask = REQL_INFO;
+        logger->event_mask = REQL_INFO;
+    }
 }
 
 /* Get the origin string for the request */
@@ -1603,10 +1531,10 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
     struct reqlog_print_callback_args args;
 
     if (out == long_request_out) {
-        dumpf(logger, out, "LONG REQUEST %d msec ", logger->durationms);
+        dumpf(logger, out, "LONG REQUEST %d msec ", U2M(logger->durationus));
     } else {
         dumpf(logger, out, "%s %d msec ", logger->request_type,
-              logger->durationms);
+              U2M(logger->durationus));
     }
     dumpf(logger, out, "from %s rc %d\n", reqorigin(logger), logger->rc);
 
@@ -1632,8 +1560,7 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
     if (out == long_request_out &&
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SHOW_COST_IN_LONGREQ)) {
         struct client_query_stats *qstats = get_query_stats_from_thd();
-        if (qstats)
-            print_client_query_stats(logger, qstats, out);
+        if (qstats) print_client_query_stats(logger, qstats, out);
     }
     log_all_events(logger, out);
 }
@@ -1669,6 +1596,7 @@ static void log_all_events(struct reqlogger *logger, struct output *out)
                 } else {
                     dump(logger, out, ", ", 2);
                 }
+                assert(strlen(pevent->text) + 1 >= pevent->length);
                 dump(logger, out, pevent->text, pevent->length);
             }
         }
@@ -1676,8 +1604,8 @@ static void log_all_events(struct reqlogger *logger, struct output *out)
     flushdump(logger, out);
 }
 
-static void log(struct reqlogger *logger, struct output *out,
-                unsigned event_mask)
+static void log_rule(struct reqlogger *logger, struct output *out,
+                     unsigned event_mask)
 {
     struct logevent *event;
 
@@ -1701,13 +1629,9 @@ static void log(struct reqlogger *logger, struct output *out,
             prefix_push(&logger->prefix, pushevent->text, pushevent->length);
             break;
 
-        case EVENT_POP_PREFIX:
-            prefix_pop(&logger->prefix);
-            break;
+        case EVENT_POP_PREFIX: prefix_pop(&logger->prefix); break;
 
-        case EVENT_POP_PREFIX_ALL:
-            prefix_pop_all(&logger->prefix);
-            break;
+        case EVENT_POP_PREFIX_ALL: prefix_pop_all(&logger->prefix); break;
 
         case EVENT_PRINT:
             pevent = (struct print_event *)event;
@@ -1715,13 +1639,15 @@ static void log(struct reqlogger *logger, struct output *out,
                 if (pevent->length < 0) {
                     pevent->length = strlen(pevent->text);
                 }
+                assert(strlen(pevent->text) + 1 >= pevent->length);
                 dump(logger, out, pevent->text, pevent->length);
             }
             break;
 
         default:
             pthread_mutex_unlock(&out->mutex);
-            logmsg(LOGMSG_ERROR, "%s: bad event type %d?!\n", __func__, event->type);
+            logmsg(LOGMSG_ERROR, "%s: bad event type %d?!\n", __func__,
+                   event->type);
             return;
         }
     }
@@ -1756,32 +1682,31 @@ static int indblrange(const struct dblrange *range, double value)
 
 void reqlog_set_cost(struct reqlogger *logger, double cost)
 {
-    if (logger)
-        logger->sqlcost = cost;
+    if (logger) logger->sqlcost = cost;
 }
 
 void reqlog_set_rows(struct reqlogger *logger, int rows)
 {
-    if (logger)
-        logger->sqlrows = rows;
+    if (logger) logger->sqlrows = rows;
 }
 
-int reqlog_current_ms(struct reqlogger *logger)
+uint64_t reqlog_current_us(struct reqlogger *logger)
 {
-    return (time_epochms() - logger->startms);
+    return (time_epochus() - logger->startus);
 }
 
-void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen) {
+void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen)
+{
     if (idlen == sizeof(uuid_t))
         comdb2uuidstr(id, logger->id);
     else
-        sprintf(logger->id, "%llx", *(unsigned long long*) id);
+        sprintf(logger->id, "%llx", *(unsigned long long *)id);
     logger->have_id = 1;
 }
 
-
 /* End of a request. */
-void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, int line)
+void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
+                        int line)
 {
     struct logruleuse {
         struct logruleuse *next;
@@ -1797,9 +1722,10 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
 
     int long_request_thresh;
 
-    if (!logger || !logger->in_request) {
+    if (!logger)
         return;
-    }
+    if (!logger->in_request)
+        goto out;
 
     if (logger->sqlrows > 0) {
         reqlog_logf(logger, REQL_INFO, "rowcount=%d", logger->sqlrows);
@@ -1810,8 +1736,14 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
     if (logger->vreplays) {
         reqlog_logf(logger, REQL_INFO, "verify replays=%d", logger->vreplays);
     }
-    if (logger->fingerprint) {
-        reqlog_logf(logger, REQL_INFO, "fingerprint=%x", logger->fingerprint);
+
+    /* If fingerprinting is enabled and the logger has a fingerprint,
+       log the fingerprint as well. */
+    if (gbl_fingerprint_queries && logger->have_fingerprint) {
+        char hexfp[FINGERPRINTSZ << 1];
+        if (reqlog_fingerprint_to_hex(logger, hexfp, FINGERPRINTSZ << 1) > 0)
+            reqlog_logf(logger, REQL_INFO, "fingerprint=%.*s",
+                        FINGERPRINTSZ << 1, hexfp);
     }
 
     logger->in_request = 0;
@@ -1820,8 +1752,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
 
     logger->rc = rc;
 
-    logger->durationms =
-        (time_epochms() - logger->startms) + logger->queuetimems;
+    logger->durationus =
+        (time_epochus() - logger->startus) + logger->queuetimeus;
 
     eventlog_add(logger);
 
@@ -1841,7 +1773,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
                 }
             }
 
-            if (!inrange(&rule->duration, logger->durationms)) {
+            if (!inrange(&rule->duration, U2M(logger->durationus))) {
                 continue;
             }
 
@@ -1883,8 +1815,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
             }
 
             if (verbose) {
-               logmsg(LOGMSG_USER, "matched rule %s event_mask 0x%x\n", rule->name,
-                       rule->event_mask);
+                logmsg(LOGMSG_USER, "matched rule %s event_mask 0x%x\n",
+                       rule->name, rule->event_mask);
             }
 
             /* all conditions met (or no conditions); log this request
@@ -1912,7 +1844,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
                 rule->count--;
                 if (rule->count == 0) {
                     /* discard this rule */
-                    logmsg(LOGMSG_USER, "Discarding logging rule '%s'\n", rule->name);
+                    logmsg(LOGMSG_USER, "Discarding logging rule '%s'\n",
+                           rule->name);
                     del_rule_ll(rule);
                 }
             }
@@ -1922,10 +1855,10 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
                 logmsg(LOGMSG_USER, "print to %s with event_mask 0x%x\n",
                        use_rule->out->filename, use_rule->event_mask);
             }
-            log(logger, use_rule->out, use_rule->event_mask);
+            log_rule(logger, use_rule->out, use_rule->event_mask);
             deref_output_ll(use_rule->out);
         }
-        while (use_rule = use_rules) {
+        while ((use_rule = use_rules) != NULL) {
             use_rules = use_rule->next;
             free(use_rule);
         }
@@ -1936,7 +1869,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
     /* check for bad cstrings */
     if (logger->reqflags & REQL_BAD_CSTR_FLAG) {
         logmsg(LOGMSG_WARN, "WARNING: THIS DATABASE IS RECEIVING NON NUL "
-                        "TERMINATED CSTRINGS\n");
+                            "TERMINATED CSTRINGS\n");
         log_header(logger, default_out, 0);
     }
 
@@ -1947,17 +1880,17 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
         long_request_thresh = long_request_ms;
     }
 
-    if (logger->durationms >= long_request_thresh) {
+    if (logger->durationus >= M2U(long_request_thresh)) {
 
         log_header(logger, long_request_out, 1);
         long_reqs++;
 
-        if (logger->durationms > longest_long_request_ms) {
-            longest_long_request_ms = logger->durationms;
+        if (logger->durationus > M2U(longest_long_request_ms)) {
+            longest_long_request_ms = U2M(logger->durationus);
         }
         if (shortest_long_request_ms == -1 ||
-            logger->durationms < shortest_long_request_ms) {
-            shortest_long_request_ms = logger->durationms;
+            logger->durationus < M2U(shortest_long_request_ms)) {
+            shortest_long_request_ms = U2M(logger->durationus);
         }
         long_request_count++;
         if (last_long_request_epoch != time_epoch()) {
@@ -1973,29 +1906,30 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
                 }
                 if (sqlinfo) {
                     if (long_request_count == 1) {
-                        logmsg(LOGMSG_USER, 
-                                "LONG REQUEST %d MS logged in %s [%s]\n",
-                                logger->durationms, long_request_out->filename,
-                                sqlinfo);
+                        logmsg(LOGMSG_USER,
+                               "LONG REQUEST %d MS logged in %s [%s]\n",
+                               U2M(logger->durationus),
+                               long_request_out->filename, sqlinfo);
                     } else {
-                        logmsg(LOGMSG_USER, 
-                                        "%d LONG REQUESTS %d MS - %d MS logged "
-                                        "in %s [last %s]\n",
-                                long_request_count, shortest_long_request_ms,
-                                longest_long_request_ms,
-                                long_request_out->filename, sqlinfo);
+                        logmsg(LOGMSG_USER,
+                               "%d LONG REQUESTS %d MS - %d MS logged "
+                               "in %s [last %s]\n",
+                               long_request_count, shortest_long_request_ms,
+                               longest_long_request_ms,
+                               long_request_out->filename, sqlinfo);
                     }
                     free(sqlinfo);
                 } else {
                     if (long_request_count == 1) {
                         logmsg(LOGMSG_USER, "LONG REQUEST %d MS logged in %s\n",
-                                logger->durationms, long_request_out->filename);
+                               U2M(logger->durationus),
+                               long_request_out->filename);
                     } else {
-                        logmsg(LOGMSG_USER, 
-                                "%d LONG REQUESTS %d MS - %d MS logged in %s\n",
-                                long_request_count, shortest_long_request_ms,
-                                longest_long_request_ms,
-                                long_request_out->filename);
+                        logmsg(LOGMSG_USER,
+                               "%d LONG REQUESTS %d MS - %d MS logged in %s\n",
+                               long_request_count, shortest_long_request_ms,
+                               longest_long_request_ms,
+                               long_request_out->filename);
                     }
                 }
             }
@@ -2008,16 +1942,16 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
     }
 
     if (logger->iq && logger->iq->blocksql_tran) {
-        if (gbl_time_osql)
-            osql_bplog_time_done(logger->iq);
+        if (gbl_time_osql) osql_bplog_time_done(logger->iq);
 
         osql_bplog_free(logger->iq, 1, __func__, callfunc, line);
     }
-    logger->tags = NULL;
-    logger->tagbuf = NULL;
-    logger->nullbits = NULL;
-    logger->have_id = 0;
-    logger->have_fingerprint = 0;
+out:
+    reqlog_reset_logger(logger); //will reset which bzeros much of logger
+    assert(logger->have_id == 0);
+    assert(logger->have_fingerprint == 0);
+    assert(logger->error_code == 0);
+    assert(logger->path == 0);
 }
 
 /* this is meant to be called by only 1 thread, will need locking if
@@ -2031,7 +1965,10 @@ void reqlog_diffstat_dump(struct reqlogger *logger)
     reqlog_diffstat_init(logger);
 }
 
-int reqlog_diffstat_thresh() { return diffstat_thresh; }
+int reqlog_diffstat_thresh()
+{
+    return diffstat_thresh;
+}
 
 void reqlog_set_diffstat_thresh(int val)
 {
@@ -2042,7 +1979,10 @@ void reqlog_set_diffstat_thresh(int val)
     }
 }
 
-int reqlog_truncate() { return reqltruncate; }
+int reqlog_truncate()
+{
+    return reqltruncate;
+}
 
 void reqlog_set_truncate(int val)
 {
@@ -2083,8 +2023,7 @@ void process_nodestats(void)
     int span_ms;
     struct nodestats *nodestats;
 
-    if (last_time_ms == 0)
-        last_time_ms = time_epochms();
+    if (last_time_ms == 0) last_time_ms = time_epochms();
     span_ms = time_epochms() - last_time_ms;
     last_time_ms = time_epochms();
 
@@ -2099,8 +2038,7 @@ void process_nodestats(void)
             unsigned *bucketptr;
             struct rawnodestats *rawnodestats;
 
-            if (!nodestats)
-                continue;
+            if (!nodestats) continue;
 
             nowptr = (unsigned *)&nodestats->rawtotals;
             prevptr = (unsigned *)&nodestats->prevtotals;
@@ -2118,8 +2056,7 @@ void process_nodestats(void)
             }
 
             next_bucket = nodestats->cur_bucket + 1;
-            if (next_bucket >= NUM_BUCKETS)
-                next_bucket = 0;
+            if (next_bucket >= NUM_BUCKETS) next_bucket = 0;
             nodestats->cur_bucket = next_bucket;
         }
     }
@@ -2151,8 +2088,7 @@ static void snap_nodestats_ll(char *host, struct rawnodestats *snap,
             }
         }
 
-        if (timespanms <= 0)
-            timespanms = 1;
+        if (timespanms <= 0) timespanms = 1;
         for (ii = 0; ii < NUM_RAW_NODESTATS; ii++) {
             snapptr[ii] = 0.5 + (NUM_BUCKETS * 1000.00 *
                                  ((double)snapptr[ii] / (double)timespanms));
@@ -2168,22 +2104,25 @@ void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
     struct rawnodestats snap;
     int opcode;
 
-    if (!prefix)
-        prefix = "";
+    if (!prefix) prefix = "";
 
-    LOCK(&nodestats_calc_lk) { snap_nodestats_ll(host, &snap, disp_rates); }
+    LOCK(&nodestats_calc_lk)
+    {
+        snap_nodestats_ll(host, &snap, disp_rates);
+    }
     UNLOCK(&nodestats_calc_lk);
 
-    logmsgf(LOGMSG_USER, fh, "%sRAW STATISTICS FOR NODE %d\n", prefix, host);
-    logmsgf(LOGMSG_USER, fh, "%s--- opcode counts for regular fstsnd requests\n", prefix);
+    logmsgf(LOGMSG_USER, fh, "%sRAW STATISTICS FOR NODE %s\n", prefix, host);
+    logmsgf(LOGMSG_USER, fh,
+            "%s--- opcode counts for regular fstsnd requests\n", prefix);
     for (opcode = 0; opcode < MAXTYPCNT; opcode++) {
         if (snap.opcode_counts[opcode]) {
             logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, req2a(opcode),
                     snap.opcode_counts[opcode]);
         }
     }
-    logmsgf(LOGMSG_USER, fh, "%s--- block operation opcode counts (for transactions)\n",
-            prefix);
+    logmsgf(LOGMSG_USER, fh,
+            "%s--- block operation opcode counts (for transactions)\n", prefix);
     for (opcode = 0; opcode < BLOCK_MAXOPCODE; opcode++) {
         if (snap.blockop_counts[gbl_blockop_count_xrefs[opcode]]) {
             logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, breq2a(opcode),
@@ -2192,11 +2131,14 @@ void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
     }
     logmsgf(LOGMSG_USER, fh, "%s--- SQL statistics\n", prefix);
     if (snap.sql_queries)
-        logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, "queries", snap.sql_queries);
+        logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, "queries",
+                snap.sql_queries);
     if (snap.sql_steps)
-        logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, "steps", snap.sql_steps);
+        logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, "steps",
+                snap.sql_steps);
     if (snap.sql_rows)
-        logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, "rows", snap.sql_rows);
+        logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, "rows",
+                snap.sql_rows);
 }
 
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
@@ -2207,29 +2149,31 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
     struct nodestats *nodestats;
     struct rawnodestats snap;
 
-    if (!prefix)
-        prefix = "";
+    if (!prefix) prefix = "";
 
     if (disp_rates) {
-        logmsgf(LOGMSG_USER, fh, "%sCURRENT REQUEST RATE OVER LAST %d SECONDS\n", prefix,
+        logmsgf(LOGMSG_USER, fh,
+                "%sCURRENT REQUEST RATE OVER LAST %d SECONDS\n", prefix,
                 NUM_BUCKETS);
     } else {
         logmsgf(LOGMSG_USER, fh, "%sTOTAL REQUESTS SUMMARY\n", prefix);
     }
-    logmsgf(LOGMSG_USER, fh, "%snode | regular fstsnds                 |  blockops          "
-                "                                     | sql\n",
+    logmsgf(LOGMSG_USER, fh,
+            "%snode | regular fstsnds                 |  blockops          "
+            "                                     | sql\n",
             prefix);
-    logmsgf(LOGMSG_USER, fh, "%s     |   finds rngexts  writes   other |    adds    upds    "
-                "dels blk/sql   recom snapisl  serial | queries   steps    "
-                "rows\n",
+    logmsgf(LOGMSG_USER, fh,
+            "%s     |   finds rngexts  writes   other |    adds    upds    "
+            "dels blk/sql   recom snapisl  serial | queries   steps    "
+            "rows\n",
             prefix);
 
-    if (max_nodes == 0)
-        return;
+    if (max_nodes == 0) return;
 
     summaries = calloc(max_nodes, sizeof(struct summary_nodestats));
     if (!summaries) {
-        logmsgf(LOGMSG_USER, stderr, "%s: out of memory %u nodes\n", __func__, max_nodes);
+        logmsgf(LOGMSG_USER, stderr, "%s: out of memory %u nodes\n", __func__,
+                max_nodes);
         return;
     }
 
@@ -2250,8 +2194,7 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
 
             for (opcode = 0; opcode < MAXTYPCNT; opcode++) {
                 unsigned n = snap.opcode_counts[opcode];
-                if (!n)
-                    continue;
+                if (!n) continue;
                 switch (opcode) {
                 case OP_FIND:
                 case OP_NEXT:
@@ -2271,9 +2214,7 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
                 case OP_FNDNXTKLESS:
                 case OP_FNDPRVKLESS:
                 case OP_JFNDNXTKLESS:
-                case OP_JFNDPRVKLESS:
-                    summaries[ii].finds += n;
-                    break;
+                case OP_JFNDPRVKLESS: summaries[ii].finds += n; break;
 
                 case OP_STORED:
                 case OP_RNGEXT2:
@@ -2282,64 +2223,46 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
                 case OP_RNGEXTTAGP:
                 case OP_RNGEXTTAGTZ:
                 case OP_RNGEXTTAGPTZ:
-                case OP_NEWRNGEX:
-                    summaries[ii].rngexts += n;
-                    break;
+                case OP_NEWRNGEX: summaries[ii].rngexts += n; break;
 
                 case OP_BLOCK:
                 case OP_FWD_BLOCK:
                 case OP_LONGBLOCK:
                 case OP_FWD_LBLOCK:
                 case OP_CLEARTABLE:
-                case OP_FASTINIT:
-                    summaries[ii].writes += n;
-                    break;
+                case OP_FASTINIT: summaries[ii].writes += n; break;
 
-                default:
-                    summaries[ii].other_fstsnds += n;
-                    break;
+                default: summaries[ii].other_fstsnds += n; break;
                 }
             }
 
             for (opcode = 0; opcode < BLOCK_MAXOPCODE; opcode++) {
                 unsigned n =
                     snap.blockop_counts[gbl_blockop_count_xrefs[opcode]];
-                if (!n)
-                    continue;
+                if (!n) continue;
                 switch (opcode) {
                 case BLOCK2_ADDDTA:
                 case BLOCK2_ADDKL:
                 case BLOCK2_ADDKL_POS:
-                case BLOCK_ADDSL:
-                    summaries[ii].adds += n;
-                    break;
+                case BLOCK_ADDSL: summaries[ii].adds += n; break;
 
                 case BLOCK_UPVRRN:
                 case BLOCK2_UPDATE:
                 case BLOCK2_UPDKL:
-                case BLOCK2_UPDKL_POS:
-                    summaries[ii].upds += n;
-                    break;
+                case BLOCK2_UPDKL_POS: summaries[ii].upds += n; break;
 
                 case BLOCK_DELSEC:
                 case BLOCK_DELNOD:
                 case BLOCK2_DELDTA:
-                case BLOCK2_DELKL:
-                    summaries[ii].dels += n;
-                    break;
+                case BLOCK2_DELKL: summaries[ii].dels += n; break;
 
-                case BLOCK2_SQL:
-                    summaries[ii].bsql += n;
-                    break;
+                case BLOCK2_SQL: summaries[ii].bsql += n; break;
 
-                case BLOCK2_RECOM:
-                    summaries[ii].recom += n;
+                case BLOCK2_RECOM: summaries[ii].recom += n;
 
-                case BLOCK2_SNAPISOL:
-                    summaries[ii].snapisol += n;
+                case BLOCK2_SNAPISOL: summaries[ii].snapisol += n;
 
-                case BLOCK2_SERIAL:
-                    summaries[ii].serial += n;
+                case BLOCK2_SERIAL: summaries[ii].serial += n;
                 }
             }
         }
@@ -2348,8 +2271,9 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
     UNLOCK(&nodestats_calc_lk);
 
     for (ii = 0; ii < max_nodes; ii++) {
-        logmsgf(LOGMSG_USER, fh, "%s%16s | %7u %7u %7u %7u | %7u %7u %7u %7u %7u %7u %7u | "
-                    "%7u %7u %7u\n",
+        logmsgf(LOGMSG_USER, fh,
+                "%s%16s | %7u %7u %7u %7u | %7u %7u %7u %7u %7u %7u %7u | "
+                "%7u %7u %7u\n",
                 prefix, summaries[ii].host, summaries[ii].finds,
                 summaries[ii].rngexts, summaries[ii].writes,
                 summaries[ii].other_fstsnds, summaries[ii].adds,
@@ -2379,27 +2303,82 @@ const char *reqlog_get_origin(struct reqlogger *logger)
 
 void reqlog_set_vreplays(struct reqlogger *logger, int replays)
 {
-    if (logger)
-        logger->vreplays = replays;
+    if (logger) logger->vreplays = replays;
 }
 
-void reqlog_set_queue_time(struct reqlogger *logger, int timems)
+void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
 {
-    if (logger)
-        logger->queuetimems = timems;
+    if (logger) logger->queuetimeus = timeus;
 }
 
-void reqlog_set_fingerprint(struct reqlogger *logger, char fingerprint[16]) {
-    if (logger) {
-        memcpy(logger->fingerprint, fingerprint, sizeof(logger->fingerprint));
-        logger->have_fingerprint = 1;
-    }
+void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,
+                            size_t n)
+{
+    size_t min;
+    if (logger == NULL)
+        return;
+    min = (FINGERPRINTSZ < n) ? FINGERPRINTSZ : n;
+    memcpy(logger->fingerprint, fingerprint, min);
+    logger->have_fingerprint = 1;
 }
 
-void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *request) {
+void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *request)
+{
     logger->request = request;
 }
 
-void reqlog_set_event(struct reqlogger *logger, const char *evtype) {
+void reqlog_set_event(struct reqlogger *logger, const char *evtype)
+{
     logger->event_type = evtype;
+}
+
+void reqlog_add_table(struct reqlogger *logger, const char *table)
+{
+    if (logger->ntables == logger->alloctables) {
+        logger->alloctables = logger->alloctables * 2 + 10;
+        logger->sqltables =
+            realloc(logger->sqltables, logger->alloctables * sizeof(char *));
+    }
+    logger->sqltables[logger->ntables++] = strdup(table);
+}
+
+void reqlog_set_error(struct reqlogger *logger, const char *error,
+                      int error_code)
+{
+    logger->error = strdup(error);
+    logger->error_code = error_code;
+}
+
+void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path)
+{
+    logger->path = path;
+}
+
+void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context)
+{
+    logger->ncontext = ncontext;
+    logger->context = context;
+}
+
+int reqlog_fingerprint_to_hex(struct reqlogger *logger, char *hexstr, size_t n)
+{
+    static const char hex[] = "0123456789abcdef";
+    size_t i, len;
+
+    if (!gbl_fingerprint_queries)
+        return 0;
+
+    if (n & 1)
+        return 0;
+
+    if (logger == NULL)
+        return 0;
+
+    for (i = 0, len = ((n >> 1) < FINGERPRINTSZ) ? (n >> 1) : FINGERPRINTSZ;
+         i != len; ++i) {
+        hexstr[i << 1] = hex[(logger->fingerprint[i] & 0xf0) >> 4];
+        hexstr[(i << 1) + 1] = hex[logger->fingerprint[i] & 0x0f];
+    }
+
+    return (i << 1);
 }

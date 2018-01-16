@@ -193,9 +193,16 @@ int bdb_osql_shadow_is_bkfilled(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
         if (shadow->tables[cur->dbnum].ix_shadows)
             return shadow->tables[cur->dbnum].ix_shadows[cur->idx].bkfill;
         break;
+    case BDBC_UN:
+    case BDBC_SK:
+    case BDBC_BL:
+        break;
+    default:
+        abort();
+        break;
     }
-
     return 0;
+
 }
 
 /**
@@ -220,6 +227,13 @@ int bdb_osql_shadow_set_bkfilled(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
     case BDBC_IX:
         if (shadow->tables[cur->dbnum].ix_shadows)
             shadow->tables[cur->dbnum].ix_shadows[cur->idx].bkfill = 1;
+        break;
+    case BDBC_UN:
+    case BDBC_SK:
+    case BDBC_BL:
+        break;
+    default:
+        abort();
         break;
     }
     return 0;
@@ -253,6 +267,12 @@ bdb_osql_log_t *bdb_osql_shadow_get_lastlog(bdb_cursor_ifn_t *pcur_ifn,
     case BDBC_IX:
         if (shadow->tables[cur->dbnum].ix_shadows)
             return shadow->tables[cur->dbnum].ix_shadows[cur->idx].lastlog;
+        break;
+    case BDBC_UN:
+    case BDBC_SK:
+        break;
+    default:
+        abort();
         break;
     }
 
@@ -303,6 +323,13 @@ int bdb_osql_shadow_set_lastlog(bdb_cursor_ifn_t *pcur_ifn,
             logmsg(LOGMSG_ERROR, "LASTLOG: set %p\n", log);
             cheap_stack_trace();
         }
+        break;
+    case BDBC_UN:
+    case BDBC_SK:
+    case BDBC_BL:
+        break;
+    default:
+        abort();
         break;
     }
     return 0;
@@ -434,12 +461,20 @@ int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
         if (gbl_sql_release_locks_in_update_shadows && !released_locks) {
             extern int gbl_sql_random_release_interval;
             if (bdb_curtran_has_waiters(cur->state, cur->curtran)) {
-                release_locks("update shadows");
+                rc = release_locks("update shadows");
                 released_locks = 1;
             } else if (gbl_sql_random_release_interval &&
                        !(rand() % gbl_sql_random_release_interval)) {
-                release_locks("random release update shadows");
+                rc = release_locks("random release update shadows");
                 released_locks = 1;
+            }
+
+            /* Generation changed: ask client to retry */
+            if (rc != 0) {
+                logcur->close(logcur, 0);
+                logmsg(LOGMSG_ERROR, "%s release_locks %d\n", __func__, rc);
+                *bdberr = BDBERR_NOT_DURABLE;
+                return -1;
             }
         }
 
@@ -672,13 +707,7 @@ static int _bdb_tran_deltbl_isdeleted(bdb_cursor_ifn_t *pcur_ifn,
     if (cur->shadow_tran && cur->shadow_tran->tranclass != TRANCLASS_SOSQL) {
         /* check genid cases the genid limit */
         switch (cur->shadow_tran->tranclass) {
-        case TRANCLASS_READCOMMITTED:
-            if (!cur->shadow_tran->ignore_newer_updates)
-                break;
-        /* fall through */
-        case TRANCLASS_QUERYISOLATION:
-            assert(cur->shadow_tran->ignore_newer_updates);
-        /* fall through */
+        case TRANCLASS_READCOMMITTED: break;
         case TRANCLASS_SERIALIZABLE:
         case TRANCLASS_SNAPISOL:
             if (/*!ignore_limit &&*/ cur->shadow_tran->startgenid &&
@@ -840,8 +869,8 @@ static tmpcursor_t *open_shadow_int(bdb_state_type *bdb_state,
 
         *pshadows = (tran_shadow_t *)calloc(maxfile, sizeof(tran_shadow_t));
         if (!*pshadows) {
-            logmsg(LOGMSG_ERROR, "%s: calloc error size %d\n", __func__,
-                    maxfile * sizeof(tran_shadow_t));
+            logmsg(LOGMSG_ERROR, "%s: calloc error size %zu\n", __func__,
+                   maxfile * sizeof(tran_shadow_t));
             *bdberr = BDBERR_BADARGS;
             return NULL;
         }
@@ -854,8 +883,8 @@ static tmpcursor_t *open_shadow_int(bdb_state_type *bdb_state,
         (*pshadows)[file].tbls =
             (tmptable_t **)calloc(maxstripe, sizeof(tmptable_t *));
         if (!(*pshadows)[file].tbls) {
-            logmsg(LOGMSG_ERROR, "%s: calloc error size %d\n", __func__,
-                    maxstripe * sizeof(tmptable_t *));
+            logmsg(LOGMSG_ERROR, "%s: calloc error size %zu\n", __func__,
+                   maxstripe * sizeof(tmptable_t *));
             *bdberr = BDBERR_BADARGS;
             return NULL;
         }

@@ -62,11 +62,11 @@ static void *pushlogs_thread(void *voidarg)
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
 
     while (1) {
-        void *trans;
+        tran_type *trans;
         struct ireq iq;
         int now;
         char cur_seqnum[SIZEOF_SEQNUM];
-        struct db *db;
+        struct dbtable *db;
         int done;
 
         /* get current lsn */
@@ -106,7 +106,7 @@ static void *pushlogs_thread(void *voidarg)
 
         pthread_mutex_lock(&schema_change_in_progress_mutex);
 
-        if (gbl_schema_change_in_progress == 1) {
+        if (gbl_schema_change_in_progress) {
             pthread_mutex_unlock(&schema_change_in_progress_mutex);
             sleep(1);
             continue;

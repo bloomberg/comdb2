@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+dbnm=$1
+cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output.txt 2>&1
+insert into t values (40)
+insert into t values (20)
+insert into t values (30)
+insert into t values (10)
+insert into t values (50)
+select * from t order by id limit 4
+set readonly on
+select * from t order by id limit 4
+EOF
+
+df=`diff output.txt reqoutput.txt`
+if [ $? -ne 0 ] ; then
+    echo "  ^^^^^^^^^^^^"
+    echo "The above testcase (${testcase}) has failed!!!"
+    echo " "
+    echo "Use 'diff <expected-output> <my-output>' to see why:"
+    echo "> diff ${PWD}/output.txt ${PWD}/reqoutput.txt"
+    echo " "
+    diff output.txt reqoutput.txt
+    echo " "
+    exit 1
+fi 
+
+cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output2.txt 2>&1
+set readonly on
+insert into t values (1)
+update t set id=id+1 limit 1
+EOF
+
+df=`diff output2.txt reqoutput2.txt`
+if [ $? -ne 0 ] ; then
+    echo "  ^^^^^^^^^^^^"
+    echo "The above testcase (${testcase}) has failed!!!"
+    echo " "
+    echo "Use 'diff <expected-output> <my-output>' to see why:"
+    echo "> diff ${PWD}/output2.txt ${PWD}/reqoutput2.txt"
+    echo " "
+    diff output2.txt reqoutput2.txt
+    echo " "
+    exit 1
+fi 
+
+echo "Success"

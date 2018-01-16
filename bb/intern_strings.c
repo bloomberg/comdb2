@@ -96,3 +96,9 @@ int isinterned(const char *node)
 
     return 0;
 }
+
+void cleanup_interned_strings()
+{
+    hash_clear(interned_strings);
+    hash_free(interned_strings);
+}

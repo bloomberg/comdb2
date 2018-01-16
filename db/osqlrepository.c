@@ -54,8 +54,8 @@ int osql_repository_init(void)
 
     tmp = (osql_repository_t *)calloc(sizeof(osql_repository_t), 1);
     if (!tmp) {
-        logmsg(LOGMSG_ERROR, "%s: cannot allocate %d bytes\n", __func__,
-                sizeof(osql_repository_t));
+        logmsg(LOGMSG_ERROR, "%s: cannot allocate %zu bytes\n", __func__,
+               sizeof(osql_repository_t));
         return -1;
     }
 
@@ -132,29 +132,12 @@ static char hex(unsigned char a)
     return 'a' + (a - 10);
 }
 
-/* Return a hex string */
-static char *tohex(char *output, char *key, int keylen)
-{
-    int i = 0;
-    char byte[3];
-
-    output[0] = '\0';
-    byte[2] = '\0';
-
-    for (i = 0; i < keylen; i++) {
-        snprintf(byte, sizeof(byte), "%c%c", hex(((unsigned char)key[i]) / 16),
-                 hex(((unsigned char)key[i]) % 16));
-        strcat(output, byte);
-    }
-
-    return output;
-}
 
 /**
  * Adds an osql session to the repository
  * Returns 0 on success
  */
-int osql_repository_add(osql_sess_t *sess)
+int osql_repository_add(osql_sess_t *sess, int *replaced)
 {
     osql_sess_t *sess_chk, *sess_chk2;
     uuid_t uuid;
@@ -200,25 +183,38 @@ retry:
         sess_chk = hash_find_readonly(theosql->rqs, &rqid);
     }
     if (sess_chk) {
-        theosql_pthread_rwlock_unlock(&theosql->hshlck);
         char *p = (char *)alloca(64);
-        p = tohex(p, uuid, 16);
+        p = util_tohex(p, (char *)uuid, 16);
 
-        logmsg(LOGMSG_ERROR, "%s: trying to add another session with the same "
-                "rqid, rqid=%llx uuid=%s retry=%d, waited %u msec\n",
-                __func__, sess->rqid, p, crt_time_msec / poll_msec, crt_time_msec);
+        logmsg(LOGMSG_ERROR,
+               "%s: trying to add another session with the same rqid, "
+               "rqid=%llx uuid=%s\n",
+               __func__, sess->rqid, p);
+        /* dont run the new replace logic for tag and osql retry */
+        if (replaced == NULL)
+            abort();
 
-        if (crt_time_msec + poll_msec < total_time_msec) {
-            crt_time_msec += poll_msec;
-            poll(NULL, 0, poll_msec);
-            goto retry;
+        rc = osql_sess_try_terminate(sess_chk);
+        if (rc < 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d osql_sess_try_terminate rc %d\n",
+                   __func__, __LINE__, rc);
+            pthread_rwlock_unlock(&theosql->hshlck);
+            return -1;
         }
-
-        logmsg(LOGMSG_WARN, "%s: timed out waiting for session with same rqid to complete, rqid=%llx uuid=%s\n", 
-                __func__, sess->rqid, p);
-
-        return RC_INTERNAL_RETRY;
-        //abort();
+        if (rc == 0) {
+            /* old request was terminated successfully, let's add the new one */
+            logmsg(LOGMSG_INFO,
+                   "%s: cancelled old request for rqid=%llx, uuid=%s\n",
+                   __func__, sess->rqid, p);
+        } else {
+            /* old request was already processed, ignore new ones */
+            pthread_rwlock_unlock(&theosql->hshlck);
+            *replaced = 1;
+            logmsg(LOGMSG_INFO,
+                   "%s: rqid=%llx, uuid=%s was completed/dispatched\n",
+                   __func__, sess->rqid, p);
+            return 0;
+        }
     }
 
     if (sess->rqid == OSQL_RQID_USE_UUID)
@@ -256,7 +252,7 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
     int rc = 0;
 
     if (lock) {
-        if (rc = pthread_rwlock_wrlock(&theosql->hshlck)) {
+        if ((rc = pthread_rwlock_wrlock(&theosql->hshlck)) != 0) {
             logmsg(LOGMSG_ERROR, "%s:pthread_rwlock_wrlock error code %d\n",
                     __func__, rc);
             return -1;
@@ -279,7 +275,7 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
 
     if (rc) {
         char *p = alloca(64);
-        p = (char *)tohex(p, sess->uuid, 16);
+        p = (char *)util_tohex(p, (char *)sess->uuid, 16);
         logmsg(LOGMSG_ERROR, "%s: Unable to hash the new request\n", __func__); 
         for (int i=0; i<MAX_UUID_LIST;i++) {
 
@@ -305,12 +301,11 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
                     p, found_uuid);
         }
 
-        abort();
         if (lock) {
             theosql_pthread_rwlock_unlock(&theosql->hshlck);
         }
 
-        return -2;
+        abort();
     }
     else {
         memcpy(uuid_list[current_uuid], sess->uuid, sizeof(uuid_list[0]));
@@ -391,7 +386,7 @@ int osql_repository_put(osql_sess_t *sess, int release_repository_lock)
     ret = osql_sess_remclient(sess);
 
     if (release_repository_lock) {
-        if (rc = theosql_pthread_rwlock_unlock(&theosql->hshlck)) {
+        if ((rc = theosql_pthread_rwlock_unlock(&theosql->hshlck)) != 0) {
             logmsg(LOGMSG_ERROR, "%s:pthread_rwlock_unlock error code %d\n",
                     __func__, rc);
             return -1;
@@ -428,6 +423,7 @@ int osql_repository_printcrtsessions(void)
     osql_repository_t *stat = theosql;
     osql_sess_t *rq = NULL;
     int rc = 0;
+    int maxops = 0;
 
     if (!stat) {
         if (gbl_ready) {
@@ -437,6 +433,9 @@ int osql_repository_printcrtsessions(void)
 
         return 0;
     }
+
+    maxops = get_osql_maxtransfer();
+    logmsg(LOGMSG_USER, "Maximum transaction size: %d bplog entries\n", maxops);
 
     if ((rc = pthread_rwlock_rdlock_check(&stat->hshlck, __func__, __LINE__))) {
         logmsg(LOGMSG_ERROR, "pthread_rwlock_rdlock: error code %d\n", rc);

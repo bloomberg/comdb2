@@ -56,6 +56,8 @@
 #endif
 
 #include "dbinc/atomic.h"
+#include "tunables.h"
+#include "dbinc/trigger_subscription.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -168,6 +170,7 @@ struct __ltrans_descriptor; typedef struct __ltrans_descriptor LTDESC;
 struct __rowlock_list; typedef struct __rowlock_list RLLIST;
 struct __recovery_processor;
 struct __recovery_list;
+struct __db_trigger_subscription;
 
 #define __DB_DBT_INTERNAL                                       \
 	void	 *data;			/* Key/data */                      \
@@ -405,9 +408,10 @@ struct __db_dbt {
 #define	DB_LOCK_YOUNGEST_EVER	11	/* Select locker for youngest
 					   transaction including old
 					   reincarnations. */
-#define  DB_LOCK_MINWRITE_EVER   12	/* Select locker with min
+#define	DB_LOCK_MINWRITE_EVER	12	/* Select locker with min
 					   writelocks including old
 					   reincarnations. */
+#define	DB_LOCK_MAX		12	/* Max deadlock mode. */
 
 /* Flag values for lock_vec(), lock_get(). */
 #define	DB_LOCK_NOWAIT		0x001	/* Don't wait on unavailable lock. */
@@ -1026,7 +1030,6 @@ struct __db_txn {
 	u_int32_t	flags;
 
 	void     *app_private;		/* pointer to bdb transaction object */
-	int      (*snapshot) __P((DB_TXN *));
 	DB_LSN   we_start_at_this_lsn;	/* hard to pinpoint the
 					 * existing startlsn usage, so
 					 * this is a new one */
@@ -1487,7 +1490,7 @@ struct __db {
 					/* Methods. */
 	int  (*associate) __P((DB *, DB_TXN *, DB *, int (*)(DB *, const DBT *,
 		const DBT *, DBT *), u_int32_t));
-	int  (*close) __P((DB *, u_int32_t));
+	int  (*close) __P((DB *, DB_TXN *, u_int32_t));
 	int  (*cursor) __P((DB *, DB_TXN *, DBC **, u_int32_t));
 	/* comdb2 addition */
 	int  (*cursor_ser) __P((DB *, DB_TXN *, DBCS *, DBC **, u_int32_t));
@@ -1591,7 +1594,7 @@ struct __db {
 	 * so that we can undo an associate.
 	 */
 	int  (*stored_get) __P((DB *, DB_TXN *, DBT *, DBT *, u_int32_t));
-	int  (*stored_close) __P((DB *, u_int32_t));
+	int  (*stored_close) __P((DB *, DB_TXN *, u_int32_t));
 
 #define	DB_OK_BTREE	0x01
 #define	DB_OK_HASH	0x02
@@ -1656,6 +1659,7 @@ struct __db {
 	uint8_t temptable;
 	int offset_bias;
 	uint8_t olcompact;
+	struct __db_trigger_subscription *trigger_subscription;
 };
 
 /*
@@ -2063,7 +2067,6 @@ struct __db_env {
 	int				/* Sleep after writing max buffers. */
 			 mp_maxwrite_sleep;
 	double		 mp_multiple;	/* Multiplier for hash buckets. */
-	int		 mp_perfect_ckp;	/* 1: Use perfect ckp. 0: Don't */
 
 	/* Number of recovery pages for each backing DB_MPOOLFILE. */
 	int		 mp_recovery_pages;
@@ -2086,6 +2089,7 @@ struct __db_env {
 	u_int32_t	 tx_max;	/* Maximum number of transactions. */
 	time_t		 tx_timestamp;	/* Recover to specific timestamp. */
 	db_timeout_t	 tx_timeout;	/* Timeout for transactions. */
+	int		 tx_perfect_ckp;	/* 1: Use perfect ckp. 0: Don't */
 
 	/*******************************************************
 	 * Private: owned by DB.
@@ -2288,6 +2292,7 @@ struct __db_env {
 	int  (*rep_flush) __P((DB_ENV *));
 	int  (*rep_process_message) __P((DB_ENV *, DBT *, DBT *,
 	    char **, DB_LSN *, uint32_t *));
+	int  (*rep_verify_will_recover) __P((DB_ENV *, DBT *, DBT *));
 	int  (*rep_truncate_repdb) __P((DB_ENV *));
 	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t));
 	int  (*rep_stat) __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
@@ -2318,7 +2323,7 @@ struct __db_env {
 	int  (*set_timeout) __P((DB_ENV *, db_timeout_t, u_int32_t));
 	int  (*set_bulk_stops_on_page) __P((DB_ENV*, int));
 	int  (*memp_dump_bufferpool_info) __P((DB_ENV *, FILE *));
-	int  (*get_rep_master) __P((DB_ENV *, char **));
+	int  (*get_rep_master) __P((DB_ENV *, char **, u_int32_t *));
 	int  (*get_rep_eid) __P((DB_ENV *, char **));
 	void (*txn_dump_ltrans) __P((DB_ENV *, FILE *, u_int32_t));
 	int  (*lowest_logical_lsn) __P((DB_ENV *, DB_LSN *));
@@ -2471,9 +2476,15 @@ struct __db_env {
 	void (*set_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t));
 	void (*get_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t *));
 
-    int (*set_check_standalone) __P((DB_ENV *, int (*)(DB_ENV *)));
-    int (*check_standalone)(DB_ENV *);
+	int (*set_check_standalone) __P((DB_ENV *, int (*)(DB_ENV *)));
+	int (*check_standalone)(DB_ENV *);
 
+	/* Trigger/consumer signalling support */
+	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,
+				     pthread_mutex_t **, const uint8_t **active));
+	int(*trigger_unsubscribe) __P((DB_ENV *, const char *));
+	int(*trigger_open) __P((DB_ENV *, const char *));
+	int(*trigger_close) __P((DB_ENV *, const char *));
 };
 
 #ifndef DB_DBM_HSEARCH
@@ -2639,30 +2650,42 @@ void __db_hdestroy __P((void));
  * build_sundev1/db.h */
 struct bb_berkdb_thread_stats {
 	unsigned n_lock_waits;
-	unsigned lock_wait_time_ms;
+	uint64_t lock_wait_time_us;
 
 	unsigned n_preads;
 	unsigned pread_bytes;
-	unsigned pread_time_ms;
+	uint64_t pread_time_us;
 
 	unsigned n_pwrites;
 	unsigned pwrite_bytes;
-	unsigned pwrite_time_ms;
+	uint64_t pwrite_time_us;
 
 	unsigned n_memp_fgets;
-	unsigned memp_fget_time_ms;
+	uint64_t memp_fget_time_us;
 
 	unsigned n_memp_pgs;
-	unsigned memp_pg_time_ms;
+	uint64_t memp_pg_time_us;
 
 	unsigned n_shallocs;
-	unsigned shalloc_time_ms;
+	uint64_t shalloc_time_us;
 
 	unsigned n_shalloc_frees;
-	unsigned shalloc_free_time_ms;
+	uint64_t shalloc_free_time_us;
 };
 
-int bb_berkdb_fasttime(void);
+/*
+ * Helper macros for microsecond-granularity event logging.
+ * Multiplication usually takes fewer CPU cycles than division. Therefore
+ * when comparing a usec and a msec, it is preferable to use:
+ * usec <comparison operator> M2U(msec)
+ */
+#ifndef U2M
+#define U2M(usec) (int)((usec) / 1000)
+#endif
+#ifndef M2U
+#define M2U(msec) ((msec) * 1000ULL)
+#endif
+uint64_t bb_berkdb_fasttime(void);
 struct bb_berkdb_thread_stats *bb_berkdb_get_thread_stats(void);
 struct bb_berkdb_thread_stats *bb_berkdb_get_process_stats(void);
 void bb_berkdb_thread_stats_init(void);
@@ -2825,7 +2848,7 @@ int berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
 u_int32_t file_id_for_recovery_record(DB_ENV *env, DB_LSN *lsn,
 	int rectype, DBT *dbt);
 
-int __rep_get_master(DB_ENV *dbenv, char **master);
+int __rep_get_master(DB_ENV *dbenv, char **master, u_int32_t *egen);
 int __rep_get_eid(DB_ENV *dbenv,char **eid);
 
 unsigned int __berkdb_count_freepages(int fd);

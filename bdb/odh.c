@@ -593,7 +593,7 @@ static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from,
                     goto err;
                 }
             } else if (alg == BDB_COMPRESS_LZ4) {
-                rc = LZ4_decompress_fast((uint8_t *)from + ODH_SIZE, to,
+                rc = LZ4_decompress_fast((char *)from + ODH_SIZE, to,
                                          odh->length);
                 if (rc != fromlen - ODH_SIZE) {
                     goto err;
@@ -613,7 +613,7 @@ static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from,
                         __func__, (unsigned)odh->length, (unsigned)fromlen);
                 return DB_ODH_CORRUPT;
             }
-            odh->recptr = (((char *)from) + ODH_SIZE);
+            odh->recptr = ((char *)from) + ODH_SIZE;
         }
 
         /* Older dbs with odh have version 0.
@@ -1374,4 +1374,11 @@ void bdb_set_fld_hints(bdb_state_type *bdb_state, uint16_t *hints)
     if (bdb_state->fld_hints)
         free(bdb_state->fld_hints);
     bdb_state->fld_hints = hints;
+}
+
+void bdb_cleanup_fld_hints(bdb_state_type *bdb_state)
+{
+    if (bdb_state->fld_hints)
+        free(bdb_state->fld_hints);
+    bdb_state->fld_hints = NULL;
 }

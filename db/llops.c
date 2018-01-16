@@ -92,7 +92,7 @@ int handle_llops(SBUF2 *sb, struct dbenv *dbenv)
     int stripe = -1;
     int dtafile = 0;
     int ix = -1;
-    void *trans = NULL;
+    tran_type *trans = NULL;
     struct ireq iq;
     int key_alloc = 0, data_alloc = 0, datacopy_alloc = 0;
     uint8_t *key = NULL, *data = NULL, *datacopy = NULL;
@@ -142,7 +142,7 @@ int handle_llops(SBUF2 *sb, struct dbenv *dbenv)
                     break;
             }
             table = tok;
-            iq.usedb = getdbbyname(table);
+            iq.usedb = get_dbtable_by_name(table);
             if (iq.usedb == NULL) {
                 rc = -1;
                 sbuf2printf(sb, "!unknown table %s\n", table);
@@ -465,9 +465,10 @@ int handle_llops(SBUF2 *sb, struct dbenv *dbenv)
                                 sz += keylen;
                             }
                             sbuf2printf(sb, ">ix %d len %d: ", i, sz);
-                            printhex(sb, formkey, sz);
+                            printhex(sb, (unsigned char *)formkey, sz);
                             sbuf2printf(sb, " ");
-                            printhex(sb, od_dta_tail, od_len_tail);
+                            printhex(sb, (unsigned char *)od_dta_tail,
+                                     od_len_tail);
                             sbuf2printf(sb, "\n");
 
                             void *k;
@@ -550,13 +551,13 @@ int handle_llops(SBUF2 *sb, struct dbenv *dbenv)
                             sz += keylen;
                         }
                         sbuf2printf(sb, ">looking for: ");
-                        printhex(sb, formkey, sz);
+                        printhex(sb, (unsigned char *)formkey, sz);
                         sbuf2printf(sb, "\n");
                         rc = bdb_llop_del(iq.usedb->handle, trans, stripe,
                                           dtafile, i, formkey, sz, &errstr);
                         if (rc) {
                             sbuf2printf(sb, "!line %d del ix %d ", lnum, i);
-                            printhex(sb, formkey, sz);
+                            printhex(sb, (unsigned char *)formkey, sz);
                             sbuf2printf(sb, " failed rc %d %s\n", rc,
                                         errstr ? errstr : "???");
                             free(errstr);

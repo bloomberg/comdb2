@@ -626,7 +626,7 @@ static int sqlite3Prepare(
   int i;                    /* Loop counter */
   Parse sParse;             /* Parsing context */
 
-  if (db->should_fingerprint) {
+  if (db->should_fingerprint && !db->init.busy) {
       memset(db->fingerprint, 0, sizeof(db->fingerprint));
   }
 
@@ -936,9 +936,12 @@ int sqlite3_prepare_v2(
   return rc;
 }
 
-int sqlite3_fingerprint(sqlite3 *db, char fingerprint[16]) {
-    memcpy(fingerprint, db->fingerprint, 16);
-    return 0;
+int sqlite3_fingerprint_size(sqlite3 *db) {
+    return sizeof(db->fingerprint);
+}
+
+const char *sqlite3_fingerprint(sqlite3 *db) {
+    return db->fingerprint;
 }
 
 int sqlite3_fingerprint_enable(sqlite3 *db) {

@@ -183,7 +183,7 @@ instances on a machine.  TBD.
 
 Cluster membership for a machine has a couple of implications.  First, once a machine is listed as part of the
 cluster, the database expects the database to be available on that machine.  This may sound tautological, but
-if a database isn't up on a machine that's part of it's cluster, and did not exit gracefully, it's considered
+if a database isn't up on a machine that's part of its cluster, and did not exit gracefully, it's considered
 to be in a crashed state.  If enough machines are in that state (at last half), the cluster will become 
 unavailable.
 
@@ -310,7 +310,7 @@ configuring applications.  As a quick summary:
    * Use comdb2db
 
 Regardless which method is chosen, the Comdb2 API will try all the given nodes until it finds one that's 
-accessible as ask it for cluster information.  It will then update it's state of what constitutes the cluster,
+accessible as ask it for cluster information.  It will then update its state of what constitutes the cluster,
 and keep going (choose a node from the now-updated list of nodes, use it to connect to and answer queries).  If
 no nodes are available, it'll re-query the cluster state (re-read the configuration file, re-query comdb2db).
 

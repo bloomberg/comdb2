@@ -25,6 +25,7 @@
 #include <alloca.h>
 #include "sqliteInt.h"
 #include "comdb2Int.h"
+#include "pragma.h"
 
 /* COMDB2 MODIFICATION */
 #include "logmsg.h"
@@ -164,11 +165,14 @@ void sqlite3FinishCoding(Parse *pParse){
     ** on each used database.
     */
     if( db->mallocFailed==0 
-     && (DbMaskNonZero(pParse->cookieMask, 0) || pParse->pConstExpr)
+     && (DbMaskNonZero(pParse->cookieMask, 0) || pParse->pConstExpr
+         || pParse->write) /* COMDB2 MODIFICATION */
     ){
       int iDb, i;
       assert( sqlite3VdbeGetOp(v, 0)->opcode==OP_Init );
       sqlite3VdbeJumpHere(v, 0);
+      /* COMDB2 MODIFICATION DDL/PUT wants a write transaction */
+      if( pParse->write ) sqlite3VdbeAddOp2(v, OP_Transaction, 0, 1); else
       for(iDb=0; iDb<db->nDb; iDb++){
         Schema *pSchema;
         if( DbMaskTest(pParse->cookieMask, iDb)==0 ) continue;
@@ -532,6 +536,12 @@ Table *sqlite3LocateTable(
           zName = tmp;
       }
       Module *pMod = (Module*)sqlite3HashFind(&pParse->db->aModule, zName);
+      if( pMod && sqlite3VtabEponymousTableInit(pParse, pMod) ){
+        return pMod->pEpoTab;
+      }
+      if( pMod==0 && sqlite3_strnicmp(zName, "pragma_", 7)==0 ){
+        pMod = sqlite3PragmaVtabRegister(pParse->db, zName);
+      }
       if( pMod && sqlite3VtabEponymousTableInit(pParse, pMod) ){
         return pMod->pEpoTab;
       }
@@ -1032,7 +1042,6 @@ i16 sqlite3ColumnOfIndex(Index *pIdx, i16 iCol){
   return -1;
 }
 
-extern int gbl_new_indexes;
 /*
 ** Begin constructing a new table representation in memory.  This is
 ** the first of several action routines that get called in response
@@ -1157,14 +1166,8 @@ void sqlite3StartTable(
   pTable->nRef = 1;
   pTable->nRowLogEst = 200; assert( 200==sqlite3LogEst(1048576) );
   /* COMDB2 MODIFICATION */
-  if (gbl_new_indexes) {
-      pTable->hasPartIdx = 1;
-      pTable->hasExprIdx = 1;
-  }
-  else {
-      pTable->hasPartIdx = 0;
-      pTable->hasExprIdx = 0;
-  }
+  pTable->hasPartIdx = 0;
+  pTable->hasExprIdx = 0;
   assert( pParse->pNewTable==0 );
   pParse->pNewTable = pTable;
 
@@ -3747,7 +3750,7 @@ void sqlite3CreateIndex(
     */
     sqlite3NestedParse(pParse, 
         /* COMDB2 MODIFICATION */
-        "INSERT INTO %Q.%s VALUES('index',%Q,%Q,#0,%Q,NULL);",
+        "INSERT INTO %Q.%s VALUES('index',%Q,%Q,#%d,%Q,NULL);",
         db->aDb[iDb].zDbSName, SCHEMA_TABLE(iDb),
         pIndex->zName,
         pTab->zName,
@@ -4160,6 +4163,8 @@ void sqlite3SrcListAssignCursors(Parse *pParse, SrcList *pList, int is_recording
       if (pItem->iCursor < (MAX_CURSOR_IDS/sizeof(int))) {
         /* COMDB2 MODIFICATION */
         if( is_recording ){
+          Vdbe *v = sqlite3GetVdbe(pParse);
+          comdb2SetRecording(v);
           SET_CURSOR_RECORDING(pParse, pItem->iCursor);
         }else{
           CLR_CURSOR_RECORDING(pParse, pItem->iCursor);
@@ -4425,10 +4430,7 @@ int sqlite3OpenTempDatabase(Parse *pParse){
 
     /* COMDB2 MODIFICATION, BTreeOpen doesn't create Btree actually. */
     int pgno;
-    void comdb2_use_tmptbl_lk(int);
-    comdb2_use_tmptbl_lk(0);
     rc = sqlite3BtreeCreateTable(pBt, &pgno, BTREE_INTKEY);    
-    comdb2_use_tmptbl_lk(1);
     if( rc!=SQLITE_OK ){
       sqlite3ErrorMsg(pParse, "unable to open a temporary database "
         "file for storing temporary tables");
@@ -5172,5 +5174,16 @@ char *sqlite3DescribeIndexOrder(
   return ret2;
 }
 
+/* COMDB2 MODIFICATION */
+/*
+** Reset the schema for all remote dbs from an engine 
+**
+*/
+void sqlite3ResetFdbSchemas(sqlite3 *db){
+  int i;
 
+  for( i=2; i<db->nDb; i++ ){
+    comdb2_dynamic_detach(db, i);
+  }
+}
 #endif /* !defined(SQLITE_OMIT_CTE) */

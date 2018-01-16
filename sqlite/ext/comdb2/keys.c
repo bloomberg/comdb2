@@ -141,12 +141,12 @@ static int systblKeysColumn(
   int i
 ){
   systbl_keys_cursor *pCur = (systbl_keys_cursor*)cur;
-  struct db *pDb = thedb->dbs[pCur->iRowid];
+  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
   struct schema *pSchema = pDb->ixschema[pCur->iKeyid];
 
   switch( i ){
     case STKEY_TABLE: {
-      sqlite3_result_text(ctx, pDb->dbname, -1, NULL);
+      sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
       break;
     }
     case STKEY_KEY: {

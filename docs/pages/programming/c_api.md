@@ -37,22 +37,20 @@ failure before freeing the handle object with [cdb2_close](#cdb2close).
 
 Parameters:
 
-Parameters:
-
 |Name|Type|Description|Notes|
 |-|-|-|-|
 |*hndl*| input/output | pointer to a cdb2 handle | A handle is allocated and a pointer to it is written into *hndl*
 |*dbname*| input | database name  | The database name to be associated with the handle
-|*type*| input | cluster type | The 'stage' to connect to.  If it's set to "default" it will use the value given in ```comdb2_config:default_type``` in comdb2db config - see the section on [configuring clients](/clients.html). Use "local" if target db is running on same machine as the application.  In rarely needed cases, and explicit target can be set with, eg: "dev", "alpha", "beta", etc.  The stage must be registered in your [meta database](clients.html#comdb2db).  Alternatively you can pass a [list of machines](clients.html#passing-location-information).
+|*type*| input | cluster type | The 'stage' to connect to.  If it's set to "default" it will use the value given in ```comdb2_config:default_type``` in comdb2db config - see the section on [configuring clients](clients.html). Use "local" if target db is running on same machine as the application.  In rarely needed cases, and explicit target can be set with, eg: "dev", "alpha", "beta", etc.  The stage must be registered in your [meta database](clients.html#comdb2db).  Alternatively you can pass a [list of machines](clients.html#passing-location-information).
 |*flag*| input | alloc flags | The flags to be used to allocate handle, the values allowed are 0, ```CDB2_READ_INTRANS_RESULTS```, ```CDB2_RANDOM```, ```CDB2_RANDOMROOM``` , ```CDB2_ROOM```and ```CDB2_DIRECT_CPU``` 
 
 |Flag Value|Description|
 |---|---|
-|```CDB2_READ_INTRANS_RESULTS``` | insert/update/deletes return rows (num changed) inside a transaction, thus disabling an optimization where server sends replies once per transaction - see [cdb2_get_effects](#cdb2geteffects)|
+|```CDB2_READ_INTRANS_RESULTS``` | insert/update/deletes return rows (num changed) inside a transaction, thus disabling an optimization where server sends replies once per transaction - see [cdb2_get_effects](#cdb2_get_effects)|
 |```CDB2_ROOM``` |  Queries are sent to one of the nodes in the same data center (see section on [comdb2db](clients.html#comdb2db) to see how this is configured) |
 |```CDB2_RANDOMROOM``` |  Queries are sent to one of the randomly selected node of the same data center |
 |```CDB2_RANDOM``` |  Queries are sent to one of the randomly selected node of the same or different data center |
-|```CDB2_DIRECTCPU``` |  Queries are sent to the hostname/ip given in the *type* argument |
+|```CDB2_DIRECT_CPU``` |  Queries are sent to the hostname/ip given in the *type* argument |
 
 
 ### cdb2_close
@@ -62,7 +60,7 @@ int cdb2_close(cdb2_hndl_tp *hndl);
 Description:
 
 This routine closes the cdb2 handle and releases all associated memory. 
-Depending on your [client setup](/clients.html) making this call may donate the database connection to a system-wide connection pool.  Only connections that don't have pending transactions or query results will be donated to the connection pool.
+Depending on your [client setup](clients.html) making this call may donate the database connection to a system-wide connection pool.  Only connections that don't have pending transactions or query results will be donated to the connection pool.
 
 Parameters:
 
@@ -286,6 +284,7 @@ Return Values:
 |---|---|---|
 |`CDB2_INTEGER`, `CDB2_REAL`, `CDB2_CSTRING`, `CDB2_BLOB`, `CDB2_DATETIME`, `CDB2_DATETIMEUS`, `CDB2T_INTERVALYM`, `CDB2_INTERVALDS`, `CDB2_INTERVALDSUS`| The datatype of the numbered column | Numeric data is always promoted to its largest natural form, eg: a `short` field in the schema will come back from the db as an `int64_t`, see [cdb2_column_value](#cdb2columnvalue).|
 
+
 ### cdb2_bind_param
 ```
 int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *name, int type, const void *varaddr, int length);
@@ -325,6 +324,37 @@ Parameters:
 |*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2runstatement), and for numeric types must be signed. |
 |*length*| input | The length of replaceable param | This should be the sizeof(valueaddr's original type), so 1 if it's a char, 4 for float... |
 
+### cdb2_bind_index
+```
+int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type, const void *varaddr, int length);
+```
+
+Description:
+
+This routine is used to bind value pointers to named or unnamed replaceable params in sql statement. The index starts from 1, and increases for every new parameter in the statement. This version of cdb2_bind_* is faster than cdb2_bind_param.
+
+For example:
+
+```c
+char *sql = "INSERT INTO t1(a, b) values(?, ?)”
+
+char *a = "foo";
+int64_t b = "bar";
+
+cdb2_bind_index(db, 1, CDB2_CSTRING, a, strlen(a));
+cdb2_bind_index((db, 2, CDB2_INTEGER, &b, sizeof(int64_t));
+cdb2_run_statement(db, sql);
+```
+
+Parameters:
+
+|Name|Type|Description|Notes|
+|---|---|---|--|
+|*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
+| index | input | The index of replaceable param | The value associated with this pointer (valueaddr  arg) should not change between bind and [cdb2_run_statement](#cdb2runstatement) |
+|*type*| input | The type of replaceable param | |
+|*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2runstatement), and for numeric types must be signed. |
+|*length*| input | The length of replaceable param | This should be the sizeof(valueaddr's original type), so 1 if it's a char, 4 for float... |
 
 ### cdb2_get_effects
 ```
@@ -333,7 +363,7 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects);
 
 Description:
 
-This routine allows the caller to to get the number rows affected, selected, updated, deleted and inserted in the last query, (or until last query from the start of the transaction.). 
+This routine allows the caller to to get the number rows affected, selected, updated, deleted and inserted in the last query, (or until last query from the start of the transaction.). This routine initialize the data members of the ```cdb2_effects_tp``` structure (see below), the address of which is supplied as an argument. Number of rows affected is a sum of number of rows updated, deleted and inserted.
 These values only make sense after COMMIT, since the transaction may get replayed and the values for each individual statements may change.  The replay can be turned off by running ```"SET VERIFYRETRY OFF"```, after which you can call ```cdb2_get_effects``` in the middle of a transaction. 
 For rationale, see the [Comdb2 transaction model](transaction_model.html)
 section.
@@ -344,6 +374,16 @@ Parameters:
 |---|---|---|---|
 |*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
 |*effects*| input | The pointer to effects structure | | 
+
+```c
+typedef struct cdb2_effects_type {
+    int num_affected;
+    int num_selected;
+    int num_updated;
+    int num_deleted;
+    int num_inserted;
+} cdb2_effects_tp;
+```
 
 ### cdb2_clearbindings
 ```
@@ -385,7 +425,7 @@ int cdb2_set_comdb2db_config(char *cfg_file);
 Description:
 
 This function sets location of a config file the API uses to discover databases. 
-See the [Client Setup] section for more details.
+See the [Client setup](clients.html) section for more details.
 
 Parameters:
 
@@ -456,36 +496,36 @@ These return codes can be found in ```cdb2api.h```
 
 |Code    |Constant |Description
 |--------|---------|-----------
-| 0    |```CDB2_OK``` | Success.
-| 1    |```CDB2_OK_DONE``` | Returned by ```cdb2_next_record()``` if there are no more records in the stream.
-| -1   |```CDB2ERR_CONNECT_ERROR``` | Unable to open TCP connection to the database.  Make sure that the database is running.
-| -2   |```CDB2ERR_NOTCONNECTED``` | Not connected to the database.
-| -3   |```CDB2ERR_PREPARE_ERROR``` | SQLite rejected your SQL query.
-| -4   |```CDB2ERR_IO_ERROR``` | IO error.  This can happen if your request is cut off (the database node you are connected to may have come down for turning, or the database may have timed out your connection).  Make sure that you read records back in a timely manner without long pauses between reads.
-| -5   |```CDB2ERR_INTERNAL``` | Internal SQL error.
-| -6   |```CDB2ERR_NOSTATEMENT ``` | Returned if you call any of the sql stream query functions (such as ```cdb2_numcolumns```) but you have not yet used ```cdb2_next_record()``` to move on to a valid record.
-| -7   |```CDB2ERR_BADCOLUMN``` | Returned if you give an out of range column index to the sql api.
-| -8   |```CDB2ERR_BADSTATE ``` | The sql handle is in an incorrect state for the operation requested e.g. ```cdb2_column_size()``` was called after all the records have been read.
-| -15  |```CDB2ERR_REJECTED``` | Database was not able to read a request from the client, or was not able to dispatch it.
-| -16  |```CDB2ERR_STOPPED``` | Database is stopped operationally and isn't accepting requests.
-| -17  |```CDB2ERR_BADREQ``` |  A request is malformed.
-| -20  |```CDB2ERR_THREADPOOL_INTERNAL``` | Some error in threadpool code.
-| -21  |```CDB2ERR_READONLY``` | Database is readonly (possible because a schema change operation is in progress).
-| -101 |```CDB2ERR_NOMASTER``` | Database has no master node - try again later.
-| -103 |```CDB2ERR_CONSTRAINTS``` | Some constraint violation.
-| 203  |```CDB2ERR_DEADLOCK``` | Deadlock detected.
-| -105 |```CDB2ERR_TRAN_IO_ERROR``` | I/O error.
-| -106 |```CDB2ERR_ACCESS``` | Access denied.
-| -107 |```CDB2ERR_TRAN_MODE_UNSUPPORTED``` | Transaction mode is unsupported.
-| 2    |```CDB2ERR_VERIFY_ERROR``` | An update failed because the record being updated was changed more recently than it was first read.  This could happen if a transaction attempts to update the same record twice, or it could happen if two concurrent transactions are trying to update the same record (one will win, and the other will lose).
-| 3    |```CDB2ERR_FKEY_VIOLATION``` | Foreign key violation.
-| 4    |```CDB2ERR_NULL_CONSTRAINT``` | Null constraint violation.
-| 113  |```CDB2ERR_CONV_FAIL``` | Data could not be inserted/updated because the provided data could not be converted to the type/size in the table definition.
-| 115  |```CDB2ERR_MALLOC``` | Malloc failed.  Check your code for memory leaks or heap corruption!
-| 116  |```CDB2ERR_NOTSUPPORTED``` | Operation not supported.
-| 299  |```CDB2ERR_DUPLICATE``` | Transaction would have inserted a duplicate in a key that does not allow it.
-| 401  |```CDB2ERR_TZNAME_FAIL``` | Invalid timezone name.
-| 300  |```CDB2ERR_UNKNOWN``` | Unknown error.
+| 0    |```CDB2_OK``` | <a id="CDB2_OK"/>Success. 
+| 1    |```CDB2_OK_DONE``` | <a id="CDB2_OK_DONE"/>Returned by ```cdb2_next_record()``` if there are no more records in the stream. 
+| -1   |```CDB2ERR_CONNECT_ERROR``` | <a id="CDB2ERR_CONNECT_ERROR"/>Unable to open TCP connection to the database.  Make sure that the database is running. 
+| -2   |```CDB2ERR_NOTCONNECTED``` | <a id="CDB2ERR_NOTCONNECTED"/>Not connected to the database. 
+| -3   |```CDB2ERR_PREPARE_ERROR``` | <a id="CDB2ERR_PREPARE_ERROR"/>SQLite rejected your SQL query. 
+| -4   |```CDB2ERR_IO_ERROR``` | <a id="CDB2ERR_IO_ERROR"/>IO error.  This can happen if your request is cut off (the database node you are connected to may have come down for turning, or the database may have timed out your connection).  Make sure that you read records back in a timely manner without long pauses between reads. 
+| -5   |```CDB2ERR_INTERNAL``` | <a id="CDB2ERR_INTERNAL"/>Internal SQL error. 
+| -6   |```CDB2ERR_NOSTATEMENT ``` | <a id="CDB2ERR_NOSTATEMENT"/>Returned if you call any of the sql stream query functions (such as ```cdb2_numcolumns```) but you have not yet used ```cdb2_next_record()``` to move on to a valid record. 
+| -7   |```CDB2ERR_BADCOLUMN``` | <a id="CDB2ERR_BADCOLUMN"/>Returned if you give an out of range column index to the sql api. 
+| -8   |```CDB2ERR_BADSTATE ``` | <a id="CDB2ERR_BADSTATE"/>The sql handle is in an incorrect state for the operation requested e.g. ```cdb2_column_size()``` was called after all the records have been read. 
+| -15  |```CDB2ERR_REJECTED``` | <a id="CDB2ERR_REJECTED"/>Database was not able to read a request from the client, or was not able to dispatch it. 
+| -16  |```CDB2ERR_STOPPED``` | <a id="CDB2ERR_STOPPED"/>Database is stopped operationally and isn't accepting requests. 
+| -17  |```CDB2ERR_BADREQ``` |  <a id="CDB2ERR_BADREQ"/>A request is malformed. 
+| -20  |```CDB2ERR_THREADPOOL_INTERNAL``` | <a id="CDB2ERR_THREADPOOL_INTERNAL"/>Some error in threadpool code. 
+| -21  |```CDB2ERR_READONLY``` | <a id="CDB2ERR_READONLY"/>Database is readonly (possible because a schema change operation is in progress). 
+| -101 |```CDB2ERR_NOMASTER``` | <a id="CDB2ERR_NOMASTER"/>Database has no master node - try again later. 
+| -103 |```CDB2ERR_CONSTRAINTS``` | <a id="CDB2ERR_CONSTRAINTS"/>Some constraint violation. 
+| 203  |```CDB2ERR_DEADLOCK``` | <a id="CDB2ERR_DEADLOCK"/>Deadlock detected. 
+| -105 |```CDB2ERR_TRAN_IO_ERROR``` | <a id="CDB2ERR_TRAN_IO_ERROR"/>I/O error. 
+| -106 |```CDB2ERR_ACCESS``` | <a id="CDB2ERR_ACCESS"/>Access denied. 
+| -107 |```CDB2ERR_TRAN_MODE_UNSUPPORTED``` | <a id="CDB2ERR_TRAN_MODE_UNSUPPORTED"/>Transaction mode is unsupported. 
+| 2    |```CDB2ERR_VERIFY_ERROR``` | <a id="CDB2ERR_VERIFY_ERROR"/>An update failed because the record being updated was changed more recently than it was first read.  This could happen if a transaction attempts to update the same record twice, or it could happen if two concurrent transactions are trying to update the same record (one will win, and the other will lose). 
+| 3    |```CDB2ERR_FKEY_VIOLATION``` | <a id="CDB2ERR_FKEY_VIOLATION"/>Foreign key violation. 
+| 4    |```CDB2ERR_NULL_CONSTRAINT``` | <a id="CDB2ERR_NULL_CONSTRAINT"/>Null constraint violation. 
+| 113  |```CDB2ERR_CONV_FAIL``` | <a id="CDB2ERR_CONV_FAIL"/>Data could not be inserted/updated because the provided data could not be converted to the type/size in the table definition. 
+| 115  |```CDB2ERR_MALLOC``` | <a id="CDB2ERR_MALLOC"/>Malloc failed.  Check your code for memory leaks or heap corruption! 
+| 116  |```CDB2ERR_NOTSUPPORTED``` | <a id="CDB2ERR_NOTSUPPORTED"/>Operation not supported. 
+| 299  |```CDB2ERR_DUPLICATE``` | <a id="CDB2ERR_DUPLICATE"/>Transaction would have inserted a duplicate in a key that does not allow it. 
+| 401  |```CDB2ERR_TZNAME_FAIL``` | <a id="CDB2ERR_TZNAME_FAIL"/>Invalid timezone name. 
+| 300  |```CDB2ERR_UNKNOWN``` | <a id="CDB2ERR_UNKNOWN"/>Unknown error. 
 | Other| Any |  Any other return code should be treated as an internal error.
 
 ### Error handling.

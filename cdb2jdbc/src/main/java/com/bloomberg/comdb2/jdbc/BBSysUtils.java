@@ -36,6 +36,7 @@ public class BBSysUtils {
     /**
      * Comdb2db configuration files.
      */
+    static final String CDB2DBCONFIG_PROP = "comdb2db.cfg";
     static final String CDB2DBCONFIG_LOCAL = "/bb/bin/comdb2db.cfg";
     static final String CDB2DBCONFIG_NOBBENV = "/opt/bb/etc/cdb2/config/comdb2db.cfg";
     static final String CDB2DBCONFIG_NOBBENV_PATH = "/opt/bb/etc/cdb2/config.d/";
@@ -77,9 +78,9 @@ public class BBSysUtils {
                      * Gets dunumber and hosts of the actual database.
                      */
                     hndl.myDbNum = Integer.parseInt(tokens[1]);
-                    for (int i = 2; i < tokens.length; i += 2) {
+                    for (int i = 2; i < tokens.length; ++i) {
                         hndl.myDbHosts.add(tokens[i]);
-                        hndl.myDbPorts.add(Integer.parseInt(tokens[i + 1]));
+                        hndl.myDbPorts.add(hndl.overriddenPort);
                     }
                 } else if (tokens[0].equalsIgnoreCase("comdb2_config")) {
 
@@ -141,7 +142,14 @@ public class BBSysUtils {
      * @return
      */
     private static boolean getComdb2dbHosts(Comdb2Handle hndl, boolean just_defaults) {
-        boolean rc = readComdb2dbCfg(CDB2DBCONFIG_NOBBENV, hndl);
+        /*
+         * Load conf from path specified in system property
+         * CDB2DBCONFIG_PROP (comdb2db.cfg), defaulting to
+         * CDB2DBCONFIG_NOBBENV (/opt/bb/etc/cdb2/config/comdb2db.cfg) if the
+         * property is not specified.
+         */
+        String configPath = System.getProperty(CDB2DBCONFIG_PROP, CDB2DBCONFIG_NOBBENV);
+        boolean rc = readComdb2dbCfg(configPath, hndl);
         if (!rc) /* fall back to /bb/bin if noenv conf not found */
             rc = readComdb2dbCfg(CDB2DBCONFIG_LOCAL, hndl);
         readComdb2dbCfg(CDB2DBCONFIG_NOBBENV_PATH + hndl.myDbName + ".cfg", hndl);
@@ -154,12 +162,9 @@ public class BBSysUtils {
 
         String comdb2db_bdns = null;
         try {
-            if (hndl.defaultType == null)
-                comdb2db_bdns = String.format("%s.%s",
-                        hndl.comdb2dbName, hndl.dnssuffix);
-            else
-                comdb2db_bdns = String.format("%s-%s.%s",
-                        hndl.defaultType, hndl.comdb2dbName, hndl.dnssuffix);
+            comdb2db_bdns = String.format("%s-%s.%s",
+                    (hndl.defaultType == null) ? hndl.defaultType : hndl.myDbCluster,
+                    hndl.comdb2dbName, hndl.dnssuffix);
 
             InetAddress inetAddress[] = InetAddress.getAllByName(comdb2db_bdns);
             for (int i = 0; i < inetAddress.length; i++) {
@@ -167,7 +172,7 @@ public class BBSysUtils {
                 rc = true;
             }
         } catch (UnknownHostException e) {
-            logger.log(Level.SEVERE, "ERROR in getting address" + comdb2db_bdns, e);
+            logger.log(Level.SEVERE, "ERROR in getting address " + comdb2db_bdns, e);
         }
         return rc;
     }
@@ -187,7 +192,7 @@ public class BBSysUtils {
         try {
             String name = String.format("get %s/%s/%s\n", app, service, instance);
 
-            io = new SockIO(host, port);
+            io = new SockIO(host, port, null);
 
             io.write(name.getBytes());
             io.flush();
@@ -240,7 +245,7 @@ public class BBSysUtils {
 
         try {
             if (dbInfoResp == null) {
-                io = new SockIO(host, port);
+                io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null);
 
                 /*********************************
                  * Sending data...
@@ -288,8 +293,10 @@ public class BBSysUtils {
                 System.out.println("dbinfoQuery: dbinfo response " +
                         "returns " + dbInfoResp.nodes);
             }
+
+            /* Add coherent nodes. */
             for (NodeInfo node : dbInfoResp.nodes) {
-                if (node.incoherent != 0 || node.port < 0) {
+                if (node.incoherent != 0) {
                     if (debug) {
                         System.out.println("dbinfoQuery: Skipping " +
                                 node.name + ": incoherent=" + 
@@ -314,6 +321,18 @@ public class BBSysUtils {
 
                 if (myroom == node.room)
                     ++hosts_same_room;
+            }
+
+            /* Add incoherent nodes too, but don't count them for same room hosts. */
+            for (NodeInfo node : dbInfoResp.nodes) {
+                if (node.incoherent == 0)
+                    continue;
+
+                validHosts.add(node.name);
+                validPorts.add(node.port);
+
+                if (node.name.equalsIgnoreCase(dbInfoResp.master.name))
+                    master = validHosts.size() - 1;
             }
 
             if (validHosts.size() <= 0)
@@ -360,7 +379,7 @@ public class BBSysUtils {
         SockIO io = null;
 
         try {
-            io = new SockIO(host, port);
+            io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null);
 
             /*********************************
              * Sending data...
@@ -472,15 +491,16 @@ public class BBSysUtils {
      * @param hndl
      * @throws NoDbHostFoundException
      */
-    static void getDbHosts(Comdb2Handle hndl) throws NoDbHostFoundException {
+    static void getDbHosts(Comdb2Handle hndl, boolean refresh) throws NoDbHostFoundException {
         if (debug) { 
             System.out.println("Starting getDbHosts"); 
         }
-        /* Clear node info of both the database and comdb2db */
-        hndl.comdb2dbName = null;
-        hndl.comdb2dbHosts.clear();
-        hndl.myDbHosts.clear();
-        hndl.myDbPorts.clear();
+        if (refresh) {
+            /* Clear node info of both the database and comdb2db */
+            hndl.comdb2dbHosts.clear();
+            hndl.myDbHosts.clear();
+            hndl.myDbPorts.clear();
+        }
 
         if (hndl.myDbCluster.equalsIgnoreCase("local")) {
 			/* type is local */
@@ -543,6 +563,16 @@ public class BBSysUtils {
             hndl.isDirectCpu = true;
             hndl.myDbHosts.add(hndl.myDbCluster);
             hndl.myDbPorts.add(hndl.overriddenPort);
+        }
+
+        if (hndl.isDirectCpu) {
+            for (int i = 0; i != hndl.myDbPorts.size(); ++i) {
+                if (hndl.myDbPorts.get(i) == -1) {
+                    hndl.myDbPorts.set(i, getPortMux(hndl.myDbHosts.get(i),
+                                hndl.portMuxPort, "comdb2", "replication", hndl.myDbName));
+                }
+            }
+            return;
         }
 
         /******************************************
@@ -644,6 +674,16 @@ public class BBSysUtils {
          * Ask them one-by-one to get the host(s) and port(s) of the database we
          * want to hndlect to.
          **********************************************/
+
+        /* If pmux route is enabled, use pmux port. */
+        if (hndl.pmuxrte) {
+            hndl.myDbPorts.clear();
+            for (int i = 0; i != hndl.myDbHosts.size(); ++i)
+                hndl.myDbPorts.add(hndl.portMuxPort);
+            return;
+        }
+
+
         found = false;
 
         int port = -1;

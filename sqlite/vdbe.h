@@ -18,19 +18,19 @@
 #ifndef _SQLITE_VDBE_H_
 #define _SQLITE_VDBE_H_
 #include <stdio.h>
+#include "fwd_types.h"
 
 /*
 ** A single VDBE is an opaque structure named "Vdbe".  Only routines
 ** in the source file sqliteVdbe.c are allowed to see the insides
 ** of this structure.
 */
-typedef struct Vdbe Vdbe;
+/* typedef struct Vdbe Vdbe; */
 
 /*
 ** The names of the following types declared in vdbeInt.h are required
 ** for the VdbeOp definition.
 */
-typedef struct Mem Mem;
 typedef struct SubProgram SubProgram;
 
 /****************** COMDB2 CUSTOM *************************************/
@@ -338,5 +338,7 @@ void sqlite3VdbeScanStatus(Vdbe*, int, int, int, LogEst, const char*);
 #else
 # define sqlite3VdbeScanStatus(a,b,c,d,e)
 #endif
+
+void comdb2SetRecording(Vdbe *);
 
 #endif /* _SQLITE_VDBE_H_ */

@@ -28,6 +28,7 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 #include "dbinc/db_swap.h"
 #include "dbinc/db_page.h"
 #include "dbinc/btree.h"
+#include "dbinc/txn.h"
 
 #include "logmsg.h"
 
@@ -120,18 +121,18 @@ __berkdb_register_memp_callback(void (*callback) (void))
  * Bloomberg hack - record a hit to memp_fget, with the time taken
  */
 static void
-bb_memp_hit(int start_time_ms)
+bb_memp_hit(uint64_t start_time_us)
 {
-	int time_diff = bb_berkdb_fasttime() - start_time_ms;
+	uint64_t time_diff = bb_berkdb_fasttime() - start_time_us;
 	struct bb_berkdb_thread_stats *stats;
 
 	stats = bb_berkdb_get_thread_stats();
 	stats->n_memp_fgets++;
-	stats->memp_fget_time_ms += time_diff;
+	stats->memp_fget_time_us += time_diff;
 
 	stats = bb_berkdb_get_process_stats();
 	stats->n_memp_fgets++;
-	stats->memp_fget_time_ms += time_diff;
+	stats->memp_fget_time_us += time_diff;
 }
 
 
@@ -222,14 +223,15 @@ __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 	u_int32_t n_cache, st_hsearch, alloc_flags;
 	int b_incr, extending, first, ret, is_recovery_page;
 	db_pgno_t falloc_off, falloc_len;
+	DB_TXN *thrtxn;
 
-	int start_time_ms;
+	uint64_t start_time_us;
 
 	if (memp_fget_callback)
 		memp_fget_callback();
 
 	if (gbl_bb_berkdb_enable_memp_timing) {
-		start_time_ms = bb_berkdb_fasttime();
+		start_time_us = bb_berkdb_fasttime();
 	}
 
 	*(void **)addrp = NULL;
@@ -297,7 +299,7 @@ __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 		    R_ADDR(dbmfp, *pgnoaddr * mfp->stat.st_pagesize);
 		++mfp->stat.st_map;
 		if (gbl_bb_berkdb_enable_memp_timing)
-			bb_memp_hit(start_time_ms);
+			bb_memp_hit(start_time_us);
 		return (0);
 	}
 
@@ -654,9 +656,12 @@ alloc:		/*
 			atomic_inc(env, &hp->hash_page_dirty);
 			atomic_inc(env, &c_mp->stat.st_page_dirty);
 			F_SET(bhp, BH_DIRTY | BH_DIRTY_CREATE);
-			if (dbenv->mp_perfect_ckp) {
-				/* Set page first-dirty-LSN to the lowest */
-				bhp->first_dirty_lsn = (DB_LSN){0};
+			if (dbenv->tx_perfect_ckp) {
+				/* Set page first-dirty-LSN to not logged */
+				DB_LSN not_logged;
+				LSN_NOT_LOGGED(not_logged);
+				bhp->first_dirty_tx_begin_lsn =
+					__txn_get_first_dirty_begin_lsn(not_logged);
 			}
 		}
 
@@ -786,11 +791,12 @@ alloc:		/*
 			    is_recovery_page)) != 0)
 			 goto err;
 
-		if (state == SECOND_MISS)
+		if (state == SECOND_MISS) {
 			if (ISINTERNAL(bhp->buf))
 				++mfp->stat.st_cache_imiss;
 			else if (ISLEAF(bhp->buf))
 				++mfp->stat.st_cache_lmiss;
+		}
 	}
 
 	/*
@@ -823,7 +829,7 @@ alloc:		/*
 	*(void **)addrp = bhp->buf;
 
 	if (gbl_bb_berkdb_enable_memp_timing)
-		bb_memp_hit(start_time_ms);
+		bb_memp_hit(start_time_us);
 	return (0);
 
 err:	/*
@@ -849,7 +855,7 @@ err:	/*
 	}
 
 	if (gbl_bb_berkdb_enable_memp_timing)
-		bb_memp_hit(start_time_ms);
+		bb_memp_hit(start_time_us);
 	return (ret);
 }
 

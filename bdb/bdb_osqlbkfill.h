@@ -17,7 +17,7 @@
 #ifndef __BDB_OSQLBCKFILL_H_
 #define __BDB_OSQLBCKFILL_H_
 
-#include <db.h>
+#include <build/db.h>
 #include "bdb_int.h"
 
 /**

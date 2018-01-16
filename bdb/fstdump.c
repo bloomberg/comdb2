@@ -41,7 +41,7 @@
 #include <tcputil.h>
 
 #include <epochlib.h>
-#include <db.h>
+#include <build/db.h>
 #include "debug_switches.h"
 
 #include <ctrace.h>
@@ -249,8 +249,8 @@ static void *fstdump_thread(void *arg)
 
     sendrec = mymalloc(common->sendrecsz);
     if (!sendrec)
-        logmsg(LOGMSG_ERROR, "fstdump_thread: mymalloc %u failed (sendrec)\n",
-                common->sendrecsz);
+        logmsg(LOGMSG_ERROR, "fstdump_thread: mymalloc %zu failed (sendrec)\n",
+               common->sendrecsz);
     databuf = mymalloc(buffer_length);
     if (!databuf)
         logmsg(LOGMSG_ERROR, "fstdump_thread: mymalloc %u failed (databuf)\n",
@@ -417,7 +417,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
         if (need_advance || !common->close_cursor)
             flags = flags | DB_NEXT;
 
-        if (rc = get_retry(dbcp, common, &key, &data, flags)) {
+        if ((rc = get_retry(dbcp, common, &key, &data, flags)) != 0) {
             if (rc == DB_NOTFOUND)
                 break;
             return NULL;
@@ -471,7 +471,8 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
                changed. The reason we use this and not DB_SET is that records
                may be deleted while our cursor is closed. */
 
-            if (rc = get_retry(dbcp, common, &key, &data, DB_SET_RANGE)) {
+            if ((rc = get_retry(dbcp, common, &key, &data, DB_SET_RANGE)) !=
+                0) {
                 if (rc == DB_NOTFOUND)
                     break;
                 return NULL;
@@ -879,9 +880,9 @@ done:
         int niov;
         unsigned char *rec = mymalloc(fstdump.sendrecsz);
         if (!rec)
-            logmsg(LOGMSG_ERROR, 
-                    "bdb_fstdumpdta_sendsz: mymalloc %u failed at eof\n",
-                    fstdump.sendrecsz);
+            logmsg(LOGMSG_ERROR,
+                   "bdb_fstdumpdta_sendsz: mymalloc %zu failed at eof\n",
+                   fstdump.sendrecsz);
         else {
             bzero(rec, fstdump.sendrecsz);
 
@@ -971,7 +972,7 @@ struct dtadump *bdb_dtadump_start(bdb_state_type *bdb_state, int *bdberr,
     int i;
     int dtanum;
 
-    if ((bdb_state->parent == NULL)) {
+    if (bdb_state->parent == NULL) {
         *bdberr = BDBERR_BADARGS;
         return NULL;
     }

@@ -19,6 +19,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+####### Step 1: Prepare table ######
 dbnm=$1
 tier=$2
 pgrep -a comdb2
@@ -30,26 +31,27 @@ if [ "$tier" = "" ]; then
 fi
 
 echo Creating table
-cdb2sql ${CDB2_OPTIONS} $dbnm $tier "drop table t" >/dev/null
-cdb2sql ${CDB2_OPTIONS} $dbnm $tier "create table t { tag ondisk {int i} }" >/dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm $tier "drop table t" >/dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm $tier "create table t { schema {int i} }" >/dev/null
 
+###### Step 2: Start background writers ######
 echo Inserting 10k records
 i=0
 while [ $i -lt 10000 ] ; do
     echo "INSERT INTO t VALUES(99999999)"
     i=$((i + 1))
-done >>/dev/stdout | cdb2sql ${CDB2_OPTIONS} $dbnm $tier - >/dev/null
+done >>/dev/stdout | cdb2sql -s ${CDB2_OPTIONS} $dbnm $tier - >/dev/null
 
 echo Creating 4 random updating background threads
 loop=0
 bgids=''
 while [ $loop -lt 4 ]; do
-    yes "UPDATE t SET i = $loop limit $loop * 2500, 2500" | cdb2sql ${CDB2_OPTIONS} $dbnm $tier - >/dev/null 2>&1 &
+    yes "UPDATE t SET i = $loop limit $loop * 2500, 2500" | cdb2sql -s ${CDB2_OPTIONS} $dbnm $tier - >/dev/null 2>&1 &
     bgids="${bgids}$! "
     loop=$((loop + 1))
 done
 
-
+###### Step 3: main loop for checkpoints ######
 echo Testing perfect checkpoint on master node
 
 master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm $tier 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | awk '{print $1}' | cut -d':' -f1`
@@ -61,23 +63,21 @@ fi
 echo "MASTER is $master"
 
 loop=0
-success=0
+# Flush buffer pool and force a checkpoint before entering the main loop.
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("flush")'
 gbl_before=`cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb cachestat")' | grep st_ckp_pages | cut -d' ' -f2`
 gbl_sync_before=`echo "$gbl_before" | head -1`
 gbl_skip_before=`echo "$gbl_before" | tail -1`
+
 while [ $loop -lt 20 ]; do
     before=`cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb cachestat")' | grep st_ckp_pages | cut -d' ' -f2`
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("flush")'
-    after=`cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm $tier 'exec procedure sys.cmd.send("bdb cachestat")' | grep st_ckp_pages | cut -d' ' -f2`
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb checkpoint")'
+    after=`cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb cachestat")' | grep st_ckp_pages | cut -d' ' -f2`
 
     sync_before=`echo "$before" | head -1`
     skip_before=`echo "$before" | tail -1`
     sync_after=`echo "$after" | head -1`
     skip_after=`echo "$after" | tail -1`
-
-    if [ $skip_after -gt $skip_before ]; then
-        success=$((success + 1))
-    fi
 
     loop=$((loop + 1))
     sync_delta=$((sync_after - sync_before))
@@ -90,10 +90,10 @@ while [ $loop -lt 20 ]; do
     fi
 
     echo "$loop: I/O optimized by $skip_ratio percent"
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm $tier 'exec procedure sys.cmd.send("bdb cachestat")' | grep st_ckp_pages
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master 'exec procedure sys.cmd.send("bdb cachestat")' | grep st_ckp_pages
     sleep 1
 done
-gbl_after=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm $tier 'exec procedure sys.cmd.send("bdb cachestat")' | grep st_ckp_pages | cut -d' ' -f2`
+gbl_after=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master 'exec procedure sys.cmd.send("bdb cachestat")' | grep st_ckp_pages | cut -d' ' -f2`
 gbl_sync_after=`echo "$gbl_after" | head -1`
 gbl_skip_after=`echo "$gbl_after" | tail -1`
 
@@ -102,6 +102,7 @@ gbl_skip_delta=$((gbl_skip_after - gbl_skip_before))
 gbl_tot_delta=$((gbl_sync_delta + gbl_skip_delta))
 gbl_skip_ratio=0
 
+###### Step 4: Collect stats ######
 if [ $gbl_tot_delta -ne 0 ]; then
     gbl_skip_ratio=`echo "$gbl_skip_delta/$gbl_tot_delta*100" | bc -l`
 fi
@@ -112,19 +113,23 @@ echo Killing all background threads
 echo "kill $bgids"
 kill -9 $bgids
 
-if [ $success -eq 0 ]; then
-    echo 'st_ckp_pages_skip did not increase.' >&2
+# use bc -l to do floating point math.
+success=`echo "$gbl_skip_ratio - 100" | bc -l`
+if [ "$success" != "0" ]; then
+    echo 'Imperfect checkpoints???' >&2
     echo 'FAILED.' >&2
     exit 1
 fi
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm $tier 'exec procedure sys.cmd.send("bdb cachestat")' | grep st_ckp_pages
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb cachestat")' | grep st_ckp_pages
 
+# TODO XXX FIXME cluster test
 if [ ! -z "$CLUSTER" ]; then
     echo 'Passed'
     exit 0
 fi
 
+###### Step 5: bounce db to verify recovery ######
 echo Killing database
 kill -9 $pid
 
@@ -152,14 +157,28 @@ while [ $outloop -lt 20 ]; do
             if [ $n -ne 2500 ]; then
                 echo 'Data mismatch. FAILED.' >&2
                 kill -9 $pid
+                rm -f /tmp/_perfect_ckp.$$
                 exit 1
             fi
             loop=$((loop + 1))
         done
 
+
+        good=`cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.verify('t')" | grep -i 'succeed'`
+        echo $good
         kill -9 $pid
+        rm -f /tmp/_perfect_ckp.$$
+        if [ "$good" = "" ]; then
+            echo 'Failed to verify table t.'
+            exit 1
+        fi
+
         echo 'Passed.'
         exit 0
     fi
     sleep 10
 done
+echo "Failed to bring up the db. log at /tmp/_perfect_ckp.$$"
+kill -9 $pid
+rm -f /tmp/_perfect_ckp.$$
+exit 1

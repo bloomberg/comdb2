@@ -21,8 +21,11 @@
 #include <assert.h>
 
 #include "strbuf.h"
+#ifndef BUILDING_TOOLS
 #include "mem_bb.h"
 #include "mem_override.h"
+#endif
+#include "logmsg.h"
 
 #define STRBUF_INC 64
 
@@ -35,13 +38,15 @@ struct strbuf {
 strbuf *strbuf_new(void)
 {
     strbuf *buf = malloc(sizeof(strbuf));
-    assert(buf != 0);
-    if (buf == 0)
-        exit(1);
+    if (buf == 0) {
+        logmsg(LOGMSG_FATAL, "%s: memory allocation failed\n", __func__);
+        abort();
+    }
     buf->buf = malloc(STRBUF_INC);
-    assert(buf->buf != 0);
-    if (buf->buf == 0)
-        exit(1);
+    if (buf->buf == 0) {
+        logmsg(LOGMSG_FATAL, "%s: memory allocation failed\n", __func__);
+        abort();
+    }
     buf->buf[0] = '\0';
     buf->alloc = STRBUF_INC;
     buf->len = 0;
@@ -56,7 +61,10 @@ void strbuf_append(strbuf *buf, const char *str)
         size_t inc = len >= STRBUF_INC ? len + 1 : STRBUF_INC;
         buf->alloc += inc;
         buf->buf = realloc(buf->buf, buf->alloc);
-        assert(buf->buf != 0);
+        if (buf->buf == 0) {
+            logmsg(LOGMSG_FATAL, "%s: memory allocation failed\n", __func__);
+            abort();
+        }
     }
     strcat(buf->buf, str);
     buf->len += len;
@@ -122,7 +130,10 @@ void strbuf_vappendf(strbuf *buf, const char *fmt, va_list args)
     }
     len++;
     out = malloc(len);
-    assert(out != 0);
+    if (out == NULL) {
+        logmsg(LOGMSG_FATAL, "%s: memory allocation failed\n", __func__);
+        abort();
+    }
     vsnprintf(out, len, fmt, args);
     strbuf_append(buf, out);
     free(out);
@@ -143,7 +154,10 @@ void strbuf_appendf(strbuf *buf, const char *fmt, ...)
     }
     len++;
     out = malloc(len);
-    assert(out != 0);
+    if (out == NULL) {
+        logmsg(LOGMSG_FATAL, "%s: memory allocation failed\n", __func__);
+        abort();
+    }
     va_start(args, fmt);
     vsnprintf(out, len, fmt, args);
     va_end(args);

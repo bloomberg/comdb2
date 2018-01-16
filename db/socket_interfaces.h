@@ -73,12 +73,15 @@ enum { SOCKREQ_LEN = 4 + 4 + 4 + 4 + 4 + (2 * 4) + 4 };
 
 BB_COMPILE_TIME_ASSERT(sockreq_len, sizeof(sockreq_t) == SOCKREQ_LEN);
 
-int handle_socket_txbuf(struct thr_handle *thr_self, SBUF2 *sb, struct db *db,
+int handle_socket_txbuf(struct thr_handle *thr_self, SBUF2 *sb, struct dbtable *db,
                         int *keepsock);
 /*int reterr_socket(struct thd * thd, struct ireq* iq, int rc);*/
 int sndbak_socket(SBUF2 *sb, u_char *buf, int buflen, int rc);
 int sndbak_open_socket(SBUF2 *sb, u_char *buf, int buflen, int rc);
 
 int handle_socketrequest(SBUF2 *sb, int *keepsocket, int wrongdb);
+
+/* Free all resources allocated in the lock buffer. */
+void cleanup_lock_buffer(struct buf_lock_t *);
 
 #endif /* #ifndef __SOCKET_INTERFACES_H__ */

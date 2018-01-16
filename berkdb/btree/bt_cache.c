@@ -44,7 +44,7 @@ rcache_init(size_t count, size_t pgsz)
 	    + sizeof(CacheSlot) * count + pgsz * count;
 
 	if ((hndl = malloc(bytes)) == NULL) {
-		logmsg(LOGMSG_ERROR, "%s malloc failed:%u bytes\n", __func__, bytes);
+		logmsg(LOGMSG_ERROR, "%s malloc failed:%zu bytes\n", __func__, bytes);
 		return;
 	}
 	hndl->count = count;
@@ -72,7 +72,10 @@ hash_fileid(void *fileid, uint32_t * crc, uint32_t * hash)
 void
 rcache_destroy(void)
 {
-	free(hndl);
+    if (hndl) {
+        free(hndl);
+        hndl = NULL;
+    }
 }
 
 int

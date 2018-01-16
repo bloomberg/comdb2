@@ -7,6 +7,8 @@
 #include "lrlerror.h"
 #include "tar_header.h"
 #include "riia.h"
+#include "increment.h"
+#include "util.h"
 
 #include <cstdlib>
 #include <map>
@@ -35,147 +37,6 @@
 #define FS_PERIODIC_CHECK (10 * 1024 * 1024)
 
 static bool check_dest_dir(const std::string& dir);
-
-static void make_dirs(const std::string& dirname)
-// Ensure that a directory given by absolute path dirname exists
-{
-    struct stat st;
-    static int extentsize = -1;
-    static std::map<std::string, bool> files;
-    bool isdir = false;
-
-    if (stat(dirname.c_str(), &st) == 0 && ((st.st_mode & S_IFMT) == S_IFDIR))
-        isdir = true;
-
-    if (extentsize == -1) {
-        FILE *f;
-        int sz;
-
-        extentsize = 0;
-        f = fopen("/bb/data/comdb2_xfs_extent_size", "r");
-        if (f != NULL) {
-            char line[512];
-            while (fgets(line, sizeof(line), f)) {
-                char *s = strchr(line, '\n');
-                if (*s) *s = 0;
-                s = line;
-                while (*s && isspace(*s)) s++;
-                if (*s == '#') continue;
-                sz = atoi(s);
-                if (sz > 0) extentsize = sz;
-            }
-        }
-    }
-    if (extentsize > 0 && isdir && !files[dirname]) {
-        std::stringstream xfscmd;
-        xfscmd << "/usr/sbin/xfs_io -c 'extsize " << extentsize << "' " << dirname;
-
-        // set default extent size for database directories
-        std::clog << ">>>>>> " << xfscmd.str() << std::endl;
-        std::system(xfscmd.str().c_str());
-        files[dirname] = true;
-    }
-
-    if(stat(dirname.c_str(), &st) == 0) {
-        if((st.st_mode & S_IFMT) == S_IFDIR) {
-            // This already exists as a directory (or a symlink to a directory)
-            // so leave it alone.  This check exists because "mkdir -p /bb/bin"
-            // would fail on sundev5 due to /bb/bin being a symlink to
-            // /bb/sys/opbin.
-            return;
-        }
-    }
-
-
-    // Yes, this is lazy.  Sorry.
-    std::string cmd("mkdir -p " + dirname);
-
-    int rc = std::system(cmd.c_str());
-    if(rc != 0) {
-        std::ostringstream ss;
-        ss << "Command " << cmd << " failed with rcode " << rc;
-        throw Error(ss);
-    }
-
-}
-
-
-static std::unique_ptr<fdostream> output_file(
-        const std::string& filename,
-        bool make_sav, bool direct)
-// Create an output file stream ready to receive the data for a file.
-// This will also make any intermediate directories needed.
-// If make_sav is true and the file already exists then the old file will be
-// moved to .sav before proceeding.
-{
-    std::string dirname(filename);
-    makedirname(dirname);
-    make_dirs(dirname);
-    struct stat st;
-
-    if(stat(filename.c_str(), &st) == 0) {
-        if(make_sav) {
-            // We need to make a .sav.  This isn't a fatal error if we can't
-            std::string sav_filename(filename + ".sav");
-            int rc = rename(filename.c_str(), sav_filename.c_str());
-            if(rc == -1) {
-                std::cerr << "Cannot create " << sav_filename << ": "
-                    << errno << " " << strerror(errno) << std::endl;
-            }
-        }
-
-        // unlink the existing file (fix for unable to overwrite a readonly file)
-        if(unlink(filename.c_str()) == -1 && errno != ENOENT) {
-            std::cerr << "Cannot unlink " << filename << ": "
-                    << errno << " " << strerror(errno) << std::endl;
-        }
-    }
-
-    int flags = O_WRONLY | O_CREAT | O_TRUNC;
-
-#ifdef __sun
-    int fd = open(filename.c_str(), flags, 0666);
-    if(fd == -1) throw Error("Error opening '" + filename + "' for writing");
-#else
-    if (direct)
-        flags |= O_DIRECT;
-reopen:
-    int fd = open(filename.c_str(), flags, 0666);
-    if(fd == -1) {
-        if (EINVAL == errno){
-            std::clog << "Turning off directio, err: " << std::strerror(errno)
-                      << std::endl;
-            flags ^= O_DIRECT;
-            goto reopen;
-        } else {
-            throw Error("Error opening '" + filename + "' for writing");
-        }
-    }
-#endif
-
-    return std::unique_ptr<fdostream>(new fdostream(fd));
-}
-
-static void remove_all_old_files(std::string &datadir) {
-    std::list<std::string> dirlist;
-    listdir_abs(dirlist, datadir);
-
-    for (std::list<std::string>::const_iterator ii = dirlist.begin(); ii != dirlist.end(); ++ii) {
-        try {
-            if (!isDirectory(*ii)) {
-                std::string s(*ii);
-                /* don't delete lrl file */
-                if (s.find(".lrl") == s.npos) {
-                    std::clog << "deleted: " << s << std::endl;
-                    unlink(s.c_str());
-                }
-            }
-        }
-        catch (Error &e) {
-            std::clog << "couldn't stat " << *ii << ", not removing" << std::endl;
-        }
-    }
-}
 
 static void remove_old_files(const std::list<std::string>& dirlist,
         const std::set<std::string>& extracted_files,
@@ -216,7 +77,7 @@ static void remove_old_files(const std::list<std::string>& dirlist,
 
 
 
-static bool read_octal_ull(const char *str, size_t len, unsigned long long& number)
+bool read_octal_ull(const char *str, size_t len, unsigned long long& number)
 {
     if(*str == '\200') {
         /* This is encoded in base 256 as per the GNU extensions */
@@ -248,6 +109,7 @@ static bool read_octal_ull(const char *str, size_t len, unsigned long long& numb
 static void process_manifest(
         const std::string& text,
         std::map<std::string, FileInfo>& manifest_map,
+        bool& run_full_recovery,
         std::string& origlrlname,
         std::vector<std::string> &options
         )
@@ -280,6 +142,10 @@ static void process_manifest(
                     std::clog << "Bad File directive on line "
                         << lineno << " of MANIFEST" << std::endl;
                 }
+            } else if(tok == "SupportFilesOnly") {
+                // If serialisation contains sources only then no need to run
+                // full recovery.
+                run_full_recovery = false;
             } else if(tok == "OrigLrlFile") {
 
                // llmeta renames the lrl file
@@ -482,12 +348,14 @@ void deserialise_database(
         const std::string *p_datadestdir,
         bool strip_cluster_info,
         bool strip_consumer_info,
+        bool run_full_recovery,
         const std::string& comdb2_task,
         unsigned percent_full,
         bool force_mode,
         bool legacy_mode,
         bool& is_disk_full,
-        bool run_with_done_file
+        bool run_with_done_file,
+        bool incr_mode
 )
 // Deserialise a database from serialised from received on stdin.
 // If lrldestdir and datadestdir are not NULL then the lrl and data files
@@ -506,10 +374,10 @@ void deserialise_database(
     std::vector<std::string> options;
 
     bool file_is_sparse = false;
-    
-    std::string done_file_string;
 
-    
+    std::string fingerprint;
+
+    std::string done_file_string;
 
     // This is the directory listing of the data directory taken at the time
     // when we find the lrl file in out input stream and can therefore fix
@@ -524,7 +392,7 @@ void deserialise_database(
 
     std::string datadestdir;
 
-    
+
     empty_page = malloc(65536);
     memset(empty_page, 0, 65536);
 
@@ -547,6 +415,8 @@ void deserialise_database(
     std::string dbname;
     std::string origlrlname("");
 
+    std::string sha_fingerprint = "";
+
     // The manifest map
     std::map<std::string, FileInfo> manifest_map;
 
@@ -556,7 +426,7 @@ void deserialise_database(
        done_file_string = datadestdir + "/DONE";
        unlink(done_file_string.c_str());
     }
-    
+
 
     while(true) {
 
@@ -566,7 +436,7 @@ void deserialise_database(
             // * any log files lying around
             // * __db.rep.db
             // Any database like files from the destination directory dir
-            
+
             if(datadestdir[0] != '/') {
                 std::ostringstream ss;
                 ss << "Cannot deserialise into " << datadestdir
@@ -577,7 +447,7 @@ void deserialise_database(
             // Create the copylock file to indicate that this copy isn't
             // done yet.
             copylock_file = lrldestdir + "/" + dbname + ".copylock";
-#if 0            
+#if 0
             struct stat statbuf;
             rc = stat(copylock_file.c_str(), &statbuf);
             if (rc == 0)
@@ -611,7 +481,25 @@ void deserialise_database(
         }
 
         // If the block is entirely blank then we're done
+        // Alternativelyh, if we're running in incremental mode, then
+        // we know we are moving on the the incremental backups
         if(std::memcmp(head.c, zero_head, 512) == 0) {
+            if(incr_mode){
+                std::clog << "Done with base backup, moving on to increments"
+                          << std::endl << std::endl;
+
+                incr_deserialise_database(
+                    lrldestdir,
+                    datadestdir,
+                    dbname,
+                    table_set,
+                    sha_fingerprint,
+                    percent_full,
+                    force_mode,
+                    options,
+                    is_disk_full
+                );
+            }
             break;
         }
 
@@ -649,11 +537,15 @@ void deserialise_database(
             is_lrl = true;
         }
 
+        if(ext == "sha") {
+            sha_fingerprint = read_serialised_sha_file();
+            continue;
+        }
+
         bool is_manifest = false;
         if(filename == "MANIFEST") {
             is_manifest = true;
         }
-
 
         // Gather the text of the file for lrls and manifests
         std::string text;
@@ -698,19 +590,19 @@ void deserialise_database(
                 throw Error(ss);
             }
 
-            // Calculate how full the file system would be if we were to 
+            // Calculate how full the file system would be if we were to
             // add this file to it.
             fsblkcnt_t fsblocks = filesize / stfs.f_bsize;
             double percent_free = 100.00 * ((double)(stfs.f_bavail - fsblocks) / (double)stfs.f_blocks);
             if(100.00 - percent_free >= percent_full) {
-                is_disk_full = true;    
+                is_disk_full = true;
                 std::ostringstream ss;
                 ss << "Not enough space to deserialise " << filename
                     << " (" << filesize << " bytes) - would leave only "
                     << percent_free << "% free space";
                 throw Error(ss);
             }
-            
+
 
             // All good?  Open file.  All non-lrls go into the data directory.
             if(datadestdir.empty()) {
@@ -742,14 +634,14 @@ void deserialise_database(
             pagesize = 4096;
         }
         size_t bufsize = pagesize;
-        
+
         while((bufsize << 1) <= MAX_BUF_SIZE) {
             bufsize <<= 1;
         }
 
 
         uint8_t *buf;
-#if defined _HP_SOURCE || defined _SUN_SOURCE 
+#if defined _HP_SOURCE || defined _SUN_SOURCE
         buf = (uint8_t*) memalign(512, bufsize);
 #else
         if (posix_memalign((void**) &buf, 512, bufsize))
@@ -767,11 +659,11 @@ void deserialise_database(
         bool checksum_failure = false;
 
         unsigned long long readbytes = 0;
-        while(bytesleft > 0) 
+        while(bytesleft > 0)
         {
             readbytes = bytesleft;
 
-            if(bytesleft > bufsize) 
+            if(bytesleft > bufsize)
             {
                readbytes = bufsize;
             }
@@ -782,7 +674,7 @@ void deserialise_database(
             if (readbytes > bytesleft)
                 readbytes = bytesleft;
 
-            if(readall(0, &buf[0], readbytes) != readbytes) 
+            if(readall(0, &buf[0], readbytes) != readbytes)
             {
                std::ostringstream ss;
 
@@ -796,80 +688,39 @@ void deserialise_database(
                   << errno << " " << strerror(errno);
                throw Error(ss);
             }
-            
 
-            if(is_text) 
+
+            if(is_text)
             {
                text.append((char*) &buf[0], readbytes);
-            } 
-            else if (file_is_sparse && 
-               (readbytes == pagesize) && (bytesleft > readbytes) )  
+            }
+            else if (file_is_sparse &&
+               (readbytes == pagesize) && (bytesleft > readbytes) )
             {
-               if (memcmp(empty_page, &buf[0], pagesize) == 0) 
+               if (memcmp(empty_page, &buf[0], pagesize) == 0)
                {
                   skipped_bytes += pagesize;
                   /* This data won't be counted towards file size.*/
                   recheck_count += readbytes;
-               } 
-               else 
+               }
+               else
                {
-                  if (skipped_bytes) 
+                  if (skipped_bytes)
                   {
-                     if((of_ptr->skip(skipped_bytes))) 
+                     if((of_ptr->skip(skipped_bytes)))
                      {
                         std::ostringstream ss;
 
                         if (filename == "FLUFF")
                            return;
-                        
+
                         ss << "Error skipping " << filename << " after "
                            << (filesize - bytesleft) << " bytes";
-                        throw Error(ss);                          
+                        throw Error(ss);
                      }
                      skipped_bytes = 0;
                   }
-                  if (!of_ptr->write((char*) buf, pagesize)) 
-                  {
-                     std::ostringstream ss;
-
-                     if (filename == "FLUFF")
-                        return;
-
-                     ss << "Error Writing " << filename << " after "
-                        << (filesize - bytesleft) << " bytes";
-                     throw Error(ss);
-                  }                    
-               }
-            } 
-            else 
-            {
-               uint64_t off = 0;
-               uint64_t nwrites = 0;
-               uint64_t bytes = readbytes;
-               if (file_is_sparse && skipped_bytes) 
-               {
-                  if((of_ptr->skip(skipped_bytes))) 
-                  {
-                     std::ostringstream ss;
-
-                     if (filename == "FLUFF")
-                        return;
-
-                     
-                     ss << "Error skipping " << filename << " after "
-                        << (filesize - bytesleft) << " bytes";
-                     throw Error(ss);                          
-                  }                    
-                  skipped_bytes = 0;
-               }                
-               while (bytes > 0) 
-               {
-                  int lim;
-                  if (bytes < write_size)
-                     lim = bytes;
-                  else
-                     lim = write_size;
-                  if (!of_ptr->write((char*) &buf[off], lim)) 
+                  if (!of_ptr->write((char*) buf, pagesize))
                   {
                      std::ostringstream ss;
 
@@ -880,11 +731,53 @@ void deserialise_database(
                         << (filesize - bytesleft) << " bytes";
                      throw Error(ss);
                   }
-                  nwrites++;
-                  off += lim;
-                  bytes -= lim;
                }
-               // std::cerr << "wrote " << readbytes << " bytes in " << nwrites << " chunks" << std::endl;
+            }
+            else
+            {
+                uint64_t off = 0;
+                uint64_t nwrites = 0;
+                uint64_t bytes = readbytes;
+
+                if (file_is_sparse && skipped_bytes)
+                {
+                    if((of_ptr->skip(skipped_bytes)))
+                    {
+                        std::ostringstream ss;
+
+                        if (filename == "FLUFF")
+                            return;
+
+                        ss << "Error skipping " << filename << " after "
+                           << (filesize - bytesleft) << " bytes";
+                        throw Error(ss);
+                    }
+                    skipped_bytes = 0;
+                }
+
+                while (bytes > 0)
+                {
+                    int lim;
+                    if (bytes < write_size)
+                        lim = bytes;
+                    else
+                        lim = write_size;
+                    if (!of_ptr->write((char*) &buf[off], lim))
+                    {
+                        std::ostringstream ss;
+
+                        if (filename == "FLUFF")
+                            return;
+
+                            ss << "Error Writing " << filename << " after "
+                               << (filesize - bytesleft) << " bytes";
+                            throw Error(ss);
+                    }
+                    nwrites++;
+                    off += lim;
+                    bytes -= lim;
+                }
+                // std::cerr << "wrote " << readbytes << " bytes in " << nwrites << " chunks" << std::endl;
             }
             bytesleft -= readbytes;
             recheck_count -= readbytes;
@@ -900,20 +793,20 @@ void deserialise_database(
 	                    << ": " << strerror(errno);
 	                throw Error(ss);
 	            }
-	
-	            // Calculate how full the file system would be if we were to 
+
+	            // Calculate how full the file system would be if we were to
 	            // add this file to it.
 	            fsblkcnt_t fsblocks = bytesleft / stfs.f_bsize;
 	            double percent_free = 100.00 * ((double)(stfs.f_bavail - fsblocks) / (double)stfs.f_blocks);
 	            if(100.00 - percent_free >= percent_full) {
-	                is_disk_full = true;    
+	                is_disk_full = true;
 	                std::ostringstream ss;
 	                ss << "Not enough space to deserialise remaining part of " << filename
 	                    << " (" << bytesleft << " bytes) - would leave only "
 	                    << percent_free << "% free space";
 	                throw Error(ss);
 	            }
-	
+
                 recheck_count = FS_PERIODIC_CHECK;
             }
         }
@@ -940,7 +833,7 @@ void deserialise_database(
            std::clog << " SPARSE ";
         else
            std::clog << " not sparse ";
-        
+
 
         std::clog << std::endl;
 
@@ -951,7 +844,7 @@ void deserialise_database(
         }
 
         if(is_manifest) {
-            process_manifest(text, manifest_map, origlrlname, options);
+            process_manifest(text, manifest_map, run_full_recovery, origlrlname, options);
 
         } else if(is_lrl) {
 
@@ -1005,6 +898,38 @@ void deserialise_database(
     if(!inited_txn_dir) {
         throw Error("No valid lrl file seen or txn dir not inited");
     }
+
+    // Run full recovery
+    if(run_full_recovery) {
+        std::ostringstream cmdss;
+
+        if (run_with_done_file)
+           cmdss << "comdb2_stdout_redir ";
+        
+        cmdss<< comdb2_task << " " 
+             << dbname << " -lrl "
+             << main_lrl_file 
+             << " -fullrecovery";
+
+        for (int i = 0; i < options.size(); i++) {
+            cmdss << " " << options[i];
+        }
+
+        std::clog << "Running full recovery: " << cmdss.str() << std::endl;
+
+        errno = 0;
+        int rc = std::system(cmdss.str().c_str());
+        if(rc != 0) {
+            std::ostringstream ss;
+            ss << "Full recovery command '" << cmdss.str() << "' failed rc "
+                << rc << " errno " << errno << std::endl;
+            throw Error(ss);
+        }
+        std::clog << "Full recovery successful" << std::endl;
+    }
+
+
+
 
     // Remove the copylock file
     if(!copylock_file.empty()) {

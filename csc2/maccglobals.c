@@ -44,10 +44,7 @@ char *union_names[MAX];
 int union_index = -1;
 int union_level = -1;
 int un_init = 0;
-char *maccfuncpath = "";
 char *customcode = NULL;
-/*char *maccfuncpath="/bbinc/Cinclude/";*/
-time_t ctm;
 char includename[256];
 char includefiles[MAX_INCLUDES][MAX_INC_NAME];
 int includetypes[MAX_INCLUDES];
@@ -74,7 +71,7 @@ int opt_cachesz = 300;
 int opt_dbnum = 0;
 int opt_remote = 0;
 char *opt_dbname = 0;    /* database+table name */
-char opt_maindbname[64]; /* database name */
+char opt_maindbname[MAX_DBNAME_LENGTH]; /* database name */
 char opt_tblname[64];    /* table name */
 int opt_verbose;         /* 0=don't use verbose comments in .h */
 int opt_copycsc;         /* 0=don't copy .csc to .inc */
@@ -157,9 +154,7 @@ void init_globals()
     union_index = -1;
     union_level = -1;
     un_init = 0;
-    maccfuncpath = "";
     customcode = NULL;
-    ctm = 0;
     memset(includename, 0, sizeof(includename));
     memset(includefiles, 0, sizeof(includefiles));
     memset(includetypes, 0, sizeof(includetypes));

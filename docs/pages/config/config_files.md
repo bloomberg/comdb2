@@ -496,7 +496,6 @@ next word determines which option to set, and the following word determines its 
 |TEMPTABLE_CACHESZ | 262144 (BYTES) | Cache size for temporary tables. Temp tables do not share the database's main buffer pool.
 |BULK_SQL_MODE | 1 (BOOLEAN) | Enable reading data in bulk when performing a scan (alternative is single-stepping a cursor)
 |ROWLOCKS_PAGELOCK_OPTIMIZATION|1 (BOOLEAN) | Upgrade rowlocks to pagelocks if possible on cursor traversals.
-|LOGREGIONSZ|1024*1024 (QUANTITY) | Size of the log region - this is used by BerkeleyDB to store information about open files and other things. <!-- *>
 |ELECTTIMEBASE|50 (MSECS) | Master election timeout base value
 |BULK_SQL_THRESHOLD|2 (QUANTITY) | Use bulk retrieval of data on scan after this many next operations
 |SQL_QUERY_IGNORE_NEWER_UPDATES|0 (BOOLEAN) | In transaction modes below SNAPSHOT, skip records updated after the current transaction started.
@@ -737,6 +736,7 @@ These options are toggle-able at runtime.
 |enable_prefault_udp | not set |  Send lossy prefault requests to replicants 
 |disable_prefault_udp | | Disable `enable_prefault_udp`
 |sqlsortermem | 314572800 | maximum amount of memory to give the sqlite sorter
+|sqlsortermaxmmapsize | 2147418112 | maximum amount of file-backed mmap size in bytes to give the sqlite sorter
 |cache | 64 mb | Database cache size, see [cache size](#cache-size)
 |cachekb | | see [cache size](#cache-size)
 |cachekbmin | | see [cache size](#cache-size)

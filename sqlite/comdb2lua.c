@@ -17,8 +17,8 @@
 #include <trigger.h>
 #include <sqlglue.h>
 
-struct db;
-struct db *getqueuebyname(const char *);
+struct dbtable;
+struct dbtable *getqueuebyname(const char *);
 int bdb_get_sp_get_default_version(const char *, int *);
 
 int comdb2LocateSP(Parse *p, char *sp)
@@ -206,7 +206,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc, Cdb2TrigTables 
 	sc->newcsc2 = strbuf_disown(s);
 	strbuf_free(s);
 	Vdbe *v = sqlite3GetVdbe(parse);
-	comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange,
+	comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
 			    (vdbeFuncArgFree)&free_schema_change_type);
 }
 
@@ -224,7 +224,7 @@ void comdb2DropTrigger(Parse *parse, Token *proc)
 	sc->drop_table = 1;
 	strcpy(sc->table, qname);
 	Vdbe *v = sqlite3GetVdbe(parse);
-	comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange,
+	comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
 			    (vdbeFuncArgFree)&free_schema_change_type);
 }
 
@@ -247,7 +247,7 @@ void comdb2DropTrigger(Parse *parse, Token *proc)
 		strcpy(sc->spname, spname);                                    \
 		Vdbe *v = sqlite3GetVdbe(parse);                               \
 		comdb2prepareNoRows(                                           \
-		    v, parse, 0, sc, &comdb2SqlSchemaChange,                   \
+		    v, parse, 0, sc, &comdb2SqlSchemaChange_tran,              \
 		    (vdbeFuncArgFree)&free_schema_change_type);                \
 	} while (0)
 
@@ -276,7 +276,7 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
 		strcpy(sc->spname, spname);                                    \
 		Vdbe *v = sqlite3GetVdbe(parse);                               \
 		comdb2prepareNoRows(                                           \
-		    v, parse, 0, sc, &comdb2SqlSchemaChange,                   \
+		    v, parse, 0, sc, &comdb2SqlSchemaChange_tran,              \
 		    (vdbeFuncArgFree)&free_schema_change_type);                \
 	} while (0)
 

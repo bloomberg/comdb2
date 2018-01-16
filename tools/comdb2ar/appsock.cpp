@@ -10,10 +10,16 @@
 #include <unistd.h>
 
 #include <cstring>
+#include <strings.h>
 
-#include <portmuxusr.h>
 #include <sbuf2.h>
 
+#include <netdb.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/tcp.h>
+#include <fcntl.h>
+#include <poll.h>
 
 class SigPipeBlocker {
 
@@ -40,12 +46,13 @@ SigPipeBlocker::SigPipeBlocker()
 
 SigPipeBlocker::~SigPipeBlocker()
 {
-    siginfo_t info;
+#   ifndef __APPLE__
     struct timespec timeout = {0, 0};
     if(sigtimedwait(&m_sset, NULL, &timeout) == -1 && errno != EAGAIN) {
         std::cerr << "SigPipeBlocker::~SigPipeBlocker(): sigtimedwait error "
                  << errno << std::endl;
     }
+#   endif
     pthread_sigmask(SIG_SETMASK, &m_oset, NULL);
 }
 
@@ -71,14 +78,215 @@ Appsock_impl::Appsock_impl(const std::string& dbname) :
 {
 }
 
+static int lclconn(int s, const struct sockaddr *name, int namelen,
+                   int timeoutms)
+{
+    /* connect with timeout */
+    struct pollfd pfd;
+    int flags, rc;
+    int err;
+    socklen_t len;
+    if (timeoutms <= 0)
+        return connect(s, name, namelen); /*no timeout specified*/
+    flags = fcntl(s, F_GETFL, 0);
+    if (flags < 0)
+        return -1;
+    if (fcntl(s, F_SETFL, flags | O_NONBLOCK) < 0) {
+        return -1;
+    }
+
+    rc = connect(s, name, namelen);
+    if (rc == -1 && errno == EINPROGRESS) {
+        /*wait for connect event */
+        pfd.fd = s;
+        pfd.events = POLLOUT;
+        rc = poll(&pfd, 1, timeoutms);
+        if (rc == 0) {
+            /*timeout*/
+            /*fprintf(stderr,"connect timed out\n");*/
+            return -2;
+        }
+        if (rc != 1) { /*poll failed?*/
+            return -1;
+        }
+        if ((pfd.revents & POLLOUT) == 0) { /*wrong event*/
+            /*fprintf(stderr,"poll event %d\n",pfd.revents);*/
+            return -1;
+        }
+    } else if (rc == -1) {
+        /*connect failed?*/
+        return -1;
+    }
+    if (fcntl(s, F_SETFL, flags) < 0) {
+        return -1;
+    }
+    len = sizeof(err);
+    if (getsockopt(s, SOL_SOCKET, SO_ERROR, &err, &len)) {
+        return -1;
+    }
+    errno = err;
+    if (errno != 0)
+        return -1;
+    return 0;
+}
+
+static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
+{
+    /*RESOLVE AN ADDRESS*/
+    in_addr_t inaddr;
+
+    int len;
+    char tmp[8192];
+    int tmplen = 8192;
+    int herr;
+    struct hostent hostbuf, *hp = NULL;
+    char tok[128];
+    const char *cc = strchr(host, (int)':');
+    if (cc == 0) {
+        len = strlen(host);
+        if (len >= sizeof(tok))
+            return -2;
+        memcpy(tok, host, len);
+        tok[len] = 0;
+    } else {
+        *port = atoi(cc + 1);
+        len = (int)(cc - host);
+        if (len >= sizeof(tok))
+            return -2;
+        memcpy(tok, host, len);
+        tok[len] = 0;
+    }
+    if ((inaddr = inet_addr(tok)) != (in_addr_t)-1) {
+        /* it's dotted-decimal */
+        memcpy(&in->s_addr, &inaddr, sizeof(inaddr));
+    } else {
+#ifdef __APPLE__
+        hp = gethostbyname(tok);
+#elif _LINUX_SOURCE
+        gethostbyname_r(tok, &hostbuf, tmp, tmplen, &hp, &herr);
+#elif _SUN_SOURCE
+        hp = gethostbyname_r(tok, &hostbuf, tmp, tmplen, &herr);
+#else
+        hp = gethostbyname(tok);
+#endif
+        if (hp == NULL) {
+            fprintf(stderr, "%s:gethostbyname(%s): errno=%d err=%s\n", __func__,
+                    tok, errno, strerror(errno));
+            return -1;
+        }
+        memcpy(&in->s_addr, hp->h_addr, hp->h_length);
+    }
+    return 0;
+}
+
+static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
+                              int timeoutms)
+{
+    int sockfd, rc;
+    int sendbuff;
+    struct sockaddr_in tcp_srv_addr; /* server's Internet socket addr */
+    struct sockaddr_in my_addr;      /* my Internet address */
+    bzero((char *)&tcp_srv_addr, sizeof tcp_srv_addr);
+    tcp_srv_addr.sin_family = AF_INET;
+    if (port <= 0) {
+        return -1;
+    }
+    tcp_srv_addr.sin_port = htons(port);
+    memcpy(&tcp_srv_addr.sin_addr, &in.s_addr, sizeof(in.s_addr));
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        fprintf(stderr, "tcpconnect_to: can't create TCP socket\n");
+        return -1;
+    }
+    sendbuff = 1; /* enable option */
+    if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char *)&sendbuff,
+                   sizeof sendbuff) < 0) {
+        fprintf(stderr, "tcpconnect_to: setsockopt failure\n");
+        close(sockfd);
+        return -1;
+    }
+    struct linger ling;
+    ling.l_onoff = 1;
+    ling.l_linger = 0;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_LINGER, (char *)&ling, sizeof(ling)) <
+        0) {
+        fprintf(stderr, "tcpconnect_to: setsockopt failure:%s",
+                strerror(errno));
+        close(sockfd);
+        return -1;
+    }
+
+    if (myport > 0) { /* want to use specific port on local host */
+        bzero((char *)&my_addr, sizeof my_addr);
+        my_addr.sin_family = AF_INET;
+        my_addr.sin_addr.s_addr = INADDR_ANY;
+        my_addr.sin_port = htons((u_short)myport);
+        if (bind(sockfd, (struct sockaddr *)&my_addr, sizeof my_addr) < 0) {
+            fprintf(stderr, "tcpconnect_to: bind failed on local port %d: %s",
+                    myport, strerror(errno));
+            close(sockfd);
+            return -1;
+        }
+    }
+    /* Connect to the server.  */
+    rc = lclconn(sockfd, (struct sockaddr *)&tcp_srv_addr, sizeof(tcp_srv_addr),
+                 timeoutms);
+
+    if (rc < 0) {
+        close(sockfd);
+        return rc;
+    }
+    return (sockfd); /* all OK */
+}
+
+static int cdb2_tcpconnecth_to(const char *host, int port, int myport,
+                               int timeoutms)
+{
+    int rc;
+    struct in_addr in;
+    if ((rc = cdb2_tcpresolve(host, &in, &port)) != 0)
+        return rc;
+    return cdb2_do_tcpconnect(in, port, myport, timeoutms);
+}
+
+static int cdb2portmux_route(const char *remote_host, const char *app,
+                             const char *service, const char *instance)
+{
+    char name[64];
+    char res[32];
+    SBUF2 *ss = NULL;
+    int rc, fd;
+    bzero(name, sizeof(name));
+    rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
+    if (rc < 1 || rc >= sizeof(name))
+        return -1;
+    fd = cdb2_tcpconnecth_to(remote_host, 5105, 0, -1);
+    if (fd < 0)
+        return -1;
+    ss = sbuf2open(fd, 0);
+    if (ss == 0) {
+        close(fd);
+        return -1;
+    }
+    sbuf2printf(ss, "rte %s\n", name);
+    sbuf2flush(ss);
+    res[0] = 0;
+    sbuf2gets(res, sizeof(res), ss);
+    if (res[0] != '0') {
+        sbuf2close(ss);
+        return -1;
+    }
+    sbuf2free(ss);
+    return fd;
+}
+
 Appsock::Appsock(const std::string& dbname, const std::string& req) :
     impl(new Appsock_impl(dbname))
 {
-    impl->m_fd = portmux_connect("localhost", "comdb2", "replication",
+    impl->m_fd = cdb2portmux_route("localhost", "comdb2", "replication",
             impl->m_dbname.c_str());
 
     if(impl->m_fd < 0) {
-        throw Error("portmux_connect to " + dbname + " failed");
+        throw Error("cdb2portmux_route to " + dbname + " failed");
     }
 
     impl->m_sb = sbuf2open(impl->m_fd, 0);

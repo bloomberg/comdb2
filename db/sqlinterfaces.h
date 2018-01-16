@@ -225,10 +225,7 @@ int fsql_write_response(struct sqlclntstate *clnt, struct fsqlresp *resp,
 int handle_fastsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
                             int *keepsock, int wrong_db);
 
-int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
-                           int *keepsock);
-/* int handle_dbinfo_requests(struct thr_handle *thr_self, SBUF2 *sb, int
- * *keepsock);*/
+int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb);
 
 int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
                      sqlite3_stmt *stmt, const char **errstr);
@@ -270,6 +267,6 @@ int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql);
 void end_internal_sql_clnt(struct sqlclntstate *clnt);
 CDB2SQLRESPONSE__Column** newsql_alloc_row(int ncols);
 void newsql_dealloc_row(CDB2SQLRESPONSE__Column **columns, int ncols);
-
+void reset_clnt_flags(struct sqlclntstate *);
 
 #endif

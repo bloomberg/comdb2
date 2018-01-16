@@ -46,13 +46,11 @@ void berk_memp_sync_alarm_ms(int);
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <time.h>
-#include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <netdb.h>
 #include <poll.h>
 #include <pwd.h>
-#include <getopt.h>
 #include <libgen.h>
 
 #include <mem_uncategorized.h>
@@ -78,8 +76,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "timers.h"
 
 #include "comdb2.h"
-/* temporarily pull in a local copy of comdb2_shm.h until it's in the libraries
- */
 #include "comdb2_shm.h"
 #include "sql.h"
 
@@ -90,7 +86,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "timer.h"
 #include <plhash.h>
 #include <dynschemaload.h>
-#include "translistener.h"
 #include "util.h"
 #include "verify.h"
 #include "ssl_bend.h"
@@ -114,7 +109,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "fdb_fend.h"
 #include "fdb_bend.h"
 #include <flibc.h>
-#include <sqllog.h>
 
 #include <autoanalyze.h>
 #include <sqlglue.h>
@@ -122,13 +116,11 @@ void berk_memp_sync_alarm_ms(int);
 #include "dbdest.h"
 #include "intern_strings.h"
 #include "bb_oscompat.h"
-#include "comdb2util.h"
 #include "comdb2uuid.h"
-#include "plugin.h"
-
 #include "debug_switches.h"
 #include "machine.h"
 #include "eventlog.h"
+#include "config.h"
 
 #define COMDB2_ERRSTAT_ENABLED() 1
 #define COMDB2_DIFFSTAT_REPORT() 1
@@ -143,6 +135,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <autoanalyze.h>
 #include <cdb2_constants.h>
 #include <bb_oscompat.h>
+#include <schemachange.h>
 
 #define tokdup strndup
 
@@ -177,7 +170,6 @@ int gbl_trace_prepare_errors = 0;
 int gbl_trigger_timepart = 0;
 int gbl_extended_sql_debug_trace = 0;
 extern int gbl_dump_fsql_response;
-static char *gbl_pidfile = NULL;
 
 void myctrace(const char *c) { ctrace("%s", c); }
 
@@ -185,39 +177,19 @@ void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
                                                   void *(*alloc)(void *, int),
                                                   void (*free)(void *, void *));
 
-/* some random prototypes that should have their own header */
-void buffer_origin_(int *mch, int *pid, int *slot);
-void swapinit_(int *, int *);
-int set_db_rngkeymode(int dbnum);
-int set_db_rngextmode(int dbnum);
-void enable_ack_trace(void);
-void disable_ack_trace(void);
-void set_cursor_rowlocks(int cr);
-void walkback_set_warnthresh(int thresh);
-void walkback_disable(void);
-void walkback_enable(void);
-
 static int put_all_csc2();
 
 static void *purge_old_blkseq_thread(void *arg);
 static void *purge_old_files_thread(void *arg);
-static int lrltokignore(char *tok, int ltok);
 static int lrllinecmp(char *lrlline, char *cmpto);
 static void ttrap(struct timer_parm *parm);
 int clear_temp_tables(void);
-static int write_pidfile(const char *pidfile);
-
-int q_reqs_len(void);
-int handle_buf_bbipc(struct dbenv *, uint8_t *p_buf, const uint8_t *p_buf_end,
-                     int debug, int frommach, int do_inline);
 
 pthread_key_t comdb2_open_key;
-pthread_key_t blockproc_retry_key;
 
 /*---GLOBAL SETTINGS---*/
 const char *const gbl_db_release_name = "R7.0pre";
 int gbl_enque_flush_interval;
-int gbl_enque_flush_interval_signal;
 int gbl_enque_reorder_lookahead = 20;
 int gbl_morecolumns = 0;
 int gbl_return_long_column_names = 1;
@@ -253,13 +225,11 @@ int gbl_osql_bkoff_netsend_lmt = 5 * 60 * 1000; /* 5 mins */
 int gbl_osql_bkoff_netsend = 100;               /* wait 100 msec */
 int gbl_net_max_queue = 25000;
 int gbl_net_max_mem = 0;
-int gbl_net_max_queue_signal = 100;
 int gbl_net_poll = 100;
 int gbl_net_throttle_percent = 50;
 int gbl_osql_net_poll = 100;
 int gbl_osql_max_queue = 10000;
 int gbl_osql_net_portmux_register_interval = 600;
-int gbl_signal_net_portmux_register_interval = 600;
 int gbl_net_portmux_register_interval = 600;
 
 int gbl_max_sqlcache = 10;
@@ -275,6 +245,8 @@ int gbl_upgrade_blocksql_2_socksql =
           by socksql */
 
 int gbl_serialise_sqlite3_open = 1;
+
+int gbl_nice = 0;
 
 int gbl_notimeouts = 0; /* set this if you don't need the server timeouts
                            (use this for new code testing) */
@@ -312,6 +284,7 @@ int gbl_prefaulthelperthreads = 0;
 int gbl_osqlpfault_threads = 0;
 int gbl_prefault_udp = 0;
 __thread int send_prefault_udp = 0;
+__thread snap_uid_t *osql_snap_info; /* contains cnonce */
 
 int gbl_starttime = 0;
 int gbl_use_sqlthrmark = 1000;
@@ -345,7 +318,6 @@ int gbl_create_mode = 0; /* turn on create-if-not-exists mode*/
 const char *gbl_repoplrl_fname = NULL; /* if != NULL this is the fname of the
                                         * external lrl file to create with
                                         * this db's settings and table defs */
-int gbl_nogbllrl = 0;                /* don't load /bb/bin/comdb2*.lrl */
 int gbl_local_mode = 0;                /* local mode, no siblings */
 int gbl_fullrecovery = 0;              /* backend full-recovery mode*/
 int gbl_maxretries = 500;              /* thats a lotta retries */
@@ -354,9 +326,7 @@ int gbl_maxblobretries =
 int gbl_maxcontextskips = 10000; /* that's a whole whale of a lotta retries */
 char gbl_cwd[256];               /* start directory */
 int gbl_heartbeat_check = 0, gbl_heartbeat_send = 0, gbl_decom = 0;
-int gbl_heartbeat_check_signal = 0, gbl_heartbeat_send_signal = 0;
 int gbl_netbufsz = 1 * 1024 * 1024;
-int gbl_netbufsz_signal = 64 * 1024;
 int gbl_loghist = 0;
 int gbl_loghist_verbose = 0;
 int gbl_repdebug = -1;
@@ -374,7 +344,6 @@ int gbl_context_in_key = 1;
 int gbl_ready = 0; /* gets set just before waitft is called
                       and never gets unset */
 int gbl_debug_verify_tran = 0;
-int gbl_fastdump_timeoutms = 5 * 1000;
 int gbl_readonly = 0;
 int gbl_use_bbipc = 1; /* on by default. lrl option disable_bbipc to turn off */
 int gbl_init_single_meta = 1;
@@ -395,11 +364,12 @@ long long gbl_nsql_steps;
 unsigned int gbl_nnewsql;
 long long gbl_nnewsql_steps;
 
+unsigned int gbl_masterrejects = 0;
+
 volatile int gbl_dbopen_gen = 0;
 volatile int gbl_analyze_gen = 0;
 volatile int gbl_views_gen = 0;
 int gbl_sqlhistsz = 25;
-int gbl_force_bad_directory = 1;
 int gbl_lclpooled_buffers = 32;
 
 int gbl_maxblockops = 25000;
@@ -465,6 +435,8 @@ int gbl_sql_tranlevel_sosql_pref = 1; /* set this to 1 if everytime the
                                        * means sosql; this does not switch
                                        * all the users to sosql */
 
+int gbl_test_blkseq_replay_code = 0;
+int gbl_dump_blkseq = 0;
 int gbl_test_curtran_change_code = 0;
 int gbl_enable_block_offload = 0;
 int gbl_enable_pageorder_trace = 0;
@@ -502,7 +474,7 @@ int gbl_enable_sock_fstsnd = 1;
 u_int gbl_blk_pq_shmkey = 0;
 #endif
 int gbl_enable_position_apis = 0;
-int gbl_enable_sql_stmt_caching = 0;
+int gbl_enable_sql_stmt_caching = STMT_CACHE_ALL;
 
 int gbl_round_robin_stripes = 0;
 int gbl_num_record_converts = 100;
@@ -511,9 +483,6 @@ int gbl_rrenablecountchanges = 0;
 
 int gbl_debug_log_twophase = 0;
 int gbl_debug_log_twophase_transactions = 0;
-
-int gbl_use_llmeta = 1; /* use low level meta table; this is required in this
-                         * version of comdb2 */
 
 int gbl_early_blkseq_check = 0;
 
@@ -580,7 +549,6 @@ struct quantize *q_sql_steps_all;
 
 extern int gbl_net_lmt_upd_incoherent_nodes;
 extern int gbl_allow_user_schema;
-extern int gbl_pmux_route_enabled;
 extern int gbl_skip_cget_in_db_put;
 
 int gbl_stop_thds_time = 0;
@@ -598,9 +566,13 @@ int gbl_new_indexes = 0;
 
 int gbl_optimize_truncate_repdb = 1;
 
-extern void tz_hash_init(void);
 static void set_datetime_dir(void);
-void tz_set_dir(char *dir);
+
+extern void tz_hash_init(void);
+extern void tz_hash_free(void);
+void set_tzdir(char *dir);
+void free_tzdir();
+
 extern void init_sql_hint_table();
 extern int bdb_osql_log_repo_init(int *bdberr);
 
@@ -650,8 +622,6 @@ int gbl_fk_allow_superset_keys = 1;
 int gbl_update_delete_limit = 1;
 
 int verbose_deadlocks = 0;
-
-int gbl_enabled_new_context = 0;
 
 int gbl_early = 1;
 int gbl_reallyearly = 0;
@@ -708,7 +678,7 @@ bool gbl_rcache = true;
 int gbl_noenv_messages = 1;
 
 int gbl_check_sql_source = 0;
-static int skip_clear_queue_extents = 0;
+int skip_clear_queue_extents = 0;
 
 int gbl_flush_check_active_peer = 1;
 
@@ -725,7 +695,6 @@ int gbl_rowlocks_deadlock_trace = 0;
 
 int gbl_durable_wait_seqnum_test = 0;
 int gbl_durable_replay_test = 0;
-int gbl_durable_block_test = 0;
 int gbl_durable_set_trace = 0;
 int gbl_durable_calc_trace = 0;
 int gbl_dumptxn_at_commit = 0;
@@ -739,6 +708,7 @@ int gbl_replicant_gather_rowlocks = 1;
 int gbl_force_old_cursors = 0;
 int gbl_track_curtran_locks = 0;
 int gbl_print_deadlock_cycles = 0;
+int gbl_always_send_cnonce = 1;
 int gbl_dump_page_on_byteswap_error = 0;
 int gbl_dump_after_byteswap = 0;
 int gbl_micro_retry_on_deadlock = 1;
@@ -776,34 +746,13 @@ int gbl_memstat_freq = 60 * 5;
 int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
+int gbl_stable_rootpages_test = 0;
 
 char *gbl_dbdir = NULL;
 
 extern int gbl_verbose_net;
 
-static int create_service_file(char *lrlname);
-
-static const char *help_text = {
-  "usage: comdb2 [--lrl LRLFILE] [--recovertotime EPOCH]\n"
-  "              [--recovertolsn FILE:OFFSET]\n"
-  "              [--fullrecovery] NAME\n"
-  "\n"
-  "       comdb2 --create [--lrl LRLFILE] [--dir PATH] NAME\n"
-  "\n"
-  "        --lrl                      specify alternate lrl file\n"
-  "        --fullrecovery             runs full recovery after a hot copy\n"
-  "        --recovertolsn             recovers database to file:offset\n"
-  "        --recovertotime            recovers database to epochtime\n"
-  "        --create                   creates a new database\n"
-  "        --dir                      specify path to database directory\n"
-  "\n"
-  "        NAME                       database name\n"
-  "        LRLFILE                    lrl configuration file\n"
-  "        FILE                       ID of a database file\n"
-  "        OFFSET                     offset within FILE\n"
-  "        EPOCH                      time in seconds since 1970\n"
-  "        PATH                       path to database directory\n"
-};
+static void create_service_file(const char *lrlname);
 
 /* FOR PAGE COMPACTION.
    The threshold should be kept under 0.5. By default, we make it lg(2)/2
@@ -818,50 +767,43 @@ extern int gbl_uses_password;
 
 extern int gbl_direct_count;
 extern int gbl_parallel_count;
+extern int gbl_debug_sqlthd_failures;
+extern int gbl_random_get_curtran_failures;
+extern int gbl_abort_invalid_query_info_key;
+extern int gbl_random_blkseq_replays;
+extern int gbl_disable_cnonce_blkseq;
+int gbl_mifid2_datetime_range = 1;
+
+int gbl_early_verify = 1;
 
 int gbl_bbenv;
 
-/* 040407dh: sys_nerr and sys_errlist are deprecated but still
-   in use in util.c and ../berkdb/4.2.52/clib/strerror.c
-   Not available in SUN 64 bits, add them here
-   TODO:revise this hack
-*/
-#ifdef _IBM_SOURCE
-#ifdef BB64BIT
+comdb2_tunables *gbl_tunables; /* All registered tunables */
+int init_gbl_tunables();
+int free_gbl_tunables();
+int register_db_tunables(struct dbenv *tbl);
 
-int sys_nerr = -1; /* this will prevent accessing the sys_errlist */
-char *sys_errlist[1] = {0};
-#endif
-#endif
-
-static void usage(void)
+int getkeyrecnums(const struct dbtable *tbl, int ixnum)
 {
-    logmsg(LOGMSG_USER, "%s\n", help_text);
-    exit(1);
-}
-
-int getkeyrecnums(const struct db *db, int ixnum)
-{
-    if (ixnum < 0 || ixnum >= db->nix)
+    if (ixnum < 0 || ixnum >= tbl->nix)
         return -1;
-    return db->ix_recnums[ixnum] != 0;
+    return tbl->ix_recnums[ixnum] != 0;
 }
-int getkeysize(const struct db *db, int ixnum)
+int getkeysize(const struct dbtable *tbl, int ixnum)
 {
-    if (ixnum < 0 || ixnum >= db->nix)
+    if (ixnum < 0 || ixnum >= tbl->nix)
         return -1;
-    return db->ix_keylen[ixnum];
+    return tbl->ix_keylen[ixnum];
 }
 
-int getdatsize(const struct db *db) { return db->lrl; }
+int getdatsize(const struct dbtable *tbl) { return tbl->lrl; }
 
 /*lookup dbs..*/
-struct db *getdbbynum(int num)
+struct dbtable *getdbbynum(int num)
 {
     int ii;
-    struct db *p_db = NULL;
+    struct dbtable *p_db = NULL;
     pthread_rwlock_rdlock(&thedb_lock);
-    /*should be changed to a hash table*/
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         if (thedb->dbs[ii]->dbnum == num) {
             p_db = thedb->dbs[ii];
@@ -875,39 +817,25 @@ struct db *getdbbynum(int num)
 
 int getdbidxbyname(const char *p_name)
 {
-    int idx;
-
-    /*should be changed to a hash table*/
-    for (idx = 0; idx < thedb->num_dbs; ++idx) {
-        if (strcasecmp(thedb->dbs[idx]->dbname, p_name) == 0)
-            return idx;
-    }
-
-    return -1;
+    struct dbtable *tbl;
+    tbl = hash_find_readonly(thedb->db_hash, &p_name);
+    return (tbl) ? tbl->dbs_idx : -1;
 }
 
-struct db *getdbbyname(const char *p_name)
+struct dbtable *get_dbtable_by_name(const char *p_name)
 {
-    int idx;
-    struct db *p_db = NULL;
+    struct dbtable *p_db = NULL;
 
     pthread_rwlock_rdlock(&thedb_lock);
-    if (likely((idx = getdbidxbyname(p_name)) >= 0)) {
-        p_db = thedb->dbs[idx];
-    }
+    p_db = hash_find_readonly(thedb->db_hash, &p_name);
     pthread_rwlock_unlock(&thedb_lock);
 
     return p_db;
 }
 
-struct db *getqueuebyname(const char *name)
+struct dbtable *getqueuebyname(const char *name)
 {
-    int ii;
-    /*should be changed to a hash table*/
-    for (ii = 0; ii < thedb->num_qdbs; ii++)
-        if (thedb->qdbs[ii] && strcasecmp(thedb->qdbs[ii]->dbname, name) == 0)
-            return thedb->qdbs[ii];
-    return NULL;
+    return hash_find_readonly(thedb->qdb_hash, &name);
 }
 
 int get_max_reclen(struct dbenv *dbenv)
@@ -978,16 +906,17 @@ int get_max_reclen(struct dbenv *dbenv)
 void showdbenv(struct dbenv *dbenv)
 {
     int ii, jj;
-    struct db *usedb;
+    struct dbtable *usedb;
     logmsg(LOGMSG_USER, "-----\n");
     for (jj = 0; jj < dbenv->num_dbs; jj++) {
         usedb = dbenv->dbs[jj]; /*de-stink*/
-        logmsg(LOGMSG_USER, "table '%s' comdbg compat dbnum %d\ndir '%s' lrlfile '%s' "
+        logmsg(LOGMSG_USER,
+               "table '%s' comdbg compat dbnum %d\ndir '%s' lrlfile '%s' "
                "nconns %d  nrevconns %d\n",
-               usedb->dbname, usedb->dbnum, dbenv->basedir,
+               usedb->tablename, usedb->dbnum, dbenv->basedir,
                (usedb->lrlfname) ? usedb->lrlfname : "NULL",
                usedb->n_constraints, usedb->n_rev_constraints);
-       logmsg(LOGMSG_ERROR, "   data reclen %-3d bytes\n", usedb->lrl);
+        logmsg(LOGMSG_ERROR, "   data reclen %-3d bytes\n", usedb->lrl);
 
         for (ii = 0; ii < usedb->nix; ii++) {
             logmsg(LOGMSG_USER, "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c\n",
@@ -996,8 +925,8 @@ void showdbenv(struct dbenv *dbenv)
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
-        logmsg(LOGMSG_USER, "sibling %-2d host %s:%d\n", ii, dbenv->sibling_hostname[ii],
-               dbenv->sibling_port[ii]);
+        logmsg(LOGMSG_USER, "sibling %-2d host %s:%d\n", ii,
+               dbenv->sibling_hostname[ii], *dbenv->sibling_port[ii]);
     }
 }
 
@@ -1033,7 +962,6 @@ static void init_q_vars()
     q_sql_steps_all = quantize_new(100, 100000, "steps");
 }
 
-#ifdef DEBUG
 static void cleanup_q_vars()
 {
     quantize_free(q_min);
@@ -1048,7 +976,6 @@ static void cleanup_q_vars()
     quantize_free(q_sql_steps_hour);
     quantize_free(q_sql_steps_all);
 }
-#endif
 
 /* Send an alert about the fact that I'm incoherent */
 static int send_incoherent_message(int num_online, int duration)
@@ -1113,9 +1040,9 @@ static void *purge_old_blkseq_thread(void *arg)
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
 
     loop = 0;
+    sleep(1);
 
-    while (1) {
-        sleep(1);
+    while (!db_is_stopped()) {
 
         /* Check del unused files progress about twice per threshold  */
         if (!(loop % (gbl_sc_del_unused_files_threshold_ms /
@@ -1126,12 +1053,6 @@ static void *purge_old_blkseq_thread(void *arg)
             loop = 0;
         else
             ++loop;
-
-        if (dbenv->exiting || dbenv->stopped) {
-            dbenv->purge_old_blkseq_is_running = 0;
-            backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
-            return NULL;
-        }
 
         if (debug_switch_check_for_hung_checkpoint_thread() &&
             dbenv->master == gbl_mynode) {
@@ -1240,14 +1161,20 @@ static void *purge_old_blkseq_thread(void *arg)
 
         if ((loop % 30) == 0 && gbl_verify_dbreg)
             bdb_verify_dbreg(dbenv->bdb_env);
+
+        sleep(1);
     }
+
+    dbenv->purge_old_blkseq_is_running = 0;
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
+    return NULL;
 }
 
 static void *purge_old_files_thread(void *arg)
 {
     struct dbenv *dbenv = (struct dbenv *)arg;
     int rc;
-    void *trans;
+    tran_type *trans;
     struct ireq iq;
     int bdberr = 0;
     int empty = 0;
@@ -1311,9 +1238,9 @@ static void *purge_old_files_thread(void *arg)
             }
         } else {
             logmsg(LOGMSG_ERROR,
-                    "%s: bdb_purge_unused_files failed rc=%d bdberr=%d\n",
-                    __func__, rc, bdberr);
-            rc = trans_abort(&iq, trans);
+                   "%s: bdb_purge_unused_files failed rc=%d bdberr=%d\n",
+                   __func__, rc, bdberr);
+            trans_abort(&iq, trans);
             sleep(empty_pause);
             continue;
         }
@@ -1421,7 +1348,7 @@ int clear_temp_tables(void)
     while (dirp) {
         errno = 0;
         if ((dp = readdir(dirp)) != NULL) {
-            char filepath[256];
+            char filepath[PATH_MAX];
             if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
                 continue;
             snprintf(filepath, sizeof(filepath) - 1, "%s/%s", path, dp->d_name);
@@ -1448,13 +1375,25 @@ void clean_exit(void)
 
     thedb->exiting = 1;
     stop_threads(thedb);
-
     logmsg(LOGMSG_INFO, "stopping db engine...\n");
-    rc = backend_close(thedb);
-    if (rc != 0)
-       logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
 
-    logmsg(LOGMSG_WARN, "goodbye\n");
+    /* TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
+      them to quit.
+    */
+    sleep(4);
+
+    cleanup_q_vars();
+    cleanup_switches();
+    free_gbl_tunables();
+    free_tzdir();
+    tz_hash_free();
+    bdb_cleanup_private_blkseq(thedb->bdb_env);
+    if (gbl_create_mode) {
+        logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
+    }
+
+    rc = backend_close(thedb);
+    if (rc != 0) logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
 
     if (COMDB2_SOCK_FSTSND_ENABLED()) {
         comdb2_shm_clr_flag(thedb->dbnum, CMDB2_SHMFLG_SOCK_FSTSND);
@@ -1468,31 +1407,45 @@ void clean_exit(void)
             }
 
             indicator_file =
-                comdb2_location("marker", "%s.done", thedb->dbs[ii]->dbname);
+                comdb2_location("marker", "%s.done", thedb->dbs[ii]->tablename);
             fd = creat(indicator_file, 0666);
-            if (fd != -1)
-                close(fd);
+            if (fd != -1) close(fd);
             free(indicator_file);
         }
     }
-
     eventlog_stop();
 
     indicator_file = comdb2_location("marker", "%s.done", thedb->envname);
     fd = creat(indicator_file, 0666);
-    if (fd != -1)
-        close(fd);
+    if (fd != -1) close(fd);
     logmsg(LOGMSG_INFO, "creating %s\n", indicator_file);
     free(indicator_file);
-
-#ifdef DEBUG
-    sleep(4); // wait for other threads to exit by themselves
+    extern char *gbl_portmux_unix_socket;
+    free(gbl_portmux_unix_socket);
+    cleanup_file_locations();
+    ctrace_closelog();
 
     backend_cleanup(thedb);
     net_cleanup_subnets();
-    cleanup_q_vars();
-    cleanup_switches();
-#endif
+    cleanup_sqlite_master();
+    for (ii = thedb->num_dbs - 1; ii >= 0; ii--) {
+        struct dbtable *tbl = thedb->dbs[ii];
+        delete_schema(tbl->tablename); // tags hash
+        delete_db(tbl->tablename);     // will free db
+        bdb_cleanup_fld_hints(tbl->handle);
+        freedb(tbl);
+    }
+    if (thedb->db_hash) {
+        hash_clear(thedb->db_hash);
+        hash_free(thedb->db_hash);
+        thedb->db_hash = NULL;
+    }
+    cleanup_interned_strings();
+    cleanup_peer_hash();
+    // TODO: would be nice but other threads need to exit first:
+    // comdb2ma_exit();
+
+    logmsg(LOGMSG_USER, "goodbye\n");
 
     exit(0);
 }
@@ -1512,19 +1465,6 @@ int get_elect_time_microsecs(void)
 
     /* No preference, bdblib will do its own thing */
     return 0;
-}
-
-/* defines lrl directives that get ignored by comdb2 */
-static int lrltokignore(char *tok, int ltok)
-{
-    /* used by comdb2backup script */
-    if (tokcmp(tok, ltok, "backup") == 0)
-        return 0;
-    /* reserved for use by cmdb2filechk script */
-    if (tokcmp(tok, ltok, "filechkopts") == 0)
-        return 0;
-    /*not a reserved token */
-    return 1;
 }
 
 /* compare cmpto againt the lrl file line lrlline to make sure that the
@@ -1552,58 +1492,22 @@ static int lrllinecmp(char *lrlline, char *cmpto)
     return 0;
 }
 
-/* handles "if"'s, returns 1 if this isn't an "if" statement or if the statement
- * is true, 0 if it is false (ie if this line should be skipped)
- * this replaces a couple duplicate sections of code */
-static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
-                  int *ltok)
-{
-    char *tok = *tok_inout;
-    if (tokcmp(tok, *ltok, "if") == 0) {
-        enum mach_class my_class = get_my_mach_class();
-        tok = segtok(line, line_len, st, ltok);
-        if (my_class == CLASS_TEST && tokcmp(tok, *ltok, "test") &&
-            tokcmp(tok, *ltok, "dev"))
-            return 0;
-        if (my_class == CLASS_ALPHA && tokcmp(tok, *ltok, "alpha"))
-            return 0;
-        if (my_class == CLASS_UAT && tokcmp(tok, *ltok, "uat"))
-            return 0;
-        if (my_class == CLASS_BETA && tokcmp(tok, *ltok, "beta"))
-            return 0;
-        if (my_class == CLASS_PROD && tokcmp(tok, *ltok, "prod"))
-            return 0;
-        if (my_class == CLASS_UNKNOWN)
-            return 0;
-
-        tok = segtok(line, line_len, st, ltok);
-        *tok_inout = tok;
-    }
-
-    return 1; /* there was no "if" statement or it was true */
-}
-
-void set_sbuftimeout(int timeout)
-{
-    bdb_attr_set(thedb->bdb_attr, BDB_ATTR_SBUFTIMEOUT, timeout);
-}
-
-struct db *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
+struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
                   int isqueuedb)
 {
-    struct db *db;
+    struct dbtable *tbl;
     int rc;
 
-    db = calloc(1, sizeof(struct db));
-    db->dbname = strdup(name);
-    db->dbenv = env;
-    db->is_readonly = 0;
-    db->dbtype = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
-    db->avgitemsz = avgsz;
-    db->queue_pagesize_override = pagesize;
+    tbl = calloc(1, sizeof(struct dbtable));
+    tbl->tablename = strdup(name);
+    tbl->dbenv = env;
+    tbl->is_readonly = 0;
+    tbl->dbtype = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
+    tbl->avgitemsz = avgsz;
+    tbl->queue_pagesize_override = pagesize;
 
-    if (db->dbtype == DBTYPE_QUEUEDB) {
-        rc = pthread_rwlock_init(&db->consumer_lk, NULL);
+    if (tbl->dbtype == DBTYPE_QUEUEDB) {
+        rc = pthread_rwlock_init(&tbl->consumer_lk, NULL);
         if (rc) {
             logmsg(LOGMSG_ERROR, "create consumer rwlock rc %d %s\n", rc,
                     strerror(rc));
@@ -1611,68 +1515,68 @@ struct db *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
         }
     }
 
-    return db;
+    return tbl;
 }
 
-void cleanup_newdb(struct db *db)
+void cleanup_newdb(struct dbtable *tbl)
 {
-    if (!db)
+    if (!tbl)
         return;
 
-    if (db->dbname) {
-        free(db->dbname);
-        db->dbname = NULL;
+    if (tbl->tablename) {
+        free(tbl->tablename);
+        tbl->tablename = NULL;
     }
 
-    if (db->lrlfname) {
-        free(db->lrlfname);
-        db->lrlfname = NULL;
+    if (tbl->lrlfname) {
+        free(tbl->lrlfname);
+        tbl->lrlfname = NULL;
     }
 
-    if (db->ixuse) {
-        free(db->ixuse);
-        db->ixuse = NULL;
+    if (tbl->ixuse) {
+        free(tbl->ixuse);
+        tbl->ixuse = NULL;
     }
-    if (db->sqlixuse) {
-        free(db->sqlixuse);
-        db->sqlixuse = NULL;
+    if (tbl->sqlixuse) {
+        free(tbl->sqlixuse);
+        tbl->sqlixuse = NULL;
     }
-    free(db);
-    db = NULL;
+    free(tbl);
+    tbl = NULL;
 }
 
-struct db *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
+struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
                              int dbnum, int dbix, int is_foreign)
 {
-    struct db *db;
+    struct dbtable *tbl;
     int ii;
     int tmpidxsz;
     int rc;
 
-    db = calloc(1, sizeof(struct db));
-    if (db == NULL) {
+    tbl = calloc(1, sizeof(struct dbtable));
+    if (tbl == NULL) {
         logmsg(LOGMSG_FATAL, "%s: Memory allocation error\n", __func__);
         return NULL;
     }
 
-    db->dbs_idx = dbix;
+    tbl->dbs_idx = dbix;
 
-    db->dbtype = DBTYPE_TAGGED_TABLE;
+    tbl->dbtype = DBTYPE_TAGGED_TABLE;
     if (fname)
-        db->lrlfname = strdup(fname);
-    db->dbname = strdup(tblname);
-    db->dbenv = env;
-    db->is_readonly = 0;
-    db->dbnum = dbnum;
-    db->lrl = dyns_get_db_table_size(); /* this gets adjusted later */
+        tbl->lrlfname = strdup(fname);
+    tbl->tablename = strdup(tblname);
+    tbl->dbenv = env;
+    tbl->is_readonly = 0;
+    tbl->dbnum = dbnum;
+    tbl->lrl = dyns_get_db_table_size(); /* this gets adjusted later */
     if (dbnum == 0) {
         /* if no dbnumber then no default tag is required ergo lrl can be 0 */
-        if (db->lrl < 0)
-            db->lrl = 0;
-        else if (db->lrl > MAXLRL) {
-            logmsg(LOGMSG_ERROR, "bad data lrl %d in csc schema %s\n", db->lrl,
+        if (tbl->lrl < 0)
+            tbl->lrl = 0;
+        else if (tbl->lrl > MAXLRL) {
+            logmsg(LOGMSG_ERROR, "bad data lrl %d in csc schema %s\n", tbl->lrl,
                     tblname);
-            cleanup_newdb(db);
+            cleanup_newdb(tbl);
             return NULL;
         }
     } else {
@@ -1687,127 +1591,129 @@ struct db *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             logmsg(LOGMSG_ERROR, "csc schema %s requires comdbg compatibility but "
                             "has no default tag\n",
                     tblname);
-            cleanup_newdb(db);
+            cleanup_newdb(tbl);
             return NULL;
         }
 
-        if (db->lrl < 1 || db->lrl > MAXLRL) {
-            logmsg(LOGMSG_ERROR, "bad data lrl %d in csc schema %s\n", db->lrl,
+        if (tbl->lrl < 1 || tbl->lrl > MAXLRL) {
+            logmsg(LOGMSG_ERROR, "bad data lrl %d in csc schema %s\n", tbl->lrl,
                     tblname);
-            cleanup_newdb(db);
+            cleanup_newdb(tbl);
             return NULL;
         }
     }
-    db->nix = dyns_get_idx_count();
-    if (db->nix > MAXINDEX) {
-        logmsg(LOGMSG_ERROR, "too many indices %d in csc schema %s\n", db->nix,
+    tbl->nix = dyns_get_idx_count();
+    if (tbl->nix > MAXINDEX) {
+        logmsg(LOGMSG_ERROR, "too many indices %d in csc schema %s\n", tbl->nix,
                 tblname);
-        cleanup_newdb(db);
+        cleanup_newdb(tbl);
         return NULL;
     }
-    if (db->nix < 0) {
-        logmsg(LOGMSG_ERROR, "too few indices %d in csc schema %s\n", db->nix,
+    if (tbl->nix < 0) {
+        logmsg(LOGMSG_ERROR, "too few indices %d in csc schema %s\n", tbl->nix,
                 tblname);
-        cleanup_newdb(db);
+        cleanup_newdb(tbl);
         return NULL;
     }
-    for (ii = 0; ii < db->nix; ii++) {
+    for (ii = 0; ii < tbl->nix; ii++) {
         tmpidxsz = dyns_get_idx_size(ii);
         if (tmpidxsz < 1 || tmpidxsz > MAXKEYLEN) {
             logmsg(LOGMSG_ERROR, "index %d bad keylen %d in csc schema %s\n", ii,
                     tmpidxsz, tblname);
-            cleanup_newdb(db);
+            cleanup_newdb(tbl);
             return NULL;
         }
-        db->ix_keylen[ii] = tmpidxsz; /* ix lengths are adjusted later */
+        tbl->ix_keylen[ii] = tmpidxsz; /* ix lengths are adjusted later */
 
-        db->ix_dupes[ii] = dyns_is_idx_dup(ii);
-        if (db->ix_dupes[ii] < 0) {
+        tbl->ix_dupes[ii] = dyns_is_idx_dup(ii);
+        if (tbl->ix_dupes[ii] < 0) {
             logmsg(LOGMSG_ERROR, "cant find index %d dupes in csc schema %s\n", ii,
                     tblname);
-            cleanup_newdb(db);
+            cleanup_newdb(tbl);
             return NULL;
         }
 
-        db->ix_recnums[ii] = dyns_is_idx_recnum(ii);
-        if (db->ix_recnums[ii] < 0) {
+        tbl->ix_recnums[ii] = dyns_is_idx_recnum(ii);
+        if (tbl->ix_recnums[ii] < 0) {
             logmsg(LOGMSG_ERROR, "cant find index %d recnums in csc schema %s\n", ii,
                     tblname);
-            cleanup_newdb(db);
+            cleanup_newdb(tbl);
             return NULL;
         }
 
-        db->ix_datacopy[ii] = dyns_is_idx_datacopy(ii);
-        if (db->ix_datacopy[ii] < 0) {
+        tbl->ix_datacopy[ii] = dyns_is_idx_datacopy(ii);
+        if (tbl->ix_datacopy[ii] < 0) {
             logmsg(LOGMSG_ERROR, "cant find index %d datacopy in csc schema %s\n",
                     ii, tblname);
-            cleanup_newdb(db);
+            cleanup_newdb(tbl);
             return NULL;
+        } else if (tbl->ix_datacopy[ii]) {
+            tbl->has_datacopy_ix = 1;
         }
 
-        db->ix_nullsallowed[ii] = 0;
+        tbl->ix_nullsallowed[ii] = 0;
         /*
           XXX todo
-          db->ix_nullsallowed[ii]=dyns_is_idx_nullsallowed(ii);
-          if (db->ix_nullallowed[ii]<0)
+          tbl->ix_nullsallowed[ii]=dyns_is_idx_nullsallowed(ii);
+          if (tbl->ix_nullallowed[ii]<0)
           {
           fprintf(stderr,"cant find index %d datacopy in csc schema %s\n",
           ii,tblname);
-            cleanup_newdb(db);
+            cleanup_newdb(tbl);
             return NULL;
           }
         */
     }
-    db->n_rev_constraints =
+    tbl->n_rev_constraints =
         0; /* this will be initialized at verification time */
-    db->n_constraints = dyns_get_constraint_count();
-    if (db->n_constraints > 0) {
+    tbl->n_constraints = dyns_get_constraint_count();
+    if (tbl->n_constraints > 0) {
         char *keyname = NULL;
         int rulecnt = 0, flags = 0;
-        if (db->n_constraints >= MAXCONSTRAINTS) {
+        if (tbl->n_constraints >= MAXCONSTRAINTS) {
             logmsg(LOGMSG_ERROR, "too many constraints for table %s (%d>=%d)\n",
-                    tblname, db->n_constraints, MAXCONSTRAINTS);
-            cleanup_newdb(db);
+                    tblname, tbl->n_constraints, MAXCONSTRAINTS);
+            cleanup_newdb(tbl);
             return NULL;
         }
-        for (ii = 0; ii < db->n_constraints; ii++) {
+        for (ii = 0; ii < tbl->n_constraints; ii++) {
             rc = dyns_get_constraint_at(ii, &keyname, &rulecnt, &flags);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "Cannot get constraint at %d (cnt=%d)!\n", ii,
-                        db->n_constraints);
-                cleanup_newdb(db);
+                        tbl->n_constraints);
+                cleanup_newdb(tbl);
                 return NULL;
             }
-            db->constraints[ii].flags = flags;
-            db->constraints[ii].lcltable = db;
-            db->constraints[ii].lclkeyname = strdup(keyname);
-            db->constraints[ii].nrules = rulecnt;
-            if (db->constraints[ii].nrules >= MAXCONSTRAINTS) {
+            tbl->constraints[ii].flags = flags;
+            tbl->constraints[ii].lcltable = tbl;
+            tbl->constraints[ii].lclkeyname = strdup(keyname);
+            tbl->constraints[ii].nrules = rulecnt;
+            if (tbl->constraints[ii].nrules >= MAXCONSTRAINTS) {
                 logmsg(LOGMSG_ERROR, "too many constraint rules for table %s:%s (%d>=%d)\n",
-                        tblname, keyname, db->constraints[ii].nrules,
+                        tblname, keyname, tbl->constraints[ii].nrules,
                         MAXCONSTRAINTS);
-                cleanup_newdb(db);
+                cleanup_newdb(tbl);
                 return NULL;
-            } else if (db->constraints[ii].nrules > 0) {
+            } else if (tbl->constraints[ii].nrules > 0) {
                 int jj = 0;
-                for (jj = 0; jj < db->constraints[ii].nrules; jj++) {
+                for (jj = 0; jj < tbl->constraints[ii].nrules; jj++) {
                     char *tblnm = NULL;
                     rc = dyns_get_constraint_rule(ii, jj, &tblnm, &keyname);
                     if (rc != 0) {
                         logmsg(LOGMSG_ERROR, "cannot get constraint rule %d table %s:%s\n",
                                 jj, tblname, keyname);
-                        cleanup_newdb(db);
+                        cleanup_newdb(tbl);
                         return NULL;
                     }
-                    db->constraints[ii].table[jj] = strdup(tblnm);
-                    db->constraints[ii].keynm[jj] = strdup(keyname);
+                    tbl->constraints[ii].table[jj] = strdup(tblnm);
+                    tbl->constraints[ii].keynm[jj] = strdup(keyname);
                 }
             }
         } /* for (ii...) */
     }     /* if (n_constraints > 0) */
-    db->ixuse = calloc(db->nix, sizeof(unsigned long long));
-    db->sqlixuse = calloc(db->nix, sizeof(unsigned long long));
-    return db;
+    tbl->ixuse = calloc(tbl->nix, sizeof(unsigned long long));
+    tbl->sqlixuse = calloc(tbl->nix, sizeof(unsigned long long));
+    return tbl;
 }
 
 /* lock mgr partition defaults */
@@ -1816,294 +1722,9 @@ size_t gbl_lkr_parts = 23;
 size_t gbl_lk_hash = 32;
 size_t gbl_lkr_hash = 16;
 
-void add_legacy_default_options(struct dbenv *dbenv) {
-   char *legacy_options[] = {
-      "disallow write from beta if prod",
-      "noblobstripe",
-      "nullsort high",
-      "dont_sort_nulls_with_header",
-      "nochecksums",
-      "sql_tranlevel_default comdb2",              /* check this one*/
-      "sql_tranlevel_default prefer_oldblock",     /* and this one */
-      "off fix_cstr",
-      "no_null_blob_fix",
-      "no_static_tag_blob_fix",
-      "dont_forbid_ulonglong",
-      "dont_init_with_ondisk_header",
-      "dont_init_with_instant_schema_change",
-      "dont_init_with_inplace_updates",
-      "dont_prefix_foreign_keys",
-      "dont_superset_foreign_keys",
-      "disable_inplace_blobs",
-      "disable_inplace_blob_optimization",
-      "disable_osql_blob_optimization",
-      "nocrc32c",
-      "enable_tagged_api",
-      "nokeycompr",
-      "norcache",
-      "usenames",
-      "dont_return_long_column_names",
-      "setattr DIRECTIO 0"
-   };
-   for (int i = 0; i < sizeof(legacy_options)/sizeof(legacy_options[0]); i++)
-      defer_option(dbenv, DEFERRED_LEGACY_DEFAULTS, legacy_options[i], -1, 0);
-}
-
-static void getmyaddr(void)
-{
-    struct hostent *h;
-
-    h = bb_gethostbyname(gbl_mynode);
-    if (h == NULL || h->h_addrtype != AF_INET) {
-        /* default to localhost */
-        gbl_myaddr.s_addr = INADDR_LOOPBACK;
-        return;
-    }
-    memcpy(&gbl_myaddr.s_addr, h->h_addr, h->h_length);
-}
-
-static int pre_read_option(struct dbenv *dbenv, char *line,
-                           int llen)
-{
-    char *tok;
-    int st = 0;
-    int ltok;
-
-    tok = segtok(line, llen, &st, &ltok);
-    if (ltok == 0 || tok[0] == '#') return 0;
-
-    /* if this is an "if" statement that evaluates to false, skip */
-    if (!lrl_if(&tok, line, llen, &st, &ltok)) {
-        return 0;
-    }
-
-    if (tokcmp(tok, ltok, "legacy_defaults") == 0) {
-        add_legacy_default_options(dbenv);
-    }
-
-    if (tokcmp(tok, ltok, "disable_direct_writes") == 0) {
-        dbenv->enable_direct_writes = 0;
-    }
-
-    else if (tokcmp(tok, ltok, "morecolumns") == 0) {
-        logmsg(LOGMSG_INFO, "allowing 1024 columns per table\n");
-        gbl_morecolumns = 1;
-    }
-
-    else if (tokcmp(tok, ltok, "nullfkey") == 0) {
-        gbl_nullfkey = 1;
-    } else if (tokcmp(tok, ltok, "disallow_portmux_route") == 0) {
-        gbl_pmux_route_enabled = 0;
-        logmsg(LOGMSG_INFO, "Won't allow portmux route\n");
-    } else if (tokcmp(tok, ltok, "allow_portmux_route") == 0) {
-        gbl_pmux_route_enabled = 1;
-        logmsg(LOGMSG_INFO, "Will allow portmux route\n");
-    } else if (tokcmp(tok, ltok, "portmux_port") == 0) {
-        tok = segtok(line, llen, &st, &ltok);
-        int portmux_port = toknum(tok, ltok);
-        logmsg(LOGMSG_WARN, "Using portmux port %d\n", portmux_port);
-        set_portmux_port(portmux_port);
-    } else if (tokcmp(tok, ltok, "portmux_bind_path") == 0) {
-        char path[108];
-        tok = segtok(line, llen, &st, &ltok);
-        tokcpy(tok, ltok, path);
-        int retrc = set_portmux_bind_path(path);
-        if (retrc) {
-            logmsg(LOGMSG_ERROR, "Failed in setting portmux bind path %s\n", path);
-        } else {
-            logmsg(LOGMSG_INFO, "Using portmux bind path %s\n", path);
-        }
-    } else if (tokcmp(tok, ltok, "usenames") == 0) {
-        gbl_nonames = 0;
-    } else if (tokcmp(tok, ltok, "nonames") == 0) {
-        gbl_nonames = 1;
-    } else if (tokcmp(tok, ltok, "forbid_ulonglong") == 0) {
-        gbl_forbid_ulonglong = 1;
-       logmsg(LOGMSG_INFO, "Will disallow u_longlong\n");
-    } else if (tokcmp(tok, ltok, "dont_forbid_ulonglong") == 0) {
-        gbl_forbid_ulonglong = 0;
-    } else if (tokcmp(tok, ltok, "broken_num_parser") == 0) {
-        gbl_broken_num_parser = 1;
-    } else if (tokcmp(tok, ltok, "optimize_repdb_truncate") == 0) {
-       logmsg(LOGMSG_INFO, "Will use optimized repdb truncate code.\n");
-        gbl_optimize_truncate_repdb = 1;
-    } else if (tokcmp(tok, ltok, "dont_optimize_repdb_truncate") == 0) {
-       logmsg(LOGMSG_INFO, "Will use unoptimized repdb truncate code.\n");
-        gbl_optimize_truncate_repdb = 0;
-    }
-
-    else if (tokcmp(tok, ltok, "lk_part") == 0) {
-        tok = segtok(line, llen, &st, &ltok);
-        int parts = toknum(tok, ltok);
-        if (parts > 0 && parts < 2049) {
-            gbl_lk_parts = parts;
-           logmsg(LOGMSG_INFO, "Overriding #Lock Partitions: %u\n", gbl_lk_parts);
-        } else {
-           logmsg(LOGMSG_INFO, "Lock Partition override out of range:%d (range: 0-2048)\n",
-                   parts);
-        }
-    } else if (tokcmp(tok, ltok, "lkr_part") == 0) {
-        tok = segtok(line, llen, &st, &ltok);
-        int parts = toknum(tok, ltok);
-        if (parts > 0 && parts < 2049) {
-            gbl_lkr_parts = parts;
-           logmsg(LOGMSG_INFO, "Overriding #Locker Partitions: %u\n", gbl_lkr_parts);
-        } else {
-            logmsg(LOGMSG_INFO, "Locker Partition override out of range:%d (range: 0-2048)\n",
-                parts);
-        }
-    } else if (tokcmp(tok, ltok, "lk_hash") == 0) {
-        tok = segtok(line, llen, &st, &ltok);
-        int parts = toknum(tok, ltok);
-        if (parts > 0 && parts < 2049) {
-            gbl_lk_hash = parts;
-           logmsg(LOGMSG_INFO, "Overriding #Hash Buckets per lock partitions: %u\n",
-                   gbl_lk_hash);
-        } else {
-           logmsg(LOGMSG_INFO, "Hash Buckets per lock partition override out of range:%d "
-                   "(range: 0-2048)\n",
-                   parts);
-        }
-    } else if (tokcmp(tok, ltok, "lkr_hash") == 0) {
-        tok = segtok(line, llen, &st, &ltok);
-        int parts = toknum(tok, ltok);
-        if (parts > 0 && parts < 2049) {
-            gbl_lkr_hash = parts;
-           logmsg(LOGMSG_INFO, "Overriding #Hash Buckets per lock partitions: %u\n",
-                   gbl_lkr_hash);
-        } else {
-           logmsg(LOGMSG_INFO, "Hash Buckets per locker partition override out of range:%d "
-                   "(range: 0-2048)\n",
-                   parts);
-        }
-    } else if (tokcmp(tok, ltok, "foreign_db_resolve_local") == 0) {
-        gbl_fdb_resolve_local = 1;
-    } else if (tokcmp(tok, ltok, "foreign_db_allow_cross_class") == 0) {
-        gbl_fdb_allow_cross_classes = 1;
-    } else if (tokcmp(line, ltok, "hostname") == 0) {
-        tok = segtok(line, llen, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_INFO, "Expected hostname for 'hostname' directive.\n");
-            return -1;
-        }
-        gbl_mynode = internn(tok, ltok);
-        getmyaddr();
-    } else if (tokcmp(line, ltok, "logmsg") == 0) {
-       logmsg_process_message(line, llen);
-    }
-    return 0;
-}
-
-static int pre_read_deferred_callback(struct dbenv *env, char *option, void *p,
-                                      int len)
-{
-    pre_read_option(env, option, len);
-    return 0;
-}
-
-static void pre_read_lrl_file(struct dbenv *dbenv,
-                              const char *lrlname, const char *dbname)
-{
-    FILE *ff;
-    char line[512];
-
-    ff = fopen(lrlname, "r");
-
-    if (ff == 0) {
-        return;
-    }
-
-    while (fgets(line, sizeof(line), ff)) {
-        pre_read_option(dbenv, line, strlen(line));
-    }
-
-    process_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS, NULL,
-                             pre_read_deferred_callback);
-
-    fclose(ff); /* lets get one fd back */
-}
-
-int defer_option(struct dbenv *dbenv, enum deferred_option_level lvl,
-                 char *option, int len, int line)
-{
-    struct deferred_option *opt;
-    if (len == -1) len = strlen(option);
-    opt = malloc(sizeof(struct deferred_option));
-    if (opt == NULL) {
-        logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __FILE__, __LINE__);
-        return 1;
-    }
-    opt->option = calloc(1, len + 1);
-    if (opt->option == NULL) {
-        logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __FILE__, __LINE__);
-        free(opt);
-        return 1;
-    }
-    memcpy(opt->option, option, len);
-    opt->line = line;
-    opt->len = strlen(opt->option);
-    listc_abl(&dbenv->deferred_options[lvl], opt);
-    return 0;
-}
-
-static int deferred_do_commands(struct dbenv *env, char *option, void *p,
-                                int len)
-{
-    char *tok;
-    int st = 0, tlen = 0;
-
-    tok = segtok(option, len, &st, &tlen);
-    if (tokcmp(tok, tlen, "sqllogger") == 0)
-        sqllogger_process_message(option + st, len - st);
-    else if (tokcmp(tok, tlen, "do") == 0)
-        process_command(env, option + st, len - st, 0);
-    return 0;
-}
-
-int process_deferred_options(struct dbenv *dbenv,
-                             enum deferred_option_level lvl, void *usrdata,
-                             int (*callback)(struct dbenv *env, char *option,
-                                             void *p, int len))
-{
-    struct deferred_option *opt;
-    int rc;
-
-    opt = listc_rtl(&dbenv->deferred_options[lvl]);
-    while (opt) {
-        rc = callback(dbenv, opt->option, usrdata, opt->len);
-
-        if (rc) return rc;
-        free(opt->option);
-        free(opt);
-        opt = listc_rtl(&dbenv->deferred_options[lvl]);
-    }
-    return 0;
-}
-
-void init_deferred_options(struct dbenv *dbenv)
-{
-    for (int lvl = 0; lvl < DEFERRED_OPTION_MAX; lvl++) {
-        listc_init(&dbenv->deferred_options[lvl],
-                   offsetof(struct deferred_option, lnk));
-    }
-}
-
-static char **qdbs = NULL;
-static char **sfuncs = NULL;
-static char **afuncs = NULL;
-
-#define parse_lua_funcs(pfx)                                                   \
-    do {                                                                       \
-        tok = segtok(line, sizeof(line), &st, &ltok);                          \
-        int num = toknum(tok, ltok);                                           \
-        pfx##funcs = malloc(sizeof(char *) * (num + 1));                       \
-        int i;                                                                 \
-        for (i = 0; i < num; ++i) {                                            \
-            tok = segtok(line, sizeof(line), &st, &ltok);                      \
-            pfx##funcs[i] = tokdup(tok, ltok);                                 \
-        }                                                                      \
-        pfx##funcs[i] = NULL;                                                  \
-    } while (0)
+char **qdbs = NULL;
+char **sfuncs = NULL;
+char **afuncs = NULL;
 
 #define llmeta_set_lua_funcs(pfx)                                              \
     do {                                                                       \
@@ -2175,2942 +1796,6 @@ int find_lua_sfunc(const char *name) { find_lua_func(name, s); }
 
 int find_lua_afunc(const char *name) { find_lua_func(name, a); }
 
-static char *get_qdb_name(const char *file)
-{
-    FILE *f = fopen(file, "r");
-    if (f == NULL) {
-        logmsg(LOGMSG_ERROR, "%s:fopen(\"%s\"):%s\n", __func__, file,
-                strerror(errno));
-        return NULL;
-    }
-    size_t n;
-    ssize_t s;
-    // Name of queue
-    char *name = NULL;
-    s = getline(&name, &n, f);
-    fclose(f);
-    if (s == -1)
-        return NULL;
-
-    name[s - 1] = 0;
-    return name;
-}
-
-struct read_lrl_option_type {
-    int lineno;
-    const char *lrlname;
-    const char *dbname;
-};
-
-static struct dbenv *read_lrl_file_int(struct dbenv *dbenv,
-                                       const char *lrlname, const char *dbname,
-                                       int required);
-
-static struct dbenv *read_lrl_file(struct dbenv *dbenv,
-                                   const char *lrlname, const char *dbname,
-                                   int required)
-{
-
-    struct lrlfile *lrlfile;
-    struct dbenv *out;
-    out = read_lrl_file_int(dbenv, (char*) lrlname, dbname, required);
-
-    lrlfile = listc_rtl(&dbenv->lrl_files);
-    free(lrlfile->file);
-    free(lrlfile);
-
-    return out;
-}
-
-static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
-{
-    char *tok;
-    int st = 0;
-    int ltok;
-    int ii, kk;
-    int num;
-    int rc;
-    struct read_lrl_option_type *options = (struct read_lrl_option_type *)p;
-
-    tok = segtok(line, len, &st, &ltok);
-    if (ltok == 0 || tok[0] == '#') return 0;
-
-    /* if this is an "if" statement that evaluates to false, skip */
-    if (!lrl_if(&tok, line, len, &st, &ltok))
-        return 1;
-
-    if (tokcmp(tok, ltok, "name") == 0) {
-        /* Copycomdb2 still wants this option, but it's useless for anything else.
-           Ignore. */
-    } else if (tokcmp(tok, ltok, "usenames") == 0) {
-        /* This was preventing setting usenames at a global level
-           which prevented restoring and starting up from a backup file */
-        gbl_nonames = 0;
-    } else if(tokcmp(tok, ltok, "enable_direct_writes") == 0) {
-        dbenv->enable_direct_writes = 1;
-    } else if (tokcmp(tok, ltok, "disable_direct_writes") == 0) {
-        dbenv->enable_direct_writes = 0;
-    }
-    else if (tokcmp(tok, ltok, "nullfkey") == 0) {
-        logmsg(LOGMSG_INFO, "fkey relationship not enforced for nulls\n");
-        gbl_nullfkey = 1;
-    }
-    else if (tokcmp(tok, ltok, "fullrecovery") == 0) {
-        logmsg(LOGMSG_INFO, "enabling full recovery\n");
-        gbl_fullrecovery = 1;
-    }
-
-    else if (tokcmp(tok, ltok, "bdblock_debug") == 0) {
-        logmsg(LOGMSG_INFO, "setting bdblock_debug\n");
-        bdb_bdblock_debug();
-    }
-
-    else if (tokcmp(tok, ltok, "sort_nulls_with_header") == 0) {
-        gbl_sort_nulls_correctly = 1;
-        logmsg(LOGMSG_INFO, "using record headers in key sorting\n");
-    } else if (tokcmp(tok, ltok, "dir") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        dbenv->basedir = tokdup(tok, ltok);
-        if (!gooddir(dbenv->basedir)) {
-            logmsg(LOGMSG_INFO, "bad directory %s in lrl %s\n", dbenv->basedir,
-                   options->lrlname);
-            return -1;
-        }
-    } else if (tokcmp(tok, ltok, "singlemeta") == 0) {
-        gbl_init_single_meta = 1;
-    } else if (tokcmp(tok, ltok, "delayed_ondisk_tempdbs") == 0) {
-        gbl_delayed_ondisk_tempdbs = 1;
-    } else if (tokcmp(tok, ltok, "init_with_genid48") == 0) {
-        logmsg(LOGMSG_INFO, "Genid48 will be enabled for this database\n");
-        gbl_init_with_genid48 = 1;
-    } else if (tokcmp(tok, ltok, "init_with_time_based_genids") == 0) {
-        logmsg(LOGMSG_INFO, "This will use time-based genids\n");
-        gbl_init_with_genid48 = 0;
-    } else if (tokcmp(tok, ltok, "init_with_rowlocks") == 0) {
-        logmsg(LOGMSG_INFO, "Rowlocks will be enabled for this database\n");
-        gbl_init_with_rowlocks = 1;
-    } else if (tokcmp(tok, ltok, "init_with_rowlocks_master_only") == 0) {
-        logmsg(LOGMSG_INFO, "Rowlocks will be enabled for this database (master only)\n");
-        gbl_init_with_rowlocks = 2;
-    } else if (tokcmp(tok, ltok, "init_with_ondisk_header") == 0) {
-        logmsg(LOGMSG_INFO, "Tables will be initialized with ODH\n");
-        gbl_init_with_odh = 1;
-    } else if (tokcmp(tok, ltok, "init_with_inplace_updates") == 0) {
-        logmsg(LOGMSG_INFO, "Tables will be initialized with inplace-update support\n");
-        gbl_init_with_ipu = 1;
-    } else if (tokcmp(tok, ltok, "init_with_instant_schema_change") == 0) {
-        logmsg(LOGMSG_INFO, 
-               "Tables will be initialized with instant schema-change support\n");
-        gbl_init_with_instant_sc = 1;
-    } else if (tokcmp(tok, ltok, "instant_schema_change") == 0) {
-        logmsg(LOGMSG_INFO,
-               "Tables will be initialized with instant schema-change support\n");
-        gbl_init_with_instant_sc = 1;
-    } else if (tokcmp(line, ltok, "init_with_compr") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        char *algo = tokdup(tok, ltok);
-        gbl_init_with_compr = bdb_compr2algo(algo);
-        free(algo);
-        logmsg(LOGMSG_INFO, "New tables will be compressed: %s\n",
-               bdb_algo2compr(gbl_init_with_compr));
-    } else if (tokcmp(line, ltok, "init_with_compr_blobs") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        char *algo = tokdup(tok, ltok);
-        gbl_init_with_compr_blobs = bdb_compr2algo(algo);
-        free(algo);
-        logmsg(LOGMSG_INFO, "Blobs in new tables will be compressed: %s\n",
-               bdb_algo2compr(gbl_init_with_compr_blobs));
-    } else if (tokcmp(line, ltok, "init_with_bthash") == 0) {
-        int szkb;
-        tok = segtok(line, len, &st, &ltok);
-        szkb = toknum(tok, ltok);
-        if (szkb <= 0) {
-            logmsg(LOGMSG_INFO, "Invalid hash size. init_with_bthash DISABLED\n");
-        } else {
-            gbl_init_with_bthash = szkb;
-            logmsg(LOGMSG_INFO, "Init with bthash %dkb per stripe\n", gbl_init_with_bthash);
-        }
-    } else if (tokcmp(tok, ltok, "directio") == 0) {
-        logmsg(LOGMSG_INFO, "enabling direct io\n");
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DIRECTIO, 1);
-    } else if (tokcmp(tok, ltok, "osync") == 0) {
-        logmsg(LOGMSG_INFO, "enabling osync io\n");
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_OSYNC, 1);
-    } else if (tokcmp(tok, ltok, "nonames") == 0) {
-        logmsg(LOGMSG_INFO, "we will not embed our db name in our files\n");
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_NONAMES, 1);
-    } 
-    else if (tokcmp(tok, ltok, "checksums") == 0) {
-        logmsg(LOGMSG_INFO, "enabling checksums\n");
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_CHECKSUMS, 1);
-    }
-
-    else if (tokcmp(tok, ltok, "memptricklepercent") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting memptricklepercent to %d\n", ii);
-
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_MEMPTRICKLEPERCENT, ii);
-    }
-
-
-    else if (tokcmp(tok, ltok, "memptricklemsecs") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting memp trickle to run every %d "
-               "milliseconds\n",
-               ii);
-
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_MEMPTRICKLEMSECS, ii);
-    }
-
-    else if (tokcmp(tok, ltok, "log_region_size") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting log region size to %d KBs\n", ii);
-        ii = ii * 1024;
-
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LOGREGIONSZ, ii);
-    }
-
-    else if (tokcmp(tok, ltok, "commitdelaymax") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting commitdelaymax to %ll\n");
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_COMMITDELAYMAX, ii);
-    }
-
-    else if (tokcmp(tok, ltok, "lock_conflict_trace") == 0) {
-        logmsg(LOGMSG_INFO, "Enabling lock-conflict trace.\n");
-        gbl_lock_conflict_trace = 1;
-    }
-
-    else if (tokcmp(tok, ltok, "no_lock_conflict_trace") == 0) {
-        logmsg(LOGMSG_INFO, "Disabling lock-conflict trace.\n");
-        gbl_lock_conflict_trace = 0;
-    }
-
-    else if (tokcmp(tok, ltok, "move_deadlock_max_attempt") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting deadlock-on-move max-attempts to %d\n",
-               ii);
-        gbl_move_deadlk_max_attempt = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "net_max_queue") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting net_max_queue to %d\n", ii);
-        gbl_net_max_queue = ii;
-    }
-
-    /* MB */
-    else if (tokcmp(tok, ltok, "net_max_mem") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting net_max_mem to %d\n", ii);
-        gbl_net_max_mem = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "net_throttle_percent") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        if (ii >= 0 || ii <= 100) {
-            logmsg(LOGMSG_INFO, "setting net_throttle_percent to %d\n", ii);
-            gbl_net_throttle_percent = ii;
-        } else {
-            logmsg(LOGMSG_ERROR, "invalid net throttle percent, %d\n", ii);
-        }
-    }
-
-    else if (tokcmp(tok, ltok, "net_max_queue_signal") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting net_max_queue_signal to %d\n", ii);
-        gbl_net_max_queue_signal = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "blocksql_grace") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting blocksql grace timeout to %d seconds\n",
-               ii);
-        gbl_blocksql_grace = ii;
-    } else if (tokcmp(tok, ltok, "net_poll") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting net_poll to %d\n", ii);
-        gbl_net_poll = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "osql_net_poll") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting osql_net_poll to %d\n", ii);
-        gbl_osql_net_poll = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "net_portmux_register_interval") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting osql_portmux_register_interval to %d\n",
-               ii);
-        gbl_net_portmux_register_interval = ii;
-    } else if (tokcmp(tok, ltok, "signal_net_portmux_register_interval") ==
-               0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting signal_portmux_register_interval to %d\n",
-               ii);
-        gbl_signal_net_portmux_register_interval = ii;
-    } else if (tokcmp(tok, ltok, "osql_net_portmux_register_interval") ==
-               0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting osql_portmux_register_interval to %d\n",
-               ii);
-        gbl_osql_net_portmux_register_interval = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "osql_max_queue") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting osql_max_queue to %d\n", ii);
-        gbl_osql_max_queue = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "osql_bkoff_netsend") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting osql_bkoff_netsend to %d\n", ii);
-        gbl_osql_bkoff_netsend = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "osql_bkoff_netsend_lmt") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting osql_bkoff_netsend_lmt to %d\n", ii);
-        gbl_osql_bkoff_netsend_lmt = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "osql_blockproc_timeout_sec") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting osql_blockproc_timeout_sec to %d\n", ii);
-        gbl_osql_blockproc_timeout_sec = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "gbl_exit_on_pthread_create_fail") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting exit_on_pthread_create_fail to %d\n", ii);
-        gbl_exit_on_pthread_create_fail = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "enable_sock_fstsnd") == 0) {
-        if (gbl_enable_sock_fstsnd != -1) {
-            logmsg(LOGMSG_INFO, "enabling fstsnd over socket\n");
-            gbl_enable_sock_fstsnd = 1;
-        } else {
-            logmsg(LOGMSG_ERROR,
-                   "fstsnd over socket can't be enabled for this DB\n");
-        }
-    } else if (tokcmp(tok, ltok, "disable_sock_fstsnd") == 0) {
-        logmsg(LOGMSG_INFO, "disabling fstsnd over socket\n");
-        gbl_enable_sock_fstsnd = -1;
-    } else if (tokcmp(tok, ltok, "disable_skip_rows") == 0) {
-        logmsg(LOGMSG_INFO, "disabling skip rows\n");
-        gbl_disable_skip_rows = 1;
-    } else if (tokcmp(tok, ltok, "enable_sp_strict_assignments") == 0) {
-        gbl_spstrictassignments = 1;
-    } else if (tokcmp(tok, ltok, "use_appsock_as_sqlthread") == 0) {
-        logmsg(LOGMSG_INFO, "Using appsock thread for sql queries.\n");
-        gbl_use_appsock_as_sqlthread = 1;
-    } else if (tokcmp(tok, ltok, "enable_sql_stmt_caching") == 0) {
-        logmsg(LOGMSG_INFO, "enabling SQL statement caching\n");
-        tok = segtok(line, len, &st, &ltok);
-        if (tokcmp(tok, ltok, "all") == 0) {
-            gbl_enable_sql_stmt_caching = STMT_CACHE_ALL;
-            logmsg(LOGMSG_INFO, "Statement caching is for ALL queries\n");
-        } else {
-            gbl_enable_sql_stmt_caching = STMT_CACHE_PARAM;
-            logmsg(LOGMSG_INFO, "Statement caching is for PARAM queries\n");
-        }
-
-    } else if (tokcmp(tok, ltok, "max_sqlcache_per_thread") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO,
-               "Maximum of %d statements will be cached per thread.\n",
-               ii);
-        gbl_max_sqlcache = ii;
-    }
-    else if (tokcmp(tok, ltok, "max_sqlcache_hints") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "Maximum of %d sql hints will be cached.\n", ii);
-        gbl_max_sql_hint_cache = ii;
-    } else if (tokcmp(tok, ltok, "max_lua_instructions") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting maximum lua instructions %d\n", ii);
-        gbl_max_lua_instructions = ii;
-    } else if (tokcmp(tok, ltok, "iothreads") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting numiothreads to %d\n", ii);
-        gbl_iothreads = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "ioqueue") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting ioqueue to %d\n", ii);
-        gbl_ioqueue = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "prefaulthelperthreads") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting prefaulthelperthreads to %d\n", ii);
-        gbl_prefaulthelperthreads = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "osqlprefaultthreads") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        gbl_osqlpfault_threads = ii;
-        logmsg(LOGMSG_INFO, "setting prefaulthelperthreads to %d\n",
-               gbl_osqlpfault_threads);
-    }
-
-    else if (tokcmp(tok, ltok, "enable_prefault_udp") == 0) {
-        gbl_prefault_udp = 1;
-    }
-
-    else if (tokcmp(tok, ltok, "disable_prefault_udp") == 0) {
-        gbl_prefault_udp = 0;
-    }
-
-    else if (tokcmp(tok, ltok, "readahead") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting readahead to %d\n", ii);
-        gbl_readahead = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "sqlreadahead") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting sqlreadahead to %d\n", ii);
-        gbl_sqlreadahead = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "prefaulthelper_blockops") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting prefaulthelper_blockops to %d\n", ii);
-        gbl_prefaulthelper_blockops = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "prefaulthelper_sqlreadahead") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting prefaulthelper_sqlreadahead to %d\n", ii);
-        gbl_prefaulthelper_sqlreadahead = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "prefaulthelper_tagreadahead") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting prefaulthelper_tagreadahead to %d\n", ii);
-        gbl_prefaulthelper_tagreadahead = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "readaheadthresh") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting readaheadthresh to %d\n", ii);
-        gbl_readaheadthresh = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "sqlreadaheadthresh") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting sqlreadaheadthresh to %d\n", ii);
-        gbl_sqlreadaheadthresh = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "sqlsortermem") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting sqlsortermem to %d\n", ii);
-        gbl_sqlite_sorter_mem = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "sqlsortermult") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting sqlsortermult to %d\n", ii);
-        gbl_sqlite_sortermult = ii;
-    }
-
-    // cache <nn> <kb|mb|gb>
-    else if (tokcmp(tok, ltok, "cache") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        int nn = toknum(tok, ltok);
-        tok = segtok(line, len, &st, &ltok);
-        if (tokcmp(tok, ltok, "kb") == 0)
-            dbenv->cacheszkb = nn;
-        else if (tokcmp(tok, ltok, "mb") == 0)
-            dbenv->cacheszkb = nn * 1024;
-        else if (tokcmp(tok, ltok, "gb") == 0)
-            dbenv->cacheszkb = nn * 1024 * 1024;
-        else
-            logmsg(LOGMSG_ERROR, "bad unit for cache sz - needs kb|mb|gb\n");
-        logmsg(LOGMSG_INFO, "cache size is %dKB\n", dbenv->cacheszkb);
-    }
-
-    else if (tokcmp(tok, ltok, "cachekb") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        dbenv->cacheszkb = ii;
-        logmsg(LOGMSG_INFO, "cachekbsz is %d\n", dbenv->cacheszkb);
-    }
-
-    else if (tokcmp(tok, ltok, "cachekbmin") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        dbenv->cacheszkbmin = ii;
-    } else if (tokcmp(tok, ltok, "cachekbmax") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        dbenv->cacheszkbmax = ii;
-    } else if (tokcmp(tok, ltok, "override_cachekb") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        dbenv->override_cacheszkb = ii;
-    } else if (tokcmp(tok, ltok, "dedicated_network_suffixes") == 0) {
-        while (1) {
-            char suffix[50];
-
-            tok = segtok(line, len, &st, &ltok);
-            if (ltok == 0)
-                break;
-            tokcpy(tok, ltok, suffix);
-
-            if (net_add_to_subnets(suffix, options->lrlname)) {
-               return -1;
-            }
-      }
-   } else if (tokcmp(tok, ltok, "use_nondedicated_network") == 0) {
-      net_add_nondedicated_subnet();
-   }
-      /* enable client side retrys for n seconds.
-      keep blkseq's around for 2 * this time. */
-   else if (tokcmp(tok, ltok, "retry") == 0) {
-      tok = segtok(line, len, &st, &ltok);
-      ii = toknum(tok, ltok);
-      /* For now the proxy will treat the number 180 as meaning "this
-       * is old comdb2.tsk which defaults to 180 seconds", so we put in
-       * this HACK!!!! to get around that.  remove this hack when this
-       * build of comdb2.tsk is everywhere. */
-      if (ii == 180)
-         ii = 181;
-      dbenv->retry = ii;
-   }
-
-    else if (tokcmp(tok, ltok, "maxcontextskips") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting maxcontextskips to %d\n", ii);
-        gbl_maxcontextskips = ii;
-    }
-
-    else if (tokcmp(tok, ltok, "appsockslimit") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting soft limit of appsock connections to %d\n",
-               ii);
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_APPSOCKSLIMIT, ii);
-    }
-
-    else if (tokcmp(tok, ltok, "maxappsockslimit") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting max appsock connections to %d\n", ii);
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT, ii);
-    } else if (tokcmp(tok, ltok, "maxsockcached") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting max sockets cached to %d\n", ii);
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_MAXSOCKCACHED, ii);
-    } else if (tokcmp(tok, ltok, "maxlockers") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting maxlockers to %d\n", ii);
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_MAXLOCKERS, ii);
-    }
-
-    else if (tokcmp(tok, ltok, "maxlocks") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting maxlocks to %d\n", ii);
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_MAXLOCKS, ii);
-    }
-
-    else if (tokcmp(tok, ltok, "maxlockobjects") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting maxlockobjects to %d\n", ii);
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_MAXLOCKOBJECTS, ii);
-    }
-
-    else if (tokcmp(tok, ltok, "maxtxn") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting maxtxn to %d\n", ii);
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_MAXTXN, ii);
-    }
-
-    else if (tokcmp(tok, ltok, "longblockcache") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting longblockcache to %d\n", ii);
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LONGBLOCKCACHE, ii);
-    }
-
-    else if (tokcmp(tok, ltok, "largepages") == 0) {
-        logmsg(LOGMSG_INFO, "enabling large page support\n");
-        gbl_largepages = 1;
-    }
-
-    else if (tokcmp(tok, ltok, "nullsort") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected argument for nullsort\n");
-            return -1;
-        } else if (tokcmp(tok, ltok, "high") == 0) {
-            /* default */
-            comdb2_types_set_null_bit(null_bit_high);
-            logmsg(LOGMSG_INFO, "nulls will sort high\n");
-        } else if (tokcmp(tok, ltok, "low") == 0) {
-            comdb2_types_set_null_bit(null_bit_low);
-            logmsg(LOGMSG_INFO, "nulls will sort low\n");
-        } else {
-            logmsg(LOGMSG_ERROR, "Invalid argument for nullsort\n");
-        }
-    }
-
-    else if (tokcmp(tok, ltok, "logmemsize") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting logmemsize to %d\n", ii);
-        dbenv->log_mem_size = ii;
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LOGMEMSIZE, ii);
-    }
-
-    else if (tokcmp(tok, ltok, "checkpointtime") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting checkpointtime to %d\n", ii);
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_CHECKPOINTTIME, ii);
-    }
-
-    else if (tokcmp(tok, ltok, "logfilesize") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting logfilesize to %d\n", ii);
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LOGFILESIZE, ii);
-    }
-
-    else if (tokcmp(tok, ltok, "maxosqltransfer") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting maxosqltransfer to %d\n", ii);
-        set_osql_maxtransfer(ii);
-    } else if (tokcmp(tok, ltok, "fdbdebg") == 0) {
-        extern int gbl_fdb_track;
-        tok = segtok(line, len, &st, &ltok);
-        gbl_fdb_track = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "%s fdb debugging\n",
-               (gbl_fdb_track) ? "Enabling" : "Disabling");
-    } else if (tokcmp(tok, ltok, "fdbtrackhints") == 0) {
-        extern int gbl_fdb_track_hints;
-        tok = segtok(line, len, &st, &ltok);
-        gbl_fdb_track_hints = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "%s fdb hint tracking\n",
-               (gbl_fdb_track_hints) ? "Enabling" : "Disabling");
-    }
-
-    else if (tokcmp(tok, ltok, "maxthrottletime") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting maxthrottle seconds to %d\n", ii);
-        set_osql_maxthrottle_sec(ii);
-    } else if (tokcmp(tok, ltok, "port") == 0) {
-        char hostname[255];
-        int port;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR,
-                   "Expected hostname port for \"port\" directive\n");
-            return -1;
-        }
-        if (ltok >= sizeof(hostname)) {
-            logmsg(LOGMSG_ERROR,
-                   "Unexpectedly long hostname %.*s len %d max %d\n",
-                   ltok, hostname, ltok, sizeof(hostname));
-            return -1;
-        }
-        tokcpy(tok, ltok, hostname);
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR,
-                   "Expected hostname port for \"port\" directive\n");
-            return -1;
-        }
-        port = toknum(tok, ltok);
-        if (port <= 0 || port >= 65536) {
-            logmsg(LOGMSG_ERROR, "Port out of range for \"port\" directive\n");
-            return -1;
-        }
-        if (dbenv->nsiblings > 1) {
-            for (ii = 0; ii < dbenv->nsiblings; ii++) {
-                if (strcmp(dbenv->sibling_hostname[ii], hostname) == 0) {
-                    dbenv->sibling_port[ii][NET_REPLICATION] = port;
-                    dbenv->sibling_port[ii][NET_SQL] = port;
-                    dbenv->sibling_port[ii][NET_SIGNAL] = port;
-                    break;
-                }
-            }
-            if (ii >= dbenv->nsiblings) {
-                logmsg(LOGMSG_ERROR,
-                       "Don't recognize %s as part of my cluster.  Please make "
-                       "sure \"port\" directives follow \"cluster nodes\"\n",
-                       hostname);
-                return -1;
-            }
-        } else if (strcmp(hostname, "localhost") == 0) {
-            /* nsiblings == 1 means there's no other nodes in the cluster */
-            dbenv->sibling_port[0][NET_REPLICATION] = port;
-            dbenv->sibling_port[0][NET_SQL] = port;
-            dbenv->sibling_port[0][NET_SIGNAL] = port;
-        }
-    } else if (tokcmp(tok, ltok, "cluster") == 0) {
-        /*parse line...*/
-        tok = segtok(line, len, &st, &ltok);
-        if (tokcmp(tok, ltok, "nodes") == 0) {
-            /*create replication group. only me by default*/
-            while (1) {
-                char nodename[512];
-                struct hostent *h;
-
-                tok = segtok(line, len, &st, &ltok);
-                if (ltok == 0) break;
-                if (ltok > sizeof(nodename)) {
-                    logmsg(LOGMSG_ERROR,
-                           "host %.*s name too long (expected < %d)\n",
-                           ltok, tok, sizeof(nodename));
-                    return -1;
-                }
-                tokcpy(tok, ltok, nodename);
-                errno = 0;
-
-                if (dbenv->nsiblings >= MAXSIBLINGS) {
-                    logmsg(LOGMSG_ERROR,
-                           "too many sibling nodes (max=%d) in lrl %s\n",
-                           MAXSIBLINGS, options->lrlname);
-                    return -1;
-                }
-
-                /* Check to see if this name is another name for me. */
-                h = bb_gethostbyname(nodename);
-                if (h && h->h_addrtype == AF_INET &&
-                    memcmp(&gbl_myaddr.s_addr, h->h_addr,
-                           h->h_length == 0)) {
-                    /* Assume I am better known by this name. */
-                    gbl_mynode = intern(nodename);
-                }
-                if (strcmp(gbl_mynode, nodename) == 0 &&
-                    gbl_rep_node_pri == 0) {
-                    /* assign the priority of current node according to its
-                     * sequence in nodes list. */
-                    gbl_rep_node_pri = MAXSIBLINGS - dbenv->nsiblings;
-                    continue;
-                }
-                /* lets ignore duplicate for now and make a list out of what is
-                 * given in lrl */
-                for (kk = 1; kk < dbenv->nsiblings &&
-                         strcmp(dbenv->sibling_hostname[kk], nodename);
-                     kk++)
-                    ; /*look for dupes*/
-                if (kk == dbenv->nsiblings) {
-                    /*not a dupe.*/
-                    dbenv->sibling_hostname[dbenv->nsiblings] =
-                        intern(nodename);
-                    for (int netnum = 0; netnum < MAXNETS; netnum++)
-                        dbenv->sibling_port[dbenv->nsiblings][netnum] = 0;
-                    dbenv->nsiblings++;
-                }
-            }
-            dbenv->sibling_hostname[0] = gbl_mynode;
-        }
-    }
-
-    else if (tokcmp(tok, ltok, "pagesize") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify options for pagesize.\n");
-            return -1;
-        }
-
-        if (tokcmp(tok, ltok, "all") == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify size for all\n");
-            return -1;
-#if 0 
-            NOT SURE WHY THE SHORTEN PATH, but commenting out to
-                remove compiler warning
-                ii=toknum(tok,ltok);
-
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEDTA, ii);
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEFREEREC, ii);
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEIX, ii);
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEBLOB, ii);
-#endif
-        } else if (tokcmp(tok, ltok, "dta") == 0) {
-            tok = segtok(line, len, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "Need to specify size for dta\n");
-                return -1;
-            }
-            ii = toknum(tok, ltok);
-
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEDTA, ii);
-        } else if (tokcmp(tok, ltok, "ix") == 0) {
-            tok = segtok(line, len, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "Need to specify size for ix\n");
-                return -1;
-            }
-            ii = toknum(tok, ltok);
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEIX, ii);
-        } else {
-            logmsg(LOGMSG_ERROR, "Need to specify options for pagesize.\n");
-            return -1;
-        }
-    }
-
-    else if (tokcmp(tok, ltok, "heartbeat_send_time") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify time for heartbeat send\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid heartbeat send time\n");
-            return -1;
-        }
-        gbl_heartbeat_send = num;
-    }
-
-    else if (tokcmp(tok, ltok, "sc_del_unused_files_threshold") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, 
-                   "Need to specify ms for sc_del_unused_files_threshold\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid sc_del_unused_files_threshold\n");
-            return -1;
-        }
-        gbl_sc_del_unused_files_threshold_ms = num;
-    }
-
-    else if (tokcmp(tok, ltok, "netbufsz") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify bytes for netbufsz\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid netbufsz\n");
-            return -1;
-        }
-        gbl_netbufsz = num;
-    } else if (tokcmp(tok, ltok, "netbufsz_signal") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify bytes for netbufsz_signal\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid netbufsz_signal\n");
-            return -1;
-        }
-        gbl_netbufsz_signal = num;
-    }
-
-    else if (tokcmp(tok, ltok, "heartbeat_check_time") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify time for heartbeat check\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid heartbeat check time\n");
-            return -1;
-        }
-        gbl_heartbeat_check = num;
-    } else if (tokcmp(tok, ltok, "dtastripe") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify num for dtastripe\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid dtastripe\n");
-            return -1;
-        }
-        gbl_dtastripe = num;
-    } else if (tokcmp(tok, ltok, "rr_enable_count_changes") == 0) {
-        gbl_rrenablecountchanges = 1;
-    } else if (tokcmp(tok, ltok, "blobstripe") == 0) {
-        gbl_blobstripe = 1;
-    } else if (tokcmp(tok, ltok, "penaltyincpercent") == 0) {
-        int nthrk = 0;
-        tok = segtok(line, len, &st, &ltok);
-        nthrk = toknum(tok, ltok);
-        gbl_penaltyincpercent = nthrk;
-    } else if (tokcmp(tok, ltok, "maxwt") == 0) {
-        int nthrk = 0;
-        tok = segtok(line, len, &st, &ltok);
-        nthrk = toknum(tok, ltok);
-        if (nthrk < 1) {
-            logmsg(LOGMSG_ERROR, "bad number %d of writer threads %s\n", nthrk,
-                   options->lrlname);
-            return -1;
-        } else if (nthrk > gbl_maxthreads) {
-            logmsg(LOGMSG_ERROR, "number of writer threads (%d) must be <= to "
-                   "total number of threads (%d)\n",
-                   nthrk, gbl_maxthreads);
-        } else {
-            gbl_maxwthreads = nthrk;
-            logmsg(LOGMSG_INFO, "max number of writer threads set to %d in lrl\n",
-                   gbl_maxwthreads);
-        }
-    }
-
-    else if (tokcmp(tok, ltok, "maxt") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify num for maxt\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid maxt\n");
-            return -1;
-        }
-        gbl_maxthreads = num;
-        logmsg(LOGMSG_INFO, "max number of threads set to %d in lrl\n", gbl_maxthreads);
-        if (gbl_maxwthreads > gbl_maxthreads) {
-            logmsg(LOGMSG_INFO, "reducing max number of writer threads in lrl to %d\n",
-                   gbl_maxthreads);
-            gbl_maxwthreads = gbl_maxthreads;
-        }
-    }
-
-    else if (tokcmp(tok, ltok, "maxq") == 0) {
-        int z;
-        tok = segtok(line, len, &st, &ltok);
-        z = toknum(tok, ltok);
-        if (z < 1 || z > 1000 /*can't be more than swapinit!*/) {
-            logmsg(LOGMSG_ERROR, "bad max number of items on queue\n");
-            return -1;
-        } else {
-            gbl_maxqueue = z; /* max pending requests.*/
-            logmsg(LOGMSG_INFO, "max number of items on queue set to %d\n",
-                   gbl_maxqueue);
-        }
-    }
-
-    else if (tokcmp(tok, ltok, "nice") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify nice value for nice\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        errno = 0;
-        logmsg(LOGMSG_INFO, "nice %d: %s\n", nice(num), strerror(errno));
-    }
-
-    /* we cant actually BECOME a different version of comdb2 at runtime,
-       just because the lrl file told us to.  what we can do is check for
-       some confused situations where the lrl file is for a different
-       version of comdb2 than we are */
-    else if (tokcmp(tok, ltok, "version") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        for (ii = 0; ii < 10; ii++)
-            if (!isprint(tok[ii])) tok[ii] = '\0';
-
-        logmsg(LOGMSG_ERROR, "lrl file for comdb2 version %s found\n", tok);
-
-        if (strcmp(tok, COMDB2_VERSION)) {
-            logmsg(LOGMSG_ERROR, "but we are version %s\n", COMDB2_VERSION);
-            exit(1);
-        }
-    }
-
-    else if (tokcmp(tok, ltok, "decom_time") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify time for decomission time\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid decomission time\n");
-            return -1;
-        }
-        gbl_decom = num;
-    } else if (tokcmp(tok, ltok, "checkctags") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify options for checkctags.\n");
-            return -1;
-        }
-
-        if (tokcmp(tok, ltok, "off") == 0) {
-            logmsg(LOGMSG_INFO, "check tag logic is now off\n");
-            gbl_check_client_tags = 0;
-        } else if (tokcmp(tok, ltok, "soft") == 0) {
-            logmsg(LOGMSG_INFO, "check tag logic will now produce warning\n");
-            gbl_check_client_tags = 2;
-        } else if (tokcmp(tok, ltok, "full") == 0) {
-            logmsg(LOGMSG_INFO, "check tag logic will now error out to client\n");
-            gbl_check_client_tags = 1;
-        } else {
-            logmsg(LOGMSG_INFO, "Need to specify options for checktags.\n");
-            return -1;
-        }
-    } else if (tokcmp(tok, ltok, "sync") == 0) {
-        rc = process_sync_command(dbenv, line, len, st);
-        if (rc != 0) {
-            return -1;
-        }
-    } else if (tokcmp(tok, ltok, "queue") == 0) {
-        struct db *db;
-        char *qname;
-        int avgsz;
-        int pagesize = 0;
-
-        /*
-          queue <qname>
-        */
-        tok = segtok(line, len, &st, &ltok); /* queue name */
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
-            return -1;
-        }
-        qname = tokdup(tok, ltok);
-
-        tok = segtok(line, len, &st, &ltok); /* item sz*/
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
-            return -1;
-        }
-        avgsz = toknum(tok, ltok);
-        if (avgsz == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
-            return -1;
-        }
-
-        /* This code is dupliated in the message trap parser.. sorry */
-        tok = segtok(line, len, &st, &ltok);
-        while (ltok) {
-            char ctok[64];
-            tokcpy0(tok, ltok, ctok, sizeof(ctok));
-            if (strncmp(ctok, "pagesize=", 9) == 0) {
-                pagesize = atoi(ctok + 9);
-            } else {
-                logmsg(LOGMSG_ERROR, "Bad queue attribute '%s'\n", ctok);
-                return -1;
-            }
-            tok = segtok(line, len, &st, &ltok);
-        }
-
-        db = newqdb(dbenv, qname, avgsz, pagesize, 0);
-        if (!db) {
-            return -1;
-        }
-        db->dbs_idx = -1;
-
-        dbenv->qdbs = realloc(dbenv->qdbs, (dbenv->num_qdbs + 1) * sizeof(struct db *));
-        dbenv->qdbs[dbenv->num_qdbs++] = db;
-    } else if (tokcmp(tok, ltok, "consumer") == 0) {
-        char *qname;
-        int consumer;
-        char *method;
-        struct db *db;
-
-        /*
-         * consumer <qname> <consumer#> <method>
-         */
-        tok = segtok(line, len, &st, &ltok); /* queue name */
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"consumer\" directive\n");
-            return -1;
-        }
-        qname = tokdup(tok, ltok);
-        tok = segtok(line, len, &st, &ltok); /* consumer # */
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"consumer\" directive\n");
-            return -1;
-        }
-        consumer = toknum(tok, ltok);
-        tok = segtok(line, len, &st, &ltok); /* method */
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"consumer\" directive\n");
-            return -1;
-        }
-        method = tokdup(tok, ltok);
-
-        db = NULL;
-        for (ii = 0; ii < dbenv->num_qdbs; ii++)
-            if (strcasecmp(dbenv->qdbs[ii]->dbname, qname) == 0)
-                db = dbenv->qdbs[ii];
-        if (!db) {
-            logmsg(LOGMSG_ERROR, "No such queue '%s'\n", qname);
-            return -1;
-        }
-
-        if (dbqueue_add_consumer(db, consumer, method, 1) != 0) {
-            return -1;
-        }
-    } else if (tokcmp(tok, ltok, "spfile") == 0) {
-        logmsg(LOGMSG_INFO, "read the stored procedures.\n");
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "expected file name\n");
-            return -1;
-        }
-        gbl_spfile_name = getdbrelpath(tokdup(tok, ltok));
-    } else if (tokcmp(tok, ltok, "sfuncs") == 0) {
-        parse_lua_funcs(s);
-    } else if (tokcmp(tok, ltok, "afuncs") == 0) {
-        parse_lua_funcs(a);
-    } else if (tokcmp(tok, ltok, "num_qdbs") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        int num = toknum(tok, ltok);
-        dbenv->num_qdbs = num;
-        dbenv->qdbs = calloc(num, sizeof(struct db *));
-        qdbs = calloc(num + 1, sizeof(char *));
-    } else if (tokcmp(tok, ltok, "queuedb") == 0) {
-        char **slot = &qdbs[0];
-        while (*slot)
-            ++slot;
-        tok = segtok(line, len, &st, &ltok);
-        *slot = tokdup(tok, ltok);
-        struct db **qdb = &dbenv->qdbs[0];
-        while (*qdb)
-            ++qdb;
-        char *name = get_qdb_name(*slot);
-        if (name == NULL) {
-            logmsg(LOGMSG_ERROR, "Failed to obtain queuedb name from:%s\n",
-                   *slot);
-            return -1;
-        }
-        *qdb = newqdb(dbenv, name, 65536, 65536, 1);
-        if (*qdb == NULL) {
-            logmsg(LOGMSG_ERROR, "newqdb failed for:%s\n", name);
-            return -1;
-        }
-        free(name);
-    } else if (tokcmp(tok, ltok, "table") == 0) {
-        /*
-         * variants:
-         * table foo foo.lrl        # load a table given secondary lrl files
-         * table foo foo.csc        # load a table from a csc file
-         * table foo foo.csc dbnum  # load a table from a csc file and have
-         * # it also accept requests as db# dbnum
-         *
-         * relative paths are looked for relative to the parent lrl
-         *
-         * table     sqlite_stat1 bin/comdb2_stats.csc2
-         */
-        char *fname;
-        char *tblname;
-        char tmpname[MAXTABLELEN];
-
-        dbenv->dbs = realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(struct db *));
-
-        tok = segtok(line, len, &st, &ltok); /* tbl name */
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"table\" directive\n");
-            return -1;
-        }
-
-        tblname = tokdup(tok, ltok);
-
-        tok = segtok(line, len, &st, &ltok);
-        fname = getdbrelpath(tokdup(tok, ltok));
-
-        /* if it's a schema file, allocate a struct db, populate with crap
-         * data, then load schema.  if it's an lrl file, we don't support it
-         * anymore */
-
-        if (strstr(fname, ".lrl") != 0) {
-            logmsg(LOGMSG_ERROR, "this version of comdb2 does not support "
-                   "loading another lrl from this lrl\n");
-            return -1;
-        } else if (strstr(fname, ".csc2") != 0) {
-            int dbnum;
-            struct db *db;
-
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
-
-            /* optional dbnum */
-            tok = segtok(line, len, &st, &ltok);
-            tokcpy(tok, ltok, tmpname);
-            if (ltok == 0)
-                dbnum = 0;
-            else {
-                dbnum = toknum(tok, ltok);
-                if (dbnum <= 0) {
-                    logmsg(LOGMSG_ERROR, "Invalid dbnum entry in \"table\" directive\n");
-                    return -1;
-                }
-
-                /* if db number matches parent database db number then
-                 * table name must match parent database name.  otherwise
-                 * we get mysterious failures to receive qtraps (setting
-                 * taskname to something not our task name causes initque
-                 * to fail, and the ldgblzr papers over this) */
-                if (dbnum == dbenv->dbnum &&
-                    strcasecmp(gbl_dbname, tblname) != 0) {
-                    logmsg(LOGMSG_ERROR, "Table %s has same db number as parent database "
-                           "but different name\n",
-                           tblname);
-                    return -1;
-                }
-            }
-            rc = dyns_load_schema(fname, (char *)gbl_dbname, tblname);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "Error loading %s schema.\n", tok);
-                return -1;
-            }
-
-            /* create one */
-            db = newdb_from_schema(dbenv, tblname, fname, dbnum,
-                                   dbenv->num_dbs, 0);
-            if (db == NULL) {
-                return -1;
-            }
-
-            db->dbs_idx = dbenv->num_dbs;
-            dbenv->dbs[dbenv->num_dbs++] = db;
-
-            /* just got a bunch of data. remember it so key forming
-               routines and SQL can get at it */
-            if (add_cmacc_stmt(db, 0)) {
-                logmsg(LOGMSG_ERROR,
-                       "Failed to load schema: can't process schema file %s\n",
-                       tok);
-                return -1;
-            }
-        } else {
-            logmsg(LOGMSG_ERROR, "Invalid table option\n");
-            return -1;
-        }
-    } else if (tokcmp(tok, ltok, "loghist") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0)
-            gbl_loghist = 10000;
-        else {
-            gbl_loghist = toknum(tok, ltok);
-            if (gbl_loghist <= 0) {
-                logmsg(LOGMSG_ERROR, "Invalid gbl_loghist value\n");
-                return -1;
-            }
-        }
-        logmsg(LOGMSG_INFO, "Enabled request logging: %d requests\n", gbl_loghist);
-    } else if (tokcmp(tok, ltok, "repdebug") == 0) {
-        /* turn on replication debug messages */
-        gbl_repdebug = 1;
-    } else if (tokcmp(tok, ltok, "norepdebug") == 0) {
-        /* turn off replication debug messages */
-        gbl_repdebug = 0;
-    } else if (tokcmp(tok, ltok, "loghist_verbose") == 0) {
-        gbl_loghist_verbose = 1;
-    } else if (tokcmp(tok, ltok, "allow") == 0 ||
-               tokcmp(tok, ltok, "disallow") == 0 ||
-               tokcmp(tok, ltok, "clrpol") == 0 ||
-               tokcmp(tok, ltok, "setclass") == 0) {
-        if (dbenv->num_allow_lines >= dbenv->max_allow_lines) {
-            dbenv->max_allow_lines += 1;
-            dbenv->allow_lines =
-                realloc(dbenv->allow_lines,
-                        sizeof(char *) * dbenv->max_allow_lines);
-            if (!dbenv->allow_lines) {
-                logmsg(LOGMSG_ERROR, "out of memory\n");
-                return -1;
-            }
-        }
-        dbenv->allow_lines[dbenv->num_allow_lines] =
-            strdup(line);
-        if (!dbenv->allow_lines[dbenv->num_allow_lines]) {
-            logmsg(LOGMSG_ERROR, "out of memory\n");
-            return -1;
-        }
-        dbenv->num_allow_lines++;
-    } else if (tokcmp(tok, ltok, "sqlflush") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_INFO, "Expected #records for sqlflush\n");
-            return -1;
-        }
-        gbl_sqlflush_freq = toknum(tok, ltok);
-        if (gbl_sqlflush_freq < 0) {
-            logmsg(LOGMSG_ERROR, "Invalid flush frequency\n");
-            gbl_sqlflush_freq = 0;
-            return -1;
-        }
-    } else if (tokcmp(tok, ltok, "sbuftimeout") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected time values (ms) for sbuftimeout\n");
-            return -1;
-        }
-        gbl_sbuftimeout = toknum(tok, ltok);
-        if (gbl_sbuftimeout < 0) {
-            gbl_sbuftimeout = 0;
-            logmsg(LOGMSG_ERROR, "Invalid sbuf timeout\n");
-            return -1;
-        }
-        set_sbuftimeout(gbl_sbuftimeout);
-    } else if (tokcmp(tok, ltok, "throttlesqloverlog") == 0) {
-        int secs;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0 || ((secs = toknum(tok, ltok)) < 0)) {
-            logmsg(LOGMSG_ERROR, "Expected number of seconds for throttlesqloverlog\n");
-        } else {
-            gbl_throttle_sql_overload_dump_sec = secs;
-            logmsg(LOGMSG_ERROR, 
-                   "Set at most one sql overload trace per every %d seconds\n",
-                   gbl_throttle_sql_overload_dump_sec);
-        }
-    }
-
-    else if (tokcmp(tok, ltok, "toblock_net_throttle") == 0) {
-        gbl_toblock_net_throttle = 1;
-        logmsg(LOGMSG_INFO, "I will throttle my writes in apply_changes\n");
-    } else if (tokcmp(tok, ltok, "no_toblock_net_throttle") == 0) {
-        gbl_toblock_net_throttle = 0;
-        logmsg(LOGMSG_INFO, "I will not throttle my writes in apply_changes\n");
-    }
-
-    else if (tokcmp(tok, ltok, "enque_flush_interval") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected time value for enque_flush_interval\n");
-            return -1;
-        }
-        gbl_enque_flush_interval = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "net_set_enque_flush_interval %d\n",
-               gbl_enque_flush_interval);
-    }
-
-    else if (tokcmp(tok, ltok, "enque_flush_interval_signal") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected time value for enque_flush_interval_signal\n");
-            return -1;
-        }
-        gbl_enque_flush_interval_signal = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "net_set_enque_flush_interval_signal %d\n",
-               gbl_enque_flush_interval_signal);
-    }
-
-    else if (tokcmp(tok, ltok, "slow_rep_process_txn_maxms") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for slow_rep_process_txn_maxms\n");
-            return -1;
-        }
-        gbl_slow_rep_process_txn_maxms = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "slow_rep_process_txn_maxms set to %d ms\n",
-               gbl_slow_rep_process_txn_maxms);
-    }
-
-    else if (tokcmp(tok, ltok, "slow_rep_process_txn_freq") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for slow_rep_process_txn_freq\n");
-            return -1;
-        }
-        gbl_slow_rep_process_txn_freq = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "slow_rep_process_txn_freq set to %d ms\n",
-               gbl_slow_rep_process_txn_freq);
-    }
-
-    else if (tokcmp(tok, ltok, "enque_reorder_lookahead") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for enque_reorder_lookahead\n");
-            return -1;
-        }
-        gbl_enque_reorder_lookahead = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "enque_reorder_lookahead %d\n",
-               gbl_enque_reorder_lookahead);
-    }
-
-    else if (tokcmp(tok, ltok, "inflatelog") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, 
-                   "Inflatelog requires argument (percentage to inflate)\n");
-            return -1;
-        }
-        gbl_inflate_log = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "Will inflate log-stream by %d%%\n", gbl_inflate_log);
-    } else if (tokcmp(tok, ltok, "enable_position_apis") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_enable_position_apis = 1;
-        logmsg(LOGMSG_INFO, "DB supports position APIs\n");
-    } else if (tokcmp(tok, ltok, "use_node_priority") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_use_node_pri = 1;
-        logmsg(LOGMSG_INFO, "Node priority is set for the db\n");
-    } else if (tokcmp(tok, ltok, "allow_lua_print") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_allow_lua_print = 1;
-        logmsg(LOGMSG_INFO, "Allow use of lua print for debugging.\n");
-    } else if (tokcmp(tok, ltok, "allow_user_schema") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_allow_user_schema = 1;
-        logmsg(LOGMSG_INFO, "Allow user schema.\n");
-    } else if (tokcmp(tok, ltok, "return_long_column_names") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_return_long_column_names = 1;
-        logmsg(LOGMSG_INFO, "Return long column names.\n");
-    } else if (tokcmp(tok, ltok, "debug") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        while (ltok > 0) {
-            if (tokcmp(tok, ltok, "rtcpu") == 0) {
-                logmsg(LOGMSG_INFO, "enable rtcpu debugging\n");
-                gbl_rtcpu_debug = 1;
-            }
-            tok = segtok(line, len, &st, &ltok);
-        }
-    } else if (tokcmp(tok, ltok, "convflush") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected schema change flush frequency\n");
-        } else {
-            int num = toknum(tok, ltok);
-            gbl_conv_flush_freq = num;
-            logmsg(LOGMSG_INFO, "On non-live schema change, flushing on each %d records "
-                   "NOTE: THIS OPTION IS CURRENTLY IGNORED\n",
-                   num);
-        }
-    } else if (tokcmp(tok, ltok, "resource") == 0) {
-        /* I used to allow a one argument version of resource -
-         *   resource <filepath>
-         * This wasn't implemented too well and caused problems.  Explicit
-         * two argument version is better:
-         *   resource <name> <filepath>
-         */
-        char *name = NULL;
-        char *file = NULL;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected resource name\n");
-            return -1;
-        }
-        name = tokdup(tok, ltok);
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected resource path\n");
-            free(name);
-            return -1;
-        }
-        file = tokdup(tok, ltok);
-        addresource(name, file);
-        if (name)
-            free(name);
-        if (file)
-            free(file);
-    } else if (tokcmp(tok, ltok, "procedure") == 0) {
-        char *name;
-        char *jartok;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected stored procedure name\n");
-            return -1;
-        }
-        name = tokdup(tok, ltok);
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected stored procedure jar resource name\n");
-            free(name);
-            return -1;
-        }
-        jartok = tokdup(tok, ltok);
-        if (javasp_add_procedure(name, jartok, line + st) != 0)
-            return -1;
-        free(name);
-        free(jartok);
-    } else if (tokcmp(tok, ltok, "fstdumptimeout") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected fast dump timeout time in seconds\n");
-            return -1;
-        }
-        gbl_fastdump_timeoutms = toknum(tok, ltok) * 1000;
-    }
-    else if (tokcmp(tok, ltok, "repchecksum") == 0) {
-        logmsg(LOGMSG_INFO, "replication checksums enabled\n");
-        gbl_repchecksum = 1;
-    } else if (tokcmp(tok, ltok, "use_live_schema_change") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok > 0)
-            gbl_default_livesc = toknum(tok, ltok);
-        else
-            gbl_default_livesc = 1;
-        logmsg(LOGMSG_INFO, "setting gbl_default_livesc = %d\n", gbl_default_livesc);
-    } else if (tokcmp(tok, ltok, "use_parallel_schema_change") == 0) {
-        gbl_default_sc_scanmode = SCAN_PARALLEL;
-        logmsg(LOGMSG_INFO, "using parallel scan mode for schema changes by default\n");
-    } else if (tokcmp(tok, ltok, "use_llmeta") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLMETA, 1);
-        gbl_use_llmeta = 1;
-        logmsg(LOGMSG_INFO, "using low level meta table\n");
-    } else if (tokcmp(tok, ltok, "use_planned_schema_change") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok > 0)
-            gbl_default_plannedsc = toknum(tok, ltok);
-        else
-            gbl_default_plannedsc = 1;
-        logmsg(LOGMSG_INFO, "setting gbl_default_plannedsc = %d\n",
-               gbl_default_plannedsc);
-    } else if (tokcmp(tok, ltok, "bdboslog") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        bdb_set_os_log_level(toknum(tok, ltok));
-    } else if (tokcmp(tok, ltok, "queuepoll") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_queue_sleeptime = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting gbl_queue_sleeptime to %d\n", gbl_queue_sleeptime);
-    } else if (tokcmp(tok, ltok, "lclpooledbufs") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_lclpooled_buffers = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting gbl_lclpooled_buffers to %d\n",
-               gbl_lclpooled_buffers);
-    }
-    else if (tokcmp(tok, ltok, "maxblockops") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_maxblockops = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting gbl_maxblockops to %d\n", gbl_maxblockops);
-    } else if (tokcmp(tok, ltok, "replicate_local") == 0) {
-        gbl_replicate_local = 1;
-    } else if (tokcmp(tok, ltok, "replicate_local_concurrent") == 0) {
-        gbl_replicate_local_concurrent = 1;
-    } else if (tokcmp(tok, ltok, "erron") == 0) {
-        dbenv->errstaton = 1; /* ON */
-        logmsg(LOGMSG_INFO, "db error report turned on\n");
-    } else if (tokcmp(tok, ltok, "erroff") == 0) {
-        dbenv->errstaton = 0; /* OFF */
-        logmsg(LOGMSG_INFO, "db error report turned off\n");
-    } else if (tokcmp(tok, ltok, "disable_tagged_api") == 0) {
-        logmsg(LOGMSG_INFO, "Disabled tagged api requests.\n");
-        gbl_disable_tagged_api = 1;
-    } else if (tokcmp(tok, ltok, "enable_tagged_api") == 0) {
-        logmsg(LOGMSG_INFO, "Enabled tagged api requests.\n");
-        gbl_disable_tagged_api = 0;
-    } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
-        gbl_snapisol = 1;
-    } else if (tokcmp(tok, ltok, "enable_new_snapshot") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
-        gbl_snapisol = 1;
-        gbl_new_snapisol = 1;
-        gbl_new_snapisol_logging = 1;
-        logmsg(LOGMSG_INFO, "Enabled new snapshot\n");
-    } else if (tokcmp(tok, ltok, "enable_new_snapshot_asof") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
-        gbl_snapisol = 1;
-        gbl_new_snapisol = 1;
-        gbl_new_snapisol_asof = 1;
-        gbl_new_snapisol_logging = 1;
-        logmsg(LOGMSG_INFO, "Enabled new snapshot\n");
-    } else if (tokcmp(tok, ltok, "enable_new_snapshot_logging") == 0) {
-        gbl_new_snapisol_logging = 1;
-        logmsg(LOGMSG_INFO, "Enabled new snapshot logging\n");
-    } else if (tokcmp(tok, ltok, "disable_new_snapshot") == 0) {
-        gbl_disable_new_snapshot = 1;
-        logmsg(LOGMSG_INFO, "Disabled new snapshot\n");
-    } else if (tokcmp(tok, ltok, "enable_serial_isolation") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
-        gbl_snapisol = 1;
-        gbl_selectv_rangechk = 1;
-    } else if (tokcmp(tok, ltok, "update_shadows_interval") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_update_shadows_interval = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting update_shadows_interval to %d\n",
-               gbl_update_shadows_interval);
-    } else if (tokcmp(tok, ltok, "enable_lowpri_snapisol") == 0) {
-        gbl_lowpri_snapisol_sessions = 1;
-    } else if (tokcmp(tok, ltok, "stack_disable") == 0) {
-        walkback_disable();
-        logmsg(LOGMSG_INFO, "Disabled walkbacks\n");
-    } else if (tokcmp(tok, ltok, "stack_enable") == 0) {
-        walkback_enable();
-        logmsg(LOGMSG_INFO, "Enabled walkbacks\n");
-    } else if (tokcmp(tok, ltok, "stack_warn_threshold") == 0) {
-        int thresh;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok > 0 && (thresh = toknum(tok, ltok)) >= 0) {
-            walkback_set_warnthresh(thresh);
-            logmsg(LOGMSG_INFO, 
-                   "Set walkback warn-threshold to %d walkbacks per second\n",
-                   thresh);
-        } else {
-            logmsg(LOGMSG_ERROR, 
-                   "stack_warn_threshold requires a non-negative argument\n");
-        }
-    } else if (tokcmp(tok, ltok, "disable_lowpri_snapisol") == 0) {
-        gbl_lowpri_snapisol_sessions = 0;
-    } else if (tokcmp(tok, ltok, "sqlrdtimeout") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_sqlrdtimeoutms = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "SQL read timeout now set to %d ms\n", gbl_sqlrdtimeoutms);
-    } else if (tokcmp(tok, ltok, "sqlwrtimeout") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_sqlwrtimeoutms = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "SQL write timeout now set to %d ms\n", gbl_sqlwrtimeoutms);
-    } else if (tokcmp(tok, ltok, "log_delete_now") == 0) {
-        logmsg(LOGMSG_INFO, "Will delete log files as soon as possible\n");
-        dbenv->log_delete_age = 0;
-    } else if (tokcmp(tok, ltok, "log_delete_after_backup") == 0) {
-        /* epoch time of 1; so we won't delete any logfiles until
-         * after backup */
-        logmsg(LOGMSG_INFO, "Will delete log files after backup\n");
-        dbenv->log_delete_age = 1;
-    } else if (tokcmp(tok, ltok, "log_delete_before_startup") == 0) {
-        /* delete log files from before we started up */
-        logmsg(LOGMSG_INFO, "Will delete log files predating this startup\n");
-        dbenv->log_delete_age = (int)time(NULL);
-    } else if (tokcmp(tok, ltok, "on") == 0) {
-        change_switch(1, line, len, st);
-    } else if (tokcmp(tok, ltok, "off") == 0) {
-        change_switch(0, line, len, st);
-    } else if (tokcmp(tok, ltok, "setattr") == 0) {
-        char name[48] = {0}; // oh valgrind
-        int value;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d: expected attribute name\n", options->lrlname,
-                   options->lineno);
-            return -1;
-        }
-        tokcpy0(tok, ltok, name, sizeof(name));
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d: expected attribute value\n", options->lrlname,
-                   options->lineno);
-            return -1;
-        }
-        value = toknum(tok, ltok);
-        if (bdb_attr_set_by_name(NULL, dbenv->bdb_attr, name, value) != 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d: bad attribute name %s\n", options->lrlname, options->lineno, name);
-        }
-    }
-    else if (tokcmp(tok, ltok, "reqldiffstat") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        reqlog_set_diffstat_thresh(toknum(tok, ltok));
-    }
-
-    else if (tokcmp(tok, ltok, "reqltruncate") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        reqlog_set_truncate(toknum(tok, ltok));
-    }
-
-    else if (tokcmp(tok, ltok, "mallocregions") == 0) {
-        if ((strcmp(COMDB2_VERSION, "2") == 0) ||
-            (strcmp(COMDB2_VERSION, "old") == 0)) {
-            logmsg(LOGMSG_INFO, "Using os-supplied malloc for regions\n");
-            berkdb_use_malloc_for_regions();
-            gbl_malloc_regions = 1;
-        }
-    }
-
-    else if (tokcmp(tok, ltok, "use_bbipc_fastseed") == 0) {
-        gbl_use_bbipc_global_fastseed = 1;
-        logmsg(LOGMSG_INFO, "Using bbipc_global_fastseed.\n");
-    } else if (tokcmp(tok, ltok, "dont_use_bbipc_fastseed") == 0) {
-        gbl_use_bbipc_global_fastseed = 0;
-        logmsg(LOGMSG_INFO, "Disabling bbipc_global_fastseed.\n");
-    }
-
-    else if (tokcmp(tok, ltok, "appsockpool") == 0) {
-        thdpool_process_message(gbl_appsock_thdpool, line, len,
-                                st);
-    } else if (tokcmp(tok, ltok, "sqlenginepool") == 0) {
-        thdpool_process_message(gbl_sqlengine_thdpool, line, len,
-                                st);
-    } else if (tokcmp(tok, ltok, "osqlpfaultpool") == 0) {
-        thdpool_process_message(gbl_osqlpfault_thdpool, line, len,
-                                st);
-    } else if (tokcmp(tok, ltok, "updategenids") == 0) {
-        gbl_updategenids = 1;
-    } else if (tokcmp(tok, ltok, "no_round_robin_stripes") == 0) {
-        gbl_round_robin_stripes = 0;
-    } else if (tokcmp(tok, ltok, "round_robin_stripes") == 0) {
-        gbl_round_robin_stripes = 1;
-    } else if (tokcmp(tok, ltok, "exclusive_blockop_qconsume") == 0) {
-        logmsg(LOGMSG_INFO, "Blockops and queue consumes will be serialized\n");
-        gbl_exclusive_blockop_qconsume = 1;
-    } else if (tokcmp(tok, ltok, "chkpoint_alarm_time") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_chkpoint_alarm_time = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "Checkpoint thread hang alarm time is %d seconds\n",
-               gbl_chkpoint_alarm_time);
-    }
-
-    else if (tokcmp(tok, ltok, "incoherent_msg_freq") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_incoherent_msg_freq = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "Incoherent message freq is %d seconds\n",
-               gbl_incoherent_msg_freq);
-    } else if (tokcmp(tok, ltok, "incoherent_alarm_time") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_incoherent_alarm_time = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "Incoherent alarm time is %d seconds\n",
-               gbl_incoherent_alarm_time);
-    } else if (tokcmp(tok, ltok, "max_incoherent_nodes") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_max_incoherent_nodes = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "Max incoherent nodes allowed before alarm is %d\n",
-               gbl_max_incoherent_nodes);
-    } else if (lrltokignore(tok, ltok) == 0) {
-        /* ignore this line */
-    } else if (tokcmp(tok, ltok, "osql_heartbeat_send_time") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_INFO, "Need to specify time for heartbeat send\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid heartbeat send time\n");
-            return -1;
-        }
-        gbl_osql_heartbeat_send = num;
-    } else if (tokcmp(tok, ltok, "osql_heartbeat_alert_time") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify time for heartbeat alert\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num <= 0 || gbl_osql_heartbeat_send < num) {
-            logmsg(LOGMSG_ERROR, "Invalid heartbeat alert time, need to define "
-                   "osql_heartbeat_send_time first\n");
-            return -1;
-        }
-        gbl_osql_heartbeat_alert = num;
-    } else if (tokcmp(tok, ltok, "net_lmt_upd_incoherent_nodes") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, 
-                   "Need to specify time for replication update threshold\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num < 0) {
-            logmsg(LOGMSG_ERROR, "Invalid replication update threshold, "
-                   "disabling throttling\n");
-            return -1;
-        }
-        gbl_net_lmt_upd_incoherent_nodes = num;
-        logmsg(LOGMSG_INFO, "Setting replication update throttling to %d%% of queue "
-               "capacity\n",
-               gbl_net_lmt_upd_incoherent_nodes);
-    } else if (tokcmp(tok, ltok, "report_deadlock_verbose") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0 || toknum(tok, ltok)) {
-            gbl_disable_deadlock_trace = 1;
-        } else {
-            gbl_disable_deadlock_trace = 0;
-        }
-        logmsg(LOGMSG_INFO, "Deadlock trace %s.\n",
-               (gbl_disable_deadlock_trace) ? "disabled" : "enabled");
-    } else if (tokcmp(tok, ltok, "disable_pageorder_recsz_check") == 0) {
-        logmsg(LOGMSG_INFO, "Disabled pageorder records per page check\n");
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PAGEORDER_RECSZ_CHK,
-                     1);
-    } else if (tokcmp(tok, ltok, "enable_pageorder_recsz_check") == 0) {
-        logmsg(LOGMSG_INFO, "Enabled pageorder records per page check\n");
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PAGEORDER_RECSZ_CHK,
-                     0);
-    } else if (tokcmp(tok, ltok, "disable_overflow_page_trace") == 0) {
-        if (gbl_disable_overflow_page_trace) {
-            logmsg(LOGMSG_INFO, "Overflow page trace is not enabled\n");
-        } else {
-            gbl_disable_overflow_page_trace = 1;
-            logmsg(LOGMSG_INFO, "Disabled berkdb overflow page trace.\n");
-        }
-    } else if (tokcmp(tok, ltok, "enable_overflow_page_trace") == 0) {
-        if (!gbl_disable_overflow_page_trace) {
-            logmsg(LOGMSG_INFO, "Overflow page trace is already enabled\n");
-        } else {
-            gbl_disable_overflow_page_trace = 0;
-            logmsg(LOGMSG_INFO, "Enabled berkdb overflow page trace.\n");
-        }
-    } else if (tokcmp(tok, ltok, "simulate_rowlock_deadlock") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify rowlock deadlock interval.\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num == 0) {
-            logmsg(LOGMSG_INFO, "Disabling rowlock_deadlock simulator.\n");
-            gbl_simulate_rowlock_deadlock_interval = 0;
-        } else if (num < 2) {
-            logmsg(LOGMSG_ERROR, "Invalid rowlock_deadlock interval.\n");
-        } else {
-            logmsg(LOGMSG_INFO, 
-                   "Will throw a rowlock deadlock every %d tries.\n", num);
-            gbl_simulate_rowlock_deadlock_interval = num;
-        }
-    } else if (tokcmp(tok, ltok, "debug_rowlocks") == 0) {
-        if (gbl_debug_rowlocks) {
-            logmsg(LOGMSG_INFO, "Debug-rowlocks flag is already enabled.\n");
-        } else {
-            gbl_debug_rowlocks = 1;
-            logmsg(LOGMSG_INFO, "Enabled debug rowlocks flag.\n");
-        }
-    } else if (tokcmp(tok, ltok, "nodebug_rowlocks") == 0) {
-        if (!gbl_debug_rowlocks) {
-            logmsg(LOGMSG_INFO, "Debug-rowlocks flag is already disabled.\n");
-        } else {
-            gbl_debug_rowlocks = 0;
-            logmsg(LOGMSG_INFO, "Disabled debug rowlocks flag.\n");
-        }
-    } else if (tokcmp(tok, ltok, "enable_selectv_range_check") == 0) {
-        gbl_selectv_rangechk = 1;
-    } else if (tokcmp(tok, ltok, "disable_rowlock_logging") == 0) {
-        gbl_disable_rowlocks_logging = 1;
-        logmsg(LOGMSG_INFO, "I will not log any rowlocks records\n");
-    } else if (tokcmp(tok, ltok, "disable_rowlock_locking") == 0) {
-        gbl_disable_rowlocks = 1;
-        logmsg(LOGMSG_INFO, "I will not actually acquire any rowlocks (but will still "
-               "follow the codepath)\n");
-    } else if (tokcmp(tok, ltok, "rep_process_txn_trace") == 0) {
-        gbl_rep_process_txn_time = 1;
-    } 
-    else if (tokcmp(tok, ltok, "exitalarmsec")==0) {
-        int alarmsec;
-        tok = segtok(line,len,&st,&ltok);
-        alarmsec = toknum(tok,ltok);
-        logmsg(LOGMSG_INFO, "Setting exit alarm to %d seconds\n", alarmsec);
-        gbl_exit_alarm_sec = alarmsec;
-    } else if (tokcmp(tok, ltok, "deadlock_policy_override") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok > 0) {
-            extern int gbl_deadlock_policy_override;
-            extern char *deadlock_policy_str(int policy);
-            gbl_deadlock_policy_override = toknum(tok, ltok);
-            logmsg(LOGMSG_INFO, "Set deadlock policy to %s\n",
-                   deadlock_policy_str(gbl_deadlock_policy_override));
-        } else {
-            logmsg(LOGMSG_ERROR, "deadlock_policy_override requires a number argument\n");
-        }
-    } else if (tokcmp(tok, ltok, "no_rep_process_txn_trace") == 0) {
-        gbl_rep_process_txn_time = 0;
-    } else if (tokcmp(tok, ltok, "rep_collect_trace") == 0) {
-        gbl_rep_collect_txn_time = 1;
-    } else if (tokcmp(tok, ltok, "no_rep_collect_trace") == 0) {
-        gbl_rep_collect_txn_time = 0;
-    } else if (tokcmp(tok, ltok, "net_explicit_flush_trace") == 0) {
-        net_enable_explicit_flush_trace();
-    } else if (tokcmp(tok, ltok, "no_net_explicit_flush_trace") == 0) {
-        net_disable_explicit_flush_trace();
-    } else if (tokcmp(tok, ltok, "ack_trace") == 0) {
-        enable_ack_trace();
-    } else if (tokcmp(tok, ltok, "no_ack_trace") == 0) {
-        disable_ack_trace();
-    } else if (tokcmp(tok, ltok, "sql_tranlevel_default") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, 
-                   "Need to specify default type for sql_tranlevel_default\n");
-            return -1;
-        }
-        if (ltok == 6 && !strncasecmp(tok, "comdb2", 6)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_COMDB2;
-            logmsg(LOGMSG_INFO, "sql default mode is comdb2\n");
-
-        } else if (ltok == 5 && !strncasecmp(tok, "block", 5)) {
-            gbl_sql_tranlevel_default = (gbl_upgrade_blocksql_2_socksql)
-                ? SQL_TDEF_SOCK
-                : SQL_TDEF_BLOCK;
-            logmsg(LOGMSG_INFO, "sql default mode is %s\n",
-                   (gbl_sql_tranlevel_default == SQL_TDEF_SOCK)
-                   ? "socksql"
-                   : "blocksql");
-        } else if (ltok == 9 && !strncasecmp(tok, "blocksock", 9) ||
-                   tokcmp(tok, ltok, "default") == 0) {
-            gbl_upgrade_blocksql_2_socksql = 1;
-            if (gbl_sql_tranlevel_default == SQL_TDEF_BLOCK) {
-                gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
-            }
-            logmsg(LOGMSG_INFO, "sql default mode is %s\n",
-                   (gbl_sql_tranlevel_default == SQL_TDEF_SOCK)
-                   ? "socksql"
-                   : "blocksql"
-                );
-            gbl_use_block_mode_status_code = 0;
-        } else if (ltok == 16 &&
-                   !strncasecmp(tok, "prefer_blocksock", 16)) {
-            gbl_sql_tranlevel_sosql_pref = 1;
-            logmsg(LOGMSG_INFO, "prefer socksql over blocksql\n");
-
-        } else if (ltok == 5 && !strncasecmp(tok, "recom", 5)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_RECOM;
-            logmsg(LOGMSG_INFO, "sql default mode is read committed\n");
-
-        } else if (ltok == 8 && !strncasecmp(tok, "snapshot", 8)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
-            logmsg(LOGMSG_INFO, "sql default mode is snapshot isolation\n");
-
-        } else if (ltok == 6 && !strncasecmp(tok, "serial", 6)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
-            logmsg(LOGMSG_INFO, "sql default mode is serializable\n");
-
-        } else {
-            logmsg(LOGMSG_ERROR, "The default sql mode \"%s\" is not supported, "
-                   "defaulting to socksql\n",
-                   tok);
-            gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
-        }
-        gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
-    } else if (tokcmp(tok, ltok, "proxy") == 0) {
-        char *proxy_line;
-        tok = segline(line, len, &st, &ltok);
-        if (ltok > 0) {
-            proxy_line = tokdup(tok, ltok);
-            handle_proxy_lrl_line(proxy_line);
-            free(proxy_line);
-        }
-    }
-
-    else if (tokcmp(tok, ltok, "sql_time_threshold") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected numeric threshold for sql_time_threshold\n");
-            return -1;
-        }
-        gbl_sql_time_threshold = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "Set SQL warning threshold time to %dms\n",
-               gbl_sql_time_threshold);
-    } else if (tokcmp(tok, ltok, "blocksql_throttle") == 0) {
-        int tmp = 0;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected numeric threshold for blocksql_throttle\n");
-            return -1;
-        }
-        tmp = toknum(tok, ltok);
-        logmsg(LOGMSG_INFO, "Set blocksql maximum concurrent in-transaction sessions to "
-               "%d sessions\n",
-               tmp);
-        osql_bplog_setlimit(tmp);
-    } else if (tokcmp(tok, ltok, "force_highslot") == 0) {
-        gbl_force_highslot = 1;
-    } else if (tokcmp(tok, ltok, "num_contexts") == 0) {
-        int n;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected number of contexts for num_contexts\n");
-            return -1;
-        }
-        n = toknum(tok, ltok);
-        if (n <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid number of contexts\n");
-            return -1;
-        }
-        gbl_num_contexts = n;
-    } else if (tokcmp(tok, ltok, "buffers_per_context") == 0) {
-        int n;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected number of buffers for buffers_per_context\n");
-            return -1;
-        }
-        n = toknum(tok, ltok);
-        if (n <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid number of buffers\n");
-            return -1;
-        }
-        gbl_buffers_per_context = n;
-    } else if (tokcmp(tok, ltok, "allow_mismatched_tag_size") == 0) {
-        logmsg(LOGMSG_INFO, "Allowing mismatched tag size\n");
-        gbl_allow_mismatched_tag_size = 1;
-    } else if (tokcmp(tok, ltok, "nowatch") == 0) {
-        logmsg(LOGMSG_INFO, "disabling watcher thread\n");
-        gbl_watchdog_disable_at_start = 1;
-    } else if (tokcmp(tok, ltok, "watchthreshold") == 0) {
-        int tmp = 0;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected watch threshold\n");
-            return -1;
-        }
-        tmp = toknum(tok, ltok);
-        if (tmp > 0) {
-            gbl_watchdog_watch_threshold = tmp;
-            logmsg(LOGMSG_INFO, "Set watchdog watch-time to %d\n", gbl_watchdog_watch_threshold);
-        }
-        else {
-            logmsg(LOGMSG_INFO, "Expected positive value for watchdog watch-threshold\n");
-        }
-    } else if (tokcmp(tok, ltok, "enable_blockoffload") == 0) {
-        logmsg(LOGMSG_INFO, "enabling block offload.\n");
-        gbl_enable_block_offload = 1;
-    } else if (tokcmp(tok, ltok, "page_latches") == 0) {
-        logmsg(LOGMSG_INFO, "enabled page latches\n");
-        gbl_page_latches = 1;
-    } else if (tokcmp(tok, ltok, "replicant_latches") == 0) {
-        logmsg(LOGMSG_INFO, "enabled latches on replicant\n");
-        gbl_replicant_latches = 1;
-    } else if (tokcmp(tok, ltok, "disable_page_latches") == 0) {
-        logmsg(LOGMSG_INFO, "disabled page latches\n");
-        gbl_page_latches = 0;
-    } else if (tokcmp(tok, ltok, "disable_replicant_latches") == 0) {
-        logmsg(LOGMSG_INFO, "disabled replicant page latches\n");
-        gbl_replicant_latches = 0;
-    } else if (tokcmp(tok, ltok, "notimeout") == 0) {
-        logmsg(LOGMSG_INFO, "disabling timeouts\n");
-        gbl_notimeouts = 1;
-    } else if (tokcmp(tok, ltok, "enable_cursor_ser") == 0) {
-        logmsg(LOGMSG_INFO, "enabling cursor serialization\n");
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_ENABLECURSORSER, 1);
-    } else if (tokcmp(tok, ltok, "enable_cursor_pause") == 0) {
-        logmsg(LOGMSG_INFO, "enabling cursor pause\n");
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_ENABLECURSORPAUSE, 1);
-    } else if (tokcmp(tok, ltok, "setsqlattr") == 0) {
-        char *attrname = NULL;
-        char *attrval = NULL;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected sql attribute name\n");
-            return -1;
-        }
-        attrname = tokdup(tok, ltok);
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected sql attribute name\n");
-            free(attrname);
-            return -1;
-        }
-        attrval = tokdup(tok, ltok);
-        sqlite3_set_tunable_by_name(attrname, attrval);
-        free(attrname);
-        free(attrval);
-    } else if (tokcmp(tok, ltok, "track_berk_locks") == 0) {
-        logmsg(LOGMSG_INFO, "Will track berkdb locks\n");
-        gbl_berkdb_track_locks = 1;
-    } else if (tokcmp(tok, ltok, "master_swing_osql_verbose") == 0) {
-        logmsg(LOGMSG_INFO, "Will spew osql actions in swings\n");
-        gbl_master_swing_osql_verbose = 1;
-    } else if (tokcmp(tok, ltok, "debugthreads") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "debugthreads: expected on or off\n");
-            return -1;
-        }
-        if (tokcmp(tok, ltok, "on") == 0) {
-            thread_util_enable_debug();
-        } else if (tokcmp(tok, ltok, "off") == 0) {
-            thread_util_disable_debug();
-        } else {
-            logmsg(LOGMSG_ERROR, "debugthreads: expected on or off\n");
-            return -1;
-        }
-    } else if (tokcmp(tok, ltok, "dumpthreadonexit") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "dumpthreadonexit: expected on or off\n");
-            return -1;
-        }
-        if (tokcmp(tok, ltok, "on") == 0) {
-            thread_util_dump_on_exit_enable();
-        } else if (tokcmp(tok, ltok, "off") == 0) {
-            thread_util_dump_on_exit_disable();
-        } else {
-            logmsg(LOGMSG_ERROR, "dumpthreadonexit: expected on or off\n");
-            return -1;
-        }
-    } else if (tokcmp(tok, ltok, "rangextlim") == 0) {
-        int num;
-
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected limit\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num < 0) {
-            logmsg(LOGMSG_ERROR, "Invalid limit\n");
-            return -1;
-        } else if (num == 0) {
-            logmsg(LOGMSG_INFO, "Disabled old range extract per-buffer limits\n");
-        } else {
-            logmsg(LOGMSG_INFO, "Old rangeextract per-buffer limit set to %d records\n",
-                   num);
-            gbl_rangextunit = num;
-        }
-    } else if (tokcmp(tok, ltok, "num_record_converts") == 0) {
-        int n;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected number of record converts in single "
-                   "transaction.\n");
-            return -1;
-        }
-        n = toknum(tok, ltok);
-        if (n <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid number of record converts \n");
-            return -1;
-        }
-        gbl_num_record_converts = n;
-    } else if (tokcmp(tok, ltok, "oldrangexlim") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected on/off for oldrangexlim\n");
-            return -1;
-        } else if (tokcmp(tok, ltok, "on") == 0) {
-            logmsg(LOGMSG_INFO, "Will honor limit for old rangextract calls\n");
-            gbl_honor_rangextunit_for_old_apis = 1;
-        } else if (tokcmp(tok, ltok, "off") == 0) {
-            logmsg(LOGMSG_INFO, "Won't honor limit for old rangextract calls\n");
-            gbl_honor_rangextunit_for_old_apis = 0;
-        } else {
-            logmsg(LOGMSG_ERROR, "Expected on/off for oldrangexlim\n");
-            return -1;
-        }
-    } else if (tokcmp(tok, ltok, "maxcolumns") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected a column limit value\n");
-            return -1;
-        }
-        gbl_max_columns_soft_limit = toknum(tok, ltok);
-        if (gbl_max_columns_soft_limit <= 0 ||
-            gbl_max_columns_soft_limit > MAXCOLUMNS) {
-            logmsg(LOGMSG_ERROR, 
-                   "Bad value for maxcolumns soft limit - must be 1..%d\n",
-                   MAXCOLUMNS);
-            return -1;
-        }
-    } else if (tokcmp(tok, ltok, "null_blob_fix") == 0) {
-        gbl_disallow_null_blobs = 1;
-        logmsg(LOGMSG_INFO, "Will check null constraint for blobs\n");
-    } else if (tokcmp(tok, ltok, "static_tag_blob_fix") == 0) {
-        gbl_force_notnull_static_tag_blobs = 1;
-        logmsg(LOGMSG_INFO, "Will force static-tag blobs to be not-null.\n");
-    } else if (tokcmp(tok, ltok, "enable_partial_indexes") == 0) {
-        gbl_partial_indexes = 1;
-        logmsg(LOGMSG_INFO, "Enabled partial indexes\n");
-    } else if (tokcmp(tok, ltok, "disable_partial_indexes") == 0) {
-        gbl_partial_indexes = 0;
-        logmsg(LOGMSG_INFO, "Disabled partial indexes\n");
-    } else if (tokcmp(tok, ltok, "enable_good_sql_return_codes") == 0) {
-        if (!gbl_enable_good_sql_return_codes) {
-            gbl_enable_good_sql_return_codes = 1;
-            logmsg(LOGMSG_INFO, "Enabled good sql return codes\n");
-        } else
-            logmsg(LOGMSG_INFO, "Good sql return codes already enabled\n");
-    } else if (tokcmp(tok, ltok, "disable_good_sql_return_codes") == 0) {
-        if (gbl_enable_good_sql_return_codes) {
-            gbl_enable_good_sql_return_codes = 0;
-            logmsg(LOGMSG_INFO, "Disabled good sql return codes\n");
-        } else
-            logmsg(LOGMSG_INFO, "Good sql return codes already disabled\n");
-    } else if (tokcmp(tok, ltok, "querylimit") == 0) {
-        rc = query_limit_cmd(line, len, st);
-        if (rc)
-            return -1;
-    } else if (tokcmp(tok, ltok, "maxretries") == 0) {
-        int n;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_INFO, "Expected argument for maxretries\n");
-            return -1;
-        }
-        n = toknum(tok, ltok);
-        if (n < 2) {
-            logmsg(LOGMSG_INFO, "Invalid setting for maxretries\n");
-            return -1;
-        }
-        gbl_maxretries = n;
-        logmsg(LOGMSG_INFO, "Set max retries to %d\n", gbl_maxretries);
-    } else if (tokcmp(tok, ltok, "maxblobretries") == 0) {
-        int n;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_INFO, "Expected argument for maxblobretries\n");
-            return -1;
-        }
-        n = toknum(tok, ltok);
-        if (n < 2) {
-            logmsg(LOGMSG_ERROR, "Invalid setting for maxblobretries\n");
-            return -1;
-        }
-        gbl_maxblobretries = n;
-        logmsg(LOGMSG_INFO, "Set max blob retries to %d\n", gbl_maxblobretries);
-    }
-
-    else if (tokcmp(tok, ltok, "deadlock_rep_retry_max") == 0) {
-        int lim;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for deadlock limit\n");
-            return 0;
-        }
-        lim = toknum(tok, ltok);
-        if (lim <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid value for deadlock limit\n");
-            return 0;
-        }
-        berkdb_set_max_rep_retries(lim);
-        logmsg(LOGMSG_INFO, "Set deadlock retry limit to %d\n", lim);
-    } else if (tokcmp(tok, ltok, "enable_berkdb_retry_deadlock_bias") ==
-               0) {
-        gbl_enable_berkdb_retry_deadlock_bias = 1;
-    } else if (tokcmp(tok, ltok, "enable_sparse_lockerid_map") == 0) {
-        gbl_sparse_lockerid_map = 1;
-        logmsg(LOGMSG_INFO, "Enabled sparse lockerid map.\n");
-    } else if (tokcmp(tok, ltok, "disable_sparse_lockerid_map") == 0) {
-        gbl_sparse_lockerid_map = 0;
-        logmsg(LOGMSG_INFO, "Disabled sparse lockerid map.\n");
-    } else if (tokcmp(tok, ltok, "enable_inplace_blobs") == 0) {
-        gbl_inplace_blobs = 1;
-        logmsg(LOGMSG_INFO, "Enabled inplace blobs.\n");
-    } else if (tokcmp(tok, ltok, "disable_inplace_blobs") == 0) {
-        gbl_inplace_blobs = 0;
-        logmsg(LOGMSG_INFO, "Disabled inplace blobs.\n");
-    }
-    /* Careful!  This changes the data-format.. */
-    else if (tokcmp(tok, ltok, "enable_inplace_blob_optimization") == 0) {
-        gbl_inplace_blob_optimization = 1;
-        logmsg(LOGMSG_INFO, "Enabled optimized inplace blobs.\n");
-    } else if (tokcmp(tok, ltok, "pagedeadlock_maxpoll") == 0) {
-        int cnt;
-        tok = segtok(line, len, &st, &ltok);
-
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for pagedeadlock_maxpoll\n");
-            return 0;
-        }
-        cnt = toknum(tok, ltok);
-        if (cnt < 0) {
-            logmsg(LOGMSG_ERROR, "Invalid value for pagedeadlock_maxpoll\n");
-            return 0;
-        }
-
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGEDEADLOCK_MAXPOLL, cnt);
-        logmsg(LOGMSG_INFO, "Set pagedeadlock maxpoll limit to %d\n", cnt);
-    } else if (tokcmp(tok, ltok, "pagedeadlock_retries") == 0) {
-        int cnt;
-        tok = segtok(line, len, &st, &ltok);
-
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for pagedeadlock_retries\n");
-            return 0;
-        }
-        cnt = toknum(tok, ltok);
-        if (cnt <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid value for pagedeadlock_retries\n");
-            return 0;
-        }
-
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGEDEADLOCK_RETRIES, cnt);
-        logmsg(LOGMSG_INFO, "Set pagedeadlock deadlock retry count to %d\n", cnt);
-    } else if (tokcmp(tok, ltok, "disable_inplace_blob_optimization") ==
-               0) {
-        gbl_inplace_blob_optimization = 0;
-        logmsg(LOGMSG_INFO, "Disabled optimized inplace blobs.\n");
-    } else if (tokcmp(tok, ltok, "enable_osql_blob_optimization") == 0) {
-        gbl_osql_blob_optimization = 1;
-        logmsg(LOGMSG_INFO, "Enable osql optimized blobs.\n");
-    } else if (tokcmp(tok, ltok, "disable_osql_blob_optimization") == 0) {
-        gbl_osql_blob_optimization = 0;
-        logmsg(LOGMSG_INFO, "Disabled osql optimized blobs.\n");
-    } else if (tokcmp(tok, ltok, "enable_cache_internal_nodes") == 0) {
-        gbl_enable_cache_internal_nodes = 1;
-        logmsg(LOGMSG_INFO, "Will increase cache-priority for btree internal nodes.\n");
-    } else if (tokcmp(tok, ltok, "disable_cache_internal_nodes") == 0) {
-        gbl_enable_cache_internal_nodes = 0;
-        logmsg(LOGMSG_INFO, "Will treat btree internal nodes the same as leaf-nodes.\n");
-    } else if (tokcmp(tok, ltok, "fkrcode") == 0) {
-        gbl_fkrcode = 1;
-    } else if (tokcmp(tok, ltok, "analyze_tbl_threads") == 0) {
-        int thds;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for analyze_tbl_threads\n");
-            return 0;
-        }
-        thds = toknum(tok, ltok);
-        rc = analyze_set_max_table_threads(thds);
-        if (-1 == rc)
-            return -1;
-    } else if (tokcmp(tok, ltok, "analyze_comp_threads") == 0) {
-        int thds;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for analyze_comp_threads\n");
-            return 0;
-        }
-        thds = toknum(tok, ltok);
-        rc = analyze_set_max_sampling_threads(thds);
-        if (-1 == rc)
-            return -1;
-    } else if (tokcmp(tok, ltok, "analyze_comp_threshold") == 0) {
-        int thresh;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for analyze_comp_threshold\n");
-            return 0;
-        }
-        thresh = toknum(tok, ltok);
-        rc = analyze_set_sampling_threshold(thresh);
-        if (-1 == rc)
-            return -1;
-    } else if (tokcmp(tok, ltok, "print_syntax_err") == 0) {
-        gbl_print_syntax_err = 1;
-    } else if (tokcmp(tok, ltok, "survive_n_master_swings") == 0) {
-        int tmp;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for survive_n_master_swings\n");
-            return 0;
-        }
-        tmp = toknum(tok, ltok);
-        if (tmp >= 0) {
-            gbl_survive_n_master_swings = tmp;
-        }
-    } else if (tokcmp(tok, ltok, "master_retry_poll_ms") == 0) {
-        int tmp;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for master_retry_poll_ms\n");
-            return 0;
-        }
-        tmp = toknum(tok, ltok);
-        if (tmp >= 0) {
-            gbl_master_retry_poll_ms = tmp;
-        }
-    } else if (tokcmp(tok, ltok, "random_lock_release_interval") == 0) {
-        int tmp;
-        tok = segtok(line, len, &st, &ltok);
-
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for random_release_locks_interval\n");
-            return 0;
-        }
-
-        tmp = toknum(tok, ltok);
-        if (tmp >= 0) {
-            logmsg(LOGMSG_INFO, "Will release locks randomly an average once every %d "
-                   "checks\n",
-                   tmp);
-            gbl_sql_random_release_interval = tmp;
-        } else {
-            logmsg(LOGMSG_INFO, "Disabled random release-locks\n");
-            gbl_sql_random_release_interval = 0;
-        }
-    } else if (tokcmp(tok, ltok, "osql_verify_retry_max") == 0) {
-        int tmp;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for blocksql_verify_retry_max\n");
-            return 0;
-        }
-        tmp = toknum(tok, ltok);
-        if (tmp >= 0) {
-            logmsg(LOGMSG_INFO, "Osql transaction will repeat %d times if verify error "
-                   "(was %d times)\n",
-                   tmp, gbl_osql_verify_retries_max);
-            gbl_osql_verify_retries_max = tmp;
-        }
-    } else if (tokcmp(tok, ltok, "osql_verify_ext_chk") == 0) {
-        int tmp;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for osql_verify_ext_chk\n");
-            return 0;
-        }
-        tmp = toknum(tok, ltok);
-        if (tmp >= 0) {
-            logmsg(LOGMSG_INFO, "Osql will do extended genid-checking after %d verify "
-                   "errors (was %d)\n",
-                   tmp, gbl_osql_verify_ext_chk);
-            gbl_osql_verify_ext_chk = tmp;
-        }
-    } else if (tokcmp(tok, ltok, "badwrite_intvl") == 0) {
-        int tmp;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for badwrite_intvl\n");
-            return 0;
-        }
-        tmp = toknum(tok, ltok);
-        if (tmp >= 0) {
-            logmsg(LOGMSG_INFO, "Will force a bad-write and abort randomly every %d "
-                   "pgwrites.\n",
-                   tmp);
-            gbl_test_badwrite_intvl = tmp;
-        } else {
-            logmsg(LOGMSG_ERROR, "Invalid badwrite_intvl.\n");
-        }
-    } else if (tokcmp(tok, ltok, "test_blob_race") == 0) {
-        int tmp;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for test_blob_race\n");
-            return 0;
-        }
-        tmp = toknum(tok, ltok);
-        if (tmp >= 1) {
-            logmsg(LOGMSG_INFO, 
-                   "Will force a blob-race condition once every %d lookups.\n",
-                   tmp);
-            gbl_test_blob_race = tmp;
-        } else if (tmp == 0) {
-            logmsg(LOGMSG_INFO, "Disabled blob-race testing.\n");
-            gbl_test_blob_race = 0;
-        } else {
-            logmsg(LOGMSG_ERROR, "Invalid test_blob_race value: should be above 2 (or 0 "
-                   "to disable).\n");
-        }
-    } else if (tokcmp(tok, ltok, "iopool") == 0) {
-        berkdb_iopool_process_message(line, len, st);
-    } else if (tokcmp(tok, ltok, "pageordertablescan") == 0) {
-        logmsg(LOGMSG_INFO, "Enabled page-order tablescans.\n");
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN, 1);
-    } else if (tokcmp(tok, ltok, "tablescan_cache_utilization") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        if (ii < 0 || ii > 100) {
-            logmsg(LOGMSG_ERROR, 
-                   "Max tablescan cache should be between 0 and 100.\n");
-        } else {
-            logmsg(LOGMSG_INFO, "Set max tablescan cache utilization to %d.\n",
-                   ii);
-            bdb_attr_set(dbenv->bdb_attr,
-                         BDB_ATTR_TABLESCAN_CACHE_UTILIZATION, ii);
-        }
-    } else if (tokcmp(tok, ltok, "prefix_foreign_keys") == 0) {
-        gbl_fk_allow_prefix_keys = 1;
-    } else if (tokcmp(tok, ltok, "superset_foreign_keys") == 0) {
-        gbl_fk_allow_superset_keys = 1;
-    } else if (tokcmp(tok, ltok, "blocksql_over_sockets") == 0) {
-        gbl_upgrade_blocksql_to_socksql = 1;
-    } else if (tokcmp(tok, ltok, "noblocksql_over_sockets") == 0) {
-        gbl_upgrade_blocksql_to_socksql = 0;
-    } else if (tokcmp(tok, ltok, "exit_on_internal_failure") == 0) {
-        gbl_exit_on_internal_error = 1;
-    } else if (tokcmp(tok, ltok, "no_exit_on_internal_failure") == 0) {
-        gbl_exit_on_internal_error = 0;
-    } else if (tokcmp(tok, ltok, "reject_osql_mismatch") == 0) {
-        gbl_reject_osql_mismatch = 1;
-    } else if (tokcmp(tok, ltok, "accept_osql_mismatch") == 0) {
-        gbl_reject_osql_mismatch = 0;
-    } else if (tokcmp(tok, ltok, "abort_on_in_use_rqid") == 0) {
-        gbl_abort_on_clear_inuse_rqid = 1;
-    } else if (tokcmp(tok, ltok, "abort_on_missing_session") == 0) {
-        gbl_abort_on_missing_session = 1;
-    } else if (tokcmp(tok, ltok, "dont_abort_on_missing_session") == 0) {
-        gbl_abort_on_missing_session = 0;
-    } else if (tokcmp(tok, ltok, "dont_abort_on_in_use_rqid") == 0) {
-        gbl_abort_on_clear_inuse_rqid = 0;
-    } else if (tokcmp(tok, ltok, "parallel_recovery") == 0) {
-        int nthreads;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected # for parallel_recovery.\n");
-            return 0;
-        }
-        nthreads = toknum(tok, ltok);
-        if (nthreads < 0) {
-            logmsg(LOGMSG_ERROR, "Invalid # for parallel_recovery.\n");
-            return 0;
-        }
-        gbl_parallel_recovery_threads = nthreads;
-        /* we can't call bdb_set_parallel_recovery_threads because there
-         * is no dbenv set up yet */
-    } else if (tokcmp(tok, ltok, "update_delete_limit") == 0) {
-        gbl_update_delete_limit = 1;
-    } else if (tokcmp(tok, ltok, "no_update_delete_limit") == 0) {
-        gbl_update_delete_limit = 0;
-    } else if (tokcmp(tok, ltok, "disable_bbipc") == 0) {
-        gbl_use_bbipc = 0;
-    } else if (tokcmp(tok, ltok, "goslow") == 0) {
-        gbl_goslow = 1;
-    } else if (tokcmp(tok, ltok, "early") == 0) {
-        gbl_early = 1;
-    } else if (tokcmp(tok, ltok, "noearly") == 0) {
-        gbl_early = 0;
-    } else if (tokcmp(tok, ltok, "reallearly") == 0) {
-        gbl_reallyearly = 1;
-    } else if (tokcmp(tok, ltok, "noreallearly") == 0) {
-        gbl_reallyearly = 0;
-    } else if (tokcmp(tok, ltok, "noudp") == 0) {
-        gbl_udp = 0;
-    } else if (tokcmp(tok, ltok, "udp") == 0) {
-        gbl_udp = 1;
-    } else if (tokcmp(tok, ltok, "slowfget") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected # for slowfget.\n");
-            return 0;
-        }
-        __slow_memp_fget_ns = toknum(tok, ltok);
-    } else if (tokcmp(tok, ltok, "slowread") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected # for slowfget.\n");
-            return 0;
-        }
-        __slow_read_ns = toknum(tok, ltok);
-    } else if (tokcmp(tok, ltok, "slowwrite") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected # for slowfget.\n");
-            return 0;
-        }
-        __slow_write_ns = toknum(tok, ltok);
-    } else if (tokcmp(tok, ltok, "ctrace_rollat") == 0) {
-        int n;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected # for ctrace_rollat.\n");
-            return 0;
-        }
-        n = toknum(tok, ltok);
-        ctrace_set_rollat(n);
-    } else if (tokcmp(tok, ltok, "ctrace_gzip") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected # for ctrace_gzip.\n");
-            return 0;
-        }
-        toknum(tok, ltok);
-    } else if (tokcmp(tok, ltok, "ctrace_nlogs") == 0) {
-        int n;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected # for ctrace_nlogs.\n");
-            return 0;
-        }
-        n = toknum(tok, ltok);
-        ctrace_set_nlogs(n);
-    } else if (tokcmp(tok, ltok, "ctrace_dbdir") == 0) {
-        /* put the ctrace log in database directory */
-        gbl_ctrace_dbdir = 1;
-    } else if (tokcmp(tok, ltok, "disable_sql_dlmalloc") == 0) {
-        gbl_disable_sql_dlmalloc = 1;
-    } else if (tokcmp(tok, ltok, "epochms_repts") == 0) {
-        gbl_berkdb_epochms_repts = 1;
-    } else if (tokcmp(tok, ltok, "no_epochms_repts") == 0) {
-        gbl_berkdb_epochms_repts = 0;
-    } else if (tokcmp(tok, ltok, "decimal_rounding") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok > 0 && tok[0]) {
-            gbl_decimal_rounding = dec_parse_rounding(tok, ltok);
-            logmsg(LOGMSG_INFO, "Default decimal rounding is %s\n",
-                   dec_print_mode(gbl_decimal_rounding));
-        } else {
-            logmsg(LOGMSG_ERROR, 
-                   "Missing option for decimal rounding, current is %s\n",
-                   dec_print_mode(gbl_decimal_rounding));
-        }
-    } else if (tokcmp(tok, ltok, "mempget_timeout") == 0) {
-        extern int __gbl_max_mpalloc_sleeptime;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for mempget_timeout\n");
-            return -1;
-        }
-        __gbl_max_mpalloc_sleeptime = toknum(tok, ltok);
-    } else if (tokcmp(tok, ltok, "berkattr") == 0) {
-        char *attr = NULL, *value = NULL;
-        tok = segtok(line, len, &st, &ltok);
-        if (tok) {
-            attr = tokdup(tok, ltok);
-            tok = segtok(line, len, &st, &ltok);
-            if (tok) {
-                value = tokdup(tok, ltok);
-            }
-        }
-        if (attr && value)
-            bdb_berkdb_set_attr_after_open(dbenv->bdb_attr, attr, value,
-                                           atoi(value));
-        free(attr);
-        free(value);
-    } else if (tokcmp(line, ltok, "keycompr") == 0) {
-        if (gbl_keycompr != 1) {
-            logmsg(LOGMSG_INFO, "ENABLE KEY COMPRESSION\n");
-            gbl_keycompr = 1;
-        }
-    } else if (tokcmp(line, ltok, "nokeycompr") == 0) {
-        if (gbl_keycompr != 0) {
-            logmsg(LOGMSG_INFO, "DISABLE KEY COMPRESSION\n");
-            gbl_keycompr = 0;
-        }
-    } else if (tokcmp(tok, ltok, "crypto") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_FATAL, "EXPECTED CRYPTO PATH");
-            exit(1);
-        }
-        if (gbl_crypto != NULL) {
-            logmsg(LOGMSG_FATAL, "ALREADY HAVE CRYPTO");
-            exit(1);
-        }
-        gbl_crypto = tokdup(tok, ltok);
-    } else if (tokcmp(tok, ltok, "crc32c") == 0) {
-        if (gbl_crc32c != 1) {
-            logmsg(LOGMSG_INFO, "CRC32C FOR CHECKSUMS\n");
-            gbl_crc32c = 1;
-        }
-    } else if (tokcmp(tok, ltok, "nocrc32c") == 0) {
-        if (gbl_crc32c != 0) {
-            logmsg(LOGMSG_INFO, "DISABLE CRC32C FOR CHECKSUMS\n");
-            gbl_crc32c = 0;
-        }
-    } else if (tokcmp(line, ltok, "nosurprise") == 0 ||
-               tokcmp(line, ltok, "natural_types") == 0) {
-        gbl_surprise = 0;
-    } else if (tokcmp(line, ltok, "surprise") == 0 ||
-               tokcmp(line, ltok, "unnatural_types") == 0) {
-        gbl_surprise = 1;
-    } else if (tokcmp(tok, ltok, "rcache") == 0) {
-        gbl_rcache = true;
-    } else if (tokcmp(tok, ltok, "norcache") == 0) {
-        gbl_rcache = false;
-    } else if (tokcmp(line, ltok, "broken_max_rec_sz") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_broken_max_rec_sz = toknum(tok, ltok);
-        if (gbl_broken_max_rec_sz <= 0 || gbl_broken_max_rec_sz >= 1024)
-            gbl_broken_max_rec_sz = 512;
-        logmsg(LOGMSG_INFO, "Allow db to start with max record size of %d\n",
-               COMDB2_MAX_RECORD_SIZE + gbl_broken_max_rec_sz);
-    } else if (tokcmp(line, ltok, "bbenv") == 0) {
-        gbl_bbenv = 1;
-    } else if (tokcmp(line, ltok, "noenv_messages") == 0) {
-        gbl_noenv_messages = 1;
-    } else if (tokcmp(line, ltok, "env_messages") == 0) {
-        gbl_noenv_messages = 0;
-    } else if (tokcmp(line, ltok, "nodeid") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected node number for eid\n");
-            return -1;
-        }
-        gbl_mynodeid = toknum(tok, ltok);
-    } else if (tokcmp(line, ltok, "skip_clear_queue_extents") == 0) {
-        skip_clear_queue_extents = 1;
-    } else if (tokcmp(line, ltok, "sqllogger") == 0) {
-        /* This is one of several things we can't do until we have more of
-         * an environment set up.
-         * What would be nice is if processing options was decoupled from
-         * reading files, so we
-         * could build a list of deferred options and call process_lrl_line
-         * on them one by one.
-         * One day. No, pre_read_lrl_file isn't what I want. */
-        defer_option(dbenv, DEFERRED_SEND_COMMAND, line, len, options->lineno);
-    } else if (tokcmp(line, ltok, "no_sc_inco_chk") == 0) {
-        gbl_sc_inco_chk = 0;
-    } else if (tokcmp(line, ltok, "location") == 0) {
-        /* ignore - these are processed by init_file_locations */
-    } else if (tokcmp(tok, ltok, "include") == 0) {
-        char *file;
-        struct lrlfile *lrlfile;
-
-        tok = segtok(line, len, &st, &ltok);
-        if (tok == NULL) {
-            logmsg(LOGMSG_ERROR, "expected file after include\n");
-            return -1;
-        }
-        file = tokdup(tok, ltok);
-
-        LISTC_FOR_EACH(&dbenv->lrl_files, lrlfile, lnk) {
-            if (strcmp(lrlfile->file, file) == 0) {
-                logmsg(LOGMSG_ERROR, "Attempted to nest includes for %s\n", file);
-                LISTC_FOR_EACH(&dbenv->lrl_files, lrlfile, lnk) {
-                    logmsg(LOGMSG_ERROR, ">> %s\n", lrlfile->file);
-                }
-                free(file);
-                return -1;
-            }
-        }
-
-        read_lrl_file(dbenv, file, dbenv->envname, 0);
-    } else if (tokcmp(tok, ltok, "plugin") == 0) {
-        rc = process_plugin_command(dbenv, line, len, st, ltok);
-        if (rc)
-            return -1;
-
-    } else if (tokcmp(line, ltok, "temptable_limit") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected # for temptable_limit.\n");
-            return 0;
-        }
-        gbl_temptable_pool_capacity = toknum(tok, ltok);
-    } else if (tokcmp(line, ltok, "disable_temptable_pool") == 0) {
-        gbl_temptable_pool_capacity = 0;
-    } else if (tokcmp(line, ltok, "enable_upgrade_ahead") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0)
-            gbl_num_record_upgrades = 32;
-        else
-            gbl_num_record_upgrades = toknum(tok, ltok);
-    } else if (tokcmp(line, ltok, "disable_upgrade_ahead") == 0) {
-        gbl_num_record_upgrades = 0;
-    } else if (tokcmp(line, ltok, "do") == 0) {
-        defer_option(dbenv, DEFERRED_SEND_COMMAND, line, len, options->lineno);
-    } else if (tokcmp(line, ltok, "memstat_autoreport_freq") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected # for memstat_autoreport_freq.\n");
-            return 0;
-        }
-        gbl_memstat_freq = toknum(tok, ltok);
-    } else if (tokcmp(line, ltok, "page_compact_target_ff") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_pg_compact_target_ff =
-            (ltok <= 0) ? 0.693 : (toknumd(tok, ltok) / 100.0F);
-    } else if (tokcmp(line, ltok, "page_compact_thresh_ff") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_pg_compact_thresh =
-            (ltok <= 0) ? 0.346 : (toknumd(tok, ltok) / 100.0F);
-    } else if (tokcmp(line, ltok, "disable_page_compact") == 0) {
-        gbl_pg_compact_thresh = 0;
-    } else if (tokcmp(line, ltok, "enable_page_compact_backward_scan") ==
-               0) {
-        gbl_disable_backward_scan = 0;
-    } else if (tokcmp(line, ltok, "disable_page_compact_backward_scan") ==
-               0) {
-        gbl_disable_backward_scan = 1;
-    } else if (tokcmp(line, ltok, "compress_page_compact_log") == 0) {
-        gbl_compress_page_compact_log = 1;
-    } else if (tokcmp(line, ltok, "no_compress_page_compact_log") == 0) {
-        gbl_compress_page_compact_log = 0;
-    } else if (tokcmp(line, ltok, "max_num_compact_pages_per_txn") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, 
-                   "Expected # for max_num_compact_pages_per_txn.\n");
-            return 0;
-        }
-        gbl_max_num_compact_pages_per_txn = (unsigned int)toknum(tok, ltok);
-    } else if (tokcmp(line, ltok, "page_compact_latency_ms") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected # for page_compact_latency_ms\n");
-            return 0;
-        }
-        gbl_pg_compact_latency_ms = toknum(tok, ltok);
-    } else if (tokcmp(line, ltok, "blob_mem_mb") == 0) {
-        // long_blk_and_blob_mem_mb -1 to disable
-        int blobmemszmb = -1;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected # for blob_mem_mb.\n");
-            return 0;
-        }
-        blobmemszmb = toknum(tok, ltok);
-        if (blobmemszmb == -1)
-            gbl_blobmem_cap = (size_t)-1;
-        else
-            gbl_blobmem_cap = (1 << 20) * (size_t)toknum(tok, ltok);
-    } else if (tokcmp(line, ltok, "blobmem_sz_thresh_kb") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected # for blobmem_sz_thresh_kb.\n");
-            return 0;
-        }
-        gbl_blob_sz_thresh_bytes = 1024 * (size_t)toknum(tok, ltok);
-    } else if (tokcmp(line, ltok, "enable_datetime_truncation") == 0) {
-        gbl_forbid_datetime_truncation = 0;
-    } else if (tokcmp(line, ltok, "enable_datetime_promotion") == 0) {
-        gbl_forbid_datetime_promotion = 0;
-    } else if (tokcmp(line, ltok, "enable_datetime_ms_us_sc") == 0) {
-        gbl_forbid_datetime_ms_us_s2s = 0;
-    } else if (tokcmp(line, ltok, "disable_datetime_truncation") == 0) {
-        gbl_forbid_datetime_truncation = 1;
-    } else if (tokcmp(line, ltok, "disable_datetime_promotion") == 0) {
-        gbl_forbid_datetime_promotion = 1;
-    } else if (tokcmp(line, ltok, "disable_datetime_ms_us_sc") == 0) {
-        gbl_forbid_datetime_ms_us_s2s = 1;
-    } else if (tokcmp(line, ltok, "default_datetime_precision") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected # for temptable_limit.\n");
-            return 0;
-        }
-        DTTZ_TEXT_TO_PREC(tok, gbl_datetime_precision, 0, return 0);
-    } else if (tokcmp(tok, ltok, "noblobstripe") == 0) {
-        gbl_blobstripe = 0;
-    } else if (tokcmp(tok,ltok,"dont_sort_nulls_with_header")==0) {
-        gbl_sort_nulls_correctly=0;
-    } else if (tokcmp(tok, ltok, "nochecksums") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_CHECKSUMS, 0);
-    } else if (tokcmp(tok, ltok, "no_null_blob_fix") == 0) {
-        gbl_disallow_null_blobs = 0;
-    } else if (tokcmp(tok, ltok, "no_static_tag_blob_fix") == 0) {
-        gbl_force_notnull_static_tag_blobs = 0;
-    } else if (tokcmp(tok, ltok, "dont_forbid_ulonglong") == 0 ) {
-        gbl_forbid_ulonglong = 0;
-    } else if (tokcmp(tok,ltok,"dont_init_with_ondisk_header")==0) {
-        gbl_init_with_odh = 0;
-    } else if (tokcmp(tok,ltok, "dont_init_with_instant_schema_change") == 0) {
-        logmsg(LOGMSG_INFO, "Tables will be initialized with instant schema-change support\n");
-        gbl_init_with_instant_sc = 0;
-    } else if (tokcmp(tok,ltok, "dont_init_with_inplace_updates") == 0) {
-        gbl_init_with_ipu = 0;
-    } else if (tokcmp(tok, ltok, "dont_prefix_foreign_keys") == 0) {
-        gbl_fk_allow_prefix_keys = 0;
-    } else if (tokcmp(tok, ltok, "dont_superset_foreign_keys") == 0) {
-        gbl_fk_allow_superset_keys = 0;
-    } else if (tokcmp(line, strlen("ssl"), "ssl") == 0) {
-        /* Let's have a separate function for ssl directives. */
-        rc = ssl_process_lrl(line, len);
-        if (rc != 0)
-            return -1;
-    } else if (tokcmp(line, ltok, "perfect_ckp") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_use_perfect_ckp = (ltok <= 0) ? 1 : toknum(tok, ltok);
-    } else if (tokcmp(line, ltok, "memnice") == 0) {
-        int nicerc;
-        tok = segtok(line, len, &st, &ltok);
-        nicerc = comdb2ma_nice((ltok <= 0) ? 1 : toknum(tok, ltok));
-        if (nicerc != 0) {
-            logmsg(LOGMSG_ERROR, "Failed to change mem niceness: rc = %d.\n",
-                   nicerc);
-            return -1;
-        }
-    } else if (tokcmp(line, ltok, "upd_null_cstr_return_conv_err") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        gbl_upd_null_cstr_return_conv_err = (tok <= 0) ? 1 : toknum(tok, ltok);
-    } 
-    else {
-        logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok, tok,
-               options->lrlname);
-        if (gbl_bad_lrl_fatal)
-            return -1;
-    }
-
-    if (gbl_disable_new_snapshot) {
-        gbl_new_snapisol = 0;
-        gbl_new_snapisol_asof = 0;
-        gbl_new_snapisol_logging = 0;
-    }
-
-    if (gbl_rowlocks) {
-        /* We can't ever choose a writer as a deadlock victim in rowlocks mode
-           (at least without some kludgery, or snapshots) */
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN, 0);
-    }
-
-
-    return 0;
-}
-
-struct dbenv *read_lrl_file_int(struct dbenv *dbenv,
-                                       const char *lrlname, const char *dbname,
-                                       int required) {
-    FILE *ff;
-    char line[512] = {0}; // valgrind doesn't like sse42 instructions
-    int rc;
-    struct lrlfile *lrlfile;
-    struct read_lrl_option_type options = {
-        .lineno = 0,
-        .lrlname = lrlname,
-        .dbname = dbname,
-    };
-
-    dbenv->nsiblings = 1;
-
-    lrlfile = malloc(sizeof(struct lrlfile));
-    lrlfile->file = strdup(lrlname);
-    listc_atl(&dbenv->lrl_files, lrlfile);
-
-    ff = fopen(lrlname, "r");
-
-    if (ff == 0) {
-        if (required) {
-            logmsg(LOGMSG_FATAL, "%s : %s\n", lrlname, strerror(errno));
-            return 0;
-        } else if (errno != ENOENT) {
-            logmsgperror(lrlname);
-        }
-        return dbenv;
-    }
-
-    logmsg(LOGMSG_DEBUG, "processing %s...\n", lrlname);
-    while (fgets(line, sizeof(line), ff)) {
-        char *s = strchr(line, '\n');
-        if (s) *s = 0;
-        options.lineno++;
-        read_lrl_option(dbenv, line, &options, strlen(line));
-    }
-    options.lineno = 0;
-    rc = process_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS, &options,
-                                  read_lrl_option);
-    if (rc) {
-       logmsg(LOGMSG_WARN, "process_deferred_options rc %d\n", rc);
-       fclose(ff);
-    }
-    if (rc) {
-       fclose(ff);
-       return NULL;
-    }
-
-    /* process legacy options (we deferred them) */
-
-    if (gbl_disable_new_snapshot) {
-        gbl_new_snapisol = 0;
-        gbl_new_snapisol_asof = 0;
-        gbl_new_snapisol_logging = 0;
-    }
-
-    if (gbl_rowlocks) {
-        /* We can't ever choose a writer as a deadlock victim in rowlocks mode
-           (at least without some kludgery, or snapshots) */
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN, 0);
-    }
-
-    fclose(ff);
-
-    return dbenv;
-}
-
 void check_access_controls(struct dbenv *dbenv)
 {
     int rc;
@@ -5123,11 +1808,6 @@ void check_access_controls(struct dbenv *dbenv)
             gbl_uses_password = 1;
             gbl_upgrade_blocksql_2_socksql = 1;
             logmsg(LOGMSG_INFO, "User authentication enabled\n");
-            int valid_user;
-            bdb_user_password_check(DEFAULT_USER, DEFAULT_PASSWORD,
-                                    &valid_user);
-            if (!valid_user)
-                bdb_user_password_set(NULL, DEFAULT_USER, DEFAULT_PASSWORD);
         }
     } else {
         gbl_uses_password = 0;
@@ -5155,15 +1835,15 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
 {
     int rc = 0, bdberr, dbnums[MAX_NUM_TABLES], fndnumtbls, i;
     char *tblnames[MAX_NUM_TABLES];
-    struct db *db;
+    struct dbtable *tbl;
 
     /* nothing to do */
     if (gbl_create_mode)
         return 0;
 
     /* re-load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tblnames, dbnums, sizeof(tblnames), &fndnumtbls,
-                              &bdberr) ||
+    if (bdb_llmeta_get_tables(NULL, tblnames, dbnums, sizeof(tblnames),
+                              &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
                         "\n");
@@ -5174,45 +1854,53 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
         int ver;
         int bdberr;
 
-        db = getdbbyname(tblnames[i]);
-        if (db == NULL) {
+        tbl = get_dbtable_by_name(tblnames[i]);
+        if (tbl == NULL) {
             logmsg(LOGMSG_ERROR, "Can't find handle for table %s\n", tblnames[i]);
-            return -1;
+            rc = -1;
+            goto cleanup;
         }
 
         rc = bdb_get_csc2_highest(NULL, tblnames[i], &ver, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "couldn't get highest version number for %s\n",
                     tblnames[i]);
-            return 1;
+            rc = 1;
+            goto cleanup;
         }
 
         int isc = 0;
-        rc = get_db_instant_schema_change(db, &isc);
+        get_db_instant_schema_change(tbl, &isc);
         if (isc) {
             /* load schema for older versions */
             for (int v = 1; v <= ver; ++v) {
                 char *csc2text;
-                if (get_csc2_file(db->dbname, v, &csc2text, NULL)) {
+                if (get_csc2_file(tbl->tablename, v, &csc2text, NULL)) {
                     logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__,
                             __LINE__);
                     continue;
                 }
 
                 struct schema *s =
-                    create_version_schema(csc2text, v, db->dbenv);
+                    create_version_schema(csc2text, v, tbl->dbenv);
 
                 if (s == NULL) {
                     free(csc2text);
-                    return 1;
+                    rc = 1;
+                    goto cleanup;
                 }
 
-                add_tag_schema(db->dbname, s);
+                add_tag_schema(tbl->tablename, s);
                 free(csc2text);
             }
         }
     }
-    return 0;
+cleanup:
+    for (i = 0; i < fndnumtbls; ++i) {
+        free(tblnames[i]);
+    }
+
+    return rc;
 }
 
 static int llmeta_load_queues(struct dbenv *dbenv)
@@ -5232,25 +1920,28 @@ static int llmeta_load_queues(struct dbenv *dbenv)
         return 0;
 
     dbenv->qdbs = realloc(dbenv->qdbs,
-                          (dbenv->num_qdbs + fnd_queues) * sizeof(struct db *));
+                          (dbenv->num_qdbs + fnd_queues) * sizeof(struct dbtable *));
     if (dbenv->qdbs == NULL) {
         logmsg(LOGMSG_ERROR, "can't allocate memory for queue list\n");
         return -1;
     }
     for (int i = 0; i < fnd_queues; i++) {
-        struct db *db;
+        struct dbtable *tbl;
         char **dests;
         int ndests;
         char *config;
 
-        db = newqdb(dbenv, qnames[i],
+        tbl = newqdb(dbenv, qnames[i],
                     65536 /* TODO: pass from comdb2sc, store in llmeta? */,
                     65536, 1);
-        if (db == NULL) {
+        if (tbl == NULL) {
             logmsg(LOGMSG_ERROR, "can't create queue \"%s\"\n", qnames[i]);
             return -1;
         }
-        dbenv->qdbs[dbenv->num_qdbs++] = db;
+        dbenv->qdbs[dbenv->num_qdbs++] = tbl;
+
+        /* Add queue the hash. */
+        hash_add(dbenv->qdb_hash, tbl);
 
         rc = bdb_llmeta_get_queue(qnames[i], &config, &ndests, &dests, &bdberr);
         if (rc) {
@@ -5259,7 +1950,7 @@ static int llmeta_load_queues(struct dbenv *dbenv)
             return -1;
         }
 
-        rc = dbqueue_add_consumer(db, 0, dests[0], 0);
+        rc = dbqueue_add_consumer(tbl, 0, dests[0], 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, "can't add consumer for queue \"%s\"\n", qnames[i]);
             return -1;
@@ -5287,11 +1978,11 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
 {
     int rc = 0, bdberr, dbnums[MAX_NUM_TABLES], fndnumtbls, i;
     char *tblnames[MAX_NUM_TABLES];
-    struct db *db;
+    struct dbtable *tbl;
 
     /* load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tblnames, dbnums, sizeof(tblnames), &fndnumtbls,
-                              &bdberr) ||
+    if (bdb_llmeta_get_tables(NULL, tblnames, dbnums, sizeof(tblnames),
+                              &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
                         "\n");
@@ -5303,7 +1994,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
 
     /* make room for dbs */
-    dbenv->dbs = realloc(dbenv->dbs, fndnumtbls * sizeof(struct db *));
+    dbenv->dbs = realloc(dbenv->dbs, fndnumtbls * sizeof(struct dbtable *));
 
     for (i = 0; i < fndnumtbls; ++i) {
         char *csc2text = NULL;
@@ -5343,37 +2034,44 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
         }
         free(csc2text);
         csc2text = NULL;
-        db = newdb_from_schema(dbenv, tblnames[i], NULL, dbnums[i], i, 0);
-        if (db == NULL) {
+        tbl = newdb_from_schema(dbenv, tblnames[i], NULL, dbnums[i], i, 0);
+        if (tbl == NULL) {
             logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__,
                     __LINE__);
             rc = 1;
             break;
         }
-        db->version = ver;
+        tbl->version = ver;
 
         /* We only want to load older schema versions for ODH databases.  ODH
          * information
          * is stored in the meta table (not the llmeta table), so it's not
          * loaded yet. */
 
-        /* set db values and add to env */
-        db->shmflags = 0;
-        db->dbs_idx = i;
-        dbenv->dbs[i] = db;
+        /* set tbl values and add to env */
+        tbl->shmflags = 0;
+        tbl->dbs_idx = i;
+        dbenv->dbs[i] = tbl;
+
+        /* Add table to the hash. */
+        hash_add(dbenv->db_hash, tbl);
 
         /* just got a bunch of data. remember it so key forming
            routines and SQL can get at it */
-        rc = add_cmacc_stmt(db, 0);
+        rc = add_cmacc_stmt(tbl, 0);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to load schema: can't process schema file "
-                            "%s\n",
-                    db->dbname);
+            logmsg(LOGMSG_ERROR,
+                   "Failed to load schema: can't process schema file "
+                   "%s\n",
+                   tbl->tablename);
             ++i; /* this tblname has already been marshalled so we dont want to
                   * free it below */
             rc = 1;
             break;
         }
+
+        /* Free the table name. */
+        free(tblnames[i]);
     }
 
     /* we have to do this after all the meta table lookups so that the hack in
@@ -5387,6 +2085,15 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
     return rc;
 }
 
+int llmeta_load_timepart(struct dbenv *dbenv)
+{
+    /* We need to do this before resuming schema chabge , if any */
+    logmsg(LOGMSG_INFO, "Reloading time partitions\n");
+    dbenv->timepart_views = timepart_views_init(dbenv);
+
+    return thedb->timepart_views ? 0 : -1;
+}
+
 /* replace the table names and dbnums saved in the low level meta table with the
  * ones in the dbenv.  returns 0 on success and anything else otherwise */
 int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv)
@@ -5394,9 +2101,9 @@ int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv)
     int i, bdberr, dbnums[MAX_NUM_TABLES];
     char *tblnames[MAX_NUM_TABLES];
 
-    /* gather all the table names and db numbers */
+    /* gather all the table names and tbl numbers */
     for (i = 0; i < dbenv->num_dbs; ++i) {
-        tblnames[i] = dbenv->dbs[i]->dbname;
+        tblnames[i] = dbenv->dbs[i]->tablename;
         dbnums[i] = dbenv->dbs[i]->dbnum;
     }
 
@@ -5429,7 +2136,7 @@ int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv)
  *
  * the db never uses this file it is only to make it easier for people to tell
  * what files belong to what parts of a table, etc */
-int llmeta_dump_mapping(struct dbenv *dbenv)
+int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
 {
     int i, rc;
     char *fname, fname_tail[] = "_file_vers_map";
@@ -5481,30 +2188,31 @@ int llmeta_dump_mapping(struct dbenv *dbenv)
         unsigned long long version_num;
 
         /* print the main data file's version number */
-        if (bdb_get_file_version_data(dbenv->dbs[i]->handle, NULL /*tran*/,
-                                      0 /*dtanum*/, &version_num, &bdberr) ||
+        if (bdb_get_file_version_data(dbenv->dbs[i]->handle, tran, 0 /*dtanum*/,
+                                      &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                            "number for %s's main data files\n",
-                    dbenv->dbs[i]->dbname);
+                                 "number for %s's main data files\n",
+                   dbenv->dbs[i]->tablename);
             rc = -1;
             goto done;
         }
 
         sbuf2printf(sbfile,
                     "table %s %d\n\tdata files: %016llx\n\tblob files\n",
-                    dbenv->dbs[i]->dbname, dbenv->dbs[i]->lrl,
+                    dbenv->dbs[i]->tablename, dbenv->dbs[i]->lrl,
                     flibc_htonll(version_num));
 
         /* print the indicies' version numbers */
         for (j = 1; j <= dbenv->dbs[i]->numblobs; ++j) {
-            if (bdb_get_file_version_data(dbenv->dbs[i]->handle, NULL /*tran*/,
+            if (bdb_get_file_version_data(dbenv->dbs[i]->handle, tran,
                                           j /*dtanum*/, &version_num,
                                           &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
-                logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                                "number for %s's blob num %d's files\n",
-                        dbenv->dbs[i]->dbname, j);
+                logmsg(LOGMSG_ERROR,
+                       "llmeta_dump_mapping: failed to fetch version "
+                       "number for %s's blob num %d's files\n",
+                       dbenv->dbs[i]->tablename, j);
                 rc = -1;
                 goto done;
             }
@@ -5516,13 +2224,14 @@ int llmeta_dump_mapping(struct dbenv *dbenv)
         /* print the indicies' version numbers */
         sbuf2printf(sbfile, "\tindex files\n");
         for (j = 0; j < dbenv->dbs[i]->nix; ++j) {
-            if (bdb_get_file_version_index(dbenv->dbs[i]->handle, NULL /*tran*/,
+            if (bdb_get_file_version_index(dbenv->dbs[i]->handle, tran,
                                            j /*dtanum*/, &version_num,
                                            &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
-                logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                                "number for %s's index num %d\n",
-                        dbenv->dbs[i]->dbname, j);
+                logmsg(LOGMSG_ERROR,
+                       "llmeta_dump_mapping: failed to fetch version "
+                       "number for %s's index num %d\n",
+                       dbenv->dbs[i]->tablename, j);
                 rc = -1;
                 goto done;
             }
@@ -5537,59 +2246,66 @@ done:
     return rc;
 }
 
+int llmeta_dump_mapping(struct dbenv *dbenv)
+{
+    return llmeta_dump_mapping_tran(NULL, dbenv);
+}
+
 int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
                                    const char *table, int err)
 {
     int i;
     int bdberr;
     unsigned long long version_num;
-    struct db *p_db;
+    struct dbtable *p_db;
 
-    if (!(p_db = getdbbyname(table)))
+    if (!(p_db = get_dbtable_by_name(table)))
         return -1;
 
     /* print out the versions of each of the table's files */
 
     /* print the main data file's version number */
-    if (bdb_get_file_version_data(p_db->handle, tran /*tran*/, 0 /*dtanum*/,
+    if (bdb_get_file_version_data(p_db->handle, tran, 0 /*dtanum*/,
                                   &version_num, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         if (err)
             logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                            "number for %s's main data files\n",
-                    p_db->dbname);
+                                 "number for %s's main data files\n",
+                   p_db->tablename);
         else
             ctrace("llmeta_dump_mapping: failed to fetch version number for "
                    "%s's main data files\n",
-                   p_db->dbname);
+                   p_db->tablename);
         return -1;
     }
 
     if (err)
-        logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016llx\n\tblob files\n",
-                p_db->dbname, flibc_htonll(version_num));
+        logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016lx\n\tblob files\n",
+               p_db->tablename, flibc_htonll(version_num));
     else
-        ctrace("table %s\n\tdata files: %016llx\n\tblob files\n", p_db->dbname,
+        ctrace("table %s\n\tdata files: %016llx\n\tblob files\n",
+               p_db->tablename,
                (long long unsigned int)flibc_htonll(version_num));
 
     /* print the blobs' version numbers */
     for (i = 1; i <= p_db->numblobs; ++i) {
-        if (bdb_get_file_version_data(p_db->handle, NULL /*tran*/, i /*dtanum*/,
+        if (bdb_get_file_version_data(p_db->handle, tran, i /*dtanum*/,
                                       &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             if (err)
-                logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                                "number for %s's blob num %d's files\n",
-                        p_db->dbname, i);
+                logmsg(LOGMSG_ERROR,
+                       "llmeta_dump_mapping: failed to fetch version "
+                       "number for %s's blob num %d's files\n",
+                       p_db->tablename, i);
             else
                 ctrace("llmeta_dump_mapping: failed to fetch version number "
                        "for %s's blob num %d's files\n",
-                       p_db->dbname, i);
+                       p_db->tablename, i);
             return -1;
         }
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016llx\n", i,
-                    flibc_htonll(version_num));
+            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016lx\n", i,
+                   flibc_htonll(version_num));
         else
             ctrace("\t\tblob num %d: %016llx\n", i,
                    (long long unsigned int)flibc_htonll(version_num));
@@ -5598,61 +2314,30 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
     /* print the indicies' version numbers */
     logmsg(LOGMSG_INFO, "\tindex files\n");
     for (i = 0; i < p_db->nix; ++i) {
-        if (bdb_get_file_version_index(p_db->handle, tran /*tran*/,
-                                       i /*dtanum*/, &version_num, &bdberr) ||
+        if (bdb_get_file_version_index(p_db->handle, tran, i /*dtanum*/,
+                                       &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             if (err)
-                logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                                "number for %s's index num %d\n",
-                        p_db->dbname, i);
+                logmsg(LOGMSG_ERROR,
+                       "llmeta_dump_mapping: failed to fetch version "
+                       "number for %s's index num %d\n",
+                       p_db->tablename, i);
             else
                 ctrace("llmeta_dump_mapping: failed to fetch version number "
                        "for %s's index num %d\n",
-                       p_db->dbname, i);
+                       p_db->tablename, i);
             return -1;
         }
 
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016llx\n", i,
-                    flibc_htonll(version_num));
+            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016lx\n", i,
+                   flibc_htonll(version_num));
         else
             ctrace("\t\tindex num %d: %016llx\n", i,
                    (long long unsigned int)flibc_htonll(version_num));
     }
 
     return 0;
-}
-
-static int read_config_dir(struct dbenv *dbenv, char *dbname, char *dir)
-{
-    DIR *d = NULL;
-    int rc = 0;
-    struct dirent ent, *out;
-
-    d = opendir(dir);
-    if (d == NULL) {
-        rc = -1;
-        goto done;
-    }
-    while (bb_readdir(d, &ent, &out) == 0 && out != NULL) {
-        int len;
-        len = strlen(ent.d_name);
-        if (strcmp(ent.d_name + len - 4, ".lrl") == 0) {
-            char *file = comdb2_asprintf("%s/%s", dir, ent.d_name);
-            pre_read_lrl_file(dbenv, file, dbname);
-            rc = (read_lrl_file(dbenv, file, dbname, 0) == NULL);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "Error processing %s\n", file);
-            free(file);
-            if (rc)
-                goto done;
-        }
-    }
-
-done:
-    if (d)
-        closedir(d);
-    return rc;
 }
 
 int llmeta_dump_mapping_table(struct dbenv *dbenv, const char *table, int err)
@@ -5662,27 +2347,14 @@ int llmeta_dump_mapping_table(struct dbenv *dbenv, const char *table, int err)
 
 static struct dbenv *newdbenv(char *dbname, char *lrlname)
 {
-    struct dbenv *dbenv;
-    int redo_as_lrl = 0;
-    int found_tables = 0;
-    const char *envlrlname;
     int rc;
-
-    dbenv = calloc(1, sizeof(*dbenv));
+    struct dbenv *dbenv = calloc(1, sizeof(struct dbenv));
     if (dbenv == 0) {
         logmsg(LOGMSG_FATAL, "newdb:calloc dbenv");
         return NULL;
     }
 
-    if (dbenv == 0)
-        return NULL;
-
-    dbenv->num_dbs = 0;
-    dbenv->dbs = NULL;
-    dbenv->stopped = 0;
-    dbenv->no_more_sql_connections = 0;
     dbenv->cacheszkbmin = 65536;
-
     dbenv->bdb_attr = bdb_attr_create();
 
     /* default retry = 10 seconds.  this used to be 180 seconds (3 minutes)
@@ -5697,7 +2369,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     /*default sync mode:*/
     dbenv->rep_sync = REP_SYNC_FULL;
-    dbenv->log_sync = 0;
     dbenv->log_sync_time = 10;        /*sync logs every n seconds */
     dbenv->log_mem_size = 128 * 1024; /*sync logs every n seconds */
     dbenv->log_delete = 1;            /*delete logs.*/
@@ -5715,123 +2386,49 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     listc_init(&dbenv->managed_coordinators,
                offsetof(struct managed_component, lnk));
     pthread_mutex_init(&dbenv->incoherent_lk, NULL);
-    dbenv->fallen_offline = 0;
-    dbenv->shmflags = 0;
-    init_deferred_options(dbenv);
-    listc_init(&dbenv->lrl_files, offsetof(struct lrlfile, lnk));
+
+    /* Initialize the table/queue hashes. */
+    dbenv->db_hash =
+        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
+                       offsetof(struct dbtable, tablename), 0);
+    dbenv->qdb_hash =
+        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
+                       offsetof(struct dbtable, tablename), 0);
 
     if ((rc = pthread_mutex_init(&dbenv->dbqueue_admin_lk, NULL)) != 0) {
         logmsg(LOGMSG_FATAL, "can't init lock %d %s\n", rc, strerror(errno));
         return NULL;
     }
-    dbenv->dbqueue_admin_running = 0;
 
-    if (lrlname)
-       pre_read_lrl_file(dbenv, lrlname, dbname);
-
-    /* if we havn't been told not to load the /bb/bin/ config files */
-    if (!gbl_nogbllrl) {
-        char *lrlfile;
-
-        /* firm wide defaults */
-        lrlfile = comdb2_location("config", "comdb2.lrl");
-
-        if (!read_lrl_file(dbenv, lrlfile, dbname, 0 /*not required*/)) {
-            free(lrlfile);
-            return 0;
-        }
-        free(lrlfile);
-
-        /* local defaults */
-        lrlfile = comdb2_location("config", "comdb2_local.lrl");
-        if (!read_lrl_file(dbenv, lrlfile, dbname, 0)) {
-            free(lrlfile);
-            return 0;
-        }
-        free(lrlfile);
-
-        char *confdir = comdb2_location("config", "comdb2.d");
-        struct stat st;
-        int rc = stat(confdir, &st);
-        if (rc == 0 && S_ISDIR(st.st_mode)) {
-            if (read_config_dir(dbenv, dbname, confdir)) {
-                return 0;
-            }
-        }
+    /* Register all db tunables. */
+    if ((register_db_tunables(dbenv))) {
+        logmsg(LOGMSG_FATAL, "Failed to initialize tunables");
+        exit(1);
     }
 
-    /* look for overriding lrl's in the local directory */
-    if (!read_lrl_file(dbenv, "comdb2.lrl", dbname, 0 /*not required*/)) {
-        return 0;
-    }
-
-    /* local defaults */
-    if (!read_lrl_file(dbenv, "comdb2_local.lrl", dbname,
-                       0 /*not required*/)) {
-        return 0;
-    }
-
-    /* if env variable is set, process another lrl.. */
-    envlrlname = getenv("COMDB2_CONFIG");
-    if(envlrlname)
-    {
-        if(!read_lrl_file(dbenv, envlrlname, dbname, 1/*required*/)) {
-            return 0;
-        }
-    }
-
-    if (found_tables || redo_as_lrl) {
-        logmsg(LOGMSG_ERROR, "bad config .lrl files - found schema data where it "
-                        "shouldn't be!\n");
-        return 0;
-    }
-
-    /* this database */
-    if (lrlname) {
-        if (!read_lrl_file(dbenv, lrlname, dbname, 1 /*required*/)) {
-            return 0;
-        }
+    if (read_lrl_files(dbenv, lrlname)) {
+        logmsg(LOGMSG_FATAL, "Failed to initialize tunables");
+        exit(1);
     }
 
     logmsg(LOGMSG_INFO, "database %s starting\n", dbenv->envname);
 
-    /* if no tables were found, switch to keyless mode as long as no mode has
-     * been selected yet */
-    if (!found_tables) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
-    }
-
-    if (dbenv->basedir == NULL) {
-        if (gbl_dbdir) dbenv->basedir = gbl_dbdir;
-        if (dbenv->basedir == NULL) dbenv->basedir = getenv("COMDB2_DB_DIR");
-        if (dbenv->basedir == NULL)
-            dbenv->basedir = comdb2_location("database", "%s", dbname);
-    }
-
-    if (dbenv->basedir==NULL) {
-        logmsg(LOGMSG_ERROR, "must specify database directory\n");
-        return 0;
-    }
-
-    if (lrlname == NULL) {
-       char *lrl = comdb2_asprintf("%s/%s.lrl", dbenv->basedir, dbname);
-       if (access(lrl, F_OK) == 0) {
-          if (read_lrl_file(dbenv, lrl, dbname, 0) == NULL) {
-             return 0;
-          }
-          lrlname = lrl;
-       }
-       else
-          free(lrlname);
-    }
-
-    if (gbl_create_mode && dbenv->basedir) {
-       /* make sure the database directory exists! */
-       rc = mkdir(dbenv->basedir, 0774);
-       if (rc && errno != EEXIST) {
-          logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir, strerror(errno));
-          /* continue, this will make us fail later */
-       }
+    if (gbl_create_mode) {
+        /* make sure the database directory exists! */
+        rc = mkdir(dbenv->basedir, 0774);
+        if (rc && errno != EEXIST) {
+            logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir,
+                   strerror(errno));
+            /* continue, this will make us fail later */
+        }
+    } else {
+        struct stat sb;
+        stat(dbenv->basedir, &sb);
+        if (!S_ISDIR(sb.st_mode)) {
+            logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n",
+                   dbenv->basedir);
+            return 0;
+        }
     }
 
     tz_hash_init();
@@ -5864,8 +2461,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     listc_init(&dbenv->sqlhist, offsetof(struct sql_hist, lnk));
     dbenv->master = NULL; /*no known master at this point.*/
     dbenv->errstaton = 1; /* ON */
-    ;
-    bzero(dbenv->sibling_flags, sizeof(char) * MAXSIBLINGS);
 
     return dbenv;
 }
@@ -5890,17 +2485,18 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
 
         for (jj = 0; jj < dbenv->num_dbs; jj++) {
             if (jj != ii) {
-                if (strcasecmp(dbenv->dbs[ii]->dbname,
-                               dbenv->dbs[jj]->dbname) == 0) {
+                if (strcasecmp(dbenv->dbs[ii]->tablename,
+                               dbenv->dbs[jj]->tablename) == 0) {
                     have_bad_schema = 1;
-                    logmsg(LOGMSG_FATAL, "Two tables have identical names (%s) tblnums %d "
+                    logmsg(LOGMSG_FATAL,
+                           "Two tables have identical names (%s) tblnums %d "
                            "%d\n",
-                           dbenv->dbs[ii]->dbname, ii, jj);
+                           dbenv->dbs[ii]->tablename, ii, jj);
                 }
             }
         }
 
-        if ((strcasecmp(dbenv->dbs[ii]->dbname, dbenv->envname) == 0) &&
+        if ((strcasecmp(dbenv->dbs[ii]->tablename, dbenv->envname) == 0) &&
             (dbenv->dbs[ii]->dbnum != 0) &&
             (dbenv->dbnum != dbenv->dbs[ii]->dbnum)) {
 
@@ -5912,7 +2508,7 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
         if (dbenv->dbs[ii]->nix > MAXINDEX) {
             have_bad_schema = 1;
             logmsg(LOGMSG_FATAL, "Database %s has too many indexes (%d)\n",
-                   dbenv->dbs[ii]->dbname, dbenv->dbs[ii]->nix);
+                   dbenv->dbs[ii]->tablename, dbenv->dbs[ii]->nix);
         }
 
         /* last ditch effort to stop invalid schemas getting through */
@@ -5920,7 +2516,7 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
             if (dbenv->dbs[ii]->ix_keylen[jj] > MAXKEYLEN) {
                 have_bad_schema = 1;
                 logmsg(LOGMSG_FATAL, "Database %s index %d too large (%d)\n",
-                       dbenv->dbs[ii]->dbname, jj,
+                       dbenv->dbs[ii]->tablename, jj,
                        dbenv->dbs[ii]->ix_keylen[jj]);
             }
 
@@ -5934,13 +2530,20 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
 
 static int dump_queuedbs(char *dir)
 {
-    for (int i = 0; i < thedb->num_qdbs; ++i) {
+    for (int i = 0;
+         i < thedb->num_qdbs && thedb->qdbs[i]->dbtype == DBTYPE_QUEUEDB; ++i) {
         char *config;
         int ndests;
         char **dests;
         int bdberr;
-        char *name = thedb->qdbs[i]->dbname;
-        bdb_llmeta_get_queue(name, &config, &ndests, &dests, &bdberr);
+        char *name = thedb->qdbs[i]->tablename;
+        int rc;
+        rc = bdb_llmeta_get_queue(name, &config, &ndests, &dests, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Can't get data for %s: bdberr %d\n",
+                   thedb->qdbs[i]->tablename, bdberr);
+            return -1;
+        }
         char path[PATH_MAX];
         snprintf(path, sizeof(path), REPOP_QDB_FMT, dir, thedb->envname, i);
         FILE *f = fopen(path, "w");
@@ -5949,14 +2552,14 @@ static int dump_queuedbs(char *dir)
                     strerror(errno));
             return -1;
         }
-        logmsg(LOGMSG_INFO, "%s\n%d\n", thedb->qdbs[i]->dbname, ndests);
+        fprintf(f, "%s\n%d\n", thedb->qdbs[i]->tablename, ndests);
         for (int j = 0; j < ndests; ++j) {
-            logmsg(LOGMSG_INFO, "%s\n", dests[j]);
+            fprintf(f, "%s\n", dests[j]);
         }
-        logmsg(LOGMSG_INFO, "%s", config);
+        fprintf(f, "%s", config);
         fclose(f);
         logmsg(LOGMSG_INFO, "%s wrote file:%s for queuedb:%s\n", __func__, path,
-               thedb->qdbs[i]->dbname);
+               thedb->qdbs[i]->tablename);
         free(config);
         for (int j = 0; j < ndests; ++j)
             free(dests[j]);
@@ -5965,7 +2568,7 @@ static int dump_queuedbs(char *dir)
     return 0;
 }
 
-int repopulate_lrl(const char *p_lrl_fname_out)
+static int repopulate_lrl(const char *p_lrl_fname_out)
 {
     /* can't put this on stack, it will overflow appsock thread */
     struct {
@@ -6014,8 +2617,8 @@ int repopulate_lrl(const char *p_lrl_fname_out)
         if (get_csc2_fname(thedb->dbs[i], p_data->lrl_fname_out_dir,
                            p_data->csc2_paths[i],
                            sizeof(p_data->csc2_paths[i]))) {
-            logmsg(LOGMSG_ERROR, "%s: get_csc2_fname failed for: %s\n", __func__,
-                    thedb->dbs[i]->dbname);
+            logmsg(LOGMSG_ERROR, "%s: get_csc2_fname failed for: %s\n",
+                   __func__, thedb->dbs[i]->tablename);
 
             free(p_data);
             return -1;
@@ -6024,15 +2627,16 @@ int repopulate_lrl(const char *p_lrl_fname_out)
         /* dump the csc2 */
         if (dump_table_csc2_to_disk_fname(thedb->dbs[i],
                                           p_data->csc2_paths[i])) {
-            logmsg(LOGMSG_ERROR, "%s: dump_table_csc2_to_disk_fname failed for: "
-                            "%s\n",
-                    __func__, thedb->dbs[i]->dbname);
+            logmsg(LOGMSG_ERROR,
+                   "%s: dump_table_csc2_to_disk_fname failed for: "
+                   "%s\n",
+                   __func__, thedb->dbs[i]->tablename);
 
             free(p_data);
             return -1;
         }
 
-        p_data->p_table_names[i] = thedb->dbs[i]->dbname;
+        p_data->p_table_names[i] = thedb->dbs[i]->tablename;
         p_data->p_csc2_paths[i] = p_data->csc2_paths[i];
         p_data->table_nums[i] = thedb->dbs[i]->dbnum;
     }
@@ -6085,7 +2689,7 @@ int appsock_repopnewlrl(SBUF2 *sb, int *keepsocket)
     return 0;
 }
 
-int llmeta_open(void)
+static int llmeta_open(void)
 {
     /* now that we have bdb_env open, we can get at llmeta */
     char llmetaname[256];
@@ -6101,8 +2705,8 @@ int llmeta_open(void)
     if (bdb_llmeta_open(llmetaname, thedb->basedir, thedb->bdb_env,
                         0 /*create_override*/, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
-        logmsg(LOGMSG_ERROR, "Failed to open low level meta table, rc: %d\n",
-                bdberr);
+        logmsg(LOGMSG_FATAL, "Failed to open low level meta table, rc: %d\n",
+               bdberr);
         return -1;
     }
     return 0;
@@ -6176,16 +2780,21 @@ static int purge_extents(void *obj, void *arg)
             logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", savdir, strerror(errno));
         }
         while (j < i) {
+            int qlen, slen;
             char qfile[PATH_MAX], sfile[PATH_MAX];
-            snprintf(qfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64, txndir,
-                     q->name, nums[j]);
-            snprintf(sfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64, savdir,
-                     q->name, nums[j]);
+            qlen = snprintf(qfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64,
+                            txndir, q->name, nums[j]);
+            slen = snprintf(sfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64,
+                            savdir, q->name, nums[j]);
+            if (qlen >= sizeof(qfile) || slen >= sizeof(sfile)) {
+                logmsg(LOGMSG_ERROR, "Truncated paths %s and %s\n", qfile,
+                       sfile);
+            }
             if (rename(qfile, sfile) == 0) {
                 logmsg(LOGMSG_INFO, "%s -> %s\n", qfile, sfile);
             } else {
                 logmsg(LOGMSG_ERROR, "%s -> %s failed:%s\n", qfile, sfile,
-                        strerror(errno));
+                       strerror(errno));
             }
             ++j;
         }
@@ -6321,14 +2930,7 @@ static char *create_default_lrl_file(char *dbname, char *dir) {
         free(lrlfile_name);
         return NULL;
     }
-    lrlfile_name = malloc(strlen(dir) + strlen(dbname) + 4 /*.lrl*/ +
-                          1 /*slash*/ + 1 /*nul*/);
-    sprintf(lrlfile_name, "%s/%s.lrl", dir, dbname);
-    lrlfile = fopen(lrlfile_name, "w");
-    if (lrlfile == NULL) {
-        logmsg(LOGMSG_ERROR, "fopen(\"%s\") rc %d %s.\n", errno, strerror(errno));
-        return NULL;
-    }
+
     fprintf(lrlfile, "name    %s\n", dbname);
     fprintf(lrlfile, "dir     %s\n\n", dir);
     fclose(lrlfile);
@@ -6367,7 +2969,7 @@ static int init_db_dir(char *dbname, char *dir)
     return 0;
 }
 
-static int llmeta_set_qdbs()
+static int llmeta_set_qdbs(void)
 {
     if (qdbs == NULL)
         return 0;
@@ -6380,10 +2982,10 @@ static int llmeta_set_qdbs()
 static int init_sqlite_table(struct dbenv *dbenv, char *table)
 {
     int rc;
-    struct db *db;
+    struct dbtable *tbl;
 
     dbenv->dbs =
-        realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(struct db *));
+        realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(struct dbtable *));
 
     /* This used to just pull from installed files.  Let's just do it from memory
        so comdb2 can run standalone with no support files. */
@@ -6430,15 +3032,19 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
         logmsg(LOGMSG_ERROR, "Can't parse schema for %s\n", table);
         return -1;
     }
-    db = newdb_from_schema(dbenv, table, NULL, 0, dbenv->num_dbs, 0);
-    if (db == NULL) {
+    tbl = newdb_from_schema(dbenv, table, NULL, 0, dbenv->num_dbs, 0);
+    if (tbl == NULL) {
         logmsg(LOGMSG_ERROR, "Can't init table %s from schema\n", table);
         return -1;
     }
-    db->dbs_idx = dbenv->num_dbs;
-    db->csc2_schema = strdup(schema);
-    dbenv->dbs[dbenv->num_dbs++] = db;
-    if (add_cmacc_stmt(db, 0)) {
+    tbl->dbs_idx = dbenv->num_dbs;
+    tbl->csc2_schema = strdup(schema);
+    dbenv->dbs[dbenv->num_dbs++] = tbl;
+
+    /* Add table to the hash. */
+    hash_add(dbenv->db_hash, tbl);
+
+    if (add_cmacc_stmt(tbl, 0)) {
         logmsg(LOGMSG_ERROR, "Can't init table structures %s from schema\n", table);
         return -1;
     }
@@ -6449,11 +3055,11 @@ static void load_dbstore_tableversion(struct dbenv *dbenv)
 {
     int i;
     for (i = 0; i < dbenv->num_dbs; i++) {
-        struct db *db = dbenv->dbs[i];
-        update_dbstore(db);
+        struct dbtable *tbl = dbenv->dbs[i];
+        update_dbstore(tbl);
 
-        db->tableversion = table_version_select(db);
-        if (db->tableversion == -1) {
+        tbl->tableversion = table_version_select(tbl, NULL);
+        if (tbl->tableversion == -1) {
             logmsg(LOGMSG_ERROR, "Failed reading table version\n");
         }
     }
@@ -6505,47 +3111,18 @@ static int create_db(char *dbname, char *dir) {
    return 0;
 }
 
-static void replace_args(int argc, char *argv[])
-{
-    int ii;
-    for (ii = 1; ii < argc; ii++) {
-        if (strcasecmp(argv[ii], "-lrl") == 0) {
-            argv[ii] = "--lrl";
-        } else if (strcasecmp(argv[ii], "-repopnewlrl") == 0) {
-            argv[ii] = "--repopnewlrl";
-        } else if (strcasecmp(argv[ii], "-recovertotime") == 0) {
-            argv[ii] = "--recovertotime";
-        } else if (strcasecmp(argv[ii], "-recovertolsn") == 0) {
-            argv[ii] = "--recovertolsn";
-        } else if (strcasecmp(argv[ii], "-recovery_lsn") == 0) {
-            argv[ii] = "--recovery_lsn";
-        } else if (strcasecmp(argv[ii], "-pidfile") == 0) {
-            argv[ii] = "--pidfile";
-        } else if (strcasecmp(argv[ii], "-help") == 0) {
-            argv[ii] = "--help";
-            /* This option is mutually exclusive */
-            return;
-        } else if (strcasecmp(argv[ii], "-create") == 0) {
-            argv[ii] = "--create";
-        } else if (strcasecmp(argv[ii], "-fullrecovery") == 0) {
-            argv[ii] = "--fullrecovery";
-        }
-    }
-}
-
 static int init(int argc, char **argv)
 {
-    char *dbname, *lrlname = NULL, ctmp[64], *p;
-    char c;
+    char *dbname, *lrlname = NULL, ctmp[64];
     static int noabort = 0;
     int cacheszkb = 0, ii;
     int rc;
     int bdberr;
     int cacheszkb_suggestion = 0;
-    int options_idx;
 
-    if (argc < 2)
-        usage();
+    if (argc < 2) {
+        print_usage_and_exit();
+    }
 
     dyns_allow_bools();
 
@@ -6585,70 +3162,7 @@ static int init(int argc, char **argv)
     }
     toblock_init();
 
-
-    replace_args(argc, argv);
-    static struct option long_options[] = {
-        {"lrl",                    required_argument, NULL,              0},
-        {"repopnewlrl",            required_argument, NULL,              0},
-        {"recovertotime",          required_argument, NULL,              0},
-        {"recovertolsn",           required_argument, NULL,              0},
-        {"recoverylsn",            required_argument, NULL,              0},
-        {"pidfile",                required_argument, NULL,              0},
-        {"help",                   no_argument,       NULL,            'h'},
-        {"create",                 no_argument, &gbl_create_mode,        1},
-        {"fullrecovery",           no_argument, &gbl_fullrecovery,       1},
-        {"no-global-lrl",          no_argument, &gbl_nogbllrl,           1},
-        {"dir",                    required_argument, NULL,              0},
-        {NULL,                     0,                 NULL,              0}
-    };
-
-    while ((c = getopt_long(argc, argv, "h",
-                            long_options, &options_idx)) != -1) {
-        if (c == 'h')
-            usage();
-        if (c == '?')
-            return -1;
-
-        switch (options_idx) {
-           case 0:   /* lrl */
-              lrlname = optarg;
-              break;
-           case 1:   /* repopnewlrl */
-              logmsg(LOGMSG_INFO, "repopulate external .lrl mode.\n");
-              gbl_repoplrl_fname = optarg;
-              gbl_exit = 1;
-              break;
-           case 2:   /* recovertotime */
-              logmsg(LOGMSG_FATAL, "force full recovery to timestamp %u\n",
-                    gbl_recovery_timestamp);
-              gbl_recovery_timestamp = strtoul(optarg, NULL, 10);
-              gbl_fullrecovery = 1;
-              break;
-           case 3:   /* recovertolsn */
-              if ((p = strchr(optarg, ':')) == NULL) {
-                 logmsg(LOGMSG_FATAL, "recovertolsn: invalid lsn format.\n");
-                 exit(1);
-              }
-
-              p++;
-              gbl_recovery_lsn_file = atoi(optarg);
-              gbl_recovery_lsn_offset = atoi(p);
-              logmsg(LOGMSG_FATAL, "force full recovery to lsn %d:%d\n",
-                    gbl_recovery_lsn_file, gbl_recovery_lsn_offset);
-              gbl_fullrecovery = 1;
-              break;
-           case 4:   /* recovery_lsn */
-              gbl_recovery_options = optarg;
-              break;
-           case 5: /* pidfile */
-              gbl_pidfile = optarg;
-              write_pidfile(gbl_pidfile);
-              break;
-           case 10: /* dir */
-              gbl_dbdir = optarg;
-              break;
-        }
-    }
+    handle_cmdline_options(argc, argv, &lrlname);
 
     if (gbl_create_mode) {        /*  10  */
         logmsg(LOGMSG_INFO, "create mode.\n");
@@ -6657,14 +3171,6 @@ static int init(int argc, char **argv)
     if (gbl_fullrecovery) {       /*  11  */
         logmsg(LOGMSG_FATAL, "force full recovery.\n");
         gbl_exit = 1;
-    }
-    if (gbl_nogbllrl) {         /*  14  */
-        /* disable loading comdb2.lrl and comdb2_local.lrl with an absolute
-         * path in /bb/bin. comdb2.lrl and comdb2_local.lrl in the pwd are
-         * still loaded */
-        logmsg(LOGMSG_INFO, "not loading %s/bin/comdb2.lrl and "
-               "%s/bin/comdb2_local.lrl.\n",
-               gbl_config_root, gbl_config_root);
     }
 
     /* every option that sets exit implies local mode */
@@ -6677,9 +3183,10 @@ static int init(int argc, char **argv)
         exit(1);
     }
     dbname = argv[optind++];
-    if (strlen(dbname) == 0 || strlen(dbname) >= MAX_DBNAME_LENGTH) {
-       logmsg(LOGMSG_FATAL, "Invalid dbname, must be < %d characters\n", 
-                MAX_DBNAME_LENGTH - 1);
+    int namelen = strlen(dbname);
+    if (namelen == 0 || namelen >= MAX_DBNAME_LENGTH) {
+        logmsg(LOGMSG_FATAL, "Invalid dbname, must be < %d characters\n",
+               MAX_DBNAME_LENGTH);
         return -1;
     }
     strcpy(gbl_dbname, dbname);
@@ -6774,7 +3281,6 @@ static int init(int argc, char **argv)
     }
 #endif
 
-    if (lrlname) gbl_lrl_fname = strdup(lrlname);
     initresourceman(lrlname);
     rc = schema_init();
     if (rc)
@@ -6785,6 +3291,7 @@ static int init(int argc, char **argv)
     if (thedb == 0)
         return -1;
 
+#if WITH_SSL
     /* Initialize SSL backend before creating any net.
        If we're in creat mode, don't bother. */
     if (!gbl_create_mode && ssl_bend_init(thedb->basedir) != 0) {
@@ -6792,6 +3299,7 @@ static int init(int argc, char **argv)
         return -1;
     }
     logmsg(LOGMSG_INFO, "SSL backend initialized.\n");
+#endif
 
     if (init_blob_cache() != 0) return -1;
 
@@ -6802,7 +3310,7 @@ static int init(int argc, char **argv)
 
     /* Since we moved bbipc context code lower, we need to explicitly
      * initialize ctrace stuff, or our ctrace files will have names like
-     * dum50624.trc.c which isn't helpful */
+     * dum50624.trace which isn't helpful */
     if (gbl_ctrace_dbdir)
         ctrace_openlog_taskname(thedb->basedir, dbname);
     else {
@@ -7014,6 +3522,9 @@ static int init(int argc, char **argv)
     else
         bdb_attr_set(thedb->bdb_attr, BDB_ATTR_NONAMES, 0);
 
+    if (gbl_sbuftimeout)
+        bdb_attr_set(thedb->bdb_attr, BDB_ATTR_SBUFTIMEOUT, gbl_sbuftimeout);
+
     /* open up the bdb_env now that we have set all the attributes */
     if (open_bdb_env(thedb)) {
         logmsg(LOGMSG_FATAL, "failed to open bdb_env for %s\n", dbname);
@@ -7044,8 +3555,6 @@ static int init(int argc, char **argv)
 
     /* open the table */
     if (llmeta_open()) {
-        logmsg(LOGMSG_FATAL, "Failed to open low level meta table, rc: %d\n",
-                bdberr);
         return -1;
     }
 
@@ -7059,13 +3568,6 @@ static int init(int argc, char **argv)
        bdb_genid_set_format(thedb->bdb_env, format);
     }
 
-    rc = pthread_key_create(&query_info_key, NULL);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create query_info_key rc %d\n", rc);
-        return -1;
-    }
-
-    tz_hash_init();
     set_datetime_dir();
 
     /* get/set the table names from llmeta */
@@ -7086,11 +3588,32 @@ static int init(int argc, char **argv)
     }
     /* we will load the tables from the llmeta table */
     else {
+        int waitfileopen =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAY_FILE_OPEN);
+        if (waitfileopen) {
+            logmsg(LOGMSG_INFO, "Waiting to open file\n");
+            poll(NULL, 0, waitfileopen);
+            logmsg(LOGMSG_INFO, "Done waiting\n");
+        }
+
+        /* we would like to open the files under schema lock, so that
+           we don't race with a schema change from master (at this point
+           environment is opened, but files are not !*/
+        pthread_rwlock_wrlock(&schema_lk);
+
         if (llmeta_load_tables(thedb, dbname)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
                             "table\n");
+            pthread_rwlock_unlock(&schema_lk);
             return -1;
         }
+
+        if (llmeta_load_timepart(thedb)) {
+            logmsg(LOGMSG_ERROR, "could not load time partitions\n");
+            pthread_rwlock_unlock(&schema_lk);
+            return -1;
+        }
+        pthread_rwlock_unlock(&schema_lk);
 
         if (llmeta_load_queues(thedb)) {
             logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
@@ -7313,8 +3836,7 @@ static int init(int argc, char **argv)
     }
 
     if (gbl_create_mode) {
-       if (create_service_file(lrlname))
-          logmsg(LOGMSG_ERROR, "couldn't create service file\n");
+        create_service_file(lrlname);
     }
 
     /* open db engine */
@@ -7337,7 +3859,7 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "create_sqlmaster_records rc %d\n", rc);
         return -1;
     }
-    create_master_tables(); /* create sql statements */
+    create_sqlite_master(); /* create sql statements */
 
     load_auto_analyze_counters(); /* on starting, need to load counters */
 
@@ -7382,7 +3904,7 @@ static int init(int argc, char **argv)
             read_spfile(gbl_spfile_name);
         }
 
-        if (llmeta_set_qdbs(qdbs) != 0) {
+        if (llmeta_set_qdbs() != 0) {
             logmsg(LOGMSG_FATAL, "failed to add queuedbs to llmeta\n");
             return -1;
         }
@@ -7422,8 +3944,6 @@ static int init(int argc, char **argv)
 
     if (gbl_exit) {
         logmsg(LOGMSG_INFO, "-exiting.\n");
-        if (gbl_create_mode)
-           logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
         clean_exit();
     }
 
@@ -7450,11 +3970,6 @@ static int init(int argc, char **argv)
         net_set_max_bytes(thedb->handle_sibling, bytes);
     }
 
-    if (gbl_net_max_queue_signal) {
-        net_set_max_queue(thedb->handle_sibling_signal,
-                          gbl_net_max_queue_signal);
-    }
-
     if (gbl_net_throttle_percent) {
         net_set_throttle_percent(thedb->handle_sibling,
                                  gbl_net_throttle_percent);
@@ -7465,22 +3980,9 @@ static int init(int argc, char **argv)
                                           gbl_net_portmux_register_interval);
     }
 
-    if (gbl_signal_net_portmux_register_interval) {
-        net_set_portmux_register_interval(
-            thedb->handle_sibling_signal,
-            gbl_signal_net_portmux_register_interval);
-    }
-    if (!gbl_accept_on_child_nets)
-        net_set_portmux_register_interval(thedb->handle_sibling_signal, 0);
-
     if (gbl_enque_flush_interval) {
         net_set_enque_flush_interval(thedb->handle_sibling,
                                      gbl_enque_flush_interval);
-    }
-
-    if (gbl_enque_flush_interval_signal) {
-        net_set_enque_flush_interval(thedb->handle_sibling_signal,
-                                     gbl_enque_flush_interval_signal);
     }
 
     if (gbl_enque_reorder_lookahead) {
@@ -7499,17 +4001,8 @@ static int init(int argc, char **argv)
         net_set_heartbeat_check_time(thedb->handle_sibling,
                                      gbl_heartbeat_check);
     }
-    if (gbl_heartbeat_send_signal) {
-        net_set_heartbeat_send_time(thedb->handle_sibling_signal,
-                                    gbl_heartbeat_send_signal);
-    }
-    if (gbl_heartbeat_check_signal) {
-        net_set_heartbeat_check_time(thedb->handle_sibling_signal,
-                                     gbl_heartbeat_check_signal);
-    }
 
     net_setbufsz(thedb->handle_sibling, gbl_netbufsz);
-    net_setbufsz(thedb->handle_sibling_signal, gbl_netbufsz_signal);
 
     if (javasp_init_procedures() != 0) {
         logmsg(LOGMSG_FATAL, "*ERROR* cannot initialise Java stored procedures\n");
@@ -7599,13 +4092,10 @@ void create_old_blkseq_thread(struct dbenv *dbenv)
     }
 }
 
-#ifdef __hpux
-static void adjust_ulimits(void) {}
-#else
-
 /* bump up ulimit for no. fds up to hard limit */
 static void adjust_ulimits(void)
 {
+#   if !defined(__hpux) && !defined(__APPLE__)
     struct rlimit64 rlim;
 
     if (-1 == getrlimit64(RLIMIT_DATA, &rlim)) {
@@ -7624,7 +4114,6 @@ static void adjust_ulimits(void)
             logmsg(LOGMSG_INFO, "%s: set ulimit for data to %d\n", __func__,
                     (int)rlim.rlim_cur);
         }
-
     } else {
         logmsg(LOGMSG_INFO, "ulimit for data already set\n");
     }
@@ -7650,9 +4139,8 @@ static void adjust_ulimits(void)
     } else {
         logmsg(LOGMSG_INFO, "ulimit for no. fds already set\n");
     }
+#   endif //__hpux
 }
-
-#endif
 
 extern void set_throttle(int);
 extern int get_throttle(void);
@@ -7687,7 +4175,6 @@ void *statthd(void *p)
     int diff_ncommits;
     long long diff_ncommit_time;
     int diff_newsql;
-    int diff_newsql_steps;
     int diff_nretries;
     int diff_deadlocks;
     int diff_lockwaits;
@@ -7700,7 +4187,6 @@ void *statthd(void *p)
     int last_ncommits = 0;
     long long last_ncommit_time = 0;
     int last_newsql = 0;
-    long long last_newsql_steps = 0;
     int last_nretries = 0;
     int64_t last_ndeadlocks = 0, last_nlockwaits = 0;
     int64_t last_vreplays = 0;
@@ -7738,7 +4224,7 @@ void *statthd(void *p)
     int hdr;
     int diff;
     int thresh;
-    struct db *db;
+    struct dbtable *tbl;
     char hdr_fmt[] = "DIFF REQUEST STATS FOR DB %d '%s'\n";
     int have_scon_header = 0;
     int have_scon_stats = 0;
@@ -7751,7 +4237,7 @@ void *statthd(void *p)
         reqlog_diffstat_init(statlogger);
     }
 
-    for (;;) {
+    while (!db_is_stopped()) {
         nqtrap = n_qtrap;
         nfstrap = n_fstrap;
         ncommits = n_commits;
@@ -7763,25 +4249,18 @@ void *statthd(void *p)
         nretries = n_retries;
         vreplays = gbl_verify_tran_replays;
 
-        bdb_get_bpool_counters(thedb->bdb_env, &bpool_hits, &bpool_misses);
+        bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
+                               (int64_t *)&bpool_misses);
 
-        if (!dbenv->exiting && !dbenv->stopped) {
-            bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
-            diff_deadlocks = ndeadlocks - last_ndeadlocks;
-            diff_lockwaits = nlockwaits - last_nlockwaits;
-        } else {
-            diff_deadlocks = 0;
-            diff_lockwaits = 0;
-            reqlog_free(statlogger);
-            return NULL;
-        }
+        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
+        diff_deadlocks = ndeadlocks - last_ndeadlocks;
+        diff_lockwaits = nlockwaits - last_nlockwaits;
 
         diff_qtrap = nqtrap - last_qtrap;
         diff_fstrap = nfstrap - last_fstrap;
         diff_nsql = nsql - last_nsql;
         diff_nsql_steps = nsql_steps - last_nsql_steps;
         diff_newsql = newsql - last_newsql;
-        diff_newsql_steps = newsql_steps - last_newsql_steps;
         diff_nretries = nretries - last_nretries;
         diff_vreplays = vreplays - last_vreplays;
         diff_ncommits = ncommits - last_ncommits;
@@ -7794,7 +4273,6 @@ void *statthd(void *p)
         last_nsql = nsql;
         last_nsql_steps = nsql_steps;
         last_newsql = newsql;
-        last_newsql_steps = newsql_steps;
         last_nretries = nretries;
         last_ndeadlocks = ndeadlocks;
         last_nlockwaits = nlockwaits;
@@ -7828,17 +4306,16 @@ void *statthd(void *p)
                 if (diff_nretries)
                     logmsg(LOGMSG_USER, " n_retries %d", diff_nretries);
                 if (diff_vreplays)
-                    logmsg(LOGMSG_USER, " vreplays %lld", diff_vreplays);
+                    logmsg(LOGMSG_USER, " vreplays %d", diff_vreplays);
                 if (diff_newsql)
-                    logmsg(LOGMSG_USER, " nnewsql %lld", diff_newsql);
+                    logmsg(LOGMSG_USER, " nnewsql %d", diff_newsql);
                 if (diff_ncommit_time)
                     logmsg(LOGMSG_USER, " n_commit_time %f ms",
-                           diff_ncommit_time / (1000 * diff_ncommits));
+                           (double)diff_ncommit_time / (1000 * diff_ncommits));
                 if (diff_bpool_hits)
-                    logmsg(LOGMSG_USER, " cache_hits %llu", diff_bpool_hits);
+                    logmsg(LOGMSG_USER, " cache_hits %lu", diff_bpool_hits);
                 if (diff_bpool_misses)
-                    logmsg(LOGMSG_USER, " cache_misses %llu",
-                           diff_bpool_misses);
+                    logmsg(LOGMSG_USER, " cache_misses %lu", diff_bpool_misses);
                 have_scon_stats = 1;
             }
         }
@@ -7850,14 +4327,14 @@ void *statthd(void *p)
 
         if (COMDB2_DIFFSTAT_REPORT() && !gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();
-            if ((thresh > 0) && (count > thresh)) {
+            if ((thresh > 0) && (count == thresh)) {
                 strbuf *logstr = strbuf_new();
                 diff_qtrap = nqtrap - last_report_nqtrap;
                 diff_fstrap = nfstrap - last_report_nfstrap;
                 diff_nsql = nsql - last_report_nsql;
                 diff_nsql_steps = nsql_steps - last_report_nsql_steps;
                 diff_newsql = newsql - last_report_newsql;
-                diff_newsql_steps = newsql_steps - last_report_newsql_steps;
+                int diff_newsql_steps = newsql_steps - last_report_newsql_steps;
                 diff_nretries = nretries - last_report_nretries;
                 diff_ncommits = ncommits - last_report_ncommits;
                 diff_ncommit_time = ncommit_time - last_report_ncommit_time;
@@ -7910,59 +4387,59 @@ void *statthd(void *p)
                 }
 
                 for (ii = 0; ii < dbenv->num_dbs; ++ii) {
-                    db = dbenv->dbs[ii];
+                    tbl = dbenv->dbs[ii];
                     hdr = 0;
 
                     for (jj = 0; jj <= MAXTYPCNT; jj++) {
-                        diff = db->typcnt[jj] - db->prev_typcnt[jj];
+                        diff = tbl->typcnt[jj] - tbl->prev_typcnt[jj];
                         if (diff > 0) {
                             if (hdr == 0) {
                                 reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                            db->dbnum, db->dbname);
+                                            tbl->dbnum, tbl->tablename);
                                 hdr = 1;
                             }
                             reqlog_logf(statlogger, REQL_INFO, "%-20s %u\n",
                                         req2a(jj), diff);
                         }
-                        db->prev_typcnt[jj] = db->typcnt[jj];
+                        tbl->prev_typcnt[jj] = tbl->typcnt[jj];
                     }
 
                     for (jj = 0; jj < BLOCK_MAXOPCODE; jj++) {
-                        diff = db->blocktypcnt[jj] - db->prev_blocktypcnt[jj];
+                        diff = tbl->blocktypcnt[jj] - tbl->prev_blocktypcnt[jj];
                         if (diff) {
                             if (hdr == 0) {
                                 reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                            db->dbnum, db->dbname);
+                                            tbl->dbnum, tbl->tablename);
                                 hdr = 1;
                             }
-                            reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                            reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                         breq2a(jj), diff);
                         }
-                        db->prev_blocktypcnt[jj] = db->blocktypcnt[jj];
+                        tbl->prev_blocktypcnt[jj] = tbl->blocktypcnt[jj];
                     }
                     for (jj = 0; jj < MAX_OSQL_TYPES; jj++) {
-                        diff = db->blockosqltypcnt[jj] -
-                               db->prev_blockosqltypcnt[jj];
+                        diff = tbl->blockosqltypcnt[jj] -
+                               tbl->prev_blockosqltypcnt[jj];
                         if (diff) {
                             if (hdr == 0) {
                                 reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                            db->dbnum, db->dbname);
+                                            tbl->dbnum, tbl->tablename);
                                 hdr = 1;
                             }
-                            reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                            reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                         osql_breq2a(jj), diff);
                         }
-                        db->prev_blockosqltypcnt[jj] = db->blockosqltypcnt[jj];
+                        tbl->prev_blockosqltypcnt[jj] = tbl->blockosqltypcnt[jj];
                     }
 
                     diff = dbenv->txns_committed - dbenv->prev_txns_committed;
                     if (diff) {
                         if (hdr == 0) {
                             reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                        db->dbnum, db->dbname);
+                                        tbl->dbnum, tbl->tablename);
                             hdr = 1;
                         }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                     "txns committed", diff);
                     }
                     dbenv->prev_txns_committed = dbenv->txns_committed;
@@ -7971,25 +4448,25 @@ void *statthd(void *p)
                     if (diff) {
                         if (hdr == 0) {
                             reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                        db->dbnum, db->dbname);
+                                        tbl->dbnum, tbl->tablename);
                             hdr = 1;
                         }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                     "txns aborted", diff);
                     }
                     dbenv->prev_txns_aborted = dbenv->txns_aborted;
 
-                    diff = db->nsql - db->prev_nsql;
+                    diff = tbl->nsql - tbl->prev_nsql;
                     if (diff) {
                         if (hdr == 0) {
                             reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                        db->dbnum, db->dbname);
+                                        tbl->dbnum, tbl->tablename);
                             hdr = 1;
                         }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                     "nsql", diff);
                     }
-                    db->prev_nsql = db->nsql;
+                    tbl->prev_nsql = tbl->nsql;
                 }
 
                 pstats = bdb_get_process_stats();
@@ -7999,8 +4476,8 @@ void *statthd(void *p)
                                       last_bdb_stats.n_lock_waits;
                     reqlog_logf(statlogger, REQL_INFO,
                                 "%u locks, avg time %ums\n", nreads,
-                                (cur_bdb_stats.lock_wait_time_ms -
-                                 last_bdb_stats.lock_wait_time_ms) /
+                                U2M(cur_bdb_stats.lock_wait_time_us -
+                                    last_bdb_stats.lock_wait_time_us) /
                                     nreads);
                 }
                 if (cur_bdb_stats.n_preads > last_bdb_stats.n_preads) {
@@ -8010,8 +4487,8 @@ void *statthd(void *p)
                                 "%u preads, %u bytes, avg time %ums\n", npreads,
                                 cur_bdb_stats.pread_bytes -
                                     last_bdb_stats.pread_bytes,
-                                (cur_bdb_stats.pread_time_ms -
-                                 last_bdb_stats.pread_time_ms) /
+                                U2M(cur_bdb_stats.pread_time_us -
+                                    last_bdb_stats.pread_time_us) /
                                     npreads);
                 }
                 if (cur_bdb_stats.n_pwrites > last_bdb_stats.n_pwrites) {
@@ -8021,8 +4498,8 @@ void *statthd(void *p)
                                 "%u pwrites, %u bytes, avg time %ums\n",
                                 npwrites, cur_bdb_stats.pwrite_bytes -
                                               last_bdb_stats.pwrite_bytes,
-                                (cur_bdb_stats.pwrite_time_ms -
-                                 last_bdb_stats.pwrite_time_ms) /
+                                U2M(cur_bdb_stats.pwrite_time_us -
+                                    last_bdb_stats.pwrite_time_us) /
                                     npwrites);
                 }
                 last_bdb_stats = cur_bdb_stats;
@@ -8095,6 +4572,9 @@ void *statthd(void *p)
         ++count;
         sleep(1);
     }
+
+    reqlog_free(statlogger);
+    return NULL;
 }
 
 void create_stat_thread(struct dbenv *dbenv)
@@ -8126,7 +4606,7 @@ static void set_datetime_dir(void)
         abort();
     }
 
-    tz_set_dir(dir);
+    set_tzdir(dir);
 }
 
 static void iomap_on(void *p)
@@ -8401,8 +4881,6 @@ static void register_all_int_switches()
                         &gbl_noenv_messages);
     register_int_switch("track_curtran_locks", "Print curtran lockinfo",
                         &gbl_track_curtran_locks);
-    register_int_switch("print_deadlock_cycles", "Print all deadlock cycles",
-                        &gbl_print_deadlock_cycles);
     register_int_switch("replicate_rowlocks", "Replicate rowlocks",
                         &gbl_replicate_rowlocks);
     register_int_switch("gather_rowlocks_on_replicant",
@@ -8414,6 +4892,13 @@ static void register_all_int_switches()
                         "Don't add logical logging for rowlocks",
                         &gbl_disable_rowlocks_logging);
     register_int_switch("disable_rowlocks",
+                        "Follow rowlocks codepath but don't lock",
+                        &gbl_disable_rowlocks);
+    /*
+      Alias of "disable_rowlocks" to handle lrl option for backward
+      compatibility.
+    */
+    register_int_switch("disable_rowlock_locking",
                         "Follow rowlocks codepath but don't lock",
                         &gbl_disable_rowlocks);
     register_int_switch("random_rowlocks",
@@ -8493,7 +4978,7 @@ static void register_all_int_switches()
     register_int_switch("rep_printlock", "Print locks in rep commit",
                         &gbl_rep_printlock);
     register_int_switch("accept_on_child_nets",
-                        "listen on separate port for osql/signal nets",
+                        "listen on separate port for osql net",
                         &gbl_accept_on_child_nets);
     register_int_switch("disable_etc_services_lookup",
                         "When on, disables using /etc/services first to "
@@ -8509,9 +4994,9 @@ static void register_all_int_switches()
                         "Enables periodic durable failures in blkseq replay",
                         &gbl_durable_replay_test);
     register_int_switch(
-        "durable_block_test",
-        "Return periodic durability failures from bdb_durable_block",
-        &gbl_durable_block_test);
+        "stable_rootpages_test",
+        "Delay sql processing to allow a schema change to finish",
+        &gbl_stable_rootpages_test);
     register_int_switch("durable_set_trace",
                         "Print trace set durable and commit lsn trace",
                         &gbl_durable_set_trace);
@@ -8535,7 +5020,12 @@ static void register_all_int_switches()
     register_int_switch("test_curtran_change", 
                         "Test change-curtran codepath (for debugging only)",
                         &gbl_test_curtran_change_code);
-    register_int_switch("skip_cget_in_db_put", 
+    register_int_switch("test_blkseq_replay",
+                        "Test blkseq replay codepath (for debugging only)",
+                        &gbl_test_blkseq_replay_code);
+    register_int_switch("dump_blkseq", "Dump all blkseq inserts and replays",
+                        &gbl_dump_blkseq);
+    register_int_switch("skip_cget_in_db_put",
                         "Don't perform a cget when we do a cput",
                         &gbl_skip_cget_in_db_put);
     register_int_switch("direct_count",
@@ -8544,6 +5034,30 @@ static void register_all_int_switches()
     register_int_switch("parallel_count",
                         "When 'direct_count' is on, enable thread-per-stripe",
                         &gbl_parallel_count);
+    register_int_switch("debug_sqlthd_failures",
+                        "Force sqlthd failures in unusual places",
+                        &gbl_debug_sqlthd_failures);
+    register_int_switch("random_get_curtran_failures",
+                        "Force random get_curtran failures",
+                        &gbl_random_get_curtran_failures);
+    register_int_switch("abort_invalid_query_info_key",
+                        "Abort in thread-teardown for invalid query_info_key",
+                        &gbl_abort_invalid_query_info_key);
+    register_int_switch("cause_random_blkseq_replays",
+                        "Cause random blkseq replays from replicant",
+                        &gbl_random_blkseq_replays);
+    register_int_switch("disable_cnonce_blkseq",
+                        "Don't use cnonce for blkseq (for testing)",
+                        &gbl_disable_cnonce_blkseq);
+    register_int_switch("early_verify",
+                        "Give early verify errors for updates in SQLite layer",
+                        &gbl_early_verify);
+    register_int_switch("new_indexes",
+                        "Let replicants send indexes values to master",
+                        &gbl_new_indexes);
+    register_int_switch("mifid2_datetime_range",
+                        "Extend datetime range to meet mifid2 requirements",
+                        &gbl_mifid2_datetime_range);
 }
 
 static void getmyid(void)
@@ -8564,6 +5078,42 @@ static void getmyid(void)
     getmyaddr();
     gbl_mypid = getpid();
 }
+
+void create_marker_file() 
+{
+    char *marker_file;
+    int tmpfd;
+    for (int ii = 0; ii < thedb->num_dbs; ii++) {
+        if (thedb->dbs[ii]->dbnum) {
+            marker_file =
+                comdb2_location("marker", "%s.trap", thedb->dbs[ii]->tablename);
+            tmpfd = creat(marker_file, 0666);
+            free(marker_file);
+            if (tmpfd != -1) close(tmpfd);
+        }
+    }
+    marker_file = comdb2_location("marker", "%s.trap", thedb->envname);
+    tmpfd = creat(marker_file, 0666);
+    free(marker_file);
+    if (tmpfd != -1) close(tmpfd);
+}
+
+static void handle_resume_sc()
+{
+    /* if there is an active schema changes, resume it, this is automatically
+     * done every time the master changes, but on startup the low level meta
+     * table wasn't open yet so we couldn't check to see if a schema change was
+     * in progress */
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
+        thedb->master == gbl_mynode) {
+        int irc = resume_schema_change();
+        if (irc)
+            logmsg(LOGMSG_ERROR, 
+                    "failed trying to resume schema change, "
+                    "if one was in progress it will have to be restarted\n");
+    }
+}
+
 
 #define TOOL(x) #x,
 
@@ -8591,6 +5141,19 @@ struct tool tool_callbacks[] = {
    NULL
 };
 
+static void wait_for_coherent()
+{
+    const unsigned int cslp = 10000;                 /* 10000us == 10ms */
+    const unsigned int wrn_cnt = 5 * 1000000 / cslp; /* 5s */
+    unsigned int counter = 1;
+    while (!bdb_am_i_coherent(thedb->bdb_env)) {
+        if ((++counter % wrn_cnt) == 0) {
+            logmsg(LOGMSG_ERROR, "I am still incoherent\n");
+        }
+        usleep(cslp);
+    }
+}
+
 int main(int argc, char **argv)
 {
     char *marker_file;
@@ -8601,13 +5164,12 @@ int main(int argc, char **argv)
 
     /* clean left over transactions every 5 minutes */
     int clean_mins = 5 * 60 * 1000;
-    struct sigaction sact;
 
     /* allocate initializer first */
     comdb2ma_init(0, 0);
 
     /* more reliable */
-#ifdef _LINUX_SOURCE
+#ifdef __linux__
     char fname[PATH_MAX];
     rc = readlink("/proc/self/exe", fname, sizeof(fname));
     if (rc > 0 && rc < sizeof(fname)) {
@@ -8626,6 +5188,12 @@ int main(int argc, char **argv)
           return tool_callbacks[i].main_func(argc, argv);
     }
 
+    /* Initialize the tunables. */
+    if ((init_gbl_tunables())) {
+        logmsg(LOGMSG_FATAL, "Failed to initialize tunables");
+        exit(1);
+    }
+
     init_debug_switches();
 
     timer_init(ttrap);
@@ -8637,14 +5205,13 @@ int main(int argc, char **argv)
     getmyid();
 
     /* ignore too large files signals */
+    struct sigaction sact;
     sact.sa_handler = SIG_IGN;
     sigemptyset(&sact.sa_mask);
     sact.sa_flags = 0;
     sigaction(SIGXFSZ, &sact, NULL);
 
     signal(SIGTERM, clean_exit_sigwrap);
-
-    gbl_enabled_new_context = 1;
 
     if (debug_switch_skip_skipables_on_verify())
         gbl_berkdb_verify_skip_skipables = 1;
@@ -8655,9 +5222,6 @@ int main(int argc, char **argv)
 
     if (debug_switch_verbose_deadlocks())
         verbose_deadlocks = 1;
-
-    if ((rc = io_override_init()))
-        return -1;
 
     /* line buffering in stdout */
     setvbuf(stdout, 0, _IOLBF, 0);
@@ -8691,52 +5255,28 @@ int main(int argc, char **argv)
     javasp_once_init();
 
     register_all_int_switches();
+    repl_list_init();
+
+    set_portmux_bind_path(NULL);
 
     if (init(argc, argv) == -1) {
         logmsg(LOGMSG_FATAL, "failed to start\n");
         exit(1);
     }
 
-    set_datetime_dir();
+    /*
+      Place a freeze on tunables' registration. This is done to
+      avoid multiple re-registration during the creation of temp
+      table env.
+    */
+    gbl_tunables->freeze = 1;
 
-    /* We need to do this before resuming schema chabge , if any */
-    logmsg(LOGMSG_INFO, "Reloading time partitions\n");
-    thedb->timepart_views = timepart_views_init(thedb);
-    if (!thedb->timepart_views)
-        abort();
-
-    /* if there is an active schema changes, resume it, this is automatically
-     * done every time the master changes, but on startup the low level meta
-     * table wasn't open yet so we couldn't check to see if a schema change was
-     * in progress */
-    if (thedb->master == gbl_mynode) {
-        int irc = resume_schema_change();
-        if (irc)
-            logmsg(LOGMSG_ERROR, 
-                    "failed trying to resume schema change, "
-                    "if one was in progress it will have to be restarted\n");
-    }
-
-    repl_list_init();
+    handle_resume_sc();
 
     /* Creating a server context wipes out the db #'s dbcommon entries.
      * Recreate them. */
     fix_lrl_ixlen();
-
-    int tmpfd;
-    for (ii = 0; ii < thedb->num_dbs; ii++) {
-        if (thedb->dbs[ii]->dbnum) {
-            marker_file =
-                comdb2_location("marker", "%s.trap", thedb->dbs[ii]->dbname);
-            tmpfd = creat(marker_file, 0666);
-            free(marker_file);
-            if (tmpfd != -1) close(tmpfd);
-        }
-    }
-    marker_file = comdb2_location("marker", "%s.trap", thedb->envname);
-    tmpfd = creat(marker_file, 0666);
-    free(marker_file);
-    if (tmpfd != -1) close(tmpfd);
+    create_marker_file();
 
     create_watchdog_thread(thedb);
     create_old_blkseq_thread(thedb);
@@ -8764,11 +5304,6 @@ int main(int argc, char **argv)
     if (comdb2ma_stats_cron() != 0)
         abort();
 
-    if (strcmp(thedb->envname, "leddydb") == 0)
-       logmsg(LOGMSG_WARN, "I AM LEDDY.\n");
-    else
-       logmsg(LOGMSG_WARN, "I AM READY.\n");
-
     if (process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
                                  deferred_do_commands)) {
         logmsg(LOGMSG_FATAL, "failed to process deferred options\n");
@@ -8778,8 +5313,10 @@ int main(int argc, char **argv)
     // db started - disable recsize kludge so
     // new schemachanges won't allow broken size.
     gbl_broken_max_rec_sz = 0;
+    wait_for_coherent();
 
     gbl_ready = 1;
+    logmsg(LOGMSG_WARN, "I AM READY.\n");
 
     extern void *timer_thread(void *);
     pthread_t timer_tid;
@@ -8805,32 +5342,82 @@ void delete_db(char *db_name)
 
     pthread_rwlock_wrlock(&thedb_lock);
     if ((idx = getdbidxbyname(db_name)) < 0) {
-        logmsg(LOGMSG_FATAL, "%s: failed to find db for deletion: %s\n", __func__,
+        logmsg(LOGMSG_FATAL, "%s: failed to find tbl for deletion: %s\n", __func__,
                 db_name);
         exit(1);
     }
 
-    for (int i = idx; i < (thedb->num_dbs - 1); i++)
+    /* Remove the table from hash. */
+    hash_del(thedb->db_hash, thedb->dbs[idx]);
+
+    for (int i = idx; i < (thedb->num_dbs - 1); i++) {
         thedb->dbs[i] = thedb->dbs[i + 1];
+        thedb->dbs[i]->dbs_idx = i;
+    }
 
     thedb->num_dbs -= 1;
+    thedb->dbs[thedb->num_dbs] = NULL;
     pthread_rwlock_unlock(&thedb_lock);
 }
 
-void replace_db(struct db *p_db)
+/* rename in memory db names; fragile */
+int rename_db(struct dbtable *db, const char *newname)
 {
-    int idx;
+    int rc;
+    char *tag_name = strdup(newname);
+    char *bdb_name = strdup(newname);
 
-    if ((idx = getdbidxbyname(p_db->dbname)) < 0) {
-        logmsg(LOGMSG_FATAL, "%s: failed to find db for replacement: %s\n", __func__,
-                p_db->dbname);
-        exit(1);
+    if (!tag_name || !bdb_name)
+        return -1;
+
+    pthread_rwlock_wrlock(&thedb_lock);
+
+    /* tags */
+    rename_schema(db->tablename, tag_name);
+
+    /* bdb_state */
+    bdb_state_rename(db->handle, bdb_name);
+
+    /* db */
+    hash_del(thedb->db_hash, db);
+    db->tablename = (char *)newname;
+    db->version = 0; /* reset, new table */
+    hash_add(thedb->db_hash, db);
+
+    pthread_rwlock_unlock(&thedb_lock);
+    return 0;
+}
+
+void replace_db_idx(struct dbtable *p_db, int idx)
+{
+    int move = 0;
+    pthread_rwlock_wrlock(&thedb_lock);
+
+    if (idx < 0 || idx >= thedb->num_dbs ||
+        strcasecmp(thedb->dbs[idx]->tablename, p_db->tablename) != 0) {
+        thedb->dbs =
+            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct dbtable *));
+        if (idx < 0 || idx >= thedb->num_dbs) idx = thedb->num_dbs;
+        thedb->num_dbs++;
+        move = 1;
     }
 
-    p_db->dbnum = thedb->dbs[idx]->dbnum; /* save dbnum since we can't load if
-                                         * from the schema anymore */
+    for (int i = (thedb->num_dbs - 1); i > idx && move; i--) {
+        thedb->dbs[i] = thedb->dbs[i - 1];
+        thedb->dbs[i]->dbs_idx = i;
+    }
+
+    if (!move) p_db->dbnum = thedb->dbs[idx]->dbnum;
+
     p_db->dbs_idx = idx;
     thedb->dbs[idx] = p_db;
+
+    /* Add table to the hash. */
+    if (move == 1) {
+        hash_add(thedb->db_hash, p_db);
+    }
+
+    pthread_rwlock_unlock(&thedb_lock);
 }
 
 void epoch2a(int epoch, char *buf, size_t buflen)
@@ -8859,13 +5446,15 @@ static int put_all_csc2()
             int rc;
             
             if (thedb->dbs[ii]->lrlfname)
-               rc = load_new_table_schema_file(thedb, thedb->dbs[ii]->dbname,
-                     thedb->dbs[ii]->lrlfname);
+                rc = load_new_table_schema_file(
+                    thedb, thedb->dbs[ii]->tablename, thedb->dbs[ii]->lrlfname);
             else
-               rc = load_new_table_schema_tran(thedb, NULL, thedb->dbs[ii]->dbname, thedb->dbs[ii]->csc2_schema);
+                rc = load_new_table_schema_tran(thedb, NULL,
+                                                thedb->dbs[ii]->tablename,
+                                                thedb->dbs[ii]->csc2_schema);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "error storing schema for table '%s'\n",
-                       thedb->dbs[ii]->dbname);
+                       thedb->dbs[ii]->tablename);
                 return -1;
             }
         }
@@ -8888,7 +5477,7 @@ int check_current_schemas(void)
         for (ii = 0; ii < thedb->num_dbs; ii++) {
             if (thedb->dbs[ii]->dbtype == DBTYPE_TAGGED_TABLE) {
                 int rc;
-                rc = check_table_schema(thedb, thedb->dbs[ii]->dbname,
+                rc = check_table_schema(thedb, thedb->dbs[ii]->tablename,
                                         thedb->dbs[ii]->lrlfname);
                 if (rc != 0)
                     schema_errors++;
@@ -8962,59 +5551,51 @@ int thdpool_alarm_on_queing(int len)
 
 int gbl_hostname_refresh_time = 60;
 
-static int write_pidfile(const char *pidfile)
-{
-    FILE *f;
-    f = fopen(pidfile, "w");
-    if (f == NULL) {
-        logmsg(LOGMSG_ERROR, "%s %s\n", pidfile, strerror(errno));
-        return -1;
-    }
-    fprintf(f, "%d\n", (int)getpid());
-    fclose(f);
-    return 0;
-}
-
 int comdb2_is_standalone(void *dbenv)
 {
     return bdb_is_standalone(dbenv, thedb->bdb_env);
 }
 
+const char *comdb2_get_dbname(void)
+{
+    return thedb->envname;
+}
+
+int sc_ready(void)
+{
+    return thedb->timepart_views != 0;
+}
+
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
 
-static int create_service_file(char *lrlname)
+static void create_service_file(const char *lrlname)
 {
 #ifdef _LINUX_SOURCE
     char *comdb2_path = comdb2_location("scripts", "comdb2");
 
     char *service_file =
         comdb2_asprintf("%s/%s.service", thedb->basedir, thedb->envname);
-    struct passwd *pw;
-    char *user;
     char lrl[PATH_MAX];
     if (lrlname) {
-       if (realpath(lrlname, lrl) == NULL) {
-          logmsg(LOGMSG_ERROR, "can't resolve path to lrl file\n");
-       }
+        if (realpath(lrlname, lrl) == NULL) {
+            logmsg(LOGMSG_ERROR, "can't resolve path to lrl file\n");
+        }
+    }
+
+    struct passwd *pw = getpwuid(getuid());
+    if (pw == NULL) {
+        logmsg(LOGMSG_ERROR, "can't resolve current user: %d %s\n", errno,
+               strerror(errno));
+        return;
     }
 
     FILE *f = fopen(service_file, "w");
-
-    pw = getpwuid(getuid());
-    if (pw == NULL) {
-        logmsg(LOGMSG_ERROR, "can't resolve current user: %d %s\n", errno,
-                strerror(errno));
-        free(service_file);
-    }
-    user = pw->pw_name;
-
+    free(service_file);
     if (f == NULL) {
         logmsg(LOGMSG_ERROR, "can't create service file: %d %s\n", errno,
-                strerror(errno));
-        free(service_file);
-        fclose(f);
-        return 1;
+               strerror(errno));
+        return;
     }
 
     fprintf(f, "[Unit]\n");
@@ -9026,13 +5607,12 @@ static int create_service_file(char *lrlname)
                "Restart=always\n"
                "RestartSec=1\n\n"
                "[Install]\n"
-               "WantedBy=multi-user.target\n", user);
+               "WantedBy=multi-user.target\n",
+            pw->pw_name);
 
     fclose(f);
 #endif
-    return 0;
+    return;
 }
 
 #undef QUOTE
-
-/* vim: set sw=3 ts=3 et: */

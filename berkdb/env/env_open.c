@@ -22,6 +22,7 @@ static const char revid[] = "$Id: env_open.c,v 11.144 2003/09/13 18:39:34 bostic
 #include <stdarg.h>
 #endif
 #include <unistd.h>
+#include <limits.h>
 
 #include <plhash.h>
 #include "db_int.h"
@@ -573,13 +574,13 @@ foundlsn:
 	/* Parallel recovery stuff */
 	if (LF_ISSET(DB_INIT_REP)) {
 		dbenv->recovery_processors =
-		    thdpool_create("recovery processors", 0);
+		    thdpool_create("recovery_processors", 0);
 		thdpool_set_maxthds(dbenv->recovery_processors,
 		    dbenv->num_recovery_processor_threads);
 		thdpool_set_linger(dbenv->recovery_processors, 30);
 		thdpool_set_maxqueue(dbenv->recovery_processors, 0);
 		thdpool_set_wait(dbenv->recovery_processors, 1);
-		dbenv->recovery_workers = thdpool_create("recovery workers", 0);
+		dbenv->recovery_workers = thdpool_create("recovery_workers", 0);
 		thdpool_set_maxthds(dbenv->recovery_workers,
 		    dbenv->num_recovery_worker_threads);
 		thdpool_set_linger(dbenv->recovery_workers, 30);
@@ -635,7 +636,7 @@ foundlsn:
 	if (rep_check)
 		__env_rep_exit(dbenv);
 
-	if (ret = __lc_cache_init(dbenv, 0))
+	if ((ret = __lc_cache_init(dbenv, 0)) != 0)
 		goto err;
 
 	dbenv->verbose |= DB_VERB_REPLICATION;
@@ -943,7 +944,7 @@ __dbenv_refresh(dbenv, orig_flags, rep_check)
 		 */
 		{
 			if (F_ISSET(dbenv, DB_ENV_PRIVATE) &&
-			    (t_ret = __memp_sync(dbenv, NULL, NULL)) != 0 && ret == 0)
+			    (t_ret = __memp_sync(dbenv, NULL)) != 0 && ret == 0)
 				ret = t_ret;
 
 			if ((t_ret = __memp_dbenv_refresh(dbenv)) != 0 &&
@@ -1285,8 +1286,8 @@ int
 __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 {
 	int ret = 0;
-	char buf[256];
-	char fname[256];
+	char buf[PATH_MAX];
+	char fname[PATH_MAX];
 	const char *pbuf;
 	struct __db_checkpoint ckpt = { 0 };
 	int niop = 0;

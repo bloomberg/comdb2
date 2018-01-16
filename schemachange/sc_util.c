@@ -15,21 +15,20 @@
  */
 
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_util.h"
 #include "logmsg.h"
 
 int close_all_dbs(void)
 {
     int ii, rc, bdberr;
-    struct db *db;
+    struct dbtable *db;
     logmsg(LOGMSG_DEBUG, "Closing all tables...\n");
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         db = thedb->dbs[ii];
         rc = bdb_close_only(db->handle, &bdberr);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "failed closing table '%s': %d\n", db->dbname,
-                    bdberr);
+            logmsg(LOGMSG_ERROR, "failed closing table '%s': %d\n",
+                   db->tablename, bdberr);
             return -1;
         }
     }
@@ -40,14 +39,15 @@ int close_all_dbs(void)
 int open_all_dbs(void)
 {
     int ii, rc, bdberr;
-    struct db *db;
+    struct dbtable *db;
     logmsg(LOGMSG_DEBUG, "Opening all tables\n");
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         db = thedb->dbs[ii];
         rc = bdb_open_again(db->handle, &bdberr);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "morestripe: failed reopening table '%s': %d\n",
-                    db->dbname, bdberr);
+            logmsg(LOGMSG_ERROR,
+                   "morestripe: failed reopening table '%s': %d\n",
+                   db->tablename, bdberr);
             return -1;
         }
     }
@@ -76,7 +76,7 @@ int check_sc_ok(struct schema_change_type *s)
     return 0;
 }
 
-int llmeta_get_dbnum(char *tablename, int *bdberr)
+int llmeta_get_dbnum_tran(void *tran, char *tablename, int *bdberr)
 {
     int rc;
     int dbnums[MAX_NUM_TABLES];
@@ -85,12 +85,12 @@ int llmeta_get_dbnum(char *tablename, int *bdberr)
     int i;
     int dbnum = -1;
 
-    rc = bdb_llmeta_get_tables((char **)&tblnames, dbnums, MAX_NUM_TABLES,
+    rc = bdb_llmeta_get_tables(tran, (char **)&tblnames, dbnums, MAX_NUM_TABLES,
                                &numtbls, bdberr);
     if (rc) {
         /* TODO: errors */
         logmsg(LOGMSG_ERROR, "%s:%d bdb_llmeta_get_tables rc %d bdberr %d\n",
-                __FILE__, __LINE__, rc, bdberr);
+               __FILE__, __LINE__, rc, *bdberr);
         return rc;
     }
     for (i = 0; i < numtbls; i++) {
@@ -102,16 +102,21 @@ int llmeta_get_dbnum(char *tablename, int *bdberr)
     return dbnum;
 }
 
-/* careful this can cause overflows, do not use */
-char *get_temp_db_name(struct db *db, char *prefix, char tmpname[])
+int llmeta_get_dbnum(char *tablename, int *bdberr)
 {
-    sprintf(tmpname, "%s%s", prefix, db->dbname);
+    return llmeta_get_dbnum_tran(NULL, tablename, bdberr);
+}
+
+/* careful this can cause overflows, do not use */
+char *get_temp_db_name(struct dbtable *db, char *prefix, char tmpname[])
+{
+    sprintf(tmpname, "%s%s", prefix, db->tablename);
 
     return tmpname;
 }
 
 // get offset of key name without .NEW. added to the name
-inline int get_offset_of_keyname(const char *idx_name)
+int get_offset_of_keyname(const char *idx_name)
 {
     const char strnew[] = ".NEW.";
     int offset = 0;
@@ -147,14 +152,14 @@ inline static int validate_ixname(const char *keynm)
         return SC_BAD_INDEX_NAME;
     }
     if (cptr - keynm >= MAXIDXNAMELEN) {
-        logmsg(LOGMSG_ERROR, "Length of key '%s' exceeds %d characters\n", keynm,
-                MAXIDXNAMELEN - 1);
+        logmsg(LOGMSG_ERROR, "Length of key '%s' exceeds %d characters\n",
+               keynm, MAXIDXNAMELEN - 1);
         return SC_BAD_INDEX_NAME;
     }
     return 0;
 }
 
-int validate_ix_names(struct db *db)
+int validate_ix_names(struct dbtable *db)
 {
     int rc = 0;
     for (int i = 0; i < db->nix; ++i) {
@@ -162,9 +167,7 @@ int validate_ix_names(struct db *db)
         int offset = get_offset_of_keyname(index->csctag);
         const char *keynm = index->csctag + offset;
         rc = validate_ixname(keynm);
-        if (rc)
-            break;
+        if (rc) break;
     }
     return rc;
 }
-

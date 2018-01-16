@@ -31,7 +31,7 @@
 #include <limits.h>
 
 #include <epochlib.h>
-#include <db.h>
+#include <build/db.h>
 
 #include "net.h"
 #include "bdb_int.h"
@@ -155,28 +155,6 @@ void bdb_lock_name(bdb_state_type *bdb_state, char *s, size_t slen,
         const unsigned char *cptr = lockid;
         snprintf(s, slen, "lockid_leen=%u", (unsigned)lockid_len);
     }
-}
-
-void *bdb_allocate_locks(int nTables)
-{
-    return calloc(nTables, sizeof(DB_LOCK));
-}
-
-int bdb_unlock_table(bdb_state_type *bdb_state, void *locks, int index)
-{
-    DB_LOCK *dlocks = locks;
-    if (dlocks[index].ndx) {
-        bdb_release_lock(bdb_state, &dlocks[index]);
-    }
-    /* otherwise lock is transfered */
-    return 0;
-}
-
-int bdb_lock_table(bdb_state_type *bdb_state, int lid, void *locks, int index)
-{
-    DB_LOCK *dlocks = locks;
-    bdb_lock_table_read_fromlid(bdb_state, lid, &dlocks[index]);
-    return 0;
 }
 
 int bdb_write_preamble(bdb_state_type *bdb_state, int *bdberr)

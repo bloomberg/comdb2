@@ -66,6 +66,11 @@ void getRowid(BtCursor *pCursor, i64 rowid, u8 p3, Mem *pOut)
       return;
   }
 
+  if( pCursor==NULL ){
+      MemSetTypeFlag(pOut, MEM_Null);
+      return;
+  }
+
   if( p3 == 1 ){
     sqlite3BtreeRecordIDString(pCursor, rowid, &pOut->z, 0);
     pOut->n = strlen(pOut->z);
@@ -942,7 +947,7 @@ int sqlite3VdbeExec(
 
     /* COMDB2 MODIFICATION */
     if( gbl_debug_sql_opcodes ){
-      logmsg(LOGMSG_USER, "tid 0x%x step %d pc %d op %d %s\n", pthread_self(), nVmStep, 
+      logmsg(LOGMSG_USER, "tid 0x%lx step %d pc %d op %d %s\n", pthread_self(), nVmStep,
                 (int)(pOp - aOp), pOp->opcode, sqlite3OpcodeName(pOp->opcode));
     }
 
@@ -1822,8 +1827,8 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
   else if( ((pIn1->flags & pIn2->flags & MEM_Interval)==MEM_Interval) &&
             (
              pIn1->du.tv.type == pIn2->du.tv.type ||
-             pIn1->du.tv.type == INTV_DS_TYPE && pIn2->du.tv.type == INTV_DSUS_TYPE ||
-             pIn1->du.tv.type == INTV_DSUS_TYPE && pIn2->du.tv.type == INTV_DS_TYPE
+             (pIn1->du.tv.type == INTV_DS_TYPE && pIn2->du.tv.type == INTV_DSUS_TYPE) ||
+             (pIn1->du.tv.type == INTV_DSUS_TYPE && pIn2->du.tv.type == INTV_DS_TYPE)
              ) &&
             ((pOp->opcode == OP_Add) || (pOp->opcode == OP_Subtract))){
   
@@ -2495,7 +2500,7 @@ compare_op:
     pOut = &aMem[pOp->p2];
     iCompare = res;
     res2 = res2!=0;  /* For this path res2 must be exactly 0 or 1 */
-    if( (pOp->p5 & SQLITE_KEEPNULL)!=0 ){
+    if( (pOp->p5 & SQLITE_KEEPNULL)==SQLITE_KEEPNULL ){
       /* The KEEPNULL flag prevents OP_Eq from overwriting a NULL with 1
       ** and prevents OP_Ne from overwriting NULL with 0.  This flag
       ** is only used in contexts where either:
@@ -3649,7 +3654,10 @@ case OP_Transaction: {
   assert( p->bIsReader );
   assert( p->readOnly==0 || pOp->p2==0 );
   assert( pOp->p1>=0 && pOp->p1<db->nDb );
-  assert( DbMaskTest(p->btreeMask, pOp->p1) );
+  /* COMDB2: we have not set btreeMask because we dont set cookieMask
+   * which then is used to set btreeMask in sqlite3FinishCoding
+   * (modified by COMDB2) by calling sqlite3VdbeUsesBtree.
+   * assert( DbMaskTest(p->btreeMask, pOp->p1) ); */
   if( pOp->p2 && (db->flags & SQLITE_QueryOnly)!=0 ){
     rc = SQLITE_READONLY;
     goto abort_due_to_error;
@@ -3957,7 +3965,7 @@ case OP_OpenWrite:
   pCur->isOrdered = 1;
   pCur->pgnoRoot = p2;
 #ifdef SQLITE_DEBUG
-  pCur->wrFlag = wrFlag;
+  pCur->wrFlag = flag;
 #endif
 /* COMDB2 MODIFICATION */
   pCur->nCookFields = -1;
@@ -4037,8 +4045,7 @@ case OP_OpenEphemeral: {
   rc = sqlite3BtreeOpen(db->pVfs, 0, db, &pCx->pBt, 
                         BTREE_OMIT_JOURNAL | BTREE_SINGLE | pOp->p5, vfsFlags);
   if( rc==SQLITE_OK ){
-    /* COMDB2 MODIFICATION- don't toggle wrflag in sqlglue. */
-    rc = sqlite3BtreeBeginTransNoflag(p, pCx->pBt);
+    rc = sqlite3BtreeBeginTrans(p, pCx->pBt, 0);
   }
   if( rc==SQLITE_OK ){
     /* If a transient index is required, create it by calling
@@ -4493,7 +4500,7 @@ case OP_SeekGT: {       /* jump, in3 */
 **
 ** See also: NotFound, NoConflict, NotExists. SeekGe
 */
-/* Opcode: NotFound P1 P2 P3 P4 *
+/* Opcode: NotFound P1 P2 P3 P4 P5
 ** Synopsis: key=r[P3@P4]
 **
 ** If P4==0 then register P3 holds a blob constructed by MakeRecord.  If
@@ -4505,6 +4512,8 @@ case OP_SeekGT: {       /* jump, in3 */
 ** does contain an entry whose prefix matches the P3/P4 record then control
 ** falls through to the next instruction and P1 is left pointing at the
 ** matching entry.
+**
+** COMDB2 MODIFICATION: throw verification error if P5 is set
 **
 ** This operation leaves the cursor in a state where it cannot be
 ** advanced in either direction.  In other words, the Next and Prev
@@ -4542,7 +4551,7 @@ case OP_Found: {        /* jump, in3 */
   int takeJump;
   int ii;
   VdbeCursor *pC;
-  int res;
+  int res = 0;
   char *pFree;
   UnpackedRecord *pIdxKey;
   UnpackedRecord r;
@@ -4598,6 +4607,9 @@ case OP_Found: {        /* jump, in3 */
       }
     }
   }
+  /* COMDB2 MODIFICATION */
+  /* res = -1 triggers early verify check */
+  if( pOp->opcode == OP_NotFound && pOp->p5 ) res = -1;
   rc = sqlite3BtreeMovetoUnpacked(pC->uc.pCursor, pIdxKey, 0, 
       /* COMDB2 MODIFICATION */ pOp->opcode, &res);
   if( pOp->p4.i==0 ){
@@ -4645,7 +4657,7 @@ case OP_Found: {        /* jump, in3 */
 **
 ** See also: Found, NotFound, NoConflict, SeekRowid
 */
-/* Opcode: NotExists P1 P2 P3 * *
+/* Opcode: NotExists P1 P2 P3 * P5
 ** Synopsis: intkey=r[P3]
 **
 ** P1 is the index of a cursor open on an SQL table btree (with integer
@@ -4661,6 +4673,8 @@ case OP_Found: {        /* jump, in3 */
 **
 ** The OP_NotFound opcode performs the same operation on index btrees
 ** (with arbitrary multi-value keys).
+**
+** COMDB2 MODIFICATION: throw verification error if P5 is set
 **
 ** This opcode leaves the cursor in a state where it cannot be advanced
 ** in either direction.  In other words, the Next and Prev opcodes will
@@ -4695,6 +4709,9 @@ case OP_NotExists:          /* jump, in3 */
   assert( pCrsr!=0 );
   res = 0;
   iKey = pIn3->u.i;
+  /* COMDB2 MODIFICATION */
+  /* res = -1 triggers early verify check */
+  if (pOp->p5) res = -1;
   rc = sqlite3BtreeMovetoUnpacked(pCrsr, 0, iKey, 
       /* COMDB2 MODIFICATION */ pOp->opcode , &res);
   assert( rc==SQLITE_OK || res==0 );

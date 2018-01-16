@@ -17,8 +17,6 @@ int __slow_write_ns = 0;
 
 void (*__berkdb_trace_func) (const char *) = 0;
 
-int bb_berkdb_fasttime(void);
-
 void
 __berkdb_set_num_read_ios(long long *n)
 {
@@ -57,6 +55,8 @@ static const char revid[] = "$Id: os_rw.c,v 11.30 2003/05/23 21:19:05 bostic Exp
 #include <poll.h>
 #include "logmsg.h"
 
+uint64_t bb_berkdb_fasttime(void);
+
 #ifdef HAVE_FILESYSTEM_NOTZERO
 static int __os_zerofill __P((DB_ENV *, DB_FH *));
 #endif
@@ -86,7 +86,7 @@ free_iobuf(void *p)
 	struct iobuf *b = p;
 
 	free(b->buf);
-	comdb2_free(b);
+	free(b);
 }
 
 static void
@@ -110,7 +110,7 @@ get_aligned_buffer(void *buf, size_t bufsz, int copy)
 
 	b = pthread_getspecific(iobufkey);
 	if (b == NULL) {
-		b = comdb2_malloc_berkdb(sizeof(struct iobuf));
+		b = malloc(sizeof(struct iobuf));
 		b->sz = bufsz;
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
 		if (posix_memalign(&b->buf, 512, bufsz))
@@ -169,7 +169,7 @@ __berkdb_direct_read(int fd, void *buf, size_t bufsz)
 
 	/* short read? */
 	if (rc < extra_fluff) {
-		logmsg(LOGMSG_ERROR, "pread rc %d asize %d bufsz %d\n", rc, asize, bufsz);
+		logmsg(LOGMSG_ERROR, "pread rc %d asize %zu bufsz %zu\n", rc, asize, bufsz);
 		return 0;
 	}
 
@@ -198,13 +198,17 @@ __berkdb_direct_read(int fd, void *buf, size_t bufsz)
 			goto done_verify;
 		}
 		flags = fcntl(nfd, F_GETFL);
+#ifdef __APPLE__
+		flags &= ~F_NOCACHE;
+#else
 		flags &= ~O_DIRECT;
+#endif
 		rc = fcntl(nfd, F_SETFL, flags);
 		if (rc) {
 			logmsg(LOGMSG_ERROR, "fcntl(F_SETFL) rc %d\n", rc);
 			goto done_verify;
 		}
-		checkbuf = comdb2_malloc_berkdb(bufsz);
+		checkbuf = malloc(bufsz);
 		verify_bytes_read = pread(nfd, checkbuf, bufsz, off);
 		if (verify_bytes_read == -1) {
 			logmsg(LOGMSG_ERROR, "pread verify %d %s\n", errno, strerror(errno));
@@ -230,7 +234,7 @@ done_verify:
 		if (nfd != -1)
 			close(nfd);
 		if (checkbuf)
-			comdb2_free(checkbuf);
+			free(checkbuf);
 
 		if (verify_failed)
 			return -1;
@@ -288,7 +292,7 @@ __berkdb_direct_write(int fd, void *buf, size_t bufsz)
 	if (bytes_written == -1)
 		return -1;
 	if (bytes_written != asize) {
-		logmsg(LOGMSG_ERROR, "write %d bytes, needed to write %d\n",
+		logmsg(LOGMSG_ERROR, "write %d bytes, needed to write %zu\n",
 		    bytes_written, asize);
 		return -1;
 	}
@@ -318,20 +322,24 @@ __berkdb_direct_write(int fd, void *buf, size_t bufsz)
 			goto done_verify;
 		}
 		flags = fcntl(nfd, F_GETFL);
+#ifdef __APPLE__
+		flags &= ~F_NOCACHE;
+#else
 		flags &= ~O_DIRECT;
+#endif
 		rc = fcntl(nfd, F_SETFL, flags);
 		if (rc) {
 			logmsg(LOGMSG_ERROR, "fcntl(F_SETFL) rc %d\n", rc);
 			goto done_verify;
 		}
-		checkbuf = comdb2_malloc_berkdb(bufsz);
+		checkbuf = malloc(bufsz);
 		rc = pread(nfd, checkbuf, bufsz, off);
 		if (rc == -1) {
             logmsg(LOGMSG_ERROR, "pread verify %d %s\n", errno, strerror(errno));
 			goto done_verify;
 		}
 		if (rc != bufsz) {
-			logmsg(LOGMSG_ERROR, "unexpected read, wanted %d read %d\n", bufsz,
+			logmsg(LOGMSG_ERROR, "unexpected read, wanted %zu read %d\n", bufsz,
 			    rc);
 			goto done_verify;
 		}
@@ -349,7 +357,7 @@ done_verify:
 		if (nfd != -1)
 			close(nfd);
 		if (checkbuf)
-			comdb2_free(checkbuf);
+			free(checkbuf);
 
 		if (verify_failed)
 			return -1;
@@ -401,8 +409,8 @@ again:
 		}
 		if (nretries > 0) {
 			logmsg(LOGMSG_ERROR, 
-                    "pwrite fd %d sz %d off %lld retry %d\n", fd,
-			    (int)bufsz, offset, nretries);
+                    "pwrite fd %d sz %zu off %ld retry %d\n", fd,
+			    bufsz, offset, nretries);
 			poll(NULL, 0, 10);
 		}
 		if (rc == bufsz && dbenv->attr.check_pwrites) {
@@ -415,7 +423,7 @@ again:
 			crc = pread(fd, abuf, bufsz, offset);
 			if (crc != bufsz) {
 				logmsg(LOGMSG_ERROR, 
-                    "trying to verify pwrite fd %d sz %d off %lld (pgno %u) but got rc %d errno %d\n",
+                    "trying to verify pwrite fd %d sz %d off %ld (pgno %u) but got rc %d errno %d\n",
 				    fd, (int)bufsz, offset,
 				    (uint32_t) (offset / bufsz), crc, errno);
 				if (++nretries < dbenv->attr.num_write_retries) {
@@ -428,7 +436,7 @@ again:
 				    (dbenv->attr.check_pwrites_debug &&
 					((rand() % 100) <
 					    dbenv->attr.check_pwrites_debug))) {
-					logmsg(LOGMSG_ERROR, "trying to verify pwrite fd %d sz %d off %lld (pgno %u) lsn before "
+					logmsg(LOGMSG_ERROR, "trying to verify pwrite fd %d sz %zu off %ld (pgno %u) lsn before "
 					    PR_LSN ", lsn after " PR_LSN
 					    ", retry %d\n", fd, bufsz, offset,
 					    (uint32_t) (offset / bufsz),
@@ -499,7 +507,7 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 
 
 		if (__berkdb_read_alarm_ms) {
-			int x1, x2;
+			uint64_t x1, x2;
 
 			x1 = bb_berkdb_fasttime();
 
@@ -520,19 +528,19 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 				p = bb_berkdb_get_process_stats();
 				p->n_preads++;
 				p->pread_bytes += pagesize;
-				p->pread_time_ms += (x2 - x1);
+				p->pread_time_us += (x2 - x1);
 				t->n_preads++;
 				t->pread_bytes += pagesize;
-				t->pread_time_ms += (x2 - x1);
+				t->pread_time_us += (x2 - x1);
 			}
 
-			if ((x2 - x1) > __berkdb_read_alarm_ms &&
+			if ((x2 - x1) > M2U(__berkdb_read_alarm_ms) &&
 			    __berkdb_trace_func) {
 				char s[80];
 
 				snprintf(s, sizeof(s),
 				    "LONG PREAD (%d) %d ms fd %d\n",
-				    (int)pagesize, x2 - x1, fhp->fd);
+				    (int)pagesize, U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
 		} else if (F_ISSET(fhp, DB_FH_DIRECT))
@@ -559,7 +567,7 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 #endif
 
 		if (__berkdb_write_alarm_ms) {
-			int x1, x2;
+			uint64_t x1, x2;
 
 			x1 = bb_berkdb_fasttime();
 
@@ -580,19 +588,19 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 				p = bb_berkdb_get_process_stats();
 				p->n_pwrites++;
 				p->pwrite_bytes += pagesize;
-				p->pwrite_time_ms += (x2 - x1);
+				p->pwrite_time_us += (x2 - x1);
 				t->n_pwrites++;
 				t->pwrite_bytes += pagesize;
-				t->pwrite_time_ms += (x2 - x1);
+				t->pwrite_time_us += (x2 - x1);
 			}
 
-			if ((x2 - x1) > __berkdb_write_alarm_ms &&
+			if ((x2 - x1) > M2U(__berkdb_write_alarm_ms) &&
 			    __berkdb_trace_func) {
 				char s[80];
 
 				snprintf(s, sizeof(s),
 				    "LONG PWRITE (%d) %d ms fd %d\n",
-				    (int)pagesize, x2 - x1, fhp->fd);
+				    (int)pagesize, U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
 		} else {
@@ -715,7 +723,7 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 
 
 		if (__berkdb_read_alarm_ms) {
-			int x1, x2;
+			uint64_t x1, x2;
 
 			x1 = bb_berkdb_fasttime();
 
@@ -736,19 +744,19 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 				p = bb_berkdb_get_process_stats();
 				p->n_preads++;
 				p->pread_bytes += pagesize;
-				p->pread_time_ms += (x2 - x1);
+				p->pread_time_us += (x2 - x1);
 				t->n_preads++;
 				t->pread_bytes += pagesize;
-				t->pread_time_ms += (x2 - x1);
+				t->pread_time_us += (x2 - x1);
 			}
 
-			if ((x2 - x1) > __berkdb_read_alarm_ms &&
+			if ((x2 - x1) > M2U(__berkdb_read_alarm_ms) &&
 			    __berkdb_trace_func) {
 				char s[80];
 
 				snprintf(s, sizeof(s),
 				    "LONG PREAD (%d) %d ms fd %d\n",
-				    (int)pagesize, x2 - x1, fhp->fd);
+				    (int)pagesize, U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
 		} else if (F_ISSET(fhp, DB_FH_DIRECT))
@@ -775,7 +783,7 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 #endif
 
 		if (__berkdb_write_alarm_ms) {
-			int x1, x2;
+			uint64_t x1, x2;
 
 			x1 = bb_berkdb_fasttime();
 
@@ -796,19 +804,19 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 				p = bb_berkdb_get_process_stats();
 				p->n_pwrites++;
 				p->pwrite_bytes += pagesize;
-				p->pwrite_time_ms += (x2 - x1);
+				p->pwrite_time_us += (x2 - x1);
 				t->n_pwrites++;
 				t->pwrite_bytes += pagesize;
-				t->pwrite_time_ms += (x2 - x1);
+				t->pwrite_time_us += (x2 - x1);
 			}
 
-			if ((x2 - x1) > __berkdb_write_alarm_ms &&
+			if ((x2 - x1) > M2U(__berkdb_write_alarm_ms) &&
 			    __berkdb_trace_func) {
 				char s[80];
 
 				snprintf(s, sizeof(s),
 				    "LONG PWRITE (%d) %d ms fd %d\n",
-				    (int)pagesize, x2 - x1, fhp->fd);
+				    (int)pagesize, U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
 		} else {
@@ -1033,7 +1041,7 @@ __berkdb_direct_pwritev(DB_ENV *dbenv,
 			}
 		}
 		if (nretries > 0) {
-			logmsg(LOGMSG_ERROR, "pwrite fd %d sz %d off %lld retry %d\n",
+			logmsg(LOGMSG_ERROR, "pwrite fd %d sz %d off %ld retry %d\n",
 			    fd, (int)(nobufs * pagesize), offset, nretries);
 			poll(NULL, 0, 10);
 		}
@@ -1122,7 +1130,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 	DB_ASSERT(F_ISSET(fhp, DB_FH_OPENED) &&
 	    fhp->fd != -1 && DB_GLOBAL(j_read) != NULL);
 
-	int x1, x2;
+	uint64_t x1, x2;
 
 	max_bufs = nobufs;
 	*niop = 0;
@@ -1160,19 +1168,19 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 				p = bb_berkdb_get_process_stats();
 				p->n_preads++;
 				p->pread_bytes += *niop;
-				p->pread_time_ms += (x2 - x1);
+				p->pread_time_us += (x2 - x1);
 				t->n_preads++;
 				t->pread_bytes += *niop;
-				t->pread_time_ms += (x2 - x1);
+				t->pread_time_us += (x2 - x1);
 			}
 
-			if ((x2 - x1) > __berkdb_read_alarm_ms &&
+			if ((x2 - x1) > M2U(__berkdb_read_alarm_ms) &&
 			    __berkdb_trace_func) {
 				char s[80];
 
 				snprintf(s, sizeof(s),
 				    "LONG PREADV (%d) %d ms "
-				    "fd %d\n", (int)(*niop), x2 - x1, fhp->fd);
+				    "fd %d\n", (int)(*niop), U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
 		}
@@ -1217,20 +1225,20 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 				p = bb_berkdb_get_process_stats();
 				p->n_pwrites++;
 				p->pwrite_bytes += nobufs * pagesize;
-				p->pwrite_time_ms += (x2 - x1);
+				p->pwrite_time_us += (x2 - x1);
 				t->n_pwrites++;
 				t->pwrite_bytes += nobufs * pagesize;
-				t->pwrite_time_ms += (x2 - x1);
+				t->pwrite_time_us += (x2 - x1);
 			}
 
-			if ((x2 - x1) > __berkdb_write_alarm_ms
+			if ((x2 - x1) > M2U(__berkdb_write_alarm_ms)
 			    && __berkdb_trace_func) {
 				char s[80];
 
 				snprintf(s, sizeof(s),
 				    "LONG PWRITEV (%d) %d ms "
 				    " fd %d\n",
-				    (int)(nobufs * pagesize), x2 - x1, fhp->fd);
+				    (int)(nobufs * pagesize), U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
 		}
@@ -1365,65 +1373,53 @@ err:	if (need_free)
 #endif
 
 
-int
+uint64_t
 bb_berkdb_fasttime(void)
 {
-	int return_time = 0;
-
 #if defined(_AIX)
 
 	timebasestruct_t hr_time;
-	long long absolute_time = 0, hr_mstime = 0;
+	long long absolute_time = 0, hr_ustime = 0;
 
 	read_real_time(&hr_time, TIMEBASE_SZ);
 	time_base_to_time(&hr_time, TIMEBASE_SZ);
 	absolute_time = (long long)hr_time.tb_high * 1000000000LL
 	    + (long long)hr_time.tb_low;
-	hr_mstime = absolute_time / 1000000LL;
+	hr_ustime = absolute_time / 1000LL;
 
-	return_time = (int)(hr_mstime);
-
-	return return_time;
+	return hr_ustime;
 
 #elif defined(__sun)
 
 	hrtime_t hr_time = 0;
-	hrtime_t hr_mstime = 0;
+	hrtime_t hr_ustime = 0;
 
 	hr_time = gethrtime();
-	hr_mstime = hr_time / 1000000LL;
+	hr_ustime = hr_time / 1000LL;
 
-	return_time = (int)(hr_mstime);
+	return hr_ustime;
 
-	return return_time;
-
-#elif defined(__linux)
+#elif defined(__linux__) || defined(__APPLE__)
 	struct timeval tp;
 	long long absolute_time;
 	gettimeofday(&tp, NULL);
 
 	absolute_time = (tp.tv_sec * 1000000LL) + tp.tv_usec;
-	return_time = (int)(absolute_time / 1000LL);
 
-	return return_time;
+	return absolute_time;
 
 #elif defined(__hpux)
 
 	hrtime_t hr_time = 0;
-	hrtime_t hr_mstime = 0;
+	hrtime_t hr_ustime = 0;
 
 	hr_time = gethrtime();
-	hr_mstime = hr_time / 1000000LL;
+	hr_ustime = hr_time / 1000LL;
 
-	return_time = (int)(hr_mstime);
-
-	return return_time;
-
+	return hr_ustime;
 
 #else
-
-	logmsg(LOGMSG_FATAL, "need a way to get fast time here!\n");
-	*abort();
+	#error "need a way to get fast time!"
 #endif
 }
 

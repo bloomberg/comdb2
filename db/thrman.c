@@ -406,7 +406,8 @@ char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
             struct sockaddr_in peeraddr;
             int len = sizeof(peeraddr);
             char addrstr[64];
-            if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0)
+            if (getpeername(fd, (struct sockaddr *)&peeraddr,
+                            (socklen_t *)&len) < 0)
                 pos +=
                     snprintf(buf + pos, szbuf - pos, ", fd %d (getpeername:%s)",
                              fd, strerror(errno));
@@ -434,15 +435,17 @@ static void thrman_dump_ll(void)
     struct thr_handle *temp;
     int count;
 
-    printf("%d registered threads running:-\n", listc_size(&thr_list));
+    logmsg(LOGMSG_USER, "%d registered threads running:-\n",
+           listc_size(&thr_list));
     count = 0;
     LISTC_FOR_EACH_SAFE(&thr_list, thr, temp, linkv)
     {
         char buf[1024];
-        printf("  %2d) %s\n", count, thrman_describe(thr, buf, sizeof(buf)));
+        logmsg(LOGMSG_USER, "  %2d) %s\n", count,
+               thrman_describe(thr, buf, sizeof(buf)));
         count++;
     }
-    printf("------\n");
+    logmsg(LOGMSG_USER, "------\n");
 }
 
 /* Dump all active threads */

@@ -44,6 +44,8 @@ enum CDB2_ErrorCode {
     READONLY                = -21;
 
     NOMASTER                = -101;
+    NOTSERIAL               =  230;
+    SCHEMACHANGE            =  240;
     UNTAGGED_DATABASE       = -102;
     CONSTRAINTS             = -103;
     DEADLOCK                =  203;
@@ -64,10 +66,11 @@ enum CDB2_ErrorCode {
     MALLOC                  = 115;
     NOTSUPPORTED            = 116;
 
-    DUPLICATE               =  299;
-    TZNAME_FAIL             =  401;
-    CHANGENODE              =  402;
-    UNKNOWN                 =  300;
+    TRAN_TOO_BIG            = 202;
+    DUPLICATE               = 299;
+    TZNAME_FAIL             = 401;
+    CHANGENODE              = 402;
+    UNKNOWN                 = 300;
 }
 
 enum ResponseHeader {
@@ -77,6 +80,7 @@ enum ResponseHeader {
    SQL_RESPONSE_PING = 1007; // SQL_RESPONSE + requesting ack
    SQL_RESPONSE_PONG = 1008;
    SQL_RESPONSE_TRACE = 1009;
+   SQL_RESPONSE_SSL = 1010; // SSL header + empty payload to trigger client SSL
 }
 
 enum ResponseType {

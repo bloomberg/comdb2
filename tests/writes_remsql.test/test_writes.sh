@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Remote cursor moves testcase for comdb2
 ################################################################################
@@ -57,23 +57,25 @@ run_test()
    exp_output=$2
    output=$3
 
+   rm $output
+
    work_input=${input}.actual
 
    # fix the target
    sed "s/ t / LOCAL_${a_remdbname}.t /g" $input > $work_input
 
    # populate table on remote
-   cdb2sql ${CDB2_OPTIONS} $a_dbname default - < $work_input >> $output 2>&1
+   cdb2sql --host $mach $a_dbname - < $work_input >> $output 2>&1
    
 
    # retrieve data through remote sql
-   cdb2sql ${CDB2_OPTIONS} $a_dbname default "select * from LOCAL_${a_remdbname}.t order by id" >> $output 2>&1
+   cdb2sql --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.t order by id" >> $output 2>&1
 
    a_cdb2config=${CDB2_OPTIONS}
    # get the version V2
    #comdb2sc $a_dbname send fdb info db >> $output 2>&1
-   echo cdb2sql --tabs $a_cdb2config $a_dbname default "exec procedure sys.cmd.send(\"fdb info db\")" 
-   cdb2sql --tabs $a_cdb2config $a_dbname default "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+   echo cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
+   cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
 
    work_exp_output=${exp_output}.actual
    sed "s/ t / LOCAL_${a_remdbname}.t /g" ${exp_output}  > ${work_exp_output}
@@ -81,6 +83,8 @@ run_test()
    checkresult  $work_exp_output $output 
 }
 
+# Make sure we talk to the same host
+mach=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbname default "SELECT comdb2_host()"`
 
 if [[ -z $opt || "$opt" == "1" ]]; then
 
@@ -136,12 +140,12 @@ if [[ -z $opt || "$opt" == "6" ]]; then
    #TEST2 check remote writes with local reads
 
    #last test needs some prep 
-   cdb2sql ${CDB2_OPTIONS} $a_dbname default "truncate t2"
+   cdb2sql --host $mach $a_dbname "truncate t2"
    if (( $? != 0 )) ; then
       echo "Failure to truncate remote db "
       exit 1
    fi
-   cdb2sql ${CDB2_OPTIONS} $a_dbname default "insert into t2 select * from LOCAL_${a_remdbname}.t"
+   cdb2sql --host $mach $a_dbname "insert into t2 select * from LOCAL_${a_remdbname}.t"
    if (( $? != 0 )) ; then
       echo "Failure to populate remote db "
       exit 1

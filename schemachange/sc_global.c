@@ -15,10 +15,14 @@
  */
 
 #include "limit_fortify.h"
+#include <unistd.h>
+#include <ctrace.h>
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_global.h"
 #include "logmsg.h"
+#include "sc_callbacks.h"
+#include "bbinc/cheapstack.h"
+#include "crc32c.h"
 
 pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 pthread_mutex_t schema_change_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -27,11 +31,14 @@ pthread_mutex_t schema_change_sbuf2_lock = PTHREAD_MUTEX_INITIALIZER;
 volatile int gbl_schema_change_in_progress = 0;
 volatile int gbl_lua_version = 0;
 uint64_t sc_seed;
-static char *sc_host;
+uint32_t sc_host; /* crc32 of machine name */
 static time_t sc_time;
 int gbl_default_livesc = 1;
 int gbl_default_plannedsc = 1;
 int gbl_default_sc_scanmode = SCAN_PARALLEL;
+
+pthread_mutex_t sc_resuming_mtx = PTHREAD_MUTEX_INITIALIZER;
+struct schema_change_type *sc_resuming = NULL;
 
 /* Throttle settings, which you can change with message traps.  Note that if
  * you have gbl_sc_usleep=0, the important live writer threads never get to
@@ -75,7 +82,7 @@ int gbl_sc_thd_failed = 0;
 /* All writer threads have to grab the lock in read/write mode.  If a live
  * schema change is in progress then they have to do extra stuff. */
 int sc_live = 0;
-/*static pthread_rwlock_t sc_rwlock = PTHREAD_RWLOCK_INITIALIZER;*/
+pthread_rwlock_t sc_live_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 int schema_change = SC_NO_CHANGE; /*static int schema_change_doomed = 0;*/
 
@@ -83,12 +90,9 @@ int stopsc = 0; /* stop schemachange, so it can resume */
 
 inline int is_dta_being_rebuilt(struct scplan *plan)
 {
-    if (!plan)
-        return 1;
-    if (!gbl_use_plan)
-        return 1;
-    if (plan->dta_plan)
-        return 1;
+    if (!plan) return 1;
+    if (!gbl_use_plan) return 1;
+    if (plan->dta_plan) return 1;
 
     return 0;
 }
@@ -98,7 +102,7 @@ const char *get_sc_to_name(const char *name)
     static char pref[256] = {0};
     static int preflen = 0;
 
-    if(!pref[0]) {
+    if (!pref[0]) {
         int bdberr;
 
         bdb_get_new_prefix(pref, sizeof(pref), &bdberr);
@@ -106,23 +110,28 @@ const char *get_sc_to_name(const char *name)
     }
 
     if (gbl_schema_change_in_progress) {
-        if (strncasecmp(name, pref, preflen) == 0)
-            return name+preflen;
+        if (strncasecmp(name, pref, preflen) == 0) return name + preflen;
     }
     return NULL;
 }
 
 void wait_for_sc_to_stop(void)
 {
+    stopsc = 1;
     if (gbl_schema_change_in_progress) {
-        stopsc = 1;
         logmsg(LOGMSG_INFO, "giving schemachange time to stop\n");
         int retry = 10;
         while (gbl_schema_change_in_progress && retry--) {
             sleep(1);
         }
-        logmsg(LOGMSG_INFO, "proceeding with downgrade (waited for: %ds)\n", 10 - retry);
+        logmsg(LOGMSG_INFO, "proceeding with downgrade (waited for: %ds)\n",
+               10 - retry);
     }
+}
+
+void allow_sc_to_run(void)
+{
+    stopsc = 0;
 }
 
 /* Atomically set the schema change running status, and mark it in glm for
@@ -138,38 +147,53 @@ void wait_for_sc_to_stop(void)
  * If we are using the low level meta table then this isn't called on the
  * replicants at all when doing a schema change, its still called for queue or
  * dtastripe changes. */
-int sc_set_running(int running, uint64_t seed, char *host, time_t time)
+int sc_set_running(int running, uint64_t seed, const char *host, time_t time)
 {
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("%s: %d\n", __func__, running);
     comdb2_linux_cheap_stack_trace();
 #endif
 
     pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (thedb->master == gbl_mynode) {
-        if (running && gbl_schema_change_in_progress) {
+        if (running && gbl_schema_change_in_progress && seed != sc_seed) {
             pthread_mutex_unlock(&schema_change_in_progress_mutex);
-            logmsg(LOGMSG_ERROR, "schema change already in progress\n");
+            logmsg(LOGMSG_INFO, "schema change already in progress\n");
             return -1;
         } else if (!running && seed != sc_seed && seed) {
             pthread_mutex_unlock(&schema_change_in_progress_mutex);
-            logmsg(LOGMSG_ERROR, "cannot stop schema change; wrong seed given\n");
+            logmsg(LOGMSG_ERROR,
+                   "cannot stop schema change; wrong seed given\n");
             return -1;
         }
     }
-    gbl_schema_change_in_progress = running;
     if (running) {
-        sc_seed = seed;
-        sc_host = host;
-        sc_time = time;
-    } else {
-        sc_seed = 0;
-        sc_host = NULL;
-        sc_time = 0;
-        gbl_sc_resume_start = 0;
+        gbl_schema_change_in_progress++;
+        if (gbl_schema_change_in_progress == 1) {
+            sc_seed = seed;
+            sc_host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
+            sc_time = time;
+        }
+    } else { /* not running */
+        if (gbl_schema_change_in_progress && seed && seed == sc_seed)
+            gbl_schema_change_in_progress--;
+        if (gbl_schema_change_in_progress == 0 || !seed) {
+            sc_seed = 0;
+            sc_host = 0;
+            sc_time = 0;
+            gbl_sc_resume_start = 0;
+            gbl_schema_change_in_progress = 0;
+        }
     }
-    ctrace("sc_set_running: running=%d seed=0x%llx\n", running,
-           (unsigned long long)seed);
+    ctrace("sc_set_running(running=%d seed=0x%llx): "
+           "gbl_schema_change_in_progress %d, sc_seed %llx, sc_host %x\n",
+           running, (unsigned long long)seed, gbl_schema_change_in_progress,
+           (unsigned long long)sc_seed, (unsigned)sc_host);
+    logmsg(LOGMSG_INFO,
+           "sc_set_running(running=%d seed=0x%llx): "
+           "gbl_schema_change_in_progress %d, sc_seed %llx, sc_host %x\n",
+           running, (unsigned long long)seed, gbl_schema_change_in_progress,
+           (unsigned long long)sc_seed, (unsigned)sc_host);
     pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return 0;
 }
@@ -184,13 +208,12 @@ void sc_status(struct dbenv *dbenv)
         localtime_r(&timet, &tm);
 
         logmsg(LOGMSG_USER, "-------------------------\n");
-        logmsg(LOGMSG_USER, "Schema change in progress with seed 0x%llx\n",
+        logmsg(LOGMSG_USER, "Schema change in progress with seed 0x%lx\n",
                sc_seed);
         logmsg(LOGMSG_USER,
-               "(Started on node %s at %04d-%02d-%02d %02d:%02d:%02d)\n", 
-               mach ? mach : "(unknown)", 
-               tm.tm_year+1900, tm.tm_mon + 1, tm.tm_mday, 
-               tm.tm_hour, tm.tm_min, tm.tm_sec);
+               "(Started on node %s at %04d-%02d-%02d %02d:%02d:%02d)\n",
+               mach ? mach : "(unknown)", tm.tm_year + 1900, tm.tm_mon + 1,
+               tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
         if (doing_conversion) {
             logmsg(LOGMSG_USER, "Conversion phase running %lld converted\n",
                    gbl_sc_nrecs);
@@ -216,11 +239,13 @@ void reset_sc_stat()
 /* Turn off live schema change.  This HAS to be done while holding the exclusive
  * lock, and it has to be done BEFORE we try to recover from a failed schema
  * change (removing temp tables etc). */
-void live_sc_off(struct db *db)
+void live_sc_off(struct dbtable *db)
 {
+    pthread_rwlock_wrlock(&sc_live_rwlock);
     db->sc_to = NULL;
     db->sc_from = NULL;
     sc_live = 0;
+    pthread_rwlock_unlock(&sc_live_rwlock);
 }
 
 int reload_lua()
@@ -230,7 +255,7 @@ int reload_lua()
     return 0;
 }
 
-int replicant_reload_analyze()
+int replicant_reload_analyze_stats()
 {
     ++gbl_analyze_gen;
     logmsg(LOGMSG_DEBUG, "Replicant invalidating SQLite stats\n");

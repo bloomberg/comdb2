@@ -34,7 +34,7 @@
 #include <unistd.h>
 #include <stddef.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 
 #include <ctrace.h>
@@ -157,6 +157,12 @@ char *bdb_whoismaster(bdb_state_type *bdb_state)
         return NULL;
 }
 
+int bdb_get_rep_master(bdb_state_type *bdb_state, char **master_out,
+                       uint32_t *egen)
+{
+    return bdb_state->dbenv->get_rep_master(bdb_state->dbenv, master_out, egen);
+}
+
 int bdb_get_sanc_list(bdb_state_type *bdb_state, int max_nodes,
                       const char *nodes[REPMAX])
 {
@@ -211,15 +217,11 @@ int bdb_get_seqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
 
 int bdb_get_lsn(bdb_state_type *bdb_state, int *logfile, int *offset)
 {
-    seqnum_type seqnum;
-    int rc;
-
-    rc = bdb_get_seqnum(bdb_state, &seqnum);
-    if (rc == 0) {
-        *logfile = seqnum.lsn.file;
-        *offset = seqnum.lsn.file;
-    }
-    return rc;
+    DB_LSN outlsn;
+    __log_txn_lsn(bdb_state->dbenv, &outlsn, NULL, NULL);
+    *logfile = outlsn.file;
+    *offset = outlsn.offset;
+    return 0;
 }
 
 int bdb_get_lsn_node(bdb_state_type *bdb_state, char *host, int *logfile,
@@ -728,35 +730,36 @@ void bdb_print_stats(const struct bdb_thread_stats *st, const char *prefix,
     char s[128];
     if (st->n_lock_waits > 0) {
         snprintf(s, sizeof(s), "%s%u lock waits took %u ms (%u ms/wait)\n",
-                 prefix, st->n_lock_waits, st->lock_wait_time_ms,
-                 st->lock_wait_time_ms / st->n_lock_waits);
+                 prefix, st->n_lock_waits, U2M(st->lock_wait_time_us),
+                 U2M(st->lock_wait_time_us / st->n_lock_waits));
         printfn(s, context);
     }
     if (st->n_preads > 0) {
         snprintf(s, sizeof(s), "%s%u preads took %u ms total of %u bytes\n",
-                 prefix, st->n_preads, st->pread_time_ms, st->pread_bytes);
+                 prefix, st->n_preads, U2M(st->pread_time_us), st->pread_bytes);
         printfn(s, context);
     }
     if (st->n_pwrites > 0) {
         snprintf(s, sizeof(s), "%s%u pwrites took %u ms total of %u bytes\n",
-                 prefix, st->n_pwrites, st->pwrite_time_ms, st->pwrite_bytes);
+                 prefix, st->n_pwrites, U2M(st->pwrite_time_us),
+                 st->pwrite_bytes);
         printfn(s, context);
     }
     if (st->n_memp_fgets > 0) {
         snprintf(s, sizeof(s), "%s%u __memp_fget calls took %u ms\n", prefix,
-                 st->n_memp_fgets, st->memp_fget_time_ms);
+                 st->n_memp_fgets, U2M(st->memp_fget_time_us));
         printfn(s, context);
     }
     if (st->n_memp_pgs > 0) {
         snprintf(s, sizeof(s), "%s%u __memp_pg calls took %u ms\n", prefix,
-                 st->n_memp_pgs, st->memp_pg_time_ms);
+                 st->n_memp_pgs, U2M(st->memp_pg_time_us));
         printfn(s, context);
     }
     if (st->n_shallocs > 0 || st->n_shalloc_frees > 0) {
         snprintf(s, sizeof(s),
                  "%s%u shallocs took %u ms, %u shalloc_frees took %u ms\n",
-                 prefix, st->n_shallocs, st->shalloc_time_ms,
-                 st->n_shalloc_frees, st->shalloc_free_time_ms);
+                 prefix, st->n_shallocs, U2M(st->shalloc_time_us),
+                 st->n_shalloc_frees, U2M(st->shalloc_free_time_us));
         printfn(s, context);
     }
 }

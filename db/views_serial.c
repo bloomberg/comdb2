@@ -183,7 +183,7 @@ int timepart_serialize(timepart_views_t *views, char **out, int user_friendly)
 
     *out = NULL;
 
-    pthread_mutex_lock(&views_mtx);
+    pthread_rwlock_wrlock(&views_lk);
 
     if (views->nviews == 0) {
         str = _concat(NULL, &len, "[]\n");
@@ -221,7 +221,7 @@ int timepart_serialize(timepart_views_t *views, char **out, int user_friendly)
     rc = VIEW_NOERR;
 
 done:
-    pthread_mutex_unlock(&views_mtx);
+    pthread_rwlock_unlock(&views_lk);
 
     *out = str;
 
@@ -449,7 +449,7 @@ timepart_views_t *views_create_all_views(void)
         /* make sure view names are the same */
         if (strcmp(view->name, cson_string_cstr(ckey))) {
             fprintf(stderr, "%s: incorrect view format for key %s\n", __func__,
-                    ckey);
+                    cson_string_cstr(ckey));
             rc = VIEW_ERR_BUG;
             goto done;
         }
@@ -490,33 +490,10 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
     cson_object *cson_obj;
     const char *first_shard;
     const char *type;
-    struct db *db;
+    struct dbtable *db;
     int rc;
     char *err_partname;
     int err_shardidx;
-
-
-    /* check to see if the name exists either as a table, or part of a 
-       different partition */
-    rc = comdb2_partition_check_name_reuse(first_shard, &err_partname, 
-                                           &err_shardidx);
-    if(rc) {
-        if (rc != VIEW_ERR_EXIST)
-            abort();
-
-        if(err_shardidx == -1) {
-            snprintf(err->errstr, sizeof(err->errstr), 
-                     "Partition name \"%s\" matches seed shard in partition \"%s\"",
-                     name, err_partname);
-        } else {
-            snprintf(err->errstr, sizeof(err->errstr), 
-                     "Partition name \"%s\" matches shard %d in partition \"%s\"",
-                     name, err_shardidx, err_partname);
-        }
-        err->errval = VIEW_ERR_PARAM;
-        free(err_partname);
-        goto error;
-    }
 
     cson_obj = cson_value_get_object(cson);
 
@@ -565,7 +542,7 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
 
     /* make sure the name is not overlapping a table name (this breaks in sqlite
      */
-    db = getdbbyname(view->name);
+    db = get_dbtable_by_name(view->name);
     if (db) {
         err->errval = VIEW_ERR_PARAM;
         snprintf(err->errstr, sizeof(err->errstr),
@@ -579,7 +556,7 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
        check if the table exists !
  TODO: add support for alias to work with remote tables
      */
-    db = getdbbyname(first_shard);
+    db = get_dbtable_by_name(first_shard);
     if (!db) {
         err->errval = VIEW_ERR_PARAM;
         snprintf(err->errstr, sizeof(err->errstr), "Table %s does not exist",
@@ -587,6 +564,8 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
         goto error;
     }
 
+    /* check to see if the name exists either as a table, or part of a
+       different partition */
     rc = comdb2_partition_check_name_reuse(first_shard, &err_partname, 
                                            &err_shardidx);
     if(rc) {
@@ -837,6 +816,8 @@ const char *period_to_name(enum view_timepart_period period)
         return YEARLY_STR;
     case VIEW_TIMEPART_TEST2MIN:
         return TEST2MIN_STR;
+    default:
+        break;
     }
     return INVALID_STR;
 }

@@ -125,13 +125,6 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
                                 int sqlqlen, const char *tzname, int reqtype,
                                 char **sqlqret, int *sqlqlenret,
                                 unsigned long long rqid, uuid_t uuid);
-
-/**
- * Wait if there are more then "limit" pending sessions
- *
- */
-int osql_bplog_session_starthrottle(struct ireq *iq);
-
 /**
  * Signal blockprocessor that one has completed
  * For now this is used only for
@@ -156,19 +149,11 @@ int osql_bplog_reqlog_queries(struct ireq *iq);
  * Prints all the timings recorded for this bplog
  *
  */
-void osql_bplog_time_done(struct ireq *iq);
+void osql_bplog_time_done(struct ireq *);
 
 int osql_get_delayed(struct ireq *);
 
-int osql_throttle_session(struct ireq *);
-void osql_set_delayed(struct ireq *iq);
-
-/**
- * On failed dispatch, we need special clear procedure
- * since things are dropped on the floor
- *
- */
-void osql_bplog_clearonerror(struct ireq *iq, int rc);
+void osql_set_delayed(struct ireq *);
 
 /**
  * Throw bplog to /dev/null, sql does not need this

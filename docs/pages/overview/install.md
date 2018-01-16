@@ -83,7 +83,7 @@ Installing (from source or a package) creates a directory structure like this:
 │   └── cdb2api.h
 ├── lib
 │   ├── libcdb2api.a
-│   └── libcdb2protobuf.a
+│   ├── libcdb2api.so
 └── var
     └── cdb2
         ├── databases

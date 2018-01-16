@@ -26,24 +26,22 @@
 /* #include <hexdump.h> */
 #endif
 
-static int warnthresh = 50;
+int gbl_walkback_enabled = 1;
+int gbl_warnthresh = 50;
+
 static unsigned long long count = 0, ivcount = 0;
-
-static int walkback_enabled = 1;
-
-void walkback_disable(void) { walkback_enabled = 0; }
-
-void walkback_enable(void) { walkback_enabled = 1; }
 
 /* Reset counter if we're enabling */
 void walkback_set_warnthresh(int thresh)
 {
-    if (warnthresh == 0 && thresh > 0)
-        ivcount = count;
-    warnthresh = thresh;
+    if (gbl_warnthresh == 0 && thresh > 0) ivcount = count;
+    gbl_warnthresh = thresh;
 }
 
-int walkback_get_warnthresh(void) { return warnthresh; }
+int walkback_get_warnthresh(void)
+{
+    return gbl_warnthresh;
+}
 
 static void showfunc(void *stack[], int nframes, FILE *f)
 {
@@ -68,12 +66,12 @@ static void trace_pc_getlist(void *stack[], int nframes, FILE *f)
 /* Print a message if we've seen at least 'warnthresh' messages
  * in the last second */
 #if 0
-    if(warnthresh>0 && ((now=time(NULL))-lastprint)>=1)
+    if(gbl_warnthresh>0 && ((now=time(NULL))-lastprint)>=1)
     {
-        if((count-ivcount)>warnthresh)
+        if((count-ivcount) > gbl_warnthresh)
         {
             fprintf(f, "Exceeded walkback warn-threshold (%d/%d): ", 
-                    (int)(count-ivcount), warnthresh);
+                    (int)(count-ivcount), gbl_warnthresh);
             showfunc(stack, nframes, f);
         }
         ivcount=count;
@@ -108,7 +106,7 @@ struct frame {
     void *fr_savpc;
 };
 
-#elif defined(__linux)
+#elif defined(__linux__)
 
 #define UNW_LOCAL_ONLY /* only async-safe code */
 #ifdef USE_UNWIND
@@ -131,6 +129,10 @@ typedef struct {
 static void walkback_allocator_init(walkback_alloc_t *allocator);
 static void *walkback_allocate(walkback_alloc_t *allocator, size_t size);
 static void walkback_free(walkback_alloc_t *allocator, void *ptr);
+
+#elif defined(__APPLE__)
+
+#include <libunwind.h>
 
 #else
 
@@ -473,7 +475,7 @@ static int _AIX_stack_walkback(ucontext_t *context, unsigned maxframes,
 } /*    end of _AIX_stack_walkback()    */
 #endif
 
-#if defined(__linux)
+#if defined(__linux__) || defined(__APPLE__)
 
 /******************************************************************************
 *
@@ -697,7 +699,7 @@ int stack_pc_walkback(ucontext_t *context, /* or NULL for current context */
 
     return _AIX_stack_walkback(context, maxframes, handler, handlerarg);
 
-#elif defined(__linux)
+#elif defined(__linux__) || defined(__APPLE__)
 
     return __linux_stack_walkback(context, maxframes, handler, handlerarg);
 
@@ -845,7 +847,7 @@ int /* rcode */
     arg.pcMaxCount = pcArraySize;
     arg.pcOutCount = 0;
 
-    if (walkback_enabled) {
+    if (gbl_walkback_enabled) {
         rcode = stack_pc_walkback(context, pcArraySize, pclist_add, &arg);
     }
 
@@ -862,9 +864,9 @@ void comdb2_cheapstack(FILE *f)
 {
     void *stack[MAXFRAMES];
     unsigned int nframes;
-    int rc, i;
+    int i;
 
-    if (rc = stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
+    if (stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
         fprintf(f, "Can't get stack trace\n");
         return;
     }

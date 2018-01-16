@@ -67,6 +67,9 @@ public class Comdb2Handle extends AbstractConnection {
     boolean hasUserTcpSz;
     int tcpbufsz;
     int age = 180; /* default max age 180 seconds */
+    boolean pmuxrte = false;
+    boolean statement_effects = false;
+    boolean verifyretry = false;
 
     private boolean in_retry = false;
     private boolean temp_trans = false;
@@ -89,7 +92,7 @@ public class Comdb2Handle extends AbstractConnection {
     private boolean isRead;
     private String lastSql;
     private long rowsRead;
-    private byte[] uuid;
+    private String uuid;
     private String stringCnonce;
     private byte[] cnonce;
     private int maxretries = 20;
@@ -147,15 +150,39 @@ public class Comdb2Handle extends AbstractConnection {
         ret.dnssuffix = dnssuffix;
         ret.hasUserTcpSz = hasUserTcpSz;
         ret.tcpbufsz = tcpbufsz;
+        ret.age = age;
+        ret.pmuxrte = pmuxrte;
+        ret.sslmode = sslmode;
+        ret.sslcert = sslcert;
+        ret.sslcertpass = sslcertpass;
+        ret.sslcerttype = sslcerttype;
+        ret.sslca = sslca;
+        ret.sslcapass = sslcapass;
+        ret.sslcatype = sslcatype;
+        ret.peersslmode = peersslmode;
         return ret;
     }
 
     public Comdb2Handle(String dbname, String cluster) {
         super(new ProtobufProtocol(), null);
         sets = new ArrayList<String>();
-        String stringUuid = UUID.randomUUID().toString();
-        uuid = stringUuid.getBytes();
-        tdlog(Level.FINEST, "Created handle with uuid " + uuid);
+
+        /* export CDB2JDBC_STATEMENT_QUERYEFFECTS   -> enable
+         * export CDB2JDBC_STATEMENT_QUERYEFFECTS=1 -> enable
+         * export CDB2JDBC_STATEMENT_QUERYEFFECTS=0 -> disable
+         */
+        String envvar = System.getenv("CDB2JDBC_STATEMENT_QUERYEFFECTS");
+        statement_effects = (envvar != null && !envvar.equals("0"));
+        if (statement_effects)
+            sets.add("set queryeffects statement");
+
+        if (verifyretry)
+            sets.add("set verifyretry on");
+        else
+            sets.add("set verifyretry off");
+
+        uuid = UUID.randomUUID().toString();
+        tdlog(Level.FINEST, "Created handle with uuid %s", uuid);
         bindVars = new HashMap<String, Cdb2BindValue>();
         queryList = new ArrayList<QueryItem>();
         myDbName = dbname;
@@ -167,7 +194,7 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     public void lookup() throws NoDbHostFoundException {
-        BBSysUtils.getDbHosts(this);
+        BBSysUtils.getDbHosts(this, false);
     }
 
     /* attribute setters - bb precious */
@@ -205,6 +232,39 @@ public class Comdb2Handle extends AbstractConnection {
 
     public void setOverriddenPort(int port) {
         overriddenPort = port;
+    }
+
+    public void setAllowPmuxRoute(boolean val) {
+        pmuxrte = val;
+        if (val)
+            overriddenPort = portMuxPort;
+    }
+
+    public void setStatementQueryEffects(boolean val) {
+        if (val == statement_effects)
+            return;
+
+        if (val)
+            sets.add("set queryeffects statement");
+        else
+            sets.remove("set queryeffects statement");
+
+        statement_effects = val;
+    }
+
+    public void setVerifyRetry(boolean val) {
+        if (val == verifyretry)
+            return;
+
+        if (val) {
+            sets.remove("set verifyretry off");
+            sets.add("set verifyretry on");
+        } else {
+            sets.remove("set verifyretry on");
+            sets.add("set verifyretry off");
+        }
+
+        verifyretry = val;
     }
 
     void addHosts(List<String> hosts) {
@@ -245,7 +305,7 @@ public class Comdb2Handle extends AbstractConnection {
         if (this.myDbHosts.size() == 0) {
             this.lookup();
         }
-        tdlog(Level.FINEST, "comdb2Handle:this.myDbHosts is " + this.myDbHosts);
+        tdlog(Level.FINEST, "comdb2Handle:this.myDbHosts is %s", this.myDbHosts);
         ArrayList<String> hosts = new ArrayList(this.myDbHosts.size());
         for (String item : this.myDbHosts) hosts.add(new String(item));
         return hosts;
@@ -273,16 +333,12 @@ public class Comdb2Handle extends AbstractConnection {
         return maxretries;
     }
 
-    private void tdlog(Level level, String str, Object[] params) {
-        tdlog(level, str);
-    }
-
-    private void tdlog(Level level, String str, Object param) {
-        tdlog(level, str);
-    }
-
     // Add td info to the beginning of the string
-    private void tdlog(Level level, String str) {
+    private void tdlog(Level level, String str, Object... params) {
+        /* Fast return if the level is not loggable. */
+        if (!logger.isLoggable(level))
+            return;
+
         String mach = "(not-connected)";
         if (dbHostConnected >= 0) {
             mach = myDbHosts.get(dbHostConnected);
@@ -306,11 +362,19 @@ public class Comdb2Handle extends AbstractConnection {
                     " cnonce=" + stringCnonce + ": " + str);
 
 
-        }
-        else {
-            logger.log(level, "td=" + Thread.currentThread().getId() + 
-                    " mach=" + mach + " snapshotFile=" + snapshotFile + " snapshotOffset=" + 
-                    snapshotOffset + " cnonce=" + stringCnonce + ": " + str);
+        } else {
+            String message = String.format(str, params);
+            Object[] messageParams = new Object[] {
+                Thread.currentThread().getId(),
+                mach,
+                snapshotFile,
+                snapshotOffset,
+                stringCnonce,
+                message
+            };
+            logger.log(level,
+                       "td={0} mach={1} snapshotFile={2} snapshotOffset={3} cnonce={4}: {5}",
+                       messageParams);
         }
     }
 
@@ -319,7 +383,7 @@ public class Comdb2Handle extends AbstractConnection {
         String methodName = Thread.currentThread().getStackTrace()[frame-1].getMethodName();
         String callerMethodName = Thread.currentThread().getStackTrace()[3].getMethodName();
         int callerLine = Thread.currentThread().getStackTrace()[3].getLineNumber();
-        tdlog(Level.FINEST, callerMethodName + "->" + methodName + "[" + callerLine + "]");
+        tdlog(Level.FINEST, "%s->%s->[%d]", callerMethodName, methodName, callerLine);
     }
 
     public void setPolicy(String policy) {
@@ -364,8 +428,9 @@ public class Comdb2Handle extends AbstractConnection {
             return Errors.CDB2ERR_TRAN_IO_ERROR;
         }
         
-        tdlog(Level.FINEST, "retryQueries: nretry=" + nretry + " runlast=" + runlast + 
-                " queryList.size()=" + queryList.size());
+        tdlog(Level.FINEST,
+              "retryQueries: nretry=%d runlast=%b queryList.size()=%d",
+              nretry, runlast, queryList.size());
 
         clearResp();
         isRetry = nretry;
@@ -442,7 +507,7 @@ public class Comdb2Handle extends AbstractConnection {
             nsh = new NewSqlHeader(RequestType.CDB2_REQUEST_CDB2QUERY,
                                                 0, 0, buffer.length);
 
-            tdlog(Level.FINEST, "retryQueries resending '" + item.sql + "'");
+            tdlog(Level.FINEST, "retryQueries resending '%s'", item.sql);
 
             try {
                 io.write(nsh.toBytes());
@@ -451,7 +516,7 @@ public class Comdb2Handle extends AbstractConnection {
             } catch (IOException e) {
                 last_non_logical_err = e;
                 driverErrStr = "Can't read response from db";
-                tdlog(Level.FINEST, "Error resending '" + item.sql + "'");
+                tdlog(Level.FINEST, "Error resending '%s'", item.sql);
                 closeNoException();
                 return 1;
             }
@@ -459,8 +524,9 @@ public class Comdb2Handle extends AbstractConnection {
             clearResp();
 
             if (skipFeature && !item.isRead) {
-                tdlog(Level.FINEST, "retryQueries continuing because skipFeature is " 
-                        + skipFeature + " and item.isRead is " + item.isRead);
+                tdlog(Level.FINEST,
+                      "retryQueries continuing because skipFeature is %b and item.isRead is %b",
+                      skipFeature, item.isRead);
                 continue;
             }
 
@@ -485,8 +551,9 @@ public class Comdb2Handle extends AbstractConnection {
 
     private boolean retryQueriesAndSkip(int nretry, long skipNRows) {
         if (snapshotFile <= 0) {
-            tdlog(Level.FINEST, "retryQueriesAndSkip returning false immediately " +
-                    "because snapshotFile is " + snapshotFile);
+            tdlog(Level.FINEST,
+                  "retryQueriesAndSkip returning false immediately because snapshotFile is %d",
+                  snapshotFile);
             return false;
         }
 
@@ -504,7 +571,9 @@ public class Comdb2Handle extends AbstractConnection {
 
         firstResp = readRecord();
         boolean rcode = (firstResp == null) ? false : true;
-        tdlog(Level.FINEST, "retryQueriesAndSkip: firstResp is " + firstResp + " returning " + rcode);
+        tdlog(Level.FINEST,
+              "retryQueriesAndSkip: firstResp is %s returning %d",
+              firstResp, rcode);
         return rcode;
     }
 
@@ -530,9 +599,9 @@ public class Comdb2Handle extends AbstractConnection {
             sqlQuery.retry = isRetry;
         }
 
-        tdlog(Level.FINEST, "sendQuery sql='" + sql + "' isBegin=" + isBegin +
-                " skipNRows=" + skipNRows + " nretry=" + nretry + " doAppend="
-                + doAppend);
+        tdlog(Level.FINEST,
+              "sendQuery sql='%s' isBegin=%b skipNRows=%d nretry=%d doAppend=%b",
+              sql, isBegin, skipNRows, nretry, doAppend);
 
         /* SKIP_ROWS optimization is disabled temporarily
            in cdb2jdbc to make executeUpdate() work. */
@@ -552,7 +621,7 @@ public class Comdb2Handle extends AbstractConnection {
         sqlQuery.cnonce = cnonce;
 
         if (snapshotFile > 0) { 
-            tdlog(Level.FINEST, "Setting hasSnapshotInfo to true because snapshotFile is " + snapshotFile);
+            tdlog(Level.FINEST, "Setting hasSnapshotInfo to true because snapshotFile is %d", snapshotFile);
             sqlQuery.hasSnapshotInfo = true;
             sqlQuery.file = snapshotFile;
             sqlQuery.offset = snapshotOffset;
@@ -582,7 +651,7 @@ public class Comdb2Handle extends AbstractConnection {
             return true;
         } catch (IOException e) {
             last_non_logical_err = e;
-            tdlog(Level.FINE, "sendQuery unable to write to " + myDbName + "/" + myDbCluster, e);
+            tdlog(Level.FINE, "sendQuery unable to write to %s/%s", myDbName, myDbCluster);
             driverErrStr = "Failed sending query.";
             return false;
         }
@@ -598,6 +667,14 @@ public class Comdb2Handle extends AbstractConnection {
                                                                 // from server
                     return null;
                 nsh = NewSqlHeader.fromBytes(res);
+
+                if (nsh != null) {
+                    ack = (nsh.type == Sqlresponse.ResponseHeader.SQL_RESPONSE_PING_VALUE);
+                    /* Server requires SSL. */
+                    if (nsh.type == Sqlresponse.ResponseHeader.SQL_RESPONSE_SSL_VALUE)
+                        return nsh;
+                }
+
             } while (nsh == null || nsh.length == 0); // if error occurs when
                                                         // constructing
                                                         // NewSqlHeader from
@@ -606,8 +683,6 @@ public class Comdb2Handle extends AbstractConnection {
                                                         // 0 (a
                                                         // heartbeat packet),
                                                         // try again.
-
-            ack = (nsh.type == Sqlresponse.ResponseHeader.SQL_RESPONSE_PING_VALUE);
             return nsh;
         } catch (IOException e) {
             last_non_logical_err = e;
@@ -645,7 +720,7 @@ public class Comdb2Handle extends AbstractConnection {
                 Cdb2SqlResponse rsp = null;
                 try {
                     rsp = protocol.unpackSqlResp(raw);
-                    tdlog(Level.FINEST, "readRecord respType is " + rsp.respType);
+                    tdlog(Level.FINEST, "readRecord respType is %d", rsp.respType);
                 } catch (IOException ioe) {
                     last_non_logical_err = ioe;
                     tdlog(Level.FINEST, "unpackSqlResp returns null");
@@ -738,7 +813,14 @@ public class Comdb2Handle extends AbstractConnection {
         sql = sql.trim();
         String lowerSql = sql.toLowerCase();
 
-        tdlog(Level.FINE, "[running sql] " + sql);
+        while (next_int() == Errors.CDB2_OK)
+            ;
+
+        clearResp();
+
+        rowsRead = 0;
+
+        tdlog(Level.FINE, "[running sql] %s", sql);
 
         if (lowerSql.startsWith("set")) {
             Iterator<String> iter = sets.iterator();
@@ -749,10 +831,11 @@ public class Comdb2Handle extends AbstractConnection {
             }
 
             if (isClientOnlySetCommand(lowerSql)) {
-                tdlog(Level.FINEST, "Added client-only set command " + sql);
+                tdlog(Level.FINEST, "Added client-only set command %s", sql);
             } else {
                 sets.add(sql);
-                tdlog(Level.FINEST, "Added '" + sql + "' to sets size is " + sets.size() + " uuid is " + uuid);
+                tdlog(Level.FINEST, "Added '%s' to sets size is %d uuid is %s",
+                      sql, sets.size(), uuid);
 
                 // HASql sessions need the file & offset from begin
                 String hasql[] = lowerSql.split("hasql");
@@ -771,12 +854,6 @@ public class Comdb2Handle extends AbstractConnection {
             return 0;
         }
 
-        while (next_int() == Errors.CDB2_OK)
-            ;
-
-        clearResp();
-
-        rowsRead = 0;
         boolean is_begin = false, is_commit = false, is_rollback = false;
 
         if (lowerSql.equals("begin"))
@@ -788,6 +865,8 @@ public class Comdb2Handle extends AbstractConnection {
             is_rollback = true;
         } else if (lowerSql.startsWith("select")
                 || lowerSql.startsWith("explain")
+                || lowerSql.startsWith("with")
+                || lowerSql.startsWith("get")
                 || lowerSql.startsWith("exec")) {
             isRead = true;
         } else {
@@ -796,8 +875,9 @@ public class Comdb2Handle extends AbstractConnection {
 
         if ((is_begin && inTxn) || (is_commit && !inTxn)) {
             last_non_logical_err = null;
-            tdlog(Level.FINEST, "returning wrong-handle-state, is_begin=" + 
-                    is_begin + " is_commit=" + is_commit + " inTxn=" + inTxn);
+            tdlog(Level.FINEST,
+                  "returning wrong-handle-state, is_begin=%b is_commit=%b inTxn=%b",
+                  is_begin, is_commit, inTxn);
             driverErrStr = "Wrong sql handle state";
             last_non_logical_err = null;
             return Errors.CDB2ERR_BADSTATE;
@@ -819,7 +899,7 @@ public class Comdb2Handle extends AbstractConnection {
         int retry = 0;
         boolean sent = false;
         for ( ; retry < maxretries && !sslerr; ++retry) {
-            tdlog(Level.FINEST, "executing retry loop with retry " + retry);
+            tdlog(Level.FINEST, "executing retry loop with retry %d", retry);
             firstRecordRead = false;
 
             /* Add wait if we have tried on all the nodes. */
@@ -828,7 +908,7 @@ public class Comdb2Handle extends AbstractConnection {
                     int sleepms = (100 * (retry - myDbHosts.size() + 1));
                     if (sleepms > 1000) {
                         sleepms = 1000;
-                        tdlog(Level.FINE, "Sleeping on retry " + retry);
+                        tdlog(Level.FINE, "Sleeping on retry %d", retry);
                     }
                     Thread.sleep(sleepms);
                 } catch (InterruptedException e) {
@@ -854,19 +934,19 @@ public class Comdb2Handle extends AbstractConnection {
                     driverErrStr = "Can't connect to db.";
                     return Errors.CDB2ERR_CONNECT_ERROR;
                 }
-                tdlog(Level.FINEST, "Connected to " + dbHostConnected);
+                tdlog(Level.FINEST, "Connected to %s", dbHostConnected);
 
                 if (!is_begin) {
                     retryAll = true;
                     int retryrc = retryQueries(retry, runLast);
 
                     if (retryrc < 0) {
-                        tdlog(Level.FINE, "Can't retry query, retryrc = " + retryrc);
+                        tdlog(Level.FINE, "Can't retry query, retryrc = %d", retryrc);
                         driverErrStr = "Can't retry query to db.";
                         return retryrc;
                     } 
                     else if (retryrc > 0) {
-                        tdlog(Level.FINEST, "retryQueries returns " + retryrc);
+                        tdlog(Level.FINEST, "retryQueries returns %d", retryrc);
                         closeNoException();
                         retryAll = true;
                         continue;
@@ -919,38 +999,32 @@ public class Comdb2Handle extends AbstractConnection {
                     if (_skipFeature) {
                         if (errVal != 0) {
                             if (is_rollback) {
-                                tdlog(Level.FINER, "Rollback returning 0 on " +
-                                        "errVal " + errVal);
+                                tdlog(Level.FINER, "Rollback returning 0 on errVal %d", errVal);
                                 return 0;
                             } else {
-                                tdlog(Level.FINER, "Returning errVal " + errVal + 
-                                        " on commit");
+                                tdlog(Level.FINER, "Returning errVal %d on commit", errVal);
                                 return errVal;
                             }
                         }
                     } else if (errVal != 0) {
-                        tdlog(Level.FINEST, "Commit errVal is " + errVal + 
-                                " is_rollback=" + is_rollback + " skipFeature=" +
-                                _skipFeature);
+                        tdlog(Level.FINEST, "Commit errVal is %d is_rollback=%b skipFeature=%b",
+                              errVal, is_rollback, _skipFeature);
                         /* With skip_feature off, we need to read the 1st response
                            of commit/rollback even if there is an in-trans error. */
                         break;
                     } else {
-                        tdlog(Level.FINEST, "Commit errVal (2) is " + errVal + 
-                                " is_rollback=" + is_rollback + " skipFeature=" +
-                                _skipFeature);
+                        tdlog(Level.FINEST, "Commit errVal (2) is %d is_rollback=%b skipFeature=%b",
+                              errVal, is_rollback, _skipFeature);
                     }
                 }
 
                 if (errVal != 0) {
-                    tdlog(Level.FINER, "Returning errVal " + errVal + 
-                            " is_rollback " + is_rollback);
+                    tdlog(Level.FINER, "Returning errVal %d is_rollback=%b", errVal, is_rollback);
                     return is_rollback? 0 : errVal;
                 }
 
                 if (skipFeature && !isRead && (inTxn || !isHASql)) {
-                    tdlog(Level.FINER, "skipFeature is enabled and !isRead: " +
-                            "returning 0");
+                    tdlog(Level.FINER, "skipFeature is enabled and !isRead: %b returning 0", !isRead);
                     return 0;
                 }
             } while (false);
@@ -961,25 +1035,22 @@ public class Comdb2Handle extends AbstractConnection {
             tdlog(Level.FINEST, "reading results");
             // Read results
             if ((nsh = readNsh()) == null || (raw = readRaw(nsh.length)) == null) {
-                tdlog(Level.FINEST, "Failure to read: nsh=" + nsh + " raw=" + raw);
+                tdlog(Level.FINEST, "Failure to read: nsh=%s raw=%s", nsh, raw);
                 // Read error
                 if (errVal != 0) {
                     if (is_rollback) {
-                        tdlog(Level.FINER, "returning 0 for null readNsh / readRaw on rollback errVal=" + 
-                                errVal);
+                        tdlog(Level.FINER, "returning 0 for null readNsh / readRaw on rollback errVal=%d", errVal);
                         return 0;
                     }
                     else if (is_retryable(errVal)) {
-                        tdlog(Level.FINER, "continuing on retryable error " + errVal + 
-                                " for null readNsh");
+                        tdlog(Level.FINER, "continuing on retryable error %d for null readNsh", errVal);
                         errorInTxn = 0;
                         closeNoException();
                         retryAll = true;
                         continue;
                     }
                     else {
-                        tdlog(Level.FINER, "Returning on-retryable error " + errVal + 
-                                " for null readNsh");
+                        tdlog(Level.FINER, "continuing on retryable error %d for null readNsh", errVal);
                         if (is_commit) {
                             cleanup_query_list();
                         } 
@@ -998,9 +1069,9 @@ public class Comdb2Handle extends AbstractConnection {
 
                 if (isHASql || commitSnapshotFile > 0) {
                     if (commitSnapshotFile > 0) {
-                        tdlog(Level.FINER, "Resetting txn state info on commit, isHASql=" +
-                                isHASql + " lsn=[" + commitSnapshotFile + "][" +
-                                commitSnapshotOffset + "]");
+                        tdlog(Level.FINER,
+                              "Resetting txn state info on commit, isHASql=%b lsn=[%d][%d]",
+                              isHASql, commitSnapshotFile, commitSnapshotOffset);
                         inTxn = true;
                         snapshotFile = commitSnapshotFile;
                         snapshotOffset = commitSnapshotOffset;
@@ -1018,10 +1089,18 @@ public class Comdb2Handle extends AbstractConnection {
                     cleanup_query_list();
                 }
                 driverErrStr = "Can't read response from the db.";
-                tdlog(Level.FINER, "Returning connect-error, is_commit=" +
-                        is_commit + " snapshotFile=" + snapshotFile + " is_rollback=" +
-                        is_rollback);
+                tdlog(Level.FINER,
+                      "Returning connect-error, is_commit=%b snapshotFile=%d is_rollback=%b",
+                      is_commit, snapshotFile, is_rollback);
                 return Errors.CDB2ERR_CONNECT_ERROR;
+            }
+
+            if (nsh.type == Sqlresponse.ResponseHeader.SQL_RESPONSE_SSL_VALUE) {
+                peersslmode = PEER_SSL_MODE.PEER_SSL_REQUIRE;
+                trySSL();
+                /* Decrement retry counter: It is not a real retry. */
+                --retry;
+                continue;
             }
 
             // Dbinfo .. go to new node
@@ -1055,8 +1134,7 @@ public class Comdb2Handle extends AbstractConnection {
                 dbHostIdx = -1;
                 closeNoException();
 
-                tdlog(Level.FINER, "continuing with retryAll=true on " +
-                        "nsh.type=DBINFO_RESPONSE_VALUE");
+                tdlog(Level.FINER, "continuing with retryAll=true on nsh.type=DBINFO_RESPONSE_VALUE");
                 continue;
             }
 
@@ -1066,14 +1144,14 @@ public class Comdb2Handle extends AbstractConnection {
                 if (errVal != 0) {
 
                     if (is_rollback) {
-                        tdlog(Level.FINER, "returning 0 for rollback after unpack for errVal=" + errVal);
+                        tdlog(Level.FINER, "returning 0 for rollback after unpack for errVal=%d", errVal);
                         return 0;
                     }
                     else {
                         if (isHASqlCommit) {
                             cleanup_query_list();
                         }
-                        tdlog(Level.FINER, "returning errval for after unpack for errVal=" + errVal);
+                        tdlog(Level.FINER, "returning errval for after unpack for errVal=%d", errVal);
                         return errVal;
                     }
                 } else {
@@ -1086,24 +1164,22 @@ public class Comdb2Handle extends AbstractConnection {
                 last_non_logical_err = ioe;
                 if (errVal != 0) {
 
-                    if (is_rollback) { tdlog(Level.FINER, "Returning 0 on rollback for "+
-                                "errval" + errVal + " for null firstResp");
+                    if (is_rollback) {
+                        tdlog(Level.FINER, "Returning 0 on rollback for errval %d for null firstResp", errVal);
                         return 0;
                     }
                     else if (is_retryable(errVal)) {
                         errorInTxn = 0;
                         closeNoException();
                         retryAll = true;
-                        tdlog(Level.FINER, "Retrying for failed protocol unpack errval=" +
-                                errVal);
+                        tdlog(Level.FINER, "Retrying for failed protocol unpack errval=%d", errVal);
                         continue;
                     }
                     else {
                         if (isHASqlCommit) {
                             cleanup_query_list();
                         }
-                        tdlog(Level.FINEST, "Returning non-retryable error " + errVal+ 
-                                " for null firstrep");
+                        tdlog(Level.FINEST, "Returning non-retryable error %d for null firstresp", errVal);
                         return errVal;
                     }
                 }
@@ -1111,16 +1187,16 @@ public class Comdb2Handle extends AbstractConnection {
                 if (!is_commit || snapshotFile > 0) {
                     closeNoException();
                     retryAll = true;
-                    tdlog(Level.FINER, "Continue with true retryAll for "+
-                            "non-commit, null firstResp and 0 errVal");
+                    tdlog(Level.FINER,
+                          "Continue with true retryAll for non-commit, null firstResp and 0 errVal");
                     continue;
                 } 
                
                 driverErrStr = "Timeout while reading response from server.";
 
-                tdlog(Level.FINER, "Returning IO_ERROR for firstResp=null "
-                        + "errVal=0 is_commit=" + is_commit + " snapshotFile=" +
-                        snapshotFile + " is_rollback=" + is_rollback);
+                tdlog(Level.FINER,
+                      "Returning IO_ERROR for firstResp=null errVal=0 is_commit=%b snapshotFile=%d is_rollback=%b",
+                      is_commit, snapshotFile, is_rollback);
 
                 if (isHASqlCommit) {
                     cleanup_query_list();
@@ -1145,8 +1221,8 @@ public class Comdb2Handle extends AbstractConnection {
                     commitQueryList = null;
                     commitSnapshotFile = 0;
                 }
-                tdlog(Level.FINER, "Continue with true retryAll for " +
-                        "firstResp.errCode=MASTER_TIMEOUT_VALUE");
+                tdlog(Level.FINER,
+                      "Continue with true retryAll for firstResp.errCode=MASTER_TIMEOUT_VALUE");
                 continue;
             }
 
@@ -1181,7 +1257,7 @@ public class Comdb2Handle extends AbstractConnection {
                         commitQueryList = null;
                         commitSnapshotFile = 0;
                     }
-                    tdlog(Level.FINER, "firstResp.columnNames errCode=" + firstResp.errCode);
+                    tdlog(Level.FINER, "firstResp.columnNames errCode=%d", firstResp.errCode);
                     continue;
                 }
 
@@ -1193,8 +1269,9 @@ public class Comdb2Handle extends AbstractConnection {
                     if (isHASqlCommit) {
                         cleanup_query_list();
                     }
-                    tdlog(Level.FINER, "Returning rc=" + rc + " on firstResp.errCode=" +
-                            firstResp.errCode);
+                    tdlog(Level.FINER,
+                          "Returning rc=%d on firstResp.errCode=%d",
+                          rc, firstResp.errCode);
                     return rc;
                 }
 
@@ -1226,7 +1303,7 @@ public class Comdb2Handle extends AbstractConnection {
                     if (is_begin)
                         cleanup_query_list();
 
-                    tdlog(Level.FINER, "Retrying on nxtrc=" + nxtrc + " is_begin=" + is_begin);
+                    tdlog(Level.FINER, "Retrying on nxtrc=%d is_begin=%b", nxtrc, is_begin);
                     retryAll = true;
                     continue;
                 }
@@ -1234,13 +1311,13 @@ public class Comdb2Handle extends AbstractConnection {
                 if (isHASqlCommit) {
                     cleanup_query_list();
                 }
-                tdlog(Level.FINER, "Returning nxtrc="+nxtrc+" is_begin=" + is_begin + 
-                        " isHASql=" + isHASql);
+                tdlog(Level.FINER, "Returning nxtrc=%d is_begin=%b isHASql=%b",
+                      nxtrc, is_begin, isHASql);
                 return convert_rc(nxtrc);
             } else {
                 // XXX I could paper over this with the api, but i want to see what is 
                 // happening first
-                tdlog(Level.FINEST, "XXX FAIL .. firstResp.respType=" + firstResp.respType);
+                tdlog(Level.FINEST, "XXX FAIL .. firstResp.respType=%d", firstResp.respType);
             }
 
         } /* end of the big for loop */
@@ -1251,12 +1328,16 @@ public class Comdb2Handle extends AbstractConnection {
             cleanup_query_list();
         }
 
-        tdlog(Level.FINER, "Maximum retries done: returning IO_ERROR, is_rollback=" + is_rollback);
+        // We've run out of retries: if this was a begin, set inTxn to false
+        if (is_begin)
+            inTxn = false;
+
+        tdlog(Level.FINER, "Maximum retries done: returning IO_ERROR, is_rollback=%b", is_rollback);
         return is_rollback ? 0 : Errors.CDB2ERR_TRAN_IO_ERROR;
     }
 
     @Override
-    public int runStatement(String sql, List<Integer> types) {
+    public synchronized int runStatement(String sql, List<Integer> types) {
         int rc, commit_rc;
 
         if (temp_trans && inTxn) {
@@ -1343,7 +1424,7 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     @Override
-    public int next() {
+    public synchronized int next() {
         if (inTxn && skipFeature && !isRead) {
             return Errors.CDB2_OK_DONE;
         }
@@ -1365,7 +1446,7 @@ public class Comdb2Handle extends AbstractConnection {
         return next_int();
     }
 
-    public int next_int() {
+    private int next_int() {
         boolean skip_to_open = false;
         boolean continue_retry = false;
         //boolean begin_retry = false;
@@ -1379,7 +1460,7 @@ public class Comdb2Handle extends AbstractConnection {
 readloop:
         do {
             continue_retry = false;
-            tdlog(Level.FINEST, "Enter readloop with skip_to_open=" + skip_to_open);
+            tdlog(Level.FINEST, "Enter readloop with skip_to_open=%b", skip_to_open);
             if (!skip_to_open) {
                 if (firstResp == null) {
                     tdlog(Level.FINEST, "next_int: returning OK_DONE for null firstResp");
@@ -1388,7 +1469,7 @@ readloop:
 
                 if (firstResp.errCode != 0) {
                     last_non_logical_err = null;
-                    tdlog(Level.FINEST, "next_int: returning firstResp.errCode " + firstResp.errCode);
+                    tdlog(Level.FINEST, "next_int: returning firstResp.errCode %d", firstResp.errCode);
                     return firstResp.errCode;
                 }
                 if (lastResp != null) {
@@ -1401,13 +1482,13 @@ readloop:
                         int rc = convert_rc(lastResp.errCode);
                         if (inTxn)
                             errorInTxn = rc;
-                        tdlog(Level.FINEST, "next_int: returning " + rc + " for lastResp.respType=2(1) inTxn=" + inTxn);
+                        tdlog(Level.FINEST, "next_int: returning %d for lastResp.respType=2(1) inTxn=%b", rc, inTxn);
                         return rc;
                     }
                 }
             }
             else {
-                tdlog(Level.FINEST, "skipped first part of readloop because skip_to_open is " + skip_to_open);
+                tdlog(Level.FINEST, "skipped first part of readloop because skip_to_open is %b", skip_to_open);
             }
 
             if (skip_to_open || (lastResp = readRecord()) == null) {
@@ -1428,14 +1509,14 @@ readloop:
                         tmsec = (nretry - myDbHosts.size()) * 100;
                         if (tmsec > 1000)
                             tmsec = 1000;
-                        tdlog(Level.FINEST, "Sleeping on read retry " + nretry);
+                        tdlog(Level.FINEST, "Sleeping on read retry %d", nretry);
                         try {
                             Thread.sleep(tmsec);
                         }
                         catch (InterruptedException e) { }
                     }
                     if (!open()) {
-                        tdlog(Level.FINEST, "next_int: retrying with snapshotFile=" + snapshotFile);
+                        tdlog(Level.FINEST, "next_int: retrying with snapshotFile=%d", snapshotFile);
                         continue;
                     }
                     if (!retryQueriesAndSkip(nretry, rowsRead)) {
@@ -1450,8 +1531,9 @@ readloop:
 
                 if (snapshotFile <= 0 || nretry >= maxretries) {
                     /* if no HA txn or max number of HA replays done */
-                    tdlog(Level.FINEST, "next_int: returning CONNECT_ERROR(2) with snapshotFile=" 
-                            + snapshotFile + " and maxretries=" + maxretries);
+                    tdlog(Level.FINEST,
+                          "next_int: returning CONNECT_ERROR(2) with snapshotFile=%d and maxretries=%d",
+                          snapshotFile, maxretries);
                     return Errors.CDB2ERR_CONNECT_ERROR;
                 }
             }
@@ -1460,8 +1542,9 @@ readloop:
             if (lastResp.hasSnapshotInfo) {
                 snapshotFile = lastResp.file;
                 snapshotOffset = lastResp.offset;
-                tdlog(Level.FINEST, "next_int: set snapshot lsn to [" + snapshotFile +
-                        "][" + snapshotOffset + "]");
+                tdlog(Level.FINEST,
+                      "next_int: set snapshot lsn to [%d][%d]",
+                      snapshotFile, snapshotOffset);
             }
 
             /*
@@ -1483,9 +1566,9 @@ readloop:
 
             if (lastResp.respType == 2) { // COLUMN_VALUES
                 if (is_retryable(lastResp.errCode) && snapshotFile > 0) {
-                    tdlog(Level.FINEST, "next_int: continuing retryable rcode " + 
-                            lastResp.errCode + " at [" + snapshotFile +
-                            "][" + snapshotOffset + "]");
+                    tdlog(Level.FINEST,
+                          "next_int: continuing retryable rcode %d at [%d][%d]",
+                          lastResp.errCode, snapshotFile, snapshotOffset);
                     closeNoException();
                     skip_to_open = true;
                     continue readloop;
@@ -1497,7 +1580,9 @@ readloop:
                 if (inTxn) {
                     errorInTxn = rc;
                 }
-                tdlog(Level.FINEST, "next_int: returning " + rc + " for lastResp.respType=2(2) inTxn=" + inTxn);
+                tdlog(Level.FINEST,
+                      "next_int: returning %d for lastResp.respType=2(2) inTxn=%b",
+                      rc, inTxn);
                 return rc;
             }
         } while(skip_to_open || continue_retry);
@@ -1519,8 +1604,9 @@ readloop:
                     break;
                 }
             }
-            tdlog(Level.FINEST, "next_int: lastResp.respType is 3, nSetsSent=" + nSetsSent + 
-                    " lastResp.errCode=" + lastResp.errCode);
+            tdlog(Level.FINEST,
+                  "next_int: lastResp.respType is 3, nSetsSent=%d lastResp.errCode=%d",
+                  nSetsSent, lastResp.errCode);
 
             return Errors.CDB2_OK_DONE;
         }
@@ -1551,7 +1637,7 @@ readloop:
             return true;
         } else {
             rc = reopen(true);
-            tdlog(Level.FINEST, "Connection reopened returned " + rc);
+            tdlog(Level.FINEST, "Connection reopened returned %b", rc);
             return rc;
         }
     }
@@ -1621,7 +1707,7 @@ readloop:
            we're not on it, connect to it. */
         if (prefIdx != -1 && dbHostIdx != prefIdx) {
             io = new SockIO(myDbHosts.get(prefIdx),
-                    myDbPorts.get(prefIdx), tcpbufsz);
+                    myDbPorts.get(prefIdx), tcpbufsz, pmuxrte ? myDbName : null);
             if (io.open()) {
                 try {
                     io.write("newsql\n");
@@ -1658,7 +1744,7 @@ readloop:
                         || try_node == dbHostConnected)
                     continue;
 
-                io = new SockIO(myDbHosts.get(try_node), myDbPorts.get(try_node), tcpbufsz);
+                io = new SockIO(myDbHosts.get(try_node), myDbPorts.get(try_node), tcpbufsz, pmuxrte ? myDbName : null);
                 if (io.open()) {
                     try {
                         io.write("newsql\n");
@@ -1687,7 +1773,7 @@ readloop:
          */
 
         // last time we were at dbHostIdx, this time start from (dbHostIdx + 1)
-        int start_req = dbHostIdx++;
+        int start_req = ++dbHostIdx;
 
         for (; dbHostIdx < myDbHosts.size(); ++dbHostIdx) {
             if (dbHostIdx == masterIndexInMyDbHosts
@@ -1695,7 +1781,7 @@ readloop:
                     || dbHostIdx == dbHostConnected)
                 continue;
 
-            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx), tcpbufsz);
+            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx), tcpbufsz, pmuxrte ? myDbName : null);
             if (io.open()) {
                 try {
                     io.write("newsql\n");
@@ -1724,7 +1810,7 @@ readloop:
                     || dbHostIdx == dbHostConnected)
                 continue;
 
-            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx), tcpbufsz);
+            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx), tcpbufsz, pmuxrte ? myDbName : null);
             if (io.open()) {
                 try {
                     io.write("newsql\n");
@@ -1751,7 +1837,7 @@ readloop:
          */
         if (masterIndexInMyDbHosts >= 0) {
             io = new SockIO(myDbHosts.get(masterIndexInMyDbHosts),
-                    myDbPorts.get(masterIndexInMyDbHosts), tcpbufsz);
+                    myDbPorts.get(masterIndexInMyDbHosts), tcpbufsz, pmuxrte ? myDbName : null);
             if (io.open()) {
                 try {
                     io.write("newsql\n");
@@ -1777,7 +1863,7 @@ readloop:
            Re-check information about db. */
         if (!isDirectCpu && refresh_dbinfo_if_failed) {
             try {
-                lookup();
+                BBSysUtils.getDbHosts(this, true);
                 reopen(false);
             } catch (NoDbHostFoundException e) {
                 logger.log(Level.SEVERE, "Failed to refresh dbinfo", e);
@@ -1794,8 +1880,7 @@ readloop:
         try {
             close();
         } catch (IOException e) {
-            tdlog(Level.WARNING, "Unable to close connection to "
-                    + myDbName + "/" + myDbCluster, e);
+            tdlog(Level.WARNING, "Unable to close connection to %s/%s", myDbName, myDbCluster);
         }
     }
 

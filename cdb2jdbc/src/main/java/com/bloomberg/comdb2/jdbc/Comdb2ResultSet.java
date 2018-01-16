@@ -129,9 +129,12 @@ public class Comdb2ResultSet implements ResultSet {
         }
 
         int idx = -1;
-        for (int i = 0; i != len; ++i)
-            if (name.equals(columnNames[i]))
+        for (int i = 0; i != len; ++i) {
+            if (name.equalsIgnoreCase(columnNames[i])) {
                 idx = i;
+                break;
+            }
+        }
 
         if (idx < 0)
             throw Comdb2Connection.createSQLException(

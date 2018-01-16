@@ -187,7 +187,6 @@ host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
    like a regular netinfo, but will short circuit on
    sending/recieving data.  it will fail the "is_real_netinfo" test */
 netinfo_type *create_netinfo_fake(void);
-netinfo_type *create_netinfo_fake_signal(void);
 int is_real_netinfo(netinfo_type *netinfo);
 netinfo_type *create_netinfo_offload(char myhostname[], int myportnum, int myfd,
                                      char app[], char service[],
@@ -358,7 +357,7 @@ void net_enable_test(netinfo_type *netinfo_ptr, int testno);
 void net_disable_test(netinfo_type *netinfo_ptr);
 
 /* used by comdb2 to add subnet suffices for replication */
-void net_add_nondedicated_subnet();
+int net_add_nondedicated_subnet(void *, void *);
 int net_add_to_subnets(const char *suffix, const char *lrlname);
 void net_cleanup_subnets();
 
@@ -401,6 +400,8 @@ int net_throttle_wait(netinfo_type *netinfo_ptr);
 
 void net_enable_explicit_flush_trace(void);
 void net_disable_explicit_flush_trace(void);
+
+void kill_subnet(char *subnet);
 
 void net_register_child_net(netinfo_type *netinfo_ptr,
                             netinfo_type *netinfo_child, int netnum,

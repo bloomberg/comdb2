@@ -21,8 +21,8 @@ struct common_members {
     int64_t ndeadlocks;
     int64_t nlockwaits;
     int lkcountercheck_lasttime; /* used for checking lockwaints */
-    int thrcount; // number of threads currently available
-    int maxthreads; // maximum number of SC threads allowed
+    int thrcount;                // number of threads currently available
+    int maxthreads;              // maximum number of SC threads allowed
     int is_decrease_thrds; // is feature on to backoff and decrease threads
 };
 
@@ -31,12 +31,13 @@ struct convert_record_data {
     pthread_t tid;
     int isThread;
     struct schema_change_type *s;
-    void *dta_buf, *trans;
+    void *dta_buf;
+    tran_type *trans;
     enum convert_scan_mode scanmode;
     int live, lastrrn, lasttime, outrc;
     unsigned int totnretries;
     struct ireq iq;
-    struct db *from, *to;
+    struct dbtable *from, *to;
     unsigned long long *sc_genids;
     int stripe;
     struct dtadump *dmp;
@@ -57,18 +58,18 @@ struct convert_record_data {
     unsigned int write_count; // saved write counter to this tbl
 };
 
-int convert_all_records(struct db *from, struct db *to,
+int convert_all_records(struct dbtable *from, struct dbtable *to,
                         unsigned long long *sc_genids,
                         struct schema_change_type *s);
 
-int upgrade_all_records(struct db *db, unsigned long long *sc_genids,
+int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
                         struct schema_change_type *s);
 
 void *convert_records_thd(struct convert_record_data *data);
 
 void convert_record_data_cleanup(struct convert_record_data *data);
 
-int init_sc_genids(struct db *db, struct schema_change_type *s);
+int init_sc_genids(struct dbtable *db, struct schema_change_type *s);
 
-void live_sc_enter_exclusive_all(bdb_state_type *bdb_state, void *trans);
+void live_sc_enter_exclusive_all(bdb_state_type *, tran_type *);
 #endif

@@ -49,9 +49,9 @@ if [ $? != 0 ]; then
   exit 1
 fi
 
-./ssl_bench $dbnm
+./simple_ssl $dbnm
 if [ $? != 0 ]; then
-  echo "ssl_bench test failed."
+  echo "simple_ssl test failed."
   exit 1
 fi
 
@@ -60,5 +60,15 @@ if [ $cnt = 0 ]; then
   echo "SSL memory not present"
   exit 1
 fi
+
+host=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"`
+if [ "$host" != "" ]; then
+    numconnect=`CDB2_DEBUG=1 cdb2sql ${CDB2_OPTIONS} $dbnm --host $host 'select 1' 2>&1 | grep -c 'fd -1'`
+    if [ "$numconnect" != "1" ]; then
+        echo "Should only connect once but attempted to connect $numconnect times."
+        exit 1
+    fi
+fi
+
 
 echo "Passed."

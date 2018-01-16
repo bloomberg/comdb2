@@ -31,8 +31,8 @@ int ll_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
                       int arg1, int arg2, void *payload, int paylen);
 int ll_commit_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
                     int arg1, int arg2, void *payload, int paylen);
-int trans_start_int(struct ireq *iq, void *parent_trans, void **out_trans,
-                    int logical, int retries);
+int trans_start_int(struct ireq *iq, tran_type *parent_trans,
+                    tran_type **out_trans, int logical, int retries);
 int bdb_tran_set_request_ack(void *trans);
 unsigned long long rep_get_send_callcount(void);
 unsigned long long rep_get_send_bytecount(void);
@@ -49,7 +49,7 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
                              int count)
 {
     int i, j, rc, start, end = 0, now, elapsed;
-    void *parent = NULL, *trans = NULL;
+    tran_type *trans = NULL;
     unsigned long long repcalls, repbytes, flushes, explicit_flushes,
         interval_flushes;
     struct ireq iq;
@@ -107,9 +107,10 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
         printf("Committed %d records (0 seconds elapsed)\n", count);
     }
 
+    int denom = tcount * count;
     printf("%llu rep-calls (%d per record), %llu rep-bytes (%d per record)\n",
-           repcalls, (int)(repcalls / (tcount * count)), repbytes,
-           (int)(repbytes / (tcount * count)));
+           repcalls, (int)(denom ? repcalls / denom : 0), repbytes,
+           (int)(denom ? repbytes / denom : 0));
     printf("%llu flushes (%d records/flush), %llu explict-flushes (%d "
            "records/flush), %llu interval-flushes (%d records/flush)\n",
            flushes, flushes ? (int)((tcount * count) / flushes) : 0,
@@ -153,7 +154,7 @@ static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
     int i, j, rc, start, end = 0, now, elapsed, physcnt;
     unsigned long long repcalls, repbytes, flushes, explicit_flushes,
         interval_flushes;
-    void *trans = NULL;
+    tran_type *trans = NULL;
     struct ireq iq;
 
     assert(op > 0);
@@ -186,7 +187,7 @@ static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
             }
 
             if ((rc = rowlocks_check_commit_physical(thedb->bdb_env, trans,
-                                                     j) != 0)) {
+                                                     j)) != 0) {
                 fprintf(stderr, "%s: %d: I don't think this should happen.  "
                                 "Aborting.\n",
                         __func__, __LINE__);

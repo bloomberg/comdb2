@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # parent-transaction failure test for the cdb2tcm testsuite
 

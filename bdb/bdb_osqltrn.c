@@ -30,7 +30,7 @@
 #include <ctrace.h>
 #include <alloca.h>
 
-#include <db.h>
+#include <build/db.h>
 
 #include "bdb_int.h"
 #include "bdb_cursor.h"
@@ -278,9 +278,9 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
     }
 
     // Always get the durable lsn from master
-    if ((shadow_tran->tranclass == TRANCLASS_SNAPISOL || 
-        shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) && 
-        durable_lsns && bdb_state->attr->request_durable_lsn_from_master) {
+    if ((shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
+         shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) &&
+        durable_lsns) {
         DB_LSN my_lsn, dur_lsn, arg_lsn;
         uint32_t my_gen;
 
@@ -317,7 +317,8 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
             return NULL;
         }
 
-        if (!file) {
+        /* If this isn't an asof query, backfill to the durable-lsn  */
+        if (!epoch && !file) {
             file = dur_lsn.file;
             offset = dur_lsn.offset;
         }
@@ -404,39 +405,6 @@ done:
     if (pthread_mutex_unlock(&trn_repo_mtx)) {
         logmsg(LOGMSG_ERROR, "pthread_mutex_unlock %d %d\n", rc, errno);
         *bdberr = BDBERR_BADARGS;
-    }
-
-    /* Always block and wait for our commit-lsn to become durable. 
-     * If we have requested a durable lsn from the master, we still
-     * need to make sure that the local lsn is equivalent.  Waiting
-     * for the current lsn & gen to become durable covers this case. */
-    if (!rc && durable_lsns) {
-        DB_LSN wait_lsn;
-        uint32_t wait_gen;
-
-        if (durable_lsn.file) {
-            wait_lsn = durable_lsn;
-            wait_gen = durable_gen;
-        }
-        else {
-            wait_lsn = shadow_tran->snapy_commit_lsn;
-            wait_gen = shadow_tran->snapy_commit_generation;
-        }
-
-        if (rc = bdb_durable_block(bdb_state, &wait_lsn, 
-                    wait_gen, durable_lsn.file?1:0)) {
-            logmsg(LOGMSG_WARN, "%s failed waiting for [%d][%d] to become durable "
-                    "(client should retry)\n",
-                    __func__, shadow_tran->snapy_commit_lsn.file,
-                    shadow_tran->snapy_commit_lsn.offset);
-            pthread_mutex_lock(&trn_repo_mtx);
-            listc_rfl(&trn_repo->trns, trn);
-            pthread_mutex_unlock(&trn_repo_mtx);
-            pthread_mutex_destroy(&trn->log_mtx);
-            free(trn);
-            *bdberr = BDBERR_NOT_DURABLE;
-            return NULL;
-        }
     }
 
     if (gbl_new_snapisol) {
@@ -542,9 +510,9 @@ done:
 #endif
             } else if (rc) {
                 // not able to recover back to that point
-                logmsg(LOGMSG_ERROR, "%s:%d unable to recover db to epoch %lld, "
-                                "file %d, offset %d\n",
-                        __func__, __LINE__, epoch, file, offset);
+                logmsg(LOGMSG_ERROR, "%s:%d unable to recover db to epoch %d, "
+                                     "file %d, offset %d\n",
+                       __func__, __LINE__, epoch, file, offset);
                 *bdberr = BDBERR_NO_LOG;
             }
         }
@@ -753,7 +721,8 @@ void bdb_osql_trn_clients_status()
         return;
     }
 
-    if (rc = bdb_osql_trn_count_clients(&count, 0, &bdberr)) {
+    rc = bdb_osql_trn_count_clients(&count, 0, &bdberr);
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d error counting clients, rc %d\n", __FILE__, __LINE__, rc);
     } else {
         logmsg(LOGMSG_USER, "snapshot registered: %u\n", bdb_osql_trn_count);
@@ -880,41 +849,6 @@ done:
     return rc;
 }
 
-static char hex(unsigned char a)
-{
-    if (a < 10)
-        return '0' + a;
-    return 'a' + (a - 10);
-}
-
-/* Return a hex string */
-static char *tohex(char *output, char *key, int keylen)
-{
-    int i = 0;
-    char byte[3];
-
-    output[0] = '\0';
-    byte[2] = '\0';
-
-    for (i = 0; i < keylen; i++) {
-        snprintf(byte, sizeof(byte), "%c%c", hex(((unsigned char)key[i]) / 16),
-                 hex(((unsigned char)key[i]) % 16));
-        strcat(output, byte);
-    }
-
-    return output;
-}
-
-static void hexdump(char *key, int keylen)
-{
-    char *mem;
-    char *output;
-
-    mem = alloca((2 * keylen) + 2);
-    output = tohex(mem, key, keylen);
-
-    logmsg(LOGMSG_USER, "%s\n", output);
-}
 
 struct clients_update_req {
     bdb_state_type *bdb_state;
@@ -1188,7 +1122,8 @@ static int bdb_osql_trn_process_bfillhndl(bdb_state_type *bdb_state,
                 *bdberr);
     } else {
         do {
-            if (trn->shadow_tran->tranclass == TRANCLASS_SNAPISOL &&
+            if ((trn->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
+                 trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) &&
                 (!gbl_rowlocks || !bkfill_active_trans))
                 log = parse_log_for_snapisol(bdb_state, cur, &lsn,
                                              (!bkfill_active_trans) ? 2 : 1,
@@ -1196,8 +1131,7 @@ static int bdb_osql_trn_process_bfillhndl(bdb_state_type *bdb_state,
             else
                 log = parse_log_for_shadows(bdb_state, cur, &lsn,
                                             1 /* backfill */, bdberr);
-            if (*bdberr)
-                goto done;
+            if (*bdberr) goto done;
 
             if (log) {
                 listc_abl(&trn->bkfill_list, log);

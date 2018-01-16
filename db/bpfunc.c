@@ -16,6 +16,7 @@ extern int gbl_check_access_controls;
 
 static int prepare_create_timepart(bpfunc_t *tp);
 static int prepare_drop_timepart(bpfunc_t *tp);
+static int prepare_timepart_retention(bpfunc_t *tp);
 static int exec_grant(void *tran, bpfunc_t *func, char *err);
 static int exec_authentication(void *tran, bpfunc_t *func, char *err);
 static int exec_password(void *tran, bpfunc_t *func, char *err);
@@ -24,12 +25,14 @@ static int exec_analyze_threshold(void *tran, bpfunc_t *func, char *err);
 static int exec_analyze_coverage(void *tran, bpfunc_t *func, char *err);
 static int exec_rowlocks_enable(void *tran, bpfunc_t *func, char *err);
 static int exec_genid48_enable(void *tran, bpfunc_t *func, char *err);
+static int exec_set_skipscan(void *tran, bpfunc_t *func, char *err);
 /********************      UTILITIES     ***********************/
 
 static int empty(void *tran, bpfunc_t *func, char *err) { return 0; }
 
 void free_bpfunc(bpfunc_t *func)
 {
+    if (unlikely(!func)) return;
     free_bpfunc_arg(func->arg);
     if (func)
         free(func);
@@ -42,7 +45,7 @@ void free_bpfunc_arg(BpfuncArg *arg)
 
 static int init_bpfunc(bpfunc_t *bpf)
 {
-    memset(bpf, 0, sizeof(bpf));
+    memset(bpf, 0, sizeof(*bpf));
     return 0;
 }
 
@@ -86,12 +89,20 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
         func->exec = exec_analyze_coverage;
         break;
 
+    case BPFUNC_TIMEPART_RETENTION:
+        prepare_timepart_retention(func);
+        break;
+
     case BPFUNC_ROWLOCKS_ENABLE:
         func->exec = exec_rowlocks_enable;
         break;
 
     case BPFUNC_GENID48_ENABLE:
         func->exec = exec_genid48_enable;
+        break;
+
+    case BPFUNC_SET_SKIPSCAN:
+        func->exec = exec_set_skipscan;
         break;
 
     default:
@@ -103,8 +114,8 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
     return 0;
 }
 
-int bpfunc_prepare(bpfunc_t **f, void *tran, int32_t data_len,
-        uint8_t *data, bpfunc_info *info)
+int bpfunc_prepare(bpfunc_t **f, int32_t data_len, uint8_t *data,
+                   bpfunc_info *info)
 {
     bpfunc_t *func = *f = (bpfunc_t *)malloc(sizeof(bpfunc_t));
 
@@ -163,7 +174,7 @@ int success_create_timepart(void *tran, bpfunc_t *func, char *err)
                         &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s -- bdb_llog_views rc:%d bdberr:%d\n", __func__, rc,
-                bdberr);
+               bdberr);
     }
 
     return rc;
@@ -323,11 +334,22 @@ static int exec_authentication(void *tran, bpfunc_t *func, char *err)
 {
     BpfuncAuthentication *auth = func->arg->auth;
     int bdberr = 0;
+    int valid_user;
+
+    if (auth->enabled)
+        bdb_user_password_check(DEFAULT_USER, DEFAULT_PASSWORD, &valid_user);
+
     /* Check if there is already op password. */
     int rc = bdb_authentication_set(thedb->bdb_env, tran, auth->enabled, &bdberr);
+
+    if (auth->enabled && valid_user == 0 && rc == 0)
+        rc = bdb_user_password_set(tran, DEFAULT_USER, DEFAULT_PASSWORD);
+
     if (rc == 0)
       rc = net_send_authcheck_all(thedb->handle_sibling);
+
     gbl_check_access_controls = 1;
+
     return rc;
 }
 
@@ -371,6 +393,7 @@ static int exec_analyze_threshold(void *tran, bpfunc_t *func, char *err)
     return rc;
 }
 
+
 static int exec_analyze_coverage(void *tran, bpfunc_t *func, char *err)
 {
 
@@ -387,6 +410,58 @@ static int exec_analyze_coverage(void *tran, bpfunc_t *func, char *err)
     // TODO bdberr should not be ignored also a better way to pass err msg
     // upstream
     // would be nice
+    return rc;
+}
+
+static int exec_timepart_retention(void *tran, bpfunc_t *func, char *err)
+{
+    BpfuncTimepartRetention *ret_f = func->arg->tp_ret;
+    struct errstat xerr = {0};
+    int rc;
+
+    rc = timepart_update_retention( tran, ret_f->timepartname, ret_f->newvalue, &xerr);
+
+    // TODO bdberr should not be ignored also a better way to pass err msg upstream
+    // would be nice
+    return rc;
+}
+
+int success_timepart_retention(void *tran, bpfunc_t *func, char *err)
+{
+     int rc = 0;
+     int bdberr = 0;
+
+     rc = bdb_llog_views(thedb->bdb_env, func->arg->tp_ret->timepartname, 1, &bdberr);
+     if(rc)
+     {
+        logmsg(LOGMSG_ERROR, "%s -- bdb_llog_views rc:%d bdberr:%d\n",
+               __func__, rc, bdberr);
+     }
+  
+    return rc;
+}
+
+static int prepare_timepart_retention(bpfunc_t *tp)
+{
+    tp->exec = exec_timepart_retention;
+    tp->success = success_timepart_retention;
+
+    return 0;
+}
+
+static int exec_set_skipscan(void *tran, bpfunc_t *func, char *err)
+{
+    BpfuncAnalyzeCoverage *cov_f = func->arg->an_cov;
+    int bdberr;
+    int rc;
+
+    if (cov_f->newvalue == 1) //enable skipscan means clear llmeta entry
+        rc = bdb_clear_table_parameter(tran, cov_f->tablename, "disableskipscan");
+    else {
+        const char *value = "true";
+        rc = bdb_set_table_parameter(tran, cov_f->tablename, "disableskipscan", value);
+    }
+    bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
     return rc;
 }
 
@@ -408,7 +483,7 @@ static int exec_genid48_enable(void *tran, bpfunc_t *func, char *err)
     /* Set flags: we'll actually set the format in the block processor */
     struct ireq *iq = (struct ireq *)func->info->iq;
     iq->osql_genid48_enable = gn->enable;
-    iq->osql_flags |= OSQL_FLAGS_GENID48;
+    bset(&iq->osql_flags, OSQL_FLAGS_GENID48);
     return 0;
 }
 
@@ -431,7 +506,7 @@ static int exec_rowlocks_enable(void *tran, bpfunc_t *func, char *err)
     if (!rc) {
         struct ireq *iq = (struct ireq *)func->info->iq;
         iq->osql_rowlocks_enable = rl->enable;
-        iq->osql_flags |= OSQL_FLAGS_ROWLOCKS;
+        bset(&iq->osql_flags, OSQL_FLAGS_ROWLOCKS);
     }
     return rc;
 }

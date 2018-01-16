@@ -95,6 +95,7 @@ static int load_locations_from(char *path)
     return 0;
 }
 
+/* returns a malloced string which caller needs to free */
 char *comdb2_location(char *type, char *fmt, ...)
 {
     struct location *l;
@@ -222,4 +223,13 @@ char *comdb2_file(char *fmt, ...)
     va_end(args);
 
     return out;
+}
+
+void cleanup_file_locations()
+{
+    if (locations) {
+        hash_clear(locations);
+        hash_free(locations);
+        locations = NULL;
+    }
 }

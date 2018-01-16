@@ -103,7 +103,7 @@ Add the key                             ll_key_add (same call)
 #include <unistd.h>
 #include <stddef.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <fsnap.h>
 
 #include <ctrace.h>
@@ -112,7 +112,7 @@ Add the key                             ll_key_add (same call)
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
-#include "db_swap.h"
+#include <dbinc/db_swap.h>
 #include "plbitlib.h" /* for bset/btst */
 
 #include "logmsg.h"
@@ -196,6 +196,14 @@ int get_physical_transaction(bdb_state_type *bdb_state, tran_type *logical_tran,
     if (!logical_tran->physical_tran &&
         (rc = start_physical_transaction(bdb_state, logical_tran, outtran) !=
               0)) {
+        int ismaster;
+        ismaster =
+            (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host);
+        if (!ismaster && !bdb_state->in_recovery) {
+            logmsg(LOGMSG_ERROR,
+                   "Master change while getting physical tran.\n");
+            return BDBERR_READONLY;
+        }
         return rc;
     }
     *outtran = logical_tran->physical_tran;
@@ -233,8 +241,8 @@ static inline void deadlock_trace(const char *func, tran_type *tran, int rc)
 {
     extern int gbl_rowlocks_deadlock_trace;
     if (is_deadlock(rc) && gbl_rowlocks_deadlock_trace) {
-        logmsg(LOGMSG_ERROR, "ltranid %llu %s returning deadlock\n",
-                tran->logical_tranid, func, rc);
+        logmsg(LOGMSG_ERROR, "ltranid %llu %s returning deadlock %d\n",
+               tran->logical_tranid, func, rc);
     }
 }
 

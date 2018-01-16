@@ -20,9 +20,12 @@
 extern pthread_mutex_t schema_change_in_progress_mutex;
 extern pthread_mutex_t fastinit_in_progress_mutex;
 extern pthread_mutex_t schema_change_sbuf2_lock;
+extern pthread_mutex_t sc_resuming_mtx;
+extern struct schema_change_type *sc_resuming;
 extern volatile int gbl_schema_change_in_progress;
 extern volatile int gbl_lua_version;
 extern uint64_t sc_seed;
+extern uint32_t sc_host;
 extern int gbl_default_livesc;
 extern int gbl_default_plannedsc;
 extern int gbl_default_sc_scanmode;
@@ -46,7 +49,7 @@ extern unsigned gbl_sc_updates;
 extern unsigned gbl_sc_deletes;
 extern long long gbl_sc_nrecs;
 extern long long gbl_sc_prev_nrecs; /* nrecs since last report */
-extern int gbl_sc_report_freq; /* seconds between reports */
+extern int gbl_sc_report_freq;      /* seconds between reports */
 extern int gbl_sc_abort;
 extern int gbl_sc_resume_start;
 /* see sc_del_unused_files() and sc_del_unused_files_check_progress() */
@@ -67,7 +70,7 @@ extern int gbl_sc_thd_failed;
 /* All writer threads have to grab the lock in read/write mode.  If a live
  * schema change is in progress then they have to do extra stuff. */
 extern int sc_live;
-/* pthread_rwlock_t sc_rwlock = PTHREAD_RWLOCK_INITIALIZER;*/
+extern pthread_rwlock_t sc_live_rwlock;
 
 extern int schema_change; /*static int schema_change_doomed = 0;*/
 extern int stopsc;        /* stop schemachange, so it can resume */
@@ -75,11 +78,12 @@ extern int stopsc;        /* stop schemachange, so it can resume */
 int is_dta_being_rebuilt(struct scplan *plan);
 const char *get_sc_to_name();
 void wait_for_sc_to_stop();
-int sc_set_running(int running, uint64_t seed, char *host, time_t time);
+void allow_sc_to_run();
+int sc_set_running(int running, uint64_t seed, const char *host, time_t time);
 void sc_status(struct dbenv *dbenv);
-void live_sc_off(struct db *db);
+void live_sc_off(struct dbtable *db);
 void reset_sc_stat();
 int reload_lua();
-int replicant_reload_analyze();
+int replicant_reload_analyze_stats();
 
 #endif

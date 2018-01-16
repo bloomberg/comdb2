@@ -91,6 +91,10 @@ entries:
       url: /triggers.html
       output: web
 
+    - title: Time partitions
+      url: /timepart.html
+      output: web
+
   - title: Configuring databases
     output: web
     folderitems:

@@ -33,6 +33,7 @@ static const char revid[] = "$Id: db_open.c,v 11.236 2003/09/27 00:29:03 sue Exp
 #include "dbinc/mp.h"
 #include "dbinc/qam.h"
 #include "dbinc/txn.h"
+#include "dbinc/trigger_subscription.h"
 
 #include <string.h>
 
@@ -254,6 +255,50 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 			ret = __lock_downgrade(dbenv,
 			    &dbp->handle_lock, DB_LOCK_READ, 0);
 	}
+	if (type == DB_BTREE && fname) {
+		size_t s = strlen(fname);
+		if (s > 7 && strncmp(fname, "XXX.__q", 7) == 0) {
+			/*
+			 ** Format of valid queuedb names:
+			 ** XXX.__qfoobar_5a04ca240000006c.queuedb
+			 ** or
+			 ** XXX.__qfoobar.queuedb
+			 **
+			 ** Both styles name a queuedb: __qfoobar
+			 ** See also, is_tablename_queue @ osqlcomm.c
+			 */
+			char name[s], *n = name;
+			const char *f = fname + 4;
+			while (*f != '.')
+				*n++ = *f++;
+			*n = 0;
+			s = n - name;
+			if (s > 17) { // possibly new style queue name
+				n = name + s - 17;
+				if (*n == '_') {
+					char *g = n + 1;
+					while (*g) {
+						char c = *g;
+						if ((c >= '0' && c <= '9') ||
+						    (c >= 'a' && c <= 'f')) {
+							++g;
+						} else {
+							break;
+						}
+					}
+					if (*g == 0) {
+						// walks like a genid
+						// quacks like a genid
+						*n = 0;
+					}
+				}
+			}
+			dbp->trigger_subscription =
+			    __db_get_trigger_subscription(name);
+			dbenv->trigger_open(dbenv, name);
+		}
+	}
+
 DB_TEST_RECOVERY_LABEL
 err:
 	return (ret);

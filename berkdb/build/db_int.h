@@ -82,12 +82,7 @@ extern "C" {
  * isn't an integral type the same size as a pointer -- here's hoping.
  */
 typedef unsigned long long db_align_t;
-
-#ifdef BB64BIT
-typedef unsigned long long db_alignp_t;
-#else
-typedef unsigned int db_alignp_t;
-#endif
+typedef uintptr_t db_alignp_t;
 
 /* Align an integer to a specific boundary. */
 #undef	ALIGN
@@ -528,5 +523,17 @@ int __checkpoint_verify(DB_ENV *);
 #ifndef COMDB2AR
 #include <mem_override.h>
 #endif
+
+/* Perfect checkpoints */
+/* Global knob */
+extern int gbl_use_perfect_ckp;
+/*
+ * Thread-specific key to store DB_TXN when we do a txn_begin().
+ * It is cleared in txn_commit() and txn_abort().
+ * Alternatively I could make memp* functions take an extra
+ * (DB_TXN *) argument and consequently change 1000+ occurrences
+ * of these functions. Easy peasy.
+ */
+extern pthread_key_t txn_key;
 
 #endif /* !_DB_INTERNAL_H_ */

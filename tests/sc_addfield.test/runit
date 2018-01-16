@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 # Debug variable
@@ -45,28 +45,6 @@ function do_verify
     fi
 }
 
-
-# Update all records in the table
-function update_all_records
-{
-    typeset prmsg=$1
-    typeset iter=0
-
-    [[ "$debug" == 1 ]] && set -x
-
-    while :; do 
-
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
-        let iter=iter+1
-
-        if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
-
-            echo "Updated all of table t1 $iter times."
-
-        fi
-
-    done
-}
 
 function update_records
 {
@@ -152,7 +130,7 @@ do_verify
 
 function do_alter_and_update (){
 #updates fail (deadlock?):
-#[update t1 set c=c+10000 where 1] failed with rc 304 OP #3 BLOCK2_SEQV2(824): unable to update record rc = 199
+#[update t1 set c=c+10000 where 1] failed with rc 304 unable to update record rc = 199
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }" 
 assertcnt 3000
 do_verify

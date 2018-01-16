@@ -86,7 +86,7 @@ int srs_tran_create(struct sqlclntstate *clnt)
 
     osql->history = (srs_tran_t *)calloc(1, sizeof(srs_tran_t));
     if (!osql->history) {
-        fprintf(stderr, "malloc %d\n", sizeof(srs_tran_t));
+        fprintf(stderr, "malloc %zu\n", sizeof(srs_tran_t));
         return -1;
     }
 #if 0
@@ -98,6 +98,11 @@ int srs_tran_create(struct sqlclntstate *clnt)
     return 0;
 }
 
+/* set replay status
+ * at the end of it all, we may replay the entire list
+ * of statements in a transaction from srs_tran_replay,
+ * depending on the replay status
+ */
 void osql_set_replay(const char *file, int line, struct sqlclntstate *clnt,
                      int replay)
 {
@@ -198,7 +203,7 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
     if (clnt->query) {
         item = (srs_tran_query_t *)malloc(sizeof(srs_tran_query_t) + qlen);
         if (!item) {
-            fprintf(stderr, "malloc %d\n", sizeof(srs_tran_query_t) + qlen);
+            fprintf(stderr, "malloc %zu\n", sizeof(srs_tran_query_t) + qlen);
             return -1;
         }
         item->tag = NULL;
@@ -220,7 +225,7 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
             clnt->numnullbits + total_blob_length);
 
         if (!item) {
-            fprintf(stderr, "malloc %d\n", sizeof(srs_tran_query_t) + qlen);
+            fprintf(stderr, "malloc %zu\n", sizeof(srs_tran_query_t) + qlen);
             return -1;
         }
 
@@ -261,7 +266,7 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
     } else {
         item = (srs_tran_query_t *)malloc(sizeof(srs_tran_query_t) + qlen);
         if (!item) {
-            fprintf(stderr, "malloc %d\n", sizeof(srs_tran_query_t) + qlen);
+            fprintf(stderr, "malloc %zu\n", sizeof(srs_tran_query_t) + qlen);
             return -1;
         }
         item->tag = NULL;
@@ -332,8 +337,6 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
         if (!osql->history) {
             fprintf(stderr, "Trying to replay, but no history?\n");
             abort();
-            cheap_stack_trace();
-            return -1;
         }
 
         clnt->verify_retries++;
@@ -352,7 +355,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
             osql_shadtbl_close(clnt); 
         }
 
-        if (clnt->verify_retries == 500)
+        if (clnt->verify_retries == gbl_osql_verify_retries_max + 1)
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
 
         if (0 /*!bdb_am_i_coherent(thedb->bdb_env)*/) {

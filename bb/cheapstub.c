@@ -36,6 +36,15 @@
 
 #include <logmsg.h>
 
+/* Backtrace is only available in glibc */
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+extern void backtrace_symbols_fd(void *const *, int, int);
+#else
+#define backtrace(A, B) 1
+#define backtrace_symbols_fd(A, B, C)
+#endif
+
 static void cheapstub(FILE *f)
 {
     if (f == NULL)
@@ -45,10 +54,11 @@ static void cheapstub(FILE *f)
     void *buf[size];
     int n = backtrace(buf, size);
 
-    logmsgf(LOGMSG_USER, f, "tid=0x%x(%u) stack trace, run addr2line -f -e <exe> on: \n", tid, 
-            (uint32_t) tid);
+    logmsgf(LOGMSG_USER, f,
+            "tid=0x%lx(%u) stack trace, run addr2line -f -e <exe> on: \n", tid,
+            (uint32_t)tid);
     for  (int i = 2; i < n; ++i) {
-        logmsgf(LOGMSG_USER,  f, "0x%x ", buf[i] );
+        logmsgf(LOGMSG_USER, f, "%p ", buf[i]);
     }
     logmsgf(LOGMSG_USER,  f, "\n");
 

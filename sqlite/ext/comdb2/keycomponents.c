@@ -153,13 +153,13 @@ static int systblFieldsColumn(
   int i
 ){
   systbl_fields_cursor *pCur = (systbl_fields_cursor*)cur;
-  struct db *pDb = thedb->dbs[pCur->iRowid];
+  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
   struct schema *pSchema = pDb->ixschema[pCur->iKeyid];
   struct field *pField = &pSchema->member[pCur->iFieldid];
 
   switch( i ){
     case STFIELD_TABLE: {
-      sqlite3_result_text(ctx, pDb->dbname, -1, NULL);
+      sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
       break;
     }
     case STFIELD_KEY: {
@@ -167,7 +167,7 @@ static int systblFieldsColumn(
       break;
     }
     case STFIELD_COLNO: {
-      sqlite3_result_int64(ctx, (sqlite3_int64)pField->idx);
+      sqlite3_result_int64(ctx, (sqlite3_int64)pCur->iFieldid);
       break;
     }
     case STFIELD_COLNAME: {
