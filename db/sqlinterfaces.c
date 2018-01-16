@@ -3984,7 +3984,10 @@ static int ha_retrieve_snapshot(struct sqlclntstate *clnt)
             !clnt->sql_query->snapshot_info) {
         logmsg(LOGMSG_USER, "AZ: %s: retry sql '%s' cnonce '%.64s'\n",
                 __func__, clnt->sql_query->sql_query, clnt->sql_query->cnonce.data);
-        //search in blkseq for this cnonce -- need to 
+        //search in blkseq for this cnonce -- fast pass
+        //if we have not returned rows to the user we can
+        //just let the master find in blkseq and return via normal request processing
+        //if we have returned rows to client, we will need to abort this transaction
     }
 
     /* MOHIT -- Check here that we are in high availablity, its cdb2api, and
@@ -5776,8 +5779,10 @@ int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     /* is this a snapshot? special processing */
     rc = ha_retrieve_snapshot(clnt);
-    if (rc)
+    if (rc) {
+        logmsg(LOGMSG_DEBUG, "ha_retrieve_snapshot() returned rc=%d\n", rc);
         return 0;
+    }
 
     /* All requests that do not require a sqlite engine
        are processed below.  A return != 0 means processing

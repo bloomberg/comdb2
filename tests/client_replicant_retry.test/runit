@@ -121,12 +121,12 @@ done
 # get a replicant
 node=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"`
 if [ "$node" == "$master" ] ; then
-    cdb2sql -v --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()" > host.out
+    cdb2sql -v --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()" &> host.out
     failexit "node is same as master $master"
 fi
 
 # store 100 in account with id 1
-cdb2sql -v ${CDB2_OPTIONS} $dbnm default "insert into t1 values (1, 100)" > insert.out
+cdb2sql -v ${CDB2_OPTIONS} $dbnm default "insert into t1 values (1, 100)" &> insert.out
 assertcnt 1
 sleep 1
 
