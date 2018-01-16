@@ -51,6 +51,7 @@
 #include <alloca.h>
 #include "bdb_schemachange.h"
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 
 /* bdb routines to support schema change */
 
@@ -185,6 +186,9 @@ retry:
         (strncmp(ch_bdb_state->name, "sqlite_stat",
                  sizeof("sqlite_stat") - 1) != 0))
         bdb_lock_table_write(ch_bdb_state, tran);
+    /* analyze does NOT need schema_lk */
+    if (sctype == sc_analyze)
+        ltran->get_schema_lock = 0;
 
     DB_LSN lsn;
     rc = llog_scdone_log(p_bdb_state->dbenv, tran->tid, &lsn, 0, tbl, type);
@@ -288,7 +292,7 @@ int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t type, int wait,
 
 int bdb_llog_analyze(bdb_state_type *bdb_state, int wait, int *bdberr)
 {
-    ++gbl_analyze_gen;
+    ATOMIC_ADD(gbl_analyze_gen, 1);
     return do_llog(bdb_state, sc_analyze, NULL, wait, bdberr);
 }
 
