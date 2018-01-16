@@ -1234,6 +1234,8 @@ int cdb2_socket_pool_get(const char *typestr, int dbnum, int *port)
     pthread_mutex_lock(&cdb2_sockpool_mutex);
     int rc = cdb2_socket_pool_get_ll(typestr, dbnum, port);
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
+    if (log_calls)
+        fprintf(stderr, "%s(%s,%d): fd=%d\n", __func__, typestr, dbnum, rc);
     return rc;
 }
 
@@ -1514,8 +1516,9 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
     return fd;
 }
 
-/* Tries to connect to specified node using sockpool,
-    if there is none, then makes a new socket connection. */
+/* Tries to connect to specified node using sockpool.
+ * If there is none, then makes a new socket connection. 
+ */
 static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
                           int timeoutms, int indx)
 {
@@ -1534,41 +1537,35 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
                         "'comdb2/%s/%s/newsql/%s' only %s\n",
                 hndl->dbname, hndl->type, hndl->policy, hndl->newsql_typestr);
     }
-retry_newsql_connect:
-    fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum, NULL);
 
-    if (hndl->debug_trace)
-        fprintf(stderr, "cdb2_socket_pool_get(%s,%d): fd %d\n",
-                hndl->newsql_typestr, hndl->dbnum, fd);
+    while ((fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum, NULL))
+            > 0) {
+        if ((sb = sbuf2open(fd, 0)) == 0) {
+            close(fd);
+            return -1;
+        }
+        if (send_reset(sb) == 0)
+            break; //connection is ready
+        sbuf2close(sb); // retry newsql connect;
+    }
+
     if (fd < 0) {
         if (!cdb2_allow_pmux_route) {
             fd = cdb2_tcpconnecth_to(host, port, 0, CDB2_CONNECT_TIMEOUT);
-            if (fd < 0)
-                return -1;
         } else {
             fd = cdb2portmux_route(host, "comdb2", "replication", hndl->dbname,
                                    hndl->debug_trace);
-            if (fd < 0)
-                return -1;
         }
-        sb = sbuf2open(fd, 0);
-        if (sb == 0) {
+        if (fd < 0)
+            return -1;
+
+        if ((sb = sbuf2open(fd, 0)) == 0) {
             close(fd);
             return -1;
         }
         sbuf2printf(sb, "newsql\n");
         sbuf2flush(sb);
-    } else {
-        sb = sbuf2open(fd, 0);
-        if (sb == 0) {
-            close(fd);
-            return -1;
-        }
-        if (send_reset(sb) != 0) {
-            sbuf2close(sb);
-            goto retry_newsql_connect;
-        }
-    }
+    } 
 
 #if WITH_SSL
     if (try_ssl(hndl, sb, indx) != 0) {
@@ -1926,9 +1923,9 @@ retry:
             CDB2QUERY query = CDB2__QUERY__INIT;
             query.spcmd = cmd;
             int len = cdb2__query__get_packed_size(&query);
-            unsigned char *buf = malloc(len + 1);
+            unsigned char *locbuf = malloc(len + 1);
 
-            cdb2__query__pack(&query, buf);
+            cdb2__query__pack(&query, locbuf);
 
             struct newsqlheader hdr;
 
@@ -1937,10 +1934,10 @@ retry:
             hdr.length = ntohl(len);
 
             sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
-            sbuf2write((char *)buf, len, hndl->sb);
+            sbuf2write((char *)locbuf, len, hndl->sb);
 
             int rc = sbuf2flush(hndl->sb);
-            free(buf);
+            free(locbuf);
             if (rc < 0)
                 return -1;
         }
