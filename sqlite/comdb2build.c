@@ -2192,8 +2192,11 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
 
     csc2 = strbuf_new();
 
-    /* Schema (columns) section */
-    strbuf_append(csc2, "schema\n\t{");
+    /*
+      Schema (columns) section. Switch "tag ondisk" to "schema" once all
+      prod servers upgrade to r7 and up.
+    */
+    strbuf_append(csc2, "tag ondisk\n\t{");
     LISTC_FOR_EACH(&ctx->schema->column_list, column, lnk)
     {
         if (column->flags & COLUMN_DELETED)
