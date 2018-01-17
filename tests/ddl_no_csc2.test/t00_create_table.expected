@@ -26,51 +26,51 @@
 (tablename='t8', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue='1', dbload=NULL, isnullable='Y')
 (tablename='t9', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue='0', dbload=NULL, isnullable='N')
 (tablename='t10', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue='0', dbload=NULL, isnullable='Y')
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 	}
 ')
-(type='table', name='t3', tbl_name='t3', rootpage=5, sql='create table "t3"("i" int, "j" int, "k" int);', csc2='schema
+(type='table', name='t3', tbl_name='t3', rootpage=5, sql='create table "t3"("i" int, "j" int, "k" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
 		int k null = yes 
 	}
 ')
-(type='table', name='t4', tbl_name='t4', rootpage=6, sql='create table "t4"("i" int);', csc2='schema
+(type='table', name='t4', tbl_name='t4', rootpage=6, sql='create table "t4"("i" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 	}
 ')
-(type='table', name='t5', tbl_name='t5', rootpage=7, sql='create table "t5"("i" int, "j" int);', csc2='schema
+(type='table', name='t5', tbl_name='t5', rootpage=7, sql='create table "t5"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
 	}
 ')
-(type='table', name='t6', tbl_name='t6', rootpage=8, sql='create table "t6"("i" int);', csc2='schema
+(type='table', name='t6', tbl_name='t6', rootpage=8, sql='create table "t6"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
 ')
-(type='table', name='t7', tbl_name='t7', rootpage=9, sql='create table "t7"("i" int, "j" int);', csc2='schema
+(type='table', name='t7', tbl_name='t7', rootpage=9, sql='create table "t7"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i 
 		int j 
 	}
 ')
-(type='table', name='t8', tbl_name='t8', rootpage=10, sql='create table "t8"("i" int DEFAULT 1);', csc2='schema
+(type='table', name='t8', tbl_name='t8', rootpage=10, sql='create table "t8"("i" int DEFAULT 1);', csc2='tag ondisk
 	{
 		int i dbstore = 1 null = yes 
 	}
 ')
-(type='table', name='t9', tbl_name='t9', rootpage=11, sql='create table "t9"("i" int DEFAULT 0);', csc2='schema
+(type='table', name='t9', tbl_name='t9', rootpage=11, sql='create table "t9"("i" int DEFAULT 0);', csc2='tag ondisk
 	{
 		int i dbstore = 0 
 	}
 ')
-(type='table', name='t10', tbl_name='t10', rootpage=12, sql='create table "t10"("i" int DEFAULT 0);', csc2='schema
+(type='table', name='t10', tbl_name='t10', rootpage=12, sql='create table "t10"("i" int DEFAULT 0);', csc2='tag ondisk
 	{
 		int i dbstore = 0 null = yes 
 	}
@@ -103,7 +103,7 @@
 (tablename='t6', keyname='$KEY_88C200AD', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t9', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t10', keyname='$KEY_BFD493EE', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
@@ -113,7 +113,7 @@ keys
 	}
 ')
 (type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
-(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int, "j" int);', csc2='schema
+(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i 
 		int j null = yes 
@@ -124,7 +124,7 @@ keys
 	}
 ')
 (type='index', name='$COMDB2_PK_75A79413', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_75A79413" on "t2" ("i");', csc2=NULL)
-(type='table', name='t5', tbl_name='t5', rootpage=8, sql='create table "t5"("i" int);', csc2='schema
+(type='table', name='t5', tbl_name='t5', rootpage=8, sql='create table "t5"("i" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 	}
@@ -134,7 +134,7 @@ keys
 	}
 ')
 (type='index', name='$$KEY_3AE602D4_3AE602D4', tbl_name='t5', rootpage=9, sql='create index "$$KEY_3AE602D4_3AE602D4" on "t5" ("i");', csc2=NULL)
-(type='table', name='t6', tbl_name='t6', rootpage=10, sql='create table "t6"("i" int, "j" int);', csc2='schema
+(type='table', name='t6', tbl_name='t6', rootpage=10, sql='create table "t6"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i 
 		int j null = yes 
@@ -147,7 +147,7 @@ keys
 ')
 (type='index', name='$COMDB2_PK_11CB5117', tbl_name='t6', rootpage=11, sql='create index "$COMDB2_PK_11CB5117" on "t6" ("i");', csc2=NULL)
 (type='index', name='$$KEY_88C200AD_88C200AD', tbl_name='t6', rootpage=12, sql='create index "$$KEY_88C200AD_88C200AD" on "t6" ("j");', csc2=NULL)
-(type='table', name='t9', tbl_name='t9', rootpage=13, sql='create table "t9"("i" int, "j" int);', csc2='schema
+(type='table', name='t9', tbl_name='t9', rootpage=13, sql='create table "t9"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i 
 		int j 
@@ -158,7 +158,7 @@ keys
 	}
 ')
 (type='index', name='$COMDB2_PK_F7FB6E60', tbl_name='t9', rootpage=14, sql='create index "$COMDB2_PK_F7FB6E60" on "t9" ("i", "j");', csc2=NULL)
-(type='table', name='t10', tbl_name='t10', rootpage=15, sql='create table "t10"("i" int, "j" int);', csc2='schema
+(type='table', name='t10', tbl_name='t10', rootpage=15, sql='create table "t10"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -203,7 +203,7 @@ keys
 (tablename='t8', keyname='$KEY_E03FA74B', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t8', keyname='$KEY_F6390457', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t8', keyname='$KEY_36A904B4', keynumber=2, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(type='table', name='t2', tbl_name='t2', rootpage=4, sql='create table "t2"("i" int, "j" int);', csc2='schema
+(type='table', name='t2', tbl_name='t2', rootpage=4, sql='create table "t2"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -216,12 +216,12 @@ keys
 ')
 (type='index', name='$$KEY_FBAE8181_FBAE8181', tbl_name='t2', rootpage=5, sql='create index "$$KEY_FBAE8181_FBAE8181" on "t2" ("i", "j");', csc2=NULL)
 (type='index', name='$$KEY_498A83F8_498A83F8', tbl_name='t2', rootpage=6, sql='create index "$$KEY_498A83F8_498A83F8" on "t2" ("j", "i");', csc2=NULL)
-(type='table', name='t3', tbl_name='t3', rootpage=7, sql='create table "t3"("i" int);', csc2='schema
+(type='table', name='t3', tbl_name='t3', rootpage=7, sql='create table "t3"("i" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 	}
 ')
-(type='table', name='t4', tbl_name='t4', rootpage=8, sql='create table "t4"("i" int, "j" int);', csc2='schema
+(type='table', name='t4', tbl_name='t4', rootpage=8, sql='create table "t4"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -232,7 +232,7 @@ keys
 	}
 ')
 (type='index', name='$$KEY_92E6E53D_92E6E53D', tbl_name='t4', rootpage=9, sql='create index "$$KEY_92E6E53D_92E6E53D" on "t4" ("i" DESC);', csc2=NULL)
-(type='table', name='t5', tbl_name='t5', rootpage=10, sql='create table "t5"("i" int, "j" int);', csc2='schema
+(type='table', name='t5', tbl_name='t5', rootpage=10, sql='create table "t5"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -243,7 +243,7 @@ keys
 	}
 ')
 (type='index', name='$$KEY_3AE602D4_3AE602D4', tbl_name='t5', rootpage=11, sql='create index "$$KEY_3AE602D4_3AE602D4" on "t5" ("i");', csc2=NULL)
-(type='table', name='t6', tbl_name='t6', rootpage=12, sql='create table "t6"("i" int, "j" int);', csc2='schema
+(type='table', name='t6', tbl_name='t6', rootpage=12, sql='create table "t6"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -254,7 +254,7 @@ keys
 	}
 ')
 (type='index', name='$$KEY_66967FE9_66967FE9', tbl_name='t6', rootpage=13, sql='create index "$$KEY_66967FE9_66967FE9" on "t6" ("i", "j" DESC);', csc2=NULL)
-(type='table', name='t7', tbl_name='t7', rootpage=14, sql='create table "t7"("i" int, "j" int);', csc2='schema
+(type='table', name='t7', tbl_name='t7', rootpage=14, sql='create table "t7"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -265,7 +265,7 @@ keys
 	}
 ')
 (type='index', name='$$KEY_C62EE9BB_C62EE9BB', tbl_name='t7', rootpage=15, sql='create index "$$KEY_C62EE9BB_C62EE9BB" on "t7" ("i" DESC, "j" DESC);', csc2=NULL)
-(type='table', name='t8', tbl_name='t8', rootpage=16, sql='create table "t8"("i" int, "j" int);', csc2='schema
+(type='table', name='t8', tbl_name='t8', rootpage=16, sql='create table "t8"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -306,7 +306,7 @@ keys
 (name='$CONSTRAINT_C6A17957', tablename='t6', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_919A0CAB', tablename='t8', keyname='COMDB2_PK', foreigntablename='t7', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_919A0CAB', tablename='t9', keyname='$KEY_827A0A22', foreigntablename='t7', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
@@ -316,7 +316,7 @@ keys
 	}
 ')
 (type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
-(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='schema
+(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
@@ -330,7 +330,7 @@ constraints
 	}
 ')
 (type='index', name='$COMDB2_PK_75A79413', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_75A79413" on "t2" ("i");', csc2=NULL)
-(type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int);', csc2='schema
+(type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 	}
@@ -344,12 +344,12 @@ constraints
 	}
 ')
 (type='index', name='$$KEY_37248BBB_37248BBB', tbl_name='t3', rootpage=9, sql='create index "$$KEY_37248BBB_37248BBB" on "t3" ("i");', csc2=NULL)
-(type='table', name='t4', tbl_name='t4', rootpage=10, sql='create table "t4"("i" int);', csc2='schema
+(type='table', name='t4', tbl_name='t4', rootpage=10, sql='create table "t4"("i" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 	}
 ')
-(type='table', name='t6', tbl_name='t6', rootpage=11, sql='create table "t6"("i" int);', csc2='schema
+(type='table', name='t6', tbl_name='t6', rootpage=11, sql='create table "t6"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
@@ -363,7 +363,7 @@ constraints
 	}
 ')
 (type='index', name='$COMDB2_PK_11CB5117', tbl_name='t6', rootpage=12, sql='create index "$COMDB2_PK_11CB5117" on "t6" ("i");', csc2=NULL)
-(type='table', name='t7', tbl_name='t7', rootpage=13, sql='create table "t7"("i" int, "j" int);', csc2='schema
+(type='table', name='t7', tbl_name='t7', rootpage=13, sql='create table "t7"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i 
 		int j 
@@ -374,7 +374,7 @@ keys
 	}
 ')
 (type='index', name='$COMDB2_PK_FD65436A', tbl_name='t7', rootpage=14, sql='create index "$COMDB2_PK_FD65436A" on "t7" ("i", "j");', csc2=NULL)
-(type='table', name='t8', tbl_name='t8', rootpage=15, sql='create table "t8"("i" int, "j" int);', csc2='schema
+(type='table', name='t8', tbl_name='t8', rootpage=15, sql='create table "t8"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i 
 		int j 
@@ -389,7 +389,7 @@ constraints
 	}
 ')
 (type='index', name='$COMDB2_PK_F6390457', tbl_name='t8', rootpage=16, sql='create index "$COMDB2_PK_F6390457" on "t8" ("i", "j");', csc2=NULL)
-(type='table', name='t9', tbl_name='t9', rootpage=17, sql='create table "t9"("i" int, "j" int);', csc2='schema
+(type='table', name='t9', tbl_name='t9', rootpage=17, sql='create table "t9"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i 
 		int j null = yes 
@@ -411,12 +411,12 @@ constraints
 (tablename='t2')
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 	}
 ')
-(type='table', name='t2', tbl_name='t2', rootpage=5, sql='create table "t2"("i" int);', csc2='schema
+(type='table', name='t2', tbl_name='t2', rootpage=5, sql='create table "t2"("i" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 	}
@@ -436,54 +436,54 @@ constraints
 (tablename='t11', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t11', columnname='j', type='short', size=3, sqltype='smallint', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t11', columnname='k', type='longlong', size=9, sqltype='largeint', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("v" varchar);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("v" varchar);', csc2='tag ondisk
 	{
 		vutf8 v[100] null = yes 
 	}
 ')
-(type='table', name='t2', tbl_name='t2', rootpage=5, sql='create table "t2"("d" datetime);', csc2='schema
+(type='table', name='t2', tbl_name='t2', rootpage=5, sql='create table "t2"("d" datetime);', csc2='tag ondisk
 	{
 		datetime d null = yes 
 	}
 ')
-(type='table', name='t3', tbl_name='t3', rootpage=6, sql='create table "t3"("t" varchar);', csc2='schema
+(type='table', name='t3', tbl_name='t3', rootpage=6, sql='create table "t3"("t" varchar);', csc2='tag ondisk
 	{
 		vutf8 t[100] null = yes 
 	}
 ')
-(type='table', name='t4', tbl_name='t4', rootpage=7, sql='create table "t4"("t" smallint);', csc2='schema
+(type='table', name='t4', tbl_name='t4', rootpage=7, sql='create table "t4"("t" smallint);', csc2='tag ondisk
 	{
 		u_short t null = yes 
 	}
 ')
-(type='table', name='t5', tbl_name='t5', rootpage=8, sql='create table "t5"("c" char(100));', csc2='schema
+(type='table', name='t5', tbl_name='t5', rootpage=8, sql='create table "t5"("c" char(100));', csc2='tag ondisk
 	{
 		cstring c[101] null = yes 
 	}
 ')
-(type='table', name='t7', tbl_name='t7', rootpage=9, sql='create table "t7"("v" char(100));', csc2='schema
+(type='table', name='t7', tbl_name='t7', rootpage=9, sql='create table "t7"("v" char(100));', csc2='tag ondisk
 	{
 		cstring v[101] null = yes 
 	}
 ')
-(type='table', name='t8', tbl_name='t8', rootpage=10, sql='create table "t8"("v" char(100));', csc2='schema
+(type='table', name='t8', tbl_name='t8', rootpage=10, sql='create table "t8"("v" char(100));', csc2='tag ondisk
 	{
 		cstring v[101] null = yes 
 	}
 ')
-(type='table', name='t9', tbl_name='t9', rootpage=11, sql='create table "t9"("d" decimal);', csc2='schema
+(type='table', name='t9', tbl_name='t9', rootpage=11, sql='create table "t9"("d" decimal);', csc2='tag ondisk
 	{
 		decimal64 d null = yes 
 	}
 ')
-(type='table', name='t10', tbl_name='t10', rootpage=12, sql='create table "t10"("f" smallfloat, "d" float, "r" smallfloat);', csc2='schema
+(type='table', name='t10', tbl_name='t10', rootpage=12, sql='create table "t10"("f" smallfloat, "d" float, "r" smallfloat);', csc2='tag ondisk
 	{
 		float f null = yes 
 		double d null = yes 
 		float r null = yes 
 	}
 ')
-(type='table', name='t11', tbl_name='t11', rootpage=13, sql='create table "t11"("i" int, "j" smallint, "k" largeint);', csc2='schema
+(type='table', name='t11', tbl_name='t11', rootpage=13, sql='create table "t11"("i" int, "j" smallint, "k" largeint);', csc2='tag ondisk
 	{
 		int i null = yes 
 		short j null = yes 
@@ -504,22 +504,22 @@ constraints
 (tablename='t3', columnname='b', type='blob', size=6, sqltype='blob', varinlinesize='1', defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t4', columnname='b', type='blob', size=105, sqltype='blob', varinlinesize='100', defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t5', columnname='b', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("b" blob);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("b" blob);', csc2='tag ondisk
 	{
 		blob b null = yes 
 	}
 ')
-(type='table', name='t3', tbl_name='t3', rootpage=5, sql='create table "t3"("b" blob);', csc2='schema
+(type='table', name='t3', tbl_name='t3', rootpage=5, sql='create table "t3"("b" blob);', csc2='tag ondisk
 	{
 		blob b[1] null = yes 
 	}
 ')
-(type='table', name='t4', tbl_name='t4', rootpage=6, sql='create table "t4"("b" blob);', csc2='schema
+(type='table', name='t4', tbl_name='t4', rootpage=6, sql='create table "t4"("b" blob);', csc2='tag ondisk
 	{
 		blob b[100] null = yes 
 	}
 ')
-(type='table', name='t5', tbl_name='t5', rootpage=7, sql='create table "t5"("b" blob);', csc2='schema
+(type='table', name='t5', tbl_name='t5', rootpage=7, sql='create table "t5"("b" blob);', csc2='tag ondisk
 	{
 		blob b null = yes 
 	}
@@ -543,7 +543,7 @@ constraints
 (name='$CONSTRAINT_C6A17957', tablename='t3', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='N')
 (name='$CONSTRAINT_C6A17957', tablename='t4', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='Y')
 (name='$CONSTRAINT_C6A17957', tablename='t5', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
@@ -553,7 +553,7 @@ keys
 	}
 ')
 (type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
-(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='schema
+(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
@@ -567,7 +567,7 @@ constraints
 	}
 ')
 (type='index', name='$COMDB2_PK_75A79413', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_75A79413" on "t2" ("i");', csc2=NULL)
-(type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int);', csc2='schema
+(type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
@@ -581,7 +581,7 @@ constraints
 	}
 ')
 (type='index', name='$COMDB2_PK_6CBCA552', tbl_name='t3', rootpage=9, sql='create index "$COMDB2_PK_6CBCA552" on "t3" ("i");', csc2=NULL)
-(type='table', name='t4', tbl_name='t4', rootpage=10, sql='create table "t4"("i" int);', csc2='schema
+(type='table', name='t4', tbl_name='t4', rootpage=10, sql='create table "t4"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
@@ -595,7 +595,7 @@ constraints
 	}
 ')
 (type='index', name='$COMDB2_PK_23FD3395', tbl_name='t4', rootpage=11, sql='create index "$COMDB2_PK_23FD3395" on "t4" ("i");', csc2=NULL)
-(type='table', name='t5', tbl_name='t5', rootpage=12, sql='create table "t5"("i" int);', csc2='schema
+(type='table', name='t5', tbl_name='t5', rootpage=12, sql='create table "t5"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
@@ -624,7 +624,7 @@ constraints
 (tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t3', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
@@ -634,7 +634,7 @@ keys
 	}
 ')
 (type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
-(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='schema
+(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
@@ -644,7 +644,7 @@ keys
 	}
 ')
 (type='index', name='$COMDB2_PK_75A79413', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_75A79413" on "t2" ("i");', csc2=NULL)
-(type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int, "j" int);', csc2='schema
+(type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i 
 		int j 
@@ -696,7 +696,7 @@ keys
 (tablename='t5', keyname='$KEY_FEE19704', keynumber=2, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t5', keyname='DUP_KEY', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t5', keyname='UNIQUE_KEY', keynumber=4, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -709,7 +709,7 @@ keys
 ')
 (type='index', name='$$KEY_6E29884F_6E29884F', tbl_name='t1', rootpage=5, sql='create index "$$KEY_6E29884F_6E29884F" on "t1" ("i", "j");', csc2=NULL)
 (type='index', name='$$KEY_DC0D8A36_DC0D8A36', tbl_name='t1', rootpage=6, sql='create index "$$KEY_DC0D8A36_DC0D8A36" on "t1" ("j", "i");', csc2=NULL)
-(type='table', name='t2', tbl_name='t2', rootpage=7, sql='create table "t2"("i" int, "j" int);', csc2='schema
+(type='table', name='t2', tbl_name='t2', rootpage=7, sql='create table "t2"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -722,7 +722,7 @@ keys
 ')
 (type='index', name='$DUP1_E8BDFAE1', tbl_name='t2', rootpage=8, sql='create index "$DUP1_E8BDFAE1" on "t2" ("i", "j");', csc2=NULL)
 (type='index', name='$DUP2_5A99F898', tbl_name='t2', rootpage=9, sql='create index "$DUP2_5A99F898" on "t2" ("j", "i");', csc2=NULL)
-(type='table', name='t3', tbl_name='t3', rootpage=10, sql='create table "t3"("i" int, "j" int);', csc2='schema
+(type='table', name='t3', tbl_name='t3', rootpage=10, sql='create table "t3"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -735,7 +735,7 @@ keys
 ')
 (type='index', name='$$KEY_FA6CEBB6_FA6CEBB6', tbl_name='t3', rootpage=11, sql='create index "$$KEY_FA6CEBB6_FA6CEBB6" on "t3" ("i", "j");', csc2=NULL)
 (type='index', name='$$KEY_4848E9CF_4848E9CF', tbl_name='t3', rootpage=12, sql='create index "$$KEY_4848E9CF_4848E9CF" on "t3" ("j", "i");', csc2=NULL)
-(type='table', name='t4', tbl_name='t4', rootpage=13, sql='create table "t4"("i" int, "j" int);', csc2='schema
+(type='table', name='t4', tbl_name='t4', rootpage=13, sql='create table "t4"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -748,7 +748,7 @@ keys
 ')
 (type='index', name='$UNIQ1_FF23FD33', tbl_name='t4', rootpage=14, sql='create index "$UNIQ1_FF23FD33" on "t4" ("i", "j");', csc2=NULL)
 (type='index', name='$UNIQ2_4D07FF4A', tbl_name='t4', rootpage=15, sql='create index "$UNIQ2_4D07FF4A" on "t4" ("j", "i");', csc2=NULL)
-(type='table', name='t5', tbl_name='t5', rootpage=16, sql='create table "t5"("i" int, "j" int);', csc2='schema
+(type='table', name='t5', tbl_name='t5', rootpage=16, sql='create table "t5"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -771,7 +771,7 @@ keys
 (tablename='t1', columnname='c2', type='cstring', size=2, sqltype='char(1)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t1', columnname='c3', type='cstring', size=3, sqltype='char(2)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t1', columnname='c4', type='vutf8', size=5, sqltype='varchar', varinlinesize='0', defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("c1" char(2), "c2" char(1), "c3" char(2), "c4" varchar);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("c1" char(2), "c2" char(1), "c3" char(2), "c4" varchar);', csc2='tag ondisk
 	{
 		cstring c1[3] null = yes 
 		cstring c2[2] null = yes 
@@ -794,7 +794,7 @@ keys
 (tablename='t3', keyname='$KEY_6CBCA552', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t4', keyname='$KEY_850457AB', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t5', keyname='$KEY_3FDDB096', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
@@ -804,7 +804,7 @@ keys
 	}
 ')
 (type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
-(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='schema
+(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='tag ondisk
 	{
 		int i 
 	}
@@ -814,7 +814,7 @@ keys
 	}
 ')
 (type='index', name='$COMDB2_PK_44BF0620', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_44BF0620" on "t2" ("i" DESC);', csc2=NULL)
-(type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int);', csc2='schema
+(type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 	}
@@ -824,7 +824,7 @@ keys
 	}
 ')
 (type='index', name='$$KEY_6CBCA552_6CBCA552', tbl_name='t3', rootpage=9, sql='create index "$$KEY_6CBCA552_6CBCA552" on "t3" ("i");', csc2=NULL)
-(type='table', name='t4', tbl_name='t4', rootpage=10, sql='create table "t4"("i" int);', csc2='schema
+(type='table', name='t4', tbl_name='t4', rootpage=10, sql='create table "t4"("i" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 	}
@@ -834,7 +834,7 @@ keys
 	}
 ')
 (type='index', name='$$KEY_850457AB_850457AB', tbl_name='t4', rootpage=11, sql='create index "$$KEY_850457AB_850457AB" on "t4" ("i");', csc2=NULL)
-(type='table', name='t5', tbl_name='t5', rootpage=12, sql='create table "t5"("i" int, "j" int);', csc2='schema
+(type='table', name='t5', tbl_name='t5', rootpage=12, sql='create table "t5"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -851,7 +851,7 @@ keys
 (tablename='t2', columnname='key', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t1', keyname='$KEY_424C1931', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t2', keyname='$KEY_A82281A0', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("unique" int);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("unique" int);', csc2='tag ondisk
 	{
 		int unique null = yes 
 	}
@@ -861,7 +861,7 @@ keys
 	}
 ')
 (type='index', name='$$KEY_424C1931_424C1931', tbl_name='t1', rootpage=5, sql='create index "$$KEY_424C1931_424C1931" on "t1" ("unique");', csc2=NULL)
-(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("key" int);', csc2='schema
+(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("key" int);', csc2='tag ondisk
 	{
 		int key null = yes 
 	}
@@ -902,7 +902,7 @@ keys
 (name='$CONSTRAINT_20C91073', tablename='t6', keyname='$KEY_1DE18B7E', foreigntablename='t1', foreignkeyname='IDX3', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_5D778686', tablename='t7', keyname='$KEY_AF5C9299', foreigntablename='t1', foreignkeyname='IDX4', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_B7D1906E', tablename='t8', keyname='idx1', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -919,7 +919,7 @@ keys
 (type='index', name='$IDX2_29AB33F8', tbl_name='t1', rootpage=6, sql='create index "$IDX2_29AB33F8" on "t1" ("i" DESC, "j");', csc2=NULL)
 (type='index', name='$IDX3_FF3D9007', tbl_name='t1', rootpage=7, sql='create index "$IDX3_FF3D9007" on "t1" ("i", "j" DESC);', csc2=NULL)
 (type='index', name='$IDX4_579ED92F', tbl_name='t1', rootpage=8, sql='create index "$IDX4_579ED92F" on "t1" ("i" DESC, "j" DESC);', csc2=NULL)
-(type='table', name='t2', tbl_name='t2', rootpage=9, sql='create table "t2"("i" int);', csc2='schema
+(type='table', name='t2', tbl_name='t2', rootpage=9, sql='create table "t2"("i" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 	}
@@ -933,7 +933,7 @@ constraints
 	}
 ')
 (type='index', name='$$KEY_A44A20B_A44A20B', tbl_name='t2', rootpage=10, sql='create index "$$KEY_A44A20B_A44A20B" on "t2" ("i");', csc2=NULL)
-(type='table', name='t3', tbl_name='t3', rootpage=11, sql='create table "t3"("i" int);', csc2='schema
+(type='table', name='t3', tbl_name='t3', rootpage=11, sql='create table "t3"("i" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 	}
@@ -947,7 +947,7 @@ constraints
 	}
 ')
 (type='index', name='$$KEY_37248BBB_37248BBB', tbl_name='t3', rootpage=12, sql='create index "$$KEY_37248BBB_37248BBB" on "t3" ("i");', csc2=NULL)
-(type='table', name='t4', tbl_name='t4', rootpage=13, sql='create table "t4"("i" int, "j" int);', csc2='schema
+(type='table', name='t4', tbl_name='t4', rootpage=13, sql='create table "t4"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -962,7 +962,7 @@ constraints
 	}
 ')
 (type='index', name='$$KEY_3EE419FC_3EE419FC', tbl_name='t4', rootpage=14, sql='create index "$$KEY_3EE419FC_3EE419FC" on "t4" ("i", "j");', csc2=NULL)
-(type='table', name='t5', tbl_name='t5', rootpage=15, sql='create table "t5"("i" int, "j" int);', csc2='schema
+(type='table', name='t5', tbl_name='t5', rootpage=15, sql='create table "t5"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -977,7 +977,7 @@ constraints
 	}
 ')
 (type='index', name='$$KEY_20409382_20409382', tbl_name='t5', rootpage=16, sql='create index "$$KEY_20409382_20409382" on "t5" ("i" DESC, "j");', csc2=NULL)
-(type='table', name='t6', tbl_name='t6', rootpage=17, sql='create table "t6"("i" int, "j" int);', csc2='schema
+(type='table', name='t6', tbl_name='t6', rootpage=17, sql='create table "t6"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -992,7 +992,7 @@ constraints
 	}
 ')
 (type='index', name='$$KEY_1DE18B7E_1DE18B7E', tbl_name='t6', rootpage=18, sql='create index "$$KEY_1DE18B7E_1DE18B7E" on "t6" ("i", "j" DESC);', csc2=NULL)
-(type='table', name='t7', tbl_name='t7', rootpage=19, sql='create table "t7"("i" int, "j" int);', csc2='schema
+(type='table', name='t7', tbl_name='t7', rootpage=19, sql='create table "t7"("i" int, "j" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 		int j null = yes 
@@ -1007,7 +1007,7 @@ constraints
 	}
 ')
 (type='index', name='$$KEY_AF5C9299_AF5C9299', tbl_name='t7', rootpage=20, sql='create index "$$KEY_AF5C9299_AF5C9299" on "t7" ("i" DESC, "j" DESC);', csc2=NULL)
-(type='table', name='t8', tbl_name='t8', rootpage=21, sql='create table "t8"("i" int);', csc2='schema
+(type='table', name='t8', tbl_name='t8', rootpage=21, sql='create table "t8"("i" int);', csc2='tag ondisk
 	{
 		int i null = yes 
 	}
