@@ -1,21 +1,6 @@
 #!/bin/bash
 
-#set -x
-
-if [[ $1 = "--dir" ]] ; then 
-    shift
-    DBDIR=$1
-    shift
-fi
-
-DBNAME=$1
-shift
-CLUSTER=$@
-
-# use --dir to specify db directory otherwise creates db in current_dir/$DBNAME
-if [[ -z $DBDIR ]]; then
-    DBDIR=`pwd`/$DBNAME/
-fi
+set -x
 
 failexit() {
     echo $1
@@ -27,6 +12,32 @@ usage() {
 }
 
 
+if [[ $# -lt 3 || $1 = "--help" || $1 = "-h" ]] ; then
+    usage
+fi
+
+if [[ $1 = "--dir" ]] ; then 
+    shift
+    DBDIR=$1
+    shift
+fi
+
+DBNAME=$1
+shift
+#what remains is the cluster line
+if [[ $# -lt 2 ]] ; then
+    echo "Error: cluster needs to have at least two nodes."
+    usage
+fi
+
+CLUSTER=$@
+
+# use --dir to specify db directory otherwise creates db in current_dir/$DBNAME
+if [[ -z $DBDIR ]]; then
+    DBDIR=`pwd`/$DBNAME/
+else
+    DBDIR=`readlink -f ${DBDIR}`
+fi
 
 if [ "x$CLUSTER" = "x" ] ; then
     usage
@@ -41,10 +52,29 @@ done
 TMPDIR=${TMPDIR:-/tmp}
 CDB2_CONFIG=$DBDIR/comdb2db.cfg
 CDB2_OPTIONS="--cdb2cfg ${CDB2_CONFIG}"
-comdb2task=comdb2
+COMDB2_EXE=comdb2
+COMDB2AR_EXE=comdb2ar
+export comdb2ar=$COMDB2AR_EXE  # used by copycomdb2
+myhostname=`hostname`
 
-which $comdb2task > /dev/null || failexit "$comdb2task not in path"
-which copycomdb2  > /dev/null || failexit "copycomdb2 not in path"
+
+
+check_executables_for_cluster() 
+{
+    for node in $CLUSTER; do
+        if [ $node == $myhostname ] ; then
+            which $COMDB2_EXE > /dev/null || failexit "$COMDB2_EXE not in path"
+            which copycomdb2  > /dev/null || failexit "copycomdb2 not in path"
+            continue
+        fi
+
+        ssh -o StrictHostKeyChecking=no $node "which $COMDB2_EXE" < /dev/null || failexit "$COMDB2_EXE not in path in node $node"
+        ssh -o StrictHostKeyChecking=no $node "which $COMDB2AR_EXE" < /dev/null || failexit "$COMDB2AR_EXE not in path in node $node"
+    done
+}
+
+check_executables_for_cluster
+
 
 set -e
 
@@ -114,25 +144,19 @@ EOPTIONS
 
 df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" > /dev/null && echo "setattr directio 0" >> ${LRL}
 
-myhostname=`hostname`
-# Do we have a cluster?
-if [[ -n "$CLUSTER" ]]; then
-    echo $DBNAME 0 $CLUSTER > $CDB2_CONFIG
-    echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
-    echo "cluster nodes $CLUSTER" >> $DBDIR/$DBNAME.lrl
+echo $DBNAME 0 $CLUSTER > $CDB2_CONFIG
+echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
+echo "cluster nodes $CLUSTER" >> $DBDIR/$DBNAME.lrl
 
-    for node in $CLUSTER; do #verify we can ssh to nodes
-        if [ $node == $myhostname ] ; then
-            continue
-        fi
-        hst=$(ssh -o StrictHostKeyChecking=no $node "hostname")
-        if [ "x$hst" == "x" ] ; then
-            failexit "cant get hostname on $node"
-        fi
-    done
-else
-    echo "comdb2_config:default_type=local" >> $CDB2_CONFIG
-fi
+for node in $CLUSTER; do #verify we can ssh to nodes
+    if [ $node == $myhostname ] ; then
+        continue
+    fi
+    hst=$(ssh -o StrictHostKeyChecking=no $node "hostname")
+    if [ "x$hst" == "x" ] ; then
+        failexit "cant get hostname on $node"
+    fi
+done
 
 # Configure client SSL
 echo "comdb2_config:ssl_cert_path=$DBDIR" >>$CDB2_CONFIG
@@ -154,7 +178,7 @@ stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} &&
 
 
 COPIEDTOCLUSTER=${TMPDIR}/copiedtocluster.log
-export COMDB2AR_EXOPTS="-x $comdb2task"
+export COMDB2AR_EXOPTS="-x $COMDB2_EXE"
 
 
 keygen() {
@@ -173,14 +197,13 @@ keygen() {
 copy_files_to_cluster() 
 {
     # copy executables to each node except localhost
-    pmux=pmux
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then
             continue
         fi
 
-        ssh -o StrictHostKeyChecking=no $node "mkdir -p $DBDIR/logs/ $DBDIR/var/log/cdb2 $DBDIR/tmp/cdb2"
-        ssh -o StrictHostKeyChecking=no $node "$pmux_cmd" &>> $DBDIR/setup.log
+        ssh -o StrictHostKeyChecking=no $node "mkdir -p $DBDIR/logs/ $DBDIR/var/log/cdb2 $DBDIR/tmp/cdb2" < /dev/null
+        ssh -o StrictHostKeyChecking=no $node "$pmux_cmd" &>> $DBDIR/setup.log < /dev/null
         if [[ -z $SKIPSSL ]] ; then
             scp -o StrictHostKeyChecking=no ${DBDIR}/server.key ${DBDIR}/server.crt $node:${DBDIR} &>> $DBDIR/setup.log
             ssh -o StrictHostKeyChecking=no $node "cp ${DBDIR}/server.crt ${DBDIR}/root.crt || chmod 600 ${DBDIR}/server.key"
@@ -189,15 +212,12 @@ copy_files_to_cluster()
 }
 
 
-# if CLUSTER is length is nonzero, and file does not exist, copy to cluster
-if [ -n "$CLUSTER" ] ; then 
-    { > $COPIEDTOCLUSTER ; } &> /dev/null 
-    if [[ -z $SKIPSSL ]] ; then
-        keygen
-    fi
-    if [ $? -eq 0 ] ; then
-        copy_files_to_cluster
-    fi
+{ > $COPIEDTOCLUSTER ; } &> /dev/null 
+if [[ -z $SKIPSSL ]] ; then
+    keygen
+fi
+if [ $? -eq 0 ] ; then
+    copy_files_to_cluster
 fi
 
 
@@ -209,21 +229,28 @@ for csc2 in $(ls *.csc2 2>/dev/null); do
 done >> $DBDIR/${DBNAME}.lrl
 
 mkdir -p $DBDIR/logs $DBDIR/var/log/cdb2 $DBDIR/tmp/cdb2
+export COMDB2_ROOT=${DBDIR}
 
-$comdb2task --create --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/$DBNAME.pid $DBNAME  >$DBDIR/logs/${DBNAME}.init 2>&1
+set +e
+$COMDB2_EXE --create --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/$DBNAME.pid $DBNAME  >$DBDIR/logs/${DBNAME}.init 2>&1
 rc=$?
 rm -f ${DBNAME}.trap
 if [[ $rc -ne 0 ]]; then
+    echo "Error rc=$rc while initializing DB, see $TESTDIR/logs/${DBNAME}.init "
     exit 1
 fi
+echo "${DBNAME} created successfully"
+
+set -e
+
 
 # start it
 if [[ -z "$CLUSTER" ]]; then
     echo "$DBNAME: starting single node"
     if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-        echo -e "$DBNAME: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $comdb2task $DBNAME -pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
+        echo -e "$DBNAME: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $COMDB2_EXE $DBNAME -pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
     else
-        ${DEBUG_PREFIX} $comdb2task $DBNAME -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$DBDIR/logs/${DBNAME}.db &
+        ${DEBUG_PREFIX} $COMDB2_EXE $DBNAME -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$DBDIR/logs/${DBNAME}.db &
     fi
 
     set +e
@@ -250,14 +277,14 @@ else
 
     echo "export COMDB2_ROOT=$DBDIR" >> ${DBDIR}/replicant_vars
     echo "export PATH=$PATH" >> ${DBDIR}/replicant_vars
-    CMD="source ${DBDIR}/replicant_vars ; $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl"
+    CMD="source ${DBDIR}/replicant_vars ; $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl"
     echo "$DBNAME: starting"
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then # dont ssh to ourself -- just start db locally
             if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-                echo -e "$DBNAME: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
+                echo -e "$DBNAME: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
             else
-                ${DEBUG_PREFIX} $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$DBDIR/logs/${DBNAME}.${node}.db 2>&1 &
+                ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$DBDIR/logs/${DBNAME}.${node}.db 2>&1 &
             fi
             continue
         fi
@@ -283,9 +310,10 @@ else
             out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
         done
     done
+
     n=$(cdb2sql ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("bdb cluster")' | grep "lsn" | wc -l)
     echo "$DBNAME: Cluster is running with $n nodes. You can query it with:"
-    echo "   cdb2sql $DBNAME 'select 1'"
+    echo "   cdb2sql ${CDB2_OPTIONS} $DBNAME default 'select 1'"
 fi
 
 exit 0
