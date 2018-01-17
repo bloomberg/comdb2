@@ -23,6 +23,7 @@
 #include "sc_callbacks.h"
 #include "bbinc/cheapstack.h"
 #include "crc32c.h"
+#include "comdb2_atomic.h"
 
 pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 pthread_mutex_t schema_change_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -257,7 +258,7 @@ int reload_lua()
 
 int replicant_reload_analyze_stats()
 {
-    ++gbl_analyze_gen;
+    ATOMIC_ADD(gbl_analyze_gen, 1);
     logmsg(LOGMSG_DEBUG, "Replicant invalidating SQLite stats\n");
     return 0;
 }
