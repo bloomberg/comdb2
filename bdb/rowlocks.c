@@ -1829,7 +1829,6 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
     DBT logdta;
     DB_LSN lsn, undolsn, getlsn, start_phys_txn, last_regop_lsn;
     u_int32_t rectype;
-    int did_commit = 0;
 
     tran->aborted = 1;
 
@@ -1887,11 +1886,10 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
 #endif
 
     again:
-        if (tran->physical_tran == NULL || did_commit) {
+        if (tran->physical_tran == NULL) {
             memcpy(&start_phys_txn, &lsn, sizeof(lsn));
         }
         last_regop_lsn = tran->last_regop_lsn;
-        did_commit = 0;
 
         if (lsn.file == 0 && lsn.offset == 1) {
             logmsg(LOGMSG_ERROR, "reached last lsn but not a begin record type %d?\n",
@@ -1911,6 +1909,10 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
         undolsn = lsn;
         rc = undo_physical_transaction(bdb_state, tran, &logdta, &did_something,
                                        &undolsn, &lsn);
+
+        if (log_compare(&last_regop_lsn, &tran->last_regop_lsn))
+            memcpy(&start_phys_txn, &undolsn, sizeof(start_phys_txn));
+
         if (rc == DB_LOCK_DEADLOCK) {
             assert(tran->physical_tran != NULL);
             bdb_tran_abort_phys(bdb_state, tran->physical_tran);
@@ -1930,9 +1932,6 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
                     lsn.file, lsn.offset, rc);
             abort();
         }
-
-        if (log_compare(&last_regop_lsn, &tran->last_regop_lsn))
-            did_commit = 1;
 
         if (did_something) {
             /* Will be NULL if we've seen nothing but comprecs */
