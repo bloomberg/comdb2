@@ -26,7 +26,7 @@ enum {
     FDB_MSG_CURSOR_OPEN_SQL_SID = 5 /* latest feature added, SSL */
     ,FDB_MSG_CURSOR_OPEN_SQL_SSL = 6 /* SSL supported */
     /* optional fields, powers of 2 */
-    ,FDB_MSG_CURSOR_OPEN_FLG_SSL = 2<<16 /* SSL required */
+    ,FDB_MSG_CURSOR_OPEN_FLG_SSL = 1<<16 /* SSL required */
 };
 
 /* keep these flags a bitmask so we can OR them */

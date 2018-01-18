@@ -393,6 +393,7 @@ int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
     msg->co.srcpid = gbl_mypid;
     msg->co.srcnamelen = strlen(gbl_myhostname) + 1;
     msg->co.srcname = gbl_myhostname;
+    msg->co.ssl = 0; /*TODO: do I need this? */
 
     sbuf2printf(sb, "remsql\n");
 
@@ -996,10 +997,12 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
             msg->co.srcname = NULL;
         }
 #if WITH_SSL
-        if (flags & FDB_MSG_CURSOR_OPEN_SQL_SSL) {
+        if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_SSL) {
             rc = sbuf2fread((char*)&msg->co.ssl, 1, sizeof(msg->co.ssl), sb);
             if (rc != sizeof(msg->co.ssl)) 
                 return -1;
+            msg->co.ssl = ntohl(msg->co.ssl);
+            fprintf(stderr, "Read ssl %d size %d\n", msg->co.ssl, sizeof(tmp));
         }
 #else
         msg->co.ssl = 0;
@@ -1987,6 +1990,7 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
         }
 #if WITH_SSL
         if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_SSL) {
+            fprintf(stderr, "Writing ssl %d size %d\n", msg->co.ssl, sizeof(tmp));
             tmp = htonl(msg->co.ssl);
             rc = sbuf2fwrite((char *)&tmp, 1, sizeof(tmp), sb);
             if (rc != sizeof(tmp))

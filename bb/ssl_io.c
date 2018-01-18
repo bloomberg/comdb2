@@ -46,20 +46,33 @@ static int sslio_pollin(SBUF2 *sb)
     int rc;
     struct pollfd pol;
 
-    if (SSL_pending(sb->ssl) > 0)
+    if (SSL_pending(sb->ssl) > 0) {
+        fprintf(stderr, "%s has pending\n", __func__);
         return 1;
+    } else {
+        fprintf(stderr, "%s NONE pending\n", __func__);
+    }
 
     do {
+        errno = 0;
         pol.fd = sb->fd;
         pol.events = POLLIN;
         /* A readtimeout of 0 actually means an infinite poll timeout. */
         rc = poll(&pol, 1, sb->readtimeout == 0 ? -1 : sb->readtimeout);
-    } while (rc == -1 && errno == EINTR);
+        fprintf(stderr, "poll timeout %d returned r=%d errno=%d\n",
+                sb->readtimeout, rc, errno);
+    } while (rc == -1 && (errno == EINTR || errno == EAGAIN));
 
-    if (rc <= 0) /* timedout or error. */
+    if (rc <= 0) /* timedout or error. */ {
+        fprintf(stderr, "%s tout or error rc=%d\n", __func__, rc);
         return rc;
-    if ((pol.revents & POLLIN) == 0)
+    }
+    if ((pol.revents & POLLIN) == 0) {
+        fprintf(stderr, "%s no read signal rc=%d\n", __func__, rc);
         return -100000 + pol.revents;
+    }
+    
+    fprintf(stderr, "%s can read!\n", __func__);
 
     /* Can read. */
     return 1;
@@ -253,10 +266,48 @@ int SBUF2_FUNC(sslio_verify)(SBUF2 *sb, ssl_mode mode, char *err, size_t n)
     return rc;
 }
 
+
+static void my_apps_ssl_info_callback(const SSL *s, int where, int ret)
+{
+    const char *str;
+    int w;
+
+    w=where& ~SSL_ST_MASK;
+
+    if (w & SSL_ST_CONNECT) str="SSL_connect";
+    else if (w & SSL_ST_ACCEPT) str="SSL_accept";
+    else str="undefined";
+
+    if (where & SSL_CB_LOOP)
+    {
+        fprintf(stderr,"%s:%s\n",str,SSL_state_string_long(s));
+    }
+    else if (where & SSL_CB_ALERT)
+    {
+        str=(where & SSL_CB_READ)?"read":"write";
+        fprintf(stderr,"SSL3 alert %s:%s:%s\n",
+                str,
+                SSL_alert_type_string_long(ret),
+                SSL_alert_desc_string_long(ret));
+    }
+    else if (where & SSL_CB_EXIT)
+    {
+        if (ret == 0)
+            fprintf(stderr,"%s:failed in %s\n",
+                    str,SSL_state_string_long(s));
+        else if (ret < 0)
+        {
+            fprintf(stderr,"%s:error in %s\n",
+                    str,SSL_state_string_long(s));
+        }
+    }
+}
+
 static int sslio_accept_or_connect(SBUF2 *sb,
-                                   SSL_CTX *ctx, int (*SSL_func)(SSL *),
-                                   ssl_mode verify, char *err, size_t n,
-                                   SSL_SESSION *sess, int *unrecoverable)
+        SSL_CTX *ctx, int (*SSL_func)(SSL *),
+        ssl_mode verify, char *err, size_t n,
+        SSL_SESSION *sess, int *unrecoverable,
+        const char * f)
 {
     int rc, ioerr, fd, flags;
 
@@ -270,7 +321,7 @@ static int sslio_accept_or_connect(SBUF2 *sb,
 
     if (sb->ssl != NULL) {
         ssl_sfeprint(err, n, my_ssl_eprintln,
-                     "SSL connection has been established already.");
+                "SSL connection has been established already.");
         return EPERM;
     }
 
@@ -285,6 +336,7 @@ static int sslio_accept_or_connect(SBUF2 *sb,
 
     /* Set fd. */
     fd = sbuf2fileno(sb);
+    /*
     if ((flags = fcntl(fd, F_GETFL, 0)) < 0 ||
         (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)) {
         ssl_sfeprint(err, n, my_ssl_eprintln,
@@ -292,12 +344,15 @@ static int sslio_accept_or_connect(SBUF2 *sb,
         rc = -1;
         goto error;
     }
+    */
     rc = SSL_set_fd(sb->ssl, fd);
     if (rc != 1) {
         ssl_sfliberrprint(err, n, my_ssl_eprintln,
                           "Failed to set fd");
         goto error;
     }
+
+    SSL_set_info_callback(sb->ssl, my_apps_ssl_info_callback);
 
     if (sess != NULL)
         SSL_set_session(sb->ssl, sess);
@@ -306,24 +361,32 @@ static int sslio_accept_or_connect(SBUF2 *sb,
 re_accept_or_connect:
     ERR_clear_error();
     rc = SSL_func(sb->ssl);
+    fprintf(stderr, "%s: Ran fun rc=%d\n", f, rc);
     if (rc != 1) {
         /* Handle SSL error code. */
         ioerr = SSL_get_error(sb->ssl, rc);
+        fprintf(stderr, "%s: Ran fun ioerr=%d\n", f, ioerr);
 
         switch (ioerr) {
         case SSL_ERROR_WANT_READ: /* Renegotiate */
+            fprintf(stderr, "%s SSL_ERROR_WANT_READ\n", f);
+            /*poll(NULL, 0, 10);
+            goto re_accept_or_connect;
+            */
             rc = sslio_pollin(sb);
             if (rc > 0)
                 goto re_accept_or_connect;
             *unrecoverable = 0;
             break;
         case SSL_ERROR_WANT_WRITE: /* Renegotiate */
+            fprintf(stderr, "%s SSL_ERROR_WANT_WRITE\n", f);
             rc = sslio_pollout(sb);
             if (rc > 0)
                 goto re_accept_or_connect;
             *unrecoverable = 0;
             break;
         case SSL_ERROR_SYSCALL:
+            fprintf(stderr, "%s SSL_ERROR_SYSCALL\n", f);
             *unrecoverable = 0;
             if (rc == 0) {
                 ssl_sfeprint(err, n, my_ssl_eprintln,
@@ -335,11 +398,13 @@ re_accept_or_connect:
             }
             break;
         case SSL_ERROR_SSL:
+            fprintf(stderr, "%s SSL_ERROR_SSL\n", f);
             errno = EIO;
             ssl_sfliberrprint(err, n, my_ssl_eprintln,
                               "A failure in SSL library occured");
             break;
         default:
+            fprintf(stderr, "%s default\n", f);
             errno = EIO;
             ssl_sfeprint(err, n, my_ssl_eprintln,
                          "Failed to establish connection with peer. "
@@ -351,16 +416,18 @@ re_accept_or_connect:
     } else {
         *unrecoverable = 0;
     }
-
     /* Put blocking back. */
+/*
     if (fcntl(fd, F_SETFL, flags) < 0) {
         ssl_sfeprint(err, n, my_ssl_eprintln,
                      "fcntl: (%d) %s", errno, strerror(errno));
         return -1;
     }
-
+*/
     if (rc != 1) {
 error:
+        fprintf(stderr, "%s: ERROR rc=%d during ssl negotiation\"%s\"\n", f,
+            rc, (err)? err:"NULL");
         if (sb->ssl != NULL) {
             SSL_shutdown(sb->ssl);
             SSL_free(sb->ssl);
@@ -379,8 +446,11 @@ int SBUF2_FUNC(sslio_accept)(SBUF2 *sb, SSL_CTX *ctx,
                            ssl_mode mode, char *err, size_t n)
 {
     int dummy;
-    return sslio_accept_or_connect(sb, ctx, SSL_accept,
-                                   mode, err, n, NULL, &dummy);
+
+    int rc = sslio_accept_or_connect(sb, ctx, SSL_accept,
+                                   mode, err, n, NULL, &dummy, __func__);
+    fprintf(stderr, "%s: return rc=%d sb=%p sb->ssl=%p\n", __func__, rc, sb, sb->ssl);
+    return rc;
 }
 
 #if SBUF2_SERVER
@@ -388,8 +458,10 @@ int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx,
                             ssl_mode mode, char *err, size_t n)
 {
     int dummy;
-    return sslio_accept_or_connect(sb, ctx, SSL_connect,
-                                   mode, err, n, NULL, &dummy);
+    int rc = sslio_accept_or_connect(sb, ctx, SSL_connect,
+                                   mode, err, n, NULL, &dummy, __func__);
+    fprintf(stderr, "%s: return rc=%d sb=%p sb->ssl=%p\n", __func__, rc, sb, sb->ssl);
+    return rc;
 }
 #else
 int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx,
@@ -397,7 +469,7 @@ int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx,
                             SSL_SESSION *sess, int *unrecoverable)
 {
     return sslio_accept_or_connect(sb, ctx, SSL_connect,
-                                   mode, err, n, sess, unrecoverable);
+                                   mode, err, n, sess, unrecoverable, __func__);
 }
 #endif
 

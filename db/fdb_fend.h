@@ -247,7 +247,8 @@ char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum,
  *
  */
 fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
-                                 int rootpage, fdb_tran_t *trans, int *ixnum);
+                                 int rootpage, fdb_tran_t *trans, int *ixnum,
+                                 int need_ssl);
 
 /**
  * Retrieve/create space for a Btree schema change (per foreign db)
@@ -279,7 +280,7 @@ int fdb_is_sqlite_stat(fdb_t *fdb, int rootpage);
 
 /* transactional api */
 fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
-                                    char *ptid);
+                                    char *ptid, int use_ssl);
 fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid);
 int fdb_trans_commit(struct sqlclntstate *clnt);
 int fdb_trans_rollback(struct sqlclntstate *clnt, fdb_tran_t *trans);

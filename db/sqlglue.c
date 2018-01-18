@@ -3630,7 +3630,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
              * update remote */
             uuid_t tid;
             fdb_tran_t *trans =
-                fdb_trans_begin_or_join(clnt, pCur->bt->fdb, (char *)tid);
+                fdb_trans_begin_or_join(clnt, pCur->bt->fdb, (char *)tid, 0 /*TODO*/);
 
             if (!trans) {
                 logmsg(LOGMSG_ERROR, 
@@ -7496,7 +7496,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
         /* I would like to open here a transaction if this is
            an actual update */
         if (clnt->iswrite /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {
-            trans = fdb_trans_begin_or_join(clnt, fdb, (char *)tid);
+            trans = fdb_trans_begin_or_join(clnt, fdb, (char *)tid, 0 /* TODO */);
         } else {
             trans = fdb_trans_join(clnt, fdb, (char *)tid);
         }
@@ -7508,7 +7508,8 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     if (trans)
         pthread_mutex_lock(&clnt->dtran_mtx);
 
-    cur->fdbc = fdb_cursor_open(clnt, cur, cur->rootpage, trans, &cur->ixnum);
+    cur->fdbc = fdb_cursor_open(clnt, cur, cur->rootpage, trans, &cur->ixnum,
+            sslio_has_ssl(clnt->sb));
     if (!cur->fdbc) {
         if (trans)
             pthread_mutex_unlock(&clnt->dtran_mtx);
@@ -8242,7 +8243,7 @@ int sqlite3BtreeInsert(
              * update remote */
             uuid_t tid;
             fdb_tran_t *trans =
-                fdb_trans_begin_or_join(clnt, pCur->bt->fdb, (char *)tid);
+                fdb_trans_begin_or_join(clnt, pCur->bt->fdb, (char *)tid, 0 /*TODO*/);
 
             if (!trans) {
                 logmsg(LOGMSG_ERROR, 
@@ -10692,6 +10693,10 @@ void disconnect_remote_db(const char *dbname, const char *service, char *host,
     *psb = NULL;
 }
 
+SBUF2 *connect_remote_db_remsql(const char *dbname, char *host)
+{
+}
+
 /* use portmux to open an SBUF2 to local db or proxied db
    it is trying to use sockpool
  */
@@ -10708,8 +10713,12 @@ SBUF2 *connect_remote_db(const char *dbname, const char *service, char *host)
     /* lets try to use sockpool, if available */
     sockfd = _sockpool_get(dbname, service, host);
     if (sockfd > 0) {
+        fprintf(stderr, "%s: retrieved sockpool socket for %s.%s.%s fd=%d\n",
+            __func__, dbname, service, host);
         goto sbuf;
-    }
+    } else
+        fprintf(stderr, "%s: no sockpool socket for %s.%s.%s\n",
+            __func__, dbname, service, host);
 
     retry = 0;
 retry:
@@ -10725,13 +10734,13 @@ retry:
         return NULL;
     }
 
-    sockfd = tcpconnecth_to(host, port, 0, 0);
+    sockfd = cdb2_tcpconnecth_to(host, port, 0, 0);
     if (sockfd == -1) {
         logmsg(LOGMSG_ERROR, "%s: cannot connect to %s on machine %s port %d\n",
                 __func__, dbname, host, port);
         return NULL;
     }
-
+#if 0
     /* disable Nagle */
     flag = 1;
     rc = setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
@@ -10742,7 +10751,7 @@ retry:
         close(sockfd);
         return NULL;
     }
-
+#endif
 sbuf:
     sb = sbuf2open(sockfd, 0);
     if (!sb) {
