@@ -4783,7 +4783,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
             hndl->num_hosts_sameroom++;
 
         if (hndl && hndl->debug_trace)
-            fprintf(stderr, "td %u %s host %s, port %d\n", 
+            fprintf(stderr, "td %u %s host %s port %d\n", 
                     (uint32_t)pthread_self(), __func__, m[i].host, m[i].port);
     }
 
@@ -5089,6 +5089,10 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
                 hndl->ports[0] = CDB2_PORTMUXPORT;
             }
         }
+        if (hndl && hndl->debug_trace)
+            fprintf(stderr, "td %u %s host %s port %d\n", 
+                    (uint32_t)pthread_self(), __func__, 
+                    hndl->hosts[0], hndl->ports[0]);
     } else if (is_machine_list(type)) {
         rc = configure_from_literal(hndl, type);
     } else {
