@@ -642,7 +642,7 @@ int gbl_sc_inco_chk = 1;
 int gbl_track_queue_time = 1;
 int gbl_locks_check_waiters = 1;
 int gbl_update_startlsn_printstep = 0;
-int gbl_rowlocks_commit_on_waiters = 0;
+int gbl_rowlocks_commit_on_waiters = 1;
 int gbl_rowlocks_deadlock_trace = 0;
 
 int gbl_durable_wait_seqnum_test = 0;

@@ -168,13 +168,12 @@ int get_physical_transaction(bdb_state_type *bdb_state, tran_type *logical_tran,
     int rc = 0;
 
     if (!logical_tran->single_physical_transaction &&
-        logical_tran->micro_commit && logical_tran->physical_tran) {
+        logical_tran->physical_tran) {
         int do_commit = 0;
 
-        if (force_commit || !gbl_rowlocks_commit_on_waiters ||
-            !gbl_locks_check_waiters)
+        if (force_commit || logical_tran->micro_commit)
             do_commit = 1;
-        else {
+        else if (gbl_locks_check_waiters && gbl_rowlocks_commit_on_waiters) {
             rc = bdb_state->dbenv->lock_id_has_waiters(
                 bdb_state->dbenv, logical_tran->physical_tran->tid->txnid);
 
