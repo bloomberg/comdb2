@@ -3221,7 +3221,8 @@ void send_prepare_error(struct sqlclntstate *clnt, const char *errstr,
                         1 /*flush*/, __func__, __LINE__);
 }
 
-static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt,
+                          int analyze_gen)
 {
     // if analyze is running, don't reload
     extern volatile int analyze_running_flag;
@@ -3237,7 +3238,7 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         got_curtran = 1;
     }
     if ((rc = sqlite3AnalysisLoad(thd->sqldb, 0)) == SQLITE_OK) {
-        thd->analyze_gen = gbl_analyze_gen;
+        thd->analyze_gen = analyze_gen;
     } else {
         logmsg(LOGMSG_ERROR, "%s sqlite3AnalysisLoad rc:%d\n", __func__, rc);
     }
@@ -3259,18 +3260,21 @@ static void delete_prepared_stmts(struct sqlthdstate *thd)
 // Call with schema_lk held and no_transaction == 1
 static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
+    /* cache analyze gen first because gbl_analyze_gen is NOT protected by
+     * schema_lk */
+    int cached_analyze_gen = gbl_analyze_gen;
     if (gbl_fdb_track)
         logmsg(LOGMSG_USER, "XXX: thd dbopen=%d vs %d thd analyze %d vs %d\n",
-                thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
-                gbl_analyze_gen);
+               thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
+               cached_analyze_gen);
 
     if (thd->dbopen_gen != gbl_dbopen_gen) {
         return SQLITE_SCHEMA;
     }
-    if (thd->analyze_gen != gbl_analyze_gen) {
+    if (thd->analyze_gen != cached_analyze_gen) {
         int ret;
         delete_prepared_stmts(thd);
-        ret = reload_analyze(thd, clnt);
+        ret = reload_analyze(thd, clnt, cached_analyze_gen);
         return ret;
     }
 
@@ -5857,6 +5861,9 @@ check_version:
         }
 
         if (!thd->sqldb) {
+            /* cache analyze gen first because gbl_analyze_gen is NOT protected
+             * by schema_lk */
+            thd->analyze_gen = gbl_analyze_gen;
             int rc = sqlite3_open_serial("db", &thd->sqldb, thd);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d\n", __func__,
@@ -5864,7 +5871,6 @@ check_version:
                 thd->sqldb = NULL;
             }
             thd->dbopen_gen = gbl_dbopen_gen;
-            thd->analyze_gen = gbl_analyze_gen;
         }
 
         get_copy_rootpages_nolock(thd->sqlthd);
