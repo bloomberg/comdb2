@@ -994,6 +994,7 @@ static int bdb_tran_commit_phys_getlsn_flags(bdb_state_type *bdb_state,
     if (iirc) {
         logmsg(LOGMSG_ERROR, "%s:update_shadows_beforecommit returns %d\n", __func__,
                 iirc);
+        bdb_osql_trn_repo_unlock();
         return -1;
     }
     bdb_osql_trn_repo_unlock();
@@ -1568,6 +1569,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
                 outrc = -1;
                 atexit(abort_at_exit);
                 failed_to_log = 1;
+                bdb_osql_trn_repo_unlock();
                 goto cleanup;
             }
 
@@ -1582,6 +1584,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
                         "%s:update_shadows_beforecommit nonblocking rc %d\n",
                         __func__, rc);
                 *bdberr = rc;
+                bdb_osql_trn_repo_unlock();
                 return -1;
             }
         }

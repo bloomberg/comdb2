@@ -55,6 +55,10 @@ static const char revid[] =
 
 
 #ifndef TESTSUITE
+int bdb_am_i_coherent(void *bdb_state);
+void bdb_thread_event(void *bdb_state, int event);
+void bdb_get_readlock(void *bdb_state, const char *idstr,
+                      const char *funcname, int line);
 void bdb_get_writelock(void *bdb_state,
     const char *idstr, const char *funcname, int line);
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
@@ -75,6 +79,7 @@ void hexdump(unsigned char *key, int keylen);
 extern void fsnapf(FILE *, void *, int);
 static int reset_recovery_processor(struct __recovery_processor *rp);
 
+#define BDB_READLOCK(idstr)     bdb_get_readlock(bdb_state, (idstr), __func__, __LINE__)
 #define BDB_WRITELOCK(idstr)    bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
 #define BDB_RELLOCK()           bdb_rellock(bdb_state, __func__, __LINE__)
 
@@ -131,7 +136,7 @@ int gbl_rep_process_msg_print_rc;
 #define MASTER_ONLY(rep, rp)											 	\
 	do {																 	\
 		if (!F_ISSET(rep, REP_F_MASTER)) {									\
-			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) {			\
+			if (gbl_verbose_master_req || FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) {			\
 				__db_err(dbenv, "Master record received on client");		\
 				__rep_print_message(dbenv, *eidp, rp, "rep_process_message");\
 			}															 	\
@@ -144,7 +149,7 @@ int gbl_rep_process_msg_print_rc;
 #define CLIENT_ONLY(rep, rp)												\
 	do {																	\
 		if (!F_ISSET(rep, REP_ISCLIENT)) {									\
-			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) {			\
+			if (gbl_verbose_master_req || FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) {			\
 				__db_err(dbenv, "Client record received on master");		\
 				__rep_print_message(dbenv, *eidp, rp, "rep_process_message");\
 			}																\
@@ -160,7 +165,7 @@ int gbl_rep_process_msg_print_rc;
 #define MASTER_CHECK(dbenv, eid, rep)										\
 	do {																	\
 		if (rep->master_id == db_eid_invalid) {								\
-			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))				\
+			if (gbl_verbose_master_req || FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))				\
 				__db_err(dbenv, "Received record from %s, master is INVALID",\
 						 eid);												\
 			ret = 0;														\
@@ -428,6 +433,10 @@ done:
  * PUBLIC:     DB_LSN *, uint32_t *));
  */
 
+
+extern int gbl_verbose_master_req;
+
+
 int
 __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	DB_ENV *dbenv;
@@ -492,8 +501,6 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 
 	if (LOG_SWAPPED())
 		__rep_control_swap(rp);
-
-    extern int gbl_verbose_master_req;
 
 	if (gbl_verbose_master_req) {
 		switch (rp->rectype) {
@@ -654,6 +661,10 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		} else if (rp->rectype != REP_NEWMASTER) {
 
+			if (gbl_verbose_master_req) {
+				logmsg(LOGMSG_ERROR, "%s line %d sending REP_MASTER_REQ\n",
+						__func__, __LINE__);
+			}
 			(void)__rep_send_message(dbenv,
 			    db_eid_broadcast, REP_MASTER_REQ, NULL, NULL, 0,
 			    NULL);
@@ -740,6 +751,11 @@ skip:				/*
                                 __func__, __LINE__, master_req_count);
                         master_req_print = now;
                     }
+
+					if (gbl_verbose_master_req) {
+						logmsg(LOGMSG_ERROR, "%s line %d sending REP_MASTER_REQ\n",
+								__func__, __LINE__);
+					}
 
 					(void)__rep_send_message(dbenv,
 					    db_eid_broadcast,
@@ -905,6 +921,12 @@ send:			if (__rep_send_message(dbenv,
 								   commit_gen)) != 0)
 				goto errlock;
 		} else {
+
+			if (gbl_verbose_master_req) {
+				logmsg(LOGMSG_ERROR, "%s line %d sending REP_MASTER_REQ\n",
+						__func__, __LINE__);
+			}
+
 			(void)__rep_send_message(dbenv, db_eid_broadcast,
 				 	REP_MASTER_REQ, NULL, NULL, 0, NULL);
 			fromline = __LINE__;
@@ -2576,8 +2598,14 @@ gap_check:		max_lsn_dbtp = NULL;
 				    NULL);
 			} else {
 				MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+
+				if (gbl_verbose_master_req) {
+					logmsg(LOGMSG_ERROR, "%s line %d sending REP_MASTER_REQ\n",
+							__func__, __LINE__);
+				}
+
 				(void)__rep_send_message(dbenv,
-				    db_eid_broadcast, REP_MASTER_REQ,
+					db_eid_broadcast, REP_MASTER_REQ,
 				    NULL, NULL, 0, NULL);
 			}
 		}
@@ -2707,8 +2735,7 @@ gap_check:		max_lsn_dbtp = NULL;
 				}
 
 				if (dbenv->num_recovery_processor_threads &&
-				    dbenv->num_recovery_worker_threads && 
-                    !bdb_the_lock_desired())
+				    dbenv->num_recovery_worker_threads)
 					ret =
 					    __rep_process_txn_concurrent(dbenv,
 					    rp, rec, &ltrans, rp->lsn, max_lsn,
@@ -2994,6 +3021,8 @@ logical_record_file_affinity(int rectype)
 
 int gbl_processor_thd_poll;
 
+/* On second thought i think this is wrong if i have the order correct */
+
 static void
 processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 {
@@ -3004,6 +3033,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	DB_LOCK prev_lsn_lk;
 	int i;
 	int inline_worker;
+	int polltm;
 	DB_LOGC *logc = NULL;
 	DB_LOCKREQ req, *lvp;
 	DB_ENV *dbenv;
@@ -3020,6 +3050,27 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	dbenv = rp->dbenv;
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
+
+	/*  rep_process_message adds to the inflight-txn list while holding the bdblock
+     *  We are executing here, so the inflight-txn list-size is greater than 0
+     *  get_writelock code blocks after attaining the writelock until the in-flight
+     *  txn list is 0
+     *  ... so we should NOT need to get the bdb readlock here */
+	void *bdb_state = dbenv->app_private;
+
+    bdb_thread_event(bdb_state, 3 /* start rdwr */);
+
+	/* Sleep here if the user has asked us to & if we are coherent */
+	if ((polltm = gbl_processor_thd_poll) > 0 && 
+			bdb_am_i_coherent(dbenv->app_private)) {
+		int lsize;
+		pthread_mutex_lock(&dbenv->recover_lk);
+		lsize = listc_size(&dbenv->inflight_transactions);
+		pthread_mutex_unlock(&dbenv->recover_lk);
+		logmsg(LOGMSG_ERROR, "Polling for %d in processor_thd, there are %d "
+				"processor thds outstanding\n", polltm, lsize);
+		poll(0, 0, polltm);
+	}
 
 	/* sanity check */
 #if 0
@@ -3155,10 +3206,6 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	if ((dbenv->flags & DB_ENV_ROWLOCKS) && listc_size(&queues) > 1) {
 		gbl_rep_rowlocks_multifile++;
 	}
-
-    /* Sleep here if the user has asked us to */
-    if (gbl_processor_thd_poll > 0)
-        poll(0, 0, gbl_processor_thd_poll);
 
 	/* Handle inline. */
 	if (listc_size(&queues) <= 1) {
@@ -3335,6 +3382,8 @@ err:
 	if (!dbenv->lsn_chain) {
 		pthread_rwlock_unlock(&dbenv->ser_lk);
 	}
+
+    bdb_thread_event(bdb_state, 2 /* done rdwr */);
 }
 
 static void
@@ -3981,6 +4030,8 @@ reset_recovery_processor(rp)
 	return ret;
 }
 
+extern int gbl_force_serial_on_writelock;
+
 static inline int
 __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
     commit_gen, prev_commit_lsn)
@@ -4348,7 +4399,11 @@ bad_resize:	;
 	 *
 	 * The solution: we grab the schema-lock rarely: just serialize for those cases.
 	 * */
-	if (had_serializable_records || got_schema_lk) {
+
+	int desired = 0;
+	if (had_serializable_records || got_schema_lk ||
+			(desired = (gbl_force_serial_on_writelock &&
+			 bdb_the_lock_desired()))) {
 
 		if (txn_args)
 			__os_free(dbenv, txn_args);
@@ -6360,17 +6415,16 @@ int __rep_block_on_inflight_transactions(DB_ENV *dbenv)
 	int rc;
 
 	pthread_mutex_lock(&dbenv->recover_lk);
+	logmsg(LOGMSG_ERROR, "%s: starting, waiting for %d processor threads to "
+			"exit\n", __func__, listc_size(&dbenv->inflight_transactions));
 	while (listc_size(&dbenv->inflight_transactions) > 0) {
-
 		clock_gettime(CLOCK_REALTIME, &ts);
-
 		ts.tv_sec++;
-
 		pthread_cond_timedwait(&dbenv->recover_cond, &dbenv->recover_lk, &ts);
 		if (listc_size(&dbenv->inflight_transactions) > 0) {
 			logmsg(LOGMSG_ERROR, "%s: waiting for %d processor threads "
-					"to exit\n", __func__, 
-                    listc_size(&dbenv->inflight_transactions));
+					"to exit\n", __func__,
+					listc_size(&dbenv->inflight_transactions));
 		}
 	}
 	pthread_mutex_unlock(&dbenv->recover_lk);
