@@ -79,7 +79,6 @@ void hexdump(unsigned char *key, int keylen);
 extern void fsnapf(FILE *, void *, int);
 static int reset_recovery_processor(struct __recovery_processor *rp);
 
-#define BDB_READLOCK(idstr)     bdb_get_readlock(bdb_state, (idstr), __func__, __LINE__)
 #define BDB_WRITELOCK(idstr)    bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
 #define BDB_RELLOCK()           bdb_rellock(bdb_state, __func__, __LINE__)
 
