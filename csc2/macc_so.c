@@ -126,10 +126,9 @@ void add_constraint(char *tbl, char *key)
 {
     int cidx = constraints[nconstraints].ncnstrts;
     if (cidx >= MAXCNSTRTS) {
-        csc2_error(
-            "ERROR: TOO MANY RULES SPECIFIED IN CONSTRAINT FOR KEY: %s. "
-            "(MAX: %d)\n",
-            constraints[nconstraints].lclkey, MAXCNSTRTS);
+        csc2_error("ERROR: TOO MANY RULES SPECIFIED IN CONSTRAINT FOR KEY: %s. "
+                   "(MAX: %d)\n",
+                   constraints[nconstraints].lclkey, MAXCNSTRTS);
         any_errors++;
         return;
     }
