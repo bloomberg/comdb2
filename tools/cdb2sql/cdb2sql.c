@@ -1021,7 +1021,7 @@ static char *get_multi_line_statement(char *line)
     return stmt;
 }
 
-static int dbtype_valid(char *type)
+static inline int dbtype_valid(char *type)
 {
     if (type && (type[0] == '@' || strcasecmp(type, "dev") == 0 ||
         strcasecmp(type, "uat") == 0 ||

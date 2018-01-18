@@ -708,8 +708,8 @@ void cdb2_set_comdb2db_config(const char *cfg_file)
 {
     pthread_once(&init_once, do_init_once);
     if (log_calls)
-        fprintf(stderr, "%p> cdb2_set_comdb2db_config(\"%s\")\n",
-                (void *)pthread_self(), cfg_file);
+        fprintf(stderr, "%p> %s(\"%s\")\n",
+                (void *)pthread_self(), __func__, cfg_file);
     strncpy(CDB2DBCONFIG_NOBBENV, cfg_file, 511);
 }
 
@@ -2564,9 +2564,9 @@ static void make_random_str(char *str, size_t max_len, int *len)
 #define SQLCACHEHINT "/*+ RUNCOMDB2SQL "
 #define SQLCACHEHINTLENGTH 17
 
-static const char *cdb2_skipws(const char *str)
+static inline const char *cdb2_skipws(const char *str)
 {
-    if (*str && isspace(*str)) {
+    if (str) {
         while (*str && isspace(*str))
             str++;
     }
@@ -4660,11 +4660,9 @@ int cdb2_clone(cdb2_hndl_tp **handle, cdb2_hndl_tp *c_hndl)
     return 0;
 }
 
-static int is_machine_list(const char *type)
+static inline int is_machine_list(const char *type)
 {
-    const char *s = type;
-    while (*s && isspace(*s))
-        s++;
+    const char *s = cdb2_skipws(type);
     return *s == '@';
 }
 
@@ -4694,7 +4692,7 @@ static int our_dc_first(const void *mp1, const void *mp2)
  */
 static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
 {
-    char *s = strdup(type);
+    char *type_copy = strdup(cdb2_skipws(type));
     char *eomachine;
     char *eooptions;
     int rc = 0;
@@ -4702,6 +4700,9 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
     char *dc;
     struct machine m[MAX_NODES];
     int num_hosts = 0;
+
+    assert(type_copy[0] == '@');
+    char *s = type_copy + 1; // advance past the '@'
 
     get_comdb2db_hosts(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                        NULL, NULL, NULL, 1);
@@ -4721,15 +4722,18 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
             rc = 1;
             goto done;
         }
-        if (hostname[0] == '@')
-            hostname++;
         options = strtok_r(NULL, ":", &eooptions);
         while (options) {
             char *option, *value, *eos;
 
             option = strtok_r(options, "=", &eos);
             if (option == NULL) {
-                fprintf(stderr, "no option set?\n");
+                fprintf(stderr, "no option set, port or dc required.\n");
+                rc = 1;
+                goto done;
+            }
+            if (strcmp(option, "port") != 0 && strcmp(option, "dc") != 0) {
+                fprintf(stderr, "port or dc expected instead of %s\n", option);
                 rc = 1;
                 goto done;
             }
@@ -4742,13 +4746,9 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
 
             if (strcmp(option, "port") == 0) {
                 port = atoi(value);
-            } else if (strcmp(option, "dc") == 0) {
-                dc = value;
             } else {
-                fprintf(stderr, "unknown option %s\n", option);
-                rc = 1;
-                goto done;
-            }
+                dc = value;
+            } 
 
             options = strtok_r(NULL, ":", &eooptions);
         }
@@ -4781,12 +4781,19 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
         hndl->num_hosts++;
         if (m[i].ourdc)
             hndl->num_hosts_sameroom++;
+
+        if (hndl && hndl->debug_trace)
+            fprintf(stderr, "td %u %s host %s, port %d\n", 
+                    (uint32_t)pthread_self(), __func__, m[i].host, m[i].port);
     }
 
     hndl->flags |= CDB2_DIRECT_CPU;
 
 done:
-    free(s);
+    free(type_copy);
+    if (log_calls)
+        fprintf(stderr, "%p> %s() hosts=%d\n", 
+                (void *)pthread_self(), __func__, num_hosts);
     return rc;
 }
 
@@ -5083,7 +5090,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             }
         }
     } else if (is_machine_list(type)) {
-        configure_from_literal(hndl, type);
+        rc = configure_from_literal(hndl, type);
     } else {
         rc = cdb2_get_dbhosts(hndl);
     }
@@ -5096,7 +5103,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     if (log_calls) {
         fprintf(stderr, "%p> cdb2_open(dbname: \"%s\", type: \"%s\", flags: "
                         "%x) = %d => %p\n",
-                (void *)pthread_self(), dbname, type, flags, rc, *handle);
+                (void *)pthread_self(), dbname, type, hndl->flags, rc, *handle);
     }
     return rc;
 }
