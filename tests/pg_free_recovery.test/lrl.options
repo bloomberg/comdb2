@@ -1,3 +1,5 @@
 poll_in_pgfree_recover on
-setattr REP_PROCESSORS 0
-setattr REP_WORKERS 0
+
+# Enable parallel rep
+setattr REP_PROCESSORS 8
+setattr REP_WORKERS 16
