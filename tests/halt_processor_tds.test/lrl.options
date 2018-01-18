@@ -1,7 +1,7 @@
 # Linearizable is serializable + durable-lsn logic
 enable_serial_isolation
 
-# Disable parallel rep (this was causing crashes)
+# Enable parallel rep
 setattr REP_PROCESSORS 8
 setattr REP_WORKERS 16
 
