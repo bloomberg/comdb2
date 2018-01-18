@@ -2208,9 +2208,10 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 if (rc != FDB_NOERR) 
                     goto failed;
                 rc=sbuf2getc(*psb);
-                assert(rc == 'Y');
+                if(rc != 'Y')
+                    goto failed;
                 rc = FDB_NOERR;
-                fprintf(stderr, "READ Y\n");
+                /*fprintf(stderr, "READ Y\n");*/
 
                 if (sslio_connect(*psb, gbl_ssl_ctx,
                             fdb->ssl, NULL, 0) != 1) {
@@ -2501,18 +2502,12 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
             goto done;
         }
     } else {
-        int retried = 0;
-retry:      
         /* NOTE: we expect x_remote to fill in the error, if any */
         pCur->fdbc = fdbc_if = _fdb_cursor_open_remote(
             clnt, fdb, source_rootpage, trans, flags,
             (ent) ? fdb_table_version(ent->tbl->version) : 0, use_ssl);
 
         if (!fdbc_if) {
-            if(!retried) {
-                retried = 1;
-                goto retry;
-            }
             logmsg(LOGMSG_ERROR, "%s: failed to open fdb cursor\n", __func__);
             goto done;
         }
@@ -4818,7 +4813,7 @@ static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb, int *flags
 #endif
     }
 
-    fprintf(stderr, "%s: return flags=%d sb=%p has_ssl=%d\n", __func__, *flags, clnt->sb, sslio_has_ssl(clnt->sb));
+    /*fprintf(stderr, "%s: return flags=%d sb=%p has_ssl=%d\n", __func__, *flags, clnt->sb, sslio_has_ssl(clnt->sb));*/
 
     return 0;
 }

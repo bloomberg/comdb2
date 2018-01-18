@@ -10693,10 +10693,6 @@ void disconnect_remote_db(const char *dbname, const char *service, char *host,
     *psb = NULL;
 }
 
-SBUF2 *connect_remote_db_remsql(const char *dbname, char *host)
-{
-}
-
 /* use portmux to open an SBUF2 to local db or proxied db
    it is trying to use sockpool
  */
@@ -10713,12 +10709,12 @@ SBUF2 *connect_remote_db(const char *dbname, const char *service, char *host)
     /* lets try to use sockpool, if available */
     sockfd = _sockpool_get(dbname, service, host);
     if (sockfd > 0) {
-        fprintf(stderr, "%s: retrieved sockpool socket for %s.%s.%s fd=%d\n",
-            __func__, dbname, service, host);
+        /*fprintf(stderr, "%s: retrieved sockpool socket for %s.%s.%s fd=%d\n",
+            __func__, dbname, service, host);*/
         goto sbuf;
     } else
-        fprintf(stderr, "%s: no sockpool socket for %s.%s.%s\n",
-            __func__, dbname, service, host);
+        /*fprintf(stderr, "%s: no sockpool socket for %s.%s.%s\n",
+            __func__, dbname, service, host);*/
 
     retry = 0;
 retry:
@@ -10740,18 +10736,6 @@ retry:
                 __func__, dbname, host, port);
         return NULL;
     }
-#if 0
-    /* disable Nagle */
-    flag = 1;
-    rc = setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
-                    sizeof(int));
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldnt turn off nagel on new fd %d: %d %s\n",
-                __func__, sockfd, errno, strerror(errno));
-        close(sockfd);
-        return NULL;
-    }
-#endif
 sbuf:
     sb = sbuf2open(sockfd, 0);
     if (!sb) {

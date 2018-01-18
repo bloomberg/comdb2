@@ -1002,7 +1002,7 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
             if (rc != sizeof(msg->co.ssl)) 
                 return -1;
             msg->co.ssl = ntohl(msg->co.ssl);
-            fprintf(stderr, "Read ssl %d size %d\n", msg->co.ssl, sizeof(tmp));
+            /*fprintf(stderr, "Read ssl %d size %d\n", msg->co.ssl, sizeof(tmp));*/
         }
 #else
         msg->co.ssl = 0;
@@ -1990,7 +1990,7 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
         }
 #if WITH_SSL
         if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_SSL) {
-            fprintf(stderr, "Writing ssl %d size %d\n", msg->co.ssl, sizeof(tmp));
+            /*fprintf(stderr, "Writing ssl %d size %d\n", msg->co.ssl, sizeof(tmp));*/
             tmp = htonl(msg->co.ssl);
             rc = sbuf2fwrite((char *)&tmp, 1, sizeof(tmp), sb);
             if (rc != sizeof(tmp))
