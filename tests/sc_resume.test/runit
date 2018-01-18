@@ -590,18 +590,7 @@ kill_restart_node $master
 master=`getmaster`
 echo "master node now $master"
 
-<<<<<<< cdbc9ea79a01199384522cefab1f318f730f3c5b
 wait_for_sc
-=======
-while true ; do
-    get_schemachange_status $master
-    if [ $? -ne 1 ] ; then
-        echo "break out since sc was done"
-        break;
-    fi
-    sleep 5
-done
->>>>>>> Sc resume race (#626)
 
 assert_vers t1 7
 assert_schema t1 t1_2.csc2
