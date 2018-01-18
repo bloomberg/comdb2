@@ -594,8 +594,8 @@ again:
             if (rc) {
                 dealloc_fd(svc);
             }
+            unwatchfd(fd);
         }
-        unwatchfd(fd);
     } else if (strcmp(cmd, "del") == 0) {
         if (c.writable) {
             svc = strtok_r(NULL, " ", &sav);
