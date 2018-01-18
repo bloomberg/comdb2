@@ -871,6 +871,7 @@ struct dbenv {
     void *bdb_callback; /*engine callbacks */
 
     char *master; /*current master node, from callback*/
+    int egen;     /*election generation for current master node*/
 
     int cacheszkb;
     int cacheszkbmin;
@@ -1693,6 +1694,8 @@ extern long long gbl_nsql_steps;
 
 extern unsigned int gbl_nnewsql;
 extern long long gbl_nnewsql_steps;
+
+extern unsigned int gbl_masterrejects;
 
 extern int gbl_sql_client_stats;
 

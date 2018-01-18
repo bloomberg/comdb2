@@ -137,7 +137,7 @@ static char hex(unsigned char a)
  * Adds an osql session to the repository
  * Returns 0 on success
  */
-int osql_repository_add(osql_sess_t *sess)
+int osql_repository_add(osql_sess_t *sess, int *replaced)
 {
     osql_sess_t *sess_chk, *sess_chk2;
     uuid_t uuid;
@@ -183,25 +183,38 @@ retry:
         sess_chk = hash_find_readonly(theosql->rqs, &rqid);
     }
     if (sess_chk) {
-        theosql_pthread_rwlock_unlock(&theosql->hshlck);
         char *p = (char *)alloca(64);
         p = util_tohex(p, (char *)uuid, 16);
 
-        logmsg(LOGMSG_ERROR, "%s: trying to add another session with the same "
-                "rqid, rqid=%llx uuid=%s retry=%d, waited %u msec\n",
-                __func__, sess->rqid, p, crt_time_msec / poll_msec, crt_time_msec);
+        logmsg(LOGMSG_ERROR,
+               "%s: trying to add another session with the same rqid, "
+               "rqid=%llx uuid=%s\n",
+               __func__, sess->rqid, p);
+        /* dont run the new replace logic for tag and osql retry */
+        if (replaced == NULL)
+            abort();
 
-        if (crt_time_msec + poll_msec < total_time_msec) {
-            crt_time_msec += poll_msec;
-            poll(NULL, 0, poll_msec);
-            goto retry;
+        rc = osql_sess_try_terminate(sess_chk);
+        if (rc < 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d osql_sess_try_terminate rc %d\n",
+                   __func__, __LINE__, rc);
+            pthread_rwlock_unlock(&theosql->hshlck);
+            return -1;
         }
-
-        logmsg(LOGMSG_WARN, "%s: timed out waiting for session with same rqid to complete, rqid=%llx uuid=%s\n", 
-                __func__, sess->rqid, p);
-
-        return RC_INTERNAL_RETRY;
-        //abort();
+        if (rc == 0) {
+            /* old request was terminated successfully, let's add the new one */
+            logmsg(LOGMSG_INFO,
+                   "%s: cancelled old request for rqid=%llx, uuid=%s\n",
+                   __func__, sess->rqid, p);
+        } else {
+            /* old request was already processed, ignore new ones */
+            pthread_rwlock_unlock(&theosql->hshlck);
+            *replaced = 1;
+            logmsg(LOGMSG_INFO,
+                   "%s: rqid=%llx, uuid=%s was completed/dispatched\n",
+                   __func__, sess->rqid, p);
+            return 0;
+        }
     }
 
     if (sess->rqid == OSQL_RQID_USE_UUID)

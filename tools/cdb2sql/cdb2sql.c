@@ -59,9 +59,9 @@ static int show_ports = 0;
 static int debug_trace = 0;
 static int pausemode = 0;
 static int printmode = DEFAULT;
+static int verbose = 0;
 static int scriptmode = 0;
 static int error = 0;
-static int set_debug = 0;
 static cdb2_hndl_tp *cdb2h = NULL;
 static int time_mode = 0;
 static int rowsleep = 0;
@@ -111,6 +111,12 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
         fprintf(f, "'");
 }
 
+#define verbose_print(...)                                                     \
+    {                                                                          \
+        if (verbose)                                                           \
+            printf(__VA_ARGS__);                                               \
+    }
+
 static const char *usage_text =
     "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
     "\n"
@@ -128,6 +134,7 @@ static const char *usage_text =
     "     --tabs          Set column separator to tabs rather than commas\n"
     " -t, --type TYPE     Type of database or tier ('dev' or 'prod',"
     " default 'local')\n"
+    " -v, --verbose       Verbose debug output, implies --debugtrace"
     "\n"
     " Examples: \n"
     " * Querying db with name mydb on local server \n"
@@ -653,6 +660,10 @@ static int run_statement(const char *sql, int ntypes, int *types,
             cdb2_set_min_retries(minretries);
         }
 
+        verbose_print("calling cdb2_open\n");
+        if (verbose)
+            setenv("CDB2_DEBUG", "1", 1);
+
         if (dbhostname) {
             rc = cdb2_open(&cdb2h, dbname, dbhostname, CDB2_DIRECT_CPU);
         } else {
@@ -727,6 +738,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
     /* Bind parameter ability -- useful for debugging */
     if (sql[0] == '@') {
         if (strncasecmp(sql, "@bind", 5) == 0) {
+            verbose_print("setting bind parameter\n");
             //@bind BINDTYPE parameter value
             sql += 5;
 
@@ -751,6 +763,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
     {
         int retries = 0;
         while (retries < 10) {
+            verbose_print("running stmt\n");
             rc = cdb2_run_statement_typed(cdb2h, sql, ntypes, types);
             if (rc != CDB2ERR_IO_ERROR)
                 break;
@@ -860,6 +873,7 @@ static void process_line(char *sql, int ntypes, int *types)
     int rc;
     int len;
 
+    verbose_print("processing line\n");
     /* Trim whitespace and then ignore comments */
     while (isspace(*sqlstr))
         sqlstr++;
@@ -924,6 +938,7 @@ void save_readline_history()
 
 static int *process_typed_statement_args(int ntypes, char **args)
 {
+    verbose_print("processing typed statement arguments\n");
     int *types = NULL;
 
     if (ntypes > 0)
@@ -1037,8 +1052,6 @@ static void replace_args(int argc, char *argv[])
             argv[ii] = "--tabs";
         else if (!strcmp(argv[ii], "-strblobs"))
             argv[ii] = "--strblobs";
-        else if (!strcmp(argv[ii], "-debug"))
-            argv[ii] = "--debug";
         else if (!strcmp(argv[ii], "-debugtrace"))
             argv[ii] = "--debugtrace";
         else if (!strcmp(argv[ii], "-showports"))
@@ -1144,8 +1157,8 @@ int main(int argc, char *argv[])
         {"pause",      no_argument,       &pausemode,         1},
         {"binary",     no_argument,       &printmode,         BINARY},
         {"tabs",       no_argument,       &printmode,         TABS},
+        {"verbose",    no_argument,       &verbose,           1},
         {"strblobs",   no_argument,       &string_blobs,      1},
-        {"debug",      no_argument,       &set_debug,         1},
         {"debugtrace", no_argument,       &debug_trace,       1},
         {"showports",  no_argument,       &show_ports,        1},
         {"showeffects",no_argument,       &show_effects,      1},
@@ -1166,7 +1179,7 @@ int main(int argc, char *argv[])
         {0, 0, 0, 0}
     };
 
-    while ((c = bb_getopt_long(argc, argv, "hsr:p:c:f:g:t:n:R:", long_options,
+    while ((c = bb_getopt_long(argc, argv, "hsvr:p:c:f:g:t:n:R:", long_options,
                                &opt_indx)) != -1) {
         switch (c) {
         case 0:
@@ -1176,6 +1189,9 @@ int main(int argc, char *argv[])
             break;
         case 's':
             scriptmode = 1;
+            break;
+        case 'v':
+            verbose = 1;
             break;
         case 'r':
             maxretries = atoi(optarg);
@@ -1235,6 +1251,8 @@ int main(int argc, char *argv[])
         fprintf(stderr, "DB name \"%s\" too long\n", dbname);
         return 1;
     }
+    if (verbose)
+        debug_trace = 1;
 
     dbname = argv[optind];
     optind++;

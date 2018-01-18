@@ -65,3 +65,84 @@ SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 
 DROP TABLE t1;
 DROP TABLE t2;
+
+CREATE TABLE t1(i INT, j INT, k int) $$
+CREATE TABLE t2(i INT, j INT, k int) $$
+ALTER TABLE t1 ADD UNIQUE INDEX idx1 (i,j) $$
+ALTER TABLE t1 ADD UNIQUE INDEX idx2 (i) $$
+ALTER TABLE t1 ADD INDEX idx3(j,i) $$
+ALTER TABLE t1 ADD INDEX idx4(i) $$
+ALTER TABLE t1 ADD PRIMARY KEY (k) $$
+ALTER TABLE t2 ADD UNIQUE INDEX idx1 (i,j) $$
+ALTER TABLE t2 ADD FOREIGN KEY (i,j) REFERENCES t1(i,j) $$
+
+SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+
+DROP TABLE t2;
+DROP TABLE t1;
+
+CREATE TABLE t1(i INT, j INT) $$
+CREATE TABLE t2(i INT, j INT) $$
+CREATE TABLE t3(i INT, j INT) $$
+ALTER TABLE t1 ADD INDEX idx (i,j) $$
+ALTER TABLE t2 ADD INDEX idx (i,j) $$
+ALTER TABLE t2 ADD FOREIGN KEY (i,j) REFERENCES t1(i,j) $$
+ALTER TABLE t2 ADD FOREIGN KEY (i,j) REFERENCES t1(i,j) $$
+ALTER TABLE t3 ADD PRIMARY KEY (i,j) $$
+
+SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+
+ALTER TABLE t1 DROP INDEX 'idx' $$
+ALTER TABLE t2 DROP FOREIGN KEY '$CONSTRAINT_95177019' $$
+ALTER TABLE t1 DROP INDEX 'idx' $$
+ALTER TABLE t2 DROP INDEX 'idx' $$
+ALTER TABLE t3 DROP PRIMARY KEY $$
+
+SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t3;
+
+# Test the cascading effect of deleting a column.
+CREATE TABLE t1(i INT, j INT, k int, PRIMARY KEY (i,j,k)) $$
+CREATE TABLE t2(i INT, j INT, k int, PRIMARY KEY (j,k), UNIQUE idx (j)) $$
+ALTER TABLE t2 ADD FOREIGN KEY (i,j) REFERENCES t1(i,j) $$
+SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+ALTER TABLE t2 DROP COLUMN j $$
+SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+DROP TABLE t1;
+DROP TABLE t2;
+
+CREATE TABLE t1(i INT, j INT, k INT, UNIQUE idx1 (i,j,k), UNIQUE idx2(i DESC, j DESC, k DESC)) $$
+CREATE TABLE t2(i INT, j INT, k INT, FOREIGN KEY (i,j) REFERENCES t1(i,j), FOREIGN KEY (i DESC, j DESC) REFERENCES t1(i DESC, j DESC)) $$
+SELECT * FROM sqlite_master;
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+ALTER TABLE t2 DROP FOREIGN KEY '$CONSTRAINT_9C9BDEA4' $$
+SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+DROP TABLE t2;
+DROP TABLE t1;

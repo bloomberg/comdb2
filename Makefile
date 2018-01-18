@@ -3,7 +3,7 @@
 #######################################################
 .PHONY: test_tools
 test_tools: compat_install
-	@cd build && $(MAKE) -s -j blob bound cdb2_client cdb2api_caller cdb2bind comdb2_blobtest comdb2_sqltest crle hatest insert_lots_mt leakcheck localrep overflow_blobtest ptrantest recom selectv serial sicountbug sirace simple_ssl stepper utf8 insert register breakloop
+	@cd build && $(MAKE) -s -j blob bound cdb2_client cdb2api_caller cdb2bind comdb2_blobtest comdb2_sqltest crle hatest insert_lots_mt leakcheck localrep overflow_blobtest ptrantest recom selectv serial sicountbug sirace simple_ssl stepper utf8 insert register breakloop multithd
 	@ln -f build/tests/tools/blob tests/bloballoc.test/blob
 	@ln -f build/tests/tools/bound tests/tools/bound
 	@ln -f build/tests/tools/cdb2_client tests/cdb2api_so.test/cdb2_client
@@ -23,6 +23,7 @@ test_tools: compat_install
 	@ln -f build/tests/tools/serial tests/tools/serial
 	@ln -f build/tests/tools/sicountbug tests/sicountbug.test/sicountbug
 	@ln -f build/tests/tools/sirace tests/sirace.test/sirace
+	@ln -f build/tests/tools/multithd tests/multithd.test/multithd
 	@ln -f build/tests/tools/simple_ssl tests/simple_ssl.test/simple_ssl
 	@ln -f build/tests/tools/stepper tests/tools/stepper
 	@ln -f build/tests/tools/utf8 tests/tools/utf8
@@ -88,6 +89,7 @@ clean:
 	@rm -f tests/tools/serial
 	@rm -f tests/sicountbug.test/sicountbug
 	@rm -f tests/sirace.test/sirace
+	@rm -f tests/multithd.test/multithd
 	@rm -f tests/simple_ssl.test/simple_ssl
 	@rm -f tests/tools/stepper
 	@rm -f tests/tools/utf8

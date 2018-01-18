@@ -33,7 +33,7 @@ typedef struct osql_repository osql_repository_t;
  * Adds an osql session to the repository
  * Returns 0 on success
  */
-int osql_repository_add(osql_sess_t *sess);
+int osql_repository_add(osql_sess_t *sess, int *replaced);
 
 /**
  * Removes an osql session from the repository

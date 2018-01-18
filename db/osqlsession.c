@@ -557,6 +557,25 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, void *data,
 
         *found = 1;
 
+        pthread_mutex_lock(&sess->completed_lock);
+        /* ignore new coming osql packages */
+        if (sess->completed || sess->dispatched || sess->terminate) {
+            uuidstr_t us;
+            pthread_mutex_unlock(&sess->completed_lock);
+            if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d osql_repository_put failed with rc %d\n",
+                       __func__, __LINE__, rc);
+            }
+            comdb2uuidstr(uuid, us);
+            logmsg(
+                LOGMSG_INFO,
+                "%s: rqid=%llx, uuid=%s is already done, ignoring packages\n",
+                __func__, rqid, us);
+            return 0;
+        }
+        pthread_mutex_unlock(&sess->completed_lock);
+
         /* save op */
         rc_out = osql_bplog_saveop(sess, data, datalen, rqid, uuid, sess->seq,
                                    sess->offhost);
@@ -776,7 +795,8 @@ osql_req_t *osql_sess_getreq(osql_sess_t *sess) { return sess->req; }
  */
 osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int type, unsigned long long rqid,
-                                   uuid_t uuid, char *fromhost, struct ireq *iq)
+                                   uuid_t uuid, char *fromhost, struct ireq *iq,
+                                   int *replaced)
 {
 
     osql_sess_t *sess = NULL;
@@ -841,7 +861,8 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     if (rc)
         goto late_error;
 
-    if (osql_repository_add(sess))
+    rc = osql_repository_add(sess, replaced);
+    if (rc || *replaced)
         goto late_error;
 
     sess->last_row = time(NULL);
@@ -931,3 +952,80 @@ int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq)
 }
 
 struct ireq *osql_session_get_ireq(osql_sess_t *sess) { return sess->iq; }
+
+/**
+ * Force a session to end
+ * Call with sess->mtx and sess->completed_lock held
+ */
+static int osql_sess_set_terminate(osql_sess_t *sess)
+{
+    int rc = 0;
+    sess->terminate = OSQL_TERMINATE;
+    if (sess->iq) {
+        osql_bplog_session_is_done(sess->iq);
+        osql_bplog_signal(sess->iq->blocksql_tran);
+    }
+    rc = osql_repository_rem(sess, 0, __func__, NULL,
+                             __LINE__); /* already have exclusive lock */
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to remove session from repository rc=%d\n", __func__,
+               rc);
+        return rc;
+    }
+
+    assert(!sess->completed && !sess->dispatched);
+    /* no one will work on this; need to clear it */
+    rc = osql_bplog_free(sess->iq, 0, __func__, NULL, __LINE__);
+    /* NOTE: sess is clear here! */
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: error in bplog_free rc=%d\n", __func__, rc);
+    }
+
+    return rc;
+}
+
+/**
+ * Terminate a session if the session is not yet completed/dispatched
+ * Return 0 if session is successfully terminated,
+ *        -1 for errors,
+ *        1 otherwise (if session was already processed)
+ */
+int osql_sess_try_terminate(osql_sess_t *sess)
+{
+    int rc;
+    int completed = 0;
+    if (rc = osql_sess_lock(sess)) {
+        logmsg(LOGMSG_ERROR, "%s:%d osql_sess_lock rc %d\n", __func__, __LINE__,
+               rc);
+        return -1;
+    }
+    if (rc = osql_sess_lock_complete(sess)) {
+        logmsg(LOGMSG_ERROR, "%s:%d osql_sess_lock_complete rc %d\n", __func__,
+               __LINE__, rc);
+        osql_sess_unlock(sess);
+        return -1;
+    }
+    completed = sess->completed | sess->dispatched;
+    if (rc = osql_sess_unlock_complete(sess)) {
+        logmsg(LOGMSG_ERROR, "%s:%d osql_sess_unlock_complete rc %d\n",
+               __func__, __LINE__, rc);
+        osql_sess_unlock(sess);
+        return -1;
+    }
+    if (rc = osql_sess_unlock(sess)) {
+        logmsg(LOGMSG_ERROR, "%s:%d osql_sess_unlock rc %d\n", __func__,
+               __LINE__, rc);
+        return -1;
+    }
+    if (completed) {
+        /* request is being processed and this is a replay */
+        return 1;
+    } else {
+        rc = osql_sess_set_terminate(sess);
+        if (rc) {
+            abort();
+        }
+    }
+    return 0;
+}

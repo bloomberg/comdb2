@@ -262,9 +262,7 @@ int comdb2_objpool_resume(comdb2_objpool_t op)
 
 int comdb2_objpool_destroy(comdb2_objpool_t op)
 {
-    int rc;
-
-    rc = pthread_mutex_lock(&op->data_mutex);
+    int rc = pthread_mutex_lock(&op->data_mutex);
     if (rc != 0)
         return rc;
 

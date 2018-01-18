@@ -2870,12 +2870,21 @@ static int new_master_callback(void *bdb_handle, char *host)
 {
     ++gbl_master_changes;
     struct dbenv *dbenv;
-    char *oldmaster;
+    char *oldmaster, *newmaster;
+    uint32_t oldegen, egen;
     int trigger_timepart = 0;
     dbenv = bdb_get_usr_ptr(bdb_handle);
     oldmaster = dbenv->master;
+    oldegen = dbenv->egen;
     dbenv->master = host;
 
+    bdb_get_rep_master(bdb_handle, &newmaster, &egen);
+    if (gbl_master_swing_osql_verbose)
+        logmsg(LOGMSG_INFO,
+               "%s:%d new master node %s, rep_master %s, rep_egen %u\n",
+               __func__, __LINE__, host ? host : "NULL",
+               newmaster ? newmaster : "NULL", egen);
+    dbenv->egen = egen;
     /*this is only used when handle not established yet. */
     if (host == gbl_mynode) {
         if (oldmaster != host) {
@@ -2891,7 +2900,9 @@ static int new_master_callback(void *bdb_handle, char *host)
             trigger_clear_hash();
             trigger_timepart = 1;
 
-            osql_repository_cancelall();
+            if (oldegen != egen) {
+                osql_repository_cancelall();
+            }
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
         /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
@@ -2903,6 +2914,7 @@ static int new_master_callback(void *bdb_handle, char *host)
             logmsg(LOGMSG_WARN, "NEW MASTER NODE %s\n", host);
         }
         /*bdb_set_timeout(bdb_handle, 0, &bdberr);*/
+        osql_repository_cancelall();
     }
 
     gbl_lost_master_time = 0; /* reset this */
@@ -3310,7 +3322,7 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
         return;
     }
     seed = dtap;
-    rc = sc_set_running(0, 0, NULL, 0);
+    rc = sc_set_running(0, *seed, NULL, 0);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 

@@ -4886,6 +4886,7 @@ void send_downgrade_and_lose(bdb_state_type *bdb_state)
 extern int gbl_dump_locks_on_repwait;
 extern int gbl_lock_get_list_start;
 int bdb_clean_pglogs_queues(bdb_state_type *bdb_state);
+extern int db_is_stopped();
 
 void *watcher_thread(void *arg)
 {
@@ -4936,7 +4937,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while (1) {
+    while (!db_is_stopped()) {
         time_now = time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 
@@ -5120,7 +5121,7 @@ void *watcher_thread(void *arg)
         }
 
         master_host = bdb_state->repinfo->master_host;
-        bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &rep_master);
+        bdb_get_rep_master(bdb_state, &rep_master, NULL);
 
         if (bdb_state->caught_up) {
             /* periodically send info too all nodes about our curresnt LSN and
