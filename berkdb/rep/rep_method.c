@@ -1539,42 +1539,7 @@ __rep_lockout(dbenv, db_rep, rep, msg_th)
 	REP *rep;
 	u_int32_t msg_th;
 {
-	int wait_cnt;
-
-	/* Phase 1: set REP_F_READY and wait for op_cnt to go to 0. */
-	F_SET(rep, REP_F_READY);
-	for (wait_cnt = 0; rep->op_cnt != 0;) {
-		__db_err(dbenv,
-	"Detected %d ongoing operations while changing roles via rep_start",
-		    rep->op_cnt);
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-		__os_sleep(dbenv, 1, 0);
-#ifdef DIAGNOSTIC
-		if (++wait_cnt % 60 == 0)
-			__db_err(dbenv,
-	"Waiting for txn_cnt to run replication recovery/backup for %d minutes",
-			    wait_cnt / 60);
-#endif
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	}
-
-	/*
-	 * Phase 2: set in_recovery and wait for handle count to go
-	 * to 0 and for the number of threads in __rep_process_message
-	 * to go to 1 (us).
-	 */
-	rep->in_recovery = 1;
-	for (wait_cnt = 0; rep->handle_cnt != 0 || rep->msg_th > msg_th;) {
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-		__os_sleep(dbenv, 1, 0);
-#ifdef DIAGNOSTIC
-		if (++wait_cnt % 60 == 0)
-                      __db_err(dbenv,
-"Waiting for handle count to run replication recovery/backup for %d minutes",
-			    wait_cnt / 60);
-#endif
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	}
+	return;
 }
 
 /* COMDB2 MODIFICATION */

@@ -754,7 +754,8 @@ int gbl_verbose_send_coherency_lease;
 void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                            int *inc_wait)
 {
-    int count, comcount, i, do_send, use_udp, master_is_coherent;
+    int count, comcount, i, do_send, use_udp, master_is_coherent,
+        nosend_print = 0;
     uint8_t *p_buf, *p_buf_end, buf[COLEASE_TYPE_LEN];
     const char *hostlist[REPMAX];
     const char *comlist[REPMAX];
@@ -766,12 +767,12 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
     colease.lease_ms = lease_time;
 
     if (bdb_state->attr->leasebase_trace) {
-        static time_t lastpr = 0;
+        static time_t leasebase_lastpr = 0;
         time_t now;
-        if ((now = time(NULL)) > lastpr) {
+        if ((now = time(NULL)) > leasebase_lastpr) {
             logmsg(LOGMSG_INFO, "%s: lease base time is %lu\n", __func__,
                    colease.issue_time);
-            lastpr = now;
+            leasebase_lastpr = now;
         }
     }
 
@@ -790,14 +791,14 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         net_get_all_commissioned_nodes(bdb_state->repinfo->netinfo, comlist);
 
     if (count != comcount) {
-        static time_t lastpr = 0;
+        static time_t count_lastpr = 0;
         time_t now;
 
         /* Assume disconnected node(s) are incoherent */
         *inc_wait = 1;
 
         if (gbl_verbose_send_coherency_lease &&
-            (last_count != count || (now = time(NULL)) - lastpr)) {
+            (last_count != count || (now = time(NULL)) - count_lastpr)) {
             char *machs = (char *)malloc(1);
             int machs_len = 0;
             machs[0] = '\0';
@@ -812,7 +813,7 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                    "%s: only %d of %d nodes are connected: %s epoch=%ld\n",
                    __func__, count, comcount, machs, time(NULL));
             free(machs);
-            lastpr = now;
+            count_lastpr = now;
         }
     } else if (last_count != comcount) {
         logmsg(LOGMSG_INFO, "%s: sending leases to all nodes, epoch=%ld\n",
@@ -831,6 +832,7 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
     } else
         master_is_coherent = 1;
 
+    static time_t nosend_lastpr = 0;
     for (i = 0; i < count; i++) {
         int catchup_window = bdb_state->attr->catchup_window;
         pthread_mutex_lock(&(bdb_state->coherent_state_lock));
@@ -865,16 +867,16 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                                  COLEASE_TYPE_LEN, 0, 0);
             }
         } else {
-            static time_t lastpr = 0;
             time_t now;
             if (gbl_verbose_send_coherency_lease &&
-                (now = time(NULL)) - lastpr) {
+                (now = time(NULL)) - nosend_lastpr) {
                 logmsg(LOGMSG_ERROR, "%s: not sending to %s\n", __func__,
                        hostlist[i]);
-                lastpr = now;
+                nosend_print = 1;
             }
         }
     }
+    if (nosend_print) nosend_lastpr = time(NULL);
 }
 
 void handle_ping_timestamp(bdb_state_type *bdb_state, ack_info *info, char *to)
