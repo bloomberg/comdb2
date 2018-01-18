@@ -25,41 +25,39 @@
 #include <stdio.h>
 
 const char *help_text[] = {
-"To serialise a db: comdb2ar [opts] c /bb/bin/mydb.lrl >output",
-"To serialise a db incrementally:",
-"  First, create a full backup in incremental mode-",
-"     comdb2ar c -I create -b /bb/bin/increment [opts] /bb/bin/mydb.lrl > output",
-"  Then, create an increment-",
-"     comdb2ar c -I inc -b /bb/bin/increment [opt] /bb/bin/mydb.lrl > output",
-"",
-"  Database mydb is serialised into tape archive format on to stdout.",
-"  -s   serialise support files only (lrl, csc2 etc, no data or log files)",
-"  -L   do not disable log file deletion (dangerous)",
-"",
-"To deserialise a db: comdb2ar.tsk [opts] x [/bb/bin /bb/data/mydb] <input",
-"To deserialise a db incrementally:",
-"  comdb2ar x -I restore -b /bb/bin/restore_increment [/bb/bin/ /bb/data/mydb] < input",
-"Where input is each increment concatenated together",
-"  i.e. cat mydb.tar mydb_incr1.tar mydb_incr2.tar",
-"",
-"  The serialised database read from stdin is deserialised.  You can",
-"  optionally specify destination directories for the lrl file and data",
-"  directory; if ommitted the paths will be taken from the lrl in the",
-"  serialised input stream.",
-"  -C strip     strip cluster nodes lines from lrl file",
-"  -C preserve  preserve cluster nodes lines in lrl file",
-"  -I create    create the incremental meta files while serialising",
-"  -I inc       create an increment for the incremental backup",
-"  -I restore   restore from a sequence of base_backup | increments",
-"  -b <path>    location to store/load the incremental backup",
-"  -x <path>    path to comdb2 binary to use for full recovery",
-"  -r/R         do/do-not run full recovery after extracting",
-"  -u %         do not allow disk usage to exceed this percentage",
-"  -f           force deserialisation even if checksums fail",
-"  -O           legacy mode, does not delete old format files",
-"  -D           turn off directio",
-NULL
-};
+    "To serialise a db: comdb2ar [opts] c /bb/bin/mydb.lrl >output",
+    "To serialise a db incrementally:",
+    "  First, create a full backup in incremental mode-",
+    "     comdb2ar c -I create -b /bb/bin/increment [opts] /bb/bin/mydb.lrl > "
+    "output",
+    "  Then, create an increment-", "     comdb2ar c -I inc -b "
+                                    "/bb/bin/increment [opt] /bb/bin/mydb.lrl "
+                                    "> output",
+    "", "  Database mydb is serialised into tape archive format on to stdout.",
+    "  -s   serialise support files only (lrl, csc2 etc, no data or log files)",
+    "  -L   do not disable log file deletion (dangerous)", "",
+    "To deserialise a db: comdb2ar.tsk [opts] x [/bb/bin /bb/data/mydb] <input",
+    "To deserialise a db incrementally:", "  comdb2ar x -I restore -b "
+                                          "/bb/bin/restore_increment [/bb/bin/ "
+                                          "/bb/data/mydb] < input",
+    "Where input is each increment concatenated together",
+    "  i.e. cat mydb.tar mydb_incr1.tar mydb_incr2.tar", "",
+    "  The serialised database read from stdin is deserialised.  You can",
+    "  optionally specify destination directories for the lrl file and data",
+    "  directory; if ommitted the paths will be taken from the lrl in the",
+    "  serialised input stream.",
+    "  -C strip     strip cluster nodes lines from lrl file",
+    "  -C preserve  preserve cluster nodes lines in lrl file",
+    "  -I create    create the incremental meta files while serialising",
+    "  -I inc       create an increment for the incremental backup",
+    "  -I restore   restore from a sequence of base_backup | increments",
+    "  -b <path>    location to store/load the incremental backup",
+    "  -x <path>    path to comdb2 binary to use for full recovery",
+    "  -r/R         do/do-not run full recovery after extracting",
+    "  -u %         do not allow disk usage to exceed this percentage",
+    "  -f           force deserialisation even if checksums fail",
+    "  -O           legacy mode, does not delete old format files",
+    "  -D           turn off directio", NULL};
 
 static void usage()
 {

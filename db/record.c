@@ -205,8 +205,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
         int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
         if (d_ms) {
-            if (iq->debug)
-                reqprintf(iq, "Sleeping for %d ms", d_ms);
+            if (iq->debug) reqprintf(iq, "Sleeping for %d ms", d_ms);
             usleep(1000 * d_ms);
         }
 
@@ -859,8 +858,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
     if (d_ms) {
-        if (iq->debug)
-            reqprintf(iq, "Sleeping for %d ms", d_ms);
+        if (iq->debug) reqprintf(iq, "Sleeping for %d ms", d_ms);
         usleep(1000 * d_ms);
     }
 
@@ -1850,8 +1848,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
     if (d_ms) {
-        if (iq->debug)
-            reqprintf(iq, "Sleeping for %d ms", d_ms);
+        if (iq->debug) reqprintf(iq, "Sleeping for %d ms", d_ms);
         usleep(1000 * d_ms);
     }
 

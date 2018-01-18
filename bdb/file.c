@@ -1370,8 +1370,7 @@ int bdb_flush_up_to_lsn(bdb_state_type *bdb_state, unsigned file,
 static int bdb_flush_cache(bdb_state_type *bdb_state)
 {
 
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
+    if (bdb_state->parent) bdb_state = bdb_state->parent;
 
     BDB_READLOCK("bdb_flush_cache");
 

@@ -754,7 +754,8 @@ int gbl_verbose_send_coherency_lease;
 void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                            int *inc_wait)
 {
-    int count, comcount, i, do_send, use_udp, master_is_coherent, nosend_print = 0;
+    int count, comcount, i, do_send, use_udp, master_is_coherent,
+        nosend_print = 0;
     uint8_t *p_buf, *p_buf_end, buf[COLEASE_TYPE_LEN];
     const char *hostlist[REPMAX];
     const char *comlist[REPMAX];
@@ -875,8 +876,7 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
             }
         }
     }
-    if (nosend_print)
-        nosend_lastpr = time(NULL);
+    if (nosend_print) nosend_lastpr = time(NULL);
 }
 
 void handle_ping_timestamp(bdb_state_type *bdb_state, ack_info *info, char *to)

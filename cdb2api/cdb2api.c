@@ -2098,8 +2098,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
 
     if (hndl && hndl->debug_trace) {
         char *host = "NOT-CONNECTED";
-        if (hndl->connected_host >= 0)
-            host = hndl->hosts[hndl->connected_host];
+        if (hndl->connected_host >= 0) host = hndl->hosts[hndl->connected_host];
 
         fprintf(stderr, "td %u %s sending '%s' to %s from-line %d retries is "
                         "%d do_append is %d\n",
@@ -2646,8 +2645,7 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
                 myroom = -1;
             }
         }
-        if (currnode->incoherent)
-            continue;
+        if (currnode->incoherent) continue;
 
         strcpy(valid_hosts[*num_valid_hosts], currnode->name);
         if (currnode->has_port) {
@@ -2674,8 +2672,7 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
     /* Add incoherent nodes too, don't count them for same room hosts. */
     for (i = 0; i < num_hosts; i++) {
         CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
-        if (!currnode->incoherent)
-            continue;
+        if (!currnode->incoherent) continue;
         strcpy(valid_hosts[*num_valid_hosts], currnode->name);
         if (currnode->has_port) {
             valid_ports[*num_valid_hosts] = currnode->port;
@@ -2706,8 +2703,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
                 hndl->in_trans);
     }
 
-    if (!hndl->retry_all || !hndl->in_trans)
-        return 0;
+    if (!hndl->retry_all || !hndl->in_trans) return 0;
 
     int rc = 0;
     if (!(hndl->snapshot_file || hndl->query_no <= 1)) {
@@ -2727,8 +2723,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 
     /* Replay all the queries. */
     char *host = "NOT-CONNECTED";
-    if (hndl->connected_host >= 0)
-        host = hndl->hosts[hndl->connected_host];
+    if (hndl->connected_host >= 0) host = hndl->hosts[hndl->connected_host];
 
     /*Send Begin. */
     hndl->is_retry = num_retry;
@@ -2853,8 +2848,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
            query.
            In that case retry all the queries and skip their results,
            except the last one. */
-        if (run_last == 0 && item->next == NULL)
-            break;
+        if (run_last == 0 && item->next == NULL) break;
 
         struct newsqlheader hdr;
         hdr.type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY);

@@ -99,11 +99,11 @@ void *insert_records_thd(void *arg)
     int64_t id = 0;
 
     char *conf = getenv("CDB2_CONFIG");
-    if (conf)
-        cdb2_set_comdb2db_config(conf);
+    if (conf) cdb2_set_comdb2db_config(conf);
     if ((ret = cdb2_open(&sqlh, c->dbname, c->stage, 0)) != 0)
     {
-        fprintf(stderr, "%s:%d Error getting sql handle, ret=%d\n", __func__, __LINE__, ret);
+        fprintf(stderr, "%s:%d Error getting sql handle, ret=%d\n", __func__,
+                __LINE__, ret);
         exit(1);
     }
 
@@ -182,8 +182,7 @@ void *update_records_thd(void *arg)
     char *ch;
 
     char *conf = getenv("CDB2_CONFIG");
-    if (conf)
-        cdb2_set_comdb2db_config(conf);
+    if (conf) cdb2_set_comdb2db_config(conf);
     if ((ret = cdb2_open(&sqlh, c->dbname, c->stage, 0)) != 0)
     {
         fprintf(stderr, "Error opening db, ret=%d\n", ret);
@@ -622,11 +621,11 @@ int main(int argc,char *argv[])
     }
 
     char *conf = getenv("CDB2_CONFIG");
-    if (conf)
-        cdb2_set_comdb2db_config(conf);
+    if (conf) cdb2_set_comdb2db_config(conf);
     if (0 == err && (ret = cdb2_open(&sqlh, c->dbname, c->stage, 0)) != 0)
     {
-        fprintf(stderr, "%s:%d Error getting sql handle, ret=%d\n", __func__, __LINE__, ret);
+        fprintf(stderr, "%s:%d Error getting sql handle, ret=%d\n", __func__,
+                __LINE__, ret);
         err++;
     }
 

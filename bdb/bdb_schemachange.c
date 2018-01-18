@@ -187,8 +187,7 @@ retry:
                  sizeof("sqlite_stat") - 1) != 0))
         bdb_lock_table_write(ch_bdb_state, tran);
     /* analyze does NOT need schema_lk */
-    if (sctype == sc_analyze)
-        ltran->get_schema_lock = 0;
+    if (sctype == sc_analyze) ltran->get_schema_lock = 0;
 
     DB_LSN lsn;
     rc = llog_scdone_log(p_bdb_state->dbenv, tran->tid, &lsn, 0, tbl, type);
