@@ -558,7 +558,7 @@ set all_graphs {
       {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
       {line UNIQUE }
       {line KEY }
-      {line foreign-key-def }
+      {line {opt CONSTRAINT constraint-name } foreign-key-def }
       {line WITH DBPAD = signed-number }
   }
 
@@ -572,7 +572,10 @@ set all_graphs {
           }
       }
       {line PRIMARY KEY ( index-column-list ) }
-      {line FOREIGN KEY ( index-column-list ) foreign-key-def}
+      {stack
+          {line {opt CONSTRAINT constraint-name } }
+          {line FOREIGN KEY ( index-column-list ) foreign-key-def}
+      }
   }
 
   foreign-key-def {
@@ -620,7 +623,10 @@ set all_graphs {
                       {line DROP INDEX index-name }
                       {line ADD PRIMARY KEY ( index-column-list ) }
                       {line DROP PRIMARY KEY }
-                      {line ADD FOREIGN KEY ( index-column-list ) foreign-key-def }
+                      {stack
+                          {line ADD {opt CONSTRAINT constraint-name } }
+                          {line FOREIGN KEY ( index-column-list ) foreign-key-def }
+                      }
                       {line DROP FOREIGN KEY constraint-name }
                   }
                   { , }

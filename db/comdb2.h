@@ -630,6 +630,7 @@ typedef struct {
 
 typedef struct {
     struct dbtable *lcltable;
+    char *consname;
     char *lclkeyname;
     int nrules;
     int flags;

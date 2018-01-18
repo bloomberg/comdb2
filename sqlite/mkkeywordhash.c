@@ -188,7 +188,7 @@ static Keyword aKeywordTable[] = {
   { "EXPLAIN",          "TK_EXPLAIN",      EXPLAIN,                1},
   { "FAIL",             "TK_FAIL",         CONFLICT|TRIGGER,       1},
   { "FOR",              "TK_FOR",          ALWAYS,                 0},
-  { "FOREIGN",          "TK_FOREIGN",      FKEY,                   0},
+  { "FOREIGN",          "TK_FOREIGN",      FKEY,                   1},
   { "FROM",             "TK_FROM",         ALWAYS,                 1},
   { "FULL",             "TK_JOIN_KW",      ALWAYS,                 1},
   { "GLOB",             "TK_LIKE_KW",      ALWAYS,                 1},

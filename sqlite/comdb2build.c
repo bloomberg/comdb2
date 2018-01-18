@@ -1853,6 +1853,9 @@ enum {
 };
 
 struct comdb2_constraint {
+    /* Name of the constraint. */
+    char *name;
+
     /*
        The following are helper fields to hold the column names and respective
        sort orders as specified in the query, to be later used to find the
@@ -2298,7 +2301,12 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
         if (nconstraints == 1)
             strbuf_append(csc2, "constraints\n\t{");
 
-        strbuf_appendf(csc2, "\n\t\t\"%s\" -> ", constraint->child->name);
+        strbuf_append(csc2, "\n\t\t");
+
+        if (constraint->name)
+            strbuf_appendf(csc2, "\"%s\" = ", constraint->name);
+
+        strbuf_appendf(csc2, "\"%s\" -> ", constraint->child->name);
         strbuf_appendf(csc2, "<\"%s\":\"%s\"> ", constraint->parent_table,
                        constraint->parent_key);
 
@@ -3018,6 +3026,18 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
                 constraint->flags |= CONS_DEL_CASCADE;
             }
 
+            if (table->constraints[i].consname) {
+                /*
+                  Csc2 does not allow named constraints to have multiple
+                  parent key references.
+                */
+                assert(j == 0);
+                constraint->name =
+                    comdb2_strdup(ctx->mem, table->constraints[i].consname);
+                if (constraint->name == 0)
+                    goto oom;
+            }
+
             listc_abl(&ctx->schema->constraint_list, constraint);
         }
     }
@@ -3461,7 +3481,8 @@ static struct comdb2_constraint *
 find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons)
 {
     struct comdb2_constraint *constraint;
-    char constraint_name[MAXGENCONSLEN];
+    char *constraint_name;
+    char constraint_name_buf[MAXGENCONSLEN + 1];
 
     LISTC_FOR_EACH(&ctx->schema->constraint_list, constraint, lnk)
     {
@@ -3469,8 +3490,13 @@ find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons)
         if (constraint->flags & CONS_DELETED)
             continue;
 
-        gen_constraint_name2(constraint, constraint_name,
-                             sizeof(constraint_name));
+        if (constraint->name == 0) {
+            gen_constraint_name2(constraint, constraint_name_buf,
+                                 sizeof(constraint_name_buf));
+            constraint_name = constraint_name_buf;
+        } else {
+            constraint_name = constraint->name;
+        }
 
         if ((strcasecmp(cons, constraint_name)) == 0) {
             return constraint;
@@ -3940,7 +3966,8 @@ void comdb2CreateForeignKey(
     struct comdb2_index_column *idx_column;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct dbtable *parent_table;
-    char constraint_name[MAXGENCONSLEN];
+    char *constraint_name;
+    char constraint_name_buf[MAXCONSLEN + 1];
     int key_found = 0;
 
     if (use_sqlite_impl(pParse)) {
@@ -4118,12 +4145,27 @@ void comdb2CreateForeignKey(
     }
     constraint->flags = flags;
 
-    /*
-      Check whether a similar constraint already exists.
+    if (pParse->constraintName.n == 0) {
+        /*
+          Check whether a similar constraint already exists.
 
-      Generate the constraint name.
-    */
-    gen_constraint_name2(constraint, constraint_name, sizeof(constraint_name));
+          Generate the constraint name.
+        */
+        gen_constraint_name2(constraint, constraint_name_buf,
+                             sizeof(constraint_name_buf));
+        constraint_name = constraint_name_buf;
+    } else {
+        if (pParse->constraintName.n > MAXCONSLEN) {
+            setError(pParse, SQLITE_MISUSE, "Constraint name is too long.");
+            goto cleanup;
+        }
+        constraint->name = comdb2_strndup(ctx->mem, pParse->constraintName.z,
+                                          pParse->constraintName.n);
+        if (constraint->name == 0)
+            goto oom;
+        sqlite3Dequote(constraint->name);
+        constraint_name = constraint->name;
+    }
     if ((find_cons_by_name(ctx, constraint_name))) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Constraint '%s' already exists.",
