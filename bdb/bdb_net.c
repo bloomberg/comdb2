@@ -876,7 +876,8 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
             }
         }
     }
-    if (nosend_print) nosend_lastpr = time(NULL);
+    if (nosend_print)
+        nosend_lastpr = time(NULL);
 }
 
 void handle_ping_timestamp(bdb_state_type *bdb_state, ack_info *info, char *to)

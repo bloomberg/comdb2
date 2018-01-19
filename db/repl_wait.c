@@ -65,7 +65,8 @@ struct repl_object {
 
 void repl_list_init(void)
 {
-    if (inited) return;
+    if (inited)
+        return;
     pool = pool_setalloc_init(sizeof(struct repl_object), 0, malloc, free);
     hash = hash_init(sizeof(unsigned long long));
     pthread_mutex_init(&lock, NULL);
@@ -90,7 +91,8 @@ struct repl_object *add_genid_to_repl_list(unsigned long long genid,
     if (!enabled)
         return head;
 
-    if (!inited) abort();
+    if (!inited)
+        abort();
 
     LOCK(&lock)
     {
@@ -125,7 +127,8 @@ struct repl_object *add_genid_to_repl_list(unsigned long long genid,
 
 void wait_for_genid_repl(unsigned long long genid)
 {
-    if (!inited) abort();
+    if (!inited)
+        abort();
 
     LOCK(&lock)
     {
@@ -169,7 +172,8 @@ void clear_trans_from_repl_list(struct repl_object *head)
     if (!head)
         return;
 
-    if (!inited) abort();
+    if (!inited)
+        abort();
 
     LOCK(&lock)
     {

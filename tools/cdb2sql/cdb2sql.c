@@ -113,7 +113,8 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
 
 #define verbose_print(...)                                                     \
     {                                                                          \
-        if (verbose) fprintf(stderr, __VA_ARGS__);                             \
+        if (verbose)                                                           \
+            fprintf(stderr, __VA_ARGS__);                                      \
     }
 
 static const char *usage_text =
