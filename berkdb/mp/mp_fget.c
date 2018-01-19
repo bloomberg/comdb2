@@ -31,6 +31,7 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 #include "dbinc/txn.h"
 
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 
 
 struct bdb_state_tag;
@@ -653,8 +654,8 @@ alloc:		/*
 
 		/* If we extended the file, make sure the page is never lost. */
 		if (extending) {
-			atomic_inc(env, &hp->hash_page_dirty);
-			atomic_inc(env, &c_mp->stat.st_page_dirty);
+			ATOMIC_ADD(hp->hash_page_dirty, 1);
+			ATOMIC_ADD(c_mp->stat.st_page_dirty, 1);
 			F_SET(bhp, BH_DIRTY | BH_DIRTY_CREATE);
 			if (dbenv->tx_perfect_ckp) {
 				/* Set page first-dirty-LSN to not logged */
