@@ -110,6 +110,9 @@ static void do_init_once(void)
     _MACHINE_ID = gethostid();
 }
 
+/* if sqlstr is a read stmt will return 1 otherwise return 0
+ * returns -1 if sqlstr is null
+ */ 
 static int is_sql_read(const char *sqlstr)
 {
     const char get[] = "GET";

@@ -31,12 +31,17 @@ add_executable(utf8 utf8.c)
 add_executable(insert insert.c nemesis.c testutil.c)
 add_executable(register register.c nemesis.c testutil.c)
 add_executable(breakloop breakloop.c nemesis.c testutil.c)
-foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop multithd)
+add_executable(cdb2api_unit cdb2api_unit.c)
+foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2api_unit multithd)
   target_link_libraries(${executable} cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 endforeach()
 
 # cdb2api shared object
 target_link_libraries(cdb2_client cdb2api_shared ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
+# cdb2api_unit -- can move to it's own dir maybe
+include_directories(cdb2api_unit ${PROJECT_SOURCE_DIR}/bb ${PROJECT_SOURCE_DIR}/build/protobuf/ )
+add_definitions(-DSBUF2_SERVER=0)
+target_link_libraries(cdb2api_unit cdb2api_shared ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS} )
 
 # needs readline!
 target_link_libraries(hatest cdb2api ${READLINE_LIBRARY} ${CURSES_LIBRARIES} ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})

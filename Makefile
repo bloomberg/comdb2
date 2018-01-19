@@ -30,6 +30,7 @@ test_tools: compat_install
 	@ln -f build/tests/tools/insert tests/tools/insert
 	@ln -f build/tests/tools/register tests/tools/register
 	@ln -f build/tests/tools/breakloop tests/tools/breakloop
+	@ln -f build/tests/tools/cdb2api_unit tests/tools/cdb2api_unit
 
 .PHONY: compat_install
 compat_install: all

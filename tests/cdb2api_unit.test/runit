@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+tools/test_exe
