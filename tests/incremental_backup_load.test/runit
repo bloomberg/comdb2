@@ -204,7 +204,7 @@ test_restoredb t2.req 2
 killwriters
 
 # cleanup since this was a successful run
-if [ $CLEANUPDBDIR != 0 ] ; then
+if [ "$CLEANUPDBDIR" == "1" ] ; then
     rm -rf ${LOCTMPDIR}/backups ${LOCTMPDIR}/restore ${LOCTMPDIR}/increment
 fi
 

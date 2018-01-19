@@ -83,9 +83,9 @@
 [select * from comdb2_tablesizes order by tablename] rc 0
 (KEYWORDS_COUNT=185)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
-(RESERVED_KW=109)
+(RESERVED_KW=111)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
-(NONRESERVED_KW=76)
+(NONRESERVED_KW=74)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
 (name='ABORT', reserved='Y')
 (name='ALL', reserved='Y')
@@ -131,6 +131,7 @@
 (name='EXISTS', reserved='Y')
 (name='EXPLAIN', reserved='Y')
 (name='FAIL', reserved='Y')
+(name='FOREIGN', reserved='Y')
 (name='FROM', reserved='Y')
 (name='FULL', reserved='Y')
 (name='GLOB', reserved='Y')
@@ -168,6 +169,7 @@
 (name='PRIMARY', reserved='Y')
 (name='QUERY', reserved='Y')
 (name='RECURSIVE', reserved='Y')
+(name='REFERENCES', reserved='Y')
 (name='REGEXP', reserved='Y')
 (name='REINDEX', reserved='Y')
 (name='RELEASE', reserved='Y')
@@ -221,7 +223,6 @@
 (name='EACH', reserved='N')
 (name='ENABLE', reserved='N')
 (name='FOR', reserved='N')
-(name='FOREIGN', reserved='N')
 (name='FUNCTION', reserved='N')
 (name='GENID48', reserved='N')
 (name='GET', reserved='N')
@@ -249,7 +250,6 @@
 (name='READ', reserved='N')
 (name='REBUILD', reserved='N')
 (name='REC', reserved='N')
-(name='REFERENCES', reserved='N')
 (name='RESERVED', reserved='N')
 (name='RESTRICT', reserved='N')
 (name='RETENTION', reserved='N')

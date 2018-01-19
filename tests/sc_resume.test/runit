@@ -4,8 +4,6 @@ bash -n "$0" | exit 1
 #PS4='$(date +%Y%m%d-%H:%M:%S): '
 set -x
 
-REBUILD_DELAY=40
-
 # Debug variable
 debug=0
 
@@ -241,6 +239,19 @@ function force_delay_master
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('scdelay 500')"
 }
 
+function wait_for_sc
+{
+    while true ; do
+        get_schemachange_status $master
+        if [ $? -ne 1 ] ; then
+            echo "break out since sc was done"
+            break;
+        fi
+        echo "Schema is still running on master $master"
+        sleep 5
+    done
+}
+
 echo "Test with insert, SC should not fail"
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
@@ -318,8 +329,7 @@ else
     assert_sc_status 0
 fi
 
-echo "sleep $REBUILD_DELAY to give time to time to new master to resume/finsh the SC"
-sleep $REBUILD_DELAY  
+wait_for_sc
 
 cdb2sql --tabs --host $master ${CDB2_OPTIONS} $dbnm 'exec procedure sys.cmd.send("stat")' > stat2.out
 
@@ -331,6 +341,7 @@ assert_vers t1 1
 assert_schema t1 t1_2.csc2
 do_verify
 
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("flush")'
 echo restart master to make sure when it comes up we are still at version 1
 kill_restart_node $master 
 master=`getmaster`
@@ -382,9 +393,7 @@ echo "after insert, t=$SECONDS"
 assert_vers t1 1
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "select * from t1 order by c" > allrows_pre.out
 
-
-echo "give time to master to finish rebuild"
-sleep $REBUILD_DELAY
+wait_for_sc
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by c" > allrows_post.out
 
@@ -445,9 +454,7 @@ fi
 scrunning=`grep "schema change running" stat3.out | awk '{print $4}' `
 echo "scrunning is $scrunning"
 
-
-echo "give time for master to finish alter"
-sleep $REBUILD_DELAY
+wait_for_sc
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by c" | sed 's/e=3, //' > allrows_post.out
 
@@ -505,9 +512,6 @@ coproc stdbuf -oL cdb2sql -s ${CDB2_OPTIONS} $dbnm default -
 cppid=$!
 echo me: $$ COPROC $cppid fd in ${COPROC[0]} out ${COPROC[1]}
 
-#for the next $REBUILD_DELAY seconds insert more stuff
-
-let TSTOP=$SECONDS+$REBUILD_DELAY
 j=800
 get_schemachange_status $master
 in_schema_change=$?   # SC may not have restarted yet 
@@ -586,14 +590,7 @@ kill_restart_node $master
 master=`getmaster`
 echo "master node now $master"
 
-while true ; do
-    get_schemachange_status $master
-    if [ $? -ne 1 ] ; then
-        echo "break out since sc was done"
-        break;
-    fi
-    sleep 5
-done
+wait_for_sc
 
 assert_vers t1 7
 assert_schema t1 t1_2.csc2

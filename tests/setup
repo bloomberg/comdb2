@@ -12,7 +12,7 @@ while [[ $# -gt 0 && $1 = -* ]]; do
     shift
 done
 
-vars="TESTID SRCHOME TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE COMDB2MD5SUM CDB2SQL_EXE "
+vars="TESTID SRCHOME TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE "
 for required in $vars; do
     q=${!required}
     if [[ -z "$q" ]]; then
@@ -83,7 +83,7 @@ fi
 
 if [[ $debug -eq 1 ]]; then
     set +x
-    export PATH="${SRCHOME}/:${PATH}"
+    export PATH="${TESTDIR}/:${PATH}"
     RUNTEST="${PWD}/runtest.sh "
     echo "Once db is ready, please run: $RUNTEST"
     echo "#!/usr/bin/env bash" > $RUNTEST
@@ -91,7 +91,7 @@ if [[ $debug -eq 1 ]]; then
     for env in $vars; do
         echo "export $env=\"${!env}\"" >> $RUNTEST
     done
-    echo 'export PATH=${SRCHOME}/:${PATH}' >> $RUNTEST
+    echo 'export PATH=${TESTDIR}/:${PATH}' >> $RUNTEST
     [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $RUNTEST
     [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $RUNTEST
     echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/" >> $RUNTEST
@@ -119,6 +119,8 @@ ssl_client_mode REQUIRE
 ssl_cert_path $TESTDIR
 EOPTIONS
 fi
+
+echo "logmsg level info" >> ${LRL}
 
 if [[ -f ${TESTSROOTDIR}/${TESTCASE}.test/lrl ]]; then
     cat ${TESTSROOTDIR}/${TESTCASE}.test/lrl >> ${LRL}
@@ -178,7 +180,6 @@ export COMDB2AR_EXOPTS="-x $COMDB2_EXE"
 copy_files_to_cluster() 
 {
     # copy executables to each node except localhost
-    pmux=${SRCHOME}/pmux
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then
             continue
@@ -187,14 +188,14 @@ copy_files_to_cluster()
         ssh -o StrictHostKeyChecking=no $node "mkdir -p ${SRCHOME}" < /dev/null
         ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
         ssh -o StrictHostKeyChecking=no $node "killall pmux || echo PMUX DOWN" < /dev/null
-        scp -o StrictHostKeyChecking=no $COMDB2AR_EXE $node:${SRCHOME}
-        scp -o StrictHostKeyChecking=no $COMDB2_EXE $node:${SRCHOME}
+        scp -o StrictHostKeyChecking=no $COMDB2AR_EXE $node:$COMDB2AR_EXE
+        scp -o StrictHostKeyChecking=no $COMDB2_EXE $node:$COMDB2_EXE
         # stop pmux on nodes first before copying and starting it
         if [ -n "$PMUXPORT" ] ; then
             ssh -o StrictHostKeyChecking=no $node "$stop_pmux" < /dev/null
         fi
         set +e
-        scp -o StrictHostKeyChecking=no $pmux $node:${pmux}
+        scp -o StrictHostKeyChecking=no $PMUX_EXE $node:$PMUX_EXE
         echo start pmux on $node if not running 
         ssh -o StrictHostKeyChecking=no $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' $pmux_cmd" < /dev/null
         set -e
@@ -253,20 +254,9 @@ set -e
 #    exit 1
 #fi
 
-compare_md5_sum()
-{
-    if [ "$1" != "$COMDB2MD5SUM" ]; then
-        echo "Comdb2 md5 checksum mismatch, expected: $COMDB2MD5SUM got: $1"
-        exit 1
-    fi
-}
-
-
 # start it
 cd $DBDIR >/dev/null
 if [[ -z "$CLUSTER" ]]; then
-    loc_comdb2md5sum=`md5sum $COMDB2_EXE`
-    compare_md5_sum $loc_comdb2md5sum
 
     echo "!$TESTCASE: starting single node"
     if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
@@ -287,12 +277,7 @@ else
     echo "!$TESTCASE: copying to cluster"
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then
-            loc_comdb2md5sum=`md5sum $COMDB2_EXE | cut -d ' ' -f1`
-            compare_md5_sum $loc_comdb2md5sum
             continue        # no copying to self
-        else 
-            loc_comdb2md5sum=`ssh -o StrictHostKeyChecking=no $node "md5sum $COMDB2_EXE" < /dev/null | cut -d ' ' -f1`
-            compare_md5_sum $loc_comdb2md5sum
         fi
         $COPYCOMDB2_EXE ${LRL} ${node}: &> $TESTDIR/logs/${DBNAME}.${node}.copy
         if [[ $? -ne 0 ]]; then

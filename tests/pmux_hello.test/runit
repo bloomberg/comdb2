@@ -5,8 +5,6 @@ debug=1
 
 db=$1
 export COMDB2_PMUX_PORT=19500
-export COMDB2_PMUX_FILE=./pmux.sqlite
-export CDB2SQL=${TESTSROOTDIR}/../cdb2sql
 export pmux_pid=0
 export start_iters=10
 export start_sleep=5
@@ -17,6 +15,14 @@ if [[ -z "$stage" ]]; then
     echo "Setting stage to 'default' (set 'stage' var to override)."
     stage="default"
 fi
+
+
+failexit()
+{
+    echo "$1"
+    kill -9 $pmux_pid
+    exit 1
+}
 
 function empty_used_list_crash
 {
@@ -38,7 +44,7 @@ function start_database
     jj=0
 
     while [[ $jj -lt $start_iters ]]; do
-        ${TESTSROOTDIR}/../comdb2 ${db} --lrl $DBLRL &
+        ${COMDB2_EXE} ${db} --lrl $DBLRL &
         dbpid=$!
         echo $dbpid > $dbpidfile
         sleep $start_sleep
@@ -49,9 +55,7 @@ function start_database
         fi
         let jj=jj+1
     done
-    echo "Couldn't start the database"
-    kill -9 $pmux_pid
-    exit 1
+    failexit "Couldn't start the database"
 }
 
 function verify_hello_reuse
@@ -61,8 +65,8 @@ function verify_hello_reuse
     start_timeout=30
 
     # Create a db
-    DBDIR=$(pwd)/$db
-    ${TESTSROOTDIR}/../comdb2 $db --create --dir $DBDIR
+    DBDIR=$TESTDIR/$DBNAME
+    mkdir $DBDIR
 
     # Create config file
     echo "$db 0 localhost" > $CDB2_CONFIG
@@ -74,6 +78,9 @@ function verify_hello_reuse
     DBLRL=$DBDIR/${db}.lrl
     echo "portmux_port ${COMDB2_PMUX_PORT}" >> $DBLRL
     echo "portmux_bind_path /tmp/pmux.${COMDB2_PMUX_PORT} " >> $DBLRL
+    echo "dir $DBDIR " >> $DBLRL
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${DBLRL}
+    ${COMDB2_EXE} $db --create --lrl $DBLRL
 
     # Start the test
     i=0
@@ -84,7 +91,7 @@ function verify_hello_reuse
         t=0
         started=0
         while [[ $t -lt $start_timeout ]]; do
-            $CDB2SQL --cdb2cfg $CDB2_CONFIG $db default "select 1" >/dev/null 2>&1
+            $CDB2SQL_EXE --cdb2cfg $CDB2_CONFIG $db default "select 1" >/dev/null 2>&1
             if [[ $? == 0 ]]; then
                 started=1
             else
@@ -96,9 +103,7 @@ function verify_hello_reuse
         kill -9 $dbpid
 
         if [[ $started == 0 ]]; then
-            echo "${FUNCNAME[0]} pmux hello-test failed on iteration $i"
-            kill -9 $pmux_pid
-            exit 1
+            failexit "${FUNCNAME[0]} pmux hello-test failed on iteration $i"
         fi
         sleep 1
 
@@ -106,15 +111,124 @@ function verify_hello_reuse
     done
 }
 
+test_basic_actions()
+{
+    cat <<EOF > help.expected
+get [/echo] service     : discover port for service
+reg service             : obtain/discover port for new service
+del service             : forget port assignment for service
+use service port        : set specific port registration for service
+stat                    : dump some stats
+used                    : dump active port assignments
+rte                     : get route to instance service/port
+hello service           : keep active connection
+active                  : list active connections
+exit                    : shutdown pmux (may be restarted by system)
+EOF
+
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "help" ${COMDB2_PMUX_PORT} &> help.out
+    if ! diff help.expected help.out ; then
+        failexit "differing help.expected help.out"
+    fi
+
+    #----------
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat.out
+    cat <<EOF > stat.expected
+free ports: 999
+EOF
+
+    if ! diff stat.expected stat.out ; then
+        failexit "differing stat.expected stat.out"
+    fi
+
+    #----------
+    name="comdb2/replication/dummynameforadatabase12345678901234567890"
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> reg.out
+    cat <<EOF > reg.expected
+19000
+EOF
+    if ! diff reg.expected reg.out ; then
+        failexit "differing reg.expected reg.out"
+    fi
+
+    #----------
+    name="comdb2/replication/dummynameforadatabase12345678901234567890"
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    cat <<EOF > get.expected
+19000
+EOF
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+    #----------
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat2.out
+    cat <<EOF > stat2.expected
+free ports: 998
+$name -> 19000
+EOF
+    if ! diff stat2.expected stat2.out ; then
+        failexit "differing stat2.expected stat2.out"
+    fi
+
+    #----------
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del $name" ${COMDB2_PMUX_PORT} &> del.out
+    cat <<EOF > del.expected
+0
+EOF
+    if ! diff del.expected del.out ; then
+        failexit "differing del.expected del.out"
+    fi
+
+    #----------
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat.out
+    if ! diff stat.expected stat.out ; then
+        failexit "differing stat.expected stat.out"
+    fi
+
+
+    #----------
+    name="comdb2/replication/dummynameforadatabase12345678901234567890"
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name 19001" ${COMDB2_PMUX_PORT} &> use.out
+    cat <<EOF > use.expected
+0
+EOF
+    if ! diff use.expected use.out ; then
+        failexit "differing use.expected use.out"
+    fi
+
+    #----------
+    name="comdb2/replication/dummynameforadatabase12345678901234567890"
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    cat <<EOF > get.expected
+19001
+EOF
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+    #----------
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat3.out
+    cat <<EOF > stat3.expected
+free ports: 998
+$name -> 19001
+EOF
+    if ! diff stat3.expected stat3.out ; then
+        failexit "differing stat3.expected stat3.out"
+    fi
+
+}
+
 function runtest
 {
     [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
 
     # Start pmux
-    ${TESTSROOTDIR}/../pmux -n -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} &
+    ${PMUX_EXE} -n -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} &
     pmux_pid=$!
 
     sleep 5
+    test_basic_actions
 
     empty_used_list_crash
     verify_hello_reuse

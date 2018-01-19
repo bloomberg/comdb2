@@ -1367,6 +1367,21 @@ int bdb_flush_up_to_lsn(bdb_state_type *bdb_state, unsigned file,
     return rc;
 }
 
+static int bdb_flush_cache(bdb_state_type *bdb_state)
+{
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    BDB_READLOCK("bdb_flush_cache");
+
+    bdb_state->dbenv->memp_sync(bdb_state->dbenv, NULL);
+
+    BDB_RELLOCK();
+
+    return 0;
+}
+
 static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
 {
     int rc;
@@ -1381,15 +1396,19 @@ static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
         return -1;
     }
 
-    start = time_epochms();
-    rc = ll_checkpoint(bdb_state, force);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "txn_checkpoint err %d\n", rc);
-        *bdberr = BDBERR_MISC;
-        return -1;
+    if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
+        bdb_flush_cache(bdb_state);
+    else {
+        start = time_epochms();
+        rc = ll_checkpoint(bdb_state, force);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "txn_checkpoint err %d\n", rc);
+            *bdberr = BDBERR_MISC;
+            return -1;
+        }
+        end = time_epochms();
+        ctrace("checkpoint took %dms\n", end - start);
     }
-    end = time_epochms();
-    ctrace("checkpoint took %dms\n", end - start);
 
     return 0;
 }
@@ -6611,24 +6630,6 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, int *bdberr)
     return 0;
 }
 
-int bdb_flush_cache(bdb_state_type *bdb_state)
-{
-
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-
-    BDB_READLOCK("bdb_flush_cache");
-
-    logmsg(LOGMSG_DEBUG, "About to call %s, flushing the berkeleydb cache...",
-            __func__);
-    bdb_state->dbenv->memp_sync(bdb_state->dbenv, NULL);
-    logmsg(LOGMSG_DEBUG, "Done.\n");
-
-    BDB_RELLOCK();
-
-    return 0;
-}
-
 int bdb_close_only(bdb_state_type *bdb_state, int *bdberr)
 {
     int rc;
@@ -7626,6 +7627,7 @@ int bdb_osql_check_table_version(bdb_state_type *bdb_state, tran_type *tran,
     Pthread_mutex_unlock(&(bdb_state->children_lock));
 
     if ((i >= 0) && (i < tran->table_version_cache_sz) &&
+        (tran->table_version_cache[i] != 0) &&
         (tran->table_version_cache[i] == bdb_state->version_num)) {
         /*printf("OK %s [%d] %llx vs %llx\n", bdb_state->name, i,
          * tran->table_version_cache[i], bdb_state->version_num);*/

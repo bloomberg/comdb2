@@ -147,17 +147,24 @@ static int systblConstraintsColumn(
   switch( i ){
     case STCON_NAME: {
         int rc;
-        char *constraint_name = sqlite3_malloc(MAXGENCONSLEN);
-        if (constraint_name == 0)
-            return SQLITE_NOMEM;
-        /* Forward declaration */
-        int gen_constraint_name(constraint_t * pConstraint, int parent_idx,
-                                char *buf, size_t size);
-        rc = gen_constraint_name(pConstraint, pCur->iRuleid, constraint_name,
-                                 MAXGENCONSLEN);
-        if (rc)
-            return SQLITE_INTERNAL;
-        sqlite3_result_text(ctx, constraint_name, -1, sqlite3_free);
+        char *constraint_name;
+        if (pConstraint->consname) {
+            constraint_name = pConstraint->consname;
+            sqlite3_result_text(ctx, constraint_name, -1, NULL);
+        } else {
+            constraint_name = sqlite3_malloc(MAXGENCONSLEN);
+            if (constraint_name == 0)
+                return SQLITE_NOMEM;
+
+            /* Forward declaration */
+            int gen_constraint_name(constraint_t * pConstraint, int parent_idx,
+                                    char *buf, size_t size);
+            rc = gen_constraint_name(pConstraint, pCur->iRuleid,
+                                     constraint_name, MAXGENCONSLEN);
+            if (rc)
+                return SQLITE_INTERNAL;
+            sqlite3_result_text(ctx, constraint_name, -1, sqlite3_free);
+        }
         break;
     }
     case STCON_TABLE: {

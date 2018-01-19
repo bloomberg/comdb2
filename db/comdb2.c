@@ -1668,6 +1668,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
         0; /* this will be initialized at verification time */
     tbl->n_constraints = dyns_get_constraint_count();
     if (tbl->n_constraints > 0) {
+        char *consname = NULL;
         char *keyname = NULL;
         int rulecnt = 0, flags = 0;
         if (tbl->n_constraints >= MAXCONSTRAINTS) {
@@ -1677,7 +1678,8 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             return NULL;
         }
         for (ii = 0; ii < tbl->n_constraints; ii++) {
-            rc = dyns_get_constraint_at(ii, &keyname, &rulecnt, &flags);
+            rc = dyns_get_constraint_at(ii, &consname, &keyname, &rulecnt,
+                                        &flags);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "Cannot get constraint at %d (cnt=%d)!\n", ii,
                         tbl->n_constraints);
@@ -1686,6 +1688,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             }
             tbl->constraints[ii].flags = flags;
             tbl->constraints[ii].lcltable = tbl;
+            tbl->constraints[ii].consname = consname ? strdup(consname) : 0;
             tbl->constraints[ii].lclkeyname = strdup(keyname);
             tbl->constraints[ii].nrules = rulecnt;
             if (tbl->constraints[ii].nrules >= MAXCONSTRAINTS) {
@@ -1808,11 +1811,6 @@ void check_access_controls(struct dbenv *dbenv)
             gbl_uses_password = 1;
             gbl_upgrade_blocksql_2_socksql = 1;
             logmsg(LOGMSG_INFO, "User authentication enabled\n");
-            int valid_user;
-            bdb_user_password_check(DEFAULT_USER, DEFAULT_PASSWORD,
-                                    &valid_user);
-            if (!valid_user)
-                bdb_user_password_set(NULL, DEFAULT_USER, DEFAULT_PASSWORD);
         }
     } else {
         gbl_uses_password = 0;
@@ -4332,7 +4330,7 @@ void *statthd(void *p)
 
         if (COMDB2_DIFFSTAT_REPORT() && !gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();
-            if ((thresh > 0) && (count > thresh)) {
+            if ((thresh > 0) && (count == thresh)) {
                 strbuf *logstr = strbuf_new();
                 diff_qtrap = nqtrap - last_report_nqtrap;
                 diff_fstrap = nfstrap - last_report_nfstrap;
