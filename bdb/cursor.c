@@ -946,7 +946,7 @@ static struct fileid_pglogs_queue *allocate_fileid_pglogs_queue()
     return q;
 }
 
-void return_fileid_pglogs_queue(struct fileid_pglogs_queue *q)
+static void return_fileid_pglogs_queue(struct fileid_pglogs_queue *q)
 {
 #ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&fileid_pglogs_queue_pool_lk);
@@ -1080,7 +1080,7 @@ static void return_pglogs_commit_list(struct commit_list *c)
 #endif
 }
 
-struct pglogs_queue_key *allocate_pglogs_queue_key(void)
+static struct pglogs_queue_key *allocate_pglogs_queue_key(void)
 {
     struct pglogs_queue_key *q;
 #ifdef NEWSI_MEMPOOL
@@ -1096,7 +1096,7 @@ struct pglogs_queue_key *allocate_pglogs_queue_key(void)
     return q;
 }
 
-void return_pglogs_queue_key(struct pglogs_queue_key *qk)
+static void return_pglogs_queue_key(struct pglogs_queue_key *qk)
 {
 #ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_queue_key_pool_lk);
@@ -1110,7 +1110,7 @@ void return_pglogs_queue_key(struct pglogs_queue_key *qk)
 #endif
 }
 
-struct pglogs_key *allocate_pglogs_key(void)
+static struct pglogs_key *allocate_pglogs_key(void)
 {
     struct pglogs_key *r;
 #ifdef NEWSI_MEMPOOL
@@ -1126,7 +1126,7 @@ struct pglogs_key *allocate_pglogs_key(void)
     return r;
 }
 
-struct pglogs_logical_key *allocate_pglogs_logical_key(void)
+static struct pglogs_logical_key *allocate_pglogs_logical_key(void)
 {
     struct pglogs_logical_key *r;
 #ifdef NEWSI_MEMPOOL
@@ -1142,7 +1142,7 @@ struct pglogs_logical_key *allocate_pglogs_logical_key(void)
     return r;
 }
 
-struct lsn_list *allocate_lsn_list(void)
+static struct lsn_list *allocate_lsn_list(void)
 {
     struct lsn_list *r;
 #ifdef NEWSI_MEMPOOL
@@ -1158,7 +1158,7 @@ struct lsn_list *allocate_lsn_list(void)
     return r;
 }
 
-void deallocate_lsn_list(struct lsn_list *r)
+static void deallocate_lsn_list(struct lsn_list *r)
 {
 #ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_lsn_list_pool_lk);
@@ -1172,7 +1172,7 @@ void deallocate_lsn_list(struct lsn_list *r)
 #endif
 }
 
-struct lsn_commit_list *allocate_lsn_commit_list(void)
+static struct lsn_commit_list *allocate_lsn_commit_list(void)
 {
     struct lsn_commit_list *r;
 #ifdef NEWSI_MEMPOOL
@@ -1188,7 +1188,21 @@ struct lsn_commit_list *allocate_lsn_commit_list(void)
     return r;
 }
 
-struct pglogs_relink_key *allocate_pglogs_relink_key(void)
+static void deallocate_lsn_commit_list(struct lsn_commit_list *r)
+{
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&pglogs_lsn_commit_list_pool_lk);
+#ifdef NEWSI_DEBUG_POOL
+    assert(r->pool == pglogs_lsn_commit_list_pool);
+#endif
+    pool_relablk(pglogs_lsn_commit_list_pool, r);
+    Pthread_mutex_unlock(&pglogs_lsn_commit_list_pool_lk);
+#else
+    comdb2_free(r);
+#endif
+}
+
+static struct pglogs_relink_key *allocate_pglogs_relink_key(void)
 {
     struct pglogs_relink_key *r;
 #ifdef NEWSI_MEMPOOL
@@ -1204,7 +1218,7 @@ struct pglogs_relink_key *allocate_pglogs_relink_key(void)
     return r;
 }
 
-struct relink_list *allocate_relink_list(void)
+static struct relink_list *allocate_relink_list(void)
 {
     struct relink_list *r;
 #ifdef NEWSI_MEMPOOL
@@ -1220,7 +1234,7 @@ struct relink_list *allocate_relink_list(void)
     return r;
 }
 
-void deallocate_relink_list(struct relink_list *r)
+static void deallocate_relink_list(struct relink_list *r)
 {
 #ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_relink_list_pool_lk);
@@ -1329,7 +1343,7 @@ void bdb_return_pglogs_relink_hashtbl(hash_t *hashtbl)
     hash_free(hashtbl);
 }
 
-void bdb_return_pglogs_logical_hashtbl(hash_t *hashtbl)
+static void bdb_return_pglogs_logical_hashtbl(hash_t *hashtbl)
 {
     hash_for(hashtbl, return_pglogs_logical_key, hashtbl);
     hash_clear(hashtbl);
@@ -1343,7 +1357,7 @@ void bdb_return_pglogs_hashtbl(hash_t *hashtbl)
     hash_free(hashtbl);
 }
 
-logfile_pglog_hashkey *allocate_logfile_pglog_hashkey(void)
+static logfile_pglog_hashkey *allocate_logfile_pglog_hashkey(void)
 {
 #ifdef NEWSI_ASOF_USE_TEMPTABLE
     logfile_pglog_hashkey *r;
@@ -1413,7 +1427,7 @@ static void bdb_return_logfile_pglogs_hashtbl(hash_t *hashtbl,
 #endif
 }
 
-logfile_relink_hashkey *allocate_logfile_relink_hashkey(void)
+static logfile_relink_hashkey *allocate_logfile_relink_hashkey(void)
 {
 #ifdef NEWSI_ASOF_USE_TEMPTABLE
     logfile_relink_hashkey *r;
@@ -2111,6 +2125,7 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
 #ifdef NEWSI_ASOF_USE_TEMPTABLE
                 Pthread_mutex_unlock(&pglog_ent->mtx);
 #endif
+                deallocate_lsn_commit_list(lsn_ent);
                 if (rc) {
                     logmsg(LOGMSG_ERROR,
                            "%s: fail to insert to global structure\n",

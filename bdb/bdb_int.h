@@ -302,14 +302,6 @@ struct logfile_pglogs_entry {
     hash_t *relinks_hashtbl;
 };
 
-struct pglogs_key *allocate_pglogs_key(void);
-struct pglogs_logical_key *allocate_pglogs_logical_key(void);
-struct lsn_list *allocate_lsn_list(void);
-struct lsn_commit_list *allocate_lsn_commit_list(void);
-struct pglogs_relink_key *allocate_pglogs_relink_key(void);
-struct relink_list *allocate_relink_list(void);
-void return_pglogs_queue_key(struct pglogs_queue_key *qk);
-
 struct checkpoint_list {
     DB_LSN lsn;
     DB_LSN ckp_lsn;
