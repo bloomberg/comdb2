@@ -8,6 +8,7 @@ echo "!$TESTCASE: stopping"
 [ -z "$TESTDIR" ] && TESTDIR=${PWD}/test_${TESTID}
 [ -z "$TMPDIR" ] && TMPDIR=${TESTDIR}/tmp
 
+#parameter $1 indicates if test is successful or not
 successful=$1
 
 function kill_by_pidfile() {

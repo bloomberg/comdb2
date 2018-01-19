@@ -231,7 +231,7 @@ static Keyword aKeywordTable[] = {
   { "QUERY",            "TK_QUERY",        EXPLAIN,                1},
   { "RAISE",            "TK_RAISE",        TRIGGER,                0},
   { "RECURSIVE",        "TK_RECURSIVE",    CTE,                    1},
-  { "REFERENCES",       "TK_REFERENCES",   FKEY,                   0},
+  { "REFERENCES",       "TK_REFERENCES",   FKEY,                   1},
   { "REGEXP",           "TK_LIKE_KW",      ALWAYS,                 1},
   { "REINDEX",          "TK_REINDEX",      REINDEX,                1},
   { "RELEASE",          "TK_RELEASE",      ALWAYS,                 1},

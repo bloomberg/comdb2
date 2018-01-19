@@ -3322,7 +3322,7 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
         return;
     }
     seed = dtap;
-    rc = sc_set_running(0, 0, NULL, 0);
+    rc = sc_set_running(0, *seed, NULL, 0);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 
@@ -3333,20 +3333,6 @@ static void net_check_sc_ok(void *hndl, void *uptr, char *fromnode,
     int rc;
     rc = check_sc_ok(NULL);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
-}
-
-static void net_lua_reload(void *hndl, void *uptr, char *fromnode, int usertype,
-                           void *dtap, int dtalen)
-{
-    gbl_analyze_gen++;
-    net_ack_message(hndl, 0);
-}
-
-static void net_statistics_changed(void *hndl, void *uptr, char *fromnode,
-                                   int usertype, void *dtap, int dtalen)
-{
-    gbl_analyze_gen++;
-    net_ack_message(hndl, 0);
 }
 
 static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,

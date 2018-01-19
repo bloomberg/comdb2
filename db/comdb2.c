@@ -1808,11 +1808,6 @@ void check_access_controls(struct dbenv *dbenv)
             gbl_uses_password = 1;
             gbl_upgrade_blocksql_2_socksql = 1;
             logmsg(LOGMSG_INFO, "User authentication enabled\n");
-            int valid_user;
-            bdb_user_password_check(DEFAULT_USER, DEFAULT_PASSWORD,
-                                    &valid_user);
-            if (!valid_user)
-                bdb_user_password_set(NULL, DEFAULT_USER, DEFAULT_PASSWORD);
         }
     } else {
         gbl_uses_password = 0;
@@ -4332,7 +4327,7 @@ void *statthd(void *p)
 
         if (COMDB2_DIFFSTAT_REPORT() && !gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();
-            if ((thresh > 0) && (count > thresh)) {
+            if ((thresh > 0) && (count == thresh)) {
                 strbuf *logstr = strbuf_new();
                 diff_qtrap = nqtrap - last_report_nqtrap;
                 diff_fstrap = nfstrap - last_report_nfstrap;

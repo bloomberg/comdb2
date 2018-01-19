@@ -94,8 +94,13 @@ int main(int argc, char *argv[])
     char *conf = getenv("CDB2_CONFIG");
     if (conf)
         cdb2_set_comdb2db_config(conf);
+    char *host = getenv("CDB2_HOST");
 
-    int rc = cdb2_open(&db, argv[1], "default", 0);
+    int rc;
+    if (host)
+        rc = cdb2_open(&db, argv[1], host, CDB2_DIRECT_CPU);
+    else
+        rc = cdb2_open(&db, argv[1], "default", 0);
     if (rc != 0) {
         fprintf(stderr, "cdb2_open failed: %d %s\n", rc, cdb2_errstr(db));
         return rc;

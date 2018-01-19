@@ -1290,6 +1290,8 @@ __db_add_limbo(dbenv, info, fileid, pgno, count)
 	if ((ret = __dbreg_id_to_fname(dblp, fileid, 0, &fnp)) != 0)
 		return (ret);
 
+	__ufid_sanity_check(dbenv, fnp);
+
 	do {
 		if ((ret =
 		    __db_txnlist_pgnoadd(dbenv, info, fileid, fnp->ufid,

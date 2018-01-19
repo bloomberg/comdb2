@@ -648,6 +648,7 @@ int views_handle_replicant_reload(const char *name)
             view = NULL;
             goto done;
         }
+        db->tableversion = table_version_select(db, NULL);
     }
 
 alter_struct:

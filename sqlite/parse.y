@@ -249,7 +249,7 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
   COMMITSLEEP CONSUMER CONVERTSLEEP COVERAGE CRLE DATA DATABLOB DATACOPY DBPAD
   DEFERRABLE DISABLE DRYRUN ENABLE FOR FOREIGN FUNCTION GENID48 GET GRANT
   IPU ISC KW LUA LZ4 NONE ODH OFF OP OPTIONS PARTITION PASSWORD PERIOD
-  PROCEDURE PUT REBUILD READ REC REFERENCES RESERVED RETENTION REVOKE RLE
+  PROCEDURE PUT REBUILD READ REC RESERVED RETENTION REVOKE RLE
   ROWLOCKS SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE THREADS THRESHOLD TIME
   TRUNCATE TUNABLE VERSION WRITE DDL USERSCHEMA ZLIB .
 %wildcard ANY.
@@ -1388,6 +1388,8 @@ with_opt(A) ::= . {A = 0;}
     int sortOrder
   ){
     ExprList *p = sqlite3ExprListAppend(pParse, pPrior, 0);
+/* COMDB2 MODIFICATION */
+#if 0
     if( (hasCollate || sortOrder!=SQLITE_SO_UNDEFINED)
         && pParse->db->init.busy==0
     ){
@@ -1395,6 +1397,17 @@ with_opt(A) ::= . {A = 0;}
                          pIdToken->n, pIdToken->z);
     }
     sqlite3ExprListSetName(pParse, p, pIdToken, 1);
+#else
+    /* Allow sort order in FK index columns. */
+    if( hasCollate && pParse->db->init.busy==0)
+    {
+      sqlite3ErrorMsg(pParse, "syntax error after column name \"%.*s\"",
+                         pIdToken->n, pIdToken->z);
+    }
+    sqlite3ExprListSetName(pParse, p, pIdToken, 1);
+    sqlite3ExprListSetSortOrder(p, sortOrder);
+#endif
+
     return p;
   }
 } // end %include

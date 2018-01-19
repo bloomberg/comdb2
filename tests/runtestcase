@@ -3,7 +3,7 @@ TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 
 export CLEANUPDBDIR=${CLEANUPDBDIR:-1}
-export PATH="${SRCHOME}/:${PATH}"
+export PATH="${TESTDIR}/:${PATH}"
 successful=0
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
