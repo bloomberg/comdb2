@@ -1099,8 +1099,8 @@ file_dead:
 			n_cache = NCACHE(dbmp->reginfo[0].primary,
 			    bhp->mf_offset, bhp->pgno);
 			c_mp = dbmp->reginfo[n_cache].primary;
-            ATOMIC_ADD(hp->hash_page_dirty, -1);
-            ATOMIC_ADD(c_mp->stat.st_page_dirty, -1);
+			ATOMIC_ADD(hp->hash_page_dirty, -1);
+			ATOMIC_ADD(c_mp->stat.st_page_dirty, -1);
 
 			if (dbenv->tx_perfect_ckp) {
 				/* Clear first_dirty_lsn. */

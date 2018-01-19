@@ -816,7 +816,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 				    bhp->mf_offset &&
 				    bharray[off_gather].track_pgno + gathered
 				    == bhp->pgno && 
-                    hp->hash_page_dirty == 1) {
+					hp->hash_page_dirty == 1) {
 					bhparray[i] = bhp;
 					hparray[i] = hp;
 					++gathered;
