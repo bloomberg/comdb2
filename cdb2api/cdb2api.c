@@ -794,7 +794,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
     int line_no = 0;
 
     if (hndl && hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d \n", (uint32_t)pthread_self(),
+        fprintf(stderr, "td %u %s:%d \n", (uint32_t)pthread_self(),
                 __func__, __LINE__);
     }
     while (read_line((char *)&line, &len, sizeof(line), fp, buf, &line_no) != -1) {
@@ -962,7 +962,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
     int fallback_on_bb_bin = 1;
 
     if (hndl && hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d \n", (uint32_t)pthread_self(),
+        fprintf(stderr, "td %u %s:%d \n", (uint32_t)pthread_self(),
                 __func__, __LINE__);
     }
 
@@ -1524,7 +1524,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
 {
 
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d newsql_connect\n",
+        fprintf(stderr, "td %u %s:%d entering\n",
                 (uint32_t)pthread_self(), __func__, __LINE__);
     }
     int fd = -1;
@@ -1586,7 +1586,7 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
         return 0;
 
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %p %s line %d disconnecting\n",
+        fprintf(stderr, "td %p %s from line %d disconnecting\n",
                 (void *)pthread_self(), __func__, line);
     }
     int fd = sbuf2fileno(sb);
@@ -1682,7 +1682,7 @@ static inline int cdb2_try_on_same_room(cdb2_hndl_tp *hndl)
         hndl->hosts_connected[try_node] = 1;
         hndl->connected_host = try_node;
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d connected_host=%s\n",
+            fprintf(stderr, "td %u %s:%d connected_host=%s\n",
                     (uint32_t)pthread_self(), __func__, __LINE__,
                     hndl->hosts[try_node]);
         }
@@ -1765,7 +1765,7 @@ static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
 
 retry_connect:
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d node_seq=%d "
+        fprintf(stderr, "td %u %s:%d node_seq=%d "
                         "flags=0x%x, num_hosts=%d, num_hosts_sameroom=%d\n",
                 (uint32_t)pthread_self(), __func__, __LINE__, hndl->node_seq,
                 hndl->flags, hndl->num_hosts, hndl->num_hosts_sameroom);
@@ -1858,7 +1858,7 @@ retry:
     b_read = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
     if (b_read != sizeof(hdr)) {
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %p %s line %d bad read or numbytes,"
+            fprintf(stderr, "td %p %s:%d bad read or numbytes,"
                             " b_read=%d, sizeof(hdr)=(%lu):\n",
                     (void *)pthread_self(), __func__, __LINE__, b_read,
                     sizeof(hdr));
@@ -1896,7 +1896,7 @@ retry:
     *len = hdr.length;
     if (b_read != *len) {
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %p %s line %d bad read or numbytes,"
+            fprintf(stderr, "td %p %s:%d bad read or numbytes,"
                             " b_read(%d) != *len(%d) type(%d)\n",
                     (void *)pthread_self(), __func__, __LINE__, b_read, *len,
                     *type);
@@ -1904,7 +1904,7 @@ retry:
         return -1;
     }
     if (hndl->debug_trace && type) {
-        fprintf(stderr, "td %u %s line %d returning type=%d\n", 
+        fprintf(stderr, "td %u %s:%d returning type=%d\n", 
                 (uint32_t)pthread_self(), __func__, __LINE__, *type);
     }
     if (hdr.type == RESPONSE_HEADER__SQL_RESPONSE_TRACE) {
@@ -2243,7 +2243,7 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
 #define PRINT_RETURN(rcode)                                                    \
     {                                                                          \
         if (hndl->debug_trace)                                                 \
-            fprintf(stderr, "%std %u %s line %d cnonce '%s' [%d][%d] "         \
+            fprintf(stderr, "%std %u %s:%d cnonce '%s' [%d][%d] "              \
                     "returning %d\n", rcode == 0 ? "" : "XXX ",                \
                     (uint32_t)pthread_self(), __func__, __LINE__,              \
                     hndl->cnonce?hndl->cnonce:"(nil)", hndl->snapshot_file,    \
@@ -2253,7 +2253,7 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
 #define PRINT_RETURN_OK(rcode)                                                 \
     {                                                                          \
         if (hndl->debug_trace)                                                 \
-            fprintf(stderr, "td %u %s line %d cnonce '%s' [%d][%d] "           \
+            fprintf(stderr, "td %u %s:%d cnonce '%s' [%d][%d] "                \
                     "returning %d\n", (uint32_t)pthread_self(), __func__,      \
                     __LINE__, hndl->cnonce?hndl->cnonce:"(nil)",               \
                     hndl->snapshot_file, hndl->snapshot_offset, rcode);        \
@@ -2299,7 +2299,7 @@ retry_next_record:
                 __func__);
     retry:
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %p %s line %d retry: shouldretry=%d, "
+            fprintf(stderr, "td %p %s:%d retry: shouldretry=%d, "
                             "hndl->snapshot_file=%p, num_retry=%d\n",
                     (void *)pthread_self(), __func__, __LINE__, shouldretry,
                     hndl->snapshot_file, num_retry);
@@ -2626,7 +2626,7 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
                              )
 {
     if (log_calls)
-        fprintf(stderr, "td %d %s line %d\n", (uint32_t)pthread_self(),
+        fprintf(stderr, "td %d %s:%d\n", (uint32_t)pthread_self(),
                 __func__, __LINE__);
     int num_hosts = dbinfo_response->n_nodes;
     *num_valid_hosts = 0;
@@ -2656,7 +2656,7 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
             *master_node = *num_valid_hosts;
 
         if (log_calls)
-            fprintf(stderr, "td %d %s line %d, %d) host=%s(%d)%s\n",
+            fprintf(stderr, "td %d %s:%d, %d) host=%s(%d)%s\n",
                     (uint32_t)pthread_self(), __func__, __LINE__,
                     num_valid_hosts, valid_hosts[*num_valid_hosts],
                     valid_ports[*num_valid_hosts],
@@ -2695,10 +2695,10 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
 #endif
 }
 
-static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
+static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 {
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s() line %d, retry_all %d, intran %d\n",
+        fprintf(stderr, "td %u %s():%d, retry_all %d, intran %d\n",
                 (uint32_t)pthread_self(), __func__, __LINE__, hndl->retry_all,
                 hndl->in_trans);
     }
@@ -2711,7 +2711,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         if (hndl->debug_trace) {
             fprintf(
                 stderr,
-                "td %u %s line %d in_trans=%d snapshot_file=%d query_no=%d\n",
+                "td %u %s:%d in_trans=%d snapshot_file=%d query_no=%d\n",
                 (uint32_t)pthread_self(), __func__, __LINE__, hndl->in_trans,
                 hndl->snapshot_file, hndl->query_no);
         }
@@ -2735,10 +2735,10 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 
     hndl->in_trans = 0;
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d setting in_trans to 0\n",
+        fprintf(stderr, "td %u %s:%d setting in_trans to 0\n",
                 (uint32_t)pthread_self(), __func__, __LINE__);
-        fprintf(stderr, "td %u %s sending 'begin' to %s line %d\n",
-                (uint32_t)pthread_self(), __func__, host, __LINE__);
+        fprintf(stderr, "td %u %s:%d sending 'begin' to %s\n",
+                (uint32_t)pthread_self(), __func__, __LINE__, host);
     }
     rc = cdb2_send_query(hndl, hndl->sb, hndl->dbname, "begin",
                          hndl->num_set_commands, hndl->num_set_commands_sent,
@@ -2746,7 +2746,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
                          __LINE__);
     hndl->in_trans = 1;
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d setting in_trans to 1\n",
+        fprintf(stderr, "td %u %s:%d setting in_trans to 1\n",
                 (uint32_t)pthread_self(), __func__, __LINE__);
     }
 
@@ -2754,7 +2754,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         sbuf2close(hndl->sb);
         hndl->sb = NULL;
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d send_query rc=%d returning 1\n",
+            fprintf(stderr, "td %u %s:%d send_query rc=%d returning 1\n",
                     (uint32_t)pthread_self(), host, __LINE__, rc);
         }
         return 1;
@@ -2764,8 +2764,8 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
     rc = cdb2_read_record(hndl, &hndl->first_buf, &len, &type);
 
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u reading response from %s line %d rc=%d\n",
-                (uint32_t)pthread_self(), host, __LINE__, rc);
+        fprintf(stderr, "td %u line %d reading response from %s rc=%d\n",
+                (uint32_t)pthread_self(), __LINE__, host, rc);
     }
 
     if (rc) {
@@ -2774,8 +2774,8 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         if (hndl->debug_trace) {
             fprintf(
                 stderr,
-                "td %u reading response from %s line %d rc=%d returning 1\n",
-                (uint32_t)pthread_self(), host, __LINE__, rc);
+                "td %u line %d reading response from %s rc=%d returning 1\n",
+                (uint32_t)pthread_self(), __LINE__, host, rc);
         }
         return 1;
     }
@@ -2804,7 +2804,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
 
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u host %s line %d type=%d returning 1\n",
+            fprintf(stderr, "td %u host %s:%d type=%d returning 1\n",
                     (uint32_t)pthread_self(), host, __LINE__, type);
         }
 
@@ -2824,7 +2824,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         hndl->firstresponse =
             cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
     } else {
-        fprintf(stderr, "td %u %s line %d: Can't read response from DB\n",
+        fprintf(stderr, "td %u %s:%d: Can't read response from DB\n",
                 (uint32_t)pthread_self(), __func__, __LINE__);
         sbuf2close(hndl->sb);
         hndl->sb = NULL;
@@ -2835,7 +2835,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 
     if (hndl->sb == NULL) {
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d: sb is NULL, next_record "
+            fprintf(stderr, "td %u %s:%d: sb is NULL, next_record "
                             "returns %d, returning 1\n",
                     (uint32_t)pthread_self(), __func__, __LINE__, rc);
         }
@@ -2858,9 +2858,9 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         hdr.compression = ntohl(0);
         hdr.length = ntohl(item->len);
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s resending '%s' to %s line %d\n",
-                    (uint32_t)pthread_self(), __func__, item->sql, host,
-                    __LINE__);
+            fprintf(stderr, "td %u:%d %s resending '%s' to %s\n",
+                    (uint32_t)pthread_self(), __func__, __LINE__, item->sql,
+                    host);
         }
         sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
         sbuf2write((char *)item->buf, item->len, hndl->sb);
@@ -2879,7 +2879,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         rc = cdb2_read_record(hndl, &hndl->first_buf, &len, NULL);
         if (rc) {
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %d: Can't read response "
+                fprintf(stderr, "td %u %s:%d: Can't read response "
                                 "from the db node %s\n",
                         (uint32_t)pthread_self(), __func__, __LINE__, host);
             }
@@ -2892,7 +2892,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
                 cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
         } else {
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %d: Can't read response "
+                fprintf(stderr, "td %u %s:%d: Can't read response "
                                 "from the db node %s\n",
                         (uint32_t)pthread_self(), __func__, __LINE__, host);
             }
@@ -2910,7 +2910,7 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         if (hndl->sb == NULL) {
             if (hndl->debug_trace) {
                 fprintf(stderr,
-                        "td %u %s line %d: sb is NULL, next_record_int returns "
+                        "td %u %s:%d: sb is NULL, next_record_int returns "
                         "%d, returning 1\n",
                         (uint32_t)pthread_self(), __func__, __LINE__, read_rc);
             }
@@ -2933,7 +2933,7 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     hndl->retry_all = 1;
 
     if (hndl->in_trans) {
-        rc = retry_queries(hndl, num_retry, 0);
+        rc = retry_query_list(hndl, num_retry, 0);
         if (rc) {
             PRINT_RETURN_OK(rc);
         }
@@ -2997,7 +2997,7 @@ static inline void cleanup_query_list(cdb2_hndl_tp *hndl,
                                       int line)
 {
     if (hndl->debug_trace && line)
-        fprintf(stderr, "cleanup_query_list from line %d\n", line);
+        fprintf(stderr, "%s:%d called from line %d\n", __func__, __LINE__, line);
     hndl->skip_feature = 0;
     hndl->snapshot_file = 0;
     hndl->snapshot_offset = 0;
@@ -3005,8 +3005,8 @@ static inline void cleanup_query_list(cdb2_hndl_tp *hndl,
     hndl->error_in_trans = 0;
     hndl->in_trans = 0;
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d setting in_trans to 0 from line %d\n",
-                (uint32_t)pthread_self(), __func__, __LINE__, line);
+        fprintf(stderr, "td %u %s:%d setting in_trans to 0\n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
     }
 
     cdb2_query_list *item = hndl->query_list;
@@ -3113,7 +3113,7 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 #define GOTO_RETRY_QUERIES()                                                   \
     do {                                                                       \
         if (hndl->debug_trace) {                                               \
-            fprintf(stderr, "td %u %s line %d goto retry_queries\n",           \
+            fprintf(stderr, "td %u %s:%d goto retry_queries\n",                \
                     (uint32_t)pthread_self(), __func__, __LINE__);             \
         }                                                                      \
         goto retry_queries;                                                    \
@@ -3160,19 +3160,19 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
     if (strncasecmp(sql, "begin", 5) == 0) {
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u line %d setting is_begin flag\n",
+            fprintf(stderr, "td %u:%d setting is_begin flag\n",
                     (uint32_t)pthread_self(), __LINE__);
         }
         is_begin = 1;
     } else if (strncasecmp(sql, "commit", 6) == 0) {
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u line %d setting is_commit flag\n",
+            fprintf(stderr, "td %u:%d setting is_commit flag\n",
                     (uint32_t)pthread_self(), __LINE__);
         }
         is_commit = 1;
     } else if (strncasecmp(sql, "rollback", 8) == 0) {
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u line %d setting is_commit & is_rollback "
+            fprintf(stderr, "td %u:%d setting is_commit & is_rollback "
                             "flag for rollback\n",
                     (uint32_t)pthread_self(), __LINE__);
         }
@@ -3190,11 +3190,11 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
             if (is_commit && !hndl->in_trans) {
                 fprintf(
                     stderr,
-                    "XXX td %u i am committing but not 'in-trans' line %d\n",
+                    "XXX td %u line %d: i am committing but not 'in-trans'\n",
                     (uint32_t)pthread_self(), __LINE__);
             } else {
                 fprintf(stderr,
-                        "XXX td %u i am beginning but not 'in-trans' line %d\n",
+                        "XXX td %u line %d i am beginning but not 'in-trans'\n",
                         (uint32_t)pthread_self(), __LINE__);
             }
         }
@@ -3252,7 +3252,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
 retry_queries:
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d retry_queries: hndl->host=%d (%s)\n",
+        fprintf(stderr, "td %u %s:%d retry_queries: hndl->host=%d (%s)\n",
                 (uint32_t)pthread_self(), __func__, __LINE__,
                 hndl->connected_host,
                 (hndl->connected_host >= 0 ? hndl->hosts[hndl->connected_host]
@@ -3284,7 +3284,7 @@ retry_queries:
         if (is_rollback) {
             cleanup_query_list(hndl, NULL, __LINE__);
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %d returning 0 on unconnected rollback\n", 
+                fprintf(stderr, "td %u %s:%d returning 0 on unconnected rollback\n", 
                         (uint32_t) pthread_self(), __func__, __LINE__);
             }
             PRINT_RETURN(0);
@@ -3295,7 +3295,7 @@ retry_queries:
 
             if (!hndl->is_hasql && (retries_done > hndl->min_retries)) {
                 if (hndl->debug_trace) {
-                    fprintf(stderr, "td %u %s line %d returning cannot-connect, "
+                    fprintf(stderr, "td %u %s:%d returning cannot-connect, "
                             "retries_done=%d, num_hosts=%d\n", (uint32_t) pthread_self(), 
                             __func__, __LINE__, retries_done, hndl->num_hosts);
                 }
@@ -3313,7 +3313,7 @@ retry_queries:
             }
 
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %d polling for %d ms\n", (uint32_t)
+                fprintf(stderr, "td %u %s:%d polling for %d ms\n", (uint32_t)
                         pthread_self(), __func__, __LINE__, tmsec);
             }
 
@@ -3322,19 +3322,19 @@ retry_queries:
         cdb2_connect_sqlhost(hndl);
         if (hndl->sb == NULL) {
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %d rc=%d goto retry_queries on connect "
+                fprintf(stderr, "td %u %s:%d rc=%d goto retry_queries on connect "
                         "failure\n", (uint32_t) pthread_self(), __func__, __LINE__, rc);
             }
             goto retry_queries;
         }
         if (!is_begin) {
             hndl->retry_all = 1;
-            rc = retry_queries(hndl, (retries_done - 1), run_last);
+            rc = retry_query_list(hndl, (retries_done - 1), run_last);
             if (rc > 0) {
                 newsql_disconnect(hndl, hndl->sb, __LINE__);
                 hndl->retry_all = 1;
                 if (hndl->debug_trace) {
-                    fprintf(stderr, "td %u %s line %d rc=%d goto retry_queries\n", (uint32_t)
+                    fprintf(stderr, "td %u %s:%d rc=%d goto retry_queries\n", (uint32_t)
                             pthread_self(), __func__, __LINE__, rc);
                 }
                 goto retry_queries;
@@ -3392,7 +3392,7 @@ retry_queries:
         clear_snapshot_info(hndl, __LINE__);
         hndl->error_in_trans = 0;
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d setting in_trans to 0\n",
+            fprintf(stderr, "td %u %s:%d setting in_trans to 0\n",
                     (uint32_t)pthread_self(), __func__, __LINE__);
         }
         hndl->in_trans = 0;
@@ -3430,7 +3430,7 @@ retry_queries:
     if (hndl->skip_feature && !hndl->is_read && 
          (hndl->in_trans || !hndl->is_hasql)) {
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d in_trans=%d is_hasql=%d\n",
+            fprintf(stderr, "td %u %s:%d in_trans=%d is_hasql=%d\n",
                     (uint32_t)pthread_self(), __func__, __LINE__,
                     hndl->in_trans, hndl->is_hasql);
         }
@@ -3444,8 +3444,8 @@ read_record:
         char *host = "NOT-CONNECTED";
         if (hndl && hndl->connected_host >= 0)
             host = hndl->hosts[hndl->connected_host];
-        fprintf(stderr, "td %p reading from %s line %d rc=%d type:%d\n",
-                (void *)pthread_self(), host, __LINE__, rc, type);
+        fprintf(stderr, "td %p line %d reading from %s rc=%d type:%d\n",
+                (void *)pthread_self(), __LINE__, host, rc, type);
     }
 
     if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
@@ -3515,7 +3515,7 @@ read_record:
                 newsql_disconnect(hndl, hndl->sb, __LINE__);
                 hndl->retry_all=1;
                 if (hndl->debug_trace) {
-                    fprintf(stderr, "td %u %s line %d goto retry_queries "
+                    fprintf(stderr, "td %u %s:%d goto retry_queries "
                             "err_val=%d\n", (uint32_t) pthread_self(), __func__, 
                             __LINE__, err_val);
                 }
@@ -3535,7 +3535,7 @@ read_record:
             hndl->sb = NULL;
             hndl->retry_all = 1;
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %d goto retry_queries read-record "
+                fprintf(stderr, "td %u %s:%d goto retry_queries read-record "
                         "rc=%d err_val=%d\n", (uint32_t) pthread_self(), __func__, 
                         __LINE__, rc, err_val);
             }
@@ -3547,9 +3547,9 @@ read_record:
             if (commit_file) {
                 if (hndl->debug_trace) {
                     fprintf(stderr,
-                            "td %u line %d: i am retrying, retries_done %d\n",
+                            "td %u:%d: i am retrying, retries_done %d\n",
                             (uint32_t)pthread_self(), __LINE__, retries_done);
-                    fprintf(stderr, "td %u %s line %d setting in_trans to 1\n",
+                    fprintf(stderr, "td %u %s:%d setting in_trans to 1\n",
                             (uint32_t)pthread_self(), __func__, __LINE__);
                 }
                 hndl->in_trans = 1;
@@ -3562,7 +3562,7 @@ read_record:
             }
             hndl->retry_all = 1;
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %d goto retry_queries rc=%d, err_val=%d\n", 
+                fprintf(stderr, "td %u %s:%d goto retry_queries rc=%d, err_val=%d\n", 
                         (uint32_t) pthread_self(), __func__, __LINE__, rc, err_val);
             }
             goto retry_queries;
@@ -3574,7 +3574,7 @@ read_record:
         sprintf(hndl->errstr,
                 "%s: Timeout while reading response from server", __func__);
         if (hndl->debug_trace) {
-            fprintf(stderr, "%s line %d returning, clear_snap_line is %d\n",
+            fprintf(stderr, "%s:%d returning, clear_snap_line is %d\n",
                     __func__, __LINE__, hndl->clear_snap_line);
         }
         PRINT_RETURN(-1);
@@ -3587,7 +3587,7 @@ read_record:
                that is all we need so simply return here. 
                I dont think we should get here normally */
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %u: err_val is %d\n",
+                fprintf(stderr, "td %u %s:%d: err_val is %d\n",
                         (uint32_t)pthread_self(), __func__, __LINE__,
                         err_val);
             }
@@ -3603,7 +3603,7 @@ read_record:
     } else {
         if (err_val) {
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %u: err_val is %d on null "
+                fprintf(stderr, "td %u %s:%d: err_val is %d on null "
                         "first_buf\n", (uint32_t)pthread_self(), __func__, 
                         __LINE__, err_val);
             }
@@ -3615,7 +3615,7 @@ read_record:
                 newsql_disconnect(hndl, hndl->sb, __LINE__);
                 hndl->retry_all=1;
                 if (hndl->debug_trace) {
-                    fprintf(stderr, "td %u %s line %d goto retry_queries "
+                    fprintf(stderr, "td %u %s:%d goto retry_queries "
                             "err_val=%d\n", (uint32_t) pthread_self(), __func__, 
                             __LINE__, err_val);
                 }
@@ -3629,7 +3629,7 @@ read_record:
         }
         if (!is_commit || hndl->snapshot_file) {
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %u: disconnect & retry on null "
+                fprintf(stderr, "td %u %s:%d: disconnect & retry on null "
                         "first_buf\n", (uint32_t)pthread_self(), __func__, 
                         __LINE__);
             }
@@ -3637,7 +3637,7 @@ read_record:
             hndl->sb = NULL;
             hndl->retry_all = 1;
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %d goto retry_queries err_val=%d\n", 
+                fprintf(stderr, "td %u %s:%d goto retry_queries err_val=%d\n", 
                         (uint32_t) pthread_self(), __func__, __LINE__, err_val);
             }
             goto retry_queries;
@@ -3645,7 +3645,7 @@ read_record:
         /* Changes here to retry commit and goto retry queries. */
         if (hndl->debug_trace) {
             fprintf(stderr,
-                    "td %u %s line %u: Can't read response from the db\n",
+                    "td %u %s:%d: Can't read response from the db\n",
                     (uint32_t)pthread_self(), __func__, __LINE__);
         }
         sprintf(hndl->errstr, "%s: Can't read response from the db", 
@@ -3664,7 +3664,7 @@ read_record:
             sql = hndl->query;
             hndl->retry_all = 1;
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %d goto retry_queries error_code=%d\n", 
+                fprintf(stderr, "td %u %s:%d goto retry_queries error_code=%d\n", 
                         (uint32_t) pthread_self(), __func__, __LINE__, 
                         hndl->firstresponse->error_code);
             }
@@ -3689,7 +3689,7 @@ read_record:
         hndl->retry_all = 1;
         if (commit_file) {
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %d setting in_trans to 1\n",
+                fprintf(stderr, "td %u %s:%d setting in_trans to 1\n",
                         (uint32_t)pthread_self(), __func__, __LINE__);
             }
             hndl->in_trans = 1;
@@ -3701,7 +3701,7 @@ read_record:
             commit_file = 0;
         }
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d goto retry_queries error_code=%d\n", 
+            fprintf(stderr, "td %u %s:%d goto retry_queries error_code=%d\n", 
                     (uint32_t) pthread_self(), __func__, __LINE__, 
                     hndl->firstresponse->error_code);
         }
@@ -3710,7 +3710,7 @@ read_record:
 
     if (is_begin) {
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d setting in_trans to 1\n",
+            fprintf(stderr, "td %u %s:%d setting in_trans to 1\n",
                     (uint32_t)pthread_self(), __func__, __LINE__);
         }
         hndl->in_trans = 1;
@@ -3742,7 +3742,7 @@ read_record:
                 commit_file = 0;
             }
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %d %s line %d: goto retry_queries error_code=%d\n",
+                fprintf(stderr, "td %d %s:%d: goto retry_queries error_code=%d\n",
                         (uint32_t)pthread_self(), __func__, __LINE__, 
                         hndl->firstresponse->error_code);
             }
@@ -3782,7 +3782,7 @@ read_record:
 
             if (commit_file) {
                 if (hndl->debug_trace) {
-                    fprintf(stderr, "td %u %s line %d setting in_trans to 1\n",
+                    fprintf(stderr, "td %u %s:%d setting in_trans to 1\n",
                             (uint32_t)pthread_self(), __func__, __LINE__);
                 }
                 hndl->in_trans = 1;
@@ -3797,7 +3797,7 @@ read_record:
             hndl->retry_all = 1;
 
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %d %s line %d: goto retry_queries retry-begin, error_code=%d\n",
+                fprintf(stderr, "td %d %s:%d: goto retry_queries retry-begin, error_code=%d\n",
                         (uint32_t)pthread_self(), __func__, __LINE__, 
                         hndl->firstresponse->error_code);
             }
@@ -4317,7 +4317,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
     SBUF2 *sb = NULL;
 
     if (hndl->debug_trace)
-        fprintf(stderr, "td %d %s line %d\n", (uint32_t)pthread_self(),
+        fprintf(stderr, "td %d %s:%d\n", (uint32_t)pthread_self(),
                 __func__, __LINE__);
 
     int rc = snprintf(newsql_typestr, sizeof(newsql_typestr),
@@ -4334,7 +4334,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
     int fd = cdb2_socket_pool_get(newsql_typestr, dbnum, NULL);
     if (hndl->debug_trace)
         fprintf(stderr,
-                "td %d %s line %d, cdb2_socket_pool_get fd %d, host '%s'\n",
+                "td %d %s:%d, cdb2_socket_pool_get fd %d, host '%s'\n",
                 (uint32_t)pthread_self(), __func__, __LINE__, fd, host);
     if (fd < 0) {
         if (host == NULL)
@@ -4468,7 +4468,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     char comdb2db_name[32] = COMDB2DB;
 
     if (hndl->debug_trace)
-        fprintf(stderr, "td %d %s line %d\n", (uint32_t)pthread_self(),
+        fprintf(stderr, "td %d %s:%d\n", (uint32_t)pthread_self(),
                 __func__, __LINE__);
 
     /* Try dbinfo query without any host info. */
@@ -4528,7 +4528,7 @@ retry:
         rc = 0;
     }
     if (hndl->debug_trace)
-        fprintf(stderr, "td %d %s line %d: num_retry=%d hndl->num_hosts=%d "
+        fprintf(stderr, "td %d %s:%d: num_retry=%d hndl->num_hosts=%d "
                         "num_comdb2db_hosts=%d\n",
                 (uint32_t)pthread_self(), __func__, __LINE__, num_retry,
                 hndl->num_hosts, num_comdb2db_hosts);
@@ -5090,8 +5090,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             }
         }
         if (hndl && hndl->debug_trace)
-            fprintf(stderr, "td %u %s host %s port %d\n", 
-                    (uint32_t)pthread_self(), __func__, 
+            fprintf(stderr, "td %u %s:%d host %s port %d\n", 
+                    (uint32_t)pthread_self(), __func__, __LINE__,
                     hndl->hosts[0], hndl->ports[0]);
     } else if (is_machine_list(type)) {
         rc = configure_from_literal(hndl, type);
