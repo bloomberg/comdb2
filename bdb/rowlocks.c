@@ -55,6 +55,12 @@
 #include <printformats.h>
 #include <logmsg.h>
 
+#ifdef NEWSI_STAT
+#include <time.h>
+#include <sys/time.h>
+#include <util.h>
+#endif
+
 extern int gbl_dispatch_rowlocks_bench;
 
 /* TODO:
@@ -1813,6 +1819,10 @@ static void free_hash(hash_t *h)
     hash_free(h);
 }
 
+#ifdef NEWSI_STAT
+extern struct timeval comprec_time;
+extern unsigned long long num_comprec;
+#endif
 /* This is called by tran_abort when it's called on a logical transaction.
    Gets a log cursor, finds the last logical log record, and
    traverses the log in reverse lsn order for that logical
@@ -1907,9 +1917,22 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
         }
 
         undolsn = lsn;
+#ifdef NEWSI_STAT
+        num_comprec++;
+#endif
+#ifdef NEWSI_STAT
+    struct timeval before, after, diff;
+    gettimeofday(&before, NULL);
+#endif
+
         rc = undo_physical_transaction(bdb_state, tran, &logdta, &did_something,
                                        &undolsn, &lsn);
 
+#ifdef NEWSI_STAT
+    gettimeofday(&after, NULL);
+    timeval_diff(&before, &after, &diff);
+    timeval_add(&comprec_time, &diff, &comprec_time);
+#endif
         if (log_compare(&last_regop_lsn, &tran->last_regop_lsn))
             memcpy(&start_phys_txn, &undolsn, sizeof(start_phys_txn));
 

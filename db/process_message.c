@@ -955,12 +955,16 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         logmsg(LOGMSG_USER, "Enabled pageorder records per page check\n");
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PAGEORDER_RECSZ_CHK, 0);
     } else if (tokcmp(tok, ltok, "get_newsi_status") == 0) {
-       logmsg(LOGMSG_USER, "new snapshot is %s; new snapshot logging is %s; new snapshot "
+        extern unsigned long long release_locks_on_si_lockwait_cnt;
+        logmsg(LOGMSG_USER,
+               "new snapshot is %s; new snapshot logging is %s; new snapshot "
                "as-of is %s\n",
                gbl_new_snapisol ? "ENABLED" : "DISABLED",
                gbl_new_snapisol_logging ? "ENABLED" : "DISABLED",
                gbl_new_snapisol_asof ? "ENABLED" : "DISABLED");
         bdb_osql_trn_clients_status();
+        logmsg(LOGMSG_USER, "Release locks on snapisol lockwait count: %llu\n",
+               release_locks_on_si_lockwait_cnt);
 #ifdef NEWSI_MEMPOOL
         if (gbl_new_snapisol) {
             logmsg(LOGMSG_USER, "newsi memory pool stat:\n");

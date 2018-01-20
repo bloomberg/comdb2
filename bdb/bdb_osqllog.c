@@ -54,6 +54,12 @@
 #include <llog_auto.h>
 #include <llog_ext.h>
 
+#ifdef NEWSI_STAT
+#include <time.h>
+#include <sys/time.h>
+#include <util.h>
+#endif
+
 #define MAXTABLENAME 128
 #define LOG_DTA_PTR_BIT 1
 
@@ -3149,6 +3155,14 @@ int bdb_osql_set_null_blob_in_shadows(bdb_cursor_impl_t *cur,
     return rc;
 }
 
+#ifdef NEWSI_STAT
+extern struct timeval log_read_time;
+extern struct timeval log_read_time2;
+extern struct timeval log_apply_time;
+extern unsigned long long num_log_read;
+extern unsigned long long num_log_applied_opt;
+extern unsigned long long num_log_applied_unopt;
+#endif
 int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
                                         bdb_osql_trn_t *trn, int *dirty,
                                         int trak, int *bdberr)
@@ -3210,6 +3224,11 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
     /* Should be the child bdb_state, not the parent. */
     assert(bdb_state->parent != NULL);
 
+#ifdef NEWSI_STAT
+    struct timeval before, after, diff;
+    gettimeofday(&before, NULL);
+#endif
+
     /* get log cursors */
     rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logcur, 0);
     if (rc) {
@@ -3226,6 +3245,13 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
         goto done;
     }
     LOGCOPY_32(&rectype, logdta.data);
+#ifdef NEWSI_STAT
+    gettimeofday(&after, NULL);
+    timeval_diff(&before, &after, &diff);
+    timeval_add(&log_read_time, &diff, &log_read_time);
+    num_log_read++;
+    gettimeofday(&before, NULL);
+#endif
 
     switch (rectype) {
     case DB_llog_undo_del_dta:
@@ -3427,6 +3453,11 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
         rc = -1;
         goto done;
     }
+#ifdef NEWSI_STAT
+    gettimeofday(&after, NULL);
+    timeval_diff(&before, &after, &diff);
+    timeval_add(&log_read_time2, &diff, &log_read_time2);
+#endif
 
     if (!skip) {
         rc = bdb_osql_log_applicable(cur, rec, bdberr);
@@ -3445,6 +3476,9 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
                     rec->dtafile, rec->dtastripe);
             */
 
+#ifdef NEWSI_STAT
+            gettimeofday(&before, NULL);
+#endif
             rc = bdb_osql_log_try_run_optimized(cur, logcur, NULL, rec, trn,
                                                 dirty, trak, bdberr);
             if (rc < 0)
@@ -3452,6 +3486,12 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
 
             if (rc) {
                 rc = 0;
+#ifdef NEWSI_STAT
+                gettimeofday(&after, NULL);
+                timeval_diff(&before, &after, &diff);
+                timeval_add(&log_apply_time, &diff, &log_apply_time);
+                num_log_applied_opt++;
+#endif
                 goto done;
             }
 
@@ -3463,10 +3503,17 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
                         __func__, rc, *bdberr);
                 goto done;
             }
+#ifdef NEWSI_STAT
+            gettimeofday(&after, NULL);
+            timeval_diff(&before, &after, &diff);
+            timeval_add(&log_apply_time, &diff, &log_apply_time);
+            num_log_applied_unopt++;
+#endif
         }
     }
 
 done:
+
     if (free_ptr)
         free(free_ptr);
     if (logdta.data)

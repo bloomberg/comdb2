@@ -155,6 +155,15 @@ struct timeval txn_pglog_time;
 struct timeval queue_pglog_time;
 struct timeval queue_relink_time;
 struct timeval logical_undo_time;
+struct timeval client_copy_time;
+struct timeval log_read_time;
+struct timeval log_read_time2;
+struct timeval log_apply_time;
+struct timeval comprec_time;
+unsigned long long num_log_read = 0;
+unsigned long long num_log_applied_opt = 0;
+unsigned long long num_log_applied_unopt = 0;
+unsigned long long num_comprec = 0;
 #endif
 
 struct temp_table *bdb_gbl_timestamp_lsn;
@@ -2381,6 +2390,11 @@ void bdb_newsi_stat_init()
     bzero(&queue_pglog_time, sizeof(struct timeval));
     bzero(&queue_relink_time, sizeof(struct timeval));
     bzero(&logical_undo_time, sizeof(struct timeval));
+    bzero(&client_copy_time, sizeof(struct timeval));
+    bzero(&log_read_time, sizeof(struct timeval));
+    bzero(&log_read_time2, sizeof(struct timeval));
+    bzero(&log_apply_time, sizeof(struct timeval));
+    bzero(&comprec_time, sizeof(struct timeval));
 }
 #endif
 
@@ -2949,6 +2963,25 @@ void bdb_print_logfile_pglogs_stat()
     logmsg(LOGMSG_USER, "logical_undo_time: %.3fms\n",
            (double)logical_undo_time.tv_sec * 1000 +
                (double)logical_undo_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "client_copy_time: %.3fms\n",
+           (double)client_copy_time.tv_sec * 1000 +
+               (double)client_copy_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "log_read_time: %.3fms\n",
+           (double)log_read_time.tv_sec * 1000 +
+               (double)log_read_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "log_read_time2: %.3fms\n",
+           (double)log_read_time2.tv_sec * 1000 +
+               (double)log_read_time2.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "log_apply_time: %.3fms\n",
+           (double)log_apply_time.tv_sec * 1000 +
+               (double)log_apply_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "comprec_time: %.3fms\n",
+           (double)comprec_time.tv_sec * 1000 +
+               (double)comprec_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "num_log_read: %llu\n", num_log_read);
+    logmsg(LOGMSG_USER, "num_log_applied_opt: %llu\n", num_log_applied_opt);
+    logmsg(LOGMSG_USER, "num_log_applied_unopt: %llu\n", num_log_applied_unopt);
+    logmsg(LOGMSG_USER, "num_comprec: %llu\n", num_comprec);
 }
 void bdb_clear_logfile_pglogs_stat()
 {
@@ -2959,6 +2992,11 @@ void bdb_clear_logfile_pglogs_stat()
     bzero(&queue_pglog_time, sizeof(struct timeval));
     bzero(&queue_relink_time, sizeof(struct timeval));
     bzero(&logical_undo_time, sizeof(struct timeval));
+    bzero(&client_copy_time, sizeof(struct timeval));
+    bzero(&log_read_time, sizeof(struct timeval));
+    bzero(&log_read_time2, sizeof(struct timeval));
+    bzero(&log_apply_time, sizeof(struct timeval));
+    bzero(&comprec_time, sizeof(struct timeval));
     logmsg(LOGMSG_USER, "pglogs stat cleared\n");
 }
 #endif
@@ -7432,6 +7470,11 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
     unsigned char *fileid;
     db_pgno_t pgno;
 
+#ifdef NEWSI_STAT
+    struct timeval before, after, diff;
+    gettimeofday(&before, NULL);
+#endif
+
     assert(inpgno);
     assert(infileid);
     fileid = infileid;
@@ -7730,6 +7773,12 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
 #endif
     }
 
+#ifdef NEWSI_STAT
+    gettimeofday(&after, NULL);
+    timeval_diff(&before, &after, &diff);
+    timeval_add(&client_copy_time, &diff, &client_copy_time);
+#endif
+
     return rc;
 }
 
@@ -7814,6 +7863,7 @@ static int bdb_btree_update_shadows_for_page(bdb_cursor_impl_t *cur,
                         __func__, __LINE__);
                 abort();
             }
+
             deallocate_lsn_list(lsnent);
             /* printf("%s: freed lsn addr %p on hash %p ent %p list %p\n",
                __func__,
@@ -8073,6 +8123,11 @@ static int update_pglogs_from_global_queues_int(
     struct pglogs_queue_key *current, *prev, *last;
     DB_LSN last_lsn = {0};
 
+#ifdef NEWSI_STAT
+    struct timeval before, after, diff;
+    gettimeofday(&before, NULL);
+#endif
+
     pthread_rwlock_rdlock(&qcur->queue->queue_lk);
     last = LISTC_BOT(&qcur->queue->queue_keys);
 
@@ -8138,6 +8193,12 @@ static int update_pglogs_from_global_queues_int(
    }
 
    qcur->last = current;
+
+#ifdef NEWSI_STAT
+   gettimeofday(&after, NULL);
+   timeval_diff(&before, &after, &diff);
+   timeval_add(&client_copy_time, &diff, &client_copy_time);
+#endif
 
    return 0;
 }
