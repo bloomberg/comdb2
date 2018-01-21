@@ -113,10 +113,10 @@ int main(int argc, char *argv[])
 
 #if defined NORMAL_GETOPT
     while ((c = getopt_long(argc, argv, "ha:pu", long_options, &options_idx)) !=
-           -1) {
+           (char) -1) {
 #else
     while ((c = bb_getopt_long(argc, argv, "ha:pu", long_options,
-                               &options_idx)) != -1) {
+                               &options_idx)) != (char) -1) {
 #endif
         if (c == 'h') {
             print_char_opt(stdout, c, optopt, optarg);
