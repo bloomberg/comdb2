@@ -4,5 +4,5 @@ if [ "$TOTAL" -gt "100" ] ; then
         echo -n "."  1>&2; 
         sleep 0.02 ; 
     done ; 
-    echo "."
+    echo "." 1>&2;
 fi

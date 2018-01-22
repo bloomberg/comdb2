@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
-if [[ $(arch) == "armv7l" ]] ; then
+if [[ "$(arch)" == "armv7l" ]] ; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 3 + 2))m
 fi
