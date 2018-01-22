@@ -62,8 +62,8 @@ fi
 TMPDIR=${TMPDIR:-/tmp}
 CDB2_CONFIG=$DBDIR/comdb2db.cfg
 CDB2_OPTIONS="--cdb2cfg ${CDB2_CONFIG}"
-COMDB2_EXE=/dev/shm/comdb2/comdb2
-COMDB2AR_EXE=/dev/shm/comdb2/comdb2ar
+COMDB2_EXE=comdb2
+COMDB2AR_EXE=comdb2ar
 export comdb2ar=$COMDB2AR_EXE  # used by copycomdb2
 export COMDB2AR_EXOPTS="-x $COMDB2_EXE"
 export COMDB2_ROOT=${DBDIR}
