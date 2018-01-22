@@ -139,6 +139,12 @@ typedef LONG volatile *interlocked_val;
 	    (oval), (nval)) == (oval))
 #endif
 
+#ifdef HAVE_GNU_ATOMIC
+#define atomic_inc(env, p) __sync_fetch_and_add(&(p)->value, 1)
+#define atomic_dec(env, p) __sync_fetch_and_add(&(p)->value, -1)
+#define atomic_compare_exchange(env, p, oldval, newval) __sync_val_compare_and_swap(&(p)->value, oldval, newval)
+#endif
+
 #if defined(HAVE_ATOMIC_X86_GCC_ASSEMBLY)
 /* x86/x86_64 gcc  */
 #define	atomic_inc(env, p)	__atomic_inc(p)
