@@ -30,8 +30,8 @@ test_tools: compat_install
 	@ln -f build/tests/tools/insert tests/tools/insert
 	@ln -f build/tests/tools/register tests/tools/register
 	@ln -f build/tests/tools/breakloop tests/tools/breakloop
-	@ln -f build/tests/tools/verify_atomics_work tests/tools/verify_atomics_work
 	@ln -f build/tests/tools/cdb2_open tests/tools/cdb2_open
+	@ln -f build/tests/tools/verify_atomics_work tests/tools/verify_atomics_work
 
 .PHONY: compat_install
 compat_install: all
