@@ -470,6 +470,8 @@ retry:
             return rc;
     } else {
         /* this is a replay with same rqid, already registered */
+        /* sets to the same node */
+        osql_reuse_sqlthr(clnt, osql->host);
     }
 
     /* retrying a transaction, don't skip on blkseq */
@@ -582,7 +584,7 @@ again:
             logmsg(LOGMSG_USER, "%lu Restarting %llx\n", pthread_self(),
                    clnt->osql.rqid);
         /* we should reset this ! */
-        rc = osql_reuse_sqlthr(clnt);
+        rc = osql_reuse_sqlthr(clnt, thedb->master);
         if (rc)
             return SQLITE_INTERNAL;
     }

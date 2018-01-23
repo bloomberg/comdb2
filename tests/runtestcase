@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
+
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
+if [[ "$(arch)" == "armv7l" ]] ; then
+    t=${TEST_TIMEOUT%%m}
+    TEST_TIMEOUT=$(($t * 3 + 2))m
+fi
 SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 
 export CLEANUPDBDIR=${CLEANUPDBDIR:-1}
-export PATH="${SRCHOME}/:${PATH}"
+export PATH="${TESTDIR}/:${PATH}"
 successful=0
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
@@ -40,17 +45,14 @@ function call_setup {
          warn_long_setup
          rc=$?
     else
-        timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" )
-        rc=$?
-    fi
-    glist=`pgrep gawk -a | grep ${DBNAME} | cut -f1 -d' ' | xargs echo`
-    if [ "x$glist" != "x" ] ; then
-        kill -9 $glist
+        { timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup 2>&1 || echo $?; } | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!"
     fi
     sleep 0.1
-    if [[ $rc -ne 0 ]]; then
-        echo "!$TESTCASE: setup failed (rc=$rc)" >> ${TESTDIR}/test.log
-        echo "!$TESTCASE: setup failed (rc=$rc) see ${TESTDIR}/logs/${DBNAME}.setup"
+    #last line of .setup file will contain the error rc if any
+    ret=`tail -1 ${TESTDIR}/logs/${DBNAME}.setup | cut -c11-`
+    if [[ $ret != "setup successful" ]]; then
+        echo "!$TESTCASE: setup failed (rc=$ret)" >> ${TESTDIR}/test.log
+        echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${DBNAME}.setup"
         call_unsetup
         sleep 0.1
         exit 1
@@ -60,7 +62,7 @@ function call_setup {
 call_setup
 echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
 
-timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
+timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
 
 rc=${PIPESTATUS[0]}
 if [[ $rc -eq 0 ]]; then

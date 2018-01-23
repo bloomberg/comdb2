@@ -1,0 +1,12 @@
+schema
+{
+    cstring tbl[64]
+    cstring idx[64]
+    int     samplelen
+    byte    sample[1024] /* entire record in sqlite format */
+}
+
+keys
+{
+    dup "0" = tbl + idx
+}

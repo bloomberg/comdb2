@@ -37,6 +37,7 @@
 #include <execinfo.h>
 #endif
 #include <logmsg.h>
+#include "comdb2_atomic.h"
 
 /* One of the difference between using b-tree and hash is that in using hash, we
  * get pointer of data in hash table,
@@ -1236,9 +1237,7 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
         bdb_state->temp_stats->st_rw_evict_skip += tmp->st_rw_evict_skip;
         bdb_state->temp_stats->st_page_trickle += tmp->st_page_trickle;
         bdb_state->temp_stats->st_pages += tmp->st_pages;
-        atomic_init(&bdb_state->temp_stats->st_page_dirty,
-                    atomic_read(&bdb_state->temp_stats->st_page_dirty) +
-                        atomic_read(&tmp->st_page_dirty));
+        ATOMIC_ADD(bdb_state->temp_stats->st_page_dirty, tmp->st_page_dirty);
         bdb_state->temp_stats->st_page_clean += tmp->st_page_clean;
         bdb_state->temp_stats->st_hash_buckets += tmp->st_hash_buckets;
         bdb_state->temp_stats->st_hash_searches += tmp->st_hash_searches;
@@ -1335,9 +1334,7 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
         bdb_state->temp_stats->st_rw_evict_skip += tmp->st_rw_evict_skip;
         bdb_state->temp_stats->st_page_trickle += tmp->st_page_trickle;
         bdb_state->temp_stats->st_pages += tmp->st_pages;
-        atomic_init(&bdb_state->temp_stats->st_page_dirty,
-                    atomic_read(&bdb_state->temp_stats->st_page_dirty) +
-                        atomic_read(&tmp->st_page_dirty));
+        ATOMIC_ADD(bdb_state->temp_stats->st_page_dirty, tmp->st_page_dirty);
         bdb_state->temp_stats->st_page_clean += tmp->st_page_clean;
         bdb_state->temp_stats->st_hash_buckets += tmp->st_hash_buckets;
         bdb_state->temp_stats->st_hash_searches += tmp->st_hash_searches;
@@ -1933,8 +1930,7 @@ int bdb_temp_table_stat(bdb_state_type *bdb_state, DB_MPOOL_STAT **gspp)
     sp->st_rw_evict_skip = parent->temp_stats->st_rw_evict_skip;
     sp->st_page_trickle = parent->temp_stats->st_page_trickle;
     sp->st_pages = parent->temp_stats->st_pages;
-    atomic_init(&sp->st_page_dirty,
-                atomic_read(&parent->temp_stats->st_page_dirty));
+    sp->st_page_dirty = parent->temp_stats->st_page_dirty;
     sp->st_page_clean = parent->temp_stats->st_page_clean;
     sp->st_hash_buckets = parent->temp_stats->st_hash_buckets;
     sp->st_hash_searches = parent->temp_stats->st_hash_searches;

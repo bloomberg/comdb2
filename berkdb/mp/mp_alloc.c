@@ -184,7 +184,7 @@ static void dump_page_stats(DB_ENV *dbenv) {
 	logmsgf(LOGMSG_USER, out, "st_page_trickle: %d\n", mpool_stats->st_page_trickle);
 	logmsgf(LOGMSG_USER, out, "st_pages: %d\n", mpool_stats->st_pages);
 	logmsgf(LOGMSG_USER, out, "st_page_clean: %d\n", mpool_stats->st_page_clean);
-	logmsgf(LOGMSG_USER, out, "st_page_dirty: %d\n", mpool_stats->st_page_dirty.value);
+	logmsgf(LOGMSG_USER, out, "st_page_dirty: %d\n", mpool_stats->st_page_dirty);
 	logmsgf(LOGMSG_USER, out, "st_hash_buckets: %d\n", mpool_stats->st_hash_buckets);
 	logmsgf(LOGMSG_USER, out, "st_hash_searches: %d\n", mpool_stats->st_hash_searches);
 	logmsgf(LOGMSG_USER, out, "st_hash_longest: %d\n", mpool_stats->st_hash_longest);

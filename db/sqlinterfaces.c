@@ -1664,19 +1664,9 @@ void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
 }
 
 /* skip spaces and tabs, requires at least one space */
-static char *skipws(char *str)
+static inline char *skipws(char *str)
 {
-    if (str && *str && isspace(*str)) {
-        while (*str && isspace(*str))
-            str++;
-    }
-    return str;
-}
-
-/* skip spaces and tabs if present. */
-static char *cdb2_skipws(char *str)
-{
-    if (*str && isspace(*str)) {
+    if (str) {
         while (*str && isspace(*str))
             str++;
     }
@@ -1699,7 +1689,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
             }
 
             if (str && *str) {
-                /* Alex wants "as of" */
+                /* handle "as of" */
                 if (!strncasecmp(str, "as", 2)) {
                     str += 2;
                     str = skipws(str);
@@ -3228,7 +3218,8 @@ void send_prepare_error(struct sqlclntstate *clnt, const char *errstr,
                         1 /*flush*/, __func__, __LINE__);
 }
 
-static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt,
+                          int analyze_gen)
 {
     // if analyze is running, don't reload
     extern volatile int analyze_running_flag;
@@ -3244,7 +3235,7 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         got_curtran = 1;
     }
     if ((rc = sqlite3AnalysisLoad(thd->sqldb, 0)) == SQLITE_OK) {
-        thd->analyze_gen = gbl_analyze_gen;
+        thd->analyze_gen = analyze_gen;
     } else {
         logmsg(LOGMSG_ERROR, "%s sqlite3AnalysisLoad rc:%d\n", __func__, rc);
     }
@@ -3265,18 +3256,21 @@ static inline void delete_prepared_stmts(struct sqlthdstate *thd)
 // Call with schema_lk held and no_transaction == 1
 static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
+    /* cache analyze gen first because gbl_analyze_gen is NOT protected by
+     * schema_lk */
+    int cached_analyze_gen = gbl_analyze_gen;
     if (gbl_fdb_track)
         logmsg(LOGMSG_USER, "XXX: thd dbopen=%d vs %d thd analyze %d vs %d\n",
-                thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
-                gbl_analyze_gen);
+               thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
+               cached_analyze_gen);
 
     if (thd->dbopen_gen != gbl_dbopen_gen) {
         return SQLITE_SCHEMA;
     }
-    if (thd->analyze_gen != gbl_analyze_gen) {
+    if (thd->analyze_gen != cached_analyze_gen) {
         int ret;
         delete_prepared_stmts(thd);
-        ret = reload_analyze(thd, clnt);
+        ret = reload_analyze(thd, clnt, cached_analyze_gen);
         return ret;
     }
 
@@ -3757,8 +3751,12 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
     }
     if (rec->stmt) {
-        // save expanded query
-        rec->sql = sqlite3_sql(rec->stmt);
+        rec->sql = sqlite3_sql(rec->stmt); // save expanded query
+        int rc = sqlite3LockStmtTables(rec->stmt);
+        if (rc) {
+            cleanup_stmt_entry(rec->stmt_entry);
+            rec->stmt = NULL;
+        }
     }
 }
 
@@ -3894,6 +3892,8 @@ static inline int dont_cache_sql(struct sqlclntstate *clnt, const char *sql)
     if (strncasecmp(sql, "rebuild", 7) == 0)
         return 1;
     if (strncasecmp(sql, "truncate", 8) == 0)
+        return 1;
+    if (strncasecmp(sql, "put", 3) == 0)
         return 1;
     return 0;
 }
@@ -5793,6 +5793,7 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     struct errstat xerr;
     int rc;
     int got_views_lock = 0;
+    int got_curtran = 0;
 
     /* Do this here, before setting up Btree structures!
        so we can get back at our "session" information */
@@ -5820,6 +5821,18 @@ check_version:
         /* need to refresh things; we need to grab views lock */
         if (!got_views_lock) {
             unlock_schema_lk();
+
+            if (!clnt->dbtran.cursor_tran) {
+                rc = get_curtran(thedb->bdb_env, clnt);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: unable to get a CURSOR transaction, rc = %d!\n",
+                           __func__, rc);
+                } else {
+                    got_curtran = 1;
+                }
+            }
+
             views_lock();
             rdlock_schema_lk();
             got_views_lock = 1;
@@ -5831,6 +5844,9 @@ check_version:
         }
 
         if (!thd->sqldb) {
+            /* cache analyze gen first because gbl_analyze_gen is NOT protected
+             * by schema_lk */
+            thd->analyze_gen = gbl_analyze_gen;
             int rc = sqlite3_open_serial("db", &thd->sqldb, thd);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d\n", __func__,
@@ -5838,20 +5854,10 @@ check_version:
                 thd->sqldb = NULL;
             }
             thd->dbopen_gen = gbl_dbopen_gen;
-            thd->analyze_gen = gbl_analyze_gen;
         }
 
         get_copy_rootpages_nolock(thd->sqlthd);
-        int got_curtran = rc = 0;
-        if (!clnt->dbtran.cursor_tran) {
-            got_curtran = 1;
-            rc = get_curtran(thedb->bdb_env, clnt);
-        }
-        if (rc) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s: unable to get a CURSOR transaction, rc = %d!\n",
-                    __func__, rc);
-        } else {
+        if (clnt->dbtran.cursor_tran) {
             if (thedb->timepart_views) {
                 int saved_has_cnonce;
                 if (clnt && clnt->sql_query) {
@@ -5874,16 +5880,17 @@ check_version:
 
             /* save the views generation number */
             thd->views_gen = gbl_views_gen;
-
-            if (got_curtran && put_curtran(thedb->bdb_env, clnt)) {
-                logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
-                        __func__);
-            }
         }
     }
     if (got_views_lock) {
         views_unlock();
     }
+
+    if (got_curtran && put_curtran(thedb->bdb_env, clnt)) {
+        logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
+               __func__);
+    }
+
     return rc;
 }
 
@@ -6730,7 +6737,7 @@ static int handle_fastsql_requests_io_loop(struct sqlthdstate *thd,
 
     if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
         (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
-        logmsg(LOGMSG_INFO, "new query on master, dropping socket\n");
+        ATOMIC_ADD(gbl_masterrejects, 1);
         goto done;
     }
 
@@ -6782,9 +6789,7 @@ static int handle_fastsql_requests_io_loop(struct sqlthdstate *thd,
 
         if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
             !clnt->intrans) {
-            logmsg(LOGMSG_USER, 
-                    "%s line %d td %u: new query on master, dropping socket\n",
-                    __func__, __LINE__, (uint32_t)pthread_self());
+            ATOMIC_ADD(gbl_masterrejects, 1);
             goto done;
         }
 
@@ -7535,10 +7540,7 @@ retry_read:
         return NULL;
     }
 
-    CDB2QUERY *query;
-
     char *p;
-
     if (bytes <= gbl_blob_sz_thresh_bytes)
         p = malloc(bytes);
     else
@@ -7579,6 +7581,7 @@ retry_read:
         }
     }
 
+    CDB2QUERY *query;
     while (1) {
         query = cdb2__query__unpack(&pb_alloc, bytes, p);
 
@@ -7699,7 +7702,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
     num_commands = sql_query->n_set_flags;
     for (int ii = 0; ii < num_commands && rc == 0; ii++) {
         sqlstr = sql_query->set_flags[ii];
-        sqlstr = cdb2_skipws(sqlstr);
+        sqlstr = skipws(sqlstr);
         if (strncasecmp(sqlstr, "set", 3) == 0) {
             char err[256];
             err[0] = '\0';
@@ -7709,16 +7712,16 @@ static int process_set_commands(struct sqlclntstate *clnt)
                        pthread_self(), __func__, __LINE__, sqlstr);
             }
             sqlstr += 3;
-            sqlstr = cdb2_skipws(sqlstr);
+            sqlstr = skipws(sqlstr);
             if (strncasecmp(sqlstr, "transaction", 11) == 0) {
                 sqlstr += 11;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 clnt->dbtran.mode = TRANLEVEL_INVALID;
                 set_high_availability(clnt, 0);
                 // clnt->high_availability = 0;
                 if (strncasecmp(sqlstr, "read", 4) == 0) {
                     sqlstr += 4;
-                    sqlstr = cdb2_skipws(sqlstr);
+                    sqlstr = skipws(sqlstr);
                     if (strncasecmp(sqlstr, "committed", 4) == 0) {
                         clnt->dbtran.mode = TRANLEVEL_RECOM;
                     }
@@ -7745,7 +7748,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                     rc = ii + 1;
             } else if (strncasecmp(sqlstr, "timeout", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 int timeout = strtol(sqlstr, &endp, 10);
                 int notimeout = disable_server_sql_timeouts();
                 sbuf2settimeout(clnt->sb, 0, notimeout ? 0 : timeout);
@@ -7759,28 +7762,28 @@ static int process_set_commands(struct sqlclntstate *clnt)
                         watcher_warning_function);
             } else if (strncasecmp(sqlstr, "maxquerytime", 12) == 0) {
                 sqlstr += 12;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 int timeout = strtol(sqlstr, &endp, 10);
                 if (timeout >= 0)
                     clnt->query_timeout = timeout;
             } else if (strncasecmp(sqlstr, "timezone", 8) == 0) {
                 sqlstr += 8;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 strncpy(clnt->tzname, sqlstr, sizeof(clnt->tzname));
             } else if (strncasecmp(sqlstr, "datetime", 8) == 0) {
                 sqlstr += 8;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
 
                 if (strncasecmp(sqlstr, "precision", 9) == 0) {
                     sqlstr += 9;
-                    sqlstr = cdb2_skipws(sqlstr);
+                    sqlstr = skipws(sqlstr);
                     DTTZ_TEXT_TO_PREC(sqlstr, clnt->dtprec, 0, return -1);
                 } else {
                     rc = ii + 1;
                 }
             } else if (strncasecmp(sqlstr, "user", 4) == 0) {
                 sqlstr += 4;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 sqlite3Dequote(sqlstr);
                 if (strlen(sqlstr) >= sizeof(clnt->user)) {
                     snprintf(err, sizeof(err),
@@ -7793,7 +7796,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "password", 8) == 0) {
                 sqlstr += 8;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 sqlite3Dequote(sqlstr);
                 if (strlen(sqlstr) >= sizeof(clnt->password)) {
                     snprintf(err, sizeof(err),
@@ -7809,7 +7812,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 free(clnt->spversion.version_str);
                 clnt->spversion.version_str = NULL;
                 sqlstr += 9;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 char *spname = sqlstr;
                 while (!isspace(*sqlstr)) {
                     ++sqlstr;
@@ -7823,7 +7826,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
                 ++sqlstr;
 
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 int ver = strtol(sqlstr, &endp, 10);
                 if (*sqlstr == '\'' || *sqlstr == '"') { // looks like a str
                     if (strlen(sqlstr) < MAX_SPVERSION_LEN) {
@@ -7839,7 +7842,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "readonly", 8) == 0) {
                 sqlstr += 8;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->is_readonly = 0;
                 } else {
@@ -7847,7 +7850,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "expert", 6) == 0) {
                 sqlstr += 6;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->is_expert = 0;
                 } else {
@@ -7855,7 +7858,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "sptrace", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->want_stored_procedure_trace = 0;
                 } else {
@@ -7863,11 +7866,11 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "cursordebug", 11) == 0) {
                 sqlstr += 11;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 bdb_osql_trak(sqlstr, &clnt->bdb_osql_trak);
             } else if (strncasecmp(sqlstr, "spdebug", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->want_stored_procedure_debug = 0;
                 } else {
@@ -7875,7 +7878,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "HASQL", 5) == 0) {
                 sqlstr += 5;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->hasql_on = 1;
                     if (clnt->dbtran.mode == TRANLEVEL_SERIAL ||
@@ -7899,7 +7902,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "verifyretry", 11) == 0) {
                 sqlstr += 11;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->verifyretry_off = 0;
                 } else {
@@ -7907,7 +7910,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "queryeffects", 12) == 0) {
                 sqlstr += 12;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "statement", 9) == 0) {
                     clnt->statement_query_effects = 1;
                 }
@@ -7916,7 +7919,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "remote", 6) == 0) {
                 sqlstr += 6;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
 
                 int rc = fdb_access_control_create(clnt, sqlstr);
                 if (rc) {
@@ -7927,7 +7930,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 rc = ii + 1;
             } else if (strncasecmp(sqlstr, "getcost", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->get_cost = 1;
                 } else {
@@ -7935,7 +7938,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "explain", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->is_explain = 1;
                 } else if (strncasecmp(sqlstr, "verbose", 7) == 0) {
@@ -7965,7 +7968,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
 #endif
             } else if (strncasecmp(sqlstr, "ignorecoherency", 15) == 0) {
                 sqlstr += 15;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->ignore_coherency = 1;
                 } else {
@@ -8097,9 +8100,7 @@ static int do_query_on_master_check(struct sqlclntstate *clnt,
 
     if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
         allow_master_exec == 0) {
-        logmsg(LOGMSG_ERROR,
-               "%s line %d td %u new query on master, dropping socket\n",
-               __func__, __LINE__, (uint32_t)pthread_self());
+        ATOMIC_ADD(gbl_masterrejects, 1);
         if (allow_master_dbinfo)
             send_dbinforesponse(clnt->sb); /* Send sql response with dbinfo. */
         return 1;
@@ -8163,13 +8164,11 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
     set_high_availability(&clnt, 0);
     // clnt.high_availability = 0;
 
-    /* these connections shouldn't time out */
-    sbuf2settimeout(clnt.sb, 0, 0);
-
     int notimeout = disable_server_sql_timeouts();
     sbuf2settimeout(
         sb, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAX_SQL_IDLE_TIME) * 1000,
         notimeout ? 0 : gbl_sqlwrtimeoutms);
+
     sbuf2flush(sb);
     net_set_writefn(sb, fsql_writer);
 
@@ -8195,7 +8194,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
         assert(query->sqlquery);
         sql_query = query->sqlquery;
         clnt.sql_query = sql_query;
-        clnt.sql = sql_query->sql_query;
+        clnt.sql = skipws(sql_query->sql_query);
         clnt.query = query;
         clnt.added_to_hist = 0;
 

@@ -70,7 +70,7 @@ static struct option long_options[] = {
     {NULL, 0, NULL, 0}};
 
 static const char *help_text = {
-    "usage: comdb2 [--lrl LRLFILE] [--recovertotime EPOCH]\n"
+    "Usage: comdb2 [--lrl LRLFILE] [--recovertotime EPOCH]\n"
     "              [--recovertolsn FILE:OFFSET]\n"
     "              [--fullrecovery] NAME\n"
     "\n"
@@ -98,7 +98,7 @@ struct read_lrl_option_type {
 
 void print_usage_and_exit()
 {
-    logmsg(LOGMSG_ERROR, "%s\n", help_text);
+    logmsg(LOGMSG_WARN, "%s\n", help_text);
     exit(1);
 }
 

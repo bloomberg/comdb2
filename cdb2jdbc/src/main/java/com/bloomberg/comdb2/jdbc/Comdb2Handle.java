@@ -1337,7 +1337,7 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     @Override
-    public int runStatement(String sql, List<Integer> types) {
+    public synchronized int runStatement(String sql, List<Integer> types) {
         int rc, commit_rc;
 
         if (temp_trans && inTxn) {
@@ -1424,7 +1424,7 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     @Override
-    public int next() {
+    public synchronized int next() {
         if (inTxn && skipFeature && !isRead) {
             return Errors.CDB2_OK_DONE;
         }
@@ -1446,7 +1446,7 @@ public class Comdb2Handle extends AbstractConnection {
         return next_int();
     }
 
-    public int next_int() {
+    private int next_int() {
         boolean skip_to_open = false;
         boolean continue_retry = false;
         //boolean begin_retry = false;

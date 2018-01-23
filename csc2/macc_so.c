@@ -111,6 +111,11 @@ void set_constraint_mod(int start, int op, int type)
         constraints[nconstraints].flags |= CT_DEL_CASCADE;
 }
 
+void set_constraint_name(char *name)
+{
+    constraints[nconstraints].consname = name;
+}
+
 void end_constraint_list(void)
 {
     /*  fprintf(stderr, "constraint: end list\n");*/
@@ -121,9 +126,9 @@ void add_constraint(char *tbl, char *key)
 {
     int cidx = constraints[nconstraints].ncnstrts;
     if (cidx >= MAXCNSTRTS) {
-        csc2_error(
-            "ERROR: TOO MANY RULES SPECIFIED IN CONSTRAINT TBL: %s. MAX %d\n",
-            constraints[nconstraints].lclkey, MAXCNSTRTS);
+        csc2_error("ERROR: TOO MANY RULES SPECIFIED IN CONSTRAINT FOR KEY: %s. "
+                   "(MAX: %d)\n",
+                   constraints[nconstraints].lclkey, MAXCNSTRTS);
         any_errors++;
         return;
     }
@@ -3253,10 +3258,12 @@ int dyns_get_constraint_count(void)
     return nconstraints;
 }
 
-int dyns_get_constraint_at(int idx, char **keyname, int *rulecnt, int *flags)
+int dyns_get_constraint_at(int idx, char **consname, char **keyname,
+                           int *rulecnt, int *flags)
 {
     if (idx < 0 || idx >= nconstraints)
         return -1;
+    *consname = constraints[idx].consname;
     *keyname = constraints[idx].lclkey;
     *rulecnt = constraints[idx].ncnstrts;
     *flags = constraints[idx].flags;
