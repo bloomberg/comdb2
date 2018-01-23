@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2017, Bloomberg Finance L.P.
+   Copyright 2015, 2018, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -104,125 +104,6 @@ static size_t num_commands = 0;
 static void appsock_thd_start(struct thdpool *pool, void *thddata);
 static void appsock_thd_end(struct thdpool *pool, void *thddata);
 
-/* Builtin appsock handlers */
-static comdb2_appsock_t remcur_handler = {
-    "remcur",     /* Name */
-    "",           /* Usage info */
-    0,            /* Execution count */
-    0,            /* Flags */
-    handle_remcur /* Handler function */
-};
-
-static comdb2_appsock_t remsql_handler = {
-    "remsql",     /* Name */
-    "",           /* Usage info */
-    0,            /* Execution count */
-    0,            /* Flags */
-    handle_remsql /* Handler function */
-};
-
-static comdb2_appsock_t remtran_handler = {
-    "remtran",     /* Name */
-    "",            /* Usage info */
-    0,             /* Execution count */
-    0,             /* Flags */
-    handle_remtran /* Handler function */
-};
-
-static comdb2_appsock_t alias_handler = {
-    "alias",          /* Name */
-    "",               /* Usage info */
-    0,                /* Execution count */
-    0,                /* Flags */
-    fdb_alias_command /* Handler function */
-};
-
-static comdb2_appsock_t repopnewlrl_handler = {
-    "repopnewlrl",      /* Name */
-    "",                 /* Usage info */
-    0,                  /* Execution count */
-    0,                  /* Flags */
-    appsock_repopnewlrl /* Handler function */
-};
-
-static comdb2_appsock_t partition_handler = {
-    "partition",     /* Name */
-    "",              /* Usage info */
-    0,               /* Execution count */
-    0,               /* Flags */
-    handle_partition /* Handler function */
-};
-
-static int handle_version_request(comdb2_appsock_arg_t *arg);
-static comdb2_appsock_t version_handler = {
-    "version",             /* Name */
-    "",                    /* Usage info */
-    0,                     /* Execution count */
-    0,                     /* Flags */
-    handle_version_request /* Handler function */
-};
-
-static int handle_testcompr_request(comdb2_appsock_arg_t *arg);
-static comdb2_appsock_t testcompr_handler = {
-    "testcompr",             /* Name */
-    "",                      /* Usage info */
-    0,                       /* Execution count */
-    0,                       /* Flags */
-    handle_testcompr_request /* Handler function */
-};
-
-static int handle_explain_request(comdb2_appsock_arg_t *arg);
-static comdb2_appsock_t explain_handler = {
-    "explain",             /* Name */
-    "",                    /* Usage info */
-    0,                     /* Execution count */
-    0,                     /* Flags */
-    handle_explain_request /* Handler function */
-};
-
-static int handle_whomasterhost_request(comdb2_appsock_arg_t *arg);
-static comdb2_appsock_t whomasterhost_handler = {
-    "whomasterhost",             /* Name */
-    "",                          /* Usage info */
-    0,                           /* Execution count */
-    0,                           /* Flags */
-    handle_whomasterhost_request /* Handler function */
-};
-
-static int handle_genid48_request(comdb2_appsock_arg_t *arg);
-static comdb2_appsock_t genid48_handler = {
-    "genid48",             /* Name */
-    "",                    /* Usage info */
-    0,                     /* Execution count */
-    0,                     /* Flags */
-    handle_genid48_request /* Handler function */
-};
-
-static int handle_logdelete_request(comdb2_appsock_arg_t *arg);
-static comdb2_appsock_t logdelete_handler = {
-    "logdelete",             /* Name */
-    "",                      /* Usage info */
-    0,                       /* Execution count */
-    0,                       /* Flags */
-    handle_logdelete_request /* Handler function */
-};
-
-static comdb2_appsock_t logdelete2_handler = {
-    "logdelete2",            /* Name */
-    "",                      /* Usage info */
-    0,                       /* Execution count */
-    0,                       /* Flags */
-    handle_logdelete_request /* Handler function */
-};
-
-static comdb2_appsock_t logdelete3_handler = {
-    "logdelete3",            /* Name */
-    "",                      /* Usage info */
-    0,                       /* Execution count */
-    0,                       /* Flags */
-    handle_logdelete_request /* Handler function */
-};
-
 void close_appsock(SBUF2 *sb)
 {
     net_end_appsock(sb);
@@ -240,22 +121,6 @@ int appsock_init(void)
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                        offsetof(comdb2_appsock_t, name), 0);
     logmsg(LOGMSG_DEBUG, "appsock handler hash initialized\n");
-
-    /* Also register the builtin appsock handlers. */
-    hash_add(gbl_appsock_hash, &remcur_handler);
-    hash_add(gbl_appsock_hash, &remsql_handler);
-    hash_add(gbl_appsock_hash, &remtran_handler);
-    hash_add(gbl_appsock_hash, &alias_handler);
-    hash_add(gbl_appsock_hash, &repopnewlrl_handler);
-    hash_add(gbl_appsock_hash, &partition_handler);
-    hash_add(gbl_appsock_hash, &version_handler);
-    hash_add(gbl_appsock_hash, &testcompr_handler);
-    hash_add(gbl_appsock_hash, &explain_handler);
-    hash_add(gbl_appsock_hash, &whomasterhost_handler);
-    hash_add(gbl_appsock_hash, &genid48_handler);
-    hash_add(gbl_appsock_hash, &logdelete_handler);
-    hash_add(gbl_appsock_hash, &logdelete2_handler);
-    hash_add(gbl_appsock_hash, &logdelete3_handler);
 
     gbl_appsock_thdpool =
         thdpool_create("appsockpool", sizeof(struct appsock_thd_state));
@@ -327,6 +192,7 @@ void appsock_get_dbinfo2_stats(uint32_t *n_appsock, uint32_t *n_sql)
     *n_sql = exec_count;
 }
 
+#if 0
 static void dumprrns(struct dbtable *tbl, SBUF2 *sb)
 {
     char key[MAXKEYLEN];
@@ -364,7 +230,6 @@ struct loadrrn_cmd {
     int parm;
 };
 
-/* TODO: obsolete */
 enum { LOAD_ADD_RECORD, LOAD_GET_STATUS };
 static int loadrrns(struct dbtable *tbl, SBUF2 *sb, char *tag)
 {
@@ -479,8 +344,7 @@ static void *fstdump_hndlr(void *arg_)
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
     return NULL;
 }
-
-int gbl_allow_incoherent_sql = 0;
+#endif
 
 static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
                              struct thr_handle *thr_self)
@@ -557,275 +421,6 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
     thrman_where(thr_self, NULL);
 
     return 0;
-}
-
-static int handle_version_request(comdb2_appsock_arg_t *arg)
-{
-    struct sbuf2 *sb = arg->sb;
-    sbuf2printf(sb, "0 %s\n", plink_constant(PLINK_TIME));
-    sbuf2flush(sb);
-    return 0;
-}
-
-static int handle_testcompr_request(comdb2_appsock_arg_t *arg)
-{
-    struct sbuf2 *sb;
-    char *line;
-    char *tok;
-    char table[128];
-    int st;
-    int ltok;
-    int rc;
-    int len;
-
-    sb = arg->sb;
-    line = arg->cmdline;
-    len = strlen(line);
-    st = 0;
-
-    tok = segtok(line, len, &st, &ltok);
-    assert((strncmp(tok, "testcompr", ltok) == 0));
-
-    tok = segtok(line, len, &st, &ltok);
-    tokcpy0(tok, ltok, table, sizeof(table));
-
-    handle_testcompr(sb, table);
-
-    return APPSOCK_RETURN_OK;
-}
-
-void handle_explain(SBUF2 *sb, int trace, int all);
-
-static int handle_explain_request(comdb2_appsock_arg_t *arg)
-{
-    struct sbuf2 *sb;
-    char *line;
-    char *tok;
-    int st;
-    int ltok;
-    int len;
-    int trace = 0;
-    int all = 0;
-
-    sb = arg->sb;
-    line = arg->cmdline;
-    len = strlen(line);
-    st = 0;
-
-    tok = segtok(line, len, &st, &ltok);
-    assert((strncmp(tok, "explain", ltok) == 0));
-
-    while (tok = segtok(line, len, &st, &ltok)) {
-        if (ltok == 0) {
-            break;
-        } else if (tokcmp(tok, ltok, "-v") == 0) {
-            trace = 1;
-        } else if (tokcmp(tok, ltok, "-a") == 0) {
-            all = 1;
-        }
-    }
-    handle_explain(sb, trace, all);
-
-    return APPSOCK_RETURN_OK;
-}
-
-static int handle_whomasterhost_request(comdb2_appsock_arg_t *arg)
-{
-    struct sbuf2 *sb;
-    char host[50];
-    char *master;
-
-    master = arg->dbenv->master;
-    sb = arg->sb;
-
-    if (master == NULL) {
-        sbuf2printf(sb, "-1\n");
-    } else {
-        sbuf2printf(sb, "%s\n", master);
-    }
-    sbuf2flush(sb);
-
-    return APPSOCK_RETURN_CONT;
-}
-
-static int handle_genid48_request(comdb2_appsock_arg_t *arg)
-{
-    struct sbuf2 *sb;
-    char *line;
-    char *tok;
-    int st;
-    int ltok;
-    int len;
-
-    sb = arg->sb;
-    line = arg->cmdline;
-    len = strlen(line);
-    st = 0;
-
-    tok = segtok(line, len, &st, &ltok);
-    assert((strncmp(tok, "genid48", ltok) == 0));
-
-    tok = segtok(line, len, &st, &ltok);
-    if (ltok <= 0) {
-        sbuf2printf(sb, "?No command specified.\nFAILED\n");
-        sbuf2flush(sb);
-        return APPSOCK_RETURN_CONT;
-    }
-    if (thedb->master != gbl_mynode) {
-        sbuf2printf(sb, "?Must be run on the master\nFAILED\n");
-        sbuf2flush(sb);
-        return APPSOCK_RETURN_CONT;
-    }
-    if (ltok && !tokcmp(tok, ltok, "enable")) {
-        handle_genid48_enable(sb);
-        return APPSOCK_RETURN_CONT;
-    }
-    if (ltok && !tokcmp(tok, ltok, "disable")) {
-        handle_genid48_disable(sb);
-        return APPSOCK_RETURN_CONT;
-    }
-    sbuf2printf(sb, "?Invalid genid48 command.\nFAILED\n");
-    sbuf2flush(sb);
-
-    return APPSOCK_RETURN_CONT;
-}
-
-static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
-{
-    struct thr_handle *thr_self;
-    struct sbuf2 *sb;
-    struct log_delete_state log_delete_state;
-    char recovery_command[200] = {0};
-    char recovery_lsn[100] = {0};
-    char line[128] = {0};
-    int before_count;
-    int after_count;
-    int before_master;
-    int after_master;
-    int before_sc;
-    int after_sc;
-    int report_back = 0;
-    int rc;
-
-    thr_self = arg->thr_self;
-    sb = arg->sb;
-
-    /*
-      There is no difference between log delete one and two, just that
-      if the db doesn't have log delete two then the comdb2logdel.tsk
-      knows that this is an old binary that won't give feedback. Make
-      us a special log deletion holding thread so that we don't hold
-      up bounces/schema changes.
-    */
-    thrman_change_type(thr_self, THRTYPE_LOGDELHOLD);
-
-    /* Disable log file deletion until this socket gets read from again. */
-    log_delete_state.filenum = 0;
-    log_delete_add_state(thedb, &log_delete_state);
-    log_delete_counter_change(thedb, LOG_DEL_REFRESH);
-    backend_update_sync(thedb);
-    before_count = bdb_get_low_headroom_count(thedb->bdb_env);
-    before_master = gbl_master_changes;
-    before_sc = gbl_sc_commit_count;
-    logmsg(LOGMSG_INFO, "Disabling log file deletion\n");
-
-    /* respond so that comdb2logdel.tsk knows it got through. */
-    sbuf2printf(sb, "log file deletion disabled\n");
-    sbuf2flush(sb);
-
-    if (strncmp(logdelete3_handler.name, arg->cmdline,
-                strlen(logdelete3_handler.name)) == 0) {
-        rc = bdb_recovery_start_lsn(thedb->bdb_env, recovery_lsn,
-                                    sizeof(recovery_lsn));
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "bdb_recovery_start_lsn rc %d\n", rc);
-            snprintf(recovery_command, sizeof(recovery_command),
-                     "-fullrecovery");
-        } else {
-            snprintf(recovery_command, sizeof(recovery_command),
-                     "-recovery_lsn %s", recovery_lsn);
-        }
-    }
-
-    /* read from socket until it closes */
-    sbuf2settimeout(sb, 0, 0);
-    while (sbuf2gets(line, sizeof(line), sb) > 0) {
-        static const char *delims = " \r\t\n";
-        char *lasts;
-        char *tok;
-        tok = strtok_r(line, delims, &lasts);
-        if (!tok) {
-            continue;
-        } else if (strcmp(tok, "report_back") == 0) {
-            report_back = 1;
-            break;
-        } else if (strcmp(tok, "filenum") == 0) {
-            int filenum;
-            tok = strtok_r(NULL, delims, &lasts);
-            errno = 0;
-            if (tok && (filenum = strtol(tok, &lasts, 0)) > 0 && errno == 0 &&
-                lasts && *lasts == '\0') {
-                log_delete_state.filenum = filenum;
-                log_delete_counter_change(thedb, LOG_DEL_REFRESH);
-                backend_update_sync(thedb);
-            } else {
-                logmsg(LOGMSG_ERROR, "logdelete2 thread got bad filenum <%s>\n",
-                       tok);
-                sbuf2printf(sb, "expected +ve filenum\n");
-                sbuf2flush(sb);
-                continue;
-            }
-        } else if (strcmp(tok, "recovery_options") == 0) {
-            logmsg(LOGMSG_DEBUG, "sent recovery options: %s\n",
-                   recovery_command);
-            sbuf2printf(sb, "%s\n", recovery_command);
-            sbuf2flush(sb);
-        } else {
-            logmsg(LOGMSG_ERROR, "logdelete2 thread got unknown token <%s>\n",
-                   tok);
-            /* la la la la fingers in my ears */
-        }
-    }
-
-    logmsg(LOGMSG_INFO, "Reenabling log file deletion\n");
-    log_delete_rem_state(thedb, &log_delete_state);
-    log_delete_counter_change(thedb, LOG_DEL_REFRESH);
-    backend_update_sync(thedb);
-    after_count = bdb_get_low_headroom_count(thedb->bdb_env);
-    after_master = gbl_master_changes;
-    after_sc = gbl_sc_commit_count;
-
-    /* The text we report back here is a binary protocol so don't
-     * go changing the wording without checking the logic in
-     * comdb2logdel.tsk. */
-    if (report_back) {
-        /* If we deleted log files during that due to log file deletion
-         * then report so */
-        /*
-           if(after_count != before_count) {
-           sbuf2printf(sb, "Alert: log files deleted due to low disk
-           headroom\n");
-           }
-         */
-        /* (this test is not reliable) */
-
-        /* If the master node changed during that then report that too
-         */
-        if (before_master != after_master) {
-            sbuf2printf(sb, "Alert: master changed during operation\n");
-        }
-
-        /* If we committed a schema change then that's ruined it too...
-         */
-        if (before_sc != after_sc) {
-            sbuf2printf(sb,
-                        "Alert: schema changes committed during operation\n");
-        }
-
-        sbuf2printf(sb, ".\n");
-        sbuf2flush(sb);
-    }
-    return APPSOCK_RETURN_OK;
 }
 
 static void appsock_thd_start(struct thdpool *pool, void *thddata)
@@ -971,34 +566,6 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb)
     }
 }
 
-static int set_genid48(int enable)
-{
-    scdone_t llog;
-    int rc, bdberr, format;
-    if (enable) {
-        llog = genid48_enable;
-        format = LLMETA_GENID_48BIT;
-    } else {
-        llog = genid48_disable;
-        format = LLMETA_GENID_ORIGINAL;
-    }
-
-    if ((rc = bdb_set_genid_format(format, &bdberr)) != 0) {
-        logmsg(LOGMSG_FATAL, "Error setting genid format, rc=%d, bdberr=%d\n",
-               rc, bdberr);
-        abort();
-    }
-
-    if ((rc = bdb_llog_genid_format(thedb->bdb_env, llog, &bdberr)) != 0) {
-        logmsg(LOGMSG_FATAL,
-               "Error writing genid format log, rc=%d, bdberr=%d\n", rc,
-               bdberr);
-        abort();
-    }
-
-    return 0;
-}
-
 int set_rowlocks(void *trans, int enable)
 {
     int rc, bdberr, rlstate;
@@ -1022,50 +589,4 @@ int set_rowlocks(void *trans, int enable)
     }
 
     return 0;
-}
-
-void handle_genid48_enable(SBUF2 *sb)
-{
-    int format = bdb_genid_format(thedb->bdb_env), rc;
-
-    if (format == LLMETA_GENID_48BIT) {
-        sbuf2printf(sb, "?Genid48 is already enabled.\nFAILED\n");
-        sbuf2flush(sb);
-        return;
-    }
-
-    rc = set_genid48(LLMETA_GENID_48BIT);
-    if (rc == 0)
-        sbuf2printf(sb, "SUCCESS\n");
-    else
-        sbuf2printf(sb, "FAILED\n");
-
-    sbuf2flush(sb);
-}
-
-void handle_genid48_disable(SBUF2 *sb)
-{
-    int format = bdb_genid_format(thedb->bdb_env), rc;
-
-    if (format == LLMETA_GENID_ORIGINAL) {
-        sbuf2printf(sb, "?Genid48 is already disabled.\nFAILED\n");
-        sbuf2flush(sb);
-        return;
-    }
-
-    /* Allow if now is greater than maximum genid */
-    if (!bdb_genid_allow_original_format(thedb->bdb_env)) {
-        sbuf2printf(
-            sb, "?Genid48 genid-time is larger than current-time.\nFAILED\n");
-        sbuf2flush(sb);
-        return;
-    }
-
-    rc = set_genid48(LLMETA_GENID_ORIGINAL);
-    if (rc == 0)
-        sbuf2printf(sb, "SUCCESS\n");
-    else
-        sbuf2printf(sb, "FAILED\n");
-
-    sbuf2flush(sb);
 }

@@ -51,5 +51,7 @@
 #define MAXGENCONSLEN 25
 /* Maximum allowed constraint name length */
 #define MAXCONSLEN 64
+#define MAXQUERYLEN 262144
+#define MAXCUR 100
 
 #endif
