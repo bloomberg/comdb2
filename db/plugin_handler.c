@@ -30,13 +30,10 @@
 #include "comdb2_opcode.h"
 #include "comdb2_machine_info.h"
 #include "rtcpu.h"
-#include "all_plugins.h"
+#include "all_static_plugins.h"
 
 /* All registered plugins */
 comdb2_plugin_t **gbl_plugins;
-
-/* Total number of plugins installed. */
-int gbl_plugin_count;
 
 /* If specified, the plugins will be loaded from this directory. */
 static char *plugindir;
@@ -129,10 +126,6 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
 
     gbl_plugins[i] = new_plugin;
 
-    /* Increment the count only if an warlier plugin was not replaced. */
-    if (!plugin)
-        ++gbl_plugin_count;
-
     logmsg(LOGMSG_INFO, "Plugin '%s' installed.", new_plugin->name);
 
     return 0;
@@ -207,11 +200,13 @@ static int install_all_plugins(const char *file_name)
     return 0;
 }
 
-int install_builtin_plugins(void)
+/* Install all static plugins. */
+int install_static_plugins(void)
 {
     comdb2_plugin_t *plugin;
-    for (int i = 0; i < sizeof(all_plugins) / sizeof(comdb2_plugin_t *); ++i) {
-        plugin = all_plugins[i];
+    for (int i = 0; i < sizeof(all_static_plugins) / sizeof(comdb2_plugin_t *);
+         ++i) {
+        plugin = all_static_plugins[i];
         while (plugin->name) {
             plugin->flags |= COMDB2_PLUGIN_STATIC;
             if (install_plugin_int(plugin)) {
@@ -225,6 +220,17 @@ int install_builtin_plugins(void)
     return 0;
 }
 
+/*
+  Parse the "plugin" line in the lrl file and load the
+  specified plugin(s) from given shared object files.
+  Only one shared object file per "plugin" line is allowed.
+
+  The plugin line can take the following format:
+      plugin shared-object-file-path[:plugin-name,...]
+
+  In case no plugin-name is specified, all the plugins
+  from the specified shared object files will be loaded.
+*/
 static int plugin_update(void *context, void *value)
 {
     char *ptr, *saveptr;

@@ -40,7 +40,6 @@
 
 extern struct dbenv *thedb; /* handles 1 db for now */
 extern int gbl_use_appsock_as_sqlthread;
-extern comdb2_plugin_t *gbl_plugins;
 
 struct appsock_thd_state {
     struct thr_handle *thr_self;

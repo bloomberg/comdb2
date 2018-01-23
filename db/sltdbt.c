@@ -243,8 +243,6 @@ retry:
     return rc;
 }
 
-extern comdb2_plugin_t *gbl_plugins;
-
 /* Builtin opcode handlers */
 static comdb2_opcode_t block_op_handler = {OP_BLOCK, "blockop",
                                            handle_op_block};

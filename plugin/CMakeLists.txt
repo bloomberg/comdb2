@@ -26,14 +26,14 @@ foreach(file ${files})
   endif()
 endforeach()
 
-# Generate the all_plugins.h header file. It contains the necessary
+# Generate the all_static plugins.h header file. It contains the necessary
 # code to list & install all the statically linked plugins.
-set(PLUGIN_INCLUDE_FILE "${PROJECT_BINARY_DIR}/plugin/all_plugins.h")
+set(PLUGIN_INCLUDE_FILE "${PROJECT_BINARY_DIR}/plugin/all_static_plugins.h")
 
 file(WRITE ${PLUGIN_INCLUDE_FILE}
   "/* WARNING: auto-generated file, do not edit. */\n"
-  "#ifndef _INCLUDED_ALL_PLUGINS_H\n"
-  "#define _INCLUDED_ALL_PLUGINS_H\n")
+  "#ifndef _INCLUDED_ALL_STATIC_PLUGINS_H\n"
+  "#define _INCLUDED_ALL_STATIC_PLUGINS_H\n")
 
 foreach(PLUGIN ${PLUGINS})
   file(APPEND ${PLUGIN_INCLUDE_FILE}
@@ -41,7 +41,7 @@ foreach(PLUGIN ${PLUGINS})
 endforeach(PLUGIN)
 
 file(APPEND ${PLUGIN_INCLUDE_FILE}
-  "struct comdb2_plugin *all_plugins[] = {\n")
+  "struct comdb2_plugin *all_static_plugins[] = {\n")
 
 foreach(PLUGIN ${PLUGINS})
   file(APPEND ${PLUGIN_INCLUDE_FILE}
