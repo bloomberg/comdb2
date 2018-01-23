@@ -154,7 +154,7 @@ static char *ibm_getargv0(void)
     int rc;
 
     if (1 == (rc = getprocs(&p, sizeof(p), NULL, 0, &idx, 1)) &&
-            _PID == p.pi_pid) {
+        _PID == p.pi_pid) {
         strncpy(argv0, p.pi_comm, PATH_MAX);
         argv0[PATH_MAX - 1] = '\0';
     } else {
