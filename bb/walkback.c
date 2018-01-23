@@ -883,7 +883,7 @@ int comdb2_cheapstack_char_array(char *str, int maxln)
     void *stack[MAXFRAMES];
     unsigned int nframes;
     char *p;
-    int i, ccount, first=1;
+    int i, ccount, first = 1;
 
     if (maxln <= 0 || stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
         return -1;

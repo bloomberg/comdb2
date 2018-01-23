@@ -154,7 +154,7 @@ static char *ibm_getargv0(void)
     int rc;
 
     if (1 == (rc = getprocs(&p, sizeof(p), NULL, 0, &idx, 1)) &&
-            _PID == p.pi_pid) {
+        _PID == p.pi_pid) {
         strncpy(argv0, p.pi_comm, PATH_MAX);
         argv0[PATH_MAX - 1] = '\0';
     } else {
@@ -1076,7 +1076,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
         read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF,
                           comdb2db_hosts, num_hosts, comdb2db_num, dbname,
                           db_hosts, num_db_hosts, dbnum, &dbname_found,
-                          &comdb2db_found, hndl?(&hndl->send_stack):NULL);
+                          &comdb2db_found, hndl ? (&hndl->send_stack) : NULL);
         fallback_on_bb_bin = 0;
     }
 
@@ -1085,7 +1085,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
         read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
                           num_db_hosts, dbnum, &dbname_found, &comdb2db_found,
-                          hndl?(&hndl->send_stack):NULL);
+                          hndl ? (&hndl->send_stack) : NULL);
         fclose(fp);
         fallback_on_bb_bin = 0;
     }
@@ -1101,7 +1101,8 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
             read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                               num_hosts, comdb2db_num, dbname, db_hosts,
                               num_db_hosts, dbnum, &dbname_found,
-                              &comdb2db_found, hndl?(&hndl->send_stack):NULL);
+                              &comdb2db_found,
+                              hndl ? (&hndl->send_stack) : NULL);
             fclose(fp);
         }
     }
@@ -1111,7 +1112,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
         read_comdb2db_cfg(hndl, fp, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
                           num_db_hosts, dbnum, &dbname_found, &comdb2db_found,
-                          hndl?(&hndl->send_stack):NULL);
+                          hndl ? (&hndl->send_stack) : NULL);
         fclose(fp);
     }
 
@@ -3007,8 +3008,8 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
 
             if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %d type=%d returning 1\n", (uint32_t) pthread_self(), 
-                        host, __LINE__, type);
+                fprintf(stderr, "td %u %s line %d type=%d returning 1\n",
+                        (uint32_t)pthread_self(), host, __LINE__, type);
             }
 
 #if WITH_SSL

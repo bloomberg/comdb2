@@ -494,7 +494,7 @@ static inline int verify_sqlresponse_error_code(int error_code,
         logmsg(LOGMSG_ERROR, "%s line %d returning non-standard "
                              "sqlresponse.error_code %d\n",
                func, line, error_code);
-        //cheap_stack_trace();
+        // cheap_stack_trace();
         break;
     }
     return error_code;
@@ -3472,9 +3472,9 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd,
         char *stack = clnt->sql_query->client_info->stack;
         char *argv0 = clnt->sql_query->client_info->argv0;
         thrman_wheref(thd->thr_self, "%s pid: %d host_id: %d argv0: %s "
-                      "open-stack: %s sql: %s", info_nvreplays, 
-                      clnt->sql_query->client_info->pid, 
-                      clnt->sql_query->client_info->host_id, 
+                                     "open-stack: %s sql: %s",
+                      info_nvreplays, clnt->sql_query->client_info->pid,
+                      clnt->sql_query->client_info->host_id,
                       argv0 ? argv0 : "(unset)", stack ? stack : "(no-stack)",
                       clnt->sql);
     } else {
