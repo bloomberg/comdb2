@@ -87,7 +87,7 @@ struct appsock_thd_state {
 
 struct thdpool *gbl_appsock_thdpool = NULL;
 char appsock_unknown_old[] = "-1 #unknown command\n";
-char appsock_unknown[] = "Error: -1 #unknown command";
+char appsock_unknown[] = "Error: -1 #unknown command\n";
 char appsock_supported[] = "supported\n";
 int active_appsock_conns = 0;
 
@@ -494,6 +494,8 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
     int rc, ltok, st;
     char *tok;
 
+    *keepsocket = 0; /* Safety */
+
     sbuf2settimeout(sb, IOTIMEOUTMS, IOTIMEOUTMS);
 
     tab = thedb->dbs[0];
@@ -509,9 +511,8 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
 
         st = 0;
 
-#ifdef DEBUGQUERY
-        printf("thd_apsock_int(): '%s'\n", line);
-#endif
+        printf(">>>> thd_apsock_int(): '%s'\n", line);
+
         tok = segtok(line, rc, &st, &ltok);
         if (ltok == 0)
             continue;
@@ -529,12 +530,10 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
             sbuf2printf(sb, appsock_unknown);
             sbuf2flush(sb);
             num_bad_toks++;
-            return 0;
+            continue;
         }
 
         total_toks++;
-
-        *keepsocket = (appsock->flags & APPSOCK_FLAG_CACHE_CONN) ? 1 : 0;
 
         /* Prepare the argument to be passed to the handler. */
         arg.thr_self = thr_self;
@@ -542,6 +541,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
         arg.tab = tab;
         arg.sb = sb;
         arg.cmdline = line;
+        arg.keepsocket = keepsocket;
 
         thrman_where(thr_self, appsock->name);
 
@@ -549,8 +549,9 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
         ATOMIC_ADD(appsock->exec_count, 1);
 
         /* Invoke the handler. */
-        appsock->appsock_handler(&arg);
-        break;
+        rc = appsock->appsock_handler(&arg);
+        if (rc != APPSOCK_RETURN_CONT)
+            break;
     }
 
     thrman_where(thr_self, NULL);
@@ -590,7 +591,7 @@ static int handle_testcompr_request(comdb2_appsock_arg_t *arg)
 
     handle_testcompr(sb, table);
 
-    return 0;
+    return APPSOCK_RETURN_OK;
 }
 
 void handle_explain(SBUF2 *sb, int trace, int all);
@@ -625,7 +626,7 @@ static int handle_explain_request(comdb2_appsock_arg_t *arg)
     }
     handle_explain(sb, trace, all);
 
-    return 0;
+    return APPSOCK_RETURN_OK;
 }
 
 static int handle_whomasterhost_request(comdb2_appsock_arg_t *arg)
@@ -639,13 +640,12 @@ static int handle_whomasterhost_request(comdb2_appsock_arg_t *arg)
 
     if (master == NULL) {
         sbuf2printf(sb, "-1\n");
-        sbuf2flush(sb);
     } else {
         sbuf2printf(sb, "%s\n", master);
-        sbuf2flush(sb);
     }
+    sbuf2flush(sb);
 
-    return 0;
+    return APPSOCK_RETURN_CONT;
 }
 
 static int handle_genid48_request(comdb2_appsock_arg_t *arg)
@@ -669,25 +669,25 @@ static int handle_genid48_request(comdb2_appsock_arg_t *arg)
     if (ltok <= 0) {
         sbuf2printf(sb, "?No command specified.\nFAILED\n");
         sbuf2flush(sb);
-        return 1;
+        return APPSOCK_RETURN_CONT;
     }
     if (thedb->master != gbl_mynode) {
         sbuf2printf(sb, "?Must be run on the master\nFAILED\n");
         sbuf2flush(sb);
-        return 1;
+        return APPSOCK_RETURN_CONT;
     }
     if (ltok && !tokcmp(tok, ltok, "enable")) {
         handle_genid48_enable(sb);
-        return 0;
+        return APPSOCK_RETURN_CONT;
     }
     if (ltok && !tokcmp(tok, ltok, "disable")) {
         handle_genid48_disable(sb);
-        return 0;
+        return APPSOCK_RETURN_CONT;
     }
     sbuf2printf(sb, "?Invalid genid48 command.\nFAILED\n");
     sbuf2flush(sb);
 
-    return 0;
+    return APPSOCK_RETURN_CONT;
 }
 
 static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
@@ -825,7 +825,7 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
         sbuf2printf(sb, ".\n");
         sbuf2flush(sb);
     }
-    return 0;
+    return APPSOCK_RETURN_OK;
 }
 
 static void appsock_thd_start(struct thdpool *pool, void *thddata)

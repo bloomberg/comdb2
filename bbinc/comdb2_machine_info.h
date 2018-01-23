@@ -14,8 +14,8 @@
    limitations under the License.
 */
 
-#ifndef __INCLUDED_MACH_CLASS_PLUGIN_H
-#define __INCLUDED_MACH_CLASS_PLUGIN_H
+#ifndef __INCLUDED_MACHINE_INFO_H
+#define __INCLUDED_MACHINE_INFO_H
 
 struct comdb2_machine_info {
     int (*machine_is_up)(const char *host);
@@ -24,4 +24,4 @@ struct comdb2_machine_info {
     int (*machine_dc)(const char *host);
 };
 typedef struct comdb2_machine_info comdb2_machine_info_t;
-#endif /* !__INCLUDED_MACH_CLASS_PLUGIN_H */
+#endif /* !__INCLUDED_MACHINE_INFO_H */

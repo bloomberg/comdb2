@@ -14,14 +14,19 @@
    limitations under the License.
 */
 
-#ifndef __INCLUDED_COMDB2_PLUGIN_APPSOCK_H
-#define __INCLUDED_COMDB2_PLUGIN_APPSOCK_H
+#ifndef __INCLUDED_COMDB2_APPSOCK_H
+#define __INCLUDED_COMDB2_APPSOCK_H
 
 enum {
-    /* Cache the connection */
-    APPSOCK_FLAG_CACHE_CONN = 1 << 1,
     /* Whether it's an SQL handler? */
-    APPSOCK_FLAG_IS_SQL = 1 << 2,
+    APPSOCK_FLAG_IS_SQL = 1 << 0,
+};
+
+/* Return codes */
+enum {
+    APPSOCK_RETURN_OK = 0,
+    APPSOCK_RETURN_ERR = 1,
+    APPSOCK_RETURN_CONT = 2,
 };
 
 struct comdb2_appsock_arg {
@@ -30,6 +35,8 @@ struct comdb2_appsock_arg {
     struct dbtable *tab; /* Changed on the execution of 'use' */
     SBUF2 *sb;
     char *cmdline;
+    int *keepsocket;
+    int error; /* internal error code */
 };
 typedef struct comdb2_appsock_arg comdb2_appsock_arg_t;
 
@@ -47,4 +54,4 @@ struct comdb2_appsock {
 };
 typedef struct comdb2_appsock comdb2_appsock_t;
 
-#endif /* ! __INCLUDED_COMDB2_PLUGIN_APPSOCK_H */
+#endif /* ! __INCLUDED_COMDB2_APPSOCK_H */

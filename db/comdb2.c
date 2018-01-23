@@ -2687,21 +2687,24 @@ int appsock_repopnewlrl(comdb2_appsock_arg_t *arg)
     if (((rc = sbuf2gets(lrl_fname_out, sizeof(lrl_fname_out), sb)) <= 0) ||
         (lrl_fname_out[rc - 1] != '\n')) {
         logmsg(LOGMSG_ERROR, "%s: I/O error reading out lrl fname\n", __func__);
-        return -1;
+        arg->error = -1;
+        return APPSOCK_RETURN_ERR;
     }
     lrl_fname_out[rc - 1] = '\0';
 
     if (repopulate_lrl(lrl_fname_out)) {
         logmsg(LOGMSG_ERROR, "%s: repopulate_lrl failed\n", __func__);
-        return -1;
+        arg->error = -1;
+        return APPSOCK_RETURN_ERR;
     }
 
     if (sbuf2printf(sb, "OK\n") < 0 || sbuf2flush(sb) < 0) {
         logmsg(LOGMSG_ERROR, "%s: failed to send done ack text\n", __func__);
-        return -1;
+        arg->error = -1;
+        return APPSOCK_RETURN_ERR;
     }
 
-    return 0;
+    return APPSOCK_RETURN_OK;
 }
 
 static int llmeta_open(void)
