@@ -522,16 +522,6 @@ static int handle_alias_request(comdb2_appsock_arg_t *arg)
     return (rc) ? APPSOCK_RETURN_ERR : APPSOCK_RETURN_OK;
 }
 
-static int remsql_init(void *unused)
-{
-    return 0;
-}
-
-static int remsql_destroy(void)
-{
-    return 0;
-}
-
 comdb2_appsock_t remcur_plugin = {
     "remcur",             /* Name */
     "",                   /* Usage info */

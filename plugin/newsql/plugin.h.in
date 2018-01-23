@@ -6,8 +6,8 @@ struct comdb2_plugin @PLUGIN_SYM@[] = {
         1,                     /* Plugin version */
         1,                     /* Plugin interface version */
         0,                     /* Plugin flags */
-        newsql_init,           /* Initialization function */
-        newsql_destroy,        /* Destroy function */
+        NULL,                  /* Initialization function */
+        NULL,                  /* Destroy function */
         &newsql_plugin         /* Plugin-specific data */
     },
     {0, 0, 0, 0, 0, 0, 0, 0, 0}};
