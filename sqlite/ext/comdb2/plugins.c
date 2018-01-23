@@ -31,7 +31,6 @@
 #include "comdb2_plugin.h"
 
 extern comdb2_plugin_t **gbl_plugins;
-extern int gbl_plugin_count;
 
 typedef struct {
     sqlite3_vtab_cursor base; /* Base class - must be first */
@@ -115,7 +114,7 @@ static int systblPluginsNext(sqlite3_vtab_cursor *cur)
 static int systblPluginsEof(sqlite3_vtab_cursor *cur)
 {
     systbl_plugins_cursor *pCur = (systbl_plugins_cursor *)cur;
-    return (pCur->rowid >= gbl_plugin_count) ? 1 : 0;
+    return (gbl_plugins[pCur->rowid]) ? 0 : 1;
 }
 
 static int systblPluginsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,

@@ -791,7 +791,7 @@ int register_db_tunables(struct dbenv *tbl);
 int init_plugins(void);
 int destroy_plugins(void);
 void register_plugin_tunables(void);
-int install_builtin_plugins(void);
+int install_static_plugins(void);
 
 int getkeyrecnums(const struct dbtable *tbl, int ixnum)
 {
@@ -3159,8 +3159,8 @@ static int init(int argc, char **argv)
         return -1;
     }
 
-    /* Install builtin/static plugins. */
-    if ((install_builtin_plugins())) {
+    /* Install all static plugins. */
+    if ((install_static_plugins())) {
         logmsg(LOGMSG_FATAL, "Failed to install builtin plugins");
         exit(1);
     }
