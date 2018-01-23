@@ -571,6 +571,8 @@ pthread_mutex_t verifylk = PTHREAD_MUTEX_INITIALIZER;
 int berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
     int check_checkpoint);
 
+#include <limits.h>
+
 int
 berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
 {
