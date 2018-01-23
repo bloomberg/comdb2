@@ -326,8 +326,7 @@ done:
 
 int fdb_msg_size(void) { return sizeof(fdb_msg_t); }
 
-int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg,
-                         enum recv_flags flags);
+int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags);
 
 int fdb_recv_row(fdb_msg_t *msg, char *cid, SBUF2 *sb)
 {
@@ -620,8 +619,7 @@ static void fdb_msg_prepare_message(fdb_msg_t *msg)
 }
 
 /* stuff comes in network endian fomat */
-int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg,
-                         enum recv_flags flags)
+int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
 {
     int rc;
     unsigned long long lltmp;
