@@ -1,5 +1,5 @@
 /*
-   Copyright 2017 Bloomberg Finance L.P.
+   Copyright 2017, 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -283,6 +283,18 @@ int init_plugins(void)
 /* Destroy all plugins. */
 int destroy_plugins(void)
 {
+    /*
+      Initialize the plugin and add it to the global list of installed plugins.
+    */
+    for (int i = 0; gbl_plugins[i]; ++i) {
+        if (gbl_plugins[i]->destroy_cb && gbl_plugins[i]->destroy_cb()) {
+            logmsg(LOGMSG_ERROR, "Plugin de-initialization failed (%s).",
+                   gbl_plugins[i]->name);
+            return 1;
+        }
+    }
+
+    free(gbl_plugins);
     return 0;
 }
 

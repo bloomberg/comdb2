@@ -1398,7 +1398,9 @@ void clean_exit(void)
     free_tzdir();
     tz_hash_free();
     destroy_plugins();
+    destroy_appsock();
     bdb_cleanup_private_blkseq(thedb->bdb_env);
+
     if (gbl_create_mode) {
         logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
     }

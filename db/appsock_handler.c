@@ -101,6 +101,13 @@ int appsock_init(void)
     return 0;
 }
 
+int destroy_appsock(void)
+{
+    /* Free the appsock handler hash. */
+    hash_free(gbl_appsock_hash);
+    return 0;
+}
+
 void appsock_quick_stat(void)
 {
     logmsg(LOGMSG_USER, "num appsock connections %llu\n", total_appsock_conns);
