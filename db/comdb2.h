@@ -1833,8 +1833,10 @@ int osqlpfthdpool_init(void);
 int init_opcode_handlers();
 void toblock_init(void);
 
-/* comdb2 modules */
+/* deinit routines */
+int destroy_appsock(void);
 
+/* comdb2 modules */
 int process_command(struct dbenv *dbenv, char *line, int lline,
                     int st); /*handle message trap */
 int process_sync_command(struct dbenv *dbenv, char *line, int lline,
