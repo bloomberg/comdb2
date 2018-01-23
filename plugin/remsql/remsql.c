@@ -340,7 +340,7 @@ static int handle_remtran_request(comdb2_appsock_arg_t *arg)
             (msg.hd.type & FD_MSG_TYPE) ==
                 FDB_MSG_TRAN_RC /* this should be actuall the only case,
                   since we reuse the buffer to send back results */
-        ) {
+            ) {
             if ((msg.hd.type & FD_MSG_TYPE) == FDB_MSG_TRAN_COMMIT ||
                 (msg.hd.type & FD_MSG_TYPE) == FDB_MSG_TRAN_ROLLBACK)
                 abort();
