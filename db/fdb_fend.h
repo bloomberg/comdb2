@@ -283,7 +283,6 @@ int fdb_trans_commit(struct sqlclntstate *clnt);
 int fdb_trans_rollback(struct sqlclntstate *clnt, fdb_tran_t *trans);
 char *fdb_trans_id(fdb_tran_t *trans);
 
-int fdb_alias_command(comdb2_appsock_arg_t *arg);
 char *fdb_get_alias(const char **p_tablename);
 void fdb_stat_alias(void);
 

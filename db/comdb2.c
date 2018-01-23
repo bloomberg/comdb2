@@ -747,6 +747,8 @@ int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
 int gbl_stable_rootpages_test = 0;
 
+int gbl_allow_incoherent_sql = 0;
+
 /* Bulk import */
 int gbl_enable_bulk_import; /* allow this db to bulk import */
 int gbl_enable_bulk_import_different_tables;
@@ -2580,7 +2582,7 @@ static int dump_queuedbs(char *dir)
     return 0;
 }
 
-static int repopulate_lrl(const char *p_lrl_fname_out)
+int repopulate_lrl(const char *p_lrl_fname_out)
 {
     /* can't put this on stack, it will overflow appsock thread */
     struct {
@@ -2676,38 +2678,7 @@ static int repopulate_lrl(const char *p_lrl_fname_out)
     return 0;
 }
 
-int appsock_repopnewlrl(comdb2_appsock_arg_t *arg)
-{
-    struct sbuf2 *sb;
-    char lrl_fname_out[256];
-    int rc;
-
-    sb = arg->sb;
-
-    if (((rc = sbuf2gets(lrl_fname_out, sizeof(lrl_fname_out), sb)) <= 0) ||
-        (lrl_fname_out[rc - 1] != '\n')) {
-        logmsg(LOGMSG_ERROR, "%s: I/O error reading out lrl fname\n", __func__);
-        arg->error = -1;
-        return APPSOCK_RETURN_ERR;
-    }
-    lrl_fname_out[rc - 1] = '\0';
-
-    if (repopulate_lrl(lrl_fname_out)) {
-        logmsg(LOGMSG_ERROR, "%s: repopulate_lrl failed\n", __func__);
-        arg->error = -1;
-        return APPSOCK_RETURN_ERR;
-    }
-
-    if (sbuf2printf(sb, "OK\n") < 0 || sbuf2flush(sb) < 0) {
-        logmsg(LOGMSG_ERROR, "%s: failed to send done ack text\n", __func__);
-        arg->error = -1;
-        return APPSOCK_RETURN_ERR;
-    }
-
-    return APPSOCK_RETURN_OK;
-}
-
-static int llmeta_open(void)
+int llmeta_open(void)
 {
     /* now that we have bdb_env open, we can get at llmeta */
     char llmetaname[256];
