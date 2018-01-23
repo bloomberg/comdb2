@@ -6,8 +6,8 @@ struct comdb2_plugin @PLUGIN_SYM@[] = {
        1,                     /* Plugin version */
        1,                     /* Plugin interface version */
        0,                     /* Plugin flags */
-       logdelete_init,        /* Initialization function */
-       logdelete_destroy,     /* Destroy function */
+       NULL,                  /* Initialization function */
+       NULL,                  /* Destroy function */
        &logdelete_plugin      /* Plugin-specific data */
    },
    {
@@ -17,8 +17,8 @@ struct comdb2_plugin @PLUGIN_SYM@[] = {
        2,                     /* Plugin version */
        1,                     /* Plugin interface version */
        0,                     /* Plugin flags */
-       logdelete_init,        /* Initialization function */
-       logdelete_destroy,     /* Destroy function */
+       NULL,                  /* Initialization function */
+       NULL,                  /* Destroy function */
        &logdelete2_plugin     /* Plugin-specific data */
    },
    {
@@ -28,8 +28,8 @@ struct comdb2_plugin @PLUGIN_SYM@[] = {
        3,                     /* Plugin version */
        1,                     /* Plugin interface version */
        0,                     /* Plugin flags */
-       logdelete_init,        /* Initialization function */
-       logdelete_destroy,     /* Destroy function */
+       NULL,                  /* Initialization function */
+       NULL,                  /* Destroy function */
        &logdelete3_plugin     /* Plugin-specific data */
    },
    {0, 0, 0, 0, 0, 0, 0, 0, 0}};

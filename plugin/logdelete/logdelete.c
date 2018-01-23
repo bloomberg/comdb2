@@ -159,16 +159,6 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     return APPSOCK_RETURN_OK;
 }
 
-static int logdelete_init(void *unused)
-{
-    return 0;
-}
-
-static int logdelete_destroy(void)
-{
-    return 0;
-}
-
 comdb2_appsock_t logdelete_plugin = {
     "logdelete",             /* Name */
     "",                      /* Usage info */

@@ -48,16 +48,6 @@ int handle_failed_dispatch(struct sqlclntstate *clnt, char *errstr);
 int sbuf_is_local(SBUF2 *sb);
 int fsql_writer(SBUF2 *sb, const char *buf, int nbytes);
 
-static int newsql_init(void *unused)
-{
-    return 0;
-}
-
-static int newsql_destroy(void)
-{
-    return 0;
-}
-
 /* skip spaces and tabs if present. */
 static char *cdb2_skipws(char *str)
 {
