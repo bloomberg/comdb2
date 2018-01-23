@@ -43,6 +43,64 @@ void test_is_sql_read()
     assert(is_sql_read(" anything else ") == 0);
 }
 
+void test_do_init_once()
+{
+    assert(log_calls == 0);
+    assert(strcmp(CDB2DBCONFIG_NOBBENV, "/opt/bb/etc/cdb2/config/comdb2db.cfg") == 0);
+    setenv("CDB2_LOG_CALLS", "1", 1);
+    setenv("CDB2_CONFIG_FILE", "abracadabra01234567891234567890123456789012345678912345678901234567890123456789123456789012345678901234567891234567890123456789012345678912345678901234567890123456789123456789012345678901234567891234567890123456789012345678912345678901234567890123456789123456789012345678901234567891234567890123456789012345678912345678901234567890123456789123456789012345678901234567891234567890123456789012345678912345678901234567890123456789123456789012345678901234567891234567890123456789012345678912345678901234567890123456789123456789012345678901234567891234567890123456789", 1);
+    do_init_once();
+    assert(log_calls == 1);
+    assert(strcmp(CDB2DBCONFIG_NOBBENV, "abracadabra01234567891234567890123456789012345678912345678901234567890123456789123456789012345678901234567891234567890123456789012345678912345678901234567890123456789123456789012345678901234567891234567890123456789012345678912345678901234567890123456789123456789012345678901234567891234567890123456789012345678912345678901234567890123456789123456789012345678901234567891234567890123456789012345678912345678901234567890123456789123456789012345678901234567891234567890123456789012345678912345678901234567890123456") == 0);
+    assert( _PID == getpid() );
+    assert( _MACHINE_ID == gethostid() );
+}
+
+
+void test_cdb2_set_min_retries()
+{
+    cdb2_set_min_retries(20);
+    assert(MIN_RETRIES == 20);
+
+    cdb2_set_min_retries(-30);
+    assert(MIN_RETRIES == 20);
+}
+
+void test_cdb2_set_max_retries()
+{
+    cdb2_set_max_retries(20);
+    assert(MAX_RETRIES == 20);
+
+    cdb2_set_max_retries(-30);
+    assert(MAX_RETRIES == 20);
+}
+
+void test_cdb2_hndl_set_min_retries()
+{
+    cdb2_hndl_tp hndl;
+    cdb2_hndl_set_min_retries(&hndl, 20);
+    assert(hndl.min_retries == 20);
+
+    cdb2_hndl_set_min_retries(&hndl, -30);
+    assert(hndl.min_retries == 20);
+}
+
+void test_cdb2_hndl_set_max_retries()
+{
+    cdb2_hndl_tp hndl;
+    cdb2_hndl_set_max_retries(&hndl, 20);
+    assert(hndl.max_retries == 20);
+
+    cdb2_hndl_set_max_retries(&hndl, -30);
+    assert(hndl.max_retries == 20);
+}
+
+void test_cdb2_set_comdb2db_config()
+{
+    cdb2_set_comdb2db_config("anotherconfigfile");
+    assert(strcmp(CDB2DBCONFIG_NOBBENV, "anotherconfigfile") == 0);
+}
+
 int main(int argc, char *argv[])
 {
     int rc = 0;
@@ -50,6 +108,15 @@ int main(int argc, char *argv[])
     assert(1 == 1);
 
     test_is_sql_read();
+    test_do_init_once();
+
+    test_cdb2_set_min_retries();
+    test_cdb2_set_max_retries();
+
+    test_cdb2_hndl_set_min_retries();
+    test_cdb2_hndl_set_max_retries();
+
+    test_cdb2_set_comdb2db_config();
 
     printf("finished succesfully\n");
     return rc;
