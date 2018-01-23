@@ -2716,7 +2716,6 @@ static inline void init_stmt_caching(struct sqlthdstate *thd)
  */
 int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
 {
-    printf("AZ: requeue_stmt_entry sql=%s\n", entry->sql);
     if (hash_find(thd->stmt_table, entry->sql) != NULL)
         return -1; // already there, dont add again
 
@@ -2826,7 +2825,6 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
         entry->query = strdup(actual_sql);
     else
         entry->query = NULL;
-    printf("AZ: add_stmt_table sql=%s\n", entry->sql);
 
     return requeue_stmt_entry(thd, entry);
 }
@@ -2848,7 +2846,6 @@ static inline int find_stmt_table(struct sqlthdstate *thd, const char *sql,
         return -1;
 
     remove_stmt_entry(thd, *entry); // will add again when done
-    printf("AZ: find_stmt_table sql=%s\n", (*entry)->sql);
 
     return 0;
 }

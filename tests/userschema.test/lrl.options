@@ -1,4 +1,3 @@
 table   dummy   dummy.csc2
 
-#enable_sql_stmt_caching none
 allow_user_schema

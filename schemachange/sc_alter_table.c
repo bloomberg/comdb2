@@ -729,18 +729,12 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
 
     sc_printf(s, "Schema change ok\n");
 
-    printf("AZ: Closing old db\n");
     rc = bdb_close_only(old_bdb_handle, &bdberr);
     if (rc) {
         sc_errf(s, "Failed closing old db, bdberr\n", bdberr);
         goto failed;
     } 
     sc_printf(s, "Close old db ok\n");
-    printf("AZ: Close old db ok\n");
-
-    int delay = BDB_ATTR_GET(thedb->bdb_attr, SC_DELAY_AFTER_BDB_CLOSE);
-    if (delay > 0) 
-        usleep(delay);
 
     bdb_handle_reset_tran(new_bdb_handle, transac);
 
