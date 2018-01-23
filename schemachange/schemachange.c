@@ -1224,7 +1224,8 @@ int handle_partition(comdb2_appsock_arg_t *arg)
 
     if ((rc = sbuf2gets(line, sizeof(line), sb)) < 0) {
         logmsg(LOGMSG_ERROR, "%s -- sbuf2gets rc: %d\n", __func__, rc);
-        return 1;
+        arg->error = 1;
+        return APPSOCK_RETURN_ERR;
     }
     viewname = strdup(line);
     if (viewname[strlen(viewname) - 1] == '\n') {
@@ -1259,7 +1260,8 @@ int handle_partition(comdb2_appsock_arg_t *arg)
                        alloc);
                 sbuf2printf(sb, "!out of memory reading schema\n");
                 sbuf2printf(sb, "FAILED\n");
-                return 1;
+                arg->error = 1;
+                return APPSOCK_RETURN_ERR;
             }
         }
         memcpy(cmd + used, line, len);
@@ -1279,7 +1281,7 @@ int handle_partition(comdb2_appsock_arg_t *arg)
 
     sbuf2flush(sb);
 
-    return 0;
+    return APPSOCK_RETURN_OK;
 }
 
 /* shortcut for running table upgrade in a schemachange shell */

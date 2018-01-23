@@ -14,8 +14,8 @@
    limitations under the License.
 */
 
-#ifndef __INCLUDED_COMDB2_PLUGIN_OPCODE_H
-#define __INCLUDED_COMDB2_PLUGIN_OPCODE_H
+#ifndef __INCLUDED_COMDB2_OPCODE_H
+#define __INCLUDED_COMDB2_OPCODE_H
 
 struct comdb2_opcode {
     /* Used to lookup the opcode handler */
@@ -27,4 +27,4 @@ struct comdb2_opcode {
 };
 typedef struct comdb2_opcode comdb2_opcode_t;
 
-#endif /* ! __INCLUDED_COMDB2_PLUGIN_OPCODE_H */
+#endif /* ! __INCLUDED_COMDB2_OPCODE_H */

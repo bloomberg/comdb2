@@ -682,6 +682,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     sb = arg->sb;
     cmdline = arg->cmdline;
 
+    if (arg->keepsocket)
+        *arg->keepsocket = 1;
+
     if (tab->dbtype != DBTYPE_TAGGED_TABLE) {
         /*
           Don't change this message. The sql api recognises the first four
@@ -691,16 +694,16 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         logmsg(LOGMSG_ERROR,
                "Error: newsql is only supported for tagged DBs\n");
         sbuf2flush(sb);
-        return 0;
+        return APPSOCK_RETURN_ERR;
     }
 
     if (!bdb_am_i_coherent(dbenv->bdb_env) && !gbl_allow_incoherent_sql) {
-        return 0;
+        return APPSOCK_RETURN_OK;
     }
 
     /* There are points when we can't accept any more connections. */
     if (dbenv->no_more_sql_connections) {
-        return 0;
+        return APPSOCK_RETURN_OK;
     }
 
     /*
@@ -709,7 +712,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
       incoherent data.
     */
     if (dbenv->rep_sync == REP_SYNC_NONE && dbenv->master != gbl_mynode) {
-        return 0;
+        return APPSOCK_RETURN_OK;
     }
 
     /*
@@ -973,15 +976,15 @@ done:
     pthread_mutex_destroy(&clnt.write_lock);
     pthread_mutex_destroy(&clnt.dtran_mtx);
 
-    return 0;
+    return APPSOCK_RETURN_OK;
 }
 
 comdb2_appsock_t newsql_plugin = {
-    "newsql",                                      /* Name */
-    "",                                            /* Usage info */
-    0,                                             /* Execution count */
-    APPSOCK_FLAG_CACHE_CONN | APPSOCK_FLAG_IS_SQL, /* Flags */
-    handle_newsql_request                          /* Handler function */
+    "newsql",             /* Name */
+    "",                   /* Usage info */
+    0,                    /* Execution count */
+    APPSOCK_FLAG_IS_SQL,  /* Flags */
+    handle_newsql_request /* Handler function */
 };
 
 #include "plugin.h"

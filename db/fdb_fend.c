@@ -3995,7 +3995,7 @@ int fdb_alias_command(comdb2_appsock_arg_t *arg)
         sbuf2printf(sb, "!master swinged, now on %s, please rerun\n",
                     thedb->master);
         sbuf2printf(sb, "FAILED\n");
-        return 1;
+        return APPSOCK_RETURN_CONT;
     }
 
     tok = segtok(line, llen, &st, &ltok);
@@ -4015,12 +4015,15 @@ int fdb_alias_command(comdb2_appsock_arg_t *arg)
         if (url)
             free(url);
 
-        return FDB_ERR_GENERIC;
+        arg->error = FDB_ERR_GENERIC;
+        return APPSOCK_RETURN_ERR;
     }
 
     op = tokdup(tok, ltok);
     if (!op) {
-        return FDB_ERR_MALLOC;
+
+        arg->error = FDB_ERR_MALLOC;
+        return APPSOCK_RETURN_ERR;
     }
 
     tok = segtok(line, llen, &st, &ltok);
@@ -4036,7 +4039,8 @@ int fdb_alias_command(comdb2_appsock_arg_t *arg)
                  aliasname);
         sbuf2printf(sb, "!%s\n", msg);
         sbuf2printf(sb, "FAILED\n");
-        return FDB_ERR_GENERIC;
+        arg->error = FDB_ERR_GENERIC;
+        return APPSOCK_RETURN_ERR;
     }
 
     if (strncasecmp(op, "set", 3) == 0) {
@@ -4077,7 +4081,8 @@ int fdb_alias_command(comdb2_appsock_arg_t *arg)
         sbuf2printf(sb, "SUCCESS\n");
     }
 
-    return rc;
+    arg->error = rc;
+    return (rc) ? APPSOCK_RETURN_ERR : APPSOCK_RETURN_OK;
 }
 
 char *fdb_get_alias(const char **p_tablename)
