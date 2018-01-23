@@ -2,7 +2,7 @@ include(${CMAKE_MODULE_PATH}/plugin.cmake)
 
 set(PLUGIN "remsql")
 
-INCLUDE_DIRECTORIES(
+include_directories(
   ${PROJECT_SOURCE_DIR}/bb
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/bdb
@@ -27,7 +27,7 @@ INCLUDE_DIRECTORIES(
   ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-file(GLOB SOURCES *.c)
+set(SOURCES remsql.c)
 
 add_plugin(${PLUGIN} "STATIC" "${SOURCES}")
 

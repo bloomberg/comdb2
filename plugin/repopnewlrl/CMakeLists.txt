@@ -26,7 +26,6 @@ include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-file(GLOB SOURCES *.c)
+set(SOURCES repopnewlrl.c)
 
 add_plugin(${PLUGIN} "STATIC" "${SOURCES}")
-
