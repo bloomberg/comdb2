@@ -27,6 +27,7 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #include "dbinc/txn.h"
 #include "printformats.h"
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 
 static int __dbreg_check_master __P((DB_ENV *, u_int8_t *, char *));
 
@@ -65,7 +66,7 @@ __dbreg_add_dbentry(dbenv, dblp, dbp, ndx)
 		for (i = dblp->dbentry_cnt; i < ndx + DB_GROW_SIZE; i++) {
 			dblp->dbentry[i].dbp = NULL;
 			dblp->dbentry[i].deleted = 0;
-			atomic_init(&dblp->dbentry[i].pfcnt, 0);
+			dblp->dbentry[i].pfcnt = 0;
 		}
 		dblp->dbentry_cnt = i;
 	}
@@ -96,7 +97,7 @@ __dbreg_rem_dbentry(dblp, ndx)
 	if (dblp->dbentry_cnt > ndx) {
 		dblp->dbentry[ndx].dbp = NULL;
 
-		while (atomic_read(&dblp->dbentry[ndx].pfcnt) > 0) {
+		while (dblp->dbentry[ndx].pfcnt > 0) {
 			poll(NULL, 0, 10);
 
 			if (0 == ++count % 100) {
@@ -546,7 +547,7 @@ __dbreg_id_to_db_int_int(dbenv, txn, dbpp, ndx, inc, tryopen, lsnp,
 
 	/* Increment the prefault refcount for this */
 	if (prefault_refcount) {
-		atomic_inc(dbenv, &dblp->dbentry[ndx].pfcnt);
+		ATOMIC_ADD(dblp->dbentry[ndx].pfcnt, 1);
 	}
 
 err:	MUTEX_THREAD_UNLOCK(dbenv, dblp->mutexp);
@@ -564,9 +565,9 @@ __dbreg_prefault_complete(dbenv, ndx)
 	dblp = dbenv->lg_handle;
 
 	DB_ASSERT(ndx < dblp->dbentry_cnt);
-	DB_ASSERT(atomic_read(&dblp->dbentry[ndx].pfcnt) > 0);
+	DB_ASSERT(dblp->dbentry[ndx].pfcnt > 0);
 
-	atomic_dec(dbenv, &dblp->dbentry[ndx].pfcnt);
+	ATOMIC_ADD(dblp->dbentry[ndx].pfcnt, -1);
 }
 
 // PUBLIC: int __dbreg_id_to_db_prefault __P((DB_ENV *, DB_TXN *, DB **, int32_t, int));

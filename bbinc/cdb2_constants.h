@@ -47,5 +47,7 @@
 #define MAXGENKEYLEN 25
 /* Maximum buffer length for generated constraint name. */
 #define MAXGENCONSLEN 25
+/* Maximum allowed constraint name length */
+#define MAXCONSLEN 64
 
 #endif

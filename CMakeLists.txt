@@ -73,6 +73,14 @@ if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)
   add_definitions(-D_LINUX_SOURCE)
 endif()
 
+if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l)
+  # This is mostly misused as little-endian
+  add_definitions(-D_LINUX_SOURCE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64")
+endif()
+
+
 if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
   add_definitions(-D_GNU_SOURCE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread")

@@ -233,6 +233,14 @@ for node in $cluster ; do
     res=`cdb2sql --tabs $dbnm @$node:port=$port "select comdb2_dbname()"`
     assertres $res $dbnm
 
+    # this should also work
+    res=`cdb2sql --tabs $dbnm @$node "select comdb2_dbname()"`
+    assertres $res $dbnm
+
+    # as should this
+    res=`cdb2sql --tabs $dbnm --host $node:$port "select comdb2_dbname()"`
+    assertres $res $dbnm
+
     echo "connect with wrong db name"
     set +e
     cdb2sql --tabs badname @$node:port=$port "select comdb2_dbname()" &> out.txt

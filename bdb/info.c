@@ -530,7 +530,7 @@ static void cache_stats(FILE *out, bdb_state_type *bdb_state, int extra)
     prn_stat(st_page_trickle);
     prn_stat(st_pages);
     prn_stat(st_page_clean);
-    logmsgf(LOGMSG_USER, out, "st_page_dirty: %d\n", atomic_read(&stats->st_page_dirty));
+    logmsgf(LOGMSG_USER, out, "st_page_dirty: %d\n", stats->st_page_dirty);
     prn_stat(st_hash_buckets);
     prn_stat(st_hash_searches);
     prn_stat(st_hash_longest);

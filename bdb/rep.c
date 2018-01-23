@@ -1731,7 +1731,10 @@ char coherency_master[128] = {0};
 /* Don't let anything commit on the master until after this */
 static uint64_t coherency_commit_timestamp = 0;
 
-time_t next_commit_timestamp(void) { return coherency_commit_timestamp; }
+uint64_t next_commit_timestamp(void)
+{
+    return coherency_commit_timestamp;
+}
 
 /* Make sure that nothing commits before the timestamp set here.
  * This is called when a node changes to from STATE_COHERENT to

@@ -128,7 +128,6 @@ validstruct:	recstruct
 constraintstruct: T_CONSTRAINTS comment '{' cnstrtdef '}' { end_constraint_list(); }
                 ;
 
-
 ctmodifiers:    T_CON_ON T_CON_UPDATE T_CASCADE ctmodifiers           { set_constraint_mod(0,0,1); }
                 | T_CON_ON T_CON_UPDATE T_RESTRICT ctmodifiers        { set_constraint_mod(0,0,0); }
                 | T_CON_ON T_CON_DELETE T_CASCADE ctmodifiers         { set_constraint_mod(0,1,1); }
@@ -136,23 +135,32 @@ ctmodifiers:    T_CON_ON T_CON_UPDATE T_CASCADE ctmodifiers           { set_cons
                 | /* %empty */
                 ;
 
+cnstrtstart:    string '-' T_GT { end_constraint_list(); start_constraint_list($1); }
+                | varname '-' T_GT { end_constraint_list(); start_constraint_list($1); }
+                ;
 
-cnstrtstart:      string '-' T_GT { end_constraint_list(); start_constraint_list($1); }
-		| varname '-' T_GT { end_constraint_list(); start_constraint_list($1); }
-		;
+/* Named constraint (introduced in r7) */
+cnstrtnamedstart: string '=' string '-' T_GT {
+                      end_constraint_list();
+                      start_constraint_list($3);
+                      set_constraint_name($1);
+                  }
 
-cnstrtdef:        cnstrtdef cnstrtstart cnstrtbllist ctmodifiers { /*end_constraint_list(); */}
+/* Note: a named constraint does not allow a list of parent key references. */
+cnstrtdef:      cnstrtdef cnstrtstart cnstrtparentlist ctmodifiers { /*end_constraint_list(); */}
+                | cnstrtdef cnstrtnamedstart cnstrtparent ctmodifiers { /*end_constraint_list(); */}
                 | /* %empty */
                 ;
 
-
-cnstrtbllist:     cnstrtbllist T_LT string ':' string T_GT  {  add_constraint($3,$5); }
-		| T_LT string ':' string T_GT  {  add_constraint($2,$4); }
-		| string ':' string {  add_constraint($1,$3); }
-		| varname ':' varname {  add_constraint($1,$3); }
+cnstrtparentlist: cnstrtparentlist T_LT string ':' string T_GT  {  add_constraint($3,$5); }
+                | T_LT string ':' string T_GT  {  add_constraint($2,$4); }
+                | string ':' string {  add_constraint($1,$3); }
+                | varname ':' varname {  add_constraint($1,$3); }
                 ;
 
-               
+cnstrtparent:   T_LT string ':' string T_GT  {  add_constraint($2,$4); }
+                ;
+
 
 
 /* constantstruct: defines constants
