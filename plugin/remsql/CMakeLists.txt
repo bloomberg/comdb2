@@ -30,3 +30,6 @@ INCLUDE_DIRECTORIES(
 file(GLOB SOURCES *.c)
 
 add_plugin(${PLUGIN} "STATIC" "${SOURCES}")
+
+# Wait for parse.h
+add_dependencies(${PLUGIN} sqlite)
