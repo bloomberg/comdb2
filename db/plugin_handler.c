@@ -52,18 +52,12 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
     assert(new_plugin);
 
     for (i = 0; gbl_plugins[i]; ++i) {
-        if (strcmp(gbl_plugins[i]->name, new_plugin->name) == 0) {
-            /* Plugin already loaded, override it with a warning. */
-            logmsg(LOGMSG_WARN, "Plugin already installed (%s) overriding..",
-                   plugin->name);
-
-            plugin = gbl_plugins[i];
-
-            /* Destroy the already installed plugin and reuse the slot */
-            if (plugin->destroy_cb) {
-                plugin->destroy_cb();
-            }
-            break;
+        /* Do not allow similar plugins with same version. */
+        if ((strcmp(gbl_plugins[i]->name, new_plugin->name) == 0) &&
+            gbl_plugins[i]->version == new_plugin->version) {
+            logmsg(LOGMSG_ERROR, "Plugin %s:%d already installed overriding..",
+                   new_plugin->name, new_plugin->version);
+            return 1;
         }
     }
 
