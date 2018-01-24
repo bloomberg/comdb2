@@ -729,7 +729,7 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
                 (void *)pthread_self(), cfg_info);
 }
 
-static inline int get_char(FILE *fp, char *buf, int *chrno)
+static inline int get_char(FILE *fp, const char *buf, int *chrno)
 {
     int ch;
     if (fp) {
@@ -741,8 +741,8 @@ static inline int get_char(FILE *fp, char *buf, int *chrno)
     return ch;
 }
 
-static int read_line(char *line, int *len, int maxlen, FILE *fp, char *buf,
-                     int *chrno)
+static int read_line(char *line, int *len, int maxlen, FILE *fp, 
+                     const char *buf, int *chrno)
 {
     int ch = get_char(fp, buf, chrno);
     while (ch == ' ' || ch == '\n')
@@ -786,7 +786,7 @@ static ssl_mode ssl_string_to_mode(const char *s) {
 #endif
 
 static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
-                              char *buf, char comdb2db_hosts[][64],
+                              const char *buf, char comdb2db_hosts[][64],
                               int *num_hosts, int *comdb2db_num, char *dbname,
                               char db_hosts[][64], int *num_db_hosts,
                               int *dbnum, int *dbname_found,
@@ -4413,13 +4413,10 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
     hdr.compression = ntohl(hdr.compression);
     hdr.length = ntohl(hdr.length);
 
-    CDB2DBINFORESPONSE *dbinfo_response = NULL;
-    char *p = NULL;
-    p = malloc(hdr.length);
+    char *p = malloc(hdr.length);
     if (!p) {
         sprintf(hndl->errstr, "%s: out of memory", __func__);
         sbuf2close(sb);
-        free(p);
         return -1;
     }
 
@@ -4429,8 +4426,9 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
         free(p);
         return -1;
     }
-    dbinfo_response = cdb2__dbinforesponse__unpack(NULL, hdr.length,
-                                                   (const unsigned char *)p);
+    CDB2DBINFORESPONSE *dbinfo_response = 
+        cdb2__dbinforesponse__unpack(NULL, hdr.length,
+                                     (const unsigned char *)p);
 
     if (dbinfo_response == NULL) {
         sprintf(hndl->errstr, "%s: Got no dbinfo response from comdb2 database",

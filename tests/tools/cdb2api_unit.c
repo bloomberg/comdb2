@@ -101,6 +101,97 @@ void test_cdb2_set_comdb2db_config()
     assert(strcmp(CDB2DBCONFIG_NOBBENV, "anotherconfigfile") == 0);
 }
 
+
+void test_read_comdb2db_cfg()
+{
+    cdb2_hndl_tp hndl;
+    char comdb2db_hosts[10][64];
+    char db_hosts[10][64];
+    FILE *fp = NULL;
+    char *comdb2db_name = NULL;
+    int num_hosts = 0;
+    int comdb2db_num = 0;
+    char *dbname = "mydb";
+    int num_db_hosts = 0;
+    int dbnum = 0;
+    int dbname_found = 0;
+    int comdb2db_found = 0;
+
+    const char *buf = 
+"\
+   \
+   \
+";
+
+    read_comdb2db_cfg(&hndl, fp, comdb2db_name,
+                      buf, comdb2db_hosts,
+                      &num_hosts, &comdb2db_num, dbname,
+                      db_hosts, &num_db_hosts,
+                      &dbnum, &dbname_found,
+                      &comdb2db_found);
+
+    assert(num_hosts == 0);
+    assert(comdb2db_num == 0);
+    assert(num_db_hosts == 0);
+    assert(dbnum == 0);
+    assert(dbname_found == 0);
+    assert(comdb2db_found == 0);
+
+    const char *buf2 = 
+"\n\
+  comdb2dbnm:a,b,c:d:e   \n\
+  mydb:n1,n2,n3:n4:n5,n6 \n\
+  comdb2_config:default_type=testsuite   \n\
+  comdb2_config:portmuxport=12345         \n\
+  comdb2_config:allow_pmux_route:true       \
+";
+
+    read_comdb2db_cfg(&hndl, fp, "comdb2dbnm",
+                      buf2, comdb2db_hosts,
+                      &num_hosts, &comdb2db_num, dbname,
+                      db_hosts, &num_db_hosts,
+                      &dbnum, &dbname_found,
+                      &comdb2db_found);
+
+    assert(num_hosts == 5);
+    assert(comdb2db_found == 1);
+    assert(comdb2db_num == 0);
+    assert(strcmp(comdb2db_hosts[0], "a") == 0);
+    assert(strcmp(comdb2db_hosts[1], "b") == 0);
+    assert(strcmp(comdb2db_hosts[2], "c") == 0);
+    assert(strcmp(comdb2db_hosts[3], "d") == 0);
+    assert(strcmp(comdb2db_hosts[4], "e") == 0);
+
+    assert(num_db_hosts == 6);
+    assert(strcmp(db_hosts[0], "n1") == 0);
+    assert(strcmp(db_hosts[1], "n2") == 0);
+    assert(strcmp(db_hosts[2], "n3") == 0);
+    assert(strcmp(db_hosts[3], "n4") == 0);
+    assert(strcmp(db_hosts[4], "n5") == 0);
+    assert(strcmp(db_hosts[5], "n6") == 0);
+
+    //TODO: this is not set: assert(strcmp(hndl.cluster, "testsuite") == 0);
+
+    assert(dbnum == 0);
+    assert(dbname_found == 1);
+}
+
+
+void test_get_config_file()
+{
+
+    char shortname[16];
+    int rc = get_config_file("mydb", shortname, sizeof(shortname));
+    assert(rc == -1); //does not fit
+
+    setenv("COMDB2_ROOT", "myroot", 1);
+    char filename[PATH_MAX];
+    rc = get_config_file("mydb", filename, sizeof(filename));
+    assert(rc == 0);
+    ///opt/bb/etc/cdb2/config.d/mydb.cfg
+    assert(strcmp(filename, "myroot/etc/cdb2/config.d/mydb.cfg") == 0);
+}
+
 int main(int argc, char *argv[])
 {
     int rc = 0;
@@ -117,6 +208,9 @@ int main(int argc, char *argv[])
     test_cdb2_hndl_set_max_retries();
 
     test_cdb2_set_comdb2db_config();
+
+    test_read_comdb2db_cfg();
+    test_get_config_file();
 
     printf("finished succesfully\n");
     return rc;
