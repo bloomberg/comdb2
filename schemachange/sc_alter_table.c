@@ -742,7 +742,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
     if (rc) {
         sc_errf(s, "Failed closing old db, bdberr\n", bdberr);
         goto failed;
-    } 
+    }
     sc_printf(s, "Close old db ok\n");
 
     bdb_handle_reset_tran(new_bdb_handle, transac);

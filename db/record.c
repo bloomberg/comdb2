@@ -2162,10 +2162,10 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
                 use_new_tag ? ".NEW..ONDISK" : ".ONDISK", (char *)new_dta,
                 nd_len, keytag, key, NULL, blobs, blobs ? MAXBLOBS : 0, NULL);
         if (rc) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                    "upd_new_record_add2indices: %s newgenid 0x%llx "
                    "conversions -> ix%d failed (use_new_tag %d) rc=%d\n",
-                   (iq->idxInsert ? "create_key_from_ireq" 
+                   (iq->idxInsert ? "create_key_from_ireq"
                                   : "create_key_from_ondisk_blobs"),
                    newgenid, ixnum, use_new_tag, rc);
             break;

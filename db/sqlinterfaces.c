@@ -2677,22 +2677,22 @@ static int finalize_stmt_hash(void *stmt_entry, void *args)
     return 0;
 }
 
-static void delete_stmt_table(hash_t *stmt_table)
+static void delete_stmt_caching_table(hash_t *stmt_caching_table)
 {
-    assert(stmt_table);
+    assert(stmt_caching_table);
     /* parse through hash table and finalize all the statements */
-    hash_for(stmt_table, finalize_stmt_hash, NULL);
-    hash_clear(stmt_table);
-    hash_free(stmt_table);
+    hash_for(stmt_caching_table, finalize_stmt_hash, NULL);
+    hash_clear(stmt_caching_table);
+    hash_free(stmt_caching_table);
 }
 
-static inline void init_stmt_caching(struct sqlthdstate *thd)
+static inline void init_stmt_caching_table(struct sqlthdstate *thd)
 {
-    thd->stmt_table = hash_init_user(
+    thd->stmt_caching_table = hash_init_user(
         (hashfunc_t *)strhashfunc_stmt, (cmpfunc_t *)strcmpfunc_stmt,
         offsetof(stmt_hash_entry_type, sql), MAX_HASH_SQL_LENGTH);
 
-    assert(thd->stmt_table && "hash_init_user: can not init");
+    assert(thd->stmt_caching_table && "hash_init_user: can not init");
     listc_init(&thd->param_stmt_list,
                offsetof(struct stmt_hash_entry, stmtlist_linkv));
     listc_init(&thd->noparam_stmt_list,
@@ -2706,15 +2706,15 @@ static inline void init_stmt_caching(struct sqlthdstate *thd)
  */
 int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
 {
-    if (hash_find(thd->stmt_table, entry->sql) != NULL)
+    if (hash_find(thd->stmt_caching_table, entry->sql) != NULL)
         return -1; // already there, dont add again
 
-    int ret = hash_add(thd->stmt_table, entry);
+    int ret = hash_add(thd->stmt_caching_table, entry);
     if (ret != 0)
         return ret;
 
     sqlite3_reset(entry->stmt); // reset vdbe when adding to hash tbl
-    assert(hash_find(thd->stmt_table, entry->sql) == entry);
+    assert(hash_find(thd->stmt_caching_table, entry->sql) == entry);
 
     void *list = NULL;
     if (entry->params_to_bind) {
@@ -2751,13 +2751,13 @@ static void delete_last_stmt_entry(struct sqlthdstate *thd,
     }
 
     stmt_hash_entry_type *entry = listc_rbl(list);
-    int rc = hash_del(thd->stmt_table, entry);
+    int rc = hash_del(thd->stmt_caching_table, entry);
     assert(rc == 0);
     cleanup_stmt_entry(entry);
 }
 
 /*
- * Remove from queue and stmt_table this entry so that
+ * Remove from queue and stmt_caching_table this entry so that
  * subsequent finds of the same sql will not find it but
  * rather create a new stmt (to avoid having stmt vdbe
  * used by two sql at the same time).
@@ -2774,7 +2774,7 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
         list = &thd->noparam_stmt_list;
     }
     listc_rfl(list, entry);
-    int rc = hash_del(thd->stmt_table, entry->sql);
+    int rc = hash_del(thd->stmt_caching_table, entry->sql);
     assert(rc == 0);
 }
 
@@ -2789,10 +2789,10 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
         return -1;
     }
 
-    assert(thd->stmt_table);
+    assert(thd->stmt_caching_table);
     /* stored procedure can call same stmt a lua thread more than once
      * so we should not add stmt that exists already */
-    if (hash_find(thd->stmt_table, sql) != NULL) {
+    if (hash_find(thd->stmt_caching_table, sql) != NULL) {
         return -1;
     }
 
@@ -2823,14 +2823,14 @@ static inline int find_stmt_table(struct sqlthdstate *thd, const char *sql,
                                   stmt_hash_entry_type **entry)
 {
     assert(thd);
-    hash_t *stmt_table = thd->stmt_table;
-    if (stmt_table == NULL)
+    hash_t *stmt_caching_table = thd->stmt_caching_table;
+    if (stmt_caching_table == NULL)
         return -1;
 
     if (strlen(sql) >= MAX_HASH_SQL_LENGTH)
         return -1;
 
-    *entry = hash_find(stmt_table, sql);
+    *entry = hash_find(stmt_caching_table, sql);
 
     if (*entry == NULL)
         return -1;
@@ -3247,9 +3247,9 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
 static inline void delete_prepared_stmts(struct sqlthdstate *thd)
 {
-    if (thd->stmt_table) {
-        delete_stmt_table(thd->stmt_table);
-        init_stmt_caching(thd);
+    if (thd->stmt_caching_table) {
+        delete_stmt_caching_table(thd->stmt_caching_table);
+        init_stmt_caching_table(thd);
     }
 }
 
@@ -5814,8 +5814,8 @@ check_version:
             thd->sqldb = NULL;
         }
     }
-    if (gbl_enable_sql_stmt_caching && (thd->stmt_table == NULL)) {
-        init_stmt_caching(thd);
+    if (gbl_enable_sql_stmt_caching && (thd->stmt_caching_table == NULL)) {
+        init_stmt_caching_table(thd);
     }
     if (!thd->sqldb || (rc == SQLITE_SCHEMA_REMOTE)) {
         /* need to refresh things; we need to grab views lock */
@@ -6366,7 +6366,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
     thd->cinfo = NULL;
     thd->offsets = NULL;
     thd->sqldb = NULL;
-    thd->stmt_table = NULL;
+    thd->stmt_caching_table = NULL;
 
     start_sql_thread();
 
@@ -6398,8 +6398,8 @@ void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
         }
     }
 
-    if (thd->stmt_table)
-        delete_stmt_table(thd->stmt_table);
+    if (thd->stmt_caching_table)
+        delete_stmt_caching_table(thd->stmt_caching_table);
     if (thd->sqldb)
         sqlite3_close(thd->sqldb);
     if (thd->buf)
@@ -8414,7 +8414,7 @@ int handle_fastsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
     thd.thr_self = thr_self;
     thd.sqldb = NULL;
     // thd.stmt = NULL;
-    thd.stmt_table = NULL;
+    thd.stmt_caching_table = NULL;
 
     /* appsock threads aren't sql threads so for appsock pool threads
      * thd.sqlthd will be NULL */

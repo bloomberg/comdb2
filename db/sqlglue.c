@@ -11817,7 +11817,8 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
 
         break;
     default:
-        logmsg(LOGMSG_ERROR, "get_data_from_ondisk: unhandled type %d\n", f->type);
+        logmsg(LOGMSG_ERROR, "get_data_from_ondisk: unhandled type %d\n",
+               f->type);
         break;
     }
 
