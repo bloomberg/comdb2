@@ -844,7 +844,6 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
                               char db_hosts[][64], int *num_db_hosts,
                               int *dbnum, int just_defaults)
 {
-    FILE *fp = NULL;
     char filename[PATH_MAX];
     int comdb2db_found = 0;
     int dbname_found = 0;
@@ -872,7 +871,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
         fallback_on_bb_bin = 0;
     }
 
-    fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
+    FILE *fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
     if (fp != NULL) {
         read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
