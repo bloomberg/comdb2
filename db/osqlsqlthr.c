@@ -1661,8 +1661,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
-    if (gbl_uses_password &&
-        (thd->sqlclntstate->no_transaction == 0)) {
+    if (gbl_uses_password && thd->sqlclntstate->no_transaction == 0) {
         rc = bdb_check_user_tbl_access(
             pCur->db->dbenv->bdb_env, thd->sqlclntstate->user,
             pCur->db->tablename, ACCESS_READ, &bdberr);
