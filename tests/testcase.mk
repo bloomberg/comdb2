@@ -22,6 +22,7 @@ ifeq ($(TESTID),)
   export TESTID:=$(shell $(TESTSROOTDIR)/tools/get_random.sh)
 endif
 
+do_copy=
 ifeq ($(TESTDIR),)
   #if we don't have a testdir it means we are running from within a test dir
   #we should export some globals and copy executable
@@ -35,11 +36,18 @@ ifeq ($(TESTDIR),)
   export CDB2_SQLREPLAY_EXE:=$(SRCHOME)/cdb2_sqlreplay
   export PMUX_EXE:=$(SRCHOME)/pmux
   $(shell mkdir -p ${TESTDIR}/ )
+  do_copy=1
+endif
+
+ifeq ($(COMDB2_UNITTEST),1)
+  do_copy=
+endif
+
+ifeq ($(do_copy),1)
   $(shell cp $(SRCHOME)/comdb2ar $(COMDB2AR_EXE) )
   $(shell cp $(SRCHOME)/comdb2 $(COMDB2_EXE) )
   $(shell cp $(SRCHOME)/cdb2sql $(CDB2SQL_EXE) )
 endif
-
 
 export CURRDIR?=$(shell pwd)
 export TESTCASE=$(patsubst %.test,%,$(shell basename $(CURRDIR)))

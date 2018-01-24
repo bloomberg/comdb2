@@ -14,8 +14,6 @@
    limitations under the License.
  */
 
-#include <sbuf2.h>
-#include <limits.h>
 #include <unistd.h>
 #include <errno.h>
 #include <ctype.h>
@@ -31,6 +29,7 @@
 #include <limits.h>
 
 #include "cdb2api.h"
+#include "cdb2api_priv.h"
 
 #include "sqlquery.pb-c.h"
 #include "sqlresponse.pb-c.h"
@@ -71,7 +70,6 @@ static char cdb2_sslkey[PATH_MAX];
 static char cdb2_sslca[PATH_MAX];
 static int cdb2_cache_ssl_sess = 0;
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
-typedef struct cdb2_ssl_sess_list cdb2_ssl_sess_list;
 static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *sessions);
 static cdb2_ssl_sess_list *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl);
 static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
@@ -82,12 +80,6 @@ static int cdb2_allow_pmux_route = 0;
 
 static int _PID;
 static int _MACHINE_ID;
-
-#define DB_TZNAME_DEFAULT "America/New_York"
-
-#define MAX_NODES 128
-#define MAX_CONTEXTS 10 /* Maximum stack size for storing context messages */
-#define MAX_CONTEXT_LEN 100 /* Maximum allowed length of a context message */
 
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -561,12 +553,6 @@ static int cdb2_tcpconnecth_to(const char *host, int port, int myport,
     return cdb2_do_tcpconnect(in, port, myport, timeoutms);
 }
 
-struct context_messages {
-    char *message[MAX_CONTEXTS];
-    int count;
-    int has_changed;
-};
-
 /* Forward declarations. */
 static void cdb2_init_context_msgs(cdb2_hndl_tp *hndl);
 static int cdb2_free_context_msgs(cdb2_hndl_tp *hndl);
@@ -577,106 +563,6 @@ struct newsqlheader {
     int compression;
     int dummy;
     int length;
-};
-
-typedef struct cdb2_query_list_item {
-    void *buf;
-    int len;
-    int is_read;
-    char *sql;
-    struct cdb2_query_list_item *next;
-} cdb2_query_list;
-
-#if WITH_SSL
-typedef struct cdb2_ssl_sess {
-    char host[64];
-    SSL_SESSION *sess;
-} cdb2_ssl_sess;
-
-struct cdb2_ssl_sess_list {
-    cdb2_ssl_sess_list *next;
-    char dbname[64];
-    char cluster[64];
-    int ref;
-    int n;
-    /* We need to malloc the list separately as
-       the list may change due to SSL re-negotiation
-       or database migration. */
-    cdb2_ssl_sess *list;
-};
-static cdb2_ssl_sess_list cdb2_ssl_sess_cache;
-#endif
-
-#define MAX_CNONCE_LEN 100
-
-struct cdb2_hndl {
-    char dbname[64];
-    char cluster[64];
-    char type[64];
-    char hosts[MAX_NODES][64];
-    int ports[MAX_NODES];
-    int hosts_connected[MAX_NODES];
-    SBUF2 *sb;
-    int dbnum;
-    int num_hosts;
-    int num_hosts_sameroom;
-    int node_seq;
-    int in_trans;
-    int temp_trans;
-    int is_retry;
-    char newsql_typestr[128];
-    char policy[24];
-    int master;
-    int connected_host;
-    char *query;
-    char *query_hint;
-    char *hint;
-    int use_hint;
-    int flags;
-    char errstr[1024];
-    char cnonce[MAX_CNONCE_LEN];
-    int cnonce_len;
-    char *sql;
-    int ntypes;
-    int *types;
-    uint8_t *last_buf;
-    CDB2SQLRESPONSE *lastresponse;
-    uint8_t *first_buf;
-    CDB2SQLRESPONSE *firstresponse;
-    int error_in_trans;
-    int client_side_error;
-    int n_bindvars;
-    CDB2SQLQUERY__Bindvalue **bindvars;
-    cdb2_query_list *query_list;
-    int snapshot_file;
-    int snapshot_offset;
-    int query_no;
-    int retry_all;
-    int num_set_commands;
-    int num_set_commands_sent;
-    int is_read;
-    unsigned long long rows_read;
-    int skip_feature;
-    int first_record_read;
-    char **commands;
-    int ack;
-    int is_hasql;
-    int clear_snap_line;
-    int debug_trace;
-    int max_retries;
-    int min_retries;
-#if WITH_SSL
-    ssl_mode c_sslmode; /* client SSL mode */
-    peer_ssl_mode s_sslmode; /* server SSL mode */
-    int sslerr; /* 1 if unrecoverable SSL error. */
-    char *sslpath; /* SSL certificates */
-    char *cert;
-    char *key;
-    char *ca;
-    cdb2_ssl_sess_list *sess_list;
-#endif
-    struct context_messages context_msgs;
-    char *env_tz;
 };
 
 void cdb2_set_min_retries(int min_retries)

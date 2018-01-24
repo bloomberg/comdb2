@@ -184,11 +184,10 @@ void test_get_config_file()
     int rc = get_config_file("mydb", shortname, sizeof(shortname));
     assert(rc == -1); //does not fit
 
-    setenv("COMDB2_ROOT", "myroot", 1);
     char filename[PATH_MAX];
+    setenv("COMDB2_ROOT", "myroot", 1);
     rc = get_config_file("mydb", filename, sizeof(filename));
     assert(rc == 0);
-    ///opt/bb/etc/cdb2/config.d/mydb.cfg
     assert(strcmp(filename, "myroot/etc/cdb2/config.d/mydb.cfg") == 0);
 }
 

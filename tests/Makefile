@@ -33,7 +33,7 @@ export COPYCOMDB2_EXE:=$(SRCHOME)/db/copycomdb2
 export CDB2_SQLREPLAY_EXE:=$(SRCHOME)/cdb2_sqlreplay
 export PMUX_EXE:=$(SRCHOME)/pmux
 
-basicops_nokey: executables
+basicops_nokey: check_executables
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
 	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTID=${TESTID} " >> ${TESTDIR}/test.log)
@@ -45,7 +45,7 @@ basicops_nokey: executables
 	$(shell echo "" >> ${TESTDIR}/test.log)
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
 
-executables:
+check_executables:
 	@mkdir -p ${TESTDIR}
 	@cp ${SRCHOME}/comdb2 ${SRCHOME}/cdb2sql ${SRCHOME}/comdb2ar ${TESTDIR}/
 	@command -v ${COMDB2_EXE} > /dev/null || (echo "${COMDB2_EXE} missing "; exit 1)
