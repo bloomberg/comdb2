@@ -2810,15 +2810,17 @@ retry:
     return ixrc;
 }
 
-int dtas_next(struct ireq *iq, const unsigned long long *genid_vector,
+static int dtas_next_int(struct ireq *iq, const unsigned long long *genid_vector,
               unsigned long long *genid, int *stripe, int stay_in_stripe,
-              void *dta, void *trans, int dtalen, int *reqdtalen, int *ver)
+              void *dta, void *trans, int dtalen, int *reqdtalen, int *ver,
+              int page_order)
 {
     struct dbtable *db = iq->usedb;
     int bdberr, retries = 0, rc;
     bdb_fetch_args_t args = {0};
 retry:
     iq->gluewhere = "bdb_fetch_next_dtastripe_record";
+    args->page_order = page_order;
     rc = bdb_fetch_next_dtastripe_record(db->handle, genid_vector, genid,
                                          stripe, stay_in_stripe, dta, dtalen,
                                          reqdtalen, trans, &args, &bdberr);
@@ -2850,6 +2852,25 @@ retry:
            bdberr);
     return -1;
 }
+
+int dtas_next(struct ireq *iq, const unsigned long long *genid_vector,
+              unsigned long long *genid, int *stripe, int stay_in_stripe,
+              void *dta, void *trans, int dtalen, int *reqdtalen, int *ver)
+{
+    return dtas_next(iq, genid_vector, genid, stripe, stay_in_stripe,
+            dta, trans, dtalen, reqdtalen, ver, 0);
+}
+
+int dtas_next_pageorder(struct ireq *iq, const unsigned long long *genid_vector,
+              unsigned long long *genid, int *stripe, int stay_in_stripe,
+              void *dta, void *trans, int dtalen, int *reqdtalen, int *ver)
+{
+    return dtas_next(iq, genid_vector, genid, stripe, stay_in_stripe,
+            dta, trans, dtalen, reqdtalen, ver, 1);
+}
+
+
+
 
 /* Get the next record in the database in one of the stripes.  Returns 0 on
  * success, 1 if there are no more records, -1 on failure. */

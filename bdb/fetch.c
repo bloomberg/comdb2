@@ -594,7 +594,7 @@ bdb_fetch_int_ll(int return_dta, int direction, int lookahead,
                  void *dta, int dtalen, int *reqdtalen, void *ixfound, int *rrn,
                  int *recnum, unsigned long long *genid, int numblobs,
                  int *dtafilenums, size_t *blobsizes, size_t *bloboffs,
-                 void **blobptrs, int dirty, int pgorder, tran_type *tran,
+                 void **blobptrs, int dirty, tran_type *tran,
                  bdb_cursor_ser_int_t *cur_ser, bdb_fetch_args_t *args,
                  u_int32_t lockerid, int *bdberr)
 {
@@ -628,6 +628,7 @@ bdb_fetch_int_ll(int return_dta, int direction, int lookahead,
     struct odh odh;
     int attempt_deserializaion;
     int initial_rc;
+    int page_order = 0;
 
     /* the "data" for an index can be a genid + record for dtastripe */
     char tmp_data[BDB_RECORD_MAX + sizeof(unsigned long long)];
@@ -872,10 +873,10 @@ before_first_lookup:
     if (dirty)
         cursor_flags |= DB_DIRTY_READ;
 
-    /*
-        if (pgorder)
-            cursor_flags |= DB_PAGE_ORDER;
-        */
+    if (args) {
+        cursor_flags |= args->page_order;
+        page_order = args->page_order;
+    }
 
     dbcp = NULL;
 
@@ -1292,8 +1293,13 @@ before_first_lookup:
                     dbt_data.size = sizeof(tmp_data);
                     dbt_data.ulen = sizeof(tmp_data);
 
-                    rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
-                                    DB_LAST);
+                    /* Use current record for page-order */
+                    if (page_order) {
+                        rc = 0;
+                    } else {
+                        rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
+                                DB_LAST);
+                    }
 
                     if ((rc == DB_REP_HANDLE_DEAD) ||
                         (rc == DB_LOCK_DEADLOCK)) {
@@ -2233,7 +2239,7 @@ static int bdb_fetch_prefault_int(
                             ixnum, ixlen, lastix, lastrrn, lastgenid, dta,
                             dtalen, reqdtalen, ixfound, rrn, recnum, genid,
                             numblobs, dtafilenums, blobsizes, bloboffs,
-                            blobptrs, 1, 0, NULL, NULL, args, lockerid, bdberr);
+                            blobptrs, 1, NULL, NULL, args, lockerid, bdberr);
 
     memset(&request, 0, sizeof(request));
     request.op = DB_LOCK_PUT_ALL;
@@ -2293,7 +2299,7 @@ static int bdb_fetch_int(int return_dta, int direction, int lookahead,
                             ixnum, ixlen, lastix, lastrrn, lastgenid, dta,
                             dtalen, reqdtalen, ixfound, rrn, recnum, genid,
                             numblobs, dtafilenums, blobsizes, bloboffs,
-                            blobptrs, dirty, 0, tran, cur_ser, args, 0, bdberr);
+                            blobptrs, dirty, tran, cur_ser, args, 0, bdberr);
 
     if (created_temp_tran) {
         int arc;
