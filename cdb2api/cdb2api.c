@@ -168,12 +168,12 @@ static char *ibm_getargv0(void)
 
 static char *getargv0(void)
 {
-#if defined(_LINUX_SOURCE) || defined(_SUN_SOURCE)
+#if defined(__APPLE__)
+    return apple_getargv0();
+#elif defined(_LINUX_SOURCE) || defined(_SUN_SOURCE)
     return proc_cmdline_getargv0();
 #elif defined(_IBM_SOURCE)
     return ibm_getargv0();
-#elif defined(__APPLE__)
-    return apple_getargv0();
 #else
     fprintf(stderr, "%s unsupported architecture\n", __func__);
     return NULL;
