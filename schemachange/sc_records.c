@@ -485,7 +485,6 @@ static int convert_record(struct convert_record_data *data)
                     data->dta_buf, data->trans, data->from->lrl, &dtalen,
                     NULL);
         }
-
         if (rc == 0) {
             dta = data->dta_buf;
             check_genid = bdb_normalise_genid(data->to->handle, genid);
