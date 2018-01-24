@@ -2677,7 +2677,7 @@ static int finalize_stmt_hash(void *stmt_entry, void *args)
     return 0;
 }
 
-static void delete_stmt_caching_table(hash_t *stmt_caching_table)
+static inline void delete_stmt_caching_table(hash_t *stmt_caching_table)
 {
     assert(stmt_caching_table);
     /* parse through hash table and finalize all the statements */
