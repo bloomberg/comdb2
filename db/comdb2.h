@@ -1507,7 +1507,8 @@ enum convert_scan_mode {
     SCAN_STRIPES = 1, /* requires dtastripe, required for live schema change */
     SCAN_DUMP = 2,
     SCAN_OLDCODE = 3,
-    SCAN_PARALLEL = 4 /* creates one thread for each stripe */
+    SCAN_PARALLEL = 4, /* creates one thread for each stripe */
+    SCAN_PAGEORDER = 5 /* 1 thread per stripe in page-order */
 };
 
 struct dbq_cursor {
@@ -1663,6 +1664,7 @@ extern unsigned gbl_goose_consume_rate;
 extern int gbl_queue_sleeptime;
 extern int gbl_reset_queue_cursor;
 extern int gbl_readonly;
+extern int gbl_readonly_sc;
 extern int gbl_use_bbipc;
 extern int gbl_init_single_meta;
 extern unsigned long long gbl_sc_genids[MAXDTASTRIPE];

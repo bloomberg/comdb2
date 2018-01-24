@@ -474,10 +474,17 @@ static int convert_record(struct convert_record_data *data)
     data->iq.usedb = data->from;
     data->iq.timeoutms = gbl_sc_timeoutms;
 
-    if (data->scanmode == SCAN_PARALLEL) {
-        rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe, 1,
-                       data->dta_buf, data->trans, data->from->lrl, &dtalen,
-                       NULL);
+    if (data->scanmode == SCAN_PARALLEL || 
+            data->scanmode == SCAN_PAGEORDER) {
+        if (data->scanmode == SCAN_PARALLEL) {
+            rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe, 1,
+                    data->dta_buf, data->trans, data->from->lrl, &dtalen,
+                    NULL);
+        } else {
+            rc = dtas_next_pageorder(&data->iq, data->sc_genids, &genid, &data->stripe, 1,
+                    data->dta_buf, data->trans, data->from->lrl, &dtalen,
+                    NULL);
+        }
         if (rc == 0) {
             dta = data->dta_buf;
             check_genid = bdb_normalise_genid(data->to->handle, genid);

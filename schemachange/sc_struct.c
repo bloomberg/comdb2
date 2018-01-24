@@ -724,6 +724,10 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
         sc_printf(s, "%s schema change running in parallel scan mode\n",
                   (s->live ? "Live" : "Readonly"));
         break;
+    case SCAN_PAGEORDER:
+        sc_printf(s, "%s schema change running in pageorder scan mode\n",
+                  (s->live ? "Live" : "Readonly"));
+        break;
     case SCAN_STRIPES:
         sc_printf(s, "%s schema change running in stripes scan mode\n");
         break;

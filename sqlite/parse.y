@@ -1969,6 +1969,8 @@ comdb2optfield(A) ::= odh(O). {A = O;}
 comdb2optfield(A) ::= ipu(I). {A = I;}
 comdb2optfield(A) ::= isc(S). {A = S;}
 comdb2optfield(A) ::= REBUILD. {A = FORCE_REBUILD;}
+comdb2optfield(A) ::= PAGEORDER. {A = PAGE_ORDER;}
+comdb2optfield(A) ::= READONLY. {A = READ_ONLY;}
 comdb2optfield(A) ::= compress_blob(C). {A = C;}
 comdb2optfield(A) ::= compress_rec(C). {A = C;}
 

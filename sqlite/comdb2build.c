@@ -282,6 +282,16 @@ static void fillTableOption(struct schema_change_type* sc, int opt)
     else
         sc->force_rebuild = 0;
 
+    if (OPT_ON(opt, PAGE_ORDER))
+        sc->scanmode = SCAN_PAGEORDER;
+    else
+        sc->scanmode = SCAN_PARALLEL;
+
+    if (OPT_ON(opt, READ_ONLY))
+        sc->live = 0;
+    else
+        sc->live = 1;
+
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
 }
