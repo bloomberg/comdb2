@@ -519,9 +519,9 @@ static int route_to_instance(char *svc, int fd)
     if (routefd > 0) {
         const char *msg = "pmux";
         return send_fd(routefd, msg, size_t(strlen(msg)), fd);
-    } else {
-        return 0;
-    }
+    } 
+
+    return -1;
 }
 
 void disallowed_write(connection &c, char *cmd)
@@ -532,7 +532,8 @@ void disallowed_write(connection &c, char *cmd)
     conn_printf(c, "-1 write requests not permitted from this host\n");
 }
 
-static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in)
+static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
+                   connection &c)
 {
     int bad = 0;
     char *cmd = NULL, *svc = NULL, *sav;
@@ -543,7 +544,6 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in)
 #endif
 
     cmd = strtok_r(in, " ", &sav);
-    connection &c = connections[fd.fd];
     if (cmd == NULL)
         goto done;
 
@@ -590,11 +590,13 @@ again:
             conn_printf(c, "-1\n");
         } else {
             int rc = route_to_instance(svc, fd.fd);
-            if (rc) {
+            if (rc == 0) {
                 dealloc_fd(svc);
+                unwatchfd(fd);
             }
+            else
+                conn_printf(c, "-1\n");
         }
-        unwatchfd(fd);
     } else if (strcmp(cmd, "del") == 0) {
         if (c.writable) {
             svc = strtok_r(NULL, " ", &sav);
@@ -705,7 +707,7 @@ static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
     c.inoff += n;
     int off = 0;
     std::string s(c.inbuf, c.inoff);
-    while (off < s.length()) {
+    while (off < s.length() && rc == 0 && fd.fd >= 0) {
         int pos;
         pos = s.find('\n', off);
         if (pos != std::string::npos) {
@@ -714,7 +716,7 @@ static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
             c.inbuf[pos] = 0;
             if (pos > 1 && c.inbuf[pos - 1] == '\r')
                 c.inbuf[pos - 1] = 0;
-            rc = run_cmd(fd, fds, c.inbuf + off);
+            rc = run_cmd(fd, fds, c.inbuf + off, c);
             off = pos + 1;
         }
         if (pos == std::string::npos || off >= s.length()) {
