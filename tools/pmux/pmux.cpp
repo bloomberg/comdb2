@@ -591,11 +591,12 @@ again:
         } else {
             int rc = route_to_instance(svc, fd.fd);
             if (rc == 0) {
-                dealloc_fd(svc);
                 unwatchfd(fd);
             }
-            else
+            else {
+                dealloc_fd(svc);
                 conn_printf(c, "-1\n");
+            }
         }
     } else if (strcmp(cmd, "del") == 0) {
         if (c.writable) {

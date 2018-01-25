@@ -26,7 +26,7 @@ failexit()
 
 test_rte()
 {
-    echo -e "rte\ngarbage\n" | nc -v localhost ${COMDB2_PMUX_PORT} > rte.out
+    echo -e "rte\ngarbage\n" | nc -w 1 localhost ${COMDB2_PMUX_PORT} > rte.out
     cat <<EOF > rte.expected
 -1
 -1 unknown command, type 'help' for a brief usage description
@@ -80,6 +80,7 @@ function verify_hello_reuse
     # Create a db
     DBDIR=$TESTDIR/$DBNAME
     mkdir $DBDIR
+    mkdir -p $DBDIR/var/log/cdb2/
 
     # Create config file
     echo "$db 0 localhost" > $CDB2_CONFIG
