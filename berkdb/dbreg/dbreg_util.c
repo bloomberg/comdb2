@@ -123,7 +123,8 @@ __ufid_sanity_check(dbenv, fnp)
 	FNAME *fnp;
 {
 	if (memcmp(fnp->ufid, fnp->ufid_chk, DB_FILE_ID_LEN)) {
-		logmsg(LOGMSG_FATAL, "%s: critical error: ufid has changed\n");
+		logmsg(LOGMSG_FATAL, "%s: critical error: ufid has changed\n",
+                __func__);
 		abort();
 	}
 }
