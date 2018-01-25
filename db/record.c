@@ -2162,11 +2162,12 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
                 use_new_tag ? ".NEW..ONDISK" : ".ONDISK", (char *)new_dta,
                 nd_len, keytag, key, NULL, blobs, blobs ? MAXBLOBS : 0, NULL);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "upd_new_record_add2indices: %s newgenid 0x%llx "
-                            "conversions -> ix%d failed (use_new_tag %d)\n",
-                    (iq->idxInsert ? "create_key_from_ireq" 
+            logmsg(LOGMSG_ERROR,
+                   "upd_new_record_add2indices: %s newgenid 0x%llx "
+                   "conversions -> ix%d failed (use_new_tag %d) rc=%d\n",
+                   (iq->idxInsert ? "create_key_from_ireq"
                                   : "create_key_from_ondisk_blobs"),
-                    newgenid, ixnum, use_new_tag);
+                   newgenid, ixnum, use_new_tag, rc);
             break;
         }
 
@@ -2178,9 +2179,9 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
             reqmoref(iq, " RC %d", rc);
         }
         if (rc) {
-            logmsg(LOGMSG_ERROR, "upd_new_record_add2indices: ix_addk failed "
-                            "newgenid 0x%llx ix_addk  ix%d\n",
-                    newgenid, ixnum);
+            logmsg(LOGMSG_ERROR, "upd_new_record_add2indices: ix_addk "
+                                 "newgenid 0x%llx ix_addk  ix%d rc=%d\n",
+                   newgenid, ixnum, rc);
             fsnapf(stderr, key, getkeysize(iq->usedb, ixnum));
             break;
         }

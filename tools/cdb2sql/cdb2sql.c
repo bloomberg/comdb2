@@ -659,10 +659,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
         }
 
         verbose_print("calling cdb2_open\n");
-        if (verbose) {
-            setenv("CDB2_DEBUG", "1", 1);
-            setenv("CDB2_LOG_CALLS", "1", 1);
-        }
 
         if (dbhostname) {
             rc = cdb2_open(&cdb2h, dbname, dbhostname, CDB2_DIRECT_CPU);
@@ -1021,7 +1017,7 @@ static char *get_multi_line_statement(char *line)
     return stmt;
 }
 
-static int dbtype_valid(char *type)
+static inline int dbtype_valid(char *type)
 {
     if (type && (type[0] == '@' || strcasecmp(type, "dev") == 0 ||
         strcasecmp(type, "uat") == 0 ||
@@ -1191,6 +1187,8 @@ int main(int argc, char *argv[])
             scriptmode = 1;
             break;
         case 'v':
+            setenv("CDB2_DEBUG", "1", 1);
+            setenv("CDB2_LOG_CALLS", "1", 1);
             verbose = 1;
             break;
         case 'r':

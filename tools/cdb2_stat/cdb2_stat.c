@@ -856,7 +856,7 @@ mpool_stats(dbenv, internal, flags)
 	dl("Current clean page count.\n",
 	    (u_long)gsp->st_page_clean);
 	dl("Current dirty page count.\n",
-	    (u_long)atomic_read(&gsp->st_page_dirty));
+	    (u_long)gsp->st_page_dirty);
 	dl("Number of hash buckets used for page location.\n",
 	    (u_long)gsp->st_hash_buckets);
 	dl("Total number of times hash chains searched for a page.\n",
