@@ -170,6 +170,8 @@ int sqlite3_initialize(void){
   /* If the following assert() fails on some obscure processor/compiler
   ** combination, the work-around is to set the correct pointer
   ** size at compile-time using -DSQLITE_PTRSIZE=n compile-time option */
+  int ptrsz_define = SQLITE_PTRSIZE;
+  int sizeof_char_ptr = sizeof(char*);
   assert( SQLITE_PTRSIZE==sizeof(char*) );
 
   /* If SQLite is already completely initialized, then this call
