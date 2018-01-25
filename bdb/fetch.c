@@ -873,8 +873,8 @@ before_first_lookup:
     if (dirty)
         cursor_flags |= DB_DIRTY_READ;
 
-    if (args) {
-        cursor_flags |= args->page_order;
+    if (args && args->page_order) {
+        cursor_flags |= DB_PAGE_ORDER;
         page_order = args->page_order;
     }
 
@@ -1277,6 +1277,16 @@ before_first_lookup:
                     /* copy the ix we found to the user */
                     if (ixfound)
                         memcpy(ixfound, dbt_key.data, ixlen_full);
+                } else if (rc == DB_NOTFOUND && page_order) /* return the last, and a 3 */
+                {
+                    outrc = 3;
+                    if (CURSOR_SER_ENABLED(bdb_state) && cur_ser && !lookahead) {
+                        rc = dbcp->c_close_ser(dbcp, &cur_ser->dbcs);
+                        cur_ser->is_valid = !rc;
+                    } else {
+                        rc = dbcp->c_close(dbcp);
+                    }
+                    return outrc;
                 } else if (rc == DB_NOTFOUND) /* return the last, and a 3 */
                 {
                     /* fprintf(stderr, "not found\n"); */
@@ -1294,12 +1304,8 @@ before_first_lookup:
                     dbt_data.ulen = sizeof(tmp_data);
 
                     /* Use current record for page-order */
-                    if (page_order) {
-                        rc = 0;
-                    } else {
-                        rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
-                                DB_LAST);
-                    }
+                    rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
+                            DB_LAST);
 
                     if ((rc == DB_REP_HANDLE_DEAD) ||
                         (rc == DB_LOCK_DEADLOCK)) {
@@ -4179,7 +4185,8 @@ int bdb_fetch_next_dtastripe_record(bdb_state_type *bdb_state,
 
             /* if the genid we found is less then or equal to the last genid
              * we found in this stripe, there was a problem */
-            if (bdb_cmp_genids(*p_genid, p_genid_vector[cur_stripe]) <= 0) {
+            if ((bdb_cmp_genids(*p_genid, p_genid_vector[cur_stripe]) <= 0) && 
+                    (!args || !args->page_order)) {
                 logmsg(LOGMSG_ERROR, "%s: looking for next genid in stripe: %d "
                                 "after: %016llx (%016llx) got: %016llx\n",
                         __func__, cur_stripe, last_genid,

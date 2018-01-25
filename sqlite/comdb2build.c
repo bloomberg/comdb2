@@ -518,7 +518,7 @@ int comdb2SendBpfunc(OpFunc *f)
 
 /**************************** Function prototypes ***************************/
 
-static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, uint8_t opt);
+static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, int opt);
 
 /************************** Function definitions ****************************/
 
@@ -670,7 +670,7 @@ out:
     free_schema_change_type(sc);
 }
 
-static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, uint8_t opt)
+static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
 {
     sqlite3 *db = pParse->db;
     Vdbe *v  = sqlite3GetVdbe(pParse);
@@ -702,6 +702,14 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, uint8_t o
         sc->force_blob_rebuild = 1;
     }
 
+    if (OPT_ON(opt, PAGE_ORDER)) {
+        sc->scanmode = SCAN_PAGEORDER;
+    }
+
+    if (OPT_ON(opt, READ_ONLY)) {
+        sc->live = 0;
+    }
+
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
 
@@ -720,20 +728,20 @@ out:
 }
 
 
-void comdb2RebuildFull(Parse* p, Token* nm,Token* lnm)
+void comdb2RebuildFull(Parse* p, Token* nm,Token* lnm, int opt)
 {
-    comdb2Rebuild(p, nm,lnm, REBUILD_ALL + REBUILD_DATA + REBUILD_BLOB);
+    comdb2Rebuild(p, nm,lnm, REBUILD_ALL + REBUILD_DATA + REBUILD_BLOB + opt);
 }
 
 
-void comdb2RebuildData(Parse* p, Token* nm, Token* lnm)
+void comdb2RebuildData(Parse* p, Token* nm, Token* lnm, int opt)
 {
-    comdb2Rebuild(p,nm,lnm,REBUILD_DATA);
+    comdb2Rebuild(p,nm,lnm,REBUILD_DATA + opt);
 }
 
-void comdb2RebuildDataBlob(Parse* p,Token* nm, Token* lnm)
+void comdb2RebuildDataBlob(Parse* p,Token* nm, Token* lnm, int opt)
 {
-    comdb2Rebuild(p, nm, lnm, REBUILD_BLOB);
+    comdb2Rebuild(p, nm, lnm, REBUILD_BLOB + opt);
 }
 
 void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
@@ -772,7 +780,7 @@ out:
 }
 
 
-void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index)
+void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int opt)
 {
     sqlite3 *db = pParse->db;
     Vdbe *v  = sqlite3GetVdbe(pParse);
@@ -805,6 +813,14 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index)
         logmsg(LOGMSG_ERROR, "!table:index '%s:%s' not found\n", sc->table, indexname);
         setError(pParse, SQLITE_ERROR, "Index not found");
         goto out;
+    }
+
+    if (OPT_ON(opt, PAGE_ORDER)) {
+        sc->scanmode = SCAN_PAGEORDER;
+    }
+
+    if (OPT_ON(opt, READ_ONLY)) {
+        sc->live = 0;
     }
     
     free(indexname);

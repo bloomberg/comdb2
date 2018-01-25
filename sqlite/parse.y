@@ -248,8 +248,8 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
   ADD AGGREGATE ALIAS AUTHENTICATION BLOBFIELD BULKIMPORT CHECK
   COMMITSLEEP CONSUMER CONVERTSLEEP COVERAGE CRLE DATA DATABLOB DATACOPY DBPAD
   DEFERRABLE DISABLE DRYRUN ENABLE FOR FUNCTION GENID48 GET GRANT
-  IPU ISC KW LUA LZ4 NONE ODH OFF OP OPTIONS PARTITION PASSWORD PERIOD
-  PROCEDURE PUT REBUILD READ REC RESERVED RETENTION REVOKE RLE
+  IPU ISC KW LUA LZ4 NONE ODH OFF OP OPTIONS PAGEORDER PARTITION PASSWORD PERIOD
+  PROCEDURE PUT REBUILD READ READONLY REC RESERVED RETENTION REVOKE RLE
   ROWLOCKS SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE THREADS THRESHOLD TIME
   TRUNCATE TUNABLE VERSION WRITE DDL USERSCHEMA ZLIB .
 %wildcard ANY.
@@ -1820,21 +1820,21 @@ putcmd ::= TUNABLE nm(N) INTEGER|FLOAT|STRING(M). {
 
 cmd ::= rebuild.
 
-rebuild ::= REBUILD nm(T) dbnm(X). { /* REBUILD FULL CANNOT BE USED
+rebuild ::= REBUILD nm(T) dbnm(X) comdb2opt(O). { /* REBUILD FULL CANNOT BE USED
                                         BECAUSE OF SQLITE SYNTAX */
-    comdb2RebuildFull(pParse,&T,&X);
+    comdb2RebuildFull(pParse,&T,&X,O);
 }
 
-rebuild ::= REBUILD INDEX nm(T) dbnm(Y) nm(X). {
-    comdb2RebuildIndex(pParse, &T,&Y, &X);
+rebuild ::= REBUILD INDEX nm(T) dbnm(Y) nm(X) comdb2opt(O). {
+    comdb2RebuildIndex(pParse, &T,&Y,&X,O);
 }
 
-rebuild ::= REBUILD DATA nm(T) dbnm(X). {
-    comdb2RebuildData(pParse, &T, &X);
+rebuild ::= REBUILD DATA nm(T) dbnm(X) comdb2opt(O). {
+    comdb2RebuildData(pParse, &T, &X, O);
 }
 
-rebuild ::= REBUILD DATABLOB nm(N) dbnm(X). {
-    comdb2RebuildDataBlob(pParse,&N, &X);
+rebuild ::= REBUILD DATABLOB nm(N) dbnm(X) comdb2opt(O). {
+    comdb2RebuildDataBlob(pParse,&N, &X, O);
 }
 /////////////////////COMDB2 GRANT STATEMENT //////////////////////////////////
 

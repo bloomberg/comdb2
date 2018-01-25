@@ -485,6 +485,7 @@ static int convert_record(struct convert_record_data *data)
                     data->dta_buf, data->trans, data->from->lrl, &dtalen,
                     NULL);
         }
+
         if (rc == 0) {
             dta = data->dta_buf;
             check_genid = bdb_normalise_genid(data->to->handle, genid);
@@ -917,7 +918,7 @@ err: /*if (is_schema_change_doomed())*/
 
     /* Advance our progress markers */
     data->nrecs++;
-    if (data->scanmode == SCAN_PARALLEL) {
+    if (data->scanmode == SCAN_PARALLEL || data->scanmode == SCAN_PAGEORDER) {
         data->sc_genids[data->stripe] = genid;
     }
 
@@ -1110,6 +1111,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     if (data.live && data.scanmode != SCAN_PARALLEL) {
         sc_errf(data.s, "live schema change can only be done in parallel "
                         "scan mode\n");
+        logmsg(LOGMSG_ERROR,"live schema change can only be done in parallel "
+                "scan mode\n");
         return -1;
     }
 
@@ -1180,7 +1183,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     int outrc = 0;
 
     /* if were not in parallel, dont start any threads */
-    if (data.scanmode != SCAN_PARALLEL) {
+    if (data.scanmode != SCAN_PARALLEL && data.scanmode != SCAN_PAGEORDER) {
         convert_records_thd(&data);
         outrc = data.outrc;
     } else {
