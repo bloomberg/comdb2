@@ -186,6 +186,8 @@ int client_func(int fd)
             }
         }
         connect_instance(listenfd, cmd);
+    } else {
+        close(fd);
     }
     return 0;
 }
@@ -593,8 +595,8 @@ again:
             if (rc) {
                 dealloc_fd(svc);
             }
+            unwatchfd(fd);
         }
-        unwatchfd(fd);
     } else if (strcmp(cmd, "del") == 0) {
         if (c.writable) {
             svc = strtok_r(NULL, " ", &sav);
