@@ -864,7 +864,8 @@ err: /*if (is_schema_change_doomed())*/
             poll(0, 0, (rand() % 500 + 10));
         return 1;
     } else if (rc == IX_DUP) {
-        if (data->scanmode == SCAN_PARALLEL && data->s->rebuild_index) {
+        if ((data->scanmode == SCAN_PARALLEL || data->scanmode == SCAN_PAGEORDER) 
+                && data->s->rebuild_index) {
             /* if we are resuming an index rebuild schemachange,
              * and the stored llmeta genid is stale, some of the records
              * will fail insertion, and that is ok */

@@ -813,14 +813,6 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         goto out;
     }
 
-    if (OPT_ON(opt, PAGE_ORDER))
-        sc->scanmode = SCAN_PAGEORDER;
-
-    if (OPT_ON(opt, READ_ONLY))
-        sc->live = 0;
-    else
-        sc->live = 1;
-    
     free(indexname);
 
     sc->nothrevent = 1;
@@ -828,6 +820,15 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     sc->rebuild_index = 1;
     sc->index_to_rebuild = index_num;
     sc->scanmode = gbl_default_sc_scanmode;
+
+    if (OPT_ON(opt, PAGE_ORDER))
+        sc->scanmode = SCAN_PAGEORDER;
+
+    if (OPT_ON(opt, READ_ONLY))
+        sc->live = 0;
+    else
+        sc->live = 1;
+
     comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                     (vdbeFuncArgFree)&free_schema_change_type);
     return;
