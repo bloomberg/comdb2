@@ -853,6 +853,9 @@ static int read_available_comdb2db_configs(
     if (get_config_file(dbname, filename, sizeof(filename)) != 0)
         return -1; // set error string?
 
+    if (num_hosts) *num_hosts = 0;
+    if (num_db_hosts) *num_db_hosts = 0;
+
     if (CDB2DBCONFIG_BUF != NULL) {
         read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF,
                           comdb2db_hosts, num_hosts, comdb2db_num, dbname,
@@ -966,8 +969,6 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
     if (rc == -1)
         return rc;
 
-    if (num_hosts) *num_hosts = 0;
-    if (num_db_hosts) *num_db_hosts = 0;
     if (master) *master = -1;
 
     if (just_defaults || comdb2db_found || dbname_found)
