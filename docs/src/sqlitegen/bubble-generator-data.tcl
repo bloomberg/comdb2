@@ -338,8 +338,12 @@ set all_graphs {
       {line {or READ WRITE} ON /table-name TO /user-name}
       {line OP TO /user-name}}
   }
-  rebuild {
-    line REBUILD {or {} {line INDEX /index-name} DATA DATABLOB } /table-name
+  rebuild {stack
+      {line REBUILD {or {} {line INDEX /index-name} DATA DATABLOB } /table-name}
+      {opt {line OPTIONS {loop {or 
+        {line PAGEORDER} 
+        {line READONLY}
+    } , }}}
   }
   get {
     line GET {or

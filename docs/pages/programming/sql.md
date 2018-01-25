@@ -376,7 +376,7 @@ will no longer be callable from SQL.
 
 ![ALTER](images/alter-table-ddl.gif)
 
-_**Schema changes in Comdb2 are always live**. The database will not acquire
+_**Schema changes in Comdb2 are live by default**. The database will not acquire
 long duration table locks during the change and may be freely read from and
 written to.  If the schema change adds a new field, or grows the size of an
 existing field, and doesn't modify the table keys, the change is "*instant*"
@@ -533,6 +533,10 @@ ever run ```REBUILD```:
     reclaim disk space.
   * A table option (like compression) has been set, and we'd like to apply it to existing records immediately. 
   * A table/index/blob is found to be corrupt.
+
+The ```READONLY``` and ```PAGEORDER``` options are intended for the rare cases that a table is found to be corrupt.
+Setting the ```READONLY``` option will cause the cluster to drop to ```READONLY``` mode for the duration of the
+rebuild.  Traversing a B-Tree in ```PAGEORDER``` requires that the ```READONLY``` flag is set.
 
 ## Built-in functions
 
