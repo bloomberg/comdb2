@@ -5,6 +5,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <stdio.h>
 
 
 #include "sqlresponse.pb-c.h"
@@ -12,10 +13,7 @@
 
 #define WITH_SSL 1
 
-#include "cdb2api_priv.h"
-
-
-int state; // global 
+int global_state; // global 
 
 typedef struct cdb2_hndl cdb2_hndl_tp;
 #define PATH_MAX 1024
@@ -41,17 +39,17 @@ static int read_available_comdb2db_configs(
         char db_hosts[][64], int *num_db_hosts,
         int *dbnum, int *comdb2db_found, int *dbname_found)
 {
-    if (state == 1) return -1;
+    if (global_state == 1) return -1;
 
     if (num_hosts) *num_hosts = 0;
     if (num_db_hosts) *num_db_hosts = 0;
 
-    if (state == 2) {
-        printf("read_available_comdb2db_configs state %d\n", state);
+    if (global_state == 2) {
+        printf("read_available_comdb2db_configs global_state %d\n", global_state);
     }
 
-    if (state == 3) {
-        printf("read_available_comdb2db_configs state %d\n", state);
+    if (global_state == 3) {
+        printf("read_available_comdb2db_configs global_state %d\n", global_state);
         *comdb2db_found = 1;
         strcpy(comdb2db_hosts[0], "comdb2db_node1");
         strcpy(comdb2db_hosts[1], "comdb2db_node2");
@@ -59,8 +57,8 @@ static int read_available_comdb2db_configs(
         *num_hosts = 3;
     }
 
-    if (state == 4) {
-        printf("read_available_comdb2db_configs state %d\n", state);
+    if (global_state == 4) {
+        printf("read_available_comdb2db_configs global_state %d\n", global_state);
         *dbname_found = 1;
         strcpy(db_hosts[0], "node1");
         strcpy(db_hosts[1], "node2");
@@ -68,35 +66,35 @@ static int read_available_comdb2db_configs(
         *num_db_hosts = 3;
     }
 
-    if (state == 5) {
-        printf("read_available_comdb2db_configs state %d\n", state);
+    if (global_state == 5) {
+        printf("read_available_comdb2db_configs global_state %d\n", global_state);
     }
 
-    assert(state <= 7);
+    assert(global_state <= 7);
     return 0;
 }
 
 
-static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,                                                                        
+static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
                              int dbnum, char *host, char valid_hosts[][64],
                              int *valid_ports, int *master_node,
                              int *num_valid_hosts,
                              int *num_valid_sameroom_hosts)
 {
-    assert(state != 1);
-    assert(state != 2);
-    assert(state != 3);
-    assert(state != 4);
-    if (state == 5) {
-        printf("cdb2_dbinfo_query correctly called for state %d, returning 0\n", state);
+    assert(global_state != 1);
+    assert(global_state != 2);
+    assert(global_state != 3);
+    assert(global_state != 4);
+    if (global_state == 5) {
+        printf("cdb2_dbinfo_query correctly called for global_state %d, returning 0\n", global_state);
         strcpy(valid_hosts[0], "comdb2db_node1");
         strcpy(valid_hosts[1], "comdb2db_node2");
         strcpy(valid_hosts[2], "comdb2db_node3");
         *num_valid_hosts = 3;
         return 0;
     }
-    if (state == 6 || state == 7) {
-        printf("cdb2_dbinfo_query correctly called for state %d, returning -1\n", state);
+    if (global_state == 6 || global_state == 7) {
+        printf("cdb2_dbinfo_query correctly called for global_state %d, returning -1\n", global_state);
         return -1;
     }
 
@@ -104,14 +102,14 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
 
 static int get_host_by_name(char *comdb2db_name, char comdb2db_hosts[][64], int *num_hosts)
 {
-    assert(state != 1);
-    assert(state != 2);
-    assert(state != 3);
-    assert(state != 4);
-    assert(state != 5);
-    if (state == 6)
+    assert(global_state != 1);
+    assert(global_state != 2);
+    assert(global_state != 3);
+    assert(global_state != 4);
+    assert(global_state != 5);
+    if (global_state == 6)
         return -1;
-    if (state == 7) {
+    if (global_state == 7) {
         strcpy(comdb2db_hosts[0], "comdb2db_node1");
         strcpy(comdb2db_hosts[1], "comdb2db_node2");
         strcpy(comdb2db_hosts[2], "comdb2db_node3");
@@ -129,9 +127,9 @@ int main()
     int num_db_hosts = -1;
     int master = -1;
 
-	printf("starting with state 1\n");
+    printf("starting cdb2api_unit\n");
     
-    state = 1; // read_available_comdb2db_configs returns -1, nothing gets set
+    global_state = 1; // read_available_comdb2db_configs returns -1, nothing gets set
 
     rc = get_comdb2db_hosts(NULL,NULL, NULL, &master, 
             NULL, &num_hosts, NULL,NULL, NULL,
@@ -144,7 +142,7 @@ int main()
 
 
 
-    state = 2; // read_available_comdb2db_configs returns 0, just get defaults
+    global_state = 2; // read_available_comdb2db_configs returns 0, just get defaults
 
     rc = get_comdb2db_hosts(NULL,NULL, NULL, &master, 
             NULL, &num_hosts, NULL,NULL, NULL,
@@ -155,7 +153,7 @@ int main()
     assert(num_db_hosts == 0);
     assert(master == -1);
 
-    state = 3; // read_available_comdb2db_configs returns 0 and sets comdb2db_found
+    global_state = 3; // read_available_comdb2db_configs returns 0 and sets comdb2db_found
                // should populate and check comdb2db_hosts
 
     {
@@ -176,7 +174,7 @@ int main()
     assert(db_hosts[0][0] == '\0');
     }
 
-    state = 4; // read_available_comdb2db_configs returns 0 and sets dbname_found
+    global_state = 4; // read_available_comdb2db_configs returns 0 and sets dbname_found
                // should populate and check db_hosts
 
     {
@@ -197,7 +195,7 @@ int main()
     assert(comdb2db_hosts[0][0] == '\0');
     }
 
-    state = 5; // read_available_comdb2db_configs returns 0, will call cdb2_dbinfo_query
+    global_state = 5; // read_available_comdb2db_configs returns 0, will call cdb2_dbinfo_query
 
     {
     char comdb2db_hosts[MAX_NODES][64] = {0};
@@ -219,7 +217,7 @@ int main()
     }
 
 
-    state = 6; // cdb2_dbinfo_query will return -1, will call get_host_by_name
+    global_state = 6; // cdb2_dbinfo_query will return -1, will call get_host_by_name
 
     {
     char comdb2db_hosts[MAX_NODES][64] = {0};
@@ -237,7 +235,7 @@ int main()
     assert(master == -1);
     }
 
-    state = 7; // cdb2_dbinfo_query will return -1, will call get_host_by_name
+    global_state = 7; // cdb2_dbinfo_query will return -1, will call get_host_by_name
 
     {
     char comdb2db_hosts[MAX_NODES][64] = {0};
@@ -258,14 +256,6 @@ int main()
     assert(master == -1);
     }
 
-
-    /*
-    get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64], int *comdb2db_ports, int *master,
-                      char *comdb2db_name, int *num_hosts, int *comdb2db_num, char *dbname, char *dbtype,
-                      char db_hosts[][64], int *num_db_hosts, int *dbnum, int just_defaults);
-                      */
-
-
-
+    printf("Completed\n");
     return 0;
 }

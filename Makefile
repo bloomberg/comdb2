@@ -3,7 +3,7 @@
 #######################################################
 .PHONY: test_tools
 test_tools: compat_install
-	@cd build && $(MAKE) -s -j blob bound cdb2_client cdb2api_caller cdb2bind comdb2_blobtest comdb2_sqltest crle hatest insert_lots_mt leakcheck localrep overflow_blobtest ptrantest recom selectv serial sicountbug sirace simple_ssl stepper utf8 insert register breakloop multithd verify_atomics_work
+	@cd build && $(MAKE) -s -j blob bound cdb2_client cdb2api_caller cdb2bind comdb2_blobtest comdb2_sqltest crle hatest insert_lots_mt leakcheck localrep overflow_blobtest ptrantest recom selectv serial sicountbug sirace simple_ssl stepper utf8 insert register breakloop multithd verify_atomics_work cdb2api_unit
 	@ln -f build/tests/tools/blob tests/bloballoc.test/blob
 	@ln -f build/tests/tools/bound tests/tools/bound
 	@ln -f build/tests/tools/cdb2_client tests/cdb2api_so.test/cdb2_client
@@ -99,6 +99,7 @@ clean:
 	@rm -f tests/tools/register
 	@rm -f tests/tools/breakloop
 	@rm -f tests/tools/verify_atomics_work
+	@rm -f tests/tools/cdb2api_unit
 
 .PHONY: deb-current
 deb-current: package
