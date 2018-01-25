@@ -284,8 +284,6 @@ static void fillTableOption(struct schema_change_type* sc, int opt)
 
     if (OPT_ON(opt, PAGE_ORDER))
         sc->scanmode = SCAN_PAGEORDER;
-    else
-        sc->scanmode = SCAN_PARALLEL;
 
     if (OPT_ON(opt, READ_ONLY))
         sc->live = 0;
@@ -702,13 +700,13 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
         sc->force_blob_rebuild = 1;
     }
 
-    if (OPT_ON(opt, PAGE_ORDER)) {
+    if (OPT_ON(opt, PAGE_ORDER))
         sc->scanmode = SCAN_PAGEORDER;
-    }
 
-    if (OPT_ON(opt, READ_ONLY)) {
+    if (OPT_ON(opt, READ_ONLY))
         sc->live = 0;
-    }
+    else
+        sc->live = 1;
 
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
@@ -815,13 +813,13 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         goto out;
     }
 
-    if (OPT_ON(opt, PAGE_ORDER)) {
+    if (OPT_ON(opt, PAGE_ORDER))
         sc->scanmode = SCAN_PAGEORDER;
-    }
 
-    if (OPT_ON(opt, READ_ONLY)) {
+    if (OPT_ON(opt, READ_ONLY))
         sc->live = 0;
-    }
+    else
+        sc->live = 1;
     
     free(indexname);
 
