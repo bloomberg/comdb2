@@ -186,6 +186,20 @@ static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
     return err->errval = VIEW_NOERR;
 }
 
+static void _destroy_event(cron_sched_t *sched, cron_event_t *event)
+{
+   listc_rfl(&sched->events, event);
+   if(event->arg1)
+      free(event->arg1);
+   if(event->arg2)
+      free(event->arg2);
+   if(event->arg3)
+      free(event->arg3);
+   if(event->arg4)
+      free(event->arg4);
+   free(event);
+}
+
 /**
  * Regular wake up and run job
  * Function is meant to be used with pthread_create
@@ -243,20 +257,12 @@ static void *_cron_runner(void *arg)
                 pthread_mutex_lock(&sched->mtx);
                 sched->running = 0;     
 
-                if (xerr.errval) {
+                if (xerr.errval)
                     logmsg(LOGMSG_ERROR, 
                             "Schedule %s error event %d rc=%d errstr=%s\n",
                             (sched->name) ? sched->name : "(noname)",
                             event->epoch, xerr.errval, xerr.errstr);
-                }
-                listc_rfl(&sched->events, event);
-                if (event->arg1)
-                    free(event->arg1);
-                if (event->arg2)
-                    free(event->arg2);
-                if (event->arg3)
-                    free(event->arg3);
-                free(event);
+                _destroy_event(sched, event);
             } else {
                 break;
             }
@@ -342,3 +348,29 @@ retry:
 
     return (found)?VIEW_NOERR:VIEW_ERR_EXIST;
 }
+
+
+/** 
+ * Clear queue of events
+ * 
+ */ 
+void cron_clear_queue(cron_sched_t *sched)
+{
+   cron_event_t      *event;
+   struct timespec   now;   
+
+   pthread_mutex_lock(&sched->mtx);
+
+   if (sched->running_call)
+   {
+      clock_gettime(CLOCK_REALTIME, &now);
+      now.tv_sec += 1;
+      pthread_cond_timedwait(&sched->cond, &sched->mtx, &now);
+   }
+   
+   /* mop up */
+   while(event=sched->events.top)
+      _destroy_event(sched, event);
+   pthread_mutex_unlock(&sched->mtx);
+}
+
