@@ -587,16 +587,14 @@ void bdb_cursor_ser_invalidate(bdb_cursor_ser_t *cur_ser)
         *reqdtalen = dbt_data.size - sizeof(unsigned long long);               \
     }
 
-static int
-bdb_fetch_int_ll(int return_dta, int direction, int lookahead,
-                 bdb_state_type *bdb_state, void *ix, int ixnum, int ixlen,
-                 void *lastix, int lastrrn, unsigned long long lastgenid,
-                 void *dta, int dtalen, int *reqdtalen, void *ixfound, int *rrn,
-                 int *recnum, unsigned long long *genid, int numblobs,
-                 int *dtafilenums, size_t *blobsizes, size_t *bloboffs,
-                 void **blobptrs, int dirty, tran_type *tran,
-                 bdb_cursor_ser_int_t *cur_ser, bdb_fetch_args_t *args,
-                 u_int32_t lockerid, int *bdberr)
+static int bdb_fetch_int_ll(
+    int return_dta, int direction, int lookahead, bdb_state_type *bdb_state,
+    void *ix, int ixnum, int ixlen, void *lastix, int lastrrn,
+    unsigned long long lastgenid, void *dta, int dtalen, int *reqdtalen,
+    void *ixfound, int *rrn, int *recnum, unsigned long long *genid,
+    int numblobs, int *dtafilenums, size_t *blobsizes, size_t *bloboffs,
+    void **blobptrs, int dirty, tran_type *tran, bdb_cursor_ser_int_t *cur_ser,
+    bdb_fetch_args_t *args, u_int32_t lockerid, int *bdberr)
 {
     DBT dbt_key, dbt_data;
     int rc;
@@ -1277,10 +1275,12 @@ before_first_lookup:
                     /* copy the ix we found to the user */
                     if (ixfound)
                         memcpy(ixfound, dbt_key.data, ixlen_full);
-                } else if (rc == DB_NOTFOUND && page_order) /* return the last, and a 3 */
+                } else if (rc == DB_NOTFOUND &&
+                           page_order) /* return the last, and a 3 */
                 {
                     outrc = 3;
-                    if (CURSOR_SER_ENABLED(bdb_state) && cur_ser && !lookahead) {
+                    if (CURSOR_SER_ENABLED(bdb_state) && cur_ser &&
+                        !lookahead) {
                         rc = dbcp->c_close_ser(dbcp, &cur_ser->dbcs);
                         cur_ser->is_valid = !rc;
                     } else {
@@ -1304,7 +1304,7 @@ before_first_lookup:
                     dbt_data.ulen = sizeof(tmp_data);
 
                     rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
-                            DB_LAST);
+                                    DB_LAST);
 
                     if ((rc == DB_REP_HANDLE_DEAD) ||
                         (rc == DB_LOCK_DEADLOCK)) {
@@ -4184,8 +4184,8 @@ int bdb_fetch_next_dtastripe_record(bdb_state_type *bdb_state,
 
             /* if the genid we found is less then or equal to the last genid
              * we found in this stripe, there was a problem */
-            if ((bdb_cmp_genids(*p_genid, p_genid_vector[cur_stripe]) <= 0) && 
-                    (!args || !args->page_order)) {
+            if ((bdb_cmp_genids(*p_genid, p_genid_vector[cur_stripe]) <= 0) &&
+                (!args || !args->page_order)) {
                 logmsg(LOGMSG_ERROR, "%s: looking for next genid in stripe: %d "
                                 "after: %016llx (%016llx) got: %016llx\n",
                         __func__, cur_stripe, last_genid,

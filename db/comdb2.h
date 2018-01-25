@@ -2329,8 +2329,9 @@ int dtas_next(struct ireq *iq, const unsigned long long *genid_vector,
               unsigned long long *genid, int *stripe, int stay_in_stripe,
               void *dta, void *trans, int dtalen, int *reqdtalen, int *ver);
 int dtas_next_pageorder(struct ireq *iq, const unsigned long long *genid_vector,
-              unsigned long long *genid, int *stripe, int stay_in_stripe,
-              void *dta, void *trans, int dtalen, int *reqdtalen, int *ver);
+                        unsigned long long *genid, int *stripe,
+                        int stay_in_stripe, void *dta, void *trans, int dtalen,
+                        int *reqdtalen, int *ver);
 
 int check_table_schema(struct dbenv *dbenv, const char *table,
                        const char *csc2file);

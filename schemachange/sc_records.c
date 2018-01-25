@@ -474,16 +474,15 @@ static int convert_record(struct convert_record_data *data)
     data->iq.usedb = data->from;
     data->iq.timeoutms = gbl_sc_timeoutms;
 
-    if (data->scanmode == SCAN_PARALLEL || 
-            data->scanmode == SCAN_PAGEORDER) {
+    if (data->scanmode == SCAN_PARALLEL || data->scanmode == SCAN_PAGEORDER) {
         if (data->scanmode == SCAN_PARALLEL) {
             rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe, 1,
-                    data->dta_buf, data->trans, data->from->lrl, &dtalen,
-                    NULL);
+                           data->dta_buf, data->trans, data->from->lrl, &dtalen,
+                           NULL);
         } else {
-            rc = dtas_next_pageorder(&data->iq, data->sc_genids, &genid, &data->stripe, 1,
-                    data->dta_buf, data->trans, data->from->lrl, &dtalen,
-                    NULL);
+            rc = dtas_next_pageorder(
+                &data->iq, data->sc_genids, &genid, &data->stripe, 1,
+                data->dta_buf, data->trans, data->from->lrl, &dtalen, NULL);
         }
 
         if (rc == 0) {
@@ -864,8 +863,9 @@ err: /*if (is_schema_change_doomed())*/
             poll(0, 0, (rand() % 500 + 10));
         return 1;
     } else if (rc == IX_DUP) {
-        if ((data->scanmode == SCAN_PARALLEL || data->scanmode == SCAN_PAGEORDER) 
-                && data->s->rebuild_index) {
+        if ((data->scanmode == SCAN_PARALLEL ||
+             data->scanmode == SCAN_PAGEORDER) &&
+            data->s->rebuild_index) {
             /* if we are resuming an index rebuild schemachange,
              * and the stored llmeta genid is stale, some of the records
              * will fail insertion, and that is ok */
@@ -1112,8 +1112,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     if (data.live && data.scanmode != SCAN_PARALLEL) {
         sc_errf(data.s, "live schema change can only be done in parallel "
                         "scan mode\n");
-        logmsg(LOGMSG_ERROR,"live schema change can only be done in parallel "
-                "scan mode\n");
+        logmsg(LOGMSG_ERROR, "live schema change can only be done in parallel "
+                             "scan mode\n");
         return -1;
     }
 
