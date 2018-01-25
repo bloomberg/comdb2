@@ -2027,6 +2027,10 @@ int views_cron_restart(timepart_views_t *views)
     int rc;
     struct errstat xerr = {0};
 
+    /* in case of regular master swing, clear pre-existing views event,
+       we will requeue them */
+    cron_clear_queue(timepart_sched);
+
     pthread_rwlock_wrlock(&views_lk);
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
