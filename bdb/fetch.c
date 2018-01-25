@@ -1303,7 +1303,6 @@ before_first_lookup:
                     dbt_data.size = sizeof(tmp_data);
                     dbt_data.ulen = sizeof(tmp_data);
 
-                    /* Use current record for page-order */
                     rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
                             DB_LAST);
 
