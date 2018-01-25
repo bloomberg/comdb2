@@ -32,46 +32,36 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
                                char db_hosts[][64], int *num_db_hosts,
                                int *dbnum, int just_defaults);
 
-static int get_config_file(const char *dbname, char *f, size_t s)
+static int read_available_comdb2db_configs(
+        cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
+        char *comdb2db_name, int *num_hosts,
+        int *comdb2db_num, char *dbname,
+        char db_hosts[][64], int *num_db_hosts,
+        int *dbnum, int *comdb2db_found, int *dbname_found)
 {
     if (state == 1) return -1;
 
-    if (state == 2 || state == 3) {
-        printf("get_config_file correctly called for state %d, returning 0\n", state);
-        sprintf(f, "nonexistent");
-        return 0;
+    if (state == 2) {
+        printf("read_available_comdb2db_configs state %d, returning 0\n", state);
     }
-}
 
-static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,                                                                  
-                              const char *buf, char comdb2db_hosts[][64],
-                              int *num_hosts, int *comdb2db_num, char *dbname,
-                              char db_hosts[][64], int *num_db_hosts,
-                              int *dbnum, int *dbname_found,
-                              int *comdb2db_found)
-{
-    assert(state != 1);
-    assert(state != 2);
-    assert(state != 3);
-}
+    if (state == 3) {
+        printf("read_available_comdb2db_configs state %d, returning 0\n", state);
+        *comdb2db_found = 1;
+    }
 
-#ifdef __APPLE__
-        hp = gethostbyname(tok);
-#elif _LINUX_SOURCE
-int gethostbyname_r(const char *name,
-               struct hostent *ret, char *buf, size_t buflen,
-               struct hostent **result, int *h_errnop)
-{
-    assert(state != 1);
-    assert(state != 2);
-    assert(state != 3);
-}
+    if (state == 4) {
+        printf("read_available_comdb2db_configs state %d, returning 0\n", state);
+        *dbname_found = 1;
+    }
 
-#elif _SUN_SOURCE
-        hp = gethostbyname_r(tok, &hostbuf, tmp, tmplen, &herr);
-#else
-        hp = gethostbyname(tok);
-#endif
+    if (state == 5) {
+        printf("read_available_comdb2db_configs state %d, returning 0\n", state);
+    }
+
+    assert(state <= 7);
+    return 0;
+}
 
 
 static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,                                                                        
@@ -82,11 +72,39 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
 {
     assert(state != 1);
     assert(state != 2);
-    if (state == 3) {
+    assert(state != 3);
+    assert(state != 4);
+    if (state == 5) {
         printf("cdb2_dbinfo_query correctly called for state %d, returning 0\n", state);
+        strcpy(valid_hosts[0], "comdb2db_node1");
+        strcpy(valid_hosts[1], "comdb2db_node2");
+        strcpy(valid_hosts[2], "comdb2db_node3");
+        *num_valid_hosts = 3;
         return 0;
     }
+    if (state == 6 || state == 7) {
+        printf("cdb2_dbinfo_query correctly called for state %d, returning -1\n", state);
+        return -1;
+    }
 
+}
+
+static int get_host_by_name(char *comdb2db_name, char comdb2db_hosts[][64], int *num_hosts)
+{
+    assert(state != 1);
+    assert(state != 2);
+    assert(state != 3);
+    assert(state != 4);
+    assert(state != 5);
+    if (state == 6)
+        return -1;
+    if (state == 7) {
+        strcpy(comdb2db_hosts[0], "comdb2db_node1");
+        strcpy(comdb2db_hosts[1], "comdb2db_node2");
+        strcpy(comdb2db_hosts[2], "comdb2db_node3");
+        *num_hosts = 3;
+    return 0;
+    }
 }
 
 
@@ -100,7 +118,7 @@ int main()
 
 	printf("starting with state 1\n");
     
-    state = 1; // only get_config_file() gets called which returns -1, nothing gets set
+    state = 1; // read_available_comdb2db_configs returns -1, nothing gets set
 
     rc = get_comdb2db_hosts(NULL,NULL, NULL, &master, 
             NULL, &num_hosts, NULL,NULL, NULL,
@@ -113,7 +131,7 @@ int main()
 
 
 
-    state = 2; // get_config_file() returns a filename that does not exist
+    state = 2; // read_available_comdb2db_configs returns 0, just get defaults
 
     rc = get_comdb2db_hosts(NULL,NULL, NULL, &master, 
             NULL, &num_hosts, NULL,NULL, NULL,
@@ -124,10 +142,10 @@ int main()
     assert(num_db_hosts == 0);
     assert(master == -1);
 
-    state = 3; // same as state 2, but get more than defaults
-
+    state = 3; // read_available_comdb2db_configs returns 0 and sets comdb2db_found
+               // should populate and check comdb2db_hosts
     rc = get_comdb2db_hosts(NULL,NULL, NULL, &master, 
-            NULL, &num_hosts, NULL,NULL, NULL,
+            NULL, &num_hosts, NULL, NULL, NULL,
             NULL, &num_db_hosts, NULL, 0);
 
     assert(rc == 0);
@@ -135,6 +153,74 @@ int main()
     assert(num_db_hosts == 0);
     assert(master == -1);
 
+    state = 4; // read_available_comdb2db_configs returns 0 and sets dbname_found
+               // should populate and check db_hosts
+
+    rc = get_comdb2db_hosts(NULL,NULL, NULL, &master, 
+            NULL, &num_hosts, NULL, NULL, NULL,
+            NULL, &num_db_hosts, NULL, 0);
+
+    assert(rc == 0);
+    assert(num_hosts == 0);
+    assert(num_db_hosts == 0);
+    assert(master == -1);
+
+    state = 5; // read_available_comdb2db_configs returns 0, will call cdb2_dbinfo_query
+
+    {
+    char comdb2db_hosts[MAX_NODES][64] = {0};
+    char db_hosts[MAX_NODES][64];
+    int comdb2db_num = 0;
+    rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master, 
+            NULL, &num_hosts, &comdb2db_num, NULL, NULL,
+            db_hosts, &num_db_hosts, NULL, 0);
+
+    assert(rc == 0);
+    assert(num_hosts == 3);
+    assert(strcmp(comdb2db_hosts[0], "comdb2db_node1") == 0);
+    assert(strcmp(comdb2db_hosts[1], "comdb2db_node2") == 0);
+    assert(strcmp(comdb2db_hosts[2], "comdb2db_node3") == 0);
+    assert(comdb2db_hosts[3][0] == '\0');
+    assert(num_db_hosts == 0);
+    assert(master == -1);
+    }
+
+
+    state = 6; // cdb2_dbinfo_query will return -1, will call get_host_by_name
+
+    {
+    char comdb2db_hosts[MAX_NODES][64] = {0};
+    char db_hosts[MAX_NODES][64];
+    int comdb2db_num = 0;
+    rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master, 
+            NULL, &num_hosts, &comdb2db_num, NULL, NULL,
+            db_hosts, &num_db_hosts, NULL, 0);
+
+    assert(rc == -1);
+    assert(num_hosts == 0);
+    assert(num_db_hosts == 0);
+    assert(master == -1);
+    }
+
+    state = 7; // cdb2_dbinfo_query will return -1, will call get_host_by_name
+
+    {
+    char comdb2db_hosts[MAX_NODES][64] = {0};
+    char db_hosts[MAX_NODES][64];
+    int comdb2db_num = 0;
+    rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master, 
+            NULL, &num_hosts, &comdb2db_num, NULL, NULL,
+            db_hosts, &num_db_hosts, NULL, 0);
+
+    assert(rc == 0);
+    assert(num_hosts == 3);
+    assert(strcmp(comdb2db_hosts[0], "comdb2db_node1") == 0);
+    assert(strcmp(comdb2db_hosts[1], "comdb2db_node2") == 0);
+    assert(strcmp(comdb2db_hosts[2], "comdb2db_node3") == 0);
+    assert(comdb2db_hosts[3][0] == '\0');
+    assert(num_db_hosts == 0);
+    assert(master == -1);
+    }
 
 
     /*

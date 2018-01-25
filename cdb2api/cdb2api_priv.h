@@ -14,10 +14,14 @@
    limitations under the License.
  */
 
-#include <sbuf2.h>
-
 #ifndef INCLUDED_CDB2API_PRIV_H
 #define INCLUDED_CDB2API_PRIV_H
+
+
+#include "sqlquery.pb-c.h"
+#include "sqlresponse.pb-c.h"
+#include "sbuf2.h"
+
 
 #define DB_TZNAME_DEFAULT "America/New_York"
 
