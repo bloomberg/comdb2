@@ -694,7 +694,6 @@ static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
 {
     connection &c = connections[fd.fd];
     ssize_t n = read(fd.fd, c.inbuf + c.inoff, sizeof(c.inbuf) - c.inoff);
-    int rc = 0;
     if (n <= 0) {
         unwatchfd(fd);
         return 0;
@@ -704,6 +703,7 @@ static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
 //  fsnapf(stdout, c.inbuf + c.inoff, n);
 #endif
 
+    int rc = 0;
     c.inoff += n;
     int off = 0;
     std::string s(c.inbuf, c.inoff);

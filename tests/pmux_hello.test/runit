@@ -24,6 +24,19 @@ failexit()
     exit 1
 }
 
+test_rte()
+{
+    echo -e "rte\ngarbage\n" | nc -v localhost ${COMDB2_PMUX_PORT} > rte.out
+    cat <<EOF > rte.expected
+-1
+-1 unknown command, type 'help' for a brief usage description
+EOF
+
+    if ! diff rte.expected rte.out ; then
+        failexit "differing rte.expected rte.out"
+    fi
+}
+
 function empty_used_list_crash
 {
     [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
@@ -228,6 +241,7 @@ function runtest
     pmux_pid=$!
 
     sleep 5
+    test_rte
     test_basic_actions
 
     empty_used_list_crash
