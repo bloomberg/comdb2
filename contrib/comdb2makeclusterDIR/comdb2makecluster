@@ -4,7 +4,6 @@
 # needs the following parameters:
 # [optionally] a directory to store the database files, if ommited
 #   it will use current working directory
-# [optionally] a parameter to require ssl communication with the db
 # the database name
 # cluster nodes (at least two nodes)
 
@@ -16,7 +15,7 @@ failexit() {
 }
 
 usage() {
-    failexit "usage: $0 [--dir /path/to/dir] [--usessl] dbname node1 node2 [..nodeN]"
+    failexit "usage: $0 [--dir /path/to/dir] dbname node1 node2 [..nodeN]"
 }
 
 
@@ -29,12 +28,6 @@ if [[ $1 = "--dir" ]] ; then
     DBDIR=$1
     shift
 fi
-
-if [[ $1 = "--usessl" ]] ; then 
-    USESSL=1
-    shift
-fi
-
 
 DBNAME=$1
 shift
@@ -73,15 +66,16 @@ check_executables_for_cluster()
 {
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then
-            readlink -f $DBDIR && failexit "$DBDIR already exists, please clean up before attempting to start"
+            ls $DBDIR &> /dev/null && failexit "$DBDIR already exists, please clean up before attempting to start"
             which $COMDB2_EXE > /dev/null || failexit "$COMDB2_EXE not in path"
+            which $COMDB2AR_EXE  > /dev/null || failexit "copycomdb2 not in path"
             which copycomdb2  > /dev/null || failexit "copycomdb2 not in path"
             continue
         fi
 
-        ssh -o StrictHostKeyChecking=no $node "ls $DBDIR &> /dev/null" < /dev/null && failexit "$DBDIR already exists in node $node, please clean up before attempting to start"
-        ssh -o StrictHostKeyChecking=no $node "which $COMDB2_EXE > /dev/null" < /dev/null || failexit "$COMDB2_EXE not in path in node $node"
-        ssh -o StrictHostKeyChecking=no $node "which $COMDB2AR_EXE > /dev/null" < /dev/null || failexit "$COMDB2AR_EXE not in path in node $node"
+        ssh -o StrictHostKeyChecking=no $node "ls $DBDIR > /dev/null 2>&1" < /dev/null && failexit "$DBDIR already exists in node $node, please clean up before attempting to start"
+        ssh -o StrictHostKeyChecking=no $node "which $COMDB2_EXE > /dev/null 2>&1" < /dev/null || failexit "$COMDB2_EXE not in path in node $node"
+        ssh -o StrictHostKeyChecking=no $node "which $COMDB2AR_EXE > /dev/null 2>&1" < /dev/null || failexit "$COMDB2AR_EXE not in path in node $node"
     done
 }
 
@@ -89,18 +83,12 @@ check_executables_for_cluster
 
 
 mkdir -p $DBDIR $TMPDIR
+mkdir -p $DBDIR/logs $DBDIR/var/log/cdb2 $DBDIR/tmp/cdb2
 
 # setup files:
 echo "$DBNAME: creating"
 LRL="$DBDIR/$DBNAME.lrl"
 > ${LRL}
-
-if [[ -n $USESSL ]] ; then
-    cat >> $DBDIR/$DBNAME.lrl <<EOPTIONS
-ssl_client_mode REQUIRE
-ssl_cert_path $DBDIR
-EOPTIONS
-fi
 
 cat >> $DBDIR/$DBNAME.lrl <<EOPTIONS
 name    $DBNAME
@@ -124,9 +112,6 @@ for node in $CLUSTER; do #verify we can ssh to nodes
     fi
 done
 
-# Configure client SSL
-echo "comdb2_config:ssl_cert_path=$DBDIR" >>$CDB2_CONFIG
-
 set +e
 
 pmux_port=5105
@@ -140,47 +125,6 @@ if [ -n "$PMUXPORT" ] ; then
     echo "portmux_port $PMUXPORT" >> ${LRL}
     echo "portmux_bind_path $pmux_socket" >> ${LRL}
 fi
-stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} && echo exit >&3 )"
-
-
-
-
-keygen() {
-# Setup ssl certificate
-    openssl req -x509 -newkey rsa:4096 -keyout ${DBDIR}/server.key \
-        -out ${DBDIR}/server.crt \
-        -days 365 -nodes -subj \
-        "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=*.bloomberg.com" &>> $DBDIR/setup.log
-    cp ${DBDIR}/server.crt ${DBDIR}/root.crt
-    chmod 600 ${DBDIR}/server.key
-    cp ${DBDIR}/server.crt ${DBDIR}/client.crt
-    cp ${DBDIR}/server.key ${DBDIR}/client.key
-}
-
-
-copy_files_to_cluster() 
-{
-    # copy executables to each node except localhost
-    for node in $CLUSTER; do
-        if [ $node == $myhostname ] ; then
-            continue
-        fi
-
-        ssh -o StrictHostKeyChecking=no $node "mkdir -p $DBDIR/logs/ $DBDIR/var/log/cdb2 $DBDIR/tmp/cdb2" < /dev/null
-        ssh -o StrictHostKeyChecking=no $node "$pmux_cmd" &>> $DBDIR/setup.log < /dev/null
-        if [[ -n $USESSL ]] ; then
-            scp -o StrictHostKeyChecking=no ${DBDIR}/server.key ${DBDIR}/server.crt $node:${DBDIR} &>> $DBDIR/setup.log
-            ssh -o StrictHostKeyChecking=no $node "cp ${DBDIR}/server.crt ${DBDIR}/root.crt || chmod 600 ${DBDIR}/server.key"
-        fi
-    done
-}
-
-
-#generate ssl keys for the db
-if [[ -n $USESSL ]] ; then
-    keygen
-fi
-copy_files_to_cluster
 
 
 for csc2 in $(ls *.csc2 2>/dev/null); do
@@ -188,7 +132,6 @@ for csc2 in $(ls *.csc2 2>/dev/null); do
     cp $PWD/$csc2 $DBDIR/
 done >> $DBDIR/${DBNAME}.lrl
 
-mkdir -p $DBDIR/logs $DBDIR/var/log/cdb2 $DBDIR/tmp/cdb2
 
 $COMDB2_EXE --create --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/$DBNAME.pid $DBNAME  >$DBDIR/logs/${DBNAME}.init 2>&1
 rc=$?
@@ -199,16 +142,20 @@ if [[ $rc -ne 0 ]]; then
 fi
 echo "${DBNAME} created successfully"
 
-set -e  # from here, a bad rc will mean failure and exit
+#set -e  # from here, a bad rc will mean failure and exit
 
 
-# start it
 echo "$DBNAME: copying to cluster"
 for node in $CLUSTER; do
     if [ $node == $myhostname ] ; then # skip copying to ourself
         continue
     fi
-    copycomdb2 $DBDIR/${DBNAME}.lrl ${node}: &> $DBDIR/logs/${DBNAME}.${node}.copy
+
+    ssh -o StrictHostKeyChecking=no $node "mkdir -p $DBDIR/logs/ $DBDIR/var/log/cdb2 $DBDIR/tmp/cdb2" < /dev/null
+    ssh -o StrictHostKeyChecking=no $node "$pmux_cmd" &>> $DBDIR/setup.log < /dev/null
+
+    loccomdb2ar_exopts=`ssh -o StrictHostKeyChecking=no $node "which $COMDB2_EXE"`
+    COMDB2AR_EXOPTS="-x $loccomdb2ar_exopts" copycomdb2 $DBDIR/${DBNAME}.lrl ${node}: &> $DBDIR/logs/${DBNAME}.${node}.copy
     if [[ $? -ne 0 ]]; then
         echo "FAILED: copycomdb2 $DBDIR/${DBNAME}.lrl ${node}: "
         echo "see $DBDIR/logs/${DBNAME}.${node}.copy "

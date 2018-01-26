@@ -114,7 +114,7 @@ add_subdirectory(sockpool)
 add_subdirectory(sqlite)
 add_subdirectory(tools)
 add_subdirectory(db)
-add_subdirectory(contrib)
+add_subdirectory(contrib/comdb2makecluster)
 add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
 
 enable_testing()
