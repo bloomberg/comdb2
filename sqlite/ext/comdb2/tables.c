@@ -238,6 +238,14 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_threadpools", &systblThreadPoolsModule, 0);
   if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_plugins", &systblPluginsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_appsock_handlers",
+                               &systblAppsockHandlersModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_opcode_handlers",
+                               &systblOpcodeHandlersModule, 0);
+  if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_completion", &completionModule, 0);
 #endif
   return rc;

@@ -803,6 +803,7 @@ int register_tunable(comdb2_tunable tunable)
 {
     comdb2_tunable *t;
     int already_exists = 0;
+    int slot = -1;
 
     if ((!gbl_tunables) || (gbl_tunables->freeze == 1)) return 0;
 
@@ -825,6 +826,12 @@ int register_tunable(comdb2_tunable tunable)
 
           (See bdb_open_int() & berkdb/env/env_attr.c)
         */
+        for (int i = 0; i < gbl_tunables->count; i++) {
+            if (gbl_tunables->array[i] == t) {
+                slot = i;
+                break;
+            }
+        }
         free_tunable(t);
 
         already_exists = 1;
@@ -847,10 +854,12 @@ int register_tunable(comdb2_tunable tunable)
         goto err;
     }
     t->type = tunable.type;
-
-    if (!tunable.var && !tunable.value && (tunable.type != TUNABLE_COMPOSITE)) {
-        logmsg(LOGMSG_ERROR, "%s: A non-composite Tunable with no var pointer "
-                             "set, must have its value function defined.\n",
+    if (!tunable.var && !tunable.value &&
+        !(tunable.type == TUNABLE_COMPOSITE) &&
+        ((tunable.flags & INTERNAL) == 0)) {
+        logmsg(LOGMSG_ERROR,
+               "%s: A non-composite/non-internal tunable with no var pointer "
+               "set, must have its value function defined.\n",
                __func__);
         goto err;
     }
@@ -862,7 +871,10 @@ int register_tunable(comdb2_tunable tunable)
     t->update = tunable.update;
     t->destroy = tunable.destroy;
 
-    if (already_exists == 0) {
+    if (already_exists) {
+        assert(slot != -1);
+        gbl_tunables->array[slot] = t;
+    } else {
         gbl_tunables->array =
             realloc(gbl_tunables->array,
                     sizeof(comdb2_tunable *) * (gbl_tunables->count + 1));

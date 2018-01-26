@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2017, Bloomberg Finance L.P.
+   Copyright 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -14,13 +14,29 @@
    limitations under the License.
  */
 
-#ifndef INCLUDED_RTCPU_H
-#define INCLUDED_RTCPU_H
+#ifndef _SQLEXPLAIN_H_
+#define _SQLEXPLAIN_H_
 
-void register_rtcpu_callbacks(int (*a)(const char *), int (*b)(void),
-                              int (*c)(const char *), int (*d)(const char *));
-int machine_is_up(const char *host);
-int machine_class(const char *host);
-int machine_dc(const char *host);
+extern int all_opcodes;
 
-#endif
+struct cursor_info {
+    int dbid;
+    int rootpage;
+    int tbl;
+    int ix;
+    struct schema *sc;
+    int istemp;
+    KeyInfo *key;
+    int cols;
+    int remote;
+};
+
+typedef struct {
+    int *aiIndent; /* Array of indents used in MODE_Explain */
+    int nIndent;   /* Size of array aiIndent[] */
+} IndentInfo;
+
+void explain_data_prepare(IndentInfo *p, Vdbe *v);
+void explain_data_delete(IndentInfo *p);
+
+#endif /* _SQLEXPLAIN_H_ */

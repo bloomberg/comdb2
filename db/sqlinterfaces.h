@@ -17,7 +17,8 @@
 #ifndef __SQLINTERFACES_H__
 #define __SQLINTERFACES_H__
 
-/* comment for commit */
+#define SQLHERR_APPSOCK_LIMIT -110
+#define SQLHERR_WRONG_DB -111
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -221,11 +222,6 @@ int newsql_write_response(struct sqlclntstate *clnt, int type,
 /* requests for fastsql */
 int fsql_write_response(struct sqlclntstate *clnt, struct fsqlresp *resp,
                         void *dta, int len, int flush, const char *func, uint32_t line);
-
-int handle_fastsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
-                            int *keepsock, int wrong_db);
-
-int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb);
 
 int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
                      sqlite3_stmt *stmt, const char **errstr);
