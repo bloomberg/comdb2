@@ -79,7 +79,7 @@ crle: basicops_nokey tools
 	@$(MAKE) -sC crle.test
 
 %: %.test
-	@N=`tools/get_test_counter.sh` && echo TESTID=${TESTID} running $< $$N/${TOTAL}
+	@N=`tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
 	@cp -r $< $(TESTDIR)/
 	@$(MAKE) -skC $(TESTDIR)/$<
 

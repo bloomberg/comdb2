@@ -966,7 +966,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
                 __LINE__);
     }
 
-    if (get_config_file(dbname, filename, sizeof(filename)) != 0)
+    if (dbname && get_config_file(dbname, filename, sizeof(filename)) != 0)
         return -1; // set error string?
     if (num_hosts)
         *num_hosts = 0;
@@ -1008,8 +1008,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
         }
     }
 
-    fp = fopen(filename, "r");
-    if (fp != NULL) {
+    if(dbname && (fp = fopen(filename, "r")) != NULL) {
         read_comdb2db_cfg(hndl, fp, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
                           num_db_hosts, dbnum, &dbname_found, &comdb2db_found);
@@ -3111,6 +3110,16 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
     return 0;
 }
 
+
+static inline void consume_previous_query(cdb2_hndl_tp *hndl)
+{
+    while (cdb2_next_record_int(hndl, 0) == CDB2_OK)
+        ;
+
+    clear_responses(hndl);
+    hndl->rows_read = 0;
+}
+
 #define GOTO_RETRY_QUERIES()                                                   \
     do {                                                                       \
         if (hndl->debug_trace) {                                               \
@@ -3140,16 +3149,8 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
         fprintf(stderr, "%s running '%s' from line %d\n", __func__, sql, line);
     }
 
-    while (cdb2_next_record_int(hndl, 0) == CDB2_OK)
-        ;
-
-    clear_responses(hndl);
-
-    hndl->rows_read = 0;
-
-    while (sql && isspace(*sql))
-        sql++;
-
+    consume_previous_query(hndl);
+    sql = cdb2_skipws(sql);
     if (!sql)
         return 0;
 
@@ -3270,8 +3271,7 @@ retry_queries:
 #endif
 
     if (retries_done > hndl->max_retries) {
-        sprintf(hndl->errstr, "%s: Maximum number of retries done.",
-                __func__);
+        sprintf(hndl->errstr, "%s: Maximum number of retries done.", __func__);
         if (is_hasql_commit) {
             cleanup_query_list(hndl, commit_query_list, __LINE__);
         }
@@ -4467,6 +4467,17 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
     return -1;
 }
 
+static inline void only_read_config()
+{
+    FILE * fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
+    if (fp != NULL) {
+        read_comdb2db_cfg(NULL, fp, NULL, NULL, NULL,
+                          NULL, NULL, NULL, NULL,
+                          NULL, NULL, NULL, NULL);
+        fclose(fp);
+    }
+}
+
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
 {
     char comdb2db_hosts[MAX_NODES][64];
@@ -4487,8 +4498,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
                           &hndl->num_hosts, &hndl->num_hosts_sameroom) == 0) {
         /* We get a plaintext socket from sockpool.
            We still need to read SSL config */
-        get_comdb2db_hosts(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                           NULL, NULL, NULL, NULL, 1);
+        only_read_config();
         return 0;
     }
 
@@ -4714,8 +4724,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
     assert(type_copy[0] == '@');
     char *s = type_copy + 1; // advance past the '@'
 
-    get_comdb2db_hosts(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                       NULL, NULL, NULL, 1);
+    only_read_config();
 
     char *machine;
     machine = strtok_r(s, ",", &eomachine);
@@ -5084,8 +5093,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     if (hndl->flags & CDB2_DIRECT_CPU) {
         hndl->num_hosts = 1;
         /* Get defaults from comdb2db.cfg */
-        get_comdb2db_hosts(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                           NULL, NULL, NULL, 1);
+        only_read_config();
         strncpy(hndl->hosts[0], type, sizeof(hndl->hosts[0]) - 1);
         char *p = strchr(hndl->hosts[0], ':');
         if (p) {
