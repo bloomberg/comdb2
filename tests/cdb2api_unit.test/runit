@@ -4,4 +4,4 @@ set -e
 
 ${TESTSROOTDIR}/tools/cdb2api_unit
 
-test_get_comdb2db_hosts
+./test_get_comdb2db_hosts
