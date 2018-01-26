@@ -26,7 +26,9 @@ failexit()
 
 test_rte()
 {
-    echo -e "rte\ngarbage\n" | nc -w 1 localhost ${COMDB2_PMUX_PORT} > rte.out
+    echo -e "rte\ngarbage\n" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "rte" ${COMDB2_PMUX_PORT} &> rte.out
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "garbage" ${COMDB2_PMUX_PORT} &>> rte.out
     cat <<EOF > rte.expected
 -1
 -1 unknown command, type 'help' for a brief usage description
