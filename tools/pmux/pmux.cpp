@@ -594,12 +594,10 @@ again:
             int rc = route_to_instance(svc, fd.fd);
             if (rc == 0) {
                 unwatchfd(fd);
-            }
-            else {
+            } else {
                 dealloc_fd(svc);
                 conn_printf(c, "-1\n");
             }
-            unwatchfd(fd);
         }
     } else if (strcmp(cmd, "del") == 0) {
         if (c.writable) {

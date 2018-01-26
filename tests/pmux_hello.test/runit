@@ -27,6 +27,7 @@ failexit()
 test_rte()
 {
     echo -e "rte\ngarbage\n" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
+    echo -e "rte something\ngarbage\n" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
     ${TESTSROOTDIR}/tools/send_msg_port.sh "rte" ${COMDB2_PMUX_PORT} &> rte.out
     ${TESTSROOTDIR}/tools/send_msg_port.sh "garbage" ${COMDB2_PMUX_PORT} &>> rte.out
     cat <<EOF > rte.expected
@@ -116,6 +117,16 @@ function verify_hello_reuse
             fi
             let t=t+1
         done
+
+        # send rte and then garbage to verify pmux does not crash
+        echo -e "rte comdb2/replication/$db\ngarbage\n" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
+
+        kill -0 $pmux_pid
+        if [[ $? != 0 ]]; then
+            echo "${FUNCNAME[0]} rte test failed: empty used list killed pmux"
+            exit 1
+        fi
+
         kill -9 $dbpid
 
         if [[ $started == 0 ]]; then
