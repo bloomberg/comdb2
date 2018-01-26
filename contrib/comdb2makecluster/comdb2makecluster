@@ -68,7 +68,7 @@ check_executables_for_cluster()
         if [ $node == $myhostname ] ; then
             ls $DBDIR &> /dev/null && failexit "$DBDIR already exists, please clean up before attempting to start"
             which $COMDB2_EXE > /dev/null || failexit "$COMDB2_EXE not in path"
-            which $COMDB2AR_EXE  > /dev/null || failexit "copycomdb2 not in path"
+            which $COMDB2AR_EXE  > /dev/null || failexit "$COMDB2AR_EXE not in path"
             which copycomdb2  > /dev/null || failexit "copycomdb2 not in path"
             continue
         fi
