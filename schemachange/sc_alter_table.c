@@ -313,7 +313,6 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
     struct schema_change_type *s = iq->sc;
     struct dbtable *db;
     int rc;
-    int readonly = 0;
     int bdberr = 0;
     int trying_again = 0;
     struct dbtable *newdb;
@@ -544,13 +543,10 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
      * that doesn't require rebuilding anything. */
     if ((!newdb->plan || newdb->plan->plan_convert) ||
         changed == SC_CONSTRAINT_CHANGE) {
-        readonly = !s->live;
         doing_conversion = 1;
-        if (readonly)
+        if (!s->live)
             gbl_readonly_sc = 1;
         rc = convert_all_records(db, newdb, newdb->sc_genids, s);
-        if (readonly)
-            gbl_readonly_sc = 0;
         if (rc == 1) rc = 0;
         doing_conversion = 0;
     } else
