@@ -642,7 +642,8 @@ retry_read:
               It may happen when require_ssl is first time
               enabled across the cluster. */
         int client_supports_ssl = 0;
-        for (int ii = 0; ii < query->sqlquery->n_features; ++ii) {
+        for (int ii = 0; query->sqlquery && ii < query->sqlquery->n_features; 
+             ++ii) {
             if (CDB2_CLIENT_FEATURES__SSL == query->sqlquery->features[ii]) {
                 client_supports_ssl = 1;
                 break;
@@ -762,9 +763,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     }
 
     CDB2QUERY *query = read_newsql_query(dbenv, &clnt, sb);
-    if (query == NULL)
+    if (!query || !query->sqlquery)
         goto done;
-    assert(query->sqlquery);
+
     CDB2SQLQUERY *sql_query = query->sqlquery;
     clnt.query = query;
 
@@ -806,8 +807,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         sqlthd->sqlclntstate->origin[0] = 0;
     }
 
-    while (query) {
-        assert(query->sqlquery);
+    while (query && query->sqlquery) {
         sql_query = query->sqlquery;
         clnt.sql_query = sql_query;
         clnt.sql = sql_query->sql_query;
