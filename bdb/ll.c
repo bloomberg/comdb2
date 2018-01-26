@@ -1402,7 +1402,7 @@ int ll_dta_upd(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
 {
     return ll_dta_upd_int(bdb_state, rrn, oldgenid, newgenid, dbp, tran,
                           dtafile, dtastripe, participantstripid, use_new_genid,
-                          verify_dta, dta, old_dta_out, 0, 0, 0);
+                          verify_dta, dta, old_dta_out, (dtafile != 0), 0, 0);
 }
 
 int ll_dta_upd_blob(bdb_state_type *bdb_state, int rrn,

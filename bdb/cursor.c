@@ -3123,12 +3123,14 @@ int bdb_update_logfile_pglogs(void *bdb_state, void *pglogs, unsigned int nkeys,
                 keylist[i].fileid, keylist[i].pgno, keylist[i].lsn,
                 logical_commit_lsn);
         }
-            /* else {
-                char *txt;
-                hexdumpbuf(keylist[i].fileid, DB_FILE_ID_LEN, &txt);
-                printf("%s: skipping fileid %s\n", __func__, txt);
-                free(txt);
-            } */
+#if NEWSI_DEBUG
+        else {
+            char *txt;
+            hexdumpbuf(keylist[i].fileid, DB_FILE_ID_LEN, &txt);
+            printf("%s: skipping fileid %s\n", __func__, txt);
+            free(txt);
+        }
+#endif
 #ifdef NEWSI_ASOF_USE_TEMPTABLE
         Pthread_mutex_unlock(&pglog_ent->mtx);
 #endif
@@ -3225,9 +3227,12 @@ static int bdb_update_relinks_fileid_queues(void *bdb_state,
     return 0;
 }
 
-static int bdb_update_pglogs_fileid_queues(
-    void *bdb_state, unsigned long long logical_tranid, int is_logical_commit,
-    DB_LSN commit_lsn, uint32_t gen, struct page_logical_lsn_key *keylist, unsigned int nkeys)
+static int bdb_update_pglogs_fileid_queues(void *bdb_state,
+                                           unsigned long long logical_tranid,
+                                           int is_logical_commit,
+                                           DB_LSN commit_lsn, uint32_t gen,
+                                           struct page_logical_lsn_key *keylist,
+                                           unsigned int nkeys)
 {
     int j, count;
     struct fileid_pglogs_queue *fileid_queue = NULL;

@@ -1921,17 +1921,17 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
         num_comprec++;
 #endif
 #ifdef NEWSI_STAT
-    struct timeval before, after, diff;
-    gettimeofday(&before, NULL);
+        struct timeval before, after, diff;
+        gettimeofday(&before, NULL);
 #endif
 
         rc = undo_physical_transaction(bdb_state, tran, &logdta, &did_something,
                                        &undolsn, &lsn);
 
 #ifdef NEWSI_STAT
-    gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&comprec_time, &diff, &comprec_time);
+        gettimeofday(&after, NULL);
+        timeval_diff(&before, &after, &diff);
+        timeval_add(&comprec_time, &diff, &comprec_time);
 #endif
         if (log_compare(&last_regop_lsn, &tran->last_regop_lsn))
             memcpy(&start_phys_txn, &undolsn, sizeof(start_phys_txn));
