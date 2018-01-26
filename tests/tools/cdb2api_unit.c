@@ -179,12 +179,14 @@ void test_read_comdb2db_cfg()
 
 void test_get_config_file()
 {
-
     char shortname[16];
     int rc = get_config_file("mydb", shortname, sizeof(shortname));
     assert(rc == -1); //does not fit
 
     char filename[PATH_MAX];
+    rc = get_config_file(NULL, filename, sizeof(filename));
+    assert(rc == 0);
+
     setenv("COMDB2_ROOT", "myroot", 1);
     rc = get_config_file("mydb", filename, sizeof(filename));
     assert(rc == 0);
