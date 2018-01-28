@@ -583,13 +583,13 @@ retry_read:
         fdb_heartbeats(clnt);
         pthread_mutex_unlock(&clnt->wait_mutex);
     }
+    free(p);
 
     if (pre_enabled) {
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
         pthread_mutex_unlock(&clnt->wait_mutex);
     }
-    free(p);
 
     if (query && query->dbinfo) {
         if (query->dbinfo->has_want_effects &&
@@ -627,6 +627,11 @@ retry_read:
         cdb2__query__free_unpacked(query, &pb_alloc);
         goto retry_read;
     }
+    else if (query && !query->sqlquery) {
+        cdb2__query__free_unpacked(query, &pb_alloc);
+        goto retry_read;
+    }
+
 
 #if WITH_SSL
     /* Do security check before we return. We do it only after
@@ -642,8 +647,7 @@ retry_read:
               It may happen when require_ssl is first time
               enabled across the cluster. */
         int client_supports_ssl = 0;
-        for (int ii = 0; query->sqlquery && ii < query->sqlquery->n_features; 
-             ++ii) {
+        for (int ii = 0; ii < query->sqlquery->n_features; ++ii) {
             if (CDB2_CLIENT_FEATURES__SSL == query->sqlquery->features[ii]) {
                 client_supports_ssl = 1;
                 break;
@@ -763,8 +767,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     }
 
     CDB2QUERY *query = read_newsql_query(dbenv, &clnt, sb);
-    if (!query || !query->sqlquery)
+    if (query == NULL)
         goto done;
+    assert(query->sqlquery);
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
     clnt.query = query;
@@ -807,7 +812,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         sqlthd->sqlclntstate->origin[0] = 0;
     }
 
-    while (query && query->sqlquery) {
+    while (query) {
+        assert(query->sqlquery);
         sql_query = query->sqlquery;
         clnt.sql_query = sql_query;
         clnt.sql = sql_query->sql_query;
