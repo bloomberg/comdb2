@@ -9,7 +9,6 @@
 #include <assert.h>
 #include <signal.h>
 #include <unistd.h>
-//#include <getopt.h>
 
 static char *argv0=NULL;
 

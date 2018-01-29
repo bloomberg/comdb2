@@ -4,7 +4,6 @@
 #include <time.h>
 #include <errno.h>
 #include <unistd.h>
-//#include <getopt.h>
 
 static char *argv0=NULL;
 static char *dbname=NULL;

@@ -2994,34 +2994,6 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             }
             sbuf2close(hndl->sb);
             hndl->sb = NULL;
-            CDB2DBINFORESPONSE *dbinfo_response = NULL;
-            dbinfo_response =
-                cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
-            parse_dbresponse(dbinfo_response, hndl->hosts, hndl->ports,
-                             &hndl->master, &hndl->num_hosts,
-                             &hndl->num_hosts_sameroom
-#if WITH_SSL
-                             ,
-                             &hndl->s_sslmode
-#endif
-                             );
-            cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
-
-            if (hndl->debug_trace) {
-                fprintf(stderr, "td %u %s line %d type=%d returning 1\n",
-                        (uint32_t)pthread_self(), host, __LINE__, type);
-            }
-
-#if WITH_SSL
-            /* Clear cached SSL sessions - Hosts may have changed. */
-            if (hndl->sess_list != NULL) {
-                cdb2_ssl_sess_list *sl = hndl->sess_list;
-                for (int i = 0; i != sl->n; ++i)
-                    SSL_SESSION_free(sl->list[i].sess);
-                free(sl->list);
-                sl->list = NULL;
-            }
-#endif
             return 1;
         }
         if (hndl->first_buf != NULL) {
