@@ -59,6 +59,20 @@ typedef struct timepart_sc_arg {
     void *tran; /*remove?*/
 } timepart_sc_arg_t;
 
+
+enum systable_columns {
+    VIEWS_NAME
+    ,VIEWS_PERIOD
+    ,VIEWS_RETENTION
+    ,VIEWS_NSHARDS
+    ,VIEWS_VERSION
+    ,VIEWS_SHARD0NAME
+    ,VIEWS_STARTTIME
+    ,VIEWS_SOURCEID
+    ,VIEWS_MAXCOLUMN
+};
+
+
 /**
  * Initialize the views
  *
@@ -116,7 +130,7 @@ int views_write(const char *str);
 
 /**
  *  Write a CSON representation of a view
- *  The view is internally saved as a parameter "viewname" for the table
+ *  TGhe view is internally saved as a parameter "viewname" for the table
  *"sys_views"
  *
  *  NOTE: writing a NULL or 0 length string deletes existing entry if any
@@ -326,6 +340,18 @@ void views_unlock(void);
  *
  */
 char *timepart_newest_shard(const char *view_name, unsigned long long *version);
+
+/**
+ * Returned a malloced string for the "iRowid"-th view, column iCol 
+ * NOTE: this is called with a read lock in views structure
+ */
+void timepart_systable_get_column(sqlite3_context *ctx, int iRowid, enum systable_columns iCol);
+
+/**
+ * Get number of views
+ *
+ */
+int timepart_get_views(void);
 
 #endif
 

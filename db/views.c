@@ -2635,25 +2635,62 @@ static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
     return rc;
 }
 
-#if 0
-static int bdb_lock_table_write_pp(const char *tblname, timepart_sc_arg_t *arg)
+/**
+ * Returned a malloced string for the "iRowid"-th view, column iCol 
+ * NOTE: this is called with a read lock in views structure
+ */
+void timepart_systable_get_column(sqlite3_context *ctx, int iRowid, enum systable_columns iCol)
 {
-    struct dbtable *db = get_dbtable_by_name(tblname);
+   timepart_views_t  *views = thedb->timepart_views;
+   timepart_view_t   *view;
+   uuidstr_t us;
 
-    bdb_lock_table_write(db->handle, arg->tran); 
+   if (iRowid<0 || iRowid>=views->nviews || iCol >= VIEWS_MAXCOLUMN) {
+       sqlite3_result_null(ctx);
+   }
 
-    return 0;
+   view = views->views[iRowid];
+
+   switch(iCol) {
+       case VIEWS_NAME:
+           sqlite3_result_text(ctx, view->name, -1, NULL);
+           break;
+       case VIEWS_PERIOD:
+           sqlite3_result_text(ctx, period_to_name(view->period), -1, NULL);
+           break;
+       case VIEWS_RETENTION:
+           sqlite3_result_int(ctx, view->retention);
+           break;
+       case VIEWS_NSHARDS:
+           sqlite3_result_int(ctx, view->nshards);
+           break;
+       case VIEWS_VERSION:
+           sqlite3_result_int(ctx, view->version);
+           break;
+       case VIEWS_SHARD0NAME:
+           sqlite3_result_text(ctx, view->shard0name, -1, NULL);
+           break;
+       case VIEWS_STARTTIME:
+           sqlite3_result_int(ctx, view->starttime);
+           break;
+       case VIEWS_SOURCEID:
+           sqlite3_result_text(ctx, comdb2uuidstr(view->source_id, us), -1, NULL);
+           break;
+   }
 }
 
-int timepart_write_lock(char *view_name, tran_type*tran)
+/**
+ * Get number of views
+ *
+ */
+int timepart_get_views(void)
 {
-    timepart_sc_arg_t arg = {0};
-    arg.tran = tran;
-    timepart_foreach_shard(view_name, bdb_lock_table_write_pp, &arg, 0);
-
-    return 0;
+    return thedb->timepart_views->nviews;
 }
-#endif
+
+
+
+
 #include "views_serial.c"
 
 #include "views_sqlite.c"

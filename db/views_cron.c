@@ -195,8 +195,6 @@ static void _destroy_event(cron_sched_t *sched, cron_event_t *event)
       free(event->arg2);
    if(event->arg3)
       free(event->arg3);
-   if(event->arg4)
-      free(event->arg4);
    free(event);
 }
 
@@ -361,7 +359,7 @@ void cron_clear_queue(cron_sched_t *sched)
 
    pthread_mutex_lock(&sched->mtx);
 
-   if (sched->running_call)
+   if (sched->running)
    {
       clock_gettime(CLOCK_REALTIME, &now);
       now.tv_sec += 1;
