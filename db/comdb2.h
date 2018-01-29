@@ -1507,7 +1507,8 @@ enum convert_scan_mode {
     SCAN_STRIPES = 1, /* requires dtastripe, required for live schema change */
     SCAN_DUMP = 2,
     SCAN_OLDCODE = 3,
-    SCAN_PARALLEL = 4 /* creates one thread for each stripe */
+    SCAN_PARALLEL = 4, /* creates one thread for each stripe */
+    SCAN_PAGEORDER = 5 /* 1 thread per stripe in page-order */
 };
 
 struct dbq_cursor {
@@ -1663,6 +1664,7 @@ extern unsigned gbl_goose_consume_rate;
 extern int gbl_queue_sleeptime;
 extern int gbl_reset_queue_cursor;
 extern int gbl_readonly;
+extern int gbl_readonly_sc;
 extern int gbl_use_bbipc;
 extern int gbl_init_single_meta;
 extern unsigned long long gbl_sc_genids[MAXDTASTRIPE];
@@ -2326,6 +2328,10 @@ int ix_prev_rnum(struct ireq *iq, int ixnum, void *key, int keylen, void *last,
 int dtas_next(struct ireq *iq, const unsigned long long *genid_vector,
               unsigned long long *genid, int *stripe, int stay_in_stripe,
               void *dta, void *trans, int dtalen, int *reqdtalen, int *ver);
+int dtas_next_pageorder(struct ireq *iq, const unsigned long long *genid_vector,
+                        unsigned long long *genid, int *stripe,
+                        int stay_in_stripe, void *dta, void *trans, int dtalen,
+                        int *reqdtalen, int *ver);
 
 int check_table_schema(struct dbenv *dbenv, const char *table,
                        const char *csc2file);

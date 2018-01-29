@@ -371,6 +371,59 @@ function run_plain_rebuilds
 
 }
 
+function run_pageorder_rebuilds
+{
+    loc_tbl=t2
+    cnt=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select count(*) from $tbl" )
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild $loc_tbl options pageorder"
+    if [[ $? == 0 ]]; then
+        failexit "Page-order full rebuild in read-write mode should have failed"
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild $loc_tbl options pageorder,readonly"
+    if [[ $? != 0 ]]; then
+        failexit "Page-order full rebuild in readonly mode should have succeeded"
+    fi
+    assertcnt $cnt
+    do_verify
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild data $loc_tbl options pageorder"
+    if [[ $? == 0 ]]; then
+        failexit "Page-order data rebuild in read-write mode should have failed"
+    fi
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild data $loc_tbl options pageorder,readonly"
+    if [[ $? != 0 ]]; then
+        failexit "Page-order data rebuild in readonly mode should have succeeded"
+    fi
+    assertcnt $cnt
+    do_verify
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild datablob $loc_tbl options pageorder"
+    if [[ $? == 0 ]]; then
+        failexit "Page-order datablob rebuild in read-write mode should have failed"
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild datablob $loc_tbl options pageorder,readonly"
+    if [[ $? != 0 ]]; then
+        failexit "Page-order datablob rebuild in readonly mode should have succeeded"
+    fi
+    assertcnt $cnt
+    do_verify
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl fd options pageorder"
+    if [[ $? == 0 ]]; then
+        failexit "Page-order index rebuild in read-write mode should have failed"
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl fd options pageorder,readonly"
+    if [[ $? != 0 ]]; then
+        failexit "Page-order index rebuild in readonly mode should have succeeded"
+    fi
+    assertcnt $cnt
+    do_verify
+}
+
 
 function rebuild_new_field_and_idx
 {
@@ -410,6 +463,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $foreigntbl  { `cat $foreign
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat $tbl.csc2 ` }"
 
 run_plain_rebuilds 500
+run_pageorder_rebuilds
 rebuild_new_field_and_idx 
 
 echo Success

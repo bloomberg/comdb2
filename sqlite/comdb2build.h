@@ -26,6 +26,8 @@
 #define REC_LZ4       0x1000
 
 #define FORCE_REBUILD 0x2000
+#define PAGE_ORDER    0x4000
+#define READ_ONLY     0x8000
 
 #define REBUILD_ALL     1
 #define REBUILD_DATA    2
@@ -80,10 +82,10 @@ void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable);
 void comdb2setAlias(Parse*, Token*, Token*);
 void comdb2getAlias(Parse*, Token*);
 
-void comdb2RebuildFull(Parse*,Token*,Token*);
-void comdb2RebuildIndex(Parse*, Token*, Token*, Token*);
-void comdb2RebuildData(Parse*, Token*, Token*);
-void comdb2RebuildDataBlob(Parse*,Token*, Token*);
+void comdb2RebuildFull(Parse*,Token*,Token*,int opt);
+void comdb2RebuildIndex(Parse*, Token*, Token*, Token*,int opt);
+void comdb2RebuildData(Parse*, Token*, Token*,int opt);
+void comdb2RebuildDataBlob(Parse*,Token*, Token*,int opt);
 void comdb2Truncate(Parse*, Token*, Token*);
 
 void comdb2bulkimport(Parse*, Token*, Token*, Token*, Token*);

@@ -117,7 +117,7 @@ static int handle_op_block(struct ireq *iq)
     int irc;
     double gbl_penaltyincpercent_d;
 
-    if (gbl_readonly) {
+    if (gbl_readonly || gbl_readonly_sc) {
         /* ERR_REJECTED will force a proxy retry. This is essential to make live
          * schema change work reliably. */
         if (gbl_schema_change_in_progress)
