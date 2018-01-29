@@ -239,6 +239,8 @@ int comdb2SystblInit(
     rc = sqlite3_create_module(db, "comdb2_threadpools", &systblThreadPoolsModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_completion", &completionModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_timepartitions", &systblTimepartModule, 0);
 #endif
   return rc;
 }
