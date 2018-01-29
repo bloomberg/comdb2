@@ -868,7 +868,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                 clnt.stack = NULL;
             }
             if (sql_query->client_info->argv0) {
-                clnt.argv0 = strdup(argv0);
+                clnt.argv0 = strdup(sql_query->client_info->argv0);
             }
             if (sql_query->client_info->stack) {
                 clnt.stack = strdup(sql_query->client_info->stack);
