@@ -20,6 +20,7 @@ const sqlite3_module systblTunablesModule;
 const sqlite3_module systblThreadPoolsModule;
 const sqlite3_module completionModule; // in ext/misc
 const sqlite3_module systblTimepartModule;
+const sqlite3_module systblTimepartShardsModule;
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")

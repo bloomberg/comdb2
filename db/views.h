@@ -63,9 +63,13 @@ typedef struct timepart_sc_arg {
 enum systable_columns {
     VIEWS_NAME
     ,VIEWS_PERIOD
+    ,VIEWS_SHARDNAME=VIEWS_PERIOD
     ,VIEWS_RETENTION
+    ,VIEWS_START=VIEWS_RETENTION
     ,VIEWS_NSHARDS
+    ,VIEWS_END=VIEWS_NSHARDS
     ,VIEWS_VERSION
+    ,VIEWS_SHARDS_MAXCOLUMN=VIEWS_VERSION
     ,VIEWS_SHARD0NAME
     ,VIEWS_STARTTIME
     ,VIEWS_SOURCEID
@@ -342,16 +346,30 @@ void views_unlock(void);
 char *timepart_newest_shard(const char *view_name, unsigned long long *version);
 
 /**
- * Returned a malloced string for the "iRowid"-th view, column iCol 
+ * Returned a malloced string for the "iRowid"-th timepartition, column iCol 
  * NOTE: this is called with a read lock in views structure
  */
-void timepart_systable_get_column(sqlite3_context *ctx, int iRowid, enum systable_columns iCol);
+void timepart_systable_column(sqlite3_context *ctx, int iRowid, enum systable_columns iCol);
+
+/**
+ * Returned a malloced string for the "iRowid"-th shard, column iCol of 
+ * timepart iTimepartId
+ * NOTE: this is called with a read lock in views structure
+ */
+void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId, int iRowid,
+        enum systable_columns iCol);
+
+/** 
+ *  Move iRowid to point to the next shard, switching shards in the process
+ *  NOTE: this is called with a read lock in views structure
+ */
+void timepart_systable_next_shard(int *piTimepartId, int *piRowid);
 
 /**
  * Get number of views
  *
  */
-int timepart_get_views(void);
+int timepart_get_num_views(void);
 
 #endif
 
