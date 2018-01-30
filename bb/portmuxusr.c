@@ -45,6 +45,7 @@
 #include <epochlib.h>
 #include <cdb2_constants.h>
 #include <logmsg.h>
+#include <mem.h>
 
 int gbl_pmux_route_enabled = 1;
 

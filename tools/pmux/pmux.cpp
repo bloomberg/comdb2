@@ -186,6 +186,8 @@ int client_func(int fd)
             }
         }
         connect_instance(listenfd, cmd);
+    } else {
+        close(fd);
     }
     return 0;
 }
@@ -593,8 +595,8 @@ again:
             if (rc) {
                 dealloc_fd(svc);
             }
+            unwatchfd(fd);
         }
-        unwatchfd(fd);
     } else if (strcmp(cmd, "del") == 0) {
         if (c.writable) {
             svc = strtok_r(NULL, " ", &sav);
@@ -868,20 +870,21 @@ static int make_range(char *s, std::pair<int, int> &range)
 
 static int usage(int rc)
 {
-    printf("Usage: pmux [-h] [-c pmuxdb cluster] [-d pmuxdb name] [-b bind path]\n"
-           "[-p listen port] [-r free ports range x:y][-l|-n][-f]\n"
-           "\n"
-           "Options:\n"
-           " -h            This help message\n"
-           " -c            Cluster information for pmuxdb\n"
-           " -d            Db information for pmuxdb\n"
-           " -b            Unix bind path\n"
-           " -p            Port pmux will listen on\n"
-           " -r            Range of ports to allocate for databases\n"
-           " -l            Use file to persist port allocation\n"
-           " -n            Use only store in memory, will not persist port allocation\n"
-           " -f            Run in foreground rather than put to background\n"
-           );
+    printf(
+        "Usage: pmux [-h] [-c pmuxdb cluster] [-d pmuxdb name] [-b bind path]\n"
+        "[-p listen port] [-r free ports range x:y][-l|-n][-f]\n"
+        "\n"
+        "Options:\n"
+        " -h            This help message\n"
+        " -c            Cluster information for pmuxdb\n"
+        " -d            Db information for pmuxdb\n"
+        " -b            Unix bind path\n"
+        " -p            Port pmux will listen on\n"
+        " -r            Range of ports to allocate for databases\n"
+        " -l            Use file to persist port allocation\n"
+        " -n            Use only store in memory, will not persist port "
+        "allocation\n"
+        " -f            Run in foreground rather than put to background\n");
     return rc;
 }
 

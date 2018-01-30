@@ -4,6 +4,10 @@ set(src
   ${PROJECT_BINARY_DIR}/protobuf/sqlquery.pb-c.c
   ${PROJECT_BINARY_DIR}/protobuf/sqlresponse.pb-c.c
 )
+
+list(APPEND src ${PROJECT_SOURCE_DIR}/bb/walkback.c)
+set_source_files_properties(${PROJECT_SOURCE_DIR}/bb/walkback.c PROPERTIES COMPILE_FLAGS -DUSE_UNWIND)
+
 if(WITH_SSL)
   list(APPEND src ${PROJECT_SOURCE_DIR}/bb/ssl_support.c)
 endif()

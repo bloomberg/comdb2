@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 #include <strings.h>
 #include "sql.h"
+#include "sqlexplain.h"
 #include "sqlresponse.pb-c.h"
 
 /*
@@ -44,17 +45,7 @@
 char hex[] = {'0', '1', '2', '3', '4', '5', '6', '7',
               '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
-struct cursor_info {
-    int dbid;
-    int rootpage;
-    int tbl;
-    int ix;
-    struct schema *sc;
-    int istemp;
-    KeyInfo *key;
-    int cols;
-    int remote;
-};
+int all_opcodes = 0;
 
 static char *entity_type(struct cursor_info *cinfo)
 {
@@ -81,8 +72,6 @@ static char opcode_to_sign(int opcode)
         return '?';
     }
 }
-
-static int all_opcodes = 0;
 
 static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
 {
@@ -365,8 +354,6 @@ static void affinity_to_text(char *aff, strbuf *out)
 #define ABS(a) (((a) < 0) ? (-(a)) : (a))
 #endif
 
-#define MAXQUERYLEN 262144
-
 extern int sqlite3WhereTrace;
 
 static void describe_cursor(Vdbe *v, int pc, struct cursor_info *cur)
@@ -390,12 +377,6 @@ static void describe_cursor(Vdbe *v, int pc, struct cursor_info *cur)
         cur->remote = 1;
     }
 }
-
-typedef struct IndentInfo IndentInfo;
-struct IndentInfo {
-    int *aiIndent; /* Array of indents used in MODE_Explain */
-    int nIndent;   /* Size of array aiIndent[] */
-};
 
 /*
 ** Parameter azArray points to a zero-terminated array of strings. zStr
@@ -423,6 +404,7 @@ static int str_in_array(const char *zStr, const char **azArray)
     return 0;
 }
 
+/* COPIED FROM sqlite/shell.c (TODO: expose the original def and use here?) */
 /*
 ** If compiled statement pSql appears to be an EXPLAIN statement, allocate
 ** and populate the IndentInfo.aiIndent[] array with the number of
@@ -441,7 +423,7 @@ static int str_in_array(const char *zStr, const char **azArray)
 **       then indent all opcodes between the earlier instruction
 **       and "Goto" by 2 spaces.
 */
-static void explain_data_prepare(IndentInfo *p, Vdbe *v)
+void explain_data_prepare(IndentInfo *p, Vdbe *v)
 {
     // const char *zSql;               /* The text of the SQL statement */
     const char *z;    /* Used to check if this is an EXPLAIN */
@@ -511,20 +493,19 @@ static void explain_data_prepare(IndentInfo *p, Vdbe *v)
     // sqlite3_reset(pSql);
 }
 
+/* COPIED FROM sqlite/shell.c (TODO: expose the original def and use here?) */
 /*
 ** Free the array allocated by explain_data_prepare().
 */
-static void explain_data_delete(IndentInfo *p)
+void explain_data_delete(IndentInfo *p)
 {
     sqlite3_free(p->aiIndent);
     p->aiIndent = 0;
     p->nIndent = 0;
 }
 
-#define MAXCUR 100
-
-static void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, 
-        int indent, int largestwidth, int pc, struct cursor_info *cur)
+void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
+                          int largestwidth, int pc, struct cursor_info *cur)
 {
     char str[2];
     Op *op = &v->aOp[pc];
@@ -1228,53 +1209,6 @@ static void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v,
         strbuf_appendf(out, " (cmnt:%s)", op->zComment);
 }
 
-
-static void dump_query_plan(sqlite3 *hndl, SBUF2 *sb, char *sql)
-{
-    int pc;
-    Vdbe *v;
-    char *eos;
-    int rc;
-    char str[2];
-
-    rc = sqlite3_prepare_flags(hndl, sql, -1, (sqlite3_stmt **)&v,
-                               (const char **)&eos, SQLITE3_ENABLE_QUERY_PLAN);
-    sqlite3WhereTrace = 0;
-    if (rc) {
-        sbuf2printf(sb, "Prepare failed for statement, rc %d, err %s\n", rc,
-                    sqlite3_errmsg(hndl));
-        return;
-    }
-    if (v == NULL) /* empty sql */
-        return;
-
-    strbuf *out = strbuf_new();
-    IndentInfo indentation = {0};
-    explain_data_prepare(&indentation, v);
-    struct cursor_info cur[MAXCUR] = {0};
-
-    for (pc = 0; pc < v->nOp; pc++) {
-        Op *op = &v->aOp[pc];
-        int indent = indentation.aiIndent[pc];
-        if (indent < 0)
-            indent = 0;
-        get_one_explain_line(hndl, out, v, indent, 15 /*width*/, pc, cur);
-        sbuf2printf(sb, "%s\n", strbuf_buf(out));
-        strbuf_clear(out);
-    }
-
-    explain_data_delete(&indentation);
-    strbuf_free(out);
-    out = NULL;
-
-    char *optimizer_plan = sqlite3_prepare_plan((sqlite3_stmt *)v);
-    if (optimizer_plan)
-        sbuf2printf(sb, "%s\n", optimizer_plan);
-    if (v)
-        sqlite3_finalize((struct sqlite3_stmt *)v);
-}
-
-
 int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
 {
     char *sql = clnt->sql;
@@ -1365,134 +1299,5 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
     sqlite3_finalize(stmt);
     newsql_send_last_row(clnt, 0, __func__, __LINE__);
     return 0;
-}
-
-
-void handle_explain(SBUF2 *sb, int trace, int all)
-{
-    char *sql = NULL;
-    int len;
-    int rc;
-    sqlite3 *hndl = NULL;
-    struct sqlclntstate client;
-    struct sql_thread *sqlthd = NULL;
-    const char *temp = "select 1 from sqlite_master limit 1";
-    FILE *f = NULL;
-
-    sqlite3WhereTrace = 0;
-
-    sql_mem_init(NULL);
-    start_sql_thread();
-
-    bzero(&client, sizeof(client));
-
-    reset_clnt(&client, sb, 1);
-
-    client.dbtran.mode = TRANLEVEL_SOSQL;
-    client.no_transaction = 1;
-
-    client.must_close_sb = 0;
-    client.sb = NULL;
-    client.sql = sql;
-    client.type_overrides = NULL;
-    client.recno = 0;
-    bzero(&client.req, sizeof(struct fsqlreq));
-    client.client_understands_query_stats = 0;
-    client.tzname[0] = 0;
-    bzero(&client.conninfo, sizeof(struct conninfo));
-    client.inited_mutex = 0;
-    client.query_rc = 0;
-    client.rawnodestats = NULL;
-    sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
-    client.is_analyze = 0;
-    client.debug_sqlclntstate = pthread_self();
-
-    sqlthd = pthread_getspecific(query_info_key);
-    sqlthd->sqlclntstate = &client;
-
-    get_copy_rootpages(sqlthd);
-
-    /* assign this query a unique id */
-    sql_get_query_id(sqlthd);
-
-    rc = sqlite3_open_serial("db", &hndl, NULL);
-    if (rc) {
-        sbuf2printf(sb, "Something just went wrong: sqlite3_open failed.\n");
-        goto done;
-    }
-
-    rc = get_curtran(thedb->bdb_env, &client);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: unable to get a CURSOR transaction, rc = %d!\n",
-                __func__, rc);
-    } else {
-        struct errstat xerr = {0};
-
-        /* how about we are gonna add the views ? */
-        rc = views_sqlite_update(thedb->timepart_views, hndl, &xerr, 1);
-
-        if (put_curtran(thedb->bdb_env, &client)) {
-            logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
-                    __func__);
-        }
-
-        if (rc != VIEW_NOERR) {
-            logmsg(LOGMSG_ERROR, "failed to create views rc=%d errstr=\"%s\"\n",
-                    xerr.errval, xerr.errstr);
-            goto done;
-        }
-    }
-
-    rc = sbuf2fread((char *)&len, sizeof(int), 1, sb);
-    if (rc != 1)
-        goto done;
-    len = ntohl(len);
-    if (len < 0 || len > MAXQUERYLEN) {
-        logmsg(LOGMSG_ERROR, "Invalid SQL size %d max %d\n", len, MAXQUERYLEN);
-        goto done;
-    }
-    sql = malloc(len + 1);
-    rc = sbuf2fread(sql, len, 1, sb);
-    if (rc != 1)
-        goto done;
-    sql[len] = '\0';
-
-    rc = sqlite3_exec(hndl, temp, NULL, NULL, NULL);
-
-#ifdef _SUN_SOURCE
-    trace = 0;
-#endif
-
-    if (trace) {
-        f = tmpfile();
-        if (f == NULL) {
-            logmsgperror("tmpfile");
-        } else {
-            io_override_set_std(f);
-        }
-        sqlite3WhereTrace = 0xfff;
-    }
-
-    all_opcodes = all;
-    dump_query_plan(hndl, sb, sql);
-
-    if (f) {
-        io_override_set_std(NULL);
-        rewind(f);
-        char buf[32]; /* small stack size in appsock thd */
-        while (fgets(buf, sizeof(buf), f))
-            sbuf2printf(sb, "%s", buf);
-        fclose(f);
-    }
-
-done:
-    clnt_reset_cursor_hints(&client);
-
-    if (sql)
-        free(sql);
-    if (hndl)
-        sqlite3_close(hndl);
-    done_sql_thread();
-    sql_mem_shutdown(NULL);
 }
 

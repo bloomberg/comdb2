@@ -67,7 +67,7 @@ int64_t time_epochus(void)
         logmsg(LOGMSG_FATAL, "gettimeofday rc %d\n", rc);
         abort();
     }
-    return (tv.tv_sec * 1000000 + tv.tv_usec);
+    return (((int64_t)tv.tv_sec) * 1000000 + tv.tv_usec);
 }
 
 int time_epochms(void)

@@ -2,7 +2,7 @@
 
 #ifdef __cplusplus
 extern "C" {
-#endif  /* __cplusplus */
+#endif /* __cplusplus */
 
 const sqlite3_module systblTablesModule;
 const sqlite3_module systblColumnsModule;
@@ -18,11 +18,14 @@ const sqlite3_module systblKeywordsModule;
 const sqlite3_module systblLimitsModule;
 const sqlite3_module systblTunablesModule;
 const sqlite3_module systblThreadPoolsModule;
+const sqlite3_module systblPluginsModule;
+const sqlite3_module systblAppsockHandlersModule;
+const sqlite3_module systblOpcodeHandlersModule;
 const sqlite3_module completionModule; // in ext/misc
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")
 
 #ifdef __cplusplus
-}  /* extern "C" */
-#endif  /* __cplusplus */
+} /* extern "C" */
+#endif /* __cplusplus */

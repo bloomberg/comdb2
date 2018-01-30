@@ -46,11 +46,13 @@ struct limit_t {
     COMDB2_LIMIT(MAXCUSTOPNAME, "Maximum length of a custom operation name"),
     COMDB2_LIMIT(MAX_DBNAME_LENGTH, "Maximum length of database name"),
     COMDB2_LIMIT(MAXDTASTRIPE, "Maximum number of data stripes"),
-    COMDB2_LIMIT(MAXDYNTAGCOLUMNS, "Maximum number of bounded parameters per prepared statement"),
+    COMDB2_LIMIT(MAXDYNTAGCOLUMNS,
+                 "Maximum number of bounded parameters per prepared statement"),
     COMDB2_LIMIT(MAXINDEX, "Maximum number of indices"),
     COMDB2_LIMIT(MAXKEYLEN, "Maximum key length"),
     COMDB2_LIMIT(MAXNETS, "Maximum number of networks"),
     COMDB2_LIMIT(MAXNODES, "Maximum number of nodes"),
+    COMDB2_LIMIT(MAXPLUGINS, "Maximum number of plugins"),
     COMDB2_LIMIT(MAX_QUEUE_HITS_PER_TRANS, "Maximum number of queues that "
                                            "Comdb2 efficiently remember per "
                                            "transaction"),
@@ -160,7 +162,8 @@ static int systblLimitsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
         sqlite3_result_int(ctx,
                            limits[((systbl_limits_cursor *)cur)->rowid].value);
         break;
-    default: assert(0);
+    default:
+        assert(0);
     };
 
     return SQLITE_OK;

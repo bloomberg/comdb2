@@ -1,0 +1,5 @@
+begin
+set timezone UTC
+insert into t1 values(1)
+commit
+select 1

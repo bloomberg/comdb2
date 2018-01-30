@@ -1,16 +1,16 @@
 /*
    Copyright 2015 Bloomberg Finance L.P.
-  
+
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
-   
+
        http://www.apache.org/licenses/LICENSE-2.0
-   
+
    Unless required by applicable law or agreed to in writing, software
    distributed under the License is distributed on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and 
+   See the License for the specific language governing permissions and
    limitations under the License.
  */
 
@@ -26,7 +26,7 @@
 
 #include "cdb2api.h"
 #include "nodemap.h"
-#include "intern_strings.h" 
+#include "intern_strings.h"
 #include "list.h"
 #include "cdb2_constants.h"
 #include "util.h"
@@ -39,26 +39,28 @@ static int machine_is_up_default(const char *host);
 static void machine_mark_down_default(char *host);
 static int machine_status_init(void);
 static int machine_class_default(const char *host);
-static int machine_dc_default(char *host);
+static int machine_dc_default(const char *host);
 
-static int (*machine_is_up_callback)(const char *host) = machine_is_up_default;
-static int (*init_callback)(void) = machine_status_init;
-static int (*machine_class_callback)(const char *host) = machine_class_default;
-static int (*machine_dc_callback)(char *host) = machine_dc_default;
+static int (*machine_is_up_cb)(const char *host) = machine_is_up_default;
+static int (*machine_status_init_cb)(void) = machine_status_init;
+static int (*machine_class_cb)(const char *host) = machine_class_default;
+static int (*machine_dc_cb)(const char *host) = machine_dc_default;
 
 static int inited = 0;
 static pthread_once_t once = PTHREAD_ONCE_INIT;
-static void do_once(void) 
+static void do_once(void)
 {
     inited = 1;
-    init_callback();
+    machine_status_init_cb();
 }
 
-static void init_once(void) { pthread_once(&once, do_once); }
+static void init_once(void)
+{
+    pthread_once(&once, do_once);
+}
 
-void register_rtcpu_callbacks(int (*isup)(const char *), int (*init)(void),
-                              int (*mach_class)(const char *),
-                              int (*machine_dc)(char *))
+void register_rtcpu_callbacks(int (*a)(const char *), int (*b)(void),
+                              int (*c)(const char *), int (*d)(const char *))
 {
 
     if (inited) {
@@ -66,10 +68,10 @@ void register_rtcpu_callbacks(int (*isup)(const char *), int (*init)(void),
         return;
     }
 
-    machine_is_up_callback = isup;
-    init_callback = init;
-    machine_class_callback = mach_class;
-    machine_dc_callback = machine_dc;
+    machine_is_up_cb = a;
+    machine_status_init_cb = b;
+    machine_class_cb = c;
+    machine_dc_cb = d;
 }
 
 int machine_is_up(const char *host)
@@ -79,18 +81,31 @@ int machine_is_up(const char *host)
     if (!isinterned(host))
         abort();
 
-    return machine_is_up_callback(host);
+    return machine_is_up_cb(host);
 }
 
-int machine_class(const char *host) { return machine_class_callback(host); }
+int machine_class(const char *host)
+{
+    return machine_class_cb(host);
+}
 
-int machine_dc(char *host) { return machine_dc_callback(host); }
+int machine_dc(const char *host)
+{
+    return machine_dc_cb(host);
+}
 
-static int machine_is_up_default(const char *host) { return 1; }
+static int machine_is_up_default(const char *host)
+{
+    return 1;
+}
 
-static int machine_status_init(void) { return 0; }
+static int machine_status_init(void)
+{
+    return 0;
+}
 
 static enum mach_class my_class = CLASS_UNKNOWN;
+
 extern char *gbl_mynode;
 
 /* pthread_once? */
@@ -130,20 +145,22 @@ static int machine_class_default(const char *host)
             rc = cdb2_bind_param(db, "name", CDB2_CSTRING, gbl_mynode,
                                  strlen(gbl_mynode));
             if (rc) {
-                logmsg(LOGMSG_ERROR, "%s(%s) bind rc %d %s!\n", __func__, host, rc,
-                        cdb2_errstr(db));
+                logmsg(LOGMSG_ERROR, "%s(%s) bind rc %d %s!\n", __func__, host,
+                       rc, cdb2_errstr(db));
                 goto done;
             }
             rc = cdb2_run_statement(db, sql);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "run rc %d %s, while trying to discover "
-                                "current machine class\n", rc, sql);
+                                     "current machine class\n",
+                       rc, sql);
                 goto done;
             }
             rc = cdb2_next_record(db);
             if (rc && rc != CDB2_OK_DONE) {
                 logmsg(LOGMSG_ERROR, "next rc %d %s, while trying to discover "
-                                "current machine class\n", rc, sql);
+                                     "current machine class\n",
+                       rc, sql);
                 goto done;
             }
             envclass = cdb2_column_value(db, 0);
@@ -160,8 +177,10 @@ static int machine_class_default(const char *host)
             } while (rc == CDB2_OK);
             /* Shouldn't happen, so warn - but not an error. */
             if (rc != CDB2_OK_DONE)
-                logmsg(LOGMSG_ERROR, "consume rc %d %s, while trying to discover "
-                                "current machine class\n", rc, sql);
+                logmsg(LOGMSG_ERROR,
+                       "consume rc %d %s, while trying to discover "
+                       "current machine class\n",
+                       rc, sql);
         }
     done:
         /* Error if can't find class? */
@@ -175,7 +194,7 @@ static int machine_class_default(const char *host)
 
 static int machine_dcs[MAXNODES];
 
-static int resolve_dc(char *host)
+static int resolve_dc(const char *host)
 {
     int rc;
     char *dcstr;
@@ -193,7 +212,7 @@ static int resolve_dc(char *host)
     rc = cdb2_bind_param(db, "name", CDB2_CSTRING, host, strlen(host));
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s(%s) bind rc %d %s!\n", __func__, host, rc,
-                cdb2_errstr(db));
+               cdb2_errstr(db));
         goto done;
     }
     rc = cdb2_run_statement_typed(db,
@@ -201,13 +220,13 @@ static int resolve_dc(char *host)
                                   sizeof(types) / sizeof(types), types);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s(%s) run rc %d %s!\n", __func__, host, rc,
-                cdb2_errstr(db));
+               cdb2_errstr(db));
         goto done;
     }
     rc = cdb2_next_record(db);
     if (rc && rc != CDB2_OK_DONE) {
         logmsg(LOGMSG_ERROR, "%s(%s) next rc %d %s!\n", __func__, host, rc,
-                cdb2_errstr(db));
+               cdb2_errstr(db));
         goto done;
     }
     if (rc == 0) {
@@ -223,8 +242,8 @@ static int resolve_dc(char *host)
 
         rc = cdb2_next_record(db);
         if (rc != CDB2_OK_DONE) {
-            logmsg(LOGMSG_ERROR, "%s(%s) next (last) rc %d %s\n!", __func__, host,
-                    rc, cdb2_errstr(db));
+            logmsg(LOGMSG_ERROR, "%s(%s) next (last) rc %d %s\n!", __func__,
+                   host, rc, cdb2_errstr(db));
             goto done;
         }
     }
@@ -236,7 +255,7 @@ done:
     return dc;
 }
 
-static int machine_dc_default(char *host)
+static int machine_dc_default(const char *host)
 {
     int ix;
     ix = nodeix(host);

@@ -35,6 +35,7 @@ static const char revid[] = "$Id: mp_bh.c,v 11.86 2003/07/02 20:02:37 mjc Exp $"
 #include <dirent.h>
 
 #include <logmsg.h>
+#include "comdb2_atomic.h"
 
 char *bdb_trans(const char infile[], char outfile[]);
 extern int gbl_test_badwrite_intvl;
@@ -413,8 +414,8 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	if (pgidx < 0)
 		return DB_PAGE_NOTFOUND;
 
-	atomic_inc(env, &hp->hash_page_dirty);
-	atomic_inc(env, &c_mp->stat.st_page_dirty);
+	ATOMIC_ADD(hp->hash_page_dirty, 1);
+	ATOMIC_ADD(c_mp->stat.st_page_dirty, 1);
 	F_SET(bhp, BH_DIRTY);
 	F_CLR(bhp, BH_TRASH);
 
@@ -569,6 +570,8 @@ pthread_mutex_t verifylk = PTHREAD_MUTEX_INITIALIZER;
 
 int berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
     int check_checkpoint);
+
+#include <limits.h>
 
 int
 berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
@@ -1092,14 +1095,14 @@ file_dead:
 			bhp = bhps[i];
 			hp = hps[i];
 
-			DB_ASSERT(atomic_read(&hp->hash_page_dirty) != 0);
+			DB_ASSERT(hp->hash_page_dirty != 0);
 
 			/* Best to do this in lock step with hash_page_dirty */
 			n_cache = NCACHE(dbmp->reginfo[0].primary,
 			    bhp->mf_offset, bhp->pgno);
 			c_mp = dbmp->reginfo[n_cache].primary;
-			atomic_dec(env, &hp->hash_page_dirty);
-			atomic_dec(env, &c_mp->stat.st_page_dirty);
+			ATOMIC_ADD(hp->hash_page_dirty, -1);
+			ATOMIC_ADD(c_mp->stat.st_page_dirty, -1);
 
 			if (dbenv->tx_perfect_ckp) {
 				/* Clear first_dirty_lsn. */

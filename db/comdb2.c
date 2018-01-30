@@ -384,11 +384,10 @@ int gbl_check_client_tags = 1;
 char *gbl_lrl_fname = NULL;
 char *gbl_spfile_name = NULL;
 int gbl_max_lua_instructions = 10000;
-
+int gbl_check_wrong_cmd = 1;
 int gbl_updategenids = 0;
-
-int gbl_osql_heartbeat_send = 5, gbl_osql_heartbeat_alert = 7;
-
+int gbl_osql_heartbeat_send = 5;
+int gbl_osql_heartbeat_alert = 7;
 int gbl_chkpoint_alarm_time = 60;
 int gbl_dump_queues_on_exit = 1;
 int gbl_incoherent_msg_freq = 60 * 60;  /* one hour between messages */
@@ -748,6 +747,12 @@ int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
 int gbl_stable_rootpages_test = 0;
 
+int gbl_allow_incoherent_sql = 0;
+
+/* Bulk import */
+int gbl_enable_bulk_import; /* allow this db to bulk import */
+int gbl_enable_bulk_import_different_tables;
+
 char *gbl_dbdir = NULL;
 
 extern int gbl_verbose_net;
@@ -761,6 +766,7 @@ static void create_service_file(const char *lrlname);
 double gbl_pg_compact_thresh = 0;
 int gbl_pg_compact_latency_ms = 0;
 int gbl_large_str_idx_find = 1;
+int gbl_abort_invalid_query_info_key;
 
 extern int gbl_allow_user_schema;
 extern int gbl_uses_password;
@@ -769,7 +775,6 @@ extern int gbl_direct_count;
 extern int gbl_parallel_count;
 extern int gbl_debug_sqlthd_failures;
 extern int gbl_random_get_curtran_failures;
-extern int gbl_abort_invalid_query_info_key;
 extern int gbl_random_blkseq_replays;
 extern int gbl_disable_cnonce_blkseq;
 int gbl_mifid2_datetime_range = 1;
@@ -782,6 +787,11 @@ comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
 int free_gbl_tunables();
 int register_db_tunables(struct dbenv *tbl);
+
+int init_plugins(void);
+int destroy_plugins(void);
+void register_plugin_tunables(void);
+int install_static_plugins(void);
 
 int getkeyrecnums(const struct dbtable *tbl, int ixnum)
 {
@@ -1387,7 +1397,10 @@ void clean_exit(void)
     free_gbl_tunables();
     free_tzdir();
     tz_hash_free();
+    destroy_plugins();
+    destroy_appsock();
     bdb_cleanup_private_blkseq(thedb->bdb_env);
+
     if (gbl_create_mode) {
         logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
     }
@@ -2571,7 +2584,7 @@ static int dump_queuedbs(char *dir)
     return 0;
 }
 
-static int repopulate_lrl(const char *p_lrl_fname_out)
+int repopulate_lrl(const char *p_lrl_fname_out)
 {
     /* can't put this on stack, it will overflow appsock thread */
     struct {
@@ -2667,32 +2680,7 @@ static int repopulate_lrl(const char *p_lrl_fname_out)
     return 0;
 }
 
-int appsock_repopnewlrl(SBUF2 *sb, int *keepsocket)
-{
-    char lrl_fname_out[256];
-    int rc;
-
-    if (((rc = sbuf2gets(lrl_fname_out, sizeof(lrl_fname_out), sb)) <= 0) ||
-        (lrl_fname_out[rc - 1] != '\n')) {
-        logmsg(LOGMSG_ERROR, "%s: I/O error reading out lrl fname\n", __func__);
-        return -1;
-    }
-    lrl_fname_out[rc - 1] = '\0';
-
-    if (repopulate_lrl(lrl_fname_out)) {
-        logmsg(LOGMSG_ERROR, "%s: repopulate_lrl failed\n", __func__);
-        return -1;
-    }
-
-    if (sbuf2printf(sb, "OK\n") < 0 || sbuf2flush(sb) < 0) {
-        logmsg(LOGMSG_ERROR, "%s: failed to send done ack text\n", __func__);
-        return -1;
-    }
-
-    return 0;
-}
-
-static int llmeta_open(void)
+int llmeta_open(void)
 {
     /* now that we have bdb_env open, we can get at llmeta */
     char llmetaname[256];
@@ -3147,6 +3135,7 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "failed initialize thread module\n");
         return -1;
     }
+    /* This also initializes the appsock handler hash. */
     if (appsock_init()) {
         logmsg(LOGMSG_FATAL, "failed initialize appsock module\n");
         return -1;
@@ -3163,6 +3152,19 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "failed to initialise page compact module\n");
         return -1;
     }
+
+    /* Initialize the opcode handler hash */
+    if (init_opcode_handlers()) {
+        logmsg(LOGMSG_FATAL, "failed to initialise opcode handler hash\n");
+        return -1;
+    }
+
+    /* Install all static plugins. */
+    if ((install_static_plugins())) {
+        logmsg(LOGMSG_FATAL, "Failed to install builtin plugins");
+        exit(1);
+    }
+
     toblock_init();
 
     handle_cmdline_options(argc, argv, &lrlname);
@@ -5198,6 +5200,15 @@ int main(int argc, char **argv)
     }
 
     init_debug_switches();
+
+    /* Initialize the plugin sub-system. */
+    if ((init_plugins())) {
+        logmsg(LOGMSG_FATAL, "Failed to initialize plugin sub-system");
+        exit(1);
+    }
+
+    /* Initialize plugin tunables. */
+    register_plugin_tunables();
 
     timer_init(ttrap);
 
