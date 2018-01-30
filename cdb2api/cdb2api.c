@@ -1048,11 +1048,9 @@ static int get_config_file(const char *dbname, char *f, size_t s)
 /* read all available comdb2 configuration files
  */
 static int read_available_comdb2db_configs(
-        cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
-        char *comdb2db_name, int *num_hosts,
-        int *comdb2db_num, char *dbname,
-        char db_hosts[][64], int *num_db_hosts,
-        int *dbnum, int *comdb2db_found, int *dbname_found)
+    cdb2_hndl_tp *hndl, char comdb2db_hosts[][64], char *comdb2db_name,
+    int *num_hosts, int *comdb2db_num, char *dbname, char db_hosts[][64],
+    int *num_db_hosts, int *dbnum, int *comdb2db_found, int *dbname_found)
 {
     char filename[PATH_MAX];
     int fallback_on_bb_bin = 1;
@@ -1065,8 +1063,10 @@ static int read_available_comdb2db_configs(
     if (get_config_file(dbname, filename, sizeof(filename)) != 0)
         return -1; // set error string?
 
-    if (num_hosts) *num_hosts = 0;
-    if (num_db_hosts) *num_db_hosts = 0;
+    if (num_hosts)
+        *num_hosts = 0;
+    if (num_db_hosts)
+        *num_db_hosts = 0;
     int *send_stack = hndl ? (&hndl->send_stack) : NULL;
 
     if (CDB2DBCONFIG_BUF != NULL) {
@@ -1081,8 +1081,8 @@ static int read_available_comdb2db_configs(
     if (fp != NULL) {
         read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
-                          num_db_hosts, dbnum, dbname_found,
-                          comdb2db_found, send_stack);
+                          num_db_hosts, dbnum, dbname_found, comdb2db_found,
+                          send_stack);
         fclose(fp);
         fallback_on_bb_bin = 0;
     }
@@ -1097,8 +1097,8 @@ static int read_available_comdb2db_configs(
         if (fp != NULL) {
             read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                               num_hosts, comdb2db_num, dbname, db_hosts,
-                              num_db_hosts, dbnum, dbname_found,
-                              comdb2db_found, send_stack);
+                              num_db_hosts, dbnum, dbname_found, comdb2db_found,
+                              send_stack);
             fclose(fp);
         }
     }
@@ -1107,13 +1107,12 @@ static int read_available_comdb2db_configs(
     if (fp != NULL) {
         read_comdb2db_cfg(hndl, fp, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
-                          num_db_hosts, dbnum, dbname_found,
-                          comdb2db_found, send_stack);
+                          num_db_hosts, dbnum, dbname_found, comdb2db_found,
+                          send_stack);
         fclose(fp);
     }
     return 0;
 }
-
 
 static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
                               int *comdb2db_ports, int *master,
@@ -1131,14 +1130,14 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
                 __LINE__);
     }
 
-    rc = read_available_comdb2db_configs(hndl, comdb2db_hosts, comdb2db_name,
-                                         num_hosts, comdb2db_num, dbname, 
-                                         db_hosts, num_db_hosts, dbnum, 
-                                         &comdb2db_found, &dbname_found);
+    rc = read_available_comdb2db_configs(
+        hndl, comdb2db_hosts, comdb2db_name, num_hosts, comdb2db_num, dbname,
+        db_hosts, num_db_hosts, dbnum, &comdb2db_found, &dbname_found);
     if (rc == -1)
         return rc;
 
-    if (master) *master = -1;
+    if (master)
+        *master = -1;
 
     if (just_defaults || comdb2db_found || dbname_found)
         return 0;
@@ -3240,7 +3239,6 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
     return 0;
 }
 
-
 static inline void consume_previous_query(cdb2_hndl_tp *hndl)
 {
     while (cdb2_next_record_int(hndl, 0) == CDB2_OK)
@@ -4599,8 +4597,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
 
 static inline void only_read_config()
 {
-    read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, 
-                                     NULL, NULL, NULL, NULL, NULL);
+    read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                                    NULL, NULL, NULL, NULL);
 }
 
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
