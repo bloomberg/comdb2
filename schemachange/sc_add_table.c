@@ -233,7 +233,7 @@ int do_add_table(struct ireq *iq, tran_type *trans)
     if ((rc = check_option_coherency(s, NULL, NULL))) return rc;
 
     if ((db = get_dbtable_by_name(s->table))) {
-        sc_errf(s, "Table %s already exists", s->table);
+        sc_errf(s, "Table %s already exists\n", s->table);
         logmsg(LOGMSG_ERROR, "Table %s already exists\n", s->table);
         return SC_TABLE_ALREADY_EXIST;
     }

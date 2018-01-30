@@ -75,6 +75,7 @@ extern int gbl_goslow;
 
 extern int gbl_partial_indexes;
 
+extern int db_is_stopped();
 static int osql_net_type_to_net_uuid_type(int type);
 
 typedef struct osql_blknds {
@@ -4568,7 +4569,7 @@ int type_to_uuid_type(int type)
     case NET_OSQL_SOCK_RPL:
         return NET_OSQL_SOCK_RPL_UUID;
     default:
-        logmsg(LOGMSG_FATAL, "unhandled type %d\n", type);
+        logmsg(LOGMSG_FATAL, "type_to_uuid_type: unhandled type %d\n", type);
         abort();
     }
 }
@@ -5584,7 +5585,7 @@ static void *osql_heartbeat_thread(void *arg)
 
     thread_started("osql heartbeat");
 
-    while (1) {
+    while (!db_is_stopped()) {
         uint8_t buf[OSQLCOMM_HBEAT_TYPE_LEN],
             *p_buf = buf, *p_buf_end = (buf + OSQLCOMM_HBEAT_TYPE_LEN);
 
@@ -5757,7 +5758,6 @@ static int offload_net_send(char *host, int usertype, void *data, int datalen,
 
         /* remote send */
         while (rc) {
-            int rc2;
 #if 0
          printf("NET SEND %d tmp=%llu\n", usertype, osql_log_time());
 #endif
@@ -5772,7 +5772,7 @@ static int offload_net_send(char *host, int usertype, void *data, int datalen,
                     return -1;
                 }
 
-                if (rc2 = osql_comm_check_bdb_lock()) {
+                if (osql_comm_check_bdb_lock() != 0) {
                     logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
                             __LINE__, host);
                     return rc;
@@ -7204,6 +7204,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     int debug = 0;
     struct ireq *iq;
     uuid_t uuid;
+    int replaced = 0;
 
     /* grab the request */
     if (nettype >= NET_OSQL_UUID_REQUEST_MIN &&
@@ -7284,7 +7285,13 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
        added session have sess->iq set
        to avoid racing against signal_rtoff code */
     sess = osql_sess_create_sock(sqlret, sqllenret, req.tzname, type, req.rqid,
-                                 uuid, fromhost, iq);
+                                 uuid, fromhost, iq, &replaced);
+    if (replaced) {
+        assert(sess == NULL);
+        destroy_ireq(thedb, iq);
+        free(malcd);
+        return 0;
+    }
     if (!sess) {
         logmsg(LOGMSG_ERROR, "%s Unable to create new request\n", __func__);
         rc = -4;

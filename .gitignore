@@ -35,6 +35,7 @@ tests/sicountbug.test/sicountbug
 tests/simple_ssl.test/simple_ssl
 tests/sirace.test/sirace
 tests/sqlite.test/comdb2_sqltest
+tests/multithd.test/multithd
 tests/tools/bound
 tests/tools/cdb2api_caller
 tests/tools/crle
@@ -50,6 +51,7 @@ tests/tools/utf8
 tests/tools/breakloop
 tests/tools/insert
 tests/tools/register
+tests/tools/verify_atomics_work
 
 
 tests/test_*

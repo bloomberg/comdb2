@@ -274,31 +274,31 @@ Stored procedure calls are [immediate](transaction_model.html#immediate-and-defe
 
 ### CREATE TABLE
 
-CREATE TABLE (I):
+**CREATE TABLE (I):**
 
 ![CREATE TABLE](images/create-table.gif)
 
-CREATE TABLE (II):
+**CREATE TABLE (II, Version R7 and above):**
 
 ![CREATE TABLE](images/create-table-ddl.gif)
 
-Column list:
+**Index column list:**
 
-![COLUMN LIST](images/column-list.gif)
+![INDEX COLUMN LIST](images/index-column-list.gif)
 
-Column constraint:
+**Column constraint:**
 
 ![COLUMN CONSTRAINT](images/column-constraint.gif)
 
-Table constraint:
+**Table constraint:**
 
 ![TABLE CONSTRAINT](images/table-constraint.gif)
 
-Foreign key definition:
+**Foreign key definition:**
 
 ![FOREIGN KEY DEFINITION](images/foreign-key-def.gif)
 
-Table options:
+**Table options:**
 
 ![TABLE OPTIONS](images/table-options.gif)
 
@@ -310,7 +310,7 @@ Comdb2 supports two variants of ```CREATE TABLE``` syntax. In the first approach
 the schema definition defines all keys and constraints (more information can be
 found on the [table schema](table_schema.html) page).
 
-The second approach, added in version 7.0, follows the usual standard data
+The second approach, added in **version R7**, follows the usual standard data
 definition language syntax supported by other relational database systems.
 A primary key created using ```CREATE TABLE (II)``` implicitly creates a
 ```UNIQUE``` index named ```COMDB2_PK``` with all key columns marked
@@ -368,15 +368,15 @@ will no longer be callable from SQL.
 
 ### ALTER TABLE
 
-ALTER TABLE (I):
+**ALTER TABLE (I):**
 
 ![ALTER](images/alter-table.gif)
 
-ALTER TABLE (II):
+**ALTER TABLE (II, Version R7 and above):**
 
 ![ALTER](images/alter-table-ddl.gif)
 
-_**Schema changes in Comdb2 are always live**. The database will not acquire
+_**Schema changes in Comdb2 are live by default**. The database will not acquire
 long duration table locks during the change and may be freely read from and
 written to.  If the schema change adds a new field, or grows the size of an
 existing field, and doesn't modify the table keys, the change is "*instant*"
@@ -401,7 +401,7 @@ be added or removed. See the [Schema definition](table_schema.html) section for
 details on the table schema definition syntax. See the [table options](#table-options)
 section a list of options that may be set for a table.
 
-The second approach, added in version 7.0, supports the usual standard data
+The second approach, added in **version R7**, supports the usual standard data
 definition language, like other relational database systems. This syntax can
 be used to ```ADD``` a new column or ```DROP``` an existing column from the
 table. Multiple ADD/DROP operations can be used in the same command. In case of
@@ -533,6 +533,10 @@ ever run ```REBUILD```:
     reclaim disk space.
   * A table option (like compression) has been set, and we'd like to apply it to existing records immediately. 
   * A table/index/blob is found to be corrupt.
+
+The ```READONLY``` and ```PAGEORDER``` options are intended for the rare cases that a table is found to be corrupt.
+Setting the ```READONLY``` option will cause the cluster to drop to ```READONLY``` mode for the duration of the
+rebuild.  Traversing a B-Tree in ```PAGEORDER``` requires that the ```READONLY``` flag is set.
 
 ## Built-in functions
 

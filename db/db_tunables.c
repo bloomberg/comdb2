@@ -107,6 +107,7 @@ extern int gbl_sqlite_sorter_mem;
 extern int gbl_survive_n_master_swings;
 extern int gbl_test_blob_race;
 extern int gbl_test_scindex_deadlock;
+extern int gbl_test_sc_resume_race;
 extern int gbl_berkdb_track_locks;
 extern int gbl_udp;
 extern int gbl_update_delete_limit;
@@ -405,7 +406,7 @@ static int maxq_update(void *context, void *value)
 
     /* Can't be more than swapinit! */
     if ((val < 1) || (val > 1000)) {
-        logmsg(LOGMSG_ERROR, "Invalid value for tunable '%s'.", tunable->name);
+        logmsg(LOGMSG_ERROR, "Invalid value for tunable '%s'\n", tunable->name);
         return 1;
     }
 
@@ -450,7 +451,7 @@ static int lk_verify(void *context, void *value)
     comdb2_tunable *tunable = (comdb2_tunable *)context;
 
     if ((*(int *)value <= 0) || (*(int *)value > 2048)) {
-        logmsg(LOGMSG_ERROR, "Invalid value for '%s'. (range: 1-2048)",
+        logmsg(LOGMSG_ERROR, "Invalid value for '%s'. (range: 1-2048)\n",
                tunable->name);
         return 1;
     }
@@ -462,7 +463,7 @@ static int memnice_update(void *context, void *value)
     int nicerc;
     nicerc = comdb2ma_nice(*(int *)value);
     if (nicerc != 0) {
-        logmsg(LOGMSG_ERROR, "Failed to change mem niceness: rc = %d.\n",
+        logmsg(LOGMSG_ERROR, "Failed to change mem niceness: rc = %d\n",
                nicerc);
         return 1;
     }
@@ -779,11 +780,15 @@ int free_gbl_tunables()
         free_tunable(gbl_tunables->array[i]);
         free(gbl_tunables->array[i]);
     }
-    hash_free(gbl_tunables->hash);
+    if (gbl_tunables->hash) {
+        hash_clear(gbl_tunables->hash);
+        hash_free(gbl_tunables->hash);
+        gbl_tunables->hash = NULL;
+    }
     free(gbl_tunables->array);
     pthread_mutex_destroy(&gbl_tunables->mu);
     free(gbl_tunables);
-    gbl_tunables = 0;
+    gbl_tunables = NULL;
     return 0;
 }
 
@@ -798,6 +803,7 @@ int register_tunable(comdb2_tunable tunable)
 {
     comdb2_tunable *t;
     int already_exists = 0;
+    int slot = -1;
 
     if ((!gbl_tunables) || (gbl_tunables->freeze == 1)) return 0;
 
@@ -820,17 +826,24 @@ int register_tunable(comdb2_tunable tunable)
 
           (See bdb_open_int() & berkdb/env/env_attr.c)
         */
+        for (int i = 0; i < gbl_tunables->count; i++) {
+            if (gbl_tunables->array[i] == t) {
+                slot = i;
+                break;
+            }
+        }
         free_tunable(t);
 
         already_exists = 1;
-    } else if (!(t = malloc(sizeof(comdb2_tunable))))
+    } else if ((t = malloc(sizeof(comdb2_tunable))) == NULL)
         goto oom_err;
 
     if (!tunable.name) {
         logmsg(LOGMSG_ERROR, "%s: Tunable must have a name.\n", __func__);
         goto err;
     }
-    if (!(t->name = strdup(tunable.name))) goto oom_err;
+    if ((t->name = strdup(tunable.name)) == NULL)
+        goto oom_err;
     /* Keep tunable names in lower case (to be consistent). */
     tunable_tolower(t->name);
 
@@ -841,10 +854,12 @@ int register_tunable(comdb2_tunable tunable)
         goto err;
     }
     t->type = tunable.type;
-
-    if (!tunable.var && !tunable.value && (tunable.type != TUNABLE_COMPOSITE)) {
-        logmsg(LOGMSG_ERROR, "%s: A non-composite Tunable with no var pointer "
-                             "set, must have its value function defined.\n",
+    if (!tunable.var && !tunable.value &&
+        !(tunable.type == TUNABLE_COMPOSITE) &&
+        ((tunable.flags & INTERNAL) == 0)) {
+        logmsg(LOGMSG_ERROR,
+               "%s: A non-composite/non-internal tunable with no var pointer "
+               "set, must have its value function defined.\n",
                __func__);
         goto err;
     }
@@ -856,7 +871,10 @@ int register_tunable(comdb2_tunable tunable)
     t->update = tunable.update;
     t->destroy = tunable.destroy;
 
-    if (already_exists == 0) {
+    if (already_exists) {
+        assert(slot != -1);
+        gbl_tunables->array[slot] = t;
+    } else {
         gbl_tunables->array =
             realloc(gbl_tunables->array,
                     sizeof(comdb2_tunable *) * (gbl_tunables->count + 1));
@@ -1291,7 +1309,7 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
             t->flags |= EMPTY;
         } else {
             logmsg(LOGMSG_ERROR,
-                   "An argument must be specified for tunable '%s'", t->name);
+                   "An argument must be specified for tunable '%s'\n", t->name);
             return TUNABLE_ERR_INVALID_VALUE; /* Error */
         }
     } else {

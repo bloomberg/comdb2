@@ -364,6 +364,8 @@ long long gbl_nsql_steps;
 unsigned int gbl_nnewsql;
 long long gbl_nnewsql_steps;
 
+unsigned int gbl_masterrejects = 0;
+
 volatile int gbl_dbopen_gen = 0;
 volatile int gbl_analyze_gen = 0;
 volatile int gbl_views_gen = 0;
@@ -382,11 +384,10 @@ int gbl_check_client_tags = 1;
 char *gbl_lrl_fname = NULL;
 char *gbl_spfile_name = NULL;
 int gbl_max_lua_instructions = 10000;
-
+int gbl_check_wrong_cmd = 1;
 int gbl_updategenids = 0;
-
-int gbl_osql_heartbeat_send = 5, gbl_osql_heartbeat_alert = 7;
-
+int gbl_osql_heartbeat_send = 5;
+int gbl_osql_heartbeat_alert = 7;
 int gbl_chkpoint_alarm_time = 60;
 int gbl_dump_queues_on_exit = 1;
 int gbl_incoherent_msg_freq = 60 * 60;  /* one hour between messages */
@@ -472,7 +473,7 @@ int gbl_enable_sock_fstsnd = 1;
 u_int gbl_blk_pq_shmkey = 0;
 #endif
 int gbl_enable_position_apis = 0;
-int gbl_enable_sql_stmt_caching = 0;
+int gbl_enable_sql_stmt_caching = STMT_CACHE_ALL;
 
 int gbl_round_robin_stripes = 0;
 int gbl_num_record_converts = 100;
@@ -746,6 +747,12 @@ int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
 int gbl_stable_rootpages_test = 0;
 
+int gbl_allow_incoherent_sql = 0;
+
+/* Bulk import */
+int gbl_enable_bulk_import; /* allow this db to bulk import */
+int gbl_enable_bulk_import_different_tables;
+
 char *gbl_dbdir = NULL;
 
 extern int gbl_verbose_net;
@@ -759,6 +766,7 @@ static void create_service_file(const char *lrlname);
 double gbl_pg_compact_thresh = 0;
 int gbl_pg_compact_latency_ms = 0;
 int gbl_large_str_idx_find = 1;
+int gbl_abort_invalid_query_info_key;
 
 extern int gbl_allow_user_schema;
 extern int gbl_uses_password;
@@ -767,9 +775,9 @@ extern int gbl_direct_count;
 extern int gbl_parallel_count;
 extern int gbl_debug_sqlthd_failures;
 extern int gbl_random_get_curtran_failures;
-extern int gbl_abort_invalid_query_info_key;
 extern int gbl_random_blkseq_replays;
 extern int gbl_disable_cnonce_blkseq;
+int gbl_mifid2_datetime_range = 1;
 
 int gbl_early_verify = 1;
 
@@ -779,6 +787,11 @@ comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
 int free_gbl_tunables();
 int register_db_tunables(struct dbenv *tbl);
+
+int init_plugins(void);
+int destroy_plugins(void);
+void register_plugin_tunables(void);
+int install_static_plugins(void);
 
 int getkeyrecnums(const struct dbtable *tbl, int ixnum)
 {
@@ -1037,9 +1050,9 @@ static void *purge_old_blkseq_thread(void *arg)
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
 
     loop = 0;
+    sleep(1);
 
-    while (1) {
-        sleep(1);
+    while (!db_is_stopped()) {
 
         /* Check del unused files progress about twice per threshold  */
         if (!(loop % (gbl_sc_del_unused_files_threshold_ms /
@@ -1050,12 +1063,6 @@ static void *purge_old_blkseq_thread(void *arg)
             loop = 0;
         else
             ++loop;
-
-        if (dbenv->exiting || dbenv->stopped) {
-            dbenv->purge_old_blkseq_is_running = 0;
-            backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
-            return NULL;
-        }
 
         if (debug_switch_check_for_hung_checkpoint_thread() &&
             dbenv->master == gbl_mynode) {
@@ -1164,7 +1171,13 @@ static void *purge_old_blkseq_thread(void *arg)
 
         if ((loop % 30) == 0 && gbl_verify_dbreg)
             bdb_verify_dbreg(dbenv->bdb_env);
+
+        sleep(1);
     }
+
+    dbenv->purge_old_blkseq_is_running = 0;
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
+    return NULL;
 }
 
 static void *purge_old_files_thread(void *arg)
@@ -1345,7 +1358,7 @@ int clear_temp_tables(void)
     while (dirp) {
         errno = 0;
         if ((dp = readdir(dirp)) != NULL) {
-            char filepath[256];
+            char filepath[PATH_MAX];
             if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
                 continue;
             snprintf(filepath, sizeof(filepath) - 1, "%s/%s", path, dp->d_name);
@@ -1372,8 +1385,26 @@ void clean_exit(void)
 
     thedb->exiting = 1;
     stop_threads(thedb);
-
     logmsg(LOGMSG_INFO, "stopping db engine...\n");
+
+    /* TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
+      them to quit.
+    */
+    sleep(4);
+
+    cleanup_q_vars();
+    cleanup_switches();
+    free_gbl_tunables();
+    free_tzdir();
+    tz_hash_free();
+    destroy_plugins();
+    destroy_appsock();
+    bdb_cleanup_private_blkseq(thedb->bdb_env);
+
+    if (gbl_create_mode) {
+        logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
+    }
+
     rc = backend_close(thedb);
     if (rc != 0) logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
 
@@ -1395,7 +1426,6 @@ void clean_exit(void)
             free(indicator_file);
         }
     }
-
     eventlog_stop();
 
     indicator_file = comdb2_location("marker", "%s.done", thedb->envname);
@@ -1403,24 +1433,32 @@ void clean_exit(void)
     if (fd != -1) close(fd);
     logmsg(LOGMSG_INFO, "creating %s\n", indicator_file);
     free(indicator_file);
-
-    /*
-      Wait for other threads to exit by themselves.
-      TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
-      them to quit.
-    */
-    sleep(4);
+    extern char *gbl_portmux_unix_socket;
+    free(gbl_portmux_unix_socket);
+    cleanup_file_locations();
+    ctrace_closelog();
 
     backend_cleanup(thedb);
     net_cleanup_subnets();
-    cleanup_q_vars();
-    cleanup_switches();
-    free_gbl_tunables();
-    free_tzdir();
-    tz_hash_free();
     cleanup_sqlite_master();
+    for (ii = thedb->num_dbs - 1; ii >= 0; ii--) {
+        struct dbtable *tbl = thedb->dbs[ii];
+        delete_schema(tbl->tablename); // tags hash
+        delete_db(tbl->tablename);     // will free db
+        bdb_cleanup_fld_hints(tbl->handle);
+        freedb(tbl);
+    }
+    if (thedb->db_hash) {
+        hash_clear(thedb->db_hash);
+        hash_free(thedb->db_hash);
+        thedb->db_hash = NULL;
+    }
+    cleanup_interned_strings();
+    cleanup_peer_hash();
+    // TODO: would be nice but other threads need to exit first:
+    // comdb2ma_exit();
 
-    logmsg(LOGMSG_WARN, "goodbye\n");
+    logmsg(LOGMSG_USER, "goodbye\n");
 
     exit(0);
 }
@@ -1643,6 +1681,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
         0; /* this will be initialized at verification time */
     tbl->n_constraints = dyns_get_constraint_count();
     if (tbl->n_constraints > 0) {
+        char *consname = NULL;
         char *keyname = NULL;
         int rulecnt = 0, flags = 0;
         if (tbl->n_constraints >= MAXCONSTRAINTS) {
@@ -1652,7 +1691,8 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             return NULL;
         }
         for (ii = 0; ii < tbl->n_constraints; ii++) {
-            rc = dyns_get_constraint_at(ii, &keyname, &rulecnt, &flags);
+            rc = dyns_get_constraint_at(ii, &consname, &keyname, &rulecnt,
+                                        &flags);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "Cannot get constraint at %d (cnt=%d)!\n", ii,
                         tbl->n_constraints);
@@ -1661,6 +1701,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             }
             tbl->constraints[ii].flags = flags;
             tbl->constraints[ii].lcltable = tbl;
+            tbl->constraints[ii].consname = consname ? strdup(consname) : 0;
             tbl->constraints[ii].lclkeyname = strdup(keyname);
             tbl->constraints[ii].nrules = rulecnt;
             if (tbl->constraints[ii].nrules >= MAXCONSTRAINTS) {
@@ -1783,11 +1824,6 @@ void check_access_controls(struct dbenv *dbenv)
             gbl_uses_password = 1;
             gbl_upgrade_blocksql_2_socksql = 1;
             logmsg(LOGMSG_INFO, "User authentication enabled\n");
-            int valid_user;
-            bdb_user_password_check(DEFAULT_USER, DEFAULT_PASSWORD,
-                                    &valid_user);
-            if (!valid_user)
-                bdb_user_password_set(NULL, DEFAULT_USER, DEFAULT_PASSWORD);
         }
     } else {
         gbl_uses_password = 0;
@@ -2548,7 +2584,7 @@ static int dump_queuedbs(char *dir)
     return 0;
 }
 
-static int repopulate_lrl(const char *p_lrl_fname_out)
+int repopulate_lrl(const char *p_lrl_fname_out)
 {
     /* can't put this on stack, it will overflow appsock thread */
     struct {
@@ -2644,31 +2680,6 @@ static int repopulate_lrl(const char *p_lrl_fname_out)
     return 0;
 }
 
-int appsock_repopnewlrl(SBUF2 *sb, int *keepsocket)
-{
-    char lrl_fname_out[256];
-    int rc;
-
-    if (((rc = sbuf2gets(lrl_fname_out, sizeof(lrl_fname_out), sb)) <= 0) ||
-        (lrl_fname_out[rc - 1] != '\n')) {
-        logmsg(LOGMSG_ERROR, "%s: I/O error reading out lrl fname\n", __func__);
-        return -1;
-    }
-    lrl_fname_out[rc - 1] = '\0';
-
-    if (repopulate_lrl(lrl_fname_out)) {
-        logmsg(LOGMSG_ERROR, "%s: repopulate_lrl failed\n", __func__);
-        return -1;
-    }
-
-    if (sbuf2printf(sb, "OK\n") < 0 || sbuf2flush(sb) < 0) {
-        logmsg(LOGMSG_ERROR, "%s: failed to send done ack text\n", __func__);
-        return -1;
-    }
-
-    return 0;
-}
-
 int llmeta_open(void)
 {
     /* now that we have bdb_env open, we can get at llmeta */
@@ -2685,8 +2696,8 @@ int llmeta_open(void)
     if (bdb_llmeta_open(llmetaname, thedb->basedir, thedb->bdb_env,
                         0 /*create_override*/, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
-        logmsg(LOGMSG_ERROR, "Failed to open low level meta table, rc: %d\n",
-                bdberr);
+        logmsg(LOGMSG_FATAL, "Failed to open low level meta table, rc: %d\n",
+               bdberr);
         return -1;
     }
     return 0;
@@ -2760,16 +2771,21 @@ static int purge_extents(void *obj, void *arg)
             logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", savdir, strerror(errno));
         }
         while (j < i) {
+            int qlen, slen;
             char qfile[PATH_MAX], sfile[PATH_MAX];
-            snprintf(qfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64, txndir,
-                     q->name, nums[j]);
-            snprintf(sfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64, savdir,
-                     q->name, nums[j]);
+            qlen = snprintf(qfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64,
+                            txndir, q->name, nums[j]);
+            slen = snprintf(sfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64,
+                            savdir, q->name, nums[j]);
+            if (qlen >= sizeof(qfile) || slen >= sizeof(sfile)) {
+                logmsg(LOGMSG_ERROR, "Truncated paths %s and %s\n", qfile,
+                       sfile);
+            }
             if (rename(qfile, sfile) == 0) {
                 logmsg(LOGMSG_INFO, "%s -> %s\n", qfile, sfile);
             } else {
                 logmsg(LOGMSG_ERROR, "%s -> %s failed:%s\n", qfile, sfile,
-                        strerror(errno));
+                       strerror(errno));
             }
             ++j;
         }
@@ -3119,6 +3135,7 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "failed initialize thread module\n");
         return -1;
     }
+    /* This also initializes the appsock handler hash. */
     if (appsock_init()) {
         logmsg(LOGMSG_FATAL, "failed initialize appsock module\n");
         return -1;
@@ -3135,6 +3152,19 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "failed to initialise page compact module\n");
         return -1;
     }
+
+    /* Initialize the opcode handler hash */
+    if (init_opcode_handlers()) {
+        logmsg(LOGMSG_FATAL, "failed to initialise opcode handler hash\n");
+        return -1;
+    }
+
+    /* Install all static plugins. */
+    if ((install_static_plugins())) {
+        logmsg(LOGMSG_FATAL, "Failed to install builtin plugins");
+        exit(1);
+    }
+
     toblock_init();
 
     handle_cmdline_options(argc, argv, &lrlname);
@@ -3158,9 +3188,10 @@ static int init(int argc, char **argv)
         exit(1);
     }
     dbname = argv[optind++];
-    if (strlen(dbname) == 0 || strlen(dbname) >= MAX_DBNAME_LENGTH) {
-       logmsg(LOGMSG_FATAL, "Invalid dbname, must be < %d characters\n", 
-                MAX_DBNAME_LENGTH - 1);
+    int namelen = strlen(dbname);
+    if (namelen == 0 || namelen >= MAX_DBNAME_LENGTH) {
+        logmsg(LOGMSG_FATAL, "Invalid dbname, must be < %d characters\n",
+               MAX_DBNAME_LENGTH);
         return -1;
     }
     strcpy(gbl_dbname, dbname);
@@ -3529,8 +3560,6 @@ static int init(int argc, char **argv)
 
     /* open the table */
     if (llmeta_open()) {
-        logmsg(LOGMSG_FATAL, "Failed to open low level meta table, rc: %d\n",
-                bdberr);
         return -1;
     }
 
@@ -3920,8 +3949,6 @@ static int init(int argc, char **argv)
 
     if (gbl_exit) {
         logmsg(LOGMSG_INFO, "-exiting.\n");
-        if (gbl_create_mode)
-           logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
         clean_exit();
     }
 
@@ -4215,7 +4242,7 @@ void *statthd(void *p)
         reqlog_diffstat_init(statlogger);
     }
 
-    for (;;) {
+    while (!db_is_stopped()) {
         nqtrap = n_qtrap;
         nfstrap = n_fstrap;
         ncommits = n_commits;
@@ -4230,14 +4257,9 @@ void *statthd(void *p)
         bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
                                (int64_t *)&bpool_misses);
 
-        if (!dbenv->exiting && !dbenv->stopped) {
-            bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
-            diff_deadlocks = ndeadlocks - last_ndeadlocks;
-            diff_lockwaits = nlockwaits - last_nlockwaits;
-        } else {
-            reqlog_free(statlogger);
-            return NULL;
-        }
+        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
+        diff_deadlocks = ndeadlocks - last_ndeadlocks;
+        diff_lockwaits = nlockwaits - last_nlockwaits;
 
         diff_qtrap = nqtrap - last_qtrap;
         diff_fstrap = nfstrap - last_fstrap;
@@ -4310,7 +4332,7 @@ void *statthd(void *p)
 
         if (COMDB2_DIFFSTAT_REPORT() && !gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();
-            if ((thresh > 0) && (count > thresh)) {
+            if ((thresh > 0) && (count == thresh)) {
                 strbuf *logstr = strbuf_new();
                 diff_qtrap = nqtrap - last_report_nqtrap;
                 diff_fstrap = nfstrap - last_report_nfstrap;
@@ -4555,6 +4577,9 @@ void *statthd(void *p)
         ++count;
         sleep(1);
     }
+
+    reqlog_free(statlogger);
+    return NULL;
 }
 
 void create_stat_thread(struct dbenv *dbenv)
@@ -5035,6 +5060,9 @@ static void register_all_int_switches()
     register_int_switch("new_indexes",
                         "Let replicants send indexes values to master",
                         &gbl_new_indexes);
+    register_int_switch("mifid2_datetime_range",
+                        "Extend datetime range to meet mifid2 requirements",
+                        &gbl_mifid2_datetime_range);
 }
 
 static void getmyid(void)
@@ -5172,6 +5200,15 @@ int main(int argc, char **argv)
     }
 
     init_debug_switches();
+
+    /* Initialize the plugin sub-system. */
+    if ((init_plugins())) {
+        logmsg(LOGMSG_FATAL, "Failed to initialize plugin sub-system");
+        exit(1);
+    }
+
+    /* Initialize plugin tunables. */
+    register_plugin_tunables();
 
     timer_init(ttrap);
 

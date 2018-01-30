@@ -530,7 +530,7 @@ static void cache_stats(FILE *out, bdb_state_type *bdb_state, int extra)
     prn_stat(st_page_trickle);
     prn_stat(st_pages);
     prn_stat(st_page_clean);
-    logmsgf(LOGMSG_USER, out, "st_page_dirty: %d\n", atomic_read(&stats->st_page_dirty));
+    logmsgf(LOGMSG_USER, out, "st_page_dirty: %d\n", stats->st_page_dirty);
     prn_stat(st_hash_buckets);
     prn_stat(st_hash_searches);
     prn_stat(st_hash_longest);
@@ -1114,8 +1114,8 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
 {
     int stripe, blobno, ix;
     int fd = -1;
-    char fname[512];
-    char tmpname[512];
+    char fname[PATH_MAX];
+    char tmpname[PATH_MAX];
     int numstripes, numblobs;
     int bdberr;
     unsigned int npages;
@@ -1933,8 +1933,8 @@ static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,
     char **names;
     int rc;
     int i;
-    char qname[4096];
-    char tran_name[128];
+    char qname[PATH_MAX];
+    char tran_name[PATH_MAX];
 
     snprintf(tran_name, sizeof(tran_name), "XXX.%s.queue", name);
 

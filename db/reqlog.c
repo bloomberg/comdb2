@@ -222,7 +222,8 @@ static void flushdump(struct reqlogger *logger, struct output *out)
         niov++;
         if (out == default_out) {
             for (int i = 0; i < niov; i++)
-                logmsg(LOGMSG_USER, "%s", (char *)iov[i].iov_base);
+                logmsg(LOGMSG_USER, "%.*s", (int)iov[i].iov_len,
+                       (char *)iov[i].iov_base);
         } else {
             int dum = writev(out->fd, iov, niov);
         }
@@ -1092,11 +1093,13 @@ int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
     nchars = vsnprintf(s, len, fmt, args);
     if (nchars >= len && reqltruncate == 0) {
         len = nchars + 1;
-        s = realloc(s, len);
-        if (!s) {
+        char *news = realloc(s, len);
+        if (!news) {
             fprintf(stderr, "%s:realloc(%d) failed\n", __func__, len);
+            free(s);
             return -1;
         }
+        s = news;
         len = vsnprintf(s, len, fmt, args_c);
     } else {
         len = strlen(s);
@@ -1114,6 +1117,7 @@ int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
         event = malloc(sizeof(struct push_prefix_event));
         if (!event) {
             logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
+            free(s);
             return -1;
         }
         event->length = len;
@@ -1200,12 +1204,14 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
     nchars = vsnprintf(s, len, fmt, args);
     if (nchars >= len && reqltruncate == 0) {
         len = nchars + 1;
-        s = realloc(s, len);
-        if (!s) {
+        char *news = realloc(s, len);
+        if (!news) {
             logmsg(LOGMSG_ERROR, "%s:realloc(%d) failed\n", __func__, len);
             va_end(args_c);
+            free(s);
             return -1;
         }
+        s = news;
         len = vsnprintf(s, len, fmt, args_c);
     } else {
         len = strlen(s);
@@ -1222,6 +1228,7 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
         event = malloc(sizeof(struct print_event));
         if (!event) {
             logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
+            free(s);
             return -1;
         }
         event->event_flag = event_flag;
@@ -1425,7 +1432,6 @@ void reqlog_new_request(struct ireq *iq)
         return;
     }
 
-    reqlog_reset_logger(logger);
     logger->startus = iq->nowus;
     logger->iq = iq;
     logger->opcode = iq->opcode;
@@ -1451,7 +1457,6 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
     if (!logger) {
         return;
     }
-    reqlog_reset_logger(logger);
     logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
     logger->startus = time_epochus();
@@ -1717,9 +1722,10 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
 
     int long_request_thresh;
 
-    if (!logger || !logger->in_request) {
+    if (!logger)
         return;
-    }
+    if (!logger->in_request)
+        goto out;
 
     if (logger->sqlrows > 0) {
         reqlog_logf(logger, REQL_INFO, "rowcount=%d", logger->sqlrows);
@@ -1730,7 +1736,15 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     if (logger->vreplays) {
         reqlog_logf(logger, REQL_INFO, "verify replays=%d", logger->vreplays);
     }
-    reqlog_logf(logger, REQL_INFO, "fingerprint=%x", logger->fingerprint);
+
+    /* If fingerprinting is enabled and the logger has a fingerprint,
+       log the fingerprint as well. */
+    if (gbl_fingerprint_queries && logger->have_fingerprint) {
+        char hexfp[FINGERPRINTSZ << 1];
+        if (reqlog_fingerprint_to_hex(logger, hexfp, FINGERPRINTSZ << 1) > 0)
+            reqlog_logf(logger, REQL_INFO, "fingerprint=%.*s",
+                        FINGERPRINTSZ << 1, hexfp);
+    }
 
     logger->in_request = 0;
 
@@ -1932,9 +1946,12 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
 
         osql_bplog_free(logger->iq, 1, __func__, callfunc, line);
     }
-    logger->have_id = 0;
-    logger->have_fingerprint = 0;
-    logger->error_code = 0;
+out:
+    reqlog_reset_logger(logger); //will reset which bzeros much of logger
+    assert(logger->have_id == 0);
+    assert(logger->have_fingerprint == 0);
+    assert(logger->error_code == 0);
+    assert(logger->path == 0);
 }
 
 /* this is meant to be called by only 1 thread, will need locking if
@@ -2294,13 +2311,15 @@ void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
     if (logger) logger->queuetimeus = timeus;
 }
 
-void reqlog_set_fingerprint(struct reqlogger *logger,
-                            char fingerprint[FINGERPRINTSZ])
+void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,
+                            size_t n)
 {
-    if (logger) {
-        memcpy(logger->fingerprint, fingerprint, sizeof(logger->fingerprint));
-        logger->have_fingerprint = 1;
-    }
+    size_t min;
+    if (logger == NULL)
+        return;
+    min = (FINGERPRINTSZ < n) ? FINGERPRINTSZ : n;
+    memcpy(logger->fingerprint, fingerprint, min);
+    logger->have_fingerprint = 1;
 }
 
 void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *request)
@@ -2339,4 +2358,27 @@ void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context)
 {
     logger->ncontext = ncontext;
     logger->context = context;
+}
+
+int reqlog_fingerprint_to_hex(struct reqlogger *logger, char *hexstr, size_t n)
+{
+    static const char hex[] = "0123456789abcdef";
+    size_t i, len;
+
+    if (!gbl_fingerprint_queries)
+        return 0;
+
+    if (n & 1)
+        return 0;
+
+    if (logger == NULL)
+        return 0;
+
+    for (i = 0, len = ((n >> 1) < FINGERPRINTSZ) ? (n >> 1) : FINGERPRINTSZ;
+         i != len; ++i) {
+        hexstr[i << 1] = hex[(logger->fingerprint[i] & 0xf0) >> 4];
+        hexstr[(i << 1) + 1] = hex[logger->fingerprint[i] & 0x0f];
+    }
+
+    return (i << 1);
 }

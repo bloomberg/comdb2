@@ -1384,7 +1384,6 @@ typedef struct client_info {
 
 static int send_sp_trace(SP sp, const char *trace, int want_response)
 {
-    int rc;
     CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
     if (want_response) {
         sql_response.response_type = RESPONSE_TYPE__SP_DEBUG;
@@ -1398,7 +1397,7 @@ static int send_sp_trace(SP sp, const char *trace, int want_response)
     sp->rc = newsql_write_response(
         sp->clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE, &sql_response,
         1 /*flush*/, malloc, __func__, __LINE__);
-    return rc;
+    return sp->rc;
 }
 
 static clnt_info info_buf;
@@ -2155,6 +2154,7 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
     sp->initial = 0;
     if (sp->rc == 0) {
         *stmt = rec_ptr->stmt;
+        rec_ptr->sql = sqlite3_sql(*stmt);
     } else if (sp->rc == SQLITE_SCHEMA) {
         return luaL_error(L, sqlite3ErrStr(sp->rc));
     } else {
@@ -2732,6 +2732,7 @@ static void *dispatch_lua_thread(void *lt)
     clnt.sql = l_thread->sql;
     clnt.must_close_sb = 0;
     clnt.exec_lua_thread = 1;
+    clnt.trans_has_sp = 1;
     pthread_mutex_init(&clnt.wait_mutex, NULL);
     pthread_cond_init(&clnt.wait_cond, NULL);
     pthread_mutex_init(&clnt.write_lock, NULL);
@@ -6495,6 +6496,7 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if ((rc = commit_sp(L, &err)) != 0) return rc;
 
     // dbthread_join() performs clean-up
+    lua_gc(L, LUA_GCCOLLECT, 0);
     return rc;
 }
 

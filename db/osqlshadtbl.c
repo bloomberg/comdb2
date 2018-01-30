@@ -2878,8 +2878,10 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
             packed_sc_key[1] != comdb2_table_version(sc->table)) {
             free_schema_change_type(sc);
             osql->xerr.errval = ERR_SC;
-            errstat_cat_str(&(osql->xerr),
-                            "stale table version for schema change");
+            errstat_set_strf(
+                &(osql->xerr),
+                "stale version for table:%s master:%d replicant:%d", sc->table,
+                comdb2_table_version(sc->table), packed_sc_key[1]);
             return ERR_SC;
         } else if (packed_sc_key[1] >= 0) {
             rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, sc->table,

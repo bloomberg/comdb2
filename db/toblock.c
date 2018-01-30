@@ -2532,8 +2532,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     addrrn = -1; /*for secafpri, remember last rrn. */
 
-    delay_if_sc_resuming(iq); /* tiny sleep if resuming sc has not marked sc pointers */
-
     if (iq->debug) {
         reqprintf(iq, "BLOCK OPCODES: %d reqs ", num_reqs);
     }
@@ -2773,6 +2771,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                   (int)pthread_self(), trans, iq->usedb->dbnum,
                   iq->usedb->tablename);
     }
+
+    delay_if_sc_resuming(
+        iq); /* tiny sleep if resuming sc has not marked sc pointers */
 
     javasp_trans_set_trans(javasp_trans_handle, iq, parent_trans, trans);
 

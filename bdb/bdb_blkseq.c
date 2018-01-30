@@ -76,6 +76,49 @@ static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
     return db;
 }
 
+int bdb_cleanup_private_blkseq(bdb_state_type *bdb_state)
+{
+    for (int stripe = 0; stripe < bdb_state->attr->private_blkseq_stripes;
+         stripe++) {
+        if (bdb_state->blkseq_env[stripe]) {
+            pthread_mutex_destroy(&bdb_state->blkseq_lk[stripe]);
+            for (int i = 0; i < 2; i++) {
+                DB *to_be_deleted = bdb_state->blkseq[i][stripe];
+                to_be_deleted->close(to_be_deleted, NULL, DB_NOSYNC);
+            }
+
+            free(bdb_state->blkseq_env[stripe]);
+            bdb_state->blkseq_env[stripe] = NULL;
+        }
+    }
+
+    if (bdb_state->blkseq_env) {
+        free(bdb_state->blkseq_env);
+        bdb_state->blkseq_env = NULL;
+    }
+
+    if (bdb_state->blkseq_lk) {
+        free(bdb_state->blkseq_lk);
+        bdb_state->blkseq_lk = NULL;
+    }
+    if (bdb_state->blkseq[0]) {
+        free(bdb_state->blkseq[0]);
+        bdb_state->blkseq[0] = NULL;
+    }
+    if (bdb_state->blkseq[1]) {
+        free(bdb_state->blkseq[1]);
+        bdb_state->blkseq[1] = NULL;
+    }
+    if (bdb_state->blkseq_last_lsn[0]) {
+        free(bdb_state->blkseq_last_lsn[0]);
+        bdb_state->blkseq_last_lsn[0] = NULL;
+    }
+    if (bdb_state->blkseq_last_lsn[1]) {
+        free(bdb_state->blkseq_last_lsn[1]);
+        bdb_state->blkseq_last_lsn[1] = NULL;
+    }
+}
+
 int bdb_create_private_blkseq(bdb_state_type *bdb_state)
 {
     DB_ENV *env;
@@ -107,8 +150,8 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
             logmsg(LOGMSG_ERROR, "db_env_create rc %d\n", rc);
             return rc;
         }
-        bdb_state->blkseq_env[stripe] = env;
 
+        bdb_state->blkseq_env[stripe] = env;
         env->set_errfile(env, stderr);
 
         rc = env->set_cachesize(env, 0, bdb_state->attr->private_blkseq_cachesz,
@@ -137,7 +180,6 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
                 return -1;
             bzero(&bdb_state->blkseq_last_lsn[i][stripe], sizeof(DB_LSN));
         }
-        bdb_state->blkseq_env[stripe] = env;
     }
     bdb_state->blkseq_last_roll_time = time_epoch();
 

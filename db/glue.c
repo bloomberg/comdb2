@@ -2810,15 +2810,18 @@ retry:
     return ixrc;
 }
 
-int dtas_next(struct ireq *iq, const unsigned long long *genid_vector,
-              unsigned long long *genid, int *stripe, int stay_in_stripe,
-              void *dta, void *trans, int dtalen, int *reqdtalen, int *ver)
+static int dtas_next_int(struct ireq *iq,
+                         const unsigned long long *genid_vector,
+                         unsigned long long *genid, int *stripe,
+                         int stay_in_stripe, void *dta, void *trans, int dtalen,
+                         int *reqdtalen, int *ver, int page_order)
 {
     struct dbtable *db = iq->usedb;
     int bdberr, retries = 0, rc;
     bdb_fetch_args_t args = {0};
 retry:
     iq->gluewhere = "bdb_fetch_next_dtastripe_record";
+    args.page_order = page_order;
     rc = bdb_fetch_next_dtastripe_record(db->handle, genid_vector, genid,
                                          stripe, stay_in_stripe, dta, dtalen,
                                          reqdtalen, trans, &args, &bdberr);
@@ -2851,6 +2854,23 @@ retry:
     return -1;
 }
 
+int dtas_next(struct ireq *iq, const unsigned long long *genid_vector,
+              unsigned long long *genid, int *stripe, int stay_in_stripe,
+              void *dta, void *trans, int dtalen, int *reqdtalen, int *ver)
+{
+    return dtas_next_int(iq, genid_vector, genid, stripe, stay_in_stripe, dta,
+                         trans, dtalen, reqdtalen, ver, 0);
+}
+
+int dtas_next_pageorder(struct ireq *iq, const unsigned long long *genid_vector,
+                        unsigned long long *genid, int *stripe,
+                        int stay_in_stripe, void *dta, void *trans, int dtalen,
+                        int *reqdtalen, int *ver)
+{
+    return dtas_next_int(iq, genid_vector, genid, stripe, stay_in_stripe, dta,
+                         trans, dtalen, reqdtalen, ver, 1);
+}
+
 /* Get the next record in the database in one of the stripes.  Returns 0 on
  * success, 1 if there are no more records, -1 on failure. */
 int dat_highrrn(struct ireq *iq, int *out_highrrn)
@@ -2870,12 +2890,21 @@ static int new_master_callback(void *bdb_handle, char *host)
 {
     ++gbl_master_changes;
     struct dbenv *dbenv;
-    char *oldmaster;
+    char *oldmaster, *newmaster;
+    uint32_t oldegen, egen;
     int trigger_timepart = 0;
     dbenv = bdb_get_usr_ptr(bdb_handle);
     oldmaster = dbenv->master;
+    oldegen = dbenv->egen;
     dbenv->master = host;
 
+    bdb_get_rep_master(bdb_handle, &newmaster, &egen);
+    if (gbl_master_swing_osql_verbose)
+        logmsg(LOGMSG_INFO,
+               "%s:%d new master node %s, rep_master %s, rep_egen %u\n",
+               __func__, __LINE__, host ? host : "NULL",
+               newmaster ? newmaster : "NULL", egen);
+    dbenv->egen = egen;
     /*this is only used when handle not established yet. */
     if (host == gbl_mynode) {
         if (oldmaster != host) {
@@ -2891,7 +2920,9 @@ static int new_master_callback(void *bdb_handle, char *host)
             trigger_clear_hash();
             trigger_timepart = 1;
 
-            osql_repository_cancelall();
+            if (oldegen != egen) {
+                osql_repository_cancelall();
+            }
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
         /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
@@ -2899,9 +2930,11 @@ static int new_master_callback(void *bdb_handle, char *host)
         /* trigger old file recollect */
         gbl_master_changed_oldfiles = 1;
     } else {
-        if (oldmaster != host)
+        if (oldmaster != host && !gbl_create_mode) {
             logmsg(LOGMSG_WARN, "NEW MASTER NODE %s\n", host);
+        }
         /*bdb_set_timeout(bdb_handle, 0, &bdberr);*/
+        osql_repository_cancelall();
     }
 
     gbl_lost_master_time = 0; /* reset this */
@@ -3032,6 +3065,9 @@ static int electsettings_callback(void *bdb_handle, int *elect_time_microsecs)
 /*status of sync subsystem */
 void backend_sync_stat(struct dbenv *dbenv)
 {
+    if (gbl_create_mode) {
+        return;
+    }
     if (dbenv->log_sync)
         logmsg(LOGMSG_USER, "FULL TRANSACTION LOG SYNC ENABLED\n");
 
@@ -3306,7 +3342,7 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
         return;
     }
     seed = dtap;
-    rc = sc_set_running(0, 0, NULL, 0);
+    rc = sc_set_running(0, *seed, NULL, 0);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 
@@ -3317,20 +3353,6 @@ static void net_check_sc_ok(void *hndl, void *uptr, char *fromnode,
     int rc;
     rc = check_sc_ok(NULL);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
-}
-
-static void net_lua_reload(void *hndl, void *uptr, char *fromnode, int usertype,
-                           void *dtap, int dtalen)
-{
-    gbl_analyze_gen++;
-    net_ack_message(hndl, 0);
-}
-
-static void net_statistics_changed(void *hndl, void *uptr, char *fromnode,
-                                   int usertype, void *dtap, int dtalen)
-{
-    gbl_analyze_gen++;
-    net_ack_message(hndl, 0);
 }
 
 static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,

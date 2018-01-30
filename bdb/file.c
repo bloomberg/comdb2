@@ -125,8 +125,7 @@ int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
                     char *newfile, int *bdberr);
 
 static int bdb_reopen_int(bdb_state_type *bdb_state);
-static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                    int create, DB_TXN *tid);
+static int open_dbs(bdb_state_type *, int, int, int, DB_TXN *);
 static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid);
 static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid);
 static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir);
@@ -1368,6 +1367,21 @@ int bdb_flush_up_to_lsn(bdb_state_type *bdb_state, unsigned file,
     return rc;
 }
 
+static int bdb_flush_cache(bdb_state_type *bdb_state)
+{
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    BDB_READLOCK("bdb_flush_cache");
+
+    bdb_state->dbenv->memp_sync(bdb_state->dbenv, NULL);
+
+    BDB_RELLOCK();
+
+    return 0;
+}
+
 static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
 {
     int rc;
@@ -1382,15 +1396,19 @@ static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
         return -1;
     }
 
-    start = time_epochms();
-    rc = ll_checkpoint(bdb_state, force);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "txn_checkpoint err %d\n", rc);
-        *bdberr = BDBERR_MISC;
-        return -1;
+    if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
+        bdb_flush_cache(bdb_state);
+    else {
+        start = time_epochms();
+        rc = ll_checkpoint(bdb_state, force);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "txn_checkpoint err %d\n", rc);
+            *bdberr = BDBERR_MISC;
+            return -1;
+        }
+        end = time_epochms();
+        ctrace("checkpoint took %dms\n", end - start);
     }
-    end = time_epochms();
-    ctrace("checkpoint took %dms\n", end - start);
 
     return 0;
 }
@@ -1525,10 +1543,26 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     free(bdb_state->dir);
     free(bdb_state->txndir);
     free(bdb_state->tmpdir);
+
+    free(bdb_state->seqnum_info->seqnums);
+    free(bdb_state->last_downgrade_time);
+    free(bdb_state->master_lease);
+    free(bdb_state->coherent_state);
+    free(bdb_state->seqnum_info->waitlist);
+    free(bdb_state->seqnum_info->trackpool);
+    free(bdb_state->seqnum_info->time_10seconds);
+    free(bdb_state->seqnum_info->time_minute);
+    free(bdb_state->seqnum_info->expected_udp_count);
+    free(bdb_state->seqnum_info->incomming_udp_count);
+    free(bdb_state->seqnum_info->udp_average_counter);
+    free(bdb_state->seqnum_info->filenum);
+
+    free(bdb_state->repinfo->appseqnum);
+
     /* We can not free bdb_state because other threads get READLOCK
      * and it does not work well doing so on freed memory, so don't:
-     * memset(bdb_state, 0xff, sizeof(bdb_state));
-     * free(bdb_state);
+    memset(bdb_state, 0xff, sizeof(bdb_state));
+    free(bdb_state);
      */
 
     /* DO NOT RELEASE the write lock.  just let it be. */
@@ -3863,7 +3897,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
                                    sizeof(tmpname));
 
                 if (create) {
-                    char new[100];
+                    char new[PATH_MAX];
                     print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
                     unlink(bdb_trans(tmpname, new));
                 }
@@ -4002,7 +4036,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
         }
 
         if (create) {
-            char new[100];
+            char new[PATH_MAX];
             print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
             unlink(bdb_trans(tmpname, new));
         }
@@ -4093,7 +4127,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
             form_indexfile_name(bdb_state, tid, i, tmpname, sizeof(tmpname));
 
             if (create) {
-                char new[100];
+                char new[PATH_MAX];
 
                 print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
                 unlink(bdb_trans(tmpname, new));
@@ -4326,8 +4360,8 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
 
         /* Add the extra stripes. */
         for (strnum = numstripes; strnum < newdtastripe; strnum++) {
-            char tmpname[100];
-            char new[100];
+            char tmpname[PATH_MAX];
+            char new[PATH_MAX];
             int pagesize;
             DB *dbp = NULL;
 
@@ -6177,7 +6211,7 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
 {
     DB_ENV *dbenv;
     DB *dbp;
-    char transname[256];
+    char transname[PATH_MAX];
     char *pname = bdb_trans(filename, transname);
     int rc = 0;
 
@@ -6596,24 +6630,6 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, int *bdberr)
     return 0;
 }
 
-int bdb_flush_cache(bdb_state_type *bdb_state)
-{
-
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-
-    BDB_READLOCK("bdb_flush_cache");
-
-    logmsg(LOGMSG_DEBUG, "About to call %s, flushing the berkeleydb cache...",
-            __func__);
-    bdb_state->dbenv->memp_sync(bdb_state->dbenv, NULL);
-    logmsg(LOGMSG_DEBUG, "Done.\n");
-
-    BDB_RELLOCK();
-
-    return 0;
-}
-
 int bdb_close_only(bdb_state_type *bdb_state, int *bdberr)
 {
     int rc;
@@ -6838,7 +6854,7 @@ static uint64_t mystat(const char *filename)
 
 uint64_t bdb_index_size(bdb_state_type *bdb_state, int ixnum)
 {
-    char bdbname[256], physname[256];
+    char bdbname[PATH_MAX], physname[PATH_MAX];
 
     if (ixnum < 0 || ixnum >= bdb_state->numix)
         return 0;
@@ -6861,7 +6877,7 @@ uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum)
         numstripes = bdb_state->attr->dtastripe;
 
     for (stripenum = 0; stripenum < numstripes; stripenum++) {
-        char bdbname[256], physname[256];
+        char bdbname[PATH_MAX], physname[PATH_MAX];
         form_datafile_name(bdb_state, NULL, dtanum, stripenum, bdbname,
                            sizeof(bdbname));
         bdb_trans(bdbname, physname);
@@ -6922,7 +6938,7 @@ uint64_t bdb_queue_size(bdb_state_type *bdb_state, unsigned *num_extents)
 
     while (bb_readdir(dh, dirent_buf, &result) == 0 && result) {
         if (strncmp(result->d_name, extent_prefix, prefix_len) == 0) {
-            char path[256];
+            char path[PATH_MAX];
             snprintf(path, sizeof(path), "%s/%s", bdb_env->txndir,
                      result->d_name);
             total += mystat(path);
@@ -6968,7 +6984,7 @@ uint64_t bdb_logs_size(bdb_state_type *bdb_state, unsigned *num_logs)
                 if (!isdigit(result->d_name[ii]))
                     break;
             if (ii == 14) {
-                char path[256];
+                char path[PATH_MAX];
                 snprintf(path, sizeof(path), "%s/%s", bdb_env->txndir,
                          result->d_name);
                 total += mystat(path);
@@ -7611,6 +7627,7 @@ int bdb_osql_check_table_version(bdb_state_type *bdb_state, tran_type *tran,
     Pthread_mutex_unlock(&(bdb_state->children_lock));
 
     if ((i >= 0) && (i < tran->table_version_cache_sz) &&
+        (tran->table_version_cache[i] != 0) &&
         (tran->table_version_cache[i] == bdb_state->version_num)) {
         /*printf("OK %s [%d] %llx vs %llx\n", bdb_state->name, i,
          * tran->table_version_cache[i], bdb_state->version_num);*/

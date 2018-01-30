@@ -338,8 +338,12 @@ set all_graphs {
       {line {or READ WRITE} ON /table-name TO /user-name}
       {line OP TO /user-name}}
   }
-  rebuild {
-    line REBUILD {or {} {line INDEX /index-name} DATA DATABLOB } /table-name
+  rebuild {stack
+      {line REBUILD {or {} {line INDEX /index-name} DATA DATABLOB } /table-name}
+      {opt {line OPTIONS {loop {or 
+        {line PAGEORDER} 
+        {line READONLY}
+    } , }}}
   }
   get {
     line GET {or
@@ -533,15 +537,20 @@ set all_graphs {
       stack
       {line CREATE TABLE {opt IF NOT EXISTS}}
       {line {opt db-name .} table-name}
-      {line (
+      {stack
+          {line ( }
           {loop
               {line column-name column-type
                   {opt {loop { column-constraint } { , } } } }
               { , }
           }
+          {opt
+              {loop
+                  {line , table-constraint }
+              }
+          }
           {line ) }
       }
-      {loop {line table-constraint } { , } }
       {line {opt table-options }}
   }
 
@@ -552,20 +561,30 @@ set all_graphs {
       {line NOT NULL }
       {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
       {line UNIQUE }
-      {line foreign-key-def }
+      {line KEY }
+      {line {opt CONSTRAINT constraint-name } foreign-key-def }
       {line WITH DBPAD = signed-number }
   }
 
   table-constraint {
       or
-      {line PRIMARY KEY ( column-list ) }
-      {line UNIQUE ( column-list ) }
-      {line FOREIGN KEY ( column-list ) foreign-key-def}
+      {line
+          {stack
+              {line {or {line UNIQUE } {line KEY } }
+                  {opt index-name } ( index-column-list ) }
+              {line {opt WITH DATACOPY } {opt WHERE expr } }
+          }
+      }
+      {line PRIMARY KEY ( index-column-list ) }
+      {stack
+          {line {opt CONSTRAINT constraint-name } }
+          {line FOREIGN KEY ( index-column-list ) foreign-key-def}
+      }
   }
 
   foreign-key-def {
       stack
-      {line REFERENCES ref-table-name ( ref-column-name ) }
+      {line REFERENCES table-name ( index-column-list ) }
       {opt
           {loop
               {line ON
@@ -582,7 +601,7 @@ set all_graphs {
       }
   }
 
-  column-list {
+  index-column-list {
       loop
       {line column-name {opt {or {line ASC } {line DESC } } } }
       { , }
@@ -593,16 +612,29 @@ set all_graphs {
       {line ALTER TABLE {opt db-name .} table-name }
       {opt 
           {or
+              {line RENAME TO new-table-name}
               {loop
                   {or
                       {line ADD column-name column-type
                           {opt {loop {line column-constraint } { , } } }
                       }
                       {line DROP {opt COLUMN} column-name }
+                      {stack
+                          {line ADD {opt UNIQUE } INDEX index-name
+                              ( index-column-list ) }
+                          {line {opt WITH DATACOPY } {opt WHERE expr } }
+                      }
+                      {line DROP INDEX index-name }
+                      {line ADD PRIMARY KEY ( index-column-list ) }
+                      {line DROP PRIMARY KEY }
+                      {stack
+                          {line ADD {opt CONSTRAINT constraint-name } }
+                          {line FOREIGN KEY ( index-column-list ) foreign-key-def }
+                      }
+                      {line DROP FOREIGN KEY constraint-name }
                   }
                   { , }
               }
-              {line RENAME TO new-table-name}
            }
        }
   }
@@ -610,8 +642,7 @@ set all_graphs {
   create-index {
       stack
       {line CREATE {opt UNIQUE } INDEX {opt IF NOT EXISTS } }
-      {line {opt db-name } index-name ON table-name
-          ( {loop {line column-name } { , } } ) }
+      {line {opt db-name } index-name ON table-name ( index-column-list ) }
       {line {opt WITH DATACOPY } {opt WHERE expr } }
   }
 

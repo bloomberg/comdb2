@@ -29,8 +29,6 @@ void set_schemachange_options(struct schema_change_type *s, struct dbtable *db,
 void set_schemachange_options_tran(struct schema_change_type *s, struct dbtable *db,
                                    struct scinfo *scinfo, tran_type *tran);
 
-int print_status(struct schema_change_type *s);
-
 int reload_schema(char *table, const char *csc2, tran_type *tran);
 
 void set_sc_flgs(struct schema_change_type *s);

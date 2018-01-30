@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2017 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -12,12 +12,16 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
- */
+*/
 
-#ifndef INCLUDED_PLUGIN_H
-#define INCLUDED_PLUGIN_H
+#ifndef __INCLUDED_MACHINE_INFO_H
+#define __INCLUDED_MACHINE_INFO_H
 
-int process_plugin_command(struct dbenv *dbenv, char *line, int llen, int st,
-                           int ltok);
-
-#endif /* INCLUDED_PLUGIN_H */
+struct comdb2_machine_info {
+    int (*machine_is_up)(const char *host);
+    int (*machine_status_init)(void);
+    int (*machine_class)(const char *host);
+    int (*machine_dc)(const char *host);
+};
+typedef struct comdb2_machine_info comdb2_machine_info_t;
+#endif /* !__INCLUDED_MACHINE_INFO_H */

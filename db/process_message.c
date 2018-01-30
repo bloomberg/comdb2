@@ -2009,6 +2009,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             logmsg(LOGMSG_USER, "readonly                %c\n", gbl_readonly ? 'Y' : 'N');
             logmsg(LOGMSG_USER, "num sql queries         %u\n", gbl_nsql);
             logmsg(LOGMSG_USER, "num new sql queries     %u\n", gbl_nnewsql);
+            logmsg(LOGMSG_USER, "num master rejects      %u\n",
+                   gbl_masterrejects);
             logmsg(LOGMSG_USER, "sql ticks               %llu\n", gbl_sqltick);
             logmsg(LOGMSG_USER, "sql deadlocks recover attempts %llu failures %llu\n",
                    gbl_sql_deadlock_reconstructions, gbl_sql_deadlock_failures);

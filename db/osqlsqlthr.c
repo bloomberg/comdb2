@@ -486,6 +486,8 @@ retry:
             return rc;
     } else {
         /* this is a replay with same rqid, already registered */
+        /* sets to the same node */
+        osql_reuse_sqlthr(clnt, osql->host);
     }
 
     /* retrying a transaction, don't skip on blkseq */
@@ -598,7 +600,7 @@ again:
             logmsg(LOGMSG_USER, "%lu Restarting %llx\n", pthread_self(),
                    clnt->osql.rqid);
         /* we should reset this ! */
-        rc = osql_reuse_sqlthr(clnt);
+        rc = osql_reuse_sqlthr(clnt, thedb->master);
         if (rc)
             return SQLITE_INTERNAL;
     }
@@ -1663,8 +1665,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
-    if (gbl_uses_password &&
-        (thd->sqlclntstate->no_transaction == 0)) {
+    if (gbl_uses_password && thd->sqlclntstate->no_transaction == 0) {
         rc = bdb_check_user_tbl_access(
             pCur->db->dbenv->bdb_env, thd->sqlclntstate->user,
             pCur->db->tablename, ACCESS_READ, &bdberr);

@@ -74,7 +74,7 @@ static int __dbenv_set_num_recovery_processor_threads __P((DB_ENV *, int));
 static int __dbenv_set_num_recovery_worker_threads __P((DB_ENV *, int));
 static void __dbenv_set_recovery_memsize __P((DB_ENV *, int));
 static int __dbenv_get_recovery_memsize __P((DB_ENV *));
-static int __dbenv_get_rep_master __P((DB_ENV *, char **));
+static int __dbenv_get_rep_master __P((DB_ENV *, char **, u_int32_t *));
 static int __dbenv_get_rep_eid __P((DB_ENV *, char **));
 static int __dbenv_get_page_extent_size __P((DB_ENV *));
 static void __dbenv_set_page_extent_size __P((DB_ENV *, u_int32_t));
@@ -1110,11 +1110,12 @@ __dbenv_get_rep_eid(dbenv, eid)
 
 
 static int
-__dbenv_get_rep_master(dbenv, master)
+__dbenv_get_rep_master(dbenv, master, egen)
 	DB_ENV *dbenv;
 	char **master;
+	u_int32_t *egen;
 {
-	return __rep_get_master(dbenv, master);
+	return __rep_get_master(dbenv, master, egen);
 }
 
 static int

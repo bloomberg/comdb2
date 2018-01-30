@@ -193,6 +193,9 @@ int SBUF2_FUNC(sbuf2unbufferedwrite)(SBUF2 *sb, const char *cc, int len);
 char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *);
 #define get_origin_mach_by_buf SBUF2_FUNC(get_origin_mach_by_buf)
 
+void SBUF2_FUNC(cleanup_peer_hash)();
+#define cleanup_peer_hash SBUF2_FUNC(cleanup_peer_hash)
+
 #ifndef WITH_SSL
 #  define WITH_SSL 1
 #endif

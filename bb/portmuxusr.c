@@ -45,6 +45,7 @@
 #include <epochlib.h>
 #include <cdb2_constants.h>
 #include <logmsg.h>
+#include <mem.h>
 
 int gbl_pmux_route_enabled = 1;
 
@@ -206,7 +207,7 @@ int portmux_register(const char *app, const char *service, const char *instance)
 int portmux_deregister(const char *app, const char *service,
                        const char *instance)
 {
-    char name[NAMELEN];
+    char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
     int rc, fd;
@@ -239,7 +240,7 @@ static int portmux_get_int(const struct in_addr *in, const char *remote_host,
                            const char *app, const char *service,
                            const char *instance, int timeout_ms)
 {
-    char name[NAMELEN];
+    char name[NAMELEN * 2];
     int rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name))
         return -1;
@@ -297,7 +298,7 @@ static int portmux_get_int(const struct in_addr *in, const char *remote_host,
     }
 
     /* Read back result and close the connection, it's not needed any more. */
-    char res[NAMELEN + 32];
+    char res[NAMELEN * 2];
     sbuf2gets(res, sizeof(res), ss);
     sbuf2close(ss);
 
@@ -340,7 +341,7 @@ int portmux_get(const char *remote_host, const char *app, const char *service,
         return portmux_get_int(NULL, remote_host, app, service, instance,
                                portmux_default_timeout);
     }
-    char name[64];
+    char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
     int rc, fd, port;
@@ -377,7 +378,7 @@ int portmux_geti(struct in_addr in, const char *app, const char *service,
         return portmux_get_int(&in, NULL, app, service, instance,
                                portmux_default_timeout);
     }
-    char name[64];
+    char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
     int rc, fd, port;
@@ -426,7 +427,7 @@ static int portmux_register_route(const char *app, const char *service,
                                   const char *instance, int *port,
                                   uint32_t options)
 {
-    char name[NAMELEN];
+    char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
     int rc, listenfd;
@@ -566,7 +567,7 @@ static int portmux_route_to(struct in_addr in, const char *app,
                             const char *service, const char *instance,
                             int timeoutms)
 {
-    char cmd[69]; /* space for command + 64 char app/svc/inst string */
+    char cmd[NAMELEN * 2]; /* space for command + 64 char app/svc/inst string */
     char res[2];
     int rc, fd, len;
 

@@ -3107,7 +3107,7 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
 
     pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
 
-    bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master);
+    bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master, NULL);
     bdb_state->dbenv->get_rep_eid(bdb_state->dbenv, &eid);
 
     // We are under the log lock here.  If we are writing logs, there has to
@@ -4484,6 +4484,8 @@ step1:
         /* Find my record. */
         rc = bdb_temp_table_find_exact(cur->state, cur->addcur, fndkey, keylen,
                                        bdberr);
+        if (rc != IX_FND)
+            free(fndkey);
         if (rc < 0)
             return rc;
 
@@ -4557,6 +4559,7 @@ step1:
                                         "updated row rc=%d bdberr=%d\n",
                                 __func__, rc, *bdberr);
                         rc = -1; /* we have to find this row back */
+                        free(pgenid);
                     }
 
                     /* Retrieve the header. */
@@ -5280,6 +5283,7 @@ step1:
                                     "rc=%d bdberr=%d\n",
                             __func__, rc, *bdberr);
                     rc = -1; /* we have to find this row back */
+                    free(pgenid);
                 }
 
                 /* Retrieve the header. */

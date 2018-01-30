@@ -5838,7 +5838,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                  sizeof(tblname), p_buf_key+sizeof(int), p_buf_end_key);
         unsigned long long version = *(unsigned long long *)data;
         logmsg(LOGMSG_USER,
-               "LLMETA_TABLE_VERSION table=\"%s\" version=\"%llu\"\n", tblname,
+               "LLMETA_TABLE_VERSION table=\"%s\" version=\"%lu\"\n", tblname,
                flibc_ntohll(version));
         } break;
         case LLMETA_GENID_FORMAT: {
@@ -7124,7 +7124,7 @@ static int bdb_table_version_upsert_int(bdb_state_type *bdb_state,
     if (rc || *bdberr != BDBERR_NOERROR) {
         return rc;
     } else {
-        logmsg(LOGMSG_INFO, "Saved version %lld for table %s\n",
+        logmsg(LOGMSG_INFO, "Saved version %lu for table %s\n",
                flibc_htonll(version), bdb_state->name);
     }
 
@@ -8253,7 +8253,7 @@ struct versioned_sp {
     char name[LLMETA_TBLLEN];
     char version[MAX_SPVERSION_LEN];
 };
-int bdb_add_versioned_sp(char *name, char *version, char *src)
+int bdb_add_versioned_sp(tran_type *t, char *name, char *version, char *src)
 {
     union {
         struct versioned_sp sp;
@@ -8263,7 +8263,7 @@ int bdb_add_versioned_sp(char *name, char *version, char *src)
     strcpy(u.sp.name, name);
     strcpy(u.sp.version, version);
     int bdberr;
-    int rc = kv_put(NULL, &u, src, strlen(src) + 1, &bdberr);
+    int rc = kv_put(t, &u, src, strlen(src) + 1, &bdberr);
     if (rc == 0) {
         logmsg(LOGMSG_INFO, "Added SP %s:'%s'\n", name, version);
     }
@@ -8356,18 +8356,13 @@ static int bdb_set_default_versioned_sp_int(tran_type *tran, char *name,
         return rc;
     return kv_put(tran, &u, version, strlen(version) + 1, &bdberr);
 }
-int bdb_set_default_versioned_sp(char *name, char *version)
+int bdb_set_default_versioned_sp(tran_type *t, char *name, char *version)
 {
-    int rc, bdberr;
-    tran_type *t = bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr);
-    if ((rc = bdb_set_default_versioned_sp_int(t, name, version)) == 0)
-        rc = bdb_tran_commit(llmeta_bdb_state, t, &bdberr);
-    else
-        bdb_tran_abort(llmeta_bdb_state, t, &bdberr);
-    if (rc == 0) {
-        logmsg(LOGMSG_INFO, "Default SP %s:%s\n", name, version);
-    }
-    return rc;
+    int rc;
+    if ((rc = bdb_set_default_versioned_sp_int(t, name, version)) != 0)
+        return rc;
+    logmsg(LOGMSG_INFO, "Default SP %s:%s\n", name, version);
+    return 0;
 }
 int bdb_get_default_versioned_sp(char *name, char **version)
 {
@@ -8407,8 +8402,7 @@ int bdb_del_default_versioned_sp(tran_type *tran, char *name)
         return 0;
     return rc;
 }
-static
-int bdb_get_sps_int(llmetakey_t k, char ***names, int *num)
+static int bdb_get_sps_int(llmetakey_t k, char ***names, int *num)
 {
     k = htonl(k);
     union {

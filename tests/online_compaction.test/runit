@@ -2,7 +2,7 @@
 
 dbnm=$1
 dbdir=${DBDIR}
-bindir="${SRCHOME}"
+bindir=`dirname $COMDB2_EXE`
 ofsrng=20000
 numrng=50
 ffdiff=0
@@ -27,10 +27,9 @@ echo "MASTER is $master"
 #ln cdb2_stat
 myhostname=`hostname`
 if [ "$master" != "$myhostname" ] ; then
-    ssh -o StrictHostKeyChecking=no $master "rm -f ${SRCHOME}/cdb2_stat"
-    ssh -o StrictHostKeyChecking=no $master "ln ${SRCHOME}/comdb2 ${SRCHOME}/cdb2_stat"
+    ssh -o StrictHostKeyChecking=no $master "ln $COMDB2_EXE ${bindir}/cdb2_stat"
 else
-    rm -f ${SRCHOME}/cdb2_stat; ln ${SRCHOME}/comdb2 ${SRCHOME}/cdb2_stat
+    ln $COMDB2_EXE ${bindir}/cdb2_stat
 fi
 
 
