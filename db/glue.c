@@ -2893,6 +2893,9 @@ static int new_master_callback(void *bdb_handle, char *host)
     char *oldmaster, *newmaster;
     uint32_t oldegen, egen;
     int trigger_timepart = 0;
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&lk);
+
     dbenv = bdb_get_usr_ptr(bdb_handle);
     oldmaster = dbenv->master;
     oldegen = dbenv->egen;
@@ -2948,6 +2951,7 @@ static int new_master_callback(void *bdb_handle, char *host)
     if(trigger_timepart)
         gbl_trigger_timepart = 1;
 
+    pthread_mutex_unlock(&lk);
     return 0;
 }
 

@@ -452,6 +452,7 @@ static void *watchdog_watcher_thread(void *arg)
             logmsg(LOGMSG_FATAL, "rep watcher thread stuck, exiting\n");
             comdb2_die(1);
         }
+        sleep(10);
     }
     return NULL;
 }

@@ -46,7 +46,7 @@ std::map<std::string, std::list<cson_value*>> transactions;
 
 void replay(cdb2_hndl_tp *db, cson_value *val);
 
-static const char *usage_text = 
+static const char *usage_text =
     "Usage: cdb2sqlreplay [-f] dbname [FILE]\n"
     "\n"
     "Basic options:\n"

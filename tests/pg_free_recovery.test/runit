@@ -139,7 +139,7 @@ function runtest
     beforedowngrade
     wait
     downgrade
-    sleep 10
+    sleep 20
     afterdowngrade
     verify
 }

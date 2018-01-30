@@ -85,8 +85,7 @@ void *schedule_thd(void *arg)
     }
 
     char *conf = getenv("CDB2_CONFIG");
-    if (conf)
-        cdb2_set_comdb2db_config(conf);
+    if (conf) cdb2_set_comdb2db_config(conf);
     if ((ret = cdb2_open(&sqlh, c->dbname, "default", 0)) != 0) {
         fprintf(f, "%s:%d Error getting sql handle, ret=%d\n", __func__,
                 __LINE__, ret);
@@ -357,8 +356,7 @@ int main(int argc, char *argv[])
         c->dbname, c->occ, c->recom, c->threads);
 
     char *conf = getenv("CDB2_CONFIG");
-    if (conf)
-        cdb2_set_comdb2db_config(conf);
+    if (conf) cdb2_set_comdb2db_config(conf);
     /* Allocate an sql handle. */
     if (0 == err && cdb2_open(&sqlh, c->dbname, "default", 0)) {
         fprintf(stderr, "error opening sql handle for '%s'.\n", c->dbname);
