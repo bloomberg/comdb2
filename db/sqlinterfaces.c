@@ -778,7 +778,7 @@ done:
         exit(1);
     }
 
-    if (dta && alloc == malloc)
+    if (dta)
         free(dta);
 
     return rc;
