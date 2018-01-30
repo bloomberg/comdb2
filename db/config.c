@@ -28,7 +28,6 @@
 #include "intern_strings.h"
 #include "bb_oscompat.h"
 #include "switches.h"
-#include "plugin.h"
 #include "util.h"
 #include "sqllog.h"
 #include "ssl_bend.h"
@@ -1245,9 +1244,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         }
 
         read_lrl_file(dbenv, file, 0);
-    } else if (tokcmp(tok, ltok, "plugin") == 0) {
-        rc = process_plugin_command(dbenv, line, len, st, ltok);
-        if (rc) return -1;
     } else if (tokcmp(line, ltok, "do") == 0) {
         defer_option(dbenv, DEFERRED_SEND_COMMAND, line, len, options->lineno);
     } else if (tokcmp(line, ltok, "default_datetime_precision") == 0) {
@@ -1261,12 +1257,14 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
     } else if (tokcmp(line, strlen("ssl"), "ssl") == 0) {
         /* Let's have a separate function for ssl directives. */
         rc = ssl_process_lrl(line, len);
-        if (rc != 0) return -1;
+        if (rc != 0)
+            return -1;
 #endif
     } else {
         logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok, tok,
                options->lrlname);
-        if (gbl_bad_lrl_fatal) return -1;
+        if (gbl_bad_lrl_fatal)
+            return -1;
     }
 
     if (gbl_disable_new_snapshot) {

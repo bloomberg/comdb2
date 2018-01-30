@@ -1,0 +1,13 @@
+struct comdb2_plugin @PLUGIN_SYM@[] = {
+    {
+        "newsql",              /* Plugin identifier */
+        "newsql plugin",       /* Plugin description */
+        COMDB2_PLUGIN_APPSOCK, /* Plugin type */
+        1,                     /* Plugin version */
+        1,                     /* Plugin interface version */
+        0,                     /* Plugin flags */
+        NULL,                  /* Initialization function */
+        NULL,                  /* Destroy function */
+        &newsql_plugin         /* Plugin-specific data */
+    },
+    {0, 0, 0, 0, 0, 0, 0, 0, 0}};

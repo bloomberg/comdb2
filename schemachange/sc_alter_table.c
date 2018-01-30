@@ -306,6 +306,7 @@ static inline void wait_to_resume(struct schema_change_type *s)
 
 int gbl_test_scindex_deadlock = 0;
 int gbl_test_sc_resume_race = 0;
+int gbl_readonly_sc = 0;
 
 int do_alter_table(struct ireq *iq, tran_type *tran)
 {
@@ -543,6 +544,8 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
     if ((!newdb->plan || newdb->plan->plan_convert) ||
         changed == SC_CONSTRAINT_CHANGE) {
         doing_conversion = 1;
+        if (!s->live)
+            gbl_readonly_sc = 1;
         rc = convert_all_records(db, newdb, newdb->sc_genids, s);
         if (rc == 1) rc = 0;
         doing_conversion = 0;

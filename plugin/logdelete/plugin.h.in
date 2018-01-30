@@ -1,0 +1,35 @@
+struct comdb2_plugin @PLUGIN_SYM@[] = {
+    {
+       "logdelete",           /* Plugin identifier */
+       "logdelete plugin",    /* Plugin description */
+       COMDB2_PLUGIN_APPSOCK, /* Plugin type */
+       1,                     /* Plugin version */
+       1,                     /* Plugin interface version */
+       0,                     /* Plugin flags */
+       NULL,                  /* Initialization function */
+       NULL,                  /* Destroy function */
+       &logdelete_plugin      /* Plugin-specific data */
+   },
+   {
+       "logdelete",           /* Plugin identifier */
+       "logdelete plugin",    /* Plugin description */
+       COMDB2_PLUGIN_APPSOCK, /* Plugin type */
+       2,                     /* Plugin version */
+       1,                     /* Plugin interface version */
+       0,                     /* Plugin flags */
+       NULL,                  /* Initialization function */
+       NULL,                  /* Destroy function */
+       &logdelete2_plugin     /* Plugin-specific data */
+   },
+   {
+       "logdelete",           /* Plugin identifier */
+       "logdelete plugin",    /* Plugin description */
+       COMDB2_PLUGIN_APPSOCK, /* Plugin type */
+       3,                     /* Plugin version */
+       1,                     /* Plugin interface version */
+       0,                     /* Plugin flags */
+       NULL,                  /* Initialization function */
+       NULL,                  /* Destroy function */
+       &logdelete3_plugin     /* Plugin-specific data */
+   },
+   {0, 0, 0, 0, 0, 0, 0, 0, 0}};
