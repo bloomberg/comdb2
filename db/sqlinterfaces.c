@@ -6372,6 +6372,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
     thd->offsets = NULL;
     thd->sqldb = NULL;
     thd->stmt_table = NULL;
+    bzero(thd->lastuser, sizeof(thd->lastuser));
 
     start_sql_thread();
 
