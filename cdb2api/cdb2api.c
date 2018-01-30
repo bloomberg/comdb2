@@ -4820,6 +4820,9 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
     struct machine m[MAX_NODES];
     int num_hosts = 0;
 
+    assert(type_copy[0] == '@');
+    char *s = type_copy + 1; // advance past the '@'
+
     get_comdb2db_hosts(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                        NULL, NULL, NULL, 1);
 
@@ -5208,8 +5211,12 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
                 hndl->ports[0] = CDB2_PORTMUXPORT;
             }
         }
+        if (hndl && hndl->debug_trace)
+            fprintf(stderr, "td %u %s:%d host %s port %d\n",
+                    (uint32_t)pthread_self(), __func__, __LINE__,
+                    hndl->hosts[0], hndl->ports[0]);
     } else if (is_machine_list(type)) {
-        configure_from_literal(hndl, type);
+        rc = configure_from_literal(hndl, type);
     } else {
         rc = cdb2_get_dbhosts(hndl);
     }

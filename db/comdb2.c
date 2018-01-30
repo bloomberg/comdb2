@@ -1400,9 +1400,6 @@ void clean_exit(void)
     destroy_plugins();
     destroy_appsock();
     bdb_cleanup_private_blkseq(thedb->bdb_env);
-    if (gbl_create_mode) {
-        logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
-    }
 
     if (gbl_create_mode) {
         logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);

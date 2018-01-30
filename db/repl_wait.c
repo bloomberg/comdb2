@@ -33,14 +33,13 @@
 #include "logmsg.h"
 
 static pool_t *pool;
-static hash_t *hash = NULL;
+static hash_t *hash;
 static pthread_mutex_t lock;
 
 static unsigned n_allocs = 0;
 static unsigned n_deallocs = 0;
 static unsigned n_blocks = 0;
 
-static int inited = 0;
 static int enabled = 1;
 
 struct waiter {
@@ -65,13 +64,11 @@ struct repl_object {
 
 void repl_list_init(void)
 {
-    if (inited) return;
     pool = pool_setalloc_init(sizeof(struct repl_object), 0, malloc, free);
     hash = hash_init(sizeof(unsigned long long));
     pthread_mutex_init(&lock, NULL);
     register_int_switch("repl_wait",
                         "Replication wait system enabled for queues", &enabled);
-    inited = 1;
 }
 
 void repl_wait_stats(void)
@@ -90,8 +87,6 @@ struct repl_object *add_genid_to_repl_list(unsigned long long genid,
     if (!enabled)
         return head;
 
-    if (!inited) abort();
-
     LOCK(&lock)
     {
 
@@ -99,7 +94,6 @@ struct repl_object *add_genid_to_repl_list(unsigned long long genid,
         if (!obj) {
             logmsg(LOGMSG_ERROR, "%s: out of memory in pool for genid %llx\n",
                     __func__, genid);
-            abort();
             errUNLOCK(&lock);
             return head;
         }
@@ -111,7 +105,6 @@ struct repl_object *add_genid_to_repl_list(unsigned long long genid,
         if (hash_add(hash, obj) != 0) {
             logmsg(LOGMSG_ERROR, "%s: error hashing genid %llx\n", __func__, genid);
             pool_relablk(pool, obj);
-            abort();
             errUNLOCK(&lock);
             return head;
         }
@@ -125,8 +118,6 @@ struct repl_object *add_genid_to_repl_list(unsigned long long genid,
 
 void wait_for_genid_repl(unsigned long long genid)
 {
-    if (!inited) abort();
-
     LOCK(&lock)
     {
 
@@ -168,8 +159,6 @@ void clear_trans_from_repl_list(struct repl_object *head)
 {
     if (!head)
         return;
-
-    if (!inited) abort();
 
     LOCK(&lock)
     {

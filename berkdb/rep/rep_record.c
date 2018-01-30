@@ -57,8 +57,6 @@ static const char revid[] =
 #ifndef TESTSUITE
 int bdb_am_i_coherent(void *bdb_state);
 void bdb_thread_event(void *bdb_state, int event);
-void bdb_get_readlock(void *bdb_state, const char *idstr,
-                      const char *funcname, int line);
 void bdb_get_writelock(void *bdb_state,
     const char *idstr, const char *funcname, int line);
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
@@ -135,7 +133,7 @@ int gbl_rep_process_msg_print_rc;
 #define MASTER_ONLY(rep, rp)											 	\
 	do {																 	\
 		if (!F_ISSET(rep, REP_F_MASTER)) {									\
-			if (gbl_verbose_master_req || FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) {			\
+			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) {			\
 				__db_err(dbenv, "Master record received on client");		\
 				__rep_print_message(dbenv, *eidp, rp, "rep_process_message");\
 			}															 	\
@@ -148,7 +146,7 @@ int gbl_rep_process_msg_print_rc;
 #define CLIENT_ONLY(rep, rp)												\
 	do {																	\
 		if (!F_ISSET(rep, REP_ISCLIENT)) {									\
-			if (gbl_verbose_master_req || FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) {			\
+			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) {			\
 				__db_err(dbenv, "Client record received on master");		\
 				__rep_print_message(dbenv, *eidp, rp, "rep_process_message");\
 			}																\
@@ -164,7 +162,7 @@ int gbl_rep_process_msg_print_rc;
 #define MASTER_CHECK(dbenv, eid, rep)										\
 	do {																	\
 		if (rep->master_id == db_eid_invalid) {								\
-			if (gbl_verbose_master_req || FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))				\
+			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))				\
 				__db_err(dbenv, "Received record from %s, master is INVALID",\
 						 eid);												\
 			ret = 0;														\
@@ -414,6 +412,10 @@ done:
 	return will_recover;
 }
 
+
+    extern int gbl_verbose_master_req;
+
+
 /*
  * __rep_process_message --
  *
@@ -431,10 +433,6 @@ done:
  * PUBLIC: int __rep_process_message __P((DB_ENV *, DBT *, DBT *, char**,
  * PUBLIC:     DB_LSN *, uint32_t *));
  */
-
-
-extern int gbl_verbose_master_req;
-
 
 int
 __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
@@ -6413,8 +6411,6 @@ int __rep_block_on_inflight_transactions(DB_ENV *dbenv)
 	int rc;
 
 	pthread_mutex_lock(&dbenv->recover_lk);
-	logmsg(LOGMSG_ERROR, "%s: starting, waiting for %d processor threads to "
-			"exit\n", __func__, listc_size(&dbenv->inflight_transactions));
 	while (listc_size(&dbenv->inflight_transactions) > 0) {
 		clock_gettime(CLOCK_REALTIME, &ts);
 		ts.tv_sec++;
