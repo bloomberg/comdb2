@@ -134,7 +134,7 @@ int views_write(const char *str);
 
 /**
  *  Write a CSON representation of a view
- *  TGhe view is internally saved as a parameter "viewname" for the table
+ *  The view is internally saved as a parameter "viewname" for the table
  *"sys_views"
  *
  *  NOTE: writing a NULL or 0 length string deletes existing entry if any
