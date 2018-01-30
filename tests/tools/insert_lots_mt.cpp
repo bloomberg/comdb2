@@ -148,8 +148,8 @@ int main(int argc, char *argv[])
     unsigned int cntperthread = atoi(argv[3]);
     unsigned int iterations = atoi(argv[4]);
 
-    pthread_t *t = (pthread_t *) alloca(sizeof(pthread_t) * numthreads);
-    thr_info_t *tinfo = (thr_info_t *) alloca(sizeof(thr_info_t) * numthreads);
+    pthread_t *t = (pthread_t *) malloc(sizeof(pthread_t) * numthreads);
+    thr_info_t *tinfo = (thr_info_t *) malloc(sizeof(thr_info_t) * numthreads);
     for(unsigned int it = 0; it < iterations; it++) {
         fprintf(stderr, "starting %d threads\n", numthreads);
 

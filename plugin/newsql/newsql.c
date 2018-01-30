@@ -859,6 +859,20 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             }
             clnt.conninfo.pid = sql_query->client_info->pid;
             clnt.conninfo.node = sql_query->client_info->host_id;
+            if (clnt.argv0) {
+                free(clnt.argv0);
+                clnt.argv0 = NULL;
+            }
+            if (clnt.stack) {
+                free(clnt.stack);
+                clnt.stack = NULL;
+            }
+            if (sql_query->client_info->argv0) {
+                clnt.argv0 = strdup(sql_query->client_info->argv0);
+            }
+            if (sql_query->client_info->stack) {
+                clnt.stack = strdup(sql_query->client_info->stack);
+            }
         }
 
         if (process_set_commands(dbenv, &clnt))
@@ -950,6 +964,15 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 done:
     if (clnt.ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         handle_sql_intrans_unrecoverable_error(&clnt);
+    }
+
+    if (clnt.argv0) {
+        free(clnt.argv0);
+        clnt.argv0 = NULL;
+    }
+    if (clnt.stack) {
+        free(clnt.stack);
+        clnt.stack = NULL;
     }
 
     close_sp(&clnt);
