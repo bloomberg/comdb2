@@ -22,17 +22,18 @@
 
 #include "views.h"
 
-typedef struct systbl_timepart_cursor systbl_timepart_cursor;
-struct systbl_timepart_cursor {
+typedef struct timepart_cursor timepart_cursor;
+struct timepart_cursor {
   sqlite3_vtab_cursor base;  /* Base class - must be first */
   sqlite3_int64 iRowid;      /* The rowid */
-  int maxRowid;
+  int maxTimepartitions;
+  int eof;
 };
 
 /*
 ** Constructor for sqlite3_vtab object
 */
-static int systblTimepartConnect(
+static int timepartConnect(
   sqlite3 *db,
   void *pAux,
   int argc,
@@ -43,7 +44,9 @@ static int systblTimepartConnect(
   sqlite3_vtab *pNew;
   int rc;
 
-  rc = sqlite3_declare_vtab(db, "CREATE TABLE comdb2_timepart(name, period, retention, nshards, version, shard0name, starttime, source_id)");
+  rc = sqlite3_declare_vtab(db, 
+          "CREATE TABLE comdb2_timepartitions(name, period, retention,"
+          " nshards, version, shard0name, starttime, source_id)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -55,125 +58,194 @@ static int systblTimepartConnect(
 /*
 ** Destructor for sqlite3_vtab objects.
 */
-static int systblTimepartDisconnect(sqlite3_vtab *pVtab){
+static int timepartDisconnect(sqlite3_vtab *pVtab){
   sqlite3_free(pVtab);
   return SQLITE_OK;
 }
 
-/*
-** Constructor for systbl_tables_cursor objects.
-*/
-static int systblTimepartOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
-  systbl_timepart_cursor *pCur;
+/* cursor open */
+static int timepartOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
+  timepart_cursor *pCur;
 
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
   pCur->iRowid = -1;
+  pCur->eof = 0;
   views_lock();
-  pCur->maxRowid = timepart_get_views();
+  pCur->maxTimepartitions = timepart_get_num_views();
 
   return SQLITE_OK;
 }
 
-/*
-** Destructor for systbl_tables_cursor.
-*/
-static int systblTimepartClose(sqlite3_vtab_cursor *cur){
+/* cursor close */
+static int timepartClose(sqlite3_vtab_cursor *cur){
   views_unlock();
   sqlite3_free(cur);
   return SQLITE_OK;
 }
 
-/*
-** Advance to the next table name from thedb.
-*/
-static int systblTimepartNext(sqlite3_vtab_cursor *cur){
-  systbl_timepart_cursor *pCur = (systbl_timepart_cursor*)cur;
-  int rc;
+/* cursor next */
+static int timepartNext(sqlite3_vtab_cursor *cur){
+  timepart_cursor *pCur = (timepart_cursor*)cur;
 
-  if(pCur->iRowid<pCur->maxRowid)
+  if(pCur->iRowid<pCur->maxTimepartitions)
       pCur->iRowid++;
+    
+  pCur->eof = pCur->iRowid >= pCur->maxTimepartitions;
 
   return SQLITE_OK;
 }
 
-/*
-** Return the table name for the current row.
-*/
-static int systblTimepartColumn(
+/* cursor get column */
+static int timepartColumn(
   sqlite3_vtab_cursor *cur,
   sqlite3_context *ctx,
   int i
 ){
-  systbl_timepart_cursor *pCur = (systbl_timepart_cursor*)cur;
+  timepart_cursor *pCur = (timepart_cursor*)cur;
 
-  timepart_systable_get_column(ctx, pCur->iRowid, i);
+  timepart_systable_column(ctx, pCur->iRowid, i);
   return SQLITE_OK;
 };
 
-/*
-** Return the rowid for the current row (which is the index of the view
-** in the view array 
-*/
-static int systblTimepartRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
-  systbl_timepart_cursor *pCur = (systbl_timepart_cursor*)cur;
+/* cursor rowid */
+static int timepartRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
+  timepart_cursor *pCur = (timepart_cursor*)cur;
 
   *pRowid = pCur->iRowid;
   return SQLITE_OK;
 }
 
-/*
-** Return TRUE if the cursor has been moved off of the last row of output.
-*/
-static int systblTimepartEof(sqlite3_vtab_cursor *cur){
-  systbl_timepart_cursor *pCur = (systbl_timepart_cursor*)cur;
+/* is cursor eof */
+static int timepartEof(sqlite3_vtab_cursor *cur) {
+  timepart_cursor *pCur = (timepart_cursor*)cur;
 
-  return pCur->iRowid >= pCur->maxRowid;
+  return pCur->eof;
 }
 
-static int systblTimepartFilter(
+static int timepartFilter(
   sqlite3_vtab_cursor *pVtabCursor,
   int idxNum, const char *idxStr,
   int argc, sqlite3_value **argv
 ){
-  systbl_timepart_cursor *pCur = (systbl_timepart_cursor*)pVtabCursor;
+  timepart_cursor *pCur = (timepart_cursor*)pVtabCursor;
 
   pCur->iRowid = 0;
+  pCur->eof = 0;
   return SQLITE_OK;
 }
 
-static int systblTimepartBestIndex(
+static int timepartBestIndex(
   sqlite3_vtab *tab,
   sqlite3_index_info *pIdxInfo
 ){
   return SQLITE_OK;
 }
 
-
-
 const sqlite3_module systblTimepartModule = {
-  0,                         /* iVersion */
-  0,                         /* xCreate */
-  systblTimepartConnect,     /* xConnect */
-  systblTimepartBestIndex,   /* xBestIndex */
-  systblTimepartDisconnect,  /* xDisconnect */
-  0,                         /* xDestroy */
-  systblTimepartOpen,        /* xOpen - open a cursor */
-  systblTimepartClose,       /* xClose - close a cursor */
-  systblTimepartFilter,      /* xFilter - configure scan constraints */
-  systblTimepartNext,        /* xNext - advance a cursor */
-  systblTimepartEof,         /* xEof - check for end of scan */
-  systblTimepartColumn,      /* xColumn - read data */
-  systblTimepartRowid,       /* xRowid - read data */
-  0,                         /* xUpdate */
-  0,                         /* xBegin */
-  0,                         /* xSync */
-  0,                         /* xCommit */
-  0,                         /* xRollback */
-  0,                         /* xFindMethod */
-  0,                         /* xRename */
+  0,                   /* iVersion */
+  0,                   /* xCreate */
+  timepartConnect,     /* xConnect */
+  timepartBestIndex,   /* xBestIndex */
+  timepartDisconnect,  /* xDisconnect */
+  0,                   /* xDestroy */
+  timepartOpen,        /* xOpen - open a cursor */
+  timepartClose,       /* xClose - close a cursor */
+  timepartFilter,      /* xFilter - configure scan constraints */
+  timepartNext,        /* xNext - advance a cursor */
+  timepartEof,         /* xEof - check for end of scan */
+  timepartColumn,      /* xColumn - read data */
+  timepartRowid,       /* xRowid - read data */
+  0,                   /* xUpdate */
+  0,                   /* xBegin */
+  0,                   /* xSync */
+  0,                   /* xCommit */
+  0,                   /* xRollback */
+  0,                   /* xFindMethod */
+  0,                   /* xRename */
 };
+
+static int timepartShardsConnect(
+  sqlite3 *db,
+  void *pAux,
+  int argc,
+  const char *const*argv,
+  sqlite3_vtab **ppVtab,
+  char **pErr
+){
+  sqlite3_vtab *pNew;
+  int rc;
+
+  rc = sqlite3_declare_vtab(db,
+          "CREATE TABLE comdb2_timepartshards(name, shardname, start, end)");
+  if( rc==SQLITE_OK ){
+      pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
+      if( pNew==0 ) return SQLITE_NOMEM;
+      memset(pNew, 0, sizeof(*pNew));
+  }
+  return rc;
+
+}
+
+#define PARTID(s) (((s) & 0x0FF00)>>16)
+#define SHARDID(s) ((s) & 0x0FF)
+
+/* cursor next */
+static int timepartShardsNext(sqlite3_vtab_cursor *cur){
+  timepart_cursor *pCur = (timepart_cursor*)cur;
+  int tpid = PARTID(pCur->iRowid);
+  int shardid = SHARDID(pCur->iRowid);
+
+  if(!pCur->eof) {
+      timepart_systable_next_shard(&tpid, &shardid);
+
+      pCur->eof = tpid >= pCur->maxTimepartitions;
+  }
+
+  pCur->iRowid = tpid<<16 | shardid;
+
+  return SQLITE_OK;
+}
+
+/* cursor get column */
+static int timepartShardsColumn(
+  sqlite3_vtab_cursor *cur,
+  sqlite3_context *ctx,
+  int i
+){
+  timepart_cursor *pCur = (timepart_cursor*)cur;
+  int tpid = PARTID(pCur->iRowid);
+  int shardid = SHARDID(pCur->iRowid);
+
+  timepart_systable_shard_column(ctx, tpid, shardid, i);
+  return SQLITE_OK;
+};
+
+
+const sqlite3_module systblTimepartShardsModule = {
+  0,                    /* iVersion */
+  0,                    /* xCreate */
+  timepartShardsConnect,/* xConnect */
+  timepartBestIndex,    /* xBestIndex */
+  timepartDisconnect,   /* xDisconnect */
+  0,                    /* xDestroy */
+  timepartOpen,         /* xOpen - open a cursor */
+  timepartClose,        /* xClose - close a cursor */
+  timepartFilter,       /* xFilter - configure scan constraints */
+  timepartShardsNext,   /* xNext - advance a cursor */
+  timepartEof,          /* xEof - check for end of scan */
+  timepartShardsColumn, /* xColumn - read data */
+  timepartRowid,        /* xRowid - read data */
+  0,                    /* xUpdate */
+  0,                    /* xBegin */
+  0,                    /* xSync */
+  0,                    /* xCommit */
+  0,                    /* xRollback */
+  0,                    /* xFindMethod */
+  0,                    /* xRename */
+};
+
 
 #endif /* SQLITE_BUILDING_FOR_COMDB2 */

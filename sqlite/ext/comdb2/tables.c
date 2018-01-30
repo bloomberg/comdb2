@@ -251,6 +251,8 @@ int comdb2SystblInit(
     rc = sqlite3_create_module(db, "comdb2_clientstats", &systblClientStatsModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_timepartitions", &systblTimepartModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_timepartshards", &systblTimepartShardsModule, 0);
 #endif
   return rc;
 }

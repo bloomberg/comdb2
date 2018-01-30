@@ -2636,10 +2636,10 @@ static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
 }
 
 /**
- * Returned a malloced string for the "iRowid"-th view, column iCol 
+ * Returned a malloced string for the "iRowid"-th timepartition, column iCol 
  * NOTE: this is called with a read lock in views structure
  */
-void timepart_systable_get_column(sqlite3_context *ctx, int iRowid, enum systable_columns iCol)
+void timepart_systable_column(sqlite3_context *ctx, int iRowid, enum systable_columns iCol)
 {
    timepart_views_t  *views = thedb->timepart_views;
    timepart_view_t   *view;
@@ -2680,15 +2680,76 @@ void timepart_systable_get_column(sqlite3_context *ctx, int iRowid, enum systabl
 }
 
 /**
+ * Returned a malloced string for the "iRowid"-th shard, column iCol of 
+ * timepart iTimepartId
+ * NOTE: this is called with a read lock in views structure
+ */
+void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId, int iRowid,
+        enum systable_columns iCol)
+{
+   timepart_views_t  *views = thedb->timepart_views;
+   timepart_view_t   *view;
+   timepart_shard_t  *shard;
+   uuidstr_t us;
+
+   if( iTimepartId<0 || iTimepartId>=views->nviews || iCol >= VIEWS_SHARDS_MAXCOLUMN) {
+      sqlite3_result_null(ctx);
+      return;
+   }
+
+   view = views->views[iTimepartId];
+
+   if( iRowid >= view->nshards) {
+      sqlite3_result_null(ctx);
+      return;
+   }
+   shard = &view->shards[iRowid];
+
+   switch(iCol) {
+       case VIEWS_NAME:
+           sqlite3_result_text(ctx, view->name, -1, NULL);
+           break;
+       case VIEWS_SHARDNAME:
+           sqlite3_result_text(ctx, shard->tblname, -1, NULL);
+           break;
+       case VIEWS_START:
+           sqlite3_result_int(ctx, shard->low);
+           break;
+       case VIEWS_END:
+           sqlite3_result_int(ctx, shard->high);
+           break;
+   }
+}
+
+/**
  * Get number of views
  *
  */
-int timepart_get_views(void)
+int timepart_get_num_views(void)
 {
     return thedb->timepart_views->nviews;
 }
 
+/** 
+ *  Move iRowid to point to the next shard, switching shards in the process
+ *  NOTE: this is called with a read lock in views structure
+ */
+void timepart_systable_next_shard(int *piTimepartId, int *piRowid)
+{
+    timepart_views_t  *views = thedb->timepart_views;
+    timepart_view_t   *view;
 
+nextTimepart:
+    if(*piTimepartId>=views->nviews) return;
+    view = views->views[*piTimepartId];
+    (*piRowid)++;
+    if (*piRowid >= view->nshards) 
+    {
+        *piRowid = 0;
+        (*piTimepartId)++;
+        goto nextTimepart;
+    }
+}
 
 
 #include "views_serial.c"
