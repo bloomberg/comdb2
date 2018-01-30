@@ -82,6 +82,7 @@ static int cdb2_allow_pmux_route = 0;
 
 static int _PID;
 static int _MACHINE_ID;
+static char *_ARGV0;
 
 #define DB_TZNAME_DEFAULT "America/New_York"
 
@@ -89,12 +90,95 @@ static int _MACHINE_ID;
 #define MAX_CONTEXTS 10 /* Maximum stack size for storing context messages */
 #define MAX_CONTEXT_LEN 100 /* Maximum allowed length of a context message */
 
+#define MAX_STACK 512 /* Size of call-stack which opened the handle */
+
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #include <netdb.h>
 
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0;
+
+#if defined(__APPLE__)
+#include <libproc.h>
+
+static char *apple_getargv0(void)
+{
+    static char argv0[PATH_MAX];
+    int ret = proc_pidpath(_PID, argv0, sizeof(argv0));
+    if (ret <= 0) {
+        fprintf(stderr, "%s proc_pidpath returns %d\n", __func__, ret);
+        return NULL;
+    }
+    return argv0;
+}
+#endif
+
+#if defined(_SUN_SOURCE) || defined(_LINUX_SOURCE)
+
+static char *proc_cmdline_getargv0(void)
+{
+    char procname[64];
+    static char argv0[PATH_MAX];
+
+    snprintf(procname, sizeof(procname), "/proc/self/cmdline");
+    FILE *f = fopen(procname, "r");
+    if (f == NULL) {
+        fprintf(stderr, "%s cannot open %s, %s\n", __func__, procname,
+                strerror(errno));
+        return NULL;
+    }
+
+    if (fgets(argv0, PATH_MAX, f) == NULL) {
+        fprintf(stderr, "%s error reading from %s, %s\n", __func__, procname,
+                strerror(errno));
+        fclose(f);
+        return NULL;
+    }
+
+    fclose(f);
+    return argv0;
+}
+#endif
+
+#if defined(_IBM_SOURCE)
+
+#include <sys/procfs.h>
+#include <procinfo.h>
+
+static char *ibm_getargv0(void)
+{
+    struct procsinfo p;
+    static char argv0[PATH_MAX];
+    pid_t idx = _PID;
+    int rc;
+
+    if (1 == (rc = getprocs(&p, sizeof(p), NULL, 0, &idx, 1)) &&
+        _PID == p.pi_pid) {
+        strncpy(argv0, p.pi_comm, PATH_MAX);
+        argv0[PATH_MAX - 1] = '\0';
+    } else {
+        fprintf(stderr, "%s getprocs returns %d for pid %d\n", __func__, _PID);
+        return NULL;
+    }
+
+    return argv0;
+}
+#endif
+
+static char *getargv0(void)
+{
+#if defined(__APPLE__)
+    return apple_getargv0();
+#elif defined(_LINUX_SOURCE) || defined(_SUN_SOURCE)
+    return proc_cmdline_getargv0();
+#elif defined(_IBM_SOURCE)
+    return ibm_getargv0();
+#else
+    fprintf(stderr, "%s unsupported architecture\n", __func__);
+    return NULL;
+#endif
+}
 
 static void do_init_once(void)
 {
@@ -108,6 +192,7 @@ static void do_init_once(void)
     }
     _PID = getpid();
     _MACHINE_ID = gethostid();
+    _ARGV0 = getargv0();
 }
 
 static int is_sql_read(const char *sqlstr)
@@ -674,6 +759,9 @@ struct cdb2_hndl {
 #endif
     struct context_messages context_msgs;
     char *env_tz;
+    int sent_client_info;
+    char stack[MAX_STACK];
+    int send_stack;
 };
 
 void cdb2_set_min_retries(int min_retries)
@@ -787,7 +875,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
                               int *num_hosts, int *comdb2db_num, char *dbname,
                               char db_hosts[][64], int *num_db_hosts,
                               int *dbnum, int *dbname_found,
-                              int *comdb2db_found)
+                              int *comdb2db_found, int *stack_at_open)
 {
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
     int len = 0;
@@ -871,6 +959,15 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     strcpy(cdb2_dnssuffix, tok);
+            } else if (strcasecmp("stack_at_open", tok) == 0 && stack_at_open) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok) {
+                    if (strncasecmp(tok, "true", 4) == 0) {
+                        *stack_at_open = 1;
+                    } else {
+                        *stack_at_open = 0;
+                    }
+                }
 #if WITH_SSL
             } else if (strcasecmp("ssl_mode", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
@@ -979,7 +1076,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
         read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF,
                           comdb2db_hosts, num_hosts, comdb2db_num, dbname,
                           db_hosts, num_db_hosts, dbnum, &dbname_found,
-                          &comdb2db_found);
+                          &comdb2db_found, hndl ? (&hndl->send_stack) : NULL);
         fallback_on_bb_bin = 0;
     }
 
@@ -987,7 +1084,8 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
     if (fp != NULL) {
         read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
-                          num_db_hosts, dbnum, &dbname_found, &comdb2db_found);
+                          num_db_hosts, dbnum, &dbname_found, &comdb2db_found,
+                          hndl ? (&hndl->send_stack) : NULL);
         fclose(fp);
         fallback_on_bb_bin = 0;
     }
@@ -1003,7 +1101,8 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
             read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                               num_hosts, comdb2db_num, dbname, db_hosts,
                               num_db_hosts, dbnum, &dbname_found,
-                              &comdb2db_found);
+                              &comdb2db_found,
+                              hndl ? (&hndl->send_stack) : NULL);
             fclose(fp);
         }
     }
@@ -1012,7 +1111,8 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
     if (fp != NULL) {
         read_comdb2db_cfg(hndl, fp, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
-                          num_db_hosts, dbnum, &dbname_found, &comdb2db_found);
+                          num_db_hosts, dbnum, &dbname_found, &comdb2db_found,
+                          hndl ? (&hndl->send_stack) : NULL);
         fclose(fp);
     }
 
@@ -1282,6 +1382,11 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
 }
 
 /* SOCKPOOL CODE ENDS */
+
+static inline int cdb2_hostid()
+{
+    return _MACHINE_ID;
+}
 
 static int send_reset(SBUF2 *sb)
 {
@@ -1577,6 +1682,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
     sbuf2settimeout(sb, 5000, 5000);
     hndl->sb = sb;
     hndl->num_set_commands_sent = 0;
+    hndl->sent_client_info = 0;
     return 0;
 }
 
@@ -2052,11 +2158,6 @@ retry_read:
     return 0;
 }
 
-static inline int cdb2_hostid()
-{
-    return _MACHINE_ID;
-}
-
 static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                            char *sql, int n_set_commands,
                            int n_set_commands_sent, char **set_commands,
@@ -2068,13 +2169,21 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     int features[10]; // Max 10 client features??
     CDB2QUERY query = CDB2__QUERY__INIT;
     CDB2SQLQUERY sqlquery = CDB2__SQLQUERY__INIT;
+
+    // This should be sent once right after we connect, not with every query
     CDB2SQLQUERY__Cinfo cinfo = CDB2__SQLQUERY__CINFO__INIT;
 
-    cinfo.pid = _PID;
-    cinfo.th_id = (int)pthread_self();
-    cinfo.host_id = cdb2_hostid();
-
-    sqlquery.client_info = &cinfo;
+    if (!hndl || !hndl->sent_client_info) {
+        cinfo.pid = _PID;
+        cinfo.th_id = pthread_self();
+        cinfo.host_id = cdb2_hostid();
+        cinfo.argv0 = _ARGV0;
+        if (hndl && hndl->send_stack)
+            cinfo.stack = hndl->stack;
+        sqlquery.client_info = &cinfo;
+        if (hndl)
+            hndl->sent_client_info = 1;
+    }
     sqlquery.dbname = dbname;
     while (isspace(*sql))
         sql++;
@@ -5028,6 +5137,8 @@ int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl)
 }
 #endif /* !WITH_SSL */
 
+int comdb2_cheapstack_char_array(char *str, int maxln);
+
 int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
               int flags)
 {
@@ -5043,6 +5154,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->flags = flags;
     hndl->dbnum = 1;
     hndl->connected_host = -1;
+    hndl->send_stack = 1;
 #if WITH_SSL
     /* We don't do dbinfo if DIRECT_CPU. So we'd default peer SSL mode to
        ALLOW. We will find it out later when we send SSL negotitaion packet
@@ -5113,6 +5225,9 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     if (rc == 0)
         rc = set_up_ssl_params(hndl);
 #endif
+
+    if (hndl->send_stack)
+        comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
 
     if (log_calls) {
         fprintf(stderr, "%p> cdb2_open(dbname: \"%s\", type: \"%s\", flags: "

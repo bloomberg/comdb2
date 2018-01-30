@@ -3469,9 +3469,14 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd,
                  clnt->verify_retries);
 
     if (clnt->sql_query && clnt->sql_query->client_info) {
-        thrman_wheref(thd->thr_self, "%s pid: %d host_id: %d sql: %s",
+        char *stack = clnt->sql_query->client_info->stack;
+        char *argv0 = clnt->sql_query->client_info->argv0;
+        thrman_wheref(thd->thr_self, "%s pid: %d host_id: %d argv0: %s "
+                                     "open-stack: %s sql: %s",
                       info_nvreplays, clnt->sql_query->client_info->pid,
-                      clnt->sql_query->client_info->host_id, clnt->sql);
+                      clnt->sql_query->client_info->host_id,
+                      argv0 ? argv0 : "(unset)", stack ? stack : "(no-stack)",
+                      clnt->sql);
     } else {
         thrman_wheref(thd->thr_self, "%s sql: %s", info_nvreplays, clnt->sql);
     }
@@ -6232,6 +6237,16 @@ int tdef_to_tranlevel(int tdef)
 
 void cleanup_clnt(struct sqlclntstate *clnt)
 {
+    if (clnt->argv0) {
+        free(clnt->argv0);
+        clnt->argv0 = NULL;
+    }
+
+    if (clnt->stack) {
+        free(clnt->stack);
+        clnt->stack = NULL;
+    }
+
     if (clnt->saved_errstr) {
         free(clnt->saved_errstr);
         clnt->saved_errstr = NULL;
