@@ -24,6 +24,22 @@ failexit()
     exit 1
 }
 
+test_rte()
+{
+    echo -e "rte\ngarbage\n" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
+    echo -e "rte something\ngarbage\n" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "rte" ${COMDB2_PMUX_PORT} &> rte.out
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "garbage" ${COMDB2_PMUX_PORT} &>> rte.out
+    cat <<EOF > rte.expected
+-1
+-1 unknown command, type 'help' for a brief usage description
+EOF
+
+    if ! diff rte.expected rte.out ; then
+        failexit "differing rte.expected rte.out"
+    fi
+}
+
 function empty_used_list_crash
 {
     [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
@@ -67,6 +83,7 @@ function verify_hello_reuse
     # Create a db
     DBDIR=$TESTDIR/$DBNAME
     mkdir $DBDIR
+    mkdir -p $DBDIR/var/log/cdb2/
 
     # Create config file
     echo "$db 0 localhost" > $CDB2_CONFIG
@@ -100,6 +117,16 @@ function verify_hello_reuse
             fi
             let t=t+1
         done
+
+        # send rte and then garbage to verify pmux does not crash
+        echo -e "rte comdb2/replication/$db\ngarbage\n" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
+
+        kill -0 $pmux_pid
+        if [[ $? != 0 ]]; then
+            echo "${FUNCNAME[0]} rte test failed: empty used list killed pmux"
+            exit 1
+        fi
+
         kill -9 $dbpid
 
         if [[ $started == 0 ]]; then
@@ -228,6 +255,7 @@ function runtest
     pmux_pid=$!
 
     sleep 5
+    test_rte
     test_basic_actions
 
     empty_used_list_crash
