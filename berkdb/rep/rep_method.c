@@ -44,7 +44,6 @@ static int __rep_elect __P((DB_ENV *, int, int, u_int32_t, char **));
 static int __rep_elect_init
 __P((DB_ENV *, DB_LSN *, int, int, int *, u_int32_t *));
 static int __rep_flush __P((DB_ENV *));
-static void __rep_lockout __P((DB_ENV *, DB_REP *, REP *, u_int32_t));
 static int __rep_restore_prepared __P((DB_ENV *));
 static int __rep_get_limit __P((DB_ENV *, u_int32_t *, u_int32_t *));
 static int __rep_set_limit __P((DB_ENV *, u_int32_t, u_int32_t));
@@ -253,8 +252,8 @@ __rep_start(dbenv, dbt, flags)
 	 * changing roles.  If we are not changing roles, then we
 	 * only need to coordinate with msg_th.
 	 */
-	if (role_chg)
-		__rep_lockout(dbenv, db_rep, rep, 0);
+	if (role_chg) {
+    }
 	else {
 		pid_t pid;
 		char cmd[32];
@@ -1523,23 +1522,6 @@ __rep_stat(dbenv, statp, flags)
 
 	*statp = stats;
 	return (0);
-}
-
-/*
- * __rep_lockout --
- *
- * Coordinate with other threads in the library and active txns so
- * that we can run single-threaded, for recovery or internal backup.
- * Assumes the caller holds rep_mutexp.
- */
-static void
-__rep_lockout(dbenv, db_rep, rep, msg_th)
-	DB_ENV *dbenv;
-	DB_REP *db_rep;
-	REP *rep;
-	u_int32_t msg_th;
-{
-	return;
 }
 
 /* COMDB2 MODIFICATION */

@@ -502,11 +502,11 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	if (gbl_verbose_master_req) {
 		switch (rp->rectype) {
 			case REP_MASTER_REQ:
-				logmsg(LOGMSG_ERROR, "%s processing REP_MASTER_REQ\n",
+				logmsg(LOGMSG_USER, "%s processing REP_MASTER_REQ\n",
 					__func__);
 				break;
 			case REP_NEWMASTER:
-				logmsg(LOGMSG_ERROR, "%s processing REP_NEWMASTER\n", __func__);
+				logmsg(LOGMSG_USER, "%s processing REP_NEWMASTER\n", __func__);
 				break;
 				default: 
 					break;
@@ -659,7 +659,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 		} else if (rp->rectype != REP_NEWMASTER) {
 
 			if (gbl_verbose_master_req) {
-				logmsg(LOGMSG_ERROR, "%s line %d sending REP_MASTER_REQ\n",
+				logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
 						__func__, __LINE__);
 			}
 			(void)__rep_send_message(dbenv,
@@ -750,7 +750,7 @@ skip:				/*
                     }
 
 					if (gbl_verbose_master_req) {
-						logmsg(LOGMSG_ERROR, "%s line %d sending REP_MASTER_REQ\n",
+						logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
 								__func__, __LINE__);
 					}
 
@@ -920,7 +920,7 @@ send:			if (__rep_send_message(dbenv,
 		} else {
 
 			if (gbl_verbose_master_req) {
-				logmsg(LOGMSG_ERROR, "%s line %d sending REP_MASTER_REQ\n",
+				logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
 						__func__, __LINE__);
 			}
 
@@ -2597,7 +2597,7 @@ gap_check:		max_lsn_dbtp = NULL;
 				MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 				if (gbl_verbose_master_req) {
-					logmsg(LOGMSG_ERROR, "%s line %d sending REP_MASTER_REQ\n",
+					logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
 							__func__, __LINE__);
 				}
 
@@ -3017,8 +3017,6 @@ logical_record_file_affinity(int rectype)
 #include <stdlib.h>
 
 int gbl_processor_thd_poll;
-
-/* On second thought i think this is wrong if i have the order correct */
 
 static void
 processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
