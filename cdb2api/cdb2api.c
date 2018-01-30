@@ -1045,17 +1045,14 @@ static int get_config_file(const char *dbname, char *f, size_t s)
     return 0;
 }
 
-static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
-                              int *comdb2db_ports, int *master,
-                              char *comdb2db_name, int *num_hosts,
-                              int *comdb2db_num, char *dbname, char *dbtype,
-                              char db_hosts[][64], int *num_db_hosts,
-                              int *dbnum, int just_defaults)
+/* read all available comdb2 configuration files
+ */
+static int read_available_comdb2db_configs(
+    cdb2_hndl_tp *hndl, char comdb2db_hosts[][64], char *comdb2db_name,
+    int *num_hosts, int *comdb2db_num, char *dbname, char db_hosts[][64],
+    int *num_db_hosts, int *dbnum, int *comdb2db_found, int *dbname_found)
 {
-    FILE *fp = NULL;
     char filename[PATH_MAX];
-    int comdb2db_found = 0;
-    int dbname_found = 0;
     int fallback_on_bb_bin = 1;
 
     if (hndl && hndl->debug_trace) {
@@ -1065,27 +1062,27 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
 
     if (get_config_file(dbname, filename, sizeof(filename)) != 0)
         return -1; // set error string?
+
     if (num_hosts)
         *num_hosts = 0;
     if (num_db_hosts)
         *num_db_hosts = 0;
-    if (master)
-        *master = -1;
+    int *send_stack = hndl ? (&hndl->send_stack) : NULL;
 
     if (CDB2DBCONFIG_BUF != NULL) {
         read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF,
                           comdb2db_hosts, num_hosts, comdb2db_num, dbname,
-                          db_hosts, num_db_hosts, dbnum, &dbname_found,
-                          &comdb2db_found, hndl ? (&hndl->send_stack) : NULL);
+                          db_hosts, num_db_hosts, dbnum, dbname_found,
+                          comdb2db_found, send_stack);
         fallback_on_bb_bin = 0;
     }
 
-    fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
+    FILE *fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
     if (fp != NULL) {
         read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
-                          num_db_hosts, dbnum, &dbname_found, &comdb2db_found,
-                          hndl ? (&hndl->send_stack) : NULL);
+                          num_db_hosts, dbnum, dbname_found, comdb2db_found,
+                          send_stack);
         fclose(fp);
         fallback_on_bb_bin = 0;
     }
@@ -1100,9 +1097,8 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
         if (fp != NULL) {
             read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                               num_hosts, comdb2db_num, dbname, db_hosts,
-                              num_db_hosts, dbnum, &dbname_found,
-                              &comdb2db_found,
-                              hndl ? (&hndl->send_stack) : NULL);
+                              num_db_hosts, dbnum, dbname_found, comdb2db_found,
+                              send_stack);
             fclose(fp);
         }
     }
@@ -1111,17 +1107,40 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
     if (fp != NULL) {
         read_comdb2db_cfg(hndl, fp, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
-                          num_db_hosts, dbnum, &dbname_found, &comdb2db_found,
-                          hndl ? (&hndl->send_stack) : NULL);
+                          num_db_hosts, dbnum, dbname_found, comdb2db_found,
+                          send_stack);
         fclose(fp);
     }
+    return 0;
+}
 
-    if (just_defaults == 1)
-        return 0;
+static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
+                              int *comdb2db_ports, int *master,
+                              char *comdb2db_name, int *num_hosts,
+                              int *comdb2db_num, char *dbname, char *dbtype,
+                              char db_hosts[][64], int *num_db_hosts,
+                              int *dbnum, int just_defaults)
+{
+    int rc;
+    int comdb2db_found = 0;
+    int dbname_found = 0;
 
-    if (comdb2db_found || dbname_found) {
-        return 0;
+    if (hndl && hndl->debug_trace) {
+        fprintf(stderr, "td %u %s:%d \n", (uint32_t)pthread_self(), __func__,
+                __LINE__);
     }
+
+    rc = read_available_comdb2db_configs(
+        hndl, comdb2db_hosts, comdb2db_name, num_hosts, comdb2db_num, dbname,
+        db_hosts, num_db_hosts, dbnum, &comdb2db_found, &dbname_found);
+    if (rc == -1)
+        return rc;
+
+    if (master)
+        *master = -1;
+
+    if (just_defaults || comdb2db_found || dbname_found)
+        return 0;
 
     int ret = cdb2_dbinfo_query(hndl, cdb2_default_cluster, comdb2db_name,
                                 *comdb2db_num, NULL, comdb2db_hosts,
@@ -1156,7 +1175,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
         return -1;
     }
 
-    int rc = -1;
+    rc = -1;
     int i = 0;
     struct in_addr **addr_list = (struct in_addr **)hp->h_addr_list;
     for (i = 0; addr_list[i] != NULL; i++) {
@@ -3220,6 +3239,15 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
     return 0;
 }
 
+static inline void consume_previous_query(cdb2_hndl_tp *hndl)
+{
+    while (cdb2_next_record_int(hndl, 0) == CDB2_OK)
+        ;
+
+    clear_responses(hndl);
+    hndl->rows_read = 0;
+}
+
 #define GOTO_RETRY_QUERIES()                                                   \
     do {                                                                       \
         if (hndl->debug_trace) {                                               \
@@ -3249,16 +3277,8 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
         fprintf(stderr, "%s running '%s' from line %d\n", __func__, sql, line);
     }
 
-    while (cdb2_next_record_int(hndl, 0) == CDB2_OK)
-        ;
-
-    clear_responses(hndl);
-
-    hndl->rows_read = 0;
-
-    while (sql && isspace(*sql))
-        sql++;
-
+    consume_previous_query(hndl);
+    sql = cdb2_skipws(sql);
     if (!sql)
         return 0;
 
@@ -3379,8 +3399,7 @@ retry_queries:
 #endif
 
     if (retries_done > hndl->max_retries) {
-        sprintf(hndl->errstr, "%s: Maximum number of retries done.",
-                __func__);
+        sprintf(hndl->errstr, "%s: Maximum number of retries done.", __func__);
         if (is_hasql_commit) {
             cleanup_query_list(hndl, commit_query_list, __LINE__);
         }
@@ -4576,6 +4595,12 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
     return -1;
 }
 
+static inline void only_read_config()
+{
+    read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                                    NULL, NULL, NULL, NULL);
+}
+
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
 {
     char comdb2db_hosts[MAX_NODES][64];
@@ -4596,8 +4621,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
                           &hndl->num_hosts, &hndl->num_hosts_sameroom) == 0) {
         /* We get a plaintext socket from sockpool.
            We still need to read SSL config */
-        get_comdb2db_hosts(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                           NULL, NULL, NULL, NULL, 1);
+        only_read_config();
         return 0;
     }
 
@@ -4823,8 +4847,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
     assert(type_copy[0] == '@');
     char *s = type_copy + 1; // advance past the '@'
 
-    get_comdb2db_hosts(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                       NULL, NULL, NULL, 1);
+    only_read_config();
 
     char *machine;
     machine = strtok_r(s, ",", &eomachine);
@@ -5196,8 +5219,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     if (hndl->flags & CDB2_DIRECT_CPU) {
         hndl->num_hosts = 1;
         /* Get defaults from comdb2db.cfg */
-        get_comdb2db_hosts(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                           NULL, NULL, NULL, 1);
+        only_read_config();
         strncpy(hndl->hosts[0], type, sizeof(hndl->hosts[0]) - 1);
         char *p = strchr(hndl->hosts[0], ':');
         if (p) {
