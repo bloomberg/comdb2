@@ -431,7 +431,6 @@ static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
     int rc;
     int pre_enabled = 0;
     int was_timeout = 0;
-    char ssl_able;
 
 retry_read:
     rc = sbuf2fread_timeout((char *)&hdr, sizeof(hdr), 1, sb, &was_timeout);
@@ -464,7 +463,7 @@ retry_read:
               actual status of this node;
            2) Doing SSL_accept() immediately would cause too many
               unnecessary EAGAIN/EWOULDBLOCK's for non-blocking BIO. */
-        ssl_able = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
+        char ssl_able = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
         if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0)
             return NULL;
 
@@ -516,16 +515,13 @@ retry_read:
     }
 
     int bytes = hdr.length;
-
     if (bytes <= 0) {
         logmsg(LOGMSG_ERROR, "%s: Junk message  %d\n", __func__, bytes);
         return NULL;
     }
 
-    CDB2QUERY *query;
-
+    assert(errno == 0);
     char *p;
-
     if (bytes <= gbl_blob_sz_thresh_bytes)
         p = malloc(bytes);
     else
@@ -558,18 +554,20 @@ retry_read:
         return NULL;
     }
 
-    if (bytes) {
-        rc = sbuf2fread(p, bytes, 1, sb);
-        if (rc != 1) {
-            free(p);
-            return NULL;
-        }
+    rc = sbuf2fread(p, bytes, 1, sb);
+    if (rc != 1) {
+        free(p);
+        return NULL;
     }
 
+    CDB2QUERY *query;
+    assert(errno == 0); // precondition for the while loop
     while (1) {
         query = cdb2__query__unpack(&pb_alloc, bytes, p);
+        // errno can be set by cdb2__query__unpack
+        // we retry malloc on out of memory condition
 
-        if (query != NULL || errno != ETIMEDOUT)
+        if (query || errno != ETIMEDOUT)
             break;
 
         pthread_mutex_lock(&clnt->wait_mutex);
@@ -583,15 +581,28 @@ retry_read:
         fdb_heartbeats(clnt);
         pthread_mutex_unlock(&clnt->wait_mutex);
     }
+    free(p);
 
     if (pre_enabled) {
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
         pthread_mutex_unlock(&clnt->wait_mutex);
     }
-    free(p);
 
-    if (query && query->dbinfo) {
+
+    if (unlikely(errno != 0)) { // query will be null if errno is set
+        return NULL;
+    }
+
+    assert(query);
+
+    // one of dbinfo or sqlquery must be non-NULL
+    if (unlikely(!query->dbinfo && !query->sqlquery)) {
+        cdb2__query__free_unpacked(query, &pb_alloc);
+        goto retry_read;
+    }
+
+    if (query->dbinfo) {
         if (query->dbinfo->has_want_effects &&
             query->dbinfo->want_effects == 1) {
             CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
@@ -627,6 +638,7 @@ retry_read:
         cdb2__query__free_unpacked(query, &pb_alloc);
         goto retry_read;
     }
+
 
 #if WITH_SSL
     /* Do security check before we return. We do it only after
@@ -765,6 +777,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     if (query == NULL)
         goto done;
     assert(query->sqlquery);
+
     CDB2SQLQUERY *sql_query = query->sqlquery;
     clnt.query = query;
 
