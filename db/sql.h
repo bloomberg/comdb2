@@ -86,7 +86,7 @@ struct sqlthdstate {
     sqlite3 *sqldb;
 
     char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
-    hash_t *stmt_table; // statement cache table: caches vdbe engines
+    hash_t *stmt_caching_table; // statement cache table: caches vdbe engines
 
     LISTC_T(stmt_hash_entry_type) param_stmt_list;   // list of cached stmts
     LISTC_T(stmt_hash_entry_type) noparam_stmt_list; // list of cached stmts
@@ -506,6 +506,8 @@ struct sqlclntstate {
     int statement_query_effects;
 
     int verify_remote_schemas;
+    char *argv0;
+    char *stack;
 };
 
 /* Query stats. */
