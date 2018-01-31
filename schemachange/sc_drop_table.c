@@ -61,6 +61,7 @@ int do_drop_table(struct ireq *iq, tran_type *tran)
     return SC_OK;
 }
 
+// NB: this gets called from drop table and from fastinit
 int finalize_drop_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
@@ -74,7 +75,7 @@ int finalize_drop_table(struct ireq *iq, tran_type *tran)
     /* at this point if a backup is going on, it will be bad */
     gbl_sc_commit_count++;
 
-    if ((rc = mark_schemachange_over_tran(db->tablename, tran)))
+    if (s->drop_table && (rc = mark_schemachange_over_tran(db->tablename, tran)))
         return rc;
 
     delete_table(db, tran);
@@ -94,18 +95,22 @@ int finalize_drop_table(struct ireq *iq, tran_type *tran)
         return rc;
     }
 
-    if ((rc = llmeta_set_tables(tran, thedb)) != 0) {
+    if (s->drop_table && (rc = llmeta_set_tables(tran, thedb)) != 0) {
         sc_errf(s, "Failed to set table names in low level meta\n");
         return rc;
     }
 
-    if ((rc = create_sqlmaster_records(tran)) != 0) {
+    // only create sqlmaster records if this is a drop rather than fastinit
+    if (s->drop_table && (rc = create_sqlmaster_records(tran)) != 0) {
         sc_errf(s, "create_sqlmaster_records failed\n");
         return rc;
     }
-    create_sqlite_master(); /* create sql statements */
 
-    live_sc_off(db);
+    if (s->drop_table)
+        create_sqlite_master(); /* create sql statements */
+
+    if (s->drop_table) // do this if only dropping tbl
+        live_sc_off(db);
 
     if (!gbl_create_mode) {
         logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", db->tablename,

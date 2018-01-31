@@ -38,12 +38,12 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
         newdb->csc2_schema = strdup(csc2);
         newdb->csc2_schema_len = strlen(newdb->csc2_schema);
     }
-    rc = create_sqlmaster_records(trans);
-
-    if (rc != 0) {
+    struct schema_change_type *s = iq->sc;
+    if ((rc = create_sqlmaster_records(trans) )) {
         logmsg(LOGMSG_ERROR, "create_sqlmaster_records failed rc %d\n", rc);
         return SC_INTERNAL_ERROR;
     }
+
     /* TODO: ask why this function has no return codes */
     create_sqlite_master(); /* create sql statements */
 
@@ -301,8 +301,11 @@ int finalize_add_table(struct ireq *iq, tran_type *tran)
 
     fix_lrl_ixlen_tran(tran);
 
+    /* TODO: verify that this does not need to get called because 
+     * already done in adjust_master_tables() <- add_table_to_environment() <- do_add_table()
     create_sqlmaster_records(tran);
     create_sqlite_master();
+    */
 
     db->sc_to = NULL;
     update_dbstore(db);
