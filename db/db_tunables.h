@@ -1337,7 +1337,7 @@ REGISTER_TUNABLE("time_rep_apply", "Display rep-apply times periodically. "
                  TUNABLE_BOOLEAN, &gbl_time_rep_apply,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("logput_window", "Drop log-broadcasts for incoherent nodes "
-                 "more than this many bytes behind. (Default: 4000000)",
+                 "more than this many bytes behind. (Default: 1000000)",
                  TUNABLE_INTEGER, &gbl_incoherent_logput_window,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
