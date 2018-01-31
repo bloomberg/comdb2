@@ -1328,5 +1328,21 @@ REGISTER_TUNABLE("processor_thd_poll", "Poll before dispatching worker thds. "
                                        "(Default: 0ms)",
                  TUNABLE_INTEGER, &gbl_processor_thd_poll,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("time_rep_apply", "Display rep-apply times periodically. "
+                                       "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_time_rep_apply,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("time_rep_apply", "Display rep-apply times periodically. "
+                                       "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_time_rep_apply,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("logput_window", "Drop log-broadcasts for incoherent nodes "
+                 "more than this many bytes behind. (Default: 4000000)",
+                 TUNABLE_INTEGER, &gbl_incoherent_logput_window,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("dump_full_netqueue", "Dump net-queue on full rcode. "
+                 "(Default: off)", TUNABLE_BOOLEAN, &gbl_dump_full_net_queue,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

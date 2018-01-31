@@ -54,6 +54,8 @@ typedef int NETCMPFP(struct netinfo_struct *netinfo, void *insert_item,
                      int insert_item_len, void *current_item,
                      int current_item_len);
 
+typedef int GETLSNFP(struct netinfo_struct *netinfo, void *record, int len,
+                     int *file, int *offset);
 typedef int NEWNODEFP(struct netinfo_struct *netinfo, char hostname[],
                       int portnum);
 
@@ -115,6 +117,8 @@ int net_register_handler(netinfo_type *netinfo_ptr, int usertype, NETFP func);
 /* register your callback routine that will be called when a
    disconnect happens for a node */
 int net_register_hostdown(netinfo_type *netinfo_ptr, HOSTDOWNFP func);
+
+int net_register_getlsn(netinfo_type *netinfo_ptr, GETLSNFP func);
 
 /* register a callback that you can compare the order of things
    already on the write queue. */

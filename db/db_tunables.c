@@ -143,6 +143,9 @@ extern int gbl_rep_verify_will_recover_trace;
 extern int gbl_max_wr_rows_per_txn;
 extern int gbl_force_serial_on_writelock;
 extern int gbl_processor_thd_poll;
+extern int gbl_time_rep_apply;
+extern int gbl_incoherent_logput_window;
+extern int gbl_dump_full_net_queue;
 
 extern long long sampling_threshold;
 
