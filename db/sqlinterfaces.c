@@ -762,7 +762,7 @@ int newsql_write_response(struct sqlclntstate *clnt, int type,
         wlen = sbuf2write(dta, len, sb);
         if (wlen != len) {
             if (gbl_dump_fsql_response)
-                logmsg(LOGMSG_USER, "sbuf2write error for %s wlen=%d\n", 
+                logmsg(LOGMSG_USER, "sbuf2write error for %s wlen=%d\n",
                        clnt->sql, wlen);
             rc = -1;
             goto done;
@@ -3331,12 +3331,11 @@ static int check_sql(struct sqlclntstate *clnt, int *sp)
     return 0;
 
 error: /* pretend that a real prepare error occured */
-        strcpy(buf, "near \"");
-        strncat(buf + len, sql, len);
-        strcat(buf, "\": syntax error");
-        send_prepare_error(clnt, buf, 0);
-        return SQLITE_ERROR;
-
+    strcpy(buf, "near \"");
+    strncat(buf + len, sql, len);
+    strcat(buf, "\": syntax error");
+    send_prepare_error(clnt, buf, 0);
+    return SQLITE_ERROR;
 }
 
 /* if userpassword does not match this function
