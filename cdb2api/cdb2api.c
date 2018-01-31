@@ -178,7 +178,6 @@ static inline const char *cdb2_skipws(const char *str)
     return str;
 }
 
-
 static char *getargv0(void)
 {
 #if defined(__APPLE__)
@@ -210,7 +209,7 @@ static void do_init_once(void)
 
 /* if sqlstr is a read stmt will return 1 otherwise return 0
  * returns -1 if sqlstr is null
- */ 
+ */
 static int is_sql_read(const char *sqlstr)
 {
     const char get[] = "GET";
@@ -664,7 +663,6 @@ struct context_messages {
     int has_changed;
 };
 
-
 /* Forward declarations. */
 static void cdb2_init_context_msgs(cdb2_hndl_tp *hndl);
 static int cdb2_free_context_msgs(cdb2_hndl_tp *hndl);
@@ -842,7 +840,7 @@ static inline int get_char(FILE *fp, const char *buf, int *chrno)
     return ch;
 }
 
-static int read_line(char *line, int *len, int maxlen, FILE *fp, 
+static int read_line(char *line, int *len, int maxlen, FILE *fp,
                      const char *buf, int *chrno)
 {
     int ch = get_char(fp, buf, chrno);
@@ -886,9 +884,10 @@ static ssl_mode ssl_string_to_mode(const char *s) {
 }
 #endif
 
-static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, const char *comdb2db_name,
-                              const char *buf, char comdb2db_hosts[][64],
-                              int *num_hosts, int *comdb2db_num, const char *dbname,
+static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
+                              const char *comdb2db_name, const char *buf,
+                              char comdb2db_hosts[][64], int *num_hosts,
+                              int *comdb2db_num, const char *dbname,
                               char db_hosts[][64], int *num_db_hosts,
                               int *dbnum, int *dbname_found,
                               int *comdb2db_found, int *stack_at_open)
@@ -1042,10 +1041,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, const char *comdb2db
     }
 }
 
-static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *dbname,
-                             int dbnum, const char *host, char valid_hosts[][64],
-                             int *valid_ports, int *master_node,
-                             int *num_valid_hosts,
+static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
+                             const char *dbname, int dbnum, const char *host,
+                             char valid_hosts[][64], int *valid_ports,
+                             int *master_node, int *num_valid_hosts,
                              int *num_valid_sameroom_hosts);
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
@@ -1135,7 +1134,7 @@ static int read_available_comdb2db_configs(
  * returns 0 if hosts were found
  * this function has functionality similar to cdb2_tcpresolve()
  */
-static int get_host_by_name(const char *comdb2db_name, 
+static int get_host_by_name(const char *comdb2db_name,
                             char comdb2db_hosts[][64], int *num_hosts)
 {
     char tmp[8192];
@@ -1175,14 +1174,12 @@ static int get_host_by_name(const char *comdb2db_name,
     return rc;
 }
 
-
-
 static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
                               int *comdb2db_ports, int *master,
                               const char *comdb2db_name, int *num_hosts,
-                              int *comdb2db_num, const char *dbname, char *dbtype,
-                              char db_hosts[][64], int *num_db_hosts,
-                              int *dbnum, int just_defaults)
+                              int *comdb2db_num, const char *dbname,
+                              char *dbtype, char db_hosts[][64],
+                              int *num_db_hosts, int *dbnum, int just_defaults)
 {
     int rc;
     int comdb2db_found = 0;
@@ -1199,21 +1196,20 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
     if (rc == -1)
         return rc;
 
-    if (master) 
+    if (master)
         *master = -1;
 
     if (just_defaults || comdb2db_found || dbname_found)
         return 0;
 
     rc = cdb2_dbinfo_query(hndl, cdb2_default_cluster, comdb2db_name,
-                           *comdb2db_num, NULL, comdb2db_hosts,
-                           comdb2db_ports, master, num_hosts, NULL);
+                           *comdb2db_num, NULL, comdb2db_hosts, comdb2db_ports,
+                           master, num_hosts, NULL);
     if (rc == 0)
         return 0;
 
     rc = get_host_by_name(comdb2db_name, comdb2db_hosts, num_hosts);
     return rc;
-
 }
 
 /* SOCKPOOL CODE START */
@@ -1627,8 +1623,9 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 }
 #endif
 
-static int cdb2portmux_route(const char *remote_host, const char *app, const char *service,
-                             const char *instance, int debug)
+static int cdb2portmux_route(const char *remote_host, const char *app,
+                             const char *service, const char *instance,
+                             int debug)
 {
     char name[128];
     char res[32];
@@ -1763,8 +1760,8 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
 }
 
 /* returns port number, or -1 for error*/
-static int cdb2portmux_get(const char *remote_host, const char *app, const char *service,
-                           const char *instance, int debug)
+static int cdb2portmux_get(const char *remote_host, const char *app,
+                           const char *service, const char *instance, int debug)
 {
     char name[128]; /* app/service/dbname */
     char res[32];
@@ -4294,9 +4291,9 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl)
 
 static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
                                 int comdb2db_num, const char *host, int port,
-                                char hosts[][64], int *num_hosts, const char *dbname,
-                                char *cluster, int *dbnum, int *num_same_room,
-                                int num_retries)
+                                char hosts[][64], int *num_hosts,
+                                const char *dbname, char *cluster, int *dbnum,
+                                int *num_same_room, int num_retries)
 {
     char sql_query[256];
     *dbnum = 0;
@@ -4466,10 +4463,10 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
  * returns -1 on error
  * returns 0 if number of hosts it finds is > 0
  */
-static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *dbname,
-                             int dbnum, const char *host, char valid_hosts[][64],
-                             int *valid_ports, int *master_node,
-                             int *num_valid_hosts,
+static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
+                             const char *dbname, int dbnum, const char *host,
+                             char valid_hosts[][64], int *valid_ports,
+                             int *master_node, int *num_valid_hosts,
                              int *num_valid_sameroom_hosts)
 {
     char newsql_typestr[128];
@@ -4578,9 +4575,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *d
         free(p);
         return -1;
     }
-    CDB2DBINFORESPONSE *dbinfo_response = 
-        cdb2__dbinforesponse__unpack(NULL, hdr.length,
-                                     (const unsigned char *)p);
+    CDB2DBINFORESPONSE *dbinfo_response = cdb2__dbinforesponse__unpack(
+        NULL, hdr.length, (const unsigned char *)p);
 
     if (dbinfo_response == NULL) {
         sprintf(hndl->errstr, "%s: Got no dbinfo response from comdb2 database",
