@@ -221,6 +221,7 @@ static int is_sql_read(const char *sqlstr)
 
     if (sqlstr == NULL)
         return -1;
+    sqlstr = cdb2_skipws(sqlstr);
     int slen = strlen(sqlstr);
     if (slen) {
         if (slen < sizeof(get) - 1)

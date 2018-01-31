@@ -26,19 +26,18 @@ static char cdb2_dnssuffix[255] = "";
 
 // forward declare the function we are testing
 static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
-                               int *comdb2db_ports, int *master,
-                               char *comdb2db_name, int *num_hosts,
-                               int *comdb2db_num, char *dbname, char *dbtype,
-                               char db_hosts[][64], int *num_db_hosts,
-                               int *dbnum, int just_defaults);
+                              int *comdb2db_ports, int *master,
+                              const char *comdb2db_name, int *num_hosts,
+                              int *comdb2db_num, const char *dbname, char *dbtype,
+                              char db_hosts[][64], int *num_db_hosts,
+                              int *dbnum, int just_defaults);
+
 
 // we need here all the functions that get_comdb2db_hosts() calls
 static int read_available_comdb2db_configs(
-        cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
-        char *comdb2db_name, int *num_hosts,
-        int *comdb2db_num, char *dbname,
-        char db_hosts[][64], int *num_db_hosts,
-        int *dbnum, int *comdb2db_found, int *dbname_found)
+    cdb2_hndl_tp *hndl, char comdb2db_hosts[][64], const char *comdb2db_name,
+    int *num_hosts, int *comdb2db_num, const char *dbname, char db_hosts[][64],
+    int *num_db_hosts, int *dbnum, int *comdb2db_found, int *dbname_found)
 {
     if (global_state == 1) return -1;
 
@@ -76,8 +75,8 @@ static int read_available_comdb2db_configs(
 }
 
 
-static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
-                             int dbnum, char *host, char valid_hosts[][64],
+static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *dbname,
+                             int dbnum, const char *host, char valid_hosts[][64],
                              int *valid_ports, int *master_node,
                              int *num_valid_hosts,
                              int *num_valid_sameroom_hosts)
@@ -101,7 +100,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
 
 }
 
-static int get_host_by_name(char *comdb2db_name, char comdb2db_hosts[][64], int *num_hosts)
+static int get_host_by_name(const char *comdb2db_name, 
+                            char comdb2db_hosts[][64], int *num_hosts)
 {
     assert(global_state != 1);
     assert(global_state != 2);
@@ -128,7 +128,7 @@ int main()
     int num_db_hosts = -1;
     int master = -1;
 
-    printf("starting cdb2api_unit\n");
+    printf("starting test_get_comdb2db_hosts\n");
     
     global_state = 1; // read_available_comdb2db_configs returns -1, nothing gets set
 
