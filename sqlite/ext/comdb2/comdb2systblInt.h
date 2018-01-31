@@ -22,6 +22,7 @@ const sqlite3_module systblPluginsModule;
 const sqlite3_module systblAppsockHandlersModule;
 const sqlite3_module systblOpcodeHandlersModule;
 const sqlite3_module completionModule; // in ext/misc
+const sqlite3_module systblClientStatsModule;
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")

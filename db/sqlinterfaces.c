@@ -3474,10 +3474,6 @@ static void query_stats_setup(struct sqlthdstate *thd,
     /* berkdb stats */
     bdb_reset_thread_stats();
 
-    /* node stats */
-    if (!clnt->rawnodestats) {
-        clnt->rawnodestats = get_raw_node_stats(clnt->origin);
-    }
     if (clnt->rawnodestats)
         clnt->rawnodestats->sql_queries++;
 
@@ -6280,13 +6276,16 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     if (initial) {
         bzero(clnt, sizeof(*clnt));
     }
+    if (clnt->rawnodestats) {
+        release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
+        clnt->rawnodestats = NULL;
+    }
     clnt->sb = sb;
     clnt->must_close_sb = 1;
     clnt->recno = 1;
     strcpy(clnt->tzname, "America/New_York");
     clnt->dtprec = gbl_datetime_precision;
     bzero(&clnt->conninfo, sizeof(clnt->conninfo));
-    clnt->rawnodestats = NULL;
     clnt->using_case_insensitive_like = 0;
 
     if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE)

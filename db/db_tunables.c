@@ -146,6 +146,7 @@ extern int gbl_processor_thd_poll;
 extern int gbl_time_rep_apply;
 extern int gbl_incoherent_logput_window;
 extern int gbl_dump_full_net_queue;
+extern int gbl_max_clientstats_cache;
 
 extern long long sampling_threshold;
 
