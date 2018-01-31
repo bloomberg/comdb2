@@ -458,10 +458,13 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
     pthread_mutex_unlock(&gbl_sc_lock);
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
+        
+        /* do this in a separate thread
         if (bdb_list_unused_files_tran(db->handle, tran, &bdberr,
                                        "schemachange") ||
             bdberr != BDBERR_NOERROR)
             logmsg(LOGMSG_WARN, "errors listing old files\n");
+        */
     } else {
         if (bdb_del_unused_files_tran(db->handle, tran, &bdberr) ||
             bdberr != BDBERR_NOERROR)

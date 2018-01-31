@@ -5,7 +5,7 @@ bash -n "$0" | exit 1
 debug=0
 
 dbnm=$1
-tblcnt=100
+tblcnt=20
 
 if [ "x$dbnm" == "x" ] ; then
     echo "need a DB name"
@@ -188,8 +188,9 @@ for i in `seq 1 $tblcnt`; do
   echo "create t$i: "
   time cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t$i  { `cat t1_1.csc2 ` }"
   insert_records t$i $i
-  #echo truncate t0
-  #time cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t0"
+
+  echo truncate t0
+  time cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t0"
 
   flushall
 done

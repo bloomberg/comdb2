@@ -7293,8 +7293,9 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
         return -1;
     }
 
-    if (snprintf(table_prefix, sizeof(table_prefix), "%s_", bdb_state->name) >=
-        sizeof(table_prefix)) {
+    int tp_len = snprintf(table_prefix, sizeof(table_prefix), "%s_", 
+                          bdb_state->name);
+    if (tp_len >= sizeof(table_prefix)) {
         logmsg(LOGMSG_ERROR, "%s: tablename too long\n", __func__);
         *bdberr = BDBERR_MISC;
         free(buf);
@@ -7304,124 +7305,124 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 
     /* for each file in the db's directory */
     while ((error = bb_readdir(dirp, buf, &ent)) == 0 && ent != NULL) {
+        if (! (strlen(ent->d_name) > tp_len &&
+            strncmp(ent->d_name, table_prefix, tp_len) == 0) )
+            continue;
+
         /* if the file's name is longer then the prefix and it belongs to our
          * table */
-        if ((strlen(ent->d_name) > strlen(table_prefix)) &&
-            strncmp(ent->d_name, table_prefix, strlen(table_prefix)) == 0) {
-            const char *file_name_post_prefix;
-            unsigned long long invers;
-            char *endp;
+        const char *file_name_post_prefix;
+        unsigned long long invers;
+        char *endp;
 
-            /* file version should start right after the prefix */
-            file_name_post_prefix = ent->d_name + strlen(table_prefix);
+        /* file version should start right after the prefix */
+        file_name_post_prefix = ent->d_name + tp_len;
 
-            /* try to parse a file version */
-            invers = strtoull(file_name_post_prefix, &endp, 16 /*base*/);
+        /* try to parse a file version */
+        invers = strtoull(file_name_post_prefix, &endp, 16 /*base*/);
 
-            /* if no file_version was found after the prefix or the next thing
-             * after the file version isn't .blob or .data or .index */
-            if (endp == file_name_post_prefix ||
-                (strncmp(endp, blob_ext, strlen(blob_ext)) != 0 &&
-                 strncmp(endp, data_ext, strlen(data_ext)) != 0 &&
-                 strncmp(endp, qdb_ext, strlen(qdb_ext)) != 0 &&
-                 strncmp(endp, index_ext, strlen(index_ext)) != 0)) {
-                file_version = 0;
+        /* if no file_version was found after the prefix or the next thing
+         * after the file version isn't .blob or .data or .index */
+        if (endp == file_name_post_prefix ||
+            (strncmp(endp, blob_ext, sizeof(blob_ext) - 1) != 0 &&
+             strncmp(endp, data_ext, sizeof(data_ext) - 1) != 0 &&
+             strncmp(endp, qdb_ext, sizeof(qdb_ext) - 1) != 0 &&
+             strncmp(endp, index_ext, sizeof(index_ext) - 1) != 0)) {
+            file_version = 0;
+        } else {
+            uint8_t *p_buf = (uint8_t *)&invers,
+                    *p_buf_end = p_buf + sizeof(invers);
+            struct bdb_file_version_num_type p_file_version_num_type;
+
+            bdb_file_version_num_get(&p_file_version_num_type, p_buf,
+                                     p_buf_end);
+
+            file_version = p_file_version_num_type.version_num;
+        }
+
+        if (!file_version) 
+            continue;
+
+        /* brute force scan to find any files on disk that we aren't
+         * actually using */
+
+        int found_in_llmeta = 0;
+        int i;
+
+        /* try to find the file version amongst the active data files */
+        for (i = 0; i < bdb_state->numdtafiles; ++i) {
+            if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
+                rc = bdb_get_file_version_qdb(bdb_state, tran,
+                                              &version_num, bdberr);
             } else {
-                uint8_t *p_buf = (uint8_t *)&invers,
-                        *p_buf_end = p_buf + sizeof(invers);
-                struct bdb_file_version_num_type p_file_version_num_type;
-
-                bdb_file_version_num_get(&p_file_version_num_type, p_buf,
-                                         p_buf_end);
-
-                file_version = p_file_version_num_type.version_num;
+                rc = bdb_get_file_version_data(bdb_state, tran, i,
+                                               &version_num, bdberr);
             }
+            if (rc == 0 && version_num == file_version) {
+                found_in_llmeta = 1;
+                break;
+            }
+        }
 
-            /* brute force scan to find any files on disk that we aren't
-             * actually using */
-            if (file_version) {
-                int found_in_llmeta = 0;
-                int i;
+        /* try to find the file version amongst the active indices */
+        for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
+            if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
+                break;
+            rc = bdb_get_file_version_index(
+                bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
+            if (rc == 0 && version_num == file_version)
+                found_in_llmeta = 1;
+        }
 
-                /* try to find the file version amongst the active data files */
-                for (i = 0; i < bdb_state->numdtafiles; ++i) {
-                    if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
-                        rc = bdb_get_file_version_qdb(bdb_state, tran,
-                                                      &version_num, bdberr);
-                    } else {
-                        rc = bdb_get_file_version_data(bdb_state, tran, i,
-                                                       &version_num, bdberr);
-                    }
-                    if (rc == 0) {
-                        if (version_num == file_version) {
-                            found_in_llmeta = 1;
-                            break;
-                        }
-                    }
-                }
+        if (found_in_llmeta)
+            continue;
 
-                /* try to find the file version amongst the active indices */
-                for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
-                    if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
-                        break;
-                    rc = bdb_get_file_version_index(
-                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
-                    if (rc == 0) {
-                        if (version_num == file_version)
-                            found_in_llmeta = 1;
-                    }
-                }
+        /* if the file's version wasn't found in llmeta, delete it */
+        char munged_name[FILENAMELEN];
 
-                /* if the file's version wasn't found in llmeta, delete it */
-                if (!found_in_llmeta) {
-                    char munged_name[FILENAMELEN];
+        if (snprintf(munged_name, sizeof(munged_name), "XXX.%s",
+                     ent->d_name) >= sizeof(munged_name)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: filename too long to munge: %s\n", __func__,
+                   ent->d_name);
+            continue;
+        }
 
-                    if (snprintf(munged_name, sizeof(munged_name), "XXX.%s",
-                                 ent->d_name) >= sizeof(munged_name)) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s: filename too long to munge: %s\n", __func__,
-                               ent->d_name);
-                        continue;
-                    }
+        if (delay) {
+            /* dont add filename more than once in the list */
+            if (oldfile_list_contains(munged_name))
+                continue;
 
-                    if (delay) {
-                        /* dont add filename more than once in the list */
-                        if (oldfile_list_contains(munged_name))
-                            continue;
-
-                        if (oldfile_list_add(strdup(munged_name), lognum)) {
-                            print(bdb_state,
-                                  "failed to collect old file (list full) %s\n",
-                                  ent->d_name);
-                        } else {
-                            print(bdb_state, "collected old file %s\n",
-                                  ent->d_name);
-                        }
-                    } else {
-                        print(bdb_state, "deleting file %s\n", ent->d_name);
-                        DB_TXN *tid;
-                        if (bdb_state->dbenv->txn_begin(bdb_state->dbenv,
-                                                        tran ? tran->tid : NULL,
-                                                        &tid, 0 /*flags*/)) {
-                            logmsg(LOGMSG_ERROR,
-                                   "%s: failed to begin trans for "
-                                   "deleteing file: %s\n",
-                                   __func__, ent->d_name);
-                            continue;
-                        }
-                        if (bdb_del_file(bdb_state, tid, munged_name, bdberr)) {
-                            logmsg(LOGMSG_ERROR,
-                                   "%s: failed to delete file: %s\n", __func__,
-                                   ent->d_name);
-                            tid->abort(tid);
-                        } else if (tid->commit(tid, 0)) {
-                            logmsg(LOGMSG_ERROR,
-                                   "%s: failed to commit trans for "
-                                   "deleteing file: %s\n",
-                                   __func__, ent->d_name);
-                        }
-                    }
-                }
+            if (oldfile_list_add(strdup(munged_name), lognum)) {
+                print(bdb_state,
+                      "failed to collect old file (list full) %s\n",
+                      ent->d_name);
+            } else {
+                print(bdb_state, "collected old file %s\n",
+                      ent->d_name);
+            }
+        } else {
+            print(bdb_state, "deleting file %s\n", ent->d_name);
+            DB_TXN *tid;
+            if (bdb_state->dbenv->txn_begin(bdb_state->dbenv,
+                                            tran ? tran->tid : NULL,
+                                            &tid, 0 /*flags*/)) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to begin trans for "
+                       "deleteing file: %s\n",
+                       __func__, ent->d_name);
+                continue;
+            }
+            if (bdb_del_file(bdb_state, tid, munged_name, bdberr)) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to delete file: %s\n", __func__,
+                       ent->d_name);
+                tid->abort(tid);
+            } else if (tid->commit(tid, 0)) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to commit trans for "
+                       "deleteing file: %s\n",
+                       __func__, ent->d_name);
             }
         }
     }
