@@ -1399,6 +1399,10 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     reqlog_set_rows(logger, clnt->nrows);
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
+    if (clnt->rawnodestats) {
+        clnt->rawnodestats->sql_steps += thd->nmove + thd->nfind + thd->nwrite;
+    }
+
     thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;
 
     if (clnt->conninfo.pename[0]) {
@@ -5389,11 +5393,6 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     sqlite3_stmt *stmt = rec->stmt;
 
     sql_statement_done(thd->sqlthd, thd->logger, clnt, outrc);
-
-    if (clnt->rawnodestats && thd->sqlthd) {
-        clnt->rawnodestats->sql_steps +=
-            thd->sqlthd->nmove + thd->sqlthd->nfind + thd->sqlthd->nwrite;
-    }
 
     if (stmt && !((Vdbe *)stmt)->explain && ((Vdbe *)stmt)->nScan > 1 &&
         (BDB_ATTR_GET(thedb->bdb_attr, PLANNER_WARN_ON_DISCREPANCY) == 1 ||
