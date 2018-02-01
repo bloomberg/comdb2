@@ -119,7 +119,7 @@ static void write_odh(void *buf, const struct odh *odh, uint8_t flags);
  */
 
 /* Return 1 if ip-updates are enabled.  Does not care about schema-change */
-int ip_updates_enabled(bdb_state_type *bdb_state)
+inline int ip_updates_enabled(bdb_state_type *bdb_state)
 {
     if ((bdb_state->attr
              ->dtastripe) && /* non-dtastripe already update in-place */
@@ -132,7 +132,7 @@ int ip_updates_enabled(bdb_state_type *bdb_state)
     }
 }
 
-int bdb_have_ipu(bdb_state_type *bdb_state)
+inline int bdb_have_ipu(bdb_state_type *bdb_state)
 {
     return ip_updates_enabled(bdb_state);
 }
@@ -168,7 +168,7 @@ int bdb_compr2algo(const char *a)
     return BDB_COMPRESS_NONE;
 }
 
-static char *snodhf(char *buf, size_t buflen, const struct odh *odh)
+static inline char *snodhf(char *buf, size_t buflen, const struct odh *odh)
 {
     int pos;
     pos = snprintf(
@@ -637,7 +637,7 @@ err:
     return DB_UNCOMPRESS_ERR;
 }
 
-int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
+inline int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
                void *to, size_t tolen, struct odh *odh, void **freeptr)
 {
     return bdb_unpack_updateid(bdb_state, from, fromlen, to, tolen, odh, -1,
@@ -1032,7 +1032,7 @@ int bdb_cget_unpack(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data,
 }
 
 /* The updateid-agnostic version of this code. */
-int bdb_cget_unpack_blob(bdb_state_type *bdb_state, DBC *dbcp, DBT *key,
+inline int bdb_cget_unpack_blob(bdb_state_type *bdb_state, DBC *dbcp, DBT *key,
                          DBT *data, uint8_t *ver, u_int32_t flags)
 {
     return bdb_cget_unpack_int(bdb_state, dbcp, key, data, ver, flags, 0);
@@ -1084,13 +1084,13 @@ static int bdb_get_unpack_int(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
     return rc;
 }
 
-int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key,
+inline int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key,
                    DBT *data, uint8_t *ver, u_int32_t flags)
 {
     return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 1);
 }
 
-int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
+inline int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
                         DBT *key, DBT *data, uint8_t *ver, u_int32_t flags)
 {
     return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 0);
@@ -1304,12 +1304,12 @@ void bdb_set_odh_options(bdb_state_type *bdb_state, int odh, int compression,
     bdb_state->compress_blobs = blob_compression;
 }
 
-int bdb_get_csc2_version(bdb_state_type *bdb_state)
+inline int bdb_get_csc2_version(bdb_state_type *bdb_state)
 {
     return bdb_state->version;
 }
 
-void bdb_set_csc2_version(bdb_state_type *bdb_state, uint8_t version)
+inline void bdb_set_csc2_version(bdb_state_type *bdb_state, uint8_t version)
 {
     if (bdb_state == NULL) {
         logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
@@ -1318,7 +1318,7 @@ void bdb_set_csc2_version(bdb_state_type *bdb_state, uint8_t version)
     bdb_state->version = version;
 }
 
-void bdb_set_instant_schema_change(bdb_state_type *bdb_state, int isc)
+inline void bdb_set_instant_schema_change(bdb_state_type *bdb_state, int isc)
 {
     if (bdb_state == NULL) {
         logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
@@ -1327,7 +1327,7 @@ void bdb_set_instant_schema_change(bdb_state_type *bdb_state, int isc)
     bdb_state->instant_schema_change = isc;
 }
 
-void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu)
+inline void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu)
 {
     if (bdb_state == NULL) {
         logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
@@ -1338,7 +1338,7 @@ void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu)
     }
 }
 
-void bdb_set_datacopy_odh(bdb_state_type *bdb_state, int cdc)
+inline void bdb_set_datacopy_odh(bdb_state_type *bdb_state, int cdc)
 {
     if (bdb_state == NULL) {
         logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
@@ -1361,7 +1361,7 @@ int bdb_validate_compression_alg(int alg)
     return -1;
 }
 
-void bdb_get_compr_flags(bdb_state_type *bdb_state, int *odh, int *compr,
+inline void bdb_get_compr_flags(bdb_state_type *bdb_state, int *odh, int *compr,
                          int *blob_compr)
 {
     *odh = bdb_state->ondisk_header;
@@ -1369,14 +1369,14 @@ void bdb_get_compr_flags(bdb_state_type *bdb_state, int *odh, int *compr,
     *blob_compr = bdb_state->compress_blobs;
 }
 
-void bdb_set_fld_hints(bdb_state_type *bdb_state, uint16_t *hints)
+inline void bdb_set_fld_hints(bdb_state_type *bdb_state, uint16_t *hints)
 {
     if (bdb_state->fld_hints)
         free(bdb_state->fld_hints);
     bdb_state->fld_hints = hints;
 }
 
-void bdb_cleanup_fld_hints(bdb_state_type *bdb_state)
+inline void bdb_cleanup_fld_hints(bdb_state_type *bdb_state)
 {
     if (bdb_state->fld_hints)
         free(bdb_state->fld_hints);
