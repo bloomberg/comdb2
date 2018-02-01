@@ -793,20 +793,20 @@ int destroy_plugins(void);
 void register_plugin_tunables(void);
 int install_static_plugins(void);
 
-int getkeyrecnums(const struct dbtable *tbl, int ixnum)
+inline int getkeyrecnums(const struct dbtable *tbl, int ixnum)
 {
     if (ixnum < 0 || ixnum >= tbl->nix)
         return -1;
     return tbl->ix_recnums[ixnum] != 0;
 }
-int getkeysize(const struct dbtable *tbl, int ixnum)
+inline int getkeysize(const struct dbtable *tbl, int ixnum)
 {
     if (ixnum < 0 || ixnum >= tbl->nix)
         return -1;
     return tbl->ix_keylen[ixnum];
 }
 
-int getdatsize(const struct dbtable *tbl) { return tbl->lrl; }
+inline int getdatsize(const struct dbtable *tbl) { return tbl->lrl; }
 
 /*lookup dbs..*/
 struct dbtable *getdbbynum(int num)

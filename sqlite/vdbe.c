@@ -26,7 +26,7 @@
 #include <ctype.h>
 #include <pthread.h>
 #include <strings.h>
-#include <logmsg.h>
+#include <sqlglue_vdbe.h>
 
 /* COMDB2 MODIFICATION */
 /* Comdb2 routines called from vdbe */
@@ -34,11 +34,6 @@ void set_cook_fields(BtCursor *pCur, int cols);
 void sqlite3SetConversionError(void);
 void *get_lastkey(BtCursor *pCur);
 void print_cooked_access(BtCursor *pCur, int col);
-int is_raw(BtCursor *pCur);
-int get_data(BtCursor *pCur, void *invoid, int fnum, Mem *m);
-int is_datacopy(BtCursor *pCur, int *fnum);
-int get_datacopy(BtCursor *pCur, int fnum, Mem *m);
-int is_remote(BtCursor *pCur);
 void comdb2SetWriteFlag(int wrflag);
 
 /*
