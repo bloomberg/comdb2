@@ -747,7 +747,7 @@ int newsql_write_response(struct sqlclntstate *clnt, int type,
 
     rc = pthread_mutex_lock(&clnt->write_lock);
     if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "couldnt get clnt->write_lock\n");
+        logmsg(LOGMSG_FATAL, "Failed to lock clnt->write_lock\n");
         exit(1);
     }
 
@@ -774,7 +774,7 @@ int newsql_write_response(struct sqlclntstate *clnt, int type,
 
 done:
     if (pthread_mutex_unlock(&clnt->write_lock) != 0) {
-        logmsg(LOGMSG_FATAL, "couldnt put clnt->write_lock\n");
+        logmsg(LOGMSG_FATAL, "Failed to unlock clnt->write_lock\n");
         exit(1);
     }
 
