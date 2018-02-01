@@ -2021,6 +2021,51 @@ int net_get_stack_flush_threshold(void) { return stack_flush_min; }
 
 void net_set_stack_flush_threshold(int thresh) { stack_flush_min = thresh; }
 
+int gbl_dump_full_net_queue = 0;
+
+static void dump_queue(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
+{
+    int now, cnt = 0, logput_cnt = 0, non_logput_cnt = 0;
+
+    if (netinfo_ptr->getlsn_rtn == NULL)
+        return;
+
+    if ((now = time(NULL)) - host_node_ptr->last_queue_dump) {
+        write_data *ptr;
+        int file, offset, rc, wl = 0;
+        logmsg(LOGMSG_USER, "Dumping net-queue for %s\n", host_node_ptr->host);
+        Pthread_mutex_lock(&(host_node_ptr->enquelk));
+        ptr = host_node_ptr->write_head;
+        while (ptr != NULL) {
+            cnt++;
+            if ((rc = (netinfo_ptr->getlsn_rtn)(netinfo_ptr, ptr->payload.raw,
+                            ptr->len, &file, &offset)) == 0) {
+                logput_cnt++;
+                if (wl == 0) {
+                    logmsg(LOGMSG_USER, "%s: ", host_node_ptr->host);
+                }
+                logmsg(LOGMSG_USER, "%d:%d ", file, offset);
+                wl = 1;
+                if ((logput_cnt % 20) == 0)  {
+                    logmsg(LOGMSG_USER, "\n");
+                    wl = 0;
+                }
+            } else {
+                non_logput_cnt++;
+            }
+            ptr = ptr->next;
+        }
+        Pthread_mutex_unlock(&(host_node_ptr->enquelk));
+
+        if (wl) {
+            logmsg(LOGMSG_USER, "\n");
+        }
+        logmsg(LOGMSG_USER, "%s: %d logputs, %d other\n", host_node_ptr->host, 
+                logput_cnt, non_logput_cnt);
+        host_node_ptr->last_queue_dump = now;
+    }
+}
+
 static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
                         int usertype, void *data, int datalen, int nodelay,
                         int numtails, void **tails, int *taillens, int nodrop,
@@ -2156,6 +2201,10 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     }
 
 end:
+
+    if (rc == NET_SEND_FAIL_QUEUE_FULL && gbl_dump_full_net_queue)
+        dump_queue(netinfo_ptr, host_node_ptr);
+
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
     return rc;
 }
@@ -2312,6 +2361,12 @@ int net_get_all_nodes_connected(netinfo_type *netinfo_ptr,
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
     return count;
+}
+
+int net_register_getlsn(netinfo_type *netinfo_ptr, GETLSNFP func)
+{
+    netinfo_ptr->getlsn_rtn = func;
+    return 0;
 }
 
 int net_register_netcmp(netinfo_type *netinfo_ptr, NETCMPFP func)
