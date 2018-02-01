@@ -1377,8 +1377,11 @@ static int bdb_berkdb_find_shad(bdb_berkdb_t *pberkdb, void *key, int keylen,
         /* DB_NEXTs will be for a partial search if the initial SETRANGE is
          * skipped */
         assert(keylen == sizeof(unsigned long long) ||
-               keylen <= (assert_keylen - sizeof(unsigned long long) +
-                          1)); /* for partial search. */
+               /* for partial search. */
+               keylen <= (assert_keylen - sizeof(unsigned long long) + 1) ||
+               /* for shadow only search */
+               (berkdb->cur->type == BDBC_IX && !berkdb->cur->rl &&
+                keylen <= foundkeylen));
 
         if (keylen == foundkeylen - sizeof(unsigned long long)) {
             rc =
