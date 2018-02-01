@@ -2276,7 +2276,7 @@ void process_nodestats(void)
     cpl.i = 0;
     cpl.n = nclnts;
     hash_for(clientstats, collect_clientstats, &cpl);
-    for (i == 0; i < nclnts; i++) {
+    for (i = 0; i < nclnts; i++) {
         unsigned next_bucket;
         unsigned ii;
         unsigned *nowptr;
