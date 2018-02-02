@@ -861,6 +861,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         }
 
         if (sql_query->client_info) {
+            if (clnt.rawnodestats) {
+                release_node_stats(clnt.argv0, clnt.stack, clnt.origin);
+                clnt.rawnodestats = NULL;
+            }
             if (clnt.conninfo.pid &&
                 clnt.conninfo.pid != sql_query->client_info->pid) {
                 /* Different pid is coming without reset. */
@@ -886,6 +890,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             if (sql_query->client_info->stack) {
                 clnt.stack = strdup(sql_query->client_info->stack);
             }
+        }
+        if (clnt.rawnodestats == NULL) {
+            clnt.rawnodestats = get_raw_node_stats(
+                clnt.argv0, clnt.stack, clnt.origin, sbuf2fileno(clnt.sb));
         }
 
         if (process_set_commands(dbenv, &clnt))
@@ -977,6 +985,11 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 done:
     if (clnt.ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         handle_sql_intrans_unrecoverable_error(&clnt);
+    }
+
+    if (clnt.rawnodestats) {
+        release_node_stats(clnt.argv0, clnt.stack, clnt.origin);
+        clnt.rawnodestats = NULL;
     }
 
     if (clnt.argv0) {

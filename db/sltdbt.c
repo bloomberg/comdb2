@@ -281,7 +281,8 @@ int handle_ireq(struct ireq *iq)
     reqlog_pushprefixf(iq->reqlogger, "%s:REQ %s ", getorigin(iq),
                        req2a(iq->opcode));
 
-    iq->rawnodestats = get_raw_node_stats(iq->frommach);
+    iq->rawnodestats =
+        get_raw_node_stats(NULL, NULL, iq->frommach, sbuf2fileno(iq->sb));
     if (iq->rawnodestats && iq->opcode >= 0 && iq->opcode < MAXTYPCNT)
         iq->rawnodestats->opcode_counts[iq->opcode]++;
     if (gbl_print_deadlock_cycles)
@@ -440,6 +441,7 @@ int handle_ireq(struct ireq *iq)
         osql_bplog_reqlog_queries(iq);
     }
     reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
+    release_node_stats(NULL, NULL, iq->frommach);
     if (gbl_print_deadlock_cycles)
         osql_snap_info = NULL;
 

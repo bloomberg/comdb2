@@ -607,6 +607,31 @@ struct rawnodestats {
 };
 #define NUM_RAW_NODESTATS (sizeof(struct rawnodestats) / sizeof(unsigned))
 
+struct summary_nodestats {
+    char *host;
+    struct in_addr addr;
+    char *task;
+    char *stack;
+    int ref;
+
+    unsigned finds;
+    unsigned rngexts;
+    unsigned writes;
+    unsigned other_fstsnds;
+
+    unsigned adds;
+    unsigned upds;
+    unsigned dels;
+    unsigned bsql;     /* block sql */
+    unsigned recom;    /* recom sql */
+    unsigned snapisol; /* snapisol sql */
+    unsigned serial;   /* serial sql */
+
+    unsigned sql_queries;
+    unsigned sql_steps;
+    unsigned sql_rows;
+};
+
 /* records in sql master db look like this (no appended rrn info) */
 struct sqlmdbrectype {
     char type[8];
@@ -2876,7 +2901,11 @@ void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);
 void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
                            char *host);
-struct rawnodestats *get_raw_node_stats(char *host);
+struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
+                                        char *host, int fd);
+int release_node_stats(const char *task, const char *stack, char *host);
+struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
+                                                int disp_rates);
 
 struct reqlogger *reqlog_alloc(void);
 int peer_dropped_connection(struct sqlclntstate *clnt);
@@ -3372,8 +3401,6 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
                                 const uint8_t *p_buf_end, int debug,
                                 char *frommach, sorese_info_t *sorese);
 void destroy_ireq(struct dbenv *dbenv, struct ireq *iq);
-
-int toclientstats(struct ireq *);
 
 void create_watchdog_thread(struct dbenv *);
 

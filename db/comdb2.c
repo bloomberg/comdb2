@@ -573,6 +573,7 @@ void set_tzdir(char *dir);
 void free_tzdir();
 
 extern void init_sql_hint_table();
+extern void init_clientstats_table();
 extern int bdb_osql_log_repo_init(int *bdberr);
 
 int gbl_use_plan = 1;
@@ -2449,6 +2450,7 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     tz_hash_init();
     init_sql_hint_table();
+    init_clientstats_table();
 
     dbenv->long_trn_table = hash_init(sizeof(unsigned long long));
 

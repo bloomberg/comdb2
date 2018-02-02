@@ -1340,4 +1340,10 @@ REGISTER_TUNABLE("dump_full_netqueue", "Dump net-queue on full rcode. "
                  "(Default: off)", TUNABLE_BOOLEAN, &gbl_dump_full_net_queue,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE(
+    "max_clientstats",
+    "Max number of client stats stored in comdb2_clientstats. (Default 10000)",
+    TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
+    NULL);
+
 #endif /* _DB_TUNABLES_H */

@@ -34,6 +34,7 @@ add_library(sqlite
   ext/comdb2/triggers.c
   ext/comdb2/tunables.c
   ext/comdb2/users.c
+  ext/comdb2/clientstats.c
   ext/misc/completion.c
   ext/misc/json1.c
   ext/expert/sqlite3expert.c

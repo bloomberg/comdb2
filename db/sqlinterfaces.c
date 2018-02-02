@@ -1399,6 +1399,10 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     reqlog_set_rows(logger, clnt->nrows);
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
+    if (clnt->rawnodestats) {
+        clnt->rawnodestats->sql_steps += thd->nmove + thd->nfind + thd->nwrite;
+    }
+
     thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;
 
     if (clnt->conninfo.pename[0]) {
@@ -3474,10 +3478,6 @@ static void query_stats_setup(struct sqlthdstate *thd,
     /* berkdb stats */
     bdb_reset_thread_stats();
 
-    /* node stats */
-    if (!clnt->rawnodestats) {
-        clnt->rawnodestats = get_raw_node_stats(clnt->origin);
-    }
     if (clnt->rawnodestats)
         clnt->rawnodestats->sql_queries++;
 
@@ -5394,11 +5394,6 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     sql_statement_done(thd->sqlthd, thd->logger, clnt, outrc);
 
-    if (clnt->rawnodestats && thd->sqlthd) {
-        clnt->rawnodestats->sql_steps +=
-            thd->sqlthd->nmove + thd->sqlthd->nfind + thd->sqlthd->nwrite;
-    }
-
     if (stmt && !((Vdbe *)stmt)->explain && ((Vdbe *)stmt)->nScan > 1 &&
         (BDB_ATTR_GET(thedb->bdb_attr, PLANNER_WARN_ON_DISCREPANCY) == 1 ||
          BDB_ATTR_GET(thedb->bdb_attr, PLANNER_SHOW_SCANSTATS) == 1)) {
@@ -6280,13 +6275,16 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     if (initial) {
         bzero(clnt, sizeof(*clnt));
     }
+    if (clnt->rawnodestats) {
+        release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
+        clnt->rawnodestats = NULL;
+    }
     clnt->sb = sb;
     clnt->must_close_sb = 1;
     clnt->recno = 1;
     strcpy(clnt->tzname, "America/New_York");
     clnt->dtprec = gbl_datetime_precision;
     bzero(&clnt->conninfo, sizeof(clnt->conninfo));
-    clnt->rawnodestats = NULL;
     clnt->using_case_insensitive_like = 0;
 
     if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE)
