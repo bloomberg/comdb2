@@ -38,6 +38,20 @@ void comdb2SetWriteFlag(int wrflag);
 int is_datacopy(BtCursor *pCur, int *fnum);
 int get_datacopy(BtCursor *pCur, int fnum, Mem *m);
 
+
+#define cur_is_raw(pCur)                               \
+    (pCur ?                                            \
+       (pCur->cursor_class == CURSORCLASS_TABLE  ||    \
+        pCur->cursor_class == CURSORCLASS_INDEX  ||    \
+        pCur->cursor_class == CURSORCLASS_REMOTE ||    \
+        pCur->is_sampled_idx)                          \
+     :  0)                                             \
+
+
+#define cur_is_remote(pCur)                            \
+    (pCur->cursor_class == CURSORCLASS_REMOTE)         \
+
+
 static inline int get_data_wrapper(BtCursor *pCur, void *invoid, int fnum, Mem *m)
 {
     if (unlikely(pCur->cursor_class == CURSORCLASS_REMOTE)) {
