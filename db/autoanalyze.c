@@ -83,7 +83,7 @@ static inline void loc_print_date(const time_t *timep)
 /* auto_analyze_table() will be passed a copy of the table name,
  * and it will free it.
  */
-void *auto_analyze_table(void *arg)
+static void *auto_analyze_table(void *arg)
 {
     char *tblname = (char *)arg;
     int rc;

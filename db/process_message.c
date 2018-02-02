@@ -1194,7 +1194,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return -1;
         }
 
-       logmsg(LOGMSG_USER, "will attempt to delete unused files for %s\n", table);
+        logmsg(LOGMSG_USER, "will attempt to delete unused files for %s\n", table);
 
         rc = bdb_del_unused_files(db->handle, &bdberr);
         if (rc != 0) {

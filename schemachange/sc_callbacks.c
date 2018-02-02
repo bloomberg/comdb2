@@ -15,6 +15,7 @@
  */
 
 #include <memory_sync.h>
+#include <unistd.h>
 #include "schemachange.h"
 #include "sc_callbacks.h"
 #include "sc_global.h"
@@ -446,34 +447,73 @@ int schema_change_abort_callback(void)
     return 0;
 }
 
+/* needs to be done when SC is done running so get sc lock
+ * needs to free tblname which was strduped when this was called
+ */
+static void *list_unused_files_thd(void *arg)
+{
+    sleep(1);
+    char *tblname = arg;
+    struct dbtable *db = get_dbtable_by_name(tblname);
+    if (db == NULL) {
+        logmsg(LOGMSG_ERROR, "%s : invalid table %s\n", __func__, tblname);
+        return NULL;
+    }
+    bdb_state_type *bdb_state = db->handle;
+    thrman_register(THRTYPE_SCHEMACHANGE);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
+    BDB_READLOCK("list_unused_files_thd");
+    rdlock_schema_lk();
+
+    sc_del_unused_files_start_ms = time_epochms();
+
+    int bdberr;
+    int rc;
+    rc = bdb_list_unused_files(db->handle, &bdberr, "bdb_list_unused_files_thd");
+    if(rc || bdberr != BDBERR_NOERROR)
+        logmsg(LOGMSG_WARN, "%s: errors listing old files\n", __func__);
+    unlock_schema_lk();
+
+    sc_del_unused_files_start_ms = 0;
+    BDB_RELLOCK();
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
+
+    return NULL;
+}
+
+static void create_list_unused_files_thread(char *tblname)
+{
+    pthread_t thread_id;
+    pthread_attr_t thd_attr;
+
+    if (gbl_exit) return;
+    logmsg(LOGMSG_INFO, "starting list_unused_files thread\n");
+
+    pthread_attr_init(&thd_attr);
+    pthread_attr_setstacksize(&thd_attr, 4 * 1024 * 1024); /* 4M */
+    pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
+
+    int rc = pthread_create(&thread_id, &thd_attr,
+                            list_unused_files_thd, (void *)tblname);
+    if (rc != 0) {
+        logmsg(LOGMSG_FATAL, "create_udpbackup_analyze_thread: pthread_create: %s", strerror(errno));
+        exit(1);
+    }
+}
+
 /* Deletes all the files that are no longer needed after a schema change.  Also
  * sets a timer that the checkpoint thread checks by calling
  * sc_del_unused_files_check_progress() */
-void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
+inline void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
 {
-    int bdberr;
-
-    pthread_mutex_lock(&gbl_sc_lock);
-    sc_del_unused_files_start_ms = time_epochms();
-    pthread_mutex_unlock(&gbl_sc_lock);
-
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
-        
-        /* do this in a separate thread
-        if (bdb_list_unused_files_tran(db->handle, tran, &bdberr,
-                                       "schemachange") ||
-            bdberr != BDBERR_NOERROR)
-            logmsg(LOGMSG_WARN, "errors listing old files\n");
-        */
+        create_list_unused_files_thread(strdup(db->tablename));
     } else {
+        int bdberr;
         if (bdb_del_unused_files_tran(db->handle, tran, &bdberr) ||
             bdberr != BDBERR_NOERROR)
             logmsg(LOGMSG_WARN, "errors deleting files\n");
     }
-
-    pthread_mutex_lock(&gbl_sc_lock);
-    sc_del_unused_files_start_ms = 0;
-    pthread_mutex_unlock(&gbl_sc_lock);
 }
 
 void sc_del_unused_files(struct dbtable *db)
@@ -509,9 +549,8 @@ void sc_del_unused_files_check_progress(void)
 
 static int delete_table_rep(char *table, void *tran)
 {
-    struct dbtable *db;
     int rc, bdberr;
-    db = get_dbtable_by_name(table);
+    struct dbtable *db = get_dbtable_by_name(table);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "delete_table_rep : invalid table %s\n", table);
         return -1;
