@@ -43,25 +43,10 @@ int get_datacopy(BtCursor *pCur, int fnum, Mem *m);
     (pCur ?                                            \
        (pCur->cursor_class == CURSORCLASS_TABLE  ||    \
         pCur->cursor_class == CURSORCLASS_INDEX  ||    \
-        pCur->cursor_class == CURSORCLASS_REMOTE ||    \
+        cur_is_remote(pCur)                      ||    \
         pCur->is_sampled_idx)                          \
      :  0)                                             \
 
-
-#define cur_is_remote(pCur)                            \
-    (pCur->cursor_class == CURSORCLASS_REMOTE)         \
-
-
-static inline int get_data_wrapper(BtCursor *pCur, void *invoid, int fnum, Mem *m)
-{
-    if (unlikely(pCur->cursor_class == CURSORCLASS_REMOTE)) {
-        /* convert the remote buffer to M array */
-        abort(); /* this is suppsed to be a cooked access */
-    } else {
-        return get_data(pCur, pCur->sc, invoid, fnum, m, 0,
-                        pCur->clnt->tzname);
-    }
-}
 
 /*
 ** Invoke this macro on memory cells just prior to changing the
@@ -2917,14 +2902,14 @@ case OP_Column: {
     else if( pC->isTable ){
       zData = (u8 *)sqlite3BtreeDataFetch(pCrsr, &avail);
       assert(zData != NULL);
-      rc = get_data_wrapper(pCrsr, (u8 *) zData, p2, pDest);
+      rc = get_data(pCrsr, pCrsr->sc, (u8 *) zData, p2, pDest, 0, pCrsr->clnt->tzname);
     }else{
       datacopy = p2;
       if( is_datacopy(pCrsr, &datacopy) ){
         rc = get_datacopy(pCrsr, datacopy, pDest);
       }else if(pC->nCookFields>=0 && p2>=pC->nCookFields){
         zData = (u8 *)get_lastkey(pCrsr);
-        rc = get_data_wrapper(pCrsr, (u8 *) zData, p2, pDest);
+        rc = get_data(pCrsr, pCrsr->sc, (u8 *) zData, p2, pDest, 0, pCrsr->clnt->tzname);
       }else{
         goto cooked_access;
       }

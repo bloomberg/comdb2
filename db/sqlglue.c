@@ -5379,7 +5379,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
         *pRes = 0;
         goto done;
 
-    } else if (pCur->cursor_class == CURSORCLASS_REMOTE) { /* remote cursor */
+    } else if (cur_is_remote(pCur)) { /* remote cursor */
 
         /* filter the supported operations */
         if (bias != OP_SeekLT && bias != OP_SeekLE && bias != OP_SeekGE &&
