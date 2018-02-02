@@ -842,4 +842,20 @@ void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
 void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *);
+
+int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in,
+             int fnum, Mem *m, uint8_t flip_orig, const char *tzname);
+
+#define cur_is_raw(pCur)                               \
+    (pCur ?                                            \
+       (pCur->cursor_class == CURSORCLASS_TABLE  ||    \
+        pCur->cursor_class == CURSORCLASS_INDEX  ||    \
+        pCur->cursor_class == CURSORCLASS_REMOTE ||    \
+        pCur->is_sampled_idx)                          \
+     :  0)                                             \
+
+
+#define cur_is_remote(pCur)                            \
+    (pCur->cursor_class == CURSORCLASS_REMOTE)         \
+
 #endif

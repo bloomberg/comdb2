@@ -102,11 +102,6 @@
 
 #include "str0.h"
 
-#include "sqlglue_vdbe.h"
-extern int is_raw(BtCursor *pCur);
-extern int is_remote(BtCursor *pCur);
-extern int get_data(BtCursor *pCur, void *invoid, int fnum, Mem *m);
-
 unsigned long long get_id(bdb_state_type *);
 
 struct temp_cursor;
@@ -754,7 +749,7 @@ static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
 
     for (fnum = 0; fnum < nField; fnum++) {
         memset(&m[fnum], 0, sizeof(Mem));
-        rc = sqlglue_get_data_int(pCur, s, in, fnum, &m[fnum], 1, tzname);
+        rc = get_data(pCur, s, in, fnum, &m[fnum], 1, tzname);
         if (rc)
             goto done;
         type[fnum] =
@@ -6330,8 +6325,8 @@ int is_datacopy(BtCursor *pCur, int *fnum)
     return 0;
 }
 
-int sqlglue_get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
-                         int fnum, Mem *m, uint8_t flip_orig, const char *tzname)
+int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in,
+             int fnum, Mem *m, uint8_t flip_orig, const char *tzname)
 {
     int null;
     i64 ival;
@@ -6781,7 +6776,7 @@ int get_datacopy(BtCursor *pCur, int fnum, Mem *m)
         vtag_to_ondisk_vermap(pCur->db, in, NULL, ver);
     }
 
-    return sqlglue_get_data_int(pCur, pCur->db->schema, in, fnum, m, 0,
+    return get_data(pCur, pCur->db->schema, in, fnum, m, 0,
                         pCur->clnt->tzname);
 }
 
