@@ -806,7 +806,10 @@ inline int getkeysize(const struct dbtable *tbl, int ixnum)
     return tbl->ix_keylen[ixnum];
 }
 
-inline int getdatsize(const struct dbtable *tbl) { return tbl->lrl; }
+inline int getdatsize(const struct dbtable *tbl)
+{
+    return tbl->lrl;
+}
 
 /*lookup dbs..*/
 struct dbtable *getdbbynum(int num)

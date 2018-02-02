@@ -6325,8 +6325,8 @@ int is_datacopy(BtCursor *pCur, int *fnum)
     return 0;
 }
 
-int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in,
-             int fnum, Mem *m, uint8_t flip_orig, const char *tzname)
+int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
+             uint8_t flip_orig, const char *tzname)
 {
     int null;
     i64 ival;
@@ -6776,8 +6776,7 @@ int get_datacopy(BtCursor *pCur, int fnum, Mem *m)
         vtag_to_ondisk_vermap(pCur->db, in, NULL, ver);
     }
 
-    return get_data(pCur, pCur->db->schema, in, fnum, m, 0,
-                        pCur->clnt->tzname);
+    return get_data(pCur, pCur->db->schema, in, fnum, m, 0, pCur->clnt->tzname);
 }
 
 static int

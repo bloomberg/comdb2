@@ -547,7 +547,7 @@ static inline void reset_bulk_bt(bdb_realdb_tag_t *bt)
 }
 
 static inline int bdb_berkdb_get_pagelsn(bdb_berkdb_t *pberkdb, DB_LSN *lsn,
-                                  int *bdberr)
+                                         int *bdberr)
 {
     bdb_berkdb_impl_t *berkdb = pberkdb->impl;
     bdb_realdb_tag_t *bt = &berkdb->u.rl;
@@ -1144,12 +1144,14 @@ static inline int bdb_berkdb_key(bdb_berkdb_t *pberkdb, char **dta, int *bdberr)
     return bdb_berkdb_dtakey(pberkdb, dta, 0, bdberr);
 }
 
-static inline int bdb_berkdb_dtasize(bdb_berkdb_t *pberkdb, int *dtalen, int *bdberr)
+static inline int bdb_berkdb_dtasize(bdb_berkdb_t *pberkdb, int *dtalen,
+                                     int *bdberr)
 {
     return bdb_berkdb_dtakeysize(pberkdb, dtalen, 1, bdberr);
 }
 
-static inline int bdb_berkdb_keysize(bdb_berkdb_t *pberkdb, int *keylen, int *bdberr)
+static inline int bdb_berkdb_keysize(bdb_berkdb_t *pberkdb, int *keylen,
+                                     int *bdberr)
 {
     return bdb_berkdb_dtakeysize(pberkdb, keylen, 0, bdberr);
 }
@@ -1539,9 +1541,15 @@ static int bdb_berkdb_insert(bdb_berkdb_t *pberkdb, char *key, int keylen,
     return rc;
 }
 
-static inline int bdb_berkdb_prevent_optimized(bdb_berkdb_t *pberkdb) { return 0; }
+static inline int bdb_berkdb_prevent_optimized(bdb_berkdb_t *pberkdb)
+{
+    return 0;
+}
 
-static inline int bdb_berkdb_allow_optimized(bdb_berkdb_t *pberkdb) { return 0; }
+static inline int bdb_berkdb_allow_optimized(bdb_berkdb_t *pberkdb)
+{
+    return 0;
+}
 
 static int bdb_berkdb_delete(bdb_berkdb_t *pberkdb, int *bdberr)
 {

@@ -637,8 +637,9 @@ err:
     return DB_UNCOMPRESS_ERR;
 }
 
-inline int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
-               void *to, size_t tolen, struct odh *odh, void **freeptr)
+inline int bdb_unpack(bdb_state_type *bdb_state, const void *from,
+                      size_t fromlen, void *to, size_t tolen, struct odh *odh,
+                      void **freeptr)
 {
     return bdb_unpack_updateid(bdb_state, from, fromlen, to, tolen, odh, -1,
                                freeptr, 1);
@@ -1033,7 +1034,7 @@ int bdb_cget_unpack(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data,
 
 /* The updateid-agnostic version of this code. */
 inline int bdb_cget_unpack_blob(bdb_state_type *bdb_state, DBC *dbcp, DBT *key,
-                         DBT *data, uint8_t *ver, u_int32_t flags)
+                                DBT *data, uint8_t *ver, u_int32_t flags)
 {
     return bdb_cget_unpack_int(bdb_state, dbcp, key, data, ver, flags, 0);
 }
@@ -1084,14 +1085,15 @@ static int bdb_get_unpack_int(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
     return rc;
 }
 
-inline int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key,
-                   DBT *data, uint8_t *ver, u_int32_t flags)
+inline int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
+                          DBT *key, DBT *data, uint8_t *ver, u_int32_t flags)
 {
     return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 1);
 }
 
 inline int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
-                        DBT *key, DBT *data, uint8_t *ver, u_int32_t flags)
+                               DBT *key, DBT *data, uint8_t *ver,
+                               u_int32_t flags)
 {
     return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 0);
 }
@@ -1362,7 +1364,7 @@ int bdb_validate_compression_alg(int alg)
 }
 
 inline void bdb_get_compr_flags(bdb_state_type *bdb_state, int *odh, int *compr,
-                         int *blob_compr)
+                                int *blob_compr)
 {
     *odh = bdb_state->ondisk_header;
     *compr = bdb_state->compress;
