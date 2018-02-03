@@ -23,8 +23,9 @@ include_directories(
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_BINARY_DIR}/sqlite
-  ${PROTOBUF_C_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
+  ${OPENSSL_INCLUDE_DIR}
+  ${PROTOBUF_C_INCLUDE_DIR}
 )
 
 set(SOURCES newsql.c)
