@@ -154,28 +154,42 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt)
             } else if (strncasecmp(sqlstr, "user", 4) == 0) {
                 sqlstr += 4;
                 sqlstr = skipws(sqlstr);
-                sqlite3Dequote(sqlstr);
-                if (strlen(sqlstr) >= sizeof(clnt->user)) {
-                    snprintf(err, sizeof(err),
-                             "set user: '%s' exceeds %d characters", sqlstr,
-                             sizeof(clnt->user) - 1);
-                    rc = ii + 1;
+                if (!sqlite3IsCorrectlyQuoted(sqlstr)) {
+                        snprintf(err, sizeof(err),
+                                "set user: '%s' is an incorrectly quoted string", sqlstr,
+                                sizeof(clnt->user) - 1);
+                        rc = ii + 1;
                 } else {
-                    clnt->have_user = 1;
-                    strcpy(clnt->user, sqlstr);
+                    sqlite3Dequote(sqlstr);
+                    if (strlen(sqlstr) >= sizeof(clnt->user)) {
+                        snprintf(err, sizeof(err),
+                                "set user: '%s' exceeds %d characters", sqlstr,
+                                sizeof(clnt->user) - 1);
+                        rc = ii + 1;
+                    } else {
+                        clnt->have_user = 1;
+                        strcpy(clnt->user, sqlstr);
+                    }
                 }
             } else if (strncasecmp(sqlstr, "password", 8) == 0) {
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
-                sqlite3Dequote(sqlstr);
-                if (strlen(sqlstr) >= sizeof(clnt->password)) {
-                    snprintf(err, sizeof(err),
-                             "set password: '%s' exceeds %d characters", sqlstr,
-                             sizeof(clnt->password) - 1);
-                    rc = ii + 1;
+                if (!sqlite3IsCorrectlyQuoted(sqlstr)) {
+                        snprintf(err, sizeof(err),
+                                "set user: '%s' is an incorrectly quoted string", sqlstr,
+                                sizeof(clnt->user) - 1);
+                        rc = ii + 1;
                 } else {
-                    clnt->have_password = 1;
-                    strcpy(clnt->password, sqlstr);
+                    sqlite3Dequote(sqlstr);
+                    if (strlen(sqlstr) >= sizeof(clnt->password)) {
+                        snprintf(err, sizeof(err),
+                                "set password: '%s' exceeds %d characters", sqlstr,
+                                sizeof(clnt->password) - 1);
+                        rc = ii + 1;
+                    } else {
+                        clnt->have_password = 1;
+                        strcpy(clnt->password, sqlstr);
+                    }
                 }
             } else if (strncasecmp(sqlstr, "spversion", 9) == 0) {
                 clnt->spversion.version_num = 0;
