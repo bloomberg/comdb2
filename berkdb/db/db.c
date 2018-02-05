@@ -475,8 +475,10 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 
 	if (F_ISSET(dbp, DB_AM_HASH))
 		dbp->peer = dbp;
-	for (lldbp = LIST_FIRST(&dbenv->dblist);
-	    lldbp != NULL; lldbp = LIST_NEXT(lldbp, dblistlinks)) {
+    int foundinhash = hash_find(dbenv->dbhash, dbp->fileid) != NULL;
+
+    for (lldbp = LIST_FIRST(&dbenv->dblist);
+	    foundinhash && lldbp != NULL; lldbp = LIST_NEXT(lldbp, dblistlinks)) {
 		if (memcmp(lldbp->fileid, dbp->fileid, DB_FILE_ID_LEN) == 0) {
 			if (F_ISSET(dbp, DB_AM_HASH)) {
 				lldbp->peer = dbp;
@@ -485,11 +487,11 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 				break;
 			}
 		}
-	}
+    }
 
 	for (maxid = 0, ldbp = LIST_FIRST(&dbenv->dblist);
 	    ldbp != NULL; ldbp = LIST_NEXT(ldbp, dblistlinks)) {
-		if (fname != NULL &&
+		if (foundinhash && fname != NULL &&
 		    memcmp(ldbp->fileid, dbp->fileid, DB_FILE_ID_LEN) == 0 &&
 		    ldbp->meta_pgno == dbp->meta_pgno)
 			break;
@@ -518,6 +520,7 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 		listc_init(&dbenv->dbs[dbp->adj_fileid], offsetof(DB, adjlnk));
 
 		LIST_INSERT_HEAD(&dbenv->dblist, dbp, dblistlinks);
+        hash_add(dbenv->dbhash, dbp->fileid);
 	} else {
 		dbp->adj_fileid = ldbp->adj_fileid;
 		LIST_INSERT_AFTER(ldbp, dbp, dblistlinks);

@@ -2137,6 +2137,7 @@ struct __db_env {
 	struct {
 		struct __db *lh_first;
 	} dblist;
+	hash_t *dbhash;
 
 	/*
 	 * XA support.
