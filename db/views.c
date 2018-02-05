@@ -2709,16 +2709,16 @@ void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId,
     shard = &view->shards[iRowid];
 
     switch (iCol) {
-    case VIEWS_VIEWNAME:
+    case VIEWS_SHARD_VIEWNAME:
         sqlite3_result_text(ctx, view->name, -1, NULL);
         break;
-    case VIEWS_SHARDNAME:
+    case VIEWS_SHARD_NAME:
         sqlite3_result_text(ctx, shard->tblname, -1, NULL);
         break;
-    case VIEWS_START:
+    case VIEWS_SHARD_START:
         sqlite3_result_int(ctx, shard->low);
         break;
-    case VIEWS_END:
+    case VIEWS_SHARD_END:
         sqlite3_result_int(ctx, shard->high);
         break;
     }
@@ -2751,6 +2751,91 @@ nextTimepart:
         *piRowid = 0;
         (*piTimepartId)++;
         goto nextTimepart;
+    }
+}
+
+/** 
+ * Open/close the event queue
+ */
+int timepart_events_open(int *num)
+{
+    cron_lock(timepart_sched);
+
+    *num = cron_num_events(timepart_sched);
+
+    return VIEW_NOERR;
+}
+
+int timepart_events_close(void)
+{
+    cron_unlock(timepart_sched);
+
+    return VIEW_NOERR;
+}
+
+static const char *_events_name(FCRON func)
+{
+    const char *name;
+    if (func == _view_cron_phase1)
+        name = "AddShard";
+    else if(func == _view_cron_phase2)
+        name = "RollShards";
+    else if(func == _view_cron_phase3)
+        name = "DropShard";
+    else 
+        name = "Unknown";
+
+    return name;
+}
+
+/**
+ * Get event data
+ */
+void timepart_events_column(sqlite3_context *ctx, int iRowid, int iCol)
+{
+    const char *name;
+    FCRON func;
+    int epoch;
+    uuid_t *sid;
+    void *arg1;
+    void *arg2;
+    void *arg3;
+    uuidstr_t us;
+
+    if (iRowid < 0 || iCol >= VIEWS_SHARD_MAXCOLUMN) {
+        sqlite3_result_null(ctx);
+        return;
+    }
+
+    if(cron_event_details(timepart_sched, iRowid,
+        &func, &epoch, &arg1, &arg2, &arg3, sid) != 1) {
+        sqlite3_result_null(ctx);
+        return;
+    }
+   
+    switch(iCol) {
+        case VIEWS_EVENT_NAME:
+            name = _events_name(func);
+            sqlite3_result_text(ctx, name, -1, NULL);
+            break;
+        case VIEWS_EVENT_WHEN:
+            sqlite3_result_int(ctx, epoch);
+            break;
+        case VIEWS_EVENT_SOURCEID:
+            sqlite3_result_text(ctx, comdb2uuidstr(*sid, us), -1, NULL);
+            break;
+        case VIEWS_EVENT_ARG1:
+            sqlite3_result_text(ctx, (char*)arg1, -1, NULL); 
+            break;
+        case VIEWS_EVENT_ARG2:
+            if(arg2)
+                sqlite3_result_text(ctx, (char*)arg2, -1, NULL);
+            else
+                sqlite3_result_null(ctx);
+            break;
+        case VIEWS_EVENT_ARG3:
+            sqlite3_result_null(ctx);
+            break;
     }
 }
 

@@ -46,7 +46,7 @@ static int timepartConnect(
 
   rc = sqlite3_declare_vtab(db, 
           "CREATE TABLE comdb2_timepartitions(name, period, retention,"
-          " nshards, version, shard0name, starttime, source_id)");
+          " nshards, version, shard0name, starttime, sourceid)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -247,5 +247,125 @@ const sqlite3_module systblTimepartShardsModule = {
   0,                    /* xRename */
 };
 
+
+
+typedef struct timepart_events_cursor timepart_events_cursor;
+struct timepart_events_cursor {
+  sqlite3_vtab_cursor base;  /* Base class - must be first */
+  sqlite3_int64 iRowid;      /* The rowid */
+  int maxEvents;
+  int eof;
+};
+
+
+static int timepartEventsConnect(
+  sqlite3 *db,
+  void *pAux,
+  int argc,
+  const char *const*argv,
+  sqlite3_vtab **ppVtab,
+  char **pErr
+){
+  sqlite3_vtab *pNew;
+  int rc;
+
+  rc = sqlite3_declare_vtab(db,
+          "CREATE TABLE comdb2_timepartevents(name, swhen, sourceid, arg1, arg2, arg3)");
+  if( rc==SQLITE_OK ){
+      pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
+      if( pNew==0 ) return SQLITE_NOMEM;
+      memset(pNew, 0, sizeof(*pNew));
+  }
+  return rc;
+
+}
+
+
+/* cursor open */
+static int timepartEventsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
+  timepart_events_cursor *pCur;
+  int rc;
+
+  pCur = sqlite3_malloc( sizeof(*pCur) );
+  if( pCur==0 ) return SQLITE_NOMEM;
+  memset(pCur, 0, sizeof(*pCur));
+  *ppCursor = &pCur->base;
+  pCur->iRowid = -1;
+
+  rc = timepart_events_open(&pCur->maxEvents);
+  if(rc)
+    return SQLITE_ERROR;
+
+  pCur->eof = (pCur->maxEvents == 0);
+
+  return SQLITE_OK;
+}
+
+/* cursor close */
+static int timepartEventsClose(sqlite3_vtab_cursor *cur){
+  timepart_events_close();
+  sqlite3_free(cur);
+  return SQLITE_OK;
+}
+
+static int timepartEventsFilter(
+  sqlite3_vtab_cursor *pVtabCursor,
+  int idxNum, const char *idxStr,
+  int argc, sqlite3_value **argv
+){
+  timepart_events_cursor *pCur = (timepart_events_cursor*)pVtabCursor;
+
+  pCur->iRowid = 0;
+  pCur->eof = (pCur->maxEvents==0);
+  return SQLITE_OK;
+}
+
+/* cursor next */
+static int timepartEventsNext(sqlite3_vtab_cursor *cur){
+  timepart_events_cursor *pCur = (timepart_events_cursor*)cur;
+
+  if(pCur->iRowid<pCur->maxEvents)
+      pCur->iRowid++;
+    
+  pCur->eof = (pCur->iRowid >= pCur->maxEvents);
+
+  return SQLITE_OK;
+}
+
+/* cursor get column */
+static int timepartEventsColumn(
+  sqlite3_vtab_cursor *cur,
+  sqlite3_context *ctx,
+  int i
+){
+  timepart_events_cursor *pCur = (timepart_events_cursor*)cur;
+
+  timepart_events_column(ctx, pCur->iRowid, i);
+  return SQLITE_OK;
+};
+
+
+const sqlite3_module systblTimepartEventsModule = {
+  0,                    /* iVersion */
+  0,                    /* xCreate */
+  timepartEventsConnect,/* xConnect */
+  timepartBestIndex,    /* xBestIndex */
+  timepartDisconnect,   /* xDisconnect */
+  0,                    /* xDestroy */
+  timepartEventsOpen,   /* xOpen - open a cursor */
+  timepartEventsClose,  /* xClose - close a cursor */
+  timepartEventsFilter, /* xFilter - configure scan constraints */
+  timepartEventsNext,   /* xNext - advance a cursor */
+  timepartEof,          /* xEof - check for end of scan */
+  timepartEventsColumn, /* xColumn - read data */
+  timepartRowid,        /* xRowid - read data */
+  0,                    /* xUpdate */
+  0,                    /* xBegin */
+  0,                    /* xSync */
+  0,                    /* xCommit */
+  0,                    /* xRollback */
+  0,                    /* xFindMethod */
+  0,                    /* xRename */
+};
 
 #endif /* SQLITE_BUILDING_FOR_COMDB2 */

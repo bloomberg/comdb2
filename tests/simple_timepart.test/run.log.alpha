@@ -3,6 +3,7 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions
 
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
 cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
 [
  {
@@ -22,6 +23,8 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards
 (name='testview1', period='test2min', retention=2, nshards=1, version=0, shard0name='t')
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
 (name='testview1', shardname='t')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
+(name='AddShard', arg1='testview1', arg2=NULL, arg3=NULL)
 Run 1
 cdb2sql ${CDB2_OPTIONS} dorintdb default insert into testview1 values (100000, 'A row', 0x'DEADBEAF')
 (rows inserted=1)
@@ -753,6 +756,8 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards
 (name='testview1', period='test2min', retention=2, nshards=1, version=0, shard0name='t')
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
 (name='testview1', shardname='t')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
+(name='AddShard', arg1='testview1', arg2=NULL, arg3=NULL)
 Waiting for t1;t
 Done waiting for t1;t
 cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
@@ -778,6 +783,8 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
 (name='testview1', shardname='t1')
 (name='testview1', shardname='t')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
+(name='AddShard', arg1='testview1', arg2=NULL, arg3=NULL)
 Run 2
 cdb2sql ${CDB2_OPTIONS} dorintdb default insert into testview1 values (200000, 'A row', 0x'DEADBEAF')
 (rows inserted=1)
@@ -1807,6 +1814,8 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
 (name='testview1', shardname='t1')
 (name='testview1', shardname='t')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
+(name='AddShard', arg1='testview1', arg2=NULL, arg3=NULL)
 Waiting for t2;t1
 Done waiting for t2;t1
 cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
@@ -1832,6 +1841,8 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
 (name='testview1', shardname='t2')
 (name='testview1', shardname='t1')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
+(name='AddShard', arg1='testview1', arg2=NULL, arg3=NULL)
 Run 3
 cdb2sql ${CDB2_OPTIONS} dorintdb default insert into testview1 values (300000, 'A row', 0x'DEADBEAF')
 (rows inserted=1)
@@ -2861,6 +2872,8 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
 (name='testview1', shardname='t2')
 (name='testview1', shardname='t1')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
+(name='AddShard', arg1='testview1', arg2=NULL, arg3=NULL)
 Waiting for t0;t2
 Done waiting for t0;t2
 cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
@@ -2886,6 +2899,8 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
 (name='testview1', shardname='t0')
 (name='testview1', shardname='t2')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
+(name='AddShard', arg1='testview1', arg2=NULL, arg3=NULL)
 Run 4
 cdb2sql ${CDB2_OPTIONS} dorintdb default insert into testview1 values (400000, 'A row', 0x'DEADBEAF')
 (rows inserted=1)
@@ -3915,6 +3930,8 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
 (name='testview1', shardname='t0')
 (name='testview1', shardname='t2')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
+(name='AddShard', arg1='testview1', arg2=NULL, arg3=NULL)
 Waiting for t1;t0
 Done waiting for t1;t0
 cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
@@ -3940,6 +3957,8 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
 (name='testview1', shardname='t1')
 (name='testview1', shardname='t0')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
+(name='AddShard', arg1='testview1', arg2=NULL, arg3=NULL)
 Run 5
 cdb2sql ${CDB2_OPTIONS} dorintdb default insert into testview1 values (500000, 'A row', 0x'DEADBEAF')
 (rows inserted=1)
@@ -4969,6 +4988,8 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
 (name='testview1', shardname='t1')
 (name='testview1', shardname='t0')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
+(name='AddShard', arg1='testview1', arg2=NULL, arg3=NULL)
 Waiting for t2;t1
 Done waiting for t2;t1
 cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
@@ -4994,9 +5015,12 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
 (name='testview1', shardname='t2')
 (name='testview1', shardname='t1')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
+(name='AddShard', arg1='testview1', arg2=NULL, arg3=NULL)
 cdb2sql ${CDB2_OPTIONS} dorintdb default DROP TIME PARTITION testview1
 cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
 []
 
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
