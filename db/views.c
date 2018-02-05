@@ -2636,89 +2636,92 @@ static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
 }
 
 /**
- * Returned a malloced string for the "iRowid"-th timepartition, column iCol 
+ * Returned a malloced string for the "iRowid"-th timepartition, column iCol
  * NOTE: this is called with a read lock in views structure
  */
-void timepart_systable_column(sqlite3_context *ctx, int iRowid, enum systable_columns iCol)
+void timepart_systable_column(sqlite3_context *ctx, int iRowid,
+                              enum systable_columns iCol)
 {
-   timepart_views_t  *views = thedb->timepart_views;
-   timepart_view_t   *view;
-   uuidstr_t us;
+    timepart_views_t *views = thedb->timepart_views;
+    timepart_view_t *view;
+    uuidstr_t us;
 
-   if (iRowid<0 || iRowid>=views->nviews || iCol >= VIEWS_MAXCOLUMN) {
-       sqlite3_result_null(ctx);
-   }
+    if (iRowid < 0 || iRowid >= views->nviews || iCol >= VIEWS_MAXCOLUMN) {
+        sqlite3_result_null(ctx);
+    }
 
-   view = views->views[iRowid];
+    view = views->views[iRowid];
 
-   switch(iCol) {
-       case VIEWS_NAME:
-           sqlite3_result_text(ctx, view->name, -1, NULL);
-           break;
-       case VIEWS_PERIOD:
-           sqlite3_result_text(ctx, period_to_name(view->period), -1, NULL);
-           break;
-       case VIEWS_RETENTION:
-           sqlite3_result_int(ctx, view->retention);
-           break;
-       case VIEWS_NSHARDS:
-           sqlite3_result_int(ctx, view->nshards);
-           break;
-       case VIEWS_VERSION:
-           sqlite3_result_int(ctx, view->version);
-           break;
-       case VIEWS_SHARD0NAME:
-           sqlite3_result_text(ctx, view->shard0name, -1, NULL);
-           break;
-       case VIEWS_STARTTIME:
-           sqlite3_result_int(ctx, view->starttime);
-           break;
-       case VIEWS_SOURCEID:
-           sqlite3_result_text(ctx, comdb2uuidstr(view->source_id, us), -1, NULL);
-           break;
-   }
+    switch (iCol) {
+    case VIEWS_NAME:
+        sqlite3_result_text(ctx, view->name, -1, NULL);
+        break;
+    case VIEWS_PERIOD:
+        sqlite3_result_text(ctx, period_to_name(view->period), -1, NULL);
+        break;
+    case VIEWS_RETENTION:
+        sqlite3_result_int(ctx, view->retention);
+        break;
+    case VIEWS_NSHARDS:
+        sqlite3_result_int(ctx, view->nshards);
+        break;
+    case VIEWS_VERSION:
+        sqlite3_result_int(ctx, view->version);
+        break;
+    case VIEWS_SHARD0NAME:
+        sqlite3_result_text(ctx, view->shard0name, -1, NULL);
+        break;
+    case VIEWS_STARTTIME:
+        sqlite3_result_int(ctx, view->starttime);
+        break;
+    case VIEWS_SOURCEID:
+        sqlite3_result_text(ctx, comdb2uuidstr(view->source_id, us), -1, NULL);
+        break;
+    }
 }
 
 /**
- * Returned a malloced string for the "iRowid"-th shard, column iCol of 
+ * Returned a malloced string for the "iRowid"-th shard, column iCol of
  * timepart iTimepartId
  * NOTE: this is called with a read lock in views structure
  */
-void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId, int iRowid,
-        enum systable_shard_columns iCol)
+void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId,
+                                    int iRowid,
+                                    enum systable_shard_columns iCol)
 {
-   timepart_views_t  *views = thedb->timepart_views;
-   timepart_view_t   *view;
-   timepart_shard_t  *shard;
-   uuidstr_t us;
+    timepart_views_t *views = thedb->timepart_views;
+    timepart_view_t *view;
+    timepart_shard_t *shard;
+    uuidstr_t us;
 
-   if( iTimepartId<0 || iTimepartId>=views->nviews || iCol >= VIEWS_SHARD_MAXCOLUMN) {
-      sqlite3_result_null(ctx);
-      return;
-   }
+    if (iTimepartId < 0 || iTimepartId >= views->nviews ||
+        iCol >= VIEWS_SHARD_MAXCOLUMN) {
+        sqlite3_result_null(ctx);
+        return;
+    }
 
-   view = views->views[iTimepartId];
+    view = views->views[iTimepartId];
 
-   if( iRowid >= view->nshards) {
-      sqlite3_result_null(ctx);
-      return;
-   }
-   shard = &view->shards[iRowid];
+    if (iRowid >= view->nshards) {
+        sqlite3_result_null(ctx);
+        return;
+    }
+    shard = &view->shards[iRowid];
 
-   switch(iCol) {
-       case VIEWS_VIEWNAME:
-           sqlite3_result_text(ctx, view->name, -1, NULL);
-           break;
-       case VIEWS_SHARDNAME:
-           sqlite3_result_text(ctx, shard->tblname, -1, NULL);
-           break;
-       case VIEWS_START:
-           sqlite3_result_int(ctx, shard->low);
-           break;
-       case VIEWS_END:
-           sqlite3_result_int(ctx, shard->high);
-           break;
-   }
+    switch (iCol) {
+    case VIEWS_VIEWNAME:
+        sqlite3_result_text(ctx, view->name, -1, NULL);
+        break;
+    case VIEWS_SHARDNAME:
+        sqlite3_result_text(ctx, shard->tblname, -1, NULL);
+        break;
+    case VIEWS_START:
+        sqlite3_result_int(ctx, shard->low);
+        break;
+    case VIEWS_END:
+        sqlite3_result_int(ctx, shard->high);
+        break;
+    }
 }
 
 /**
@@ -2730,27 +2733,26 @@ int timepart_get_num_views(void)
     return thedb->timepart_views->nviews;
 }
 
-/** 
+/**
  *  Move iRowid to point to the next shard, switching shards in the process
  *  NOTE: this is called with a read lock in views structure
  */
 void timepart_systable_next_shard(int *piTimepartId, int *piRowid)
 {
-    timepart_views_t  *views = thedb->timepart_views;
-    timepart_view_t   *view;
+    timepart_views_t *views = thedb->timepart_views;
+    timepart_view_t *view;
 
 nextTimepart:
-    if(*piTimepartId>=views->nviews) return;
+    if (*piTimepartId >= views->nviews)
+        return;
     view = views->views[*piTimepartId];
     (*piRowid)++;
-    if (*piRowid >= view->nshards) 
-    {
+    if (*piRowid >= view->nshards) {
         *piRowid = 0;
         (*piTimepartId)++;
         goto nextTimepart;
     }
 }
-
 
 #include "views_serial.c"
 

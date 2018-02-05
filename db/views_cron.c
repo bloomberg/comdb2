@@ -188,14 +188,14 @@ static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
 
 static void _destroy_event(cron_sched_t *sched, cron_event_t *event)
 {
-   listc_rfl(&sched->events, event);
-   if(event->arg1)
-      free(event->arg1);
-   if(event->arg2)
-      free(event->arg2);
-   if(event->arg3)
-      free(event->arg3);
-   free(event);
+    listc_rfl(&sched->events, event);
+    if (event->arg1)
+        free(event->arg1);
+    if (event->arg2)
+        free(event->arg2);
+    if (event->arg3)
+        free(event->arg3);
+    free(event);
 }
 
 /**
@@ -253,7 +253,7 @@ static void *_cron_runner(void *arg)
                 event->func(event->source_id, event->arg1, event->arg2, event->arg3,
                             &xerr);
                 pthread_mutex_lock(&sched->mtx);
-                sched->running = 0;     
+                sched->running = 0;
 
                 if (xerr.errval)
                     logmsg(LOGMSG_ERROR, 
@@ -347,28 +347,25 @@ retry:
     return (found)?VIEW_NOERR:VIEW_ERR_EXIST;
 }
 
-
-/** 
+/**
  * Clear queue of events
- * 
- */ 
+ *
+ */
 void cron_clear_queue(cron_sched_t *sched)
 {
-   cron_event_t      *event;
-   struct timespec   now;   
+    cron_event_t *event;
+    struct timespec now;
 
-   pthread_mutex_lock(&sched->mtx);
+    pthread_mutex_lock(&sched->mtx);
 
-   if (sched->running)
-   {
-      clock_gettime(CLOCK_REALTIME, &now);
-      now.tv_sec += 1;
-      pthread_cond_timedwait(&sched->cond, &sched->mtx, &now);
-   }
-   
-   /* mop up */
-   while(event=sched->events.top)
-      _destroy_event(sched, event);
-   pthread_mutex_unlock(&sched->mtx);
+    if (sched->running) {
+        clock_gettime(CLOCK_REALTIME, &now);
+        now.tv_sec += 1;
+        pthread_cond_timedwait(&sched->cond, &sched->mtx, &now);
+    }
+
+    /* mop up */
+    while (event = sched->events.top)
+        _destroy_event(sched, event);
+    pthread_mutex_unlock(&sched->mtx);
 }
-

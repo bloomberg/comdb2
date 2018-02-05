@@ -59,25 +59,24 @@ typedef struct timepart_sc_arg {
     void *tran; /*remove?*/
 } timepart_sc_arg_t;
 
-
 enum systable_columns {
-    VIEWS_NAME
-    ,VIEWS_PERIOD
-    ,VIEWS_RETENTION
-    ,VIEWS_NSHARDS
-    ,VIEWS_VERSION
-    ,VIEWS_SHARD0NAME
-    ,VIEWS_STARTTIME
-    ,VIEWS_SOURCEID
-    ,VIEWS_MAXCOLUMN
+    VIEWS_NAME,
+    VIEWS_PERIOD,
+    VIEWS_RETENTION,
+    VIEWS_NSHARDS,
+    VIEWS_VERSION,
+    VIEWS_SHARD0NAME,
+    VIEWS_STARTTIME,
+    VIEWS_SOURCEID,
+    VIEWS_MAXCOLUMN
 };
 
 enum systable_shard_columns {
-    VIEWS_VIEWNAME
-    ,VIEWS_SHARDNAME
-    ,VIEWS_START
-    ,VIEWS_END
-    ,VIEWS_SHARD_MAXCOLUMN
+    VIEWS_VIEWNAME,
+    VIEWS_SHARDNAME,
+    VIEWS_START,
+    VIEWS_END,
+    VIEWS_SHARD_MAXCOLUMN
 };
 
 /**
@@ -349,20 +348,22 @@ void views_unlock(void);
 char *timepart_newest_shard(const char *view_name, unsigned long long *version);
 
 /**
- * Returned a malloced string for the "iRowid"-th timepartition, column iCol 
+ * Returned a malloced string for the "iRowid"-th timepartition, column iCol
  * NOTE: this is called with a read lock in views structure
  */
-void timepart_systable_column(sqlite3_context *ctx, int iRowid, enum systable_columns iCol);
+void timepart_systable_column(sqlite3_context *ctx, int iRowid,
+                              enum systable_columns iCol);
 
 /**
- * Returned a malloced string for the "iRowid"-th shard, column iCol of 
+ * Returned a malloced string for the "iRowid"-th shard, column iCol of
  * timepart iTimepartId
  * NOTE: this is called with a read lock in views structure
  */
-void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId, int iRowid,
-        enum systable_shard_columns iCol);
+void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId,
+                                    int iRowid,
+                                    enum systable_shard_columns iCol);
 
-/** 
+/**
  *  Move iRowid to point to the next shard, switching shards in the process
  *  NOTE: this is called with a read lock in views structure
  */

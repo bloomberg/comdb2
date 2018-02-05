@@ -32,10 +32,10 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
  */
 void cron_signal_worker(cron_sched_t *sched);
 
-/** 
+/**
  * Clear queue of events
- * 
- */ 
+ *
+ */
 void cron_clear_queue(cron_sched_t *sched);
 
 #endif
