@@ -395,12 +395,12 @@ int cron_num_events(cron_sched_t *sched)
     return counter;
 }
 
-int cron_event_details(cron_sched_t *sched, int idx,
-        FCRON *func, int *epoch, void **arg1, void **arg2, void **arg3, uuid_t *sid)
+int cron_event_details(cron_sched_t *sched, int idx, FCRON *func, int *epoch,
+                       void **arg1, void **arg2, void **arg3, uuid_t *sid)
 {
     cron_event_t *event;
     int counter = 0;
-    int i=0;
+    int i = 0;
 
     event = sched->events.top;
     while (event) {
@@ -417,7 +417,5 @@ int cron_event_details(cron_sched_t *sched, int idx,
         event = event->lnk.next;
     }
 
-    return (counter==idx);
-
+    return (counter == idx);
 }
-

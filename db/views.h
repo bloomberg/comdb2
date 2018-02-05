@@ -385,7 +385,7 @@ void timepart_systable_next_shard(int *piTimepartId, int *piRowid);
  */
 int timepart_get_num_views(void);
 
-/** 
+/**
  * Open/close the event queue
  */
 int timepart_events_open(int *num);
@@ -395,7 +395,6 @@ int timepart_events_close(void);
  * Get event data
  */
 void timepart_events_column(sqlite3_context *ctx, int iRowid, int iCol);
-
 
 #endif
 

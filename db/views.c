@@ -2754,7 +2754,7 @@ nextTimepart:
     }
 }
 
-/** 
+/**
  * Open/close the event queue
  */
 int timepart_events_open(int *num)
@@ -2778,11 +2778,11 @@ static const char *_events_name(FCRON func)
     const char *name;
     if (func == _view_cron_phase1)
         name = "AddShard";
-    else if(func == _view_cron_phase2)
+    else if (func == _view_cron_phase2)
         name = "RollShards";
-    else if(func == _view_cron_phase3)
+    else if (func == _view_cron_phase3)
         name = "DropShard";
-    else 
+    else
         name = "Unknown";
 
     return name;
@@ -2807,35 +2807,35 @@ void timepart_events_column(sqlite3_context *ctx, int iRowid, int iCol)
         return;
     }
 
-    if(cron_event_details(timepart_sched, iRowid,
-        &func, &epoch, &arg1, &arg2, &arg3, sid) != 1) {
+    if (cron_event_details(timepart_sched, iRowid, &func, &epoch, &arg1, &arg2,
+                           &arg3, sid) != 1) {
         sqlite3_result_null(ctx);
         return;
     }
-   
-    switch(iCol) {
-        case VIEWS_EVENT_NAME:
-            name = _events_name(func);
-            sqlite3_result_text(ctx, name, -1, NULL);
-            break;
-        case VIEWS_EVENT_WHEN:
-            sqlite3_result_int(ctx, epoch);
-            break;
-        case VIEWS_EVENT_SOURCEID:
-            sqlite3_result_text(ctx, comdb2uuidstr(*sid, us), -1, NULL);
-            break;
-        case VIEWS_EVENT_ARG1:
-            sqlite3_result_text(ctx, (char*)arg1, -1, NULL); 
-            break;
-        case VIEWS_EVENT_ARG2:
-            if(arg2)
-                sqlite3_result_text(ctx, (char*)arg2, -1, NULL);
-            else
-                sqlite3_result_null(ctx);
-            break;
-        case VIEWS_EVENT_ARG3:
+
+    switch (iCol) {
+    case VIEWS_EVENT_NAME:
+        name = _events_name(func);
+        sqlite3_result_text(ctx, name, -1, NULL);
+        break;
+    case VIEWS_EVENT_WHEN:
+        sqlite3_result_int(ctx, epoch);
+        break;
+    case VIEWS_EVENT_SOURCEID:
+        sqlite3_result_text(ctx, comdb2uuidstr(*sid, us), -1, NULL);
+        break;
+    case VIEWS_EVENT_ARG1:
+        sqlite3_result_text(ctx, (char *)arg1, -1, NULL);
+        break;
+    case VIEWS_EVENT_ARG2:
+        if (arg2)
+            sqlite3_result_text(ctx, (char *)arg2, -1, NULL);
+        else
             sqlite3_result_null(ctx);
-            break;
+        break;
+    case VIEWS_EVENT_ARG3:
+        sqlite3_result_null(ctx);
+        break;
     }
 }
 

@@ -40,7 +40,7 @@ void cron_clear_queue(cron_sched_t *sched);
 
 /**
  * Lock/unlock scheduler so I can look at events
- * 
+ *
  * NOTE: locking waits for the running to complete
  *
  */
@@ -56,7 +56,7 @@ int cron_num_events(cron_sched_t *sched);
  * Event details for the 'i'-th event
  * Returns 1 if event exist
  */
-int cron_event_details(cron_sched_t *sched, int idx,
-        FCRON *func, int *epoch, void **arg1, void **arg2, void **arg3, uuid_t *sid);
+int cron_event_details(cron_sched_t *sched, int idx, FCRON *func, int *epoch,
+                       void **arg1, void **arg2, void **arg3, uuid_t *sid);
 
 #endif
