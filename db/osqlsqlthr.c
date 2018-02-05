@@ -1642,6 +1642,9 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     int rc = 0;
     int bdberr = 0;
 
+    if (pCur->cursor_class == CURSORCLASS_TEMPTABLE)
+        return 0;
+
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_read_by_mach_get(
             pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename,
