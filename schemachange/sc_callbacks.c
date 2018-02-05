@@ -452,32 +452,31 @@ int schema_change_abort_callback(void)
  */
 static void *list_unused_files_thd(void *arg)
 {
-    sleep(1);
+    int rc;
+    int bdberr;
     char *tblname = arg;
+    rdlock_schema_lk();
     struct dbtable *db = get_dbtable_by_name(tblname);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s : invalid table %s\n", __func__, tblname);
-        return NULL;
+        goto done;
     }
     bdb_state_type *bdb_state = db->handle;
     thrman_register(THRTYPE_SCHEMACHANGE);
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
     BDB_READLOCK("list_unused_files_thd");
-    rdlock_schema_lk();
 
     sc_del_unused_files_start_ms = time_epochms();
 
-    int bdberr;
-    int rc;
-    rc = bdb_list_unused_files(db->handle, &bdberr, "bdb_list_unused_files_thd");
+    rc = bdb_list_unused_files(db->handle, &bdberr, "list_unused_files_thd");
     if(rc || bdberr != BDBERR_NOERROR)
         logmsg(LOGMSG_WARN, "%s: errors listing old files\n", __func__);
-    unlock_schema_lk();
 
     sc_del_unused_files_start_ms = 0;
     BDB_RELLOCK();
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
-
+done:
+    unlock_schema_lk();
     return NULL;
 }
 
