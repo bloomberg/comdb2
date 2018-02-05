@@ -2685,14 +2685,14 @@ void timepart_systable_column(sqlite3_context *ctx, int iRowid, enum systable_co
  * NOTE: this is called with a read lock in views structure
  */
 void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId, int iRowid,
-        enum systable_columns iCol)
+        enum systable_shard_columns iCol)
 {
    timepart_views_t  *views = thedb->timepart_views;
    timepart_view_t   *view;
    timepart_shard_t  *shard;
    uuidstr_t us;
 
-   if( iTimepartId<0 || iTimepartId>=views->nviews || iCol >= VIEWS_SHARDS_MAXCOLUMN) {
+   if( iTimepartId<0 || iTimepartId>=views->nviews || iCol >= VIEWS_SHARD_MAXCOLUMN) {
       sqlite3_result_null(ctx);
       return;
    }
@@ -2706,7 +2706,7 @@ void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId, int i
    shard = &view->shards[iRowid];
 
    switch(iCol) {
-       case VIEWS_NAME:
+       case VIEWS_VIEWNAME:
            sqlite3_result_text(ctx, view->name, -1, NULL);
            break;
        case VIEWS_SHARDNAME:

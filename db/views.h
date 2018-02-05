@@ -63,19 +63,22 @@ typedef struct timepart_sc_arg {
 enum systable_columns {
     VIEWS_NAME
     ,VIEWS_PERIOD
-    ,VIEWS_SHARDNAME=VIEWS_PERIOD
     ,VIEWS_RETENTION
-    ,VIEWS_START=VIEWS_RETENTION
     ,VIEWS_NSHARDS
-    ,VIEWS_END=VIEWS_NSHARDS
     ,VIEWS_VERSION
-    ,VIEWS_SHARDS_MAXCOLUMN=VIEWS_VERSION
     ,VIEWS_SHARD0NAME
     ,VIEWS_STARTTIME
     ,VIEWS_SOURCEID
     ,VIEWS_MAXCOLUMN
 };
 
+enum systable_shard_columns {
+    VIEWS_VIEWNAME
+    ,VIEWS_SHARDNAME
+    ,VIEWS_START
+    ,VIEWS_END
+    ,VIEWS_SHARD_MAXCOLUMN
+};
 
 /**
  * Initialize the views
@@ -357,7 +360,7 @@ void timepart_systable_column(sqlite3_context *ctx, int iRowid, enum systable_co
  * NOTE: this is called with a read lock in views structure
  */
 void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId, int iRowid,
-        enum systable_columns iCol);
+        enum systable_shard_columns iCol);
 
 /** 
  *  Move iRowid to point to the next shard, switching shards in the process
