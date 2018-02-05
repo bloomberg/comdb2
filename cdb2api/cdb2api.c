@@ -1691,6 +1691,8 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
         sbuf2flush(sb);
     }
 
+    sbuf2settimeout(sb, 5000, 5000);
+
 #if WITH_SSL
     if (try_ssl(hndl, sb, indx) != 0) {
         sbuf2close(sb);
@@ -1698,7 +1700,6 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
     }
 #endif
 
-    sbuf2settimeout(sb, 5000, 5000);
     hndl->sb = sb;
     hndl->num_set_commands_sent = 0;
     hndl->sent_client_info = 0;
