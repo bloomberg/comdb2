@@ -72,9 +72,9 @@ static int timepartOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
   pCur->iRowid = -1;
-  pCur->eof = 0;
   views_lock();
   pCur->maxTimepartitions = timepart_get_num_views();
+  pCur->eof = (pCur->maxTimepartitions == 0);
 
   return SQLITE_OK;
 }
@@ -133,7 +133,7 @@ static int timepartFilter(
   timepart_cursor *pCur = (timepart_cursor*)pVtabCursor;
 
   pCur->iRowid = 0;
-  pCur->eof = 0;
+  pCur->eof = (pCur->maxTimepartitions == 0);
   return SQLITE_OK;
 }
 
