@@ -448,7 +448,7 @@ retry_read:
     if (hdr.type == FSQL_SSLCONN) {
 #if WITH_SSL
         /* If client requires SSL and we haven't done that,
-           do SSL_accept() now. handle_newsql_requests()
+           do SSL_accept() now. handle_newsql_request()
            will close the sb if SSL_accept() fails. */
 
         /* Can't SSL_accept twice - probably a client API logic error.
@@ -1021,11 +1021,7 @@ done:
     /* XXX free logical tran?  */
     close_appsock(sb);
 
-    clnt.dbtran.mode = TRANLEVEL_INVALID;
-    set_high_availability(&clnt, 0);
-    // clnt.high_availability = 0;
-    if (clnt.query_stats)
-        free(clnt.query_stats);
+    cleanup_clnt(&clnt);
 
     pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
