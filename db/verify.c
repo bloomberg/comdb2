@@ -388,8 +388,8 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
 
     pthread_mutex_lock(&v.lk);
     if (rc = pthread_create(&v.tid, &attr, verify_td, &v)) {
-        fprintf(stderr, "%s unable to create thread for verify: %s\n", 
-                strerror(errno));
+        logmsg(LOGMSG_ERROR, "%s unable to create thread for verify: %s\n", 
+                __func__, strerror(errno));
         sbuf2printf(sb, "FAILED\n");
         pthread_attr_destroy(&attr);
         pthread_mutex_destroy(&v.lk);
@@ -398,10 +398,7 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
     }
 
     while (v.done == 0) {
-        struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec += 1;
-        pthread_cond_timedwait(&v.cd, &v.lk, &ts);
+        pthread_cond_wait(&v.cd, &v.lk, &ts);
     }
 
     pthread_attr_destroy(&attr);
@@ -409,4 +406,3 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
     pthread_cond_destroy(&v.cd);
     return v.rcode;
 }
-
