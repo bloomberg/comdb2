@@ -365,9 +365,9 @@ static void *verify_td(void *arg)
     return NULL;
 }
 
-int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds, 
-        int attempt_fix,
-        int (*lua_callback)(void *, const char *), void *lua_params)
+int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
+                 int attempt_fix, int (*lua_callback)(void *, const char *),
+                 void *lua_params)
 {
     int rc;
     struct verify_args v;
