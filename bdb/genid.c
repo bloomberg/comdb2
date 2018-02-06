@@ -343,7 +343,7 @@ unsigned long long get_id(bdb_state_type *bdb_state)
     dupcount = bdb_state->id;
     Pthread_mutex_unlock(&(bdb_state->id_lock));
 
-    iptr[0] = htonl(time_epoch());
+    iptr[0] = htonl(comdb2_time_epoch());
     iptr[1] = htonl(dupcount);
 
     return id;
@@ -467,7 +467,7 @@ static unsigned long long get_genid_timebased(bdb_state_type *bdb_state,
 
     if (!bdb_state->attr->genidplusplus) {
     stall:
-        epochtime = time_epoch();
+        epochtime = comdb2_time_epoch();
         contexttime = bdb_genid_timestamp(gblcontext);
 
         if (contexttime > epochtime) {
@@ -483,7 +483,7 @@ try_again:
 
         Pthread_mutex_lock(&(bdb_state->gblcontext_lock));
 
-        epoch = time_epoch();
+        epoch = comdb2_time_epoch();
         gblcontext = bdb_state->gblcontext;
         contexttime = bdb_genid_timestamp(gblcontext);
 

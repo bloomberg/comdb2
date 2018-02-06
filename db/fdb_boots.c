@@ -18,7 +18,6 @@
 #include <assert.h>
 
 #include <rtcpu.h>
-#include <machine.h>
 
 #include "comdb2.h"
 #include "fdb_boots.h"
@@ -198,7 +197,7 @@ char *fdb_select_node(fdb_location_t **ploc, enum fdb_location_op op, char *arg,
             *p_lcl_nodes = 1;
         }
 
-        return machine(); /* local node */
+        return gbl_mynode; /* local node */
     }
 
     assert(loc != NULL);

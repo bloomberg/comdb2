@@ -172,7 +172,7 @@ static struct hostent *__compat_gethostbyname(const char *name)
 
 #endif /* defined(_SUN_SOURCE) || defined(_LINUX_SOURCE) */
 
-struct hostent *bb_gethostbyname(const char *name)
+struct hostent *comdb2_gethostbyname(const char *name)
 {
 #if defined(_SUN_SOURCE) || defined(_LINUX_SOURCE)
     return __compat_gethostbyname(name);
@@ -239,7 +239,7 @@ static struct servent *__compat_getservbyname(const char *name,
 
 #endif /* defined(_SUN_SOURCE) || defined(__linux__) */
 
-struct servent *bb_getservbyname(const char *name, const char *proto)
+struct servent *comdb2_getservbyname(const char *name, const char *proto)
 {
 #if defined(_SUN_SOURCE) || defined(__linux__)
     return __compat_getservbyname(name, proto);
@@ -349,9 +349,9 @@ static void *test_bb_gethostservstar_thread(void *v)
         struct servent *sent;
 
         /* GETHOSTBYNAME */
-        hentname = bb_gethostbyname("sundev9");
+        hentname = comdb2_gethostbyname("sundev9");
         if (hentname == NULL) {
-            fprintf(stderr, "bb_gethostbyname failed: h_errno=%d\n", h_errno);
+            fprintf(stderr, "comdb2_gethostbyname failed: h_errno=%d\n", h_errno);
             return NULL;
         }
 
@@ -364,9 +364,9 @@ static void *test_bb_gethostservstar_thread(void *v)
         assert(prev_hentname == hentname); /* EXPECT SAME ADDRESS EACH TIME */
 
         /* GETSERVBYNAME */
-        sent = bb_getservbyname("bigrcv", "tcp");
+        sent = comdb2_getservbyname("bigrcv", "tcp");
         if (sent == NULL) {
-            fprintf(stderr, "bb_getservbyname failed\n");
+            fprintf(stderr, "comdb2_getservbyname failed\n");
             return NULL;
         }
         fprintf(stderr, "tid %d iter %d:  %s -> %d (sent = %p)\n",

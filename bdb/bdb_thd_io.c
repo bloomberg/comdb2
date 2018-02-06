@@ -43,11 +43,11 @@ static int bdb_pread(int fd, void *buf, size_t nbytes, off_t offset)
 
     io_start();
 
-    t1 = time_epochms();
+    t1 = comdb2_time_epochms();
     rc = pread(fd, buf, nbytes, offset);
     errno_sav = errno;
 
-    t2 = time_epochms();
+    t2 = comdb2_time_epochms();
     if ((t2 - t1) > 2000) {
         logmsg(LOGMSG_WARN, "LONG PREAD: %d ms\n", t2 - t1);
         long_reads++;
@@ -69,10 +69,10 @@ static ssize_t bdb_read(int fd, void *buf, size_t nbytes)
 
     io_start();
 
-    t1 = time_epochms();
+    t1 = comdb2_time_epochms();
     rc = read(fd, buf, nbytes);
     errno_sav = errno;
-    t2 = time_epochms();
+    t2 = comdb2_time_epochms();
     if ((t2 - t1) > 2000) {
         logmsg(LOGMSG_WARN, "LONG READ: %d ms\n", t2 - t1);
         long_reads++;
@@ -93,10 +93,10 @@ static int bdb_fsync(int fd)
 
     /* io_start(); */
 
-    t1 = time_epochms();
+    t1 = comdb2_time_epochms();
     rc = fsync(fd);
     errno_sav = errno;
-    t2 = time_epochms();
+    t2 = comdb2_time_epochms();
     if ((t2 - t1) > 2000)
         logmsg(LOGMSG_WARN, "LONG FSYNC: %d ms\n", t2 - t1);
 
@@ -114,10 +114,10 @@ static int bdb_pwrite(int fd, const void *buf, size_t nbytes, off_t offset)
 
     io_start();
 
-    t1 = time_epochms();
+    t1 = comdb2_time_epochms();
     rc = pwrite(fd, buf, nbytes, offset);
     errno_sav = errno;
-    t2 = time_epochms();
+    t2 = comdb2_time_epochms();
     if ((t2 - t1) > 2000) {
         logmsg(LOGMSG_WARN, "LONG PWRITE: %d ms\n", t2 - t1);
         long_writes++;
@@ -139,10 +139,10 @@ static ssize_t bdb_write(int fd, const void *buf, size_t nbytes)
 
     io_start();
 
-    t1 = time_epochms();
+    t1 = comdb2_time_epochms();
     rc = write(fd, buf, nbytes);
     errno_sav = errno;
-    t2 = time_epochms();
+    t2 = comdb2_time_epochms();
     if ((t2 - t1) > 2000) {
         logmsg(LOGMSG_WARN, "LONG WRITE: %d ms\n", t2 - t1);
         long_writes++;

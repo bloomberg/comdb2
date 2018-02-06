@@ -98,7 +98,7 @@ int fastseed( int seed[2] )
 	do
 	{
         assert_pthread_mutex_lock(&fastseedlk);
-		epoch=time_epoch();
+		epoch=comdb2_time_epoch();
 		if (epoch==0) /* uh oh.. something broken */
 		{
 			assert_pthread_mutex_unlock(&fastseedlk);
@@ -123,7 +123,7 @@ int fastseed( int seed[2] )
 		}
 		assert_pthread_mutex_unlock(&fastseedlk);
 
-		epoch=time_epoch();
+		epoch=comdb2_time_epoch();
 		if (retries==0) firstepoch=epoch;
 
 		if (retries>8 && firstepoch==epoch)
@@ -189,6 +189,6 @@ int getcomputerroom_(int *node) {
     return 0;
 }
 
-int getlclbfpoolwidthbigsnd(void) {
+int getlclbfpoolwidthbigsnd2(void) {
     return 16*1024-1;
 }

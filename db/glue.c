@@ -70,9 +70,6 @@
 #include "remote.h"
 
 #include <cdb2api.h>
-
-#include "comdb2_shm.h"
-
 #include <dlmalloc.h>
 
 #include "sqloffload.h"
@@ -89,7 +86,6 @@
 #include <alloca.h>
 #include <intern_strings.h>
 #include "debug_switches.h"
-#include <machine.h>
 #include <trigger.h>
 
 #include "views.h"
@@ -622,7 +618,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
     }
 
     /*wait for synchronization, if necessary */
-    start_ms = time_epochms();
+    start_ms = comdb2_time_epochms();
     switch (sync) {
     default:
 
@@ -697,7 +693,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
             poll(0, 0, next_commit - now);
     }
 
-    end_ms = time_epochms();
+    end_ms = comdb2_time_epochms();
     iq->reptimems = end_ms - start_ms;
 
     return rc;
@@ -3024,7 +3020,7 @@ int is_node_up(const char *host)
 {
     int rc;
 
-    if (gbl_rtcpu_debug && CLASS_TEST == get_mach_class(machine())) {
+    if (gbl_rtcpu_debug && CLASS_TEST == get_mach_class(gbl_mynode)) {
         /* For debugging rtcpu problems use an "alternative" rtcpu system.
          * Basically look for a file in /bbsrc/db/comdb2/rtcpu - if a file
          * for the node exists, then it is considered rt'd off. */

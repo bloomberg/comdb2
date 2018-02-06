@@ -1401,14 +1401,14 @@ static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
     if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
         bdb_flush_cache(bdb_state);
     else {
-        start = time_epochms();
+        start = comdb2_time_epochms();
         rc = ll_checkpoint(bdb_state, force);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "txn_checkpoint err %d\n", rc);
             *bdberr = BDBERR_MISC;
             return -1;
         }
-        end = time_epochms();
+        end = comdb2_time_epochms();
         ctrace("checkpoint took %dms\n", end - start);
     }
 

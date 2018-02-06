@@ -46,13 +46,13 @@ extern "C" {
  *       any data that needs to persist.  making a shallow copy is not
  *sufficient.
  **/
-struct hostent *bb_gethostbyname(const char *name);
+struct hostent *comdb2_gethostbyname(const char *name);
 
 /**
- * Similar semantics to bb_gethostbyname.
+ * Similar semantics to comdb2_gethostbyname.
  * This uses a different thread-safe buffer than bb_gethost*
  **/
-struct servent *bb_getservbyname(const char *name, const char *proto);
+struct servent *comdb2_getservbyname(const char *name, const char *proto);
 
 #ifndef _LINUX_SOURCE
 /**

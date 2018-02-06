@@ -317,10 +317,10 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
         /* please stop !!! */
         if (thedb->stopped || thedb->exiting) {
             if (stop_time == 0) {
-                stop_time = time_epoch();
+                stop_time = comdb2_time_epoch();
             } else {
                 if (stop_time + gbl_blocksql_grace /*seconds grace time*/ <=
-                    time_epoch()) {
+                    comdb2_time_epoch()) {
                     logmsg(LOGMSG_ERROR, 
                             "blocksql session closing early, db stopped\n");
                     return ERR_NOMASTER;

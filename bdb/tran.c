@@ -182,7 +182,7 @@ int bdb_update_startlsn_lk(bdb_state_type *bdb_state, struct tran_tag *intran,
         if (countstep > maxstep) {
             maxstep = countstep;
 
-            if ((now = time_epoch()) - lastpr) {
+            if ((now = comdb2_time_epoch()) - lastpr) {
                 logmsg(LOGMSG_USER, "Maxstep was %d\n", maxstep);
                 comdb2_cheapstack(stderr);
                 maxstep = 0;
@@ -1680,7 +1680,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
             *bdberr = 0;
             /* If this is an abort, we've already gotten a new physical txn */
             char *blkcpy = alloca(blklen + sizeof(int)), *p;
-            int t = time_epoch();
+            int t = comdb2_time_epoch();
             memcpy(blkcpy, blkseq, blklen);
             p = ((char *)blkcpy) + blklen;
             memcpy(p, &t, sizeof(int));

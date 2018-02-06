@@ -220,7 +220,7 @@ static void free_cached_blob(cached_blob_t *blob)
  * Must call this under lock. */
 static void refresh_cached_blob(cached_blob_t *blob)
 {
-    blob->cache_time = time_epoch();
+    blob->cache_time = comdb2_time_epoch();
     if (bloblist.bot != blob) {
         listc_rfl(&bloblist, blob);
         listc_abl(&bloblist, blob);
@@ -319,7 +319,7 @@ void *cache_blob_data_int(struct ireq *iq, int rrn, unsigned long long genid,
         return blob_existing;
     }
 
-    blob->cache_time = time_epoch();
+    blob->cache_time = comdb2_time_epoch();
     blob->numblobs = numblobs;
     memcpy(blob->bloblens, bloblens, sizeof(size_t) * numblobs);
     memcpy(blob->bloboffs, bloboffs, sizeof(size_t) * numblobs);
@@ -362,7 +362,7 @@ err:
 void purge_old_cached_blobs(void)
 {
     if (gbl_blob_maxage > 0) {
-        int now = time_epoch();
+        int now = comdb2_time_epoch();
 
         LOCK_BLOB_MUTEX();
         // can't safely purge old blobs if there're threads blocking on malloc()

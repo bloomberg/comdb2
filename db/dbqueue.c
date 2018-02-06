@@ -59,7 +59,6 @@
 #include <portmuxapi.h>
 
 #include "util.h"
-#include "machine.h"
 
 #include <net_types.h>
 #include <cdb2_constants.h>
@@ -146,7 +145,7 @@ int gbl_node1rtcpuable = 0;       /* no rtcpu check for node 1 */
 
 int gbl_reset_queue_cursor = 1;
 
-extern int getlclbfpoolwidthbigsnd(void);
+extern int getlclbfpoolwidthbigsnd2(void);
 
 static void *dbqueue_consume_thread(void *arg);
 int consume(struct ireq *iq, const void *fnd, struct consumer *consumer,
@@ -505,7 +504,7 @@ int static dbqueue_add_consumer_int(struct dbtable *db, int consumern,
             consumer->bbhost_tag = strdup(hosttag);
         } else {
             if (strcmp(machstr, "multi") != 0 &&
-                bb_gethostbyname(machstr) == NULL) {
+                comdb2_gethostbyname(machstr) == NULL) {
                 logmsg(LOGMSG_ERROR, "%s:%d consumer %d: unknown host %s\n",
                         __FILE__, __LINE__, consumern, machstr);
                 consumer_destroy(consumer);
@@ -648,7 +647,7 @@ int dbqueue_set_consumer_options(struct consumer *consumer, const char *opts)
  * for each consumer. */
 void dbqueue_admin(struct dbenv *dbenv)
 {
-    int iammaster = (dbenv->master == machine()) ? 1 : 0;
+    int iammaster = (dbenv->master == gbl_mynode) ? 1 : 0;
 
     pthread_mutex_lock(&dbenv->dbqueue_admin_lk);
     if (dbenv->dbqueue_admin_running) {
@@ -750,7 +749,7 @@ static void goose_queue(struct dbtable *db)
     int rc, retries, debug = 0;
     int num_goosed = 0;
 
-    int iammaster = (db->dbenv->master == machine()) ? 1 : 0;
+    int iammaster = (db->dbenv->master == gbl_mynode) ? 1 : 0;
 
     if (!iammaster || db->dbenv->stopped || db->dbenv->exiting)
         return;
@@ -871,7 +870,7 @@ void dbqueue_goose(struct dbtable *db, int force)
     int rc, retries, debug = 0;
     int gotlk = 0;
 
-    int iammaster = (db->dbenv->master == machine()) ? 1 : 0;
+    int iammaster = (db->dbenv->master == gbl_mynode) ? 1 : 0;
 
     if (!iammaster || db->dbenv->stopped || db->dbenv->exiting)
         return;
@@ -1092,7 +1091,7 @@ static void dbqueue_stat_thread_int(struct dbtable *db, int fullstat, int walk_q
                 logmsg(LOGMSG_USER, "  [consumer %02d]: none\n", ii);
 
             if (stats[ii].has_stuff) {
-                unsigned int now = time_epoch();
+                unsigned int now = comdb2_time_epoch();
                 unsigned int age = now - stats[ii].epoch;
                 struct tm ctime;
                 time_t cepoch = (time_t)stats[ii].epoch;
@@ -1197,7 +1196,7 @@ static void dbqueue_flush(struct dbtable *db, int consumern)
     logmsg(LOGMSG_INFO, "Beginning flush for queue '%s' consumer %d\n",
            db->tablename, consumern);
 
-    if (db->dbenv->master != machine()) {
+    if (db->dbenv->master != gbl_mynode) {
         logmsg(LOGMSG_WARN, "... but I am not the master node, so I do nothing.\n");
         return;
     }
@@ -1411,7 +1410,7 @@ static void *dbqueue_consume_thread(void *arg)
     struct consumer *consumer = arg;
     struct dbtable *db = consumer->db;
     struct dbenv *dbenv = db->dbenv;
-    int iammaster = (dbenv->master == machine()) ? 1 : 0;
+    int iammaster = (dbenv->master == gbl_mynode) ? 1 : 0;
     struct ireq iq;
     struct dbq_cursor last;
     int ii;
@@ -1452,7 +1451,7 @@ static void *dbqueue_consume_thread(void *arg)
     bzero(consumer->items, sizeof(consumer->items));
     consumer->numitems = 0;
 
-    while (!dbenv->stopped && !dbenv->exiting && dbenv->master == machine() &&
+    while (!dbenv->stopped && !dbenv->exiting && dbenv->master == gbl_mynode &&
            !consumer->please_stop) {
         int rc;
         char *dta = NULL;
@@ -1528,10 +1527,10 @@ static void *dbqueue_consume_thread(void *arg)
         /* Read the next thing from the queue */
         bdb_reset_thread_stats();
         thrman_where(thr_self, "dbq_get");
-        startms = time_epochms();
+        startms = comdb2_time_epochms();
         rc = dbq_get(&iq, consumer->consumern, &last, (void **)&dta, &dtalen,
                      &dtaoff, &next, &epoch);
-        diffms = time_epochms() - startms;
+        diffms = comdb2_time_epochms() - startms;
         thrman_where(thr_self, NULL);
 
         if (diffms > LONG_REQMS) {
@@ -1726,7 +1725,7 @@ int consume(struct ireq *iq, const void *fnd, struct consumer *consumer,
         else {
             struct dbenv *dbenv = consumer->db->dbenv;
             consumer_sleep(consumer, sleeptime, 0);
-            if (dbenv->stopped || dbenv->exiting || dbenv->master != machine())
+            if (dbenv->stopped || dbenv->exiting || dbenv->master != gbl_mynode)
                 return -1;
         }
     }
@@ -1794,7 +1793,7 @@ static int dispatch_fstsnd(struct ireq *iq, struct consumer *consumer,
 beginning:
     if (consumer->first) {
         consumer->first = 0;
-        consumer->spaceleft = getlclbfpoolwidthbigsnd() & ~3;
+        consumer->spaceleft = getlclbfpoolwidthbigsnd2() & ~3;
         /* Populate header */
         bzero(buf, offsetof(struct dbq_msgbuf, msgs));
         strncpy(buf->comdb2, "CDB2_MSG", sizeof(buf->comdb2));
@@ -2006,7 +2005,7 @@ static int consumer_send(struct consumer *consumer, int len)
     rsp.rc = ntohl(rsp.rc);
 
     if (rsp.followlen) {
-        if (rsp.followlen < 0 || rsp.followlen > getlclbfpoolwidthbigsnd()) {
+        if (rsp.followlen < 0 || rsp.followlen > getlclbfpoolwidthbigsnd2()) {
             logmsg(LOGMSG_ERROR,
                    "queue %s consumer %d (%s) suspicious response length %d\n",
                    consumer->db->tablename, consumer->consumern,
@@ -2041,7 +2040,7 @@ static int flush_fstsnd(struct ireq *iq, struct consumer *consumer)
         if (consumer->debug)
             condbgf(consumer, "flush_fstsnd: XMIT_STOPPED\n");
         rc = XMIT_STOPPED;
-    } else if (consumer->db->dbenv->master != machine()) {
+    } else if (consumer->db->dbenv->master != gbl_mynode) {
         if (consumer->debug)
             condbgf(consumer, "flush_fstsnd: XMIT_NOTMASTER\n");
         rc = XMIT_NOTMASTER;
@@ -2053,14 +2052,14 @@ static int flush_fstsnd(struct ireq *iq, struct consumer *consumer)
         int ii;
         unsigned int before_ms, after_ms;
 
-        before_ms = time_epochms();
+        before_ms = comdb2_time_epochms();
 
         /* TODO:NOENV remote policy? */
 
         rc = consumer_send(consumer, ntohl(buf->buflen));
         consumer->first = 1;
 
-        after_ms = time_epochms();
+        after_ms = comdb2_time_epochms();
 
         if (consumer->debug)
             condbgf(consumer, "flush_fstsnd: fstsnd sndbak rc=%d\n", rc);

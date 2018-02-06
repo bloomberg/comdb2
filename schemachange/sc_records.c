@@ -945,7 +945,7 @@ err: /*if (is_schema_change_doomed())*/
 
     gbl_sc_nrecs++;
 
-    int now = time_epoch();
+    int now = comdb2_time_epoch();
     if ((rc = report_sc_progress(data, now))) return rc;
 
     // do the following check every second or so
@@ -999,7 +999,7 @@ void *convert_records_thd(struct convert_record_data *data)
 
     /* from this point onwards we must get to the cleanup code before
      * returning.  assume failure unless we explicitly succeed.  */
-    data->lasttime = time_epoch();
+    data->lasttime = comdb2_time_epoch();
 
     data->num_records_per_trans = gbl_num_record_converts;
     data->num_retry_errors = 0;
@@ -1468,13 +1468,13 @@ static int upgrade_records(struct convert_record_data *data)
             poll(NULL, 0, 100);
 
         /* snooze for a bit if writes have been coming in */
-        if (gbl_sc_last_writer_time >= time_epoch() - 5) usleep(gbl_sc_usleep);
+        if (gbl_sc_last_writer_time >= comdb2_time_epoch() - 5) usleep(gbl_sc_usleep);
         break;
     } // end of rc check
 
     ++gbl_sc_nrecs;
     data->sc_genids[data->stripe] = genid;
-    now = time_epoch();
+    now = comdb2_time_epoch();
 
     if (copy_sc_report_freq > 0 &&
         now >= data->lasttime + copy_sc_report_freq) {
@@ -1536,7 +1536,7 @@ static void *upgrade_records_thd(void *vdata)
 
     // initialize convert_record_data
     data->outrc = -1;
-    data->lasttime = time_epoch();
+    data->lasttime = comdb2_time_epoch();
     data->num_records_per_trans = gbl_num_record_converts;
     data->num_records_per_trans = gbl_num_record_converts;
 

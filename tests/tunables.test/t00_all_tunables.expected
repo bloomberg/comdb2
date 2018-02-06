@@ -174,7 +174,6 @@
 (name='dir', description='Database directory. (Default: $COMDB2_ROOT/var/cdb2/$DBNAME)', type='STRING', value='***', read_only='Y')
 (name='direct_count', description='skip cursor layer for simple count stmts', type='BOOLEAN', value='ON', read_only='N')
 (name='directio', description='Bypass filesystem cache for page I/O.', type='BOOLEAN', value='***', read_only='N')
-(name='disable_bbipc', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='disable_blob_check', description='return immediately in check_blob_buffers', type='BOOLEAN', value='OFF', read_only='N')
 (name='disable_cache_internal_nodes', description='Disables 'enable_cache_internal_nodes'. B-tree leaf nodes are treated same as internal nodes.', type='BOOLEAN', value='OFF', read_only='Y')
 (name='disable_caching_stmt_with_fdb', description='Don't cache query plans for statements with foreign table references.', type='BOOLEAN', value='ON', read_only='N')
@@ -232,7 +231,6 @@
 (name='dont_report_deadlock', description='', type='BOOLEAN', value='ON', read_only='N')
 (name='dont_sort_nulls_with_header', description='Disables 'sort_nulls_with_header'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='dont_superset_foreign_keys', description='Disables 'superset_foreign_keys'', type='BOOLEAN', value='OFF', read_only='Y')
-(name='dont_use_bbipc_fastseed', description='Disable 'use_bbipc_fastseed'', type='BOOLEAN', value='ON', read_only='Y')
 (name='downgrade_on_seqnum_gen_mismatch', description='', type='BOOLEAN', value='ON', read_only='N')
 (name='downgrade_penalty', description='Prevent upgrades for at least this many ms after a downgrade.', type='INTEGER', value='10000', read_only='N')
 (name='dtastripe', description='', type='INTEGER', value='8', read_only='Y')
@@ -879,7 +877,6 @@
 (name='update_startlsn_printstep', description='Print steps walked in update_startlsn code', type='BOOLEAN', value='OFF', read_only='N')
 (name='updategenids', description='Enable use of update genid scheme. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='use_appsock_as_sqlthread', description='', type='INTEGER', value='0', read_only='Y')
-(name='use_bbipc_fastseed', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='use_blackout_list', description='use_blackout_list', type='BOOLEAN', value='ON', read_only='N')
 (name='use_blkseq', description='Enable blkseq', type='BOOLEAN', value='ON', read_only='N')
 (name='use_fastseed_for_comdb2_seqno', description='Use fastseed instead of context for comdb2_seqno unique values

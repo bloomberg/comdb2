@@ -527,7 +527,7 @@ void bdb_transfermaster_tonode(bdb_state_type *bdb_state, char *tohost)
     }
 
     /* give me a break, mr watcher thread */
-    bdb_state->repinfo->disable_watcher = time_epoch() + 10;
+    bdb_state->repinfo->disable_watcher = comdb2_time_epoch() + 10;
 
     if (bdb_state->callback->scabort_rtn)
         /* if there is a schema change going on, kill it */
@@ -537,7 +537,7 @@ void bdb_transfermaster_tonode(bdb_state_type *bdb_state, char *tohost)
        writes anymore;
        downgrade w/out election so we stop temporarely writes from coming in
        while I try to pass mastership to the provided node */
-    bdb_state->repinfo->dont_elect_untill_time = time_epoch() + 5;
+    bdb_state->repinfo->dont_elect_untill_time = comdb2_time_epoch() + 5;
     bdb_downgrade_noelect(bdb_state);
 
     numsleeps = 0;
@@ -581,7 +581,7 @@ again:
 
     /* he didnt ack the message?  kick off an election */
     if (rc != 0) {
-        bdb_state->repinfo->dont_elect_untill_time = time_epoch();
+        bdb_state->repinfo->dont_elect_untill_time = comdb2_time_epoch();
         call_for_election(bdb_state);
     }
 }
@@ -727,7 +727,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
     /*
        int now;
        static int lastpr = 0;
-       if((now=time_epoch()) - lastpr)
+       if((now=comdb2_time_epoch()) - lastpr)
        {
            fprintf(stderr, "Called %s %llu times
        flags=0x%x\n",__func__,callcount,flags);
@@ -1423,7 +1423,7 @@ static void call_for_election_int(bdb_state_type *bdb_state, int op)
     if (bdb_state->exiting)
         return;
 
-    if (bdb_state->repinfo->dont_elect_untill_time > time_epoch()) {
+    if (bdb_state->repinfo->dont_elect_untill_time > comdb2_time_epoch()) {
         logmsg(LOGMSG_INFO, "Short-circuiting election until master is transferred.\n");
         return;
     }
@@ -2361,7 +2361,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     if (change_coherency &&
         bdb_state->coherent_state[nodeix(host)] == STATE_INCOHERENT_SLOW) {
         pthread_mutex_lock(&slow_node_check_lk);
-        if ((time_epochms() - last_slow_node_check_time) >
+        if ((comdb2_time_epochms() - last_slow_node_check_time) >
                 bdb_state->attr->slowrep_inactive_timeout &&
             bdb_state->coherent_state[nodeix(host)] == STATE_INCOHERENT_SLOW) {
             pthread_mutex_lock(&bdb_state->coherent_state_lock);
@@ -2375,7 +2375,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
 #endif
             }
             pthread_mutex_unlock(&bdb_state->coherent_state_lock);
-            last_slow_node_check_time = time_epochms();
+            last_slow_node_check_time = comdb2_time_epochms();
         }
         pthread_mutex_unlock(&slow_node_check_lk);
     }
@@ -2390,7 +2390,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     }
 
     if (track_times)
-        now = time_epochms();
+        now = comdb2_time_epochms();
 
     /* save the seqnum that we recived */
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
@@ -2711,7 +2711,7 @@ static int bdb_track_replication_time(bdb_state_type *bdb_state,
             bdb_state->attr->track_replication_times_max_lsns) {
             waitforlsn = pool_getablk(bdb_state->seqnum_info->trackpool);
             waitforlsn->lsn = seqnum->lsn;
-            waitforlsn->start = time_epochms();
+            waitforlsn->start = comdb2_time_epochms();
             /* printf("waiting for %s\n", lsn_to_str(str, &seqnum->lsn)); */
             listc_abl(bdb_state->seqnum_info->waitlist[nodeix(host)],
                       waitforlsn);
@@ -2769,7 +2769,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
                 ctrace("%s:%d setting host %s to INCOHERENT\n", __FILE__,
                        __LINE__, host);
 #endif
-                bdb_state->repinfo->skipsinceepoch = time_epoch();
+                bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
         }
 
         pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
@@ -3032,7 +3032,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     if ((seqnum->lsn.file == 0) && (seqnum->lsn.offset == 0))
         return 0;
 
-    begin_time = time_epochms();
+    begin_time = comdb2_time_epochms();
 
     /* lame, i know.  go into a loop polling once per second to see if
        anyone is coherent yet.  don't wait forever - this must timeout
@@ -3064,7 +3064,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
             /* once a second, see if we have any slow replicants */
-            now = time_epochms();
+            now = comdb2_time_epochms();
             pthread_mutex_lock(&slow_node_check_lk);
             if (now - last_slow_node_check_time > 1000) {
                 if (bdb_state->attr->track_replication_times) {
@@ -3119,7 +3119,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                 base_node = nodelist[i];
                 num_successfully_acked++;
 
-                end_time = time_epochms();
+                end_time = comdb2_time_epochms();
                 we_used = end_time - begin_time;
 
                 /* lets make up a number for how many more ms we should wait
@@ -3138,7 +3138,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                 goto got_ack;
             }
         }
-    } while (time_epochms() - begin_time < bdb_state->attr->rep_timeout_maxms &&
+    } while (comdb2_time_epochms() - begin_time < bdb_state->attr->rep_timeout_maxms &&
              !(lock_desired = bdb_lock_desired(bdb_state)));
 
     /* if we get here then we timed out without finding even one good node.
@@ -3146,7 +3146,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
      * patience!  Note that I *do* want to go into the loop below so that we
      * mark the stragglers incoherent.  The do { } while loop above gaurantees
      * that the nodelist and skiplist are correctly set up. */
-    end_time = time_epochms();
+    end_time = comdb2_time_epochms();
     we_used = end_time - begin_time;
     waitms =
         bdb_state->attr->rep_timeout_minms - bdb_state->attr->rep_timeout_maxms;
@@ -3180,7 +3180,7 @@ got_ack:
         if (waitms < bdb_state->attr->rep_timeout_minms)
             waitms = bdb_state->attr->rep_timeout_minms;
 
-        begin_time = time_epochms();
+        begin_time = comdb2_time_epochms();
 
         if (bdb_state->rep_trace)
             logmsg(LOGMSG_USER,
@@ -3215,7 +3215,7 @@ got_ack:
         else if (rc == 1)
             rc = 0;
 
-        end_time = time_epochms();
+        end_time = comdb2_time_epochms();
 
         /* take away the amount of time we've used so far */
         waitms -= (end_time - begin_time);
@@ -3262,7 +3262,7 @@ got_ack:
                 ctrace("%s %d setting node %s to INCOHERENT\n", __FILE__,
                        __LINE__, nodelist[i]);
 #endif
-                bdb_state->repinfo->skipsinceepoch = time_epoch();
+                bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
             }
 #ifdef INCOHERENT_CTRACE
             else {
@@ -3631,7 +3631,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     bdb_reset_thread_stats();
 
     /* give it to berkeley db */
-    time1 = time_epoch();
+    time1 = comdb2_time_epoch();
 
     bdb_state->repinfo->repstats.rep_process_message++;
 
@@ -3648,7 +3648,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     bdb_state->repinfo->in_rep_process_message = 1;
 
-    bdb_state->repinfo->rep_process_message_start_time = time_epoch();
+    bdb_state->repinfo->rep_process_message_start_time = comdb2_time_epoch();
 
     if (debug_switch_rep_delay())
         sleep(2);
@@ -3675,7 +3675,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     if (bdb_state->attr->rep_debug_delay > 0)
         usleep(bdb_state->attr->rep_debug_delay * 1000);
 
-    time2 = time_epoch();
+    time2 = comdb2_time_epoch();
 
     if ((time2 - time1) > bdb_state->attr->rep_longreq) {
         const struct bdb_thread_stats *t = bdb_get_thread_stats();
@@ -3973,7 +3973,7 @@ void bdb_set_notcoherent(bdb_state_type *bdb_state, int notcoherent)
     }
 
     bdb_state->not_coherent = notcoherent;
-    bdb_state->not_coherent_time = time_epoch();
+    bdb_state->not_coherent_time = comdb2_time_epoch();
 
 #ifdef INCOHERENT_CTRACE
     ctrace("%s %d setting not_coherent to %d\n", __FILE__, __LINE__,
@@ -4388,7 +4388,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         buf_get(&node, sizeof(int), p_buf, p_buf_end);
 
         /* Prevent race against watcher thread. */
-        bdb_state->repinfo->dont_elect_untill_time = time_epoch() + 5;
+        bdb_state->repinfo->dont_elect_untill_time = comdb2_time_epoch() + 5;
 
         logmsg(LOGMSG_INFO, "transfer master recieved\n");
         /* Don't ack this - if we get this message we want an election. */
@@ -4397,7 +4397,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     case USER_TYPE_TRANSFERMASTER_NAME:
         /* Prevent race against watcher thread. */
         logmsg(LOGMSG_INFO, "transfer master recieved\n");
-        bdb_state->repinfo->dont_elect_untill_time = time_epoch() + 5;
+        bdb_state->repinfo->dont_elect_untill_time = comdb2_time_epoch() + 5;
         bdb_state->need_to_upgrade = 1;
 
         /* Don't ack this - if we get this message we want an election. */
@@ -4921,7 +4921,7 @@ void *watcher_thread(void *arg)
     int last_list_start = 0;
     int is_durable;
 
-    gbl_watcher_thread_ran = time_epoch();
+    gbl_watcher_thread_ran = comdb2_time_epoch();
 
     thread_started("bdb watcher");
 
@@ -4952,7 +4952,7 @@ void *watcher_thread(void *arg)
     bdb_state->repinfo->disable_watcher = 0;
 
     while (!db_is_stopped()) {
-        time_now = time_epoch();
+        time_now = comdb2_time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 
         if (time_now < time_then) {
@@ -5083,7 +5083,7 @@ void *watcher_thread(void *arg)
 
             if (bdb_state->attr->track_replication_times) {
                 int now;
-                now = time_epochms();
+                now = comdb2_time_epochms();
                 Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
                 for (i = 0; i < count; i++) {
                     if (bdb_state->seqnum_info
@@ -5107,7 +5107,7 @@ void *watcher_thread(void *arg)
 
         if ((bdb_state->passed_dbenv_open) &&
             (bdb_state->repinfo->rep_process_message_start_time)) {
-            if (time_epoch() -
+            if (comdb2_time_epoch() -
                     bdb_state->repinfo->rep_process_message_start_time >
                 10) {
                 logmsg(LOGMSG_WARN, "rep_process_message running for 10 seconds,"
@@ -5383,7 +5383,7 @@ void *watcher_thread(void *arg)
         bdb_state->sanc_ok =
             net_sanctioned_list_ok(bdb_state->repinfo->netinfo);
 
-        gbl_watcher_thread_ran = time_epoch();
+        gbl_watcher_thread_ran = comdb2_time_epoch();
 
         /* sleep for somewhere between 1-2 seconds */
         poll(NULL, 0, (rand() % 1000) + 1000);
@@ -5452,7 +5452,7 @@ int bdb_master_should_reject(bdb_state_type *bdb_state)
         return 0;
     }
 
-    time_now = time_epoch();
+    time_now = comdb2_time_epoch();
 
     if ((time_now - bdb_state->repinfo->should_reject_timestamp) > 10) {
         int count;

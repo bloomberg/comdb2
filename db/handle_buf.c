@@ -53,6 +53,8 @@
 #include "comdb2_pthread_create.h"
 #endif
 
+void (*comdb2_ipc_sndbak) (int *, int) = 0;
+
 enum THD_EV { THD_EV_END = 0, THD_EV_START = 1 };
 
 /* request pool & queue */
@@ -70,7 +72,7 @@ static pool_t *pq_reqs;  /* queue entry pool */
 pool_t *p_bufs;   /* buffer pool for socket requests */
 pool_t *p_slocks; /* pool of socket locks*/
 
-static LISTC_T(struct dbq_entry_t) q_reqs;  /* all queued requests */
+LISTC_T(struct dbq_entry_t) q_reqs;  /* all queued requests */
 static LISTC_T(struct dbq_entry_t) rq_reqs; /* queue of read requests */
 
 /* thread pool */
@@ -301,7 +303,7 @@ static void thd_dump_nolock(void)
     struct thd *thd;
     uint64_t nowus;
     int opc, cnt = 0;
-    nowus = time_epochus();
+    nowus = comdb2_time_epochus();
 
     {
         for (thd = busy.top; thd; thd = thd->lnk.next) {
@@ -370,7 +372,7 @@ void thd_dump(void)
     struct thd *thd;
     uint64_t nowus;
     int cnt = 0;
-    nowus = time_epochus();
+    nowus = comdb2_time_epochus();
     LOCK(&lock)
     {
         for (thd = busy.top; thd; thd = thd->lnk.next) {
@@ -504,7 +506,7 @@ static void *thd_req(void *vthd)
                     thd->tid, pthread_self());
             abort();
         }
-        thd->iq->startus = time_epochus();
+        thd->iq->startus = comdb2_time_epochus();
         thd->iq->where = "executing";
         /*PROCESS REQUEST*/
         thd->iq->reqlogger = logger;
@@ -709,16 +711,21 @@ static int reterr(struct thd *thd, struct ireq *iq, int do_inline, int rc)
                     }
                     is_legacy_fstsnd = 0;
                 }
-                if (!do_inline) {
-#if 0
-               fprintf(stderr, "%s:%d: THD=%d relablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
-#endif
-                    pool_relablk(p_reqs, iq);
-                }
+                pool_relablk(p_reqs, iq);
             }
         }
         UNLOCK(&lock);
     }
+   if(comdb2_ipc_sndbak)
+   {
+#if 0
+       /* curswap is just a pointer to the buffer */
+       int *ibuf = (int *)curswap;
+       ibuf+=2;
+       comdb2_ipc_sndbak(ibuf, ERR_INTERNAL);
+#endif
+       comdb2_ipc_sndbak(0, ERR_INTERNAL);
+   }
     if (rc == ERR_INTERNAL) /*qfull hits this code too, so differentiate*/
         nerrs++;
     return rc;
@@ -745,43 +752,21 @@ static int reterr_withfree(struct ireq *iq, int do_inline, int rc)
         }
         iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
         iq->p_buf_in_end = iq->p_buf_in = NULL;
-        if (!do_inline) {
-            LOCK(&lock)
-            {
+
+        LOCK(&lock)
+        {
 #if 0
-               fprintf(stderr, "%s:%d: THD=%d relablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
+           fprintf(stderr, "%s:%d: THD=%d relablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
-                pool_relablk(p_reqs, iq);
-            }
-            UNLOCK(&lock);
+            pool_relablk(p_reqs, iq);
         }
+        UNLOCK(&lock);
+
         return 0;
     } else {
         return reterr(NULL, iq, do_inline, rc);
     }
 }
-
-#if 0
-static int reterr_bbipc(void *buf, struct ireq *iq, int rc)
-{
-    if (!gbl_use_bbipc)
-    {
-        fprintf(stderr, "reterr_bbipc called in non bbipc mode\n");
-        exit(1);
-    }
-   
-    {
-        int *ibuf;
-        ibuf -= 2;
-        bbipc_sndbak(gbl_context, ibuf, ERR_INTERNAL);
-    }
-   
-    if (rc == ERR_INTERNAL) /*qfull hits this code too, so differentiate*/
-        nerrs++;
-
-    return rc;
-}
-#endif
 
 int handle_buf_block_offload(struct dbenv *dbenv, uint8_t *p_buf,
                              const uint8_t *p_buf_end, int debug,
@@ -843,55 +828,14 @@ int handle_buf(struct dbenv *dbenv, uint8_t *p_buf, const uint8_t *p_buf_end,
                            0, NULL, NULL, REQ_WAITFT, NULL, 0, 0, 0);
 }
 
-int handled_inline;
 int handled_queue;
-static __thread void *bbipc_add_table = NULL;
-static __thread void *bbipc_del_table = NULL;
-static __thread void *bbipc_add_index = NULL;
-
-static void set_thdinfo(struct thread_info *thdinfo, struct ireq *iq)
-{
-    struct reqlogger *logger;
-    struct thr_handle *thr_self;
-    if (bbipc_add_table == NULL) {
-        bbipc_add_table = create_constraint_table(&thdinfo->ct_id_key);
-        if (bbipc_add_table == NULL) {
-            logmsg(LOGMSG_FATAL, "**aborting: cannot allocate constraint add table\n");
-            abort();
-        }
-        bbipc_del_table = create_constraint_table(&thdinfo->ct_id_key);
-        if (bbipc_del_table == NULL) {
-            logmsg(LOGMSG_FATAL, "**aborting: cannot allocate constraint delete table\n");
-            abort();
-        }
-        bbipc_add_index = create_constraint_index_table(&thdinfo->ct_id_key);
-        if (bbipc_add_index == NULL) {
-            logmsg(LOGMSG_FATAL, "**aborting: cannot allocate constraint add index\n");
-            abort();
-        }
-    }
-    thdinfo->ct_add_table = bbipc_add_table;
-    thdinfo->ct_del_table = bbipc_del_table;
-    thdinfo->ct_add_index = bbipc_add_index;
-    pthread_setspecific(unique_tag_key, thdinfo);
-    thr_self = thrman_self();
-    logger = thrman_get_reqlogger(thr_self);
-    iq->reqlogger = logger;
-}
-
-static void clear_thdinfo(struct thread_info *thdinfo)
-{
-    truncate_constraint_table(thdinfo->ct_add_table);
-    truncate_constraint_table(thdinfo->ct_del_table);
-    truncate_constraint_table(thdinfo->ct_add_index);
-}
 
 int q_reqs_len(void) { return q_reqs.count; }
 
 int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
               const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
               char *fromtask, int qtype, void *data_hndl, int do_inline,
-              int luxref, unsigned long long rqid)
+              int luxref, unsigned long long rqid, void *p_sinfo)
 {
     struct req_hdr hdr;
     uint64_t nowus;
@@ -899,11 +843,10 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     struct thd *thd;
     int numwriterthreads;
 
-    nowus = time_epochus();
+    nowus = comdb2_time_epochus();
 
     if (iq == 0) {
-        if (!do_inline)
-            errUNLOCK(&lock);
+        errUNLOCK(&lock);
         logmsg(LOGMSG_ERROR, "handle_buf:failed allocate req\n");
         return reterr(/*thd*/ 0, /*iq*/ 0, do_inline, ERR_INTERNAL);
     }
@@ -917,6 +860,7 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     iq->tzname[0] = '\0';
     iq->sqlhistory[0] = '\0';
 
+    iq->p_sinfo = p_sinfo;
     iq->where = "setup";
     iq->frommach = frommach;
     iq->frompid = frompid;
@@ -935,8 +879,7 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     iq->p_buf_out_end = p_buf_end - RESERVED_SZ;
 
     if (!(iq->p_buf_in = req_hdr_get(&hdr, iq->p_buf_in, iq->p_buf_in_end))) {
-        if (!do_inline)
-            errUNLOCK(&lock);
+        errUNLOCK(&lock);
         logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
         return reterr(/*thd*/ 0, iq, do_inline, ERR_BADREQ);
     }
@@ -992,8 +935,7 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     }
 
     if (luxref < 0 || luxref >= dbenv->num_dbs) {
-        if (!do_inline)
-            errUNLOCK(&lock);
+        errUNLOCK(&lock);
         logmsg(LOGMSG_ERROR, "handle_buf:luxref out of range %d max %d\n",
                luxref, dbenv->num_dbs);
         return reterr(/*thd*/ 0, iq, do_inline, ERR_REJECTED);
@@ -1002,8 +944,7 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     iq->origdb = dbenv->dbs[luxref]; /*lux is one based*/
     iq->usedb = iq->origdb;
     if (thedb->stopped) {
-        if (!do_inline)
-            errUNLOCK(&lock);
+        errUNLOCK(&lock);
         return reterr(NULL, iq, do_inline, ERR_REJECTED);
     }
 
@@ -1015,11 +956,13 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     return 0;
 }
 
-int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
-                    const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
-                    char *frommach, int frompid, char *fromtask,
-                    sorese_info_t *sorese, int qtype, void *data_hndl,
-                    int do_inline, int luxref, unsigned long long rqid)
+
+int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
+                     const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
+                     char *frommach, int frompid, char *fromtask,
+                     sorese_info_t *sorese, int qtype, void *data_hndl,
+                     int do_inline, int luxref, unsigned long long rqid,
+                     void *p_sinfo)
 {
     int rc, nowms, num, ndispatch, iamwriter = 0;
     struct thd *thd;
@@ -1038,25 +981,16 @@ int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 
     /* allocate a request for later dispatch to available thread */
 
-    /* Don't take locks if processing inline */
-    if (!do_inline)
-        pthread_mutex_lock(&lock);
+    pthread_mutex_lock(&lock);
     if (iq == NULL) {
-        if (do_inline) {
-            iq = (struct ireq *)alloca(sizeof(*iq));
+        iq = (struct ireq *)pool_getablk(p_reqs);
 #if 0
-            fprintf(stderr, "%s:%d: THD=%d alloca iq=%p\n", __func__, __LINE__, pthread_self(), iq);
+        fprintf(stderr, "%s:%d: THD=%d getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
-        } else {
-            iq = (struct ireq *)pool_getablk(p_reqs);
-#if 0
-            fprintf(stderr, "%s:%d: THD=%d getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
-#endif
-        }
 
         rc = init_ireq(dbenv, iq, sb, (uint8_t *)p_buf, p_buf_end, debug,
                        frommach, frompid, fromtask, qtype, data_hndl, do_inline,
-                       luxref, rqid);
+                       luxref, rqid, p_sinfo);
         if (rc) {
             logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
             return rc;
@@ -1067,17 +1001,7 @@ int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 #endif
     }
 
-    if (do_inline) {
-        struct thread_info thdinfo = {0};
-        ++handled_inline;
-#ifdef PER_THREAD_MALLOC
-        thread_type_key = "tag";
-#endif
-        set_thdinfo(&thdinfo, iq);
-        handle_ireq(iq);
-        clear_thdinfo(&thdinfo);
-    } else {
-
+    {
         ++handled_queue;
 
         /*count queue*/
@@ -1273,12 +1197,23 @@ int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         } else {
             pthread_mutex_unlock(&lock);
         }
-    } /* end of not inline */
+    }
+
     if (ndispatch == 0)
         nwaits++;
     return 0;
 }
 
+int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
+                    const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
+                    char *frommach, int frompid, char *fromtask,
+                    sorese_info_t *sorese, int qtype, void *data_hndl,
+                    int do_inline, int luxref, unsigned long long rqid)
+{
+    return handle_buf_main2(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach,
+                            frompid, fromtask, sorese, qtype, data_hndl,
+                            do_inline, luxref, rqid, 0);
+}
 struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
                                 const uint8_t *p_buf_end, int debug,
                                 char *frommach, sorese_info_t *sorese)
@@ -1297,7 +1232,7 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
             errUNLOCK(&lock);
         }
         rc = init_ireq(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0,
-                       NULL, REQ_OFFLOAD, NULL, 0, 0, 0);
+                       NULL, REQ_OFFLOAD, NULL, 0, 0, 0, 0);
         if (rc)
             /* init_ireq unlocks on error */
             return NULL;
@@ -1341,14 +1276,6 @@ void destroy_ireq(struct dbenv *dbenv, struct ireq *iq)
 {
     LOCK(&lock) { pool_relablk(p_reqs, iq); }
     UNLOCK(&lock);
-}
-
-int handle_buf_bbipc(struct dbenv *dbenv, uint8_t *p_buf,
-                     const uint8_t *p_buf_end, int debug, char *frommach,
-                     int do_inline)
-{
-    return handle_buf_main(dbenv, NULL, NULL, p_buf, p_buf_end, debug, frommach,
-                           0, NULL, NULL, REQ_WAITFT, NULL, do_inline, 0, 0);
 }
 
 static int is_req_write(int opcode)
