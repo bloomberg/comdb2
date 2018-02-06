@@ -338,7 +338,7 @@ static int verify_table_int(const char *table, SBUF2 *sb, int progress_report_se
 
 struct verify_args {
     pthread_t tid;
-    char *table;
+    const char *table;
     SBUF2 *sb;
     int progress_report_seconds;
     int attempt_fix;
@@ -364,12 +364,7 @@ static void *verify_td(void *arg)
     return NULL;
 }
 
-static int verify_table_int(const char *table, SBUF2 *sb, int progress_report_seconds,
-             int attempt_fix, 
-             int (*lua_callback)(void *, const char *), void *lua_params)
-
-
-int verify_table(char *table, SBUF2 *sb, int progress_report_seconds, 
+int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds, 
         int attempt_fix,
         int (*lua_callback)(void *, const char *), void *lua_params)
 {
