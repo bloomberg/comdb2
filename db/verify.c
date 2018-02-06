@@ -398,7 +398,7 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
     }
 
     while (v.done == 0) {
-        pthread_cond_wait(&v.cd, &v.lk, &ts);
+        pthread_cond_wait(&v.cd, &v.lk);
     }
 
     pthread_attr_destroy(&attr);
