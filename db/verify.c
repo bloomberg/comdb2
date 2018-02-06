@@ -293,7 +293,7 @@ static int get_tbl_and_lock_in_tran(const char *table, SBUF2 *sb,
     return bdb_lock_tablename_read(thedb->bdb_env, table, loctran);
 }
 
-int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
+static int verify_table_int(const char *table, SBUF2 *sb, int progress_report_seconds,
              int attempt_fix, 
              int (*lua_callback)(void *, const char *), void *lua_params)
 {
@@ -335,3 +335,83 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
     sbuf2flush(sb);
     return rc;
 }
+
+struct verify_args {
+    pthread_t tid;
+    char *table;
+    SBUF2 *sb;
+    int progress_report_seconds;
+    int attempt_fix;
+    int done;
+    int rcode;
+    int (*lua_callback)(void *, const char *);
+    void *lua_params;
+    pthread_mutex_t lk;
+    pthread_cond_t cd;
+};
+
+static void *verify_td(void *arg)
+{
+    struct verify_args *v = (struct verify_args *)arg;
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+    pthread_mutex_lock(&v->lk);
+    v->rcode = verify_table_int(v->table, v->sb, v->progress_report_seconds,
+            v->attempt_fix, v->lua_callback, v->lua_params);
+    v->done = 1;
+    pthread_cond_broadcast(&v->cd);
+    pthread_mutex_unlock(&v->lk);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    return NULL;
+}
+
+static int verify_table_int(const char *table, SBUF2 *sb, int progress_report_seconds,
+             int attempt_fix, 
+             int (*lua_callback)(void *, const char *), void *lua_params)
+
+
+int verify_table(char *table, SBUF2 *sb, int progress_report_seconds, 
+        int attempt_fix,
+        int (*lua_callback)(void *, const char *), void *lua_params)
+{
+    int rc;
+    struct verify_args v;
+    pthread_attr_t attr;
+    size_t stacksize;
+    v.table = table;
+    v.sb = sb;
+    v.progress_report_seconds = progress_report_seconds;
+    v.attempt_fix = attempt_fix;
+    v.lua_callback = lua_callback;
+    v.lua_params = lua_params;
+    v.done = v.rcode = 0;
+
+    stacksize = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VERIFY_THREAD_STACKSZ);
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, stacksize);
+    pthread_mutex_init(&v.lk, NULL);
+    pthread_cond_init(&v.cd, NULL);
+
+    pthread_mutex_lock(&v.lk);
+    if (rc = pthread_create(&v.tid, &attr, verify_td, &v)) {
+        fprintf(stderr, "%s unable to create thread for verify: %s\n", 
+                strerror(errno));
+        sbuf2printf(sb, "FAILED\n");
+        pthread_attr_destroy(&attr);
+        pthread_mutex_destroy(&v.lk);
+        pthread_cond_destroy(&v.cd);
+        return -1;
+    }
+
+    while (v.done == 0) {
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 1;
+        pthread_cond_timedwait(&v.cd, &v.lk, &ts);
+    }
+
+    pthread_attr_destroy(&attr);
+    pthread_mutex_destroy(&v.lk);
+    pthread_cond_destroy(&v.cd);
+    return v.rcode;
+}
+
