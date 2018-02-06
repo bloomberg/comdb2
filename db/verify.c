@@ -293,9 +293,10 @@ static int get_tbl_and_lock_in_tran(const char *table, SBUF2 *sb,
     return bdb_lock_tablename_read(thedb->bdb_env, table, loctran);
 }
 
-static int verify_table_int(const char *table, SBUF2 *sb, int progress_report_seconds,
-             int attempt_fix, 
-             int (*lua_callback)(void *, const char *), void *lua_params)
+static int verify_table_int(const char *table, SBUF2 *sb,
+                            int progress_report_seconds, int attempt_fix,
+                            int (*lua_callback)(void *, const char *),
+                            void *lua_params)
 {
     int bdberr;
     int rc;
@@ -356,7 +357,7 @@ static void *verify_td(void *arg)
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
     pthread_mutex_lock(&v->lk);
     v->rcode = verify_table_int(v->table, v->sb, v->progress_report_seconds,
-            v->attempt_fix, v->lua_callback, v->lua_params);
+                                v->attempt_fix, v->lua_callback, v->lua_params);
     v->done = 1;
     pthread_cond_broadcast(&v->cd);
     pthread_mutex_unlock(&v->lk);
@@ -364,9 +365,9 @@ static void *verify_td(void *arg)
     return NULL;
 }
 
-int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds, 
-        int attempt_fix,
-        int (*lua_callback)(void *, const char *), void *lua_params)
+int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
+                 int attempt_fix, int (*lua_callback)(void *, const char *),
+                 void *lua_params)
 {
     int rc;
     struct verify_args v;
@@ -388,8 +389,8 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
 
     pthread_mutex_lock(&v.lk);
     if (rc = pthread_create(&v.tid, &attr, verify_td, &v)) {
-        logmsg(LOGMSG_ERROR, "%s unable to create thread for verify: %s\n", 
-                __func__, strerror(errno));
+        logmsg(LOGMSG_ERROR, "%s unable to create thread for verify: %s\n",
+               __func__, strerror(errno));
         sbuf2printf(sb, "FAILED\n");
         pthread_attr_destroy(&attr);
         pthread_mutex_destroy(&v.lk);
