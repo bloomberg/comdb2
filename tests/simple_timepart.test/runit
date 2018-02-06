@@ -44,8 +44,8 @@ function timepart_stats
 
     #randomly we catch a drop event here; sleep to skip the deterministically
     sleep 6
-    echo cdb2sql ${CDB2_OPTIONS} --host ${master} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
-    cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
+    echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
+    cdb2sql ${CDB2_OPTIONS} --host ${master} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
     if (( $? != 0 )) ; then
         echo "FAILURE"
         exit 1
