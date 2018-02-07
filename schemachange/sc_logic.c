@@ -353,7 +353,7 @@ static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
         iq->errstat.errval = ERR_SC;
         return SC_INTERNAL_ERROR;
     }
-    if (iq->usedbtablevers != version) {
+    if (sc->usedbtablevers != version) {
         errstat_set_strf(&iq->errstat,
                          "stale version for table:%s master:%d replicant:%d",
                          sc->table, version, iq->usedbtablevers);
@@ -538,7 +538,7 @@ int do_schema_change(struct schema_change_type *s)
         s->db = get_dbtable_by_name(s->table);
     }
     iq.usedb = s->db;
-    iq.usedbtablevers = s->db ? s->db->tableversion : 0;
+    s->usedbtablevers = iq.usedbtablevers = s->db ? s->db->tableversion : 0;
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
     arg->iq = &iq;
     arg->sc = s;

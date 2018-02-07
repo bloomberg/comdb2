@@ -7157,6 +7157,7 @@ int reload_after_bulkimport(struct dbtable *db, tran_type *tran)
 
 int reload_db_tran(struct dbtable *db, tran_type *tran)
 {
+    backout_schemas(db->tablename);
     clear_existing_schemas(db);
     if (load_new_ondisk(db, tran)) {
         logmsg(LOGMSG_ERROR, "Failed to load new .ONDISK\n");

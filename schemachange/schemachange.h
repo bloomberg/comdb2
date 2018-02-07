@@ -162,7 +162,7 @@ struct schema_change_type {
 
     struct schema_change_type *sc_next;
 
-
+    int usedbtablevers;
 
     /*********************** temporary fields for in progress
      * schemachange************/

@@ -244,6 +244,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     arg->trans = trans;
     arg->iq = iq;
     arg->sc = iq->sc;
+    iq->sc->usedbtablevers = iq->usedbtablevers;
 
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race) {
