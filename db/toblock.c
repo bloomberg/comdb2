@@ -2492,7 +2492,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int delayed = 0;
 
     int hascommitlock = 0;
-    if (iq->tranddl) rowlocks = 1;
+    if (iq->tranddl)
+        rowlocks = 1;
 
     /* zero this out very high up or we can crash if we get to backout: without
      * having initialised this. */
@@ -4581,13 +4582,16 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             needbackout = 1;
         }
 
-        if (iq->tranddl && trans) {
-            int iirc =
-                osql_destroy_transaction(iq, have_blkseq ? &parent_trans : NULL,
-                                         &trans, &osql_needtransaction);
-            if (iirc) {
-                numerrs = 1;
-                BACKOUT;
+        if (iq->tranddl) {
+            int iirc;
+            if (trans) {
+                iirc = osql_destroy_transaction(iq, have_blkseq ? &parent_trans
+                                                                : NULL,
+                                                &trans, &osql_needtransaction);
+                if (iirc) {
+                    numerrs = 1;
+                    BACKOUT;
+                }
             }
             iirc = osql_bplog_schemachange(iq);
             if (iirc) {

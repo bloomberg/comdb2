@@ -516,13 +516,15 @@ int do_schema_change_tran(sc_arg_t *arg)
         }
     }
     reset_sc_thread(oldtype, s);
+    pthread_mutex_unlock(&s->mtx);
+    s->sc_rc = rc;
+    if (s->resume == SC_NEW_MASTER_RESUME || rc == SC_COMMIT_PENDING ||
+        (!s->nothrevent && !s->finalize)) {
+        return rc;
+    }
     if (rc == SC_MASTER_DOWNGRADE) {
-        pthread_mutex_unlock(&s->mtx);
         free_sc(s);
-    } else if (s->resume == SC_NEW_MASTER_RESUME || rc == SC_COMMIT_PENDING) {
-        pthread_mutex_unlock(&s->mtx);
     } else {
-        pthread_mutex_unlock(&s->mtx);
         stop_and_free_sc(rc, s, 1 /*do_free*/);
     }
     return rc;
@@ -614,10 +616,12 @@ void *sc_resuming_watchdog(void *p)
     stored_sc = sc_resuming;
     while (stored_sc) {
         iq.sc = stored_sc;
+        pthread_mutex_lock(&(iq.sc->mtx));
         stored_sc = stored_sc->sc_next;
         logmsg(LOGMSG_INFO, "%s: aborting schema change of table '%s'\n",
                __func__, iq.sc->table);
         backout_schema_change(&iq);
+        pthread_mutex_unlock(&(iq.sc->mtx));
         free_schema_change_type(iq.sc);
         iq.sc = NULL;
     }

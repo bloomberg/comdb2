@@ -264,12 +264,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
         pthread_t tid;
-        if (trans)
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change_tran, arg);
-        else
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change, s);
+        rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                            (void *(*)(void *))do_schema_change_tran, arg);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "start_schema_change:pthread_create rc %d %s\n", rc,
@@ -295,6 +291,7 @@ int start_schema_change(struct schema_change_type *s)
         s->db = get_dbtable_by_name(s->table);
     }
     iq.usedb = s->db;
+    iq.usedbtablevers = s->db ? s->db->tableversion : 0;
     return start_schema_change_tran(&iq, NULL);
 }
 
