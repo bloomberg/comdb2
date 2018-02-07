@@ -516,6 +516,8 @@ int do_schema_change_tran(sc_arg_t *arg)
     }
     reset_sc_thread(oldtype, s);
     pthread_mutex_unlock(&s->mtx);
+    if (iq->is_fake)
+        free(iq);
     s->sc_rc = rc;
     if (s->resume == SC_NEW_MASTER_RESUME || rc == SC_COMMIT_PENDING ||
         (!s->nothrevent && !s->finalize)) {
@@ -531,16 +533,21 @@ int do_schema_change_tran(sc_arg_t *arg)
 
 int do_schema_change(struct schema_change_type *s)
 {
-    struct ireq iq;
-    init_fake_ireq(thedb, &iq);
-    iq.sc = s;
+    struct ireq *iq = NULL;
+    iq = (struct ireq *)calloc(1, sizeof(*iq));
+    if (iq == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc ireq\n", __func__);
+        return -1;
+    }
+    init_fake_ireq(thedb, iq);
+    iq->sc = s;
     if (s->db == NULL) {
         s->db = get_dbtable_by_name(s->table);
     }
-    iq.usedb = s->db;
-    s->usedbtablevers = iq.usedbtablevers = s->db ? s->db->tableversion : 0;
+    iq->usedb = s->db;
+    s->usedbtablevers = iq->usedbtablevers = s->db ? s->db->tableversion : 0;
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
-    arg->iq = &iq;
+    arg->iq = iq;
     arg->sc = s;
     arg->trans = NULL;
     pthread_mutex_lock(&s->mtx);

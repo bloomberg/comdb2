@@ -288,15 +288,20 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 
 int start_schema_change(struct schema_change_type *s)
 {
-    struct ireq iq;
-    init_fake_ireq(thedb, &iq);
-    iq.sc = s;
+    struct ireq *iq = NULL;
+    iq = (struct ireq *)calloc(1, sizeof(*iq));
+    if (iq == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc ireq\n", __func__);
+        return -1;
+    }
+    init_fake_ireq(thedb, iq);
+    iq->sc = s;
     if (s->db == NULL) {
         s->db = get_dbtable_by_name(s->table);
     }
-    iq.usedb = s->db;
-    iq.usedbtablevers = s->db ? s->db->tableversion : 0;
-    return start_schema_change_tran(&iq, NULL);
+    iq->usedb = s->db;
+    iq->usedbtablevers = s->db ? s->db->tableversion : 0;
+    return start_schema_change_tran(iq, NULL);
 }
 
 void delay_if_sc_resuming(struct ireq *iq)
