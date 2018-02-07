@@ -97,9 +97,9 @@ int handle_buf_main(
     struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, const uint8_t *p_buf,
     const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
     char *fromtask, sorese_info_t *sorese, int qtype,
-    void *
-        data_hndl /* handle to data that can be used according to request type */,
-    int do_inline, int luxref, unsigned long long rqid);
+    void *data_hndl, // handle to data that can be used according to request
+                     // type
+    int luxref, unsigned long long rqid);
 
 static pthread_mutex_t lock;
 pthread_mutex_t buf_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -675,7 +675,7 @@ static void *thd_req(void *vthd)
 }
 
 /* sndbak error code &  return resources.*/
-static int reterr(struct thd *thd, struct ireq *iq, int do_inline, int rc)
+static int reterr(struct thd *thd, struct ireq *iq, int rc)
 /* 040307dh: 64bits */
 {
     int is_legacy_fstsnd = 1;
@@ -731,7 +731,7 @@ static int reterr(struct thd *thd, struct ireq *iq, int do_inline, int rc)
     return rc;
 }
 
-static int reterr_withfree(struct ireq *iq, int do_inline, int rc)
+static int reterr_withfree(struct ireq *iq, int rc)
 {
     if (iq->is_fromsocket || iq->sorese.type) {
         if (iq->is_fromsocket) {
@@ -764,7 +764,7 @@ static int reterr_withfree(struct ireq *iq, int do_inline, int rc)
 
         return 0;
     } else {
-        return reterr(NULL, iq, do_inline, rc);
+        return reterr(NULL, iq, rc);
     }
 }
 
@@ -777,7 +777,7 @@ int handle_buf_block_offload(struct dbenv *dbenv, uint8_t *p_buf,
     memcpy(p_bigbuf, p_buf, length);
     int rc = handle_buf_main(dbenv, NULL, NULL, p_bigbuf, p_bigbuf + length,
                              debug, frommach, 0, NULL, NULL, REQ_SOCKREQUEST,
-                             NULL, 0, 0, rqid);
+                             NULL, 0, rqid);
 
     return rc;
 }
@@ -787,7 +787,7 @@ int handle_buf_sorese(struct dbenv *dbenv, struct ireq *iq, int debug)
     int rc = 0;
 
     rc = handle_buf_main(dbenv, iq, NULL, NULL, NULL, debug, 0, 0, NULL, NULL,
-                         REQ_OFFLOAD, NULL, 0, 0, 0);
+                         REQ_OFFLOAD, NULL, 0, 0);
 
     return rc;
 }
@@ -798,7 +798,7 @@ int handle_socket_long_transaction(struct dbenv *dbenv, SBUF2 *sb,
                                    char *fromtask)
 {
     return handle_buf_main(dbenv, NULL, sb, p_buf, p_buf_end, debug, frommach,
-                           frompid, fromtask, NULL, REQ_SOCKET, NULL, 0, 0, 0);
+                           frompid, fromtask, NULL, REQ_SOCKET, NULL, 0, 0);
 }
 
 void cleanup_lock_buffer(struct buf_lock_t *lock_buffer)
@@ -825,7 +825,7 @@ int handle_buf(struct dbenv *dbenv, uint8_t *p_buf, const uint8_t *p_buf_end,
                int debug, char *frommach) /* 040307dh: 64bits */
 {
     return handle_buf_main(dbenv, NULL, NULL, p_buf, p_buf_end, debug, frommach,
-                           0, NULL, NULL, REQ_WAITFT, NULL, 0, 0, 0);
+                           0, NULL, NULL, REQ_WAITFT, NULL, 0, 0);
 }
 
 int handled_queue;
@@ -834,8 +834,8 @@ int q_reqs_len(void) { return q_reqs.count; }
 
 int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
               const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
-              char *fromtask, int qtype, void *data_hndl, int do_inline,
-              int luxref, unsigned long long rqid, void *p_sinfo)
+              char *fromtask, int qtype, void *data_hndl, int luxref,
+              unsigned long long rqid, void *p_sinfo)
 {
     struct req_hdr hdr;
     uint64_t nowus;
@@ -848,7 +848,7 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     if (iq == 0) {
         errUNLOCK(&lock);
         logmsg(LOGMSG_ERROR, "handle_buf:failed allocate req\n");
-        return reterr(/*thd*/ 0, /*iq*/ 0, do_inline, ERR_INTERNAL);
+        return reterr(/*thd*/ 0, /*iq*/ 0, ERR_INTERNAL);
     }
 
     /* set up request */
@@ -881,7 +881,7 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     if (!(iq->p_buf_in = req_hdr_get(&hdr, iq->p_buf_in, iq->p_buf_in_end))) {
         errUNLOCK(&lock);
         logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
-        return reterr(/*thd*/ 0, iq, do_inline, ERR_BADREQ);
+        return reterr(/*thd*/ 0, iq, ERR_BADREQ);
     }
 
     iq->opcode = hdr.opcode;
@@ -938,14 +938,14 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
         errUNLOCK(&lock);
         logmsg(LOGMSG_ERROR, "handle_buf:luxref out of range %d max %d\n",
                luxref, dbenv->num_dbs);
-        return reterr(/*thd*/ 0, iq, do_inline, ERR_REJECTED);
+        return reterr(/*thd*/ 0, iq, ERR_REJECTED);
     }
 
     iq->origdb = dbenv->dbs[luxref]; /*lux is one based*/
     iq->usedb = iq->origdb;
     if (thedb->stopped) {
         errUNLOCK(&lock);
-        return reterr(NULL, iq, do_inline, ERR_REJECTED);
+        return reterr(NULL, iq, ERR_REJECTED);
     }
 
     if (gbl_debug_verify_tran)
@@ -961,8 +961,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
                      char *frommach, int frompid, char *fromtask,
                      sorese_info_t *sorese, int qtype, void *data_hndl,
-                     int do_inline, int luxref, unsigned long long rqid,
-                     void *p_sinfo)
+                     int luxref, unsigned long long rqid, void *p_sinfo)
 {
     int rc, nowms, num, ndispatch, iamwriter = 0;
     struct thd *thd;
@@ -989,8 +988,8 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 #endif
 
         rc = init_ireq(dbenv, iq, sb, (uint8_t *)p_buf, p_buf_end, debug,
-                       frommach, frompid, fromtask, qtype, data_hndl, do_inline,
-                       luxref, rqid, p_sinfo);
+                       frommach, frompid, fromtask, qtype, data_hndl, luxref,
+                       rqid, p_sinfo);
         if (rc) {
             logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
             return rc;
@@ -1016,7 +1015,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         if (newent == NULL) {
             errUNLOCK(&lock);
             logmsg(LOGMSG_ERROR, "handle_buf:failed to alloc new queue entry, rc %d\n", rc);
-            return reterr(/*thd*/ 0, iq, do_inline, ERR_REJECTED);
+            return reterr(/*thd*/ 0, iq, ERR_REJECTED);
         }
         newent->obj = (void *)iq;
         iamwriter = is_req_write(iq->opcode) ? 1 : 0;
@@ -1097,7 +1096,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     errUNLOCK(&lock);
                     logmsg(LOGMSG_ERROR, "handle_buf:failed calloc thread:%s\n",
                             strerror(errno));
-                    return reterr(/*thd*/ 0, iq, do_inline, ERR_INTERNAL);
+                    return reterr(/*thd*/ 0, iq, ERR_INTERNAL);
                 }
                 /*add holder for this one being born...*/
                 num = busy.count;
@@ -1112,7 +1111,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                 if (rc != 0) {
                     errUNLOCK(&lock);
                     perror_errnum("handle_buf:failed pthread_cond_init", rc);
-                    return reterr(thd, iq, do_inline, ERR_INTERNAL);
+                    return reterr(thd, iq, ERR_INTERNAL);
                 }
                 nthdcreates++;
 #ifdef MONITOR_STACK
@@ -1138,7 +1137,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                                 __func__);
                         exit(1);
                     }
-                    return reterr(thd, iq, do_inline, ERR_INTERNAL);
+                    return reterr(thd, iq, ERR_INTERNAL);
                 }
                 /* added thread to thread pool.*/
                 if (num >= MAXSTAT)
@@ -1170,7 +1169,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                 pool_relablk(pq_reqs, nextrq);
                 pthread_mutex_unlock(&lock);
                 nqfulls++;
-                reterr_withfree(iq, do_inline, ERR_REJECTED);
+                reterr_withfree(iq, ERR_REJECTED);
             } else {
                 /* THIS can happen since the queue might be already full,
                    with requests we keep, and this could be a successfully
@@ -1208,11 +1207,11 @@ int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
                     char *frommach, int frompid, char *fromtask,
                     sorese_info_t *sorese, int qtype, void *data_hndl,
-                    int do_inline, int luxref, unsigned long long rqid)
+                    int luxref, unsigned long long rqid)
 {
     return handle_buf_main2(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach,
-                            frompid, fromtask, sorese, qtype, data_hndl,
-                            do_inline, luxref, rqid, 0);
+                            frompid, fromtask, sorese, qtype, data_hndl, luxref,
+                            rqid, 0);
 }
 struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
                                 const uint8_t *p_buf_end, int debug,
@@ -1232,7 +1231,7 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
             errUNLOCK(&lock);
         }
         rc = init_ireq(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0,
-                       NULL, REQ_OFFLOAD, NULL, 0, 0, 0, 0);
+                       NULL, REQ_OFFLOAD, NULL, 0, 0, 0);
         if (rc)
             /* init_ireq unlocks on error */
             return NULL;
