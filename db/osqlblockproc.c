@@ -113,7 +113,11 @@ typedef struct oplog_key {
 } oplog_key_t;
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
-                         int *nops, struct block_err *err, SBUF2 *logsb);
+                         int *nops, struct block_err *err, SBUF2 *logsb,
+                         int (*func)(struct ireq *, unsigned long long, uuid_t,
+                                     void *, char *, int, int *, int **,
+                                     blob_buffer_t blobs[MAXBLOBS], int,
+                                     struct block_err *, int *, SBUF2 *));
 static int osql_bplog_wait(blocksql_tran_t *tran);
 static int req2blockop(int reqtype);
 static int osql_bplog_loginfo(struct ireq *iq, osql_sess_t *sess);
@@ -361,6 +365,22 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
 }
 
 /**
+ * Apply all schema changes and wait for them to finish
+ */
+int osql_bplog_schemachange(struct ireq *iq)
+{
+    blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
+    int rc = 0;
+    int nops = 0;
+    struct block_err err;
+
+    rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese.osqllog,
+                       osql_process_schemachange);
+
+    return rc;
+}
+
+/**
  * Wait for all pending osql sessions of this transaction to
  * finish
  * Once all finished ok, we apply all the changes
@@ -372,7 +392,8 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
     int rc = 0;
 
     /* apply changes */
-    rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese.osqllog);
+    rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese.osqllog,
+                       osql_process_packet);
 
     iq->timings.req_applied = osql_log_time();
 
@@ -1210,7 +1231,11 @@ int osql_bplog_reqlog_queries(struct ireq *iq)
 }
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
-                         int *nops, struct block_err *err, SBUF2 *logsb)
+                         int *nops, struct block_err *err, SBUF2 *logsb,
+                         int (*func)(struct ireq *, unsigned long long, uuid_t,
+                                     void *, char *, int, int *, int **,
+                                     blob_buffer_t blobs[MAXBLOBS], int,
+                                     struct block_err *, int *, SBUF2 *))
 {
 
     blocksql_info_t *info = NULL;
@@ -1260,7 +1285,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     LISTC_FOR_EACH(&tran->complete, info, c_reqs)
     {
         out_rc = process_this_session(iq, iq_tran, info->sess, &bdberr, nops,
-                                      err, logsb, dbc, osql_process_packet);
+                                      err, logsb, dbc, func);
         if (out_rc) {
             break;
         }

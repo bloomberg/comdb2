@@ -2048,7 +2048,11 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
     int rc = 0;
     int irc = 0;
 
-    if (!gbl_rowlocks) {
+    if (iq->tranddl) {
+        irc = trans_start_logical_sc(iq, trans);
+        if (parent_trans)
+            *parent_trans = NULL;
+    } else if (!gbl_rowlocks) {
         /* start parent transaction */
         if (parent_trans) {
             rc = trans_start(iq, NULL, parent_trans);
@@ -4566,6 +4570,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     if (is_block2sqlmode) {
         int tmpnops = 0;
         int needbackout = 0;
+        int iirc;
 
         rc = osql_bplog_finish_sql(iq, &err);
         if (rc) {
@@ -4574,6 +4579,21 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                create a transaction and backout */
             numerrs = 1;
             needbackout = 1;
+        }
+
+        if (iq->tranddl && trans) {
+            int iirc =
+                osql_destroy_transaction(iq, have_blkseq ? &parent_trans : NULL,
+                                         &trans, &osql_needtransaction);
+            if (iirc) {
+                numerrs = 1;
+                BACKOUT;
+            }
+            iirc = osql_bplog_schemachange(iq);
+            if (iirc) {
+                rc = iirc;
+                needbackout = 1;
+            }
         }
 
         /* recreate a transaction here */

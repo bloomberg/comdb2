@@ -6315,6 +6315,158 @@ int start_schema_change_tran_wrapper(const char *tblname,
 }
 
 /**
+ * Handles each packet and start schema change
+ *
+ */
+int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
+                              uuid_t uuid, void *trans, char *msg, int msglen,
+                              int *flags, int **updCols,
+                              blob_buffer_t blobs[MAXBLOBS], int step,
+                              struct block_err *err, int *receivedrows,
+                              SBUF2 *logsb)
+{
+    const uint8_t *p_buf;
+    const uint8_t *p_buf_end;
+    int rc = 0;
+    int ii;
+    struct dbtable *db =
+        (iq->usedb) ? iq->usedb : thedb->dbs[0]; /*add to first if no usedb*/
+    const unsigned char tag_name_ondisk[] = ".ONDISK";
+    const size_t tag_name_ondisk_len = 8 /*includes NUL*/;
+    int type;
+    uuidstr_t us;
+
+    if (rqid == OSQL_RQID_USE_UUID) {
+        osql_uuid_rpl_t rpl;
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
+        type = rpl.type;
+        comdb2uuidstr(rpl.uuid, us);
+        if (comdb2uuidcmp(rpl.uuid, uuid)) {
+            uuidstr_t passedus;
+            comdb2uuidstr(uuid, passedus);
+            logmsg(LOGMSG_FATAL, "uuid mismatch: passed in %s, in packet %s\n",
+                   passedus, us);
+            abort();
+        }
+    } else {
+        osql_rpl_t rpl;
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
+        type = rpl.type;
+    }
+
+#if 0
+   if(logsb)
+      sbuf2printf(logsb, "processing: %x\n", msg);
+#endif
+
+    /*fprintf(stderr,"rpl type is %d msg=%x\n",rpl.type, msg);*/
+
+    switch (type) {
+    case OSQL_USEDB: {
+        osql_usedb_t dt;
+        p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
+        char *tablename;
+
+        tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+
+        if (logsb) {
+            sbuf2printf(logsb, "[%llu %s] OSQL_USEDB %*.s\n", rqid,
+                        comdb2uuidstr(uuid, us), dt.tablenamelen, tablename);
+            sbuf2flush(logsb);
+        }
+        if (unlikely(timepart_is_timepart(tablename, 1))) {
+            char *newest_shard;
+            unsigned long long ver;
+
+            newest_shard = timepart_newest_shard(tablename, &ver);
+            if (newest_shard) {
+                iq->usedbtablevers = ver;
+                free(newest_shard);
+            } else {
+                logmsg(LOGMSG_ERROR,
+                       "%s: broken time partition %s"
+                       "\n",
+                       __func__, tablename);
+
+                return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
+                                         tablename, 0);
+            }
+        } else {
+            if (is_tablename_queue(tablename, strlen(tablename))) {
+                iq->usedb = getqueuebyname(tablename);
+            } else {
+                iq->usedb = get_dbtable_by_name(tablename);
+                iq->usedbtablevers = dt.tableversion;
+            }
+            if (iq->usedb == NULL) {
+                iq->usedb = iq->origdb;
+                logmsg(LOGMSG_INFO, "%s: unable to get usedb for table %.*s\n",
+                       __func__, dt.tablenamelen, tablename);
+                return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
+                                         tablename, 0);
+            }
+        }
+    } break;
+    case OSQL_SCHEMACHANGE: {
+        p_buf = (uint8_t *)msg + sizeof(osql_uuid_rpl_t);
+        p_buf_end = p_buf + msglen;
+        struct schema_change_type *sc = new_schemachange_type();
+        p_buf = osqlcomm_schemachange_type_get(sc, p_buf, p_buf_end);
+
+        if (p_buf == NULL)
+            return -1;
+
+        sc->nothrevent = 1;
+        sc->finalize = 0;
+        if (sc->original_master_node[0] != 0 &&
+            strcmp(sc->original_master_node, gbl_mynode))
+            sc->resume = 1;
+
+        iq->sc = sc;
+        if (sc->db == NULL) {
+            sc->db = get_dbtable_by_name(sc->table);
+        }
+        sc->tran = NULL;
+        if (sc->db)
+            iq->usedb = sc->db;
+
+        if (!timepart_is_timepart(sc->table, 1)) {
+            rc = start_schema_change_tran(iq, NULL);
+            if (rc != SC_COMMIT_PENDING) {
+                iq->sc = NULL;
+            } else {
+                iq->sc->sc_next = iq->sc_pending;
+                iq->sc_pending = iq->sc;
+                bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
+            }
+        } else {
+            timepart_sc_arg_t arg = {0};
+            arg.s = sc;
+            arg.s->iq = iq;
+            rc = timepart_foreach_shard(
+                sc->table, start_schema_change_tran_wrapper, &arg, 0);
+        }
+        iq->usedb = NULL;
+
+        if (!rc || rc == SC_COMMIT_PENDING)
+            return 0;
+        else if (rc == SC_MASTER_DOWNGRADE)
+            return ERR_NOMASTER;
+        else
+            return ERR_SC;
+    } break;
+    default:
+        return 0;
+    }
+
+    return 0;
+}
+
+/**
  * Handles each packet and calls record.c functions
  * to apply to received row updates
  *
@@ -7073,52 +7225,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
     } break;
     case OSQL_SCHEMACHANGE: {
-        uint8_t *p_buf = (uint8_t *)msg + sizeof(osql_uuid_rpl_t);
-        uint8_t *p_buf_end = p_buf + msglen;
-        struct schema_change_type *sc = new_schemachange_type();
-        p_buf = osqlcomm_schemachange_type_get(sc, p_buf, p_buf_end);
-
-        if (p_buf == NULL) return -1;
-
-        sc->nothrevent = 1;
-        sc->finalize = 0;
-        if (sc->original_master_node[0] != 0 &&
-            strcmp(sc->original_master_node, gbl_mynode))
-            sc->resume = 1;
-
-        void *ptran = bdb_get_physical_tran(trans);
-        bdb_ltran_get_schema_lock(trans);
-        iq->sc = sc;
-        if (sc->db == NULL) {
-            sc->db = get_dbtable_by_name(sc->table);
-        }
-        sc->tran = ptran;
-        if (sc->db) iq->usedb = sc->db;
-
-        if (!timepart_is_timepart(sc->table, 1)) {
-            rc = start_schema_change_tran(iq, ptran);
-            if (rc != SC_COMMIT_PENDING) {
-                iq->sc = NULL;
-            } else {
-                iq->sc->sc_next = iq->sc_pending;
-                iq->sc_pending = iq->sc;
-                bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
-            }
-        } else {
-            timepart_sc_arg_t arg = {0};
-            arg.s = sc;
-            arg.s->iq = iq;
-            rc = timepart_foreach_shard(
-                sc->table, start_schema_change_tran_wrapper, &arg, 0);
-        }
-        iq->usedb = NULL;
-
-        if (!rc || rc == SC_COMMIT_PENDING)
-            return 0;
-        else if (rc == SC_MASTER_DOWNGRADE)
-            return ERR_NOMASTER;
-        else
-            return ERR_SC;
+        /* handled in osql_process_schemachange */
+        return 0;
     } break;
     case OSQL_BPFUNC: {
         uint8_t *p_buf_end = (uint8_t *)msg + sizeof(osql_bpfunc_t) + msglen;

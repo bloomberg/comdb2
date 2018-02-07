@@ -167,7 +167,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     strcpy(s->original_master_node, gbl_mynode);
     unsigned long long seed;
     const char *node = gbl_mynode;
-    if (trans && s->tran == trans && iq->sc_seed) {
+    if (s->tran == trans && iq->sc_seed) {
         seed = iq->sc_seed;
         logmsg(LOGMSG_INFO, "Starting schema change: "
                             "transactionally reuse seed 0x%llx\n",
@@ -971,6 +971,7 @@ int sc_timepart_add_table(const char *existingTableName,
     char *schemabuf = NULL;
     struct dbtable *db;
 
+    init_schemachange_type(&sc);
     /* prepare sc */
     sc.onstack = 1;
     sc.type = DBTYPE_TAGGED_TABLE;
@@ -1069,6 +1070,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     char *schemabuf = NULL;
     int rc;
 
+    init_schemachange_type(&sc);
     /* prepare sc */
     sc.onstack = 1;
     sc.type = DBTYPE_TAGGED_TABLE;
