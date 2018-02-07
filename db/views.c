@@ -2040,7 +2040,7 @@ int views_cron_restart(timepart_views_t *views)
     {
         if(gbl_schema_change_in_progress)
         {
-            fprintf(stderr,
+            logmsg(LOGMSG_ERROR,
                     "Schema change started too early for time partition: aborting\n");
             gbl_sc_abort = 1;
             MEMORY_SYNC;
