@@ -1876,7 +1876,7 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
 
         tbl = get_dbtable_by_name(tblnames[i]);
         if (tbl == NULL) {
-            if(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_IGNORE_BAD_TABLE)) {
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_IGNORE_BAD_TABLE)) {
                 logmsg(LOGMSG_ERROR, "ignoring missing table %s\n",
                        tblnames[i]);
                 continue;

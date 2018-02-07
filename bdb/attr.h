@@ -605,8 +605,9 @@ DEF_ATTR(REPORT_DECIMAL_CONVERSION, report_decimal_conversion, BOOLEAN, 0, NULL)
 DEF_ATTR(TIMEPART_CHECK_SHARD_EXISTENCE, timepart_check_shard_existence,
          BOOLEAN, 0,
          "Check at startup/time-partition creation that all shard files exist.")
-DEF_ATTR(IGNORE_BAD_TABLE, ignore_bad_table, BOOLEAN, 0,
-         "Allow a database with a corrupt table to come up, without that table.")
+DEF_ATTR(
+    IGNORE_BAD_TABLE, ignore_bad_table, BOOLEAN, 0,
+    "Allow a database with a corrupt table to come up, without that table.")
 /* Keep enabled for the merge */
 DEF_ATTR(DURABLE_LSNS, durable_lsns, BOOLEAN, 0, NULL)
 /* Keep disabled:  we get it when we add to the trn_repo */

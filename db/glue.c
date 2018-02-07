@@ -4115,24 +4115,22 @@ int backend_open(struct dbenv *dbenv)
                           dbenv->bdb_env, &bdberr);
 
         if (db->handle == NULL) {
-            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_IGNORE_BAD_TABLE)) 
-            {
-                logmsg(LOGMSG_ERROR,
-                       "bdb_open:failed to open table %s/%s, rcode %d, IGNORING\n",
-                       dbenv->basedir, db->tablename, bdberr);
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_IGNORE_BAD_TABLE)) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "bdb_open:failed to open table %s/%s, rcode %d, IGNORING\n",
+                    dbenv->basedir, db->tablename, bdberr);
                 /* this is a hack, lets just leak it */
-                if (ii == dbenv->num_dbs-1) 
-                {
+                if (ii == dbenv->num_dbs - 1) {
                     dbenv->dbs[ii] == NULL;
-                }
-                else
-                {
-                    memcpy(dbenv->dbs[ii], dbenv->dbs[ii+1], sizeof(dbenv->dbs[0]));
-                    dbenv->dbs[dbenv->num_dbs-1] = NULL;
+                } else {
+                    memcpy(dbenv->dbs[ii], dbenv->dbs[ii + 1],
+                           sizeof(dbenv->dbs[0]));
+                    dbenv->dbs[dbenv->num_dbs - 1] = NULL;
                 }
                 dbenv->num_dbs--;
                 ii--;
-                continue;    
+                continue;
             }
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open table %s/%s, rcode %d\n",
