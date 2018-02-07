@@ -74,7 +74,8 @@ void register_date_functions(sqlite3 * db) {
 
     for(i=0;i<sizeof(aFuncs)/sizeof(aFuncs[0]); i++){
         rc = sqlite3_create_function(db, aFuncs[i].zName, aFuncs[i].nArg, 
-                SQLITE_ANY, 0, aFuncs[i].xFunc, aFuncs[i].xStep, aFuncs[i].xFinal);
+                SQLITE_ANY|SQLITE_DETERMINISTIC, 0, aFuncs[i].xFunc,
+                aFuncs[i].xStep, aFuncs[i].xFinal);
     }
 }
 
