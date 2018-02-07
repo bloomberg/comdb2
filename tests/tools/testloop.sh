@@ -3,6 +3,7 @@
 debug=1
 [[ "$debug" == "1" ]] && set -x
 
+BRANCH=${1:=master}
 export CORE_ON_TIMEOUT=1
 #export NOKILL_ON_TIMEOUT=1
 email="mhannum72@gmail.com"
@@ -33,13 +34,44 @@ function print_status
     echo "SSH fail       :  $sshfail"
 }
 
+function cleanup
+{
+    [[ "$debug" == "1" ]] && set -x
+    find  ~/comdb2/tests/tools/linearizable/jepsen/store -mtime 1 -exec rm -Rf {} \;
+    find ~/comdb2/tests/test_* -mtime 1 -exec rm -Rf {} \;
+    for m in $CLUSTER ; do ssh $m 'find ~/comdb2/tests/test_* -mtime 1 -exec rm -Rf {} \;' ; done
+}
+
+
+function pull_and_recompile
+{
+    [[ "$debug" == "1" ]] && set -x
+    cd ~/comdb2
+    git checkout $BRANCH
+    git fetch --all --tags
+    if [[ "$BRANCH" == "master" ]]; then
+        git rebase upstream/master
+    else
+        git pull
+    fi
+    make clean
+    make -j > build.out 2>&1
+    if [[ $? != 0 ]]; then
+        echo "Compile error, exiting"
+        exit 1
+    fi
+}
+
 while :; do 
     let i=i+1 
     print_status
+    pull_and_recompile
     echo "$(date) ITERATION $i" 
     rm -Rf $(find . -type d -mmin +$test_linger | egrep test_)
     for x in $tests 
-    do echo "$(date) - starting $x" 
+    do print_status
+        cleanup
+        echo "$(date) - starting $x" 
 
         for m in $CLUSTER; do ssh $m 'sudo iptables -F -w; sudo iptables -X -w';  done
         for m in $CLUSTER; do ssh $m 'killall -s 9 comdb2';  done
