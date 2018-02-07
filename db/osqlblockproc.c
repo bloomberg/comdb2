@@ -373,10 +373,37 @@ int osql_bplog_schemachange(struct ireq *iq)
     int rc = 0;
     int nops = 0;
     struct block_err err;
+    struct schema_change_type *sc;
 
     rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese.osqllog,
                        osql_process_schemachange);
 
+    /* wait for all schema changes to finish */
+    iq->sc = sc = iq->sc_pending;
+    iq->sc_pending = NULL;
+    while (sc != NULL) {
+        pthread_mutex_lock(&sc->mtx);
+        sc->nothrevent = 1;
+        pthread_mutex_unlock(&sc->mtx);
+        iq->sc = sc->sc_next;
+        if (sc->sc_rc == SC_COMMIT_PENDING) {
+            sc->sc_next = iq->sc_pending;
+            iq->sc_pending = sc;
+        } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
+            free_schema_change_type(sc);
+            rc = ERR_NOMASTER;
+        } else {
+            free_schema_change_type(sc);
+            int sc_set_running(int running, uint64_t seed, const char *host,
+                               time_t time);
+            sc_set_running(0, iq->sc_seed, NULL, 0);
+            rc = ERR_SC;
+        }
+        sc = iq->sc;
+    }
+    if (rc) {
+        csc2_free_all();
+    }
     return rc;
 }
 

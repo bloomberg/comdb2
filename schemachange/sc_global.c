@@ -29,6 +29,7 @@ pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 pthread_mutex_t schema_change_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t fastinit_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t schema_change_sbuf2_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t csc2_subsystem_mtx = PTHREAD_MUTEX_INITIALIZER;
 volatile int gbl_schema_change_in_progress = 0;
 volatile int gbl_lua_version = 0;
 uint64_t sc_seed;

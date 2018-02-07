@@ -280,7 +280,7 @@ int do_upgrade_table(struct schema_change_type *s)
     return rc;
 }
 
-typedef int (*ddl_t)(struct ireq *, tran_type *);
+typedef int (*ddl_t)(struct ireq *, struct schema_change_type *, tran_type *);
 
 /*
 ** Start transaction if not passed in (comdb2sc.tsk)
@@ -288,12 +288,12 @@ typedef int (*ddl_t)(struct ireq *, tran_type *);
 **   1. also commit it
 **   2. log scdone here
 */
-static int do_finalize(ddl_t func, struct ireq *iq, tran_type *input_tran,
+static int do_finalize(ddl_t func, struct ireq *iq,
+                       struct schema_change_type *s, tran_type *input_tran,
                        scdone_t type)
 {
     int rc;
     tran_type *tran = input_tran;
-    struct schema_change_type *s = iq->sc;
 
     if (tran == NULL) {
         rc = trans_start_sc(iq, NULL, &tran);
@@ -303,7 +303,7 @@ static int do_finalize(ddl_t func, struct ireq *iq, tran_type *input_tran,
         }
     }
 
-    rc = func(iq, tran);
+    rc = func(iq, s, tran);
 
     if (rc) {
         if (input_tran == NULL) {
@@ -339,42 +339,41 @@ static int do_finalize(ddl_t func, struct ireq *iq, tran_type *input_tran,
     return rc;
 }
 
-static int check_table_version(struct ireq *iq)
+static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
 {
-    if (iq->sc->addonly || iq->sc->resume)
+    if (sc->addonly || sc->resume)
         return 0;
     int rc, bdberr;
     unsigned long long version;
-    rc = bdb_table_version_select(iq->sc->table, NULL, &version, &bdberr);
+    rc = bdb_table_version_select(sc->table, NULL, &version, &bdberr);
     if (rc != 0) {
         errstat_set_strf(&iq->errstat,
-                         "failed to get version for table:%s rc:%d",
-                         iq->sc->table, rc);
+                         "failed to get version for table:%s rc:%d", sc->table,
+                         rc);
         iq->errstat.errval = ERR_SC;
         return SC_INTERNAL_ERROR;
     }
     if (iq->usedbtablevers != version) {
         errstat_set_strf(&iq->errstat,
                          "stale version for table:%s master:%d replicant:%d",
-                         iq->sc->table, version, iq->usedbtablevers);
+                         sc->table, version, iq->usedbtablevers);
         iq->errstat.errval = ERR_SC;
         return SC_INTERNAL_ERROR;
     }
     return 0;
 }
 
-static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq, tran_type *tran,
-                  scdone_t type)
+static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
+                  struct schema_change_type *s, tran_type *tran, scdone_t type)
 {
     int rc;
-    struct schema_change_type *s = iq->sc;
     if (s->finalize_only) {
         return s->sc_rc;
     }
     if (type != alter)
         wrlock_schema_lk();
     set_original_tablename(s);
-    if ((rc = check_table_version(iq)) != 0) { // non-tran ??
+    if ((rc = check_table_version(iq, s)) != 0) { // non-tran ??
         goto end;
     }
     if (!s->resume)
@@ -382,7 +381,7 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq, tran_type *tran,
     if ((rc = mark_sc_in_llmeta_tran(s, NULL))) // non-tran ??
         goto end;
     broadcast_sc_start(sc_seed, sc_host, time(NULL)); // dont care rcode
-    rc = pre(iq, NULL); // non-tran ??
+    rc = pre(iq, s, NULL);                            // non-tran ??
     if (type == alter && master_downgrading(s)) {
         s->sc_rc = SC_MASTER_DOWNGRADE;
         errstat_set_strf(
@@ -394,7 +393,7 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq, tran_type *tran,
         mark_schemachange_over_tran(s->table, NULL); // non-tran ??
         broadcast_sc_end(0);
     } else if (s->finalize) {
-        rc = do_finalize(post, iq, tran, type);
+        rc = do_finalize(post, iq, s, tran, type);
         broadcast_sc_end(sc_seed);
     } else {
         rc = SC_COMMIT_PENDING;
@@ -458,15 +457,14 @@ int do_schema_change_tran(sc_arg_t *arg)
 {
     struct ireq *iq = arg->iq;
     tran_type *trans = arg->trans;
+    struct schema_change_type *s = arg->sc;
     free(arg);
 
     if (iq == NULL) {
         abort();
     }
 
-    struct schema_change_type *s = iq->sc;
     s->iq = iq;
-    pthread_mutex_lock(&s->mtx);
     enum thrtype oldtype = prepare_sc_thread(s);
     int rc = SC_OK;
 
@@ -485,18 +483,19 @@ int do_schema_change_tran(sc_arg_t *arg)
     else if (s->is_afunc)
         rc = do_lua_afunc(s);
     else if (s->fastinit && s->drop_table)
-        rc = do_ddl(do_drop_table, finalize_drop_table, iq, trans, drop);
+        rc = do_ddl(do_drop_table, finalize_drop_table, iq, s, trans, drop);
     else if (s->fastinit)
-        rc = do_ddl(do_fastinit, finalize_fastinit_table, iq, trans, fastinit);
+        rc = do_ddl(do_fastinit, finalize_fastinit_table, iq, s, trans,
+                    fastinit);
     else if (s->addonly)
-        rc = do_ddl(do_add_table, finalize_add_table, iq, trans, add);
+        rc = do_ddl(do_add_table, finalize_add_table, iq, s, trans, add);
     else if (s->rename)
-        rc = do_ddl(do_rename_table, finalize_rename_table, iq, trans,
+        rc = do_ddl(do_rename_table, finalize_rename_table, iq, s, trans,
                     rename_table);
     else if (s->fulluprecs || s->partialuprecs)
         rc = do_upgrade_table(s);
     else if (s->type == DBTYPE_TAGGED_TABLE)
-        rc = do_ddl(do_alter_table, finalize_alter_table, iq, trans, alter);
+        rc = do_ddl(do_alter_table, finalize_alter_table, iq, s, trans, alter);
     else if (s->type == DBTYPE_QUEUE)
         rc = do_alter_queues(s);
     else if (s->type == DBTYPE_MORESTRIPE)
@@ -542,7 +541,9 @@ int do_schema_change(struct schema_change_type *s)
     iq.usedbtablevers = s->db ? s->db->tableversion : 0;
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
     arg->iq = &iq;
+    arg->sc = s;
     arg->trans = NULL;
+    pthread_mutex_lock(&s->mtx);
     return do_schema_change_tran(arg);
 }
 
@@ -578,15 +579,15 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
     else if (s->is_afunc)
         rc = finalize_lua_afunc();
     else if (s->fastinit && s->drop_table)
-        rc = do_finalize(finalize_drop_table, iq, trans, drop);
+        rc = do_finalize(finalize_drop_table, iq, s, trans, drop);
     else if (s->fastinit)
-        rc = do_finalize(finalize_fastinit_table, iq, trans, fastinit);
+        rc = do_finalize(finalize_fastinit_table, iq, s, trans, fastinit);
     else if (s->addonly)
-        rc = do_finalize(finalize_add_table, iq, trans, add);
+        rc = do_finalize(finalize_add_table, iq, s, trans, add);
     else if (s->rename)
-        rc = do_finalize(finalize_rename_table, iq, trans, rename_table);
+        rc = do_finalize(finalize_rename_table, iq, s, trans, rename_table);
     else if (s->type == DBTYPE_TAGGED_TABLE)
-        rc = do_finalize(finalize_alter_table, iq, trans, alter);
+        rc = do_finalize(finalize_alter_table, iq, s, trans, alter);
     else if (s->fulluprecs || s->partialuprecs)
         rc = finalize_upgrade_table(s);
     if (!keep_sc_locked) {

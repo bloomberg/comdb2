@@ -308,9 +308,9 @@ int gbl_test_scindex_deadlock = 0;
 int gbl_test_sc_resume_race = 0;
 int gbl_readonly_sc = 0;
 
-int do_alter_table(struct ireq *iq, tran_type *tran)
+int do_alter_table(struct ireq *iq, struct schema_change_type *s,
+                   tran_type *tran)
 {
-    struct schema_change_type *s = iq->sc;
     struct dbtable *db;
     int rc;
     int bdberr = 0;
@@ -346,12 +346,17 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
 
     sc_printf(s, "starting schema update with seed %llx\n", sc_seed);
 
-    if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) return rc;
+    pthread_mutex_lock(&csc2_subsystem_mtx);
+    if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
+        return rc;
+    }
 
     db->sc_to = newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, -1);
 
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
         return SC_INTERNAL_ERROR;
     }
     newdb->version = get_csc2_version(newdb->tablename);
@@ -362,6 +367,7 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
         backout(newdb);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
         return -1;
     }
 
@@ -427,13 +433,18 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
         }
     pi_done:
         unlock_schema_lk();
-        if (rc) return rc;
+        if (rc) {
+            pthread_mutex_unlock(&csc2_subsystem_mtx);
+            return rc;
+        }
         if (ret) {
+            pthread_mutex_unlock(&csc2_subsystem_mtx);
             backout(newdb);
             cleanup_newdb(newdb);
             return ret;
         }
     }
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     if (verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
         backout(newdb);
@@ -596,9 +607,9 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
     return SC_OK;
 }
 
-int finalize_alter_table(struct ireq *iq, tran_type *transac)
+int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
+                         tran_type *transac)
 {
-    struct schema_change_type *s = iq->sc;
     int retries = 0;
     int rc, bdberr;
     struct dbtable *db = s->db;

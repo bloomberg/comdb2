@@ -17,8 +17,10 @@
 #ifndef INCLUDE_SC_TABLES_H
 #define INCLUDE_SC_TABLES_H
 
-int do_alter_table(struct ireq *iq, tran_type *tran);
+int do_alter_table(struct ireq *iq, struct schema_change_type *s,
+                   tran_type *tran);
 int do_upgrade_table_int(struct schema_change_type *s);
-int finalize_alter_table(struct ireq *iq, tran_type *tran);
+int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
+                         tran_type *tran);
 int finalize_upgrade_table(struct schema_change_type *s);
 #endif

@@ -21,6 +21,7 @@ extern pthread_mutex_t schema_change_in_progress_mutex;
 extern pthread_mutex_t fastinit_in_progress_mutex;
 extern pthread_mutex_t schema_change_sbuf2_lock;
 extern pthread_mutex_t sc_resuming_mtx;
+extern pthread_mutex_t csc2_subsystem_mtx;
 extern struct schema_change_type *sc_resuming;
 extern volatile int gbl_schema_change_in_progress;
 extern volatile int gbl_lua_version;

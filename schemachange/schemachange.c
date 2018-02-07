@@ -243,6 +243,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
     arg->trans = trans;
     arg->iq = iq;
+    arg->sc = iq->sc;
 
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race) {
@@ -259,11 +260,13 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (s->nothrevent) {
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
+        pthread_mutex_lock(&s->mtx);
         rc = do_schema_change_tran(arg);
     } else {
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
         pthread_t tid;
+        pthread_mutex_lock(&s->mtx);
         rc = pthread_create(&tid, &gbl_pthread_attr_detached,
                             (void *(*)(void *))do_schema_change_tran, arg);
         if (rc) {
@@ -783,9 +786,8 @@ int live_sc_post_update(struct ireq *iq, void *trans,
 /* I ORIGINALLY REMOVED THIS, THEN MERGING I SAW IT BACK IN COMDB2.C
     I AM LEAVING IT IN HERE FOR NOW (GOTTA ASK MARK)               */
 
-static int add_table_for_recovery(struct ireq *iq)
+static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
 {
-    struct schema_change_type *s = iq->sc;
     struct dbtable *db;
     struct dbtable *newdb;
     int bdberr;
@@ -794,7 +796,7 @@ static int add_table_for_recovery(struct ireq *iq)
     db = get_dbtable_by_name(s->table);
     if (db == NULL) {
         wrlock_schema_lk();
-        rc = do_add_table(iq, NULL);
+        rc = do_add_table(iq, s, NULL);
         unlock_schema_lk();
         return rc;
     }
@@ -950,7 +952,7 @@ int add_schema_change_tables()
             }
 
             iq.sc = s;
-            rc = add_table_for_recovery(&iq);
+            rc = add_table_for_recovery(&iq, s);
 
             free(s);
             return rc;

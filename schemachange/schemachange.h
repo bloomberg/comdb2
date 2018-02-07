@@ -193,6 +193,7 @@ struct ireq;
 typedef struct {
     tran_type *trans;
     struct ireq *iq;
+    struct schema_change_type *sc;
 } sc_arg_t;
 
 struct scinfo {
