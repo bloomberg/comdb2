@@ -375,7 +375,8 @@ DEF_ATTR(SEQNUM_WAIT_INTERVAL, seqnum_wait_interval, QUANTITY, 500,
          "replication ACKs.")
 DEF_ATTR(SOSQL_MAX_COMMIT_WAIT_SEC, sosql_max_commit_wait_sec, SECS, 600,
          "Wait for the master to commit a transaction for up to this long.")
-DEF_ATTR(SOSQL_DDL_MAX_COMMIT_WAIT_SEC, sosql_ddl_max_commit_wait_sec, SECS, 24*3600*3,
+DEF_ATTR(SOSQL_DDL_MAX_COMMIT_WAIT_SEC, sosql_ddl_max_commit_wait_sec, SECS,
+         24 * 3600 * 3,
          "Wait for the master to commit a DDL transaction for up to this long.")
 DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 12,
          "On replicants, when checking on master for transaction status, retry "

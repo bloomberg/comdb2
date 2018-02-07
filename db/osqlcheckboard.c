@@ -513,9 +513,8 @@ void osql_checkboard_check_down_nodes(char *host)
  * Upon return, sqlclntstate's errstat is set
  *
  */
-int osql_chkboard_wait_commitrc(unsigned long long rqid,
-                                uuid_t uuid, int max_wait,
-                                struct errstat *xerr)
+int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
+                                int max_wait, struct errstat *xerr)
 {
     struct timespec tm_s;
     osql_sqlthr_t *entry = NULL;

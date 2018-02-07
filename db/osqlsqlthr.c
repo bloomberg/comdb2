@@ -660,7 +660,6 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
     int bdberr = 0;
     int timeout = 0;
 
-
     /* temp hook for sql transactions */
     /* is it distributed? */
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran)
@@ -721,13 +720,16 @@ retry:
             abort();
         }
 
-        if(osql->running_ddl) 
-            timeout = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_DDL_MAX_COMMIT_WAIT_SEC);
+        if (osql->running_ddl)
+            timeout = bdb_attr_get(thedb->bdb_attr,
+                                   BDB_ATTR_SOSQL_DDL_MAX_COMMIT_WAIT_SEC);
         else
-            timeout = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC);
+            timeout = bdb_attr_get(thedb->bdb_attr,
+                                   BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC);
 
         /* waits for a sign */
-        rc = osql_chkboard_wait_commitrc(osql->rqid, osql->uuid, timeout, &osql->xerr);
+        rc = osql_chkboard_wait_commitrc(osql->rqid, osql->uuid, timeout,
+                                         &osql->xerr);
         if (rc) {
             rcout = SQLITE_CLIENT_CHANGENODE;
             logmsg(LOGMSG_ERROR, "%s line %d setting rcout to (%d) from %d\n", 
