@@ -188,7 +188,3 @@ int rtcpu_is_cpu_up(int node) {
 int getcomputerroom_(int *node) {
     return 0;
 }
-
-int getlclbfpoolwidthbigsnd2(void) {
-    return 16*1024-1;
-}

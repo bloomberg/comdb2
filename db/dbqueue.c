@@ -145,8 +145,6 @@ int gbl_node1rtcpuable = 0;       /* no rtcpu check for node 1 */
 
 int gbl_reset_queue_cursor = 1;
 
-extern int getlclbfpoolwidthbigsnd2(void);
-
 static void *dbqueue_consume_thread(void *arg);
 int consume(struct ireq *iq, const void *fnd, struct consumer *consumer,
             int consumern);
@@ -1757,6 +1755,11 @@ static int dispatch_flush(struct ireq *iq, struct consumer *consumer)
     }
 }
 
+static int comdb2_getlclbfpoolwidthbigsnd2()
+{
+    return 16 * 1024 - 1;
+}
+
 static int dispatch_fstsnd(struct ireq *iq, struct consumer *consumer,
                            const struct dbq_cursor *cursor, void *item)
 {
@@ -1793,7 +1796,7 @@ static int dispatch_fstsnd(struct ireq *iq, struct consumer *consumer,
 beginning:
     if (consumer->first) {
         consumer->first = 0;
-        consumer->spaceleft = getlclbfpoolwidthbigsnd2() & ~3;
+        consumer->spaceleft = comdb2_getlclbfpoolwidthbigsnd2() & ~3;
         /* Populate header */
         bzero(buf, offsetof(struct dbq_msgbuf, msgs));
         strncpy(buf->comdb2, "CDB2_MSG", sizeof(buf->comdb2));
@@ -2005,7 +2008,8 @@ static int consumer_send(struct consumer *consumer, int len)
     rsp.rc = ntohl(rsp.rc);
 
     if (rsp.followlen) {
-        if (rsp.followlen < 0 || rsp.followlen > getlclbfpoolwidthbigsnd2()) {
+        if (rsp.followlen < 0 ||
+            rsp.followlen > comdb2_getlclbfpoolwidthbigsnd2()) {
             logmsg(LOGMSG_ERROR,
                    "queue %s consumer %d (%s) suspicious response length %d\n",
                    consumer->db->tablename, consumer->consumern,

@@ -144,8 +144,3 @@ const char *plink_constant(int which)
         return NULL;
     return ___plink_constants[which];
 }
-
-int getlclbfpoolwidthbigsnd2(void)
-{
-    return 16 * 1024 - 1;
-}
