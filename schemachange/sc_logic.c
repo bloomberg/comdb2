@@ -189,7 +189,9 @@ static void free_sc(struct schema_change_type *s)
 {
     free_schema_change_type(s);
     /* free any memory csc2 allocated when parsing schema */
+    pthread_mutex_lock(&csc2_subsystem_mtx);
     csc2_free_all();
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
 }
 
 static void stop_and_free_sc(int rc, struct schema_change_type *s, int do_free)
@@ -515,7 +517,6 @@ int do_schema_change_tran(sc_arg_t *arg)
         }
     }
     reset_sc_thread(oldtype, s);
-    pthread_mutex_unlock(&s->mtx);
     if (iq->is_fake)
         free(iq);
     if (rc && rc != SC_COMMIT_PENDING)
@@ -530,8 +531,10 @@ int do_schema_change_tran(sc_arg_t *arg)
     }
     if (s->resume == SC_NEW_MASTER_RESUME || rc == SC_COMMIT_PENDING ||
         (!s->nothrevent && !s->finalize)) {
+        pthread_mutex_unlock(&s->mtx);
         return rc;
     }
+    pthread_mutex_unlock(&s->mtx);
     if (rc == SC_MASTER_DOWNGRADE) {
         free_sc(s);
     } else {

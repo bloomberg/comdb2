@@ -397,12 +397,15 @@ int osql_bplog_schemachange(struct ireq *iq)
             int sc_set_running(int running, uint64_t seed, const char *host,
                                time_t time);
             sc_set_running(0, iq->sc_seed, NULL, 0);
-            rc = ERR_SC;
+            rc = sc->sc_rc ? ERR_SC : 0;
         }
         sc = iq->sc;
     }
     if (rc) {
+        extern pthread_mutex_t csc2_subsystem_mtx;
+        pthread_mutex_lock(&csc2_subsystem_mtx);
         csc2_free_all();
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
     }
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
     return rc;

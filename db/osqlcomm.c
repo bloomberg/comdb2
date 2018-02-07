@@ -6290,7 +6290,7 @@ int start_schema_change_tran_wrapper(const char *tblname,
     strncpy0(sc->table, tblname, sizeof(sc->table));
 
     rc = start_schema_change_tran(iq, sc->tran);
-    if (rc != SC_OK && rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
+    if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
         iq->sc = NULL;
     } else {
         iq->sc->sc_next = iq->sc_pending;
@@ -6439,7 +6439,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
         if (!timepart_is_timepart(sc->table, 1)) {
             rc = start_schema_change_tran(iq, NULL);
-            if (rc != SC_OK && rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
+            if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
                 iq->sc = NULL;
             } else {
                 iq->sc->sc_next = iq->sc_pending;

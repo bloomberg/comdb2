@@ -480,7 +480,7 @@ DEF_ATTR(SC_RESUME_AUTOCOMMIT, sc_resume_autocommit, BOOLEAN, 1,
 DEF_ATTR(SC_RESUME_WATCHDOG_TIMER, sc_resume_watchdog_timer, QUANTITY, 60,
          "sc_resuming_watchdog timer")
 DEF_ATTR(SC_DELAY_VERIFY_ERROR, sc_delay_verify_error, MSECS, 100, NULL)
-DEF_ATTR(SC_ASYNC, sc_async, BOOLEAN, 0,
+DEF_ATTR(SC_ASYNC, sc_async, BOOLEAN, 1,
          "Run transactional schema changes asynchronously.")
 DEF_ATTR(SC_ASYNC_MAXTHREADS, sc_async_maxthreads, QUANTITY, 5,
          "Max number of threads for asynchronous schema changes.")
