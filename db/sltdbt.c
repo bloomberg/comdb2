@@ -419,8 +419,7 @@ int handle_ireq(struct ireq *iq)
             }
             iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
             iq->p_buf_in_end = iq->p_buf_in = NULL;
-        } else if (comdb2_ipc_sndbak_len_sinfo)
-        {
+        } else if (comdb2_ipc_sndbak_len_sinfo) {
             comdb2_ipc_sndbak_len_sinfo(iq, rc);
         }
     }

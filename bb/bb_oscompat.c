@@ -351,7 +351,8 @@ static void *test_bb_gethostservstar_thread(void *v)
         /* GETHOSTBYNAME */
         hentname = comdb2_gethostbyname("sundev9");
         if (hentname == NULL) {
-            fprintf(stderr, "comdb2_gethostbyname failed: h_errno=%d\n", h_errno);
+            fprintf(stderr, "comdb2_gethostbyname failed: h_errno=%d\n",
+                    h_errno);
             return NULL;
         }
 

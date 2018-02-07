@@ -667,7 +667,9 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
     if (is_incoherent(bdb_state, host)) {
         DB_LSN *lsnp, *masterlsn;
         lsnp = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
-        masterlsn = &bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->master_host)].lsn;
+        masterlsn = &bdb_state->seqnum_info
+                         ->seqnums[nodeix(bdb_state->repinfo->master_host)]
+                         .lsn;
         cntbytes = subtract_lsn(bdb_state, masterlsn, lsnp);
         if (cntbytes > gbl_incoherent_logput_window) {
             ret = 1;
@@ -949,12 +951,12 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
 
             if (bdb_state->rep_trace)
                 logmsg(LOGMSG_USER, "--- sending seq %d to %s, nodelay is %d\n",
-                        tmpseq, hostlist[i], nodelay);
+                       tmpseq, hostlist[i], nodelay);
 
             if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
-                dontsend = (is_logput && 
-                        throttle_updates_incoherent_nodes(bdb_state, hostlist[i]));
-                
+                dontsend = (is_logput && throttle_updates_incoherent_nodes(
+                                             bdb_state, hostlist[i]));
+
                 if (tran && gblcontext && nodelay) {
 
                     if (!gbl_rowlocks && !dontsend) {
@@ -1667,7 +1669,9 @@ static inline int net_get_lsn(bdb_state_type *bdb_state, const void *buf,
     return 0;
 }
 
-int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, int *file, int *offset) {
+int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, int *file,
+                   int *offset)
+{
     bdb_state_type *bdb_state;
     DB_LSN lsn;
 
@@ -2386,7 +2390,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     if (memcmp(&(bdb_state->seqnum_info->seqnums[nodeix(host)]), &zero_seq,
                sizeof(seqnum_type)) == 0) {
         logmsg(LOGMSG_INFO, "got first seqnum from host %s: <%s>\n", host,
-                lsn_to_str(str, &(seqnum->lsn)));
+               lsn_to_str(str, &(seqnum->lsn)));
     }
 
     if (track_times)
@@ -3138,7 +3142,8 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                 goto got_ack;
             }
         }
-    } while (comdb2_time_epochms() - begin_time < bdb_state->attr->rep_timeout_maxms &&
+    } while (comdb2_time_epochms() - begin_time <
+                 bdb_state->attr->rep_timeout_maxms &&
              !(lock_desired = bdb_lock_desired(bdb_state)));
 
     /* if we get here then we timed out without finding even one good node.

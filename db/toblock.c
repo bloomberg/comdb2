@@ -495,8 +495,7 @@ static int forward_longblock_to_master(struct ireq *iq,
                                             iq->p_buf_out_start, req_len);
             free_bigbuf_nosignal(iq->p_buf_out_start);
         }
-    } else if (comdb2_ipc_swapnpasdb_sinfo)
-    {
+    } else if (comdb2_ipc_swapnpasdb_sinfo) {
         rc = comdb2_ipc_swapnpasdb_sinfo(iq);
     }
 
@@ -557,13 +556,13 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
                                             iq->p_buf_out_start, req_len);
             free_bigbuf_nosignal(iq->p_buf_out_start);
         }
-    } else if (comdb2_ipc_swapnpasdb_sinfo)
-    {
+    } else if (comdb2_ipc_swapnpasdb_sinfo) {
         rc = comdb2_ipc_swapnpasdb_sinfo(iq);
     }
 
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s:failed to forward to master, rc %d\n", __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s:failed to forward to master, rc %d\n",
+               __func__, rc);
         return ERR_REJECTED;
     }
     return RC_INTERNAL_FORWARD;

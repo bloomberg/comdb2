@@ -1468,7 +1468,8 @@ static int upgrade_records(struct convert_record_data *data)
             poll(NULL, 0, 100);
 
         /* snooze for a bit if writes have been coming in */
-        if (gbl_sc_last_writer_time >= comdb2_time_epoch() - 5) usleep(gbl_sc_usleep);
+        if (gbl_sc_last_writer_time >= comdb2_time_epoch() - 5)
+            usleep(gbl_sc_usleep);
         break;
     } // end of rc check
 

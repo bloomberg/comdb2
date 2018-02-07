@@ -62,9 +62,10 @@ pthread_mutex_t sockpool_lk = PTHREAD_MUTEX_INITIALIZER;
  * available to receive sockets. */
 #define SOCKPOOL_ENABLED() 1
 
-
-
-static int comdb2_time_epoch_sp() { return time(0); }
+static int comdb2_time_epoch_sp()
+{
+    return time(0);
+}
 
 struct itemtype;
 
@@ -343,7 +344,8 @@ static void default_destructor(enum socket_pool_event event,
 
 static void destroy_item_ll(enum socket_pool_event event, struct item *item)
 {
-    int ttl = item->timeout_secs - (comdb2_time_epoch_sp() - item->donation_time);
+    int ttl =
+        item->timeout_secs - (comdb2_time_epoch_sp() - item->donation_time);
     if (ttl < 0)
         ttl = 0;
     DBG(("%s: event %d for %s fd %d\n", __func__, event, item->type->typestr,

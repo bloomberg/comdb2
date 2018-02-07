@@ -53,7 +53,7 @@
 #include "comdb2_pthread_create.h"
 #endif
 
-void (*comdb2_ipc_sndbak) (int *, int) = 0;
+void (*comdb2_ipc_sndbak)(int *, int) = 0;
 
 enum THD_EV { THD_EV_END = 0, THD_EV_START = 1 };
 
@@ -72,7 +72,7 @@ static pool_t *pq_reqs;  /* queue entry pool */
 pool_t *p_bufs;   /* buffer pool for socket requests */
 pool_t *p_slocks; /* pool of socket locks*/
 
-LISTC_T(struct dbq_entry_t) q_reqs;  /* all queued requests */
+LISTC_T(struct dbq_entry_t) q_reqs;         /* all queued requests */
 static LISTC_T(struct dbq_entry_t) rq_reqs; /* queue of read requests */
 
 /* thread pool */
@@ -716,16 +716,15 @@ static int reterr(struct thd *thd, struct ireq *iq, int rc)
         }
         UNLOCK(&lock);
     }
-   if(comdb2_ipc_sndbak)
-   {
+    if (comdb2_ipc_sndbak) {
 #if 0
        /* curswap is just a pointer to the buffer */
        int *ibuf = (int *)curswap;
        ibuf+=2;
        comdb2_ipc_sndbak(ibuf, ERR_INTERNAL);
 #endif
-       comdb2_ipc_sndbak(0, ERR_INTERNAL);
-   }
+        comdb2_ipc_sndbak(0, ERR_INTERNAL);
+    }
     if (rc == ERR_INTERNAL) /*qfull hits this code too, so differentiate*/
         nerrs++;
     return rc;
@@ -955,7 +954,6 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
 
     return 0;
 }
-
 
 int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,

@@ -2039,14 +2039,15 @@ static void dump_queue(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
         while (ptr != NULL) {
             cnt++;
             if ((rc = (netinfo_ptr->getlsn_rtn)(netinfo_ptr, ptr->payload.raw,
-                            ptr->len, &file, &offset)) == 0) {
+                                                ptr->len, &file, &offset)) ==
+                0) {
                 logput_cnt++;
                 if (wl == 0) {
                     logmsg(LOGMSG_USER, "%s: ", host_node_ptr->host);
                 }
                 logmsg(LOGMSG_USER, "%d:%d ", file, offset);
                 wl = 1;
-                if ((logput_cnt % 20) == 0)  {
+                if ((logput_cnt % 20) == 0) {
                     logmsg(LOGMSG_USER, "\n");
                     wl = 0;
                 }
@@ -2060,8 +2061,8 @@ static void dump_queue(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
         if (wl) {
             logmsg(LOGMSG_USER, "\n");
         }
-        logmsg(LOGMSG_USER, "%s: %d logputs, %d other\n", host_node_ptr->host, 
-                logput_cnt, non_logput_cnt);
+        logmsg(LOGMSG_USER, "%s: %d logputs, %d other\n", host_node_ptr->host,
+               logput_cnt, non_logput_cnt);
         host_node_ptr->last_queue_dump = now;
     }
 }
@@ -4730,7 +4731,8 @@ int net_check_bad_subnet_lk(int ii)
         goto out;
     }
 
-    if (last_bad_subnet_time * 1000 + subnet_blackout_timems < comdb2_time_epochms()) {
+    if (last_bad_subnet_time * 1000 + subnet_blackout_timems <
+        comdb2_time_epochms()) {
         if (gbl_verbose_net)
             logmsg(LOGMSG_USER, "%" PRIu64 " %s Clearing out net %d %s\n",
                    pthread_self(), __func__, ii, subnet_suffices[ii]);
@@ -4898,7 +4900,6 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
     pthread_mutex_unlock(&subnet_mtx);
     return phe;
 }
-
 
 int net_get_port_by_service(const char *dbname)
 {
@@ -6036,14 +6037,17 @@ void net_timeout_watchlist(netinfo_type *netinfo_ptr)
         int read_age = watchlist_ptr->read_age;
 
         if (((watchlist_ptr->write_timeout) && (write_age) &&
-             ((comdb2_time_epoch() - write_age) > watchlist_ptr->write_timeout)) ||
+             ((comdb2_time_epoch() - write_age) >
+              watchlist_ptr->write_timeout)) ||
 
             ((watchlist_ptr->read_timeout) && (read_age) &&
-             ((comdb2_time_epoch() - read_age) > watchlist_ptr->read_timeout))) {
+             ((comdb2_time_epoch() - read_age) >
+              watchlist_ptr->read_timeout))) {
             logmsg(LOGMSG_INFO, "timing out session, closing fd %d read_age %d "
-                            "timeout %d write_age %d timeout %d\n",
-                    fd, comdb2_time_epoch() - read_age, watchlist_ptr->read_timeout,
-                    comdb2_time_epoch() - write_age, watchlist_ptr->write_timeout);
+                                "timeout %d write_age %d timeout %d\n",
+                   fd, comdb2_time_epoch() - read_age,
+                   watchlist_ptr->read_timeout, comdb2_time_epoch() - write_age,
+                   watchlist_ptr->write_timeout);
             shutdown(fd, 2);
 
             watchlist_ptr->write_timeout = 0;

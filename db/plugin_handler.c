@@ -53,9 +53,8 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
         /* Do not allow similar plugins with same version. */
         if ((strcmp(gbl_plugins[i]->name, new_plugin->name) == 0) &&
             gbl_plugins[i]->version == new_plugin->version) {
-            logmsg(LOGMSG_ERROR,
-                   "Plugin %s:%d already installed "
-                   "overriding..\n",
+            logmsg(LOGMSG_ERROR, "Plugin %s:%d already installed "
+                                 "overriding..\n",
                    new_plugin->name, new_plugin->version);
             return 1;
         }

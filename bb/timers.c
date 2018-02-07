@@ -56,7 +56,10 @@ void timer_init(void (*func)(struct timer_parm *))
     timer_func = func;
 }
 
-int comdb2_time_epoch(void) { return time(NULL); }
+int comdb2_time_epoch(void)
+{
+    return time(NULL);
+}
 
 int64_t comdb2_time_epochus(void)
 {
@@ -160,7 +163,10 @@ static int new_timer(int ms, int parm, int oneshot, int dolock)
     return 0;
 }
 
-int comdb2_timprm(int ms, int parm) { return new_timer(ms, parm, 0, 1); }
+int comdb2_timprm(int ms, int parm)
+{
+    return new_timer(ms, parm, 0, 1);
+}
 
 int remove_timer(int parm, int dolock)
 {
@@ -185,9 +191,15 @@ int remove_timer(int parm, int dolock)
     return -1;
 }
 
-int comdb2_cantim(int parm) { return remove_timer(parm, 1); }
+int comdb2_cantim(int parm)
+{
+    return remove_timer(parm, 1);
+}
 
-int comdb2_timer(int ms, int parm) { return new_timer(ms, parm, 1, 1); }
+int comdb2_timer(int ms, int parm)
+{
+    return new_timer(ms, parm, 1, 1);
+}
 
 void *timer_thread(void *p)
 {

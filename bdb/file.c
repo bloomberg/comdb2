@@ -1248,8 +1248,8 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host);
 int net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum);
 int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
                    int ylen);
-int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, 
-        int *file, int *offset);
+int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, int *file,
+                   int *offset);
 
 static void net_startthread_rtn(void *arg)
 {

@@ -1333,8 +1333,9 @@ void *_view_cron_phase2(uuid_t source_id, void *arg1, void *arg2, void *arg3,
         print_dbg_verbose(view->name, &view->source_id, "TTT",
                           "Running phase2 at %u arg1=%p (name=\"%s\") arg2=%p "
                           "(shard=\"%s\") arg3=%p\n",
-                          comdb2_time_epoch(), arg1, (arg1) ? (char *)arg1 : "NULL",
-                          arg2, (arg2) ? (char *)arg2 : "NULL", arg3);
+                          comdb2_time_epoch(), arg1,
+                          (arg1) ? (char *)arg1 : "NULL", arg2,
+                          (arg2) ? (char *)arg2 : "NULL", arg3);
 
         /* this is a safeguard! we take effort to schedule cleanup of 
         a dropped partition ahead of everything, but jic ! */

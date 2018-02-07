@@ -211,8 +211,9 @@ static void flushdump(struct reqlogger *logger, struct output *out)
         niov++;
         if (append_duration) {
             iov[niov].iov_base = durstr;
-            iov[niov].iov_len = snprintf(durstr, sizeof(durstr), " TIME +%d",
-                                         U2M(comdb2_time_epochus() - logger->startus));
+            iov[niov].iov_len =
+                snprintf(durstr, sizeof(durstr), " TIME +%d",
+                         U2M(comdb2_time_epochus() - logger->startus));
             niov++;
         }
         iov[niov].iov_base = "\n";

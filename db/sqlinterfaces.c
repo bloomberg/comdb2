@@ -7309,7 +7309,8 @@ static int test_no_btcursors(struct sqlthdstate *thd)
 unsigned long long osql_log_time(void)
 {
     if (0) {
-        return 1000 * ((unsigned long long)comdb2_time_epoch()) + comdb2_time_epochms();
+        return 1000 * ((unsigned long long)comdb2_time_epoch()) +
+               comdb2_time_epochms();
     } else {
         struct timeval tv;
 

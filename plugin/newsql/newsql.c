@@ -125,9 +125,8 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt)
                     net_add_watch(clnt->sb, 0, 0);
                 else
                     net_add_watch_warning(
-                        clnt->sb,
-                        bdb_attr_get(dbenv->bdb_attr,
-                                     BDB_ATTR_MAX_SQL_IDLE_TIME),
+                        clnt->sb, bdb_attr_get(dbenv->bdb_attr,
+                                               BDB_ATTR_MAX_SQL_IDLE_TIME),
                         notimeout ? 0 : (timeout / 1000), clnt,
                         watcher_warning_function);
             } else if (strncasecmp(sqlstr, "maxquerytime", 12) == 0) {
@@ -613,7 +612,6 @@ retry_read:
         pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
-
     if (!query || errno != 0) {
         return NULL;
     }
@@ -660,7 +658,6 @@ retry_read:
         cdb2__query__free_unpacked(query, &pb_alloc);
         goto retry_read;
     }
-
 
 #if WITH_SSL
     /* Do security check before we return. We do it only after
