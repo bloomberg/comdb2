@@ -518,7 +518,16 @@ int do_schema_change_tran(sc_arg_t *arg)
     pthread_mutex_unlock(&s->mtx);
     if (iq->is_fake)
         free(iq);
+    if (rc && rc != SC_COMMIT_PENDING)
+        logmsg(LOGMSG_ERROR, ">>> SCHEMA CHANGE ERROR: TABLE %s, RC %d\n",
+               s->table, rc);
     s->sc_rc = rc;
+    if (!s->nothrevent) {
+        pthread_mutex_lock(&sc_async_mtx);
+        sc_async_threads--;
+        pthread_cond_broadcast(&sc_async_cond);
+        pthread_mutex_unlock(&sc_async_mtx);
+    }
     if (s->resume == SC_NEW_MASTER_RESUME || rc == SC_COMMIT_PENDING ||
         (!s->nothrevent && !s->finalize)) {
         return rc;

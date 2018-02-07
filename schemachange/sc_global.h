@@ -31,6 +31,10 @@ extern int gbl_default_livesc;
 extern int gbl_default_plannedsc;
 extern int gbl_default_sc_scanmode;
 
+extern pthread_mutex_t sc_async_mtx;
+extern pthread_cond_t sc_async_cond;
+extern volatile int sc_async_threads;
+
 /* Throttle settings, which you can change with message traps.  Note that if
  * you have gbl_sc_usleep=0, the important live writer threads never get to
  * run. */

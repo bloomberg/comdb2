@@ -404,6 +404,7 @@ int osql_bplog_schemachange(struct ireq *iq)
     if (rc) {
         csc2_free_all();
     }
+    logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
     return rc;
 }
 

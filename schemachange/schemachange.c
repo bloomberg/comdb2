@@ -264,6 +264,17 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         pthread_mutex_lock(&s->mtx);
         rc = do_schema_change_tran(arg);
     } else {
+        int max_threads =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC_MAXTHREADS);
+        pthread_mutex_lock(&sc_async_mtx);
+        while (!s->resume && max_threads > 0 &&
+               sc_async_threads >= max_threads) {
+            logmsg(LOGMSG_INFO, "Waiting for avaiable schema change threads\n");
+            pthread_cond_wait(&sc_async_cond, &sc_async_mtx);
+        }
+        sc_async_threads++;
+        pthread_mutex_unlock(&sc_async_mtx);
+
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
         pthread_t tid;
@@ -274,6 +285,11 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             logmsg(LOGMSG_ERROR,
                    "start_schema_change:pthread_create rc %d %s\n", rc,
                    strerror(errno));
+
+            pthread_mutex_lock(&sc_async_mtx);
+            sc_async_threads--;
+            pthread_mutex_unlock(&sc_async_mtx);
+
             free(arg);
             free_schema_change_type(s);
             sc_set_running(0, sc_seed, gbl_mynode, time(NULL));

@@ -6290,7 +6290,7 @@ int start_schema_change_tran_wrapper(const char *tblname,
     strncpy0(sc->table, tblname, sizeof(sc->table));
 
     rc = start_schema_change_tran(iq, sc->tran);
-    if (rc != SC_OK && rc != SC_ASYNC) {
+    if (rc != SC_OK && rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
         iq->sc = NULL;
     } else {
         iq->sc->sc_next = iq->sc_pending;
@@ -6311,7 +6311,7 @@ int start_schema_change_tran_wrapper(const char *tblname,
         }
     }
 
-    return (rc == SC_ASYNC) ? 0 : rc;
+    return (rc == SC_ASYNC || rc == SC_COMMIT_PENDING) ? 0 : rc;
 }
 
 /**
@@ -6420,7 +6420,10 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
         if (p_buf == NULL)
             return -1;
 
-        sc->nothrevent = 0;
+        if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC))
+            sc->nothrevent = 0;
+        else
+            sc->nothrevent = 1;
         sc->finalize = 0;
         if (sc->original_master_node[0] != 0 &&
             strcmp(sc->original_master_node, gbl_mynode))
@@ -6436,7 +6439,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
         if (!timepart_is_timepart(sc->table, 1)) {
             rc = start_schema_change_tran(iq, NULL);
-            if (rc != SC_OK && rc != SC_ASYNC) {
+            if (rc != SC_OK && rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
                 iq->sc = NULL;
             } else {
                 iq->sc->sc_next = iq->sc_pending;
@@ -6452,7 +6455,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
         }
         iq->usedb = NULL;
 
-        if (!rc || rc == SC_ASYNC)
+        if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING)
             return 0;
         else
             return ERR_SC;
