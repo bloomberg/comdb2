@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=906)
+(TUNABLES_COUNT=907)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -842,6 +842,7 @@
 (name='timeout_server_sockpool', description='Timeout for getting a connection to another database from sockpool.', type='INTEGER', value='10', read_only='N')
 (name='timepart_abort_on_preperror', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='timepart_check_shard_existence', description='Check at startup/time-partition creation that all shard files exist.', type='BOOLEAN', value='OFF', read_only='N')
+(name='ignore_bad_table', description='Allow a database with a corrupt table to come up, without that table.', type='BOOLEAN', value='OFF', read_only='N')
 (name='toblock_net_throttle', description='Throttle writes in apply_changes. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='toomanyskipped', description='Call for election again and delay commits if more than this many nodes are incoherent.', type='INTEGER', value='2', read_only='N')
 (name='track_berk_locks', description='', type='INTEGER', value='0', read_only='Y')
