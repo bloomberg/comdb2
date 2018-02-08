@@ -3,7 +3,7 @@
 debug=1
 [[ "$debug" == "1" ]] && set -x
 
-BRANCH=${1:=master}
+BRANCH=${1:-master}
 export CORE_ON_TIMEOUT=1
 #export NOKILL_ON_TIMEOUT=1
 email="mhannum72@gmail.com"
@@ -64,7 +64,8 @@ function mail_status
 function cleanup
 {
     [[ "$debug" == "1" ]] && set -x
-    find  ~/comdb2/tests/tools/linearizable/jepsen/store -mtime 1 -exec rm -Rf {} \;
+    find ~/comdb2/tests/test_* -type d -mmin +$test_linger -exec rm -Rf {} \;
+    find ~/comdb2/tests/tools/linearizable/jepsen/store -mtime 1 -exec rm -Rf {} \;
     find ~/comdb2/tests/test_* -mtime 1 -exec rm -Rf {} \;
     for m in $CLUSTER ; do ssh $m 'find ~/comdb2/tests/test_* -mtime 1 -exec rm -Rf {} \;' ; done
 }
@@ -93,7 +94,6 @@ while :; do
     print_status
     pull_and_recompile
     echo "$(date) ITERATION $i" 
-    rm -Rf $(find . -type d -mmin +$test_linger | egrep test_)
     for x in $tests 
     do print_status
         cleanup
