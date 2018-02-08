@@ -161,7 +161,7 @@ EOF
     #----------
     ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat.out
     cat <<EOF > stat.expected
-free ports: 999
+free ports: 90
 EOF
 
     if ! diff stat.expected stat.out ; then
@@ -172,7 +172,7 @@ EOF
     name="comdb2/replication/dummynameforadatabase12345678901234567890"
     ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> reg.out
     cat <<EOF > reg.expected
-19000
+22000
 EOF
     if ! diff reg.expected reg.out ; then
         failexit "differing reg.expected reg.out"
@@ -182,7 +182,7 @@ EOF
     name="comdb2/replication/dummynameforadatabase12345678901234567890"
     ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
     cat <<EOF > get.expected
-19000
+22000
 EOF
     if ! diff get.expected get.out ; then
         failexit "differing get.expected get.out"
@@ -191,8 +191,8 @@ EOF
     #----------
     ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat2.out
     cat <<EOF > stat2.expected
-free ports: 998
-$name -> 19000
+free ports: 89
+$name -> 22000
 EOF
     if ! diff stat2.expected stat2.out ; then
         failexit "differing stat2.expected stat2.out"
@@ -218,6 +218,16 @@ EOF
     name="comdb2/replication/dummynameforadatabase12345678901234567890"
     ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name 19001" ${COMDB2_PMUX_PORT} &> use.out
     cat <<EOF > use.expected
+-1
+EOF
+    if ! diff use.expected use.out ; then
+        failexit "differing use.expected use.out"
+    fi
+
+    #----------
+    name="comdb2/replication/dummynameforadatabase12345678901234567890"
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name 22001" ${COMDB2_PMUX_PORT} &> use.out
+    cat <<EOF > use.expected
 0
 EOF
     if ! diff use.expected use.out ; then
@@ -228,7 +238,7 @@ EOF
     name="comdb2/replication/dummynameforadatabase12345678901234567890"
     ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
     cat <<EOF > get.expected
-19001
+22001
 EOF
     if ! diff get.expected get.out ; then
         failexit "differing get.expected get.out"
@@ -237,8 +247,8 @@ EOF
     #----------
     ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat3.out
     cat <<EOF > stat3.expected
-free ports: 998
-$name -> 19001
+free ports: 89
+$name -> 22001
 EOF
     if ! diff stat3.expected stat3.out ; then
         failexit "differing stat3.expected stat3.out"
@@ -251,7 +261,7 @@ function runtest
     [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
 
     # Start pmux
-    ${PMUX_EXE} -n -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} &
+    ${PMUX_EXE} -n -r 22000:22090 -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} &
     pmux_pid=$!
 
     sleep 5
