@@ -1,16 +1,5 @@
 struct comdb2_plugin @PLUGIN_SYM@[] = {
     {
-        "remcur",              /* Plugin identifier */
-        "remcur plugin",       /* Plugin description */
-        COMDB2_PLUGIN_APPSOCK, /* Plugin type */
-        1,                     /* Plugin version */
-        1,                     /* Plugin interface version */
-        0,                     /* Plugin flags */
-        NULL,                  /* Initialization function */
-        NULL,                  /* Destroy function */
-        &remcur_plugin         /* Plugin-specific data */
-    },
-    {
         "remsql",              /* Plugin identifier */
         "remsql plugin",       /* Plugin description */
         COMDB2_PLUGIN_APPSOCK, /* Plugin type */
