@@ -22,7 +22,8 @@ export noconn=0
 export jbroke=0
 export sshfail=0
 export goodtests=0
-exprot domail=0
+export domail=1
+export host=$(hostname)
 export test_linger=$(( 60 * 2 ))
 
 function print_status
@@ -56,7 +57,7 @@ function mail_status
     echo "Mailing results"
     print_status > body.txt
     for addr in $email ; do
-        mail -s "Successfully tested $i iterations" $addr < body.txt
+        mail -s "Successfully tested $i iterations on $host" $addr < body.txt
     done
 }
 
@@ -172,7 +173,7 @@ while :; do
 
                 echo "ERROR IN ITERATION $i" 
                 err=1
-                mail_error "JEPSEN FAILURE ITERATION $i !!"
+                mail_error "JEPSEN FAILURE ITERATION $i ON $host !!"
                 break 5
             fi
         fi
