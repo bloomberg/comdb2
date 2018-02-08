@@ -20,7 +20,6 @@ set(src
   fdb_bend.c
   fdb_bend_sql.c
   fdb_boots.c
-  fdb_comm.c
   fdb_fend.c
   fdb_fend_cache.c
   fdb_util.c
