@@ -25,7 +25,6 @@ export goodtests=0
 export domail=1
 export host=$(hostname)
 export test_linger=$(( 60 * 2 ))
-
 function print_status
 {
     [[ "$debug" == "1" ]] && set -x
