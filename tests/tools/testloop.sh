@@ -24,7 +24,6 @@ export sshfail=0
 export goodtests=0
 exprot domail=0
 export test_linger=$(( 60 * 2 ))
-
 function print_status
 {
     [[ "$debug" == "1" ]] && set -x
