@@ -19,10 +19,11 @@ export setup_failures=0
 export timeouts=0
 export nomemory=0
 export noconn=0
+export jbroke=0
 export sshfail=0
 export goodtests=0
+exprot domail=0
 export test_linger=$(( 60 * 2 ))
-
 function print_status
 {
     [[ "$debug" == "1" ]] && set -x
@@ -31,7 +32,31 @@ function print_status
     echo "Test timeouts  :  $timeouts" 
     echo "Out-of-memory  :  $nomemory"
     echo "Connection fail:  $noconn" 
+    echo "Jepsen broke   :  $jbroke" 
     echo "SSH fail       :  $sshfail"
+}
+
+function mail_error
+{
+    [[ "$debug" == "1" ]] && set -x
+    [[ $domail == "0" ]] && return 
+
+    text="$1"
+    for addr in $email ; do
+        mail -s "$text" $addr < $l
+    done
+}
+
+function mail_status
+{
+    [[ "$debug" == "1" ]] && set -x
+    [[ $domail == "0" ]] && return 
+
+    echo "Mailing results"
+    print_status > body.txt
+    for addr in $email ; do
+        mail -s "Successfully tested $i iterations" $addr < body.txt
+    done
 }
 
 function cleanup
@@ -41,7 +66,6 @@ function cleanup
     find ~/comdb2/tests/test_* -mtime 1 -exec rm -Rf {} \;
     for m in $CLUSTER ; do ssh $m 'find ~/comdb2/tests/test_* -mtime 1 -exec rm -Rf {} \;' ; done
 }
-
 
 function pull_and_recompile
 {
@@ -77,6 +101,7 @@ while :; do
         for m in $CLUSTER; do ssh $m 'killall -s 9 comdb2';  done
 
         export out=test_$x_$(date '+%Y%m%d%H%M%S')
+        cd ~/comdb2/tests
         make $x > $out ; r=$? 
 
         for m in $CLUSTER; do ssh $m 'sudo iptables -F -w; sudo iptables -X -w';  done
@@ -135,13 +160,18 @@ while :; do
                 err=0
             fi
 
+            egrep "Jepsen broke" $l
+            if [[ $? == 0 ]]; then
+                echo "Jepsen broke error: continuing"
+                let jbroke=jbroke+1
+                err=0
+            fi
+
             if [[ $err == 1 ]]; then
 
                 echo "ERROR IN ITERATION $i" 
                 err=1
-                for addr in $email ; do
-                    mail -s "JEPSEN FAILURE ITERATION $i !!" $addr < $l
-                done
+                mail_error "JEPSEN FAILURE ITERATION $i !!"
                 break 5
             fi
         fi
@@ -153,14 +183,7 @@ while :; do
     if [ $(( now - lasttime )) -gt $mailperiod ]; then
 
         lasttime=now
-        echo "Mailing results"
-
-        print_status > body.txt
-
-        for addr in $email ; do
-            mail -s "Successfully tested $i iterations" $addr < body.txt
-        done
-        lasttime=$now
+        mail_status
     fi
 
 done
