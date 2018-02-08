@@ -3816,8 +3816,8 @@ int calc_pagesize(int recsize)
     return pagesize;
 }
 
-static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                    int create, DB_TXN *tid)
+static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
+                        int create, DB_TXN *tid)
 {
     int rc;
     char tmpname[PATH_MAX];
@@ -3884,8 +3884,10 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
 
             if (bdb_new_file_version_all(bdb_state, &tran, &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
-                logmsg(LOGMSG_ERROR, "bdb_open_dbs: failed to update table and its "
-                                "file's version number\n");
+                logmsg(LOGMSG_ERROR,
+                       "bdb_open_dbs: failed to update table and its file's "
+                       "version number, bdberr %d\n",
+                       bdberr);
                 if (tid)
                     tid->abort(tid);
                 return -1;
@@ -4332,6 +4334,17 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
     }
 
     return 0;
+}
+
+static pthread_mutex_t open_dbs_mtx = PTHREAD_MUTEX_INITIALIZER;
+static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
+                    int create, DB_TXN *tid)
+{
+    int rc = 0;
+    Pthread_mutex_lock(&open_dbs_mtx);
+    rc = open_dbs_int(bdb_state, iammaster, upgrade, create, tid);
+    Pthread_mutex_unlock(&open_dbs_mtx);
+    return rc;
 }
 
 int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,

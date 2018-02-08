@@ -397,7 +397,8 @@ int osql_bplog_schemachange(struct ireq *iq)
             int sc_set_running(int running, uint64_t seed, const char *host,
                                time_t time);
             sc_set_running(0, iq->sc_seed, NULL, 0);
-            rc = sc->sc_rc ? ERR_SC : 0;
+            if (sc->sc_rc)
+                rc = ERR_SC;
         }
         sc = iq->sc;
     }
