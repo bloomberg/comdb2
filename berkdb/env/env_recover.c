@@ -1656,6 +1656,7 @@ __env_openfiles(dbenv, logc, txninfo,
 	DB_LSN lsn;
 	u_int32_t log_size;
 	int progress, ret;
+   DB_LSN last_good_lsn = {0};
 
 	/*
 	 * XXX
@@ -1697,10 +1698,31 @@ __env_openfiles(dbenv, logc, txninfo,
 			break;
 		}
 		if ((ret = __log_c_get(logc, &lsn, data, DB_NEXT)) != 0) {
-			if (ret == DB_NOTFOUND)
+			if (ret == DB_NOTFOUND) {
+            /* if we fail to get this lsn, and this is NOT the last
+            record, it can be a corrupted record in the middle, abort! */
+            DB_LSN cmp_lsn;
+            if (last_lsn == NULL) {
+               /* get here the know tail of the log */
+               ret = __log_c_get(logc, &cmp_lsn, data, DB_LAST);
+               if (ret)
+                  abort();  
+            } else {
+               cmp_lsn = *last_lsn;
+            }
+            if (last_good_lsn.file != cmp_lsn.file || last_good_lsn.offset != cmp_lsn.offset) {
+               __db_err(dbenv,
+                     "Recovery open file failed in the middle lsn %d.%d\n",
+                     (u_long)last_good_lsn.file, (u_long)last_good_lsn.offset);
+               abort();
+            }
+
 				ret = 0;
-			break;
-		}
+         }
+         break;
+		} else  {
+         last_good_lsn = lsn;
+      }
 	}
 
 	return (ret);
