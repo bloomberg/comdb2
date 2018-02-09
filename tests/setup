@@ -254,7 +254,7 @@ check_db_pid_running() {
         echo "DB process is running"
     else
         echo "DB process is not running"
-        if grep "[ERROR] net_listen: FAILED TO BIND to port" $TESTDIR/logs/${DBNAME}.db ; then
+        if ! grep "[ERROR] net_listen: FAILED TO BIND to port" $TESTDIR/logs/${DBNAME}.db ; then
             dbport=`${TESTSROOTDIR}/tools/send_msg_port.sh "get comdb2/replication/${DBNAME} " ${pmux_port}`
             echo "checking what is running on port $dbport"
             lsof | grep $dbport
