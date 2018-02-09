@@ -3849,7 +3849,7 @@ static int init(int argc, char **argv)
     if (gbl_create_mode) {
         create_service_file(lrlname);
     }
-    
+
     /* open db engine */
     logmsg(LOGMSG_INFO, "starting backend db engine\n");
 
