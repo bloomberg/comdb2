@@ -531,7 +531,8 @@ next word determines which option to set, and the following word determines its 
 |ENABLE_TEMPTABLE_CLEAN_EXIT|0 (BOOLEAN) | On exit, clean up temp tables (they are deleted on next startup regardless).
 |MAX_SQL_IDLE_TIME|3600 (QUANTITY) | Warn when an SQL connection remains idle for this long.
 |SEQNUM_WAIT_INTERVAL|500 (QUANTITY) | Wake up to check the state of the world this often while waiting for replication acks.
-|SOSQL_MAX_COMMIT_WAIT_SEC|600 (QUANTITY) | Wait for the master to commit a transaction for up to this long 
+|SOSQL_MAX_COMMIT_WAIT_SEC|600 (SECS) | Wait for the master to commit a transaction for up to this long 
+|SOSQL_DDL_MAX_COMMIT_WAIT_SEC|259200 (SECS) | Wait for the master to commit a DDL transaction for up to this long 
 |SOSQL_POKE_TIMEOUT_SEC|12 (QUANTITY) | On replicants, when checking on master for transaction status, retry the check after this many seconds.
 |SOSQL_POKE_FREQ_SEC|5 (QUANTITY) | On replicants, check this often for transaction status.
 |SQL_QUEUEING_DISABLE_TRACE|0 (BOOLEAN) | Disable trace when SQL requests are starting to queue.

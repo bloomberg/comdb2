@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <string.h>
 #include <pthread.h>
+#include <memory_sync.h>
 
 #include "comdb2.h"
 #include "crc32c.h"
@@ -2030,6 +2031,22 @@ int views_cron_restart(timepart_views_t *views)
     /* in case of regular master swing, clear pre-existing views event,
        we will requeue them */
     cron_clear_queue(timepart_sched);
+
+    /* corner case: master started and schema change for time partition
+       submitted before watchdog thread has time to restart it, will deadlock
+       if this is the case, abort the schema change */
+    rc = pthread_rwlock_trywrlock(&views_lk);
+    if (rc == EBUSY) {
+        if (gbl_schema_change_in_progress) {
+            logmsg(LOGMSG_ERROR, "Schema change started too early for time "
+                                 "partition: aborting\n");
+            gbl_sc_abort = 1;
+            MEMORY_SYNC;
+        }
+        pthread_rwlock_wrlock(&views_lk);
+    } else if (rc) {
+        abort();
+    }
 
     pthread_rwlock_wrlock(&views_lk);
 

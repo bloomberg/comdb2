@@ -28,7 +28,7 @@ include_directories(
   ${PROTOBUF_C_INCLUDE_DIR}
 )
 
-set(SOURCES remsql.c)
+set(SOURCES remsql.c fdb_comm.c)
 
 add_plugin(${PLUGIN} "STATIC" "${SOURCES}")
 

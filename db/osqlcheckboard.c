@@ -508,23 +508,13 @@ void osql_checkboard_check_down_nodes(char *host)
     osql_checkboard_for_each(host, osql_checkboard_check_request_down_node);
 }
 
-int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
-                                struct errstat *xerr)
-{
-    return osql_chkboard_timedwait_commitrc(
-        rqid, uuid,
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC),
-        xerr);
-}
-
 /**
  * Wait for the session to complete
  * Upon return, sqlclntstate's errstat is set
  *
  */
-inline int osql_chkboard_timedwait_commitrc(unsigned long long rqid,
-                                            uuid_t uuid, int max_wait,
-                                            struct errstat *xerr)
+int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
+                                int max_wait, struct errstat *xerr)
 {
     struct timespec tm_s;
     osql_sqlthr_t *entry = NULL;

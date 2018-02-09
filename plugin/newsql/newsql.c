@@ -590,11 +590,9 @@ retry_read:
     }
 
 
-    if (unlikely(errno != 0)) { // query will be null if errno is set
+    if (!query || errno != 0) {
         return NULL;
     }
-
-    assert(query);
 
     // one of dbinfo or sqlquery must be non-NULL
     if (unlikely(!query->dbinfo && !query->sqlquery)) {
