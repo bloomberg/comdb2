@@ -3,6 +3,12 @@
 set -e
 set -x
 
+failexit() {
+    echo $1
+    exit 1
+}
+
+
 debug=0
 
 [[ $COMDB2_UNITTEST == 1 ]] && exit 0
@@ -242,8 +248,7 @@ $COMDB2_EXE --create --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid $PARAMS &> $LO
 rc=$?
 rm -f ${DBNAME}.trap
 if [[ $rc -ne 0 ]]; then
-    echo "Error rc=$rc while initializing DB, see $LOGDIR/${DBNAME}.init "
-    exit 1
+    failexit "Error rc=$rc while initializing DB, see $LOGDIR/${DBNAME}.init "
 fi
 echo "${DBNAME} created successfully"
 
@@ -276,31 +281,18 @@ if [[ -z "$CLUSTER" ]]; then
     done
 else
     echo "!$TESTCASE: copying to cluster"
-    for node in $CLUSTER; do
-        if [ $node == $myhostname ] ; then
-            continue        # no copying to self
-        fi
-        $COPYCOMDB2_EXE ${LRL} ${node}: &> $LOGDIR/${DBNAME}.${node}.copy
-        if [[ $? -ne 0 ]]; then
-            echo "FAILED: $COPYCOMDB2_EXE ${LRL} ${node}: "
-            echo "see $LOGDIR/${DBNAME}.${node}.copy "
-            exit 1
-        fi
-    done
-
-    echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
-    CMD="source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | tee $TESTDIR/${DBNAME}.db"
-    echo "!$TESTCASE: starting nodes"
-    $SRCHOME/contrib/comdb2makecluster/comdb2makecluster --nocreate --dir $DBDIR $DBNAME $CLUSTER
+    bash -x $SRCHOME/contrib/comdb2makecluster/comdb2makecluster --nocreate --dir $DBDIR $DBNAME $CLUSTER
+    if [[ $? -ne 0 ]]; then
+        failexit "Makecluster returned error $?"
+    fi
 
     sleep 1
     for node in $CLUSTER; do
         $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &> $LOGDIR/${DBNAME}.${node}.conn
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' 2>&1)
         if [ "$out" != "$node" ] ; then
-            echo "comdb2_host() '$out' != expected '$node'"
             sleep 1
-            exit 1
+            failexit "comdb2_host() '$out' != expected '$node'"
         fi
         $CDB2SQL_EXE ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp stat all")'
         $CDB2SQL_EXE ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp ping all")'
