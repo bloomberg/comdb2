@@ -1022,7 +1022,7 @@ static int fdb_get_data_int(svc_cursor_t *cur, struct schema *sc, char *in,
     }
 
     default:
-        logmsg(LOGMSG_ERROR, "unhandled type %d\n", f->type);
+        logmsg(LOGMSG_ERROR, "fdb_get_data_int: unhandled type %d\n", f->type);
         break;
     }
 

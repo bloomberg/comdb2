@@ -655,26 +655,26 @@ int is_incoherent(bdb_state_type *bdb_state, const char *host)
     return is_incoherent;
 }
 
+/* 1/10th of the logfile */
+int gbl_incoherent_logput_window = 1000000;
+
 static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
                                              const char *host)
 {
+    int ret = 0;
+    int64_t cntbytes;
 
-    int limit = 0;
-    int crtusage = 0;
-    int skipme = 0;
-    int rc = 0;
-
-    if (debug_throttle_incoherent_nodes()) {
-        rc = net_get_queue_size(bdb_state->repinfo->netinfo, host, &limit,
-                                &crtusage);
-        if (rc)
-            skipme = 1;
-
-        skipme = !rc && is_incoherent(bdb_state, host) &&
-                 (crtusage * 100 > limit * gbl_net_lmt_upd_incoherent_nodes);
+    if (is_incoherent(bdb_state, host)) {
+        DB_LSN *lsnp, *masterlsn;
+        lsnp = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
+        masterlsn = &bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->master_host)].lsn;
+        cntbytes = subtract_lsn(bdb_state, masterlsn, lsnp);
+        if (cntbytes > gbl_incoherent_logput_window) {
+            ret = 1;
+        }
     }
 
-    return skipme;
+    return ret;
 }
 
 extern int gbl_rowlocks;
@@ -951,15 +951,11 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                 logmsg(LOGMSG_USER, "--- sending seq %d to %s, nodelay is %d\n",
                         tmpseq, hostlist[i], nodelay);
 
-            if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
+            if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+                dontsend = (is_logput && 
+                        throttle_updates_incoherent_nodes(bdb_state, hostlist[i]));
+                
                 if (tran && gblcontext && nodelay) {
-                    dontsend = is_logput && throttle_updates_incoherent_nodes(
-                                                bdb_state, hostlist[i]);
-
-                    /*
-                      fprintf(stderr, "sending gblcontext  0x%08llx to %d\n",
-                      bdb_state->gblcontext, hostlist[i]);
-                    */
 
                     if (!gbl_rowlocks && !dontsend) {
 
@@ -984,6 +980,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                     }
                     */
                 }
+            }
 
             if (!dontsend) {
                 if (!is_logput) {
@@ -1670,6 +1667,20 @@ static inline int net_get_lsn(bdb_state_type *bdb_state, const void *buf,
     return 0;
 }
 
+int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, int *file, int *offset) {
+    bdb_state_type *bdb_state;
+    DB_LSN lsn;
+
+    bdb_state = net_get_usrptr(netinfo_ptr);
+
+    if ((net_get_lsn(bdb_state, record, len, &lsn)) != 0)
+        return -1;
+
+    *file = lsn.file;
+    *offset = lsn.offset;
+    return 0;
+}
+
 /* Given two outgoing net buffers, which one is lower */
 int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
                    int ylen)
@@ -1731,7 +1742,10 @@ char coherency_master[128] = {0};
 /* Don't let anything commit on the master until after this */
 static uint64_t coherency_commit_timestamp = 0;
 
-time_t next_commit_timestamp(void) { return coherency_commit_timestamp; }
+uint64_t next_commit_timestamp(void)
+{
+    return coherency_commit_timestamp;
+}
 
 /* Make sure that nothing commits before the timestamp set here.
  * This is called when a node changes to from STATE_COHERENT to

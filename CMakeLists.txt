@@ -73,6 +73,14 @@ if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)
   add_definitions(-D_LINUX_SOURCE)
 endif()
 
+if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l)
+  # This is mostly misused as little-endian
+  add_definitions(-D_LINUX_SOURCE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64")
+endif()
+
+
 if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
   add_definitions(-D_GNU_SOURCE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread")
@@ -82,7 +90,7 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   add_definitions(-D_DARWIN_C_SOURCE -D_XOPEN_SOURCE=600)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL AIX)
-  add_definitions(-D_IBM_SOURCE)
+    add_definitions(-D_IBM_SOURCE)
   #-qxflag=dircache:71,256 ??  #-bmaxdata:0xb0000000/dsa ??
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -qlanglvl=extc99 -qcpluscmt -qtls -qdfp")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
@@ -113,6 +121,7 @@ add_subdirectory(schemachange)
 add_subdirectory(sockpool)
 add_subdirectory(sqlite)
 add_subdirectory(tools)
+add_subdirectory(plugin)
 add_subdirectory(db)
 add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
 

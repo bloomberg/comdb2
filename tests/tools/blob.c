@@ -42,14 +42,15 @@ int main(int argc, char **argv)
                 exit(1);
             }
 
-            data = malloc(1024 * 1024 * 4);
+            const int SZ = 1024 * 1024 * 4;
+            data = malloc(SZ);
 
             rc = cdb2_run_statement(hndl, "begin");
             if (rc) {
                 fprintf(stderr, "%d BEGIN failed rc = %d, error = %s\n", i, rc, cdb2_errstr(hndl));
                 exit(1);
             }
-            cdb2_bind_param(hndl, "data", CDB2_BLOB, data, 1024 * 1024 * 4);
+            cdb2_bind_param(hndl, "data", CDB2_BLOB, data, SZ);
             rc = cdb2_run_statement(hndl, "insert into tbl values (@data)");
             if (rc) {
                 fprintf(stderr, "%d INSERT failed rc = %d, error = %s\n", i, rc, cdb2_errstr(hndl));
@@ -59,11 +60,6 @@ int main(int argc, char **argv)
             rc = cdb2_run_statement(hndl, "commit");
             if (rc) {
                 fprintf(stderr, "%d COMMIT failed rc = %d, error = %s\n", i, rc, cdb2_errstr(hndl));
-                exit(1);
-            }
-
-            if (rc) {
-                fprintf(stderr, "%d transaction failed rc = %d, error = %s\n", i, rc, cdb2_errstr(hndl));
                 exit(1);
             } else {
                 fprintf(stdout, "inserted\n");

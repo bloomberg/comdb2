@@ -1320,5 +1320,30 @@ REGISTER_TUNABLE("print_deadlock_cycles",
 REGISTER_TUNABLE("always_send_cnonce",
                  "Always send cnonce to master. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_always_send_cnonce, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("force_serial_on_writelock", "Disable parallel rep on "
+                                              "upgrade.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_force_serial_on_writelock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("processor_thd_poll", "Poll before dispatching worker thds. "
+                                       "(Default: 0ms)",
+                 TUNABLE_INTEGER, &gbl_processor_thd_poll,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("time_rep_apply", "Display rep-apply times periodically. "
+                                       "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_time_rep_apply,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("logput_window", "Drop log-broadcasts for incoherent nodes "
+                 "more than this many bytes behind. (Default: 1000000)",
+                 TUNABLE_INTEGER, &gbl_incoherent_logput_window,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dump_full_netqueue", "Dump net-queue on full rcode. "
+                 "(Default: off)", TUNABLE_BOOLEAN, &gbl_dump_full_net_queue,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE(
+    "max_clientstats",
+    "Max number of client stats stored in comdb2_clientstats. (Default 10000)",
+    TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
+    NULL);
 
 #endif /* _DB_TUNABLES_H */

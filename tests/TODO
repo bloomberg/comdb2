@@ -162,6 +162,7 @@ DISABLED TESTS:
 deadlock_policy.test
 deadlock.test             -- in clustered it leaves a bunch of cdb2sql tasks
 overflowblobs.test        -- timesout
+halt_processor_tds.test   -- requires a cluster
 rowlocks_blkseq.test
 jepsen_a6.test            -- jepsen tests require java & root access
 jepsen_a6_nemesis.test

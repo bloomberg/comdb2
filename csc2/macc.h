@@ -104,6 +104,7 @@ struct fieldopt {
 enum ct_flags { CT_UPD_CASCADE = 0x00000001, CT_DEL_CASCADE = 0x00000002 };
 
 extern struct constraint {
+    char *consname;
     char *lclkey;
     int ncnstrts;
     int flags;
@@ -290,6 +291,7 @@ int numix();
 void resolve_case_names();
 void end_constraint_list(void);
 void set_constraint_mod(int start, int op, int type);
+void set_constraint_name(char *name);
 void start_constraint_list(char *tblname);
 void add_constraint(char *tbl, char *key);
 void add_constant(char *name, int value, short type);

@@ -373,8 +373,11 @@ DEF_ATTR(MAX_SQL_IDLE_TIME, max_sql_idle_time, QUANTITY, 3600,
 DEF_ATTR(SEQNUM_WAIT_INTERVAL, seqnum_wait_interval, QUANTITY, 500,
          "Wake up to check the state of the world this often while waiting for "
          "replication ACKs.")
-DEF_ATTR(SOSQL_MAX_COMMIT_WAIT_SEC, sosql_max_commit_wait_sec, QUANTITY, 600,
+DEF_ATTR(SOSQL_MAX_COMMIT_WAIT_SEC, sosql_max_commit_wait_sec, SECS, 600,
          "Wait for the master to commit a transaction for up to this long.")
+DEF_ATTR(SOSQL_DDL_MAX_COMMIT_WAIT_SEC, sosql_ddl_max_commit_wait_sec, SECS,
+         24 * 3600 * 3,
+         "Wait for the master to commit a DDL transaction for up to this long.")
 DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 12,
          "On replicants, when checking on master for transaction status, retry "
          "the check after this many seconds.")
@@ -605,6 +608,9 @@ DEF_ATTR(REPORT_DECIMAL_CONVERSION, report_decimal_conversion, BOOLEAN, 0, NULL)
 DEF_ATTR(TIMEPART_CHECK_SHARD_EXISTENCE, timepart_check_shard_existence,
          BOOLEAN, 0,
          "Check at startup/time-partition creation that all shard files exist.")
+DEF_ATTR(
+    IGNORE_BAD_TABLE, ignore_bad_table, BOOLEAN, 0,
+    "Allow a database with a corrupt table to come up, without that table.")
 /* Keep enabled for the merge */
 DEF_ATTR(DURABLE_LSNS, durable_lsns, BOOLEAN, 0, NULL)
 /* Keep disabled:  we get it when we add to the trn_repo */

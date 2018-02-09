@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
+
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
+if [[ "$(arch)" == "armv7l" ]] ; then
+    t=${TEST_TIMEOUT%%m}
+    TEST_TIMEOUT=$(($t * 3 + 2))m
+fi
 SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 
 export CLEANUPDBDIR=${CLEANUPDBDIR:-1}

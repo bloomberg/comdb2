@@ -2810,15 +2810,18 @@ retry:
     return ixrc;
 }
 
-int dtas_next(struct ireq *iq, const unsigned long long *genid_vector,
-              unsigned long long *genid, int *stripe, int stay_in_stripe,
-              void *dta, void *trans, int dtalen, int *reqdtalen, int *ver)
+static int dtas_next_int(struct ireq *iq,
+                         const unsigned long long *genid_vector,
+                         unsigned long long *genid, int *stripe,
+                         int stay_in_stripe, void *dta, void *trans, int dtalen,
+                         int *reqdtalen, int *ver, int page_order)
 {
     struct dbtable *db = iq->usedb;
     int bdberr, retries = 0, rc;
     bdb_fetch_args_t args = {0};
 retry:
     iq->gluewhere = "bdb_fetch_next_dtastripe_record";
+    args.page_order = page_order;
     rc = bdb_fetch_next_dtastripe_record(db->handle, genid_vector, genid,
                                          stripe, stay_in_stripe, dta, dtalen,
                                          reqdtalen, trans, &args, &bdberr);
@@ -2849,6 +2852,23 @@ retry:
     logmsg(LOGMSG_ERROR, "*ERROR* bdb_fetch_next_dtastripe_record unhandled rcode %d\n",
            bdberr);
     return -1;
+}
+
+int dtas_next(struct ireq *iq, const unsigned long long *genid_vector,
+              unsigned long long *genid, int *stripe, int stay_in_stripe,
+              void *dta, void *trans, int dtalen, int *reqdtalen, int *ver)
+{
+    return dtas_next_int(iq, genid_vector, genid, stripe, stay_in_stripe, dta,
+                         trans, dtalen, reqdtalen, ver, 0);
+}
+
+int dtas_next_pageorder(struct ireq *iq, const unsigned long long *genid_vector,
+                        unsigned long long *genid, int *stripe,
+                        int stay_in_stripe, void *dta, void *trans, int dtalen,
+                        int *reqdtalen, int *ver)
+{
+    return dtas_next_int(iq, genid_vector, genid, stripe, stay_in_stripe, dta,
+                         trans, dtalen, reqdtalen, ver, 1);
 }
 
 /* Get the next record in the database in one of the stripes.  Returns 0 on
@@ -4095,9 +4115,27 @@ int backend_open(struct dbenv *dbenv)
                           dbenv->bdb_env, &bdberr);
 
         if (db->handle == NULL) {
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_IGNORE_BAD_TABLE)) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "bdb_open:failed to open table %s/%s, rcode %d, IGNORING\n",
+                    dbenv->basedir, db->tablename, bdberr);
+                /* this is a hack, lets just leak it */
+                if (ii == dbenv->num_dbs - 1) {
+                    dbenv->dbs[ii] == NULL;
+                } else {
+                    memcpy(dbenv->dbs[ii], dbenv->dbs[ii + 1],
+                           sizeof(dbenv->dbs[0]));
+                    dbenv->dbs[dbenv->num_dbs - 1] = NULL;
+                }
+                dbenv->num_dbs--;
+                ii--;
+                continue;
+            }
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open table %s/%s, rcode %d\n",
                    dbenv->basedir, db->tablename, bdberr);
+
             return -1;
         }
     }

@@ -840,6 +840,10 @@ __bam_vrfy_inp(dbp, vdp, h, pgno, nentriesp, flags)
 				    (u_long)pgno, (u_long)i));
 				break;
 			}
+	} else if (NUM_ENT(h) == 0) {
+		/* adjust himark for empty pfx compressed pages */
+		void *p = P_PFXENTRY(dbp, h);
+		himark = p - (void *)h;
 	}
 
 	__os_free(dbenv, pagelayout);

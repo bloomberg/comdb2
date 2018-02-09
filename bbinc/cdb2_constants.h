@@ -36,6 +36,8 @@
 #define MAXLRL 65536
 #define MAXNETS 3
 #define MAXNODES 32768
+#define MAXPLUGINS 100
+#define MAXPSTRLEN 256
 #define MAX_QUEUE_HITS_PER_TRANS 8
 #define MAXSIBLINGS 64
 #define MAX_SPNAME MAXTABLELEN
@@ -47,5 +49,9 @@
 #define MAXGENKEYLEN 25
 /* Maximum buffer length for generated constraint name. */
 #define MAXGENCONSLEN 25
+/* Maximum allowed constraint name length */
+#define MAXCONSLEN 64
+#define MAXQUERYLEN 262144
+#define MAXCUR 100
 
 #endif

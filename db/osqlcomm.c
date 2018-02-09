@@ -4569,7 +4569,7 @@ int type_to_uuid_type(int type)
     case NET_OSQL_SOCK_RPL:
         return NET_OSQL_SOCK_RPL_UUID;
     default:
-        logmsg(LOGMSG_FATAL, "unhandled type %d\n", type);
+        logmsg(LOGMSG_FATAL, "type_to_uuid_type: unhandled type %d\n", type);
         abort();
     }
 }

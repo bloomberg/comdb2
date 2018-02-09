@@ -1021,3 +1021,6 @@ constraints
 	}
 ')
 (type='index', name='$IDX1_D133A66E', tbl_name='t8', rootpage=22, sql='create index "$IDX1_D133A66E" on "t8" ("i" DESC);', csc2=NULL)
+[CREATE TABLE t4(i INT, FOREIGN KEY (i) REFERENCES t1(i) CONSTRAINT "mycons3")] failed with rc -3 near ")": syntax error
+(name='mycons1', tablename='t2', keyname='$KEY_A44A20B', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='mycons2', tablename='t3', keyname='$KEY_37248BBB', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')

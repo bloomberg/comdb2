@@ -1971,8 +1971,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             switch_status();
         } else if (tokcmp(tok, ltok, "clnt") == 0) {
             char *host = NULL;
+            tok = segtok(line, lline, &st, &ltok);
             if (ltok > 0) {
                 host = internn(tok, ltok);
+                tok = segtok(line, lline, &st, &ltok);
             }
             if (ltok == 0 || tokcmp(tok, ltok, "totals") == 0) {
                 if (host)

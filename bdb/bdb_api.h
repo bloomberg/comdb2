@@ -1936,7 +1936,7 @@ unsigned long long bdb_get_a_genid(bdb_state_type *bdb_state);
 uint64_t get_coherency_timestamp(void);
 
 /* Return the next timestamp that the master is allowed to commit */
-time_t next_commit_timestamp(void);
+uint64_t next_commit_timestamp(void);
 
 int bdb_genid_format(bdb_state_type *bdb_state);
 int bdb_genid_set_format(bdb_state_type *bdb_state, int format);

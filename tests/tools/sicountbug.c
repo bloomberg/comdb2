@@ -8,7 +8,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <signal.h>
-#include <getopt.h>
+#include <unistd.h>
 
 static char *argv0=NULL;
 
