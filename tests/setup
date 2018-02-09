@@ -120,7 +120,6 @@ ssl_cert_path $TESTDIR
 EOPTIONS
 fi
 
-echo "make_slow_replicants_incoherent off" >> ${LRL}
 echo "logmsg level info" >> ${LRL}
 
 if [[ -f ${TESTSROOTDIR}/${TESTCASE}.test/lrl ]]; then

@@ -180,7 +180,6 @@ register_linearizable.test
 sigstopcluster.test
 cinsert_linearizable.test
 netloss.test              -- does not pass most of the time; requires kernel 4.x & docker 17.x
-client_replicant_retry.test  -- not ready yet
 <END>
 
 # vim: set sw=4 ts=4 et:

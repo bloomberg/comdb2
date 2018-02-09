@@ -5017,10 +5017,8 @@ int osql_comm_send_socksqlreq(char *tohost, const char *sql, int sqlen,
 
     rc = offload_net_send(tohost, net_type, req, reqlen, 1);
 
-    if (rc) {
+    if (rc)
         stats[type].snd_failed++;
-        rc = SQLITE_CLIENT_CHANGENODE;
-    }
 
     free(req);
 

@@ -1864,12 +1864,7 @@ static int cdb2_random_int()
         rand_state[1] = hash >> 16;
         rand_state[2] = hash >> 32;
     }
-    int r = nrand48(rand_state); 
-    if (log_calls) {
-        fprintf(stderr, "td %u %s line %d rand_val=%d\n",
-                (uint32_t)pthread_self(), __func__, __LINE__, r);
-    }
-    return r;
+    return nrand48(rand_state);
 }
 
 static inline int cdb2_try_resolve_ports(cdb2_hndl_tp *hndl)
@@ -2450,8 +2445,7 @@ retry_next_record:
                     (void *)pthread_self(), __func__, __LINE__, shouldretry,
                     hndl->snapshot_file, num_retry);
         }
-        /* AZ: remove  hndl->snapshot_file dependency and always retry */
-        if (shouldretry && num_retry < hndl->max_retries) {
+        if (shouldretry && hndl->snapshot_file && num_retry < hndl->max_retries) {
             num_retry++;
             if (num_retry > hndl->num_hosts) {
                 int tmsec;
@@ -2473,7 +2467,6 @@ retry_next_record:
                 newsql_disconnect(hndl, hndl->sb, __LINE__);
                 goto retry;
             }
-            //AZ: this seems wrong -- we get a good rc, we should just return!!
             goto retry_next_record;
         }
         PRINT_RETURN_OK(-1);
@@ -2498,8 +2491,8 @@ retry_next_record:
 
     if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES) {
         // "Good" rcodes are not retryable
-        // AZ: snapshot_file here
-        if (is_retryable(hndl, hndl->lastresponse->error_code)) {
+        if (is_retryable(hndl, hndl->lastresponse->error_code) &&
+            hndl->snapshot_file) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             sprintf(hndl->errstr,
                     "%s: Timeout while reading response from server", __func__);
@@ -3086,10 +3079,8 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     }
 
     int rc = 0, len;
-    /* AZ:
     if (!(hndl->snapshot_file))
         return -1;
-        */
 
     hndl->retry_all = 1;
 
@@ -3590,7 +3581,8 @@ retry_queries:
         PRINT_RETURN(err_val);
     }
 
-    if (hndl->skip_feature && !hndl->is_read && hndl->in_trans) {
+    if (hndl->skip_feature && !hndl->is_read && 
+         (hndl->in_trans || !hndl->is_hasql)) {
         if (hndl->debug_trace) {
             fprintf(stderr, "td %u %s:%d in_trans=%d is_hasql=%d\n",
                     (uint32_t)pthread_self(), __func__, __LINE__,
@@ -3731,24 +3723,20 @@ read_record:
                         (uint32_t)pthread_self(), __func__, __LINE__, rc,
                         err_val);
             }
-            hndl->in_trans = 1;
-            hndl->snapshot_file = commit_file;
-            hndl->snapshot_offset = commit_offset;
-            hndl->is_retry = commit_is_retry;
-            hndl->query_list = commit_query_list;
-            commit_query_list = NULL;
-            commit_file = 0;
+            goto retry_queries;
         }
-        hndl->retry_all = 1;
-        if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d goto retry_queries rc=%d, "
-                    "err_val=%d clear_snap_line is %d\n", 
-                    (uint32_t) pthread_self(), __func__, __LINE__, rc, err_val,
-                    hndl->clear_snap_line);
-        }
-        goto retry_queries;
-    }
 
+        if (is_hasql_commit) {
+            cleanup_query_list(hndl, commit_query_list, __LINE__);
+        }
+        sprintf(hndl->errstr,
+                "%s: Timeout while reading response from server", __func__);
+        if (hndl->debug_trace) {
+            fprintf(stderr, "%s:%d returning, clear_snap_line is %d\n",
+                    __func__, __LINE__, hndl->clear_snap_line);
+        }
+        PRINT_RETURN(-1);
+    }
     if (hndl->first_buf != NULL) {
         hndl->firstresponse =
             cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
@@ -3942,9 +3930,9 @@ read_record:
             PRINT_RETURN(return_value);
         }
 
-        if (((is_retryable(hndl, rc) && hndl->snapshot_file) || is_begin) || 
-            (!hndl->sb && ((hndl->in_trans && hndl->snapshot_file) || commit_file))
-           ) {
+        if (hndl->is_hasql && (((is_retryable(hndl, rc) && hndl->snapshot_file) ||
+            is_begin) || (!hndl->sb && ((hndl->in_trans && hndl->snapshot_file)
+            || commit_file)))) {
 
             if (hndl->sb)
                 sbuf2close(hndl->sb);
@@ -3976,9 +3964,6 @@ read_record:
 
             clear_responses(hndl);
             goto retry_queries;
-        } else if (is_retryable(hndl, rc)) {
-            newsql_disconnect(hndl, hndl->sb, __LINE__);
-            GOTO_RETRY_QUERIES();
         }
 
         return_value = cdb2_convert_error_code(rc);

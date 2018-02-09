@@ -3772,16 +3772,6 @@ static int ha_retrieve_snapshot(struct sqlclntstate *clnt)
     if (!clnt->is_newsql)
         return 0;
 
-    if (clnt->sql_query && clnt->sql_query->retry && 
-            !clnt->sql_query->snapshot_info) {
-        logmsg(LOGMSG_USER, "AZ: %s: retry sql '%s' cnonce '%.64s'\n",
-                __func__, clnt->sql_query->sql_query, clnt->sql_query->cnonce.data);
-        //search in blkseq for this cnonce -- fast pass
-        //if we have not returned rows to the user we can
-        //just let the master find in blkseq and return via normal request processing
-        //if we have returned rows to client, we will need to abort this transaction
-    }
-
     /* MOHIT -- Check here that we are in high availablity, its cdb2api, and
      * is its a retry. */
     if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS && clnt->sql_query) {
