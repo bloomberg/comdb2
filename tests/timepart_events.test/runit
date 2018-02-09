@@ -17,8 +17,8 @@ touch $OUT
 
 function timepart_stats
 {
-    echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, period, retention, nshards, shard0name from comdb2_timepartitions " >> $OUT
-    cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, period, retention, nshards, shard0name from comdb2_timepartitions " >> $OUT
+    echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, period, retention, nshards, shard0name, version from comdb2_timepartitions " >> $OUT
+    cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, period, retention, nshards, shard0name, version from comdb2_timepartitions " >> $OUT
     if (( $? != 0 )) ; then
         echo "FAILURE"
         exit 1

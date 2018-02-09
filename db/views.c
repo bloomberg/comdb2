@@ -2681,7 +2681,13 @@ void timepart_systable_column(sqlite3_context *ctx, int iRowid,
         sqlite3_result_int(ctx, view->nshards);
         break;
     case VIEWS_VERSION:
-        sqlite3_result_int(ctx, view->version);
+        {
+            struct dbtable *table = get_dbtable_by_name(view->shards[0].tblname);
+            int version = 0;
+            assert(table);
+
+            sqlite3_result_int(ctx, table->tableversion);
+        }
         break;
     case VIEWS_SHARD0NAME:
         sqlite3_result_text(ctx, view->shard0name, -1, NULL);
