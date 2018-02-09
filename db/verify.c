@@ -343,24 +343,17 @@ struct verify_args {
     SBUF2 *sb;
     int progress_report_seconds;
     int attempt_fix;
-    int done;
     int rcode;
     int (*lua_callback)(void *, const char *);
     void *lua_params;
-    pthread_mutex_t lk;
-    pthread_cond_t cd;
 };
 
 static void *verify_td(void *arg)
 {
     struct verify_args *v = (struct verify_args *)arg;
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
-    pthread_mutex_lock(&v->lk);
     v->rcode = verify_table_int(v->table, v->sb, v->progress_report_seconds,
                                 v->attempt_fix, v->lua_callback, v->lua_params);
-    v->done = 1;
-    pthread_cond_broadcast(&v->cd);
-    pthread_mutex_unlock(&v->lk);
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
     return NULL;
 }
@@ -379,31 +372,22 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
     v.attempt_fix = attempt_fix;
     v.lua_callback = lua_callback;
     v.lua_params = lua_params;
-    v.done = v.rcode = 0;
+    v.rcode = 0;
 
     stacksize = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VERIFY_THREAD_STACKSZ);
     pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, stacksize);
-    pthread_mutex_init(&v.lk, NULL);
-    pthread_cond_init(&v.cd, NULL);
 
-    pthread_mutex_lock(&v.lk);
     if (rc = pthread_create(&v.tid, &attr, verify_td, &v)) {
         logmsg(LOGMSG_ERROR, "%s unable to create thread for verify: %s\n",
                __func__, strerror(errno));
         sbuf2printf(sb, "FAILED\n");
         pthread_attr_destroy(&attr);
-        pthread_mutex_destroy(&v.lk);
-        pthread_cond_destroy(&v.cd);
         return -1;
     }
 
-    while (v.done == 0) {
-        pthread_cond_wait(&v.cd, &v.lk);
-    }
+    pthread_join(v.tid, NULL);
 
     pthread_attr_destroy(&attr);
-    pthread_mutex_destroy(&v.lk);
-    pthread_cond_destroy(&v.cd);
     return v.rcode;
 }
