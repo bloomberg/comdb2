@@ -29,6 +29,7 @@ pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 pthread_mutex_t schema_change_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t fastinit_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t schema_change_sbuf2_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t csc2_subsystem_mtx = PTHREAD_MUTEX_INITIALIZER;
 volatile int gbl_schema_change_in_progress = 0;
 volatile int gbl_lua_version = 0;
 uint64_t sc_seed;
@@ -40,6 +41,11 @@ int gbl_default_sc_scanmode = SCAN_PARALLEL;
 
 pthread_mutex_t sc_resuming_mtx = PTHREAD_MUTEX_INITIALIZER;
 struct schema_change_type *sc_resuming = NULL;
+
+/* async ddl sc */
+pthread_mutex_t sc_async_mtx = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t sc_async_cond = PTHREAD_COND_INITIALIZER;
+volatile int sc_async_threads = 0;
 
 /* Throttle settings, which you can change with message traps.  Note that if
  * you have gbl_sc_usleep=0, the important live writer threads never get to
@@ -184,6 +190,7 @@ int sc_set_running(int running, uint64_t seed, const char *host, time_t time)
             sc_time = 0;
             gbl_sc_resume_start = 0;
             gbl_schema_change_in_progress = 0;
+            sc_async_threads = 0;
         }
     }
     ctrace("sc_set_running(running=%d seed=0x%llx): "
