@@ -155,16 +155,16 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt)
                 sqlstr += 4;
                 sqlstr = skipws(sqlstr);
                 if (!sqlite3IsCorrectlyQuoted(sqlstr)) {
-                        snprintf(err, sizeof(err),
-                                "set user: '%s' is an incorrectly quoted string", sqlstr,
-                                sizeof(clnt->user) - 1);
-                        rc = ii + 1;
+                    snprintf(err, sizeof(err),
+                             "set user: '%s' is an incorrectly quoted string",
+                             sqlstr, sizeof(clnt->user) - 1);
+                    rc = ii + 1;
                 } else {
                     sqlite3Dequote(sqlstr);
                     if (strlen(sqlstr) >= sizeof(clnt->user)) {
                         snprintf(err, sizeof(err),
-                                "set user: '%s' exceeds %d characters", sqlstr,
-                                sizeof(clnt->user) - 1);
+                                 "set user: '%s' exceeds %d characters", sqlstr,
+                                 sizeof(clnt->user) - 1);
                         rc = ii + 1;
                     } else {
                         clnt->have_user = 1;
@@ -175,16 +175,16 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt)
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
                 if (!sqlite3IsCorrectlyQuoted(sqlstr)) {
-                        snprintf(err, sizeof(err),
-                                "set user: '%s' is an incorrectly quoted string", sqlstr,
-                                sizeof(clnt->user) - 1);
-                        rc = ii + 1;
+                    snprintf(err, sizeof(err),
+                             "set user: '%s' is an incorrectly quoted string",
+                             sqlstr, sizeof(clnt->user) - 1);
+                    rc = ii + 1;
                 } else {
                     sqlite3Dequote(sqlstr);
                     if (strlen(sqlstr) >= sizeof(clnt->password)) {
                         snprintf(err, sizeof(err),
-                                "set password: '%s' exceeds %d characters", sqlstr,
-                                sizeof(clnt->password) - 1);
+                                 "set password: '%s' exceeds %d characters",
+                                 sqlstr, sizeof(clnt->password) - 1);
                         rc = ii + 1;
                     } else {
                         clnt->have_password = 1;
