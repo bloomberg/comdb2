@@ -1,9 +1,0 @@
-schema
-{
-   int  id
-   int  b
-}
-keys
-{
-   "ID"  = id
-}
