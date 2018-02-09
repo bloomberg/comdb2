@@ -208,9 +208,16 @@ struct logrule {
  * each second. */
 enum { NUM_BUCKETS = 10 };
 struct nodestats {
-    struct nodestats *next;
-
+    unsigned checksum;
+    int node;
     char *host;
+    struct in_addr addr;
+    char *task;
+    char *stack;
+
+    int ref;
+    pthread_mutex_t mtx;
+    LINKC_T(struct nodestats) linkv;
 
     /* raw counters, totals (updated locklessly by multiple threads) */
     struct rawnodestats rawtotals;
@@ -224,31 +231,11 @@ struct nodestats {
     unsigned cur_bucket;
     struct rawnodestats raw_buckets[NUM_BUCKETS];
     int bucket_spanms[NUM_BUCKETS];
+
+    char mem[1];
 };
-
-struct summary_nodestats {
-    char *host;
-
-    unsigned finds;
-    unsigned rngexts;
-    unsigned writes;
-    unsigned other_fstsnds;
-
-    unsigned adds;
-    unsigned upds;
-    unsigned dels;
-    unsigned bsql;     /* block sql */
-    unsigned recom;    /* recom sql */
-    unsigned snapisol; /* snapisol sql */
-    unsigned serial;   /* serial sql */
-
-    unsigned sql_queries;
-    unsigned sql_steps;
-    unsigned sql_rows;
-};
+typedef struct nodestats nodestats_t;
 
 extern int gbl_time_fdb;
-
-
 
 #endif

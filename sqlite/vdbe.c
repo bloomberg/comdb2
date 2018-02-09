@@ -26,7 +26,7 @@
 #include <ctype.h>
 #include <pthread.h>
 #include <strings.h>
-#include <logmsg.h>
+#include <sql.h>
 
 /* COMDB2 MODIFICATION */
 /* Comdb2 routines called from vdbe */
@@ -34,12 +34,19 @@ void set_cook_fields(BtCursor *pCur, int cols);
 void sqlite3SetConversionError(void);
 void *get_lastkey(BtCursor *pCur);
 void print_cooked_access(BtCursor *pCur, int col);
-int is_raw(BtCursor *pCur);
-int get_data(BtCursor *pCur, void *invoid, int fnum, Mem *m);
+void comdb2SetWriteFlag(int wrflag);
 int is_datacopy(BtCursor *pCur, int *fnum);
 int get_datacopy(BtCursor *pCur, int fnum, Mem *m);
-int is_remote(BtCursor *pCur);
-void comdb2SetWriteFlag(int wrflag);
+
+
+#define cur_is_raw(pCur)                               \
+    (pCur ?                                            \
+       (pCur->cursor_class == CURSORCLASS_TABLE  ||    \
+        pCur->cursor_class == CURSORCLASS_INDEX  ||    \
+        cur_is_remote(pCur)                      ||    \
+        pCur->is_sampled_idx)                          \
+     :  0)                                             \
+
 
 /*
 ** Invoke this macro on memory cells just prior to changing the
@@ -2888,21 +2895,21 @@ case OP_Column: {
 
 #ifdef SQLITE_BUILDING_FOR_COMDB2
   /* COMDB2 MODIFICATION */
-  if( pC->eCurType == CURTYPE_BTREE && is_raw(pCrsr) && !pC->nullRow ){
-    if( is_remote(pCrsr)) {
+  if( pC->eCurType == CURTYPE_BTREE && cur_is_raw(pCrsr) && !pC->nullRow ) {
+    if(cur_is_remote(pCrsr)) {
       goto cooked_access;
     }
     else if( pC->isTable ){
       zData = (u8 *)sqlite3BtreeDataFetch(pCrsr, &avail);
       assert(zData != NULL);
-      rc = get_data(pCrsr, (u8 *) zData, p2, pDest);
+      rc = get_data(pCrsr, pCrsr->sc, (u8 *) zData, p2, pDest, 0, pCrsr->clnt->tzname);
     }else{
       datacopy = p2;
       if( is_datacopy(pCrsr, &datacopy) ){
         rc = get_datacopy(pCrsr, datacopy, pDest);
       }else if(pC->nCookFields>=0 && p2>=pC->nCookFields){
         zData = (u8 *)get_lastkey(pCrsr);
-        rc = get_data(pCrsr, (u8 *) zData, p2, pDest);
+        rc = get_data(pCrsr, pCrsr->sc, (u8 *) zData, p2, pDest, 0, pCrsr->clnt->tzname);
       }else{
         goto cooked_access;
       }

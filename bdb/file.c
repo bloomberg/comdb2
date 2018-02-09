@@ -1248,6 +1248,8 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host);
 int net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum);
 int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
                    int ylen);
+int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, 
+        int *file, int *offset);
 
 static void net_startthread_rtn(void *arg)
 {
@@ -2504,6 +2506,8 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     /* register a routine which will re-order the out-queue to
        be in lsn order */
     net_register_netcmp(bdb_state->repinfo->netinfo, net_cmplsn_rtn);
+
+    net_register_getlsn(bdb_state->repinfo->netinfo, net_getlsn_rtn);
 
     /* set the callback data so we get our bdb_state pointer from these
      * calls. */

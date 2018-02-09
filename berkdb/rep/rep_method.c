@@ -44,7 +44,6 @@ static int __rep_elect __P((DB_ENV *, int, int, u_int32_t, char **));
 static int __rep_elect_init
 __P((DB_ENV *, DB_LSN *, int, int, int *, u_int32_t *));
 static int __rep_flush __P((DB_ENV *));
-static void __rep_lockout __P((DB_ENV *, DB_REP *, REP *, u_int32_t));
 static int __rep_restore_prepared __P((DB_ENV *));
 static int __rep_get_limit __P((DB_ENV *, u_int32_t *, u_int32_t *));
 static int __rep_set_limit __P((DB_ENV *, u_int32_t, u_int32_t));
@@ -253,8 +252,8 @@ __rep_start(dbenv, dbt, flags)
 	 * changing roles.  If we are not changing roles, then we
 	 * only need to coordinate with msg_th.
 	 */
-	if (role_chg)
-		__rep_lockout(dbenv, db_rep, rep, 0);
+	if (role_chg) {
+    }
 	else {
 		pid_t pid;
 		char cmd[32];
@@ -1523,58 +1522,6 @@ __rep_stat(dbenv, statp, flags)
 
 	*statp = stats;
 	return (0);
-}
-
-/*
- * __rep_lockout --
- *
- * Coordinate with other threads in the library and active txns so
- * that we can run single-threaded, for recovery or internal backup.
- * Assumes the caller holds rep_mutexp.
- */
-static void
-__rep_lockout(dbenv, db_rep, rep, msg_th)
-	DB_ENV *dbenv;
-	DB_REP *db_rep;
-	REP *rep;
-	u_int32_t msg_th;
-{
-	int wait_cnt;
-
-	/* Phase 1: set REP_F_READY and wait for op_cnt to go to 0. */
-	F_SET(rep, REP_F_READY);
-	for (wait_cnt = 0; rep->op_cnt != 0;) {
-		__db_err(dbenv,
-	"Detected %d ongoing operations while changing roles via rep_start",
-		    rep->op_cnt);
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-		__os_sleep(dbenv, 1, 0);
-#ifdef DIAGNOSTIC
-		if (++wait_cnt % 60 == 0)
-			__db_err(dbenv,
-	"Waiting for txn_cnt to run replication recovery/backup for %d minutes",
-			    wait_cnt / 60);
-#endif
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	}
-
-	/*
-	 * Phase 2: set in_recovery and wait for handle count to go
-	 * to 0 and for the number of threads in __rep_process_message
-	 * to go to 1 (us).
-	 */
-	rep->in_recovery = 1;
-	for (wait_cnt = 0; rep->handle_cnt != 0 || rep->msg_th > msg_th;) {
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-		__os_sleep(dbenv, 1, 0);
-#ifdef DIAGNOSTIC
-		if (++wait_cnt % 60 == 0)
-                      __db_err(dbenv,
-"Waiting for handle count to run replication recovery/backup for %d minutes",
-			    wait_cnt / 60);
-#endif
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	}
 }
 
 /* COMDB2 MODIFICATION */

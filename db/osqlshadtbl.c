@@ -2138,12 +2138,13 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
     int ix = 0;
     char namebuf[MAXTAGLEN];
     struct dbtable *db = pCur->db;
-    char key[MAXKEYLEN];
+    char *key;
     void *tran = thd->sqlclntstate->dbtran.shadow_tran;
     bdb_cursor_ifn_t *tmpcur = NULL;
     int rc = 0;
     unsigned long long genid = pCur->genid;
     void *dta = pCur->dtabuf;
+    key = alloca(MAXKEYLEN + sizeof(genid));
 
     if (thd->sqlclntstate && thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL)
         return 0;
@@ -2177,6 +2178,7 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
                 return -1;
             }
         }
+        memcpy(&key[db->ix_keylen[ix]], &genid, sizeof(genid));
 
         tmpcur = bdb_cursor_open(
             db->handle, thd->sqlclntstate->dbtran.cursor_tran,
@@ -2188,7 +2190,8 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
             return -1;
         }
 
-        rc = tmpcur->find(tmpcur, key, db->ix_keylen[ix], 0, bdberr);
+        rc = tmpcur->find(tmpcur, key, db->ix_keylen[ix] + sizeof(genid), 0,
+                          bdberr);
         if (rc) {
             int newbdberr;
             logmsg(LOGMSG_ERROR, "%s:bdb_cursor_find ix %d rc %d bdberr %d\n", __func__, ix,
@@ -2201,11 +2204,14 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
 
             return -1;
         }
-        if (memcmp(key, tmpcur->data(tmpcur), db->ix_keylen[ix]) != 0) {
+        if (memcmp(key, tmpcur->data(tmpcur),
+                   db->ix_keylen[ix] + sizeof(genid)) != 0) {
             logmsg(LOGMSG_ERROR, "%s:bdb_cursor_find did not find shadow index !\n",
                    __func__);
             return -1;
         }
+
+        assert(pCur->genid == tmpcur->genid(tmpcur));
 
         rc = tmpcur->delete (tmpcur, bdberr);
         if (rc) {

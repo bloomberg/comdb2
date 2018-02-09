@@ -55,7 +55,6 @@
 #include <stdio.h>
 #endif
 
-#include "dbinc/atomic.h"
 #include "tunables.h"
 #include "dbinc/trigger_subscription.h"
 
@@ -863,7 +862,7 @@ struct __db_mpool_stat {
 	u_int32_t st_page_trickle;	/* Pages written by memp_trickle. */
 	u_int32_t st_pages;		/* Total number of pages. */
 	u_int32_t st_page_clean;	/* Clean pages. */
-	db_atomic_t st_page_dirty;	/* Dirty pages. */
+	int32_t   st_page_dirty;	/* Dirty pages. */
 	u_int32_t st_hash_buckets;	/* Number of hash buckets. */
 	u_int32_t st_hash_searches;	/* Total hash chain searches. */
 	u_int32_t st_hash_longest;	/* Longest hash chain searched. */
@@ -2418,6 +2417,7 @@ struct __db_env {
 	LISTC_T(struct __recovery_processor) inflight_transactions;
 	LISTC_T(struct __recovery_processor) inactive_transactions;
 	pthread_mutex_t recover_lk;
+	pthread_cond_t recover_cond;
 	int recovery_memsize;  /* Use up to this much memory for log records */
 	pthread_rwlock_t ser_lk;
 	int lsn_chain;

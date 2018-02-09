@@ -3,7 +3,7 @@
 #######################################################
 .PHONY: test_tools
 test_tools: compat_install
-	@cd build && $(MAKE) -s -j blob bound cdb2_client cdb2api_caller cdb2bind comdb2_blobtest comdb2_sqltest crle hatest insert_lots_mt leakcheck localrep overflow_blobtest ptrantest recom selectv serial sicountbug sirace simple_ssl stepper utf8 insert register breakloop multithd
+	@cd build && $(MAKE) -s -j blob bound cdb2_client cdb2api_caller cdb2bind comdb2_blobtest comdb2_sqltest crle hatest insert_lots_mt leakcheck localrep overflow_blobtest ptrantest recom selectv serial sicountbug sirace simple_ssl stepper utf8 insert register breakloop cdb2_open multithd verify_atomics_work
 	@ln -f build/tests/tools/blob tests/bloballoc.test/blob
 	@ln -f build/tests/tools/bound tests/tools/bound
 	@ln -f build/tests/tools/cdb2_client tests/cdb2api_so.test/cdb2_client
@@ -30,6 +30,8 @@ test_tools: compat_install
 	@ln -f build/tests/tools/insert tests/tools/insert
 	@ln -f build/tests/tools/register tests/tools/register
 	@ln -f build/tests/tools/breakloop tests/tools/breakloop
+	@ln -f build/tests/tools/cdb2_open tests/tools/cdb2_open
+	@ln -f build/tests/tools/verify_atomics_work tests/tools/verify_atomics_work
 
 .PHONY: compat_install
 compat_install: all
@@ -46,7 +48,7 @@ compat_install: all
 
 .PHONY: all
 all: build
-	@cd build && $(MAKE) -s -j
+	@cd build && $(MAKE) -s -j$(nproc)
 
 CMAKE3 := $(shell command -v cmake3 2> /dev/null)
 build:
@@ -96,6 +98,8 @@ clean:
 	@rm -f tests/tools/insert
 	@rm -f tests/tools/register
 	@rm -f tests/tools/breakloop
+	@rm -f tests/tools/cdb2_open
+	@rm -f tests/tools/verify_atomics_work
 
 .PHONY: deb-current
 deb-current: package
@@ -105,11 +109,11 @@ rpm-current: package
 
 .PHONY: package
 package: all
-	@cd build && $(MAKE) -s -j package
+	@cd build && $(MAKE) -s -j$(nproc) package
 
 .PHONY: install
 install: all
-	@cd build && $(MAKE) -s -j install
+	@cd build && $(MAKE) -s -j$(nproc) install
 
 .PHONY: test
 test: test_tools

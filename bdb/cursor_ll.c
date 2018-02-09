@@ -538,7 +538,7 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
     return pberkdb;
 }
 
-static void reset_bulk_bt(bdb_realdb_tag_t *bt)
+static inline void reset_bulk_bt(bdb_realdb_tag_t *bt)
 {
     bt->bulkptr = NULL;
     bt->lastdtasize = 0;
@@ -546,8 +546,8 @@ static void reset_bulk_bt(bdb_realdb_tag_t *bt)
     bt->use_bulk = 0;
 }
 
-static int bdb_berkdb_get_pagelsn(bdb_berkdb_t *pberkdb, DB_LSN *lsn,
-                                  int *bdberr)
+static inline int bdb_berkdb_get_pagelsn(bdb_berkdb_t *pberkdb, DB_LSN *lsn,
+                                         int *bdberr)
 {
     bdb_berkdb_impl_t *berkdb = pberkdb->impl;
     bdb_realdb_tag_t *bt = &berkdb->u.rl;
@@ -692,11 +692,13 @@ static int bdb_berkdb_firstlast_real(bdb_berkdb_t *pberkdb, int pos,
 
     return rc;
 }
-static int bdb_berkdb_first_real(bdb_berkdb_t *pberkdb, int *bdberr)
+
+static inline int bdb_berkdb_first_real(bdb_berkdb_t *pberkdb, int *bdberr)
 {
     return bdb_berkdb_firstlast_real(pberkdb, DB_FIRST, bdberr);
 }
-static int bdb_berkdb_last_real(bdb_berkdb_t *pberkdb, int *bdberr)
+
+static inline int bdb_berkdb_last_real(bdb_berkdb_t *pberkdb, int *bdberr)
 {
     return bdb_berkdb_firstlast_real(pberkdb, DB_LAST, bdberr);
 }
@@ -946,11 +948,12 @@ int bdb_berkdb_firstlast_shad(bdb_berkdb_t *pberkdb,
     return 0;
 }
 
-int bdb_berkdb_first_shad(bdb_berkdb_t *pberkdb, int *bdberr)
+int inline bdb_berkdb_first_shad(bdb_berkdb_t *pberkdb, int *bdberr)
 {
     return bdb_berkdb_firstlast_shad(pberkdb, bdb_temp_table_first, bdberr);
 }
-int bdb_berkdb_last_shad(bdb_berkdb_t *pberkdb, int *bdberr)
+
+int inline bdb_berkdb_last_shad(bdb_berkdb_t *pberkdb, int *bdberr)
 {
     return bdb_berkdb_firstlast_shad(pberkdb, bdb_temp_table_last, bdberr);
 }
@@ -1131,22 +1134,24 @@ static int bdb_berkdb_dtakeysize(bdb_berkdb_t *pberkdb, int *dtasize,
     return IX_OK;
 }
 
-static int bdb_berkdb_dta(bdb_berkdb_t *pberkdb, char **dta, int *bdberr)
+static inline int bdb_berkdb_dta(bdb_berkdb_t *pberkdb, char **dta, int *bdberr)
 {
     return bdb_berkdb_dtakey(pberkdb, dta, 1, bdberr);
 }
 
-static int bdb_berkdb_key(bdb_berkdb_t *pberkdb, char **dta, int *bdberr)
+static inline int bdb_berkdb_key(bdb_berkdb_t *pberkdb, char **dta, int *bdberr)
 {
     return bdb_berkdb_dtakey(pberkdb, dta, 0, bdberr);
 }
 
-static int bdb_berkdb_dtasize(bdb_berkdb_t *pberkdb, int *dtalen, int *bdberr)
+static inline int bdb_berkdb_dtasize(bdb_berkdb_t *pberkdb, int *dtalen,
+                                     int *bdberr)
 {
     return bdb_berkdb_dtakeysize(pberkdb, dtalen, 1, bdberr);
 }
 
-static int bdb_berkdb_keysize(bdb_berkdb_t *pberkdb, int *keylen, int *bdberr)
+static inline int bdb_berkdb_keysize(bdb_berkdb_t *pberkdb, int *keylen,
+                                     int *bdberr)
 {
     return bdb_berkdb_dtakeysize(pberkdb, keylen, 0, bdberr);
 }
@@ -1230,7 +1235,7 @@ static int bdb_berkdb_move(bdb_berkdb_t *pberkdb, int dir, int *bdberr)
         return -1;
     }
 }
-static char hex(unsigned char a)
+static inline char hex(unsigned char a)
 {
     if (a < 10)
         return '0' + a;
@@ -1377,8 +1382,11 @@ static int bdb_berkdb_find_shad(bdb_berkdb_t *pberkdb, void *key, int keylen,
         /* DB_NEXTs will be for a partial search if the initial SETRANGE is
          * skipped */
         assert(keylen == sizeof(unsigned long long) ||
-               keylen <= (assert_keylen - sizeof(unsigned long long) +
-                          1)); /* for partial search. */
+               /* for partial search. */
+               keylen <= (assert_keylen - sizeof(unsigned long long) + 1) ||
+               /* for shadow only search */
+               (berkdb->cur->type == BDBC_IX && !berkdb->cur->rl &&
+                keylen <= foundkeylen));
 
         if (keylen == foundkeylen - sizeof(unsigned long long)) {
             rc =
@@ -1478,7 +1486,7 @@ static int bdb_berkdb_cget(bdb_berkdb_impl_t *berkdb, int use_bulk, int how,
     return IX_FND;
 }
 
-static void bdb_berkdb_trak(bdb_berkdb_t *pberkdb, int status)
+static inline void bdb_berkdb_trak(bdb_berkdb_t *pberkdb, int status)
 {
     bdb_berkdb_impl_t *berkdb = pberkdb->impl;
 
@@ -1536,9 +1544,15 @@ static int bdb_berkdb_insert(bdb_berkdb_t *pberkdb, char *key, int keylen,
     return rc;
 }
 
-static int bdb_berkdb_prevent_optimized(bdb_berkdb_t *pberkdb) { return 0; }
+static inline int bdb_berkdb_prevent_optimized(bdb_berkdb_t *pberkdb)
+{
+    return 0;
+}
 
-static int bdb_berkdb_allow_optimized(bdb_berkdb_t *pberkdb) { return 0; }
+static inline int bdb_berkdb_allow_optimized(bdb_berkdb_t *pberkdb)
+{
+    return 0;
+}
 
 static int bdb_berkdb_delete(bdb_berkdb_t *pberkdb, int *bdberr)
 {
@@ -1757,7 +1771,7 @@ static int bdb_berkdb_handle_optimized(bdb_berkdb_t *pberkdb, int *bdberr)
     return rc;
 }
 
-static int outoforder_set(bdb_berkdb_t *pberkdb, int status)
+static inline int outoforder_set(bdb_berkdb_t *pberkdb, int status)
 {
     int original = pberkdb->impl->outoforder;
 
@@ -1766,7 +1780,7 @@ static int outoforder_set(bdb_berkdb_t *pberkdb, int status)
     return original;
 }
 
-static int outoforder_get(bdb_berkdb_t *pberkdb)
+static inline int outoforder_get(bdb_berkdb_t *pberkdb)
 {
     return pberkdb->impl->outoforder;
 }

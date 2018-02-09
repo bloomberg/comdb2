@@ -1384,7 +1384,6 @@ typedef struct client_info {
 
 static int send_sp_trace(SP sp, const char *trace, int want_response)
 {
-    int rc;
     CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
     if (want_response) {
         sql_response.response_type = RESPONSE_TYPE__SP_DEBUG;
@@ -1398,7 +1397,7 @@ static int send_sp_trace(SP sp, const char *trace, int want_response)
     sp->rc = newsql_write_response(
         sp->clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE, &sql_response,
         1 /*flush*/, malloc, __func__, __LINE__);
-    return rc;
+    return sp->rc;
 }
 
 static clnt_info info_buf;

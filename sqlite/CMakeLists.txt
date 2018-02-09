@@ -16,21 +16,25 @@ add_library(sqlite
   delete.c
   dttz.c
   expr.c
+  ext/comdb2/appsock_handlers.c
   ext/comdb2/columns.c
   ext/comdb2/constraints.c
   ext/comdb2/keycomponents.c
   ext/comdb2/keys.c
   ext/comdb2/keywords.c
   ext/comdb2/limits.c
+  ext/comdb2/opcode_handlers.c
+  ext/comdb2/plugins.c
   ext/comdb2/procedures.c
   ext/comdb2/tablepermissions.c
   ext/comdb2/tables.c
-  ext/comdb2/tables.c
+  ext/comdb2/timepartitions.c
   ext/comdb2/tablesizes.c
   ext/comdb2/threadpools.c
   ext/comdb2/triggers.c
   ext/comdb2/tunables.c
   ext/comdb2/users.c
+  ext/comdb2/clientstats.c
   ext/misc/completion.c
   ext/misc/json1.c
   ext/expert/sqlite3expert.c

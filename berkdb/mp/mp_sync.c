@@ -800,8 +800,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 					 * we run the risk of taking 
 					 * the hb_lock twice.
 					 */
-					if (atomic_read(&hp->hash_page_dirty)
-					    == 1) {
+					if (hp->hash_page_dirty == 1) {
 						++gathered;
 						continue;
 					}
@@ -816,8 +815,8 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 				if (bharray[off_gather].track_off ==
 				    bhp->mf_offset &&
 				    bharray[off_gather].track_pgno + gathered
-				    == bhp->pgno &&
-				    atomic_read(&hp->hash_page_dirty) == 1) {
+				    == bhp->pgno && 
+					hp->hash_page_dirty == 1) {
 					bhparray[i] = bhp;
 					hparray[i] = hp;
 					++gathered;

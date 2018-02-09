@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2018, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -46,9 +46,6 @@ enum run_sql_flags {
 union fdb_msg;
 typedef union fdb_msg fdb_msg_t;
 
-int handle_remcur(SBUF2 *sb, struct dbenv *dbenv);
-int handle_remsql(SBUF2 *sb, struct dbenv *dbenv);
-int handle_remtran(SBUF2 *sb, struct dbenv *dbenv);
 
 int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
                   int flags, int version, int isuuid, SBUF2 *sb);
@@ -104,9 +101,10 @@ int fdb_send_update(fdb_msg_t *msg, char *cid, int version, int rootpage,
 int fdb_send_index(fdb_msg_t *msg, char *cid, int version, int rootpage,
                    unsigned long long genid, int is_delete, int ixnum,
                    int ixlen, char *ix, int seq, int isuuid, SBUF2 *sb);
-
-void fdb_msg_clean_message(fdb_msg_t *msg);
 int fdb_send_heartbeat(fdb_msg_t *msg, char *tid, int isuuid, SBUF2 *sb);
 
-#endif
+void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix);
+void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix);
+void fdb_msg_clean_message(fdb_msg_t *msg);
 
+#endif

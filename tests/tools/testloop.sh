@@ -3,6 +3,7 @@
 debug=1
 [[ "$debug" == "1" ]] && set -x
 
+BRANCH=${1:-master}
 export CORE_ON_TIMEOUT=1
 #export NOKILL_ON_TIMEOUT=1
 email="mhannum72@gmail.com"
@@ -18,8 +19,11 @@ export setup_failures=0
 export timeouts=0
 export nomemory=0
 export noconn=0
+export jbroke=0
 export sshfail=0
 export goodtests=0
+export domail=1
+export host=$(hostname)
 export test_linger=$(( 60 * 2 ))
 
 function print_status
@@ -30,21 +34,76 @@ function print_status
     echo "Test timeouts  :  $timeouts" 
     echo "Out-of-memory  :  $nomemory"
     echo "Connection fail:  $noconn" 
+    echo "Jepsen broke   :  $jbroke" 
     echo "SSH fail       :  $sshfail"
+}
+
+function mail_error
+{
+    [[ "$debug" == "1" ]] && set -x
+    [[ $domail == "0" ]] && return 
+
+    text="$1"
+    for addr in $email ; do
+        mail -s "$text" $addr < $l
+    done
+}
+
+function mail_status
+{
+    [[ "$debug" == "1" ]] && set -x
+    [[ $domail == "0" ]] && return 
+
+    echo "Mailing results"
+    print_status > body.txt
+    for addr in $email ; do
+        mail -s "Successfully tested $i iterations on $host" $addr < body.txt
+    done
+}
+
+function cleanup
+{
+    [[ "$debug" == "1" ]] && set -x
+    find ~/comdb2/tests/test_* -type d -mmin +$test_linger -exec rm -Rf {} \;
+    find ~/comdb2/tests/tools/linearizable/jepsen/store -mtime 1 -exec rm -Rf {} \;
+    find ~/comdb2/tests/test_* -mtime 1 -exec rm -Rf {} \;
+    for m in $CLUSTER ; do ssh $m 'find ~/comdb2/tests/test_* -mtime 1 -exec rm -Rf {} \;' ; done
+}
+
+function pull_and_recompile
+{
+    [[ "$debug" == "1" ]] && set -x
+    cd ~/comdb2
+    git checkout $BRANCH
+    git fetch --all --tags
+    if [[ "$BRANCH" == "master" ]]; then
+        git rebase upstream/master
+    else
+        git pull
+    fi
+    make clean
+    make -j > build.out 2>&1
+    if [[ $? != 0 ]]; then
+        echo "Compile error, exiting"
+        exit 1
+    fi
 }
 
 while :; do 
     let i=i+1 
     print_status
+    pull_and_recompile
     echo "$(date) ITERATION $i" 
-    rm -Rf $(find . -type d -mmin +$test_linger | egrep test_)
     for x in $tests 
-    do echo "$(date) - starting $x" 
+    do print_status
+        cleanup
+        echo "$(date) - starting $x" 
 
         for m in $CLUSTER; do ssh $m 'sudo iptables -F -w; sudo iptables -X -w';  done
         for m in $CLUSTER; do ssh $m 'killall -s 9 comdb2';  done
 
         export out=test_$x_$(date '+%Y%m%d%H%M%S')
+        cd ~/comdb2/tests
         make $x > $out ; r=$? 
 
         for m in $CLUSTER; do ssh $m 'sudo iptables -F -w; sudo iptables -X -w';  done
@@ -103,13 +162,18 @@ while :; do
                 err=0
             fi
 
+            egrep "Jepsen broke" $l
+            if [[ $? == 0 ]]; then
+                echo "Jepsen broke error: continuing"
+                let jbroke=jbroke+1
+                err=0
+            fi
+
             if [[ $err == 1 ]]; then
 
                 echo "ERROR IN ITERATION $i" 
                 err=1
-                for addr in $email ; do
-                    mail -s "JEPSEN FAILURE ITERATION $i !!" $addr < $l
-                done
+                mail_error "JEPSEN FAILURE ITERATION $i ON $host !!"
                 break 5
             fi
         fi
@@ -121,14 +185,7 @@ while :; do
     if [ $(( now - lasttime )) -gt $mailperiod ]; then
 
         lasttime=now
-        echo "Mailing results"
-
-        print_status > body.txt
-
-        for addr in $email ; do
-            mail -s "Successfully tested $i iterations" $addr < body.txt
-        done
-        lasttime=$now
+        mail_status
     fi
 
 done

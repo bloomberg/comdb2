@@ -238,7 +238,23 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_threadpools", &systblThreadPoolsModule, 0);
   if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_plugins", &systblPluginsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_appsock_handlers",
+                               &systblAppsockHandlersModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_opcode_handlers",
+                               &systblOpcodeHandlersModule, 0);
+  if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_completion", &completionModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_clientstats", &systblClientStatsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_timepartitions", &systblTimepartModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_timepartshards", &systblTimepartShardsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_timepartevents", &systblTimepartEventsModule, 0);
 #endif
   return rc;
 }

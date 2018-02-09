@@ -245,11 +245,11 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
 //
 // COMDB2 KEYWORDS  
 //
-  ADD AGGREGATE ALIAS AUTHENTICATION BLOBFIELD BULKIMPORT CHECK CONSTRAINT
+  ADD AGGREGATE ALIAS AUTHENTICATION BLOBFIELD BULKIMPORT CHECK
   COMMITSLEEP CONSUMER CONVERTSLEEP COVERAGE CRLE DATA DATABLOB DATACOPY DBPAD
-  DEFERRABLE DISABLE DRYRUN ENABLE FOR FOREIGN FUNCTION GENID48 GET GRANT
-  IPU ISC KW LUA LZ4 NONE ODH OFF OP OPTIONS PARTITION PASSWORD PERIOD
-  PROCEDURE PUT REBUILD READ REC RESERVED RETENTION REVOKE RLE
+  DEFERRABLE DISABLE DRYRUN ENABLE FOR FUNCTION GENID48 GET GRANT
+  IPU ISC KW LUA LZ4 NONE ODH OFF OP OPTIONS PAGEORDER PARTITION PASSWORD PERIOD
+  PROCEDURE PUT REBUILD READ READONLY REC RESERVED RETENTION REVOKE RLE
   ROWLOCKS SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE THREADS THRESHOLD TIME
   TRUNCATE TUNABLE VERSION WRITE DDL USERSCHEMA ZLIB .
 %wildcard ANY.
@@ -329,7 +329,7 @@ ccons ::= KEY onconf(R).         {
 %ifdef COMDB2_UNSUPPORTED
 ccons ::= CHECK LP expr(X) RP.   {sqlite3AddCheckConstraint(pParse,X.pExpr);}
 %endif
-ccons ::= REFERENCES nm(T) LP eidlist(TA) RP refargs(R).
+ccons ::= constraint_opt REFERENCES nm(T) LP eidlist(TA) RP refargs(R).
                                  {comdb2CreateForeignKey(pParse,0,&T,TA,R);}
 %ifdef COMDB2_UNSUPPORTED
 ccons ::= defer_subclause(D).    {sqlite3DeferForeignKey(pParse,D);}
@@ -401,10 +401,11 @@ tcons ::= CHECK LP expr(E) RP onconf.
                                  {sqlite3AddCheckConstraint(pParse,E.pExpr);}
 %endif
 tcons ::= tconsfk.
+
 tconspk ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
     comdb2AddPrimaryKey(pParse, X, R, I, 0);
 }
-tconsfk ::= FOREIGN KEY LP eidlist(FA) RP
+tconsfk ::= constraint_opt FOREIGN KEY LP eidlist(FA) RP
             REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
     comdb2CreateForeignKey(pParse, FA, &T, TA, R);
     comdb2DeferForeignKey(pParse, D);
@@ -1819,21 +1820,21 @@ putcmd ::= TUNABLE nm(N) INTEGER|FLOAT|STRING(M). {
 
 cmd ::= rebuild.
 
-rebuild ::= REBUILD nm(T) dbnm(X). { /* REBUILD FULL CANNOT BE USED
+rebuild ::= REBUILD nm(T) dbnm(X) comdb2opt(O). { /* REBUILD FULL CANNOT BE USED
                                         BECAUSE OF SQLITE SYNTAX */
-    comdb2RebuildFull(pParse,&T,&X);
+    comdb2RebuildFull(pParse,&T,&X,O);
 }
 
-rebuild ::= REBUILD INDEX nm(T) dbnm(Y) nm(X). {
-    comdb2RebuildIndex(pParse, &T,&Y, &X);
+rebuild ::= REBUILD INDEX nm(T) dbnm(Y) nm(X) comdb2opt(O). {
+    comdb2RebuildIndex(pParse, &T,&Y,&X,O);
 }
 
-rebuild ::= REBUILD DATA nm(T) dbnm(X). {
-    comdb2RebuildData(pParse, &T, &X);
+rebuild ::= REBUILD DATA nm(T) dbnm(X) comdb2opt(O). {
+    comdb2RebuildData(pParse, &T, &X, O);
 }
 
-rebuild ::= REBUILD DATABLOB nm(N) dbnm(X). {
-    comdb2RebuildDataBlob(pParse,&N, &X);
+rebuild ::= REBUILD DATABLOB nm(N) dbnm(X) comdb2opt(O). {
+    comdb2RebuildDataBlob(pParse,&N, &X, O);
 }
 /////////////////////COMDB2 GRANT STATEMENT //////////////////////////////////
 
@@ -1968,6 +1969,8 @@ comdb2optfield(A) ::= odh(O). {A = O;}
 comdb2optfield(A) ::= ipu(I). {A = I;}
 comdb2optfield(A) ::= isc(S). {A = S;}
 comdb2optfield(A) ::= REBUILD. {A = FORCE_REBUILD;}
+comdb2optfield(A) ::= PAGEORDER. {A = PAGE_ORDER;}
+comdb2optfield(A) ::= READONLY. {A = READ_ONLY;}
 comdb2optfield(A) ::= compress_blob(C). {A = C;}
 comdb2optfield(A) ::= compress_rec(C). {A = C;}
 
@@ -2112,7 +2115,8 @@ alter_table ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) . {
 }
 
 alter_table_action_list ::= .
-alter_table_action_list ::= alter_table_action_list COMMA alter_table_action.
+alter_table_action_list ::= alter_table_action_list alter_comma
+    alter_table_action.
 alter_table_action_list ::= alter_table_action.
 
 alter_table_action ::= alter_table_add_column.
@@ -2124,10 +2128,16 @@ alter_table_action ::= alter_table_drop_pk.
 alter_table_action ::= alter_table_add_fk.
 alter_table_action ::= alter_table_drop_fk.
 
+alter_comma ::= COMMA. {
+    /* Reset the constraint name. */
+    pParse->constraintName.n = 0;
+}
+
 alter_table_add_column ::= ADD kwcolumn_opt columnname carglist.
 alter_table_drop_column ::= DROP kwcolumn_opt nm(Y) . {
   comdb2DropColumn(pParse, &Y);
 }
+
 alter_table_add_index ::= ADD uniqueflag(U) INDEX nm(I) LP sortlist(X) RP
     with_opt(O) where_opt(W). {
   comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC,
@@ -2142,16 +2152,17 @@ alter_table_add_pk ::= ADD tconspk.
 alter_table_drop_pk ::= DROP PRIMARY KEY. {
     comdb2DropPrimaryKey(pParse);
 }
+
 alter_table_add_fk ::= ADD tconsfk.
 alter_table_drop_fk ::= DROP FOREIGN KEY nm(Y). {
     comdb2DropForeignKey(pParse, &Y);
 }
 
-%ifdef SQLITE_OMIT_ALTERTABLE
 kwcolumn_opt ::= .
 kwcolumn_opt ::= COLUMNKW.
-%endif
 
+constraint_opt ::= .                 { pParse->constraintName.n = 0; } 
+constraint_opt ::= CONSTRAINT nm(X). { pParse->constraintName = X; }
 
 /////////////////// COMDB2 RENAME TABLE STATEMENT  //////////////////////////////
 cmd ::= rename_comdb2table.

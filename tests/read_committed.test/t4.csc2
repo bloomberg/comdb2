@@ -1,0 +1,12 @@
+tag ondisk
+{
+    int         id
+    int         attr
+    double      a
+}
+
+keys
+{
+    dup "KEY" = id
+}
+

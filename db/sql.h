@@ -86,7 +86,7 @@ struct sqlthdstate {
     sqlite3 *sqldb;
 
     char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
-    hash_t *stmt_table; // statement cache table: caches vdbe engines
+    hash_t *stmt_caching_table; // statement cache table: caches vdbe engines
 
     LISTC_T(stmt_hash_entry_type) param_stmt_list;   // list of cached stmts
     LISTC_T(stmt_hash_entry_type) noparam_stmt_list; // list of cached stmts
@@ -180,8 +180,8 @@ typedef struct osqlstate {
 
     int error_is_remote; /* set if xerr is the error for a distributed tran
                             (i.e. already translated */
-    int long_request;
     int dirty; /* optimization to nop selectv only transactions */
+    int running_ddl; /* ddl transaction */
 } osqlstate_t;
 
 enum ctrl_sqleng {
@@ -264,10 +264,6 @@ void currangearr_init(CurRangeArr *arr);
 void currangearr_append(CurRangeArr *arr, CurRange *r);
 CurRange *currangearr_get(CurRangeArr *arr, int n);
 void currangearr_double_if_full(CurRangeArr *arr);
-int currange_cmp(const void *p, const void *q);
-void currangearr_sort(CurRangeArr *arr);
-void currangearr_merge_neighbor(CurRangeArr *arr);
-void currangearr_coalesce(CurRangeArr *arr);
 void currangearr_build_hash(CurRangeArr *arr);
 void currangearr_free(CurRangeArr *arr);
 void currangearr_print(CurRangeArr *arr);
@@ -506,6 +502,8 @@ struct sqlclntstate {
     int statement_query_effects;
 
     int verify_remote_schemas;
+    char *argv0;
+    char *stack;
 };
 
 /* Query stats. */
@@ -844,4 +842,10 @@ void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
 void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *);
+
+int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
+             uint8_t flip_orig, const char *tzname);
+
+#define cur_is_remote(pCur) (pCur->cursor_class == CURSORCLASS_REMOTE)
+
 #endif

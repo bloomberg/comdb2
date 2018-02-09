@@ -306,6 +306,7 @@ static inline void wait_to_resume(struct schema_change_type *s)
 
 int gbl_test_scindex_deadlock = 0;
 int gbl_test_sc_resume_race = 0;
+int gbl_readonly_sc = 0;
 
 int do_alter_table(struct ireq *iq, tran_type *tran)
 {
@@ -543,6 +544,8 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
     if ((!newdb->plan || newdb->plan->plan_convert) ||
         changed == SC_CONSTRAINT_CHANGE) {
         doing_conversion = 1;
+        if (!s->live)
+            gbl_readonly_sc = 1;
         rc = convert_all_records(db, newdb, newdb->sc_genids, s);
         if (rc == 1) rc = 0;
         doing_conversion = 0;
@@ -740,10 +743,10 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
 
     rc = bdb_close_only(old_bdb_handle, &bdberr);
     if (rc) {
-        sc_errf(s, "Failed closing new db, bdberr\n", bdberr);
+        sc_errf(s, "Failed closing old db, bdberr\n", bdberr);
         goto failed;
-    } else
-        sc_printf(s, "Close new db ok\n");
+    }
+    sc_printf(s, "Close old db ok\n");
 
     bdb_handle_reset_tran(new_bdb_handle, transac);
 

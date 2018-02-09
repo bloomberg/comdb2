@@ -186,6 +186,18 @@ static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
     return err->errval = VIEW_NOERR;
 }
 
+static void _destroy_event(cron_sched_t *sched, cron_event_t *event)
+{
+    listc_rfl(&sched->events, event);
+    if (event->arg1)
+        free(event->arg1);
+    if (event->arg2)
+        free(event->arg2);
+    if (event->arg3)
+        free(event->arg3);
+    free(event);
+}
+
 /**
  * Regular wake up and run job
  * Function is meant to be used with pthread_create
@@ -241,22 +253,14 @@ static void *_cron_runner(void *arg)
                 event->func(event->source_id, event->arg1, event->arg2, event->arg3,
                             &xerr);
                 pthread_mutex_lock(&sched->mtx);
-                sched->running = 0;     
+                sched->running = 0;
 
-                if (xerr.errval) {
+                if (xerr.errval)
                     logmsg(LOGMSG_ERROR, 
                             "Schedule %s error event %d rc=%d errstr=%s\n",
                             (sched->name) ? sched->name : "(noname)",
                             event->epoch, xerr.errval, xerr.errstr);
-                }
-                listc_rfl(&sched->events, event);
-                if (event->arg1)
-                    free(event->arg1);
-                if (event->arg2)
-                    free(event->arg2);
-                if (event->arg3)
-                    free(event->arg3);
-                free(event);
+                _destroy_event(sched, event);
             } else {
                 break;
             }
@@ -318,17 +322,11 @@ int cron_update_event(cron_sched_t *sched, int epoch, FCRON func,
     cron_event_t *event = NULL, *tmp = NULL;
     int found = 0;
 
-retry:
-    pthread_mutex_lock(&sched->mtx);
+    cron_lock(sched);
 
     LISTC_FOR_EACH_SAFE(&sched->events, event, tmp, lnk) {
         if(comdb2uuidcmp(event->source_id, source_id) == 0) {
-            /* is this event running ? */
-            if(event == sched->events.top && sched->running) {
-                pthread_mutex_unlock(&sched->mtx);
-                poll(NULL, 0, 10);
-                goto retry;
-            }
+
             /* we can process this */
             _set_event(event, epoch, func, arg1, arg2, arg3);
 
@@ -338,7 +336,86 @@ retry:
             found = 1;
         }
     }
-    pthread_mutex_unlock(&sched->mtx);
+
+    cron_unlock(sched);
 
     return (found)?VIEW_NOERR:VIEW_ERR_EXIST;
+}
+
+/**
+ * Clear queue of events
+ *
+ */
+void cron_clear_queue(cron_sched_t *sched)
+{
+    cron_event_t *event;
+
+    cron_lock(sched);
+
+    /* mop up */
+    while (event = sched->events.top)
+        _destroy_event(sched, event);
+
+    cron_unlock(sched);
+}
+
+/* Note for running event, if any, to finish */
+void cron_lock(cron_sched_t *sched)
+{
+    struct timespec now;
+
+    pthread_mutex_lock(&sched->mtx);
+
+    if (sched->running) {
+        clock_gettime(CLOCK_REALTIME, &now);
+        now.tv_sec += 1;
+        pthread_cond_timedwait(&sched->cond, &sched->mtx, &now);
+    }
+}
+
+void cron_unlock(cron_sched_t *sched)
+{
+    pthread_mutex_unlock(&sched->mtx);
+}
+
+/**
+ * Queue size
+ */
+int cron_num_events(cron_sched_t *sched)
+{
+    cron_event_t *event;
+    int counter = 0;
+
+    event = sched->events.top;
+    while (event) {
+        counter++;
+        event = event->lnk.next;
+    }
+
+    return counter;
+}
+
+int cron_event_details(cron_sched_t *sched, int idx, FCRON *func, int *epoch,
+                       void **arg1, void **arg2, void **arg3, uuid_t *sid)
+{
+    cron_event_t *event;
+    int counter = 0;
+    int i = 0;
+
+    event = sched->events.top;
+    while (event) {
+        if (counter == idx) {
+            *func = event->func;
+            *epoch = event->epoch;
+            *arg1 = event->arg1;
+            *arg2 = event->arg2;
+            *arg3 = event->arg3;
+            sid = &event->source_id;
+            break;
+        }
+        counter++;
+        event = event->lnk.next;
+    }
+
+    return (counter == idx);
 }

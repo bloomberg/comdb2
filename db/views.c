@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <string.h>
 #include <pthread.h>
+#include <memory_sync.h>
 
 #include "comdb2.h"
 #include "crc32c.h"
@@ -2027,7 +2028,25 @@ int views_cron_restart(timepart_views_t *views)
     int rc;
     struct errstat xerr = {0};
 
-    pthread_rwlock_wrlock(&views_lk);
+    /* in case of regular master swing, clear pre-existing views event,
+       we will requeue them */
+    cron_clear_queue(timepart_sched);
+
+    /* corner case: master started and schema change for time partition
+       submitted before watchdog thread has time to restart it, will deadlock
+       if this is the case, abort the schema change */
+    rc = pthread_rwlock_trywrlock(&views_lk);
+    if (rc == EBUSY) {
+        if (gbl_schema_change_in_progress) {
+            logmsg(LOGMSG_ERROR, "Schema change started too early for time "
+                                 "partition: aborting\n");
+            gbl_sc_abort = 1;
+            MEMORY_SYNC;
+        }
+        pthread_rwlock_wrlock(&views_lk);
+    } else if (rc) {
+        abort();
+    }
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     BDB_READLOCK(__func__);
@@ -2631,25 +2650,210 @@ static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
     return rc;
 }
 
-#if 0
-static int bdb_lock_table_write_pp(const char *tblname, timepart_sc_arg_t *arg)
+/**
+ * Returned a malloced string for the "iRowid"-th timepartition, column iCol
+ * NOTE: this is called with a read lock in views structure
+ */
+void timepart_systable_column(sqlite3_context *ctx, int iRowid,
+                              enum systable_columns iCol)
 {
-    struct dbtable *db = get_dbtable_by_name(tblname);
+    timepart_views_t *views = thedb->timepart_views;
+    timepart_view_t *view;
+    uuidstr_t us;
 
-    bdb_lock_table_write(db->handle, arg->tran); 
+    if (iRowid < 0 || iRowid >= views->nviews || iCol >= VIEWS_MAXCOLUMN) {
+        sqlite3_result_null(ctx);
+    }
 
-    return 0;
+    view = views->views[iRowid];
+
+    switch (iCol) {
+    case VIEWS_NAME:
+        sqlite3_result_text(ctx, view->name, -1, NULL);
+        break;
+    case VIEWS_PERIOD:
+        sqlite3_result_text(ctx, period_to_name(view->period), -1, NULL);
+        break;
+    case VIEWS_RETENTION:
+        sqlite3_result_int(ctx, view->retention);
+        break;
+    case VIEWS_NSHARDS:
+        sqlite3_result_int(ctx, view->nshards);
+        break;
+    case VIEWS_VERSION:
+        sqlite3_result_int(ctx, view->version);
+        break;
+    case VIEWS_SHARD0NAME:
+        sqlite3_result_text(ctx, view->shard0name, -1, NULL);
+        break;
+    case VIEWS_STARTTIME:
+        sqlite3_result_int(ctx, view->starttime);
+        break;
+    case VIEWS_SOURCEID:
+        sqlite3_result_text(ctx, comdb2uuidstr(view->source_id, us), -1, NULL);
+        break;
+    }
 }
 
-int timepart_write_lock(char *view_name, tran_type*tran)
+/**
+ * Returned a malloced string for the "iRowid"-th shard, column iCol of
+ * timepart iTimepartId
+ * NOTE: this is called with a read lock in views structure
+ */
+void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId,
+                                    int iRowid,
+                                    enum systable_shard_columns iCol)
 {
-    timepart_sc_arg_t arg = {0};
-    arg.tran = tran;
-    timepart_foreach_shard(view_name, bdb_lock_table_write_pp, &arg, 0);
+    timepart_views_t *views = thedb->timepart_views;
+    timepart_view_t *view;
+    timepart_shard_t *shard;
+    uuidstr_t us;
 
-    return 0;
+    if (iTimepartId < 0 || iTimepartId >= views->nviews ||
+        iCol >= VIEWS_SHARD_MAXCOLUMN) {
+        sqlite3_result_null(ctx);
+        return;
+    }
+
+    view = views->views[iTimepartId];
+
+    if (iRowid >= view->nshards) {
+        sqlite3_result_null(ctx);
+        return;
+    }
+    shard = &view->shards[iRowid];
+
+    switch (iCol) {
+    case VIEWS_SHARD_VIEWNAME:
+        sqlite3_result_text(ctx, view->name, -1, NULL);
+        break;
+    case VIEWS_SHARD_NAME:
+        sqlite3_result_text(ctx, shard->tblname, -1, NULL);
+        break;
+    case VIEWS_SHARD_START:
+        sqlite3_result_int(ctx, shard->low);
+        break;
+    case VIEWS_SHARD_END:
+        sqlite3_result_int(ctx, shard->high);
+        break;
+    }
 }
-#endif
+
+/**
+ * Get number of views
+ *
+ */
+int timepart_get_num_views(void)
+{
+    return thedb->timepart_views->nviews;
+}
+
+/**
+ *  Move iRowid to point to the next shard, switching shards in the process
+ *  NOTE: this is called with a read lock in views structure
+ */
+void timepart_systable_next_shard(int *piTimepartId, int *piRowid)
+{
+    timepart_views_t *views = thedb->timepart_views;
+    timepart_view_t *view;
+
+nextTimepart:
+    if (*piTimepartId >= views->nviews)
+        return;
+    view = views->views[*piTimepartId];
+    (*piRowid)++;
+    if (*piRowid >= view->nshards) {
+        *piRowid = 0;
+        (*piTimepartId)++;
+        goto nextTimepart;
+    }
+}
+
+/**
+ * Open/close the event queue
+ */
+int timepart_events_open(int *num)
+{
+    cron_lock(timepart_sched);
+
+    *num = cron_num_events(timepart_sched);
+
+    return VIEW_NOERR;
+}
+
+int timepart_events_close(void)
+{
+    cron_unlock(timepart_sched);
+
+    return VIEW_NOERR;
+}
+
+static const char *_events_name(FCRON func)
+{
+    const char *name;
+    if (func == _view_cron_phase1)
+        name = "AddShard";
+    else if (func == _view_cron_phase2)
+        name = "RollShards";
+    else if (func == _view_cron_phase3)
+        name = "DropShard";
+    else
+        name = "Unknown";
+
+    return name;
+}
+
+/**
+ * Get event data
+ */
+void timepart_events_column(sqlite3_context *ctx, int iRowid, int iCol)
+{
+    const char *name;
+    FCRON func;
+    int epoch;
+    uuid_t *sid;
+    void *arg1;
+    void *arg2;
+    void *arg3;
+    uuidstr_t us;
+
+    if (iRowid < 0 || iCol >= VIEWS_SHARD_MAXCOLUMN) {
+        sqlite3_result_null(ctx);
+        return;
+    }
+
+    if (cron_event_details(timepart_sched, iRowid, &func, &epoch, &arg1, &arg2,
+                           &arg3, sid) != 1) {
+        sqlite3_result_null(ctx);
+        return;
+    }
+
+    switch (iCol) {
+    case VIEWS_EVENT_NAME:
+        name = _events_name(func);
+        sqlite3_result_text(ctx, name, -1, NULL);
+        break;
+    case VIEWS_EVENT_WHEN:
+        sqlite3_result_int(ctx, epoch);
+        break;
+    case VIEWS_EVENT_SOURCEID:
+        sqlite3_result_text(ctx, comdb2uuidstr(*sid, us), -1, NULL);
+        break;
+    case VIEWS_EVENT_ARG1:
+        sqlite3_result_text(ctx, (char *)arg1, -1, NULL);
+        break;
+    case VIEWS_EVENT_ARG2:
+        if (arg2)
+            sqlite3_result_text(ctx, (char *)arg2, -1, NULL);
+        else
+            sqlite3_result_null(ctx);
+        break;
+    case VIEWS_EVENT_ARG3:
+        sqlite3_result_null(ctx);
+        break;
+    }
+}
+
 #include "views_serial.c"
 
 #include "views_sqlite.c"

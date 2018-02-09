@@ -4,6 +4,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/comdb2rle
   ${PROJECT_SOURCE_DIR}/datetime
   ${PROJECT_SOURCE_DIR}/mem
+  ${SQLITE3_INCLUDE_DIR}
 )
 add_executable(blob blob.c)
 add_executable(bound bound.cpp)
@@ -31,7 +32,9 @@ add_executable(utf8 utf8.c)
 add_executable(insert insert.c nemesis.c testutil.c)
 add_executable(register register.c nemesis.c testutil.c)
 add_executable(breakloop breakloop.c nemesis.c testutil.c)
-foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop multithd)
+add_executable(cdb2_open cdb2_open.c)
+add_executable(verify_atomics_work verify_atomics_work.c)
+foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_open multithd verify_atomics_work)
   target_link_libraries(${executable} cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 endforeach()
 
@@ -48,3 +51,8 @@ target_link_libraries(recom cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} $
 
 # everything!
 target_link_libraries(stepper cdb2api mem dlmalloc bb ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
+
+foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_client hatest comdb2_sqltest ptrantest recom stepper multithd cdb2_open verify_atomics_work)
+
+    target_link_libraries(${executable} ${UNWIND_LIBRARY})
+endforeach()

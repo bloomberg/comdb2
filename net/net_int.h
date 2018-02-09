@@ -202,6 +202,7 @@ struct host_node_tag {
     int throttle_waiters;
     pthread_mutex_t throttle_lock;
     pthread_cond_t throttle_wakeup;
+    int last_queue_dump;
 };
 
 /* Cut down data structure used for storing the sanc list. */
@@ -319,6 +320,7 @@ struct netinfo_struct {
 
     int use_getservbyname;
     int hellofd;
+    GETLSNFP *getlsn_rtn;
 };
 
 typedef struct ack_state_struct {
