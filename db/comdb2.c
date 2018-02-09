@@ -3868,7 +3868,7 @@ static int init(int argc, char **argv)
     load_dbstore_tableversion(thedb);
 
     gbl_backend_opened = 1;
-    pthread_rwlock_wrlock(&schema_lk);
+    pthread_rwlock_unlock(&schema_lk);
 
     sqlinit();
     rc = create_sqlmaster_records(NULL);
