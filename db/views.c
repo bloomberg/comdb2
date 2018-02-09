@@ -2048,8 +2048,6 @@ int views_cron_restart(timepart_views_t *views)
         abort();
     }
 
-    pthread_rwlock_wrlock(&views_lk);
-
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     BDB_READLOCK(__func__);
 
