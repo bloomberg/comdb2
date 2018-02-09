@@ -2191,7 +2191,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                            int ntypes, int *types, int is_begin, int skip_nrows,
                            int retries_done, int do_append, int fromline)
 {
-    if (hndl->debug_trace) {
+    if (log_calls) {
         fprintf(stderr, "td %p %s line %d\n",
                 (void *)pthread_self(), __func__, __LINE__);
     }
