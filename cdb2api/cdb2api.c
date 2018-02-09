@@ -1648,8 +1648,8 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
 {
 
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s:%d host '%s:%d'\n", (uint32_t)pthread_self(),
-                __func__, __LINE__, host, port);
+        fprintf(stderr, "td %u %s:%d entering, host '%s:%d'\n",
+                (uint32_t)pthread_self(), __func__, __LINE__, host, port);
     }
     int fd = -1;
     SBUF2 *sb = NULL;
