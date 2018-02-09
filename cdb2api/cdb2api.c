@@ -2111,20 +2111,18 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     int len = cdb2__query__get_packed_size(&query);
 
     unsigned char *buf;
-    if(trans_append) {
+    if (trans_append) {
         buf = malloc(len + 1);
-    }
-    else {
+    } else {
         /* make staticbuf bigger if necessary */
         if (staticbuf_size <= len) {
             size_t newsz = len;
             buf = realloc(staticbuf, newsz);
-            if(!buf)
+            if (!buf)
                 return -1;
             staticbuf_size = newsz;
             staticbuf = buf;
-        }
-        else
+        } else
             buf = staticbuf;
     }
 
@@ -2160,8 +2158,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                 last = last->next;
             last->next = item;
         }
-    }
-    else if (staticbuf_size > MAX_STATIC_BUFSIZE_KEEP) {
+    } else if (staticbuf_size > MAX_STATIC_BUFSIZE_KEEP) {
         staticbuf_size = MAX_STATIC_BUFSIZE_KEEP;
         staticbuf = realloc(staticbuf, staticbuf_size);
     }
