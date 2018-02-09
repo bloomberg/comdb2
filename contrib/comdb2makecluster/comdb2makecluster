@@ -168,7 +168,7 @@ done
 
 echo "export COMDB2_ROOT=$DBDIR" >> ${DBDIR}/replicant_vars
 echo "export PATH=$PATH" >> ${DBDIR}/replicant_vars
-CMD="source ${DBDIR}/replicant_vars ; $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl"
+CMD="source ${DBDIR}/replicant_vars ; $COMDB2_EXE ${DBNAME} --lrl $DBDIR/${DBNAME}.lrl"
 echo "$DBNAME: starting"
 for node in $CLUSTER; do
     if [ $node == $myhostname ] ; then # dont ssh to ourself -- just start db locally
@@ -207,7 +207,7 @@ for node in $CLUSTER; do
     done
 done
 
-n=$($CDB2SQL_EXE ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("bdb cluster")' | grep "lsn" | wc -l)
+n=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME --host $node 'exec procedure sys.cmd.send("bdb cluster")' | grep "lsn" | wc -l)
 echo "$DBNAME: Cluster is running with $n nodes. You can query it with:"
 echo "   $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default 'select 1'"
 
