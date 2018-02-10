@@ -203,7 +203,7 @@ for node in $CLUSTER; do
     while  [[ "$out" != "1" ]]; do
         sleep 2
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
-        $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.${node}.conn
+        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.${node}.conn
     done
 done
 
