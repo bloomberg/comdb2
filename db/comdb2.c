@@ -1201,21 +1201,21 @@ static void *purge_old_files_thread(void *arg)
     dbenv->purge_old_files_is_running = 1;
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
 
-    while (!dbenv->exiting) {
+    while (!db_is_stopped()) {
         /* even though we only add files to be deleted on the master,
          * don't try to delete files, ever, if you're a replicant */
         if (thedb->master != gbl_mynode) {
             sleep(empty_pause);
             continue;
         }
-        if (dbenv->exiting)
+        if (db_is_stopped())
             continue;
 
         if (!bdb_have_unused_files() || dbenv->stopped) {
             sleep(empty_pause);
             continue;
         }
-        if (dbenv->exiting)
+        if (db_is_stopped())
             continue;
 
         init_fake_ireq(thedb, &iq);
