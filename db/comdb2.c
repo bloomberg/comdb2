@@ -1208,11 +1208,15 @@ static void *purge_old_files_thread(void *arg)
             sleep(empty_pause);
             continue;
         }
+        if (dbenv->exiting)
+            continue;
 
         if (!bdb_have_unused_files() || dbenv->stopped) {
             sleep(empty_pause);
             continue;
         }
+        if (dbenv->exiting)
+            continue;
 
         init_fake_ireq(thedb, &iq);
         iq.use_handle = thedb->bdb_env;

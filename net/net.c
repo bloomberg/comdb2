@@ -5185,7 +5185,7 @@ static void *connect_thread(void *arg)
     /* close the file-descriptor, wait for reader / writer threads
        to exit, free host_node_ptr, then exit */
     close_hostnode(host_node_ptr);
-    while (1) {
+    while (!netinfo_ptr->exiting) {
         int ref;
         Pthread_mutex_lock(&(host_node_ptr->lock));
         ref = host_node_ptr->have_reader_thread +
@@ -6158,11 +6158,8 @@ static void *heartbeat_check_thread(void *arg)
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
 
-    while (1) {
+    while (!netinfo_ptr->exiting) {
         int now;
-        if (netinfo_ptr->exiting)
-            break;
-
         /* Re-register under portmux if it's time */
         if (netinfo_ptr->portmux_register_interval > 0 &&
             ((now = time_epoch()) - netinfo_ptr->portmux_register_time) >

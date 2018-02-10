@@ -120,18 +120,10 @@ void *memp_trickle_thread(void *arg)
     while (!bdb_state->passed_dbenv_open)
         sleep(1);
 
-    while (1) {
+    while (!db_is_stopped()) {
         int t1, t2;
 
         BDB_READLOCK("memp_trickle_thread");
-
-        if (db_is_stopped()) {
-            logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
-
-            BDB_RELLOCK();
-            bdb_thread_event(bdb_state, 0);
-            pthread_exit(NULL);
-        }
 
         /* time is in usecs, memptricklemsecs is in msecs */
         time = bdb_state->attr->memptricklemsecs * 1000;
@@ -152,8 +144,14 @@ void *memp_trickle_thread(void *arg)
 
         BDB_RELLOCK();
 
+        if (db_is_stopped())
+            break;
         usleep(time);
     }
+
+    logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
+    BDB_RELLOCK();
+    bdb_thread_event(bdb_state, 0);
 }
 
 void *deadlockdetect_thread(void *arg)
@@ -325,6 +323,8 @@ void *coherency_lease_thread(void *arg)
                      ? renew
                      : (lease_time / 3);
 
+        if (db_is_stopped())
+            break;
         poll(0, 0, pollms);
     }
 

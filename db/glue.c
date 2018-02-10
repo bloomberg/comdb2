@@ -4371,9 +4371,7 @@ int backend_close(struct dbenv *dbenv)
     }
 
     /* offloading sql goes here */
-    if (dbenv->nsiblings > 0) {
-        osql_net_exiting();
-    }
+    osql_net_exiting();
 
     return bdb_close_env(dbenv->bdb_env);
 }
