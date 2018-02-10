@@ -1713,7 +1713,7 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
 
     if (hndl->debug_trace) {
         fprintf(stderr, "td %p %s from line %d disconnecting from %s\n",
-                (void *)pthread_self(), __func__, line, 
+                (void *)pthread_self(), __func__, line,
                 hndl->hosts[hndl->connected_host]);
     }
     int fd = sbuf2fileno(sb);
@@ -1983,8 +1983,8 @@ static int cdb2_read_record(cdb2_hndl_tp *hndl, uint8_t **buf, int *len, int *ty
 
 retry:
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %p %s line %d\n",
-            (void *)pthread_self(), __func__, __LINE__);
+        fprintf(stderr, "td %p %s line %d\n", (void *)pthread_self(), __func__,
+                __LINE__);
     }
 
     b_read = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
@@ -2192,8 +2192,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                            int retries_done, int do_append, int fromline)
 {
     if (log_calls) {
-        fprintf(stderr, "td %p %s line %d\n",
-                (void *)pthread_self(), __func__, __LINE__);
+        fprintf(stderr, "td %p %s line %d\n", (void *)pthread_self(), __func__,
+                __LINE__);
     }
 
     int n_features = 0;
@@ -2240,7 +2240,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
 
         fprintf(stderr, "td %u %s:%d sending to %s '%s' from-line %d retries is"
                         " %d do_append is %d\n",
-                (uint32_t)pthread_self(), __func__, __LINE__, host,  sql,
+                (uint32_t)pthread_self(), __func__, __LINE__, host, sql,
                 fromline, retries_done, do_append);
     }
 
@@ -2508,8 +2508,8 @@ retry_next_record:
 
         if (hndl->debug_trace) {
             fprintf(stderr, "td %p %s line %d error_string=%s\n",
-                (void *)pthread_self(), __func__, __LINE__,
-                hndl->lastresponse->error_string);
+                    (void *)pthread_self(), __func__, __LINE__,
+                    hndl->lastresponse->error_string);
         }
         rc = cdb2_convert_error_code(hndl->lastresponse->error_code);
         PRINT_RETURN_OK(rc);
@@ -3073,9 +3073,9 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
                                   int skip_nrows)
 {
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %p %s line %d num_retry=%d, skip_nrows=%d\n", 
-                (void *)pthread_self(), __func__, __LINE__,
-                num_retry, skip_nrows);
+        fprintf(stderr, "td %p %s line %d num_retry=%d, skip_nrows=%d\n",
+                (void *)pthread_self(), __func__, __LINE__, num_retry,
+                skip_nrows);
     }
 
     int rc = 0, len;

@@ -7134,7 +7134,8 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
 
     default:
         logmsg(LOGMSG_DEBUG, "sql_check_errors got rc = %d, "
-                             "returning as SQLITE_INTERNAL\n", rc);
+                             "returning as SQLITE_INTERNAL\n",
+               rc);
         rc = SQLITE_INTERNAL;
         *errstr = sqlite3_errmsg(sqldb);
         break;
