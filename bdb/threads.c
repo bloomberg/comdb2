@@ -149,9 +149,9 @@ void *memp_trickle_thread(void *arg)
         usleep(time);
     }
 
-    logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
     BDB_RELLOCK();
     bdb_thread_event(bdb_state, 0);
+    logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
 }
 
 void *deadlockdetect_thread(void *arg)
