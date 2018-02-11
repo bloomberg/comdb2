@@ -149,7 +149,6 @@ void *memp_trickle_thread(void *arg)
         usleep(time);
     }
 
-    BDB_RELLOCK();
     bdb_thread_event(bdb_state, 0);
     logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
 }
