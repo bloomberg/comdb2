@@ -321,8 +321,7 @@ else
             out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
             $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $TESTDIR/logs/${DBNAME}.${node}.conn
         done
-        set -e
-        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &> $TESTDIR/logs/${DBNAME}.${node}.conn
+        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &>> $TESTDIR/logs/${DBNAME}.${node}.conn
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' 2>&1)
         if [ "$out" != "$node" ] ; then
             echo "comdb2_host() '$out' != expected '$node'"
