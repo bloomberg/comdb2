@@ -21,6 +21,7 @@ failexit()
 {
     echo "$1"
     kill -9 $pmux_pid
+    rm /tmp/pmux.${COMDB2_PMUX_PORT}
     exit 1
 }
 
@@ -48,8 +49,7 @@ function empty_used_list_crash
     sleep 1
     kill -0 $pmux_pid
     if [[ $? != 0 ]]; then
-        echo "${FUNCNAME[0]} test failed: empty used list killed pmux"
-        exit 1
+        failexit "${FUNCNAME[0]} test failed: empty used list killed pmux"
     fi
 }
 
@@ -123,8 +123,7 @@ function verify_hello_reuse
 
         kill -0 $pmux_pid
         if [[ $? != 0 ]]; then
-            echo "${FUNCNAME[0]} rte test failed: empty used list killed pmux"
-            exit 1
+            failexit "${FUNCNAME[0]} rte test failed: empty used list killed pmux"
         fi
 
         kill -9 $dbpid
@@ -272,6 +271,7 @@ function runtest
     verify_hello_reuse
 
     kill -9 $pmux_pid
+    rm /tmp/pmux.${COMDB2_PMUX_PORT}
 }
 
 runtest
