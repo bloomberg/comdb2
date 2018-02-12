@@ -46,7 +46,6 @@ enum run_sql_flags {
 union fdb_msg;
 typedef union fdb_msg fdb_msg_t;
 
-
 int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
                   int flags, int version, int isuuid, SBUF2 *sb);
 int fdb_send_close(fdb_msg_t *msg, char *cid, char *tid, int isuuid, int seq,
