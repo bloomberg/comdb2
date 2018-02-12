@@ -7,8 +7,9 @@ ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=1m
 endif
 
-LOCRAND=$(shell echo $(TESTID) | md5sum | cut -f1 -d' ')
-export DBNAME=reallylongnametotestfunctioning$(LOCRAND)
+LOCRAND=$(shell echo $(TESTID) | sha256sum | cut -f1 -d' ')
+export DBNAME=$(shell echo "longdbname$(TESTID)$(LOCRAND)" | cut -b 1-63)
+#will start it's own pmux
 export PMUXPORT=12345
 
 stop:
