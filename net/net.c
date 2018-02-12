@@ -1795,18 +1795,23 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
         goto end;
     }
 
+    Pthread_mutex_lock(&(host_node_ptr->write_lock));
+
     /* fail if we don't have a socket */
-    if (!host_node_ptr->fd) {
+    if (host_node_ptr->fd == -1) {
         rc = NET_SEND_FAIL_NOSOCK;
+        Pthread_mutex_unlock(&(host_node_ptr->write_lock));
         goto end;
     }
 
     /* fail if we are closed */
     if (host_node_ptr->closed) {
         rc = NET_SEND_FAIL_CLOSED;
+        Pthread_mutex_unlock(&(host_node_ptr->write_lock));
         goto end;
     }
 
+    Pthread_mutex_unlock(&(host_node_ptr->write_lock));
     msghd.usertype = usertype;
     Pthread_mutex_lock(&(netinfo_ptr->seqlock));
     msghd.seqnum = ++netinfo_ptr->seqnum;
@@ -2122,11 +2127,23 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
         goto end;
     }
 
+    Pthread_mutex_lock(&(host_node_ptr->write_lock));
+
     /* fail if we don't have a socket */
-    if (!host_node_ptr->fd) {
+    if (host_node_ptr->fd == -1) {
         rc = NET_SEND_FAIL_NOSOCK;
+        Pthread_mutex_unlock(&(host_node_ptr->write_lock));
         goto end;
     }
+
+    /* fail if we are closed */
+    if (host_node_ptr->closed) {
+        rc = NET_SEND_FAIL_CLOSED;
+        Pthread_mutex_unlock(&(host_node_ptr->write_lock));
+        goto end;
+    }
+
+    Pthread_mutex_unlock(&(host_node_ptr->write_lock));
 
     host_node_ptr->num_sends++;
     if (nodelay) {
