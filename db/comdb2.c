@@ -713,12 +713,7 @@ int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
 int gbl_stable_rootpages_test = 0;
-
 int gbl_allow_incoherent_sql = 0;
-
-/* Bulk import */
-int gbl_enable_bulk_import; /* allow this db to bulk import */
-int gbl_enable_bulk_import_different_tables;
 
 char *gbl_dbdir = NULL;
 static int gbl_backend_opened = 0;

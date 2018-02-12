@@ -1608,8 +1608,6 @@ extern osqlpf_step *gbl_osqlpf_step;
 extern queue_type *gbl_osqlpf_stepq;
 
 extern int gbl_starttime;
-extern int gbl_enable_bulk_import; /* allow this db to bulk import */
-extern int gbl_enable_bulk_import_different_tables;
 extern int gbl_early_blkseq_check;
 
 extern int gbl_repchecksum;
