@@ -112,20 +112,21 @@ add_custom_command(
   COMMAND mkkeywordhash > keywordhash.h
 )
 
+find_program(tclsh NAMES tclsh tclsh8.5)
 add_executable(lemon lemon.c)
 add_custom_command(
   OUTPUT parse.c parse.h
   DEPENDS lemon lempar.c parse.y
   COMMAND lemon ${SQLITE_FLAGS} parse.y
   COMMAND ${CMAKE_COMMAND} -E copy parse.h parse.h.temp
-  COMMAND tclsh addopcodes.tcl parse.h.temp > parse.h
+  COMMAND ${tclsh} addopcodes.tcl parse.h.temp > parse.h
 )
 
 add_custom_command(
   OUTPUT opcodes.c opcodes.h
   DEPENDS parse.h vdbe.c
-  COMMAND cat parse.h ${CMAKE_CURRENT_SOURCE_DIR}/vdbe.c | tclsh mkopcodeh.tcl > opcodes.h
-  COMMAND sort -n -b -k 3 opcodes.h | tclsh mkopcodec.tcl opcodes.h > opcodes.c
+  COMMAND cat parse.h ${CMAKE_CURRENT_SOURCE_DIR}/vdbe.c | ${tclsh} mkopcodeh.tcl > opcodes.h
+  COMMAND sort -n -b -k 3 opcodes.h | ${tclsh} mkopcodec.tcl opcodes.h > opcodes.c
 )
 add_custom_command(
   OUTPUT serialget.c
