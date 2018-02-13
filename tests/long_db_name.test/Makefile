@@ -15,6 +15,8 @@ export PMUXPORT=12345
 stop:
 	# shutdown pmux that was started for us at port $PMUXPORT
 	$(shell $(TESTSROOTDIR)/tools/send_msg_port.sh "exit" $(PMUXPORT) )
+	@$(foreach n, $(CLUSTER), ssh $(n) bash 'exec 3<>/dev/tcp/localhost/${PMUXPORT} && echo exit >&3' < /dev/null;)
+	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf /tmp/pmux.socket.$(PMUXPORT)' < /dev/null;)
 
 tool:
 	make -skC $(TESTSROOTDIR)/tools cdb2api_caller
