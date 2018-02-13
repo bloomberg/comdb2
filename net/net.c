@@ -1796,7 +1796,7 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
     }
 
     /* fail if we don't have a socket */
-    if (!host_node_ptr->fd) {
+    if (host_node_ptr->fd == -1) {
         rc = NET_SEND_FAIL_NOSOCK;
         goto end;
     }
@@ -2123,8 +2123,14 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     }
 
     /* fail if we don't have a socket */
-    if (!host_node_ptr->fd) {
+    if (host_node_ptr->fd == -1) {
         rc = NET_SEND_FAIL_NOSOCK;
+        goto end;
+    }
+
+    /* fail if we are closed */
+    if (host_node_ptr->closed) {
+        rc = NET_SEND_FAIL_CLOSED;
         goto end;
     }
 
