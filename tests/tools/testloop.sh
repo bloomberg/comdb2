@@ -184,7 +184,7 @@ while :; do
 
     if [ $(( now - lasttime )) -gt $mailperiod ]; then
 
-        lasttime=now
+        lasttime=$now
         mail_status
     fi
 
