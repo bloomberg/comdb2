@@ -5,6 +5,7 @@ bash -n "$0" | exit 1
 debug=0
 set -x
 
+sleeptime=10
 dbnm=$1
 
 if [ "x$dbnm" == "x" ] ; then
@@ -86,7 +87,7 @@ echo "update row a=1 and check that dt col has changed"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set b = 'blah' where a = 1"
 
 echo 'waiting for trigger to run'
-sleep 3
+sleep $sleeptime
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by a" > allrows2.txt
 two=$(cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,dt from t1 where a = 1")
@@ -106,7 +107,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,dt from t1 order by a" > allro
 cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c = 7 where a >= 2 and a <= 5"
 
 echo 'waiting for trigger to run'
-sleep 3
+sleep $sleeptime
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,dt from t1 order by a" > allrows4.txt
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1_updates" > updates2.txt
