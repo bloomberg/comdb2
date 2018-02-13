@@ -179,7 +179,7 @@ export COMDB2AR_EXOPTS="-x $COMDB2_EXE"
 
 copy_files_to_cluster() 
 {
-    # copy executables to each node except localhost
+    echo copying executables to each node except localhost
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then
             continue
