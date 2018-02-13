@@ -235,9 +235,11 @@ for node in $cluster ; do
     res=`cdb2sql --tabs $dbnm @$node:port=$port "select comdb2_dbname()"`
     assertres $res $dbnm
 
-    # this should also work
-    res=`cdb2sql --tabs $dbnm @$node "select comdb2_dbname()"`
-    assertres $res $dbnm
+    if [ ! -n $PMUXPORT ] ; then
+        # this should also work, if pmux is in standard port
+        res=`cdb2sql -v --tabs $dbnm @$node "select comdb2_dbname()"`
+        assertres $res $dbnm
+    fi
 
     # as should this
     res=`cdb2sql --tabs $dbnm --host $node:$port "select comdb2_dbname()"`

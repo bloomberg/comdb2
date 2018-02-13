@@ -172,14 +172,14 @@ if [ -n "$PMUXPORT" ] ; then
     echo "portmux_port $PMUXPORT" >> ${LRL}
     echo "portmux_bind_path $pmux_socket" >> ${LRL}
 fi
-stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} && echo exit >&3 ) && sleep 2 && killall pmux || echo PMUX DOWN"
+stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} && echo exit >&3 ) || echo PMUX DOWN"
 
 COPIEDTOCLUSTER=${TMPDIR}/copiedtocluster.log
 export COMDB2AR_EXOPTS="-x $COMDB2_EXE"
 
 copy_files_to_cluster() 
 {
-    # copy executables to each node except localhost
+    echo copying executables to each node except localhost
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then
             continue
@@ -187,13 +187,11 @@ copy_files_to_cluster()
 
         ssh -o StrictHostKeyChecking=no $node "mkdir -p ${SRCHOME}" < /dev/null
         ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
-        ssh -o StrictHostKeyChecking=no $node "killall pmux || echo PMUX DOWN" < /dev/null
         scp -o StrictHostKeyChecking=no $COMDB2AR_EXE $node:$COMDB2AR_EXE
         scp -o StrictHostKeyChecking=no $COMDB2_EXE $node:$COMDB2_EXE
-        # stop pmux on nodes first before copying and starting it
-        if [ -n "$PMUXPORT" ] ; then
-            ssh -o StrictHostKeyChecking=no $node "$stop_pmux" < /dev/null
-        fi
+        echo stop pmux on $node first before copying and starting it
+        ssh -o StrictHostKeyChecking=no $node "$stop_pmux" < /dev/null
+
         set +e
         scp -o StrictHostKeyChecking=no $PMUX_EXE $node:$PMUX_EXE
         echo start pmux on $node if not running 
@@ -203,7 +201,7 @@ copy_files_to_cluster()
 }
 
 
-# restart pmux only once on localhost -- noclobber ensures atomicity
+echo restart pmux only once on localhost -- noclobber ensures atomicity
 set -o noclobber 
 { > ${TMPDIR}/started_pmux_${pmux_port}.log ; } &> /dev/null
 if [ $? -eq 0 ] ; then
@@ -319,7 +317,7 @@ else
         while  [[ "$out" != "1" ]]; do
             sleep 2
             out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
-            $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $TESTDIR/logs/${DBNAME}.${node}.conn
+            $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $TESTDIR/logs/${DBNAME}.${node}.conn
         done
         $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &>> $TESTDIR/logs/${DBNAME}.${node}.conn
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' 2>&1)
