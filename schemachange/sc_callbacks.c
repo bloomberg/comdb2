@@ -49,12 +49,6 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
         return -1;
     }
 
-    if (bdb_table_version_select(newtable, NULL, &db->tableversion, &bdberr)) {
-        logmsg(LOGMSG_ERROR, "%s: failed to retrieve table version for new %s \n",
-               __func__, name, newtable);
-        return -1;
-    }
-
     tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
     if (tran == NULL) {
         logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
@@ -63,6 +57,12 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
 
     bdb_get_tran_lockerid(tran, &lid);
     bdb_set_tran_lockerid(tran, gbl_rep_lockid);
+
+    if (bdb_table_version_select(newtable, tran, &db->tableversion, &bdberr)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to retrieve table version for new %s \n",
+               __func__, name, newtable);
+        return -1;
+    }
 
     create_sqlmaster_records(tran);
     create_sqlite_master();
