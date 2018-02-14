@@ -187,7 +187,7 @@ static void flushdump(struct reqlogger *logger, struct output *out)
             append_duration = 1;
         }
         if (out->use_time_prefix && out != default_out) {
-            int now = time_epoch();
+            int now = comdb2_time_epoch();
             if (now != out->lasttime) {
                 time_t timet = (time_t)now;
                 struct tm tm;
@@ -211,8 +211,9 @@ static void flushdump(struct reqlogger *logger, struct output *out)
         niov++;
         if (append_duration) {
             iov[niov].iov_base = durstr;
-            iov[niov].iov_len = snprintf(durstr, sizeof(durstr), " TIME +%d",
-                                         U2M(time_epochus() - logger->startus));
+            iov[niov].iov_len =
+                snprintf(durstr, sizeof(durstr), " TIME +%d",
+                         U2M(comdb2_time_epochus() - logger->startus));
             niov++;
         }
         iov[niov].iov_base = "\n";
@@ -1457,7 +1458,7 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
     }
     logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
-    logger->startus = time_epochus();
+    logger->startus = comdb2_time_epochus();
     reqlog_start_request(logger);
 
     logger->nsqlreqs = ATOMIC_LOAD(gbl_nnewsql);
@@ -1690,7 +1691,7 @@ void reqlog_set_rows(struct reqlogger *logger, int rows)
 
 uint64_t reqlog_current_us(struct reqlogger *logger)
 {
-    return (time_epochus() - logger->startus);
+    return (comdb2_time_epochus() - logger->startus);
 }
 
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen)
@@ -1751,7 +1752,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     logger->rc = rc;
 
     logger->durationus =
-        (time_epochus() - logger->startus) + logger->queuetimeus;
+        (comdb2_time_epochus() - logger->startus) + logger->queuetimeus;
 
     eventlog_add(logger);
 
@@ -1891,8 +1892,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
             shortest_long_request_ms = U2M(logger->durationus);
         }
         long_request_count++;
-        if (last_long_request_epoch != time_epoch()) {
-            last_long_request_epoch = time_epoch();
+        if (last_long_request_epoch != comdb2_time_epoch()) {
+            last_long_request_epoch = comdb2_time_epoch();
 
             if (long_request_out != default_out) {
                 char *sqlinfo;
@@ -2258,9 +2259,9 @@ void process_nodestats(void)
     int nclnts = 0;
 
     if (last_time_ms == 0)
-        last_time_ms = time_epochms();
-    span_ms = time_epochms() - last_time_ms;
-    last_time_ms = time_epochms();
+        last_time_ms = comdb2_time_epochms();
+    span_ms = comdb2_time_epochms() - last_time_ms;
+    last_time_ms = comdb2_time_epochms();
 
     pthread_rwlock_rdlock(&clientstats_lk);
 

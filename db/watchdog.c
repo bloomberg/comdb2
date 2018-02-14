@@ -57,7 +57,6 @@
 #include <sockpool.h>
 
 #include "comdb2.h"
-#include <comdb2_shm.h>
 #include "sql.h"
 
 #include "comdb2_trn_intrl.h"
@@ -110,7 +109,7 @@ void watchdog_set_alarm(int seconds)
         return;
     }
 
-    gbl_watchdog_kill_time = time_epoch() + seconds;
+    gbl_watchdog_kill_time = comdb2_time_epoch() + seconds;
     gbl_watchdog_kill_tid = pthread_self();
 
     pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
@@ -177,7 +176,7 @@ static void *watchdog_thread(void *arg)
     while (!thedb->exiting) {
         sleep(1);
 
-        gbl_epoch_time = time_epoch();
+        gbl_epoch_time = comdb2_time_epoch();
 
         if (!gbl_nowatch && !thedb->exiting) {
             int stop_thds_time;
@@ -185,7 +184,7 @@ static void *watchdog_thread(void *arg)
             its_bad = 0;
 
             if (gbl_watchdog_kill_time) {
-                if (time_epoch() >= gbl_watchdog_kill_time) {
+                if (comdb2_time_epoch() >= gbl_watchdog_kill_time) {
                     logmsg(LOGMSG_WARN, "gbl_watchdog_kill_time set\n");
                     its_bad = 1;
                 }
@@ -236,7 +235,7 @@ static void *watchdog_thread(void *arg)
             if (stop_thds_time) {
                 int diff_sec;
 
-                diff_sec = time_epoch() - stop_thds_time;
+                diff_sec = comdb2_time_epoch() - stop_thds_time;
                 if (diff_sec > gbl_stop_thds_time_threshold) {
                     logmsg(LOGMSG_WARN, 
                             "watchdog: Trying to stop threads for %d seconds\n",
@@ -339,7 +338,7 @@ static void *watchdog_thread(void *arg)
 
             /* if nothing was bad, update the timestamp */
             if (!its_bad && !its_bad_slow) {
-                gbl_watchdog_time = time_epoch();
+                gbl_watchdog_time = comdb2_time_epoch();
             }
         }
 
@@ -381,7 +380,7 @@ void watchdog_disable(void)
 void watchdog_enable(void)
 {
     logmsg(LOGMSG_INFO, "watchdog_enable called\n");
-    gbl_watchdog_time = time_epoch();
+    gbl_watchdog_time = comdb2_time_epoch();
     gbl_nowatch = 0;
 }
 
@@ -425,7 +424,7 @@ static void *watchdog_watcher_thread(void *arg)
         if (gbl_nowatch)
             continue;
 
-        int tmstmp = time_epoch();
+        int tmstmp = comdb2_time_epoch();
         if (tmstmp - gbl_watchdog_time > gbl_watchdog_watch_threshold) {
             /*
               In order to handle situations where the watchdog is assumed

@@ -202,7 +202,7 @@ int tcpresolve(const char *host, struct in_addr *in, int *port)
         /* it's dotted-decimal */
         memcpy(&in->s_addr, &inaddr, sizeof(inaddr));
     } else {
-        struct hostent *hp = bb_gethostbyname(tok);
+        struct hostent *hp = comdb2_gethostbyname(tok);
         if (hp == NULL)
             return -1;
         memcpy(&in->s_addr, hp->h_addr, hp->h_length);
@@ -673,7 +673,7 @@ int main(int argc, char **argv)
     int bytes_read;
     int rc;
 
-    sent = bb_getservbyname("ftp", "tcp");
+    sent = comdb2_getservbyname("ftp", "tcp");
     if (sent == NULL) {
         perror("getservbyname");
         return -1;

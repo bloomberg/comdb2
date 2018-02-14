@@ -55,7 +55,6 @@
 #include "block_internal.h"
 #include "prefault.h"
 #include <cdb2api.h>
-#include "comdb2_shm.h"
 
 #include "sql.h"
 #include "sqloffload.h"
@@ -79,6 +78,8 @@
 #if 0
 #define TEST_OSQL
 #endif
+
+int (*comdb2_ipc_swapnpasdb_sinfo)(struct ireq *) = 0;
 
 extern int is_buffer_from_remote(const void *buf);
 
@@ -494,6 +495,8 @@ static int forward_longblock_to_master(struct ireq *iq,
                                             iq->p_buf_out_start, req_len);
             free_bigbuf_nosignal(iq->p_buf_out_start);
         }
+    } else if (comdb2_ipc_swapnpasdb_sinfo) {
+        rc = comdb2_ipc_swapnpasdb_sinfo(iq);
     }
 
     if (rc != 0) {
@@ -545,15 +548,21 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
                       "%d\n",
                   getorigin(iq), mstr, iq->origdb->dbnum, req_len);
 
-    if (iq->sb == NULL) {
-        return ERR_INCOHERENT;
-    } else {
-        rc = offload_comm_send_blockreq(mstr, iq->request_data,
-                                        iq->p_buf_out_start, req_len);
-        free_bigbuf_nosignal(iq->p_buf_out_start);
+    if (iq->is_socketrequest) {
+        if (iq->sb == NULL) {
+            return ERR_INCOHERENT;
+        } else {
+            rc = offload_comm_send_blockreq(mstr, iq->request_data,
+                                            iq->p_buf_out_start, req_len);
+            free_bigbuf_nosignal(iq->p_buf_out_start);
+        }
+    } else if (comdb2_ipc_swapnpasdb_sinfo) {
+        rc = comdb2_ipc_swapnpasdb_sinfo(iq);
     }
+
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s:failed to forward to master, rc %d\n", __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s:failed to forward to master, rc %d\n",
+               __func__, rc);
         return ERR_REJECTED;
     }
     return RC_INTERNAL_FORWARD;
@@ -2072,7 +2081,7 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
             if (iq->priority == 0) {
                 if (bdb_attr_get(thedb->bdb_attr,
                                  BDB_ATTR_DEADLOCK_YOUNGEST_EVER))
-                    iq->priority = time_epochms();
+                    iq->priority = comdb2_time_epochms();
             }
 
             if (verbose_deadlocks)
@@ -2730,7 +2739,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             if (iq->priority == 0) {
                 if (bdb_attr_get(thedb->bdb_attr,
                                  BDB_ATTR_DEADLOCK_YOUNGEST_EVER))
-                    iq->priority = time_epochms();
+                    iq->priority = comdb2_time_epochms();
             }
 
             if (verbose_deadlocks)
@@ -4016,6 +4025,15 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                               "error unknown table '%s'", tbltag);
                     BACKOUT;
                 }
+
+                /*
+                  Update iq->usedbtablevers here if the request came via IPC.
+                  This is done to avoid failure due to table version mismatch.
+                */
+                if (iq->p_sinfo) {
+                    iq->usedbtablevers = iq->usedb->tableversion;
+                }
+
                 if (iq->debug)
                     reqprintf(iq, "DB '%s'", iq->usedb->tablename);
             } else {
@@ -5452,7 +5470,7 @@ add_blkseq:
                 (iq->have_snap_info && iq->snap_info.replicant_can_retry)) {
                 /* do nothing */
             } else {
-                int t = time_epoch();
+                int t = comdb2_time_epoch();
                 memcpy(p_buf_fstblk, &t, sizeof(int));
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,
                                        bskeylen, buf_fstblk,
@@ -5846,7 +5864,7 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     pthread_mutex_lock(&blklk);
     blkcnt++;
 
-    if (((now = time_epoch()) - lastpr) > 1) {
+    if (((now = comdb2_time_epoch()) - lastpr) > 1) {
         prcnt = blkcnt;
         lastpr = now;
     }

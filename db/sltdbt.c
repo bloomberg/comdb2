@@ -39,6 +39,8 @@ static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);
 extern int sorese_send_commitrc(struct ireq *iq, int rc);
 
+void (*comdb2_ipc_sndbak_len_sinfo)(struct ireq *, int) = 0;
+
 /* HASH of all registered opcode handlers (one handler per opcode) */
 hash_t *gbl_opcode_hash;
 
@@ -417,6 +419,8 @@ int handle_ireq(struct ireq *iq)
             }
             iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
             iq->p_buf_in_end = iq->p_buf_in = NULL;
+        } else if (comdb2_ipc_sndbak_len_sinfo) {
+            comdb2_ipc_sndbak_len_sinfo(iq, rc);
         }
     }
 

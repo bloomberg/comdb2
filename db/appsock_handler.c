@@ -333,7 +333,7 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb)
     if (active_appsock_conns >=
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_APPSOCKSLIMIT)) {
         static int lastprint = 0;
-        int now = time_epoch();
+        int now = comdb2_time_epoch();
 
         if ((now - lastprint) > 0) {
             int max = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);

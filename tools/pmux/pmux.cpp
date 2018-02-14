@@ -521,7 +521,7 @@ static int route_to_instance(char *svc, int fd)
     if (routefd > 0) {
         const char *msg = "pmux";
         return send_fd(routefd, msg, size_t(strlen(msg)), fd);
-    } 
+    }
 
     return -1;
 }

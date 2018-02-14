@@ -3362,7 +3362,7 @@ int osql_comm_send_poke(char *tohost, unsigned long long rqid, uuid_t uuid,
         uint8_t *p_buf = buf, *p_buf_end = p_buf + OSQLCOMM_POKE_UUID_TYPE_LEN;
         osql_poke_uuid_t poke = {0};
 
-        poke.tstamp = time_epoch();
+        poke.tstamp = comdb2_time_epoch();
         comdb2uuidcpy(poke.uuid, uuid);
 
         if (!(p_buf = osqlcomm_poke_uuid_type_put(&poke, p_buf, p_buf_end))) {
@@ -3378,7 +3378,7 @@ int osql_comm_send_poke(char *tohost, unsigned long long rqid, uuid_t uuid,
         uint8_t buf[OSQLCOMM_POKE_TYPE_LEN],
             *p_buf = buf, *p_buf_end = buf + OSQLCOMM_POKE_TYPE_LEN;
 
-        poke.tstamp = time_epoch();
+        poke.tstamp = comdb2_time_epoch();
 
         poke.from = 0;
         poke.to = 0;
@@ -5447,7 +5447,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
             rpl.hd.type = OSQL_EXISTS;
             comdb2uuidcpy(rpl.hd.uuid, uuid);
             rpl.dt.status = 0;
-            rpl.dt.timestamp = time_epoch();
+            rpl.dt.timestamp = comdb2_time_epoch();
 
             if (!osqlcomm_exists_uuid_rpl_type_put(&rpl, p_buf, p_buf_end))
                 abort();
@@ -5469,7 +5469,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
             rpl.hd.type = OSQL_EXISTS;
             rpl.hd.sid = rqid;
             rpl.dt.status = 0;
-            rpl.dt.timestamp = time_epoch();
+            rpl.dt.timestamp = comdb2_time_epoch();
 
             if (!osqlcomm_exists_rpl_type_put(&rpl, p_buf, p_buf_end))
                 abort();
@@ -5595,7 +5595,7 @@ static void *osql_heartbeat_thread(void *arg)
          * the contents */
         msg.dst = 0;
         msg.src = 0;
-        msg.time = time_epoch();
+        msg.time = comdb2_time_epoch();
 
         osqlcomm_hbeat_type_put(&(msg), p_buf, p_buf_end);
 
@@ -9215,7 +9215,7 @@ int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long gen
                 uprec->genid = genid;
                 uprec->touch = uprec->owner;
                 uprec_sched = cron_add_event(
-                    uprec_sched, NULL, time_epoch() + uprec->intv,
+                    uprec_sched, NULL, comdb2_time_epoch() + uprec->intv,
                     uprec_cron_event, NULL, NULL, NULL, NULL, &xerr);
 
                 if (uprec_sched == NULL)

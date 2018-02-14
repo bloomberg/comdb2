@@ -427,8 +427,8 @@ void *checkpoint_thread(void *arg)
         /* Record the start time of the checkpoint operation.  If the checkpoint
          * hangs (this has happened) then another thread will use this to raise
          * an alarm. */
-        start = time_epochms();
-        bdb_state->checkpoint_start_time = time_epoch();
+        start = comdb2_time_epochms();
+        bdb_state->checkpoint_start_time = comdb2_time_epoch();
         MEMORY_SYNC;
 
         rc = ll_checkpoint(bdb_state, 0);
@@ -436,7 +436,7 @@ void *checkpoint_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "checkpoint failed rc %d\n", rc);
         }
-        end = time_epochms();
+        end = comdb2_time_epochms();
         bdb_state->checkpoint_start_time = 0;
         MEMORY_SYNC;
         ctrace("checkpoint (scheduled) took %d ms\n", end - start);
@@ -489,7 +489,7 @@ int bdb_get_checkpoint_time(bdb_state_type *bdb_state)
         bdb_state = bdb_state->parent;
     start = bdb_state->checkpoint_start_time;
     if (start != 0)
-        start = time_epoch() - start;
+        start = comdb2_time_epoch() - start;
     return start;
 }
 
