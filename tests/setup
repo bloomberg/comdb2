@@ -189,8 +189,10 @@ copy_files_to_cluster()
         ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
         scp -o StrictHostKeyChecking=no $COMDB2AR_EXE $node:$COMDB2AR_EXE
         scp -o StrictHostKeyChecking=no $COMDB2_EXE $node:$COMDB2_EXE
-        echo stop pmux on $node first before copying and starting it
-        ssh -o StrictHostKeyChecking=no $node "$stop_pmux" < /dev/null
+        if [ -n "$RESTARTPMUX" ] ; then
+            echo stop pmux on $node first before copying and starting it
+            ssh -o StrictHostKeyChecking=no $node "$stop_pmux" < /dev/null
+        fi
 
         set +e
         scp -o StrictHostKeyChecking=no $PMUX_EXE $node:$PMUX_EXE
@@ -201,11 +203,12 @@ copy_files_to_cluster()
 }
 
 
-echo restart pmux only once on localhost -- noclobber ensures atomicity
+echo noclobber ensures atomicity to copy files
 set -o noclobber 
 { > ${TMPDIR}/started_pmux_${pmux_port}.log ; } &> /dev/null
 if [ $? -eq 0 ] ; then
-    if [ -n "$PMUXPORT" ] ; then
+    if [ -n "$RESTARTPMUX" ] ; then
+        echo stop pmux on localhost
         eval $stop_pmux
     fi
     echo start pmux on local host if not running
