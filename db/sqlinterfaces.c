@@ -6124,6 +6124,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
     thd->offsets = NULL;
     thd->sqldb = NULL;
     thd->stmt_caching_table = NULL;
+    memset(thd->lastuser, 0, sizeof(thd->lastuser));
 
     start_sql_thread();
 
