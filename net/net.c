@@ -67,6 +67,7 @@
 #include <pool.h>
 #include <dlmalloc.h>
 #include <plhash.h>
+#include <assert.h>
 
 #include "locks.h"
 #include "net.h"
@@ -5303,6 +5304,7 @@ static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
     /* extract the suffix of subnet ex. '_n3' in name node1_n3 */
     int myh_len = host_node_ptr->netinfo_ptr->myhostname_len;
     if (strncmp(host_node_ptr->netinfo_ptr->myhostname, host, myh_len) == 0) {
+        assert(myh_len <= sizeof(host));
         char *subnet = &host[myh_len];
         if (subnet[0])
             strncpy0(host_node_ptr->subnet, subnet, HOSTNAME_LEN);

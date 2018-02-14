@@ -1386,6 +1386,10 @@ void clean_exit_sigwrap(int signum) {
    clean_exit();
 }
 
+/* clean_exit will be called to cleanup db structures upon exit
+ * NB: This function can be called by clean_exit_sigwrap() when the db is not
+ * up yet at which point we may not have much to cleanup.
+ */
 void clean_exit(void)
 {
     int rc, ii;
@@ -1468,7 +1472,6 @@ void clean_exit(void)
     // comdb2ma_exit();
 
     logmsg(LOGMSG_USER, "goodbye\n");
-
     exit(0);
 }
 
@@ -5319,7 +5322,7 @@ int main(int argc, char **argv)
     create_stat_thread(thedb);
 
     /* create the offloadsql repository */
-    if (thedb->nsiblings > 0) {
+    if (!gbl_create_mode && thedb->nsiblings > 0) {
         if (osql_open(thedb)) {
             logmsg(LOGMSG_FATAL, "Failed to init osql\n");
             exit(1);

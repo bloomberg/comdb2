@@ -78,7 +78,7 @@ static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
 
 void bdb_cleanup_private_blkseq(bdb_state_type *bdb_state)
 {
-    if (!bdb_state)
+    if (!bdb_state) 
         return;
     for (int stripe = 0; stripe < bdb_state->attr->private_blkseq_stripes;
          stripe++) {
