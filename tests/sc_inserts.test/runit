@@ -153,18 +153,10 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat $tbl.csc2 ` }"
 
 master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
 
-function cleanup
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("delfiles t1")'
-    cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("delfiles t2")'
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('flush')"
-}
-
 max=100
 t=0
 while [ $t -lt $max ] ; do
     run_test
-    cleanup
     sleep 2
     let t=t+1
 done
