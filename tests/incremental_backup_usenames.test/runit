@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test basic functionality for incremental backups
-#export debug=1
+export debug=1
 [[ $debug == 1 ]] && set -x
 
 export dbname=$1
@@ -28,7 +28,7 @@ function failexit
 
 function force_checkpoint {
   [[ $debug == 1 ]] && set -x
-  cdb2sql ${CDB2_OPTIONS} $dbname default "insert into load values(1, 'xxx', x'1234')"
+  cdb2sql ${CDB2_OPTIONS} $dbname default "insert into load (id, name, data) values(1, 'xxx', x'1234')"
   cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
   sleep 10
 }
@@ -39,9 +39,9 @@ function make_base {
   basename=${LOCTMPDIR}/backups/t1-1_base.tar
   backuplist+=(t1-1_base.tar)
   if [[ -n "${CLUSTER}" ]]; then
-      ssh $machine "${SRCHOME}/comdb2ar c -I create -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $basename < /dev/null
+      ssh $machine "$COMDB2AR_EXE c -I create -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $basename < /dev/null
   else
-      comdb2ar c -I create -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
+      $COMDB2AR_EXE c -I create -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
   fi
   echo "~~~~~~~~~~"
   echo $basename
@@ -57,14 +57,21 @@ function make_backup {
   backuplist+=($backupname)
   backuploc=${LOCTMPDIR}/backups/${backupname}
   if [[ -n "${CLUSTER}" ]]; then
-      ssh $machine "${SRCHOME}/comdb2ar c -I inc -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $backuploc < /dev/null
+      ssh $machine "$COMDB2AR_EXE c -I inc -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $backuploc < /dev/null
   else
-      comdb2ar c -I inc -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
+      $COMDB2AR_EXE c -I inc -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
   fi
   echo "~~~~~~~~~~"
   echo ${LOCTMPDIR}/backups/${backupname}
   echo "  DONE WITH INCREMENT"
   echo " "
+}
+
+function copy_to_local {
+  [[ $debug == 1 ]] && set -x
+  if [[ -n "$CLUSTER" ]]; then
+    scp -r $machine:${LOCTMPDIR}/restore ${LOCTMPDIR}/restore
+  fi
 }
 
 function test_restoredb {
@@ -76,7 +83,7 @@ function test_restoredb {
   done
 
   echo $restorecmd
-  $restorecmd | comdb2ar x -x $COMDB2_EXE -I restore ${LOCTMPDIR}/restore/ ${LOCTMPDIR}/restore || failexit "Restore Failed"
+  $restorecmd | $COMDB2AR_EXE x -x $COMDB2_EXE -I restore ${LOCTMPDIR}/restore/ ${LOCTMPDIR}/restore || failexit "Restore Failed"
   egrep -v "cluster nodes" ${LOCTMPDIR}/restore/${dbname}.lrl > ${LOCTMPDIR}/restore/${dbname}.single.lrl
 
   # Rename some files
@@ -154,6 +161,7 @@ echo " "
 
 counter=0
 
+copy_to_local
 for testreq in `ls t1-*.req`; do
   test_restoredb $testreq $counter
   let counter=counter+1
@@ -168,6 +176,7 @@ for i in $(seq 1 10); do
 done
 cdb2sql ${CDB2_OPTIONS} -f t1-3_insert.stmt $dbname default
 make_backup push_next_inserts
+copy_to_local
 test_restoredb t2.req 2
 
 # cleanup since this was a successful run
