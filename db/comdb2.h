@@ -1291,7 +1291,10 @@ struct ireq {
     struct dbenv *dbenv;
     struct dbtable *origdb;
     struct dbtable *usedb;
+
+    /* IPC stuff */
     void *p_sinfo;
+    intptr_t curswap; /* 040307dh: 64bit */
 
     /* these usually refer to diffent points in the same fstsnd buffer, as such
      * p_buf_in and p_buf_in_end should be set to NULL once writing to p_buf_out
@@ -3386,10 +3389,6 @@ uint8_t *db_info2_iostats_put(const struct db_info2_iostats *p_iostats,
 
 extern int gbl_log_fstsnd_triggers;
 
-int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
-              const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
-              char *fromtask, int qtype, void *data_hndl, int luxref,
-              unsigned long long rqid, void *p_sinfo);
 struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
                                 const uint8_t *p_buf_end, int debug,
                                 char *frommach, sorese_info_t *sorese);

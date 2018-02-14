@@ -94,7 +94,7 @@
 #include "views.h"
 #include "logmsg.h"
 
-int (*comdb2_ipc_master_set)(int dbnum, char *host) = 0;
+int (*comdb2_ipc_master_set)(char *host) = 0;
 
 /* ixrc != -1 is incorrect. Could be IX_PASTEOF or IX_EMPTY.
  * Don't want to vtag those results
@@ -2937,7 +2937,7 @@ static int new_master_callback(void *bdb_handle, char *host)
 
     /* poke master in comdb2 shm */
     if (!gbl_exit && comdb2_ipc_master_set) {
-        comdb2_ipc_master_set(thedb->dbnum, host);
+        comdb2_ipc_master_set(host);
     }
 
     gbl_lost_master_time = 0; /* reset this */
