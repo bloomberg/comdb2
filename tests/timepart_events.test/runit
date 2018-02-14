@@ -59,6 +59,9 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 
+# lets wait for the rollout to avoid race between status epdate and the 3 rollouts
+sleep 20 
+
 timepart_stats
 
 get_master
