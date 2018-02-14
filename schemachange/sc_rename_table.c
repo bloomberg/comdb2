@@ -24,9 +24,9 @@
 #include "sc_global.h"
 #include "sc_callbacks.h"
 
-int do_rename_table(struct ireq *iq, tran_type *tran)
+int do_rename_table(struct ireq *iq, struct schema_change_type *s,
+                    tran_type *tran)
 {
-    struct schema_change_type *s = iq->sc;
     struct dbtable *db;
     iq->usedb = db = s->db = get_dbtable_by_name(s->table);
     if (db == NULL) {
@@ -49,9 +49,9 @@ int do_rename_table(struct ireq *iq, tran_type *tran)
     return SC_OK;
 }
 
-int finalize_rename_table(struct ireq *iq, tran_type *tran)
+int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
+                          tran_type *tran)
 {
-    struct schema_change_type *s = iq->sc;
     struct dbtable *db = s->db;
     char *newname = strdup(s->newtable);
     int rc = 0;

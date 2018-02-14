@@ -16,6 +16,7 @@
 
 #include <translistener.h>
 
+#include "sc_global.h"
 #include "schemachange.h"
 #include "sc_add_table.h"
 #include "logmsg.h"
@@ -223,9 +224,9 @@ static inline void set_empty_options(struct schema_change_type *s)
     if (s->instant_sc == -1) s->instant_sc = gbl_init_with_instant_sc;
 }
 
-int do_add_table(struct ireq *iq, tran_type *trans)
+int do_add_table(struct ireq *iq, struct schema_change_type *s,
+                 tran_type *trans)
 {
-    struct schema_change_type *s = iq->sc;
     int rc = SC_OK;
     struct dbtable *db;
     set_empty_options(s);
@@ -238,7 +239,9 @@ int do_add_table(struct ireq *iq, tran_type *trans)
         return SC_TABLE_ALREADY_EXIST;
     }
 
+    pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = add_table_to_environment(s->table, s->newcsc2, s, iq, trans);
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
     if (rc) {
         sc_errf(s, "error adding new table locally\n");
         return rc;
@@ -259,9 +262,9 @@ int do_add_table(struct ireq *iq, tran_type *trans)
     return 0;
 }
 
-int finalize_add_table(struct ireq *iq, tran_type *tran)
+int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
+                       tran_type *tran)
 {
-    struct schema_change_type *s = iq->sc;
     int rc, bdberr;
     struct dbtable *db = s->db;
 

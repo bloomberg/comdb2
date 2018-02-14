@@ -228,6 +228,8 @@ DEF_ATTR(FSTDUMP_THREAD_STACKSZ, fstdump_thread_stacksz, BYTES, 256 * 1024,
 DEF_ATTR(FSTDUMP_MAXTHREADS, fstdump_maxthreads, QUANTITY, 0,
          "Maximum number of fstdump threads. (0 for single-threaded, 16 for "
          "maximum database thrashing)")
+DEF_ATTR(VERIFY_THREAD_STACKSZ, verify_thread_stacksz, BYTES, 2 * 1024 * 1024,
+         "Size of the verify thread stack.")
 DEF_ATTR(REP_LONGREQ, rep_longreq, SECS, 1,
          "Warn if replication events are taking this long to process.")
 DEF_ATTR(COMMITDELAYBEHINDTHRESH, commitdelaybehindthresh, BYTES, 1048576,
@@ -480,6 +482,10 @@ DEF_ATTR(SC_RESUME_AUTOCOMMIT, sc_resume_autocommit, BOOLEAN, 1,
 DEF_ATTR(SC_RESUME_WATCHDOG_TIMER, sc_resume_watchdog_timer, QUANTITY, 60,
          "sc_resuming_watchdog timer")
 DEF_ATTR(SC_DELAY_VERIFY_ERROR, sc_delay_verify_error, MSECS, 100, NULL)
+DEF_ATTR(SC_ASYNC, sc_async, BOOLEAN, 1,
+         "Run transactional schema changes asynchronously.")
+DEF_ATTR(SC_ASYNC_MAXTHREADS, sc_async_maxthreads, QUANTITY, 5,
+         "Max number of threads for asynchronous schema changes.")
 DEF_ATTR(USE_VTAG_ONDISK_VERMAP, use_vtag_ondisk_vermap, BOOLEAN, 1,
          "Use vtag_to_ondisk_vermap conversion function from vtag_to_ondisk.")
 DEF_ATTR(UDP_DROP_DELTA_THRESHOLD, udp_drop_delta_threshold, QUANTITY, 10,

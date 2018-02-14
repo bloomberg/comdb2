@@ -755,6 +755,7 @@ int gbl_enable_bulk_import; /* allow this db to bulk import */
 int gbl_enable_bulk_import_different_tables;
 
 char *gbl_dbdir = NULL;
+static int gbl_backend_opened = 0;
 
 extern int gbl_verbose_net;
 
@@ -3861,6 +3862,9 @@ static int init(int argc, char **argv)
 
     /* open db engine */
     logmsg(LOGMSG_INFO, "starting backend db engine\n");
+
+    pthread_rwlock_wrlock(&schema_lk);
+
     if (backend_open(thedb) != 0) {
         logmsg(LOGMSG_FATAL, "failed to open '%s'\n", dbname);
         return -1;
@@ -3872,6 +3876,9 @@ static int init(int argc, char **argv)
     }
 
     load_dbstore_tableversion(thedb);
+
+    gbl_backend_opened = 1;
+    pthread_rwlock_unlock(&schema_lk);
 
     sqlinit();
     rc = create_sqlmaster_records(NULL);
@@ -5592,7 +5599,7 @@ const char *comdb2_get_dbname(void)
 
 int sc_ready(void)
 {
-    return thedb->timepart_views != 0;
+    return gbl_backend_opened;
 }
 
 #define QUOTE_(x) #x

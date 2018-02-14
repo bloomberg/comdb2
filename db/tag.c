@@ -60,6 +60,7 @@
 
 extern struct dbenv *thedb;
 extern void hexdump(const void *buf, int size);
+extern pthread_mutex_t csc2_subsystem_mtx;
 
 pthread_key_t unique_tag_key;
 
@@ -6970,6 +6971,7 @@ struct schema *create_version_schema(char *csc2, int version,
     char *tag;
     int rc;
 
+    pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = dyns_load_schema_string(csc2, dbenv->envname, gbl_ver_temp_table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
@@ -7000,6 +7002,7 @@ struct schema *create_version_schema(char *csc2, int version,
         logmsg(LOGMSG_ERROR, "malloc failed %s:%d\n", __FILE__, __LINE__);
         goto err;
     }
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     sprintf(tag, gbl_ondisk_ver_fmt, version);
     struct schema *ver_schema = clone_schema(s);
@@ -7017,6 +7020,7 @@ struct schema *create_version_schema(char *csc2, int version,
     return ver_schema;
 
 err:
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
     return NULL;
 }
 
@@ -7070,6 +7074,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     int len;
     char *csc2 = NULL;
 
+    pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = get_csc2_file_tran(db->tablename, version, &csc2, &len, tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);
@@ -7114,6 +7119,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
         cheap_stack_trace();
         goto err;
     }
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     set_odh_options_tran(newdb, tran);
     transfer_db_settings(db, newdb);
@@ -7133,6 +7139,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     return 0;
 
 err:
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
     free(csc2);
     return 1;
 }
@@ -7157,6 +7164,7 @@ int reload_after_bulkimport(struct dbtable *db, tran_type *tran)
 
 int reload_db_tran(struct dbtable *db, tran_type *tran)
 {
+    backout_schemas(db->tablename);
     clear_existing_schemas(db);
     if (load_new_ondisk(db, tran)) {
         logmsg(LOGMSG_ERROR, "Failed to load new .ONDISK\n");

@@ -208,7 +208,7 @@ function kill_restart_node
 
     popd
 
-    out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
+    out=0
     # wait until we can query it
     echo "$DBNAME: waiting until ready"
     while [[ "$out" != "1" ]]; do
