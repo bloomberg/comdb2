@@ -59,7 +59,6 @@ sc_resume
 # 'make all'. These tests however can be run individually.
 
 DISABLED TESTS:
-renametable.test
 deadlock_policy.test
 deadlock.test             -- in clustered it leaves a bunch of cdb2sql tasks
 overflowblobs.test        -- timesout
