@@ -433,6 +433,8 @@ static int do_query_on_master_check(struct dbenv *dbenv,
         /* Send sql response with dbinfo. */
         if (allow_master_dbinfo)
             send_dbinforesponse(dbenv, clnt->sb);
+
+        logmsg(LOGMSG_DEBUG, "Query on master, will be rejected\n");
         return 1;
     }
     return 0;
@@ -478,12 +480,16 @@ retry_read:
            2) Doing SSL_accept() immediately would cause too many
               unnecessary EAGAIN/EWOULDBLOCK's for non-blocking BIO. */
         char ssl_able = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
-        if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0)
+        if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0) {
+            logmsg(LOGMSG_DEBUG, "Error in sbuf2putc rc=%d\n", rc);
             return NULL;
+        }
 
         if (ssl_able == 'Y' &&
-            sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL, 0) != 1)
+            sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL, 0) != 1) {
+            logmsg(LOGMSG_DEBUG, "Error with sslio_accept\n");
             return NULL;
+        }
 
         if (sslio_verify(sb, gbl_client_ssl_mode, NULL, 0) != 0) {
             char *err = "Client certificate authentication failed.";
@@ -493,12 +499,15 @@ retry_read:
             resp.rcode = CDB2ERR_CONNECT_ERROR;
             rc = fsql_write_response(clnt, &resp, err, strlen(err) + 1, 1,
                                      __func__, __LINE__);
+            logmsg(LOGMSG_DEBUG, "sslio_verify returned non zero rc\n");
             return NULL;
         }
 #else
         /* Not compiled with SSL. Send back `N' to client and retry read. */
-        if ((rc = sbuf2putc(sb, 'N')) < 0 || (rc = sbuf2flush(sb)) < 0)
+        if ((rc = sbuf2putc(sb, 'N')) < 0 || (rc = sbuf2flush(sb)) < 0) {
+            logmsg(LOGMSG_DEBUG, "Error in sbuf2putc rc=%d\n", rc);
             return NULL;
+        }
 #endif
         goto retry_read;
     } else if (hdr.type == FSQL_RESET) { /* Reset from sockpool.*/
@@ -571,6 +580,7 @@ retry_read:
     rc = sbuf2fread(p, bytes, 1, sb);
     if (rc != 1) {
         free(p);
+        logmsg(LOGMSG_DEBUG, "Error in sbuf2fread rc=%d\n", rc);
         return NULL;
     }
 
@@ -689,6 +699,7 @@ retry_read:
                                      __func__, __LINE__);
         }
         cdb2__query__free_unpacked(query, &pb_alloc);
+        logmsg(LOGMSG_DEBUG, "SSL is required by db, client doesnt support\n");
         return NULL;
     }
 #endif
@@ -786,8 +797,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     }
 
     CDB2QUERY *query = read_newsql_query(dbenv, &clnt, sb);
-    if (query == NULL)
+    if (query == NULL) {
+        logmsg(LOGMSG_DEBUG, "Query on master, will be rejected\n");
         goto done;
+    }
     assert(query->sqlquery);
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
@@ -795,10 +808,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     if (do_query_on_master_check(dbenv, &clnt, sql_query))
         goto done;
-
-#ifdef DEBUGQUERY
-    printf("\n Query '%s'\n", sql_query->sql_query);
-#endif
 
     clnt.osql.count_changes = 1;
     clnt.dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
@@ -838,6 +847,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.sql = sql_query->sql_query;
         clnt.query = query;
         clnt.added_to_hist = 0;
+        logmsg(LOGMSG_DEBUG, "Query '%s'\n", sql_query->sql_query);
 
         if (!clnt.in_client_trans) {
             bzero(&clnt.effects, sizeof(clnt.effects));

@@ -1648,8 +1648,8 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
 {
 
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s:%d entering\n", (uint32_t)pthread_self(),
-                __func__, __LINE__);
+        fprintf(stderr, "td %u %s:%d entering, host '%s:%d'\n",
+                (uint32_t)pthread_self(), __func__, __LINE__, host, port);
     }
     int fd = -1;
     SBUF2 *sb = NULL;
@@ -1712,8 +1712,9 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
         return 0;
 
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %p %s from line %d disconnecting\n",
-                (void *)pthread_self(), __func__, line);
+        fprintf(stderr, "td %p %s from line %d disconnecting from %s\n",
+                (void *)pthread_self(), __func__, line,
+                hndl->hosts[hndl->connected_host]);
     }
     int fd = sbuf2fileno(sb);
 
@@ -1981,6 +1982,11 @@ static int cdb2_read_record(cdb2_hndl_tp *hndl, uint8_t **buf, int *len, int *ty
     int b_read;
 
 retry:
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %p %s line %d\n", (void *)pthread_self(), __func__,
+                __LINE__);
+    }
+
     b_read = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
     if (b_read != sizeof(hdr)) {
         if (hndl->debug_trace) {
@@ -2185,6 +2191,11 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                            int ntypes, int *types, int is_begin, int skip_nrows,
                            int retries_done, int do_append, int fromline)
 {
+    if (log_calls) {
+        fprintf(stderr, "td %p %s line %d\n", (void *)pthread_self(), __func__,
+                __LINE__);
+    }
+
     int n_features = 0;
     int features[10]; // Max 10 client features??
     CDB2QUERY query = CDB2__QUERY__INIT;
@@ -2227,10 +2238,10 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         if (hndl->connected_host >= 0)
             host = hndl->hosts[hndl->connected_host];
 
-        fprintf(stderr, "td %u %s sending '%s' to %s from-line %d retries is "
-                        "%d do_append is %d\n",
-                (uint32_t)pthread_self(), __func__, sql, host, fromline,
-                retries_done, do_append);
+        fprintf(stderr, "td %u %s:%d sending to %s '%s' from-line %d retries is"
+                        " %d do_append is %d\n",
+                (uint32_t)pthread_self(), __func__, __LINE__, host, sql,
+                fromline, retries_done, do_append);
     }
 
     query.sqlquery = &sqlquery;
@@ -2493,6 +2504,12 @@ retry_next_record:
             /* Give the same error for every query until commit/rollback */
             hndl->error_in_trans =
                 cdb2_convert_error_code(hndl->lastresponse->error_code);
+        }
+
+        if (hndl->debug_trace) {
+            fprintf(stderr, "td %p %s line %d error_string=%s\n",
+                    (void *)pthread_self(), __func__, __LINE__,
+                    hndl->lastresponse->error_string);
         }
         rc = cdb2_convert_error_code(hndl->lastresponse->error_code);
         PRINT_RETURN_OK(rc);
@@ -3055,6 +3072,12 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
                                   int skip_nrows)
 {
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %p %s line %d num_retry=%d, skip_nrows=%d\n",
+                (void *)pthread_self(), __func__, __LINE__, num_retry,
+                skip_nrows);
+    }
+
     int rc = 0, len;
     if (!(hndl->snapshot_file))
         return -1;
@@ -3422,8 +3445,6 @@ retry_queries:
         }
 
         if (retries_done > hndl->num_hosts) {
-            int tmsec;
-
             if (!hndl->is_hasql && (retries_done > hndl->min_retries)) {
                 if (hndl->debug_trace) {
                     fprintf(stderr, "td %u %s:%d returning cannot-connect, "
@@ -3435,7 +3456,7 @@ retry_queries:
                 PRINT_RETURN(CDB2ERR_CONNECT_ERROR);
             }
 
-            tmsec = (retries_done - hndl->num_hosts) * 100;
+            int tmsec = (retries_done - hndl->num_hosts) * 100;
             if (tmsec >= 1000) {
                 tmsec = 1000;
                 if (!hndl->debug_trace) {
@@ -3474,8 +3495,7 @@ retry_queries:
                 goto retry_queries;
             }
             else if (rc < 0) {
-                sprintf(hndl->errstr, "Can't retry query to db, hasql is %d", 
-                        hndl->is_hasql);
+                sprintf(hndl->errstr, "Can't retry query to db");
                 PRINT_RETURN(rc);
             }
         }
@@ -3816,7 +3836,7 @@ read_record:
             hndl->ports[i] = -1;
         }
         if (retries_done < MAX_RETRIES) {
-            goto retry_queries;
+            GOTO_RETRY_QUERIES();
         }
     }
 

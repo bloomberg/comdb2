@@ -249,6 +249,19 @@ echo "${DBNAME} created successfully"
 
 set -e
 
+check_db_pid_running() {
+    dbpid=$1
+    if kill -0 $dbpid &> /dev/null ; then 
+        echo "DB process is running"
+    else
+        echo "DB process is not running"
+        if ! grep "[ERROR] net_listen: FAILED TO BIND to port" $TESTDIR/logs/${DBNAME}.db ; then
+            dbport=`${TESTSROOTDIR}/tools/send_msg_port.sh "get comdb2/replication/${DBNAME} " ${pmux_port}`
+            echo "checking what is running on port $dbport"
+            lsof | grep $dbport
+        fi
+    fi
+}
 # test largecsc2 throws error about col width
 #if grep "ERROR" $TESTDIR/logs/${DBNAME}.init | grep -v largecsc2 ; then
 #    echo "Error while initializing DB, see $TESTDIR/logs/${DBNAME}.init "
@@ -259,20 +272,23 @@ set -e
 cd $DBDIR >/dev/null
 if [[ -z "$CLUSTER" ]]; then
 
-    echo "!$TESTCASE: starting single node"
     if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
         echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS -pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
-    else
-        ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS -pidfile ${TMPDIR}/$DBNAME.pid &> $TESTDIR/logs/${DBNAME}.db &
+        exit 0
     fi
+
+    echo "!$TESTCASE: starting single node"
+    ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS -pidfile ${TMPDIR}/$DBNAME.pid &> $TESTDIR/logs/${DBNAME}.db &
+    dbpid=$!
 
     set +e
     out=
     # wait until we can query it
     echo "!$TESTCASE: waiting until ready"
     while [[ "$out" != "1" ]]; do
-        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2> /dev/null)
         sleep 1
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2> /dev/null)
+        check_db_pid_running $dbpid
     done
 else
     echo "!$TESTCASE: copying to cluster"

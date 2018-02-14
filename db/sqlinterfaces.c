@@ -5557,8 +5557,10 @@ int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     /* is this a snapshot? special processing */
     rc = ha_retrieve_snapshot(clnt);
-    if (rc)
+    if (rc) {
+        logmsg(LOGMSG_DEBUG, "ha_retrieve_snapshot() returned rc=%d\n", rc);
         return 0;
+    }
 
     /* All requests that do not require a sqlite engine
        are processed below.  A return != 0 means processing
@@ -7121,10 +7123,19 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         *errstr = "Client api should run query against a different node";
         break;
 
+    case 147: // 147 = 0 - SQLHERR_MASTER_TIMEOUT
+        *errstr = "Client api should run query against a different node";
+        rc = SQLITE_CLIENT_CHANGENODE;
+        break;
+
     case SQLITE_SCHEMA_REMOTE:
         rc = SQLITE_OK; /* this is processed based on clnt->osql.xerr */
         break;
+
     default:
+        logmsg(LOGMSG_DEBUG, "sql_check_errors got rc = %d, "
+                             "returning as SQLITE_INTERNAL\n",
+               rc);
         rc = SQLITE_INTERNAL;
         *errstr = sqlite3_errmsg(sqldb);
         break;

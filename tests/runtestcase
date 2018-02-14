@@ -73,6 +73,9 @@ elif [[ $rc -eq 124 ]]; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TESTDIR}/test.log
     successful=-1
+elif [ `find ${TESTDIR} | grep core` ] ; then
+    echo "!$TESTCASE: failed with core dumped `find ${TESTDIR} | grep core`)"
+    echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
 else
     echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
