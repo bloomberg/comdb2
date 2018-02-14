@@ -1166,18 +1166,22 @@ static void *purge_old_files_thread(void *arg)
     dbenv->purge_old_files_is_running = 1;
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
 
-    while (!dbenv->exiting) {
+    while (!db_is_stopped()) {
         /* even though we only add files to be deleted on the master,
          * don't try to delete files, ever, if you're a replicant */
         if (thedb->master != gbl_mynode) {
             sleep(empty_pause);
             continue;
         }
+        if (db_is_stopped())
+            continue;
 
         if (!bdb_have_unused_files() || dbenv->stopped) {
             sleep(empty_pause);
             continue;
         }
+        if (db_is_stopped())
+            continue;
 
         init_fake_ireq(thedb, &iq);
         iq.use_handle = thedb->bdb_env;
@@ -1346,6 +1350,10 @@ void clean_exit_sigwrap(int signum) {
    clean_exit();
 }
 
+/* clean_exit will be called to cleanup db structures upon exit
+ * NB: This function can be called by clean_exit_sigwrap() when the db is not
+ * up yet at which point we may not have much to cleanup.
+ */
 void clean_exit(void)
 {
     int rc;
@@ -1408,7 +1416,6 @@ void clean_exit(void)
     // comdb2ma_exit();
 
     logmsg(LOGMSG_USER, "goodbye\n");
-
     exit(0);
 }
 
@@ -5093,7 +5100,7 @@ int main(int argc, char **argv)
     create_stat_thread(thedb);
 
     /* create the offloadsql repository */
-    if (thedb->nsiblings > 0) {
+    if (!gbl_create_mode && thedb->nsiblings > 0) {
         if (osql_open(thedb)) {
             logmsg(LOGMSG_FATAL, "Failed to init osql\n");
             exit(1);

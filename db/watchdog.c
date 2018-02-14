@@ -421,7 +421,7 @@ static void *watchdog_watcher_thread(void *arg)
 
     while (!thedb->exiting) {
         sleep(10);
-        if (gbl_nowatch)
+        if (gbl_nowatch || thedb->exiting)
             continue;
 
         int tmstmp = comdb2_time_epoch();

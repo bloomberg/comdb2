@@ -5534,10 +5534,9 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     }
     int rc = check_user_password(clnt, &resp);
     if (rc == 0) {
-        if (strcmp(thd->lastuser, clnt->user) != 0) {
+        if (thd->lastuser[0] != '\0' && strcmp(thd->lastuser, clnt->user) != 0)
             delete_prepared_stmts(thd);
-            strcpy(thd->lastuser, clnt->user);
-        }
+        strcpy(thd->lastuser, clnt->user);
     }
     return rc;
 }
@@ -6124,6 +6123,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
     thd->offsets = NULL;
     thd->sqldb = NULL;
     thd->stmt_caching_table = NULL;
+    thd->lastuser[0] = '\0';
 
     start_sql_thread();
 

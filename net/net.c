@@ -67,6 +67,7 @@
 #include <pool.h>
 #include <dlmalloc.h>
 #include <plhash.h>
+#include <assert.h>
 
 #include "locks.h"
 #include "net.h"
@@ -5192,7 +5193,7 @@ static void *connect_thread(void *arg)
     /* close the file-descriptor, wait for reader / writer threads
        to exit, free host_node_ptr, then exit */
     close_hostnode(host_node_ptr);
-    while (1) {
+    while (!netinfo_ptr->exiting) {
         int ref;
         Pthread_mutex_lock(&(host_node_ptr->lock));
         ref = host_node_ptr->have_reader_thread +
@@ -5304,6 +5305,7 @@ static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
     /* extract the suffix of subnet ex. '_n3' in name node1_n3 */
     int myh_len = host_node_ptr->netinfo_ptr->myhostname_len;
     if (strncmp(host_node_ptr->netinfo_ptr->myhostname, host, myh_len) == 0) {
+        assert(myh_len <= sizeof(host));
         char *subnet = &host[myh_len];
         if (subnet[0])
             strncpy0(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
@@ -6168,11 +6170,8 @@ static void *heartbeat_check_thread(void *arg)
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
 
-    while (1) {
+    while (!netinfo_ptr->exiting) {
         int now;
-        if (netinfo_ptr->exiting)
-            break;
-
         /* Re-register under portmux if it's time */
         if (netinfo_ptr->portmux_register_interval > 0 &&
             ((now = comdb2_time_epoch()) - netinfo_ptr->portmux_register_time) >
