@@ -147,6 +147,9 @@ if [[ -n "$CLUSTER" ]]; then
     echo $DBNAME 0 $CLUSTER > $CDB2_CONFIG
     echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
     echo "cluster nodes $CLUSTER" >> ${LRL}
+    if [[ -n "$DEDICATED_NETWORK_SUFFIXES" ]] ; then
+        echo "dedicated_network_suffixes  $DEDICATED_NETWORK_SUFFIXES" >> ${LRL}
+    fi
 else
     mkdir -p $(dirname $CDB2_CONFIG)
     echo "comdb2_config:default_type=local" >> $CDB2_CONFIG
