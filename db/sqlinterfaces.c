@@ -1377,7 +1377,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     else
         h->sql = strdup("unknown");
     h->cost = query_cost(thd);
-    int timems = h->time = time_epochms() - thd->startms;
+    int timems = h->time = comdb2_time_epochms() - thd->startms;
     h->when = thd->stime;
     h->txnid = rqid;
 
@@ -3489,8 +3489,8 @@ static void query_stats_setup(struct sqlthdstate *thd,
     }
 
     /* sql thread stats */
-    thd->sqlthd->startms = time_epochms();
-    thd->sqlthd->stime = time_epoch();
+    thd->sqlthd->startms = comdb2_time_epochms();
+    thd->sqlthd->stime = comdb2_time_epoch();
     thd->sqlthd->nmove = thd->sqlthd->nfind = thd->sqlthd->nwrite = 0;
 
     /* reqlog */
@@ -5556,8 +5556,10 @@ int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     /* is this a snapshot? special processing */
     rc = ha_retrieve_snapshot(clnt);
-    if (rc)
+    if (rc) {
+        logmsg(LOGMSG_DEBUG, "ha_retrieve_snapshot() returned rc=%d\n", rc);
         return 0;
+    }
 
     /* All requests that do not require a sqlite engine
        are processed below.  A return != 0 means processing
@@ -5739,7 +5741,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     thr_set_user(clnt->appsock_id);
 
     clnt->osql.timings.query_dispatched = osql_log_time();
-    clnt->deque_timeus = time_epochus();
+    clnt->deque_timeus = comdb2_time_epochus();
 
     rdlock_schema_lk();
     sqlengine_prepare_engine(thd, clnt, 1);
@@ -5813,7 +5815,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     thr_set_user(clnt->appsock_id);
 
     clnt->osql.timings.query_dispatched = osql_log_time();
-    clnt->deque_timeus = time_epochus();
+    clnt->deque_timeus = comdb2_time_epochus();
 
     reqlog_set_origin(thd->logger, "%s", clnt->origin);
 
@@ -5998,7 +6000,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     pthread_mutex_unlock(&clnt->wait_mutex);
 
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
-    clnt->enque_timeus = time_epochus();
+    clnt->enque_timeus = comdb2_time_epochus();
 
     sqlcpy = strdup(msg);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
@@ -7121,10 +7123,19 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         *errstr = "Client api should run query against a different node";
         break;
 
+    case 147: // 147 = 0 - SQLHERR_MASTER_TIMEOUT
+        *errstr = "Client api should run query against a different node";
+        rc = SQLITE_CLIENT_CHANGENODE;
+        break;
+
     case SQLITE_SCHEMA_REMOTE:
         rc = SQLITE_OK; /* this is processed based on clnt->osql.xerr */
         break;
+
     default:
+        logmsg(LOGMSG_DEBUG, "sql_check_errors got rc = %d, "
+                             "returning as SQLITE_INTERNAL\n",
+               rc);
         rc = SQLITE_INTERNAL;
         *errstr = sqlite3_errmsg(sqldb);
         break;
@@ -7298,7 +7309,8 @@ static int test_no_btcursors(struct sqlthdstate *thd)
 unsigned long long osql_log_time(void)
 {
     if (0) {
-        return 1000 * ((unsigned long long)time_epoch()) + time_epochms();
+        return 1000 * ((unsigned long long)comdb2_time_epoch()) +
+               comdb2_time_epochms();
     } else {
         struct timeval tv;
 

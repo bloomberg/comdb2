@@ -454,7 +454,7 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
     int bdberr;
 
     pthread_mutex_lock(&gbl_sc_lock);
-    sc_del_unused_files_start_ms = time_epochms();
+    sc_del_unused_files_start_ms = comdb2_time_epochms();
     pthread_mutex_unlock(&gbl_sc_lock);
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
@@ -490,7 +490,7 @@ void sc_del_unused_files_check_progress(void)
 
     /* if a schema change is in progress */
     if (start_ms) {
-        int diff_ms = time_epochms() - start_ms;
+        int diff_ms = comdb2_time_epochms() - start_ms;
         if (diff_ms > gbl_sc_del_unused_files_threshold_ms) {
             logmsg(LOGMSG_FATAL,
                    "Schema change has been waiting %dms for files to "

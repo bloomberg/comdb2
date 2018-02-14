@@ -65,7 +65,7 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
     net_reset_explicit_flushes();
     net_reset_send_interval_flushes();
 
-    start = time_epoch();
+    start = comdb2_time_epoch();
 
     for (i = 0; i < tcount; i++) {
         /* trans_start changes to logical if gbl_rowlocks is set */
@@ -90,7 +90,7 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
         }
     }
 
-    end = time_epoch();
+    end = comdb2_time_epoch();
     elapsed = (end - start);
 
     repcalls = rep_get_send_callcount();
@@ -169,7 +169,7 @@ static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
     net_reset_explicit_flushes();
     net_reset_send_interval_flushes();
 
-    start = time_epoch();
+    start = comdb2_time_epoch();
 
     for (i = 0; i < count; i++) {
         if ((rc = trans_start_logical(&iq, &trans)) != 0) {
@@ -206,7 +206,7 @@ static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
         trans = NULL;
     }
 
-    end = time_epoch();
+    end = comdb2_time_epoch();
     elapsed = (end - start);
 
     repcalls = rep_get_send_callcount();

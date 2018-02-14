@@ -1026,7 +1026,7 @@ void setting_changed(unsigned *setting)
         socket_pool_set_max_fds_per_typestr(POOL_MAX_FDS_PER_DB);
 #if 0      
    } else if(setting == &CHECK_PIPE_FREQ) {
-      cantim(CHECK_PIPE_TIMER_NO);
+      comdb2_cantim(CHECK_PIPE_TIMER_NO);
       if(CHECK_PIPE_FREQ > 0) {
          timprm(1000 * CHECK_PIPE_FREQ, CHECK_PIPE_TIMER_NO);
       }

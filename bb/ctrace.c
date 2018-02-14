@@ -155,7 +155,7 @@ static void chkwarnsz_lk(void)
     }
 }
 
-void toupi(char *str, int len)
+void comdb2_toupi(char *str, int len)
 {
     char *p;
     for (p = str; len; p++, len--)
@@ -173,7 +173,7 @@ static void ctrace_openlog_taskname_lk(const char *directory,
     once = 1;
 
     snprintf(envvar, sizeof(envvar), "%s_TRCLOG_ROLLAT", taskname);
-    toupi(envvar, sizeof(envvar));
+    comdb2_toupi(envvar, sizeof(envvar));
     envstrp = getenv(envvar);
     if (NULL != envstrp && strlen(envstrp) > 0) {
         rollat = atoll(envstrp);
@@ -187,7 +187,7 @@ static void ctrace_openlog_taskname_lk(const char *directory,
     if (warnat == 0)
         warnat = DEFAULT_WARNAT; /* default if not already set */
     snprintf(envvar, sizeof(envvar), "%s_TRCLOG_WARNAT", taskname);
-    toupi(envvar, sizeof(envvar));
+    comdb2_toupi(envvar, sizeof(envvar));
     envstrp = getenv(envvar);
     if (NULL != envstrp && strlen(envstrp) > 0) {
         warnat = atoll(envstrp);

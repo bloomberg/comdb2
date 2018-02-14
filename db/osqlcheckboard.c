@@ -139,7 +139,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     entry->master = clnt->osql.host;
     entry->type = type;
     entry->last_checked = entry->last_updated =
-        time_epoch(); /* initialize these to insert time */
+        comdb2_time_epoch(); /* initialize these to insert time */
     entry->clnt = clnt;
 
 #ifdef DEBUG
@@ -641,7 +641,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                 bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC);
 
             /* is it the time to check the master? have we already done so? */
-            now = time_epoch();
+            now = comdb2_time_epoch();
 
             if ((poke_timeout > 0) &&
                 (entry->last_updated + poke_timeout < now)) {
@@ -775,7 +775,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 
         entry->status = status;
         entry->timestamp = timestamp;
-        entry->last_updated = time_epoch();
+        entry->last_updated = comdb2_time_epoch();
 
         if ((rc = pthread_mutex_unlock(&entry->mtx)) != 0) {
             logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
@@ -825,7 +825,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     } else {
         pthread_mutex_lock(&entry->mtx);
         entry->last_checked = entry->last_updated =
-            time_epoch(); /* reset these time */
+            comdb2_time_epoch(); /* reset these time */
         entry->done = 0;
         entry->master_changed = 0;
         entry->master =

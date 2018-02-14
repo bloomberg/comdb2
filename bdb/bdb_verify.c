@@ -334,7 +334,7 @@ static int bdb_verify_ll(
     bzero(&dbt_blob_key, sizeof(DBT));
     bzero(&dbt_blob_data, sizeof(DBT));
 
-    now = last = time_epochms();
+    now = last = comdb2_time_epochms();
 
     /* scan 1 - run through data, verify all the keys and blobs */
     for (dtastripe = 0; dtastripe < bdb_state->attr->dtastripe; dtastripe++) {
@@ -364,7 +364,7 @@ static int bdb_verify_ll(
             nrecs++;
             nrecs_progress++;
 
-            now = time_epochms();
+            now = comdb2_time_epochms();
 
             /* check if comdb2sc is killed */
             if ((now - last) > 1000) {
@@ -667,7 +667,7 @@ static int bdb_verify_ll(
             nrecs++;
             nrecs_progress++;
 
-            now = time_epochms();
+            now = comdb2_time_epochms();
 
             /* check if comdb2sc is killed */
             if ((now - last) > 1000) {

@@ -183,7 +183,7 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
             bzero(&bdb_state->blkseq_last_lsn[i][stripe], sizeof(DB_LSN));
         }
     }
-    bdb_state->blkseq_last_roll_time = time_epoch();
+    bdb_state->blkseq_last_roll_time = comdb2_time_epoch();
 
     return 0;
 }
@@ -235,7 +235,7 @@ int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
             get_stripe(bdb_state, (uint8_t *)args->key.data, args->key.size);
         int *p = (int *)args->key.data;
 
-        now = time_epoch();
+        now = comdb2_time_epoch();
 
         // printf("%d seconds old %x %x %x ", now - args->time, p[0], p[1],
         // p[2]);
@@ -279,7 +279,7 @@ int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
 
 static void dump_logseq(bdb_state_type *bdb_state, struct seen_blkseq *logseq)
 {
-    int now = time_epoch();
+    int now = comdb2_time_epoch();
     logmsg(LOGMSG_USER, "log %d timestamp %d age %d ", logseq->logfile, logseq->timestamp,
            now - logseq->timestamp);
     if ((now - logseq->timestamp) > bdb_state->attr->private_blkseq_maxage)
@@ -368,7 +368,7 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
     ddata.data = data;
     ddata.size = datalen;
 
-    now = time_epoch();
+    now = comdb2_time_epoch();
 
     for (int i = 0; i < 2; i++) {
         rc = bdb_state->blkseq[i][stripe]->get(bdb_state->blkseq[i][stripe],
@@ -428,8 +428,8 @@ int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
     DB_ENV *env;
     int start, end;
 
-    start = time_epochms();
-    now = time_epoch();
+    start = comdb2_time_epochms();
+    now = comdb2_time_epoch();
 
     pthread_mutex_lock(&bdb_state->blkseq_lk[stripe]);
 
@@ -516,7 +516,7 @@ int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
         }
     }
     if (bdb_state->attr->private_blkseq_close_warn_time) {
-        end = time_epochms();
+        end = comdb2_time_epochms();
         if ((end - start) > bdb_state->attr->private_blkseq_close_warn_time) {
             logmsg(LOGMSG_WARN, "blkseq close took %dms\n", end - start);
         }
@@ -549,7 +549,7 @@ int bdb_blkseq_dumpall(bdb_state_type *bdb_state, uint8_t stripe)
         if (rc)
             goto done;
         rc = dbc->c_get(dbc, &dkey, &ddata, DB_FIRST);
-        now = time_epoch();
+        now = comdb2_time_epoch();
         while (rc == 0) {
             int *k;
             k = (int *)dkey.data;
@@ -613,7 +613,7 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
     DBT logdta = {0};
     DB_LSN lsn, last_lsn;
     llog_blkseq_args *blkseq = NULL;
-    int now = time_epoch();
+    int now = comdb2_time_epoch();
     int nblkseq = 0;
     int ndupes = 0;
     int last_log_filenum;
@@ -736,7 +736,7 @@ err:
 int bdb_blkseq_dumplogs(bdb_state_type *bdb_state)
 {
     struct seen_blkseq *logseq;
-    int now = time_epoch();
+    int now = comdb2_time_epoch();
 
     for (int stripe = 0; stripe < bdb_state->attr->private_blkseq_stripes;
          stripe++) {
@@ -755,7 +755,7 @@ int bdb_blkseq_can_delete_log(bdb_state_type *bdb_state, int lognum)
     struct seen_blkseq *logseq, *logseqtmp;
     int num_ok = 0;
     int found = 0;
-    int now = time_epoch();
+    int now = comdb2_time_epoch();
 
     for (int stripe = 0; stripe < bdb_state->attr->private_blkseq_stripes;
          stripe++) {

@@ -116,7 +116,7 @@ static void dump_node(netinfo_type *netinfo_ptr, FILE *out, char *host)
                  write_list_ptr = write_list_ptr->next) {
                 fprintf(out, "  typ %d age %2d flg %2x len %4u\n",
                         write_list_ptr->payload.header.type,
-                        time_epoch() - write_list_ptr->enque_time,
+                        comdb2_time_epoch() - write_list_ptr->enque_time,
                         write_list_ptr->flags, (unsigned)write_list_ptr->len);
             }
             Pthread_mutex_unlock(&(ptr->enquelk));
