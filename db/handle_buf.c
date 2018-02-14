@@ -719,7 +719,7 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
     if (comdb2_ipc_sndbak) {
         /* curswap is just a pointer to the buffer */
         int *ibuf = (int *)curswap;
-        ibuf+=2;
+        ibuf += 2;
         comdb2_ipc_sndbak(ibuf, ERR_INTERNAL);
     }
     if (rc == ERR_INTERNAL) /*qfull hits this code too, so differentiate*/
