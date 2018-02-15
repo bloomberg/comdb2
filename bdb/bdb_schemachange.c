@@ -61,6 +61,10 @@ static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
 {
     int rc;
     bdb_state_type *bdb_state;
+    char *db_newtable = NULL;
+
+    if (newtable && newtable[0])
+        db_newtable = strdup(newtable);
 
     if (bdb_state_in == NULL)
         return 0;
@@ -77,17 +81,17 @@ static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
     }
 
     if (!bdb_state->callback->scdone_rtn) {
-        logmsg(LOGMSG_ERROR, "bdb_scdone_int: no scdone callback\n");
+        logmsg(LOGMSG_ERROR, "%s: no scdone callback\n", __func__);
         return -1;
     }
 
     /* TODO fail gracefully now that inline? */
     /* reload the changed table (if necesary) and update the schemas in memory*/
     if ((rc = bdb_state->callback->scdone_rtn(bdb_state_in, table,
-                                              (char *)newtable, fastinit))) {
+                                              db_newtable, fastinit))) {
         if (rc == BDBERR_DEADLOCK)
             rc = DB_LOCK_DEADLOCK;
-        logmsg(LOGMSG_ERROR, "bdb_scdone_int: callback failed\n");
+        logmsg(LOGMSG_ERROR, "%s: callback failed\n", __func__);
         return rc;
     }
 
@@ -107,8 +111,8 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
     scdone_t sctype = ntohl(type);
 
     if (sctype == rename_table) {
-        assert(strlen(table) + 1 < scdoneop->table.size);
-        newtable = &table[strlen(table) + 1];
+        assert(strlen(table)+1 < scdoneop->table.size);
+        newtable = &table[strlen(table)+1];
     }
 
     switch (op) {
@@ -236,7 +240,8 @@ static int do_llog(bdb_state_type *bdb_state, scdone_t sctype, char *tbl,
 }
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
-                         tran_type *tran, const char *origtable, int *bdberr)
+                         tran_type *tran, const char *origtable,
+                         int *bdberr)
 {
     int rc = 0;
     DBT *dtbl = NULL;
