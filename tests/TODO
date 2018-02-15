@@ -1,6 +1,6 @@
 Test suite TODO (priority order?):
 [X] timeout for prepare/copy/test
-[ ] remove all dependencies on comdb2sc -- clustered tests dont work with comdb2sc
+[X] remove all dependencies on comdb2sc -- clustered tests dont work with comdb2sc
 [X] fix any DDL with csc2 keyword
 [X] convert all testcases to use 'default' and ${CDB2_OPTIONS} with cdb2sql
 [X] apply any patches on tests branch back to master
@@ -12,7 +12,7 @@ Test suite TODO (priority order?):
 [X] comdb2 path - copy binary, run with it? uses /opt/bb/bin/comdb2 by default
 [X] have a way to run before make install?  on cluster before make install?
 [ ] database should already have sane defaults.  consider merging default_options
-[ ] fix tools to pass CDB2_CONFIG for cdb2api
+[X] fix tools to pass CDB2_CONFIG for cdb2api
 [X] fix tools/scripts to not rely on mikedb/local (use $DBNAME/default)
 [X] way to clean up test databases on remote cluster: only for successful tests
 [ ] testrunner: error on invalid tests 
@@ -25,7 +25,6 @@ Test suite TODO (priority order?):
 
 
 Unrelated bugs found:
-[ ] master copycomdb2/comdb2ar don't work - fixed in this branch
 [ ] non-llmeta if missing lrl options - should give better error
 
 
