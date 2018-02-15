@@ -302,7 +302,6 @@ int gbl_maxretries = 500;              /* thats a lotta retries */
 int gbl_maxblobretries =
     0; /* everyone assures me this can't happen unless the data is corrupt */
 int gbl_maxcontextskips = 10000; /* that's a whole whale of a lotta retries */
-char gbl_cwd[256];               /* start directory */
 int gbl_heartbeat_check = 0, gbl_heartbeat_send = 0, gbl_decom = 0;
 int gbl_netbufsz = 1 * 1024 * 1024;
 int gbl_loghist = 0;
@@ -3084,12 +3083,6 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "bdb_osql_log_repo_init failed to init log repository "
                         "rc %d bdberr %d\n",
                 rc, bdberr);
-        return -1;
-    }
-
-    /* get my working directory */
-    if (getcwd(gbl_cwd, sizeof(gbl_cwd)) == 0) {
-        logmsgperror("failed to getcwd");
         return -1;
     }
 
