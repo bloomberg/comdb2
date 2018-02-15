@@ -5357,3 +5357,14 @@ int cdb2_clear_contexts(cdb2_hndl_tp *hndl)
 {
     return cdb2_free_context_msgs(hndl);
 }
+
+/*
+  Clear ack flag so cdb2_close will not consume event
+*/
+int cdb2_clear_ack(cdb2_hndl_tp* hndl)
+{
+    if (hndl) {
+        hndl->ack = 0;
+    }
+    return 0;
+}
