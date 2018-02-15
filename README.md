@@ -1,7 +1,7 @@
 ## Overview
 
-Comdb2 is a clustered RDBMS built on Optimistic Concurrency Control techniques. 
-It provides multiple isolation levels, including Snapshot and Serializable Isolation. 
+Comdb2 is a clustered RDBMS built on Optimistic Concurrency Control techniques.
+It provides multiple isolation levels, including Snapshot and Serializable Isolation.
 Read/Write transactions run on any node, with the client library transparently negotiating connections to lowest cost (latency) node which is available.
 The client library provides transparent reconnect.
 
@@ -13,7 +13,7 @@ More information about the architecture of the project can be found in our [VLDB
 
 ## Documentation
 
-[Comdb2 documentation](http://bloomberg.github.io/comdb2) is included in the `docs` directory. 
+[Comdb2 documentation](http://bloomberg.github.io/comdb2) is included in the `docs` directory.
 It can be hosted locally with jekyll by running `jekyll serve` from the `docs` directory.
 
 ## Contributing
@@ -25,13 +25,13 @@ We welcome code and idea contributions.
 
 On every machine in the cluster:
 
-1. Make sure all machines in the cluster can talk to each other via ssh.  
-   Copy keys around if needed.  
+1. Make sure all machines in the cluster can talk to each other via ssh.
+   Copy keys around if needed.
 
-2. Install prerequisites: 
-   
+2. Install prerequisites:
+
    ** Ubuntu 16.04, 16.10, 17.04, Windows Subsystem for Linux (WSL) **
-        
+
    ```
    sudo apt-get install -y build-essential cmake bison flex libprotobuf-c-dev libreadline-dev libsqlite3-dev libssl-dev libunwind-dev libz1 libz-dev make gawk protobuf-c-compiler uuid-dev liblz4-tool liblz4-dev libprotobuf-c1 libsqlite3-0 libuuid1 libz1 tzdata ncurses-dev tcl bc
    ```
@@ -47,7 +47,7 @@ On every machine in the cluster:
    Install Xcode and Homebrew. Then install required libraries:
 
    ```
-   brew install cmake lz4 openssl protobuf-c readline ossp-uuid
+   brew install cmake lz4 openssl protobuf-c readline
    ```
 
    To run tests, install following:
@@ -77,10 +77,10 @@ On every machine in the cluster:
    ```
    pmux -n
    ```
-   Note: on WSL this needs to be run elevated, such as: `sudo /opt/bb/bin/pmux -n` 
+   Note: on WSL this needs to be run elevated, such as: `sudo /opt/bb/bin/pmux -n`
 
-6. _(optional)_ Comdb2 nodes identify each other by their hostnames.  If the hostname 
-   of each node isn't resolvable from other nodes, we should tell Comdb2 the full 
+6. _(optional)_ Comdb2 nodes identify each other by their hostnames.  If the hostname
+   of each node isn't resolvable from other nodes, we should tell Comdb2 the full
    domain name to use for the current node.  Most setups won't have this issue.
 
    Tell comdb2 our FQDN.
@@ -90,44 +90,44 @@ On every machine in the cluster:
    hostname machine-1.comdb2.example.com
    ```
 
-7. On one machine (say machine-1), create a database - this example creates a database 
+7. On one machine (say machine-1), create a database - this example creates a database
    called _testdb_ stored in _~/db_.
 
    ```
    comdb2 --create --dir ~/db testdb
    ```
-   
-   Note: the `--dir PATH` parameter is optional, and if it is omitted comdb2 uses a default root of */opt/bb/var/cdb2/* for creating a database directory to contain the database files, which is named as per the database name parameter; hence in this case  */opt/bb/var/cdb2/testdb*.  
-   The default root will have to be created explicitly with the desired permissions before invoking `comdb2 --create` for a database.  
-   In this quick start, we use the home directory to avoid obfuscating the key steps of the process. 
-   
-   
+
+   Note: the `--dir PATH` parameter is optional, and if it is omitted comdb2 uses a default root of */opt/bb/var/cdb2/* for creating a database directory to contain the database files, which is named as per the database name parameter; hence in this case  */opt/bb/var/cdb2/testdb*.
+   The default root will have to be created explicitly with the desired permissions before invoking `comdb2 --create` for a database.
+   In this quick start, we use the home directory to avoid obfuscating the key steps of the process.
+
+
 8. Configure the nodes in the cluster:
    ```
    vi ~/db/testdb.lrl
    add
    cluster nodes machine-1.comdb2.example.com machine-2.comdb2.example.com
    ```
-   
+
 9. On other nodes, copy the database over:
    ```
    copycomdb2 mptest-1.comdb2.example.com:${HOME}/db/testdb.lrl
    ```
-   
+
 0. On all nodes, start the database.
    ```
    comdb2 --lrl ~/db/testdb.lrl testdb
    ```
    All nodes will say 'I AM READY.' when ready.
-   
-   Note: the log dir comdb2 uses by default is */opt/bb/var/log/cdb2/* 
-   If this directory does not have permissions allowing the user to create file, there will be diagnostics output such as:  
-   > [ERROR] error opening '/opt/bb/var/log/cdb2/testdb.longreqs' for logging: 13 Permission denied  
-   
-   This condition will not impact operation of the database for the purposes of this quick start.  
-   
 
-1. On any node, start using the database.  You don't have any tables yet.  You can add them with *cdb2sql* 
+   Note: the log dir comdb2 uses by default is */opt/bb/var/log/cdb2/*
+   If this directory does not have permissions allowing the user to create file, there will be diagnostics output such as:
+   > [ERROR] error opening '/opt/bb/var/log/cdb2/testdb.longreqs' for logging: 13 Permission denied
+
+   This condition will not impact operation of the database for the purposes of this quick start.
+  
+
+1. On any node, start using the database.  You don't have any tables yet.  You can add them with *cdb2sql*
    Example -
    ```sql
    cdb2sql testdb local 'CREATE TABLE t1 {
