@@ -45,7 +45,6 @@ extern int gbl_bad_lrl_fatal;
 extern int gbl_disable_new_snapshot;
 
 extern char *gbl_recovery_options;
-extern char *gbl_dbdir;
 extern const char *gbl_repoplrl_fname;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern char **qdbs;
@@ -113,6 +112,21 @@ static int write_pidfile(const char *pidfile)
     return 0;
 }
 
+static void set_dbdir(char *dir)
+{
+    if (dir == NULL)
+        return;
+    if (*dir == '/') {
+        gbl_dbdir = strdup(dir);
+        return;
+    }
+    char *wd = getcwd(NULL, 0);
+    int n = snprintf(NULL, 0, "%s/%s", wd, dir);
+    gbl_dbdir = malloc(++n);
+    snprintf(gbl_dbdir, n, "%s/%s", wd, dir);
+    free(wd);
+}
+
 int handle_cmdline_options(int argc, char **argv, char **lrlname)
 {
     char *p;
@@ -152,7 +166,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
             break;
         case 4: /* recovery_lsn */ gbl_recovery_options = optarg; break;
         case 5: /* pidfile */ write_pidfile(optarg); break;
-        case 10: /* dir */ gbl_dbdir = optarg; break;
+        case 10: /* dir */ set_dbdir(optarg); break;
         }
     }
     return 0;
