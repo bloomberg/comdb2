@@ -45,7 +45,6 @@ extern int gbl_bad_lrl_fatal;
 extern int gbl_disable_new_snapshot;
 
 extern char *gbl_recovery_options;
-extern char *gbl_dbdir;
 extern const char *gbl_repoplrl_fname;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern char **qdbs;
@@ -112,12 +111,13 @@ static int write_pidfile(const char *pidfile)
     fclose(f);
     return 0;
 }
+
 static void set_dbdir(char *dir)
 {
     if (dir == NULL)
         return;
     if (*dir == '/') {
-        gbl_dbdir = dir;
+        gbl_dbdir = strdup(dir);
         return;
     }
     char *wd = getcwd(NULL, 0);

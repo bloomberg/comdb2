@@ -1411,6 +1411,7 @@ void clean_exit(void)
 
     cleanup_interned_strings();
     cleanup_peer_hash();
+    free(gbl_dbdir);
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
 
