@@ -6387,9 +6387,8 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
                 iq->usedbtablevers = ver;
                 free(newest_shard);
             } else {
-                logmsg(LOGMSG_ERROR,
-                       "%s: broken time partition %s"
-                       "\n",
+                logmsg(LOGMSG_ERROR, "%s: broken time partition %s"
+                                     "\n",
                        __func__, tablename);
 
                 return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,

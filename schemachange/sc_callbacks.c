@@ -37,15 +37,15 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     uint32_t lid = 0;
     extern uint32_t gbl_rep_lockid;
     struct dbtable *db = get_dbtable_by_name(name);
-   
+
     if (!db) {
         logmsg(LOGMSG_ERROR, "%s: unable to find table %s\n", __func__, name);
         return -1;
     }
 
-    if(rename_db(db, newtable)) {
-        logmsg(LOGMSG_ERROR, "%s: failed to rename %s to %s \n", __func__,
-               name, newtable);
+    if (rename_db(db, newtable)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to rename %s to %s \n", __func__, name,
+               newtable);
         return -1;
     }
 
@@ -59,8 +59,9 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     bdb_set_tran_lockerid(tran, gbl_rep_lockid);
 
     if (bdb_table_version_select(newtable, tran, &db->tableversion, &bdberr)) {
-        logmsg(LOGMSG_ERROR, "%s: failed to retrieve table version for new %s \n",
-               __func__, name, newtable);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to retrieve table version for new %s \n", __func__,
+               name, newtable);
         return -1;
     }
 
@@ -70,7 +71,7 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
 
     bdb_set_tran_lockerid(tran, lid);
     rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
-    if (rc) 
+    if (rc)
         logmsg(LOGMSG_FATAL, "%s failed to abort transaction\n", __func__, rc);
 
     sc_set_running(0 /*running*/, 0 /*seed*/, NULL, 0);
