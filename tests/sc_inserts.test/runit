@@ -153,9 +153,9 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat $tbl.csc2 ` }"
 
 master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
 
-max=100
+max_iter=20
 t=0
-while [ $t -lt $max ] ; do
+while [ $t -lt ${max_iter} ] ; do
     run_test
     sleep 2
     let t=t+1
