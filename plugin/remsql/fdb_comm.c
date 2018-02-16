@@ -228,6 +228,7 @@ typedef struct {
     int srcpid;     /* pid of the source */
     int srcnamelen; /* hostname of the source */
     char *srcname;
+    int ssl;
 } fdb_msg_cursor_open_t;
 
 union fdb_msg {
