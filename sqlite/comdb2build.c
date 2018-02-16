@@ -3219,6 +3219,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 
                 new_tag->name = comdb2_strdup(ctx->mem, old_tag->tag);
                 if (new_tag->name == 0) {
+                    unlock_taglock();
                     goto oom;
                 }
 
