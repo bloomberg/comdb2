@@ -5,3 +5,4 @@ setattr DURABLE_LSNS 1
 master_swing_osql_verbose
 master_swing_sock_restart_sleep 2
 logmsg level info
+dont_init_with_inplace_updates on
