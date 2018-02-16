@@ -25,6 +25,7 @@ int process_deferred_options(struct dbenv *dbenv,
                              int (*callback)(struct dbenv *env, char *option,
                                              void *p, int len));
 int deferred_do_commands(struct dbenv *env, char *option, void *p, int len);
+int clear_deferred_options(struct dbenv *dbenv, enum deferred_option_level lvl);
 void getmyaddr();
 
 #endif /* CONFIG_H */
