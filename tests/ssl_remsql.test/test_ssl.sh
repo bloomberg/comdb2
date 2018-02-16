@@ -9,7 +9,7 @@
 db1=$1
 cdb2cfg1=$2
 db2=$3
-cdb2cfg1=$4
+cdb2cfg2=$4
 
 output=run.out
 
