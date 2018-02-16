@@ -294,7 +294,8 @@ static void add_legacy_default_options(struct dbenv *dbenv)
         "usenames",
         "dont_return_long_column_names",
         "setattr DIRECTIO 0",
-        "berkattr elect_highest_committed_gen 0"
+        "berkattr elect_highest_committed_gen 0",
+        "unnatural_types 1",
     };
     for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++)
         defer_option(dbenv, DEFERRED_LEGACY_DEFAULTS, legacy_options[i], -1, 0);

@@ -3389,39 +3389,6 @@ static int need_flush(struct sqlclntstate *clnt)
                : 1;
 }
 
-static void get_return_row_schema(struct sqlthdstate *thd,
-                                  struct sqlclntstate *clnt, sqlite3_stmt *stmt)
-{
-    int col;
-    int ncols;
-
-    ncols = sqlite3_column_count(stmt);
-
-    thd->cinfo = realloc(thd->cinfo, ncols * sizeof(struct column_info));
-
-    for (col = 0; col < ncols; col++) {
-        if (clnt->req.parm) {
-            thd->cinfo[col].type = clnt->type_overrides[col];
-            if (!comdb2_is_valid_type(thd->cinfo[col].type)) {
-                thd->cinfo[col].type = sqlite3_column_type(stmt, col);
-            }
-        } else {
-            thd->cinfo[col].type = sqlite3_column_type(stmt, col);
-            if ((gbl_surprise) || thd->cinfo[col].type == SQLITE_NULL) {
-                thd->cinfo[col].type =
-                    typestr_to_type(sqlite3_column_decltype(stmt, col));
-            }
-        }
-        if (thd->cinfo[col].type == SQLITE_DECIMAL)
-            thd->cinfo[col].type = SQLITE_TEXT;
-
-        strncpy(thd->cinfo[col].column_name, sqlite3_column_name(stmt, col),
-                sizeof(thd->cinfo[col].column_name));
-        thd->cinfo[col].column_name[sizeof(thd->cinfo[col].column_name) - 1] =
-            '\0';
-    }
-}
-
 void thr_set_current_sql(const char *sql)
 {
     char *prevsql;
@@ -4269,7 +4236,7 @@ static void set_ret_column_info(struct sqlthdstate *thd,
             }
         } else {
             thd->cinfo[col].type = sqlite3_column_type(stmt, col);
-            if ((!clnt->is_newsql && gbl_surprise) ||
+            if (gbl_surprise ||
                 thd->cinfo[col].type == SQLITE_NULL) {
                 thd->cinfo[col].type =
                     typestr_to_type(sqlite3_column_decltype(stmt, col));
