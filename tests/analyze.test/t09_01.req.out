@@ -1,5 +1,6 @@
 [drop table if exists t9] rc 0
 [create table t9 {schema { int a } keys { "a"=a }}] rc 0
+[select * from t9] rc 0
 [exec procedure sys.cmd.send("setsqlattr analyze_empty_tables off")] rc 0
 (out='Analyze completed table t9')
 (out='Analyze table 't9' is complete')
