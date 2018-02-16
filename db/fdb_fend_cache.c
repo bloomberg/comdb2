@@ -212,8 +212,9 @@ static int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
     cur->bt->is_remote = 1;
     assert(cur->clnt == clnt);
 
-    fdbc_if = fdb_cursor_open(
-        clnt, cur, -1 /*not really used for sqlite_stats*/, NULL, NULL, 0 /* TODO */);
+    fdbc_if =
+        fdb_cursor_open(clnt, cur, -1 /*not really used for sqlite_stats*/,
+                        NULL, NULL, 0 /* TODO */);
     if (!fdbc_if) {
         fprintf(stderr, "%s: failed to connect remote to get stats\n",
                 __func__);

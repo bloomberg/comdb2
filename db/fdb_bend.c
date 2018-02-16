@@ -283,7 +283,7 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
     }
 
     if (gbl_fdb_track)
-       logmsg(LOGMSG_INFO, "added %p to tid=%llx cid=%llx\n", cur,
+        logmsg(LOGMSG_INFO, "added %p to tid=%llx cid=%llx\n", cur,
                *(unsigned long long *)cur->tid,
                *(unsigned long long *)cur->cid);
 

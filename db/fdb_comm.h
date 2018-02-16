@@ -24,9 +24,11 @@
 enum {
     /* all previous versions 0-4 are legacy and reserved */
     FDB_MSG_CURSOR_OPEN_SQL_SID = 5 /* latest feature added, SSL */
-    ,FDB_MSG_CURSOR_OPEN_SQL_SSL = 6 /* SSL supported */
+    ,
+    FDB_MSG_CURSOR_OPEN_SQL_SSL = 6 /* SSL supported */
     /* optional fields, powers of 2 */
-    ,FDB_MSG_CURSOR_OPEN_FLG_SSL = 1<<16 /* SSL required */
+    ,
+    FDB_MSG_CURSOR_OPEN_FLG_SSL = 1 << 16 /* SSL required */
 };
 
 /* keep these flags a bitmask so we can OR them */
@@ -69,8 +71,8 @@ int fdb_msg_datalen(fdb_msg_t *msg);
 char *fdb_msg_data(fdb_msg_t *msg);
 
 int fdb_bend_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
-                        unsigned long long genid, char *data, int datalen,
-                        char *datacopy, int datacopylen, int ret, int isuuid);
+                      unsigned long long genid, char *data, int datalen,
+                      char *datacopy, int datacopylen, int ret, int isuuid);
 
 int fdb_send_begin(fdb_msg_t *msg, fdb_tran_t *trans,
                    enum transaction_level lvl, int flags, int isuuid,

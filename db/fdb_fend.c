@@ -53,7 +53,6 @@
 #include "ssl_io.h"
 #include "ssl_bend.h"
 
-
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_allow_cross_classes;
 
@@ -270,7 +269,8 @@ static int _fdb_set_affinity_node(struct sqlclntstate *clnt, const fdb_t *fdb,
                                   char *host, int status);
 void _fdb_clear_clnt_node_affinities(struct sqlclntstate *clnt);
 
-static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb, int *flags);
+static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb,
+                               int *flags);
 
 /**************  FDB OPERATIONS ***************/
 
@@ -1211,7 +1211,6 @@ static int _failed_AddAndLockTable(sqlite3 *db, const char *dbname, int errcode,
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->sqlclntstate;
 
-
     logmsg(LOGMSG_WARN, "Error \"%s\" for db \"%s\"\n", prefix, dbname);
 
     if (clnt->fdb_state.xerr.errval && clnt->fdb_state.preserve_err) {
@@ -1239,7 +1238,7 @@ static int _failed_AddAndLockTable(sqlite3 *db, const char *dbname, int errcode,
  *
  */
 int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
-        int *version, int in_analysis_load)
+                           int *version, int in_analysis_load)
 {
     fdb_t *fdb;
     int rc = FDB_NOERR;
@@ -1314,10 +1313,11 @@ retry_fdb_creation:
             /* fdb deleted from under us by creator thread */
             goto retry_fdb_creation;
         }
-    
+
         if (rc != FDB_ERR_SSL)
-            logmsg(LOGMSG_ERROR, "%s: failed to add foreign table \"%s:%s\" rc=%d\n",
-                    __func__, dbname, table, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to add foreign table \"%s:%s\" rc=%d\n",
+                   __func__, dbname, table, rc);
 
         switch (rc) {
         case FDB_ERR_FDB_TBL_NOTFOUND: {
@@ -2205,25 +2205,24 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
 #if WITH_SSL
             if (use_ssl) {
                 rc = sbuf2flush(*psb);
-                if (rc != FDB_NOERR) 
+                if (rc != FDB_NOERR)
                     goto failed;
-                rc=sbuf2getc(*psb);
-                if(rc != 'Y')
+                rc = sbuf2getc(*psb);
+                if (rc != 'Y')
                     goto failed;
                 rc = FDB_NOERR;
                 /*fprintf(stderr, "READ Y\n");*/
 
-                if (sslio_connect(*psb, gbl_ssl_ctx,
-                            fdb->ssl, NULL, 0) != 1) {
-failed:
+                if (sslio_connect(*psb, gbl_ssl_ctx, fdb->ssl, NULL, 0) != 1) {
+                failed:
                     sbuf2close(*psb);
                     *psb = NULL;
                     /* don't retry other nodes if SSL configuration is bad */
                     clnt->fdb_state.preserve_err = 1;
                     clnt->fdb_state.xerr.errval = FDB_ERR_CONNECT_CLUSTER;
                     snprintf(clnt->fdb_state.xerr.errstr,
-                            sizeof(clnt->fdb_state.xerr.errstr),
-                            "SSL config error to %s", host);
+                             sizeof(clnt->fdb_state.xerr.errstr),
+                             "SSL config error to %s", host);
                     return FDB_ERR_SSL;
                 }
             }
@@ -2943,8 +2942,8 @@ static int fdb_cursor_reopen(BtCursor *pCur)
         goto done;
     }
 
-    pCur->fdbc =
-        fdb_cursor_open(clnt, pCur, pCur->rootpage, tran, &pCur->ixnum, need_ssl);
+    pCur->fdbc = fdb_cursor_open(clnt, pCur, pCur->rootpage, tran, &pCur->ixnum,
+                                 need_ssl);
     if (!pCur->fdbc) {
         rc = clnt->fdb_state.xerr.errval;
         goto done;
@@ -3067,12 +3066,13 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
                     ssl_cfg = atoll(errstr);
 
                     logmsg(LOGMSG_INFO, "%s: remote db %s needs ssl %d\n",
-                            __func__, pCur->bt->fdb->dbname, ssl_cfg);
+                           __func__, pCur->bt->fdb->dbname, ssl_cfg);
                     pCur->bt->fdb->ssl = ssl_cfg;
                 } else {
                     if (rc != FDB_ERR_SSL)
-                        logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming row rc=%d \"%s\"\n",
-                                __func__, rc, errstr);
+                        logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming "
+                                             "row rc=%d \"%s\"\n",
+                               __func__, rc, errstr);
                 }
 
                 return rc;
@@ -3256,9 +3256,9 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
                     rc = SQLITE_SCHEMA_REMOTE;
                 } else {
                     if (rc != FDB_ERR_SSL)
-                        logmsg(LOGMSG_ERROR, 
-                                "%s: failed to retrieve streaming row rc=%d \"%s\"\n",
-                                __func__, rc, errstr);
+                        logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming "
+                                             "row rc=%d \"%s\"\n",
+                               __func__, rc, errstr);
                 }
 
                 return rc;
@@ -4789,9 +4789,10 @@ void _fdb_clear_clnt_node_affinities(struct sqlclntstate *clnt)
  * Convert the protocol version in an appropriate cursor open flag
  *
  */
-static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb, int *flags)
+static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb,
+                               int *flags)
 {
-    if (fdb->server_version<FDB_VER_SSL) {
+    if (fdb->server_version < FDB_VER_SSL) {
         *flags = FDB_MSG_CURSOR_OPEN_SQL_SID;
 #if WITH_SSL
         if (sslio_has_ssl(clnt->sb)) {
@@ -4799,8 +4800,8 @@ static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb, int *flags
             clnt->fdb_state.preserve_err = 1;
             clnt->fdb_state.xerr.errval = FDB_ERR_SSL;
             snprintf(clnt->fdb_state.xerr.errstr,
-                    sizeof(clnt->fdb_state.xerr.errstr),
-                    "client uses SSL but remote db does not support it");
+                     sizeof(clnt->fdb_state.xerr.errstr),
+                     "client uses SSL but remote db does not support it");
             return -1;
         }
 #endif
@@ -4813,7 +4814,8 @@ static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb, int *flags
 #endif
     }
 
-    /*fprintf(stderr, "%s: return flags=%d sb=%p has_ssl=%d\n", __func__, *flags, clnt->sb, sslio_has_ssl(clnt->sb));*/
+    /*fprintf(stderr, "%s: return flags=%d sb=%p has_ssl=%d\n", __func__,
+     * *flags, clnt->sb, sslio_has_ssl(clnt->sb));*/
 
     return 0;
 }

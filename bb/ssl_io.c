@@ -46,7 +46,7 @@ static int sslio_pollin(SBUF2 *sb)
     int rc;
     struct pollfd pol;
 
-    if (SSL_pending(sb->ssl) > 0) 
+    if (SSL_pending(sb->ssl) > 0)
         return 1;
 
     do {
@@ -60,7 +60,7 @@ static int sslio_pollin(SBUF2 *sb)
         return rc;
     if ((pol.revents & POLLIN) == 0)
         return -100000 + pol.revents;
-    
+
     /* Can read. */
     return 1;
 }
@@ -259,43 +259,36 @@ static void my_apps_ssl_info_callback(const SSL *s, int where, int ret)
     const char *str;
     int w;
 
-    w=where& ~SSL_ST_MASK;
+    w = where & ~SSL_ST_MASK;
 
-    if (w & SSL_ST_CONNECT) str="SSL_connect";
-    else if (w & SSL_ST_ACCEPT) str="SSL_accept";
-    else str="undefined";
+    if (w & SSL_ST_CONNECT)
+        str = "SSL_connect";
+    else if (w & SSL_ST_ACCEPT)
+        str = "SSL_accept";
+    else
+        str = "undefined";
 
-    if (where & SSL_CB_LOOP)
-    {
-        fprintf(stderr,"%s:%s\n",str,SSL_state_string_long(s));
-    }
-    else if (where & SSL_CB_ALERT)
-    {
-        str=(where & SSL_CB_READ)?"read":"write";
-        fprintf(stderr,"SSL3 alert %s:%s:%s\n",
-                str,
+    if (where & SSL_CB_LOOP) {
+        fprintf(stderr, "%s:%s\n", str, SSL_state_string_long(s));
+    } else if (where & SSL_CB_ALERT) {
+        str = (where & SSL_CB_READ) ? "read" : "write";
+        fprintf(stderr, "SSL3 alert %s:%s:%s\n", str,
                 SSL_alert_type_string_long(ret),
                 SSL_alert_desc_string_long(ret));
-    }
-    else if (where & SSL_CB_EXIT)
-    {
+    } else if (where & SSL_CB_EXIT) {
         if (ret == 0)
-            fprintf(stderr,"%s:failed in %s\n",
-                    str,SSL_state_string_long(s));
-        else if (ret < 0)
-        {
-            fprintf(stderr,"%s:error in %s\n",
-                    str,SSL_state_string_long(s));
+            fprintf(stderr, "%s:failed in %s\n", str, SSL_state_string_long(s));
+        else if (ret < 0) {
+            fprintf(stderr, "%s:error in %s\n", str, SSL_state_string_long(s));
         }
     }
 }
 #endif
 
-static int sslio_accept_or_connect(SBUF2 *sb,
-        SSL_CTX *ctx, int (*SSL_func)(SSL *),
-        ssl_mode verify, char *err, size_t n,
-        SSL_SESSION *sess, int *unrecoverable,
-        const char * f)
+static int sslio_accept_or_connect(SBUF2 *sb, SSL_CTX *ctx,
+                                   int (*SSL_func)(SSL *), ssl_mode verify,
+                                   char *err, size_t n, SSL_SESSION *sess,
+                                   int *unrecoverable, const char *f)
 {
     int rc, ioerr, fd, flags;
 
@@ -309,7 +302,7 @@ static int sslio_accept_or_connect(SBUF2 *sb,
 
     if (sb->ssl != NULL) {
         ssl_sfeprint(err, n, my_ssl_eprintln,
-                "SSL connection has been established already.");
+                     "SSL connection has been established already.");
         return EPERM;
     }
 
@@ -421,8 +414,8 @@ int SBUF2_FUNC(sslio_accept)(SBUF2 *sb, SSL_CTX *ctx,
 {
     int dummy;
 
-    int rc = sslio_accept_or_connect(sb, ctx, SSL_accept,
-                                   mode, err, n, NULL, &dummy, __func__);
+    int rc = sslio_accept_or_connect(sb, ctx, SSL_accept, mode, err, n, NULL,
+                                     &dummy, __func__);
     return rc;
 }
 
@@ -431,8 +424,8 @@ int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx,
                             ssl_mode mode, char *err, size_t n)
 {
     int dummy;
-    int rc = sslio_accept_or_connect(sb, ctx, SSL_connect,
-                                   mode, err, n, NULL, &dummy, __func__);
+    int rc = sslio_accept_or_connect(sb, ctx, SSL_connect, mode, err, n, NULL,
+                                     &dummy, __func__);
     return rc;
 }
 #else
@@ -440,8 +433,8 @@ int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx,
                             ssl_mode mode, char *err, size_t n,
                             SSL_SESSION *sess, int *unrecoverable)
 {
-    return sslio_accept_or_connect(sb, ctx, SSL_connect,
-                                   mode, err, n, sess, unrecoverable, __func__);
+    return sslio_accept_or_connect(sb, ctx, SSL_connect, mode, err, n, sess,
+                                   unrecoverable, __func__);
 }
 #endif
 

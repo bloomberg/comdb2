@@ -113,7 +113,7 @@ int fdb_svc_sql_row(SBUF2 *sb, char *cid, char *row, int rowlen, int ret,
     }
 
     rc = fdb_bend_send_row(sb, NULL, cid, genid, row, rowlen, NULL, 0, ret,
-                             isuuid);
+                           isuuid);
 
     return rc;
 }
