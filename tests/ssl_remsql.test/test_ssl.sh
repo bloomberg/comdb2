@@ -25,7 +25,7 @@ cdb2sql --tabs --cdb2cfg $cdb2cfg2 $db2 default "exec procedure sys.cmd.send(\"f
 
 # validate results 
 testcase_output=$(cat $output)
-expected_output=$(cat output.log.actual)
+expected_output=$(cat output.log)
 if [[ "$testcase_output" != "$expected_output" ]]; then
 
    # print message 
