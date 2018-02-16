@@ -234,7 +234,7 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
     return 1; /* there was no "if" statement or it was true */
 }
 
-int process_deferred_options(struct dbenv *dbenv,
+void process_deferred_options(struct dbenv *dbenv,
                              enum deferred_option_level lvl, void *usrdata,
                              int (*callback)(struct dbenv *env, char *option,
                                              void *p, int len))
@@ -242,16 +242,19 @@ int process_deferred_options(struct dbenv *dbenv,
     struct deferred_option *opt;
     int rc;
 
+    LISTC_FOR_EACH(&dbenv->deferred_options[lvl], opt, lnk) {
+        callback(dbenv, opt->option, usrdata, opt->len);
+    }
+}
+
+int clear_deferred_options(struct dbenv *dbenv, enum deferred_option_level lvl) {
+    struct deferred_option *opt;
     opt = listc_rtl(&dbenv->deferred_options[lvl]);
     while (opt) {
-        rc = callback(dbenv, opt->option, usrdata, opt->len);
-
-        if (rc) return rc;
         free(opt->option);
         free(opt);
         opt = listc_rtl(&dbenv->deferred_options[lvl]);
     }
-    return 0;
 }
 
 static void init_deferred_options(struct dbenv *dbenv)
@@ -290,7 +293,9 @@ static void add_legacy_default_options(struct dbenv *dbenv)
         "norcache",
         "usenames",
         "dont_return_long_column_names",
-        "setattr DIRECTIO 0"};
+        "setattr DIRECTIO 0",
+        "berkattr elect_highest_committed_gen 0"
+    };
     for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++)
         defer_option(dbenv, DEFERRED_LEGACY_DEFAULTS, legacy_options[i], -1, 0);
 }
@@ -403,16 +408,9 @@ struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
         read_lrl_option(dbenv, line, &options, strlen(line));
     }
     options.lineno = 0;
-    rc = process_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS, &options,
+    process_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS, &options,
                                   read_lrl_option);
-    if (rc) {
-        logmsg(LOGMSG_WARN, "process_deferred_options rc %d\n", rc);
-        fclose(ff);
-    }
-    if (rc) {
-        fclose(ff);
-        return NULL;
-    }
+    clear_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS);
 
     /* process legacy options (we deferred them) */
 

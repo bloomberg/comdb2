@@ -5098,6 +5098,7 @@ int main(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "failed to process deferred options\n");
         exit(1);
     }
+    clear_deferred_options(thedb, DEFERRED_SEND_COMMAND);
 
     // db started - disable recsize kludge so
     // new schemachanges won't allow broken size.
