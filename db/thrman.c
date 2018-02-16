@@ -383,19 +383,29 @@ const char *thrman_type2a(enum thrtype type)
     }
 }
 
+#define SNPRINTF(str, size, fmt, ...)                                          \
+    {                                                                          \
+        ret = snprintf(str, size, fmt, __VA_ARGS__);                           \
+        if (ret >= size)                                                       \
+            goto done;                                                         \
+        pos += ret;                                                            \
+    }
+
 /* Populate the buffer with a description of the thread.  Returns a pointer
  * to the buffer. */
 char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
 {
+    int ret;
+
     if (!thr)
         snprintf(buf, szbuf, "thr==NULL");
     else {
         const char *where = thr->where;
         int fd = thr->fd;
-        int pos;
+        int pos = 0;
 
-        pos = snprintf(buf, szbuf, "tid %u:%s", thr->archtid,
-                       thrman_type2a(thr->type));
+        SNPRINTF(buf, szbuf, "tid %u:%s", thr->archtid,
+                 thrman_type2a(thr->type));
 
         if (fd >= 0) {
             /* Get the IP address of this socket connection.  We assume that
@@ -408,24 +418,24 @@ char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
             char addrstr[64];
             if (getpeername(fd, (struct sockaddr *)&peeraddr,
                             (socklen_t *)&len) < 0)
-                pos +=
-                    snprintf(buf + pos, szbuf - pos, ", fd %d (getpeername:%s)",
-                             fd, strerror(errno));
+                SNPRINTF(buf + pos, szbuf - pos, ", fd %d (getpeername:%s)", fd,
+                         strerror(errno))
             else if (inet_ntop(peeraddr.sin_family, &peeraddr.sin_addr, addrstr,
                                sizeof(addrstr)) == NULL)
-                pos += snprintf(buf + pos, szbuf - pos,
-                                ", fd %d (inet_ntop:%s)", fd, strerror(errno));
+                SNPRINTF(buf + pos, szbuf - pos, ", fd %d (inet_ntop:%s)", fd,
+                         strerror(errno))
             else
-                pos += snprintf(buf + pos, szbuf - pos, ", fd %d (%s)", fd,
-                                addrstr);
+                SNPRINTF(buf + pos, szbuf - pos, ", fd %d (%s)", fd, addrstr)
         }
         if (thr->corigin[0])
-            pos += snprintf(buf + pos, szbuf - pos, ", %s", thr->corigin);
+            SNPRINTF(buf + pos, szbuf - pos, ", %s", thr->corigin)
         if (thr->id[0])
-            pos += snprintf(buf + pos, szbuf - pos, ", %s", thr->id);
+            SNPRINTF(buf + pos, szbuf - pos, ", %s", thr->id)
         if (where != NULL)
-            pos += snprintf(buf + pos, szbuf - pos, ": %s", where);
+            SNPRINTF(buf + pos, szbuf - pos, ": %s", where)
     }
+
+done:
     return buf;
 }
 

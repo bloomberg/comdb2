@@ -2358,6 +2358,14 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
 #define GEN_KEY_PREFIX "KEY"
 #define GEN_CONS_PREFIX "CONSTRAINT"
 
+#define SNPRINTF(str, size, fmt, ...)                                          \
+    {                                                                          \
+        ret = snprintf(str, size, fmt, __VA_ARGS__);                           \
+        if (ret >= size)                                                       \
+            goto done;                                                         \
+        pos += ret;                                                            \
+    }
+
 /* Generate a key name for the specified key. */
 static int gen_key_name(struct comdb2_key *key, const char *table, char *out,
                         size_t out_size)
@@ -2365,30 +2373,29 @@ static int gen_key_name(struct comdb2_key *key, const char *table, char *out,
     struct comdb2_index_column *idx_column;
     char buf[16 * 1024];
     int pos = 0;
+    int ret;
     unsigned long crc;
 
     /* Table name */
-    pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", table);
+    SNPRINTF(buf, sizeof(buf) - pos, "%s", table)
 
     /* DATACOPY */
-    if (key->flags & KEY_DATACOPY) {
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DATACOPY");
-    }
+    if (key->flags & KEY_DATACOPY)
+        SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "DATACOPY")
 
     /* DUP */
-    if (key->flags & KEY_DUP) {
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DUP");
-    }
+    if (key->flags & KEY_DUP)
+        SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "DUP")
 
     LISTC_FOR_EACH(&key->idx_col_list, idx_column, lnk)
     {
         assert((idx_column->column->flags & COLUMN_DELETED) == 0);
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", idx_column->name);
-        if (idx_column->flags & INDEX_ORDER_DESC) {
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-        }
+        SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", idx_column->name)
+        if (idx_column->flags & INDEX_ORDER_DESC)
+            SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "DESC")
     }
 
+done:
     crc = crc32(0, (unsigned char *)buf, pos);
 
     snprintf(out, out_size, "$%s_%X", GEN_KEY_PREFIX, (unsigned int)crc);
@@ -2423,6 +2430,7 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
     struct schema *key;
     int pos = 0;
     int found = 0;
+    int ret;
 
     /* Child key columns and sort orders */
     for (int i = 0; i < pConstraint->lcltable->schema->nix; i++) {
@@ -2433,13 +2441,12 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 
             for (int j = 0; j < key->nmembers; j++) {
                 /* Column name */
-                pos += snprintf(buf + pos, sizeof(buf) - pos, "%s",
-                                key->member[j].name);
+                SNPRINTF(buf + pos, sizeof(buf) - pos, "%s",
+                         key->member[j].name)
 
                 /* Sort order */
-                if (key->member[j].flags & INDEX_DESCEND) {
-                    pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-                }
+                if (key->member[j].flags & INDEX_DESCEND)
+                    SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "DESC")
             }
             break;
         }
@@ -2447,8 +2454,7 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
     assert(found);
 
     /* Parent table name */
-    pos += snprintf(buf + pos, sizeof(buf) - pos, "%s",
-                    pConstraint->table[parent_idx]);
+    SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", pConstraint->table[parent_idx])
 
     /* Get the parent table */
     table = get_dbtable_by_name(pConstraint->table[parent_idx]);
@@ -2466,19 +2472,19 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 
             for (int j = 0; j < key->nmembers; j++) {
                 /* Column name */
-                pos += snprintf(buf + pos, sizeof(buf) - pos, "%s",
-                                key->member[j].name);
+                SNPRINTF(buf + pos, sizeof(buf) - pos, "%s",
+                         key->member[j].name)
 
                 /* Sort order */
-                if (key->member[j].flags & INDEX_DESCEND) {
-                    pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-                }
+                if (key->member[j].flags & INDEX_DESCEND)
+                    SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "DESC")
             }
             break;
         }
     }
     assert(found);
 
+done:
     gen_constraint_name_int(buf, pos, out, out_size);
 
     return 0;
@@ -2489,36 +2495,35 @@ static int gen_constraint_name2(struct comdb2_constraint *constraint, char *out,
 {
     char buf[3 * 1024];
     int pos = 0;
+    int ret;
     struct comdb2_index_column *idx_column;
 
     /* Child key columns and sort orders */
     LISTC_FOR_EACH(&constraint->child_idx_col_list, idx_column, lnk)
     {
         /* Column name */
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", idx_column->name);
+        SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", idx_column->name)
 
         /* Sort order */
-        if (idx_column->flags & INDEX_ORDER_DESC) {
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-        }
+        if (idx_column->flags & INDEX_ORDER_DESC)
+            SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "DESC")
     }
 
     /* Parent table name */
-    pos +=
-        snprintf(buf + pos, sizeof(buf) - pos, "%s", constraint->parent_table);
+    SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", constraint->parent_table)
 
     /* Parent key columns and sort orders */
     LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_column, lnk)
     {
         /* Column name */
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", idx_column->name);
+        SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", idx_column->name)
 
         /* Sort order */
-        if (idx_column->flags & INDEX_ORDER_DESC) {
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-        }
+        if (idx_column->flags & INDEX_ORDER_DESC)
+            SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "DESC")
     }
 
+done:
     gen_constraint_name_int(buf, pos, out, out_size);
 
     return 0;

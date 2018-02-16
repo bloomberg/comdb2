@@ -1342,30 +1342,41 @@ static int using_old_style_name(char *namebuf, int len, struct schema *schema,
     return stat1_find(namebuf, schema, db, ixnum, trans);
 }
 
+#define SNPRINTF(str, size, fmt, ...)                                          \
+    {                                                                          \
+        ret = snprintf(str, size, fmt, __VA_ARGS__);                           \
+        if (ret >= size)                                                       \
+            goto done;                                                         \
+        current += ret;                                                        \
+    }
+
 void form_new_style_name(char *namebuf, int len, struct schema *schema,
                          const char *csctag, const char *dbname)
 {
     char buf[16 * 1024];
     int fieldctr;
     int current = 0;
+    int ret;
     unsigned int crc;
-    current += snprintf(buf + current, sizeof buf - current, "%s", dbname);
-    if (schema->flags & SCHEMA_DATACOPY) {
-        current += snprintf(buf + current, sizeof buf - current, "DATACOPY");
-    }
-    if (schema->flags & SCHEMA_DUP) {
-        current += snprintf(buf + current, sizeof buf - current, "DUP");
-    }
-    if (schema->flags & SCHEMA_RECNUM) {
-        current += snprintf(buf + current, sizeof buf - current, "RECNUM");
-    }
+
+    SNPRINTF(buf + current, sizeof buf - current, "%s", dbname)
+    if (schema->flags & SCHEMA_DATACOPY)
+        SNPRINTF(buf + current, sizeof buf - current, "%s", "DATACOPY")
+
+    if (schema->flags & SCHEMA_DUP)
+        SNPRINTF(buf + current, sizeof buf - current, "%s", "DUP")
+
+    if (schema->flags & SCHEMA_RECNUM)
+        SNPRINTF(buf + current, sizeof buf - current, "%s", "RECNUM")
+
     for (fieldctr = 0; fieldctr < schema->nmembers; ++fieldctr) {
-        current += snprintf(buf + current, sizeof buf - current, "%s",
-                            schema->member[fieldctr].name);
-        if (schema->member[fieldctr].flags & INDEX_DESCEND) {
-            current += snprintf(buf + current, sizeof buf - current, "DESC");
-        }
+        SNPRINTF(buf + current, sizeof buf - current, "%s",
+                 schema->member[fieldctr].name)
+        if (schema->member[fieldctr].flags & INDEX_DESCEND)
+            SNPRINTF(buf + current, sizeof buf - current, "%s", "DESC")
     }
+
+done:
     crc = crc32(0, (unsigned char *)buf, current);
     snprintf(namebuf, len, "$%s_%X", csctag, crc);
 }
