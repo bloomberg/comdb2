@@ -3237,12 +3237,21 @@ static int get_lowfilenum_sanclist(bdb_state_type *bdb_state)
     lowfilenum = INT_MAX;
 
     for (i = 0; i < numnodes; i++) {
-        if (bdb_state->seqnum_info->filenum[nodeix(nodes[i])] < lowfilenum)
+        if (bdb_state->seqnum_info->filenum[nodeix(nodes[i])] < lowfilenum) {
             lowfilenum = bdb_state->seqnum_info->filenum[nodeix(nodes[i])];
+            if (bdb_state->attr->debug_log_deletion) {
+                logmsg(LOGMSG_USER, "%s set lowfilenum to %d for machine "
+                        "%s\n", __func__, nodes[i]);
+            }
+        }
     }
 
-    if (lowfilenum == INT_MAX)
+    if (lowfilenum == INT_MAX) {
         lowfilenum = 0;
+        if (bdb_state->attr->debug_log_deletion) {
+            logmsg(LOGMSG_USER, "%s defaulting lowfilenum to 0\n", __func__);
+        }
+    }
 
     return lowfilenum;
 }
@@ -3738,7 +3747,12 @@ int bdb_get_low_headroom_count(bdb_state_type *bdb_state)
 
 void delete_log_files(bdb_state_type *bdb_state)
 {
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+    BDB_READLOCK("logdelete_thread");
+    pthread_mutex_lock(&lk);
     delete_log_files_int(bdb_state);
+    pthread_mutex_unlock(&lk);
+    BDB_RELLOCK();
 }
 
 void bdb_print_log_files(bdb_state_type *bdb_state)

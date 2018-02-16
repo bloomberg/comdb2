@@ -355,7 +355,8 @@ void deserialise_database(
         bool legacy_mode,
         bool& is_disk_full,
         bool run_with_done_file,
-        bool incr_mode
+        bool incr_mode,
+        bool dryrun
 )
 // Deserialise a database from serialised from received on stdin.
 // If lrldestdir and datadestdir are not NULL then the lrl and data files
@@ -509,7 +510,8 @@ void deserialise_database(
                     percent_full,
                     force_mode,
                     options,
-                    is_disk_full
+                    is_disk_full,
+                    dryrun
                 );
             }
             break;
@@ -889,15 +891,16 @@ void deserialise_database(
             if (!datadestdir.empty() && check_dest_dir(datadestdir)) {
                 /* Remove old log files.  This used to remove all files in the directory,
                    which can be problematic if hi. */
-                if (!legacy_mode && !incr_mode) {
+                if (!legacy_mode) {
                    // remove files in the txn directory
                    std::string dbtxndir(datadestdir + "/" + dbname + ".txn");
                    make_dirs( dbtxndir );
-                   remove_all_old_files( dbtxndir );
+                   if (!incr_mode)
+                       remove_all_old_files( dbtxndir );
                    dbtxndir = datadestdir + "/" + "logs";
                    make_dirs( dbtxndir );
-                   remove_all_old_files( dbtxndir );
-
+                   if (!incr_mode)
+                       remove_all_old_files( dbtxndir );
                 }
             }
         }

@@ -328,7 +328,8 @@ int main(int argc, char *argv[])
              legacy_mode,
              is_disk_full,
              run_with_done_file,
-             incr_ex
+             incr_ex,
+             dryrun
            );
         } catch(std::exception& e) {
             std::cerr << e.what() << std::endl;

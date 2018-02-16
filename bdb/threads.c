@@ -357,9 +357,7 @@ void *logdelete_thread(void *arg)
         run_interval = (run_interval <= 0 ? 30 : run_interval);
 
         if ((now - last_run_time) >= run_interval) {
-            BDB_READLOCK("logdelete_thread");
             delete_log_files(bdb_state);
-            BDB_RELLOCK();
             last_run_time = now;
         }
         sleep(1);

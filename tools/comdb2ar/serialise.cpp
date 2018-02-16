@@ -1386,8 +1386,6 @@ void write_incremental_file (
                 pagep->lsn.file = myflip(pagep->lsn.file);
                 pagep->lsn.offset = myflip(pagep->lsn.offset);
             }
-            if (pagep->lsn.file > 1000)
-                abort();
 
             write(1, &(LSN(pagep).file), 4);
             write(1, &(LSN(pagep).offset), 4);

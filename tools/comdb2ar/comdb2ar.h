@@ -126,7 +126,8 @@ void deserialise_database(
   bool legacy_mode,
   bool& is_disk_full,
   bool run_with_done_file,
-  bool incr_mode
+  bool incr_mode,
+  bool dryrun
 );
 // Deserialise a database from serialised form received on stdin.
 // If lrldestdir and datadestdir are not NULL then the lrl and data files

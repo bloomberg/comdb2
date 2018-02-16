@@ -376,7 +376,8 @@ void incr_deserialise_database(
     unsigned percent_full,
     bool force_mode,
     std::vector<std::string>& options,
-    bool& is_disk_full
+    bool& is_disk_full,
+    bool& dryrun
 )
 // Read from STDIN to deserialise an incremental backup
 {
@@ -507,7 +508,7 @@ void incr_deserialise_database(
         // All incremental changes are stored in a single .data file, so unpack that
         // using the file order to keep track of which file is currently being read
         } else if(is_incr_data) {
-            unpack_incr_data(file_order, updated_files, datadestdir, true);
+            unpack_incr_data(file_order, updated_files, datadestdir, dryrun);
         // Unpack a full file
         } else if (is_data_file || is_queue_file || is_queuedb_file) {
             std::map<std::string, FileInfo>::iterator file_it = new_files.find(filename);

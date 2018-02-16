@@ -33,6 +33,19 @@ function failexit
     exit -1
 }
 
+function deletelogs
+{
+    [[ $debug == 1 ]] && set -x
+    if [[ -n "${CLUSTER}" ]]; then
+        for node in ${CLUSTER} ; do 
+            ssh $node "cdb2sql ${CDB2_OPTIONS} $dbname default \"exec procedure sys.cmd.send('deletelogs')\""
+        done
+    else
+        cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('deletelogs')"
+    fi
+    sleep 2
+}
+
 function checkload
 {
     [[ $debug == 1 ]] && set -x
@@ -86,6 +99,13 @@ function make_backup {
   echo ${LOCTMPDIR}/backups/${backupname}
   echo "  DONE WITH INCREMENT"
   echo " "
+}
+
+function copy_to_local {
+  [[ $debug == 1 ]] && set -x
+  if [[ -n "$CLUSTER" ]]; then
+    scp -r $machine:${LOCTMPDIR}/restore ${LOCTMPDIR}/restore
+  fi
 }
 
 function test_restoredb {
@@ -172,12 +192,14 @@ sleep 1
 
 # BASIC FUNCTIONALITY TEST
 resetdb
+deletelogs
 for statement in `ls t1-*.stmt`; do
   force_checkpoint
   sleep $sleeptime
   cdb2sql ${CDB2_OPTIONS} -f $statement $dbname default
   force_checkpoint
   make_backup $statement
+  deletelogs
 done
 
 echo "~~~~~~~~~~"
@@ -186,6 +208,7 @@ echo " "
 
 counter=0
 
+copy_to_local
 for testreq in `ls t1-*.req`; do
   test_restoredb $testreq $counter
   let counter=counter+1
@@ -200,6 +223,8 @@ for i in $(seq 1 10); do
 done
 cdb2sql ${CDB2_OPTIONS} -f t1-3_insert.stmt $dbname default
 make_backup push_next_inserts
+deletelogs
+copy_to_local
 test_restoredb t2.req 2
 killwriters
 
