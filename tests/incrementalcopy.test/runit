@@ -30,42 +30,42 @@ typeset -a nodes
 read -r -a nodes <<< $CLUSTER
 target=${nodes[$(($RANDOM % ${#nodes[@]}))]}
 
-$cdb2sql ${CDB2_OPTIONS} $dbname $default "create table t (a int, b cstring(100))"
+${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname $default "create table t (a int, b cstring(100))"
 
-schema=$($cdb2sql ${CDB2_OPTIONS} -tabs $dbname $default "select csc2 from sqlite_master where tbl_name='t' and type='table'")
+schema=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} -tabs $dbname $default "select csc2 from sqlite_master where tbl_name='t' and type='table'")
 echo "schema is $schema"
 
-$cdb2sql ${CDB2_OPTIONS} $dbname $default "alter table t options rec none, rebuild {$schema}"
+${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname $default "alter table t options rec none, rebuild {$schema}"
 
 for i in $(seq 1 $nrecs); do
     echo "insert into t(a, b) values($i, '')"
-done | $cdb2sql ${CDB2_OPTIONS} $dbname $default - >/dev/null
+done | ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname $default - >/dev/null
 
 # create a partials tarball
-ssh $target $comdb2ar p $lrl > partials.lrl
+ssh $target $COMDB2AR_EXE p $lrl > partials.lrl
 
 rm -fr partials
 mkdir partials
 tar xf partials.lrl -C partials 
 
 # take down the target db
-ssh $target "$cdb2sql $dbname local 'exec procedure sys.cmd.send.(\"exit\")'"
+ssh $target "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send.(\"exit\")'"
 
 # insert some more rows
 for i in $(seq 1 $morerecs); do
     echo "insert into t(a, b) values($i, '')"
-done | $cdb2sql ${CDB2_OPTIONS} $dbname $default - >/dev/null
+done | ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname $default - >/dev/null
 
 # create a partial backup
-$comdb2ar -I inc -b partials $lrl > backup.tar
+$COMDB2AR_EXE -I inc -b partials $lrl > backup.tar
 
 scp backup.tar $target:$pwd
 
 # restore
-ssh $target $comdb2ar P $lrl < $pwd/backup.tar
+ssh $target $COMDB2AR_EXE P $lrl < $pwd/backup.tar
 
 # bring back up
-ssh $target $comdb2 $dbname -lrl $lrl &
+ssh $target ${COMDB2_EXE} $dbname -lrl $lrl &
 # todo loop until up
 sleep 30
 

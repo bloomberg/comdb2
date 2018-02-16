@@ -38,10 +38,10 @@ function deletelogs
     [[ $debug == 1 ]] && set -x
     if [[ -n "${CLUSTER}" ]]; then
         for node in ${CLUSTER} ; do 
-            ssh $node "cdb2sql ${CDB2_OPTIONS} $dbname default \"exec procedure sys.cmd.send('deletelogs')\""
+            ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default \"exec procedure sys.cmd.send('deletelogs')\""
         done
     else
-        cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('deletelogs')"
+        ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('deletelogs')"
     fi
     sleep 2
 }
@@ -49,7 +49,7 @@ function deletelogs
 function checkload
 {
     [[ $debug == 1 ]] && set -x
-    cdb2sql -s ${CDB2_OPTIONS} $dbname default "select count(*) from load" &> /dev/null
+    ${CDB2SQL_EXE} -s ${CDB2_OPTIONS} $dbname default "select count(*) from load" &> /dev/null
     r=$?
     if [[ $r != 0 ]]; then
         killwriters
@@ -60,11 +60,11 @@ function checkload
 
 function force_checkpoint {
   [[ $debug == 1 ]] && set -x
-  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
-  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
+  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
   sleep 10
-  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
-  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
+  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
 }
 
 function make_base {
@@ -124,12 +124,12 @@ function test_restoredb {
   $COMDB2_EXE ${dbname}_restore --lrl ${LOCTMPDIR}/restore/${dbname}.single.lrl -pidfile ${TMPDIR}/${dbname}_restore.pid &
   # wait for db to launch
   count=0
-  cdb2sql ${dbname}_restore local "select 1" > ./sqloutput 2>&1
+  ${CDB2SQL_EXE} ${dbname}_restore local "select 1" > ./sqloutput 2>&1
   sqloutput=$(cat ./sqloutput)
   while [ "$sqloutput" != "(1=1)" -a $count -le 30 ]; do
       sleep 1
       let count=count+1
-      cdb2sql ${dbname}_restore local "select 1" > ./sqloutput 2>&1
+      ${CDB2SQL_EXE} ${dbname}_restore local "select 1" > ./sqloutput 2>&1
       sqloutput=$(cat ./sqloutput)
   done
 
@@ -139,7 +139,7 @@ function test_restoredb {
   fi
   echo " "
 
-  cdb2sql -f $1 ${dbname}_restore local > ${testname}.output 2>&1
+  ${CDB2SQL_EXE} -f $1 ${dbname}_restore local > ${testname}.output 2>&1
   cat ${testname}.output
   diff ${testname}.expected ${testname}.output
   if [[ $? -ne 0 ]] ; then
@@ -165,17 +165,17 @@ function resetdb {
   rm -rf ${LOCTMPDIR}/backups ${LOCTMPDIR}/restore ${LOCTMPDIR}/increment
   mkdir -p ${LOCTMPDIR}/backups ${LOCTMPDIR}/restore ${LOCTMPDIR}/increment
 
-  cdb2sql ${CDB2_OPTIONS} $dbname default "DROP TABLE t1"
+  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "DROP TABLE t1"
   force_checkpoint
   make_base
-  cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE t1  { `cat t1.csc2 ` }" || failexit "create failed"
+  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "CREATE TABLE t1  { `cat t1.csc2 ` }" || failexit "create failed"
   force_checkpoint
   make_backup t1-2_create_table
 }
 
 rm ./testcase.done
-cdb2sql ${CDB2_OPTIONS} $dbname default "DROP TABLE load"
-cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE load  { `cat load.csc2 ` }" || failexit "create failed"
+${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "DROP TABLE load"
+${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "CREATE TABLE load  { `cat load.csc2 ` }" || failexit "create failed"
 
 ( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
 ( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
@@ -196,7 +196,7 @@ deletelogs
 for statement in `ls t1-*.stmt`; do
   force_checkpoint
   sleep $sleeptime
-  cdb2sql ${CDB2_OPTIONS} -f $statement $dbname default
+  ${CDB2SQL_EXE} ${CDB2_OPTIONS} -f $statement $dbname default
   force_checkpoint
   make_backup $statement
   deletelogs
@@ -217,11 +217,11 @@ done
 # PUSH NEXT TEST FOR RECOVERY WITH LOG HOLES
 resetdb
 for i in $(seq 1 10); do
-  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('pushnext')"
+  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('pushnext')"
   # Need to sleep briefly so that multiple pushnext's aren't processed as the same one
   sleep 2
 done
-cdb2sql ${CDB2_OPTIONS} -f t1-3_insert.stmt $dbname default
+${CDB2SQL_EXE} ${CDB2_OPTIONS} -f t1-3_insert.stmt $dbname default
 make_backup push_next_inserts
 deletelogs
 copy_to_local
