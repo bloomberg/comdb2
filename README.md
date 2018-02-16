@@ -47,7 +47,7 @@ On every machine in the cluster:
    Install Xcode and Homebrew. Then install required libraries:
 
    ```
-   brew install cmake lz4 openssl protobuf-c readline ossp-uuid
+   brew install cmake lz4 openssl protobuf-c readline
    ```
 
    To run tests, install following:
