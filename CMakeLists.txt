@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 if(NOT CMAKE_BUILD_TYPE)
   get_property(helpstring CACHE CMAKE_BUILD_TYPE PROPERTY HELPSTRING)
-  set(CMAKE_BUILD_TYPE Debug CACHE STRING ${helpstring} FORCE)
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING ${helpstring} FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "RelWithDebInfo" "Release")
 endif()
 
