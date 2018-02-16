@@ -10730,7 +10730,7 @@ retry:
         return NULL;
     }
 
-    sockfd = cdb2_tcpconnecth_to(host, port, 0, 0);
+    sockfd = tcpconnecth_to(host, port, 0, 0);
     if (sockfd == -1) {
         logmsg(LOGMSG_ERROR, "%s: cannot connect to %s on machine %s port %d\n",
                 __func__, dbname, host, port);

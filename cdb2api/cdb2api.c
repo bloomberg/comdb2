@@ -633,7 +633,7 @@ static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
     return (sockfd); /* all OK */
 }
 
-int cdb2_tcpconnecth_to(const char *host, int port, int myport,
+static int cdb2_tcpconnecth_to(const char *host, int port, int myport,
                                int timeoutms)
 {
     int rc;
