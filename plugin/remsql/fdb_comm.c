@@ -1004,6 +1004,19 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
                 return -1;
             msg->co.ssl = ntohl(msg->co.ssl);
             /*fprintf(stderr, "Read ssl %d size %d\n", msg->co.ssl, sizeof(tmp));*/
+           
+            if (gbl_client_ssl_mode < SSL_ALLOW) 
+                return -1;
+
+            rc = sbuf2putc(sb, 'Y');
+            if (rc<0)
+                return -1;
+            rc = sbuf2flush(sb);
+            if (rc<0)
+                return -1;
+            rc = sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL, 0);
+            if (rc!= 1)
+                return -1;
         }
 #else
         msg->co.ssl = 0;
