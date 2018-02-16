@@ -31,13 +31,7 @@ add_dependencies(objlib protobuf)
 add_library(cdb2api STATIC $<TARGET_OBJECTS:objlib>)
 add_library(cdb2api_shared SHARED $<TARGET_OBJECTS:objlib>)
 set_target_properties(cdb2api_shared PROPERTIES OUTPUT_NAME cdb2api)
-# required for generating .dylib on macOS
-if(${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
-  target_link_libraries(cdb2api_shared
-    ${OPENSSL_LIBRARIES}
-    ${PROTOBUF_C_LIBRARY}
-  )
-endif()
+target_link_libraries(cdb2api_shared ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY})
 configure_file(cdb2api.pc cdb2api.pc @ONLY)
 install(TARGETS cdb2api ARCHIVE DESTINATION lib)
 install(TARGETS cdb2api_shared LIBRARY DESTINATION lib)
