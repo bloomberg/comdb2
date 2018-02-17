@@ -42,14 +42,14 @@ for i in $(seq 1 $nrecs); do
 done | ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname $default - >/dev/null
 
 # create a partials tarball
-ssh $target $COMDB2AR_EXE p $lrl > partials.lrl
+ssh $target $COMDB2AR_EXE p $lrl > partials.lrl < /dev/null
 
 rm -fr partials
 mkdir partials
 tar xf partials.lrl -C partials 
 
 # take down the target db
-ssh $target "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send.(\"exit\")'"
+ssh $target "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send.(\"exit\")'" < /dev/null
 
 # insert some more rows
 for i in $(seq 1 $morerecs); do
@@ -62,15 +62,15 @@ $COMDB2AR_EXE -I inc -b partials $lrl > backup.tar
 scp backup.tar $target:$pwd
 
 # restore
-ssh $target $COMDB2AR_EXE P $lrl < $pwd/backup.tar
+ssh $target $COMDB2AR_EXE P $lrl < $pwd/backup.tar < /dev/null
 
 # bring back up
-ssh $target ${COMDB2_EXE} $dbname -lrl $lrl &
+ssh $target ${COMDB2_EXE} $dbname -lrl $lrl < /dev/null &
 # todo loop until up
 sleep 30
 
-ssh $target $comdb2sql ${CDB2_OPTIONS} -tabs "exec procedure sys.cmd.verify('t')"
-target_count=$(ssh $target $comdb2sql ${CDB2_OPTIONS} -tabs $dbname local "select count(*) from t")
+ssh $target $comdb2sql ${CDB2_OPTIONS} -tabs "exec procedure sys.cmd.verify('t')" < /dev/null
+target_count=$(ssh $target $comdb2sql ${CDB2_OPTIONS} -tabs $dbname local "select count(*) from t" < /dev/null)
 if [[ $target_count != $(($nrecs + $morerecs)) ]]; then
     echo "Wrong count expected $(($nrecs + $morerecs)) got $target_count"
     exit 1

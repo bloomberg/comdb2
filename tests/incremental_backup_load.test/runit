@@ -38,7 +38,7 @@ function deletelogs
     [[ $debug == 1 ]] && set -x
     if [[ -n "${CLUSTER}" ]]; then
         for node in ${CLUSTER} ; do 
-            ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default \"exec procedure sys.cmd.send('deletelogs')\""
+            ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default \"exec procedure sys.cmd.send('deletelogs')\"" < /dev/null
         done
     else
         ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('deletelogs')"
