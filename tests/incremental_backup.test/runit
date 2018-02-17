@@ -31,7 +31,7 @@ function deletelogs
     [[ $debug == 1 ]] && set -x
     if [[ -n "${CLUSTER}" ]]; then
         for node in ${CLUSTER} ; do 
-            ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default \"exec procedure sys.cmd.send('deletelogs')\"" < /dev/null
+            ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('deletelogs')\"" < /dev/null
         done
     else
         ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('deletelogs')"
@@ -45,12 +45,23 @@ function force_checkpoint {
 
   if [[ -n "${CLUSTER}" ]]; then
       for node in ${CLUSTER} ; do 
-        ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default \"exec procedure sys.cmd.send('flush')\"" < /dev/null
+          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('flush')\""
+          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('bdb logstat')\""
       done
   else
       ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
   fi
   sleep 10
+  if [[ -n "${CLUSTER}" ]]; then
+      for node in ${CLUSTER} ; do 
+          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('flush')\""
+          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('bdb logstat')\""
+      done
+  else
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
+  fi
 }
 
 function make_base {

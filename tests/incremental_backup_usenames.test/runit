@@ -28,9 +28,26 @@ function failexit
 
 function force_checkpoint {
   [[ $debug == 1 ]] && set -x
-  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "insert into load (id, name, data) values(1, 'xxx', x'1234')"
-  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+
+  if [[ -n "${CLUSTER}" ]]; then
+      for node in ${CLUSTER} ; do 
+          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('flush')\""
+          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('bdb logstat')\""
+      done
+  else
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
+  fi
   sleep 10
+  if [[ -n "${CLUSTER}" ]]; then
+      for node in ${CLUSTER} ; do 
+          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('flush')\""
+          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('bdb logstat')\""
+      done
+  else
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
+  fi
 }
 
 function make_base {

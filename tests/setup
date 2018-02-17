@@ -193,6 +193,7 @@ copy_files_to_cluster()
         ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
         scp -o StrictHostKeyChecking=no $COMDB2AR_EXE $node:$COMDB2AR_EXE
         scp -o StrictHostKeyChecking=no $COMDB2_EXE $node:$COMDB2_EXE
+        scp -o StrictHostKeyChecking=no $CDB2SQL_EXE $node:$CDB2SQL_EXE
         if [ -n "$RESTARTPMUX" ] ; then
             echo stop pmux on $node first before copying and starting it
             ssh -o StrictHostKeyChecking=no $node "$stop_pmux" < /dev/null
