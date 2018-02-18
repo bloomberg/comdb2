@@ -361,7 +361,7 @@ int main(int argc, char *argv[])
         }
         std::string lrlpath = argv[1];
         try {
-            restore_partials(lrlpath, do_direct_io, dryrun);
+            restore_partials(lrlpath, false, dryrun);
         }
         catch(std::exception& e) {
             std::cerr << e.what() << std::endl;

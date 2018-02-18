@@ -1128,7 +1128,7 @@ void restore_partials(
             write_file = true;
         }
         else {
-            std::cout << "unmentioned " << filename << std::endl;
+            std::cout << "support-file " << filename << std::endl;
             write_file = true;
         }
 

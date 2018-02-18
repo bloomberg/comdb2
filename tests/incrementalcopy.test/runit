@@ -6,12 +6,15 @@ export debug=1
 # Write 10k rows.  Bring one node down.  Write another 1k rows.  Copy and
 # bring up db.  Make sure it passes verify, and has 10k rows after copy.
 
-set -e
+#set -e
 
 export dbname=$1
 #export default=local
 
 # Export variables for comdb2 tools so we can call them directly from tests
+LOCTMPDIR=$TMPDIR/$dbname
+mkdir $LOCTMPDIR
+
 export cdb2sql=${SRCHOME}/cdb2sql
 export comdb2ar=${SRCHOME}/comdb2ar
 export comdb2=${SRCHOME}/comdb2
@@ -28,7 +31,21 @@ fi
 
 typeset -a nodes
 read -r -a nodes <<< $CLUSTER
-target=${nodes[$(($RANDOM % ${#nodes[@]}))]}
+idx=$RANDOM
+
+function getmaster {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
+
+master=$(getmaster)
+
+target=${nodes[$(($idx % ${#nodes[@]}))]}
+while [[ $target == $master ]]; do
+    let idx=idx+1
+    target=${nodes[$(($idx % ${#nodes[@]}))]}
+done
+
+backup=${nodes[$(( ( $idx + 1 ) % ${#nodes[@]}))]}
 
 ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "create table t (a int, b cstring(100))"
 
@@ -41,14 +58,11 @@ for i in $(seq 1 $nrecs); do
     echo "insert into t(a, b) values($i, '')"
 done | ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default - >/dev/null
 
+ssh $target "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send(\"flush\")'" < /dev/null
+sleep 5
+
 # create a partials tarball
-ssh $target $COMDB2AR_EXE p $lrl > partials.lrl < /dev/null
-
-rm -fr partials
-mkdir partials
-tar xf partials.lrl -C partials 
-
-# take down the target db
+ssh $target $COMDB2AR_EXE p $lrl > partials.tar < /dev/null
 ssh $target "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send(\"exit\")'" < /dev/null
 
 # insert some more rows
@@ -56,21 +70,45 @@ for i in $(seq 1 $morerecs); do
     echo "insert into t(a, b) values($i, '')"
 done | ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default - >/dev/null
 
-# create a partial backup
-$COMDB2AR_EXE -I inc -b partials $lrl > backup.tar
+ssh $backup "rm -Rf $LOCTMPDIR/partials" < /dev/null
+ssh $backup "mkdir -p $LOCTMPDIR/partials" < /dev/null
 
-scp backup.tar $target:$pwd
+scp partials.tar $backup:$LOCTMPDIR/partials.tar
+ssh $backup "tar xf $LOCTMPDIR/partials.tar -C $LOCTMPDIR/partials" < /dev/null
+ssh $backup "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send(\"flush\")'" < /dev/null
+sleep 5
+
+# create a partial backup
+ssh $backup "$COMDB2AR_EXE c -I inc -b $LOCTMPDIR/partials $lrl" > $LOCTMPDIR/backup.tar < /dev/null
+
+ssh $target "mkdir -p $LOCTMPDIR" < /dev/null
+scp $LOCTMPDIR/backup.tar $target:$LOCTMPDIR/backup.tar
 
 # restore
-ssh $target $COMDB2AR_EXE P $lrl < $pwd/backup.tar < /dev/null
+ssh $target "$COMDB2AR_EXE P $lrl < $LOCTMPDIR/backup.tar" < /dev/null
+
+sleep 5
+
+# Bring other nodes down
+for node in $CLUSTER ; do 
+    kill -9 $(cat ${TMPDIR}/${dbname}.${node}.pid)
+     #ssh $node "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send(\"exit\")'" < /dev/null
+done
+
+newlrl="${DBDIR}/${dbname}.local.lrl"
+egrep -v "cluster nodes" $lrl > $newlrl
+scp $newlrl $target:$newlrl
 
 # bring back up
-ssh $target ${COMDB2_EXE} $dbname -lrl $lrl < /dev/null &
-# todo loop until up
+ssh $target ${COMDB2_EXE} $dbname -lrl $newlrl < /dev/null &
+
 sleep 30
 
-ssh $target $comdb2sql ${CDB2_OPTIONS} -tabs "exec procedure sys.cmd.verify('t')" < /dev/null
-target_count=$(ssh $target $comdb2sql ${CDB2_OPTIONS} -tabs $dbname local "select count(*) from t" < /dev/null)
+ssh $target "${CDB2SQL_EXE} ${CDB2_OPTIONS} -tabs $dbname local \"exec procedure sys.cmd.verify('t')\"" < /dev/null
+
+target_count=$(ssh $target "${CDB2SQL_EXE} ${CDB2_OPTIONS} -tabs $dbname local \"select count(*) from t\"" < /dev/null)
+ssh $target "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send(\"exit\")'" < /dev/null
+
 if [[ $target_count != $(($nrecs + $morerecs)) ]]; then
     echo "Wrong count expected $(($nrecs + $morerecs)) got $target_count"
     exit 1
