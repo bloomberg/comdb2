@@ -13,7 +13,7 @@ done
 echo "COMMIT" >> $insertsql
 
 while :; do 
-    cdb2sql -s ${CDB2_OPTIONS} -f $insertsql $dbname default &> /dev/null
+    $CDB2SQL_EXE -s ${CDB2_OPTIONS} -f $insertsql $dbname default &> /dev/null
     if [[ -f ./testcase.done ]]; then
         exit 0
     fi
