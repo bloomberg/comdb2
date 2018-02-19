@@ -7,6 +7,7 @@ export debug=1
 # bring up db.  Make sure it passes verify, and has 10k rows after copy.
 
 #set -e
+export sleeptime=10
 
 export dbname=$1
 #export default=local
@@ -59,11 +60,14 @@ for i in $(seq 1 $nrecs); do
 done | ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default - >/dev/null
 
 ssh $target "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send(\"flush\")'" < /dev/null
-sleep 5
+sleep $sleeptime
 
 # create a partials tarball
 ssh $target $COMDB2AR_EXE p $lrl > partials.tar < /dev/null
-ssh $target "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send(\"exit\")'" < /dev/null
+sleep $sleeptime
+kill -9 $(cat ${TMPDIR}/${dbname}.${target}.pid)
+sleep $sleeptime
+#ssh $target "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send(\"exit\")'" < /dev/null
 
 # insert some more rows
 for i in $(seq 1 $morerecs); do
@@ -76,7 +80,7 @@ ssh $backup "mkdir -p $LOCTMPDIR/partials" < /dev/null
 scp partials.tar $backup:$LOCTMPDIR/partials.tar
 ssh $backup "tar xf $LOCTMPDIR/partials.tar -C $LOCTMPDIR/partials" < /dev/null
 ssh $backup "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send(\"flush\")'" < /dev/null
-sleep 5
+sleep $sleeptime
 
 # create a partial backup
 ssh $backup "$COMDB2AR_EXE c -I inc -b $LOCTMPDIR/partials $lrl" > $LOCTMPDIR/backup.tar < /dev/null
@@ -87,7 +91,7 @@ scp $LOCTMPDIR/backup.tar $target:$LOCTMPDIR/backup.tar
 # restore
 ssh $target "$COMDB2AR_EXE P $lrl < $LOCTMPDIR/backup.tar" < /dev/null
 
-sleep 5
+sleep $sleeptime
 
 # Bring other nodes down
 for node in $CLUSTER ; do 
