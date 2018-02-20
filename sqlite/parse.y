@@ -177,10 +177,12 @@ ifnotexists(A) ::= IF NOT EXISTS. {A = 1;}
 create_table_args ::= LP columnlist conslist_opt(X) RP(E) comdb2opt(O) table_options(F). {
   comdb2CreateTableEnd(pParse,&X,&E,F,O);
 }
+%ifdef COMDB2_UNSUPPORTED
 create_table_args ::= AS select(S). {
   sqlite3EndTable(pParse,0,0,0,S);
   sqlite3SelectDelete(pParse->db, S);
 }
+%endif
 create_table_args ::= LIKE_KW nm(Y) dbnm(Z). {
   comdb2CreateTableLikeEnd(pParse,&Y,&Z);
 }
