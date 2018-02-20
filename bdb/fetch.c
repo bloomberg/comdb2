@@ -587,16 +587,14 @@ void bdb_cursor_ser_invalidate(bdb_cursor_ser_t *cur_ser)
         *reqdtalen = dbt_data.size - sizeof(unsigned long long);               \
     }
 
-static int
-bdb_fetch_int_ll(int return_dta, int direction, int lookahead,
-                 bdb_state_type *bdb_state, void *ix, int ixnum, int ixlen,
-                 void *lastix, int lastrrn, unsigned long long lastgenid,
-                 void *dta, int dtalen, int *reqdtalen, void *ixfound, int *rrn,
-                 int *recnum, unsigned long long *genid, int numblobs,
-                 int *dtafilenums, size_t *blobsizes, size_t *bloboffs,
-                 void **blobptrs, int dirty, int pgorder, tran_type *tran,
-                 bdb_cursor_ser_int_t *cur_ser, bdb_fetch_args_t *args,
-                 u_int32_t lockerid, int *bdberr)
+static int bdb_fetch_int_ll(
+    int return_dta, int direction, int lookahead, bdb_state_type *bdb_state,
+    void *ix, int ixnum, int ixlen, void *lastix, int lastrrn,
+    unsigned long long lastgenid, void *dta, int dtalen, int *reqdtalen,
+    void *ixfound, int *rrn, int *recnum, unsigned long long *genid,
+    int numblobs, int *dtafilenums, size_t *blobsizes, size_t *bloboffs,
+    void **blobptrs, int dirty, tran_type *tran, bdb_cursor_ser_int_t *cur_ser,
+    bdb_fetch_args_t *args, u_int32_t lockerid, int *bdberr)
 {
     DBT dbt_key, dbt_data;
     int rc;
@@ -628,6 +626,7 @@ bdb_fetch_int_ll(int return_dta, int direction, int lookahead,
     struct odh odh;
     int attempt_deserializaion;
     int initial_rc;
+    int page_order = 0;
 
     /* the "data" for an index can be a genid + record for dtastripe */
     char tmp_data[BDB_RECORD_MAX + sizeof(unsigned long long)];
@@ -872,10 +871,10 @@ before_first_lookup:
     if (dirty)
         cursor_flags |= DB_DIRTY_READ;
 
-    /*
-        if (pgorder)
-            cursor_flags |= DB_PAGE_ORDER;
-        */
+    if (args && args->page_order) {
+        cursor_flags |= DB_PAGE_ORDER;
+        page_order = args->page_order;
+    }
 
     dbcp = NULL;
 
@@ -1276,6 +1275,18 @@ before_first_lookup:
                     /* copy the ix we found to the user */
                     if (ixfound)
                         memcpy(ixfound, dbt_key.data, ixlen_full);
+                } else if (rc == DB_NOTFOUND &&
+                           page_order) /* return the last, and a 3 */
+                {
+                    outrc = 3;
+                    if (CURSOR_SER_ENABLED(bdb_state) && cur_ser &&
+                        !lookahead) {
+                        rc = dbcp->c_close_ser(dbcp, &cur_ser->dbcs);
+                        cur_ser->is_valid = !rc;
+                    } else {
+                        rc = dbcp->c_close(dbcp);
+                    }
+                    return outrc;
                 } else if (rc == DB_NOTFOUND) /* return the last, and a 3 */
                 {
                     /* fprintf(stderr, "not found\n"); */
@@ -2233,7 +2244,7 @@ static int bdb_fetch_prefault_int(
                             ixnum, ixlen, lastix, lastrrn, lastgenid, dta,
                             dtalen, reqdtalen, ixfound, rrn, recnum, genid,
                             numblobs, dtafilenums, blobsizes, bloboffs,
-                            blobptrs, 1, 0, NULL, NULL, args, lockerid, bdberr);
+                            blobptrs, 1, NULL, NULL, args, lockerid, bdberr);
 
     memset(&request, 0, sizeof(request));
     request.op = DB_LOCK_PUT_ALL;
@@ -2293,7 +2304,7 @@ static int bdb_fetch_int(int return_dta, int direction, int lookahead,
                             ixnum, ixlen, lastix, lastrrn, lastgenid, dta,
                             dtalen, reqdtalen, ixfound, rrn, recnum, genid,
                             numblobs, dtafilenums, blobsizes, bloboffs,
-                            blobptrs, dirty, 0, tran, cur_ser, args, 0, bdberr);
+                            blobptrs, dirty, tran, cur_ser, args, 0, bdberr);
 
     if (created_temp_tran) {
         int arc;
@@ -4173,7 +4184,8 @@ int bdb_fetch_next_dtastripe_record(bdb_state_type *bdb_state,
 
             /* if the genid we found is less then or equal to the last genid
              * we found in this stripe, there was a problem */
-            if (bdb_cmp_genids(*p_genid, p_genid_vector[cur_stripe]) <= 0) {
+            if ((bdb_cmp_genids(*p_genid, p_genid_vector[cur_stripe]) <= 0) &&
+                (!args || !args->page_order)) {
                 logmsg(LOGMSG_ERROR, "%s: looking for next genid in stripe: %d "
                                 "after: %016llx (%016llx) got: %016llx\n",
                         __func__, cur_stripe, last_genid,

@@ -117,7 +117,7 @@ static void eventlog_close(void)
 static char *eventlog_fname(const char *dbname)
 {
     return comdb2_location("logs", "%s.events.%" PRId64 "", dbname,
-                           time_epochus());
+                           comdb2_time_epochus());
 }
 
 static cson_output_opt opt = {.indentation = 0,
@@ -292,7 +292,7 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
     int64_t start, end;
 
     start = logger->startus;
-    end = time_epochus();
+    end = comdb2_time_epochus();
 
     cson_value *perfval = cson_value_new_object();
     cson_object *perfobj = cson_value_get_object(perfval);
@@ -339,8 +339,8 @@ int write_logmsg(void *state, const void *src, unsigned int n)
 
 static void eventlog_context(cson_object *obj, const struct reqlogger *logger)
 {
-    cson_value *contexts = cson_value_new_array();
     if (logger->ncontext > 0) {
+        cson_value *contexts = cson_value_new_array();
         cson_array *arr = cson_value_get_array(contexts);
         cson_array_reserve(arr, logger->ncontext);
         for (int i = 0; i < logger->ncontext; i++) {
@@ -369,8 +369,9 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
         cson_object *obj = cson_value_get_object(component);
         struct client_query_path_component *c;
         c = &logger->path->path_stats[i];
-        cson_object_set(obj, "table",
-                        cson_value_new_string(c->table, strlen(c->table)));
+        if (c->table)
+            cson_object_set(obj, "table",
+                            cson_value_new_string(c->table, strlen(c->table)));
         if (c->ix != -1) cson_object_set(obj, "index", cson_new_int(c->ix));
         if (c->nfind) cson_object_set(obj, "find", cson_new_int(c->nfind));
         if (c->nnext) cson_object_set(obj, "next", cson_new_int(c->nnext));
@@ -675,8 +676,8 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     cson_object *obj = cson_value_get_object(dval);
 
     cson_value *dd_list = cson_value_new_array();
-    int64_t time_epochus(void);
-    uint64_t startus = time_epochus();
+    int64_t comdb2_time_epochus(void);
+    uint64_t startus = comdb2_time_epochus();
     cson_object_set(obj, "time", cson_new_int(startus));
     extern char *gbl_mynode;
     cson_object_set(obj, "host",

@@ -800,8 +800,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 					 * we run the risk of taking 
 					 * the hb_lock twice.
 					 */
-					if (atomic_read(&hp->hash_page_dirty)
-					    == 1) {
+					if (hp->hash_page_dirty == 1) {
 						++gathered;
 						continue;
 					}
@@ -816,8 +815,8 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 				if (bharray[off_gather].track_off ==
 				    bhp->mf_offset &&
 				    bharray[off_gather].track_pgno + gathered
-				    == bhp->pgno &&
-				    atomic_read(&hp->hash_page_dirty) == 1) {
+				    == bhp->pgno && 
+					hp->hash_page_dirty == 1) {
 					bhparray[i] = bhp;
 					hparray[i] = hp;
 					++gathered;
@@ -1040,7 +1039,7 @@ init_trickle_threads(void)
 
 int gbl_parallel_memptrickle = 1;
 
-extern int time_epochms();
+extern int comdb2_time_epochms();
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,
     int st);
 
@@ -1142,7 +1141,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 
 	do_parallel = gbl_parallel_memptrickle;
 
-	start = time_epochms();
+	start = comdb2_time_epochms();
 
 	pthread_once(&trickle_threads_once, init_trickle_threads);
 
@@ -1499,9 +1498,9 @@ done:
         if (ret == 0 && (op == DB_SYNC_CACHE || op == DB_SYNC_FILE)) {
             if (dbmfp == NULL) {
                 int start, end;
-                start = time_epochms();
+                start = comdb2_time_epochms();
                 ret = __memp_sync_files(dbenv, dbmp);
-                end = time_epochms();
+                end = comdb2_time_epochms();
                 memp_sync_files_time = end - start;
             }
             else
@@ -1520,7 +1519,7 @@ err:	__os_free(dbenv, bharray);
 	if (wrotep != NULL)
 		*wrotep = wrote;
 
-	end = time_epochms();
+	end = comdb2_time_epochms();
 
 	if (wrote && ((end - start) > memp_sync_alarm_ms))
 		ctrace("memp_sync %d pages %d ms (memp_sync_files %d ms)\n",

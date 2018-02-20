@@ -334,11 +334,22 @@ static int exec_authentication(void *tran, bpfunc_t *func, char *err)
 {
     BpfuncAuthentication *auth = func->arg->auth;
     int bdberr = 0;
+    int valid_user;
+
+    if (auth->enabled)
+        bdb_user_password_check(DEFAULT_USER, DEFAULT_PASSWORD, &valid_user);
+
     /* Check if there is already op password. */
     int rc = bdb_authentication_set(thedb->bdb_env, tran, auth->enabled, &bdberr);
+
+    if (auth->enabled && valid_user == 0 && rc == 0)
+        rc = bdb_user_password_set(tran, DEFAULT_USER, DEFAULT_PASSWORD);
+
     if (rc == 0)
       rc = net_send_authcheck_all(thedb->handle_sibling);
+
     gbl_check_access_controls = 1;
+
     return rc;
 }
 

@@ -60,6 +60,7 @@
 
 extern struct dbenv *thedb;
 extern void hexdump(const void *buf, int size);
+extern pthread_mutex_t csc2_subsystem_mtx;
 
 pthread_key_t unique_tag_key;
 
@@ -1485,7 +1486,6 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
 
     to = calloc(1, sizeof(struct schema));
     to->tag = strdup(newtag);
-    add_tag_schema(table, to);
     to->nmembers = from->nmembers;
     to->member = calloc(to->nmembers, sizeof(struct field));
     to->flags = from->flags;
@@ -1519,7 +1519,6 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
                     to->member[i].in_default_len = 0;
                 }
             }
-            del_tag_schema(table, to->tag);
             free(to->tag);
             free(to);
             return -1;
@@ -1532,6 +1531,7 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
         /* do not clone out_default/in_default - those are only used for
          * .ONDISK tag itself */
     }
+    add_tag_schema(table, to);
     return 0;
 }
 
@@ -4736,7 +4736,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
         if (!found) {
             int allow_null = !(fnew->flags & NO_NULL);
             if (SERVER_VUTF8 == fnew->type &&
-                fnew->in_default_len >= (fnew->len - 5)) {
+                fnew->in_default_len > (fnew->len - 5)) {
                 rc = SC_TAG_CHANGE;
                 if (out) {
                     logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s -- dbstore "
@@ -6838,11 +6838,11 @@ void replace_tag_schema(struct dbtable *db, struct schema *schema)
     unlock_taglock();
 }
 
-void delete_schema(const char *dbname)
+void delete_schema(const char *tblname)
 {
     struct dbtag *dbt;
     lock_taglock();
-    dbt = hash_find(tags, &dbname);
+    dbt = hash_find(tags, &tblname);
     hash_del(tags, dbt);
     unlock_taglock();
     struct schema *schema = dbt->taglist.top;
@@ -6852,8 +6852,11 @@ void delete_schema(const char *dbname)
         listc_rfl(&dbt->taglist, tmp);
         freeschema(tmp);
     }
-    if (dbt->tags)
+    if (dbt->tags) {
+        hash_clear(dbt->tags);
         hash_free(dbt->tags);
+        dbt->tags = NULL;
+    }
     free(dbt->tblname);
     free(dbt);
 }
@@ -6968,6 +6971,7 @@ struct schema *create_version_schema(char *csc2, int version,
     char *tag;
     int rc;
 
+    pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = dyns_load_schema_string(csc2, dbenv->envname, gbl_ver_temp_table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
@@ -6998,6 +7002,7 @@ struct schema *create_version_schema(char *csc2, int version,
         logmsg(LOGMSG_ERROR, "malloc failed %s:%d\n", __FILE__, __LINE__);
         goto err;
     }
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     sprintf(tag, gbl_ondisk_ver_fmt, version);
     struct schema *ver_schema = clone_schema(s);
@@ -7015,6 +7020,7 @@ struct schema *create_version_schema(char *csc2, int version,
     return ver_schema;
 
 err:
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
     return NULL;
 }
 
@@ -7068,6 +7074,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     int len;
     char *csc2 = NULL;
 
+    pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = get_csc2_file_tran(db->tablename, version, &csc2, &len, tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);
@@ -7112,6 +7119,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
         cheap_stack_trace();
         goto err;
     }
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     set_odh_options_tran(newdb, tran);
     transfer_db_settings(db, newdb);
@@ -7131,6 +7139,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     return 0;
 
 err:
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
     free(csc2);
     return 1;
 }
@@ -7155,6 +7164,7 @@ int reload_after_bulkimport(struct dbtable *db, tran_type *tran)
 
 int reload_db_tran(struct dbtable *db, tran_type *tran)
 {
+    backout_schemas(db->tablename);
     clear_existing_schemas(db);
     if (load_new_ondisk(db, tran)) {
         logmsg(LOGMSG_ERROR, "Failed to load new .ONDISK\n");

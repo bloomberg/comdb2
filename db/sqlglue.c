@@ -100,7 +100,7 @@
 #include "locks.h"
 #include "eventlog.h"
 
-#include <bbinc/str0.h>
+#include "str0.h"
 
 unsigned long long get_id(bdb_state_type *);
 
@@ -175,6 +175,7 @@ CurRange *currange_new()
     rc->islocked = 0;
     return rc;
 }
+
 void currangearr_init(CurRangeArr *arr)
 {
     arr->size = 0;
@@ -184,12 +185,14 @@ void currangearr_init(CurRangeArr *arr)
     arr->hash = NULL;
     arr->ranges = malloc(sizeof(CurRange *) * arr->cap);
 }
+
 void currangearr_append(CurRangeArr *arr, CurRange *r)
 {
     currangearr_double_if_full(arr);
     assert(r);
     arr->ranges[arr->size++] = r;
 }
+
 CurRange *currangearr_get(CurRangeArr *arr, int n)
 {
     if (n >= arr->size || n < 0) {
@@ -197,6 +200,7 @@ CurRange *currangearr_get(CurRangeArr *arr, int n)
     }
     return arr->ranges[n];
 }
+
 void currangearr_double_if_full(CurRangeArr *arr)
 {
     if (arr->size >= arr->cap) {
@@ -204,7 +208,8 @@ void currangearr_double_if_full(CurRangeArr *arr)
         arr->ranges = realloc(arr->ranges, sizeof(CurRange *) * arr->cap);
     }
 }
-int currange_cmp(const void *p, const void *q)
+
+static int currange_cmp(const void *p, const void *q)
 {
     CurRange *l = *(CurRange **)p;
     CurRange *r = *(CurRange **)q;
@@ -236,11 +241,13 @@ int currange_cmp(const void *p, const void *q)
     }
     return 0;
 }
-void currangearr_sort(CurRangeArr *arr)
+
+static inline void currangearr_sort(CurRangeArr *arr)
 {
     qsort((void *)arr->ranges, arr->size, sizeof(CurRange *), currange_cmp);
 }
-void currangearr_merge_neighbor(CurRangeArr *arr)
+
+static void currangearr_merge_neighbor(CurRangeArr *arr)
 {
     int i, j;
     j = 0;
@@ -303,13 +310,15 @@ void currangearr_merge_neighbor(CurRangeArr *arr)
     }
     arr->size = j + 1;
 }
-void currangearr_coalesce(CurRangeArr *arr)
+
+static inline void currangearr_coalesce(CurRangeArr *arr)
 {
     currangearr_sort(arr);
     currangearr_merge_neighbor(arr);
     currangearr_sort(arr);
     currangearr_merge_neighbor(arr);
 }
+
 void currangearr_build_hash(CurRangeArr *arr)
 {
     if (arr->size == 0)
@@ -350,12 +359,14 @@ void currangearr_build_hash(CurRangeArr *arr)
     }
     arr->hash = range_hash;
 }
+
 static int free_idxhash(void *obj, void *arg)
 {
     struct serial_index_hash *ih = (struct serial_index_hash *)obj;
     free(ih);
     return 0;
 }
+
 static int free_rangehash(void *obj, void *arg)
 {
     struct serial_tbname_hash *th = (struct serial_tbname_hash *)obj;
@@ -383,6 +394,7 @@ void currangearr_free(CurRangeArr *arr)
     }
     free(arr);
 }
+
 void currange_free(CurRange *cr)
 {
     if (cr->tbname) {
@@ -399,6 +411,7 @@ void currange_free(CurRange *cr)
     }
     free(cr);
 }
+
 void currangearr_print(CurRangeArr *arr)
 {
     if (arr == NULL)
@@ -429,6 +442,7 @@ void currangearr_print(CurRangeArr *arr)
         }
     }
 }
+
 /* return 0 if authenticated, else -1 */
 int authenticate_cursor(BtCursor *pCur, int how)
 {
@@ -689,9 +703,6 @@ void done_sql_thread(void)
     }
 }
 
-static int get_data_int(BtCursor *, struct schema *, uint8_t *in, int fnum,
-                        Mem *, uint8_t flip_orig, const char *tzname);
-
 static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
                                int rrn, unsigned long long genid, void *outp,
                                int maxout, int nblobs, void **blob,
@@ -738,7 +749,7 @@ static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
 
     for (fnum = 0; fnum < nField; fnum++) {
         memset(&m[fnum], 0, sizeof(Mem));
-        rc = get_data_int(pCur, s, in, fnum, &m[fnum], 1, tzname);
+        rc = get_data(pCur, s, in, fnum, &m[fnum], 1, tzname);
         if (rc)
             goto done;
         type[fnum] =
@@ -1530,97 +1541,85 @@ char *sql_field_default_trans(struct field *f, int is_out)
     return dstr;
 }
 
+static void create_sqlite_stat_sqlmaster_record(struct dbtable *tbl)
+{
+    if (tbl->sql)
+        free(tbl->sql);
+    for (int i = 0; i < tbl->nsqlix; i++) {
+        free(tbl->ixsql[i]);
+        tbl->ixsql[i] = NULL;
+    }
+    switch (tbl->tablename[11]) {
+    case '1':
+        tbl->sql = strdup("create table sqlite_stat1(tbl,idx,stat);");
+        break;
+    case '2':
+        tbl->sql =
+            strdup("create table sqlite_stat2(tbl,idx,sampleno,sample);");
+        break;
+    case '4':
+        tbl->sql =
+            strdup("create table sqlite_stat4(tbl,idx,neq,nlt,ndlt,sample);");
+        break;
+    default:
+        abort();
+    }
+    if (tbl->ixsql) {
+        free(tbl->ixsql);
+        tbl->ixsql = NULL;
+    }
+    tbl->ixsql = calloc(sizeof(char *), tbl->nix);
+    tbl->nsqlix = 0;
+    tbl->ix_expr = 0;
+    tbl->ix_partial = 0;
+    tbl->ix_blob = 0;
+}
+
 /* This creates SQL statements that correspond to a table's schema. These
    statements are used to bootstrap sqlite. */
-static int create_sqlmaster_record(struct dbtable *db, void *tran)
+static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 {
-    struct schema *schema;
-    strbuf *sql;
     int field;
     char namebuf[128];
-    char *type;
-    int ixnum;
-    char *dstr = NULL;
 
-    sql = strbuf_new();
-
-    /* do the table */
-    strbuf_clear(sql);
-    schema = db->schema;
-
+    struct schema *schema = tbl->schema;
     if (schema == NULL) {
-        logmsg(LOGMSG_ERROR, "No .ONDISK tag for table %s.\n", db->tablename);
-        strbuf_free(sql);
+        logmsg(LOGMSG_ERROR, "No .ONDISK tag for table %s.\n", tbl->tablename);
         return -1;
     }
 
-    if (is_sqlite_stat(db->tablename)) {
-        if (db->sql)
-            free(db->sql);
-        for (int i = 0; i < db->nsqlix; i++) {
-            free(db->ixsql[i]);
-            db->ixsql[i] = NULL;
-        }
-        switch (db->tablename[11]) {
-        case '1':
-            db->sql = strdup("create table sqlite_stat1(tbl,idx,stat);");
-            break;
-        case '2':
-            db->sql =
-                strdup("create table sqlite_stat2(tbl,idx,sampleno,sample);");
-            break;
-        case '4':
-            db->sql = strdup(
-                "create table sqlite_stat4(tbl,idx,neq,nlt,ndlt,sample);");
-            break;
-        default:
-            abort();
-        }
-        if (db->ixsql) {
-            free(db->ixsql);
-            db->ixsql = NULL;
-        }
-        db->ixsql = calloc(sizeof(char *), db->nix);
-        db->nsqlix = 0;
-        strbuf_free(sql);
-        db->ix_expr = 0;
-        db->ix_partial = 0;
-        db->ix_blob = 0;
+    if (is_sqlite_stat(tbl->tablename)) {
+        create_sqlite_stat_sqlmaster_record(tbl);
         return 0;
     }
 
-    strbuf_append(sql, "create table ");
-    strbuf_append(sql, "\"");
-    strbuf_append(sql, db->tablename);
-    strbuf_append(sql, "\"");
-    strbuf_append(sql, "(");
+    strbuf *sql = strbuf_new();
+    strbuf_clear(sql);
+    strbuf_appendf(sql, "create table \"%s\"(", tbl->tablename);
+
     for (field = 0; field < schema->nmembers; field++) {
-        strbuf_append(sql, "\"");
-        strbuf_append(sql, schema->member[field].name);
-        strbuf_append(sql, "\"");
-        strbuf_append(sql, " ");
-        type = sqltype(&schema->member[field], namebuf, sizeof(namebuf));
+        char *type = sqltype(&schema->member[field], namebuf, sizeof(namebuf));
         if (type == NULL) {
             logmsg(LOGMSG_ERROR, "Unsupported type in schema: column '%s' [%d] "
                                  "table %s\n",
-                   schema->member[field].name, field, db->tablename);
+                   schema->member[field].name, field, tbl->tablename);
+            strbuf_free(sql);
             return -1;
         }
-        strbuf_append(sql, type);
+        strbuf_appendf(sql, "\"%s\" %s", schema->member[field].name, type);
         /* add defaults for write sql */
         if (schema->member[field].in_default) {
-            dstr = sql_field_default_trans(&schema->member[field], 0);
             strbuf_append(sql, " DEFAULT");
+            char *dstr = sql_field_default_trans(&schema->member[field], 0);
 
             if (dstr) {
-                strbuf_append(sql, " ");
-                strbuf_append(sql, dstr);
+                strbuf_appendf(sql, " %s", dstr);
                 sqlite3_free(dstr);
             } else {
                 logmsg(LOGMSG_ERROR,
                        "Failed to convert default value column '%s' table "
                        "%s type %d\n",
-                       schema->member[field].name, db->tablename,
+                       schema->member[field].name, tbl->tablename,
                        schema->member[field].type);
                 strbuf_free(sql);
                 return -1;
@@ -1631,41 +1630,38 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
             strbuf_append(sql, ", ");
     }
     strbuf_append(sql, ");");
-    if (db->sql)
-        free(db->sql);
-    db->sql = strdup(strbuf_buf(sql));
-    if (db->nix > 0) {
-        for (int i = 0; i < db->nsqlix; i++) {
-            free(db->ixsql[i]);
-            db->ixsql[i] = NULL;
+    if (tbl->sql)
+        free(tbl->sql);
+    tbl->sql = strdup(strbuf_buf(sql));
+    if (tbl->nix > 0) {
+        for (int i = 0; i < tbl->nsqlix; i++) {
+            free(tbl->ixsql[i]);
+            tbl->ixsql[i] = NULL;
         }
-        if (db->ixsql) {
-            free(db->ixsql);
-            db->ixsql = NULL;
+        if (tbl->ixsql) {
+            free(tbl->ixsql);
+            tbl->ixsql = NULL;
         }
-        db->ixsql = calloc(sizeof(char *), db->nix);
+        tbl->ixsql = calloc(sizeof(char *), tbl->nix);
     }
     ctrace("%s\n", strbuf_buf(sql));
-    db->nsqlix = 0;
+    tbl->nsqlix = 0;
 
     /* do the indices */
-    for (ixnum = 0; ixnum < db->nix; ixnum++) {
-        /* SQLite 3.7.2: index on sqlite_stat is an error */
-        if (is_sqlite_stat(db->tablename))
-            break;
-
+    for (int ixnum = 0; ixnum < tbl->nix; ixnum++) {
         strbuf_clear(sql);
 
         snprintf(namebuf, sizeof(namebuf), ".ONDISK_ix_%d", ixnum);
-        schema = find_tag_schema(db->tablename, namebuf);
+        schema = find_tag_schema(tbl->tablename, namebuf);
         if (schema == NULL) {
             logmsg(LOGMSG_ERROR, "No %s tag for table %s\n", namebuf,
-                   db->tablename);
+                   tbl->tablename);
             strbuf_free(sql);
             return -1;
         }
 
-        sql_index_name_trans(namebuf, sizeof(namebuf), schema, db, ixnum, tran);
+        sql_index_name_trans(namebuf, sizeof(namebuf), schema, tbl, ixnum,
+                             tran);
         if (schema->sqlitetag)
             free(schema->sqlitetag);
         schema->sqlitetag = strdup(namebuf);
@@ -1678,20 +1674,15 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
 
 #if 0
       if (schema->flags & SCHEMA_DUP) {
-         strbuf_append(sql, "create index \"");
+         strbuf_append(sql, "create index ");
       } else {
-         strbuf_append(sql, "create unique index \"");
+         strbuf_append(sql, "create unique index ");
       }
 #else
-        strbuf_append(sql, "create index \"");
+        strbuf_append(sql, "create index ");
 #endif
 
-        strbuf_append(sql, namebuf);
-        strbuf_append(sql, "\" on ");
-        strbuf_append(sql, "\"");
-        strbuf_append(sql, db->tablename);
-        strbuf_append(sql, "\"");
-        strbuf_append(sql, " (");
+        strbuf_appendf(sql, "\"%s\" on \"%s\" (", namebuf, tbl->tablename);
         for (field = 0; field < schema->nmembers; field++) {
             if (field > 0)
                 strbuf_append(sql, ", ");
@@ -1699,23 +1690,22 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
                 if (!gbl_expressions_indexes) {
                     logmsg(LOGMSG_ERROR, "EXPRESSIONS INDEXES FOUND IN SCHEMA! PLEASE FIRST "
                             "ENABLE THE EXPRESSIONS INDEXES FEATURE.\n");
-                    if (db->iq)
-                        reqerrstr(db->iq, ERR_SC,
+                    if (tbl->iq)
+                        reqerrstr(tbl->iq, ERR_SC,
                                   "Please enable indexes on expressions.");
                     strbuf_free(sql);
                     return -1;
                 }
-                strbuf_append(sql, "(");
+                strbuf_appendf(sql, "(%s)", schema->member[field].name);
+            } else {
+                strbuf_appendf(sql, "\"%s\"", schema->member[field].name);
             }
-            strbuf_append(sql, schema->member[field].name);
-            if (schema->member[field].isExpr)
-                strbuf_append(sql, ")");
             if (schema->member[field].flags & INDEX_DESCEND)
                 strbuf_append(sql, " DESC");
         }
 
         if (schema->flags & SCHEMA_DATACOPY) {
-            struct schema *ondisk = db->schema;
+            struct schema *ondisk = tbl->schema;
             int datacopy_pos = 0;
             size_t need;
             /* Add all fields from ONDISK to index */
@@ -1735,9 +1725,7 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
                 if (skip)
                     continue;
 
-                strbuf_append(sql, ", \"");
-                strbuf_append(sql, ondisk_field->name);
-                strbuf_append(sql, "\"");
+                strbuf_appendf(sql, ", \"%s\"", ondisk_field->name);
                 /* stop optimizer by adding dummy collation */
                 if (datacopy_pos == 0) {
                     strbuf_append(sql, " collate DATACOPY");
@@ -1761,29 +1749,27 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
             if (!gbl_partial_indexes) {
                 logmsg(LOGMSG_ERROR, "PARTIAL INDEXES FOUND IN SCHEMA! PLEASE FIRST "
                                 "ENABLE THE PARTIAL INDEXES FEATURE.\n");
-                if (db->iq)
-                    reqerrstr(db->iq, ERR_SC, "Please enable partial indexes.");
+                if (tbl->iq)
+                    reqerrstr(tbl->iq, ERR_SC,
+                              "Please enable partial indexes.");
                 strbuf_free(sql);
                 return -1;
             }
-            strbuf_append(sql, " where (");
-            strbuf_append(sql, schema->where + 6);
-            strbuf_append(sql, ")");
+            strbuf_appendf(sql, " where (%s)", schema->where + 6);
         }
         strbuf_append(sql, ";");
-        if (db->ixsql[ixnum])
-            free(db->ixsql[ixnum]);
+        if (tbl->ixsql[ixnum])
+            free(tbl->ixsql[ixnum]);
         if (field > 0) {
-            db->ixsql[ixnum] = strdup(strbuf_buf(sql));
+            tbl->ixsql[ixnum] = strdup(strbuf_buf(sql));
             ctrace("  %s\n", strbuf_buf(sql));
-            db->nsqlix++;
+            tbl->nsqlix++;
         } else {
-            db->ixsql[ixnum] = NULL;
+            tbl->ixsql[ixnum] = NULL;
         }
     }
 
     strbuf_free(sql);
-
     return 0;
 }
 
@@ -5393,7 +5379,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
         *pRes = 0;
         goto done;
 
-    } else if (pCur->cursor_class == CURSORCLASS_REMOTE) { /* remote cursor */
+    } else if (cur_is_remote(pCur)) { /* remote cursor */
 
         /* filter the supported operations */
         if (bias != OP_SeekLT && bias != OP_SeekLE && bias != OP_SeekGE &&
@@ -5983,19 +5969,22 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
             if (!pCur->fdbc)
                 goto skip; /* failed during cursor creation */
             strncpy0(fnd.rmt_db, pCur->fdbc->dbname(pCur), sizeof(fnd.rmt_db));
-        }
-        if (pCur->db)
+            strncpy0(fnd.lcl_tbl_name, pCur->fdbc->tblname(pCur),
+                     sizeof(fnd.lcl_tbl_name));
+        } else if (pCur->db) {
             strncpy0(fnd.lcl_tbl_name, pCur->db->tablename,
                      sizeof(fnd.lcl_tbl_name));
+        }
         fnd.ix = pCur->ixnum;
 
         if ((qc = hash_find(thd->query_hash, &fnd)) == NULL) {
             qc = calloc(sizeof(struct query_path_component), 1);
             if (pCur->bt && pCur->bt->is_remote) {
-                strncpy0(fnd.rmt_db, pCur->fdbc->dbname(pCur),
-                         sizeof(fnd.rmt_db));
-            }
-            if (pCur->db) {
+                strncpy0(qc->rmt_db, pCur->fdbc->dbname(pCur),
+                         sizeof(qc->rmt_db));
+                strncpy0(qc->lcl_tbl_name, pCur->fdbc->tblname(pCur),
+                         sizeof(qc->lcl_tbl_name));
+            } else if (pCur->db) {
                 strncpy0(qc->lcl_tbl_name, pCur->db->tablename,
                          sizeof(qc->lcl_tbl_name));
             }
@@ -6336,29 +6325,8 @@ int is_datacopy(BtCursor *pCur, int *fnum)
     return 0;
 }
 
-int is_remote(BtCursor *pCur)
-{
-    return pCur->cursor_class == CURSORCLASS_REMOTE;
-}
-
-int is_raw(BtCursor *pCur)
-{
-    if (pCur) {
-        if (pCur->cursor_class == CURSORCLASS_TABLE) {
-            return 1;
-        } else if (pCur->cursor_class == CURSORCLASS_INDEX) {
-            return 1;
-        } else if (pCur->cursor_class == CURSORCLASS_REMOTE) {
-            return 1;
-        } else if (pCur->is_sampled_idx) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
-                        int fnum, Mem *m, uint8_t flip_orig, const char *tzname)
+int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
+             uint8_t flip_orig, const char *tzname)
 {
     int null;
     i64 ival;
@@ -6775,7 +6743,7 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
 
         break;
     default:
-        logmsg(LOGMSG_ERROR, "unhandled type %d\n", f->type);
+        logmsg(LOGMSG_ERROR, "get_data_int: unhandled type %d\n", f->type);
         break;
     }
 
@@ -6798,17 +6766,6 @@ done:
     return rc;
 }
 
-int get_data(BtCursor *pCur, void *invoid, int fnum, Mem *m)
-{
-    if (unlikely(pCur->cursor_class == CURSORCLASS_REMOTE)) {
-        /* convert the remote buffer to M array */
-        abort(); /* this is suppsed to be a cooked access */
-    } else {
-        return get_data_int(pCur, pCur->sc, invoid, fnum, m, 0,
-                            pCur->clnt->tzname);
-    }
-}
-
 int get_datacopy(BtCursor *pCur, int fnum, Mem *m)
 {
     uint8_t *in;
@@ -6819,8 +6776,7 @@ int get_datacopy(BtCursor *pCur, int fnum, Mem *m)
         vtag_to_ondisk_vermap(pCur->db, in, NULL, ver);
     }
 
-    return get_data_int(pCur, pCur->db->schema, in, fnum, m, 0,
-                        pCur->clnt->tzname);
+    return get_data(pCur, pCur->db->schema, in, fnum, m, 0, pCur->clnt->tzname);
 }
 
 static int
@@ -11839,7 +11795,8 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
 
         break;
     default:
-        logmsg(LOGMSG_ERROR, "unhandled type %d\n", f->type);
+        logmsg(LOGMSG_ERROR, "get_data_from_ondisk: unhandled type %d\n",
+               f->type);
         break;
     }
 
@@ -12079,27 +12036,19 @@ unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
         else {
             int exist = 0;
             strbuf_clear(sql);
-            strbuf_append(sql, "WITH ");
-            strbuf_append(sql, "\"");
-            strbuf_append(sql, is_alter ? temp_newdb_name : db->tablename);
-            strbuf_append(sql, "\"");
-            strbuf_append(sql, "(");
-            strbuf_append(sql, sc->member[0].name);
+            strbuf_appendf(sql, "WITH \"%s\"(\"%s\"",
+                           is_alter ? temp_newdb_name : db->tablename,
+                           sc->member[0].name);
             for (i = 1; i < sc->nmembers; i++) {
-                strbuf_append(sql, ", ");
-                strbuf_append(sql, sc->member[i].name);
+                strbuf_appendf(sql, ", \"%s\"", sc->member[i].name);
             }
-            strbuf_append(sql, ") AS (SELECT @");
-            strbuf_append(sql, sc->member[0].name);
+            strbuf_appendf(sql, ") AS (SELECT @%s", sc->member[0].name);
             for (i = 1; i < sc->nmembers; i++) {
-                strbuf_append(sql, ", @");
-                strbuf_append(sql, sc->member[i].name);
+                strbuf_appendf(sql, ", @%s", sc->member[i].name);
             }
-            strbuf_append(sql, ") SELECT 1 FROM ");
-            strbuf_append(sql, "\"");
-            strbuf_append(sql, is_alter ? temp_newdb_name : db->tablename);
-            strbuf_append(sql, "\" ");
-            strbuf_append(sql, db->ixschema[ixnum]->where);
+            strbuf_appendf(sql, ") SELECT 1 FROM \"%s\" %s",
+                           is_alter ? temp_newdb_name : db->tablename,
+                           db->ixschema[ixnum]->where);
             rc = run_verify_indexes_query((char *)strbuf_buf(sql), sc, m, NULL,
                                           &exist);
             if (rc) {
@@ -12127,28 +12076,15 @@ static inline void build_indexes_expressions_query(strbuf *sql,
 {
     int i;
     strbuf_clear(sql);
-    strbuf_append(sql, "WITH ");
-    strbuf_append(sql, "\"");
-    strbuf_append(sql, tblname);
-    strbuf_append(sql, "\"");
-    strbuf_append(sql, "(");
-    strbuf_append(sql, sc->member[0].name);
+    strbuf_appendf(sql, "WITH \"%s\"(\"%s\"", tblname, sc->member[0].name);
     for (i = 1; i < sc->nmembers; i++) {
-        strbuf_append(sql, ", ");
-        strbuf_append(sql, sc->member[i].name);
+        strbuf_appendf(sql, ", \"%s\"", sc->member[i].name);
     }
-    strbuf_append(sql, ") AS (SELECT @");
-    strbuf_append(sql, sc->member[0].name);
+    strbuf_appendf(sql, ") AS (SELECT @%s", sc->member[0].name);
     for (i = 1; i < sc->nmembers; i++) {
-        strbuf_append(sql, ", @");
-        strbuf_append(sql, sc->member[i].name);
+        strbuf_appendf(sql, ", @%s", sc->member[i].name);
     }
-    strbuf_append(sql, ") SELECT (");
-    strbuf_append(sql, expr);
-    strbuf_append(sql, ") FROM ");
-    strbuf_append(sql, "\"");
-    strbuf_append(sql, tblname);
-    strbuf_append(sql, "\"");
+    strbuf_appendf(sql, ") SELECT (%s) FROM \"%s\"", expr, tblname);
 }
 
 char *indexes_expressions_unescape(char *expr)

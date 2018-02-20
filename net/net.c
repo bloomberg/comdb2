@@ -67,6 +67,7 @@
 #include <pool.h>
 #include <dlmalloc.h>
 #include <plhash.h>
+#include <assert.h>
 
 #include "locks.h"
 #include "net.h"
@@ -152,7 +153,7 @@ static int sbuf2write_wrapper(SBUF2 *sb, const char *buf, int nbytes)
 static int connection_refresh(netinfo_type *netinfo_ptr,
                               host_node_type *host_node_ptr)
 {
-    time_t opentime = (time_epoch() - host_node_ptr->timestamp);
+    time_t opentime = (comdb2_time_epoch() - host_node_ptr->timestamp);
 
     /* global disable */
     if (debug_switch_disable_connection_refresh()) {
@@ -175,16 +176,6 @@ static int connection_refresh(netinfo_type *netinfo_ptr,
     }
 
     return 0;
-}
-
-/* my very own malloc */
-static void *mymalloc(size_t size)
-{
-    if (size > 100000) {
-        logmsg(LOGMSG_INFO, "net mymalloc: size = %d\n", (int)size);
-    }
-
-    return (malloc(size));
 }
 
 extern void myfree(void *ptr);
@@ -708,7 +699,7 @@ fprintf(stderr, "[%s] using malloc for %d bytes\n",
     }
 
     insert->flags = flags;
-    insert->enque_time = time_epoch();
+    insert->enque_time = comdb2_time_epoch();
     insert->next = NULL;
     insert->prev = NULL;
     insert->len = sizeof(wire_header_type) + datasz;
@@ -796,12 +787,12 @@ fprintf(stderr, "[%s] using malloc for %d bytes\n",
     host_node_ptr->enque_count++;
     if (host_node_ptr->enque_count > host_node_ptr->peak_enque_count) {
         host_node_ptr->peak_enque_count = host_node_ptr->enque_count;
-        host_node_ptr->peak_enque_count_time = time_epoch();
+        host_node_ptr->peak_enque_count_time = comdb2_time_epoch();
     }
     host_node_ptr->enque_bytes += insert->len;
     if (host_node_ptr->enque_bytes > host_node_ptr->peak_enque_bytes) {
         host_node_ptr->peak_enque_bytes = host_node_ptr->enque_bytes;
-        host_node_ptr->peak_enque_bytes_time = time_epoch();
+        host_node_ptr->peak_enque_bytes_time = comdb2_time_epoch();
     }
 
     rc = 0;
@@ -1434,7 +1425,7 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
         if (tmp_host_ptr->hostname_len >= HOSTNAME_LEN)
             datasz += tmp_host_ptr->hostname_len;
     }
-    data = mymalloc(datasz);
+    data = malloc(datasz);
     memset(data, 0, datasz);
 
     p_buf = (uint8_t *)data;
@@ -1522,7 +1513,7 @@ static int write_hello_reply(netinfo_type *netinfo_ptr,
         if (tmp_host_ptr->hostname_len >= HOSTNAME_LEN)
             datasz += tmp_host_ptr->hostname_len;
     }
-    data = mymalloc(datasz);
+    data = malloc(datasz);
     memset(data, 0, datasz);
 
     p_buf = (uint8_t *)data;
@@ -1603,7 +1594,7 @@ static seq_data *add_seqnum_to_waitlist(host_node_type *host_node_ptr,
                                         int seqnum)
 {
     seq_data *new_seq_node, *seq_list_ptr;
-    new_seq_node = mymalloc(sizeof(seq_data));
+    new_seq_node = malloc(sizeof(seq_data));
     new_seq_node->seqnum = seqnum;
     new_seq_node->ack = 0;
     new_seq_node->outrc = 0;
@@ -1806,7 +1797,7 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
     }
 
     /* fail if we don't have a socket */
-    if (!host_node_ptr->fd) {
+    if (host_node_ptr->fd == -1) {
         rc = NET_SEND_FAIL_NOSOCK;
         goto end;
     }
@@ -2018,7 +2009,7 @@ static void net_trace_explicit_flush(void)
 
     count++;
 
-    if (flushmin > 0 && (now = time_epoch()) - lastpr) {
+    if (flushmin > 0 && (now = comdb2_time_epoch()) - lastpr) {
         if (count > flushmin) {
             comdb2_cheapstack(stdout);
         }
@@ -2030,6 +2021,52 @@ static void net_trace_explicit_flush(void)
 int net_get_stack_flush_threshold(void) { return stack_flush_min; }
 
 void net_set_stack_flush_threshold(int thresh) { stack_flush_min = thresh; }
+
+int gbl_dump_full_net_queue = 0;
+
+static void dump_queue(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
+{
+    int now, cnt = 0, logput_cnt = 0, non_logput_cnt = 0;
+
+    if (netinfo_ptr->getlsn_rtn == NULL)
+        return;
+
+    if ((now = time(NULL)) - host_node_ptr->last_queue_dump) {
+        write_data *ptr;
+        int file, offset, rc, wl = 0;
+        logmsg(LOGMSG_USER, "Dumping net-queue for %s\n", host_node_ptr->host);
+        Pthread_mutex_lock(&(host_node_ptr->enquelk));
+        ptr = host_node_ptr->write_head;
+        while (ptr != NULL) {
+            cnt++;
+            if ((rc = (netinfo_ptr->getlsn_rtn)(netinfo_ptr, ptr->payload.raw,
+                                                ptr->len, &file, &offset)) ==
+                0) {
+                logput_cnt++;
+                if (wl == 0) {
+                    logmsg(LOGMSG_USER, "%s: ", host_node_ptr->host);
+                }
+                logmsg(LOGMSG_USER, "%d:%d ", file, offset);
+                wl = 1;
+                if ((logput_cnt % 20) == 0) {
+                    logmsg(LOGMSG_USER, "\n");
+                    wl = 0;
+                }
+            } else {
+                non_logput_cnt++;
+            }
+            ptr = ptr->next;
+        }
+        Pthread_mutex_unlock(&(host_node_ptr->enquelk));
+
+        if (wl) {
+            logmsg(LOGMSG_USER, "\n");
+        }
+        logmsg(LOGMSG_USER, "%s: %d logputs, %d other\n", host_node_ptr->host,
+               logput_cnt, non_logput_cnt);
+        host_node_ptr->last_queue_dump = now;
+    }
+}
 
 static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
                         int usertype, void *data, int datalen, int nodelay,
@@ -2088,8 +2125,14 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     }
 
     /* fail if we don't have a socket */
-    if (!host_node_ptr->fd) {
+    if (host_node_ptr->fd == -1) {
         rc = NET_SEND_FAIL_NOSOCK;
+        goto end;
+    }
+
+    /* fail if we are closed */
+    if (host_node_ptr->closed) {
+        rc = NET_SEND_FAIL_CLOSED;
         goto end;
     }
 
@@ -2166,6 +2209,10 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     }
 
 end:
+
+    if (rc == NET_SEND_FAIL_QUEUE_FULL && gbl_dump_full_net_queue)
+        dump_queue(netinfo_ptr, host_node_ptr);
+
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
     return rc;
 }
@@ -2322,6 +2369,12 @@ int net_get_all_nodes_connected(netinfo_type *netinfo_ptr,
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
     return count;
+}
+
+int net_register_getlsn(netinfo_type *netinfo_ptr, GETLSNFP func)
+{
+    netinfo_ptr->getlsn_rtn = func;
+    return 0;
 }
 
 int net_register_netcmp(netinfo_type *netinfo_ptr, NETCMPFP func)
@@ -2538,7 +2591,7 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
         return ptr;
     }
 
-    ptr = mymalloc(sizeof(host_node_type));
+    ptr = malloc(sizeof(host_node_type));
     if (!ptr)
         abort();
 
@@ -3121,7 +3174,7 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
     netinfo_node_t *netinfo_node;
     int rc;
 
-    netinfo_ptr = mymalloc(sizeof(netinfo_type));
+    netinfo_ptr = malloc(sizeof(netinfo_type));
     memset(netinfo_ptr, 0, sizeof(netinfo_type));
 
     listc_init(&(netinfo_ptr->watchlist), offsetof(watchlist_node_type, lnk));
@@ -3164,7 +3217,7 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
         } else {
             portmux_use(app, service, instance, myportnum);
         }
-        netinfo_ptr->portmux_register_time = time_epoch();
+        netinfo_ptr->portmux_register_time = comdb2_time_epoch();
     }
 
     rc = pthread_attr_init(&(netinfo_ptr->pthread_attr_detach));
@@ -3257,7 +3310,7 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
     }
     netinfo_ptr->myfd = myfd;
 
-    netinfo_node = mymalloc(sizeof(netinfo_node_t));
+    netinfo_node = malloc(sizeof(netinfo_node_t));
     if (netinfo_node == NULL) {
         logmsg(LOGMSG_ERROR, "create_netinfo: malloc failed. memstat on this "
                         "netinfo will not be tracked\n");
@@ -3391,7 +3444,7 @@ static int read_hostlist(netinfo_type *netinfo_ptr, SBUF2 *sb, char *hosts[],
         return 1;
     }
 
-    data = mymalloc(datasz);
+    data = malloc(datasz);
     p_buf = (uint8_t *)data;
     p_buf_end = ((uint8_t *)data + datasz);
 
@@ -3414,7 +3467,7 @@ static int read_hostlist(netinfo_type *netinfo_ptr, SBUF2 *sb, char *hosts[],
 
     /* copy out the hosts, make sure the strings are \0 terminated */
     for (i = 0; i < *numhosts; i++) {
-        hosts[i] = mymalloc(HOSTNAME_LEN + 1);
+        hosts[i] = malloc(HOSTNAME_LEN + 1);
         p_buf =
             (uint8_t *)buf_no_net_get(hosts[i], HOSTNAME_LEN, p_buf, p_buf_end);
         hosts[i][HOSTNAME_LEN] = '\0';
@@ -3482,7 +3535,7 @@ static int read_user_data(host_node_type *host_node_ptr, int *type, int *seqnum,
             *data = host_node_ptr->user_data_buf;
             *malloced = 0;
         } else {
-            *data = mymalloc(*datalen);
+            *data = malloc(*datalen);
             *malloced = 1;
         }
 
@@ -3587,7 +3640,7 @@ static int process_payload_ack(netinfo_type *netinfo_ptr,
     if (p_net_ack_message_payload.paylen > 1024)
         return -1;
 
-    payload = mymalloc(p_net_ack_message_payload.paylen);
+    payload = malloc(p_net_ack_message_payload.paylen);
     rc = read_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb, payload,
                      p_net_ack_message_payload.paylen);
 
@@ -3718,7 +3771,7 @@ static int process_user_message(netinfo_type *netinfo_ptr,
         (usertype >= 0 && usertype <= MAX_USER_TYPE &&
          netinfo_ptr->userfuncs[usertype] != NULL)) {
         if (needack) {
-            ack_state = mymalloc(sizeof(ack_state_type));
+            ack_state = malloc(sizeof(ack_state_type));
             ack_state->seqnum = seqnum;
             ack_state->needack = needack;
             ack_state->fromhost = host_node_ptr->host;
@@ -4189,7 +4242,7 @@ static void *writer_thread(void *args)
     host_node_type *host_node_ptr;
     write_data *write_list_ptr, *write_list_back;
     int rc, flags, maxage;
-    int th_start_time = time_epoch();
+    int th_start_time = comdb2_time_epoch();
     struct timespec waittime;
 #ifndef HAS_CLOCK_GETTIME
     struct timeval tv;
@@ -4235,7 +4288,7 @@ static void *writer_thread(void *args)
             maxage = 0;
 
             Pthread_mutex_lock(&(host_node_ptr->write_lock));
-            start_time = time_epoch();
+            start_time = comdb2_time_epoch();
             while (write_list_ptr != NULL) {
                 /* stop writing if we've hit an error or if we've disconnected
                  */
@@ -4245,7 +4298,7 @@ static void *writer_thread(void *args)
                     uint8_t *p_buf, *p_buf_end;
 
                     if (flags & WRITE_MSG_NODELAY) {
-                        age = time_epoch() - write_list_ptr->enque_time;
+                        age = comdb2_time_epoch() - write_list_ptr->enque_time;
                         if (age > maxage)
                             maxage = age;
                     }
@@ -4319,7 +4372,7 @@ static void *writer_thread(void *args)
                     logmsg(LOGMSG_USER, "Flushing %llu\n", gettmms());
                 sbuf2flush(host_node_ptr->sb);
             }
-            end_time = time_epoch();
+            end_time = comdb2_time_epoch();
             Pthread_mutex_unlock(&(host_node_ptr->write_lock));
 
             diff_time = end_time - start_time;
@@ -4512,7 +4565,7 @@ static void *reader_thread(void *arg)
     host_node_type *host_node_ptr;
     wire_header_type wire_header;
     int rc;
-    int th_start_time = time_epoch();
+    int th_start_time = comdb2_time_epoch();
     char fromhost[256], tohost[256];
 
     thread_started("net reader");
@@ -4559,7 +4612,7 @@ static void *reader_thread(void *arg)
 
         /* We received data - update our timestamp.  We used to do this only
          * for heartbeat messages; do this for all types of message. */
-        host_node_ptr->timestamp = time_epoch();
+        host_node_ptr->timestamp = comdb2_time_epoch();
 
         if (netinfo_ptr->trace && debug_switch_net_verbose())
            logmsg(LOGMSG_USER, "RT: got packet type=%d %llu\n", wire_header.type,
@@ -4679,7 +4732,8 @@ int net_check_bad_subnet_lk(int ii)
         goto out;
     }
 
-    if (last_bad_subnet_time * 1000 + subnet_blackout_timems < time_epochms()) {
+    if (last_bad_subnet_time * 1000 + subnet_blackout_timems <
+        comdb2_time_epochms()) {
         if (gbl_verbose_net)
             logmsg(LOGMSG_USER, "%" PRIu64 " %s Clearing out net %d %s\n",
                    pthread_self(), __func__, ii, subnet_suffices[ii]);
@@ -4716,7 +4770,7 @@ void net_set_bad_subnet(const char *subnet)
     pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
         if (strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
-            last_bad_subnet_time = time_epochms();
+            last_bad_subnet_time = comdb2_time_epochms();
             last_bad_subnet_idx = i;
             if (gbl_verbose_net)
                 logmsg(LOGMSG_USER,
@@ -4795,7 +4849,7 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
                          host_node_ptr->host);
 #endif
         pthread_mutex_unlock(&subnet_mtx);
-        return bb_gethostbyname(host_node_ptr->host);
+        return comdb2_gethostbyname(host_node_ptr->host);
     }
 
     if (counter == 0xffff) // start with a random subnet
@@ -4834,7 +4888,7 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
                 "Connecting to NON dedicated hostname/subnet '%s' counter=%d\n",
                 rephostname, counter);
 #endif
-        phe = bb_gethostbyname(rephostname);
+        phe = comdb2_gethostbyname(rephostname);
         if (!phe)
             logmsg(LOGMSG_ERROR, "%d) get_dedicated_conhost(): ERROR gethostbyname "
                             "'%s' FAILED \n",
@@ -4848,10 +4902,9 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
     return phe;
 }
 
-
 int net_get_port_by_service(const char *dbname)
 {
-    struct servent *serv = bb_getservbyname(dbname, "tcp");
+    struct servent *serv = comdb2_getservbyname(dbname, "tcp");
     if (serv == NULL)
         return 0;
     return ntohs(serv->s_port);
@@ -5140,7 +5193,7 @@ static void *connect_thread(void *arg)
     /* close the file-descriptor, wait for reader / writer threads
        to exit, free host_node_ptr, then exit */
     close_hostnode(host_node_ptr);
-    while (1) {
+    while (!netinfo_ptr->exiting) {
         int ref;
         Pthread_mutex_lock(&(host_node_ptr->lock));
         ref = host_node_ptr->have_reader_thread +
@@ -5222,25 +5275,38 @@ static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
 {
     struct sockaddr_in lcl_addr_inet;
     size_t lcl_len = sizeof(lcl_addr_inet);
-    struct hostent *he;
-    int hlen;
-    char *subnet;
+    struct hostent *he = NULL;
 
-    if (!getsockname(host_node_ptr->fd, &lcl_addr_inet,
-                     (socklen_t *)&lcl_len)) {
-        he = gethostbyaddr(&lcl_addr_inet.sin_addr,
-                           sizeof lcl_addr_inet.sin_addr, AF_INET);
-        /*if (gbl_verbose_net)*/
-        fprintf(stderr, "Incoming connection from name: %s (%s:%u)\n",
-                (he && he->h_name) ? he->h_name : "unknown",
-                inet_ntoa(lcl_addr_inet.sin_addr),
-                (unsigned)ntohs(lcl_addr_inet.sin_port));
+    /* get local address of connection */
+    int ret =
+        getsockname(host_node_ptr->fd, &lcl_addr_inet, (socklen_t *)&lcl_len);
+    if (ret != 0) {
+        logmsg(LOGMSG_ERROR, "Failed to getsockname() for fd=%d\n",
+               host_node_ptr->fd);
+        return;
     }
 
-    hlen = strlen(host_node_ptr->netinfo_ptr->myhostname);
-    if (strncmp(host_node_ptr->netinfo_ptr->myhostname, he->h_name, hlen) ==
-        0) {
-        subnet = &he->h_name[hlen];
+    char host[NI_MAXHOST], service[NI_MAXSERV];
+    int s = getnameinfo((struct sockaddr *)&lcl_addr_inet, lcl_len, host,
+                        NI_MAXHOST, service, NI_MAXSERV, 0);
+
+    if (s != 0) {
+        logmsg(LOGMSG_ERROR, "Error from getaddrinfo: %s\n", gai_strerror(s));
+        logmsg(LOGMSG_WARN, "Incoming connection into unknown (%s:%u)\n",
+               inet_ntoa(lcl_addr_inet.sin_addr),
+               (unsigned)ntohs(lcl_addr_inet.sin_port));
+        return;
+    }
+
+    logmsg(LOGMSG_WARN, "Incoming connection into name: %s (%s:%u)\n", host,
+           inet_ntoa(lcl_addr_inet.sin_addr),
+           (unsigned)ntohs(lcl_addr_inet.sin_port));
+
+    /* extract the suffix of subnet ex. '_n3' in name node1_n3 */
+    int myh_len = host_node_ptr->netinfo_ptr->myhostname_len;
+    if (strncmp(host_node_ptr->netinfo_ptr->myhostname, host, myh_len) == 0) {
+        assert(myh_len <= sizeof(host));
+        char *subnet = &host[myh_len];
         if (subnet[0])
             strncpy0(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
     }
@@ -5895,20 +5961,15 @@ static void *heartbeat_send_thread(void *arg)
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
 
-    while (1) {
-        if (netinfo_ptr->exiting)
-            break;
-
+    while (!netinfo_ptr->exiting) {
         /* netinfo lock protects the list AND the write_heartbeat call
            no need to grab rdlock */
         Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-
         for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
             if (ptr->host != netinfo_ptr->myhostname) {
                 write_heartbeat(netinfo_ptr, ptr);
             }
         }
-
         Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
         if (netinfo_ptr->exiting)
@@ -5943,7 +6004,7 @@ static int net_writes(SBUF2 *sb, const char *buf, int nbytes)
     watchlist_node_type *watchlist_node = get_watchlist_node(sb, __func__);
     if (!watchlist_node)
         return -1;
-    watchlist_node->write_age = time_epoch();
+    watchlist_node->write_age = comdb2_time_epoch();
     outrc = watchlist_node->writefn(sb, buf, nbytes);
     watchlist_node->write_age = 0;
     return outrc;
@@ -5955,7 +6016,7 @@ static int net_reads(SBUF2 *sb, char *buf, int nbytes)
     watchlist_node_type *watchlist_node = get_watchlist_node(sb, __func__);
     if (!watchlist_node)
         return -1;
-    watchlist_node->read_age = time_epoch();
+    watchlist_node->read_age = comdb2_time_epoch();
     outrc = watchlist_node->readfn(sb, buf, nbytes);
     watchlist_node->read_age = 0;
     return outrc;
@@ -5978,14 +6039,17 @@ void net_timeout_watchlist(netinfo_type *netinfo_ptr)
         int read_age = watchlist_ptr->read_age;
 
         if (((watchlist_ptr->write_timeout) && (write_age) &&
-             ((time_epoch() - write_age) > watchlist_ptr->write_timeout)) ||
+             ((comdb2_time_epoch() - write_age) >
+              watchlist_ptr->write_timeout)) ||
 
             ((watchlist_ptr->read_timeout) && (read_age) &&
-             ((time_epoch() - read_age) > watchlist_ptr->read_timeout))) {
+             ((comdb2_time_epoch() - read_age) >
+              watchlist_ptr->read_timeout))) {
             logmsg(LOGMSG_INFO, "timing out session, closing fd %d read_age %d "
-                            "timeout %d write_age %d timeout %d\n",
-                    fd, time_epoch() - read_age, watchlist_ptr->read_timeout,
-                    time_epoch() - write_age, watchlist_ptr->write_timeout);
+                                "timeout %d write_age %d timeout %d\n",
+                   fd, comdb2_time_epoch() - read_age,
+                   watchlist_ptr->read_timeout, comdb2_time_epoch() - write_age,
+                   watchlist_ptr->write_timeout);
             shutdown(fd, 2);
 
             watchlist_ptr->write_timeout = 0;
@@ -5995,7 +6059,7 @@ void net_timeout_watchlist(netinfo_type *netinfo_ptr)
         else if ((watchlist_ptr->read_warning_timeout) &&
                  (watchlist_ptr->read_warning_arg) &&
                  (watchlist_ptr->read_warning_func) && (read_age)) {
-            int gap = time_epoch() - read_age;
+            int gap = comdb2_time_epoch() - read_age;
             if (gap > watchlist_ptr->read_warning_timeout) {
                 int rc = watchlist_ptr->read_warning_func(
                     watchlist_ptr->read_warning_arg,
@@ -6106,14 +6170,11 @@ static void *heartbeat_check_thread(void *arg)
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
 
-    while (1) {
+    while (!netinfo_ptr->exiting) {
         int now;
-        if (netinfo_ptr->exiting)
-            break;
-
         /* Re-register under portmux if it's time */
         if (netinfo_ptr->portmux_register_interval > 0 &&
-            ((now = time_epoch()) - netinfo_ptr->portmux_register_time) >
+            ((now = comdb2_time_epoch()) - netinfo_ptr->portmux_register_time) >
                 netinfo_ptr->portmux_register_interval) {
             int myport = portmux_register(
                 netinfo_ptr->app, netinfo_ptr->service, netinfo_ptr->instance);
@@ -6277,7 +6338,7 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
         return ptr;
     }
 
-    ptr = mymalloc(sizeof(sanc_node_type));
+    ptr = malloc(sizeof(sanc_node_type));
     bzero(ptr, sizeof(sanc_node_type));
 
     ptr->next = netinfo_ptr->sanctioned_list;

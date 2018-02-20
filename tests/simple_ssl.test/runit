@@ -63,7 +63,8 @@ fi
 
 host=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"`
 if [ "$host" != "" ]; then
-    numconnect=`CDB2_DEBUG=1 cdb2sql ${CDB2_OPTIONS} $dbnm --host $host 'select 1' 2>&1 | grep -c 'fd -1'`
+    cdb2sql -v ${CDB2_OPTIONS} $dbnm --host $host 'select 1' &> conn.out 
+    numconnect=`cat conn.out | grep "newsql_connect" | grep -c 'entering'`
     if [ "$numconnect" != "1" ]; then
         echo "Should only connect once but attempted to connect $numconnect times."
         exit 1

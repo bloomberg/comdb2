@@ -21,6 +21,7 @@ extern pthread_mutex_t schema_change_in_progress_mutex;
 extern pthread_mutex_t fastinit_in_progress_mutex;
 extern pthread_mutex_t schema_change_sbuf2_lock;
 extern pthread_mutex_t sc_resuming_mtx;
+extern pthread_mutex_t csc2_subsystem_mtx;
 extern struct schema_change_type *sc_resuming;
 extern volatile int gbl_schema_change_in_progress;
 extern volatile int gbl_lua_version;
@@ -29,6 +30,10 @@ extern uint32_t sc_host;
 extern int gbl_default_livesc;
 extern int gbl_default_plannedsc;
 extern int gbl_default_sc_scanmode;
+
+extern pthread_mutex_t sc_async_mtx;
+extern pthread_cond_t sc_async_cond;
+extern volatile int sc_async_threads;
 
 /* Throttle settings, which you can change with message traps.  Note that if
  * you have gbl_sc_usleep=0, the important live writer threads never get to

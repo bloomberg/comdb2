@@ -73,6 +73,11 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess);
 int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err);
 
 /**
+ * Apply all schema changes
+ */
+int osql_bplog_schemachange(struct ireq *iq);
+
+/**
  * Apply all the bplog updates
  */
 int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,

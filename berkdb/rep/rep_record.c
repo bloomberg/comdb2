@@ -55,6 +55,8 @@ static const char revid[] =
 
 
 #ifndef TESTSUITE
+int bdb_am_i_coherent(void *bdb_state);
+void bdb_thread_event(void *bdb_state, int event);
 void bdb_get_writelock(void *bdb_state,
     const char *idstr, const char *funcname, int line);
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
@@ -410,6 +412,10 @@ done:
 	return will_recover;
 }
 
+
+    extern int gbl_verbose_master_req;
+
+
 /*
  * __rep_process_message --
  *
@@ -493,16 +499,14 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	if (LOG_SWAPPED())
 		__rep_control_swap(rp);
 
-    extern int gbl_verbose_master_req;
-
 	if (gbl_verbose_master_req) {
 		switch (rp->rectype) {
 			case REP_MASTER_REQ:
-				logmsg(LOGMSG_ERROR, "%s processing REP_MASTER_REQ\n",
+				logmsg(LOGMSG_USER, "%s processing REP_MASTER_REQ\n",
 					__func__);
 				break;
 			case REP_NEWMASTER:
-				logmsg(LOGMSG_ERROR, "%s processing REP_NEWMASTER\n", __func__);
+				logmsg(LOGMSG_USER, "%s processing REP_NEWMASTER\n", __func__);
 				break;
 				default: 
 					break;
@@ -654,6 +658,10 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		} else if (rp->rectype != REP_NEWMASTER) {
 
+			if (gbl_verbose_master_req) {
+				logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
+						__func__, __LINE__);
+			}
 			(void)__rep_send_message(dbenv,
 			    db_eid_broadcast, REP_MASTER_REQ, NULL, NULL, 0,
 			    NULL);
@@ -740,6 +748,11 @@ skip:				/*
                                 __func__, __LINE__, master_req_count);
                         master_req_print = now;
                     }
+
+					if (gbl_verbose_master_req) {
+						logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
+								__func__, __LINE__);
+					}
 
 					(void)__rep_send_message(dbenv,
 					    db_eid_broadcast,
@@ -905,6 +918,12 @@ send:			if (__rep_send_message(dbenv,
 								   commit_gen)) != 0)
 				goto errlock;
 		} else {
+
+			if (gbl_verbose_master_req) {
+				logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
+						__func__, __LINE__);
+			}
+
 			(void)__rep_send_message(dbenv, db_eid_broadcast,
 				 	REP_MASTER_REQ, NULL, NULL, 0, NULL);
 			fromline = __LINE__;
@@ -974,13 +993,14 @@ send:			if (__rep_send_message(dbenv,
 		memset(&data_dbt, 0, sizeof(data_dbt));
 		ret = __log_c_get(logc, &rp->lsn, &data_dbt, DB_SET);
 
-		if (ret == 0)	/* Case 1 */
-			(void)__rep_send_message(dbenv,
+        int resp_rc;
+		if (ret == 0) {
+			resp_rc = __rep_send_message(dbenv,
 			    *eidp, REP_LOG, &rp->lsn, &data_dbt,
 			    DB_REP_NOBUFFER
 			    /* we this to be flushed since the node is behind */
 			    , NULL);
-		else if (ret == DB_NOTFOUND) {
+        } else if (ret == DB_NOTFOUND) {
 			R_LOCK(dbenv, &dblp->reginfo);
 			endlsn = lp->lsn;
 			R_UNLOCK(dbenv, &dblp->reginfo);
@@ -1008,12 +1028,12 @@ send:			if (__rep_send_message(dbenv,
 						    (u_long)lsn.offset);
 					ret = DB_REP_OUTDATED;
 					/* Tell the replicant he's outdated. */
-					__rep_send_message(dbenv, *eidp,
+					resp_rc = __rep_send_message(dbenv, *eidp,
 					    REP_VERIFY_FAIL, &lsn, NULL, 0,
 					    NULL);
 				} else {
 					endlsn.offset += logc->c_len;
-					(void)__rep_send_message(dbenv, *eidp,
+					resp_rc = __rep_send_message(dbenv, *eidp,
 					    REP_NEWFILE, &endlsn, NULL, 0,
 					    NULL);
 				}
@@ -2067,6 +2087,9 @@ err:
 #undef ERR
 
 int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
+
+int bdb_the_lock_desired(void);
+
 /*
  * __rep_apply --
  *
@@ -2076,7 +2099,7 @@ int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
  * process and manage incoming log records.
  */
 static int
-__rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen)
+__rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen)
 	DB_ENV *dbenv;
 	REP_CONTROL *rp;
 	DBT *rec;
@@ -2573,8 +2596,14 @@ gap_check:		max_lsn_dbtp = NULL;
 				    NULL);
 			} else {
 				MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+
+				if (gbl_verbose_master_req) {
+					logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
+							__func__, __LINE__);
+				}
+
 				(void)__rep_send_message(dbenv,
-				    db_eid_broadcast, REP_MASTER_REQ,
+					db_eid_broadcast, REP_MASTER_REQ,
 				    NULL, NULL, 0, NULL);
 			}
 		}
@@ -2820,6 +2849,40 @@ err:	if (dbc != NULL && (t_ret = __db_c_close(dbc)) != 0 && ret == 0) {
 	return (ret);
 }
 
+int gbl_time_rep_apply = 0;
+
+static int
+__rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen)
+	DB_ENV *dbenv;
+	REP_CONTROL *rp;
+	DBT *rec;
+	DB_LSN *ret_lsnp;
+	uint32_t *commit_gen;
+{
+    static unsigned long long rep_apply_count = 0;
+    static unsigned long long rep_apply_usc = 0;
+	static int lastpr = 0;
+    long long usecs;
+    int rc, now;
+    bbtime_t start = {0}, end = {0};
+
+    getbbtime(&start);
+    rc = __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen);
+    getbbtime(&end);
+    usecs = diff_bbtime(&end, &start);
+    rep_apply_count++;
+    rep_apply_usc += usecs;
+    if (gbl_time_rep_apply && (now = time(NULL)) > lastpr) {
+			logmsg(LOGMSG_USER,
+                "%s took %llu usecs, tot-usec=%llu cnt=%llu avg-usec=%llu\n",
+			    __func__, usecs, rep_apply_usc,
+			    rep_apply_count, rep_apply_usc / rep_apply_count);
+			lastpr = now;
+    }
+    return rc;
+}
+
+
 u_int32_t gbl_rep_lockid;
 
 static void
@@ -2988,6 +3051,8 @@ logical_record_file_affinity(int rectype)
 
 #include <stdlib.h>
 
+int gbl_processor_thd_poll;
+
 static void
 processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 {
@@ -2998,6 +3063,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	DB_LOCK prev_lsn_lk;
 	int i;
 	int inline_worker;
+	int polltm;
 	DB_LOGC *logc = NULL;
 	DB_LOCKREQ req, *lvp;
 	DB_ENV *dbenv;
@@ -3014,6 +3080,27 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	dbenv = rp->dbenv;
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
+
+	/*  rep_process_message adds to the inflight-txn list while holding the bdblock
+     *  We are executing here, so the inflight-txn list-size is greater than 0
+     *  get_writelock code blocks after attaining the writelock until the in-flight
+     *  txn list is 0
+     *  ... so we should NOT need to get the bdb readlock here */
+	void *bdb_state = dbenv->app_private;
+
+    bdb_thread_event(bdb_state, 3 /* start rdwr */);
+
+	/* Sleep here if the user has asked us to & if we are coherent */
+	if ((polltm = gbl_processor_thd_poll) > 0 && 
+			bdb_am_i_coherent(dbenv->app_private)) {
+		int lsize;
+		pthread_mutex_lock(&dbenv->recover_lk);
+		lsize = listc_size(&dbenv->inflight_transactions);
+		pthread_mutex_unlock(&dbenv->recover_lk);
+		logmsg(LOGMSG_ERROR, "Polling for %d in processor_thd, there are %d "
+				"processor thds outstanding\n", polltm, lsize);
+		poll(0, 0, polltm);
+	}
 
 	/* sanity check */
 #if 0
@@ -3318,11 +3405,15 @@ err:
 	pthread_mutex_lock(&dbenv->recover_lk);
 	listc_rfl(&dbenv->inflight_transactions, rp);
 	listc_abl(&dbenv->inactive_transactions, rp);
+	if (listc_size(&dbenv->inflight_transactions) == 0)
+		pthread_cond_broadcast(&dbenv->recover_cond);
 	pthread_mutex_unlock(&dbenv->recover_lk);
 
 	if (!dbenv->lsn_chain) {
 		pthread_rwlock_unlock(&dbenv->ser_lk);
 	}
+
+    bdb_thread_event(bdb_state, 2 /* done rdwr */);
 }
 
 static void
@@ -3969,6 +4060,8 @@ reset_recovery_processor(rp)
 	return ret;
 }
 
+extern int gbl_force_serial_on_writelock;
+
 static inline int
 __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
     commit_gen, prev_commit_lsn)
@@ -4006,6 +4099,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	int had_serializable_records = 0;
 	void *pglogs = NULL;
 	u_int32_t keycnt = 0;
+	int got_schema_lk = 0;
 
 	pthread_mutex_lock(&dbenv->recover_lk);
 	rp = listc_rtl(&dbenv->inactive_transactions);
@@ -4160,10 +4254,11 @@ bad_resize:	;
 		lt->last_lsn = rctl->lsn;
 		*ltrans = rp->ltrans = lt;
 
-		if (!dontlock) {
-			if (txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK) {
+		if (txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK) {
+			if (!dontlock) {
 				wrlock_schema_lk();
 			}
+			got_schema_lk = 1;
 		}
 		prev_lsn = txn_rl_args->prev_lsn;
 		lock_dbt = &txn_rl_args->locks;
@@ -4324,7 +4419,20 @@ bad_resize:	;
 	/* If we had any log records in this transaction that may affect the next transaction, 
 	 * process this transaction inline */
 
-	if (had_serializable_records) {
+	/* Force anything which gets the schema lock to be serial.  The problem is that the 
+	 * pthread_rwlock_wrlock API is too nanny-esque: we rely on the processor thread 
+	 * (a different thread) to unlock the schema lock if we've gotten it.  If the next 
+	 * regop also wants us to grab the schema-lock, we'd like this thread to block on 
+	 * itself until the processor thread unlocks it.  Instead, the pthread_rwlock_wrlock 
+	 * api can choose to return 'DEADLOCK'- apparently checking the tid of holding thread  
+	 * against the tid of the thread which wants the lock.  FTR, this is dumb.
+	 *
+	 * The solution: we grab the schema-lock rarely: just serialize for those cases.
+	 * */
+	int desired = 0;
+	if (had_serializable_records || got_schema_lk ||
+			(desired = (gbl_force_serial_on_writelock &&
+			 bdb_the_lock_desired()))) {
 
 		if (txn_args)
 			__os_free(dbenv, txn_args);
@@ -6329,6 +6437,27 @@ err:
 
 	return (ret);
 }
+
+int __rep_block_on_inflight_transactions(DB_ENV *dbenv)
+{
+	struct timespec ts;
+	int rc;
+
+	pthread_mutex_lock(&dbenv->recover_lk);
+	while (listc_size(&dbenv->inflight_transactions) > 0) {
+		clock_gettime(CLOCK_REALTIME, &ts);
+		ts.tv_sec++;
+		pthread_cond_timedwait(&dbenv->recover_cond, &dbenv->recover_lk, &ts);
+		if (listc_size(&dbenv->inflight_transactions) > 0) {
+			logmsg(LOGMSG_ERROR, "%s: waiting for %d processor threads "
+					"to exit\n", __func__,
+					listc_size(&dbenv->inflight_transactions));
+		}
+	}
+	pthread_mutex_unlock(&dbenv->recover_lk);
+	return 0;
+}
+
 
 // PUBLIC: int __rep_inflight_txns_older_than_lsn __P((DB_ENV *, DB_LSN *));
 int

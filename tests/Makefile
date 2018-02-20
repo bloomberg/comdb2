@@ -26,36 +26,14 @@ endif
 all_tests: $(ALL_TESTS)
 
 # get md5sum of executable use check when running every test in a series
-export COMDB2AR_EXE:=$(SRCHOME)/comdb2ar
-export COMDB2_EXE:=$(SRCHOME)/comdb2
-export CDB2SQL_EXE:=$(SRCHOME)/cdb2sql
+export COMDB2AR_EXE:=$(TESTDIR)/comdb2ar
+export COMDB2_EXE:=$(TESTDIR)/comdb2
+export CDB2SQL_EXE:=$(TESTDIR)/cdb2sql
 export COPYCOMDB2_EXE:=$(SRCHOME)/db/copycomdb2
 export CDB2_SQLREPLAY_EXE:=$(SRCHOME)/cdb2_sqlreplay
 export PMUX_EXE:=$(SRCHOME)/pmux
 
-ifeq ($(wildcard $(COMDB2_EXE)),)
-  $(error $(COMDB2_EXE) missing, please run make in $(SRCHOME))
-endif
-ifeq ($(wildcard $(COMDB2AR_EXE)),)
-  $(error $(COMDB2AR_EXE) missing, please run make in $(SRCHOME))
-endif
-ifeq ($(wildcard $(CDB2SQL_EXE)),)
-  $(error $(CDB2SQL_EXE) missing, please run make in $(SRCHOME))
-endif
-ifeq ($(wildcard $(CDB2_SQLREPLAY_EXE)),)
-  $(error $(CDB2_SQLREPLAY_EXE) missing, please run make in $(SRCHOME))
-endif
-ifeq ($(wildcard $(COPYCOMDB2_EXE)),)
-  $(error $(COPYCOMDB2_EXE) missing, please ensure it exists)
-endif
-ifeq ($(wildcard $(PMUX_EXE)),)
-  $(error $(PMUX_EXE) missing, please run make in $(SRCHOME))
-endif
-
-export COMDB2MD5SUM:=$(shell md5sum ${COMDB2_EXE} | cut -d ' ' -f1)
-
-basicops_nokey:
-	$(shell mkdir -p ${TESTDIR})
+basicops_nokey: executables
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
 	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTID=${TESTID} " >> ${TESTDIR}/test.log)
@@ -67,8 +45,21 @@ basicops_nokey:
 	$(shell echo "" >> ${TESTDIR}/test.log)
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
 
+executables:
+	@mkdir -p ${TESTDIR}
+	@cp ${SRCHOME}/comdb2 ${SRCHOME}/cdb2sql ${SRCHOME}/comdb2ar ${TESTDIR}/
+	@command -v ${COMDB2_EXE} > /dev/null || (echo "${COMDB2_EXE} missing "; exit 1)
+	@command -v ${CDB2_SQLREPLAY_EXE} > /dev/null || (echo "${CDB2_SQLREPLAY_EXE} missing "; exit 1)
+	@command -v ${CDB2SQL_EXE} > /dev/null || (echo "${CDB2SQL_EXE} missing "; exit 1)
+	@command -v ${COMDB2AR_EXE} > /dev/null || (echo "${COMDB2AR_EXE} missing "; exit 1)
+	@command -v ${COPYCOMDB2_EXE} > /dev/null || (echo "${COPYCOMDB2_EXE} missing "; exit 1)
+	@command -v ${PMUX_EXE} > /dev/null || (echo "${PMUX_EXE} missing "; exit 1)
+
+
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)
+	$(shell TOTAL="${TOTAL}" tools/smalldelay.sh)
+
 
 .PHONY: tools
 
@@ -88,7 +79,7 @@ crle: basicops_nokey tools
 	@$(MAKE) -sC crle.test
 
 %: %.test
-	@N=`tools/get_test_counter.sh` && echo TESTID=${TESTID} running $< $$N/${TOTAL}
+	@N=`tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
 	@cp -r $< $(TESTDIR)/
 	@$(MAKE) -skC $(TESTDIR)/$<
 

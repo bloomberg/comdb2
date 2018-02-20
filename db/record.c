@@ -39,6 +39,7 @@
 #include <string.h>
 #include <strings.h>
 #include <netinet/in.h>
+#include <poll.h>
 
 #include <memory_sync.h>
 
@@ -88,6 +89,16 @@ void free_cached_idx(uint8_t * *cached_idx);
     if (gbl_verbose_toblock_backouts)                                          \
         logmsg(LOGMSG_USER, "err line %d rc %d retrc %d\n", __LINE__, rc, retrc);           \
     goto err;
+#define VERIFY_TABLE_VERSION                                                   \
+    if (iq->usedb->tableversion != iq->usedbtablevers) {                       \
+        if (iq->debug)                                                         \
+            reqprintf(iq, "Stale buffer: usedb version %d vs curr ver %d\n",   \
+                      iq->usedbtablevers, iq->usedb->tableversion);            \
+        poll(NULL, 0, BDB_ATTR_GET(thedb->bdb_attr, SC_DELAY_VERIFY_ERROR));   \
+        *opfailcode = OP_FAILED_VERIFY;                                        \
+        retrc = ERR_VERIFY;                                                    \
+        ERR;                                                                   \
+    }
 
 int gbl_max_wr_rows_per_txn = 0;
 
@@ -107,7 +118,6 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     struct schema *dynschema = NULL;
     void *od_dta;
     size_t od_len;
-    void *mallocced_memory = NULL;
     size_t blobno;
     int prefixes = 0;
     unsigned char lclnulls[64];
@@ -193,10 +203,11 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     if (!(flags & RECFLAGS_NEW_SCHEMA)) { // dont lock if adding from SC
 
-        int d = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
-        if(d) {
-            if (iq->debug) reqprintf(iq, "Sleeping for %d usec", d);
-            usleep(d);
+        int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
+        if (d_ms) {
+            if (iq->debug)
+                reqprintf(iq, "Sleeping for %d ms", d_ms);
+            usleep(1000 * d_ms);
         }
 
         rc = bdb_lock_table_read(iq->usedb->handle, trans);
@@ -213,15 +224,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             ERR;
         }
 
-        if (iq->usedb->tableversion != iq->usedbtablevers) {
-            if (iq->debug)
-                reqprintf(iq, "Stale buffer: usedb version %d "
-                              "vs curr ver %d\n",
-                          iq->usedbtablevers, iq->usedb->tableversion);
-            *opfailcode = OP_FAILED_VERIFY;
-            retrc = ERR_VERIFY;
-            ERR;
-        }
+        VERIFY_TABLE_VERSION;
     }
 
     rc = resolve_tag_name(iq, tagdescr, taglen, &dynschema, tag, sizeof(tag));
@@ -256,9 +259,8 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     struct schema *dbname_schema = find_tag_schema(iq->usedb->tablename, tag);
     if (dbname_schema == NULL) {
         if (iq->debug)
-            if (iq->debug)
-                reqprintf(iq, "UNKNOWN TAG %s TABLE %s\n", tag,
-                          iq->usedb->tablename);
+            reqprintf(iq, "UNKNOWN TAG %s TABLE %s\n", tag,
+                      iq->usedb->tablename);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
     printf("AZ: add_record_int() err 2\n");
@@ -345,8 +347,8 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
 
         od_len = (size_t)od_len_int;
-        mallocced_memory = alloca(od_len);
-        if (!mallocced_memory) {
+        void *allocced_memory = alloca(od_len);
+        if (!allocced_memory) {
             logmsg(LOGMSG_ERROR,
                    "add_record: malloc %u failed! (table %s tag %s)\n",
                    (unsigned)od_len, iq->usedb->tablename, tag);
@@ -354,7 +356,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             retrc = ERR_INTERNAL;
             ERR;
         }
-        od_dta = mallocced_memory;
+        od_dta = allocced_memory;
 
         if (iq->have_client_endian &&
             TAGGED_API_LITTLE_ENDIAN == iq->client_endian) {
@@ -611,7 +613,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     if (!(flags & RECFLAGS_NEW_SCHEMA)) {
         iq->usedb->write_count[RECORD_WRITE_INS]++;
-        gbl_sc_last_writer_time = time_epoch();
+        gbl_sc_last_writer_time = comdb2_time_epoch();
 
         /* For live schema change */
         rc = live_sc_post_add(iq, trans, *genid, od_dta, ins_keys, 
@@ -778,7 +780,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     int expected_dat_len;
     blob_status_t oldblobs[MAXBLOBS];
     struct schema *dynschema = NULL;
-    char *mallocced_memory = NULL;
+    char *allocced_memory = NULL;
     size_t mallocced_bytes;
     size_t od_len;
     int od_len_int;
@@ -860,10 +862,11 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         prefixes++;
     }
 
-    int d = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
-    if(d) { 
-        if (iq->debug) reqprintf(iq, "Sleeping for %d usec", d);
-        usleep(d);
+    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
+    if (d_ms) {
+        if (iq->debug)
+            reqprintf(iq, "Sleeping for %d ms", d_ms);
+        usleep(1000 * d_ms);
     }
 
     rc = bdb_lock_table_read(iq->usedb->handle, trans);
@@ -880,15 +883,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    if (iq->usedb->tableversion != iq->usedbtablevers) {
-        if (iq->debug)
-            reqprintf(iq, "Stale buffer: usedb version %d "
-                          "vs curr ver %d\n",
-                      iq->usedbtablevers, iq->usedb->tableversion);
-        *opfailcode = OP_FAILED_VERIFY;
-        retrc = ERR_VERIFY;
-        ERR;
-    }
+    VERIFY_TABLE_VERSION;
 
     rc = resolve_tag_name(iq, tagdescr, taglen, &dynschema, tag, sizeof(tag));
     if (rc != 0) {
@@ -981,8 +976,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     mallocced_bytes = od_len * 2;
     if (vrecord)
         mallocced_bytes += od_len;
-    mallocced_memory = alloca(mallocced_bytes);
-    if (!mallocced_memory) {
+    allocced_memory = alloca(mallocced_bytes);
+    if (!allocced_memory) {
         logmsg(LOGMSG_ERROR,
                "upd_record: malloc %u failed! (table %s tag %s)\n",
                (unsigned)mallocced_bytes, iq->usedb->tablename, tag);
@@ -990,11 +985,11 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         retrc = ERR_INTERNAL;
         goto err;
     }
-    od_dta = mallocced_memory;
+    od_dta = allocced_memory;
     /* This is the current image at it exists in the db */
-    old_dta = mallocced_memory + od_len;
+    old_dta = allocced_memory + od_len;
     if (vrecord)
-        odv_dta = mallocced_memory + od_len * 2;
+        odv_dta = allocced_memory + od_len * 2;
 
     if (iq->have_client_endian &&
         TAGGED_API_LITTLE_ENDIAN == iq->client_endian) {
@@ -1744,7 +1739,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     iq->usedb->write_count[RECORD_WRITE_UPD]++;
-    gbl_sc_last_writer_time = time_epoch();
+    gbl_sc_last_writer_time = comdb2_time_epoch();
 
     dbglog_record_db_write(iq, "update");
     if (iq->__limits.maxcost && iq->cost > iq->__limits.maxcost)
@@ -1790,7 +1785,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 {
     int retrc = 0;
     int prefixes = 0;
-    void *mallocced_memory = NULL;
+    void *allocced_memory = NULL;
     blob_status_t oldblobs[MAXBLOBS];
     void *od_dta;
     size_t od_len;
@@ -1844,24 +1839,25 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
     od_len = (size_t)od_len_int;
-    mallocced_memory = alloca(od_len);
-    if (!mallocced_memory) {
+    allocced_memory = alloca(od_len);
+    if (!allocced_memory) {
         logmsg(LOGMSG_ERROR, "del_record: malloc %u failed\n", (unsigned)od_len);
         *opfailcode = OP_FAILED_INTERNAL;
         retrc = ERR_INTERNAL;
         goto err;
     }
-    od_dta = mallocced_memory;
+    od_dta = allocced_memory;
 
     /* light the prefault kill bit for this subop - olddta */
     prefault_kill_bits(iq, -1, PFRQ_OLDDATA);
     if (iq->osql_step_ix)
         gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
 
-    int d = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
-    if(d) { 
-        if (iq->debug) reqprintf(iq, "Sleeping for %d usec", d);
-        usleep(d);
+    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
+    if (d_ms) {
+        if (iq->debug)
+            reqprintf(iq, "Sleeping for %d ms", d_ms);
+        usleep(1000 * d_ms);
     }
 
     rc = bdb_lock_table_read(iq->usedb->handle, trans);
@@ -1878,15 +1874,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    if (iq->usedb->tableversion != iq->usedbtablevers) {
-        if (iq->debug)
-            reqprintf(iq, "Stale buffer: usedb version %d "
-                          "vs curr ver %d\n",
-                      iq->usedbtablevers, iq->usedb->tableversion);
-        *opfailcode = OP_FAILED_VERIFY;
-        retrc = ERR_VERIFY;
-        goto err;
-    }
+    VERIFY_TABLE_VERSION;
 
     if (primkey) {
         int fndrrn;
@@ -2116,7 +2104,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     iq->usedb->write_count[RECORD_WRITE_DEL]++;
-    gbl_sc_last_writer_time = time_epoch();
+    gbl_sc_last_writer_time = comdb2_time_epoch();
 
 err:
     dbglog_record_db_write(iq, "delete");
@@ -2179,11 +2167,12 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
                 use_new_tag ? ".NEW..ONDISK" : ".ONDISK", (char *)new_dta,
                 nd_len, keytag, key, NULL, blobs, blobs ? MAXBLOBS : 0, NULL);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "upd_new_record_add2indices: %s newgenid 0x%llx "
-                            "conversions -> ix%d failed (use_new_tag %d)\n",
-                    (iq->idxInsert ? "create_key_from_ireq" 
+            logmsg(LOGMSG_ERROR,
+                   "upd_new_record_add2indices: %s newgenid 0x%llx "
+                   "conversions -> ix%d failed (use_new_tag %d) rc=%d\n",
+                   (iq->idxInsert ? "create_key_from_ireq"
                                   : "create_key_from_ondisk_blobs"),
-                    newgenid, ixnum, use_new_tag);
+                   newgenid, ixnum, use_new_tag, rc);
             break;
         }
 
@@ -2195,9 +2184,9 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
             reqmoref(iq, " RC %d", rc);
         }
         if (rc) {
-            logmsg(LOGMSG_ERROR, "upd_new_record_add2indices: ix_addk failed "
-                            "newgenid 0x%llx ix_addk  ix%d\n",
-                    newgenid, ixnum);
+            logmsg(LOGMSG_ERROR, "upd_new_record_add2indices: ix_addk "
+                                 "newgenid 0x%llx ix_addk  ix%d rc=%d\n",
+                   newgenid, ixnum, rc);
             fsnapf(stderr, key, getkeysize(iq->usedb, ixnum));
             break;
         }
@@ -3273,7 +3262,7 @@ void testrep(int niter, int recsz)
     iq.usedb = thedb->dbs[0];
 
     n = 0;
-    now = last = time_epochms();
+    now = last = comdb2_time_epochms();
 
     for (i = 0; i < niter; i++) {
         tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
@@ -3293,7 +3282,7 @@ void testrep(int niter, int recsz)
             goto done;
         }
 
-        now = time_epochms();
+        now = comdb2_time_epochms();
         if ((now - last) > 1000) {
             logmsg(LOGMSG_ERROR, "%d\n", n);
             n = 0;

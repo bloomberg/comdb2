@@ -558,7 +558,10 @@ static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
 void stop_threads(struct dbenv *dbenv)
 {
     /* watchdog makes sure we don't get stuck trying to stop threads */
-    LOCK(&stop_thds_time_lk) { gbl_stop_thds_time = time_epoch(); }
+    LOCK(&stop_thds_time_lk)
+    {
+        gbl_stop_thds_time = comdb2_time_epoch();
+    }
     UNLOCK(&stop_thds_time_lk);
 
     dbenv->stopped = 1;

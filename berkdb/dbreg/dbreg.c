@@ -133,6 +133,7 @@ __dbreg_setup(dbp, name, create_txnid)
 	fnp->id = DB_LOGFILEID_INVALID;
 	fnp->s_type = dbp->type;
 	memcpy(fnp->ufid, dbp->fileid, DB_FILE_ID_LEN);
+	memcpy(fnp->ufid_chk, dbp->fileid, DB_FILE_ID_LEN);
 	fnp->meta_pgno = dbp->meta_pgno;
 	fnp->create_txnid = create_txnid;
 
@@ -504,6 +505,7 @@ __dbreg_close_id(dbp, txn)
 	}
 	memset(&fid_dbt, 0, sizeof(fid_dbt));
 	fid_dbt.data = fnp->ufid;
+	__ufid_sanity_check(dbenv, fnp);
 	fid_dbt.size = DB_FILE_ID_LEN;
 	if ((ret = __dbreg_register_log(dbenv, txn, &r_unused,
 	    F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,

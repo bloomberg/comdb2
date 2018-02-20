@@ -29,7 +29,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/poll.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -183,7 +182,7 @@ int bdb_update_startlsn_lk(bdb_state_type *bdb_state, struct tran_tag *intran,
         if (countstep > maxstep) {
             maxstep = countstep;
 
-            if ((now = time_epoch()) - lastpr) {
+            if ((now = comdb2_time_epoch()) - lastpr) {
                 logmsg(LOGMSG_USER, "Maxstep was %d\n", maxstep);
                 comdb2_cheapstack(stderr);
                 maxstep = 0;
@@ -994,6 +993,7 @@ static int bdb_tran_commit_phys_getlsn_flags(bdb_state_type *bdb_state,
     if (iirc) {
         logmsg(LOGMSG_ERROR, "%s:update_shadows_beforecommit returns %d\n", __func__,
                 iirc);
+        bdb_osql_trn_repo_unlock();
         return -1;
     }
     bdb_osql_trn_repo_unlock();
@@ -1568,6 +1568,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
                 outrc = -1;
                 atexit(abort_at_exit);
                 failed_to_log = 1;
+                bdb_osql_trn_repo_unlock();
                 goto cleanup;
             }
 
@@ -1582,6 +1583,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
                         "%s:update_shadows_beforecommit nonblocking rc %d\n",
                         __func__, rc);
                 *bdberr = rc;
+                bdb_osql_trn_repo_unlock();
                 return -1;
             }
         }
@@ -1678,7 +1680,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
             *bdberr = 0;
             /* If this is an abort, we've already gotten a new physical txn */
             char *blkcpy = alloca(blklen + sizeof(int)), *p;
-            int t = time_epoch();
+            int t = comdb2_time_epoch();
             memcpy(blkcpy, blkseq, blklen);
             p = ((char *)blkcpy) + blklen;
             memcpy(p, &t, sizeof(int));
@@ -1944,7 +1946,6 @@ static int bdb_tran_commit_with_seqnum_int_int(
     if (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host &&
         bdb_state->attr->commitdelay && tran->master) {
         usleep(1000 * bdb_state->attr->commitdelay);
-        //    poll(NULL, 0, bdb_state->attr->commitdelay);
     }
 
     if (tran->master) {

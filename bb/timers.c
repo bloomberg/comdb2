@@ -56,9 +56,12 @@ void timer_init(void (*func)(struct timer_parm *))
     timer_func = func;
 }
 
-int time_epoch(void) { return time(NULL); }
+int comdb2_time_epoch(void)
+{
+    return time(NULL);
+}
 
-int64_t time_epochus(void)
+int64_t comdb2_time_epochus(void)
 {
     struct timeval tv;
     int rc;
@@ -67,10 +70,10 @@ int64_t time_epochus(void)
         logmsg(LOGMSG_FATAL, "gettimeofday rc %d\n", rc);
         abort();
     }
-    return (tv.tv_sec * 1000000 + tv.tv_usec);
+    return (((int64_t)tv.tv_sec) * 1000000 + tv.tv_usec);
 }
 
-int time_epochms(void)
+int comdb2_time_epochms(void)
 {
     struct timeval tv;
     int rc;
@@ -81,8 +84,6 @@ int time_epochms(void)
     }
     return (tv.tv_sec * 1000 + tv.tv_usec / 1000) - starttime;
 }
-
-int bbipc_time_epochms(void) { return time_epochms(); }
 
 #define left(n) (((n + 1) * 2) - 1)
 #define right(n) (((n + 1) * 2))
@@ -146,8 +147,8 @@ static int new_timer(int ms, int parm, int oneshot, int dolock)
         return -1;
     }
 
-    now = time_epochms();
-    t.next = time_epochms() + ms;
+    now = comdb2_time_epochms();
+    t.next = comdb2_time_epochms() + ms;
     t.ms = ms;
     t.parm = parm;
     t.oneshot = oneshot;
@@ -162,7 +163,10 @@ static int new_timer(int ms, int parm, int oneshot, int dolock)
     return 0;
 }
 
-int timprm(int ms, int parm) { return new_timer(ms, parm, 0, 1); }
+int comdb2_timprm(int ms, int parm)
+{
+    return new_timer(ms, parm, 0, 1);
+}
 
 int remove_timer(int parm, int dolock)
 {
@@ -187,9 +191,15 @@ int remove_timer(int parm, int dolock)
     return -1;
 }
 
-int cantim(int parm) { return remove_timer(parm, 1); }
+int comdb2_cantim(int parm)
+{
+    return remove_timer(parm, 1);
+}
 
-int timer(int ms, int parm) { return new_timer(ms, parm, 1, 1); }
+int comdb2_timer(int ms, int parm)
+{
+    return new_timer(ms, parm, 1, 1);
+}
 
 void *timer_thread(void *p)
 {
@@ -200,12 +210,12 @@ void *timer_thread(void *p)
     int oneshot;
     int ms;
     for (;;) {
-        tnow = time_epochms();
+        tnow = comdb2_time_epochms();
         pthread_mutex_lock(&timerlk);
         while (ntimers == 0)
             pthread_cond_wait(&timerwait, &timerlk);
         t = timers[0];
-        tnow = time_epochms();
+        tnow = comdb2_time_epochms();
         if (t.next > tnow) {
             int nexttrap;
             struct timespec ts, now;
@@ -228,7 +238,7 @@ void *timer_thread(void *p)
                 ms = timers[0].ms;
 
             waitft_parm.parm = timers[0].parm;
-            waitft_parm.epoch = time_epoch();
+            waitft_parm.epoch = comdb2_time_epoch();
             waitft_parm.epochms = tnow;
 
             timer_func(&waitft_parm);

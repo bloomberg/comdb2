@@ -162,7 +162,7 @@ struct schema_change_type {
 
     struct schema_change_type *sc_next;
 
-
+    int usedbtablevers;
 
     /*********************** temporary fields for in progress
      * schemachange************/
@@ -193,6 +193,7 @@ struct ireq;
 typedef struct {
     tran_type *trans;
     struct ireq *iq;
+    struct schema_change_type *sc;
 } sc_arg_t;
 
 struct scinfo {
@@ -318,8 +319,6 @@ int add_schema_change_tables();
 
 extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);
 extern unsigned long long get_next_sc_seed(bdb_state_type *);
-
-int appsock_schema_change(SBUF2 *sb, int *keepsocket);
 
 void handle_setcompr(SBUF2 *sb);
 

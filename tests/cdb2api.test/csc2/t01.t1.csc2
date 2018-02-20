@@ -1,0 +1,10 @@
+schema
+{
+    byte maxkeysize[256]
+    byte largerec[4096]
+}
+
+keys
+{
+    "key" = maxkeysize
+}

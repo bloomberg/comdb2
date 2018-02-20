@@ -75,6 +75,7 @@ extern int gbl_goslow;
 
 extern int gbl_partial_indexes;
 
+extern int db_is_stopped();
 static int osql_net_type_to_net_uuid_type(int type);
 
 typedef struct osql_blknds {
@@ -3361,7 +3362,7 @@ int osql_comm_send_poke(char *tohost, unsigned long long rqid, uuid_t uuid,
         uint8_t *p_buf = buf, *p_buf_end = p_buf + OSQLCOMM_POKE_UUID_TYPE_LEN;
         osql_poke_uuid_t poke = {0};
 
-        poke.tstamp = time_epoch();
+        poke.tstamp = comdb2_time_epoch();
         comdb2uuidcpy(poke.uuid, uuid);
 
         if (!(p_buf = osqlcomm_poke_uuid_type_put(&poke, p_buf, p_buf_end))) {
@@ -3377,7 +3378,7 @@ int osql_comm_send_poke(char *tohost, unsigned long long rqid, uuid_t uuid,
         uint8_t buf[OSQLCOMM_POKE_TYPE_LEN],
             *p_buf = buf, *p_buf_end = buf + OSQLCOMM_POKE_TYPE_LEN;
 
-        poke.tstamp = time_epoch();
+        poke.tstamp = comdb2_time_epoch();
 
         poke.from = 0;
         poke.to = 0;
@@ -4568,7 +4569,7 @@ int type_to_uuid_type(int type)
     case NET_OSQL_SOCK_RPL:
         return NET_OSQL_SOCK_RPL_UUID;
     default:
-        logmsg(LOGMSG_FATAL, "unhandled type %d\n", type);
+        logmsg(LOGMSG_FATAL, "type_to_uuid_type: unhandled type %d\n", type);
         abort();
     }
 }
@@ -5446,7 +5447,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
             rpl.hd.type = OSQL_EXISTS;
             comdb2uuidcpy(rpl.hd.uuid, uuid);
             rpl.dt.status = 0;
-            rpl.dt.timestamp = time_epoch();
+            rpl.dt.timestamp = comdb2_time_epoch();
 
             if (!osqlcomm_exists_uuid_rpl_type_put(&rpl, p_buf, p_buf_end))
                 abort();
@@ -5468,7 +5469,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
             rpl.hd.type = OSQL_EXISTS;
             rpl.hd.sid = rqid;
             rpl.dt.status = 0;
-            rpl.dt.timestamp = time_epoch();
+            rpl.dt.timestamp = comdb2_time_epoch();
 
             if (!osqlcomm_exists_rpl_type_put(&rpl, p_buf, p_buf_end))
                 abort();
@@ -5584,7 +5585,7 @@ static void *osql_heartbeat_thread(void *arg)
 
     thread_started("osql heartbeat");
 
-    while (1) {
+    while (!db_is_stopped()) {
         uint8_t buf[OSQLCOMM_HBEAT_TYPE_LEN],
             *p_buf = buf, *p_buf_end = (buf + OSQLCOMM_HBEAT_TYPE_LEN);
 
@@ -5594,7 +5595,7 @@ static void *osql_heartbeat_thread(void *arg)
          * the contents */
         msg.dst = 0;
         msg.src = 0;
-        msg.time = time_epoch();
+        msg.time = comdb2_time_epoch();
 
         osqlcomm_hbeat_type_put(&(msg), p_buf, p_buf_end);
 
@@ -5757,7 +5758,6 @@ static int offload_net_send(char *host, int usertype, void *data, int datalen,
 
         /* remote send */
         while (rc) {
-            int rc2;
 #if 0
          printf("NET SEND %d tmp=%llu\n", usertype, osql_log_time());
 #endif
@@ -5772,7 +5772,7 @@ static int offload_net_send(char *host, int usertype, void *data, int datalen,
                     return -1;
                 }
 
-                if (rc2 = osql_comm_check_bdb_lock()) {
+                if (osql_comm_check_bdb_lock() != 0) {
                     logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
                             __LINE__, host);
                     return rc;
@@ -6290,7 +6290,7 @@ int start_schema_change_tran_wrapper(const char *tblname,
     strncpy0(sc->table, tblname, sizeof(sc->table));
 
     rc = start_schema_change_tran(iq, sc->tran);
-    if (rc != SC_COMMIT_PENDING) {
+    if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
         iq->sc = NULL;
     } else {
         iq->sc->sc_next = iq->sc_pending;
@@ -6311,7 +6311,160 @@ int start_schema_change_tran_wrapper(const char *tblname,
         }
     }
 
-    return (rc == SC_COMMIT_PENDING) ? 0 : rc;
+    return (rc == SC_ASYNC || rc == SC_COMMIT_PENDING) ? 0 : rc;
+}
+
+/**
+ * Handles each packet and start schema change
+ *
+ */
+int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
+                              uuid_t uuid, void *trans, char *msg, int msglen,
+                              int *flags, int **updCols,
+                              blob_buffer_t blobs[MAXBLOBS], int step,
+                              struct block_err *err, int *receivedrows,
+                              SBUF2 *logsb)
+{
+    const uint8_t *p_buf;
+    const uint8_t *p_buf_end;
+    int rc = 0;
+    int ii;
+    struct dbtable *db =
+        (iq->usedb) ? iq->usedb : thedb->dbs[0]; /*add to first if no usedb*/
+    const unsigned char tag_name_ondisk[] = ".ONDISK";
+    const size_t tag_name_ondisk_len = 8 /*includes NUL*/;
+    int type;
+    uuidstr_t us;
+
+    if (rqid == OSQL_RQID_USE_UUID) {
+        osql_uuid_rpl_t rpl;
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
+        type = rpl.type;
+        comdb2uuidstr(rpl.uuid, us);
+        if (comdb2uuidcmp(rpl.uuid, uuid)) {
+            uuidstr_t passedus;
+            comdb2uuidstr(uuid, passedus);
+            logmsg(LOGMSG_FATAL, "uuid mismatch: passed in %s, in packet %s\n",
+                   passedus, us);
+            abort();
+        }
+    } else {
+        osql_rpl_t rpl;
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
+        type = rpl.type;
+    }
+
+#if 0
+   if(logsb)
+      sbuf2printf(logsb, "processing: %x\n", msg);
+#endif
+
+    /*fprintf(stderr,"rpl type is %d msg=%x\n",rpl.type, msg);*/
+
+    switch (type) {
+    case OSQL_USEDB: {
+        osql_usedb_t dt;
+        p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
+        char *tablename;
+
+        tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+
+        if (logsb) {
+            sbuf2printf(logsb, "[%llu %s] OSQL_USEDB %*.s\n", rqid,
+                        comdb2uuidstr(uuid, us), dt.tablenamelen, tablename);
+            sbuf2flush(logsb);
+        }
+        if (unlikely(timepart_is_timepart(tablename, 1))) {
+            char *newest_shard;
+            unsigned long long ver;
+
+            newest_shard = timepart_newest_shard(tablename, &ver);
+            if (newest_shard) {
+                iq->usedbtablevers = ver;
+                free(newest_shard);
+            } else {
+                logmsg(LOGMSG_ERROR,
+                       "%s: broken time partition %s"
+                       "\n",
+                       __func__, tablename);
+
+                return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
+                                         tablename, 0);
+            }
+        } else {
+            if (is_tablename_queue(tablename, strlen(tablename))) {
+                iq->usedb = getqueuebyname(tablename);
+            } else {
+                iq->usedb = get_dbtable_by_name(tablename);
+                iq->usedbtablevers = dt.tableversion;
+            }
+            if (iq->usedb == NULL) {
+                iq->usedb = iq->origdb;
+                logmsg(LOGMSG_INFO, "%s: unable to get usedb for table %.*s\n",
+                       __func__, dt.tablenamelen, tablename);
+                return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
+                                         tablename, 0);
+            }
+        }
+    } break;
+    case OSQL_SCHEMACHANGE: {
+        p_buf = (uint8_t *)msg + sizeof(osql_uuid_rpl_t);
+        p_buf_end = p_buf + msglen;
+        struct schema_change_type *sc = new_schemachange_type();
+        p_buf = osqlcomm_schemachange_type_get(sc, p_buf, p_buf_end);
+
+        if (p_buf == NULL)
+            return -1;
+
+        if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC))
+            sc->nothrevent = 0;
+        else
+            sc->nothrevent = 1;
+        sc->finalize = 0;
+        if (sc->original_master_node[0] != 0 &&
+            strcmp(sc->original_master_node, gbl_mynode))
+            sc->resume = 1;
+
+        iq->sc = sc;
+        if (sc->db == NULL) {
+            sc->db = get_dbtable_by_name(sc->table);
+        }
+        sc->tran = NULL;
+        if (sc->db)
+            iq->usedb = sc->db;
+
+        if (!timepart_is_timepart(sc->table, 1)) {
+            rc = start_schema_change_tran(iq, NULL);
+            if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
+                iq->sc = NULL;
+            } else {
+                iq->sc->sc_next = iq->sc_pending;
+                iq->sc_pending = iq->sc;
+                bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
+            }
+        } else {
+            timepart_sc_arg_t arg = {0};
+            arg.s = sc;
+            arg.s->iq = iq;
+            rc = timepart_foreach_shard(
+                sc->table, start_schema_change_tran_wrapper, &arg, 0);
+        }
+        iq->usedb = NULL;
+
+        if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING)
+            return 0;
+        else
+            return ERR_SC;
+    } break;
+    default:
+        return 0;
+    }
+
+    return 0;
 }
 
 const char *get_tablename_from_rpl(const char *rpl)
@@ -7084,52 +7237,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
     } break;
     case OSQL_SCHEMACHANGE: {
-        uint8_t *p_buf = (uint8_t *)msg + sizeof(osql_uuid_rpl_t);
-        uint8_t *p_buf_end = p_buf + msglen;
-        struct schema_change_type *sc = new_schemachange_type();
-        p_buf = osqlcomm_schemachange_type_get(sc, p_buf, p_buf_end);
-
-        if (p_buf == NULL) return -1;
-
-        sc->nothrevent = 1;
-        sc->finalize = 0;
-        if (sc->original_master_node[0] != 0 &&
-            strcmp(sc->original_master_node, gbl_mynode))
-            sc->resume = 1;
-
-        void *ptran = bdb_get_physical_tran(trans);
-        bdb_ltran_get_schema_lock(trans);
-        iq->sc = sc;
-        if (sc->db == NULL) {
-            sc->db = get_dbtable_by_name(sc->table);
-        }
-        sc->tran = ptran;
-        if (sc->db) iq->usedb = sc->db;
-
-        if (!timepart_is_timepart(sc->table, 1)) {
-            rc = start_schema_change_tran(iq, ptran);
-            if (rc != SC_COMMIT_PENDING) {
-                iq->sc = NULL;
-            } else {
-                iq->sc->sc_next = iq->sc_pending;
-                iq->sc_pending = iq->sc;
-                bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
-            }
-        } else {
-            timepart_sc_arg_t arg = {0};
-            arg.s = sc;
-            arg.s->iq = iq;
-            rc = timepart_foreach_shard(
-                sc->table, start_schema_change_tran_wrapper, &arg, 0);
-        }
-        iq->usedb = NULL;
-
-        if (!rc || rc == SC_COMMIT_PENDING)
-            return 0;
-        else if (rc == SC_MASTER_DOWNGRADE)
-            return ERR_NOMASTER;
-        else
-            return ERR_SC;
+        /* handled in osql_process_schemachange */
+        return 0;
     } break;
     case OSQL_BPFUNC: {
         uint8_t *p_buf_end = (uint8_t *)msg + sizeof(osql_bpfunc_t) + msglen;
@@ -7204,6 +7313,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     int debug = 0;
     struct ireq *iq;
     uuid_t uuid;
+    int replaced = 0;
 
     /* grab the request */
     if (nettype >= NET_OSQL_UUID_REQUEST_MIN &&
@@ -7284,7 +7394,13 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
        added session have sess->iq set
        to avoid racing against signal_rtoff code */
     sess = osql_sess_create_sock(sqlret, sqllenret, req.tzname, type, req.rqid,
-                                 uuid, fromhost, iq);
+                                 uuid, fromhost, iq, &replaced);
+    if (replaced) {
+        assert(sess == NULL);
+        destroy_ireq(thedb, iq);
+        free(malcd);
+        return 0;
+    }
     if (!sess) {
         logmsg(LOGMSG_ERROR, "%s Unable to create new request\n", __func__);
         rc = -4;
@@ -9110,7 +9226,7 @@ int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long gen
                 uprec->genid = genid;
                 uprec->touch = uprec->owner;
                 uprec_sched = cron_add_event(
-                    uprec_sched, NULL, time_epoch() + uprec->intv,
+                    uprec_sched, NULL, comdb2_time_epoch() + uprec->intv,
                     uprec_cron_event, NULL, NULL, NULL, NULL, &xerr);
 
                 if (uprec_sched == NULL)

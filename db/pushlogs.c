@@ -80,7 +80,7 @@ static void *pushlogs_thread(void *voidarg)
         }
 
         /* report progress */
-        now = time_epoch();
+        now = comdb2_time_epoch();
         if (now - lastreport >= 5) {
             lastreport = now;
             char b1[32];
@@ -106,7 +106,7 @@ static void *pushlogs_thread(void *voidarg)
 
         pthread_mutex_lock(&schema_change_in_progress_mutex);
 
-        if (gbl_schema_change_in_progress == 1) {
+        if (gbl_schema_change_in_progress) {
             pthread_mutex_unlock(&schema_change_in_progress_mutex);
             sleep(1);
             continue;

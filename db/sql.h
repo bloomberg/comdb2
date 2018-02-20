@@ -55,6 +55,8 @@ enum transaction_level {
  * of appsock threads with small stacks. */
 
 #define MAX_HASH_SQL_LENGTH 8192
+#define MAX_USERNAME_LEN 17
+#define MAX_PASSWORD_LEN 19
 
 /* Static rootpages numbers. */
 enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
@@ -64,8 +66,7 @@ typedef struct stmt_hash_entry {
     sqlite3_stmt *stmt;
     char *query;
     struct schema *params_to_bind;
-    struct stmt_hash_entry *prev;
-    struct stmt_hash_entry *next;
+    LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
 
 /* Thread specific sql state */
@@ -84,16 +85,11 @@ struct sqlthdstate {
     struct thr_handle *thr_self;
     sqlite3 *sqldb;
 
-    hash_t *stmt_table;
+    char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
+    hash_t *stmt_caching_table; // statement cache table: caches vdbe engines
 
-    stmt_hash_entry_type *param_stmt_head;
-    stmt_hash_entry_type *param_stmt_tail;
-
-    stmt_hash_entry_type *noparam_stmt_head;
-    stmt_hash_entry_type *noparam_stmt_tail;
-
-    int param_cache_entries;
-    int noparam_cache_entries;
+    LISTC_T(stmt_hash_entry_type) param_stmt_list;   // list of cached stmts
+    LISTC_T(stmt_hash_entry_type) noparam_stmt_list; // list of cached stmts
 
     int dbopen_gen;
     int analyze_gen;
@@ -101,12 +97,6 @@ struct sqlthdstate {
     int ncols;
     int started_backend;
 };
-
-int find_stmt_table(hash_t *stmt_table, const char *sql,
-                    stmt_hash_entry_type **entry);
-void touch_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry);
-int add_stmt_table(struct sqlthdstate *, const char *sql, char *actual_sql,
-                   sqlite3_stmt *, struct schema *params_to_bind);
 
 typedef struct osqltimings {
     unsigned long long query_received; /* query received, in need of dispatch */
@@ -190,8 +180,8 @@ typedef struct osqlstate {
 
     int error_is_remote; /* set if xerr is the error for a distributed tran
                             (i.e. already translated */
-    int long_request;
     int dirty; /* optimization to nop selectv only transactions */
+    int running_ddl; /* ddl transaction */
 } osqlstate_t;
 
 enum ctrl_sqleng {
@@ -274,10 +264,6 @@ void currangearr_init(CurRangeArr *arr);
 void currangearr_append(CurRangeArr *arr, CurRange *r);
 CurRange *currangearr_get(CurRangeArr *arr, int n);
 void currangearr_double_if_full(CurRangeArr *arr);
-int currange_cmp(const void *p, const void *q);
-void currangearr_sort(CurRangeArr *arr);
-void currangearr_merge_neighbor(CurRangeArr *arr);
-void currangearr_coalesce(CurRangeArr *arr);
 void currangearr_build_hash(CurRangeArr *arr);
 void currangearr_free(CurRangeArr *arr);
 void currangearr_print(CurRangeArr *arr);
@@ -398,10 +384,10 @@ struct sqlclntstate {
     struct query_effects log_effects;
 
     int have_user;
-    char user[17];
+    char user[MAX_USERNAME_LEN];
 
     int have_password;
-    char password[19];
+    char password[MAX_PASSWORD_LEN];
 
     int have_endian;
     int endian;
@@ -516,6 +502,8 @@ struct sqlclntstate {
     int statement_query_effects;
 
     int verify_remote_schemas;
+    char *argv0;
+    char *stack;
 };
 
 /* Query stats. */
@@ -854,4 +842,10 @@ void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
 void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *);
+
+int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
+             uint8_t flip_orig, const char *tzname);
+
+#define cur_is_remote(pCur) (pCur->cursor_class == CURSORCLASS_REMOTE)
+
 #endif

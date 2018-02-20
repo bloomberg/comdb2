@@ -114,7 +114,11 @@ typedef struct oplog_key {
 } oplog_key_t;
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
-                         int *nops, struct block_err *err, SBUF2 *logsb);
+                         int *nops, struct block_err *err, SBUF2 *logsb,
+                         int (*func)(struct ireq *, unsigned long long, uuid_t,
+                                     void *, char *, int, int *, int **,
+                                     blob_buffer_t blobs[MAXBLOBS], int,
+                                     struct block_err *, int *, SBUF2 *));
 static int osql_bplog_wait(blocksql_tran_t *tran);
 static int req2blockop(int reqtype);
 static int osql_bplog_loginfo(struct ireq *iq, osql_sess_t *sess);
@@ -324,10 +328,10 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
         /* please stop !!! */
         if (thedb->stopped || thedb->exiting) {
             if (stop_time == 0) {
-                stop_time = time_epoch();
+                stop_time = comdb2_time_epoch();
             } else {
                 if (stop_time + gbl_blocksql_grace /*seconds grace time*/ <=
-                    time_epoch()) {
+                    comdb2_time_epoch()) {
                     logmsg(LOGMSG_ERROR, 
                             "blocksql session closing early, db stopped\n");
                     return ERR_NOMASTER;
@@ -372,6 +376,54 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
 }
 
 /**
+ * Apply all schema changes and wait for them to finish
+ */
+int osql_bplog_schemachange(struct ireq *iq)
+{
+    blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
+    int rc = 0;
+    int nops = 0;
+    struct block_err err;
+    struct schema_change_type *sc;
+
+    rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese.osqllog,
+                       osql_process_schemachange);
+
+    /* wait for all schema changes to finish */
+    iq->sc = sc = iq->sc_pending;
+    iq->sc_pending = NULL;
+    while (sc != NULL) {
+        pthread_mutex_lock(&sc->mtx);
+        sc->nothrevent = 1;
+        pthread_mutex_unlock(&sc->mtx);
+        iq->sc = sc->sc_next;
+        if (sc->sc_rc == SC_COMMIT_PENDING) {
+            sc->sc_next = iq->sc_pending;
+            iq->sc_pending = sc;
+        } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
+            free_schema_change_type(sc);
+            rc = ERR_NOMASTER;
+        } else {
+            free_schema_change_type(sc);
+            int sc_set_running(int running, uint64_t seed, const char *host,
+                               time_t time);
+            sc_set_running(0, iq->sc_seed, NULL, 0);
+            if (sc->sc_rc)
+                rc = ERR_SC;
+        }
+        sc = iq->sc;
+    }
+    if (rc) {
+        extern pthread_mutex_t csc2_subsystem_mtx;
+        pthread_mutex_lock(&csc2_subsystem_mtx);
+        csc2_free_all();
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
+    }
+    logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
+    return rc;
+}
+
+/**
  * Wait for all pending osql sessions of this transaction to
  * finish
  * Once all finished ok, we apply all the changes
@@ -383,7 +435,8 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
     int rc = 0;
 
     /* apply changes */
-    rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese.osqllog);
+    rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese.osqllog,
+                       osql_process_packet);
 
     iq->timings.req_applied = osql_log_time();
 
@@ -1116,6 +1169,12 @@ static int process_this_session(
     /* go through each record */
     rc = bdb_temp_table_find(thedb->bdb_env, dbc, key, sizeof(*key), NULL, bdberr);
 printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
+/* orig was:
+    rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
+                                   bdberr);
+    if(rc != IX_FND)
+        free(key);
+*/
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_first failed rc=%d bdberr=%d\n",
                 __func__, rc, *bdberr);
@@ -1245,7 +1304,11 @@ int osql_bplog_reqlog_queries(struct ireq *iq)
 }
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
-                         int *nops, struct block_err *err, SBUF2 *logsb)
+                         int *nops, struct block_err *err, SBUF2 *logsb,
+                         int (*func)(struct ireq *, unsigned long long, uuid_t,
+                                     void *, char *, int, int *, int **,
+                                     blob_buffer_t blobs[MAXBLOBS], int,
+                                     struct block_err *, int *, SBUF2 *))
 {
 
     blocksql_info_t *info = NULL;
@@ -1295,7 +1358,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     LISTC_FOR_EACH(&tran->complete, info, c_reqs)
     {
         out_rc = process_this_session(iq, iq_tran, info->sess, &bdberr, nops,
-                                      err, logsb, dbc, osql_process_packet);
+                                      err, logsb, dbc, func);
         if (out_rc) {
             break;
         }

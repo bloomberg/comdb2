@@ -1384,7 +1384,6 @@ typedef struct client_info {
 
 static int send_sp_trace(SP sp, const char *trace, int want_response)
 {
-    int rc;
     CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
     if (want_response) {
         sql_response.response_type = RESPONSE_TYPE__SP_DEBUG;
@@ -1398,7 +1397,7 @@ static int send_sp_trace(SP sp, const char *trace, int want_response)
     sp->rc = newsql_write_response(
         sp->clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE, &sql_response,
         1 /*flush*/, malloc, __func__, __LINE__);
-    return rc;
+    return sp->rc;
 }
 
 static clnt_info info_buf;
@@ -1748,13 +1747,15 @@ static char *load_default_src(char *spname, struct spversion_t *spversion,
     return src;
 }
 
+#define IS_SYS(spname) (!strncasecmp(spname, "sys.", 4))
+
 static char *load_src(char *spname, struct spversion_t *spversion,
                       int bootstrap, char **err)
 {
     int rc, bdb_err;
     char *src;
     int size = 0;
-    if (strncasecmp(spname, "sys.", 4) == 0) {
+    if (IS_SYS(spname)) {
         src = find_syssp(spname);
         if (src == NULL) {
             *err = no_such_procedure(spname, spversion);
@@ -2155,6 +2156,7 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
     sp->initial = 0;
     if (sp->rc == 0) {
         *stmt = rec_ptr->stmt;
+        rec_ptr->sql = sqlite3_sql(*stmt);
     } else if (sp->rc == SQLITE_SCHEMA) {
         return luaL_error(L, sqlite3ErrStr(sp->rc));
     } else {
@@ -2732,6 +2734,7 @@ static void *dispatch_lua_thread(void *lt)
     clnt.sql = l_thread->sql;
     clnt.must_close_sb = 0;
     clnt.exec_lua_thread = 1;
+    clnt.trans_has_sp = 1;
     pthread_mutex_init(&clnt.wait_mutex, NULL);
     pthread_cond_init(&clnt.wait_cond, NULL);
     pthread_mutex_init(&clnt.write_lock, NULL);
@@ -5698,7 +5701,7 @@ static int get_spname(struct sqlclntstate *clnt, const char **exec,
     start = s;
 
     /* allow sys., otherwise '.' is not a valid character  */
-    int is_sys = !strncasecmp(s, "sys.", 4);
+    int is_sys = IS_SYS(s);
     while (s && (isalnum(*s) || *s == '_' || (is_sys && *s == '.')))
         s++;
 
@@ -5833,10 +5836,15 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
 
     *new_vm = 0;
     if (sp->src == NULL) {
-        rdlock_schema_lk();
+        int locked=0;
+        if (!IS_SYS(spname)) {
+            rdlock_schema_lk();
+            locked = 1;
+        }
         sp->src = load_src(spname, &sp->spversion, 1, err);
         sp->lua_version = gbl_lua_version;
-        unlock_schema_lk();
+        if (locked)
+            unlock_schema_lk();
         if (sp->src == NULL) {
             close_sp(clnt);
             return -1;
@@ -6495,6 +6503,7 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if ((rc = commit_sp(L, &err)) != 0) return rc;
 
     // dbthread_join() performs clean-up
+    lua_gc(L, LUA_GCCOLLECT, 0);
     return rc;
 }
 
@@ -6525,7 +6534,7 @@ static int exec_procedure_int(const char *s, char **err,
 
     update_tran_funcs(L, clnt->in_client_trans);
 
-    if (strncasecmp(spname, "sys.", 4) == 0) init_sys_funcs(L);
+    if (IS_SYS(spname)) init_sys_funcs(L);
 
     if ((rc = push_args(&s, clnt, err, params, &args)) != 0) return rc;
 

@@ -976,6 +976,9 @@ int bdb_amimaster(bdb_state_type *bdb_handle);
 /* returns nodeid of master, -1 if there is no master */
 char *bdb_whoismaster(bdb_state_type *bdb_handle);
 
+int bdb_get_rep_master(bdb_state_type *bdb_state, char **master_out,
+                       uint32_t *egen);
+
 /* get current sanc list.  pass in size of array.  returns number of sanc
  * nodes (may be > passed in list length). */
 int bdb_get_sanc_list(bdb_state_type *bdb_state, int max_nodes,
@@ -1844,6 +1847,7 @@ char *llmeta_get_tablename_alias(const char *tablename_alias, char **errstr);
 int llmeta_rem_tablename_alias(const char *tablename_alias, char **errstr);
 void llmeta_list_tablename_alias(void);
 
+void bdb_cleanup_private_blkseq(bdb_state_type *bdb_state);
 int bdb_create_private_blkseq(bdb_state_type *bdb_state);
 int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe);
 int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
@@ -1932,7 +1936,7 @@ unsigned long long bdb_get_a_genid(bdb_state_type *bdb_state);
 uint64_t get_coherency_timestamp(void);
 
 /* Return the next timestamp that the master is allowed to commit */
-time_t next_commit_timestamp(void);
+uint64_t next_commit_timestamp(void);
 
 int bdb_genid_format(bdb_state_type *bdb_state);
 int bdb_genid_set_format(bdb_state_type *bdb_state, int format);
@@ -1949,11 +1953,11 @@ int bdb_llmeta_del_lua_afunc(char *, int *bdberr);
 /* IO smoke test */
 int bdb_watchdog_test_io(bdb_state_type *bdb_state);
 
-int bdb_add_versioned_sp(char *name, char *version, char *src);
+int bdb_add_versioned_sp(tran_type *, char *name, char *version, char *src);
 int bdb_get_versioned_sp(char *name, char *version, char **src);
 int bdb_del_versioned_sp(char *name, char *version);
 
-int bdb_set_default_versioned_sp(char *name, char *version);
+int bdb_set_default_versioned_sp(tran_type *, char *name, char *version);
 int bdb_get_default_versioned_sp(char *name, char **version);
 int bdb_del_default_versioned_sp(tran_type *tran, char *name);
 
@@ -1984,6 +1988,7 @@ struct bias_info {
 };
 
 void bdb_set_fld_hints(bdb_state_type *, uint16_t *);
+void bdb_cleanup_fld_hints(bdb_state_type *bdb_state);
 void rename_bdb_state(bdb_state_type *bdb_state, const char *newname);
 
 #endif

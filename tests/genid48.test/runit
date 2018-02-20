@@ -1,49 +1,47 @@
 #!/usr/bin/env bash
 
 db=$1
-failed=0
 
-[[ "$debug" == 1 ]] && set -x
+set -x
 
-stage=default
-if [[ -z "$CDB2_OPTIONS" ]]; then
-    stage=local
-fi
+function getmaster {
+    cdb2sql --tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
+
 
 function setandtest
 {
     [[ "$debug" == 1 ]] && set -x
-    set=$1
+    setgenid=$1
     testv=$2
 
-    cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "put tunable 'seed_genid' '$set'"
-    pre=$(cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "exec procedure sys.cmd.send('get_genid 10')" | awk '{print $2}')
+    cdb2sql -tabs ${CDB2_OPTIONS} $db -host $master "put tunable 'seed_genid' '$setgenid'"
+    pre=$(cdb2sql -tabs ${CDB2_OPTIONS} $db -host $master "exec procedure sys.cmd.send('get_genid 10')" | awk '{print $2}')
 
     echo $pre | egrep $testv
     if [[ $? != 0 ]]; then
         echo "Testcase failed: wanted prefix of at least $testv but got $pre"
-        failed=1
-        return $failed
+        return 1
     fi
 
     j=0 
     while [[ $j -lt 20 ]]; do 
-        cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "exec procedure sys.cmd.send('get_genid 10')"
+        cdb2sql -tabs ${CDB2_OPTIONS} $db -host $master "exec procedure sys.cmd.send('get_genid 10')"
         let j=j+1
     done
 
-    post=$(cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "exec procedure sys.cmd.send('get_genid 10')" | awk '{print $2}')
+    post=$(cdb2sql -tabs ${CDB2_OPTIONS} $db -host $master "exec procedure sys.cmd.send('get_genid 10')" | awk '{print $2}')
 
     echo $post | egrep $testv
     if [[ $? == 0 ]]; then
         echo "Testcase failed: wanted prefix of less than $testv but got $post"
-        failed=1
-        return $failed
+        return 1
     fi
 
     return 0
 }
 
+master=`getmaster`
 
 setandtest a "0x00000000000"
 [[ $? != 0 ]] && exit 1

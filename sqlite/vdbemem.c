@@ -1495,6 +1495,7 @@ static int valueFromFunction(
   memset(&ctx, 0, sizeof(ctx));
   ctx.pOut = pVal;
   ctx.pFunc = pFunc;
+  ctx.pVdbe = db->pVdbe;
   pFunc->xSFunc(&ctx, nVal, apVal);
   if( ctx.isError ){
     rc = ctx.isError;

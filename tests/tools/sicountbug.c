@@ -8,7 +8,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <signal.h>
-#include <getopt.h>
+#include <unistd.h>
 
 static char *argv0=NULL;
 
@@ -98,9 +98,12 @@ void *insert_records_thd(void *arg)
     int64_t acct = 0;
     int64_t id = 0;
 
+    char *conf = getenv("CDB2_CONFIG");
+    if (conf)
+        cdb2_set_comdb2db_config(conf);
     if ((ret = cdb2_open(&sqlh, c->dbname, c->stage, 0)) != 0)
     {
-        fprintf(stderr, "Error getting sql handle, ret=%d\n", ret);
+        fprintf(stderr, "%s:%d Error getting sql handle, ret=%d\n", __func__, __LINE__, ret);
         exit(1);
     }
 
@@ -178,6 +181,9 @@ void *update_records_thd(void *arg)
     long long *ll, sum, sum2, sum3, curbal, newbal;
     char *ch;
 
+    char *conf = getenv("CDB2_CONFIG");
+    if (conf)
+        cdb2_set_comdb2db_config(conf);
     if ((ret = cdb2_open(&sqlh, c->dbname, c->stage, 0)) != 0)
     {
         fprintf(stderr, "Error opening db, ret=%d\n", ret);
@@ -538,7 +544,7 @@ int main(int argc,char *argv[])
     cdb2_hndl_tp *sqlh;
     config_t *c;
     int err = 0, ret, opt;
-    char *stage = "local";
+    char *stage = "default";
 
     argv0 = argv[0];
     setlinebuf(stdout);
@@ -615,9 +621,12 @@ int main(int argc,char *argv[])
         exit(1);
     }
 
+    char *conf = getenv("CDB2_CONFIG");
+    if (conf)
+        cdb2_set_comdb2db_config(conf);
     if (0 == err && (ret = cdb2_open(&sqlh, c->dbname, c->stage, 0)) != 0)
     {
-        fprintf(stderr, "Error getting sql handle, ret=%d\n", ret);
+        fprintf(stderr, "%s:%d Error getting sql handle, ret=%d\n", __func__, __LINE__, ret);
         err++;
     }
 

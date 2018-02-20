@@ -449,7 +449,7 @@ bdb_osql_upddta_rec(llog_undo_upd_dta_args *upd_dta, DB_LSN *lsn, int *bdberr)
     unsigned long long genid = upd_dta->oldgenid;
 
     if (flibc_ntohll(upd_dta->oldgenid) >= flibc_ntohll(upd_dta->newgenid)) {
-        logmsg(LOGMSG_FATAL, "%s:%d %s incorrect genid received %llx %llx\n",
+        logmsg(LOGMSG_FATAL, "%s:%d %s incorrect genid received %lx %lx\n",
                __FILE__, __LINE__, __func__, flibc_ntohll(upd_dta->oldgenid),
                flibc_ntohll(upd_dta->newgenid));
         abort();
@@ -3722,11 +3722,11 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
             ix = del_ix->ix;
         }
         keybuf = malloc(keylen);
-        dtabuf = malloc(dtalen + bdb_state->ixcollattr[ix]);
+        dtabuf = malloc(dtalen + 4 * bdb_state->ixcollattr[ix]);
         outdatalen = 0;
         rc = bdb_reconstruct_delete(
             bdb_state, &rec->lsn, NULL, NULL, keybuf, keylen, dtabuf,
-            dtalen + bdb_state->ixcollattr[ix], &outdatalen);
+            dtalen + 4 * bdb_state->ixcollattr[ix], &outdatalen);
         if (rc) {
             if (rc == BDBERR_NO_LOG)
                 *bdberr = rc;

@@ -139,7 +139,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     entry->master = clnt->osql.host;
     entry->type = type;
     entry->last_checked = entry->last_updated =
-        time_epoch(); /* initialize these to insert time */
+        comdb2_time_epoch(); /* initialize these to insert time */
     entry->clnt = clnt;
 
 #ifdef DEBUG
@@ -189,10 +189,11 @@ retry:
         }
     }
 
-    if (entry->master == gbl_mynode) {
-        entry->master = clnt->osql.host = NULL; /* myself */
+    if (clnt->osql.host == gbl_mynode) {
+        clnt->osql.host = 0;
     }
-
+    if (entry->master == 0)
+        entry->master = gbl_mynode;
     if (entry->rqid == OSQL_RQID_USE_UUID)
         rc2 = hash_add(checkboard->rqsuuid, entry);
     else
@@ -455,17 +456,18 @@ static inline void signal_master_change(osql_sqlthr_t *rq, char *host,
     if (gbl_master_swing_osql_verbose)
         logmsg(LOGMSG_INFO, "%s signaling rq new master %s %llx %s\n", line,
                host, rq->rqid, comdb2uuidstr(rq->uuid, us));
-    pthread_mutex_lock(&rq->mtx);
     rq->master_changed = 1;
     pthread_cond_signal(&rq->cond);
-    pthread_mutex_unlock(&rq->mtx);
 }
 
 int osql_checkboard_master_changed(void *obj, void *arg)
 {
-    if (((osql_sqlthr_t *)obj)->master != arg) {
-        signal_master_change(obj, arg, __func__);
+    osql_sqlthr_t *rq = obj;
+    pthread_mutex_lock(&rq->mtx);
+    if (rq->master != arg && !(rq->master == 0 && gbl_mynode == arg)) {
+        signal_master_change(rq, arg, __func__);
     }
+    pthread_mutex_unlock(&rq->mtx);
     return 0;
 }
 
@@ -490,11 +492,14 @@ void osql_checkboard_for_each(char *host, int (*func)(void *, void *))
     }
 }
 
-int osql_checkboard_check_request_down_node(void *obj, void *arg)
+static int osql_checkboard_check_request_down_node(void *obj, void *arg)
 {
-    if (((osql_sqlthr_t *)obj)->master == arg) {
-        signal_master_change(obj, arg, __func__);
+    osql_sqlthr_t *rq = obj;
+    pthread_mutex_lock(&rq->mtx);
+    if (rq->master == arg) {
+        signal_master_change(rq, arg, __func__);
     }
+    pthread_mutex_unlock(&rq->mtx);
     return 0;
 }
 
@@ -503,23 +508,13 @@ void osql_checkboard_check_down_nodes(char *host)
     osql_checkboard_for_each(host, osql_checkboard_check_request_down_node);
 }
 
-int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
-                                struct errstat *xerr)
-{
-    return osql_chkboard_timedwait_commitrc(
-        rqid, uuid,
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC),
-        xerr);
-}
-
 /**
  * Wait for the session to complete
  * Upon return, sqlclntstate's errstat is set
  *
  */
-inline int osql_chkboard_timedwait_commitrc(unsigned long long rqid,
-                                            uuid_t uuid, int max_wait,
-                                            struct errstat *xerr)
+int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
+                                int max_wait, struct errstat *xerr)
 {
     struct timespec tm_s;
     osql_sqlthr_t *entry = NULL;
@@ -646,7 +641,7 @@ inline int osql_chkboard_timedwait_commitrc(unsigned long long rqid,
                 bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC);
 
             /* is it the time to check the master? have we already done so? */
-            now = time_epoch();
+            now = comdb2_time_epoch();
 
             if ((poke_timeout > 0) &&
                 (entry->last_updated + poke_timeout < now)) {
@@ -723,9 +718,11 @@ inline int osql_chkboard_timedwait_commitrc(unsigned long long rqid,
                 logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
             rc = 0; /* retry at higher level */
             xerr->errval = ERR_NOMASTER;
-            if (gbl_master_swing_osql_verbose)
-                logmsg(LOGMSG_ERROR, "sosql: master changed %lu\n",
-                       pthread_self());
+            if (gbl_master_swing_osql_verbose) {
+                uuidstr_t us;
+                logmsg(LOGMSG_ERROR, "%s: [%llx][%s] master changed\n",
+                       __func__, entry->rqid, comdb2uuidstr(entry->uuid, us));
+            }
             goto done;
         }
 
@@ -778,7 +775,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 
         entry->status = status;
         entry->timestamp = timestamp;
-        entry->last_updated = time_epoch();
+        entry->last_updated = comdb2_time_epoch();
 
         if ((rc = pthread_mutex_unlock(&entry->mtx)) != 0) {
             logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
@@ -801,7 +798,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
  * we're interested in things like master_changed
  *
  */
-int osql_reuse_sqlthr(struct sqlclntstate *clnt)
+int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
 {
     osql_sqlthr_t *entry = NULL;
     int rc = 0, rc2 = 0;
@@ -827,9 +824,12 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt)
         rc2 = -1;
     } else {
         pthread_mutex_lock(&entry->mtx);
+        entry->last_checked = entry->last_updated =
+            comdb2_time_epoch(); /* reset these time */
         entry->done = 0;
         entry->master_changed = 0;
-        entry->master = thedb->master; /* master changed, store it here */
+        entry->master =
+            master ? master : gbl_mynode; /* master changed, store it here */
         bzero(&entry->err, sizeof(entry->err));
         pthread_mutex_unlock(&entry->mtx);
     }

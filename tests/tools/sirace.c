@@ -3,7 +3,7 @@
 #include <cdb2api.h>
 #include <time.h>
 #include <errno.h>
-#include <getopt.h>
+#include <unistd.h>
 
 static char *argv0=NULL;
 static char *dbname=NULL;

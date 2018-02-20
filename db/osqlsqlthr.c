@@ -486,6 +486,8 @@ retry:
             return rc;
     } else {
         /* this is a replay with same rqid, already registered */
+        /* sets to the same node */
+        osql_reuse_sqlthr(clnt, osql->host);
     }
 
     /* retrying a transaction, don't skip on blkseq */
@@ -595,10 +597,10 @@ again:
             return SQLITE_INTERNAL;
     } else {
         if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "%lu Restarting %llx\n", pthread_self(),
-                   clnt->osql.rqid);
+            logmsg(LOGMSG_USER, "0x%lu Restarting clnt->osql.rqid=%llx\n",
+                   pthread_self(), clnt->osql.rqid);
         /* we should reset this ! */
-        rc = osql_reuse_sqlthr(clnt);
+        rc = osql_reuse_sqlthr(clnt, thedb->master);
         if (rc)
             return SQLITE_INTERNAL;
     }
@@ -672,6 +674,7 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
     int rcout = 0;
     int retries = 0;
     int bdberr = 0;
+    int timeout = 0;
 
     /* temp hook for sql transactions */
     /* is it distributed? */
@@ -733,8 +736,16 @@ retry:
             abort();
         }
 
+        if (osql->running_ddl)
+            timeout = bdb_attr_get(thedb->bdb_attr,
+                                   BDB_ATTR_SOSQL_DDL_MAX_COMMIT_WAIT_SEC);
+        else
+            timeout = bdb_attr_get(thedb->bdb_attr,
+                                   BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC);
+
         /* waits for a sign */
-        rc = osql_chkboard_wait_commitrc(osql->rqid, osql->uuid, &osql->xerr);
+        rc = osql_chkboard_wait_commitrc(osql->rqid, osql->uuid, timeout,
+                                         &osql->xerr);
         if (rc) {
             rcout = SQLITE_CLIENT_CHANGENODE;
             logmsg(LOGMSG_ERROR, "%s line %d setting rcout to (%d) from %d\n", 
@@ -1644,6 +1655,9 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     int rc = 0;
     int bdberr = 0;
 
+    if (pCur->cursor_class == CURSORCLASS_TEMPTABLE)
+        return 0;
+
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_read_by_mach_get(
             pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename,
@@ -1663,8 +1677,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
-    if (gbl_uses_password &&
-        (thd->sqlclntstate->no_transaction == 0)) {
+    if (gbl_uses_password && thd->sqlclntstate->no_transaction == 0) {
         rc = bdb_check_user_tbl_access(
             pCur->db->dbenv->bdb_env, thd->sqlclntstate->user,
             pCur->db->tablename, ACCESS_READ, &bdberr);
@@ -1698,6 +1711,9 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     char *host = thd->sqlclntstate->osql.host;
     unsigned long long rqid = thd->sqlclntstate->osql.rqid;
     char *tblname = strdup(sc->table);
+
+    osql->running_ddl = 1;
+
     void strupper(char *c);
     strupper(tblname);
     if (clnt->dml_tables && hash_find_readonly(clnt->dml_tables, tblname)) {

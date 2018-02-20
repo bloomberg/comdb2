@@ -27,6 +27,7 @@
 #include "sc_util.h"
 #include "sc_logic.h"
 #include "sc_records.h"
+#include "comdb2_atomic.h"
 
 static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
                            struct dbtable *db, struct dbtable *newdb,
@@ -304,10 +305,12 @@ static inline void wait_to_resume(struct schema_change_type *s)
 }
 
 int gbl_test_scindex_deadlock = 0;
+int gbl_test_sc_resume_race = 0;
+int gbl_readonly_sc = 0;
 
-int do_alter_table(struct ireq *iq, tran_type *tran)
+int do_alter_table(struct ireq *iq, struct schema_change_type *s,
+                   tran_type *tran)
 {
-    struct schema_change_type *s = iq->sc;
     struct dbtable *db;
     int rc;
     int bdberr = 0;
@@ -343,12 +346,17 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
 
     sc_printf(s, "starting schema update with seed %llx\n", sc_seed);
 
-    if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) return rc;
+    pthread_mutex_lock(&csc2_subsystem_mtx);
+    if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
+        return rc;
+    }
 
     db->sc_to = newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, -1);
 
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
         return SC_INTERNAL_ERROR;
     }
     newdb->version = get_csc2_version(newdb->tablename);
@@ -359,6 +367,7 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
         backout(newdb);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
         return -1;
     }
 
@@ -424,13 +433,18 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
         }
     pi_done:
         unlock_schema_lk();
-        if (rc) return rc;
+        if (rc) {
+            pthread_mutex_unlock(&csc2_subsystem_mtx);
+            return rc;
+        }
         if (ret) {
+            pthread_mutex_unlock(&csc2_subsystem_mtx);
             backout(newdb);
             cleanup_newdb(newdb);
             return ret;
         }
     }
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     if (verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
         backout(newdb);
@@ -523,7 +537,14 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
     pthread_rwlock_unlock(&sc_live_rwlock);
-    gbl_sc_resume_start = 0; // for resuming SC/toblock_main: pointers are set
+    if (s->resume && s->alteronly && !s->finalize_only) {
+        if (gbl_test_sc_resume_race) {
+            logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
+                   __func__, __LINE__);
+            sleep(5);
+        }
+        ATOMIC_ADD(gbl_sc_resume_start, -1);
+    }
     MEMORY_SYNC;
 
     reset_sc_stat();
@@ -534,6 +555,8 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
     if ((!newdb->plan || newdb->plan->plan_convert) ||
         changed == SC_CONSTRAINT_CHANGE) {
         doing_conversion = 1;
+        if (!s->live)
+            gbl_readonly_sc = 1;
         rc = convert_all_records(db, newdb, newdb->sc_genids, s);
         if (rc == 1) rc = 0;
         doing_conversion = 0;
@@ -553,7 +576,7 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
 
     if (s->convert_sleep > 0) {
         sc_printf(s, "Sleeping after conversion for %d...\n", s->convert_sleep);
-        logmsg(LOGMSG_DEBUG, "Sleeping after conversion for %d...\n",
+        logmsg(LOGMSG_INFO, "Sleeping after conversion for %d...\n",
                s->convert_sleep);
         sleep(s->convert_sleep);
         sc_printf(s, "...slept for %d\n", s->convert_sleep);
@@ -584,9 +607,9 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
     return SC_OK;
 }
 
-int finalize_alter_table(struct ireq *iq, tran_type *transac)
+int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
+                         tran_type *transac)
 {
-    struct schema_change_type *s = iq->sc;
     int retries = 0;
     int rc, bdberr;
     struct dbtable *db = s->db;
@@ -714,7 +737,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
     /* artificial sleep to aid testing */
     if (s->commit_sleep) {
         sc_printf(s, "artificially sleeping for %d...\n", s->commit_sleep);
-        logmsg(LOGMSG_DEBUG, "artificially sleeping for %d...\n",
+        logmsg(LOGMSG_INFO, "artificially sleeping for %d...\n",
                s->commit_sleep);
         sleep(s->commit_sleep);
         sc_printf(s, "...slept for %d\n", s->commit_sleep);
@@ -731,10 +754,10 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
 
     rc = bdb_close_only(old_bdb_handle, &bdberr);
     if (rc) {
-        sc_errf(s, "Failed closing new db, bdberr\n", bdberr);
+        sc_errf(s, "Failed closing old db, bdberr\n", bdberr);
         goto failed;
-    } else
-        sc_printf(s, "Close new db ok\n");
+    }
+    sc_printf(s, "Close old db ok\n");
 
     bdb_handle_reset_tran(new_bdb_handle, transac);
 

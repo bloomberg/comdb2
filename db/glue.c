@@ -70,9 +70,6 @@
 #include "remote.h"
 
 #include <cdb2api.h>
-
-#include "comdb2_shm.h"
-
 #include <dlmalloc.h>
 
 #include "sqloffload.h"
@@ -89,7 +86,6 @@
 #include <alloca.h>
 #include <intern_strings.h>
 #include "debug_switches.h"
-#include <machine.h>
 #include <trigger.h>
 
 #include "views.h"
@@ -97,6 +93,8 @@
 
 #include "views.h"
 #include "logmsg.h"
+
+int (*comdb2_ipc_master_set)(char *host) = 0;
 
 /* ixrc != -1 is incorrect. Could be IX_PASTEOF or IX_EMPTY.
  * Don't want to vtag those results
@@ -622,7 +620,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
     }
 
     /*wait for synchronization, if necessary */
-    start_ms = time_epochms();
+    start_ms = comdb2_time_epochms();
     switch (sync) {
     default:
 
@@ -697,7 +695,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
             poll(0, 0, next_commit - now);
     }
 
-    end_ms = time_epochms();
+    end_ms = comdb2_time_epochms();
     iq->reptimems = end_ms - start_ms;
 
     return rc;
@@ -2810,15 +2808,18 @@ retry:
     return ixrc;
 }
 
-int dtas_next(struct ireq *iq, const unsigned long long *genid_vector,
-              unsigned long long *genid, int *stripe, int stay_in_stripe,
-              void *dta, void *trans, int dtalen, int *reqdtalen, int *ver)
+static int dtas_next_int(struct ireq *iq,
+                         const unsigned long long *genid_vector,
+                         unsigned long long *genid, int *stripe,
+                         int stay_in_stripe, void *dta, void *trans, int dtalen,
+                         int *reqdtalen, int *ver, int page_order)
 {
     struct dbtable *db = iq->usedb;
     int bdberr, retries = 0, rc;
     bdb_fetch_args_t args = {0};
 retry:
     iq->gluewhere = "bdb_fetch_next_dtastripe_record";
+    args.page_order = page_order;
     rc = bdb_fetch_next_dtastripe_record(db->handle, genid_vector, genid,
                                          stripe, stay_in_stripe, dta, dtalen,
                                          reqdtalen, trans, &args, &bdberr);
@@ -2851,6 +2852,23 @@ retry:
     return -1;
 }
 
+int dtas_next(struct ireq *iq, const unsigned long long *genid_vector,
+              unsigned long long *genid, int *stripe, int stay_in_stripe,
+              void *dta, void *trans, int dtalen, int *reqdtalen, int *ver)
+{
+    return dtas_next_int(iq, genid_vector, genid, stripe, stay_in_stripe, dta,
+                         trans, dtalen, reqdtalen, ver, 0);
+}
+
+int dtas_next_pageorder(struct ireq *iq, const unsigned long long *genid_vector,
+                        unsigned long long *genid, int *stripe,
+                        int stay_in_stripe, void *dta, void *trans, int dtalen,
+                        int *reqdtalen, int *ver)
+{
+    return dtas_next_int(iq, genid_vector, genid, stripe, stay_in_stripe, dta,
+                         trans, dtalen, reqdtalen, ver, 1);
+}
+
 /* Get the next record in the database in one of the stripes.  Returns 0 on
  * success, 1 if there are no more records, -1 on failure. */
 int dat_highrrn(struct ireq *iq, int *out_highrrn)
@@ -2870,12 +2888,21 @@ static int new_master_callback(void *bdb_handle, char *host)
 {
     ++gbl_master_changes;
     struct dbenv *dbenv;
-    char *oldmaster;
+    char *oldmaster, *newmaster;
+    uint32_t oldegen, egen;
     int trigger_timepart = 0;
     dbenv = bdb_get_usr_ptr(bdb_handle);
     oldmaster = dbenv->master;
+    oldegen = dbenv->egen;
     dbenv->master = host;
 
+    bdb_get_rep_master(bdb_handle, &newmaster, &egen);
+    if (gbl_master_swing_osql_verbose)
+        logmsg(LOGMSG_INFO,
+               "%s:%d new master node %s, rep_master %s, rep_egen %u\n",
+               __func__, __LINE__, host ? host : "NULL",
+               newmaster ? newmaster : "NULL", egen);
+    dbenv->egen = egen;
     /*this is only used when handle not established yet. */
     if (host == gbl_mynode) {
         if (oldmaster != host) {
@@ -2891,7 +2918,9 @@ static int new_master_callback(void *bdb_handle, char *host)
             trigger_clear_hash();
             trigger_timepart = 1;
 
-            osql_repository_cancelall();
+            if (oldegen != egen) {
+                osql_repository_cancelall();
+            }
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
         /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
@@ -2899,9 +2928,16 @@ static int new_master_callback(void *bdb_handle, char *host)
         /* trigger old file recollect */
         gbl_master_changed_oldfiles = 1;
     } else {
-        if (oldmaster != host)
+        if (oldmaster != host && !gbl_create_mode) {
             logmsg(LOGMSG_WARN, "NEW MASTER NODE %s\n", host);
+        }
         /*bdb_set_timeout(bdb_handle, 0, &bdberr);*/
+        osql_repository_cancelall();
+    }
+
+    /* poke master in comdb2 shm */
+    if (!gbl_exit && comdb2_ipc_master_set) {
+        comdb2_ipc_master_set(host);
     }
 
     gbl_lost_master_time = 0; /* reset this */
@@ -2991,7 +3027,7 @@ int is_node_up(const char *host)
 {
     int rc;
 
-    if (gbl_rtcpu_debug && CLASS_TEST == get_mach_class(machine())) {
+    if (gbl_rtcpu_debug && CLASS_TEST == get_mach_class(gbl_mynode)) {
         /* For debugging rtcpu problems use an "alternative" rtcpu system.
          * Basically look for a file in /bbsrc/db/comdb2/rtcpu - if a file
          * for the node exists, then it is considered rt'd off. */
@@ -3032,6 +3068,9 @@ static int electsettings_callback(void *bdb_handle, int *elect_time_microsecs)
 /*status of sync subsystem */
 void backend_sync_stat(struct dbenv *dbenv)
 {
+    if (gbl_create_mode) {
+        return;
+    }
     if (dbenv->log_sync)
         logmsg(LOGMSG_USER, "FULL TRANSACTION LOG SYNC ENABLED\n");
 
@@ -3306,7 +3345,7 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
         return;
     }
     seed = dtap;
-    rc = sc_set_running(0, 0, NULL, 0);
+    rc = sc_set_running(0, *seed, NULL, 0);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 
@@ -3317,20 +3356,6 @@ static void net_check_sc_ok(void *hndl, void *uptr, char *fromnode,
     int rc;
     rc = check_sc_ok(NULL);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
-}
-
-static void net_lua_reload(void *hndl, void *uptr, char *fromnode, int usertype,
-                           void *dtap, int dtalen)
-{
-    gbl_analyze_gen++;
-    net_ack_message(hndl, 0);
-}
-
-static void net_statistics_changed(void *hndl, void *uptr, char *fromnode,
-                                   int usertype, void *dtap, int dtalen)
-{
-    gbl_analyze_gen++;
-    net_ack_message(hndl, 0);
 }
 
 static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,
@@ -4093,9 +4118,27 @@ int backend_open(struct dbenv *dbenv)
                           dbenv->bdb_env, &bdberr);
 
         if (db->handle == NULL) {
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_IGNORE_BAD_TABLE)) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "bdb_open:failed to open table %s/%s, rcode %d, IGNORING\n",
+                    dbenv->basedir, db->tablename, bdberr);
+                /* this is a hack, lets just leak it */
+                if (ii == dbenv->num_dbs - 1) {
+                    dbenv->dbs[ii] == NULL;
+                } else {
+                    memcpy(dbenv->dbs[ii], dbenv->dbs[ii + 1],
+                           sizeof(dbenv->dbs[0]));
+                    dbenv->dbs[dbenv->num_dbs - 1] = NULL;
+                }
+                dbenv->num_dbs--;
+                ii--;
+                continue;
+            }
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open table %s/%s, rcode %d\n",
                    dbenv->basedir, db->tablename, bdberr);
+
             return -1;
         }
     }
@@ -4331,9 +4374,7 @@ int backend_close(struct dbenv *dbenv)
     }
 
     /* offloading sql goes here */
-    if (dbenv->nsiblings > 0) {
-        osql_net_exiting();
-    }
+    osql_net_exiting();
 
     return bdb_close_env(dbenv->bdb_env);
 }

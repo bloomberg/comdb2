@@ -114,7 +114,7 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
     qfnd.data_len = dtalen;
     qfnd.data_offset = sizeof(struct bdb_queue_found);
     qfnd.num_fragments = 1;
-    qfnd.epoch = time_epoch();
+    qfnd.epoch = comdb2_time_epoch();
     p_buf = databuf;
     p_buf_end = p_buf + dtalen + sizeof(struct bdb_queue_found);
     p_buf = queue_found_put(&qfnd, p_buf, p_buf_end);

@@ -22,6 +22,7 @@ static const char revid[] = "$Id: env_open.c,v 11.144 2003/09/13 18:39:34 bostic
 #include <stdarg.h>
 #endif
 #include <unistd.h>
+#include <limits.h>
 
 #include <plhash.h>
 #include "db_int.h"
@@ -585,6 +586,7 @@ foundlsn:
 		thdpool_set_linger(dbenv->recovery_workers, 30);
 		thdpool_set_maxqueue(dbenv->recovery_workers, 8000);
 		pthread_mutex_init(&dbenv->recover_lk, NULL);
+		pthread_cond_init(&dbenv->recover_cond, NULL);
 		pthread_rwlock_init(&dbenv->ser_lk, NULL);
 		listc_init(&dbenv->inflight_transactions,
 		    offsetof(struct __recovery_processor, lnk));
@@ -1285,8 +1287,8 @@ int
 __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 {
 	int ret = 0;
-	char buf[256];
-	char fname[256];
+	char buf[PATH_MAX];
+	char fname[PATH_MAX];
 	const char *pbuf;
 	struct __db_checkpoint ckpt = { 0 };
 	int niop = 0;

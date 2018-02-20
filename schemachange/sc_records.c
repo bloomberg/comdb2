@@ -451,7 +451,7 @@ static int convert_record(struct convert_record_data *data)
     }
     pthread_mutex_unlock(&gbl_sc_lock);
     if (data->iq.debug) {
-        reqlog_new_request(&data->iq);
+        reqlog_new_request(&data->iq); // TODO: cleanup (reset) logger
         reqpushprefixf(&data->iq, "0x%llx: CONVERT_REC ", pthread_self());
     }
 
@@ -474,10 +474,17 @@ static int convert_record(struct convert_record_data *data)
     data->iq.usedb = data->from;
     data->iq.timeoutms = gbl_sc_timeoutms;
 
-    if (data->scanmode == SCAN_PARALLEL) {
-        rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe, 1,
-                       data->dta_buf, data->trans, data->from->lrl, &dtalen,
-                       NULL);
+    if (data->scanmode == SCAN_PARALLEL || data->scanmode == SCAN_PAGEORDER) {
+        if (data->scanmode == SCAN_PARALLEL) {
+            rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe, 1,
+                           data->dta_buf, data->trans, data->from->lrl, &dtalen,
+                           NULL);
+        } else {
+            rc = dtas_next_pageorder(
+                &data->iq, data->sc_genids, &genid, &data->stripe, 1,
+                data->dta_buf, data->trans, data->from->lrl, &dtalen, NULL);
+        }
+
         if (rc == 0) {
             dta = data->dta_buf;
             check_genid = bdb_normalise_genid(data->to->handle, genid);
@@ -856,7 +863,9 @@ err: /*if (is_schema_change_doomed())*/
             poll(0, 0, (rand() % 500 + 10));
         return 1;
     } else if (rc == IX_DUP) {
-        if (data->scanmode == SCAN_PARALLEL && data->s->rebuild_index) {
+        if ((data->scanmode == SCAN_PARALLEL ||
+             data->scanmode == SCAN_PAGEORDER) &&
+            data->s->rebuild_index) {
             /* if we are resuming an index rebuild schemachange,
              * and the stored llmeta genid is stale, some of the records
              * will fail insertion, and that is ok */
@@ -910,7 +919,7 @@ err: /*if (is_schema_change_doomed())*/
 
     /* Advance our progress markers */
     data->nrecs++;
-    if (data->scanmode == SCAN_PARALLEL) {
+    if (data->scanmode == SCAN_PARALLEL || data->scanmode == SCAN_PAGEORDER) {
         data->sc_genids[data->stripe] = genid;
     }
 
@@ -936,7 +945,7 @@ err: /*if (is_schema_change_doomed())*/
 
     gbl_sc_nrecs++;
 
-    int now = time_epoch();
+    int now = comdb2_time_epoch();
     if ((rc = report_sc_progress(data, now))) return rc;
 
     // do the following check every second or so
@@ -990,7 +999,7 @@ void *convert_records_thd(struct convert_record_data *data)
 
     /* from this point onwards we must get to the cleanup code before
      * returning.  assume failure unless we explicitly succeed.  */
-    data->lasttime = time_epoch();
+    data->lasttime = comdb2_time_epoch();
 
     data->num_records_per_trans = gbl_num_record_converts;
     data->num_retry_errors = 0;
@@ -1103,6 +1112,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     if (data.live && data.scanmode != SCAN_PARALLEL) {
         sc_errf(data.s, "live schema change can only be done in parallel "
                         "scan mode\n");
+        logmsg(LOGMSG_ERROR, "live schema change can only be done in parallel "
+                             "scan mode\n");
         return -1;
     }
 
@@ -1173,7 +1184,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     int outrc = 0;
 
     /* if were not in parallel, dont start any threads */
-    if (data.scanmode != SCAN_PARALLEL) {
+    if (data.scanmode != SCAN_PARALLEL && data.scanmode != SCAN_PAGEORDER) {
         convert_records_thd(&data);
         outrc = data.outrc;
     } else {
@@ -1457,13 +1468,14 @@ static int upgrade_records(struct convert_record_data *data)
             poll(NULL, 0, 100);
 
         /* snooze for a bit if writes have been coming in */
-        if (gbl_sc_last_writer_time >= time_epoch() - 5) usleep(gbl_sc_usleep);
+        if (gbl_sc_last_writer_time >= comdb2_time_epoch() - 5)
+            usleep(gbl_sc_usleep);
         break;
     } // end of rc check
 
     ++gbl_sc_nrecs;
     data->sc_genids[data->stripe] = genid;
-    now = time_epoch();
+    now = comdb2_time_epoch();
 
     if (copy_sc_report_freq > 0 &&
         now >= data->lasttime + copy_sc_report_freq) {
@@ -1525,7 +1537,7 @@ static void *upgrade_records_thd(void *vdata)
 
     // initialize convert_record_data
     data->outrc = -1;
-    data->lasttime = time_epoch();
+    data->lasttime = comdb2_time_epoch();
     data->num_records_per_trans = gbl_num_record_converts;
     data->num_records_per_trans = gbl_num_record_converts;
 

@@ -157,6 +157,12 @@ char *bdb_whoismaster(bdb_state_type *bdb_state)
         return NULL;
 }
 
+int bdb_get_rep_master(bdb_state_type *bdb_state, char **master_out,
+                       uint32_t *egen)
+{
+    return bdb_state->dbenv->get_rep_master(bdb_state->dbenv, master_out, egen);
+}
+
 int bdb_get_sanc_list(bdb_state_type *bdb_state, int max_nodes,
                       const char *nodes[REPMAX])
 {
@@ -822,12 +828,12 @@ void bdb_lockspeed(bdb_state_type *bdb_state)
     dbenv->lock_id(dbenv, &lid);
     lkname.data = "hello";
     lkname.size = strlen("hello");
-    start = time_epochms();
+    start = comdb2_time_epochms();
     for (i = 0; i < 100000000; i++) {
         dbenv->lock_get(dbenv, lid, 0, &lkname, DB_LOCK_READ, &lock);
         dbenv->lock_put(dbenv, &lock);
     }
-    end = time_epochms();
+    end = comdb2_time_epochms();
     logmsg(LOGMSG_USER, "berkeley took %dms (%d per second)\n", end - start,
            100000000 / (end - start) * 1000);
     dbenv->lock_id_free(dbenv, lid);

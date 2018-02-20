@@ -45,6 +45,7 @@
 #include <epochlib.h>
 #include <cdb2_constants.h>
 #include <logmsg.h>
+#include <mem.h>
 
 int gbl_pmux_route_enabled = 1;
 
@@ -149,7 +150,7 @@ static int remaining_timeoutms(int startms, int timeoutms)
         return -1;
     }
 
-    int elapsedms = time_epochms() - startms;
+    int elapsedms = comdb2_time_epochms() - startms;
     return (elapsedms < timeoutms) ? timeoutms - elapsedms : 0;
 }
 
@@ -206,7 +207,7 @@ int portmux_register(const char *app, const char *service, const char *instance)
 int portmux_deregister(const char *app, const char *service,
                        const char *instance)
 {
-    char name[NAMELEN];
+    char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
     int rc, fd;
@@ -239,7 +240,7 @@ static int portmux_get_int(const struct in_addr *in, const char *remote_host,
                            const char *app, const char *service,
                            const char *instance, int timeout_ms)
 {
-    char name[NAMELEN];
+    char name[NAMELEN * 2];
     int rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name))
         return -1;
@@ -297,7 +298,7 @@ static int portmux_get_int(const struct in_addr *in, const char *remote_host,
     }
 
     /* Read back result and close the connection, it's not needed any more. */
-    char res[NAMELEN + 32];
+    char res[NAMELEN * 2];
     sbuf2gets(res, sizeof(res), ss);
     sbuf2close(ss);
 
@@ -340,7 +341,7 @@ int portmux_get(const char *remote_host, const char *app, const char *service,
         return portmux_get_int(NULL, remote_host, app, service, instance,
                                portmux_default_timeout);
     }
-    char name[64];
+    char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
     int rc, fd, port;
@@ -377,7 +378,7 @@ int portmux_geti(struct in_addr in, const char *app, const char *service,
         return portmux_get_int(&in, NULL, app, service, instance,
                                portmux_default_timeout);
     }
-    char name[64];
+    char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
     int rc, fd, port;
@@ -426,7 +427,7 @@ static int portmux_register_route(const char *app, const char *service,
                                   const char *instance, int *port,
                                   uint32_t options)
 {
-    char name[NAMELEN];
+    char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
     int rc, listenfd;
@@ -566,7 +567,7 @@ static int portmux_route_to(struct in_addr in, const char *app,
                             const char *service, const char *instance,
                             int timeoutms)
 {
-    char cmd[69]; /* space for command + 64 char app/svc/inst string */
+    char cmd[NAMELEN * 2]; /* space for command + 64 char app/svc/inst string */
     char res[2];
     int rc, fd, len;
 
@@ -581,7 +582,7 @@ static int portmux_route_to(struct in_addr in, const char *app,
     if (timeoutms <= 0)
         timeoutms = portmux_default_timeout;
 
-    int startms = time_epochms();
+    int startms = comdb2_time_epochms();
 
     len = snprintf(cmd, sizeof(cmd), "rte %s/%s/%s%s\n", app, service, instance,
                    PORTMUX_VALIDATE() ? " v" : "");
@@ -795,7 +796,7 @@ static bool portmux_client_side_validation(int fd, const char *app,
     int state = 0;
     int next_state;
 
-    int startms = time_epochms();
+    int startms = comdb2_time_epochms();
     if (timeoutms < MIN_VALIDATION_TIMEOUTMS) {
         timeoutms = MIN_VALIDATION_TIMEOUTMS;
     }
@@ -950,7 +951,7 @@ static bool portmux_server_side_validation(portmux_fd_t *fds, int fd,
      * false if we have any communication errors or if the client sends us
      * V_NAK; returning true if the client sends us V_ACK.
      */
-    int startms = time_epochms();
+    int startms = comdb2_time_epochms();
 
     if (timeoutms < MIN_VALIDATION_TIMEOUTMS) {
         timeoutms = MIN_VALIDATION_TIMEOUTMS;
@@ -1300,7 +1301,7 @@ static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
     int result;
     bool build_pollfds = true;
 
-    int startms = time_epochms();
+    int startms = comdb2_time_epochms();
 
     while (true) {
         if (build_pollfds) {

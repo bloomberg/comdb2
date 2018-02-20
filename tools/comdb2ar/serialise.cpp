@@ -599,19 +599,27 @@ void serialise_database(
     parse_lrl_file(lrlpath, &dbname, &dbdir, &llmeta, &tagged, &support_files,
             &table_names, &queue_names, &nonames, &has_cluster_info);
 
+    // Ignore lrl names setting if we know better
     if (!dbdir.empty() && !dbname.empty()) {
         int rc;
         struct stat st;
+        bool found_usenames = false;
+        bool found_nonames = false;
 
         rc = stat((dbdir + "/" + dbname + ".txn").c_str(), &st);
         if (rc == 0 && S_ISDIR(st.st_mode))
-            nonames = false;
+            found_usenames = true;
 
         rc = stat((dbdir + "/" + "logs").c_str(), &st);
         if (rc == 0 && S_ISDIR(st.st_mode))
-            nonames = true;
+            found_nonames = true;
 
-        /* if we couldn't figure it out, we'll go by what parse_lrl_file told us */
+        /* bias by parse_lrl_file told us, but use the other if we can find it */
+        if (nonames && found_nonames == false && found_usenames == true)
+            nonames = false;
+
+        if (nonames == false && found_usenames == false && found_nonames == true)
+            nonames = true;
     }
 
     // Create the directory for incremental backups if needed

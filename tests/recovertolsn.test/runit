@@ -206,8 +206,8 @@ function kill_restart_node
     # wait until we can query it
     echo "$DBNAME: waiting until ready"
     while [[ "$out" != "1" ]]; do
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
         sleep 2
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
     done
     echo "$DBNAME: db is up out=$out"
 }

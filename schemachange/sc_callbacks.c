@@ -28,16 +28,54 @@
 #include "logmsg.h"
 #include "bdb_net.h"
 
-static int reload_rename_table(const char *name, const char *newtable)
+static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
+                               const char *newtable)
 {
+    void *tran = NULL;
+    int rc;
+    int bdberr = 0;
+    uint32_t lid = 0;
+    extern uint32_t gbl_rep_lockid;
     struct dbtable *db = get_dbtable_by_name(name);
-
+   
     if (!db) {
         logmsg(LOGMSG_ERROR, "%s: unable to find table %s\n", __func__, name);
         return -1;
     }
 
-    return rename_db(db, newtable);
+    if(rename_db(db, newtable)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to rename %s to %s \n", __func__,
+               name, newtable);
+        return -1;
+    }
+
+    tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
+    if (tran == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
+        return -1;
+    }
+
+    bdb_get_tran_lockerid(tran, &lid);
+    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
+
+    if (bdb_table_version_select(newtable, tran, &db->tableversion, &bdberr)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to retrieve table version for new %s \n",
+               __func__, name, newtable);
+        return -1;
+    }
+
+    create_sqlmaster_records(tran);
+    create_sqlite_master();
+    ++gbl_dbopen_gen;
+
+    bdb_set_tran_lockerid(tran, lid);
+    rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+    if (rc) 
+        logmsg(LOGMSG_FATAL, "%s failed to abort transaction\n", __func__, rc);
+
+    sc_set_running(0 /*running*/, 0 /*seed*/, NULL, 0);
+
+    return rc;
 }
 
 static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
@@ -454,7 +492,7 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
     int bdberr;
 
     pthread_mutex_lock(&gbl_sc_lock);
-    sc_del_unused_files_start_ms = time_epochms();
+    sc_del_unused_files_start_ms = comdb2_time_epochms();
     pthread_mutex_unlock(&gbl_sc_lock);
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
@@ -490,7 +528,7 @@ void sc_del_unused_files_check_progress(void)
 
     /* if a schema change is in progress */
     if (start_ms) {
-        int diff_ms = time_epochms() - start_ms;
+        int diff_ms = comdb2_time_epochms() - start_ms;
         if (diff_ms > gbl_sc_del_unused_files_threshold_ms) {
             logmsg(LOGMSG_FATAL,
                    "Schema change has been waiting %dms for files to "
@@ -599,7 +637,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     case lua_sfunc: return reload_lua_sfuncs();
     case lua_afunc: return reload_lua_afuncs();
     case rename_table:
-        return reload_rename_table(table, (char *)arg);
+        return reload_rename_table(bdb_state, table, (char *)arg);
     default:
         break;
     }

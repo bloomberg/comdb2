@@ -1,3 +1,2 @@
 dtastripe 1
 enable_snapshot_isolation
-enable_sql_stmt_caching

@@ -28,7 +28,6 @@
 #include "intern_strings.h"
 #include "bb_oscompat.h"
 #include "switches.h"
-#include "plugin.h"
 #include "util.h"
 #include "sqllog.h"
 #include "ssl_bend.h"
@@ -40,7 +39,6 @@ extern int gbl_exit;
 extern int gbl_recovery_timestamp;
 extern int gbl_recovery_lsn_file;
 extern int gbl_recovery_lsn_offset;
-extern int gbl_sql_tranlevel_sosql_pref;
 extern int gbl_upgrade_blocksql_2_socksql;
 extern int gbl_rep_node_pri;
 extern int gbl_bad_lrl_fatal;
@@ -70,7 +68,7 @@ static struct option long_options[] = {
     {NULL, 0, NULL, 0}};
 
 static const char *help_text = {
-    "usage: comdb2 [--lrl LRLFILE] [--recovertotime EPOCH]\n"
+    "Usage: comdb2 [--lrl LRLFILE] [--recovertotime EPOCH]\n"
     "              [--recovertolsn FILE:OFFSET]\n"
     "              [--fullrecovery] NAME\n"
     "\n"
@@ -98,7 +96,7 @@ struct read_lrl_option_type {
 
 void print_usage_and_exit()
 {
-    logmsg(LOGMSG_ERROR, "%s\n", help_text);
+    logmsg(LOGMSG_WARN, "%s\n", help_text);
     exit(1);
 }
 
@@ -287,7 +285,7 @@ void getmyaddr()
 {
     struct hostent *h;
 
-    h = bb_gethostbyname(gbl_mynode);
+    h = comdb2_gethostbyname(gbl_mynode);
     if (h == NULL || h->h_addrtype != AF_INET) {
         /* default to localhost */
         gbl_myaddr.s_addr = INADDR_LOOPBACK;
@@ -624,7 +622,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 }
 
                 /* Check to see if this name is another name for me. */
-                h = bb_gethostbyname(nodename);
+                h = comdb2_gethostbyname(nodename);
                 if (h && h->h_addrtype == AF_INET &&
                     memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length) == 0) {
                     /* Assume I am better known by this name. */
@@ -1126,10 +1124,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                    (gbl_sql_tranlevel_default == SQL_TDEF_SOCK) ? "socksql"
                                                                 : "blocksql");
             gbl_use_block_mode_status_code = 0;
-        } else if (ltok == 16 && !strncasecmp(tok, "prefer_blocksock", 16)) {
-            gbl_sql_tranlevel_sosql_pref = 1;
-            logmsg(LOGMSG_INFO, "prefer socksql over blocksql\n");
-
         } else if (ltok == 5 && !strncasecmp(tok, "recom", 5)) {
             gbl_sql_tranlevel_default = SQL_TDEF_RECOM;
             logmsg(LOGMSG_INFO, "sql default mode is read committed\n");
@@ -1245,9 +1239,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         }
 
         read_lrl_file(dbenv, file, 0);
-    } else if (tokcmp(tok, ltok, "plugin") == 0) {
-        rc = process_plugin_command(dbenv, line, len, st, ltok);
-        if (rc) return -1;
     } else if (tokcmp(line, ltok, "do") == 0) {
         defer_option(dbenv, DEFERRED_SEND_COMMAND, line, len, options->lineno);
     } else if (tokcmp(line, ltok, "default_datetime_precision") == 0) {
@@ -1261,12 +1252,14 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
     } else if (tokcmp(line, strlen("ssl"), "ssl") == 0) {
         /* Let's have a separate function for ssl directives. */
         rc = ssl_process_lrl(line, len);
-        if (rc != 0) return -1;
+        if (rc != 0)
+            return -1;
 #endif
     } else {
         logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok, tok,
                options->lrlname);
-        if (gbl_bad_lrl_fatal) return -1;
+        if (gbl_bad_lrl_fatal)
+            return -1;
     }
 
     if (gbl_disable_new_snapshot) {

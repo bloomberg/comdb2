@@ -1120,7 +1120,7 @@ static int timepart_deserialize_cson_value(cson_value *cson_view,
 
     /* check for starttime */
     view->starttime = _cson_extract_datetime_string(obj, "STARTTIME", err);
-    _view_adjust_start_time(view, time_epoch());
+    _view_adjust_start_time(view, comdb2_time_epoch());
 
     tmp_str = _cson_extract_str(obj, "SOURCE_ID", err);
     if(!tmp_str)

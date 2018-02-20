@@ -59,9 +59,9 @@ static int show_ports = 0;
 static int debug_trace = 0;
 static int pausemode = 0;
 static int printmode = DEFAULT;
+static int verbose = 0;
 static int scriptmode = 0;
 static int error = 0;
-static int set_debug = 0;
 static cdb2_hndl_tp *cdb2h = NULL;
 static int time_mode = 0;
 static int rowsleep = 0;
@@ -111,6 +111,12 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
         fprintf(f, "'");
 }
 
+#define verbose_print(...)                                                     \
+    {                                                                          \
+        if (verbose)                                                           \
+            fprintf(stderr, __VA_ARGS__);                                      \
+    }
+
 static const char *usage_text =
     "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
     "\n"
@@ -128,6 +134,7 @@ static const char *usage_text =
     "     --tabs          Set column separator to tabs rather than commas\n"
     " -t, --type TYPE     Type of database or tier ('dev' or 'prod',"
     " default 'local')\n"
+    " -v, --verbose       Verbose debug output, implies --debugtrace"
     "\n"
     " Examples: \n"
     " * Querying db with name mydb on local server \n"
@@ -634,13 +641,11 @@ static int run_statement(const char *sql, int ntypes, int *types,
     int cost;
     FILE *out = stdout;
     char cmd[60];
-
-    int startms, rowms, endms;
+    int startms = now_ms();
 
     if (printmode & STDERR)
         out = stderr;
 
-    startms = now_ms();
     *start_time = 0;
     *run_time = 0;
 
@@ -652,6 +657,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
         if (minretries) {
             cdb2_set_min_retries(minretries);
         }
+
+        verbose_print("calling cdb2_open\n");
 
         if (dbhostname) {
             rc = cdb2_open(&cdb2h, dbname, dbhostname, CDB2_DIRECT_CPU);
@@ -727,6 +734,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
     /* Bind parameter ability -- useful for debugging */
     if (sql[0] == '@') {
         if (strncasecmp(sql, "@bind", 5) == 0) {
+            verbose_print("setting bind parameter\n");
             //@bind BINDTYPE parameter value
             sql += 5;
 
@@ -752,22 +760,22 @@ static int run_statement(const char *sql, int ntypes, int *types,
         int retries = 0;
         while (retries < 10) {
             rc = cdb2_run_statement_typed(cdb2h, sql, ntypes, types);
+            verbose_print(
+                "run_statement_typed rc=%d, retries=%d, sql='%.30s...'\n", rc,
+                retries, sql);
             if (rc != CDB2ERR_IO_ERROR)
                 break;
             retries++;
         }
     }
-    rowms = now_ms();
-    *start_time = rowms - startms;
+    *start_time = now_ms() - startms;
 
     cdb2_clearbindings(cdb2h);
 
     if (rc != CDB2_OK) {
         const char *err = cdb2_errstr(cdb2h);
         /* cdb2tcm mode needs to pass this info through stdout */
-        FILE *out = stderr;
-
-        fprintf(out, "[%s] failed with rc %d %s\n", sql, rc, err ? err : "");
+        fprintf(stderr, "[%s] failed with rc %d %s\n", sql, rc, err ? err : "");
         return rc;
     }
 
@@ -831,8 +839,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
         }
     }
 
-    endms = now_ms();
-    *run_time = endms - startms;
+    *run_time = now_ms() - startms;
     if (rc != CDB2_OK_DONE) {
         const char *err = cdb2_errstr(cdb2h);
         fprintf(stderr, "[%s] failed with rc %d %s\n", sql, rc, err ? err : "");
@@ -860,6 +867,7 @@ static void process_line(char *sql, int ntypes, int *types)
     int rc;
     int len;
 
+    verbose_print("processing line sql '%.30s...'\n", sql);
     /* Trim whitespace and then ignore comments */
     while (isspace(*sqlstr))
         sqlstr++;
@@ -893,7 +901,7 @@ static void process_line(char *sql, int ntypes, int *types)
         }
     }
 
-    if (docost) {
+    if (docost && !rc) {
         int saved_printmode = printmode;
         printmode = TABS | STDERR;
         const char *costSql = "SELECT comdb2_prevquerycost() as Cost";
@@ -924,6 +932,7 @@ void save_readline_history()
 
 static int *process_typed_statement_args(int ntypes, char **args)
 {
+    verbose_print("processing typed statement arguments\n");
     int *types = NULL;
 
     if (ntypes > 0)
@@ -1008,7 +1017,7 @@ static char *get_multi_line_statement(char *line)
     return stmt;
 }
 
-static int dbtype_valid(char *type)
+static inline int dbtype_valid(char *type)
 {
     if (type && (type[0] == '@' || strcasecmp(type, "dev") == 0 ||
         strcasecmp(type, "uat") == 0 ||
@@ -1020,58 +1029,6 @@ static int dbtype_valid(char *type)
         return 1;
     }
     return 0;
-}
-
-static void replace_args(int argc, char *argv[])
-{
-    int ii;
-
-    for (ii = 1; ii < argc; ii++) {
-        if (argv[ii][0] != '-')
-            continue;
-        if (!strcmp(argv[ii], "-pause"))
-            argv[ii] = "--pause";
-        else if (!strcmp(argv[ii], "-binary"))
-            argv[ii] = "--binary";
-        else if (!strcmp(argv[ii], "-tabs"))
-            argv[ii] = "--tabs";
-        else if (!strcmp(argv[ii], "-strblobs"))
-            argv[ii] = "--strblobs";
-        else if (!strcmp(argv[ii], "-debug"))
-            argv[ii] = "--debug";
-        else if (!strcmp(argv[ii], "-debugtrace"))
-            argv[ii] = "--debugtrace";
-        else if (!strcmp(argv[ii], "-showports"))
-            argv[ii] = "--showports";
-        else if (!strcmp(argv[ii], "-showeffects"))
-            argv[ii] = "--showeffects";
-        else if (!strcmp(argv[ii], "-cost"))
-            argv[ii] = "--cost";
-        else if (!strcmp(argv[ii], "-exponent"))
-            argv[ii] = "--exponent";
-        else if (!strcmp(argv[ii], "-isatty"))
-            argv[ii] = "--isatty";
-        else if (!strcmp(argv[ii], "-isnotatty"))
-            argv[ii] = "--isnotatty";
-        else if (!strcmp(argv[ii], "-help"))
-            argv[ii] = "--help";
-        else if (!strcmp(argv[ii], "-script"))
-            argv[ii] = "--script";
-        else if (!strcmp(argv[ii], "-maxretries"))
-            argv[ii] = "--maxretries";
-        else if (!strcmp(argv[ii], "-precision"))
-            argv[ii] = "--precision";
-        else if (!strcmp(argv[ii], "-cdb2cfg"))
-            argv[ii] = "--cdb2cfg";
-        else if (!strcmp(argv[ii], "-file"))
-            argv[ii] = "--file";
-        else if (!strcmp(argv[ii], "-gensql"))
-            argv[ii] = "--gensql";
-        else if (!strcmp(argv[ii], "-type"))
-            argv[ii] = "--type";
-        else if (!strcmp(argv[ii], "-host"))
-            argv[ii] = "--host";
-    }
 }
 
 void send_cancel_cnonce(const char *cnonce)
@@ -1140,14 +1097,12 @@ int main(int argc, char *argv[])
 
     sighold(SIGPIPE);
 
-    replace_args(argc, argv);
-
     static struct option long_options[] = {
         {"pause",      no_argument,       &pausemode,         1},
         {"binary",     no_argument,       &printmode,         BINARY},
         {"tabs",       no_argument,       &printmode,         TABS},
+        {"verbose",    no_argument,       &verbose,           1},
         {"strblobs",   no_argument,       &string_blobs,      1},
-        {"debug",      no_argument,       &set_debug,         1},
         {"debugtrace", no_argument,       &debug_trace,       1},
         {"showports",  no_argument,       &show_ports,        1},
         {"showeffects",no_argument,       &show_effects,      1},
@@ -1168,7 +1123,7 @@ int main(int argc, char *argv[])
         {0, 0, 0, 0}
     };
 
-    while ((c = bb_getopt_long(argc, argv, "hsr:p:c:f:g:t:n:R:", long_options,
+    while ((c = bb_getopt_long(argc, argv, "hsvr:p:c:f:g:t:n:R:", long_options,
                                &opt_indx)) != -1) {
         switch (c) {
         case 0:
@@ -1178,6 +1133,11 @@ int main(int argc, char *argv[])
             break;
         case 's':
             scriptmode = 1;
+            break;
+        case 'v':
+            setenv("CDB2_DEBUG", "1", 1);
+            setenv("CDB2_LOG_CALLS", "1", 1);
+            verbose = 1;
             break;
         case 'r':
             maxretries = atoi(optarg);
@@ -1237,6 +1197,8 @@ int main(int argc, char *argv[])
         fprintf(stderr, "DB name \"%s\" too long\n", dbname);
         return 1;
     }
+    if (verbose)
+        debug_trace = 1;
 
     dbname = argv[optind];
     optind++;
@@ -1260,6 +1222,7 @@ int main(int argc, char *argv[])
         if (cdb2h) {
             cdb2_close(cdb2h);
         }
+        verbose_print("process_line error=%d\n", error);
         return (error == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
     }
 
