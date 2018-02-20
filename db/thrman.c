@@ -396,7 +396,7 @@ char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
         int fd = thr->fd;
         int pos = 0;
 
-        SNPRINTF(buf, szbuf, "tid %u:%s", thr->archtid,
+        SNPRINTF(buf, szbuf, pos, "tid %u:%s", thr->archtid,
                  thrman_type2a(thr->type));
 
         if (fd >= 0) {
@@ -410,21 +410,21 @@ char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
             char addrstr[64];
             if (getpeername(fd, (struct sockaddr *)&peeraddr,
                             (socklen_t *)&len) < 0)
-                SNPRINTF(buf + pos, szbuf - pos, ", fd %d (getpeername:%s)", fd,
+                SNPRINTF(buf, szbuf, pos, ", fd %d (getpeername:%s)", fd,
                          strerror(errno))
             else if (inet_ntop(peeraddr.sin_family, &peeraddr.sin_addr, addrstr,
                                sizeof(addrstr)) == NULL)
-                SNPRINTF(buf + pos, szbuf - pos, ", fd %d (inet_ntop:%s)", fd,
+                SNPRINTF(buf, szbuf, pos, ", fd %d (inet_ntop:%s)", fd,
                          strerror(errno))
             else
-                SNPRINTF(buf + pos, szbuf - pos, ", fd %d (%s)", fd, addrstr)
+                SNPRINTF(buf, szbuf, pos, ", fd %d (%s)", fd, addrstr)
         }
         if (thr->corigin[0])
-            SNPRINTF(buf + pos, szbuf - pos, ", %s", thr->corigin)
+            SNPRINTF(buf, szbuf, pos, ", %s", thr->corigin)
         if (thr->id[0])
-            SNPRINTF(buf + pos, szbuf - pos, ", %s", thr->id)
+            SNPRINTF(buf, szbuf, pos, ", %s", thr->id)
         if (where != NULL)
-            SNPRINTF(buf + pos, szbuf - pos, ": %s", where)
+            SNPRINTF(buf, szbuf, pos, ": %s", where)
     }
 
 done:

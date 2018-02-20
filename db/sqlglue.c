@@ -1347,29 +1347,28 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
 {
     char buf[16 * 1024];
     int fieldctr;
-    int pos = 0;
+    int current = 0;
     int ret;
     unsigned int crc;
 
-    SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", dbname)
+    SNPRINTF(buf, sizeof(buf), current, "%s", dbname)
     if (schema->flags & SCHEMA_DATACOPY)
-        SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "DATACOPY")
+        SNPRINTF(buf, sizeof(buf), current, "%s", "DATACOPY")
 
     if (schema->flags & SCHEMA_DUP)
-        SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "DUP")
+        SNPRINTF(buf, sizeof(buf), current, "%s", "DUP")
 
     if (schema->flags & SCHEMA_RECNUM)
-        SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "RECNUM")
+        SNPRINTF(buf, sizeof(buf), current, "%s", "RECNUM")
 
     for (fieldctr = 0; fieldctr < schema->nmembers; ++fieldctr) {
-        SNPRINTF(buf + pos, sizeof(buf) - pos, "%s",
-                 schema->member[fieldctr].name)
+        SNPRINTF(buf, sizeof(buf), current, "%s", schema->member[fieldctr].name)
         if (schema->member[fieldctr].flags & INDEX_DESCEND)
-            SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "DESC")
+            SNPRINTF(buf, sizeof(buf), current, "%s", "DESC")
     }
 
 done:
-    crc = crc32(0, (unsigned char *)buf, pos);
+    crc = crc32(0, (unsigned char *)buf, current);
     snprintf(namebuf, len, "$%s_%X", csctag, crc);
 }
 

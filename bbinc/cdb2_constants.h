@@ -54,15 +54,19 @@
 #define MAXQUERYLEN 262144
 #define MAXCUR 100
 
-/* Detect overflow and update pos accordingly. */
-#define SNPRINTF(str, size, fmt, ...)                                          \
+/*
+  Print at the given offset, detect overflow and update offset
+  accordingly.
+*/
+#define SNPRINTF(str, size, off, fmt, ...)                                     \
     {                                                                          \
-        ret = snprintf(str, size, fmt, __VA_ARGS__);                           \
+        int ret;                                                               \
+        ret = snprintf(str + off, size - off, fmt, __VA_ARGS__);               \
         if (ret >= size) {                                                     \
-            pos += size;                                                       \
+            off += size;                                                       \
             goto done;                                                         \
         }                                                                      \
-        pos += ret;                                                            \
+        off += ret;                                                            \
     }
 
 #endif

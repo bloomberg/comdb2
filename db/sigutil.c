@@ -109,8 +109,7 @@ void sprintsigact(char *buf, size_t buflen, const struct sigaction *act)
         if (sigismember(&act->sa_mask, signo)) {
             if (pos > 0)
                 mstr[pos++] = '|';
-            SNPRINTF(mstr + pos, sizeof(mstr) - pos, "%s",
-                     unix_signals[ii].name);
+            SNPRINTF(mstr, sizeof(mstr), pos, "%s", unix_signals[ii].name);
         }
     }
 
@@ -119,7 +118,7 @@ void sprintsigact(char *buf, size_t buflen, const struct sigaction *act)
         if (act->sa_flags & flags[ii]) {
             if (pos > 0)
                 fstr[pos++] = '|';
-            SNPRINTF(fstr + pos, sizeof(fstr) - pos, "%s", flagstrs[ii]);
+            SNPRINTF(fstr, sizeof(fstr), pos, "%s", flagstrs[ii]);
         }
     }
 
