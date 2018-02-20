@@ -9,7 +9,10 @@ ifeq ($(TESTSROOTDIR),)
   # (will check assumption few lines later)
   # needs to expand to a full path, otherwise it propagates as '../'
   export TESTSROOTDIR=$(shell readlink -f $(PWD)/..)
-  export SKIPSSL=1   #force SKIPSSL for local test -- easier to debug
+#  export SKIPSSL=1   #force SKIPSSL for local test -- easier to debug
+  export INSETUP=yes
+else
+  export INSETUP=
 endif
 
 # check that we indeed have the correct dir in TESTSROOTDIR
@@ -52,6 +55,9 @@ export CDB2_OPTIONS=--cdb2cfg $(CDB2_CONFIG)
 export COMDB2_ROOT=$(TESTDIR)
 export COMDB2_UNITTEST?=0
 
+ifneq ($(INSETUP),)
+  $(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" ${TESTSROOTDIR}/tools/keygen.sh )
+endif
 
 test:: tool unit
 	echo "Working from dir `pwd`" >> $(TESTDIR)/test.log
