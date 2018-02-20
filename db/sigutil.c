@@ -98,7 +98,6 @@ void sprintsigact(char *buf, size_t buflen, const struct sigaction *act)
     char fstr[128] = "";
     int pos;
     int ret;
-    size_t size;
     char hstr[64] = "NULL";
     char mstr[1024] = "";
     if (act->sa_handler != NULL)
@@ -110,7 +109,8 @@ void sprintsigact(char *buf, size_t buflen, const struct sigaction *act)
         if (sigismember(&act->sa_mask, signo)) {
             if (pos > 0)
                 mstr[pos++] = '|';
-            SNPRINTF(mstr + pos, size, "%s", unix_signals[ii].name);
+            SNPRINTF(mstr + pos, sizeof(mstr) - pos, "%s",
+                     unix_signals[ii].name);
         }
     }
 
@@ -119,7 +119,7 @@ void sprintsigact(char *buf, size_t buflen, const struct sigaction *act)
         if (act->sa_flags & flags[ii]) {
             if (pos > 0)
                 fstr[pos++] = '|';
-            SNPRINTF(fstr + pos, size, "%s", flagstrs[ii]);
+            SNPRINTF(fstr + pos, sizeof(fstr) - pos, "%s", flagstrs[ii]);
         }
     }
 
