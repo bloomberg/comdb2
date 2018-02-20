@@ -79,6 +79,7 @@ Other options:
                 reached on the destination machine.  The default is 95%%.
     -b          Serialize a backup of a database to stdout
     -r          Restore a backup of a database from stdin
+    -p          Copy only the incremental differences
 \n"
    exit 1
 }
