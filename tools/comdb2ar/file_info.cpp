@@ -178,6 +178,10 @@ bool read_FileInfo(const std::string& line, FileInfo& file)
                 if(!(ss >> pagesize)) return false;
                 f.set_pagesize(pagesize);
 
+            } else if (tok == "FileSize") {
+                size_t filesize;
+                if(!(ss >> filesize)) return false;
+                f.set_filesize(filesize);
             } else if(tok == "Checksums") {
                 f.set_checksums();
 

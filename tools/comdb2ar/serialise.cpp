@@ -1412,9 +1412,33 @@ void create_partials(
     std::list<std::string> dbdir_files;
     std::string abspath;
 
+    std::string templ_fstblk;
+    std::string templ_llmeta;
+    std::string templ_metadata;
+    std::string templ_blkseq_dta;
+    std::string templ_blkseq_freerec;
+    std::string templ_blkseq_ix0;
+
+
     parse_lrl_file(lrlpath, &dbname, &dbdir, 
                    &support_files, &table_names, 
                    &queue_names, &nonames, &has_cluster_info);
+
+    if(nonames) {
+        templ_fstblk = "comdb2_fstblk.dta";
+        templ_llmeta = "comdb2_llmeta.dta";
+        templ_metadata = "comdb2_metadata.dta";
+        templ_blkseq_dta = "comdb2_blkseq.dta";
+        templ_blkseq_freerec = "comdb2_blkseq.freerec";
+        templ_blkseq_ix0 = "comdb2_blkseq.ix0";
+    } else {
+        templ_fstblk = dbname + ".fstblk.dta";
+        templ_llmeta = dbname + ".llmeta.dta";
+        templ_metadata = dbname + ".metadata.dta";
+        templ_blkseq_dta = dbname + ".blkseq.dta";
+        templ_blkseq_freerec = dbname + ".blkseq.freerec";
+        templ_blkseq_ix0 = dbname + ".blkseq.ix0";
+    }
 
     // We just care about dbdir.  Ignore everything else.
     listdir(dbdir_files, dbdir);
@@ -1445,7 +1469,9 @@ void create_partials(
             continue;
         }
 
-        if (recognize_data_file(*it, is_data_file, is_queue_file, is_queuedb_file, table)) {
+        if (recognize_data_file(*it, is_data_file, is_queue_file, is_queuedb_file, table) || 
+                *it == templ_fstblk || *it == templ_llmeta || *it == templ_metadata || 
+                *it == templ_blkseq_dta || *it == templ_blkseq_freerec || *it == templ_blkseq_ix0) {
             std::ostringstream ss;
             ss << *it << ".incr";
 

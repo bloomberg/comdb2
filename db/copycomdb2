@@ -125,6 +125,7 @@ backupmode=no
 restoremode=no
 max_du_percent=95
 partial=no
+partialopts=
 outmode=x
 [ -z "$comdb2ar" ] && comdb2ar="${PREFIX}/bin/comdb2ar"
 [ -z "$lz4" ] && lz4="${PREFIX}/bin/lz4"

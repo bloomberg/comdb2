@@ -3745,13 +3745,24 @@ int bdb_get_low_headroom_count(bdb_state_type *bdb_state)
     return bdb_state->low_headroom_count;
 }
 
+static pthread_mutex_t logdelete_lk = PTHREAD_MUTEX_INITIALIZER;
+
+void logdelete_lock(void)
+{
+    pthread_mutex_lock(&logdelete_lk);
+}
+
+void logdelete_unlock(void)
+{
+    pthread_mutex_unlock(&logdelete_lk);
+}
+
 void delete_log_files(bdb_state_type *bdb_state)
 {
-    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
     BDB_READLOCK("logdelete_thread");
-    pthread_mutex_lock(&lk);
+    pthread_mutex_lock(&logdelete_lk);
     delete_log_files_int(bdb_state);
-    pthread_mutex_unlock(&lk);
+    pthread_mutex_unlock(&logdelete_lk);
     BDB_RELLOCK();
 }
 

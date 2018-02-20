@@ -7,7 +7,7 @@ export debug=1
 # bring up db.  Make sure it passes verify, and has 10k rows after copy.
 
 #set -e
-export sleeptime=10
+export sleeptime=0
 
 export dbname=$1
 #export default=local
@@ -15,11 +15,6 @@ export dbname=$1
 # Export variables for comdb2 tools so we can call them directly from tests
 LOCTMPDIR=$TMPDIR/$dbname
 mkdir $LOCTMPDIR
-
-export cdb2sql=${SRCHOME}/cdb2sql
-export comdb2ar=${SRCHOME}/comdb2ar
-export comdb2=${SRCHOME}/comdb2
-
 
 nrecs=10000
 morerecs=1000
@@ -35,7 +30,7 @@ read -r -a nodes <<< $CLUSTER
 idx=$RANDOM
 
 function getmaster {
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+    ${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
 }
 
 master=$(getmaster)
