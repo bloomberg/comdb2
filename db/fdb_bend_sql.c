@@ -60,11 +60,26 @@ int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
     clnt->fdb_state.flags = flags;
     clnt->osql.timings.query_received = osql_log_time();
 
+#if 0
+   if(osql_register_sqlthr(&clnt, OSQL_BLOCK_REQ))
+   {
+      fprintf(stderr, "%s: unable to register blocksql thread %llx\n", __func__, clnt.osql.rqid);
+   }
+#endif
+
     /*
        dispatch the sql
        NOTE: this waits for statement termination
     */
     rc = dispatch_sql_query(clnt);
+
+#if 0
+   if(osql_unregister_sqlthr(&clnt))
+   {
+      fprintf(stderr, "%s: unable to unregister blocksql thread %llx\n", 
+            __func__, clnt.osql.rqid);
+   }
+#endif
 
     return rc;
 }
@@ -112,8 +127,8 @@ int fdb_svc_sql_row(SBUF2 *sb, char *cid, char *row, int rowlen, int ret,
         genid = flibc_htonll(genid);
     }
 
-    rc = fdb_bend_send_row(sb, NULL, cid, genid, row, rowlen, NULL, 0, ret,
-                           isuuid);
+    rc = fdb_remcur_send_row(sb, NULL, cid, genid, row, rowlen, NULL, 0, ret,
+                             isuuid);
 
     return rc;
 }

@@ -1,9 +1,4 @@
 #!/bin/sh
-set -x 
-
-if [ ! -f ${TESTDIR} ] ; then
-    mkdir -p ${TESTDIR}
-fi
 
 # If key files exist, skip key generation.
 if [ -f server.key ] || ([ -n "$SKIPSSL" ] && [ "$SKIPSSL" != "0" ]) ; then
