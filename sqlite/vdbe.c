@@ -3980,11 +3980,8 @@ case OP_OpenWrite:
   pCur->pKeyInfo = pKeyInfo;
 
   /* Since it performs no memory allocation or IO, the only value that
-  ** sqlite3BtreeCursor() may return is SQLITE_OK.
-  In COMDB2 this can fail!
+  ** sqlite3BtreeCursor() may return is SQLITE_OK. */
   assert( rc==SQLITE_OK );
-  */
-  if( rc ) goto abort_due_to_error;
 
   /* Set the VdbeCursor.isTable variable. Previous versions of
   ** SQLite used to check if the root-page flags were sane at this point

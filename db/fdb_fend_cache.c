@@ -212,9 +212,8 @@ static int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
     cur->bt->is_remote = 1;
     assert(cur->clnt == clnt);
 
-    fdbc_if =
-        fdb_cursor_open(clnt, cur, -1 /*not really used for sqlite_stats*/,
-                        NULL, NULL, 0 /* TODO */);
+    fdbc_if = fdb_cursor_open(
+        clnt, cur, -1 /*not really used for sqlite_stats*/, NULL, NULL);
     if (!fdbc_if) {
         fprintf(stderr, "%s: failed to connect remote to get stats\n",
                 __func__);
@@ -394,10 +393,8 @@ fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt,
 
     int len = sizeof(fdb_cursor_if_t) + sizeof(fdb_sqlstat_cursor_t);
     fdbc_if = (fdb_cursor_if_t *)calloc(1, len);
-    if (!fdbc_if) {
-        fdb_sqlstats_put(fdb);
+    if (!fdbc_if)
         return NULL;
-    }
 
     fdbc_if->impl = (fdb_cursor_t *)((char *)fdbc_if + sizeof(fdb_cursor_if_t));
     fdbc = (fdb_sqlstat_cursor_t *)fdbc_if->impl;
@@ -409,9 +406,7 @@ fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt,
     if (!fdbc->cur) {
         fprintf(stderr, "%s: creating temp table cursor failed bdberr=%d\n",
                 __func__, bdberr);
-        free(fdbc->name);
         free(fdbc_if);
-        fdb_sqlstats_put(fdb);
         return NULL;
     }
 

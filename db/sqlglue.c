@@ -3629,8 +3629,8 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             /* make sure we have a distributed transaction and use that to
              * update remote */
             uuid_t tid;
-            fdb_tran_t *trans = fdb_trans_begin_or_join(
-                clnt, pCur->bt->fdb, (char *)tid, 0 /*TODO*/);
+            fdb_tran_t *trans =
+                fdb_trans_begin_or_join(clnt, pCur->bt->fdb, (char *)tid);
 
             if (!trans) {
                 logmsg(LOGMSG_ERROR, 
@@ -7496,8 +7496,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
         /* I would like to open here a transaction if this is
            an actual update */
         if (clnt->iswrite /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {
-            trans =
-                fdb_trans_begin_or_join(clnt, fdb, (char *)tid, 0 /* TODO */);
+            trans = fdb_trans_begin_or_join(clnt, fdb, (char *)tid);
         } else {
             trans = fdb_trans_join(clnt, fdb, (char *)tid);
         }
@@ -7509,8 +7508,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     if (trans)
         pthread_mutex_lock(&clnt->dtran_mtx);
 
-    cur->fdbc = fdb_cursor_open(clnt, cur, cur->rootpage, trans, &cur->ixnum,
-                                sslio_has_ssl(clnt->sb));
+    cur->fdbc = fdb_cursor_open(clnt, cur, cur->rootpage, trans, &cur->ixnum);
     if (!cur->fdbc) {
         if (trans)
             pthread_mutex_unlock(&clnt->dtran_mtx);
@@ -8243,8 +8241,8 @@ int sqlite3BtreeInsert(
             /* make sure we have a distributed transaction and use that to
              * update remote */
             uuid_t tid;
-            fdb_tran_t *trans = fdb_trans_begin_or_join(
-                clnt, pCur->bt->fdb, (char *)tid, 0 /*TODO*/);
+            fdb_tran_t *trans =
+                fdb_trans_begin_or_join(clnt, pCur->bt->fdb, (char *)tid);
 
             if (!trans) {
                 logmsg(LOGMSG_ERROR, 
@@ -10710,14 +10708,10 @@ SBUF2 *connect_remote_db(const char *dbname, const char *service, char *host)
     /* lets try to use sockpool, if available */
     sockfd = _sockpool_get(dbname, service, host);
     if (sockfd > 0) {
-        /*fprintf(stderr, "%s: retrieved sockpool socket for %s.%s.%s fd=%d\n",
-            __func__, dbname, service, host);*/
         goto sbuf;
-    } else
-        /*fprintf(stderr, "%s: no sockpool socket for %s.%s.%s\n",
-            __func__, dbname, service, host);*/
+    }
 
-        retry = 0;
+    retry = 0;
 retry:
     /* this could fail due to load */
     port = portmux_get(host, "comdb2", "replication", dbname);
@@ -10737,6 +10731,18 @@ retry:
                 __func__, dbname, host, port);
         return NULL;
     }
+
+    /* disable Nagle */
+    flag = 1;
+    rc = setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
+                    sizeof(int));
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: couldnt turn off nagel on new fd %d: %d %s\n",
+                __func__, sockfd, errno, strerror(errno));
+        close(sockfd);
+        return NULL;
+    }
+
 sbuf:
     sb = sbuf2open(sockfd, 0);
     if (!sb) {
