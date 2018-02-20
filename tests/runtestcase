@@ -38,6 +38,22 @@ function warn_long_setup {
     return 0
 }
 
+find_cores() {
+    cr=`find ${TESTDIR} | grep core`
+    if [[ -n "$cr" ]] ; then
+        echo $cr
+        return
+    fi
+    for node in ${CLUSTER/$HOSTNAME/} ; do
+        cr=`ssh -o StrictHostKeyChecking=no $node "find ${TESTDIR} | grep core" < /dev/null`
+
+        if [[ -n "$cr" ]] ; then
+            echo "$node:$cr"
+            return 
+        fi
+    done
+}
+
 function call_setup {
     [[ $COMDB2_UNITTEST == 1 ]] && return
 
@@ -50,7 +66,12 @@ function call_setup {
     sleep 0.1
     #last line of .setup file will contain the error rc if any
     ret=`tail -1 ${TESTDIR}/logs/${DBNAME}.setup | cut -c11-`
-    if [[ $ret != "setup successful" ]]; then
+    cr=`find_cores`
+
+    if [[ -n "$cr" ]] ; then
+        echo "!$TESTCASE: setup failed with core dumped ($cr)"
+        echo "!$TESTCASE: setup failed with core dumped ($cr)" >> ${TESTDIR}/test.log
+    elif [[ $ret != "setup successful" ]] ; then
         echo "!$TESTCASE: setup failed (rc=$ret)" >> ${TESTDIR}/test.log
         echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${DBNAME}.setup"
         call_unsetup
@@ -59,23 +80,26 @@ function call_setup {
     fi
 }
 
+
 call_setup
 echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
 
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
 
 rc=${PIPESTATUS[0]}
-if [[ $rc -eq 0 ]]; then
-    echo "!$TESTCASE: success (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
-    echo "!$TESTCASE: success" >> ${TESTDIR}/test.log
-    successful=1
-elif [[ $rc -eq 124 ]]; then
+cr=`find_cores`
+
+if [[ -n "$cr" ]] ; then
+    echo "!$TESTCASE: failed with core dumped ($cr)"
+    echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
+elif [[ $rc -eq 124 ]] ; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TESTDIR}/test.log
     successful=-1
-elif [ `find ${TESTDIR} | grep core` ] ; then
-    echo "!$TESTCASE: failed with core dumped `find ${TESTDIR} | grep core`)"
-    echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
+elif [[ $rc -eq 0 ]] ; then
+    echo "!$TESTCASE: success (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: success" >> ${TESTDIR}/test.log
+    successful=1
 else
     echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
