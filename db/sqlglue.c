@@ -1342,42 +1342,34 @@ static int using_old_style_name(char *namebuf, int len, struct schema *schema,
     return stat1_find(namebuf, schema, db, ixnum, trans);
 }
 
-#define SNPRINTF(str, size, fmt, ...)                                          \
-    {                                                                          \
-        ret = snprintf(str, size, fmt, __VA_ARGS__);                           \
-        if (ret >= size)                                                       \
-            goto done;                                                         \
-        current += ret;                                                        \
-    }
-
 void form_new_style_name(char *namebuf, int len, struct schema *schema,
                          const char *csctag, const char *dbname)
 {
     char buf[16 * 1024];
     int fieldctr;
-    int current = 0;
+    int pos = 0;
     int ret;
     unsigned int crc;
 
-    SNPRINTF(buf + current, sizeof buf - current, "%s", dbname)
+    SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", dbname)
     if (schema->flags & SCHEMA_DATACOPY)
-        SNPRINTF(buf + current, sizeof buf - current, "%s", "DATACOPY")
+        SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "DATACOPY")
 
     if (schema->flags & SCHEMA_DUP)
-        SNPRINTF(buf + current, sizeof buf - current, "%s", "DUP")
+        SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "DUP")
 
     if (schema->flags & SCHEMA_RECNUM)
-        SNPRINTF(buf + current, sizeof buf - current, "%s", "RECNUM")
+        SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "RECNUM")
 
     for (fieldctr = 0; fieldctr < schema->nmembers; ++fieldctr) {
-        SNPRINTF(buf + current, sizeof buf - current, "%s",
+        SNPRINTF(buf + pos, sizeof(buf) - pos, "%s",
                  schema->member[fieldctr].name)
         if (schema->member[fieldctr].flags & INDEX_DESCEND)
-            SNPRINTF(buf + current, sizeof buf - current, "%s", "DESC")
+            SNPRINTF(buf + pos, sizeof(buf) - pos, "%s", "DESC")
     }
 
 done:
-    crc = crc32(0, (unsigned char *)buf, current);
+    crc = crc32(0, (unsigned char *)buf, pos);
     snprintf(namebuf, len, "$%s_%X", csctag, crc);
 }
 

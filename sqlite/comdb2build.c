@@ -2358,14 +2358,6 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
 #define GEN_KEY_PREFIX "KEY"
 #define GEN_CONS_PREFIX "CONSTRAINT"
 
-#define SNPRINTF(str, size, fmt, ...)                                          \
-    {                                                                          \
-        ret = snprintf(str, size, fmt, __VA_ARGS__);                           \
-        if (ret >= size)                                                       \
-            goto done;                                                         \
-        pos += ret;                                                            \
-    }
-
 /* Generate a key name for the specified key. */
 static int gen_key_name(struct comdb2_key *key, const char *table, char *out,
                         size_t out_size)

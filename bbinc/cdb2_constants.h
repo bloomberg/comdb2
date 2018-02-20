@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2017 Bloomberg Finance L.P.
+   Copyright 2015, 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -53,5 +53,16 @@
 #define MAXCONSLEN 64
 #define MAXQUERYLEN 262144
 #define MAXCUR 100
+
+/* Detect overflow and update pos accordingly. */
+#define SNPRINTF(str, size, fmt, ...)                                          \
+    {                                                                          \
+        ret = snprintf(str, size, fmt, __VA_ARGS__);                           \
+        if (ret >= size) {                                                     \
+            pos += size;                                                       \
+            goto done;                                                         \
+        }                                                                      \
+        pos += ret;                                                            \
+    }
 
 #endif

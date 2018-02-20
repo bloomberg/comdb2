@@ -383,14 +383,6 @@ const char *thrman_type2a(enum thrtype type)
     }
 }
 
-#define SNPRINTF(str, size, fmt, ...)                                          \
-    {                                                                          \
-        ret = snprintf(str, size, fmt, __VA_ARGS__);                           \
-        if (ret >= size)                                                       \
-            goto done;                                                         \
-        pos += ret;                                                            \
-    }
-
 /* Populate the buffer with a description of the thread.  Returns a pointer
  * to the buffer. */
 char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
