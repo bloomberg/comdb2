@@ -25,6 +25,7 @@
 #include "comdb2uuid.h"
 #include "schemachange.h"
 #include "bpfunc.pb-c.h"
+#include "osqlblockproc.h"
 
 #define OSQL_SEND_ERROR_WRONGMASTER (-1234)
 /**
@@ -220,7 +221,8 @@ void *osql_create_request(const char *sql, int sqlen, int type,
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         void *trans, char *msg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                        struct block_err *err, int *receivedrows, SBUF2 *logsb);
+                        struct block_err *err, int *receivedrows, SBUF2 *logsb,
+                        struct table_hit_stats *stat);
 
 /**
  * Handles each packet and start schema change
@@ -231,7 +233,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,
                               struct block_err *err, int *receivedrows,
-                              SBUF2 *logsb);
+                              SBUF2 *logsb, struct table_hit_stats *stats);
 /**
  * Sends a user command to offload net (used by "osqlnet")
  *
@@ -342,7 +344,8 @@ const uint8_t *dbglog_hdr_put(const struct dbglog_hdr *p_dbglog_hdr,
 int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     void *trans, char *msg, int msglen, int *flags,
                     int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                    struct block_err *err, int *receivedrows, SBUF2 *logsb);
+                    struct block_err *err, int *receivedrows, SBUF2 *logsb,
+                    struct table_hit_stats *stat);
 
 /* Append a tail to an osql request */
 int osql_add_to_request(osql_req_t **req, int type, void *buf, int len);

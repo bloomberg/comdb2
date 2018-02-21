@@ -67,6 +67,8 @@
 
 #include "logmsg.h"
 
+#include <comdb2_atomic.h>
+
 
 int g_osql_blocksql_parallel_max = 5;
 extern int gbl_blocksql_grace;
@@ -117,7 +119,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                          int (*func)(struct ireq *, unsigned long long, uuid_t,
                                      void *, char *, int, int *, int **,
                                      blob_buffer_t blobs[MAXBLOBS], int,
-                                     struct block_err *, int *, SBUF2 *));
+                                     struct block_err *, int *, SBUF2 *, 
+                                     struct table_hit_stats *));
 static int osql_bplog_wait(blocksql_tran_t *tran);
 static int req2blockop(int reqtype);
 static int osql_bplog_loginfo(struct ireq *iq, osql_sess_t *sess);
@@ -1087,12 +1090,30 @@ void osql_bplog_setlimit(int limit) { g_osql_blocksql_parallel_max = limit; }
 /************************* INTERNALS
  * ***************************************************/
 
+static int save_table_hits(void *hitsp, void *unused) {
+    struct table_hits *hits = (struct table_hits*) hitsp;
+
+    struct dbtable *t = get_dbtable_by_name(hits->table);
+    if (t) {
+        if (hits->inserts)
+            ATOMIC_ADD(t->inserts, hits->inserts);
+        if (hits->updates)
+            ATOMIC_ADD(t->updates, hits->updates);
+        if (hits->deletes)
+            ATOMIC_ADD(t->deletes, hits->deletes);
+    }
+
+    free(hits->table);
+    free(hits);
+}
+
 static int process_this_session(
     struct ireq *iq, void *iq_tran, osql_sess_t *sess, int *bdberr, int *nops,
     struct block_err *err, SBUF2 *logsb, struct temp_cursor *dbc,
     int (*func)(struct ireq *, unsigned long long, uuid_t, void *, char *, int,
                 int *, int **, blob_buffer_t blobs[MAXBLOBS], int,
-                struct block_err *, int *, SBUF2 *))
+                struct block_err *, int *, SBUF2 *, struct table_hit_stats *stats),
+    struct table_hit_stats *stat)
 {
 
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
@@ -1173,7 +1194,7 @@ static int process_this_session(
 
         /* this locks pages */
         rc_out = func(iq, rqid, uuid, iq_tran, data, datalen, &flags, &updCols,
-                      blobs, step, err, &receivedrows, logsb);
+                      blobs, step, err, &receivedrows, logsb, stat);
 
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
             /* error processing, can be a verify error or deadlock */
@@ -1267,7 +1288,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                          int (*func)(struct ireq *, unsigned long long, uuid_t,
                                      void *, char *, int, int *, int **,
                                      blob_buffer_t blobs[MAXBLOBS], int,
-                                     struct block_err *, int *, SBUF2 *))
+                                     struct block_err *, int *, SBUF2 *,
+                                     struct table_hit_stats *))
 {
 
     blocksql_info_t *info = NULL;
@@ -1276,6 +1298,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     int bdberr = 0;
     struct temp_cursor *dbc = NULL;
     bpfunc_lstnode_t *cur_bpfunc = NULL;
+    struct table_hit_stats stat;
 
     /* lock the table (it should get no more access anway) */
     if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
@@ -1312,16 +1335,20 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     }
 
     listc_init(&iq->bpfunc_lst, offsetof(bpfunc_lstnode_t, linkct));
+    stat.hits = hash_init_strptr(offsetof(struct table_hits, table));
 
     /* go through the complete list and apply all the changes */
     LISTC_FOR_EACH(&tran->complete, info, c_reqs)
     {
         out_rc = process_this_session(iq, iq_tran, info->sess, &bdberr, nops,
-                                      err, logsb, dbc, func);
+                                      err, logsb, dbc, func, &stat);
         if (out_rc) {
             break;
         }
     }
+
+    hash_for(stat.hits, save_table_hits, NULL);
+    hash_free(stat.hits);
 #if 0
     /* we will apply these outside a transaction */
     if (out_rc) {
@@ -1535,7 +1562,7 @@ static int osql_bplog_loginfo(struct ireq *iq, osql_sess_t *sess)
     }
 
     outrc = process_this_session(iq, NULL, sess, &bdberr, &nops, &err, logsb,
-                                 dbc, osql_log_packet);
+                                 dbc, osql_log_packet, NULL);
 
     /* close the cursor */
     rc = bdb_temp_table_close_cursor(thedb->bdb_env, dbc, &bdberr);

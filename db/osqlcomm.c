@@ -6323,7 +6323,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,
                               struct block_err *err, int *receivedrows,
-                              SBUF2 *logsb)
+                              SBUF2 *logsb, struct table_hit_stats *stats)
 {
     const uint8_t *p_buf;
     const uint8_t *p_buf_end;
@@ -6466,6 +6466,33 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     return 0;
 }
 
+void count_table_hit(struct table_hit_stats *stat, char *table, int type) {
+    struct table_hits *hits;
+    hits = hash_find(stat->hits, &table);
+    if (hits == NULL) {
+        hits = calloc(1, sizeof(struct table_hits));
+        if (hits == NULL)
+            return;
+        hits->table = strdup(table);
+        if (hits->table == NULL) {
+            free(hits);
+            return;
+        }
+        hash_add(stat->hits, hits);
+    }
+    switch (type) {
+        case OSQL_INSERT:
+            hits->inserts++;
+            break;
+        case OSQL_DELETE:
+            hits->deletes++;
+            break;
+        case OSQL_UPDATE:
+            hits->updates++;
+            break;
+    }
+}
+
 /**
  * Handles each packet and calls record.c functions
  * to apply to received row updates
@@ -6474,7 +6501,8 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         void *trans, char *msg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                        struct block_err *err, int *receivedrows, SBUF2 *logsb)
+                        struct block_err *err, int *receivedrows, SBUF2 *logsb,
+                        struct table_hit_stats *stat)
 {
     const uint8_t *p_buf;
     const uint8_t *p_buf_end;
@@ -6679,6 +6707,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             sbuf2flush(logsb);
         }
 
+        count_table_hit(stat, iq->usedb->tablename, OSQL_DELETE);
+
         /* has this genid been written by this transaction? */
         if (iq->vfy_genid_track) {
             unsigned long long *g = hash_find(iq->vfy_genid_hash, &dt.genid);
@@ -6746,6 +6776,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             p_buf_end = p_buf + sizeof(osql_ins_t) - sizeof(unsigned long long);
 
         int addflags;
+
+        count_table_hit(stat, iq->usedb->tablename, OSQL_INSERT);
 
         pData =
             (uint8_t *)osqlcomm_ins_type_get(&dt, p_buf, p_buf_end, recv_dk);
@@ -6836,6 +6868,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         else
             p_buf_end = p_buf + sizeof(osql_upd_t) -
                         sizeof(unsigned long long) - sizeof(unsigned long long);
+
+        count_table_hit(stat, iq->usedb->tablename, OSQL_UPDATE);
 
         pData =
             (uint8_t *)osqlcomm_upd_type_get(&dt, p_buf, p_buf_end, recv_dk);
@@ -7747,7 +7781,8 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
 int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     void *trans, char *msg, int msglen, int *flags,
                     int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                    struct block_err *err, int *receivedrows, SBUF2 *logsb)
+                    struct block_err *err, int *receivedrows, SBUF2 *logsb,
+                    struct table_hit_stats *stat)
 {
     uint8_t *p_buf = (uint8_t *)msg;
     uint8_t *p_buf_end =

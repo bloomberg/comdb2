@@ -860,6 +860,8 @@ struct dbtable {
     /* lock for consumer list */
     pthread_rwlock_t consumer_lk;
     int disableskipscan : 1;
+
+    int64_t finds, nexts, inserts, deletes, updates;
 };
 
 struct log_delete_state {
