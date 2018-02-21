@@ -1172,9 +1172,9 @@ printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
 /* orig was:
     rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
                                    bdberr);
+*/
     if(rc != IX_FND)
         free(key);
-*/
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_first failed rc=%d bdberr=%d\n",
                 __func__, rc, *bdberr);
