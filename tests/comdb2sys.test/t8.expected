@@ -1,0 +1,19 @@
+(rows inserted=1)
+[insert into t8a values(1)] rc 0
+(rows inserted=1)
+[insert into t8a values(2)] rc 0
+(rows inserted=1)
+[insert into t8b values(1)] rc 0
+(rows inserted=1)
+[insert into t8b values(2)] rc 0
+[begin] rc 0
+[insert into t8a values(3)] rc 0
+[insert into t8b values(3)] rc 0
+[update t8a set a=4 where a=2] rc 0
+[update t8b set a=4 where a=2] rc 0
+[delete from t8a where a=1] rc 0
+[delete from t8b where a=1] rc 0
+[commit] rc 0
+(tablename='t8a', finds=3, nexts=4, inserts=3, deletes=1, updates=1)
+(tablename='t8b', finds=3, nexts=4, inserts=3, deletes=1, updates=1)
+[select * from comdb2_table_hits where tablename in ('t8a', 't8b') order by tablename] rc 0
