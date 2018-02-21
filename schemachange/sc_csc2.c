@@ -21,7 +21,6 @@
 #include "schemachange.h"
 #include "sc_csc2.h"
 #include "debug_switches.h"
-#include "machine.h"
 #include "logmsg.h"
 
 int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
@@ -101,7 +100,7 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
             logmsg(LOGMSG_ERROR, "%s\n", meta_csc2);
             rc = -1;
         }
-    } else if (dbenv->master == machine()) {
+    } else if (dbenv->master == gbl_mynode) {
         /* on master node, store schema if we don't have one already. */
         file_csc2 = load_text_file(csc2file);
         if (!file_csc2) {

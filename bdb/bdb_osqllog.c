@@ -3722,11 +3722,11 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
             ix = del_ix->ix;
         }
         keybuf = malloc(keylen);
-        dtabuf = malloc(dtalen + bdb_state->ixcollattr[ix]);
+        dtabuf = malloc(dtalen + 4 * bdb_state->ixcollattr[ix]);
         outdatalen = 0;
         rc = bdb_reconstruct_delete(
             bdb_state, &rec->lsn, NULL, NULL, keybuf, keylen, dtabuf,
-            dtalen + bdb_state->ixcollattr[ix], &outdatalen);
+            dtalen + 4 * bdb_state->ixcollattr[ix], &outdatalen);
         if (rc) {
             if (rc == BDBERR_NO_LOG)
                 *bdberr = rc;

@@ -33,6 +33,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
+#include <arpa/inet.h>
 #include <ctype.h>
 #include <fcntl.h>
 #include <stdarg.h>
@@ -42,17 +43,20 @@
 #include <strings.h>
 #include <unistd.h>
 #include <bdb_api.h>
+#include <alloca.h>
 
 #include <str0.h>
 #include <rtcpu.h>
 #include <list.h>
 #include <segstr.h>
+#include <plhash.h>
 #include <plbitlib.h>
 #include <lockmacro.h>
 #include <memory_sync.h>
 
 #include <epochlib.h>
 
+#include <crc32c.h>
 #include "comdb2.h"
 #include "sqloffload.h"
 #include "osqlblockproc.h"
@@ -76,12 +80,6 @@
 ** rtcpu.h - #define MAXMACHINES 2048
 ** intgatewayconstants.h - #define MAXMACHINES 4096
 */
-
-static unsigned num_nodes = 0;
-static struct nodestats *nodestats_first = NULL;
-static struct nodestats *nodestats_array[MAXNODES] = {NULL};
-static pthread_mutex_t nodestats_lk = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t nodestats_calc_lk = PTHREAD_MUTEX_INITIALIZER;
 
 /* The normal case is for there to be no rules, just a long request threshold
  * which takes some default action on long requests.  If you want anything
@@ -189,7 +187,7 @@ static void flushdump(struct reqlogger *logger, struct output *out)
             append_duration = 1;
         }
         if (out->use_time_prefix && out != default_out) {
-            int now = time_epoch();
+            int now = comdb2_time_epoch();
             if (now != out->lasttime) {
                 time_t timet = (time_t)now;
                 struct tm tm;
@@ -213,8 +211,9 @@ static void flushdump(struct reqlogger *logger, struct output *out)
         niov++;
         if (append_duration) {
             iov[niov].iov_base = durstr;
-            iov[niov].iov_len = snprintf(durstr, sizeof(durstr), " TIME +%d",
-                                         U2M(time_epochus() - logger->startus));
+            iov[niov].iov_len =
+                snprintf(durstr, sizeof(durstr), " TIME +%d",
+                         U2M(comdb2_time_epochus() - logger->startus));
             niov++;
         }
         iov[niov].iov_base = "\n";
@@ -1095,7 +1094,7 @@ int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
         len = nchars + 1;
         char *news = realloc(s, len);
         if (!news) {
-            fprintf(stderr, "%s:realloc(%d) failed\n", __func__, len);
+            logmsg(LOGMSG_ERROR, "%s:realloc(%d) failed\n", __func__, len);
             free(s);
             return -1;
         }
@@ -1196,7 +1195,7 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
     len = 256;
     s = malloc(len);
     if (!s) {
-        fprintf(stderr, "%s:malloc(%d) failed\n", __func__, len);
+        logmsg(LOGMSG_ERROR, "%s:malloc(%d) failed\n", __func__, len);
         return -1;
     }
 
@@ -1459,7 +1458,7 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
     }
     logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
-    logger->startus = time_epochus();
+    logger->startus = comdb2_time_epochus();
     reqlog_start_request(logger);
 
     logger->nsqlreqs = ATOMIC_LOAD(gbl_nnewsql);
@@ -1692,7 +1691,7 @@ void reqlog_set_rows(struct reqlogger *logger, int rows)
 
 uint64_t reqlog_current_us(struct reqlogger *logger)
 {
-    return (time_epochus() - logger->startus);
+    return (comdb2_time_epochus() - logger->startus);
 }
 
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen)
@@ -1753,7 +1752,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     logger->rc = rc;
 
     logger->durationus =
-        (time_epochus() - logger->startus) + logger->queuetimeus;
+        (comdb2_time_epochus() - logger->startus) + logger->queuetimeus;
 
     eventlog_add(logger);
 
@@ -1893,8 +1892,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
             shortest_long_request_ms = U2M(logger->durationus);
         }
         long_request_count++;
-        if (last_long_request_epoch != time_epoch()) {
-            last_long_request_epoch = time_epoch();
+        if (last_long_request_epoch != comdb2_time_epoch()) {
+            last_long_request_epoch = comdb2_time_epoch();
 
             if (long_request_out != default_out) {
                 char *sqlinfo;
@@ -1990,30 +1989,262 @@ void reqlog_set_truncate(int val)
     logmsg(LOGMSG_USER, "truncate %s\n", reqltruncate ? "enabled" : "disabled");
 }
 
-struct rawnodestats *get_raw_node_stats(char *host)
+/* Client Stats LRU Hash */
+hash_t *clientstats = NULL;
+static LISTC_T(struct nodestats) clntlru;
+pthread_rwlock_t clientstats_lk = PTHREAD_RWLOCK_INITIALIZER;
+pthread_mutex_t clntlru_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+int gbl_max_clientstats_cache = 10000;
+
+void init_clientstats_table()
 {
-    struct nodestats *nodestats;
-    struct rawnodestats *rawnodestats;
+    clientstats = hash_init_o(offsetof(nodestats_t, checksum),
+                              sizeof(unsigned) + sizeof(int));
+    listc_init(&clntlru, offsetof(struct nodestats, linkv));
+    assert(clientstats);
+}
 
-    host = intern(host);
+#define UNKNOWN_NAME "Unknown"
+#define NAME(s) ((s && strlen(s) > 0) ? s : UNKNOWN_NAME)
 
-    if (!nodestats_array[nodeix(host)]) {
-        LOCK(&nodestats_lk)
-        {
-            if (!nodestats_array[nodeix(host)]) {
-                nodestats = calloc(1, sizeof(struct nodestats));
-                nodestats->next = nodestats_first;
-                nodestats->host = host;
-                MEMORY_SYNC;
-                nodestats_first = nodestats;
-                nodestats_array[nodeix(host)] = nodestats;
-                num_nodes++;
-            }
-        }
-        UNLOCK(&nodestats_lk);
+static nodestats_t *add_clientstats(const char *task, const char *stack,
+                                    int node, int fd)
+{
+    int ret = -1;
+    int task_len, stack_len;
+    nodestats_t *old_entry = NULL;
+    nodestats_t *entry = NULL;
+    nodestats_t *entry_chk = NULL;
+
+    task = NAME(task);
+    stack = NAME(stack);
+    task_len = strlen(task) + 1;
+    stack_len = strlen(stack) + 1;
+
+    entry = calloc(1, offsetof(nodestats_t, mem) + task_len + stack_len);
+    if (entry == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: out of memory!\n", __func__);
+        return NULL;
     }
 
-    return &nodestats_array[nodeix(host)]->rawtotals;
+    pthread_mutex_init(&entry->mtx, 0);
+    entry->ref = 1;
+
+    memcpy(entry->mem, task, task_len);
+    entry->task = entry->mem;
+
+    memcpy(entry->mem + task_len, stack, stack_len);
+    entry->stack = entry->mem + task_len;
+
+    entry->checksum = crc32c(entry->mem, task_len + stack_len);
+    entry->node = node;
+    entry->host = intern(nodeat(node));
+
+    if (fd < 0) {
+        bzero(&(entry->addr), sizeof(struct in_addr));
+    } else {
+        struct sockaddr_in peeraddr;
+        int len = sizeof(peeraddr);
+        bzero(&peeraddr, sizeof(peeraddr));
+        if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
+            logmsg(LOGMSG_ERROR, "%s: getpeername failed fd %d: %d %s\n",
+                   __func__, fd, errno, strerror(errno));
+            bzero(&(entry->addr), sizeof(struct in_addr));
+        } else {
+            memcpy(&(entry->addr), &peeraddr.sin_addr, sizeof(struct in_addr));
+        }
+    }
+
+    pthread_rwlock_wrlock(&clientstats_lk);
+    {
+        entry_chk = hash_find(clientstats, entry);
+        if (entry_chk) {
+            free(entry);
+            entry = entry_chk;
+            pthread_mutex_lock(&entry->mtx);
+            entry->ref++;
+            if (entry->ref == 1) {
+                pthread_mutex_lock(&clntlru_mtx);
+                listc_rfl(&clntlru, entry);
+                pthread_mutex_unlock(&clntlru_mtx);
+            }
+            pthread_mutex_unlock(&entry->mtx);
+        } else {
+            pthread_mutex_lock(&clntlru_mtx);
+            while (hash_get_num_entries(clientstats) + 1 >
+                   gbl_max_clientstats_cache) {
+                old_entry = listc_rtl(&clntlru);
+                if (old_entry) {
+                    hash_del(clientstats, old_entry);
+                    free(old_entry);
+                } else {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: too many clientstats %d, max %d\n", __func__,
+                           hash_get_num_entries(clientstats) + 1,
+                           gbl_max_clientstats_cache);
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&clntlru_mtx);
+            hash_add(clientstats, entry);
+        }
+    }
+    pthread_rwlock_unlock(&clientstats_lk);
+
+    return entry;
+}
+
+static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
+{
+    nodestats_t key;
+    nodestats_t *entry = NULL;
+    key.checksum = checksum;
+    key.node = node;
+    pthread_rwlock_rdlock(&clientstats_lk);
+    {
+        entry = hash_find_readonly(clientstats, &key);
+        if (entry) {
+            pthread_mutex_lock(&entry->mtx);
+            entry->ref++;
+            if (entry->ref == 1) {
+                pthread_mutex_lock(&clntlru_mtx);
+                listc_rfl(&clntlru, entry);
+                pthread_mutex_unlock(&clntlru_mtx);
+            }
+            pthread_rwlock_unlock(&clientstats_lk);
+            if (*(unsigned *)&(entry->addr) == 0 && fd > 0) {
+                struct sockaddr_in peeraddr;
+                int len = sizeof(peeraddr);
+                bzero(&peeraddr, sizeof(peeraddr));
+                if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: getpeername failed fd %d: %d %s\n", __func__,
+                           fd, errno, strerror(errno));
+                    bzero(&(entry->addr), sizeof(struct in_addr));
+                } else {
+                    memcpy(&(entry->addr), &peeraddr.sin_addr,
+                           sizeof(struct in_addr));
+                }
+            }
+            pthread_mutex_unlock(&entry->mtx);
+            return entry;
+        }
+    }
+    pthread_rwlock_unlock(&clientstats_lk);
+    return NULL;
+}
+
+static void release_clientstats(unsigned checksum, int node)
+{
+    nodestats_t key;
+    nodestats_t *entry = NULL;
+    key.checksum = checksum;
+    key.node = node;
+    pthread_rwlock_rdlock(&clientstats_lk);
+    {
+        entry = hash_find_readonly(clientstats, &key);
+        pthread_mutex_lock(&entry->mtx);
+        entry->ref--;
+        if (entry->ref < 0) {
+            logmsg(LOGMSG_ERROR, "key released more often than found, ref %d\n",
+                   entry->ref);
+            entry->ref = 0;
+        }
+        if (entry->ref == 0) {
+            pthread_mutex_lock(&clntlru_mtx);
+            listc_abl(&clntlru, entry);
+            pthread_mutex_unlock(&clntlru_mtx);
+        }
+        pthread_mutex_unlock(&entry->mtx);
+    }
+    pthread_rwlock_unlock(&clientstats_lk);
+}
+
+struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
+                                        char *host, int fd)
+{
+    struct nodestats *nodestats = NULL;
+    struct rawnodestats *rawnodestats = NULL;
+    unsigned checksum;
+    int namelen, node;
+    int task_len, stack_len = 0;
+    char *tmp;
+
+    host = intern(host);
+    node = nodeix(host);
+    task_len = strlen(NAME(task)) + 1;
+    stack_len = strlen(NAME(stack)) + 1;
+    namelen = task_len + stack_len;
+    if (namelen < 1024)
+        tmp = alloca(namelen);
+    else
+        tmp = malloc(namelen);
+    if (!tmp) {
+        logmsg(LOGMSG_ERROR, "%s: out of memory\n", __func__);
+        return NULL;
+    }
+    memcpy(tmp, NAME(task), task_len);
+    memcpy(tmp + task_len, NAME(stack), stack_len);
+    checksum = crc32c(tmp, namelen);
+    if ((nodestats = find_clientstats(checksum, node, fd)) == NULL) {
+        nodestats = add_clientstats(task, stack, node, fd);
+        if (nodestats == NULL) {
+            logmsg(
+                LOGMSG_ERROR,
+                "%s: failed to add client stats, task %s, stack %s, node %s\n",
+                __func__, NAME(task), NAME(stack), node);
+        }
+    }
+
+    if (tmp && namelen >= 1024)
+        free(tmp);
+    return nodestats ? &(nodestats->rawtotals) : NULL;
+}
+
+int release_node_stats(const char *task, const char *stack, char *host)
+{
+    unsigned checksum;
+    int namelen;
+    int task_len, stack_len = 0;
+    char *tmp;
+
+    task_len = strlen(NAME(task)) + 1;
+    stack_len = strlen(NAME(stack)) + 1;
+    namelen = task_len + stack_len;
+    if (namelen < 1024)
+        tmp = alloca(namelen);
+    else
+        tmp = malloc(namelen);
+    if (!tmp)
+        return -1;
+    memcpy(tmp, NAME(task), task_len);
+    memcpy(tmp + task_len, NAME(stack), stack_len);
+    checksum = crc32c(tmp, namelen);
+    release_clientstats(checksum, nodeix(host));
+
+    if (tmp && namelen >= 1024)
+        free(tmp);
+    return 0;
+}
+
+typedef struct {
+    nodestats_t **list;
+    int i;
+    int n;
+} clientstats_ptr_list;
+
+int collect_clientstats(void *ent, void *arg)
+{
+    nodestats_t *entry = ent;
+    clientstats_ptr_list *klist = arg;
+    if (klist->i < klist->n) {
+        klist->list[klist->i] = entry;
+    } else
+        logmsg(LOGMSG_ERROR, "%s: BUG! expected %d entries but saw more\n",
+               __func__, klist->n);
+    klist->i += 1;
+    return 0;
 }
 
 /* called (roughly) once a second to update our per node stats */
@@ -2021,56 +2252,69 @@ void process_nodestats(void)
 {
     static int last_time_ms = 0;
     int span_ms;
-    struct nodestats *nodestats;
+    clientstats_ptr_list cpl;
+    nodestats_t *nodestats;
+    nodestats_t **list = NULL;
+    int i;
+    int nclnts = 0;
 
-    if (last_time_ms == 0) last_time_ms = time_epochms();
-    span_ms = time_epochms() - last_time_ms;
-    last_time_ms = time_epochms();
+    if (last_time_ms == 0)
+        last_time_ms = comdb2_time_epochms();
+    span_ms = comdb2_time_epochms() - last_time_ms;
+    last_time_ms = comdb2_time_epochms();
 
-    LOCK(&nodestats_calc_lk)
-    {
-        for (nodestats = nodestats_first; nodestats;
-             nodestats = nodestats->next) {
-            unsigned next_bucket;
-            unsigned ii;
-            unsigned *nowptr;
-            unsigned *prevptr;
-            unsigned *bucketptr;
-            struct rawnodestats *rawnodestats;
+    pthread_rwlock_rdlock(&clientstats_lk);
 
-            if (!nodestats) continue;
-
-            nowptr = (unsigned *)&nodestats->rawtotals;
-            prevptr = (unsigned *)&nodestats->prevtotals;
-
-            nodestats->bucket_spanms[nodestats->cur_bucket] = span_ms;
-            bucketptr =
-                (unsigned *)&nodestats->raw_buckets[nodestats->cur_bucket];
-
-            for (ii = 0; ii < NUM_RAW_NODESTATS; ii++) {
-                unsigned prev_value, diff;
-                prev_value = nowptr[ii];
-                diff = prev_value - prevptr[ii];
-                prevptr[ii] = prev_value;
-                bucketptr[ii] = diff;
-            }
-
-            next_bucket = nodestats->cur_bucket + 1;
-            if (next_bucket >= NUM_BUCKETS) next_bucket = 0;
-            nodestats->cur_bucket = next_bucket;
-        }
+    nclnts = hash_get_num_entries(clientstats);
+    if (nclnts == 0)
+        goto done;
+    list = calloc(nclnts, sizeof(nodestats_t *));
+    if (list == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: no memory\n", __func__);
+        goto done;
     }
-    UNLOCK(&nodestats_calc_lk);
+    cpl.list = list;
+    cpl.i = 0;
+    cpl.n = nclnts;
+    hash_for(clientstats, collect_clientstats, &cpl);
+    for (i = 0; i < nclnts; i++) {
+        unsigned next_bucket;
+        unsigned ii;
+        unsigned *nowptr;
+        unsigned *prevptr;
+        unsigned *bucketptr;
+        struct rawnodestats *rawnodestats;
+        nodestats = list[i];
+
+        nowptr = (unsigned *)&nodestats->rawtotals;
+        prevptr = (unsigned *)&nodestats->prevtotals;
+
+        nodestats->bucket_spanms[nodestats->cur_bucket] = span_ms;
+        bucketptr = (unsigned *)&nodestats->raw_buckets[nodestats->cur_bucket];
+
+        for (ii = 0; ii < NUM_RAW_NODESTATS; ii++) {
+            unsigned prev_value, diff;
+            prev_value = nowptr[ii];
+            diff = prev_value - prevptr[ii];
+            prevptr[ii] = prev_value;
+            bucketptr[ii] = diff;
+        }
+
+        next_bucket = nodestats->cur_bucket + 1;
+        if (next_bucket >= NUM_BUCKETS)
+            next_bucket = 0;
+        nodestats->cur_bucket = next_bucket;
+    }
+done:
+    pthread_rwlock_unlock(&clientstats_lk);
+    if (list)
+        free(list);
 }
 
-static void snap_nodestats_ll(char *host, struct rawnodestats *snap,
-                              int disp_rates)
+static void snap_nodestats_ll(struct nodestats *nodestats,
+                              struct rawnodestats *snap, int disp_rates)
 {
-    struct nodestats *nodestats;
-
     bzero(snap, sizeof(*snap));
-
-    nodestats = nodestats_array[nodeix(host)];
 
     if (!nodestats) {
         return;
@@ -2088,7 +2332,8 @@ static void snap_nodestats_ll(char *host, struct rawnodestats *snap,
             }
         }
 
-        if (timespanms <= 0) timespanms = 1;
+        if (timespanms <= 0)
+            timespanms = 1;
         for (ii = 0; ii < NUM_RAW_NODESTATS; ii++) {
             snapptr[ii] = 0.5 + (NUM_BUCKETS * 1000.00 *
                                  ((double)snapptr[ii] / (double)timespanms));
@@ -2098,52 +2343,247 @@ static void snap_nodestats_ll(char *host, struct rawnodestats *snap,
     }
 }
 
+struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
+                                                int disp_rates)
+{
+    unsigned max_clients = 0;
+    unsigned ii;
+    struct summary_nodestats *summaries = NULL;
+    struct nodestats *nodestats;
+    struct rawnodestats snap;
+
+    clientstats_ptr_list cpl;
+    nodestats_t **list = NULL;
+    int i;
+    int nclnts = 0;
+
+    pthread_rwlock_rdlock(&clientstats_lk);
+
+    nclnts = hash_get_num_entries(clientstats);
+    if (nclnts == 0)
+        goto done;
+
+    summaries = calloc(nclnts, sizeof(struct summary_nodestats));
+    if (!summaries) {
+        logmsg(LOGMSG_ERROR, "%s: out of memory %u nodes\n", __func__, nclnts);
+        goto done;
+    }
+
+    list = calloc(nclnts, sizeof(nodestats_t *));
+    if (list == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: no memory\n", __func__);
+        goto done;
+    }
+    cpl.list = list;
+    cpl.i = 0;
+    cpl.n = nclnts;
+    hash_for(clientstats, collect_clientstats, &cpl);
+
+    for (i = 0, ii = 0; i < nclnts; i++) {
+        unsigned opcode;
+        nodestats = list[i];
+
+        snap_nodestats_ll(nodestats, &snap, disp_rates);
+
+        summaries[ii].host = nodestats->host;
+        memcpy(&summaries[ii].addr, &(nodestats->addr), sizeof(struct in_addr));
+        summaries[ii].task = strcmp(nodestats->task, UNKNOWN_NAME)
+                                 ? strdup(nodestats->task)
+                                 : NULL;
+        summaries[ii].stack = strcmp(nodestats->stack, UNKNOWN_NAME)
+                                  ? strdup(nodestats->stack)
+                                  : NULL;
+        summaries[ii].ref = nodestats->ref;
+
+        summaries[ii].sql_queries = snap.sql_queries;
+        summaries[ii].sql_steps = snap.sql_steps;
+        summaries[ii].sql_rows = snap.sql_rows;
+
+        for (opcode = 0; opcode < MAXTYPCNT; opcode++) {
+            unsigned n = snap.opcode_counts[opcode];
+            if (!n)
+                continue;
+            switch (opcode) {
+            case OP_FIND:
+            case OP_NEXT:
+            case OP_JSTNX:
+            case OP_JSTFND:
+            case OP_FNDRRN:
+            case OP_PREV:
+            case OP_JSTPREV:
+            case OP_FIND2:
+            case OP_NEXT2:
+            case OP_PREV2:
+            case OP_JFND2:
+            case OP_JNXT2:
+            case OP_JPRV2:
+            case OP_FNDKLESS:
+            case OP_JFNDKLESS:
+            case OP_FNDNXTKLESS:
+            case OP_FNDPRVKLESS:
+            case OP_JFNDNXTKLESS:
+            case OP_JFNDPRVKLESS:
+                summaries[ii].finds += n;
+                break;
+
+            case OP_STORED:
+            case OP_RNGEXT2:
+            case OP_RNGEXTP2:
+            case OP_RNGEXTTAG:
+            case OP_RNGEXTTAGP:
+            case OP_RNGEXTTAGTZ:
+            case OP_RNGEXTTAGPTZ:
+            case OP_NEWRNGEX:
+                summaries[ii].rngexts += n;
+                break;
+
+            case OP_BLOCK:
+            case OP_FWD_BLOCK:
+            case OP_LONGBLOCK:
+            case OP_FWD_LBLOCK:
+            case OP_CLEARTABLE:
+            case OP_FASTINIT:
+                summaries[ii].writes += n;
+                break;
+
+            default:
+                summaries[ii].other_fstsnds += n;
+                break;
+            }
+        }
+
+        for (opcode = 0; opcode < BLOCK_MAXOPCODE; opcode++) {
+            unsigned n = snap.blockop_counts[gbl_blockop_count_xrefs[opcode]];
+            if (!n)
+                continue;
+            switch (opcode) {
+            case BLOCK2_ADDDTA:
+            case BLOCK2_ADDKL:
+            case BLOCK2_ADDKL_POS:
+            case BLOCK_ADDSL:
+                summaries[ii].adds += n;
+                break;
+
+            case BLOCK_UPVRRN:
+            case BLOCK2_UPDATE:
+            case BLOCK2_UPDKL:
+            case BLOCK2_UPDKL_POS:
+                summaries[ii].upds += n;
+                break;
+
+            case BLOCK_DELSEC:
+            case BLOCK_DELNOD:
+            case BLOCK2_DELDTA:
+            case BLOCK2_DELKL:
+                summaries[ii].dels += n;
+                break;
+
+            case BLOCK2_SQL:
+                summaries[ii].bsql += n;
+                break;
+
+            case BLOCK2_RECOM:
+                summaries[ii].recom += n;
+
+            case BLOCK2_SNAPISOL:
+                summaries[ii].snapisol += n;
+
+            case BLOCK2_SERIAL:
+                summaries[ii].serial += n;
+            }
+        }
+        ii++;
+    }
+    max_clients = ii;
+
+done:
+    pthread_rwlock_unlock(&clientstats_lk);
+    if (list)
+        free(list);
+    *nodes_cnt = max_clients;
+    return summaries;
+}
 void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
                            char *host)
 {
+    struct nodestats *nodestats;
     struct rawnodestats snap;
     int opcode;
 
-    if (!prefix) prefix = "";
+    if (!prefix)
+        prefix = "";
 
-    LOCK(&nodestats_calc_lk)
-    {
-        snap_nodestats_ll(host, &snap, disp_rates);
-    }
-    UNLOCK(&nodestats_calc_lk);
+    clientstats_ptr_list cpl;
+    nodestats_t **list = NULL;
+    int i;
+    int nclnts = 0;
 
-    logmsgf(LOGMSG_USER, fh, "%sRAW STATISTICS FOR NODE %s\n", prefix, host);
-    logmsgf(LOGMSG_USER, fh,
-            "%s--- opcode counts for regular fstsnd requests\n", prefix);
-    for (opcode = 0; opcode < MAXTYPCNT; opcode++) {
-        if (snap.opcode_counts[opcode]) {
-            logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, req2a(opcode),
-                    snap.opcode_counts[opcode]);
-        }
+    pthread_rwlock_rdlock(&clientstats_lk);
+
+    nclnts = hash_get_num_entries(clientstats);
+    if (nclnts == 0)
+        goto done;
+
+    list = calloc(nclnts, sizeof(nodestats_t *));
+    if (list == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: no memory\n", __func__);
+        goto done;
     }
-    logmsgf(LOGMSG_USER, fh,
-            "%s--- block operation opcode counts (for transactions)\n", prefix);
-    for (opcode = 0; opcode < BLOCK_MAXOPCODE; opcode++) {
-        if (snap.blockop_counts[gbl_blockop_count_xrefs[opcode]]) {
-            logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, breq2a(opcode),
-                    snap.blockop_counts[gbl_blockop_count_xrefs[opcode]]);
+    cpl.list = list;
+    cpl.i = 0;
+    cpl.n = nclnts;
+    hash_for(clientstats, collect_clientstats, &cpl);
+
+    host = intern(host);
+
+    for (i = 0; i < nclnts; i++) {
+        nodestats = list[i];
+        if (nodestats->host != host)
+            continue;
+
+        snap_nodestats_ll(nodestats, &snap, disp_rates);
+
+        logmsgf(LOGMSG_USER, fh, "%sRAW STATISTICS FOR NODE %s\n", prefix,
+                host);
+        logmsgf(LOGMSG_USER, fh,
+                "%s--- opcode counts for regular fstsnd requests\n", prefix);
+        for (opcode = 0; opcode < MAXTYPCNT; opcode++) {
+            if (snap.opcode_counts[opcode]) {
+                logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, req2a(opcode),
+                        snap.opcode_counts[opcode]);
+            }
         }
+        logmsgf(LOGMSG_USER, fh,
+                "%s--- block operation opcode counts (for transactions)\n",
+                prefix);
+        for (opcode = 0; opcode < BLOCK_MAXOPCODE; opcode++) {
+            if (snap.blockop_counts[gbl_blockop_count_xrefs[opcode]]) {
+                logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix,
+                        breq2a(opcode),
+                        snap.blockop_counts[gbl_blockop_count_xrefs[opcode]]);
+            }
+        }
+        logmsgf(LOGMSG_USER, fh, "%s--- SQL statistics\n", prefix);
+        if (snap.sql_queries)
+            logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, "queries",
+                    snap.sql_queries);
+        if (snap.sql_steps)
+            logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, "steps",
+                    snap.sql_steps);
+        if (snap.sql_rows)
+            logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, "rows",
+                    snap.sql_rows);
     }
-    logmsgf(LOGMSG_USER, fh, "%s--- SQL statistics\n", prefix);
-    if (snap.sql_queries)
-        logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, "queries",
-                snap.sql_queries);
-    if (snap.sql_steps)
-        logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, "steps",
-                snap.sql_steps);
-    if (snap.sql_rows)
-        logmsgf(LOGMSG_USER, fh, "%s%-20s  %u\n", prefix, "rows",
-                snap.sql_rows);
+
+done:
+    pthread_rwlock_unlock(&clientstats_lk);
+    if (list)
+        free(list);
 }
 
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
 {
-    unsigned max_nodes = num_nodes;
+    unsigned max_clients;
     unsigned ii;
     struct summary_nodestats *summaries;
     struct nodestats *nodestats;
@@ -2168,121 +2608,32 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
             "rows\n",
             prefix);
 
-    if (max_nodes == 0) return;
-
-    summaries = calloc(max_nodes, sizeof(struct summary_nodestats));
-    if (!summaries) {
-        logmsgf(LOGMSG_USER, stderr, "%s: out of memory %u nodes\n", __func__,
-                max_nodes);
+    summaries = get_nodestats_summary(&max_clients, disp_rates);
+    if (summaries == NULL)
         return;
-    }
 
-    LOCK(&nodestats_calc_lk)
-    {
-        for (ii = 0, nodestats = nodestats_first; nodestats && ii < max_nodes;
-             nodestats = nodestats->next, ii++) {
-
-            unsigned opcode;
-
-            snap_nodestats_ll(nodestats->host, &snap, disp_rates);
-
-            summaries[ii].host = nodestats->host;
-
-            summaries[ii].sql_queries = snap.sql_queries;
-            summaries[ii].sql_steps = snap.sql_steps;
-            summaries[ii].sql_rows = snap.sql_rows;
-
-            for (opcode = 0; opcode < MAXTYPCNT; opcode++) {
-                unsigned n = snap.opcode_counts[opcode];
-                if (!n) continue;
-                switch (opcode) {
-                case OP_FIND:
-                case OP_NEXT:
-                case OP_JSTNX:
-                case OP_JSTFND:
-                case OP_FNDRRN:
-                case OP_PREV:
-                case OP_JSTPREV:
-                case OP_FIND2:
-                case OP_NEXT2:
-                case OP_PREV2:
-                case OP_JFND2:
-                case OP_JNXT2:
-                case OP_JPRV2:
-                case OP_FNDKLESS:
-                case OP_JFNDKLESS:
-                case OP_FNDNXTKLESS:
-                case OP_FNDPRVKLESS:
-                case OP_JFNDNXTKLESS:
-                case OP_JFNDPRVKLESS: summaries[ii].finds += n; break;
-
-                case OP_STORED:
-                case OP_RNGEXT2:
-                case OP_RNGEXTP2:
-                case OP_RNGEXTTAG:
-                case OP_RNGEXTTAGP:
-                case OP_RNGEXTTAGTZ:
-                case OP_RNGEXTTAGPTZ:
-                case OP_NEWRNGEX: summaries[ii].rngexts += n; break;
-
-                case OP_BLOCK:
-                case OP_FWD_BLOCK:
-                case OP_LONGBLOCK:
-                case OP_FWD_LBLOCK:
-                case OP_CLEARTABLE:
-                case OP_FASTINIT: summaries[ii].writes += n; break;
-
-                default: summaries[ii].other_fstsnds += n; break;
-                }
-            }
-
-            for (opcode = 0; opcode < BLOCK_MAXOPCODE; opcode++) {
-                unsigned n =
-                    snap.blockop_counts[gbl_blockop_count_xrefs[opcode]];
-                if (!n) continue;
-                switch (opcode) {
-                case BLOCK2_ADDDTA:
-                case BLOCK2_ADDKL:
-                case BLOCK2_ADDKL_POS:
-                case BLOCK_ADDSL: summaries[ii].adds += n; break;
-
-                case BLOCK_UPVRRN:
-                case BLOCK2_UPDATE:
-                case BLOCK2_UPDKL:
-                case BLOCK2_UPDKL_POS: summaries[ii].upds += n; break;
-
-                case BLOCK_DELSEC:
-                case BLOCK_DELNOD:
-                case BLOCK2_DELDTA:
-                case BLOCK2_DELKL: summaries[ii].dels += n; break;
-
-                case BLOCK2_SQL: summaries[ii].bsql += n; break;
-
-                case BLOCK2_RECOM: summaries[ii].recom += n;
-
-                case BLOCK2_SNAPISOL: summaries[ii].snapisol += n;
-
-                case BLOCK2_SERIAL: summaries[ii].serial += n;
-                }
-            }
-        }
-        max_nodes = ii;
-    }
-    UNLOCK(&nodestats_calc_lk);
-
-    for (ii = 0; ii < max_nodes; ii++) {
+    for (ii = 0; ii < max_clients; ii++) {
         logmsgf(LOGMSG_USER, fh,
-                "%s%16s | %7u %7u %7u %7u | %7u %7u %7u %7u %7u %7u %7u | "
-                "%7u %7u %7u\n",
-                prefix, summaries[ii].host, summaries[ii].finds,
-                summaries[ii].rngexts, summaries[ii].writes,
-                summaries[ii].other_fstsnds, summaries[ii].adds,
-                summaries[ii].upds, summaries[ii].dels, summaries[ii].bsql,
-                summaries[ii].recom, summaries[ii].snapisol,
+                "%s task[%s] stack[%s] host[%s] ip[%s] refcnt %d\n", prefix,
+                summaries[ii].task, summaries[ii].stack, summaries[ii].host,
+                inet_ntoa(summaries[ii].addr), summaries[ii].ref);
+        logmsgf(LOGMSG_USER, fh,
+                "%s | %7u %7u %7u %7u | %7u %7u %7u %7u %7u %7u %7u | %7u "
+                "%7u %7u\n",
+                prefix, summaries[ii].finds, summaries[ii].rngexts,
+                summaries[ii].writes, summaries[ii].other_fstsnds,
+                summaries[ii].adds, summaries[ii].upds, summaries[ii].dels,
+                summaries[ii].bsql, summaries[ii].recom, summaries[ii].snapisol,
                 summaries[ii].serial, summaries[ii].sql_queries,
                 summaries[ii].sql_steps, summaries[ii].sql_rows);
     }
 
+    for (ii = 0; ii < max_clients; ii++) {
+        if (summaries[ii].task)
+            free(summaries[ii].task);
+        if (summaries[ii].stack)
+            free(summaries[ii].stack);
+    }
     free(summaries);
 }
 

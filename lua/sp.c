@@ -1747,13 +1747,15 @@ static char *load_default_src(char *spname, struct spversion_t *spversion,
     return src;
 }
 
+#define IS_SYS(spname) (!strncasecmp(spname, "sys.", 4))
+
 static char *load_src(char *spname, struct spversion_t *spversion,
                       int bootstrap, char **err)
 {
     int rc, bdb_err;
     char *src;
     int size = 0;
-    if (strncasecmp(spname, "sys.", 4) == 0) {
+    if (IS_SYS(spname)) {
         src = find_syssp(spname);
         if (src == NULL) {
             *err = no_such_procedure(spname, spversion);
@@ -5699,7 +5701,7 @@ static int get_spname(struct sqlclntstate *clnt, const char **exec,
     start = s;
 
     /* allow sys., otherwise '.' is not a valid character  */
-    int is_sys = !strncasecmp(s, "sys.", 4);
+    int is_sys = IS_SYS(s);
     while (s && (isalnum(*s) || *s == '_' || (is_sys && *s == '.')))
         s++;
 
@@ -5834,10 +5836,15 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
 
     *new_vm = 0;
     if (sp->src == NULL) {
-        rdlock_schema_lk();
+        int locked=0;
+        if (!IS_SYS(spname)) {
+            rdlock_schema_lk();
+            locked = 1;
+        }
         sp->src = load_src(spname, &sp->spversion, 1, err);
         sp->lua_version = gbl_lua_version;
-        unlock_schema_lk();
+        if (locked)
+            unlock_schema_lk();
         if (sp->src == NULL) {
             close_sp(clnt);
             return -1;
@@ -6527,7 +6534,7 @@ static int exec_procedure_int(const char *s, char **err,
 
     update_tran_funcs(L, clnt->in_client_trans);
 
-    if (strncasecmp(spname, "sys.", 4) == 0) init_sys_funcs(L);
+    if (IS_SYS(spname)) init_sys_funcs(L);
 
     if ((rc = push_args(&s, clnt, err, params, &args)) != 0) return rc;
 

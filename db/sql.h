@@ -180,8 +180,8 @@ typedef struct osqlstate {
 
     int error_is_remote; /* set if xerr is the error for a distributed tran
                             (i.e. already translated */
-    int long_request;
     int dirty; /* optimization to nop selectv only transactions */
+    int running_ddl; /* ddl transaction */
 } osqlstate_t;
 
 enum ctrl_sqleng {
@@ -264,10 +264,6 @@ void currangearr_init(CurRangeArr *arr);
 void currangearr_append(CurRangeArr *arr, CurRange *r);
 CurRange *currangearr_get(CurRangeArr *arr, int n);
 void currangearr_double_if_full(CurRangeArr *arr);
-int currange_cmp(const void *p, const void *q);
-void currangearr_sort(CurRangeArr *arr);
-void currangearr_merge_neighbor(CurRangeArr *arr);
-void currangearr_coalesce(CurRangeArr *arr);
 void currangearr_build_hash(CurRangeArr *arr);
 void currangearr_free(CurRangeArr *arr);
 void currangearr_print(CurRangeArr *arr);
@@ -846,4 +842,10 @@ void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
 void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *);
+
+int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
+             uint8_t flip_orig, const char *tzname);
+
+#define cur_is_remote(pCur) (pCur->cursor_class == CURSORCLASS_REMOTE)
+
 #endif

@@ -61,6 +61,9 @@ cdb2sql ${CDB2_OPTIONS} $dbname default "create table t3  { `cat t1.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} $dbname default "drop table t2"
 cdb2sql ${CDB2_OPTIONS} $dbname default "create table t2  { `cat t2.csc2 ` }"
 
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table t4"
+cdb2sql ${CDB2_OPTIONS} $dbname default "create table t4  { `cat t4.csc2 ` }"
+
 run_test
 
 echo "Test Succeeded"

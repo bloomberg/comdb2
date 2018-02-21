@@ -5869,7 +5869,8 @@ static int bdb_cursor_find_int(bdb_cursor_ifn_t *pcur_ifn, void *key,
     if (rc == IX_FND) {
         if (cur->type == BDBC_IX) {
 
-            if (bdb_keycontainsgenid(cur->state, cur->idx))
+            if (bdb_keycontainsgenid(cur->state, cur->idx) ||
+                (cur->sd && !cur->rl))
                 assert(keylen <= (cur->datalen + sizeof(cur->genid)));
             else
                 assert(keylen <= cur->datalen);

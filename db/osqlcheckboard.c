@@ -139,7 +139,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     entry->master = clnt->osql.host;
     entry->type = type;
     entry->last_checked = entry->last_updated =
-        time_epoch(); /* initialize these to insert time */
+        comdb2_time_epoch(); /* initialize these to insert time */
     entry->clnt = clnt;
 
 #ifdef DEBUG
@@ -508,23 +508,13 @@ void osql_checkboard_check_down_nodes(char *host)
     osql_checkboard_for_each(host, osql_checkboard_check_request_down_node);
 }
 
-int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
-                                struct errstat *xerr)
-{
-    return osql_chkboard_timedwait_commitrc(
-        rqid, uuid,
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC),
-        xerr);
-}
-
 /**
  * Wait for the session to complete
  * Upon return, sqlclntstate's errstat is set
  *
  */
-inline int osql_chkboard_timedwait_commitrc(unsigned long long rqid,
-                                            uuid_t uuid, int max_wait,
-                                            struct errstat *xerr)
+int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
+                                int max_wait, struct errstat *xerr)
 {
     struct timespec tm_s;
     osql_sqlthr_t *entry = NULL;
@@ -651,7 +641,7 @@ inline int osql_chkboard_timedwait_commitrc(unsigned long long rqid,
                 bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC);
 
             /* is it the time to check the master? have we already done so? */
-            now = time_epoch();
+            now = comdb2_time_epoch();
 
             if ((poke_timeout > 0) &&
                 (entry->last_updated + poke_timeout < now)) {
@@ -785,7 +775,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 
         entry->status = status;
         entry->timestamp = timestamp;
-        entry->last_updated = time_epoch();
+        entry->last_updated = comdb2_time_epoch();
 
         if ((rc = pthread_mutex_unlock(&entry->mtx)) != 0) {
             logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
@@ -835,7 +825,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     } else {
         pthread_mutex_lock(&entry->mtx);
         entry->last_checked = entry->last_updated =
-            time_epoch(); /* reset these time */
+            comdb2_time_epoch(); /* reset these time */
         entry->done = 0;
         entry->master_changed = 0;
         entry->master =

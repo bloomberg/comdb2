@@ -5739,6 +5739,18 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 			obj_dbt.data = dp;
 			obj_dbt.size = size;
 			dp = ((u_int8_t *)dp) + ALIGN(size, sizeof(u_int32_t));
+            /* 
+             * Comdb2 early locking in replication does not support 
+             * handle locks in write mode for opened file.  We rely
+             * on table locks instead.
+             *
+             */
+            if (size == sizeof(DB_LOCK_ILOCK) && 
+                    IS_WRITELOCK(lock_mode) &&
+                    ((DB_LOCK_ILOCK*)obj_dbt.data)->type == DB_HANDLE_LOCK) {
+                logmsg(LOGMSG_INFO, "Skipped write handle lock on replicant\n");
+                continue;
+            }
 			do {
 				if (LF_ISSET(LOCK_GET_LIST_GETLOCK)) {
 					uint32_t lflags =

@@ -98,11 +98,11 @@ void *thr(void *arg)
     else
         fprintf(stderr, "no config was set\n");
 
-
     cdb2_hndl_tp *db;
     int rc = cdb2_open(&db, dbname, "default", 0);
     if (rc != 0) {
         fprintf(stderr, "cdb2_open failed: %d\n", rc);
+        return NULL;
     }
 
     thr_info_t *tinfo = (thr_info_t *)arg;

@@ -343,6 +343,10 @@ static int raise_thd_priority(void)
 
 #endif
 
+int __rep_block_on_inflight_transactions(DB_ENV *dbenv);
+
+int gbl_force_serial_on_writelock = 1;
+
 /* Acquire the write lock.  If the current thread already holds the bdb read
  * lock then it is upgraded to a write lock.  If it already holds the write
  * lock then we just increase our reference count. */
@@ -443,6 +447,10 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
                     idstr, funcname, __func__, rc, strerror(rc));
             abort();
         }
+
+        /* Wait on rep_processor threads while we have the writelock lock */
+        if (gbl_force_serial_on_writelock)
+            __rep_block_on_inflight_transactions(lock_handle->dbenv);
 
         strcpy(lock_handle->bdb_lock_write_idstr, idstr);
 

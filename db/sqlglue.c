@@ -100,7 +100,7 @@
 #include "locks.h"
 #include "eventlog.h"
 
-#include <bbinc/str0.h>
+#include "str0.h"
 
 unsigned long long get_id(bdb_state_type *);
 
@@ -175,6 +175,7 @@ CurRange *currange_new()
     rc->islocked = 0;
     return rc;
 }
+
 void currangearr_init(CurRangeArr *arr)
 {
     arr->size = 0;
@@ -184,12 +185,14 @@ void currangearr_init(CurRangeArr *arr)
     arr->hash = NULL;
     arr->ranges = malloc(sizeof(CurRange *) * arr->cap);
 }
+
 void currangearr_append(CurRangeArr *arr, CurRange *r)
 {
     currangearr_double_if_full(arr);
     assert(r);
     arr->ranges[arr->size++] = r;
 }
+
 CurRange *currangearr_get(CurRangeArr *arr, int n)
 {
     if (n >= arr->size || n < 0) {
@@ -197,6 +200,7 @@ CurRange *currangearr_get(CurRangeArr *arr, int n)
     }
     return arr->ranges[n];
 }
+
 void currangearr_double_if_full(CurRangeArr *arr)
 {
     if (arr->size >= arr->cap) {
@@ -204,7 +208,8 @@ void currangearr_double_if_full(CurRangeArr *arr)
         arr->ranges = realloc(arr->ranges, sizeof(CurRange *) * arr->cap);
     }
 }
-int currange_cmp(const void *p, const void *q)
+
+static int currange_cmp(const void *p, const void *q)
 {
     CurRange *l = *(CurRange **)p;
     CurRange *r = *(CurRange **)q;
@@ -236,11 +241,13 @@ int currange_cmp(const void *p, const void *q)
     }
     return 0;
 }
-void currangearr_sort(CurRangeArr *arr)
+
+static inline void currangearr_sort(CurRangeArr *arr)
 {
     qsort((void *)arr->ranges, arr->size, sizeof(CurRange *), currange_cmp);
 }
-void currangearr_merge_neighbor(CurRangeArr *arr)
+
+static void currangearr_merge_neighbor(CurRangeArr *arr)
 {
     int i, j;
     j = 0;
@@ -303,13 +310,15 @@ void currangearr_merge_neighbor(CurRangeArr *arr)
     }
     arr->size = j + 1;
 }
-void currangearr_coalesce(CurRangeArr *arr)
+
+static inline void currangearr_coalesce(CurRangeArr *arr)
 {
     currangearr_sort(arr);
     currangearr_merge_neighbor(arr);
     currangearr_sort(arr);
     currangearr_merge_neighbor(arr);
 }
+
 void currangearr_build_hash(CurRangeArr *arr)
 {
     if (arr->size == 0)
@@ -350,12 +359,14 @@ void currangearr_build_hash(CurRangeArr *arr)
     }
     arr->hash = range_hash;
 }
+
 static int free_idxhash(void *obj, void *arg)
 {
     struct serial_index_hash *ih = (struct serial_index_hash *)obj;
     free(ih);
     return 0;
 }
+
 static int free_rangehash(void *obj, void *arg)
 {
     struct serial_tbname_hash *th = (struct serial_tbname_hash *)obj;
@@ -383,6 +394,7 @@ void currangearr_free(CurRangeArr *arr)
     }
     free(arr);
 }
+
 void currange_free(CurRange *cr)
 {
     if (cr->tbname) {
@@ -399,6 +411,7 @@ void currange_free(CurRange *cr)
     }
     free(cr);
 }
+
 void currangearr_print(CurRangeArr *arr)
 {
     if (arr == NULL)
@@ -429,6 +442,7 @@ void currangearr_print(CurRangeArr *arr)
         }
     }
 }
+
 /* return 0 if authenticated, else -1 */
 int authenticate_cursor(BtCursor *pCur, int how)
 {
@@ -689,9 +703,6 @@ void done_sql_thread(void)
     }
 }
 
-static int get_data_int(BtCursor *, struct schema *, uint8_t *in, int fnum,
-                        Mem *, uint8_t flip_orig, const char *tzname);
-
 static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
                                int rrn, unsigned long long genid, void *outp,
                                int maxout, int nblobs, void **blob,
@@ -738,7 +749,7 @@ static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
 
     for (fnum = 0; fnum < nField; fnum++) {
         memset(&m[fnum], 0, sizeof(Mem));
-        rc = get_data_int(pCur, s, in, fnum, &m[fnum], 1, tzname);
+        rc = get_data(pCur, s, in, fnum, &m[fnum], 1, tzname);
         if (rc)
             goto done;
         type[fnum] =
@@ -3618,8 +3629,8 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             /* make sure we have a distributed transaction and use that to
              * update remote */
             uuid_t tid;
-            fdb_tran_t *trans =
-                fdb_trans_begin_or_join(clnt, pCur->bt->fdb, (char *)tid);
+            fdb_tran_t *trans = fdb_trans_begin_or_join(
+                clnt, pCur->bt->fdb, (char *)tid, 0 /*TODO*/);
 
             if (!trans) {
                 logmsg(LOGMSG_ERROR, 
@@ -5368,7 +5379,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
         *pRes = 0;
         goto done;
 
-    } else if (pCur->cursor_class == CURSORCLASS_REMOTE) { /* remote cursor */
+    } else if (cur_is_remote(pCur)) { /* remote cursor */
 
         /* filter the supported operations */
         if (bias != OP_SeekLT && bias != OP_SeekLE && bias != OP_SeekGE &&
@@ -6314,29 +6325,8 @@ int is_datacopy(BtCursor *pCur, int *fnum)
     return 0;
 }
 
-int is_remote(BtCursor *pCur)
-{
-    return pCur->cursor_class == CURSORCLASS_REMOTE;
-}
-
-int is_raw(BtCursor *pCur)
-{
-    if (pCur) {
-        if (pCur->cursor_class == CURSORCLASS_TABLE) {
-            return 1;
-        } else if (pCur->cursor_class == CURSORCLASS_INDEX) {
-            return 1;
-        } else if (pCur->cursor_class == CURSORCLASS_REMOTE) {
-            return 1;
-        } else if (pCur->is_sampled_idx) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
-                        int fnum, Mem *m, uint8_t flip_orig, const char *tzname)
+int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
+             uint8_t flip_orig, const char *tzname)
 {
     int null;
     i64 ival;
@@ -6776,17 +6766,6 @@ done:
     return rc;
 }
 
-int get_data(BtCursor *pCur, void *invoid, int fnum, Mem *m)
-{
-    if (unlikely(pCur->cursor_class == CURSORCLASS_REMOTE)) {
-        /* convert the remote buffer to M array */
-        abort(); /* this is suppsed to be a cooked access */
-    } else {
-        return get_data_int(pCur, pCur->sc, invoid, fnum, m, 0,
-                            pCur->clnt->tzname);
-    }
-}
-
 int get_datacopy(BtCursor *pCur, int fnum, Mem *m)
 {
     uint8_t *in;
@@ -6797,8 +6776,7 @@ int get_datacopy(BtCursor *pCur, int fnum, Mem *m)
         vtag_to_ondisk_vermap(pCur->db, in, NULL, ver);
     }
 
-    return get_data_int(pCur, pCur->db->schema, in, fnum, m, 0,
-                        pCur->clnt->tzname);
+    return get_data(pCur, pCur->db->schema, in, fnum, m, 0, pCur->clnt->tzname);
 }
 
 static int
@@ -7518,7 +7496,8 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
         /* I would like to open here a transaction if this is
            an actual update */
         if (clnt->iswrite /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {
-            trans = fdb_trans_begin_or_join(clnt, fdb, (char *)tid);
+            trans =
+                fdb_trans_begin_or_join(clnt, fdb, (char *)tid, 0 /* TODO */);
         } else {
             trans = fdb_trans_join(clnt, fdb, (char *)tid);
         }
@@ -7530,7 +7509,8 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     if (trans)
         pthread_mutex_lock(&clnt->dtran_mtx);
 
-    cur->fdbc = fdb_cursor_open(clnt, cur, cur->rootpage, trans, &cur->ixnum);
+    cur->fdbc = fdb_cursor_open(clnt, cur, cur->rootpage, trans, &cur->ixnum,
+                                sslio_has_ssl(clnt->sb));
     if (!cur->fdbc) {
         if (trans)
             pthread_mutex_unlock(&clnt->dtran_mtx);
@@ -8263,8 +8243,8 @@ int sqlite3BtreeInsert(
             /* make sure we have a distributed transaction and use that to
              * update remote */
             uuid_t tid;
-            fdb_tran_t *trans =
-                fdb_trans_begin_or_join(clnt, pCur->bt->fdb, (char *)tid);
+            fdb_tran_t *trans = fdb_trans_begin_or_join(
+                clnt, pCur->bt->fdb, (char *)tid, 0 /*TODO*/);
 
             if (!trans) {
                 logmsg(LOGMSG_ERROR, 
@@ -10730,10 +10710,14 @@ SBUF2 *connect_remote_db(const char *dbname, const char *service, char *host)
     /* lets try to use sockpool, if available */
     sockfd = _sockpool_get(dbname, service, host);
     if (sockfd > 0) {
+        /*fprintf(stderr, "%s: retrieved sockpool socket for %s.%s.%s fd=%d\n",
+            __func__, dbname, service, host);*/
         goto sbuf;
-    }
+    } else
+        /*fprintf(stderr, "%s: no sockpool socket for %s.%s.%s\n",
+            __func__, dbname, service, host);*/
 
-    retry = 0;
+        retry = 0;
 retry:
     /* this could fail due to load */
     port = portmux_get(host, "comdb2", "replication", dbname);
@@ -10753,18 +10737,6 @@ retry:
                 __func__, dbname, host, port);
         return NULL;
     }
-
-    /* disable Nagle */
-    flag = 1;
-    rc = setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
-                    sizeof(int));
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldnt turn off nagel on new fd %d: %d %s\n",
-                __func__, sockfd, errno, strerror(errno));
-        close(sockfd);
-        return NULL;
-    }
-
 sbuf:
     sb = sbuf2open(sockfd, 0);
     if (!sb) {

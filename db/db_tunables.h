@@ -78,9 +78,6 @@ REGISTER_TUNABLE("blocksql_grace",
                  "being killed (and returning an error). (Default: 10sec)",
                  TUNABLE_INTEGER, &gbl_blocksql_grace, 0, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("blocksql_over_sockets", NULL, TUNABLE_BOOLEAN,
-                 &gbl_upgrade_blocksql_to_socksql, READONLY | NOARG, NULL, NULL,
-                 NULL, NULL);
 REGISTER_TUNABLE("blocksql_throttle", NULL, TUNABLE_INTEGER,
                  &g_osql_blocksql_parallel_max, READONLY, NULL, NULL, NULL,
                  NULL);
@@ -163,8 +160,6 @@ REGISTER_TUNABLE("dir",
                  "Database directory. (Default: $COMDB2_ROOT/var/cdb2/$DBNAME)",
                  TUNABLE_STRING, &db->basedir, READONLY, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("disable_bbipc", NULL, TUNABLE_BOOLEAN, &gbl_use_bbipc,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_cache_internal_nodes",
                  "Disables 'enable_cache_internal_nodes'. B-tree leaf nodes "
                  "are treated same as internal nodes.",
@@ -186,10 +181,6 @@ REGISTER_TUNABLE("disable_direct_writes", "Disables 'enable_direct_writes'",
                  TUNABLE_BOOLEAN, &db->enable_direct_writes,
                  INVERSE_VALUE | READONLY | NOARG | READEARLY, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("disable_good_sql_return_codes",
-                 "Disables 'enable_good_sql_return_codes'", TUNABLE_BOOLEAN,
-                 &gbl_enable_good_sql_return_codes,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_inplace_blob_optimization",
                  "Disables 'enable_inplace_blob_optimization'", TUNABLE_BOOLEAN,
                  &gbl_inplace_blob_optimization,
@@ -239,9 +230,6 @@ REGISTER_TUNABLE("disable_rowlock_locking", NULL, TUNABLE_BOOLEAN,
 REGISTER_TUNABLE("disable_skip_rows", NULL, TUNABLE_BOOLEAN,
                  &gbl_disable_skip_rows, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("disable_sock_fstsnd", "Disables 'enable_sock_fstsnd'",
-                 TUNABLE_BOOLEAN, &gbl_enable_sock_fstsnd,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_sparse_lockerid_map",
                  "Disables 'enable_sparse_lockerid_map'", TUNABLE_BOOLEAN,
                  &gbl_sparse_lockerid_map, INVERSE_VALUE | READONLY | NOARG,
@@ -304,9 +292,6 @@ REGISTER_TUNABLE("dont_sort_nulls_with_header",
                  "Disables 'sort_nulls_with_header'", TUNABLE_BOOLEAN,
                  &gbl_sort_nulls_correctly, INVERSE_VALUE | READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("dont_use_bbipc_fastseed", "Disable 'use_bbipc_fastseed'",
-                 TUNABLE_BOOLEAN, &gbl_use_bbipc_global_fastseed,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dtastripe", NULL, TUNABLE_INTEGER, &gbl_dtastripe,
                  READONLY | NOZERO, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("early",
@@ -319,9 +304,6 @@ REGISTER_TUNABLE("early",
 REGISTER_TUNABLE("enable_berkdb_retry_deadlock_bias", NULL, TUNABLE_BOOLEAN,
                  &gbl_enable_berkdb_retry_deadlock_bias, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("enable_blockoffload", NULL, TUNABLE_INTEGER,
-                 &gbl_enable_block_offload, READONLY | NOARG, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE(
     "enable_cache_internal_nodes",
     "B-tree internal nodes have a higher cache priority. (Default: on)",
@@ -339,9 +321,6 @@ REGISTER_TUNABLE("enable_datetime_truncation", NULL, TUNABLE_BOOLEAN,
 REGISTER_TUNABLE("enable_direct_writes", NULL, TUNABLE_BOOLEAN,
                  &db->enable_direct_writes, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("enable_good_sql_return_codes", NULL, TUNABLE_BOOLEAN,
-                 &gbl_enable_good_sql_return_codes, READONLY | NOARG, NULL,
-                 NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_inplace_blob_optimization",
                  "Enables inplace blob updates (blobs are updated in place in "
                  "their b-tree when possible, not deleted/added) Note: This "
@@ -392,10 +371,6 @@ REGISTER_TUNABLE(
     "If set, allows partial index definitions in table schema. (Default: off)",
     TUNABLE_BOOLEAN, &gbl_partial_indexes, READONLY | NOARG, NULL, NULL, NULL,
     NULL);
-REGISTER_TUNABLE("enable_position_apis",
-                 "Enables support for position APIs. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_enable_position_apis, READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_prefault_udp",
                  "Send lossy prefault requests to replicants. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_prefault_udp, NOARG, NULL, NULL, NULL,
@@ -416,9 +391,6 @@ REGISTER_TUNABLE("enable_snapshot_isolation",
                  TUNABLE_BOOLEAN, &gbl_snapisol, READONLY, NULL, NULL, NULL,
                  NULL);
 */
-REGISTER_TUNABLE("enable_sock_fstsnd", NULL, TUNABLE_BOOLEAN,
-                 &gbl_enable_sock_fstsnd, READONLY | NOARG | NOARG, NULL, NULL,
-                 NULL, NULL);
 REGISTER_TUNABLE("enable_sparse_lockerid_map",
                  "If set, allocates a sparse map of lockers for deadlock "
                  "resolution. (Default: on)",
@@ -472,9 +444,6 @@ REGISTER_TUNABLE("fdbdebg", NULL, TUNABLE_INTEGER, &gbl_fdb_track, READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fdbtrackhints", NULL, TUNABLE_INTEGER, &gbl_fdb_track_hints,
                  READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("fkrcode", "Enable foreign-key violation return code.",
-                 TUNABLE_BOOLEAN, &gbl_fkrcode, READONLY, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE("forbid_ulonglong", "Disallow u_longlong. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_forbid_ulonglong,
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
@@ -746,9 +715,6 @@ REGISTER_TUNABLE("nice", "If set, nice() will be called with this "
 REGISTER_TUNABLE("noblobstripe", "Disables 'blobstripe'", TUNABLE_BOOLEAN,
                  &gbl_blobstripe, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("noblocksql_over_sockets", "Disables 'blocksql_over_sockets'",
-                 TUNABLE_BOOLEAN, &gbl_upgrade_blocksql_to_socksql,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("no_compress_page_compact_log",
                  "Disables 'compress_page_compact_log'", TUNABLE_BOOLEAN,
                  &gbl_compress_page_compact_log,
@@ -1161,9 +1127,6 @@ REGISTER_TUNABLE("upd_null_cstr_return_conv_err", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("use_appsock_as_sqlthread", NULL, TUNABLE_INTEGER,
                  &gbl_use_appsock_as_sqlthread, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("use_bbipc_fastseed", NULL, TUNABLE_BOOLEAN,
-                 &gbl_use_bbipc_global_fastseed, READONLY | NOARG, NULL, NULL,
-                 NULL, NULL);
 REGISTER_TUNABLE("use_live_schema_change", NULL, TUNABLE_INTEGER,
                  &gbl_default_livesc, READONLY | NOARG, NULL, NULL, NULL, NULL);
 /*
@@ -1320,5 +1283,32 @@ REGISTER_TUNABLE("print_deadlock_cycles",
 REGISTER_TUNABLE("always_send_cnonce",
                  "Always send cnonce to master. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_always_send_cnonce, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("force_serial_on_writelock", "Disable parallel rep on "
+                                              "upgrade.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_force_serial_on_writelock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("processor_thd_poll", "Poll before dispatching worker thds. "
+                                       "(Default: 0ms)",
+                 TUNABLE_INTEGER, &gbl_processor_thd_poll,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("time_rep_apply", "Display rep-apply times periodically. "
+                                   "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_time_rep_apply, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("logput_window",
+                 "Drop log-broadcasts for incoherent nodes "
+                 "more than this many bytes behind. (Default: 1000000)",
+                 TUNABLE_INTEGER, &gbl_incoherent_logput_window,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dump_full_netqueue", "Dump net-queue on full rcode. "
+                                       "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_dump_full_net_queue,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE(
+    "max_clientstats",
+    "Max number of client stats stored in comdb2_clientstats. (Default 10000)",
+    TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
+    NULL);
 
 #endif /* _DB_TUNABLES_H */

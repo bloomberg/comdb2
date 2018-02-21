@@ -1248,6 +1248,8 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host);
 int net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum);
 int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
                    int ylen);
+int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, int *file,
+                   int *offset);
 
 static void net_startthread_rtn(void *arg)
 {
@@ -1399,14 +1401,14 @@ static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
     if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
         bdb_flush_cache(bdb_state);
     else {
-        start = time_epochms();
+        start = comdb2_time_epochms();
         rc = ll_checkpoint(bdb_state, force);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "txn_checkpoint err %d\n", rc);
             *bdberr = BDBERR_MISC;
             return -1;
         }
-        end = time_epochms();
+        end = comdb2_time_epochms();
         ctrace("checkpoint took %dms\n", end - start);
     }
 
@@ -2504,6 +2506,8 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     /* register a routine which will re-order the out-queue to
        be in lsn order */
     net_register_netcmp(bdb_state->repinfo->netinfo, net_cmplsn_rtn);
+
+    net_register_getlsn(bdb_state->repinfo->netinfo, net_getlsn_rtn);
 
     /* set the callback data so we get our bdb_state pointer from these
      * calls. */
@@ -3812,8 +3816,8 @@ int calc_pagesize(int recsize)
     return pagesize;
 }
 
-static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                    int create, DB_TXN *tid)
+static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
+                        int create, DB_TXN *tid)
 {
     int rc;
     char tmpname[PATH_MAX];
@@ -3880,8 +3884,10 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
 
             if (bdb_new_file_version_all(bdb_state, &tran, &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
-                logmsg(LOGMSG_ERROR, "bdb_open_dbs: failed to update table and its "
-                                "file's version number\n");
+                logmsg(LOGMSG_ERROR,
+                       "bdb_open_dbs: failed to update table and its file's "
+                       "version number, bdberr %d\n",
+                       bdberr);
                 if (tid)
                     tid->abort(tid);
                 return -1;
@@ -4328,6 +4334,17 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
     }
 
     return 0;
+}
+
+static pthread_mutex_t open_dbs_mtx = PTHREAD_MUTEX_INITIALIZER;
+static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
+                    int create, DB_TXN *tid)
+{
+    int rc = 0;
+    Pthread_mutex_lock(&open_dbs_mtx);
+    rc = open_dbs_int(bdb_state, iammaster, upgrade, create, tid);
+    Pthread_mutex_unlock(&open_dbs_mtx);
+    return rc;
 }
 
 int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,

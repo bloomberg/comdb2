@@ -125,8 +125,6 @@ typedef long long tranid_t;
 #define MAX_NUM_TABLES 1024
 #define MAX_NUM_QUEUES 1024
 
-#define BBIPC_KLUDGE_LEN 8
-
 #define DEC_ROUND_NONE (-1)
 
 enum AUXDB_TYPES {
@@ -607,6 +605,31 @@ struct rawnodestats {
 };
 #define NUM_RAW_NODESTATS (sizeof(struct rawnodestats) / sizeof(unsigned))
 
+struct summary_nodestats {
+    char *host;
+    struct in_addr addr;
+    char *task;
+    char *stack;
+    int ref;
+
+    unsigned finds;
+    unsigned rngexts;
+    unsigned writes;
+    unsigned other_fstsnds;
+
+    unsigned adds;
+    unsigned upds;
+    unsigned dels;
+    unsigned bsql;     /* block sql */
+    unsigned recom;    /* recom sql */
+    unsigned snapisol; /* snapisol sql */
+    unsigned serial;   /* serial sql */
+
+    unsigned sql_queries;
+    unsigned sql_steps;
+    unsigned sql_rows;
+};
+
 /* records in sql master db look like this (no appended rrn info) */
 struct sqlmdbrectype {
     char type[8];
@@ -828,7 +851,6 @@ struct dbtable {
     unsigned long long tableversion;
 
     int do_local_replication;
-    int shmflags;
 
     /* map of tag fields for version to curr schema */
     unsigned int * versmap[MAXVER + 1];
@@ -1016,7 +1038,6 @@ struct dbenv {
 
     LISTC_T(struct deferred_option) deferred_options[DEFERRED_OPTION_MAX];
     LISTC_T(struct lrlfile) lrl_files;
-    int shmflags;
 
     int incoh_notcoherent;
     uint32_t incoh_file, incoh_offset;
@@ -1270,6 +1291,10 @@ struct ireq {
     struct dbenv *dbenv;
     struct dbtable *origdb;
     struct dbtable *usedb;
+
+    /* IPC stuff */
+    void *p_sinfo;
+    intptr_t curswap; /* 040307dh: 64bit */
 
     /* these usually refer to diffent points in the same fstsnd buffer, as such
      * p_buf_in and p_buf_in_end should be set to NULL once writing to p_buf_out
@@ -1586,8 +1611,6 @@ extern osqlpf_step *gbl_osqlpf_step;
 extern queue_type *gbl_osqlpf_stepq;
 
 extern int gbl_starttime;
-extern int gbl_enable_bulk_import; /* allow this db to bulk import */
-extern int gbl_enable_bulk_import_different_tables;
 extern int gbl_early_blkseq_check;
 
 extern int gbl_repchecksum;
@@ -1665,7 +1688,6 @@ extern int gbl_queue_sleeptime;
 extern int gbl_reset_queue_cursor;
 extern int gbl_readonly;
 extern int gbl_readonly_sc;
-extern int gbl_use_bbipc;
 extern int gbl_init_single_meta;
 extern unsigned long long gbl_sc_genids[MAXDTASTRIPE];
 extern int gbl_sc_usleep;
@@ -1801,7 +1823,6 @@ extern int gbl_genid_cache;
 extern int gbl_max_appsock_connections;
 
 extern int gbl_master_changed_oldfiles;
-extern int gbl_use_bbipc_global_fastseed;
 extern int gbl_extended_sql_debug_trace;
 extern int gbl_use_sockpool_for_debug_logs;
 extern int gbl_optimize_truncate_repdb;
@@ -2876,7 +2897,11 @@ void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);
 void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
                            char *host);
-struct rawnodestats *get_raw_node_stats(char *host);
+struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
+                                        char *host, int fd);
+int release_node_stats(const char *task, const char *stack, char *host);
+struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
+                                                int disp_rates);
 
 struct reqlogger *reqlog_alloc(void);
 int peer_dropped_connection(struct sqlclntstate *clnt);
@@ -3364,16 +3389,10 @@ uint8_t *db_info2_iostats_put(const struct db_info2_iostats *p_iostats,
 
 extern int gbl_log_fstsnd_triggers;
 
-int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
-              const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
-              char *fromtask, int qtype, void *data_hndl, int do_inline,
-              int luxref, unsigned long long rqid);
 struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
                                 const uint8_t *p_buf_end, int debug,
                                 char *frommach, sorese_info_t *sorese);
 void destroy_ireq(struct dbenv *dbenv, struct ireq *iq);
-
-int toclientstats(struct ireq *);
 
 void create_watchdog_thread(struct dbenv *);
 
@@ -3395,10 +3414,7 @@ int compare_indexes(const char *table, FILE *out);
 void freeschema(struct schema *schema);
 void freedb(struct dbtable *db);
 
-extern int gbl_upgrade_blocksql_to_socksql;
-
 extern int gbl_parallel_recovery_threads;
-
 extern int gbl_core_on_sparse_file;
 extern int gbl_check_sparse_files;
 
@@ -3413,8 +3429,6 @@ void handle_setcompr(SBUF2 *);
 void handle_rowlocks_enable(SBUF2 *);
 void handle_rowlocks_enable_master_only(SBUF2 *);
 void handle_rowlocks_disable(SBUF2 *);
-
-extern int gbl_bbipc_slotidx;
 
 extern int gbl_decimal_rounding;
 extern int gbl_report_sqlite_numeric_conversion_errors;

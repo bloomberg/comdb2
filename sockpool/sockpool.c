@@ -62,9 +62,10 @@ pthread_mutex_t sockpool_lk = PTHREAD_MUTEX_INITIALIZER;
  * available to receive sockets. */
 #define SOCKPOOL_ENABLED() 1
 
-
-
-static int time_epoch_sp() { return time(0); }
+static int comdb2_time_epoch_sp()
+{
+    return time(0);
+}
 
 struct itemtype;
 
@@ -343,7 +344,8 @@ static void default_destructor(enum socket_pool_event event,
 
 static void destroy_item_ll(enum socket_pool_event event, struct item *item)
 {
-    int ttl = item->timeout_secs - (time_epoch_sp() - item->donation_time);
+    int ttl =
+        item->timeout_secs - (comdb2_time_epoch_sp() - item->donation_time);
     if (ttl < 0)
         ttl = 0;
     DBG(("%s: event %d for %s fd %d\n", __func__, event, item->type->typestr,
@@ -429,7 +431,7 @@ void socket_pool_timeout(void)
     if (hash) {
         int now;
         struct item *tmpp, *item;
-        now = time_epoch_sp();
+        now = comdb2_time_epoch_sp();
         LISTC_FOR_EACH_SAFE(&lru_list, item, tmpp, lru_linkv)
         {
             if (item->timeout_secs > 0 &&
@@ -566,7 +568,7 @@ socket_pool_get_ext_ll(const char *typestr, int dbnum, int flags,
             while (fnd_type && fd == -1 &&
                    (fnd_item = listc_rbl(&fnd_type->item_list)) != NULL) {
                 if (fnd_item->timeout_secs > 0 &&
-                    time_epoch_sp() >=
+                    comdb2_time_epoch_sp() >=
                         fnd_item->timeout_secs + fnd_item->donation_time) {
                     /* Socket timed out so is unusable.  close it. */
                     DBG(("%s: fd %d timed out for %s\n", __func__, fnd_item->fd,
@@ -574,7 +576,7 @@ socket_pool_get_ext_ll(const char *typestr, int dbnum, int flags,
                     DBG(("fnd_item->timeout_secs=%d fnd_item->donation_time=%d "
                          "now=%d\n",
                          fnd_item->timeout_secs, fnd_item->donation_time,
-                         time_epoch_sp()));
+                         comdb2_time_epoch_sp()));
                     destroy_item_ll(SOCKET_POOL_EVENT_TIMEOUT, fnd_item);
                     fnd_type->stats.n_timeouts++;
                     stats.n_timeouts++;
@@ -766,7 +768,7 @@ void socket_pool_donate_ext(const char *typestr, int fd, int timeout_secs,
                     type->stats.n_donated++;
                     stats.n_donated++;
                     item->timeout_secs = timeout_secs;
-                    item->donation_time = time_epoch_sp();
+                    item->donation_time = comdb2_time_epoch_sp();
                     item->flags = flags;
                     item->dbnum = dbnum;
                     item->destructor = destructor;

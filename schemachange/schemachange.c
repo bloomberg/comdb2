@@ -167,7 +167,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     strcpy(s->original_master_node, gbl_mynode);
     unsigned long long seed;
     const char *node = gbl_mynode;
-    if (trans && s->tran == trans && iq->sc_seed) {
+    if (s->tran == trans && iq->sc_seed) {
         seed = iq->sc_seed;
         logmsg(LOGMSG_INFO, "Starting schema change: "
                             "transactionally reuse seed 0x%llx\n",
@@ -243,6 +243,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
     arg->trans = trans;
     arg->iq = iq;
+    arg->sc = iq->sc;
+    iq->sc->usedbtablevers = iq->usedbtablevers;
 
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race) {
@@ -259,21 +261,35 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (s->nothrevent) {
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
+        pthread_mutex_lock(&s->mtx);
         rc = do_schema_change_tran(arg);
     } else {
+        int max_threads =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC_MAXTHREADS);
+        pthread_mutex_lock(&sc_async_mtx);
+        while (!s->resume && max_threads > 0 &&
+               sc_async_threads >= max_threads) {
+            logmsg(LOGMSG_INFO, "Waiting for avaiable schema change threads\n");
+            pthread_cond_wait(&sc_async_cond, &sc_async_mtx);
+        }
+        sc_async_threads++;
+        pthread_mutex_unlock(&sc_async_mtx);
+
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
         pthread_t tid;
-        if (trans)
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change_tran, arg);
-        else
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change, s);
+        pthread_mutex_lock(&s->mtx);
+        rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                            (void *(*)(void *))do_schema_change_tran, arg);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "start_schema_change:pthread_create rc %d %s\n", rc,
                    strerror(errno));
+
+            pthread_mutex_lock(&sc_async_mtx);
+            sc_async_threads--;
+            pthread_mutex_unlock(&sc_async_mtx);
+
             free(arg);
             free_schema_change_type(s);
             sc_set_running(0, sc_seed, gbl_mynode, time(NULL));
@@ -288,14 +304,20 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 
 int start_schema_change(struct schema_change_type *s)
 {
-    struct ireq iq;
-    init_fake_ireq(thedb, &iq);
-    iq.sc = s;
+    struct ireq *iq = NULL;
+    iq = (struct ireq *)calloc(1, sizeof(*iq));
+    if (iq == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc ireq\n", __func__);
+        return -1;
+    }
+    init_fake_ireq(thedb, iq);
+    iq->sc = s;
     if (s->db == NULL) {
         s->db = get_dbtable_by_name(s->table);
     }
-    iq.usedb = s->db;
-    return start_schema_change_tran(&iq, NULL);
+    iq->usedb = s->db;
+    iq->usedbtablevers = s->db ? s->db->tableversion : 0;
+    return start_schema_change_tran(iq, NULL);
 }
 
 void delay_if_sc_resuming(struct ireq *iq)
@@ -304,9 +326,9 @@ void delay_if_sc_resuming(struct ireq *iq)
 
     int diff;
     int printerr = 0;
-    int start_time = time_epochms();
+    int start_time = comdb2_time_epochms();
     while (gbl_sc_resume_start) {
-        if ((diff = time_epochms() - start_time) > 300 && !printerr) {
+        if ((diff = comdb2_time_epochms() - start_time) > 300 && !printerr) {
             logmsg(LOGMSG_WARN, "Delaying since gbl_sc_resume_start has not "
                                 "been reset to 0 for %dms\n",
                    diff);
@@ -786,9 +808,8 @@ int live_sc_post_update(struct ireq *iq, void *trans,
 /* I ORIGINALLY REMOVED THIS, THEN MERGING I SAW IT BACK IN COMDB2.C
     I AM LEAVING IT IN HERE FOR NOW (GOTTA ASK MARK)               */
 
-static int add_table_for_recovery(struct ireq *iq)
+static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
 {
-    struct schema_change_type *s = iq->sc;
     struct dbtable *db;
     struct dbtable *newdb;
     int bdberr;
@@ -797,7 +818,7 @@ static int add_table_for_recovery(struct ireq *iq)
     db = get_dbtable_by_name(s->table);
     if (db == NULL) {
         wrlock_schema_lk();
-        rc = do_add_table(iq, NULL);
+        rc = do_add_table(iq, s, NULL);
         unlock_schema_lk();
         return rc;
     }
@@ -953,7 +974,7 @@ int add_schema_change_tables()
             }
 
             iq.sc = s;
-            rc = add_table_for_recovery(&iq);
+            rc = add_table_for_recovery(&iq, s);
 
             free(s);
             return rc;
@@ -971,6 +992,7 @@ int sc_timepart_add_table(const char *existingTableName,
     char *schemabuf = NULL;
     struct dbtable *db;
 
+    init_schemachange_type(&sc);
     /* prepare sc */
     sc.onstack = 1;
     sc.type = DBTYPE_TAGGED_TABLE;
@@ -1069,6 +1091,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     char *schemabuf = NULL;
     int rc;
 
+    init_schemachange_type(&sc);
     /* prepare sc */
     sc.onstack = 1;
     sc.type = DBTYPE_TAGGED_TABLE;

@@ -36,11 +36,11 @@ out=$TMPDIR/t1_dump.txt
 
 myhostname=`hostname`
 if [ "$master" != "$myhostname" ] ; then
-    ssh -o StrictHostKeyChecking=no $master "rm -f ${SRCHOME}/cdb2_dump; ln ${SRCHOME}/comdb2 ${SRCHOME}/cdb2_dump"
-    ssh -o StrictHostKeyChecking=no $master "find $DBDIR | grep '/t1_.*.datas0' | xargs ${SRCHOME}/cdb2_dump " > $out
+    ssh -o StrictHostKeyChecking=no $master "ln ${TESTDIR}/comdb2 ${TESTDIR}/cdb2_dump"
+    ssh -o StrictHostKeyChecking=no $master "find $DBDIR | grep '/t1_.*.datas0' | xargs ${TESTDIR}/cdb2_dump " > $out
 else
-    rm -f ${SRCHOME}/cdb2_dump; ln ${SRCHOME}/comdb2 ${SRCHOME}/cdb2_dump
-    find $DBDIR | grep '/t1_.*.datas0' | xargs ${SRCHOME}/cdb2_dump -f $out
+    ln ${TESTDIR}/comdb2 ${TESTDIR}/cdb2_dump
+    find $DBDIR | grep '/t1_.*.datas0' | xargs ${TESTDIR}/cdb2_dump -f $out
 fi
 
 lc=$(wc $out | awk '{print $1,$2,$3}')

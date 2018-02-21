@@ -92,23 +92,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
  *
  */
 int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
-                                struct errstat *xerr);
-
-/**
- * Wait for the session to complete
- * Upon return, sqlclntstate's errstat is set
- *
- */
-int osql_chkboard_longwait_commitrc(unsigned long long rqid, uuid_t uuid,
-                                    struct errstat *xerr);
-
-/**
- * Wait for the session to complete
- * Upon return, sqlclntstate's errstat is set
- *
- */
-int osql_chkboard_timedwait_commitrc(unsigned long long rqid, uuid_t uuid,
-                                     int max_wait, struct errstat *xerr);
+                                int max_wait, struct errstat *xerr);
 
 /**
 * Update status of the pending sorese transaction, to support poking

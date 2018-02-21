@@ -70,9 +70,6 @@
 #include "remote.h"
 
 #include <cdb2api.h>
-
-#include "comdb2_shm.h"
-
 #include <dlmalloc.h>
 
 #include "sqloffload.h"
@@ -89,7 +86,6 @@
 #include <alloca.h>
 #include <intern_strings.h>
 #include "debug_switches.h"
-#include <machine.h>
 #include <trigger.h>
 
 #include "views.h"
@@ -97,6 +93,8 @@
 
 #include "views.h"
 #include "logmsg.h"
+
+int (*comdb2_ipc_master_set)(char *host) = 0;
 
 /* ixrc != -1 is incorrect. Could be IX_PASTEOF or IX_EMPTY.
  * Don't want to vtag those results
@@ -622,7 +620,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
     }
 
     /*wait for synchronization, if necessary */
-    start_ms = time_epochms();
+    start_ms = comdb2_time_epochms();
     switch (sync) {
     default:
 
@@ -697,7 +695,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
             poll(0, 0, next_commit - now);
     }
 
-    end_ms = time_epochms();
+    end_ms = comdb2_time_epochms();
     iq->reptimems = end_ms - start_ms;
 
     return rc;
@@ -2937,6 +2935,11 @@ static int new_master_callback(void *bdb_handle, char *host)
         osql_repository_cancelall();
     }
 
+    /* poke master in comdb2 shm */
+    if (!gbl_exit && comdb2_ipc_master_set) {
+        comdb2_ipc_master_set(host);
+    }
+
     gbl_lost_master_time = 0; /* reset this */
 
     /* fudge around my lockless access to gbl_master_changes */
@@ -3024,7 +3027,7 @@ int is_node_up(const char *host)
 {
     int rc;
 
-    if (gbl_rtcpu_debug && CLASS_TEST == get_mach_class(machine())) {
+    if (gbl_rtcpu_debug && CLASS_TEST == get_mach_class(gbl_mynode)) {
         /* For debugging rtcpu problems use an "alternative" rtcpu system.
          * Basically look for a file in /bbsrc/db/comdb2/rtcpu - if a file
          * for the node exists, then it is considered rt'd off. */
@@ -4115,9 +4118,27 @@ int backend_open(struct dbenv *dbenv)
                           dbenv->bdb_env, &bdberr);
 
         if (db->handle == NULL) {
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_IGNORE_BAD_TABLE)) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "bdb_open:failed to open table %s/%s, rcode %d, IGNORING\n",
+                    dbenv->basedir, db->tablename, bdberr);
+                /* this is a hack, lets just leak it */
+                if (ii == dbenv->num_dbs - 1) {
+                    dbenv->dbs[ii] == NULL;
+                } else {
+                    memcpy(dbenv->dbs[ii], dbenv->dbs[ii + 1],
+                           sizeof(dbenv->dbs[0]));
+                    dbenv->dbs[dbenv->num_dbs - 1] = NULL;
+                }
+                dbenv->num_dbs--;
+                ii--;
+                continue;
+            }
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open table %s/%s, rcode %d\n",
                    dbenv->basedir, db->tablename, bdberr);
+
             return -1;
         }
     }
@@ -4353,9 +4374,7 @@ int backend_close(struct dbenv *dbenv)
     }
 
     /* offloading sql goes here */
-    if (dbenv->nsiblings > 0) {
-        osql_net_exiting();
-    }
+    osql_net_exiting();
 
     return bdb_close_env(dbenv->bdb_env);
 }

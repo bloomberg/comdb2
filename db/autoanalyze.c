@@ -306,7 +306,7 @@ void stat_auto_analyze(void)
  */
 void *auto_analyze_main(void *unused)
 {
-    int now = time_epoch();
+    int now = comdb2_time_epoch();
     if (now - gbl_sc_last_writer_time >
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME)) {
 #ifdef DEBUG
@@ -343,7 +343,7 @@ void *auto_analyze_main(void *unused)
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_MIN_PERCENT_JITTER);
     loc_call_counter++;
 
-    int strt = time_epochms();
+    int strt = comdb2_time_epochms();
 
     if (save_freq > 0)
         BDB_READLOCK(__func__);
@@ -444,7 +444,7 @@ void *auto_analyze_main(void *unused)
     if (save_freq > 0)
         BDB_RELLOCK();
 
-    ctrace("AUTOANALYZE check took %d ms\n", time_epochms() - strt);
+    ctrace("AUTOANALYZE check took %d ms\n", comdb2_time_epochms() - strt);
 
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
     return NULL;

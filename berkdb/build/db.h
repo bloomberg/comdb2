@@ -2417,6 +2417,7 @@ struct __db_env {
 	LISTC_T(struct __recovery_processor) inflight_transactions;
 	LISTC_T(struct __recovery_processor) inactive_transactions;
 	pthread_mutex_t recover_lk;
+	pthread_cond_t recover_cond;
 	int recovery_memsize;  /* Use up to this much memory for log records */
 	pthread_rwlock_t ser_lk;
 	int lsn_chain;
@@ -2725,9 +2726,9 @@ int berkdb_is_recovering(DB_ENV *dbenv);
 #define TIMEIT(x)               \
 do {                            \
     int start, end, diff;       \
-    start = time_epochms();     \
+    start = comdb2_time_epochms(); \
     x                           \
-    end = time_epochms();       \
+    end = comdb2_time_epochms();\
     diff = end - start;         \
     if (diff > 100)             \
         printf(">> %d %dms\n", __LINE__, diff); \
@@ -2736,9 +2737,9 @@ do {                            \
 #define TIMEITX(x, y)           \
 do {                            \
     int start, end, diff;       \
-    start = time_epochms();     \
+    start = comdb2_time_epochms(); \
     x                           \
-    end = time_epochms();       \
+    end = comdb2_time_epochms();\
     diff = end - start;         \
     if (diff > 100) {           \
         printf(">> %d %dms\n", __LINE__, diff); \

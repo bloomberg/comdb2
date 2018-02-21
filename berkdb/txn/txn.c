@@ -87,7 +87,7 @@ void bdb_get_writelock(void *bdb_state,
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
 
-int time_epoch(void);
+int comdb2_time_epoch(void);
 void ctrace(char *format, ...);
 
 
@@ -853,9 +853,6 @@ int bdb_transfer_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
     unsigned long long context);
 int __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid, u_int32_t lockid);
 
-void bdb_osql_trn_repo_lock(void);
-void bdb_osql_trn_repo_unlock(void);
-
 /*
  * __txn_commit --
  *	Commit a transaction.
@@ -1054,7 +1051,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 					assert(lsn_out);
 
-					timestamp = time_epoch();
+					timestamp = comdb2_time_epoch();
 
 					if (elect_highest_committed_gen) {
 						MUTEX_LOCK(dbenv,
@@ -1095,7 +1092,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 					}
 				} else {
 					SET_LOG_FLAGS(dbenv, txnp, lflags);
-					timestamp = time_epoch();
+					timestamp = comdb2_time_epoch();
 
 					if (elect_highest_committed_gen) {
 
@@ -1169,7 +1166,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		} else {
 
 			/* Log the commit in the parent! */
-			timestamp = time_epoch();
+			timestamp = comdb2_time_epoch();
 			if (!IS_ZERO_LSN(txnp->last_lsn) &&
 			    (ret = __txn_child_log(dbenv,
 				    txnp->parent, &txnp->parent->last_lsn,
@@ -1458,7 +1455,7 @@ __txn_abort(txnp)
 
 	if (DBENV_LOGGING(dbenv) && td->status == TXN_PREPARED &&
 	    (ret = __txn_regop_log(dbenv, txnp, &txnp->last_lsn, NULL,
-		    lflags, TXN_ABORT, (int32_t)time_epoch(), NULL)) != 0)
+		    lflags, TXN_ABORT, (int32_t)comdb2_time_epoch(), NULL)) != 0)
 		 return (__db_panic(dbenv, ret));
 
 	/* __txn_end always panics if it errors, so pass the return along. */

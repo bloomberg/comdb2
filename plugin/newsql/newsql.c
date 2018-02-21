@@ -125,9 +125,8 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt)
                     net_add_watch(clnt->sb, 0, 0);
                 else
                     net_add_watch_warning(
-                        clnt->sb,
-                        bdb_attr_get(dbenv->bdb_attr,
-                                     BDB_ATTR_MAX_SQL_IDLE_TIME),
+                        clnt->sb, bdb_attr_get(dbenv->bdb_attr,
+                                               BDB_ATTR_MAX_SQL_IDLE_TIME),
                         notimeout ? 0 : (timeout / 1000), clnt,
                         watcher_warning_function);
             } else if (strncasecmp(sqlstr, "maxquerytime", 12) == 0) {
@@ -154,28 +153,42 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt)
             } else if (strncasecmp(sqlstr, "user", 4) == 0) {
                 sqlstr += 4;
                 sqlstr = skipws(sqlstr);
-                sqlite3Dequote(sqlstr);
-                if (strlen(sqlstr) >= sizeof(clnt->user)) {
+                if (!sqlite3IsCorrectlyQuoted(sqlstr)) {
                     snprintf(err, sizeof(err),
-                             "set user: '%s' exceeds %d characters", sqlstr,
-                             sizeof(clnt->user) - 1);
+                             "set user: '%s' is an incorrectly quoted string",
+                             sqlstr, sizeof(clnt->user) - 1);
                     rc = ii + 1;
                 } else {
-                    clnt->have_user = 1;
-                    strcpy(clnt->user, sqlstr);
+                    sqlite3Dequote(sqlstr);
+                    if (strlen(sqlstr) >= sizeof(clnt->user)) {
+                        snprintf(err, sizeof(err),
+                                 "set user: '%s' exceeds %d characters", sqlstr,
+                                 sizeof(clnt->user) - 1);
+                        rc = ii + 1;
+                    } else {
+                        clnt->have_user = 1;
+                        strcpy(clnt->user, sqlstr);
+                    }
                 }
             } else if (strncasecmp(sqlstr, "password", 8) == 0) {
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
-                sqlite3Dequote(sqlstr);
-                if (strlen(sqlstr) >= sizeof(clnt->password)) {
+                if (!sqlite3IsCorrectlyQuoted(sqlstr)) {
                     snprintf(err, sizeof(err),
-                             "set password: '%s' exceeds %d characters", sqlstr,
-                             sizeof(clnt->password) - 1);
+                             "set user: '%s' is an incorrectly quoted string",
+                             sqlstr, sizeof(clnt->user) - 1);
                     rc = ii + 1;
                 } else {
-                    clnt->have_password = 1;
-                    strcpy(clnt->password, sqlstr);
+                    sqlite3Dequote(sqlstr);
+                    if (strlen(sqlstr) >= sizeof(clnt->password)) {
+                        snprintf(err, sizeof(err),
+                                 "set password: '%s' exceeds %d characters",
+                                 sqlstr, sizeof(clnt->password) - 1);
+                        rc = ii + 1;
+                    } else {
+                        clnt->have_password = 1;
+                        strcpy(clnt->password, sqlstr);
+                    }
                 }
             } else if (strncasecmp(sqlstr, "spversion", 9) == 0) {
                 clnt->spversion.version_num = 0;
@@ -419,6 +432,8 @@ static int do_query_on_master_check(struct dbenv *dbenv,
         /* Send sql response with dbinfo. */
         if (allow_master_dbinfo)
             send_dbinforesponse(dbenv, clnt->sb);
+
+        logmsg(LOGMSG_DEBUG, "Query on master, will be rejected\n");
         return 1;
     }
     return 0;
@@ -431,7 +446,6 @@ static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
     int rc;
     int pre_enabled = 0;
     int was_timeout = 0;
-    char ssl_able;
 
 retry_read:
     rc = sbuf2fread_timeout((char *)&hdr, sizeof(hdr), 1, sb, &was_timeout);
@@ -449,7 +463,7 @@ retry_read:
     if (hdr.type == FSQL_SSLCONN) {
 #if WITH_SSL
         /* If client requires SSL and we haven't done that,
-           do SSL_accept() now. handle_newsql_requests()
+           do SSL_accept() now. handle_newsql_request()
            will close the sb if SSL_accept() fails. */
 
         /* Can't SSL_accept twice - probably a client API logic error.
@@ -464,13 +478,17 @@ retry_read:
               actual status of this node;
            2) Doing SSL_accept() immediately would cause too many
               unnecessary EAGAIN/EWOULDBLOCK's for non-blocking BIO. */
-        ssl_able = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
-        if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0)
+        char ssl_able = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
+        if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0) {
+            logmsg(LOGMSG_DEBUG, "Error in sbuf2putc rc=%d\n", rc);
             return NULL;
+        }
 
         if (ssl_able == 'Y' &&
-            sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL, 0) != 1)
+            sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL, 0) != 1) {
+            logmsg(LOGMSG_DEBUG, "Error with sslio_accept\n");
             return NULL;
+        }
 
         if (sslio_verify(sb, gbl_client_ssl_mode, NULL, 0) != 0) {
             char *err = "Client certificate authentication failed.";
@@ -480,12 +498,15 @@ retry_read:
             resp.rcode = CDB2ERR_CONNECT_ERROR;
             rc = fsql_write_response(clnt, &resp, err, strlen(err) + 1, 1,
                                      __func__, __LINE__);
+            logmsg(LOGMSG_DEBUG, "sslio_verify returned non zero rc\n");
             return NULL;
         }
 #else
         /* Not compiled with SSL. Send back `N' to client and retry read. */
-        if ((rc = sbuf2putc(sb, 'N')) < 0 || (rc = sbuf2flush(sb)) < 0)
+        if ((rc = sbuf2putc(sb, 'N')) < 0 || (rc = sbuf2flush(sb)) < 0) {
+            logmsg(LOGMSG_DEBUG, "Error in sbuf2putc rc=%d\n", rc);
             return NULL;
+        }
 #endif
         goto retry_read;
     } else if (hdr.type == FSQL_RESET) { /* Reset from sockpool.*/
@@ -516,16 +537,13 @@ retry_read:
     }
 
     int bytes = hdr.length;
-
     if (bytes <= 0) {
         logmsg(LOGMSG_ERROR, "%s: Junk message  %d\n", __func__, bytes);
         return NULL;
     }
 
-    CDB2QUERY *query;
-
+    assert(errno == 0);
     char *p;
-
     if (bytes <= gbl_blob_sz_thresh_bytes)
         p = malloc(bytes);
     else
@@ -558,18 +576,21 @@ retry_read:
         return NULL;
     }
 
-    if (bytes) {
-        rc = sbuf2fread(p, bytes, 1, sb);
-        if (rc != 1) {
-            free(p);
-            return NULL;
-        }
+    rc = sbuf2fread(p, bytes, 1, sb);
+    if (rc != 1) {
+        free(p);
+        logmsg(LOGMSG_DEBUG, "Error in sbuf2fread rc=%d\n", rc);
+        return NULL;
     }
 
+    CDB2QUERY *query;
+    assert(errno == 0); // precondition for the while loop
     while (1) {
         query = cdb2__query__unpack(&pb_alloc, bytes, p);
+        // errno can be set by cdb2__query__unpack
+        // we retry malloc on out of memory condition
 
-        if (query != NULL || errno != ETIMEDOUT)
+        if (query || errno != ETIMEDOUT)
             break;
 
         pthread_mutex_lock(&clnt->wait_mutex);
@@ -583,15 +604,25 @@ retry_read:
         fdb_heartbeats(clnt);
         pthread_mutex_unlock(&clnt->wait_mutex);
     }
+    free(p);
 
     if (pre_enabled) {
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
         pthread_mutex_unlock(&clnt->wait_mutex);
     }
-    free(p);
 
-    if (query && query->dbinfo) {
+    if (!query || errno != 0) {
+        return NULL;
+    }
+
+    // one of dbinfo or sqlquery must be non-NULL
+    if (unlikely(!query->dbinfo && !query->sqlquery)) {
+        cdb2__query__free_unpacked(query, &pb_alloc);
+        goto retry_read;
+    }
+
+    if (query->dbinfo) {
         if (query->dbinfo->has_want_effects &&
             query->dbinfo->want_effects == 1) {
             CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
@@ -665,6 +696,7 @@ retry_read:
                                      __func__, __LINE__);
         }
         cdb2__query__free_unpacked(query, &pb_alloc);
+        logmsg(LOGMSG_DEBUG, "SSL is required by db, client doesnt support\n");
         return NULL;
     }
 #endif
@@ -762,18 +794,17 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     }
 
     CDB2QUERY *query = read_newsql_query(dbenv, &clnt, sb);
-    if (query == NULL)
+    if (query == NULL) {
+        logmsg(LOGMSG_DEBUG, "Query on master, will be rejected\n");
         goto done;
+    }
     assert(query->sqlquery);
+
     CDB2SQLQUERY *sql_query = query->sqlquery;
     clnt.query = query;
 
     if (do_query_on_master_check(dbenv, &clnt, sql_query))
         goto done;
-
-#ifdef DEBUGQUERY
-    printf("\n Query '%s'\n", sql_query->sql_query);
-#endif
 
     clnt.osql.count_changes = 1;
     clnt.dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
@@ -813,6 +844,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.sql = sql_query->sql_query;
         clnt.query = query;
         clnt.added_to_hist = 0;
+        logmsg(LOGMSG_DEBUG, "Query '%s'\n", sql_query->sql_query);
 
         if (!clnt.in_client_trans) {
             bzero(&clnt.effects, sizeof(clnt.effects));
@@ -848,6 +880,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         }
 
         if (sql_query->client_info) {
+            if (clnt.rawnodestats) {
+                release_node_stats(clnt.argv0, clnt.stack, clnt.origin);
+                clnt.rawnodestats = NULL;
+            }
             if (clnt.conninfo.pid &&
                 clnt.conninfo.pid != sql_query->client_info->pid) {
                 /* Different pid is coming without reset. */
@@ -873,6 +909,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             if (sql_query->client_info->stack) {
                 clnt.stack = strdup(sql_query->client_info->stack);
             }
+        }
+        if (clnt.rawnodestats == NULL) {
+            clnt.rawnodestats = get_raw_node_stats(
+                clnt.argv0, clnt.stack, clnt.origin, sbuf2fileno(clnt.sb));
         }
 
         if (process_set_commands(dbenv, &clnt))
@@ -966,6 +1006,11 @@ done:
         handle_sql_intrans_unrecoverable_error(&clnt);
     }
 
+    if (clnt.rawnodestats) {
+        release_node_stats(clnt.argv0, clnt.stack, clnt.origin);
+        clnt.rawnodestats = NULL;
+    }
+
     if (clnt.argv0) {
         free(clnt.argv0);
         clnt.argv0 = NULL;
@@ -995,11 +1040,7 @@ done:
     /* XXX free logical tran?  */
     close_appsock(sb);
 
-    clnt.dbtran.mode = TRANLEVEL_INVALID;
-    set_high_availability(&clnt, 0);
-    // clnt.high_availability = 0;
-    if (clnt.query_stats)
-        free(clnt.query_stats);
+    cleanup_clnt(&clnt);
 
     pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
