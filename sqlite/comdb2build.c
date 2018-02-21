@@ -1943,59 +1943,69 @@ enum {
     FLAG_EXTRA_BYTE = 1 << 2,
 };
 
-#define COMDB2_TYPE(A, B, C)                                                   \
-    {                                                                          \
-        A, sizeof(A) - 1, B, C                                                 \
-    }
+/* A mapping from SQL types to Comdb2 types. */
+#define TYPE_MAPPING                                                           \
+    XMACRO_TYPE(SQL_TYPE_USHORT, "u_short", "u_short", 0)                      \
+    XMACRO_TYPE(SQL_TYPE_SHORT, "short", "short", 0)                           \
+    XMACRO_TYPE(SQL_TYPE_UINT, "u_int", "u_int", 0)                            \
+    XMACRO_TYPE(SQL_TYPE_INT, "int", "int", 0)                                 \
+    XMACRO_TYPE(SQL_TYPE_LONGLONG, "longlong", "longlong", 0)                  \
+    XMACRO_TYPE(SQL_TYPE_ULONGLONG, "u_longlong", "u_longlong", 0)             \
+    XMACRO_TYPE(SQL_TYPE_CSTRING, "cstring", "cstring",                        \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT)                         \
+    XMACRO_TYPE(SQL_TYPE_VUTF8, "vutf8", "vutf8",                              \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT)                         \
+    XMACRO_TYPE(SQL_TYPE_BLOB, "blob", "blob",                                 \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT)                         \
+    XMACRO_TYPE(SQL_TYPE_BYTE, "byte", "byte",                                 \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT)                         \
+    XMACRO_TYPE(SQL_TYPE_DATETIME, "datetime", "datetime", FLAG_QUOTE_DEFAULT) \
+    XMACRO_TYPE(SQL_TYPE_DATETIMEUS, "datetimeus", "datetimeus",               \
+                FLAG_QUOTE_DEFAULT)                                            \
+    XMACRO_TYPE(SQL_TYPE_INTERVALDS, "intervalds", "intervalds",               \
+                FLAG_QUOTE_DEFAULT)                                            \
+    XMACRO_TYPE(SQL_TYPE_INTERVALDSUS, "intervaldsus", "intervaldsus",         \
+                FLAG_QUOTE_DEFAULT)                                            \
+    XMACRO_TYPE(SQL_TYPE_INTERVALYM, "intervalym", "intervalym",               \
+                FLAG_QUOTE_DEFAULT)                                            \
+    XMACRO_TYPE(SQL_TYPE_DECIMAL32, "decimal32", "decimal32", 0)               \
+    XMACRO_TYPE(SQL_TYPE_DECIMAL64, "decimal64", "decimal64", 0)               \
+    XMACRO_TYPE(SQL_TYPE_DECIMAL128, "decimal128", "decimal128", 0)            \
+    XMACRO_TYPE(SQL_TYPE_FLOAT, "float", "float", 0)                           \
+    XMACRO_TYPE(SQL_TYPE_DOUBLE, "double", "double", 0)                        \
+    /* Additional types mapped to a Comdb2 type. */                            \
+    XMACRO_TYPE(SQL_TYPE_VARCHAR, "varchar", "cstring",                        \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT | FLAG_EXTRA_BYTE)       \
+    XMACRO_TYPE(SQL_TYPE_CHAR, "char", "cstring",                              \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT | FLAG_EXTRA_BYTE)       \
+    XMACRO_TYPE(SQL_TYPE_TEXT, "text", "vutf8",                                \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT)                         \
+    XMACRO_TYPE(SQL_TYPE_INTEGER, "integer", "int", 0)                         \
+    XMACRO_TYPE(SQL_TYPE_SMALLINT, "smallint", "short", 0)                     \
+    XMACRO_TYPE(SQL_TYPE_BIGINT, "bigint", "longlong", 0)                      \
+    XMACRO_TYPE(SQL_TYPE_REAL, "real", "float", 0)                             \
+    /* End marker */                                                           \
+    XMACRO_TYPE(SQL_TYPE_LAST, 0, 0, 0)
 
-struct comdb2_type_mapping {
-    /* SQL type */
-    char *sql_type;
-    int sql_type_len;
+#define XMACRO_TYPE(code, sql_str, comdb2_str, flags) code,
+enum type_codes { TYPE_MAPPING };
+#undef XMACRO_TYPE
 
-    /* Comdb2 type */
-    char *comdb2_type;
+#define XMACRO_TYPE(code, sql_str, comdb2_str, flags) sql_str,
+const char *type_sql_str[] = {TYPE_MAPPING};
+#undef XMACRO_TYPE
 
-    /* Type properties */
-    int flag;
-} type_mapping[] = {
-    /*
-      Comdb2 types.
-      WARNING: DO NOT CHANGE THE ORDER!
-    */
-    COMDB2_TYPE("u_short", "u_short", 0),
-    COMDB2_TYPE("short", "short", 0),
-    COMDB2_TYPE("u_int", "u_int", 0),
-    COMDB2_TYPE("int", "int", 0),
-    COMDB2_TYPE("longlong", "longlong", 0),
-    COMDB2_TYPE("u_longlong", "u_longlong", 0),
-    COMDB2_TYPE("cstring", "cstring", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("vutf8", "vutf8", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("blob", "blob", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("byte", "byte", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("datetime", "datetime", FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("datetimeus", "datetimeus", FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("intervalds", "intervalds", FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("intervaldsus", "intervaldsus", FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("intervalym", "intervalym", FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("decimal32", "decimal32", 0),
-    COMDB2_TYPE("decimal64", "decimal64", 0),
-    COMDB2_TYPE("decimal128", "decimal128", 0),
-    COMDB2_TYPE("float", "float", 0),
-    COMDB2_TYPE("double", "double", 0),
+#define XMACRO_TYPE(code, sql_str, comdb2_str, flags) sizeof(sql_str) - 1,
+size_t type_sql_str_len[] = {TYPE_MAPPING};
+#undef XMACRO_TYPE
 
-    /* Additional types mapped to a Comdb2 type. */
-    COMDB2_TYPE("varchar", "cstring",
-                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT | FLAG_EXTRA_BYTE),
-    COMDB2_TYPE("char", "cstring",
-                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT | FLAG_EXTRA_BYTE),
-    COMDB2_TYPE("text", "vutf8", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("integer", "int", 0),
-    COMDB2_TYPE("smallint", "short", 0),
-    COMDB2_TYPE("bigint", "longlong", 0),
-    COMDB2_TYPE("real", "float", 0),
-    /* End marker */
-    {NULL, 0, NULL, 0}};
+#define XMACRO_TYPE(code, sql_str, comdb2_str, flags) comdb2_str,
+const char *type_comdb2_str[] = {TYPE_MAPPING};
+#undef XMACRO_TYPE
+
+#define XMACRO_TYPE(code, sql_str, comdb2_str, flags) flags,
+int type_flags[] = {TYPE_MAPPING};
+#undef XMACRO_TYPE
 
 /*
   Allocate Comdb2 DDL context to be used during parsing.
@@ -2077,25 +2087,23 @@ static int comdb2_parse_sql_type(const char *type, int *size)
 
     type_len = strlen(type);
 
-    for (int i = 0; type_mapping[i].sql_type != NULL; ++i) {
+    for (int i = 0; i < SQL_TYPE_LAST; ++i) {
 
         /* Check if current type could accept size. */
-        accepts_size = (type_mapping[i].flag & FLAG_ALLOW_ARRAY);
+        accepts_size = (type_flags[i] & FLAG_ALLOW_ARRAY);
 
-        if ((accepts_size == 0) && (type_mapping[i].sql_type_len != type_len)) {
+        if ((accepts_size == 0) && (type_sql_str_len[i] != type_len)) {
             continue;
         }
 
-        if (strncasecmp(type, type_mapping[i].sql_type,
-                        type_mapping[i].sql_type_len) == 0) {
-
+        if (strncasecmp(type, type_sql_str[i], type_sql_str_len[i]) == 0) {
             /* No size specified. */
-            if (type_mapping[i].sql_type_len == strlen(type)) {
+            if ((type_sql_str_len[i]) == strlen(type)) {
                 *size = 0;
                 return i;
             }
 
-            if (type[type_mapping[i].sql_type_len] != '(') {
+            if (type[type_sql_str_len[i]] != '(') {
                 /* Malformed size. */
                 return -1;
             }
@@ -2108,11 +2116,10 @@ static int comdb2_parse_sql_type(const char *type, int *size)
             }
 
             errno = 0;
-            *size =
-                strtol(type + type_mapping[i].sql_type_len + 1, &endptr, 10);
+            *size = strtol(type + type_sql_str_len[i] + 1, &endptr, 10);
 
             /* Correction: cstring types require an additional byte. */
-            if ((type_mapping[i].flag & FLAG_EXTRA_BYTE) != 0) {
+            if ((type_flags[i] & FLAG_EXTRA_BYTE) != 0) {
                 (*size)++;
             }
 
@@ -2152,13 +2159,13 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
     case SERVER_UINT:
         switch (in_len) {
         case 3:
-            *type = 0;
+            *type = SQL_TYPE_USHORT;
             break;
         case 5:
-            *type = 2;
+            *type = SQL_TYPE_UINT;
             break;
         case 9:
-            *type = 5;
+            *type = SQL_TYPE_ULONGLONG;
             break;
         default:
             goto err;
@@ -2167,13 +2174,13 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
     case CLIENT_UINT:
         switch (in_len) {
         case 2:
-            *type = 0;
+            *type = SQL_TYPE_USHORT;
             break;
         case 4:
-            *type = 2;
+            *type = SQL_TYPE_UINT;
             break;
         case 8:
-            *type = 5;
+            *type = SQL_TYPE_ULONGLONG;
             break;
         default:
             goto err;
@@ -2182,13 +2189,13 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
     case SERVER_BINT:
         switch (in_len) {
         case 3:
-            *type = 1;
+            *type = SQL_TYPE_SHORT;
             break;
         case 5:
-            *type = 3;
+            *type = SQL_TYPE_INT;
             break;
         case 9:
-            *type = 4;
+            *type = SQL_TYPE_LONGLONG;
             break;
         default:
             goto err;
@@ -2197,13 +2204,13 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
     case CLIENT_INT:
         switch (in_len) {
         case 2:
-            *type = 1;
+            *type = SQL_TYPE_SHORT;
             break;
         case 4:
-            *type = 3;
+            *type = SQL_TYPE_INT;
             break;
         case 8:
-            *type = 4;
+            *type = SQL_TYPE_LONGLONG;
             break;
         default:
             goto err;
@@ -2215,10 +2222,10 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
     case CLIENT_REAL:
         switch (in_len) {
         case 4:
-            *type = 18;
+            *type = SQL_TYPE_FLOAT;
             break;
         case 8:
-            *type = 19;
+            *type = SQL_TYPE_DOUBLE;
             break;
         default:
             goto err;
@@ -2226,41 +2233,41 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
         break;
     case SERVER_BCSTR: /* fallthrough */
     case CLIENT_CSTR:
-        *type = 6;
+        *type = SQL_TYPE_CSTRING;
         *len = in_len;
         break;
     case SERVER_BYTEARRAY: /* fallthrough */
     case CLIENT_BYTEARRAY:
-        *type = 9;
+        *type = SQL_TYPE_BYTE;
         *len = in_len - 1;
         break;
     case SERVER_DATETIME: /* fallthrough */
     case CLIENT_DATETIME:
-        *type = 10;
+        *type = SQL_TYPE_DATETIME;
         break;
     case SERVER_INTVYM: /* fallthrough */
     case CLIENT_INTVYM:
-        *type = 14;
+        *type = SQL_TYPE_INTERVALYM;
         break;
     case SERVER_INTVDS: /* fallthrough */
     case CLIENT_INTVDS:
-        *type = 12;
+        *type = SQL_TYPE_INTERVALDS;
         break;
     case SERVER_VUTF8: /* fallthrough */
     case CLIENT_VUTF8:
-        *type = 7;
+        *type = SQL_TYPE_VUTF8;
         *len = in_len - 5;
         break;
     case SERVER_DECIMAL:
         switch (in_len) {
         case 7:
-            *type = 15;
+            *type = SQL_TYPE_DECIMAL32;
             break;
         case 13:
-            *type = 16;
+            *type = SQL_TYPE_DECIMAL64;
             break;
         case 22:
-            *type = 17;
+            *type = SQL_TYPE_DECIMAL128;
             break;
         default:
             goto err;
@@ -2270,16 +2277,16 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
     case SERVER_BLOB2: /* fallthrough */
     case CLIENT_BLOB:  /* fallthrough */
     case CLIENT_BLOB2:
-        *type = 8;
+        *type = SQL_TYPE_BLOB;
         *len = in_len - 5;
         break;
     case SERVER_DATETIMEUS: /* fallthrough */
     case CLIENT_DATETIMEUS:
-        *type = 11;
+        *type = SQL_TYPE_DATETIMEUS;
         break;
     case SERVER_INTVDSUS: /* fallthrough */
     case CLIENT_INTVDSUS:
-        *type = 13;
+        *type = SQL_TYPE_INTERVALDSUS;
         break;
     default:
         goto err;
@@ -2317,8 +2324,7 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
             continue;
 
         /* Append type and name */
-        strbuf_appendf(csc2, "\n\t\t%s ",
-                       type_mapping[column->type].comdb2_type);
+        strbuf_appendf(csc2, "\n\t\t%s ", type_comdb2_str[column->type]);
         strbuf_appendf(csc2, "%s", column->name);
         if (column->len > 0) {
             strbuf_appendf(csc2, "[%d] ", column->len);
@@ -2328,15 +2334,13 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
 
         /* Append default. The default is always a null-terminated string. */
         if (column->def) {
-            assert(column->type < ((sizeof(type_mapping) /
-                                    sizeof(struct comdb2_type_mapping)) -
-                                   1));
+            assert(column->type < SQL_TYPE_LAST);
 
             /*
               Check whether the default value needs to be quoted. Note: CSC2
               does not allow single quoted value.
             */
-            if ((type_mapping[column->type].flag & FLAG_QUOTE_DEFAULT) != 0) {
+            if ((type_flags[column->type] & FLAG_QUOTE_DEFAULT) != 0) {
                 strbuf_appendf(csc2, "dbstore = \"%s\" ", column->def);
             } else {
                 strbuf_appendf(csc2, "dbstore = %s ", column->def);
@@ -2445,13 +2449,8 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
         column = 0;
         LISTC_FOR_EACH(&tag->column_list, column, lnk)
         {
-            /* Should we let lower layers handle this? */
-            if (column->flags & COLUMN_DELETED)
-                continue;
-
             /* Append type and name */
-            strbuf_appendf(csc2, "\n\t\t%s ",
-                           type_mapping[column->type].comdb2_type);
+            strbuf_appendf(csc2, "\n\t\t%s ", type_comdb2_str[column->type]);
             strbuf_appendf(csc2, "%s", column->name);
             if (column->len > 0) {
                 strbuf_appendf(csc2, "[%d] ", column->len);
