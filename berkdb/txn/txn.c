@@ -749,7 +749,8 @@ __txn_allocate_ltrans(dbenv, ltranid, begin_lsn, rlt)
 
 	pthread_mutex_lock(&dbenv->ltrans_hash_lk);
 #ifdef LTRANS_DEBUG
-	assert(!(hflt = hash_find(dbenv->ltrans_hash, lt)));
+	hflt = hash_find(dbenv->ltrans_hash, lt);
+	assert(!hflt);
 #endif
 	hash_add(dbenv->ltrans_hash, lt);
 	pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
@@ -831,7 +832,8 @@ __txn_deallocate_ltrans(dbenv, lt)
 
 	pthread_mutex_lock(&dbenv->ltrans_hash_lk);
 #ifdef LTRANS_DEBUG
-	assert(hflt = hash_find(dbenv->ltrans_hash, lt));
+	hflt = hash_find(dbenv->ltrans_hash, lt);
+	assert(hflt);
 #endif
 	hash_del(dbenv->ltrans_hash, lt);
 	pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
