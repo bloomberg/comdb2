@@ -14,6 +14,12 @@ fi
 LOCTMPDIR=$TMPDIR/$dbname
 mkdir $LOCTMPDIR
 
+function getmaster {
+    ${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
+
+master=$(getmaster)
+
 if [[ -n "$CLUSTER" ]]; then
     export machine=$(echo $CLUSTER | awk '{print $1}')
 else
@@ -64,11 +70,13 @@ function force_checkpoint {
     ${CDB2SQL_EXE} ${CDB2SQL_OPTIONS} $dbname default "INSERT INTO load VALUES (100, 'xxx', x'1234', x'1234', x'1234', x'1234', x'1234', x'1234', x'1234', x'1234')" > /dev/null 2>&1
 
     if [[ -n "${CLUSTER}" ]]; then
+        ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\""
         for node in ${CLUSTER} ; do 
             ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('flush')\""
             ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('bdb logstat')\""
         done
     else
+        ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('pushnext')"
         ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
         ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
     fi

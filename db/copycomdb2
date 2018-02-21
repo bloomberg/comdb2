@@ -384,12 +384,34 @@ exopts="-C $cluster_info -u $max_du_percent "
 # destination, and get them to the source
 partials=$TMPDIR/$dbname.$$.inc.tar
 partialsdir=$TMPDIR/$dbname.$$.inc
+partiallrl=
+
 if [[ $partial = yes ]]; then
-    echo "destmach $srcmach"
-    $rsh $destmach $comdb2ar p $destlrldir > $partials
-    rcp -q $destmach:$partials $srcmach:$partials
-    $rsh $srcmach "mkdir  $TMPDIR/$dbname.$$.inc"
-    $rsh $srcmach "tar xvf $partials -C $partialsdir"
+
+    partiallrl=$(basename $srclrl)
+    if [ $copy_mode = PULL ]; then
+        if [ "$cluster_info" = strip ]; then
+            orig=$destlrldir/$partiallrl.orig.$(date +"%Y%m%dT%H%MZ%3N")
+            mv $destlrldir/$partiallrl $orig
+            egrep -v "cluster nodes" $orig > $destlrldir/$partiallrl
+            cluster_info=default
+        fi
+        $comdb2ar p $destlrldir/$partiallrl > $partials
+        rcp -q $partials $srcmach:$partials
+        $rsh $srcmach "mkdir  $TMPDIR/$dbname.$$.inc"
+        $rsh $srcmach "tar xvf $partials -C $partialsdir"
+    else
+        if [ "$cluster_info" = strip ]; then
+            orig=$destlrldir/$partiallrl.orig.$(date +"%Y%m%dT%H%MZ%3N")
+            $rsh $destmach "mv $destlrldir/$partiallrl $orig"
+            $rsh $destmach "egrep -v "cluster nodes" $orig > $destlrldir/$partiallrl"
+            cluster_info=default
+        fi
+        $rsh $destmach $comdb2ar p $destlrldir/$partiallrl > $partials
+        rcp -q $destmach:$partials $partials
+        mkdir  $TMPDIR/$dbname.$$.inc
+        tar xvf $partials -C $partialsdir
+    fi
     partialopts="-I inc -b $partialsdir"
     outmode=P
 fi
@@ -441,23 +463,41 @@ else
     if [ $copy_mode = PULL ] ; then
         # Pull mode.  Serialise the db at the destination and pipe this in to
         # a local deserialise.
-        $rsh $srcmach "$IONICE_RMT $comdb2ar $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $lz4 stdin stdout " | \
-            $lz4 -d stdin stdout | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir $destdbdir >$exstatus 2>&1
+        if [[ $partial = yes ]] ; then
+            $rsh $srcmach "$IONICE_RMT $comdb2ar $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $lz4 stdin stdout " | \
+                $lz4 -d stdin stdout | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir/$partiallrl >$exstatus 2>&1
+            rc=$?
+        else
+            $rsh $srcmach "$IONICE_RMT $comdb2ar $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $lz4 stdin stdout " | \
+                $lz4 -d stdin stdout | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir $destdbdir >$exstatus 2>&1
+            rc=$?
+        fi
 
-        rc=$?
     elif [ $copy_mode = PUSH ] ; then
         # Push mode.  Serialise db locally, pipe through o rshd deserialise
         # process on remote machine.
-        $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4 stdin stdout | \
-            $rsh $destmach "$lz4 -d stdin stdout | $IONICE_RMT $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $partialopts $destlrldir $destdbdir " >$exstatus 2>&1
+        if [[ $partial = yes ]] ; then
+            $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4 stdin stdout | \
+                $rsh $destmach "$lz4 -d stdin stdout | $IONICE_RMT $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $partialopts $destlrldir/$partiallrl " >$exstatus 2>&1
+            rc=$?
+        else
+            $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4 stdin stdout | \
+                $rsh $destmach "$lz4 -d stdin stdout | $IONICE_RMT $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $partialopts $destlrldir $destdbdir " >$exstatus 2>&1
+            rc=$?
+        fi
 
-        rc=$?
     elif [ $copy_mode = LOCAL ] ; then
 
         # Local mode, easy
-        $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | \
-            $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $partialopts $outmode $destlrldir $destdbdir >$exstatus 2>&1
-        rc=$?
+        if [[ $partial = yes ]] ; then
+            $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | \
+                $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $partialopts $outmode $destlrldir/$partiallrl >$exstatus 2>&1
+            rc=$?
+        else
+            $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | \
+                $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $partialopts $outmode $destlrldir $destdbdir >$exstatus 2>&1
+            rc=$?
+        fi
     fi
     exit $rc
     ) >>$logfile 2>&1
