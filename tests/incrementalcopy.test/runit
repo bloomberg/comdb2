@@ -54,6 +54,7 @@ for i in $(seq 1 $nrecs); do
     echo "insert into t(a, b) values($i, '')"
 done | ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default - >/dev/null
 
+ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\""
 ssh $target "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send(\"flush\")'" < /dev/null
 sleep $sleeptime
 
@@ -68,6 +69,8 @@ sleep $sleeptime
 for i in $(seq 1 $morerecs); do
     echo "insert into t(a, b) values($i, '')"
 done | ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default - >/dev/null
+
+ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\""
 
 ssh $backup "rm -Rf $LOCTMPDIR/partials" < /dev/null
 ssh $backup "mkdir -p $LOCTMPDIR/partials" < /dev/null
