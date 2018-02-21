@@ -1,7 +1,5 @@
 #!/bin/bash
 bash -n "$0" | exit 1
-
-set -e
 set -x
 ################################################################################
 
@@ -61,10 +59,10 @@ wait
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't1',* from t1 order by i" > content.out
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't2',* from t2 order by i" >> content.out
 
-echo "t1	1" > content.expected
-echo "t1	2" >> content.expected
-echo "t2	1" >> content.expected
-echo "t2	2" >> content.expected
+echo "t1	1	x'abcd'" > content.expected
+echo "t1	2	x'dcba'" >> content.expected
+echo "t2	1	x'abcd'" >> content.expected
+echo "t2	2	x'dcba'" >> content.expected
 
 if ! diff content.expected content.out ; then 
     failexit "content not what it is supposed to be"

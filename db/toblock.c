@@ -2104,7 +2104,7 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
         comdb2_die(0);
     }
 
-    if (iq->debug) {
+    if (iq->debug && iq->usedb) {
         /* TODO print trans twice? No parent_trans? */
         reqprintf(iq, "%p:START TRANSACTION OSQL ID %p DB %d '%s'", *trans,
                   *trans, iq->usedb->dbnum, iq->usedb->tablename);

@@ -756,7 +756,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
     char mus[37];
     comdb2uuidstr(key.uuid, mus);
-    printf("%s: rqid=%llx uuid=%s Saving op seq=%d, type=%d, tbl_idx=%d\n", __func__, key.rqid, mus, key.seq, type, key.tbl_idx);
+    printf("AZ:%s: rqid=%llx uuid=%s Saving op seq=%d, type=%d, tbl_idx=%d\n", __func__, key.rqid, mus, key.seq, type, key.tbl_idx);
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
