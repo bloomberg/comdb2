@@ -336,49 +336,6 @@ elif [ "$srcmach" = "$HOSTNAME" -a "$destmach" = "$HOSTNAME" ]; then
 else
     die "cannot work on two remote machines (srcmach=$srcmach, destmach=$destmach)"
 fi
-if [ $cluster_info = default ] ; then
-    # I use separate vars here so I can easily test
-    srchostname="$srcmach"
-    desthostname="$destmach"
-    #srchostname=sundev9
-    #desthostname=pny-comdb2a1
-    srchosttest=no
-    desthosttest=no
-    if [ $srchosttest = yes -a $desthosttest = no ] ; then
-        # test -> prod
-        cluster_info=strip
-    elif [ $srchosttest = no -a $desthosttest = yes ] ; then
-        # prod -> test
-        cluster_info=strip
-    else
-        cluster_info=preserve
-    fi
-fi
-
-
-logfile="$copycomdb2log"
-if [ "$logfile" = "-" ] ; then
-    logfile=$TMPDIR/copycomdb2.$dbname.$$.tmplog
-else
-    if [ -z "$logfile" ] ; then
-        logfile=$TMPDIR/copycomdb2.$dbname.log
-    fi
-    newoccurence $logfile 7
-    logfiletext=" see $logfile"
-fi
-echo "$scriptname $*" >>$logfile
-echo "Run at $(date)" >>$logfile
-
-arstatus="$TMPDIR/comdb2ar_ar.$$.txt"
-exstatus="$TMPDIR/comdb2ar_ex.$$.txt"
-
-touch $arstatus $exstatus
-
-aropts="-C $cluster_info"
-exopts="-C $cluster_info -u $max_du_percent "
-
-[ $copy_data = no ]             && aropts="$aropts -s"
-[ $disable_log_delete = no ]    && aropts="$aropts -L"
 
 # if we want an incremental copy, create the partial files on the
 # destination, and get them to the source
@@ -387,7 +344,6 @@ partialsdir=$TMPDIR/$dbname.$$.inc
 partiallrl=
 
 if [[ $partial = yes ]]; then
-
     partiallrl=$(basename $srclrl)
     if [ $copy_mode = PULL ]; then
         if [ "$cluster_info" = strip ]; then
@@ -415,6 +371,49 @@ if [[ $partial = yes ]]; then
     partialopts="-I inc -b $partialsdir"
     outmode=P
 fi
+
+if [ $cluster_info = default ] ; then
+    # I use separate vars here so I can easily test
+    srchostname="$srcmach"
+    desthostname="$destmach"
+    #srchostname=sundev9
+    #desthostname=pny-comdb2a1
+    srchosttest=no
+    desthosttest=no
+    if [ $srchosttest = yes -a $desthosttest = no ] ; then
+        # test -> prod
+        cluster_info=strip
+    elif [ $srchosttest = no -a $desthosttest = yes ] ; then
+        # prod -> test
+        cluster_info=strip
+    else
+        cluster_info=preserve
+    fi
+fi
+
+logfile="$copycomdb2log"
+if [ "$logfile" = "-" ] ; then
+    logfile=$TMPDIR/copycomdb2.$dbname.$$.tmplog
+else
+    if [ -z "$logfile" ] ; then
+        logfile=$TMPDIR/copycomdb2.$dbname.log
+    fi
+    newoccurence $logfile 7
+    logfiletext=" see $logfile"
+fi
+echo "$scriptname $*" >>$logfile
+echo "Run at $(date)" >>$logfile
+
+arstatus="$TMPDIR/comdb2ar_ar.$$.txt"
+exstatus="$TMPDIR/comdb2ar_ex.$$.txt"
+
+touch $arstatus $exstatus
+
+aropts="-C $cluster_info"
+exopts="-C $cluster_info -u $max_du_percent "
+
+[ $copy_data = no ]             && aropts="$aropts -s"
+[ $disable_log_delete = no ]    && aropts="$aropts -L"
 
 if [ $restoremode = yes ]; then
     $IONICE $lz4 -d stdin stdout | $comdb2ar $COMDB2AR_AROPTS $exopts x $destlrldir $destdbdir 2>$arstatus 
