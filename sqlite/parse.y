@@ -181,6 +181,9 @@ create_table_args ::= AS select(S). {
   sqlite3EndTable(pParse,0,0,0,S);
   sqlite3SelectDelete(pParse->db, S);
 }
+create_table_args ::= LIKE_KW nm(Y) dbnm(Z). {
+  comdb2CreateTableLikeEnd(pParse,&Y,&Z);
+}
 
 %type table_options {int}
 table_options(A) ::= .    {A = 0;}
