@@ -1109,6 +1109,9 @@ void restore_partials(
                 throw Error(ss);
             }
 
+            // Clear the logfile folder
+            clear_log_folder(dbdir, dbname);
+
             // delete the deleted files
             for (std::set<std::string>::const_iterator ii = deleted_files.begin();
                     ii != deleted_files.end(); ++ii) {
