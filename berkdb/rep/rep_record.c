@@ -3746,9 +3746,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	if (txn_rl_args) {
 		int cmp;
 		if (txn_rl_args->lflags & DB_TXN_LOGICAL_BEGIN) {
-			assert((cmp =
-				log_compare(&txn_rl_args->begin_lsn,
-				    &lc.array[0].lsn)) <= 0);
+			cmp = log_compare(&txn_rl_args->begin_lsn, &lc.array[0].lsn);
+			assert(cmp <= 0);
 		} else {
 			assert(!IS_ZERO_LSN(lt->begin_lsn));
 		}
@@ -4408,9 +4407,8 @@ bad_resize:	;
 
 	if (txn_rl_args) {
 		if (txn_rl_args->lflags & DB_TXN_LOGICAL_BEGIN) {
-			assert((cmp =
-				log_compare(&txn_rl_args->begin_lsn,
-				    &rp->lc.array[0].lsn)) <= 0);
+			cmp = log_compare(&txn_rl_args->begin_lsn, &rp->lc.array[0].lsn);
+			assert(cmp <= 0);
 		} else {
 			assert(!IS_ZERO_LSN(lt->begin_lsn));
 		}
