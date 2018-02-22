@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-insertsql=${TMPDIR}/insert.sql
+insertsql=${TMPDIR}/insert.$$.$RANDOM.sql
 echo "BEGIN" > $insertsql
 c=0
 # If these are too big we run the risk of having an open transaction

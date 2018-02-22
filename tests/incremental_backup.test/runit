@@ -51,11 +51,13 @@ function force_checkpoint {
 
   if [[ -n "${CLUSTER}" ]]; then
       ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\""
+      ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\""
       for node in ${CLUSTER} ; do 
           ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('flush')\""
           ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('bdb logstat')\""
       done
   else
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('pushnext')"
       ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('pushnext')"
       ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
       ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
@@ -70,6 +72,7 @@ function force_checkpoint {
       ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
       ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
   fi
+  sleep 10
 }
 
 function make_base {
