@@ -148,7 +148,7 @@ struct iomap {
 };
 
 void create_partials(const std::string &lrlpath, bool do_direct_io);
-void restore_partials(const std::string &lrlpath, bool do_direct_io, bool dryrun);
+void restore_partials(const std::string &lrlpath, const std::string& comdb2_task, bool run_full_recovery, bool do_direct_io, bool dryrun);
 
 void parse_lrl_file(const std::string& lrlpath,
         std::string* p_dbname,

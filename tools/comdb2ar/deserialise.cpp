@@ -1007,7 +1007,7 @@ void deserialize_file(const std::string &filename, off_t filesize, bool write_fi
 }
 
 void restore_partials(
-    const std::string &lrlpath, bool do_direct_io, bool dryrun
+    const std::string &lrlpath, const std::string& comdb2_task, bool run_full_recovery, bool do_direct_io, bool dryrun
 // On stdio is a tarball containing a partial file. Apply it against the current
 // set of database files in the directory given by the lrl file.
 ) {
@@ -1162,5 +1162,30 @@ void restore_partials(
         filename = ss.str();
         if (write_file)
             deserialize_file(filename, filesize, write_file, dryrun, do_direct_io);
+    }
+
+    if(run_full_recovery) {
+        std::ostringstream cmdss;
+
+        cmdss<< comdb2_task << " " 
+             << dbname << " -lrl "
+             << lrlpath 
+             << " -fullrecovery";
+
+        for (int i = 0; i < options.size(); i++) {
+            cmdss << " " << options[i];
+        }
+
+        std::clog << "Running full recovery: " << cmdss.str() << std::endl;
+
+        errno = 0;
+        int rc = std::system(cmdss.str().c_str());
+        if(rc != 0) {
+            std::ostringstream ss;
+            ss << "Full recovery command '" << cmdss.str() << "' failed rc "
+                << rc << " errno " << errno << std::endl;
+            throw Error(ss);
+        }
+        std::clog << "Full recovery successful" << std::endl;
     }
 }
