@@ -1,0 +1,64 @@
+#!/bin/bash
+
+set -x
+
+if [[ $# -ne 2 ]]; then
+    echo Usage: /path/to/source cluster
+    exit 1
+fi
+
+src=$1
+numnodes=$2
+for node in $(seq 1 $numnodes); do
+    cluster="$cluster m${node}"
+done
+
+dir=$(pwd)
+
+cd $src
+prefix=$(git rev-parse --short HEAD)
+export COMPOSE_PROJECT_NAME=$prefix
+docker build -t comdb2test:$prefix -f tests/docker/Dockerfile.dev .
+cd $dir
+
+sed -i.bak "s/@image@/comdb2test:$prefix/" Dockerfile.db
+echo $cluster >common/cluster
+
+compose=docker-compose.yml
+cat > $compose <<EOF
+version: '3'
+
+services:
+    client:
+        hostname: c1
+        build:
+            context: .
+            dockerfile: Dockerfile.db
+        volumes:
+            - ./common:/common
+        command: /client
+EOF
+
+for node in $cluster; do
+cat >> $compose <<EOF
+    $node:
+        hostname: $node
+        build:
+            context: .
+            dockerfile: Dockerfile.db
+        volumes:
+            - ./common:/common
+        command: /database
+EOF
+done
+
+docker-compose build
+docker-compose up --abort-on-container-exit
+
+for node in $CLUSTER; do
+    docker rm ${prefix}_client_1
+    docker rm ${prefix}_${node}_1
+    docker rmi ${prefix}_client:latest
+    docker rmi ${prefix}_${node}:latest
+    docker rmi comdb2test:$prefix
+done

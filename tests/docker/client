@@ -1,0 +1,30 @@
+#!/bin/bash
+
+set -x
+
+# create and distribute ssh key
+mkdir ~/.ssh
+chmod 700 ~/.ssh
+ssh-keygen -N "" -f ~/.ssh/id_rsa
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+cp ~/.ssh/* /common
+export CLUSTER="$(cat common/cluster)"
+echo "CLUSTER is $CLUSTER"
+for node in $CLUSTER; do
+    echo $node
+done
+
+# wait for all the nodes to signal that they're ready
+for node in $CLUSTER; do
+    if [[ -f /common/${node}.ready ]]; then
+        continue
+    fi
+    echo "waiting for $node"
+    sleep 1
+done
+
+ssh-keyscan $CLUSTER >> ~/.ssh/known_hosts
+
+# run tests
+cd comdb2/tests
+make yast 2>&1 | tee common/log
