@@ -2365,7 +2365,6 @@ static int gen_key_name(struct comdb2_key *key, const char *table, char *out,
     struct comdb2_index_column *idx_column;
     char buf[16 * 1024];
     int pos = 0;
-    int ret;
     unsigned long crc;
 
     /* Table name */
@@ -2422,7 +2421,6 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
     struct schema *key;
     int pos = 0;
     int found = 0;
-    int ret;
 
     /* Child key columns and sort orders */
     for (int i = 0; i < pConstraint->lcltable->schema->nix; i++) {
@@ -2485,7 +2483,6 @@ static int gen_constraint_name2(struct comdb2_constraint *constraint, char *out,
 {
     char buf[3 * 1024];
     int pos = 0;
-    int ret;
     struct comdb2_index_column *idx_column;
 
     /* Child key columns and sort orders */

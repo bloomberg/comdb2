@@ -1348,7 +1348,6 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
     char buf[16 * 1024];
     int fieldctr;
     int current = 0;
-    int ret;
     unsigned int crc;
 
     SNPRINTF(buf, sizeof(buf), current, "%s", dbname)

@@ -97,7 +97,6 @@ void sprintsigact(char *buf, size_t buflen, const struct sigaction *act)
     int ii;
     char fstr[128] = "";
     int pos;
-    int ret;
     char hstr[64] = "NULL";
     char mstr[1024] = "";
     if (act->sa_handler != NULL)

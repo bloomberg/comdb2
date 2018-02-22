@@ -387,8 +387,6 @@ const char *thrman_type2a(enum thrtype type)
  * to the buffer. */
 char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
 {
-    int ret;
-
     if (!thr)
         snprintf(buf, szbuf, "thr==NULL");
     else {
