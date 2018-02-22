@@ -3299,6 +3299,47 @@ cleanup:
     return;
 }
 
+void comdb2CreateTableLikeEnd(
+    Parse *pParse, /* Parse context */
+    Token *pName1, /* First part of the name of the table */
+    Token *pName2  /* Second part of the name of the table */
+)
+{
+    char *newTab;
+    char *otherTab;
+
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    assert(!use_sqlite_impl(pParse));
+
+    if (isRemote(pParse, &pName1, &pName2)) {
+        return;
+    }
+
+    otherTab = comdb2_strndup(ctx->mem, pName1->z, pName1->n);
+    if (otherTab == 0)
+        goto oom;
+    sqlite3Dequote(otherTab);
+
+    /* Retrieve the schema of the existing table. */
+    newTab = ctx->schema->name;
+    ctx->schema->name = otherTab;
+    if (retrieve_schema(pParse, ctx)) {
+        goto cleanup;
+    }
+    ctx->schema->name = newTab;
+
+    comdb2CreateTableEnd(pParse, 0, 0, 0, ctx->schema->table_options);
+
+    return;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+
+cleanup:
+    free_ddl_context(pParse);
+    return;
+}
+
 void comdb2AddColumn(Parse *pParse, /* Parser context */
                      Token *pName,  /* Name of the column */
                      Token *pType   /* Type of the column */
