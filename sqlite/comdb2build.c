@@ -1988,23 +1988,23 @@ enum {
     XMACRO_TYPE(SQL_TYPE_LAST, 0, 0, 0)
 
 #define XMACRO_TYPE(code, sql_str, comdb2_str, flags) code,
-enum type_codes { TYPE_MAPPING };
+typedef enum { TYPE_MAPPING } type_codes;
 #undef XMACRO_TYPE
 
 #define XMACRO_TYPE(code, sql_str, comdb2_str, flags) sql_str,
-const char *type_sql_str[] = {TYPE_MAPPING};
+static const char *type_sql_str[] = {TYPE_MAPPING};
 #undef XMACRO_TYPE
 
 #define XMACRO_TYPE(code, sql_str, comdb2_str, flags) sizeof(sql_str) - 1,
-size_t type_sql_str_len[] = {TYPE_MAPPING};
+static size_t type_sql_str_len[] = {TYPE_MAPPING};
 #undef XMACRO_TYPE
 
 #define XMACRO_TYPE(code, sql_str, comdb2_str, flags) comdb2_str,
-const char *type_comdb2_str[] = {TYPE_MAPPING};
+static const char *type_comdb2_str[] = {TYPE_MAPPING};
 #undef XMACRO_TYPE
 
 #define XMACRO_TYPE(code, sql_str, comdb2_str, flags) flags,
-int type_flags[] = {TYPE_MAPPING};
+static int type_flags[] = {TYPE_MAPPING};
 #undef XMACRO_TYPE
 
 /*
