@@ -30,7 +30,12 @@ read -r -a nodes <<< $CLUSTER
 idx=$RANDOM
 
 function getmaster {
-    ${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+    r=1
+    while [[ $r != 0 ]]; do 
+        x=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+        r=$?
+    done
+    echo $x
 }
 
 master=$(getmaster)
