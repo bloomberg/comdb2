@@ -1130,7 +1130,7 @@ void restore_partials(
             }
             for (std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>>::const_iterator ii = updated_files.begin();
                     ii != updated_files.end(); ++ii) {
-                std::cout << "updated " << dbdir + ii->first << std::endl;
+                std::cout << "updated " << dbdir + "/" + ii->first << std::endl;
             }
             continue;
         }
