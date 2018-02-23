@@ -606,47 +606,37 @@ int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, 
 
 const char *osql_reqtype_str(int type)
 {
-    switch (type) {
-    case OSQL_RPLINV:
-        return "rplinv";
-    case OSQL_DONE:
-        return "done";
-    case OSQL_USEDB:
-        return "usedb";
-    case OSQL_DELREC:
-        return "delrec";
-    case OSQL_INSREC:
-        return "insrec";
-    case OSQL_CLRTBL:
-        return "clrtbl";
-    case OSQL_QBLOB:
-        return "qblob";
-    case OSQL_UPDREC:
-        return "updrec";
-    case OSQL_XERR:
-        return "xerr";
-    case OSQL_UPDCOLS:
-        return "updcols";
-    case OSQL_DONE_STATS:
-        return "done_stats";
-    case OSQL_DBGLOG:
-        return "dbglog";
-    case OSQL_RECGENID:
-        return "recgenid";
-    case OSQL_UPDSTAT:
-        return "updstat";
-    case OSQL_EXISTS:
-        return "exists";
-    case OSQL_INSERT:
-        return "insert";
-    case OSQL_DELETE:
-        return "delete";
-    case OSQL_UPDATE:
-        return "update";
-    case OSQL_SCHEMACHANGE: return "schemachange";
-    default:
-        return "???";
-    }
+    assert(0 < type && type < MAX_OSQL_TYPES);
+    static const char *typestr[] = {
+        "RPLINV",
+        "DONE",
+        "USEDB",
+        "DELREC",
+        "INSREC",
+        "CLRTBL",
+        "QBLOB",
+        "UPDREC",
+        "XERR",
+        "UPDCOLS",
+        "DONE_STATS",
+        "DBGLOG",
+        "RECGENID",
+        "UPDSTAT",
+        "EXISTS",
+        "SERIAL",
+        "SELECTV",
+        "DONE_SNAP",
+        "SCHEMACHANGE",
+        "BPFUNC",
+        "DBQ_CONSUME",
+        "DELETE",
+        "INSERT",
+        "UPDATE",
+        "DELIDX",
+        "INSIDX",
+        "DBQ_CONSUME_UUID",
+    };
+    return typestr[type];
 }
 
 /**
@@ -681,8 +671,30 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         assert(tablename); //table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
             iq->usedb = get_dbtable_by_name(tablename);
+            if (!iq->usedb) {
+                sorese_info_t sorese_info = {0};
+                struct errstat generr = {0};
+
+                logmsg(LOGMSG_ERROR, "%s dbtable by name: table %s may have been "
+                        "dropped\n", __func__, tablename);
+
+                sorese_info.rqid = rqid;
+                sorese_info.host = host;
+                sorese_info.type = -1; /* I don't need it */
+
+                generr.errval = ERR_VERIFY;
+                strncpy(generr.errstr,
+                        "Table can not be found",
+                        sizeof(generr.errstr));
+
+                rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr, ERR_VERIFY);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
+                }
+
+                return -1;
+            }
             printf("AZ: tablename='%s' idx=%d\n", tablename, iq->usedb->dbs_idx);
-            assert(iq->usedb);
         }
     }
     if (!iq->usedb) 
@@ -756,7 +768,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
     char mus[37];
     comdb2uuidstr(key.uuid, mus);
-    printf("AZ:%s: rqid=%llx uuid=%s Saving op seq=%d, type=%d, tbl_idx=%d\n", __func__, key.rqid, mus, key.seq, type, key.tbl_idx);
+    printf("AZ:%s: rqid=%llx uuid=%s Saving op seq=%d, type=%d(%s), tbl_idx=%d\n", 
+            __func__, key.rqid, mus, key.seq, type, osql_reqtype_str(type), key.tbl_idx);
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
