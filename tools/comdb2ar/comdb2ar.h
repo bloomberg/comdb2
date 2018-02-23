@@ -94,6 +94,9 @@ void make_dirs(const std::string& dirname);
 
 void remove_all_old_files(std::string& datadir);
 
+bool check_usenames(const std::string& dbname, const std::string& dbdir, bool nonames);
+
+
 void serialise_database(
   std::string lrlpath,
   const std::string& comdb2_task,

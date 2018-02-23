@@ -613,25 +613,7 @@ void serialise_database(
 
     // Ignore lrl names setting if we know better
     if (!dbdir.empty() && !dbname.empty()) {
-        int rc;
-        struct stat st;
-        bool found_usenames = false;
-        bool found_nonames = false;
-
-        rc = stat((dbdir + "/" + dbname + ".txn").c_str(), &st);
-        if (rc == 0 && S_ISDIR(st.st_mode))
-            found_usenames = true;
-
-        rc = stat((dbdir + "/" + "logs").c_str(), &st);
-        if (rc == 0 && S_ISDIR(st.st_mode))
-            found_nonames = true;
-
-        /* bias by parse_lrl_file told us, but use the other if we can find it */
-        if (nonames && found_nonames == false && found_usenames == true)
-            nonames = false;
-
-        if (nonames == false && found_usenames == false && found_nonames == true)
-            nonames = true;
+        nonames = check_usenames(dbname, dbdir, nonames);
     }
 
     // Create the directory for incremental backups if needed
@@ -1423,6 +1405,10 @@ void create_partials(
     parse_lrl_file(lrlpath, &dbname, &dbdir, 
                    &support_files, &table_names, 
                    &queue_names, &nonames, &has_cluster_info);
+
+    if (!dbdir.empty() && !dbname.empty()) {
+        nonames = check_usenames(dbname, dbdir, nonames);
+    }
 
     if(nonames) {
         templ_fstblk = "comdb2_fstblk.dta";
