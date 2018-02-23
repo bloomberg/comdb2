@@ -7,7 +7,7 @@ export debug=1
 # bring up db.  Make sure it passes verify, and has 10k rows after copy.
 
 #set -e
-export sleeptime=0
+export sleeptime=15
 
 export dbname=$1
 #export default=local
@@ -55,9 +55,11 @@ echo "schema is $schema"
 
 ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "alter table t options rec none, rebuild {$schema}"
 
+cnt=0
 for i in $(seq 1 $nrecs); do
-    echo "insert into t(a, b) values($i, '')"
-done | ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default - >/dev/null
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "insert into t(a,b) values ($i, '')"
+    if [[ $? == 0 ]]; then let cnt=cnt+1 ; fi
+done 
 
 ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\""
 ssh $target "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send(\"flush\")'" < /dev/null
@@ -72,13 +74,16 @@ sleep $sleeptime
 
 # insert some more rows
 for i in $(seq 1 $morerecs); do
-    echo "insert into t(a, b) values($i, '')"
-done | ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default - >/dev/null
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "insert into t(a,b) values($i,'')"
+    if [[ $? == 0 ]]; then let cnt=cnt+1 ; fi
+done
 
+ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\""
 ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\""
 
 ssh $backup "rm -Rf $LOCTMPDIR/partials" < /dev/null
 ssh $backup "mkdir -p $LOCTMPDIR/partials" < /dev/null
+sleep $sleeptime
 
 scp partials.tar $backup:$LOCTMPDIR/partials.tar
 ssh $backup "tar xf $LOCTMPDIR/partials.tar -C $LOCTMPDIR/partials" < /dev/null
@@ -116,7 +121,7 @@ ssh $target "${CDB2SQL_EXE} ${CDB2_OPTIONS} -tabs $dbname local \"exec procedure
 target_count=$(ssh $target "${CDB2SQL_EXE} ${CDB2_OPTIONS} -tabs $dbname local \"select count(*) from t\"" < /dev/null)
 ssh $target "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send(\"exit\")'" < /dev/null
 
-if [[ $target_count != $(($nrecs + $morerecs)) ]]; then
+if [[ $target_count != $cnt ]]; then
     echo "Wrong count expected $(($nrecs + $morerecs)) got $target_count"
     exit 1
 fi
