@@ -467,7 +467,7 @@ else
                 $lz4 -d stdin stdout | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir/$partiallrl >$exstatus 2>&1
             rc=$?
         else
-            $rsh $srcmach "$IONICE_RMT $comdb2ar $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $lz4 stdin stdout " | \
+            $rsh $srcmach "$IONICE_RMT $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4 stdin stdout " | \
                 $lz4 -d stdin stdout | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir $destdbdir >$exstatus 2>&1
             rc=$?
         fi
@@ -476,12 +476,12 @@ else
         # Push mode.  Serialise db locally, pipe through o rshd deserialise
         # process on remote machine.
         if [[ $partial = yes ]] ; then
-            $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4 stdin stdout | \
-                $rsh $destmach "$lz4 -d stdin stdout | $IONICE_RMT $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $partialopts $destlrldir/$partiallrl " >$exstatus 2>&1
+            $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $lz4 stdin stdout | \
+                $rsh $destmach "$lz4 -d stdin stdout | $IONICE_RMT $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir/$partiallrl " >$exstatus 2>&1
             rc=$?
         else
             $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4 stdin stdout | \
-                $rsh $destmach "$lz4 -d stdin stdout | $IONICE_RMT $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $partialopts $destlrldir $destdbdir " >$exstatus 2>&1
+                $rsh $destmach "$lz4 -d stdin stdout | $IONICE_RMT $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir $destdbdir " >$exstatus 2>&1
             rc=$?
         fi
 
