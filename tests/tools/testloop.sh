@@ -147,11 +147,21 @@ while :; do
                 err=0
             fi
 
-            egrep "Connection refused" $l
+            egrep "actual: com.jcraft.jsch.JSchException: java.net.ConnectException: Connection refused" $l
             if [[ $? == 0 ]]; then
                 echo "actual: Connection refused error: continuing"
                 let sshfail=sshfail+1
                 err=0
+            fi
+
+            egrep "Connection refused" $l
+            if [[ $? == 0 ]]; then
+                egrep "ssh" $l
+                if [[ $? == 0 ]]; then
+                    echo "ssh: Connection refused error: continuing"
+                    let sshfail=sshfail+1
+                    err=0
+                fi
             fi
 
             egrep "actual: java.sql.SQLNonTransientConnectionException: " $l
