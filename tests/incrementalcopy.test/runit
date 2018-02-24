@@ -61,7 +61,7 @@ for i in $(seq 1 $nrecs); do
     if [[ $? == 0 ]]; then let cnt=cnt+1 ; fi
 done 
 
-ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\""
+ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\"" < /dev/null
 ssh $target "${CDB2SQL_EXE} $dbname local 'exec procedure sys.cmd.send(\"flush\")'" < /dev/null
 sleep $sleeptime
 
@@ -78,8 +78,8 @@ for i in $(seq 1 $morerecs); do
     if [[ $? == 0 ]]; then let cnt=cnt+1 ; fi
 done
 
-ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\""
-ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\""
+ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\"" < /dev/null
+ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\"" < /dev/null
 
 ssh $backup "rm -Rf $LOCTMPDIR/partials" < /dev/null
 ssh $backup "mkdir -p $LOCTMPDIR/partials" < /dev/null
