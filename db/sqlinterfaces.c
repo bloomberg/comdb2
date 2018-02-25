@@ -3267,7 +3267,7 @@ int newsql_send_column_info(struct sqlclntstate *clnt,
 int release_locks(const char *trace)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd ? thd->sqlclntstate : NULL;
+    struct sqlclntstate *clnt = thd ? thd->clnt : NULL;
     int rc = 0;
 
     if (clnt && clnt->dbtran.cursor_tran) {
@@ -5592,7 +5592,7 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     clnt->debug_sqlclntstate = pthread_self();
     struct sql_thread *sqlthd;
     if ((sqlthd = pthread_getspecific(query_info_key)) != NULL) {
-        sqlthd->sqlclntstate = clnt;
+        sqlthd->clnt = clnt;
     }
 
 check_version:
@@ -5810,7 +5810,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     struct sqlclntstate *clnt = work;
     struct sql_thread *sqlthd = thd->sqlthd;
     if (sqlthd) {
-        sqlthd->sqlclntstate = clnt;
+        sqlthd->clnt = clnt;
     } else {
         abort();
     }
@@ -6147,14 +6147,14 @@ void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
         /* sqlclntstate shouldn't be set: sqlclntstate is memory on another
          * thread's stack that will not be valid at this point. */
 
-        if (sqlthd->sqlclntstate) {
+        if (sqlthd->clnt) {
             logmsg(LOGMSG_ERROR,
-                   "%s:%d sqlthd->sqlclntstate set in thd-teardown\n", __FILE__,
+                   "%s:%d sqlthd->clnt set in thd-teardown\n", __FILE__,
                    __LINE__);
             if (gbl_abort_invalid_query_info_key) {
                 abort();
             }
-            sqlthd->sqlclntstate = NULL;
+            sqlthd->clnt = NULL;
         }
     }
 
@@ -6668,7 +6668,7 @@ static void switch_context(struct sqlconn *conn, struct statement_handle *h)
     /* reset client handle - we need one per statement */
     for (i = 0; i < db->nDb; i++) {
          if (db->aDb[i].pBt) {
-            db->aDb[i].pBt->sqlclntstate = &h->clnt;
+            db->aDb[i].pBt->clnt = &h->clnt;
          }
     }
 #endif
@@ -6727,7 +6727,7 @@ struct client_query_stats *get_query_stats_from_thd()
     if (!thd)
         return NULL;
 
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     if (!clnt)
         return NULL;
 
@@ -6743,7 +6743,7 @@ char *comdb2_get_prev_query_cost()
     if (!thd)
         return NULL;
 
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     if (!clnt)
         return NULL;
 
@@ -6756,7 +6756,7 @@ void comdb2_free_prev_query_cost()
     if (!thd)
         return;
 
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     if (!clnt)
         return;
 
@@ -6977,7 +6977,7 @@ done:
         gbl_who--;
     }
     if (clnt->client_understands_query_stats) {
-        record_query_cost(thd, thd->sqlclntstate);
+        record_query_cost(thd, thd->clnt);
     }
     /* if we turned on case sensitive like, turn it off since the sql handle we
        just used may be used by another connection with this disabled */
@@ -7043,7 +7043,7 @@ static void sql_reset_sqlthread(sqlite3 *db, struct sql_thread *thd)
     int i;
 
     if (thd) {
-        thd->sqlclntstate = NULL;
+        thd->clnt = NULL;
     }
 }
 
@@ -7778,7 +7778,7 @@ void comdb2_set_sqlite_vdbe_tzname(Vdbe *p)
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
     if (!sqlthd)
         return;
-    comdb2_set_sqlite_vdbe_tzname_int(p, sqlthd->sqlclntstate);
+    comdb2_set_sqlite_vdbe_tzname_int(p, sqlthd->clnt);
 }
 
 void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
@@ -7786,7 +7786,7 @@ void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
     if (!sqlthd)
         return;
-    comdb2_set_sqlite_vdbe_dtprec_int(p, sqlthd->sqlclntstate);
+    comdb2_set_sqlite_vdbe_dtprec_int(p, sqlthd->clnt);
 }
 
 void run_internal_sql(char *sql)
