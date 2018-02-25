@@ -9,7 +9,7 @@
 
 #include "chksum.h"
 
-static uint32_t myflip(uint32_t in)
+uint32_t myflip(uint32_t in)
 {
 	union intswp
 	{
