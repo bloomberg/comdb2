@@ -1209,7 +1209,7 @@ static int _failed_AddAndLockTable(sqlite3 *db, const char *dbname, int errcode,
                                    const char *prefix)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
 
     logmsg(LOGMSG_WARN, "Error \"%s\" for db \"%s\"\n", prefix, dbname);
 
@@ -1456,7 +1456,7 @@ static int __lock_wrlock_exclusive(char *dbname)
                 if (thd) {
                     rc = recover_deadlock(
                         thedb->bdb_env, thd, NULL,
-                        100 * thd->sqlclntstate->deadlock_recovered++);
+                        100 * thd->clnt->deadlock_recovered++);
                     if (rc) {
                         fprintf(stderr, "%s:%d recover_deadlock returned %d\n",
                                 __func__, __LINE__, rc);
@@ -2929,7 +2929,7 @@ static int fdb_cursor_reopen(BtCursor *pCur)
         return FDB_ERR_BUG;
     }
 
-    clnt = thd->sqlclntstate;
+    clnt = thd->clnt;
     tran = pCur->fdbc->impl->trans;
     need_ssl = pCur->fdbc->impl->need_ssl;
 
@@ -3320,7 +3320,7 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
     thd = pthread_getspecific(query_info_key);
     if (!thd) return NULL;
 
-    clnt = thd->sqlclntstate;
+    clnt = thd->clnt;
 
     /* remote sql stats are implemented as a critical region
        I was told that mutex is faster, lul
@@ -4087,7 +4087,7 @@ int fdb_cursor_access(BtCursor *pCur, int how)
     if (!thd)
         return FDB_NOERR;
 
-    clnt = thd->sqlclntstate;
+    clnt = thd->clnt;
     if (!clnt)
         return FDB_NOERR;
 
