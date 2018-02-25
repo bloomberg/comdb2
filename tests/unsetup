@@ -61,10 +61,18 @@ function cleanup_cluster {
         if [ $node != `hostname` ] ; then
             ssh -o StrictHostKeyChecking=no $node "${deregister_db}" < /dev/null
         fi
-        if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
-            if [ $node != `hostname` ]  ; then
-                ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR}" < /dev/null
-            fi
+        if [ "x$DBDIR" == "x" ] ; then 
+            continue
+        fi
+        if [ $node == `hostname` ]  ; then
+            continue;
+        fi
+
+        if [ "$successful" != "1" ] ; then 
+            echo copy $node:${TESTDIR} content locally to $TESTDIR/$node for investigation
+            scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node < /dev/null
+        elif [ "$CLEANUPDBDIR" == "1" ] ; then 
+            ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR}" < /dev/null
         fi
     done
 }
