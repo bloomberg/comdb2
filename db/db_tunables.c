@@ -132,6 +132,8 @@ extern int gbl_rep_process_msg_print_rc;
 extern int gbl_verbose_master_req;
 extern int gbl_verbose_send_coherency_lease;
 extern int gbl_reset_on_unelectable_cluster;
+extern int gbl_decoupled_logputs;
+extern int gbl_apply_thread_pollms;
 extern int gbl_rep_verify_always_grab_writelock;
 extern int gbl_rep_verify_will_recover_trace;
 extern int gbl_max_wr_rows_per_txn;
@@ -144,6 +146,7 @@ extern int gbl_max_clientstats_cache;
 extern int gbl_dbreg_stack_on_null_txn;
 extern int gbl_dbreg_abort_on_null_txn;
 extern int gbl_simulate_dropping_request;
+extern int gbl_max_logput_queue;
 
 extern long long sampling_threshold;
 

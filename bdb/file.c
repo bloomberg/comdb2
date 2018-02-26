@@ -2816,8 +2816,8 @@ waitformaster:
 /* berkdb 4.2 doesnt support startup done message, so skip this phase */
 #if defined(BERKDB_4_3) || defined(BERKDB_4_5) || defined(BERKDB_46)
 
+again1:
     if (bdb_state->repinfo->master_host != myhost) {
-    again1:
         master_host = bdb_state->repinfo->master_host;
         if (master_host == myhost)
             goto done1;
@@ -2907,9 +2907,9 @@ done1:
        the lsn of the master
        */
 
+again2:
     if (bdb_state->repinfo->master_host != myhost) {
     /* now loop till we are close */
-    again2:
         master_host = bdb_state->repinfo->master_host;
         if (master_host == myhost)
             goto done2;

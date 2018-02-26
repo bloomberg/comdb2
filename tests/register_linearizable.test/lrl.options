@@ -4,6 +4,9 @@ enable_serial_isolation
 # Enable durable lsn logic
 setattr DURABLE_LSNS 1
 
+# Lets see master lease trace
+setattr VERIFY_MASTER_LEASE_TRACE 1
+
 # Master tells us what we are allowed to see
 setattr REQUEST_DURABLE_LSN_FROM_MASTER 1
 
@@ -57,6 +60,7 @@ nowatch
 setattr UDP_DROP_WARN_PERCENT 100
 
 # Enable debug trace
+durable_set_trace on
 on durable_set_trace
 on dump_fsql_response
 on extended_sql_debug_trace
@@ -87,3 +91,7 @@ on dump_blkseq
 # Log location
 #location logs /db/logs
 init_with_genid48
+
+#dump_zero_coherency_ts on
+
+verbose_send_cohlease on
