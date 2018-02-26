@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+set -x
 set -e
 
 COPYDIR=$DBDIR/copy
@@ -10,10 +11,20 @@ cd $COPYDIR
 grep -v name ${DBNAME}.lrl | grep -v "cluster nodes" > tmp && mv tmp ${DBNAME}.lrl
 NEWNAME="qcopy$$test"
 echo "name $NEWNAME" >> ${DBNAME}.lrl
+echo creating new db with name $NEWNAME
 $COMDB2_EXE $NEWNAME --create --lrl ${DBNAME}.lrl
+echo starting new db $NEWNAME
 $COMDB2_EXE $NEWNAME --lrl ${DBNAME}.lrl &
 
-trap "$CDB2SQL_EXE $NEWNAME \"exec procedure sys.cmd.send('exit')\"" EXIT
+function exiting {
+    echo send exit to $NEWNAME
+    $CDB2SQL_EXE $NEWNAME "exec procedure sys.cmd.send('exit')"
+
+    echo deregister from pmux $NEWNAME
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${NEWNAME} " ${pmux_port}
+}
+
+trap exiting EXIT
 
 while :; do 
     # cdb2sql may fail if the db isn't up yet
@@ -24,4 +35,6 @@ while :; do
     sleep 1
 done
 
-exit 0
+exiting
+
+echo Success

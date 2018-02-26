@@ -12,7 +12,7 @@ while [[ $# -gt 0 && $1 = -* ]]; do
     shift
 done
 
-vars="TESTID SRCHOME TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE"
+vars="TESTID SRCHOME TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE pmux_port"
 for required in $vars; do
     q=${!required}
     if [[ -z "$q" ]]; then
@@ -163,12 +163,11 @@ echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
 myhostname=`hostname`
 set +e
 
-pmux_port=5105
+#pmux_port is assigned in runtestcase
 pmux_cmd="$PMUX_EXE -l"
 
 # If PMUXPORT is defined we will overwrite the default pmux port with that
 if [ -n "$PMUXPORT" ] ; then
-    pmux_port=$PMUXPORT
     pmux_socket=/tmp/pmux.socket.$PMUXPORT
     pmux_port_range="-r $((pmux_port+1)):$((pmux_port+200))"
     pmux_cmd="$PMUX_EXE -l -p $PMUXPORT -b $pmux_socket $pmux_port_range"

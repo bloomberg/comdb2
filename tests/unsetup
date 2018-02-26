@@ -77,10 +77,7 @@ function cleanup_cluster {
     done
 }
 
-pmux_port=5105
-if [ -n "$PMUXPORT" ] ; then
-    pmux_port=$PMUXPORT
-fi
+echo deregistering $DBNAME from pmux:$pmux_port
 deregister_db="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )"
 
 if [[ "$NOKILL_ON_TIMEOUT" -eq 1 && "$successful" -eq "-1" ]]; then

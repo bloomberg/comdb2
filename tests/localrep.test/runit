@@ -160,6 +160,9 @@ dest=$(cdb2sql ${CDB2_OPTIONS} $destdb local "select * from t1" | sort | md5sum)
 echo "src $src dest $dest"
 kill -9 $(cat $DBDIR/${destdb}.pid)
 
+echo deregister from pmux ${destdb}
+${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${destdb} " ${pmux_port}
+
 if [[ "$src" != "$dest" ]]; then
     exit 1
 else
