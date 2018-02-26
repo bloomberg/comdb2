@@ -4236,7 +4236,7 @@ static void set_ret_column_info(struct sqlthdstate *thd,
             }
         } else {
             thd->cinfo[col].type = sqlite3_column_type(stmt, col);
-            if (gbl_surprise ||
+            if ((!clnt->is_newsql && gbl_surprise) ||
                 thd->cinfo[col].type == SQLITE_NULL) {
                 thd->cinfo[col].type =
                     typestr_to_type(sqlite3_column_decltype(stmt, col));
