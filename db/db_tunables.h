@@ -1224,6 +1224,12 @@ REGISTER_TUNABLE("verbose_send_cohlease",
 REGISTER_TUNABLE("reset_on_unelectable_cluster", "Reset master if unelectable.",
                  TUNABLE_BOOLEAN, &gbl_reset_on_unelectable_cluster,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("decoupled_logputs", "Perform logputs out-of-band.",
+                 TUNABLE_BOOLEAN, &gbl_decoupled_logputs,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("apply_pollms", "Apply-thread poll time before checking queue.",
+                 TUNABLE_INTEGER, &gbl_apply_thread_pollms, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_verify_always_grab_writelock",
                  "Force every rep_verify to grab writelock.", TUNABLE_BOOLEAN,
                  &gbl_rep_verify_always_grab_writelock, EXPERIMENTAL | INTERNAL,
@@ -1263,11 +1269,14 @@ REGISTER_TUNABLE("dump_full_netqueue", "Dump net-queue on full rcode. "
                                        "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_dump_full_net_queue,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE(
     "max_clientstats",
     "Max number of client stats stored in comdb2_clientstats. (Default 10000)",
     TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
     NULL);
+REGISTER_TUNABLE("max_logput_queue", "Maximum queued log-records. ",
+                 TUNABLE_INTEGER, &gbl_max_logput_queue,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */

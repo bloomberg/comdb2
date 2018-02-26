@@ -865,6 +865,9 @@ __rep_set_rep_transport(dbenv, eid, f_send)
 	return (0);
 }
 
+extern pthread_mutex_t rep_queue_lock;
+extern void __rep_empty_log_queue_lk(void);
+
 /*
  * __rep_elect --
  *	Called after master failure to hold/participate in an election for
@@ -971,8 +974,11 @@ restart:
 	tiebreaker = pid ^ sec ^ usec ^ (u_int) rand() ^ P_TO_UINT32(&pid);
 
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+    pthread_mutex_lock(&rep_queue_lock);
 	F_SET(rep, REP_F_EPHASE1 | REP_F_NOARCHIVE);
 	F_CLR(rep, REP_F_TALLY);
+    __rep_empty_log_queue_lk();
+    pthread_mutex_unlock(&rep_queue_lock);
 
 	/* Tally our own vote */
 	if (__rep_tally(dbenv, rep, rep->eid, &rep->sites, rep->egen,
@@ -1061,8 +1067,11 @@ restart:
 				    "Counted my vote %d", rep->votes);
 #endif
 		}
+        pthread_mutex_lock(&rep_queue_lock);
 		F_SET(rep, REP_F_EPHASE2);
 		F_CLR(rep, REP_F_EPHASE1);
+        __rep_empty_log_queue_lk();
+        pthread_mutex_unlock(&rep_queue_lock);
 	}
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	if (send_vote == db_eid_invalid) {

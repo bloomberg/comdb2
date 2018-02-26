@@ -2403,11 +2403,19 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
      * bit */
     if (bdb_state->attr->wait_for_seqnum_trace && 
             log_compare(&bdb_state->seqnum_info->seqnums[nodeix(host)].lsn, &seqnum->lsn) > 0) {
-        logmsg(LOGMSG_INFO, "%s seqnum from %s moving backwards from [%d][%d] to [%d][%d]\n",
-            __func__, host,
-            bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.file,
-            bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.offset,
-            seqnum->lsn.file, seqnum->lsn.offset);
+        logmsg(LOGMSG_USER, "%s seqnum from %s moving backwards from [%d][%d] gen %d to [%d][%d] gen %d\n",
+                __func__, host,
+                bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.file,
+                bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.offset,
+                bdb_state->seqnum_info->seqnums[nodeix(host)].generation,
+                seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation);
+    } else if (bdb_state->attr->wait_for_seqnum_trace) {
+        logmsg(LOGMSG_USER, "%s seqnum from %s moving from [%d][%d] gen %d to [%d][%d] gen %d\n",
+                __func__, host,
+                bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.file,
+                bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.offset,
+                bdb_state->seqnum_info->seqnums[nodeix(host)].generation,
+                seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation);
     }
     memcpy(&(bdb_state->seqnum_info->seqnums[nodeix(host)]), seqnum,
            sizeof(seqnum_type));
@@ -3832,14 +3840,13 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         break;
 
     case DB_REP_ISPERM: {
-        if (bdb_state->check_for_isperm) {
-            bdb_state->got_isperm = 1;
-        }
         bdb_state->repinfo->repstats.rep_isperm++;
 
         char *mynode = bdb_state->repinfo->myhost;
 
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+        logmsg(LOGMSG_INFO, "%s line %d setting my seqnum to %d:%d gen %d\n", 
+                __func__, __LINE__, permlsn.file, permlsn.offset, generation);
         bdb_state->seqnum_info->seqnums[nodeix(mynode)].lsn = permlsn;
         bdb_state->seqnum_info->seqnums[nodeix(mynode)].generation = generation;
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));

@@ -71,6 +71,9 @@ extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
 int gbl_rep_badgen_trace;
+int gbl_decoupled_logputs = 1;
+int gbl_max_logput_queue = 1000;
+int gbl_apply_thread_pollms = 200;
 
 void hexdump(unsigned char *key, int keylen);
 extern void fsnapf(FILE *, void *, int);
@@ -342,6 +345,129 @@ matchable_log_type(int rectype)
 	}
 	return ret;
 }
+
+struct queued_log {
+	LINKC_T(struct queued_log) lnk;
+    REP_CONTROL rp;
+    u_int32_t gen;
+    u_int32_t size;
+    char data[1];
+};
+
+pthread_mutex_t rep_queue_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t release_cond = PTHREAD_COND_INITIALIZER;
+static pthread_t apply_thd;
+static int apply_thd_created = 0;
+static int log_queue_inited = 0;
+LISTC_T(struct queued_log) log_queue;
+
+extern int bdb_the_lock_desired(void); 
+void bdb_relthelock(const char *funcname, int line);
+void bdb_get_the_readlock(const char *idstr, const char *function, int line);
+void bdb_thread_start_rw(void);
+
+static void *apply_thread(void *arg) 
+{
+    int ret;
+    DB_ENV *dbenv = (DB_ENV *)arg;
+    struct queued_log *q, obj;
+    struct timespec ts;
+	REP *rep;
+	DB_REP *db_rep;
+
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+    bdb_thread_start_rw();
+
+    pthread_mutex_lock(&rep_queue_lock);
+    while (1) {
+        int pollms = (gbl_apply_thread_pollms > 0) ? gbl_apply_thread_pollms : 200;
+        DBT rec = {0};
+        DB_LSN ret_lsnp;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_nsec += (pollms * 1000000);
+        ts.tv_sec += (ts.tv_nsec / 1000000000);
+        ts.tv_nsec %= 1000000000;
+        ret = pthread_cond_timedwait(&queue_cond, &rep_queue_lock, &ts);
+        while (!IN_ELECTION_TALLY(rep) && (q = listc_rtl(&log_queue))) {
+            pthread_cond_broadcast(&release_cond);
+            pthread_mutex_unlock(&rep_queue_lock);
+
+            rec.data = q->data;
+            rec.size = q->size;
+
+            bdb_get_the_readlock("apply_thread", __func__, __LINE__);
+            if (rep->gen == q->gen)
+                ret = __rep_apply(dbenv, &q->rp, &rec, &ret_lsnp, &q->gen);
+            else
+                ret = 0;
+            bdb_relthelock(__func__, __LINE__);
+
+            if (ret != 0 && ret != DB_REP_ISPERM && ret != DB_REP_NOTPERM)
+                abort();
+            free(q);
+            pthread_mutex_lock(&rep_queue_lock);
+        }
+    }
+}
+
+void init_log_queue(void)
+{
+    fprintf(stderr, "INITIALIZING LOG QUEUE\n");
+    listc_init(&log_queue, offsetof(struct queued_log, lnk));
+}
+
+/* We are holding the logqueue lock .. empty the queue */
+void __rep_empty_log_queue_lk(void)
+{
+    struct queued_log *q, obj;
+
+    while (q = listc_rtl(&log_queue)) {
+        free(q);
+    }
+}
+
+/* Enque a log-record to be applied by the log_applier */
+static int
+__rep_enqueue_log(dbenv, rp, rec, gen)
+	DB_ENV *dbenv;
+    REP_CONTROL *rp;
+    DBT *rec;
+	uint32_t gen;
+{
+    int rc, count=0;
+    struct queued_log *q = (struct queued_log *)malloc(
+            offsetof(struct queued_log, data) + rec->size);
+    memcpy(&q->rp, rp, sizeof(REP_CONTROL));
+    q->gen = gen;
+    q->size = rec->size;
+    memcpy(&q->data, rec->data, q->size);
+    pthread_mutex_lock(&rep_queue_lock);
+    while(gbl_max_logput_queue > 0 && listc_size(&log_queue) > 
+            gbl_max_logput_queue) {
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 1;
+        count++;
+        if (count > 1) {
+            logmsg(LOGMSG_ERROR, "%s: rep_apply queue (size is %d)\n",
+                    __func__, listc_size(&log_queue));
+        }
+        rc = pthread_cond_timedwait(&release_cond, &rep_queue_lock, &ts);
+    }
+    listc_abl(&log_queue, q);
+    if (apply_thd_created == 0) {
+        if ((rc = pthread_create(&apply_thd, NULL, apply_thread, dbenv)) != 0) {
+            abort();
+        }
+        apply_thd_created = 1;
+    }
+    pthread_cond_signal(&queue_cond);
+    pthread_mutex_unlock(&rep_queue_lock);
+    return 0;
+}
+
 
 int gbl_rep_verify_will_recover_trace = 0;
 int gbl_rep_verify_always_grab_writelock = 0;
@@ -918,9 +1044,16 @@ send:			if (__rep_send_message(dbenv,
 		MASTER_CHECK(dbenv, *eidp, rep);
 		if (!IN_ELECTION_TALLY(rep)) {
 			fromline = __LINE__;
-			if ((ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
-								   commit_gen)) != 0)
-				goto errlock;
+            if (gbl_decoupled_logputs) {
+                if ((ret = __rep_enqueue_log(dbenv, rp, rec, rp->gen))
+                        != 0)
+                    goto errlock;
+            } else {
+                fromline = __LINE__;
+                if ((ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
+                                commit_gen)) != 0)
+                    goto errlock;
+            }
 		} else {
 
 			if (gbl_verbose_master_req) {
@@ -932,7 +1065,7 @@ send:			if (__rep_send_message(dbenv,
 				 	REP_MASTER_REQ, NULL, NULL, 0, NULL);
 			fromline = __LINE__;
 			goto errlock;
-		}
+        }
 
 		if (rp->rectype == REP_LOG_MORE) {
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
@@ -1612,8 +1745,11 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 #endif
 			egen = rep->egen;
 			committed_gen = rep->committed_gen;
+            pthread_mutex_lock(&rep_queue_lock);
 			F_SET(rep, REP_F_EPHASE2);
 			F_CLR(rep, REP_F_EPHASE1);
+            __rep_empty_log_queue_lk();
+            pthread_mutex_unlock(&rep_queue_lock);
 			if (master == rep->eid) {
 				(void)__rep_tally(dbenv, rep, rep->eid,
 					&rep->votes, egen, rep->v2tally_off);
@@ -2133,7 +2269,6 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen)
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
-	/*dbp = db_rep->rep_db; */
 	dbc = NULL;
 	ret = gap = 0;
 	memset(&control_dbt, 0, sizeof(control_dbt));

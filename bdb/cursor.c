@@ -3658,8 +3658,8 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
     bdb_latest_commit_lsn = commit_lsn;
     bdb_latest_commit_gen = gen;
     if (gbl_durable_set_trace)
-        logmsg(LOGMSG_USER, "Set commit lsn to [%d][%d] generation %u\n", commit_lsn.file,
-                commit_lsn.offset, gen);
+        logmsg(LOGMSG_USER, "%s: set commit lsn to [%d][%d] generation %u\n", 
+                __func__, commit_lsn.file, commit_lsn.offset, gen);
 
     pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
 
