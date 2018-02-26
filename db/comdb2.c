@@ -5093,11 +5093,8 @@ int main(int argc, char **argv)
     if (comdb2ma_stats_cron() != 0)
         abort();
 
-    if (process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
-                                 deferred_do_commands)) {
-        logmsg(LOGMSG_FATAL, "failed to process deferred options\n");
-        exit(1);
-    }
+    process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
+                                 deferred_do_commands);
     clear_deferred_options(thedb, DEFERRED_SEND_COMMAND);
 
     // db started - disable recsize kludge so
