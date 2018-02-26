@@ -100,7 +100,7 @@ bool assert_cksum_lsn(uint8_t *new_pagep, uint8_t *old_pagep, size_t pagesize) {
 // populate data_size with the total amount of data that needs to be serialised
 // Returns true if any part of the file needs to be serialised
 bool compare_checksum(
-    FileInfo file,
+    FileInfo &file,
     const std::string& incr_path,
     std::vector<uint32_t>& pages,
     ssize_t *data_size,
@@ -108,6 +108,8 @@ bool compare_checksum(
 ) {
     std::string filename = file.get_filename();
     std::string incr_file_name = incr_path + "/" + filename + ".incr";
+
+    std::cerr << filename << " <- " << incr_file_name << std::endl;
 
     // Keep a set of all .incr diff files to determine if there are any remaining at the end
     // Any remaining .incr files indiciate deleted files
@@ -131,6 +133,16 @@ bool compare_checksum(
         std::ostringstream ss;
         ss << "cannot stat file: " << std::strerror(errno);
         throw SerialiseError(filename, ss.str());
+    }
+
+    // wrong, but a good estimate, and good enough if we truncate BEFORE
+    // writing pages on restore
+    file.set_filesize(new_st.st_size); 
+    {
+        std::ostringstream ss;
+        ss << "ls -l " << file.get_filepath() << " >&2";
+        system(ss.str().c_str());
+        std::cerr << "stat says size " << new_st.st_size << std::endl;
     }
 
     // For a new file, make pages empty (upon returning, an empty pages list
@@ -159,9 +171,12 @@ bool compare_checksum(
 
         size_t original_size = new_st.st_size;
         off_t bytesleft = new_st.st_size;
+        int64_t filesize = 0;
 
         while(bytesleft >= pagesize) {
             ssize_t new_bytesread = read(new_fd, &new_pagebuf[0], pagesize);
+
+            filesize += new_bytesread;
 
             if(new_bytesread <= 0) {
                 std::ostringstream ss;
@@ -361,7 +376,8 @@ void incr_deserialise_database(
     unsigned percent_full,
     bool force_mode,
     std::vector<std::string>& options,
-    bool& is_disk_full
+    bool& is_disk_full,
+    bool& dryrun
 )
 // Read from STDIN to deserialise an incremental backup
 {
@@ -452,9 +468,7 @@ void incr_deserialise_database(
             if(filename.find_first_of('/') == std::string::npos) {
                 std::string table_name;
 
-                if(recognise_data_file(filename, false, is_data_file,
-                            is_queue_file, is_queuedb_file, table_name) ||
-                   recognise_data_file(filename, true, is_data_file,
+                if(recognize_data_file(filename, is_data_file,
                             is_queue_file, is_queuedb_file, table_name)) {
                     if(table_set.insert(table_name).second) {
                         std::clog << "Discovered table " << table_name
@@ -494,7 +508,7 @@ void incr_deserialise_database(
         // All incremental changes are stored in a single .data file, so unpack that
         // using the file order to keep track of which file is currently being read
         } else if(is_incr_data) {
-            unpack_incr_data(file_order, updated_files, datadestdir);
+            unpack_incr_data(file_order, updated_files, datadestdir, dryrun);
         // Unpack a full file
         } else if (is_data_file || is_queue_file || is_queuedb_file) {
             std::map<std::string, FileInfo>::iterator file_it = new_files.find(filename);

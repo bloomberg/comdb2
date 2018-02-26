@@ -880,6 +880,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             bdb_check_pageno(thedb->bdb_env, pgno);
         } else
             logmsg(LOGMSG_ERROR, "incorrect page no %d\n", pgno);
+    } else if (tokcmp(tok, ltok, "deletelogs") == 0) {
+        logmsg(LOGMSG_ERROR, "Calling delete logs function\n");
+        extern void delete_log_files(bdb_state_type *bdb_state);
+        delete_log_files(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "pushnext") == 0) {
         push_next_log();
     }
