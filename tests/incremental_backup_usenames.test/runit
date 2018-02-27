@@ -147,19 +147,23 @@ function test_restoredb {
   ${CDB2SQL_EXE} -f $1 ${dbname}_restore local > ${testname}.output 2>&1
   cat ${testname}.output
   diff ${testname}.expected ${testname}.output
-  if [[ $? -ne 0 ]] ; then
+  rc=$?
+  echo shutting down ${dbname}_restore
+  kill -9 $(cat ${TMPDIR}/${dbname}_restore.pid)
+  echo deregister from pmux ${dbname}_restore
+  ${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${dbname}_restore " ${pmux_port}
+
+  if [[ $rc -ne 0 ]] ; then
     echo "  ^^^^^^^^^^^^"
     echo "The above testcase (${testname}) has failed!!!"
     echo " "
     echo " "
-    kill -9 $(cat ${TMPDIR}/${dbname}_restore.pid)
     exit 1
   fi
 
   echo "${testname} passed"
   echo " "
 
-  kill -9 $(cat ${TMPDIR}/${dbname}_restore.pid)
   rm -rf ${LOCTMPDIR}/restore/*
 }
 

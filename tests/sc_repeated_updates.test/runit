@@ -53,7 +53,7 @@ function assertcnt
     target=$1
     comment=$2
     a=$RANDOM
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from $tbl" > select_$a.out
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "select * from $tbl" > select_$a.out
     cnt=$(wc -l select_$a.out | awk '{print $1}')
     if [[ $cnt != $target ]] ; then
         failexit "$comment: count is $cnt but should be $target"
@@ -64,7 +64,7 @@ function assertcnt
 
 function do_verify
 {
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
 
     if ! grep succeeded verify.out > /dev/null ; then
         failexit "Verify"
@@ -82,7 +82,7 @@ function do_rebuild_track_pid
     while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
 
         echo "Running rebuild iteration $scnt"
-        cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "rebuild $loc_tbl"
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $loc_dbnm default "rebuild $loc_tbl"
 
         if [[ $? != 0 ]]; then
             failexit "Error schema-changing on iteration $scnt. Testcase failed."
@@ -112,7 +112,7 @@ function update_same_record
     echo "update_same_record: Updating same record in background (update1)"
 
     while [[ $j -lt $loc_recs ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1 where a = $nrecs" >> update1.out 2>&1
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1 where a = $nrecs" >> update1.out 2>&1
         rc=$?
         if [[ $rc -ne 0 ]] ; then
             failexit "update_same_record: this update should succeed but error $rc was returned"
@@ -137,7 +137,7 @@ function update_same_record_fail
     echo "update_same_record_fail: Updating same record resulting in failure for dups (update3)"
 
     while [[ $j -lt $loc_recs ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1 where a = 10" >> update3.out 2>&1
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1 where a = 10" >> update3.out 2>&1
         assertcnt $nrecs "update_same_record_fail"
         let j=j+1
     done
@@ -162,7 +162,7 @@ function update_records
         j=1
         > update2.out
         while [[ $j -le $nrecs ]]; do 
-            cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1, e=e+$nrecs where a = $j" >> update2.out 2>&1
+            $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1, e=e+$nrecs where a = $j" >> update2.out 2>&1
             rc=$?
             if [[ $rc -ne 0 ]] ; then
                 failexit "update_records: this update should succeed but error $rc was returned"
@@ -191,7 +191,7 @@ function update_records_fail
     > update4.out
 
     while [[ $j -le $((nrecs-dist)) ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1, e=e+$dist where a = $j" >> update4.out 2>&1
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1, e=e+$dist where a = $j" >> update4.out 2>&1
         if [[ $? -eq 0 ]] ; then
             echo "update_records_fail: update $tbl set d=d+1, e=e+10 where a = $j" 
             failexit "update_records_fail: this update should not succeed"
@@ -231,7 +231,7 @@ function insert_records
             loc_tran=0
         fi
 	let j=j+1
-    done  | cdb2sql ${CDB2_OPTIONS} $dbnm default - >> insert.out 2>&1
+    done  | $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - >> insert.out 2>&1
 }
 
 function run_test
@@ -239,7 +239,7 @@ function run_test
     typeset upid=''
     nrecs=$1
 
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate $tbl"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "truncate $tbl"
 
     insert_records 0 
     assertcnt $nrecs "run_test"
@@ -302,16 +302,16 @@ trap exiting EXIT
 
 echo "running test in machine $(hostname):${PWD}"
 
-#cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
+#$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
 
 rm -f failexit
 
 g=100
 while [[ $g -le 400 ]] ; do 
 	echo "run_test $g"
-    cdb2sql -s ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('setipu $tbl on')" >/dev/null 2>&1
+    $CDB2SQL_EXE -s ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('setipu $tbl on')" >/dev/null 2>&1
 	run_test $g
-    cdb2sql -s ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('setipu $tbl off')" >/dev/null 2>&1
+    $CDB2SQL_EXE -s ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('setipu $tbl off')" >/dev/null 2>&1
 	run_test $g
     let g=g+g
 done
