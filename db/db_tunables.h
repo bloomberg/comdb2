@@ -750,7 +750,7 @@ REGISTER_TUNABLE("no_static_tag_blob_fix", NULL, TUNABLE_BOOLEAN,
                  &gbl_force_notnull_static_tag_blobs,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("nosurprise", NULL, TUNABLE_BOOLEAN, &gbl_surprise,
-                 READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("notimeout", "Turns off SQL timeouts. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_notimeouts, NOARG, NULL, NULL, NULL,
                  NULL);
@@ -1028,7 +1028,7 @@ REGISTER_TUNABLE("static_tag_blob_fix", NULL, TUNABLE_BOOLEAN,
                  &gbl_force_notnull_static_tag_blobs, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("surprise", NULL, TUNABLE_BOOLEAN, &gbl_surprise,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 READONLY | NOARG, NULL, NULL, NULL, NULL);
 /*
   Note: survive_n_master_swings' value < 0 was previously ignored without
   any error.
