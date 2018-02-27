@@ -2802,13 +2802,13 @@ static void *osql_heartbeat_thread(void *arg);
 static void signal_rtoff(void);
 
 static int check_master(char *tohost);
-static int offload_net_send(char *tohost, int usertype, void *data, int datalen,
+static int offload_net_send(const char *tohost, int usertype, void *data, int datalen,
                             int nodelay);
-static int offload_net_send_tail(char *tohost, int usertype, void *data,
+static int offload_net_send_tail(const char *tohost, int usertype, void *data,
                                  int datalen, int nodelay, void *tail,
                                  int tailen);
 static int osql_check_version(int type);
-static int offload_net_send_tails(char *host, int usertype, void *data,
+static int offload_net_send_tails(const char *host, int usertype, void *data,
                                   int datalen, int nodelay, int ntails,
                                   void **tails, int *tailens);
 static int get_blkout(time_t now, char *nodes[REPMAX], int *nds);
@@ -3057,7 +3057,7 @@ void osql_comm_destroy(void)
  * It is used mainly with blocksql
  *
  */
-int osql_comm_blkout_node(char *host)
+int osql_comm_blkout_node(const char *host)
 {
 
     osql_blknds_t *blk = NULL;
@@ -3529,6 +3529,10 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
     } else {
         rc = offload_net_send(tohost, type, &buf, msglen, 0);
     }
+
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s:%s offload_net_send returns rc=%d\n",
+               __func__, rc);
 
     return rc;
 }
@@ -5734,7 +5738,7 @@ int osql_comm_check_bdb_lock(void)
 /* this wrapper tries to provide a reliable net_send that will prevent loosing
    packets
    due to queue being full */
-static int offload_net_send(char *host, int usertype, void *data, int datalen,
+static int offload_net_send(const char *host, int usertype, void *data, int datalen,
                             int nodelay)
 {
     netinfo_type *netinfo_ptr = comm->handle_sibling;
@@ -5744,7 +5748,7 @@ static int offload_net_send(char *host, int usertype, void *data, int datalen,
     int rc = -1;
 
     if (debug_switch_osql_simulate_send_error()) {
-        if (rand() % 4 == 0) /*25 chance of failure*/
+        if (rand() % 4 == 0) /*25% chance of failure*/
         {
             logmsg(LOGMSG_ERROR, "Punting offload_net_send with error -1\n");
             return -1;
@@ -5754,66 +5758,64 @@ static int offload_net_send(char *host, int usertype, void *data, int datalen,
     if (host == gbl_mynode)
         host = NULL;
 
-    if (host) {
-
-        /* remote send */
-        while (rc) {
-#if 0
-         printf("NET SEND %d tmp=%llu\n", usertype, osql_log_time());
-#endif
-            rc = net_send(netinfo_ptr, host, usertype, data, datalen, nodelay);
-
-            if (NET_SEND_FAIL_QUEUE_FULL == rc ||
-                NET_SEND_FAIL_MALLOC_FAIL == rc || NET_SEND_FAIL_NOSOCK == rc) {
-
-                if (total_wait > gbl_osql_bkoff_netsend_lmt) {
-                    logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
-                            __LINE__, host);
-                    return -1;
-                }
-
-                if (osql_comm_check_bdb_lock() != 0) {
-                    logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
-                            __LINE__, host);
-                    return rc;
-                }
-
-                poll(NULL, 0, backoff);
-                /*backoff *= 2; */
-                total_wait += backoff;
-            } else if (NET_SEND_FAIL_CLOSED == rc) {
-                /* on closed sockets, we simply return; a callback
-                   will trigger on the other side signalling we've
-                   lost the comm party */
-                return rc;
-            } else if (rc) {
-                unknownerror_retry++;
-                if (unknownerror_retry >= UNK_ERR_SEND_RETRY) {
-                    logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
-                            __LINE__, host);
-                    comdb2_linux_cheap_stack_trace();
-                    return -1;
-                }
-            }
-        }
-    } else {
-
+    if (!host) {
         /* local save, this is calling sorese_rvprpl_master */
         net_local_route_packet(usertype, data, datalen);
-        rc = 0;
+        return 0;
+    }
+
+    /* remote send */
+    while (rc) {
+#if 0
+     printf("NET SEND %d tmp=%llu\n", usertype, osql_log_time());
+#endif
+        rc = net_send(netinfo_ptr, host, usertype, data, datalen, nodelay);
+
+        if (NET_SEND_FAIL_QUEUE_FULL == rc ||
+            NET_SEND_FAIL_MALLOC_FAIL == rc || NET_SEND_FAIL_NOSOCK == rc) {
+
+            if (total_wait > gbl_osql_bkoff_netsend_lmt) {
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
+                        __LINE__, host);
+                return -1;
+            }
+
+            if (osql_comm_check_bdb_lock() != 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
+                        __LINE__, host);
+                return rc;
+            }
+
+            poll(NULL, 0, backoff);
+            /*backoff *= 2; */
+            total_wait += backoff;
+        } else if (NET_SEND_FAIL_CLOSED == rc) {
+            /* on closed sockets, we simply return; a callback
+               will trigger on the other side signalling we've
+               lost the comm party */
+            return rc;
+        } else if (rc) {
+            unknownerror_retry++;
+            if (unknownerror_retry >= UNK_ERR_SEND_RETRY) {
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
+                        __LINE__, host);
+                comdb2_linux_cheap_stack_trace();
+                return -1;
+            }
+        }
     }
 
     return rc;
 }
 
-static int offload_net_send_tails(char *tohost, int usertype, void *data,
+static int offload_net_send_tails(const char *tohost, int usertype, void *data,
                                   int datalen, int nodelay, int ntails,
                                   void **tails, int *tailens);
 
 /* this wrapper tries to provide a reliable net_send_tail that will prevent
    loosing packets
    due to queue being full */
-static int offload_net_send_tail(char *host, int usertype, void *data,
+static int offload_net_send_tail(const char *host, int usertype, void *data,
                                  int datalen, int nodelay, void *tail,
                                  int tailen)
 {
@@ -5821,7 +5823,7 @@ static int offload_net_send_tail(char *host, int usertype, void *data,
                                   &tail, &tailen);
 }
 
-static int offload_net_send_tails(char *host, int usertype, void *data,
+static int offload_net_send_tails(const char *host, int usertype, void *data,
                                   int datalen, int nodelay, int ntails,
                                   void **tails, int *tailens)
 {

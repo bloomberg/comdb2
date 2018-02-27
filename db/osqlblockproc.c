@@ -639,6 +639,30 @@ const char *osql_reqtype_str(int type)
     return typestr[type];
 }
 
+
+void no_such_tbl_error(const char * tablename, unsigned long long rqid, const char * host) {
+    sorese_info_t sorese_info = {0};
+    struct errstat generr = {0};
+
+    logmsg(LOGMSG_ERROR, "%s dbtable by name: table %s may have been "
+            "dropped\n", __func__, tablename);
+
+    sorese_info.rqid = rqid;
+    sorese_info.host = host;
+    sorese_info.type = -1; /* I don't need it */
+
+    generr.errval = ERR_VERIFY;
+    strncpy(generr.errstr,
+            "Table can not be found",
+            sizeof(generr.errstr));
+
+    int rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr, ERR_VERIFY);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
+    }
+}
+
+
 /**
  * Inserts the op in the iq oplog
  * If sql processing is local, this is called by sqlthread
@@ -649,7 +673,7 @@ const char *osql_reqtype_str(int type)
  */
 int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long rqid, uuid_t uuid,
-                      unsigned long long seq, char *host)
+                      unsigned long long seq, const char *host)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)osql_sess_getbptran(sess);
     struct ireq *iq = osql_session_get_ireq(sess);
@@ -672,41 +696,27 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
             iq->usedb = get_dbtable_by_name(tablename);
             if (!iq->usedb) {
-                sorese_info_t sorese_info = {0};
-                struct errstat generr = {0};
-
-                logmsg(LOGMSG_ERROR, "%s dbtable by name: table %s may have been "
-                        "dropped\n", __func__, tablename);
-
-                sorese_info.rqid = rqid;
-                sorese_info.host = host;
-                sorese_info.type = -1; /* I don't need it */
-
-                generr.errval = ERR_VERIFY;
-                strncpy(generr.errstr,
-                        "Table can not be found",
-                        sizeof(generr.errstr));
-
-                rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr, ERR_VERIFY);
-                if (rc) {
-                    logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
-                }
-
+                no_such_tbl_error(tablename, rqid, host);               
                 return -1;
             }
             printf("AZ: tablename='%s' idx=%d\n", tablename, iq->usedb->dbs_idx);
         }
     }
-    if (!iq->usedb) 
+    if (!iq->usedb) { 
         printf("AZ: usedb not set for type=%d, tablename='%s'\n", type, tablename);
+        if (type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE || 
+            type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS) {
+            no_such_tbl_error(tablename, rqid, host);               
+            return -1;
+        }
+    }
 
 #if 0
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
 
-    if (type == OSQL_DONE_SNAP || type == OSQL_DONE || 
-        type == OSQL_DONE_STATS)
+    if (type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS)
         key.tbl_idx = INT_MAX;
     else if (iq->usedb)
         key.tbl_idx = iq->usedb->dbs_idx;

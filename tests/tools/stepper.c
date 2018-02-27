@@ -136,6 +136,7 @@ int main( int argc, char **argv)
                id, query);
          break;
       }
+      usleep(10000);
    }
 
    if (debug)

@@ -109,7 +109,7 @@ char *osql_get_tran_summary(struct ireq *iq);
  */
 int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long rqid, uuid_t uuid,
-                      unsigned long long seq, char *host);
+                      unsigned long long seq, const char *host);
 
 /**
  * Wakeup the block processor waiting for a completed session

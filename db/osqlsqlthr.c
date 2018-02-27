@@ -1042,23 +1042,23 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
                                      int nettype)
 {
     osqlstate_t *osql = &clnt->osql;
-    int tablenamelen = strlen(tablename) + 1; /*including trailing 0*/
     int rc = 0;
 
-    char *tblname = strdup(tablename);
-    void strupper(char *c);
-    strupper(tblname);
-    if (clnt->ddl_tables && hash_find_readonly(clnt->ddl_tables, tblname)) {
-        free(tblname);
-        return SQLITE_DDL_MISUSE;
+    if (clnt->ddl_tables) { 
+        char *tblname = strdup(tablename);
+        void strupper(char *c);
+        strupper(tblname);
+        if (hash_find_readonly(clnt->ddl_tables, tblname)) {
+            free(tblname);
+            return SQLITE_DDL_MISUSE;
+        }
+        else
+            hash_add(clnt->dml_tables, tblname);
     }
-    if (clnt->dml_tables && !hash_find_readonly(clnt->dml_tables, tblname))
-        hash_add(clnt->dml_tables, tblname);
-    else
-        free(tblname);
 
+    int tablenamelen = strlen(tablename) + 1; /*including trailing 0*/
     if (osql->tablename) {
-        if (osql->tablenamelen == (strlen(tablename) + 1) &&
+        if (osql->tablenamelen == tablenamelen &&
             !strncmp(tablename, osql->tablename, osql->tablenamelen))
             /* we've already sent this, skip */
             return SQLITE_OK;
