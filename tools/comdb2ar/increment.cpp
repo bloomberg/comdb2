@@ -172,11 +172,13 @@ bool compare_checksum(
         size_t original_size = new_st.st_size;
         off_t bytesleft = new_st.st_size;
         int64_t filesize = 0;
+        uint64_t pgno = -1;
 
         while(bytesleft >= pagesize) {
             ssize_t new_bytesread = read(new_fd, &new_pagebuf[0], pagesize);
 
             filesize += new_bytesread;
+            pgno += 1;
 
             if(new_bytesread <= 0) {
                 std::ostringstream ss;
@@ -186,7 +188,7 @@ bool compare_checksum(
 
             // File has expamded by a reasonable amount, so add all remaining pages
             if(file_expanded) {
-                pages.push_back(PGNO(new_pagebuf));
+                pages.push_back(pgno);
                 *data_size += pagesize;
                 bytesleft -= pagesize;
                 continue;
@@ -207,7 +209,7 @@ bool compare_checksum(
                     return true;
                 // otherwise just add the remaining pages
                 } else {
-                    pages.push_back(PGNO(new_pagebuf));
+                    pages.push_back(pgno);
                     file_expanded = true;
                     *data_size += pagesize;
                     bytesleft -= pagesize;
@@ -218,7 +220,7 @@ bool compare_checksum(
 
             // If a diff has been selected in a page, keep track of that page
             if (assert_cksum_lsn(new_pagebuf, old_pagebuf, pagesize)) {
-                pages.push_back(PGNO(new_pagebuf));
+                pages.push_back(pgno);
                 *data_size += pagesize;
                 ret = true;
             }
@@ -278,6 +280,14 @@ ssize_t serialise_incr_file(
 
     std::ofstream incrFile(incrFilename, std::ofstream::out |
                             std::ofstream::in | std::ofstream::binary);
+
+    for(std::vector<uint32_t>::iterator
+            it = pages.begin();
+            it != pages.end();
+            ++it){
+        std::cerr << "FILE " << filepath << " PAGE " << *it << std::endl;
+    }
+
 
     for(std::vector<uint32_t>::iterator
             it = pages.begin();
