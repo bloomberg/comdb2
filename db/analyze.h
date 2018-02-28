@@ -91,6 +91,12 @@ void analyze_enable_sampled_indicies(void);
  */
 int analyze_set_max_table_threads(void *context, void *maxtd);
 
+/** 
+ * Set maximum analyze compression threads. 
+ */
+int analyze_set_max_comp_threads( int maxthd );
+
+
 /**
  * Set the maximum number of concurrent sampling (compression) threads.
  */

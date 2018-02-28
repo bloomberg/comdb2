@@ -1152,6 +1152,28 @@ int analyze_set_sampling_threshold(void *context, void *thresh)
 /* get sampling threshold */
 long long analyze_get_sampling_threshold(void) { return sampling_threshold; }
 
+/* set maximum analyze compression threads */
+int analyze_set_max_comp_threads( int maxthd )
+{
+    /* must have at least 1 */
+    if( maxthd < 1 )
+    {
+        printf( "%s: invalid value for maxthd\n", __func__ );
+        return -1;
+    }
+    /* can have no more than hard-max */
+    if( maxthd > analyze_hard_max_comp_threads )
+    {
+        printf( "%s: hard-maximum is %d\n", __func__, 
+                analyze_hard_max_comp_threads );
+        return -1;
+    }
+    analyze_max_comp_threads = maxthd;
+    return 0;
+}
+
+
+
 /* set maximum analyze threads */
 int analyze_set_max_table_threads(void *context, void *maxthd)
 {
