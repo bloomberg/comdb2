@@ -79,7 +79,7 @@ public class Comdb2Handle extends AbstractConnection {
 
     private boolean in_retry = false;
     private boolean temp_trans = false;
-    private boolean debug = false;
+    private boolean debug = true;
     private Cdb2SqlResponse firstResp;
     private Cdb2SqlResponse lastResp;
 
@@ -359,8 +359,8 @@ public class Comdb2Handle extends AbstractConnection {
     // Add td info to the beginning of the string
     private void tdlog(Level level, String str, Object... params) {
         /* Fast return if the level is not loggable. */
-        if (!logger.isLoggable(level))
-            return;
+        //if (!logger.isLoggable(level))
+        //    return;
 
         String mach = "(not-connected)";
         if (dbHostConnected >= 0) {
@@ -851,7 +851,7 @@ public class Comdb2Handle extends AbstractConnection {
 
         rowsRead = 0;
 
-        tdlog(Level.FINE, "[running sql] %s", sql);
+        tdlog(Level.FINE, "[running sql] " + sql);
 
         if (lowerSql.startsWith("set")) {
             Iterator<String> iter = sets.iterator();
