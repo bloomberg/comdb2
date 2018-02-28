@@ -38,9 +38,9 @@ ifeq ($(TESTDIR),)
   export CDB2_SQLREPLAY_EXE:=$(SRCHOME)/cdb2_sqlreplay
   export PMUX_EXE:=$(SRCHOME)/pmux
   $(shell mkdir -p ${TESTDIR}/ )
-  $(shell cp $(SRCHOME)/comdb2ar $(COMDB2AR_EXE) )
-  $(shell cp $(SRCHOME)/comdb2 $(COMDB2_EXE) )
-  $(shell cp $(SRCHOME)/cdb2sql $(CDB2SQL_EXE) )
+  $(shell ln $(SRCHOME)/comdb2ar $(COMDB2AR_EXE) )
+  $(shell ln $(SRCHOME)/comdb2 $(COMDB2_EXE) )
+  $(shell ln $(SRCHOME)/cdb2sql $(CDB2SQL_EXE) )
 endif
 
 
