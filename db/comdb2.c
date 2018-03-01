@@ -716,6 +716,7 @@ int gbl_stable_rootpages_test = 0;
 
 /* Only allows the ability to enable: must be enabled on a session via 'set' */
 int gbl_allow_incoherent_sql = 1;
+int gbl_reorder_blkseq_no_deadlock = 0;
 
 char *gbl_dbdir = NULL;
 static int gbl_backend_opened = 0;

@@ -192,6 +192,7 @@ extern bool gbl_rcache;
 
 static char *name = NULL;
 static int ctrace_gzip;
+extern int gbl_reorder_blkseq_no_deadlock;
 
 /*
   =========================================================

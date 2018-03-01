@@ -707,7 +707,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         printf("AZ: usedb not set for type=%d\n", type);
         if (type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE || 
             type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS) {
-            no_such_tbl_error("error", rqid, host);
+            no_such_tbl_error("invalid_table", rqid, host);
             return -1;
         }
     }
@@ -717,12 +717,15 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
 
-    if (type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS)
-        key.tbl_idx = INT_MAX;
-    else if (iq->usedb)
-        key.tbl_idx = iq->usedb->dbs_idx;
-    else
-        key.tbl_idx = INT_MAX;
+    extern int gbl_reorder_blkseq_no_deadlock;
+    if (gbl_reorder_blkseq_no_deadlock) {
+        if (type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS)
+            key.tbl_idx = INT_MAX;
+        else if (iq->usedb)
+            key.tbl_idx = iq->usedb->dbs_idx;
+        else
+            key.tbl_idx = INT_MAX;
+    }
     key.rqid = rqid;
     key.seq = seq;
     comdb2uuidcpy(key.uuid, uuid);
