@@ -1549,14 +1549,14 @@ int bdb_delete_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_set_sp_lua_default(bdb_state_type *bdb_state, tran_type *tran,
                            char *sp_name, int lua_ver, int *bdberr);
 
-int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long genid, unsigned int host,
-                               int *bdberr);
-int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long *genid, unsigned int *host,
-                               int *bdberr);
-int bdb_delete_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                                  int *bdberr);
+int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+                    const char *table, unsigned long long genid,
+                    unsigned int host, int *bdberr);
+int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+                    const char *table, unsigned long long *genid,
+                    unsigned int *host, int *bdberr);
+int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+                       const char *table, int *bdberr);
 
 enum {
     ACCESS_INVALID = 0,
@@ -1930,6 +1930,7 @@ void lock_info_lockers(FILE *out, bdb_state_type *bdb_state);
 
 const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host);
 
+unsigned long long get_next_sc_seed(bdb_state_type *bdb_state);
 unsigned long long bdb_get_a_genid(bdb_state_type *bdb_state);
 
 /* Return the timestamp of the replicants coherency lease */

@@ -344,7 +344,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
 
-    sc_printf(s, "starting schema update with seed %llx\n", sc_seed);
+    sc_printf(s, "starting schema update with seed %llx\n", iq->sc_seed);
 
     pthread_mutex_lock(&csc2_subsystem_mtx);
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
@@ -533,7 +533,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     pthread_rwlock_wrlock(&sc_live_rwlock);
-    sc_live = 1;
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
     pthread_rwlock_unlock(&sc_live_rwlock);
@@ -632,10 +631,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     /* Before this handle is closed, lets wait for all the db reads to
      * finish*/
-
-    pthread_rwlock_wrlock(&sc_live_rwlock);
-    sc_live = 0;
-    pthread_rwlock_unlock(&sc_live_rwlock);
 
     /* No insert transactions should happen after this
        so lock the table. */
@@ -790,7 +785,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     memset(newdb, 0xff, sizeof(struct dbtable));
     free(newdb);
 
-    sc_printf(s, "Schema change finished, seed %llx\n", sc_seed);
+    sc_printf(s, "Schema change finished, seed %llx\n", iq->sc_seed);
     return 0;
 
 backout:

@@ -133,7 +133,8 @@ static int mark_sc_in_llmeta(struct schema_change_type *s)
 static int propose_sc(struct schema_change_type *s)
 {
     /* Check that all nodes are ready to do this schema change. */
-    int rc = broadcast_sc_start(sc_seed, sc_host, time(NULL));
+    int rc = broadcast_sc_start(s->table, s->iq->sc_seed, s->iq->sc_host,
+                                time(NULL));
     if (rc != 0) {
         rc = SC_PROPOSE_FAIL;
         sc_errf(s, "unable to gain agreement from all nodes to do schema "
@@ -205,7 +206,7 @@ static void stop_and_free_sc(int rc, struct schema_change_type *s, int do_free)
             sbuf2printf(s->sb, "SUCCESS\n");
         }
     }
-    sc_set_running(0, sc_seed, NULL, 0);
+    sc_set_running(s->table, 0, s->iq->sc_seed, NULL, 0);
     if (do_free) {
         free_sc(s);
     }
@@ -382,7 +383,8 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         set_sc_flgs(s);
     if ((rc = mark_sc_in_llmeta_tran(s, NULL))) // non-tran ??
         goto end;
-    broadcast_sc_start(sc_seed, sc_host, time(NULL)); // dont care rcode
+    broadcast_sc_start(s->table, iq->sc_seed, iq->sc_host,
+                       time(NULL));                   // dont care rcode
     rc = pre(iq, s, NULL);                            // non-tran ??
     if (type == alter && master_downgrading(s)) {
         s->sc_rc = SC_MASTER_DOWNGRADE;
@@ -393,10 +395,10 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
     }
     if (rc) {
         mark_schemachange_over_tran(s->table, NULL); // non-tran ??
-        broadcast_sc_end(0);
+        broadcast_sc_end(s->table, iq->sc_seed);
     } else if (s->finalize) {
         rc = do_finalize(post, iq, s, tran, type);
-        broadcast_sc_end(sc_seed);
+        broadcast_sc_end(s->table, iq->sc_seed);
     } else {
         rc = SC_COMMIT_PENDING;
     }
@@ -422,7 +424,7 @@ int do_alter_queues(struct schema_change_type *s)
 
     if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
 
-    broadcast_sc_end(sc_seed);
+    broadcast_sc_end(s->table, s->iq->sc_seed);
 
     if ((s->type != DBTYPE_TAGGED_TABLE) && gbl_pushlogs_after_sc)
         push_next_log();
@@ -445,7 +447,7 @@ int do_alter_stripes(struct schema_change_type *s)
 
     if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
 
-    broadcast_sc_end(sc_seed);
+    broadcast_sc_end(s->table, s->iq->sc_seed);
 
     /* if we did a regular schema change and we used the llmeta we don't need to
      * push locgs */
@@ -667,12 +669,7 @@ int resume_schema_change(void)
     }
 
     /* if a schema change is currently running don't try to resume one */
-    pthread_mutex_lock(&schema_change_in_progress_mutex);
-    if (gbl_schema_change_in_progress) {
-        // we are just starting up or just became master
-        gbl_schema_change_in_progress = 0;
-    }
-    pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    sc_set_running(NULL, 0, 0, NULL, 0);
 
     pthread_mutex_lock(&sc_resuming_mtx);
     sc_resuming = NULL;
@@ -1181,7 +1178,7 @@ int backout_schema_change(struct ireq *iq)
 {
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->table);
-    sc_set_running(0, sc_seed, gbl_mynode, time(NULL));
+    sc_set_running(s->table, 0, iq->sc_seed, gbl_mynode, time(NULL));
     if (s->addonly) {
         delete_temp_table(iq, s->db);
         delete_db(s->table);
@@ -1191,6 +1188,6 @@ int backout_schema_change(struct ireq *iq)
         reload_db_tran(s->db, NULL);
         sc_del_unused_files(s->db);
     }
-    broadcast_sc_end(sc_seed);
+    broadcast_sc_end(s->table, iq->sc_seed);
     return 0;
 }

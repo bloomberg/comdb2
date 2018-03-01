@@ -4505,8 +4505,8 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
     }
     get_current_lsn(clnt);
 
-    clnt->ddl_tables = hash_init_str(0);
-    clnt->dml_tables = hash_init_str(0);
+    clnt->ddl_tables = hash_init_strcase(0);
+    clnt->dml_tables = hash_init_strcase(0);
 
     if (pBt->is_temporary) {
         goto done;

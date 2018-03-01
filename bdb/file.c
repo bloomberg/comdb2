@@ -3240,8 +3240,10 @@ static int get_lowfilenum_sanclist(bdb_state_type *bdb_state)
         if (bdb_state->seqnum_info->filenum[nodeix(nodes[i])] < lowfilenum) {
             lowfilenum = bdb_state->seqnum_info->filenum[nodeix(nodes[i])];
             if (bdb_state->attr->debug_log_deletion) {
-                logmsg(LOGMSG_USER, "%s set lowfilenum to %d for machine "
-                        "%s\n", __func__, nodes[i]);
+                logmsg(LOGMSG_USER,
+                       "%s set lowfilenum to %d for machine "
+                       "%s\n",
+                       __func__, lowfilenum, nodes[i]);
             }
         }
     }

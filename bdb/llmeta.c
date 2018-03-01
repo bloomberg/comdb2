@@ -89,7 +89,7 @@ typedef enum {
     LLMETA_LOGICAL_LSN_LWM = 13
 
     ,
-    LLMETA_DISABLE_PLAN_GENID = 14
+    LLMETA_SC_SEEDS = 14
 
     ,
     LLMETA_TABLE_USER_READ = 15 /* key  = 15 + TABLENAME[32] + USERNAME[16]
@@ -139,7 +139,7 @@ typedef enum {
     ,
     LLMETA_TABLE_VERSION =
         33 /* reliable table version, updated by any schema change
-     */
+            */
     ,
     LLMETA_TABLE_PARAMETERS =
         34 /* store various parameter values for tables stored
@@ -4403,13 +4403,13 @@ done:
     return rc;
 }
 
-int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long *genid, unsigned int *host,
-                               int *bdberr)
+int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+                    const char *table, unsigned long long *genid,
+                    unsigned int *host, int *bdberr)
 {
     int rc;
     char key[LLMETA_IXLEN] = {0};
-    struct llmeta_file_type_key file_type_key;
+    struct llmeta_schema_change_type schema_change;
     int fndlen;
     uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
     int data_sz = sizeof(unsigned long long) + sizeof(unsigned int);
@@ -4417,11 +4417,16 @@ int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
 
     *bdberr = BDBERR_NOERROR;
 
-    file_type_key.file_type = LLMETA_DISABLE_PLAN_GENID;
+    schema_change.file_type = LLMETA_SC_SEEDS;
+    /*copy the table name and check its length so that we have a clean key*/
+    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
-    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
-        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
-                __func__);
+    if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
+               __func__);
+        logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
+               table);
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
@@ -4435,14 +4440,14 @@ int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
     return rc;
 }
 
-int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long genid, unsigned int host,
-                               int *bdberr)
+int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+                    const char *table, unsigned long long genid,
+                    unsigned int host, int *bdberr)
 {
     int rc;
     int started_our_own_transaction = 0;
     char key[LLMETA_IXLEN] = {0};
-    struct llmeta_file_type_key file_type_key;
+    struct llmeta_schema_change_type schema_change;
     uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
 
     int data_sz = sizeof(unsigned long long) + sizeof(unsigned int);
@@ -4461,17 +4466,22 @@ int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
         }
     }
 
-    file_type_key.file_type = LLMETA_DISABLE_PLAN_GENID;
+    schema_change.file_type = LLMETA_SC_SEEDS;
+    /*copy the table name and check its length so that we have a clean key*/
+    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
-    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
-        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
-                __func__);
+    if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
+               __func__);
+        logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
+               table);
         *bdberr = BDBERR_BADARGS;
         rc = -1;
         goto done;
     }
 
-    rc = bdb_get_disable_plan_genid(bdb_state, tran, &genid, &host, bdberr);
+    rc = bdb_get_sc_seed(bdb_state, tran, table, &genid, &host, bdberr);
     if (rc) { //not found, just add -- should refactor
         if (*bdberr == BDBERR_FETCH_DTA) {
             rc = bdb_lite_add(llmeta_bdb_state, tran, data_buf, data_sz, key,
@@ -4500,13 +4510,13 @@ done:
     return rc;
 }
 
-int bdb_delete_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                                  int *bdberr)
+int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+                       const char *table, int *bdberr)
 {
     int rc;
     int started_our_own_transaction = 0;
     char key[LLMETA_IXLEN] = {0};
-    struct llmeta_file_type_key file_type_key;
+    struct llmeta_schema_change_type schema_change;
     uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
 
     *bdberr = BDBERR_NOERROR;
@@ -4518,10 +4528,16 @@ int bdb_delete_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
             return -1;
     }
 
-    file_type_key.file_type = LLMETA_DISABLE_PLAN_GENID;
-    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
-        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
-                __func__);
+    schema_change.file_type = LLMETA_SC_SEEDS;
+    /*copy the table name and check its length so that we have a clean key*/
+    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    schema_change.dbname_len = strlen(schema_change.dbname) + 1;
+
+    if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
+               __func__);
+        logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
+               table);
         *bdberr = BDBERR_BADARGS;
         rc = -1;
         goto done;
@@ -5782,8 +5798,8 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     case LLMETA_LOGICAL_LSN_LWM:
         logmsg(LOGMSG_USER, "LLMETA_LOGICAL_LSN_LWM\n");
         break;
-    case LLMETA_DISABLE_PLAN_GENID:
-        logmsg(LOGMSG_USER, "LLMETA_DISABLE_PLAN_GENID\n");
+    case LLMETA_SC_SEEDS:
+        logmsg(LOGMSG_USER, "LLMETA_SC_SEEDS\n");
         break;
     case LLMETA_TABLE_USER_READ:
     case LLMETA_TABLE_USER_WRITE: {

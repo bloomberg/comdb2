@@ -2932,6 +2932,7 @@ static int new_master_callback(void *bdb_handle, char *host)
             logmsg(LOGMSG_WARN, "NEW MASTER NODE %s\n", host);
         }
         /*bdb_set_timeout(bdb_handle, 0, &bdberr);*/
+        sc_set_running(NULL, 0, 0, NULL, 0);
         osql_repository_cancelall();
     }
 
@@ -3315,7 +3316,8 @@ static void net_close_all_dbs(void *hndl, void *uptr, char *fromnode,
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 
-struct start_sc {
+struct net_sc_msg {
+    char table[MAXTABLELEN + 1];
     uint64_t seed;
     int64_t time;
     char host[1];
@@ -3325,13 +3327,14 @@ static void net_start_sc(void *hndl, void *uptr, char *fromnode, int usertype,
                          void *dtap, int dtalen, uint8_t is_tcp)
 {
     int rc;
-    struct start_sc *sc;
+    struct net_sc_msg *sc;
 
-    sc = (struct start_sc *)dtap;
+    sc = (struct net_sc_msg *)dtap;
+    sc->table[sizeof(sc->table) - 1] = '\0';
     sc->seed = flibc_ntohll(sc->seed);
     sc->time = flibc_ntohll(sc->time);
 
-    rc = sc_set_running(1, sc->seed, sc->host, sc->time);
+    rc = sc_set_running(sc->table, 1, sc->seed, sc->host, sc->time);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 
@@ -3339,13 +3342,13 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
                         void *dtap, int dtalen, uint8_t is_tcp)
 {
     int rc;
-    uint64_t *seed;
-    if (dtalen != sizeof(uint64_t)) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-    seed = dtap;
-    rc = sc_set_running(0, *seed, NULL, 0);
+    struct net_sc_msg *sc;
+    sc = (struct net_sc_msg *)dtap;
+
+    sc->table[sizeof(sc->table) - 1] = '\0';
+    sc->seed = flibc_ntohll(sc->seed);
+
+    rc = sc_set_running(sc->table, 0, sc->seed, NULL, 0);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 
@@ -3610,25 +3613,40 @@ int broadcast_close_all_dbs(void)
     return send_to_all_nodes(NULL, 0, NET_CLOSE_ALL_DBS, MSGWAITTIME);
 }
 
-int broadcast_sc_end(uint64_t seed)
+int broadcast_sc_end(const char *table, uint64_t seed)
 {
-    return send_to_all_nodes(&seed, sizeof(seed), NET_STOP_SC, SCWAITTIME);
+    struct net_sc_msg *sc;
+    int len;
+    len = offsetof(struct net_sc_msg, host) + 1;
+
+    sc = alloca(len);
+    if (table)
+        strncpy0(sc->table, table, sizeof(sc->table));
+    else
+        sc->table[0] = '\0';
+    sc->seed = flibc_htonll(seed);
+
+    return send_to_all_nodes(sc, len, NET_STOP_SC, SCWAITTIME);
 }
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
-int broadcast_sc_start(uint64_t seed, uint32_t host, time_t t)
+int broadcast_sc_start(const char *table, uint64_t seed, uint32_t host,
+                       time_t t)
 {
-    struct start_sc *sc;
+    struct net_sc_msg *sc;
     int len;
     const char *from = get_hostname_with_crc32(thedb->bdb_env, host);
     if (from == NULL) {
         from = "unknown";
     }
 
-    len = offsetof(struct start_sc, host) + strlen(from) + 1;
-
+    len = offsetof(struct net_sc_msg, host) + strlen(from) + 1;
     sc = alloca(len);
+    if (table)
+        strncpy0(sc->table, table, sizeof(sc->table));
+    else
+        sc->table[0] = '\0';
     sc->seed = flibc_htonll(seed);
     sc->time = flibc_htonll(t);
     strcpy(sc->host, intern(from));

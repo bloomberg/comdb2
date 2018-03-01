@@ -582,6 +582,9 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
             return -5;
         }
 
+        entry->last_checked = entry->last_updated =
+            comdb2_time_epoch(); /* reset these time */
+
         /* several conditions cause us to break out */
         while (entry->done != 1 && !entry->master_changed &&
                ((max_wait > 0 && cnt < max_wait) || max_wait < 0)) {
@@ -646,9 +649,10 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
             if ((poke_timeout > 0) &&
                 (entry->last_updated + poke_timeout < now)) {
                 /* timeout the request */
-                logmsg(LOGMSG_ERROR, 
-                        "Master %s failed to acknowledge session %llu %s\n",
-                        entry->master, entry->rqid, comdb2uuidstr(entry->uuid, us));
+                logmsg(LOGMSG_ERROR,
+                       "Master %s failed to acknowledge session %llu %s\n",
+                       entry->master, entry->rqid,
+                       comdb2uuidstr(entry->uuid, us));
                 entry->done = 1;
                 xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
                 snprintf(entry->err.errstr, sizeof(entry->err.errstr),

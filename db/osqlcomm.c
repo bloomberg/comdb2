@@ -6429,6 +6429,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
             sc->resume = 1;
 
         iq->sc = sc;
+        sc->iq = iq;
         if (sc->db == NULL) {
             sc->db = get_dbtable_by_name(sc->table);
         }
