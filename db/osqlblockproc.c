@@ -694,26 +694,23 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         assert(tablename); //table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
             struct dbtable *tbl = get_dbtable_by_name(tablename);
-            if(tbl) iq->usedb = tbl;
-            /*
-            if (!iq->usedb) {
-                no_such_tbl_error(tablename, rqid, host);               
+            if(tbl) {
+                iq->usedb = tbl;
+            } else if (!iq->usedb) {
+                no_such_tbl_error(tablename, rqid, host);
                 return -1;
             }
-            */
             printf("AZ: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:0));
         }
     }
-    /*
     if (!iq->usedb) { 
-        printf("AZ: usedb not set for type=%d, tablename='%s'\n", type, tablename);
+        printf("AZ: usedb not set for type=%d\n", type);
         if (type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE || 
             type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS) {
-            no_such_tbl_error(tablename, rqid, host);               
+            no_such_tbl_error("error", rqid, host);
             return -1;
         }
     }
-    */
 
 #if 0
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
