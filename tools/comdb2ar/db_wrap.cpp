@@ -120,14 +120,6 @@ void verify_checksum(uint8_t *page, size_t pagesize, bool crypto, bool swapped,
 // Also call storeIncrData to store the LSN + Checksum in a file to be
 // compared against
 {
-    if (pagesize <= 4096) {
-        *verify_bool = true;
-        uint32_t calc = IS_CRC32C(page) ? crc32c(page, pagesize)
-                                        : __ham_func4(page, pagesize);
-        *verify_cksum = calc;
-        return;
-    }
-
     PAGE *pagep = (PAGE *)page;
     uint8_t *chksum_ptr = page;
 

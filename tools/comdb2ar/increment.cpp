@@ -174,7 +174,7 @@ bool compare_checksum(
         size_t original_size = new_st.st_size;
         off_t bytesleft = new_st.st_size;
         int64_t filesize = 0;
-        uint64_t pgno = -1;
+        int64_t pgno = -1;
 
         while(bytesleft >= pagesize) {
             ssize_t new_bytesread = read(new_fd, &new_pagebuf[0], pagesize);
