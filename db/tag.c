@@ -28,6 +28,7 @@
 #include <float.h>
 #include <poll.h>
 #include <flibc.h>
+#include <inttypes.h>
 
 #include <str0.h>
 #include <epochlib.h>
@@ -5720,17 +5721,23 @@ int getidxnumbyname(const char *dbname, const char *keytag, int *ixnum)
 static char *get_unique_tag(void)
 {
     struct thread_info *thd;
-    char tag[MAXTAGLEN];
+    char *tag;
 
     thd = pthread_getspecific(unique_tag_key);
     if (thd == NULL)
         return NULL;
 
-    snprintf(tag, sizeof(tag), ".TEMP_%d_%lld", (int)pthread_self(),
-             thd->uniquetag++);
+    tag = malloc(MAXTAGLEN);
+    if (tag == NULL)
+        return NULL;
 
-    /*fprintf(stderr, "get_unique_tag returning <%s>\n", tag);*/
-    return strdup(tag);
+    /* Worst case: sizeof ".TEMP_-9223372036854775808_-9223372036854775808" =
+       48.
+       MAXTAGLEN is 64 so we're good. */
+    snprintf(tag, sizeof(tag), ".TEMP_%" PRIdPTR "_%lld",
+             (intptr_t)pthread_self(), thd->uniquetag++);
+
+    return tag;
 }
 
 static int csc2_type_to_client_type(int csc2_type)
