@@ -688,20 +688,23 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     int type = 0;
     buf_get(&type, sizeof(type), rpl, rpl + rplen);
     if (type == OSQL_SCHEMACHANGE) iq->tranddl = 1;
-    const char *tablename = NULL;
     if (type == OSQL_USEDB) {
         const char *get_tablename_from_rpl(const char *rpl);
-        tablename = get_tablename_from_rpl(rpl);
+        const char *tablename = get_tablename_from_rpl(rpl);
         assert(tablename); //table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
-            iq->usedb = get_dbtable_by_name(tablename);
+            struct dbtable *tbl = get_dbtable_by_name(tablename);
+            if(tbl) iq->usedb = tbl;
+            /*
             if (!iq->usedb) {
                 no_such_tbl_error(tablename, rqid, host);               
                 return -1;
             }
-            printf("AZ: tablename='%s' idx=%d\n", tablename, iq->usedb->dbs_idx);
+            */
+            printf("AZ: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:0));
         }
     }
+    /*
     if (!iq->usedb) { 
         printf("AZ: usedb not set for type=%d, tablename='%s'\n", type, tablename);
         if (type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE || 
@@ -710,6 +713,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             return -1;
         }
     }
+    */
 
 #if 0
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
