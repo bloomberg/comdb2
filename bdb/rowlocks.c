@@ -98,9 +98,6 @@ static int undo_upd_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
 
 extern u_int32_t gbl_rep_lockid;
 
-/* Global debug-rowlocks flag */
-extern int gbl_debug_rowlocks;
-
 static int print_log_records(bdb_state_type *bdb_state, DB_LSN *lsn)
 {
     DB_LOGC *cur = NULL;

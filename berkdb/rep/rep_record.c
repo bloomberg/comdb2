@@ -69,7 +69,6 @@ extern int gbl_rowlocks;
 extern int gbl_optimize_truncate_repdb;
 extern int gbl_early;
 extern int gbl_reallyearly;
-extern int gbl_rep_collect_txn_time;
 extern int gbl_rep_process_txn_time;
 int gbl_rep_badgen_trace;
 

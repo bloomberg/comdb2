@@ -682,9 +682,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 ii=toknum(tok,ltok);
 
             bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEDTA, ii);
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEFREEREC, ii);
             bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEIX, ii);
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEBLOB, ii);
 #endif
         } else if (tokcmp(tok, ltok, "dta") == 0) {
             tok = segtok(line, len, &st, &ltok);
