@@ -287,14 +287,6 @@ ssize_t serialise_incr_file(
             it = pages.begin();
             it != pages.end();
             ++it){
-        std::cerr << "FILE " << filepath << " PAGE " << *it << std::endl;
-    }
-
-
-    for(std::vector<uint32_t>::iterator
-            it = pages.begin();
-            it != pages.end();
-            ++it){
 tryagain:
         ifs.seekg(pagesize * *it, ifs.beg);
         ifs.read((char *)&pagebuf[0], pagesize);
