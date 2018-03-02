@@ -568,7 +568,6 @@ int do_schema_change(struct schema_change_type *s)
     pthread_mutex_lock(&s->mtx);
     rc = do_schema_change_tran(arg);
     free(iq);
-    free(arg);
     return rc;
 }
 
