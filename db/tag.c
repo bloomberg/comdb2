@@ -5734,7 +5734,7 @@ static char *get_unique_tag(void)
     /* Worst case: sizeof ".TEMP_-9223372036854775808_-9223372036854775808" =
        48.
        MAXTAGLEN is 64 so we're good. */
-    snprintf(tag, sizeof(tag), ".TEMP_%" PRIdPTR "_%lld",
+    snprintf(tag, MAXTAGLEN, ".TEMP_%" PRIdPTR "_%lld",
              (intptr_t)pthread_self(), thd->uniquetag++);
 
     return tag;
