@@ -19,6 +19,11 @@ failexit()
 
 # args
 dbnm=$1
+    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
+insert into t1 values (11, x'abcd')
+insert into t1 values (12, x'abcd')
+EOF
+
 
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 for node in $cluster ; do
@@ -56,7 +61,7 @@ f2 &
 
 wait
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't1',* from t1 order by i" > content.out
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't1',* from t1 where i < 10 order by i" > content.out
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't2',* from t2 order by i" >> content.out
 
 echo "t1	1	x'abcd'" > content.expected
@@ -91,5 +96,68 @@ cnt=`grep deadlock_cycle $logflunziped | head -1 | sed 's/}/}\n/' | grep -c cnon
 if [ $cnt != 2 ]; then
     failexit 'expected two cnonces reported part of deadlock_cycle in eventslog'
 fi
+
+
+f3() {
+    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
+begin
+update t1 set i=i+100 where i=11
+update t1 set i=i+100 where i=12
+commit
+EOF
+}
+
+f4() {
+    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
+begin
+update t1 set i=i+100 where i=12
+update t1 set i=i+100 where i=11
+commit
+EOF
+}
+
+
+#run two transactions that will get in a deadlock
+#will see DEADLOCK-CYCLE: in db log
+f3 &
+f4 &
+
+wait
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't1',* from t1 where i >= 10 order by i" > content.out
+
+echo "t1	111	x'abcd'" > content.expected
+echo "t1	112	x'abcd'" >> content.expected
+
+if ! diff content.expected content.out ; then 
+    failexit "content not what it is supposed to be"
+fi
+
+master=`getmaster`
+logfl=`cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('reql stat')" | grep "Eventlog enabled" | cut -f2 -d ':'`
+if [ "x$logfl" == "x" ]; then
+    cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('reql stat')"
+    failexit "cant find events logfile in reql stat on $master"
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('reql events roll')"
+
+sleep 4
+
+if [ $master != `hostname` ]; then
+    scp $master:$logfl $logfl
+fi
+
+logflunziped=${logfl}.unzipped 
+zcat $logfl > $logflunziped
+
+cnt=`grep deadlock_cycle $logflunziped | head -1 | sed 's/}/}\n/' | grep -c cnonce`
+
+if [ $cnt != 2 ]; then
+    failexit 'expected two cnonces reported part of deadlock_cycle in eventslog'
+fi
+
+
+
 
 echo "Testcase passed."

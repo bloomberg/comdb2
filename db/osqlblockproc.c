@@ -109,7 +109,8 @@ struct blocksql_tran {
 typedef struct oplog_key {
     unsigned long long rqid;
     uuid_t uuid;
-    unsigned long long tbl_idx;
+    unsigned int tbl_idx;
+    unsigned int stripe;
     unsigned long long seq;
 } oplog_key_t;
 
@@ -164,6 +165,14 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
     }
 
     if (k1->tbl_idx > k2->tbl_idx) {
+        return 1;
+    }
+
+    if (k1->stripe < k2->stripe) {
+        return -1;
+    }
+
+    if (k1->stripe > k2->stripe) {
         return 1;
     }
 
@@ -716,6 +725,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
+    key.tbl_idx = INT_MAX;
+    key.stripe = INT_MAX;
 
     extern int gbl_reorder_blkseq_no_deadlock;
     if (gbl_reorder_blkseq_no_deadlock) {
@@ -723,8 +734,20 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             key.tbl_idx = INT_MAX;
         else if (iq->usedb)
             key.tbl_idx = iq->usedb->dbs_idx;
-        else
-            key.tbl_idx = INT_MAX;
+
+        if (type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
+            type == OSQL_INSREC || type == OSQL_UPDREC || type == OSQL_DELREC) {
+            long long int genid;
+            const char *p_buf = rpl;
+            enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
+            //const char *p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
+            const char *p_buf_end = (uint8_t *)p_buf + OSQLCOMM_UUID_RPL_TYPE_LEN;
+            buf_no_net_get(&genid, sizeof(genid), p_buf, p_buf_end);
+            int stripe = get_dtafile_from_genid(genid);
+            if (stripe >= 0) 
+                key.stripe = stripe;
+            printf("AZ: genid %lld, stripe=%d\n", genid, stripe);
+        }
     }
     key.rqid = rqid;
     key.seq = seq;
@@ -782,8 +805,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
     char mus[37];
     comdb2uuidstr(key.uuid, mus);
-    printf("AZ:%s: rqid=%llx uuid=%s Saving op seq=%d, type=%d(%s), tbl_idx=%d\n", 
-            __func__, key.rqid, mus, key.seq, type, osql_reqtype_str(type), key.tbl_idx);
+    printf("AZ:%s: rqid=%llx uuid=%s Saving op seq=%d, type=%d(%s), tbl_idx=%d, stripe=%d\n", 
+            __func__, key.rqid, mus, key.seq, type, osql_reqtype_str(type), key.tbl_idx, key.stripe);
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
@@ -1182,6 +1205,7 @@ static int process_this_session(
 
     key->rqid = rqid;
     key->tbl_idx = 0;
+    key->stripe = 0;
     key->seq = 0;
     osql_sess_getuuid(sess, key->uuid);
     osql_sess_getuuid(sess, uuid);
