@@ -375,6 +375,12 @@ int osql_bplog_schemachange(struct ireq *iq)
     struct block_err err;
     struct schema_change_type *sc;
 
+    iq->sc_pending = NULL;
+    iq->sc_seed = 0;
+    iq->sc_host = 0;
+    iq->sc_locked = 0;
+    iq->sc_should_abort = 0;
+
     rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese.osqllog,
                        osql_process_schemachange);
 

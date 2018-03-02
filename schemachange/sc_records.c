@@ -424,7 +424,8 @@ static int convert_record(struct convert_record_data *data)
                     data->stripe, gbl_sc_thd_failed - 1);
         return -1;
     }
-    if (gbl_sc_abort) {
+    if (gbl_sc_abort || data->from->sc_abort ||
+        (data->s->iq && data->s->iq->sc_should_abort)) {
         sc_errf(data->s, "Schema change aborted\n");
         return -1;
     }
@@ -843,7 +844,8 @@ static int convert_record(struct convert_record_data *data)
     }
 
 err: /*if (is_schema_change_doomed())*/
-    if (gbl_sc_abort) {
+    if (gbl_sc_abort || data->from->sc_abort ||
+        (data->s->iq && data->s->iq->sc_should_abort)) {
         /*
         rc = ERR_CONSTR;
         break;
@@ -1066,7 +1068,8 @@ cleanup:
                   "stripe %d\n",
                   data->nrecs, data->totnretries, data->stripe);
     } else {
-        if (gbl_sc_abort) {
+        if (gbl_sc_abort || data->from->sc_abort ||
+            (data->s->iq && data->s->iq->sc_should_abort)) {
             sc_errf(data->s,
                     "conversion aborted after %lld records, while working on"
                     " stripe %d with %d retries\n",
@@ -1309,7 +1312,8 @@ static int upgrade_records(struct convert_record_data *data)
     db_seqnum_type ss;
 
     // if sc has beed aborted, return
-    if (gbl_sc_abort) {
+    if (gbl_sc_abort || data->from->sc_abort ||
+        (data->s->iq && data->s->iq->sc_should_abort)) {
         sc_errf(data->s, "Schema change aborted\n");
         return -1;
     }
@@ -1570,7 +1574,8 @@ cleanup:
                   "successfully upgraded %lld records. skipped %lld records.\n",
                   data->nrecs, data->nrecskip);
     } else {
-        if (gbl_sc_abort) {
+        if (gbl_sc_abort || data->from->sc_abort ||
+            (data->s->iq && data->s->iq->sc_should_abort)) {
             sc_errf(data->s, "conversion aborted after %lld records upgraded "
                              "and %lld records skipped, "
                              "while working on stripe %d\n",

@@ -583,12 +583,13 @@ void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
     if (!currdb || !currdb->sc_to) return;
 
     /* if (is_schema_change_doomed()) */
-    if (gbl_sc_abort) return;
+    if (gbl_sc_abort || currdb->sc_abort || iq->sc_should_abort)
+        return;
 
     int rebuild = currdb->sc_to->plan && currdb->sc_to->plan->dta_plan;
     if (verify_record_constraint(iq, currdb->sc_to, trans, od_dta, ins_keys,
                                  NULL, 0, ".ONDISK", rebuild, 1) != 0) {
-        gbl_sc_abort = 1;
+        currdb->sc_abort = 1;
         MEMORY_SYNC;
     }
 }

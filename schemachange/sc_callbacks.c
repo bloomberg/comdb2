@@ -154,7 +154,7 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
         /* If this goes wrong then abort the schema change. */
         logmsg(LOGMSG_ERROR,
                "Aborting schema change due to unexpected error\n");
-        gbl_sc_abort = 1;
+        usedb->sc_abort = 1;
         MEMORY_SYNC;
     } else if (rc == 0) {
         (iq->sc_deletes)++;
@@ -276,7 +276,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
                                 ".NEW..ONDISK", new_dta, &reason, add_idx_blobs,
                                 add_idx_blobs ? MAXBLOBS : 0, 1);
     if (rc) {
-        gbl_sc_abort = 1;
+        usedb->sc_abort = 1;
         MEMORY_SYNC;
         free(new_dta);
         free_blob_status_data(oldblobs);
@@ -305,7 +305,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
                rc, newgenid);
         logmsg(LOGMSG_ERROR,
                "Aborting schema change due to unexpected error\n");
-        gbl_sc_abort = 1;
+        iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
     }
     if (iq->debug) {
@@ -346,7 +346,7 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
                                 (const char *)od_dta, ".NEW..ONDISK", new_dta,
                                 &reason, blobs, maxblobs, 1);
     if (rc) {
-        gbl_sc_abort = 1;
+        usedb->sc_abort = 1;
         MEMORY_SYNC;
         free(new_dta);
         return rc;
@@ -371,7 +371,7 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
             logmsg(LOGMSG_ERROR, "Aborting schema change due to constraint "
                                  "violation in new schema\n");
 
-            gbl_sc_abort = 1;
+            usedb->sc_abort = 1;
             MEMORY_SYNC;
             free(new_dta);
             return 0;
@@ -406,7 +406,7 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
                genid);
         logmsg(LOGMSG_ERROR,
                "Aborting schema change due to unexpected error\n");
-        gbl_sc_abort = 1;
+        iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
     }
 
@@ -457,7 +457,7 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
                __func__, rc, oldgenid, newgenid);
         logmsg(LOGMSG_ERROR,
                "Aborting schema change due to unexpected error\n");
-        gbl_sc_abort = 1;
+        iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
     } else if (rc == 0) {
         (iq->sc_updates)++;

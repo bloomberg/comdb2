@@ -835,6 +835,7 @@ struct dbtable {
 
     struct dbtable *sc_from; /* point to the source db, replace global sc_from */
     struct dbtable *sc_to; /* point to the new db, replace global sc_to */
+    int sc_abort;
     unsigned long long *sc_genids; /* schemachange stripe pointers */
 
     unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
@@ -1453,6 +1454,7 @@ struct ireq {
     bool sc_locked : 1;
     bool have_snap_info : 1;
     bool tranddl : 1;
+    bool sc_should_abort : 1;
 
     int written_row_count;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */

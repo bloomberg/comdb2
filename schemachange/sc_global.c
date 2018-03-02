@@ -296,6 +296,7 @@ void live_sc_off(struct dbtable *db)
     pthread_rwlock_wrlock(&sc_live_rwlock);
     db->sc_to = NULL;
     db->sc_from = NULL;
+    db->sc_abort = 0;
     pthread_rwlock_unlock(&sc_live_rwlock);
 }
 

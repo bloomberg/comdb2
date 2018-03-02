@@ -519,11 +519,11 @@ int do_schema_change_tran(sc_arg_t *arg)
         }
     }
     reset_sc_thread(oldtype, s);
-    if (iq->is_fake)
-        free(iq);
-    if (rc && rc != SC_COMMIT_PENDING)
+    if (rc && rc != SC_COMMIT_PENDING) {
         logmsg(LOGMSG_ERROR, ">>> SCHEMA CHANGE ERROR: TABLE %s, RC %d\n",
                s->table, rc);
+        iq->sc_should_abort = 1;
+    }
     s->sc_rc = rc;
     if (!s->nothrevent) {
         pthread_mutex_lock(&sc_async_mtx);
@@ -547,6 +547,7 @@ int do_schema_change_tran(sc_arg_t *arg)
 
 int do_schema_change(struct schema_change_type *s)
 {
+    int rc = 0;
     struct ireq *iq = NULL;
     iq = (struct ireq *)calloc(1, sizeof(*iq));
     if (iq == NULL) {
@@ -565,7 +566,10 @@ int do_schema_change(struct schema_change_type *s)
     arg->sc = s;
     arg->trans = NULL;
     pthread_mutex_lock(&s->mtx);
-    return do_schema_change_tran(arg);
+    rc = do_schema_change_tran(arg);
+    free(iq);
+    free(arg);
+    return rc;
 }
 
 int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
