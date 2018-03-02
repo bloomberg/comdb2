@@ -362,42 +362,31 @@ public class Comdb2Handle extends AbstractConnection {
         //if (!logger.isLoggable(level))
         //    return;
 
+        Level curlevel = logger.getLevel();
         String mach = "(not-connected)";
         if (dbHostConnected >= 0) {
             mach = myDbHosts.get(dbHostConnected);
         }
 
         if (debug) {
-            // Either getStackTrace or getMethodName is leaking memory: we blow up
-            // in the read-test .. don't call them for now
-            /*
-            String methodName = Thread.currentThread().getStackTrace()[2].getMethodName();
-            int methodLine = Thread.currentThread().getStackTrace()[2].getLineNumber();
-            String callingMethodName = Thread.currentThread().getStackTrace()[3].getMethodName();
-            int callingMethodLine = Thread.currentThread().getStackTrace()[3].getLineNumber();
-            System.out.println("td=" + Thread.currentThread().getId() + " " + callingMethodName + ":" +
-                    callingMethodLine + "->" + methodName + ":" + methodLine + " mach=" + mach +
-                    " snapshotFile=" + snapshotFile + " snapshotOffset=" + snapshotOffset + " cnonce="
-                    + stringCnonce + ": " + str);
-                    */
-            System.out.println("td=" + Thread.currentThread().getId() + " mach=" + mach + 
-                    " snapshotFile=" + snapshotFile + " snapshotOffset=" + snapshotOffset + 
-                    " cnonce=" + stringCnonce + ": " + str);
+            logger.setLevel(Level.ALL);
+            level = Level.INFO;
+        }
 
-
-        } else {
-            String message = String.format(str, params);
-            Object[] messageParams = new Object[] {
-                Thread.currentThread().getId(),
+        String message = String.format(str, params);
+        Object[] messageParams = new Object[] {
+            Thread.currentThread().getId(),
                 mach,
                 snapshotFile,
                 snapshotOffset,
                 stringCnonce,
                 message
-            };
-            logger.log(level,
-                       "td={0} mach={1} snapshotFile={2} snapshotOffset={3} cnonce={4}: {5}",
-                       messageParams);
+        };
+        logger.log(level,
+                "td={0} mach={1} snapshotFile={2} snapshotOffset={3} cnonce={4}: {5}",
+                messageParams);
+        if (debug) {
+            logger.setLevel(curlevel);
         }
     }
 
@@ -1978,8 +1967,30 @@ readloop:
         return firstResp == null ? -1 : firstResp.value.get(column).type;
     }
 
+
+    private final static char[] hexArray = "0123456789ABCDEF".toCharArray();
+
+    private static String bytesToHex(byte[] bytes) {
+        char[] hexChars = new char[bytes.length * 2];
+        for ( int j = 0; j < bytes.length; j++ ) {
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = hexArray[v >>> 4];
+            hexChars[j * 2 + 1] = hexArray[v & 0x0F];
+        }
+        return new String(hexChars);
+    }
+
     @Override
     public byte[] columnValue(int column) {
+        if (debug) {
+            if (lastResp == null) {
+                tdlog(Level.FINEST, "columnValue col %d returning null on null lastResp", column);
+            } else {
+                byte[] bytes = lastResp.value.get(column).value;
+                String str = bytesToHex(bytes);
+                tdlog(Level.FINEST, "columnValue col %d returning %s", column, str);
+            }
+        }
         return lastResp == null ? null : lastResp.value.get(column).value;
     }
 
