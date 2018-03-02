@@ -7,6 +7,7 @@ if [[ "$(arch)" == "armv7l" ]] ; then
 fi
 SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 
+export HOSTNAME=${HOSTNAME:-`hostname`}
 export CLEANUPDBDIR=${CLEANUPDBDIR:-1}
 export PATH="${TESTDIR}/:${PATH}"
 export pmux_port=${PMUXPORT:-5105}  # assign to 5105 if it was not set as a make parameter

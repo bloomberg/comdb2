@@ -48,7 +48,7 @@ function build_pidfilelist() {
 
 function core_cluster {
     for node in $CLUSTER; do
-        if [ $node != `hostname` ] ; then
+        if [ "$node" != "$HOSTNAME" ] ; then
             ssh -o StrictHostKeyChecking=no $node "kill -6 \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
         else
             kill -6 $(cat ${TMPDIR}/${DBNAME}.$node.pid)
@@ -58,13 +58,13 @@ function core_cluster {
 
 function cleanup_cluster {    
     for node in $CLUSTER; do
-        if [ $node != `hostname` ] ; then
+        if [ "$node" != "$HOSTNAME" ] ; then
             ssh -o StrictHostKeyChecking=no $node "${deregister_db}" < /dev/null
         fi
         if [ "x$DBDIR" == "x" ] ; then 
             continue
         fi
-        if [ $node == `hostname` ]  ; then
+        if [ "$node" == "$HOSTNAME" ]  ; then
             continue;
         fi
 
@@ -76,6 +76,48 @@ function cleanup_cluster {
         fi
     done
 }
+
+check_db_pid_running_local() {
+    dbpid=$(cat ${TMPDIR}/$DBNAME.pid)
+    if kill -0 $dbpid &> /dev/null ; then 
+        echo "DB process is running"
+        return
+    fi
+    echo "DB process is not running"
+    dbport=`grep "\[ERROR\] net_listen: FAILED TO BIND to port" $TESTDIR/logs/${DBNAME}.db | grep -Po "port [0-9]*" | cut -f2 -d" " `
+    if [ "x$dbport" != "x" ] ; then
+        echo "checking what is running on localhost:$dbport"
+        lsof | grep $dbport
+    fi
+}
+
+check_db_pid_running_node() {
+    node=$1
+    if ssh -o StrictHostKeyChecking=no $node "[ -f ${TMPDIR}/${DBNAME}.${node}.pid ] && kill -0 \$(cat ${TMPDIR}/${DBNAME}.${node}.pid)" </dev/null ; then
+        echo "DB process is running"
+        return
+    fi
+
+    echo "DB process is not running"
+    dbport=`grep "\[ERROR\] net_listen: FAILED TO BIND to port" $TESTDIR/logs/${DBNAME}.${node}.db | grep -Po "port [0-9]*" | cut -f2 -d" " `
+    if [ "x$dbport" != "x" ] ; then
+        echo "checking what is running on ${node}:$dbport"
+        ssh -o StrictHostKeyChecking=no $node "lsof | grep $dbport" </dev/null
+    fi
+}
+
+if [[ -z "$CLUSTER" ]]; then
+    check_db_pid_running_local 
+else
+    for node in $CLUSTER; do
+        if [ "$node" == "$HOSTNAME" ] ; then 
+            check_db_pid_running_local
+        else
+            check_db_pid_running_node $node
+        fi
+    done
+fi
+
 
 echo deregistering $DBNAME from pmux:$pmux_port
 deregister_db="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )"
