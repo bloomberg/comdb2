@@ -59,7 +59,8 @@ function core_cluster {
 function cleanup_cluster {    
     for node in $CLUSTER; do
         if [ "$node" != "$HOSTNAME" ] ; then
-            ssh -o StrictHostKeyChecking=no $node "${deregister_db}" < /dev/null
+            ssh -o StrictHostKeyChecking=no $node "${query_db_port}" < /dev/null
+            ssh -o StrictHostKeyChecking=no $node "${deregister_db_port}" < /dev/null
         fi
         if [ "x$DBDIR" == "x" ] ; then 
             continue
@@ -121,7 +122,8 @@ fi
 
 
 echo deregistering $DBNAME from pmux:$pmux_port
-deregister_db="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )"
+query_db_port="exec 3<>/dev/tcp/localhost/${pmux_port}; echo get comdb2/replication/${DBNAME} >&3 "
+deregister_db_port="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )"
 
 if [[ "$NOKILL_ON_TIMEOUT" -eq 1 && "$successful" -eq "-1" ]]; then
     echo "Unsetup deferred"
@@ -164,7 +166,7 @@ else
     cleanup_cluster
 fi
 
-eval $deregister_db
+eval $deregister_db_port
 
 if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
     rm -rf ${DBDIR}
