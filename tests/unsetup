@@ -83,6 +83,7 @@ check_db_port_running_local() {
         return
     fi
     echo "checking what is running on localhost:$dbport"
+    PATH=$PATH:/usr/bin/:/usr/sbin/:/bin/:/sbin/
     lsof | grep $dbport
     opid=`fuser -n tcp $dbport`
     echo $opid
@@ -97,15 +98,16 @@ check_db_port_running_node() {
     fi
     echo "checking what is running on ${node}:$dbport"
     if [ "$node" == "$HOSTNAME" ] ; then 
+        PATH=$PATH:/usr/bin/:/usr/sbin/:/bin/:/sbin/
         lsof | grep $dbport
         opid=`fuser -n tcp $dbport`
         echo $opid
-        ps -p $opid
+        [ -n "$opid" ] && ps -p $opid
     else
-        ssh -o StrictHostKeyChecking=no $node "lsof | grep $dbport" </dev/null
-        opid=`ssh -o StrictHostKeyChecking=no $node "fuser -n tcp $dbport" </dev/null`
+        ssh -o StrictHostKeyChecking=no $node "PATH=$PATH:/usr/bin/:/usr/sbin/:/bin/:/sbin/; lsof | grep $dbport" </dev/null
+        opid=`ssh -o StrictHostKeyChecking=no $node "PATH=$PATH:/usr/bin/:/usr/sbin/:/bin/:/sbin/;fuser -n tcp $dbport" </dev/null`
         echo $opid
-        ssh -o StrictHostKeyChecking=no $node "ps -p $opid" </dev/null
+        [ -n "$opid" ] && ssh -o StrictHostKeyChecking=no $node "ps -p $opid" </dev/null
     fi
 }
 
