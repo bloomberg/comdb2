@@ -1293,7 +1293,10 @@ void write_incremental_file (
 // Write checksum/LSN information for a database file
 {
     DB_Wrap db(abspath);
-    int flags = O_RDONLY | O_LARGEFILE;
+    int flags = O_RDONLY; 
+#   ifndef __APPLE__
+    flags |= O_LARGEFILE;
+#   endif
     size_t pagesize;
     int fd;
 
