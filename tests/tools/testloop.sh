@@ -92,7 +92,9 @@ function pull_and_recompile
 while :; do 
     let i=i+1 
     print_status
-    #pull_and_recompile
+    if [[ ! -z $TESTLOOPCOMPILE ]]; then
+        pull_and_recompile
+    fi 
     echo "$(date) ITERATION $i" 
     for x in $tests 
     do print_status
