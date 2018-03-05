@@ -136,9 +136,6 @@ static void serialise_file(FileInfo& file, volatile iomap *iomap=NULL, const std
     assert(sizeof(off_t) == 8);
 
     flags = O_RDONLY;
-#   ifndef __APPLE__
-    flags |= O_LARGEFILE;
-#   endif
 
     if (file.get_type() == FileInfo::BERKDB_FILE && file.get_direct_io())
         flags |= DO_DIRECT;
@@ -1294,9 +1291,6 @@ void write_incremental_file (
 {
     DB_Wrap db(abspath);
     int flags = O_RDONLY; 
-#   ifndef __APPLE__
-    flags |= O_LARGEFILE;
-#   endif
     size_t pagesize;
     int fd;
 

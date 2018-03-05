@@ -40,9 +40,6 @@ void update_tree(const std::string& filename,
     std::vector<uint32_t> pages = file_data.second;
 
     int flags = O_RDONLY;
-#   ifndef __APPLE__
-    flags |= O_LARGEFILE;
-#   endif
     int fd = open(filename.c_str(), flags);
 
     struct stat st;
