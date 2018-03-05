@@ -263,6 +263,7 @@ check_db_port_running_local() {
     opid=`fuser -n tcp $dbport`
     echo "pid running on dbport: $opid"
     [ -n "$opid" ] && ps -p $opid
+    $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host localhost:$dbport $DBNAME 'select comdb2_dbname()' 2>&1
 }
 
 check_db_port_running_node() {
@@ -284,6 +285,7 @@ check_db_port_running_node() {
         echo "pid running on dbport: $opid"
         [ -n "$opid" ] && ssh -o StrictHostKeyChecking=no $node "ps -p $opid" </dev/null
     fi
+    $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node:$dbport $DBNAME 'select comdb2_dbname()' 2>&1
 }
 
 
