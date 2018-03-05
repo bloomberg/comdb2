@@ -258,8 +258,7 @@ check_db_port_running_local() {
         return
     fi
     echo "checking what is running on localhost:$dbport"
-    PATH=$PATH:/usr/bin/:/usr/sbin/:/bin/:/sbin/
-    lsof | grep $dbport
+    netstat -na | grep $dbport
     opid=`fuser -n tcp $dbport`
     echo "pid running on dbport: $opid"
     [ -n "$opid" ] && ps -p $opid
@@ -274,16 +273,9 @@ check_db_port_running_node() {
     fi
     echo "checking what is running on ${node}:$dbport"
     if [ "$node" == "$HOSTNAME" ] ; then 
-        PATH=$PATH:/usr/bin/:/usr/sbin/:/bin/:/sbin/
-        lsof | grep $dbport
-        opid=`fuser -n tcp $dbport`
-        echo "pid running on dbport: $opid"
-        [ -n "$opid" ] && ps -p $opid
+        netstat -na | grep $dbport
     else
-        ssh -o StrictHostKeyChecking=no $node "PATH=$PATH:/usr/bin/:/usr/sbin/:/bin/:/sbin/; lsof | grep $dbport" </dev/null
-        opid=`ssh -o StrictHostKeyChecking=no $node "PATH=$PATH:/usr/bin/:/usr/sbin/:/bin/:/sbin/;fuser -n tcp $dbport" </dev/null`
-        echo "pid running on dbport: $opid"
-        [ -n "$opid" ] && ssh -o StrictHostKeyChecking=no $node "ps -p $opid" </dev/null
+        ssh -o StrictHostKeyChecking=no $node "netstat -na | grep $dbport" </dev/null
     fi
     $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node:$dbport $DBNAME 'select comdb2_dbname()' 2>&1
 }

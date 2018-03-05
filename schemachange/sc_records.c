@@ -504,6 +504,7 @@ static int convert_record(struct convert_record_data *data)
              * a lock to the last page of the stripe.
              */
 
+            sleep(1);
             // AZ: determine what locks we hold at this time
             // bdb_dump_active_locks(data->to->handle, stdout);
             data->sc_genids[data->stripe] = -1ULL;
