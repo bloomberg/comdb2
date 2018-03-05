@@ -347,37 +347,26 @@ int comdb2ma_init(size_t init_sz, size_t max_cap)
         if (root.m == NULL)
             rc = ENOMEM;
         else {
-
-#if !defined(USE_SYS_ALLOC) && defined(PER_THREAD_MALLOC)
-#  undef M_MMAP_THRESHOLD
-#  undef M_TRIM_THRESHOLD
-#  undef M_GRANULARITY
-#  ifndef __APPLE__
-#    include <malloc.h>
-#  endif
+#ifdef PER_THREAD_MALLOC
             /* 
-             * We treat M_ARENA_MAX differently from glibc:
+             * MALLOC_ARENA_MAX:
              * 1. Each subsytem has at most MALLOC_ARENA_MAX mspaces.
              * 2. A thread is allowed to create one if there's no mspace on
              *    the freelist and # of mspaces is less than MALLOC_ARENA_MAX.
              * 3. If a thread is not allowed to create a mspace, it will
              *    be uniformly assigned one (to minimize contention).
-             * 4. glibc has only 1 arena regardless.
              */
             if ((env_mspace_max = getenv("MALLOC_ARENA_MAX")) != NULL)
                 root.mspace_max = atoi(env_mspace_max);
             /* In case MALLOC_ARENA_MAX isn't a valid numeric. */
-            if (root.mspace_max == 0)
+            if (root.mspace_max <= 0)
                 root.mspace_max = INT_MAX;
-#  ifdef M_ARENA_MAX
-            mallopt(M_ARENA_MAX, 1);
-#  endif /* M_ARENA_MAX */
+#endif
             /* Remember MALLOC_MMAP_THRESHOLD. */
             if ((env_mmap_thresh = getenv("MALLOC_MMAP_THRESHOLD_")) != NULL)
                 root.mmap_thresh = atoi(env_mmap_thresh);
             /* Be nice (finger wagging). */
             comdb2ma_nice(NICE_MODERATE);
-#endif /* !USE_SYS_ALLOC && PER_THREAD_MALLOC */
 
             mspace_setmorecore(root.m, abortable_malloc);
             mspace_setmorecore0(root.m, abortable_calloc);
@@ -559,13 +548,35 @@ int comdb2ma_stats(char *pattern, int verbose, int hr, comdb2ma_order_by ord,
     return rc;
 }
 
+/* dlmalloc.h and malloc.h both define struct mallinfo.
+   We include malloc.h in the function to avoid the conflict. */
 int comdb2ma_nice(int niceness)
 {
-    int rc;
+    int rc, narena;
     rc = mspace_mallopt(M_NICE, niceness);
     if (rc == 1) { /* 1 is success */
         root.nice = niceness;
         gbl_mem_nice = niceness;
+
+#if !defined(USE_SYS_ALLOC) && defined(PER_THREAD_MALLOC)
+#  undef M_MMAP_THRESHOLD
+#  undef M_TRIM_THRESHOLD
+#  undef M_GRANULARITY
+#  ifndef __APPLE__
+#    include <malloc.h> /* for M_ARENA_MAX */
+#  endif
+#  ifdef M_ARENA_MAX
+        /* Override glibc M_ARENA_MAX if we're told to be nicer. */
+        if (niceness >= NICE_MODERATE) {
+            if (root.mspace_max == INT_MAX)
+                mallopt(M_ARENA_MAX, 1);
+            else {
+                narena = root.mspace_max >> niceness - NICE_MODERATE;
+                mallopt(M_ARENA_MAX, narena == 0 ? 1 : narena);
+            }
+        }
+#  endif /* M_ARENA_MAX */
+#endif /* !USE_SYS_ALLOC && PER_THREAD_MALLOC */
     }
     return !rc;
 }
