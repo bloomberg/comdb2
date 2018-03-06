@@ -835,6 +835,7 @@ struct dbtable {
 
     struct dbtable *sc_from; /* point to the source db, replace global sc_from */
     struct dbtable *sc_to; /* point to the new db, replace global sc_to */
+    int sc_abort;
     unsigned long long *sc_genids; /* schemachange stripe pointers */
 
     unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
@@ -1391,6 +1392,8 @@ struct ireq {
     struct schema_change_type *sc_pending;
     double cost;
     uint64_t sc_seed;
+    uint32_t sc_host;
+
     uint64_t txnsize;
     unsigned long long last_genid;
 
@@ -1445,6 +1448,7 @@ struct ireq {
     bool sc_locked : 1;
     bool have_snap_info : 1;
     bool tranddl : 1;
+    bool sc_should_abort : 1;
 
     int written_row_count;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
@@ -2467,8 +2471,9 @@ int broadcast_close_db(char *table);
 int broadcast_close_only_db(char *table);
 int broadcast_morestripe_and_open_all_dbs(int newdtastripe, int newblobstripe);
 int broadcast_close_all_dbs(void);
-int broadcast_sc_end(uint64_t seed);
-int broadcast_sc_start(uint64_t seed, uint32_t host, time_t t);
+int broadcast_sc_end(const char *table, uint64_t seed);
+int broadcast_sc_start(const char *table, uint64_t seed, uint32_t host,
+                       time_t t);
 int broadcast_sc_ok(void);
 int broadcast_flush_all(void);
 

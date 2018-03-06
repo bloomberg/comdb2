@@ -1029,17 +1029,11 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
     int tablenamelen = strlen(tablename) + 1; /*including trailing 0*/
     int rc = 0;
 
-    char *tblname = strdup(tablename);
-    void strupper(char *c);
-    strupper(tblname);
-    if (clnt->ddl_tables && hash_find_readonly(clnt->ddl_tables, tblname)) {
-        free(tblname);
+    if (clnt->ddl_tables && hash_find_readonly(clnt->ddl_tables, tablename)) {
         return SQLITE_DDL_MISUSE;
     }
-    if (clnt->dml_tables && !hash_find_readonly(clnt->dml_tables, tblname))
-        hash_add(clnt->dml_tables, tblname);
-    else
-        free(tblname);
+    if (clnt->dml_tables && !hash_find_readonly(clnt->dml_tables, tablename))
+        hash_add(clnt->dml_tables, strdup(tablename));
 
     if (osql->tablename) {
         if (osql->tablenamelen == (strlen(tablename) + 1) &&
@@ -1706,24 +1700,17 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     osqlstate_t *osql = &clnt->osql;
     char *host = thd->sqlclntstate->osql.host;
     unsigned long long rqid = thd->sqlclntstate->osql.rqid;
-    char *tblname = strdup(sc->table);
 
     osql->running_ddl = 1;
 
-    void strupper(char *c);
-    strupper(tblname);
-    if (clnt->dml_tables && hash_find_readonly(clnt->dml_tables, tblname)) {
-        free(tblname);
+    if (clnt->dml_tables && hash_find_readonly(clnt->dml_tables, sc->table)) {
         return SQLITE_DDL_MISUSE;
     }
     if (clnt->ddl_tables) {
-        if (hash_find_readonly(clnt->ddl_tables, tblname)) {
-            free(tblname);
+        if (hash_find_readonly(clnt->ddl_tables, sc->table)) {
             return SQLITE_DDL_MISUSE;
         } else
-            hash_add(clnt->ddl_tables, tblname);
-    } else {
-        free(tblname);
+            hash_add(clnt->ddl_tables, strdup(sc->table));
     }
     int rc = osql_save_schemachange(thd, sc, usedb);
     if (rc) {

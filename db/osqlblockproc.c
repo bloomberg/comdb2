@@ -375,6 +375,12 @@ int osql_bplog_schemachange(struct ireq *iq)
     struct block_err err;
     struct schema_change_type *sc;
 
+    iq->sc_pending = NULL;
+    iq->sc_seed = 0;
+    iq->sc_host = 0;
+    iq->sc_locked = 0;
+    iq->sc_should_abort = 0;
+
     rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese.osqllog,
                        osql_process_schemachange);
 
@@ -394,9 +400,9 @@ int osql_bplog_schemachange(struct ireq *iq)
             rc = ERR_NOMASTER;
         } else {
             free_schema_change_type(sc);
-            int sc_set_running(int running, uint64_t seed, const char *host,
-                               time_t time);
-            sc_set_running(0, iq->sc_seed, NULL, 0);
+            int sc_set_running(char *table, int running, uint64_t seed,
+                               const char *host, time_t time);
+            sc_set_running(sc->table, 0, iq->sc_seed, NULL, 0);
             if (sc->sc_rc)
                 rc = ERR_SC;
         }

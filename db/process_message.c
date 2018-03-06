@@ -2591,7 +2591,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         MEMORY_SYNC;
     } else if (tokcmp(tok, ltok, "scforceabort") == 0) {
         logmsg(LOGMSG_USER, "Forcibly resetting schema change flat\n");
-        sc_set_running(0, 0, NULL, 0);
+        sc_set_running(NULL, 0, 0, NULL, 0);
     } else if (tokcmp(tok, ltok, "debug") == 0) {
         debug_trap(line + st, lline - st);
     }

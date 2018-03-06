@@ -157,6 +157,11 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             setError(pParse, SQLITE_ERROR, "Shards cannot be schema changed independently");
             return SQLITE_ERROR;
         }
+
+        if (db) {
+            /* use original tablename */
+            strncpy(dst, db->tablename, MAXTABLELEN);
+        }
     }
     else
     {
@@ -521,11 +526,6 @@ static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, int opt);
 
 int authenticateSC(const char * table,  Parse *pParse) 
 {
-    if (gbl_schema_change_in_progress) {
-        setError(pParse, SQLITE_ERROR, "Schema change already in progress");
-        return -1;
-    }
-
     Vdbe *v  = sqlite3GetVdbe(pParse);
     char *username = strstr(table, "@");
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -654,7 +654,8 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     sc->nothrevent = 1;
     
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL )) {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n",  sc->table);
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc->table);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -712,7 +713,8 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
 
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL ))
     {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n",  sc->table);
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc->table);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -764,7 +766,8 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
 
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL ))
     {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n",  sc->table);
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc->table);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -797,7 +800,8 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         goto out;
 
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL )) {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n",  sc->table);
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc->table);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
