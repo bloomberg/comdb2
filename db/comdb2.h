@@ -965,12 +965,6 @@ struct dbenv {
 
     int rep_always_wait;
 
-    int pagesize_dta;
-    int pagesize_freerec;
-    int pagesize_ix;
-
-    int enable_direct_writes;
-
     pthread_t purge_old_blkseq_tid;
     pthread_t purge_old_files_tid;
 
@@ -1569,7 +1563,6 @@ extern int gbl_uses_accesscontrol_tableXnode;
 extern int gbl_upd_key;
 extern unsigned long long gbl_sqltick;
 extern int gbl_nonames;
-extern int gbl_abort_on_missing_session;
 extern int gbl_reject_osql_mismatch;
 extern int gbl_abort_on_clear_inuse_rqid;
 
@@ -1594,13 +1587,10 @@ extern int gbl_net_max_queue;
 extern int gbl_nullfkey;
 extern int gbl_prefaulthelper_blockops;
 extern int gbl_prefaulthelper_sqlreadahead;
-extern int gbl_prefaulthelper_tagreadahead;
 extern int gbl_maxblockops;
 extern int gbl_rangextunit;
 extern int gbl_honor_rangextunit_for_old_apis;
-extern int gbl_readahead;
 extern int gbl_sqlreadahead;
-extern int gbl_readaheadthresh;
 extern int gbl_sqlreadaheadthresh;
 extern int gbl_iothreads;
 extern int gbl_ioqueue;
@@ -1722,8 +1712,6 @@ extern long long gbl_nnewsql_steps;
 
 extern unsigned int gbl_masterrejects;
 
-extern int gbl_sql_client_stats;
-
 extern int gbl_selectv_rangechk;
 
 extern int gbl_init_with_rowlocks;
@@ -1741,7 +1729,6 @@ extern int gbl_replicate_local_concurrent;
 
 extern int gbl_verify_abort;
 
-extern int gbl_sqlrdtimeoutms;
 extern int gbl_sqlwrtimeoutms;
 extern int gbl_sort_nulls_correctly;
 
@@ -1758,7 +1745,6 @@ extern int gbl_check_client_tags;
 
 extern int gbl_max_tables_info;
 
-extern int gbl_prefault_readahead;
 extern int gbl_prefault_toblock_bcast;
 extern int gbl_prefault_toblock_local;
 
@@ -1784,7 +1770,6 @@ extern int gbl_debug_log_twophase;
 extern int gbl_debug_log_twophase_transactions;
 
 extern int gbl_chkpoint_alarm_time;
-extern int gbl_dump_queues_on_exit;
 
 extern int gbl_incoherent_msg_freq;
 extern int gbl_incoherent_alarm_time;
@@ -1797,7 +1782,6 @@ extern int gbl_disable_deadlock_trace;
 extern int gbl_enable_pageorder_trace;
 extern int gbl_disable_overflow_page_trace;
 extern int gbl_simulate_rowlock_deadlock_interval;
-extern int gbl_debug_rowlocks;
 
 extern int gbl_max_columns_soft_limit;
 

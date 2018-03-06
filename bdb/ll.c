@@ -93,9 +93,6 @@
 /* XXX delete after cleanup - we dont need this anymore .. */
 extern u_int32_t gbl_rep_lockid;
 
-/* Enable extra sanity checks while we're working on the rowlocks code. */
-extern int gbl_debug_rowlocks;
-
 /* Grab the rowlock for a record in this index */
 static int get_row_lock_ix(bdb_state_type *bdb_state, DBC *dbcp,
                            tran_type *tran, int ixnum, unsigned long long genid,

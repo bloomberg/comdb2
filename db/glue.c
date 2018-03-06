@@ -3828,11 +3828,6 @@ int open_bdb_env(struct dbenv *dbenv)
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DTASTRIPE, gbl_dtastripe);
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_BLOBSTRIPE, gbl_blobstripe);
 
-    if (debug_switch_use_phase_3())
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_USEPHASE3, 1);
-    else
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_USEPHASE3, 0);
-
     backend_update_sync(dbenv);
 
     /* set callbacks */
