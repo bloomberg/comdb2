@@ -61,7 +61,6 @@ endif()
 add_definitions(
   -DCOMDB2_ROOT=${CMAKE_INSTALL_PREFIX}
   -DCOMDB2_VERSION="2"
-  -DMONITOR_STACK
 )
 option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)
 if(COMDB2_PER_THREAD_MALLOC)
