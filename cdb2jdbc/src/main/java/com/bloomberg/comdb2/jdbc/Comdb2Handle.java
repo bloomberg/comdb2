@@ -13,6 +13,7 @@
    limitations under the License. */
 package com.bloomberg.comdb2.jdbc;
 
+import java.nio.ByteBuffer;
 import java.io.*;
 import java.util.*;
 import java.util.logging.*;
@@ -79,7 +80,7 @@ public class Comdb2Handle extends AbstractConnection {
 
     private boolean in_retry = false;
     private boolean temp_trans = false;
-    private boolean debug = true;
+    private boolean debug = false;
     private Cdb2SqlResponse firstResp;
     private Cdb2SqlResponse lastResp;
 
@@ -359,8 +360,8 @@ public class Comdb2Handle extends AbstractConnection {
     // Add td info to the beginning of the string
     private void tdlog(Level level, String str, Object... params) {
         /* Fast return if the level is not loggable. */
-        //if (!logger.isLoggable(level))
-        //    return;
+        if (!logger.isLoggable(level) && !debug)
+            return;
 
         Level curlevel = logger.getLevel();
         String mach = "(not-connected)";
@@ -840,7 +841,7 @@ public class Comdb2Handle extends AbstractConnection {
 
         rowsRead = 0;
 
-        tdlog(Level.FINE, "[running sql] " + sql);
+        tdlog(Level.FINE, "[running sql] %s", sql);
 
         if (lowerSql.startsWith("set")) {
             Iterator<String> iter = sets.iterator();
@@ -1987,8 +1988,9 @@ readloop:
                 tdlog(Level.FINEST, "columnValue col %d returning null on null lastResp", column);
             } else {
                 byte[] bytes = lastResp.value.get(column).value;
-                String str = bytesToHex(bytes);
-                tdlog(Level.FINEST, "columnValue col %d returning %s", column, str);
+                ByteBuffer bb = ByteBuffer.wrap(bytes);
+                long value = bb.getLong();
+                tdlog(Level.FINEST, "columnValue col %d returning %d", column, value);
             }
         }
         return lastResp == null ? null : lastResp.value.get(column).value;
