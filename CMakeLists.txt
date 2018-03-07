@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 if(NOT CMAKE_BUILD_TYPE)
   get_property(helpstring CACHE CMAKE_BUILD_TYPE PROPERTY HELPSTRING)
-  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING ${helpstring} FORCE)
+  set(CMAKE_BUILD_TYPE Debug CACHE STRING ${helpstring} FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "RelWithDebInfo" "Release")
 endif()
 
@@ -41,9 +41,7 @@ find_package(OpenSSL REQUIRED)
 find_package(Protobuf_C REQUIRED)
 find_package(Readline REQUIRED)
 find_package(SQLite3 REQUIRED)
-if (NOT ${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
-  find_package(UUID REQUIRED)
-endif()
+find_package(UUID REQUIRED)
 find_package(ZLIB REQUIRED)
 if(${CMAKE_SYSTEM_NAME} STREQUAL Linux OR ${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   find_package(Unwind REQUIRED)
@@ -126,12 +124,8 @@ add_subdirectory(plugin)
 add_subdirectory(db)
 add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
 
-enable_testing()
-file(GLOB TESTS LIST_DIRECTORIES true "${PROJECT_SOURCE_DIR}/tests/*.test")
-foreach(TEST IN ITEMS ${TESTS}) 
-     get_filename_component(TEST ${TEST} NAME_WE)
-     add_test(NAME ${TEST} COMMAND make ${TEST} WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/tests/")
-endforeach()
+#in tests/  we will do make -j 12 -k, in there all will depend on ../build
+add_custom_target(test_exe DEPENDS blob bound cdb2_client cdb2api_caller cdb2bind comdb2_blobtest comdb2_sqltest crle hatest insert_lots_mt leakcheck localrep overflow_blobtest ptrantest recom selectv serial sicountbug sirace simple_ssl stepper utf8 insert register breakloop cdb2_open multithd verify_atomics_work )
 
 ########################
 ######## TODO ##########
