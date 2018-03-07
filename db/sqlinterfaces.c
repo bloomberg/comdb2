@@ -2855,6 +2855,7 @@ static const char *type_to_typestr(int type)
     case SQLITE_INTERVAL_YM:
         return "year";
     case SQLITE_INTERVAL_DSUS:
+        return "dayus";
     case SQLITE_INTERVAL_DS:
         return "day";
     default:
@@ -2882,6 +2883,8 @@ static int typestr_to_type(const char *ctype)
         return SQLITE_DATETIME;
     else if (strstr(ctype, "year") || strstr(ctype, "month"))
         return SQLITE_INTERVAL_YM;
+    else if (strstr(ctype, "dayus") || strstr(ctype, "usec"))
+        return SQLITE_INTERVAL_DSUS;
     else if (strstr(ctype, "day") || strstr(ctype, "sec"))
         return SQLITE_INTERVAL_DS;
     else {
