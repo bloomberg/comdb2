@@ -34,22 +34,6 @@ all: test_exe basicops all_tests
 test_exe:
 	@$(MAKE) -C $(BUILDDIR)
 	@$(MAKE) -C $(BUILDDIR) test_exe
-# Run all non-disabled tests.
-all_tests: $(ALL_TESTS)
-
-basicops_nokey: executables
-	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
-	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
-	$(shell echo "TESTID=${TESTID} " >> ${TESTDIR}/test.log)
-	$(shell echo "CLUSTER=${CLUSTER} " >> ${TESTDIR}/test.log)
-	$(shell echo "SRCHOME=${SRCHOME} " >> ${TESTDIR}/test.log)
-	$(shell echo "TESTSROOTDIR=${TESTSROOTDIR} " >> ${TESTDIR}/test.log)
-	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
-	$(shell echo "DISABLED= $(sort ${DISABLED_TESTS}) " >> ${TESTDIR}/test.log)
-	$(shell echo "" >> ${TESTDIR}/test.log)
-	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
-
-executables:
 	@mkdir -p ${TESTDIR}
 	@ln -f ${BUILDDIR}/tests/tools/blob ${TESTSROOTDIR}/bloballoc.test/blob
 	@ln -f ${BUILDDIR}/tests/tools/bound ${TESTSROOTDIR}/tools/bound
@@ -96,6 +80,22 @@ executables:
 	@command -v ${COMDB2AR_EXE} > /dev/null || (echo "${COMDB2AR_EXE} missing "; exit 1)
 	@command -v ${COPYCOMDB2_EXE} > /dev/null || (echo "${COPYCOMDB2_EXE} missing "; exit 1)
 	@command -v ${PMUX_EXE} > /dev/null || (echo "${PMUX_EXE} missing "; exit 1)
+
+
+# Run all non-disabled tests.
+all_tests: $(ALL_TESTS)
+
+basicops_nokey:
+	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
+	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
+	$(shell echo "TESTID=${TESTID} " >> ${TESTDIR}/test.log)
+	$(shell echo "CLUSTER=${CLUSTER} " >> ${TESTDIR}/test.log)
+	$(shell echo "SRCHOME=${SRCHOME} " >> ${TESTDIR}/test.log)
+	$(shell echo "TESTSROOTDIR=${TESTSROOTDIR} " >> ${TESTDIR}/test.log)
+	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
+	$(shell echo "DISABLED= $(sort ${DISABLED_TESTS}) " >> ${TESTDIR}/test.log)
+	$(shell echo "" >> ${TESTDIR}/test.log)
+	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
 
 
 basicops: basicops_nokey
