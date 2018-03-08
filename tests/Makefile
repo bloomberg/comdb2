@@ -31,9 +31,13 @@ export PMUX_EXE:=$(TESTSROOTDIR)/pmux
 
 all: executables basicops all_tests
 
-executables:
+build:
 	@$(MAKE) -C $(BUILDDIR)
+
+test_exe:
 	@$(MAKE) -C $(BUILDDIR) test_exe
+
+executables: build test_exe
 	@mkdir -p ${TESTDIR}
 	@ln -f ${BUILDDIR}/tests/tools/blob ${TESTSROOTDIR}/bloballoc.test/blob
 	@ln -f ${BUILDDIR}/tests/tools/bound ${TESTSROOTDIR}/tools/bound
