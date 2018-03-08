@@ -796,7 +796,7 @@ int clear(void)
         cdb2_close(db);
         myexit(__func__, __LINE__, 1);
     }
-    cdb2_set_max_retries(max_retries);
+    cdb2_hndl_set_max_retries(db, max_retries);
     if (debug_trace) {
         cdb2_set_debug_trace(db);
     }
@@ -836,7 +836,7 @@ int clear(void)
         }
 
         rc = cdb2_run_statement(db, "commit");
-        if (rc == 230 || rc == 4) {
+        if (rc == 230 || rc == -105) {
             tdprintf(stderr, db, __func__, __LINE__,
                      "clear: commit rc %d %s - retrying\n", rc,
                      cdb2_errstr(db));
