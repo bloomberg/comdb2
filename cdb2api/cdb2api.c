@@ -2987,7 +2987,7 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         hdr.compression = ntohl(0);
         hdr.length = ntohl(item->len);
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u:%d %s resending '%s' to %s\n",
+            fprintf(stderr, "td %u %s:%d resending '%s' to %s\n",
                     (uint32_t)pthread_self(), __func__, __LINE__, item->sql,
                     host);
         }
