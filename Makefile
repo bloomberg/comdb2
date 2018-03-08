@@ -44,5 +44,6 @@ install: all
 	@cd build && $(MAKE) -s -j$(nproc) install
 
 .PHONY: test
-test: build
+test:
+	$(MAKE) build
 	$(MAKE) -C tests
