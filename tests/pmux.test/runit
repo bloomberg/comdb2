@@ -80,6 +80,7 @@ done
 atend=$(ls -l /proc/$pid/fd | wc -l)
 
 kill -9 ${pid}
+rm /tmp/pmux.${COMDB2_PMUX_PORT}
 
 if [[ $atend -eq $atstart ]]; then
 	echo "At start had $atstart fds, at end have $atend."
