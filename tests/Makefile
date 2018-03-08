@@ -29,9 +29,9 @@ export COPYCOMDB2_EXE:=$(TESTDIR)/copycomdb2
 export CDB2_SQLREPLAY_EXE:=$(TESTDIR)/cdb2_sqlreplay
 export PMUX_EXE:=$(TESTSROOTDIR)/pmux
 
-all: test_exe basicops all_tests
+all: executables basicops all_tests
 
-test_exe:
+executables:
 	@$(MAKE) -C $(BUILDDIR)
 	@$(MAKE) -C $(BUILDDIR) test_exe
 	@mkdir -p ${TESTDIR}
