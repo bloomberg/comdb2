@@ -156,7 +156,8 @@ static int setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
     q->iq.usedb = qdb;
     q->consumer = consumer;
     q->info = *info;
-    strcpy(q->info.spname, info->spname);
+    // memcpy because variable size struct breaks fortify checks in strcpy.
+    memcpy(q->info.spname, info->spname, spname_len + 1);
     strcpy(q->info.spname + spname_len + 1, info->spname + spname_len + 1);
     return bdb_trigger_subscribe(qdb->handle, &q->cond, &q->lock, &q->open);
 }
