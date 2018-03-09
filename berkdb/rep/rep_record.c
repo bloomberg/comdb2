@@ -72,8 +72,15 @@ extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
+
+int gbl_decoupled_fills = 1;
+int gbl_gap_max_ms = 100;
+int gbl_verify_waitms = 100;
+int gbl_fills_waitms = 100;
+
 int gbl_max_logput_queue = 1000;
 int gbl_apply_thread_pollms = 200;
+static int last_fill_req = 0;
 
 void hexdump(unsigned char *key, int keylen);
 extern void fsnapf(FILE *, void *, int);
@@ -370,6 +377,8 @@ void bdb_thread_start_rw(void);
 static void *apply_thread(void *arg) 
 {
     int ret;
+	LOG *lp;
+	DB_LOG *dblp;
     DB_ENV *dbenv = (DB_ENV *)arg;
     struct queued_log *q, obj;
     struct timespec ts;
@@ -378,6 +387,8 @@ static void *apply_thread(void *arg)
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
+	dblp = dbenv->lg_handle;
+	lp = dblp->reginfo.primary;
     bdb_thread_start_rw();
 
     pthread_mutex_lock(&rep_queue_lock);
@@ -398,9 +409,9 @@ static void *apply_thread(void *arg)
             rec.size = q->size;
 
             bdb_get_the_readlock("apply_thread", __func__, __LINE__);
-            if (rep->gen == q->gen)
+            if (rep->gen == q->gen) {
                 ret = __rep_apply(dbenv, &q->rp, &rec, &ret_lsnp, &q->gen);
-            else
+            } else
                 ret = 0;
             bdb_relthelock(__func__, __LINE__);
 
@@ -408,6 +419,46 @@ static void *apply_thread(void *arg)
                 abort();
             free(q);
             pthread_mutex_lock(&rep_queue_lock);
+        }
+
+        if (!IN_ELECTION_TALLY(rep)) {
+            static DB_LSN last_waiting = {0};
+            static int last_fill_req = 0;
+
+            /* See if we should do a REP_REQ_ALL request */
+            if (0) {
+            } else if (gbl_decoupled_fills) {
+                char *eid;
+                pthread_mutex_unlock(&rep_queue_lock);
+                MUTEX_LOCK(dbenv, db_rep->db_mutexp);
+                eid = db_rep->region->master_id;
+
+                if (eid != db_eid_invalid) {
+                    if (IS_ZERO_LSN(lp->waiting_lsn)) {
+                        last_fill_req = 0;
+                        memset(&last_waiting, 0, sizeof(last_waiting));
+                    } else if (
+                            (log_compare(&lp->waiting_lsn, &last_waiting) > 0) ||
+                            ((comdb2_time_epochms() - last_fill_req) >=
+                             gbl_fills_waitms)) {
+
+                        DBT max_lsn_dbt = {0};
+                        DB_LSN next_lsn = lp->ready_lsn, tmp_lsn;
+                        LOGCOPY_TOLSN(&tmp_lsn, &lp->waiting_lsn);
+                        max_lsn_dbt.data = &tmp_lsn;
+                        max_lsn_dbt.size = sizeof(lp->waiting_lsn); 
+
+                        if ((ret = __rep_send_message(dbenv, eid,
+                                        REP_LOG_REQ, &next_lsn, &max_lsn_dbt, 0,
+                                        NULL)) == 0) {
+                            last_fill_req = comdb2_time_epochms();
+                            memcpy(&last_waiting, &lp->waiting_lsn, sizeof(DB_LSN));
+                        }
+                    }
+                }
+                MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
+                pthread_mutex_lock(&rep_queue_lock);
+            }
         }
     }
 }
@@ -444,7 +495,9 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
     q->size = rec->size;
     memcpy(&q->data, rec->data, q->size);
     pthread_mutex_lock(&rep_queue_lock);
-    while(gbl_max_logput_queue > 0 && listc_size(&log_queue) > 
+
+    /* Block waiting for the queue to shrink */
+    while(gbl_max_logput_queue > 0 && listc_size(&log_queue) >=
             gbl_max_logput_queue) {
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -2607,9 +2660,11 @@ gap_check:		max_lsn_dbtp = NULL;
 				 * fprintf(stderr, "Requesting file %s line %d lsn %d:%d\n", 
 				 * __FILE__, __LINE__, next_lsn.file, next_lsn.offset);
 				 */
-				(void)__rep_send_message(dbenv, eid,
+                if (!gbl_decoupled_fills || !gbl_decoupled_logputs) {
+				 (void)__rep_send_message(dbenv, eid,
 				    REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
 				    NULL);
+                }
 			}
 		}
 	} else if (cmp > 0) {
@@ -2730,9 +2785,11 @@ gap_check:		max_lsn_dbtp = NULL;
 				 * fprintf(stderr, "Requesting file %s line %d lsn %d:%d\n", 
 				 * __FILE__, __LINE__, next_lsn.file, next_lsn.offset);
 				 */
-				(void)__rep_send_message(dbenv, eid,
-				    REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
-				    NULL);
+                if (!gbl_decoupled_fills || !gbl_decoupled_logputs) {
+				    (void)__rep_send_message(dbenv, eid,
+				        REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
+				        NULL);
+                }
 			} else {
 				MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
