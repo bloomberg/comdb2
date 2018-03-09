@@ -285,6 +285,61 @@ void dump_client_query_stats(SBUF2 *sb, struct client_query_stats *st)
         free(buf);
 }
 
+/* TODO: This whole file must go.
+ * Will be reintroduced in fastsql plugin */
+#define fsqlreq_put(...) 0
+#define fsqlresp_put(...) 0
+#define fsqlresp_get(...) 0
+/* higher numbers to not clash with sqlnet.c.  In fact, this should
+   merge into sqlnet at some point in the distant future */
+/* requests for fastsql */
+enum fsql_request {
+    FSQL_EXECUTE_INLINE_PARAMS = 100,
+    FSQL_EXECUTE_STOP = 101,
+    FSQL_SET_ISOLATION_LEVEL = 102,
+    FSQL_SET_TIMEOUT = 103,
+    FSQL_SET_INFO = 104,
+    FSQL_EXECUTE_INLINE_PARAMS_TZ = 105,
+    FSQL_SET_HEARTBEAT = 106,
+    FSQL_PRAGMA = 107,
+    FSQL_RESET = 108,
+    FSQL_EXECUTE_REPLACEABLE_PARAMS = 109,
+    FSQL_SET_SQL_DEBUG = 110,
+    FSQL_GRAB_DBGLOG = 111,
+    FSQL_SET_USER = 112,
+    FSQL_SET_PASSWORD = 113,
+    FSQL_SET_ENDIAN = 114,
+    FSQL_EXECUTE_REPLACEABLE_PARAMS_TZ = 115,
+    FSQL_GET_EFFECTS = 116,
+    FSQL_SET_PLANNER_EFFORT = 117,
+    FSQL_SET_REMOTE_ACCESS = 118,
+    FSQL_OSQL_MAX_TRANS = 119,
+    FSQL_SET_DATETIME_PRECISION = 120,
+    FSQL_SSLCONN = 121
+};
+/* responses for fastsql */
+enum fsql_response {
+    FSQL_COLUMN_DATA = 200,
+    FSQL_ROW_DATA = 201,
+    FSQL_NO_MORE_DATA = 202,
+    FSQL_ERROR = 203,
+    FSQL_QUERY_STATS = 204,
+    FSQL_HEARTBEAT = 205,
+    FSQL_SOSQL_TRAN_RESPONSE = 206,
+    FSQL_DEBUG_TRACE = 207,
+    FSQL_NEW_ROW_DATA = 208,
+    FSQL_QUERY_EFFECTS = 209
+};
+struct fsqlresp {
+    int response; /* enum fsql_response */
+    int flags;    /* response flags */
+    int rcode;
+    int parm;      /* extra word of info differs per request type */
+    int followlen; /* how much data follows header*/
+};
+enum { FSQLRESP_LEN = 4 + 4 + 4 + 4 + 4 };
+BB_COMPILE_TIME_ASSERT(fsqlresp_size, sizeof(struct fsqlresp) == FSQLRESP_LEN);
+
 #define RETURN_DBGLOG_ERROR(errstr)                                            \
     {                                                                          \
         int errstr_len = strlen(errstr) + 1;                                   \
