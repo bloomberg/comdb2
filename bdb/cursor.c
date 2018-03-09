@@ -1785,8 +1785,10 @@ static int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
     do {
         qe = listc_rtl(&queue->queue_keys);
         /* adjust asof queue cursor */
-        if (curqe == qe)
+        if (curqe == qe) {
+            assert(curqe == del_qe);
             cur->cur = NULL;
+        }
         return_pglogs_queue_key(qe);
 #ifdef ASOF_TRACE
         count++;
@@ -2401,6 +2403,7 @@ void bdb_newsi_stat_init()
 static int my_fileid_free(void *obj, void *arg)
 {
     free(obj);
+    return 0;
 }
 
 int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
