@@ -41,13 +41,8 @@ test_exe: build
 executables: build test_exe
 	@mkdir -p ${TESTDIR}
 	@ln -f ${BUILDDIR}/db/comdb2 ${TESTDIR}/comdb2
-	@ln -f ${BUILDDIR}/db/comdb2 ${TESTDIR}/cdb2_dump
-	@ln -f ${BUILDDIR}/db/comdb2 ${TESTDIR}/cdb2_printlog
-	@ln -f ${BUILDDIR}/db/comdb2 ${TESTDIR}/cdb2_stat
-	@ln -f ${BUILDDIR}/db/comdb2 ${TESTDIR}/cdb2_verify
 	@ln -f ${BUILDDIR}/db/copycomdb2 ${TESTDIR}/copycomdb2
 	@ln -f ${BUILDDIR}/tools/cdb2_sqlreplay/cdb2_sqlreplay ${TESTDIR}/cdb2_sqlreplay
-	@ln -f ${BUILDDIR}/tools/cdb2sockpool/cdb2sockpool ${TESTDIR}/cdb2sockpool
 	@ln -f ${BUILDDIR}/tools/cdb2sql/cdb2sql ${TESTDIR}/cdb2sql
 	@ln -f ${BUILDDIR}/tools/comdb2ar/comdb2ar ${TESTDIR}/comdb2ar
 	@ln -f ${BUILDDIR}/tools/pmux/pmux ${TESTSROOTDIR}/pmux
