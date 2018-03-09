@@ -122,7 +122,7 @@ int get_osql_maxthrottle_sec(void) { return gbl_osql_max_throttle_sec; }
 
 /**
  * Process a sqlite index delete request
- * Index is provided by thd->sqlclntstate->idxDelete
+ * Index is provided by thd->clnt->idxDelete
  * Returns SQLITE_OK if successful.
  *
  */
@@ -133,7 +133,7 @@ int osql_delidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
     if (!gbl_expressions_indexes || !pCur->db->ix_expr)
         return SQLITE_OK;
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_index(pCur, thd, is_update, 1);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
@@ -162,7 +162,7 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
     if (rc != SQLITE_OK)
         return rc;
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_delrec(pCur, thd);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
@@ -191,7 +191,7 @@ int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
 /**
  * Process a sqlite index insert request
- * Index is provided by thd->sqlclntstate->idxInsert
+ * Index is provided by thd->clnt->idxInsert
  * Returns SQLITE_OK if successful.
  *
  */
@@ -202,7 +202,7 @@ int osql_insidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
     if (!gbl_expressions_indexes || !pCur->db->ix_expr)
         return SQLITE_OK;
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_index(pCur, thd, is_update, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
@@ -236,7 +236,7 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK)
         return rc;
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_insrec(pCur, thd, pData, nData);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
@@ -283,7 +283,7 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
             return rc;
     }
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_updrec(pCur, thd, pData, nData);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
@@ -364,7 +364,7 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype)
 int osql_block_commit(struct sql_thread *thd)
 {
 
-    return osql_send_commit_logic(thd->sqlclntstate, 0, NET_OSQL_BLOCK_RPL);
+    return osql_send_commit_logic(thd->clnt, 0, NET_OSQL_BLOCK_RPL);
 }
 
 /**
@@ -682,7 +682,7 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
     osql->timings.commit_start = osql_log_time();
 
 /* send results of sql processing to block master */
-/* if (thd->sqlclntstate->query_stats)*/
+/* if (thd->clnt->query_stats)*/
 
 retry:
 
@@ -871,12 +871,12 @@ err:
 
 #if 0
    printf( "recv=%llu disp=%llu fin=%llu commit_prep=%llu, commit_start=%llu commit_end=%llu\n",
-         thd->sqlclntstate->osql.timings.query_received,
-         thd->sqlclntstate->osql.timings.query_dispatched,
-         thd->sqlclntstate->osql.timings.query_finished,
-         thd->sqlclntstate->osql.timings.commit_prep,
-         thd->sqlclntstate->osql.timings.commit_start, 
-         thd->sqlclntstate->osql.timings.commit_end
+         thd->clnt->osql.timings.query_received,
+         thd->clnt->osql.timings.query_dispatched,
+         thd->clnt->osql.timings.query_finished,
+         thd->clnt->osql.timings.commit_prep,
+         thd->clnt->osql.timings.commit_start,
+         thd->clnt->osql.timings.commit_end
          );
 #endif
 
@@ -1064,7 +1064,7 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
 static int osql_send_usedb_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                  int nettype)
 {
-    return osql_send_usedb_logic_int(pCur->db->tablename, thd->sqlclntstate,
+    return osql_send_usedb_logic_int(pCur->db->tablename, thd->clnt,
                                      nettype);
 }
 
@@ -1072,10 +1072,10 @@ static int osql_send_delrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype)
 {
 
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
-    char *host = thd->sqlclntstate->osql.host;
-    unsigned long long rqid = thd->sqlclntstate->osql.rqid;
+    char *host = thd->clnt->osql.host;
+    unsigned long long rqid = thd->clnt->osql.rqid;
     int rc = 0;
 
     /* limit transaction*/
@@ -1100,7 +1100,7 @@ static int osql_send_updstat_logic(struct BtCursor *pCur,
                                    struct sql_thread *thd, char *pData,
                                    int nData, int nStat, int nettype)
 {
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
 
@@ -1114,7 +1114,7 @@ static int osql_send_updstat_logic(struct BtCursor *pCur,
 static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype)
 {
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int i;
@@ -1129,7 +1129,7 @@ static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
             !(clnt->ins_keys & (1ULL << i)))
             continue;
         rc = osql_send_index(osql->host, osql->rqid, osql->uuid, pCur->genid, 0,
-                             i, (char *)thd->sqlclntstate->idxInsert[i],
+                             i, (char *)thd->clnt->idxInsert[i],
                              getkeysize(pCur->db, i), nettype, osql->logsb);
         RESTART_SOCKSQL;
         if (rc)
@@ -1141,7 +1141,7 @@ static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
 static int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype)
 {
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int i;
@@ -1156,7 +1156,7 @@ static int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
             !(clnt->del_keys & (1ULL << i)))
             continue;
         rc = osql_send_index(osql->host, osql->rqid, osql->uuid, pCur->genid, 1,
-                             i, (char *)thd->sqlclntstate->idxDelete[i],
+                             i, (char *)thd->clnt->idxDelete[i],
                              getkeysize(pCur->db, i), nettype, osql->logsb);
         RESTART_SOCKSQL;
         if (rc)
@@ -1169,7 +1169,7 @@ static int osql_send_insrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   char *pData, int nData, int nettype)
 {
 
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
 
@@ -1195,7 +1195,7 @@ static int osql_send_updcols_logic(struct BtCursor *pCur,
                                    struct sql_thread *thd, int *updCols,
                                    int nettype)
 {
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
 
@@ -1211,7 +1211,7 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int maxblobs, int nettype)
 {
 
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int i;
@@ -1267,7 +1267,7 @@ static int osql_updcols(struct BtCursor *pCur, struct sql_thread *thd,
 {
     int rc = 0;
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_updcols(pCur, thd, updCols);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
@@ -1284,7 +1284,7 @@ static int osql_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
                        int *updCols, blob_buffer_t *blobs, int maxblobs,
                        int is_update)
 {
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         int rc = osql_save_qblobs(pCur, thd, blobs, maxblobs, is_update);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
@@ -1302,7 +1302,7 @@ static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   char *pData, int nData, int nettype)
 {
 
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
 
@@ -1423,8 +1423,8 @@ static int osql_send_abort_logic(struct sqlclntstate *clnt, int nettype)
 
 static int check_osql_capacity(struct sql_thread *thd)
 {
-    struct sqlclntstate *clnt = thd->sqlclntstate;
-    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    struct sqlclntstate *clnt = thd->clnt;
+    osqlstate_t *osql = &thd->clnt->osql;
 
     osql->sentops++;
     osql->tran_ops++;
@@ -1435,8 +1435,8 @@ static int check_osql_capacity(struct sql_thread *thd)
         logmsg(LOGMSG_ERROR, "check_osql_capacity: transaction size %d too big "
                         "(limit is %d) [\"%s\"]\n",
                 osql->tran_ops, clnt->osql_max_trans,
-                (thd->sqlclntstate && thd->sqlclntstate->sql)
-                    ? thd->sqlclntstate->sql
+                (thd->clnt && thd->clnt->sql)
+                    ? thd->clnt->sql
                     : "not_set");
 
         errstat_set_rc(&osql->xerr, SQLITE_TOOBIG);
@@ -1451,7 +1451,7 @@ static int check_osql_capacity(struct sql_thread *thd)
 int osql_query_dbglog(struct sql_thread *thd, int queryid)
 {
 
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc;
     unsigned long long new_cookie;
@@ -1459,9 +1459,9 @@ int osql_query_dbglog(struct sql_thread *thd, int queryid)
     /* Why a new cookie?  The net send could be local (if no
        cluster, or the query somehow ends up running on
        the master) and we don't want to clobber the existing dbglog. */
-    if (thd->sqlclntstate->master_dbglog_cookie == 0)
-        thd->sqlclntstate->master_dbglog_cookie = get_id(thedb->bdb_env);
-    new_cookie = thd->sqlclntstate->master_dbglog_cookie;
+    if (thd->clnt->master_dbglog_cookie == 0)
+        thd->clnt->master_dbglog_cookie = get_id(thedb->bdb_env);
+    new_cookie = thd->clnt->master_dbglog_cookie;
     rc = osql_send_dbglog(osql->host, osql->rqid, osql->uuid, new_cookie,
                           queryid, NET_OSQL_SOCK_RPL);
     /* not sure if we want to restart this */
@@ -1472,7 +1472,7 @@ int osql_query_dbglog(struct sql_thread *thd, int queryid)
 #if 0
 static int osql_send_cleartable_osqlsosql(struct sql_thread *thd, char *dbname) {
 
-   osqlstate_t          *osql = &thd->sqlclntstate->osql;
+   osqlstate_t          *osql = &thd->clnt->osql;
    netinfo_type         *netinfo_ptr = (netinfo_type*)theosql->handle_sibling;
    osql_clrtbl_rpl_t    clr_rpl;
    int                  rc = 0;
@@ -1487,8 +1487,8 @@ static int osql_send_cleartable_osqlsosql(struct sql_thread *thd, char *dbname) 
       clr_rpl.hd.sid = osql->rqid;
 
       if(osql->logsb) {
-         sbuf2printf(thd->sqlclntstate->osql.logsb, "[%llu] send OSQL_CLRTBL %s\n", osql->rqid, dbname);
-         sbuf2flush(thd->sqlclntstate->osql.logsb);
+         sbuf2printf(thd->clnt->osql.logsb, "[%llu] send OSQL_CLRTBL %s\n", osql->rqid, dbname);
+         sbuf2flush(thd->clnt->osql.logsb);
       }
 
       if(offload_net_send(netinfo_ptr, osql->host, NET_OSQL_BLOCK_RPL, &clr_rpl, sizeof(clr_rpl), 1)) {
@@ -1507,8 +1507,8 @@ static int osql_send_cleartable_recom(struct sql_thread *thd, char *dbname) {
     return -1;
 }
 int osql_cleartable(struct sql_thread *thd, char *dbname) {
-    if(thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL ||
-          thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL)
+    if(thd->clnt->dbtran.mode == TRANLEVEL_OSQL ||
+          thd->clnt->dbtran.mode == TRANLEVEL_SOSQL)
         return osql_send_cleartable_osqlsosql(thd, dbname);
     else
         return osql_send_cleartable_recom(thd, dbname);
@@ -1529,7 +1529,7 @@ int osql_record_genid(struct BtCursor *pCur, struct sql_thread *thd,
         return 0;
     }
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         int rc = osql_save_recordgenid(pCur, thd, genid);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
@@ -1546,7 +1546,7 @@ static int osql_send_recordgenid_logic(struct BtCursor *pCur,
                                        struct sql_thread *thd,
                                        unsigned long long genid, int nettype)
 {
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
 
@@ -1603,15 +1603,15 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_write_by_mach_get(
             pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename,
-            nodeix(thd->sqlclntstate->origin), &bdberr);
+            nodeix(thd->clnt->origin), &bdberr);
         if (rc <= 0) {
             char msg[1024];
             snprintf(
                 msg, sizeof(msg), "Write access denied to %s from %d bdberr=%d",
-                pCur->db->tablename, nodeix(thd->sqlclntstate->origin), bdberr);
+                pCur->db->tablename, nodeix(thd->clnt->origin), bdberr);
             logmsg(LOGMSG_WARN, "%s\n", msg);
-            errstat_set_rc(&thd->sqlclntstate->osql.xerr, SQLITE_ACCESS);
-            errstat_set_str(&thd->sqlclntstate->osql.xerr, msg);
+            errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
+            errstat_set_str(&thd->clnt->osql.xerr, msg);
 
             return SQLITE_ABORT;
         }
@@ -1620,18 +1620,18 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
     if (gbl_uses_password &&
-        (thd->sqlclntstate->no_transaction == 0)) {
+        (thd->clnt->no_transaction == 0)) {
         rc = bdb_check_user_tbl_access(
-            pCur->db->dbenv->bdb_env, thd->sqlclntstate->user,
+            pCur->db->dbenv->bdb_env, thd->clnt->user,
             pCur->db->tablename, ACCESS_WRITE, &bdberr);
         if (rc != 0) {
             char msg[1024];
             snprintf(msg, sizeof(msg),
                      "Write access denied to %s for user %s bdberr=%d",
-                     pCur->db->tablename, thd->sqlclntstate->user, bdberr);
+                     pCur->db->tablename, thd->clnt->user, bdberr);
             logmsg(LOGMSG_WARN, "%s\n", msg);
-            errstat_set_rc(&thd->sqlclntstate->osql.xerr, SQLITE_ACCESS);
-            errstat_set_str(&thd->sqlclntstate->osql.xerr, msg);
+            errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
+            errstat_set_str(&thd->clnt->osql.xerr, msg);
 
             return SQLITE_ABORT;
         }
@@ -1651,15 +1651,15 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_read_by_mach_get(
             pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename,
-            nodeix(thd->sqlclntstate->origin), &bdberr);
+            nodeix(thd->clnt->origin), &bdberr);
         if (rc <= 0) {
             char msg[1024];
             snprintf(
                 msg, sizeof(msg), "Read access denied to %s from %d bdberr=%d",
-                pCur->db->tablename, nodeix(thd->sqlclntstate->origin), bdberr);
+                pCur->db->tablename, nodeix(thd->clnt->origin), bdberr);
             logmsg(LOGMSG_WARN, "%s\n", msg);
-            errstat_set_rc(&thd->sqlclntstate->osql.xerr, SQLITE_ACCESS);
-            errstat_set_str(&thd->sqlclntstate->osql.xerr, msg);
+            errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
+            errstat_set_str(&thd->clnt->osql.xerr, msg);
 
             return SQLITE_ABORT;
         }
@@ -1667,18 +1667,18 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
-    if (gbl_uses_password && thd->sqlclntstate->no_transaction == 0) {
+    if (gbl_uses_password && thd->clnt->no_transaction == 0) {
         rc = bdb_check_user_tbl_access(
-            pCur->db->dbenv->bdb_env, thd->sqlclntstate->user,
+            pCur->db->dbenv->bdb_env, thd->clnt->user,
             pCur->db->tablename, ACCESS_READ, &bdberr);
         if (rc != 0) {
             char msg[1024];
             snprintf(msg, sizeof(msg),
                      "Read access denied to %s for user %s bdberr=%d",
-                     pCur->db->tablename, thd->sqlclntstate->user, bdberr);
+                     pCur->db->tablename, thd->clnt->user, bdberr);
             logmsg(LOGMSG_WARN, "%s\n", msg);
-            errstat_set_rc(&thd->sqlclntstate->osql.xerr, SQLITE_ACCESS);
-            errstat_set_str(&thd->sqlclntstate->osql.xerr, msg);
+            errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
+            errstat_set_str(&thd->clnt->osql.xerr, msg);
 
             return SQLITE_ABORT;
         }
@@ -1696,10 +1696,10 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 int osql_schemachange_logic(struct schema_change_type *sc,
                             struct sql_thread *thd, int usedb)
 {
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
-    char *host = thd->sqlclntstate->osql.host;
-    unsigned long long rqid = thd->sqlclntstate->osql.rqid;
+    char *host = thd->clnt->osql.host;
+    unsigned long long rqid = thd->clnt->osql.rqid;
 
     osql->running_ddl = 1;
 
@@ -1719,7 +1719,7 @@ int osql_schemachange_logic(struct schema_change_type *sc,
                __FILE__, __LINE__, __func__, rc);
         return rc;
     }
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         if (usedb) {
             unsigned long long version = 0;
             if (getdbidxbyname(sc->table) < 0) { // view
@@ -1741,7 +1741,7 @@ int osql_schemachange_logic(struct schema_change_type *sc,
         }
         if (rc == SQLITE_OK) {
             rc = osql_send_schemachange(host, rqid,
-                                        thd->sqlclntstate->osql.uuid, sc,
+                                        thd->clnt->osql.uuid, sc,
                                         NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
             RESTART_SOCKSQL;
         }
@@ -1757,10 +1757,10 @@ int osql_schemachange_logic(struct schema_change_type *sc,
  */
 int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
 {
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
-    char *host = thd->sqlclntstate->osql.host;
-    unsigned long long rqid = thd->sqlclntstate->osql.rqid;
+    char *host = thd->clnt->osql.host;
+    unsigned long long rqid = thd->clnt->osql.rqid;
     int rc;
 
     rc = osql_save_bpfunc(thd, arg);
@@ -1770,8 +1770,8 @@ int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
                __LINE__, __func__, rc);
         return rc;
     }
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_send_bpfunc(host, rqid, thd->sqlclntstate->osql.uuid, arg,
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
+        rc = osql_send_bpfunc(host, rqid, thd->clnt->osql.uuid, arg,
                               NET_OSQL_SOCK_RPL, osql->logsb);
         RESTART_SOCKSQL;
     }
