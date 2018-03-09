@@ -1,11 +1,12 @@
 export TESTSROOTDIR:=$(shell pwd)
 
-BUILDDIR?=$(shell readlink -f $(TESTSROOTDIR)/../build )
 SRCHOME:=$(shell readlink -f $(TESTSROOTDIR)/../ )
 ifeq ($(SRCHOME),)
   SRCHOME:=$(TESTSROOTDIR)/..
 endif
 export SRCHOME
+export BUILDDIR?=$(shell readlink -f $(SRCHOME)/build )
+export TESTSBUILDDIR?=$(BUILDDIR)/tests/tools/
 
 export TESTID:=$(shell tools/get_random.sh)
 export TESTDIR:=$(TESTSROOTDIR)/test_$(TESTID)
@@ -34,39 +35,11 @@ all: executables basicops all_tests
 build:
 	@$(MAKE) -C $(BUILDDIR)
 
-test_exe:
-	@$(MAKE) -C $(BUILDDIR) test_exe
+test_exe: build
+	@$(MAKE) -C $(TESTSBUILDDIR)
 
 executables: build test_exe
 	@mkdir -p ${TESTDIR}
-	@ln -f ${BUILDDIR}/tests/tools/blob ${TESTSROOTDIR}/bloballoc.test/blob
-	@ln -f ${BUILDDIR}/tests/tools/bound ${TESTSROOTDIR}/tools/bound
-	@ln -f ${BUILDDIR}/tests/tools/cdb2_client ${TESTSROOTDIR}/cdb2api_so.test/cdb2_client
-	@ln -f ${BUILDDIR}/tests/tools/cdb2api_caller ${TESTSROOTDIR}/tools/cdb2api_caller
-	@ln -f ${BUILDDIR}/tests/tools/cdb2bind ${TESTSROOTDIR}/cdb2bind.test/cdb2bind
-	@ln -f ${BUILDDIR}/tests/tools/comdb2_blobtest ${TESTSROOTDIR}/blob_size_limit.test/comdb2_blobtest
-	@ln -f ${BUILDDIR}/tests/tools/comdb2_sqltest ${TESTSROOTDIR}/sqlite.test/comdb2_sqltest 
-	@ln -f ${BUILDDIR}/tests/tools/crle ${TESTSROOTDIR}/tools/crle
-	@ln -f ${BUILDDIR}/tests/tools/hatest ${TESTSROOTDIR}/tools/hatest
-	@ln -f ${BUILDDIR}/tests/tools/insert_lots_mt ${TESTSROOTDIR}/insert_lots.test/insert_lots_mt
-	@ln -f ${BUILDDIR}/tests/tools/leakcheck ${TESTSROOTDIR}/leakcheck.test/leakcheck
-	@ln -f ${BUILDDIR}/tests/tools/localrep ${TESTSROOTDIR}/tools/localrep
-	@ln -f ${BUILDDIR}/tests/tools/overflow_blobtest ${TESTSROOTDIR}/tools/overflow_blobtest 
-	@ln -f ${BUILDDIR}/tests/tools/ptrantest ${TESTSROOTDIR}/tools/ptrantest
-	@ln -f ${BUILDDIR}/tests/tools/recom ${TESTSROOTDIR}/tools/recom
-	@ln -f ${BUILDDIR}/tests/tools/selectv ${TESTSROOTDIR}/tools/selectv
-	@ln -f ${BUILDDIR}/tests/tools/serial ${TESTSROOTDIR}/tools/serial
-	@ln -f ${BUILDDIR}/tests/tools/sicountbug ${TESTSROOTDIR}/sicountbug.test/sicountbug
-	@ln -f ${BUILDDIR}/tests/tools/sirace ${TESTSROOTDIR}/sirace.test/sirace
-	@ln -f ${BUILDDIR}/tests/tools/multithd ${TESTSROOTDIR}/multithd.test/multithd
-	@ln -f ${BUILDDIR}/tests/tools/simple_ssl ${TESTSROOTDIR}/simple_ssl.test/simple_ssl
-	@ln -f ${BUILDDIR}/tests/tools/stepper ${TESTSROOTDIR}/tools/stepper
-	@ln -f ${BUILDDIR}/tests/tools/utf8 ${TESTSROOTDIR}/tools/utf8
-	@ln -f ${BUILDDIR}/tests/tools/insert ${TESTSROOTDIR}/tools/insert
-	@ln -f ${BUILDDIR}/tests/tools/register ${TESTSROOTDIR}/tools/register
-	@ln -f ${BUILDDIR}/tests/tools/breakloop ${TESTSROOTDIR}/tools/breakloop
-	@ln -f ${BUILDDIR}/tests/tools/cdb2_open ${TESTSROOTDIR}/tools/cdb2_open
-	@ln -f ${BUILDDIR}/tests/tools/verify_atomics_work ${TESTSROOTDIR}/tools/verify_atomics_work
 	@ln -f ${BUILDDIR}/db/comdb2 ${TESTDIR}/comdb2
 	@ln -f ${BUILDDIR}/db/comdb2 ${TESTDIR}/cdb2_dump
 	@ln -f ${BUILDDIR}/db/comdb2 ${TESTDIR}/cdb2_printlog

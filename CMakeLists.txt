@@ -61,6 +61,7 @@ endif()
 add_definitions(
   -DCOMDB2_ROOT=${CMAKE_INSTALL_PREFIX}
   -DCOMDB2_VERSION="2"
+  -DMONITOR_STACK
 )
 option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)
 if(COMDB2_PER_THREAD_MALLOC)
@@ -126,8 +127,12 @@ add_subdirectory(plugin)
 add_subdirectory(db)
 add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
 
-#in tests/  we will do make -j 12 -k, in there all will depend on ../build
-add_custom_target(test_exe DEPENDS blob bound cdb2_client cdb2api_caller cdb2bind comdb2_blobtest comdb2_sqltest crle hatest insert_lots_mt leakcheck localrep overflow_blobtest ptrantest recom selectv serial sicountbug sirace simple_ssl stepper utf8 insert register breakloop cdb2_open multithd verify_atomics_work )
+enable_testing()
+file(GLOB TESTS LIST_DIRECTORIES true "${PROJECT_SOURCE_DIR}/tests/*.test")
+foreach(TEST IN ITEMS ${TESTS}) 
+     get_filename_component(TEST ${TEST} NAME_WE)
+     add_test(NAME ${TEST} COMMAND make ${TEST} WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/tests/")
+endforeach()
 
 ########################
 ######## TODO ##########
