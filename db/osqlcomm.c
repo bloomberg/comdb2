@@ -6222,8 +6222,8 @@ static int conv_rc_sql2blkop(struct ireq *iq, int step, int ixnum, int rc,
         break;
 
     case ERR_SQL_PREP:
-        reqerrstr(iq, FSQL_PREPARE, "sql query syntax error");
-        ret = FSQL_PREPARE;
+        reqerrstr(iq, ERR_SQL_PREPARE, "sql query syntax error");
+        ret = ERR_SQL_PREPARE;
         break;
 
     case OSQL_FAILDISPATCH:

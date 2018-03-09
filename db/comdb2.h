@@ -418,6 +418,7 @@ enum RCODES {
     , ERR_VERIFY_PI = 319
     , ERR_UNCOMMITABLE_TXN = 404 /* txn is uncommitable, returns ERR_VERIFY rather than retry */
     , ERR_INCOHERENT = 996 /* prox2 understands it should retry another node for 996 */
+    , ERR_SQL_PREPARE = 1003
     , ERR_NO_AUXDB = 2000 /* requested auxiliary database not available */
     , ERR_SQL_PREP = 2001 /* block sql error in sqlite3_prepare */
     , ERR_LIMIT = 2002 /* sql request exceeds max cost */
