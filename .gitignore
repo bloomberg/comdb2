@@ -1,5 +1,6 @@
 # binaries -- still installing these in-source for test suite
 /build*
+/ninja*
 /deps
 /cdb2_dump
 /cdb2_printlog

@@ -611,7 +611,6 @@ int gbl_disable_stable_for_ipu = 1;
 int gbl_disable_exit_on_thread_error = 0;
 
 int gbl_berkdb_iomap = 1;
-int gbl_catch_response_on_retry = 1;
 int gbl_check_dbnum_conflicts = 1;
 int gbl_requeue_on_tran_dispatch = 1;
 int gbl_crc32c = 1;
@@ -4608,9 +4607,6 @@ static void register_all_int_switches()
     register_switch("berkdb_iomap",
                     "enable berkdb writing memptrickle status to a mapped file",
                     iomap_on, iomap_off, int_stat_fn, &gbl_berkdb_iomap);
-    register_int_switch("catch_response_on_retry",
-                        "print trace when we try to send replies on a retry",
-                        &gbl_catch_response_on_retry);
     register_int_switch("requeue_on_tran_dispatch",
                         "Requeue transactional statement if not enough threads",
                         &gbl_requeue_on_tran_dispatch);

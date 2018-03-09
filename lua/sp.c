@@ -156,7 +156,8 @@ static int setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
     q->iq.usedb = qdb;
     q->consumer = consumer;
     q->info = *info;
-    strcpy(q->info.spname, info->spname);
+    // memcpy because variable size struct breaks fortify checks in strcpy.
+    memcpy(q->info.spname, info->spname, spname_len + 1);
     strcpy(q->info.spname + spname_len + 1, info->spname + spname_len + 1);
     return bdb_trigger_subscribe(qdb->handle, &q->cond, &q->lock, &q->open);
 }
@@ -477,15 +478,155 @@ static void ping(Lua L)
 static void pong(Lua L)
 {
     SP sp = getsp(L);
-    struct newsqlheader hdr;
-    int num = 1;
-    if (sbuf2fread((void *)&hdr, sizeof(hdr), num, sp->clnt->sb) != num) {
-        luaL_error(L, "client disconnect");
-    }
-    if (ntohl(hdr.type) != RESPONSE_HEADER__SQL_RESPONSE_PONG) {
+    struct sqlclntstate *clnt = sp->clnt;
+    if (clnt->read_response(clnt, RESPONSE_PING_PONG, NULL, 0) != 0) {
         luaL_error(L, "client protocol error");
     }
     sp->pingpong = 0;
+}
+
+static int dbtype_to_client_type(lua_dbtypes_t *t)
+{
+    switch (t->dbtype) {
+    case DBTYPES_INTEGER: return SQLITE_INTEGER;
+    case DBTYPES_DECIMAL:
+    case DBTYPES_CSTRING: return SQLITE_TEXT;
+    case DBTYPES_REAL: return SQLITE_FLOAT;
+    case DBTYPES_DATETIME: {
+        lua_datetime_t *ldt = (lua_datetime_t *)t;
+        return (ldt->val.prec == DTTZ_PREC_MSEC) ? SQLITE_DATETIME
+                                                 : SQLITE_DATETIMEUS;
+    }
+    case DBTYPES_BLOB: return SQLITE_BLOB;
+    case DBTYPES_INTERVALYM: return SQLITE_INTERVAL_YM;
+    case DBTYPES_INTERVALDS: {
+        lua_intervalds_t *lds = (lua_intervalds_t *)t;
+        return (lds->val.u.ds.prec == DTTZ_PREC_MSEC) ? SQLITE_INTERVAL_DS
+                                                      : SQLITE_INTERVAL_DSUS;
+    }
+    default: return -1;
+    }
+}
+
+static int lua_to_client_type(Lua lua, int idx)
+{
+    if (lua_isnumber(lua, idx)) {
+        return SQLITE_FLOAT;
+    } else if (lua_isstring(lua, idx)) {
+        return SQLITE_TEXT;
+    } else if (lua_type(lua, idx) == LUA_TUSERDATA) {
+        lua_dbtypes_t *t = lua_touserdata(lua, idx);
+        return dbtype_to_client_type(t);
+    } else {
+        return -1;
+    }
+}
+
+#define col_to_idx(narg, col) lua_gettop(L) - narg + col + 1
+
+int sp_column_type(struct response_data *arg, int col, size_t typed_stmt, int type)
+{
+    SP parent = arg->sp->parent;
+    if (typed_stmt) {
+        parent->clnttype[col] = type;
+        return type;
+    }
+    if (parent->clnttype[col] > 0) {
+        return parent->clnttype[col];
+    }
+    if (type > 0) {
+        parent->clnttype[col] = type;
+        return type;
+    }
+    Lua L = arg->sp->lua;
+    int idx = col_to_idx(arg->ncols, col);
+    type = lua_to_client_type(L, idx);
+    if (type == -1) {
+        type = SQLITE_TEXT;
+    }
+    parent->clnttype[col] = type;
+    return type;
+}
+
+int sp_column_nil(struct response_data *arg, int col)
+{
+    SP sp = arg->sp;
+    Lua L = sp->lua;
+    int idx = col_to_idx(arg->ncols, col);
+    return lua_isnil(L, idx) || luabb_isnull(L, idx);
+}
+
+int sp_column_val(struct response_data *arg, int col, int type, void *out)
+{
+    SP sp = arg->sp;
+    Lua L = sp->lua;
+    int idx = col_to_idx(arg->ncols, col);
+    switch (type) {
+    case SQLITE_INTEGER: luabb_tointeger(L, idx, out); return 0;
+    case SQLITE_FLOAT: luabb_toreal(L, idx, out); return 0;
+    case SQLITE_DATETIME: /* fall through */
+    case SQLITE_DATETIMEUS: luabb_todatetime(L, idx, out); return 0;
+    case SQLITE_INTERVAL_YM: luabb_tointervalym(L, idx, out); return 0;
+    case SQLITE_INTERVAL_DS: /* fall through */
+    case SQLITE_INTERVAL_DSUS: luabb_tointervalds(L, idx, out); return 0;
+    }
+    return -1;
+}
+
+void *sp_column_ptr(struct response_data *arg, int col, int type, size_t *len)
+{
+    SP sp = arg->sp;
+    Lua L = sp->lua;
+    int idx = col_to_idx(arg->ncols, col);
+    char *c;
+    blob_t b;
+    lua_cstring_t *cs;
+    switch (type) {
+    case SQLITE_TEXT:
+        switch (luabb_type(L, idx)) {
+        case DBTYPES_LNUMBER:
+        case DBTYPES_LSTRING:
+            c = (char *)lua_tolstring(L, idx, len);
+            break;
+        case DBTYPES_CSTRING:
+            cs = lua_touserdata(L, idx);
+            c = cs->val;
+            *len = strlen(c);
+            break;
+        default:
+            c = strdup(luabb_tostring(L, idx));
+            *len = strlen(c);
+            luabb_pushcstring_dl(L, c);
+            lua_replace(L, idx);
+        }
+        return c;
+    case SQLITE_BLOB:
+        luabb_toblob(L, idx, &b);
+        if (luabb_type(L, idx) != DBTYPES_BLOB) {
+            luabb_pushblob_dl(L, &b);
+            lua_replace(L, idx);
+        }
+        *len = b.length;
+        return b.data;
+    }
+    return NULL;
+}
+
+char *sp_column_name(struct response_data *arg, int col)
+{
+    SP parent = arg->sp->parent;
+    if (parent->clntname[col] == NULL) {
+        sqlite3_stmt *stmt = arg->stmt;
+        if (stmt) {
+            parent->clntname[col] = strdup(sqlite3_column_name(stmt, col));
+        } else {
+            size_t n = snprintf(NULL, 0, "$%d", col);
+            char *name = malloc(n + 1);
+            snprintf(name, n + 1, "$%d", col);
+            parent->clntname[col] = name;
+        }
+    }
+    return parent->clntname[col];
 }
 
 static int dbq_pushargs(Lua L, dbconsumer_t *q, struct qfound *f)
@@ -790,22 +931,6 @@ static void new_col_info(SP sp, int ntypes)
     parent->ntypes = ntypes;
 }
 
-static int sqlite_type_to_client_type(int type)
-{
-    switch (type) {
-    case SQLITE_INTEGER: return CDB2_INTEGER;
-    case SQLITE_FLOAT: return CDB2_REAL;
-    case SQLITE_BLOB: return CDB2_BLOB;
-    case SQLITE_DATETIME: return CDB2_DATETIME;
-    case SQLITE_DATETIMEUS: return CDB2_DATETIMEUS;
-    case SQLITE_INTERVAL_YM: return CDB2_INTERVALYM;
-    case SQLITE_INTERVAL_DS: return CDB2_INTERVALDS;
-    case SQLITE_INTERVAL_DSUS: return CDB2_INTERVALDSUS;
-    case SQLITE_DECIMAL:
-    default: return CDB2_CSTRING;
-    }
-}
-
 /* TODO: delete it once typestr_to_type starts giving decimals. */
 static int sqlite_str_to_type(const char *ctype)
 {
@@ -852,68 +977,6 @@ static dbtypes_enum sqlite_type_to_dbtype(int sqltype)
     }
 }
 
-int dbtype_to_client_type(lua_dbtypes_t *t)
-{
-    switch (t->dbtype) {
-    case DBTYPES_INTEGER: return CDB2_INTEGER;
-    case DBTYPES_DECIMAL:
-    case DBTYPES_CSTRING: return CDB2_CSTRING;
-    case DBTYPES_REAL: return CDB2_REAL;
-    case DBTYPES_DATETIME: {
-        lua_datetime_t *ldt = (lua_datetime_t *)t;
-        return (ldt->val.prec == DTTZ_PREC_MSEC) ? CDB2_DATETIME
-                                                 : CDB2_DATETIMEUS;
-    }
-    case DBTYPES_BLOB: return CDB2_BLOB;
-    case DBTYPES_INTERVALYM: return CDB2_INTERVALYM;
-    case DBTYPES_INTERVALDS: {
-        lua_intervalds_t *lds = (lua_intervalds_t *)t;
-        return (lds->val.u.ds.prec == DTTZ_PREC_MSEC) ? CDB2_INTERVALDS
-                                                      : CDB2_INTERVALDSUS;
-    }
-    default: return -1;
-    }
-}
-
-int lua_to_client_type(Lua lua, int idx)
-{
-    if (lua_isnumber(lua, idx)) {
-        return CDB2_REAL;
-    } else if (lua_isstring(lua, idx)) {
-        return CDB2_CSTRING;
-    } else if (lua_type(lua, idx) == LUA_TUSERDATA) {
-        lua_dbtypes_t *t = lua_touserdata(lua, idx);
-        return dbtype_to_client_type(t);
-    } else {
-        return -1;
-    }
-}
-
-static void setup_cinfo_from_sqlite(SP sp, sqlite3_stmt *stmt, int nargs,
-                                    int *types)
-{
-    SP parent = sp->parent;
-    for (int col = 0; col < nargs; ++col) {
-        char *colname = (char *)sqlite3_column_name(stmt, col);
-        if (parent->clntname[col] == NULL) {
-            if (colname) {
-                parent->clntname[col] = strdup(colname);
-            }
-        }
-        int sql_type = sqlite3_column_type(stmt, col);
-        if (sql_type == SQLITE_NULL) {
-            sql_type = sqlite_str_to_type(sqlite3_column_decltype(stmt, col));
-        }
-        if (types) {
-            parent->clnttype[col] = types[col];
-        } else if (parent->clnt->req.parm) {
-            parent->clnttype[col] = parent->clnt->type_overrides[col];
-        } else if (parent->clnttype[col] == -1) {
-            parent->clnttype[col] = sqlite_type_to_client_type(sql_type);
-        }
-    }
-}
-
 static int check_param_count(struct sqlclntstate *clnt, int num)
 {
     CDB2SQLQUERY *query = clnt->sql_query;
@@ -941,102 +1004,6 @@ static int typed_stmt(struct sqlclntstate *clnt)
     if ((query && query->n_types) || clnt->req.parm) {
         return 1;
     }
-    return 0;
-}
-static int send_col_data(Lua lua, SP sp, sqlite3_stmt *stmt, int nargs)
-{
-    SP parent = sp->parent;
-    struct sqlclntstate *clnt = parent->clnt;
-    CDB2SQLQUERY *query = clnt->sql_query;
-    int *types = NULL;
-    if (query && query->n_types) types = query->types;
-
-    assert(nargs > 0);
-    if (check_param_count(clnt, nargs) != 0) {
-        luabb_error(lua, sp, "num of overrides:%d and columns:%d don't match",
-                    types ? query->n_types : clnt->req.parm, nargs);
-        return 1;
-    }
-    if (parent->ntypes != nargs) {
-        new_col_info(sp, nargs);
-    }
-    if (stmt) {
-        setup_cinfo_from_sqlite(sp, stmt, nargs, types);
-    }
-    if (parent->ntypes != nargs) {
-        return luabb_error(lua, sp, "can't send %d columns. need %d", nargs,
-                           parent->ntypes);
-    }
-    size_t infosz = sizeof(struct column_info) * nargs;
-    struct column_info *info = malloc(infosz);
-    for (int i = 0; i < nargs; ++i) {
-        if (types) {
-            parent->clnttype[i] = types[i];
-        } else if (clnt->req.parm) {
-            parent->clnttype[i] = clnt->type_overrides[i];
-        } else if (parent->clnttype[i] == -1) {
-            parent->clnttype[i] = lua_to_client_type(lua, i + 1);
-        }
-
-        if (parent->clnttype[i] == -1) {
-            // Did not find override, db:column_type, sql or lua type.
-            // Default to string; can convert anything to string
-            parent->clnttype[i] = CDB2_CSTRING;
-        }
-
-        info[i].type = htonl(parent->clnttype[i]);
-        if (parent->clntname[i] == NULL) {
-            parent->clntname[i] = malloc(16);
-            sprintf(parent->clntname[i], "$%d", i);
-        }
-        strncpy0(info[i].column_name, parent->clntname[i],
-                 sizeof(info[i].column_name));
-    }
-
-    /* write columns */
-    if (sp->clnt->is_newsql) {
-        CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
-        CDB2SQLRESPONSE__Column column[nargs];
-        CDB2SQLRESPONSE__Column *column_ptr[nargs];
-        sql_response.response_type = 1;
-        sql_response.n_value = nargs;
-
-        for (int i = 0; i < nargs; i++) {
-            column_ptr[i] = &column[i];
-            cdb2__sqlresponse__column__init(&column[i]);
-            column[i].has_type = 1;
-            column[i].type = parent->clnttype[i];
-            const char *colname = NULL;
-            if (gbl_return_long_column_names) {
-                column[i].value.len = strlen(parent->clntname[i]) + 1;
-                column[i].value.data = (uint8_t *)parent->clntname[i];
-            } else {
-                column[i].value.len = 32;
-                column[i].value.data = (uint8_t *)info[i].column_name;
-            }
-        }
-        sql_response.value = column_ptr;
-        sql_response.error_code = 0;
-
-        sp->rc = newsql_write_response(sp->clnt, RESPONSE_HEADER__SQL_RESPONSE,
-                                       &sql_response, 1 /*flush*/, malloc,
-                                       __func__, __LINE__);
-    } else {
-        struct fsqlresp rsp;
-        rsp.response = FSQL_COLUMN_DATA;
-        rsp.flags = 0;
-        rsp.rcode = 0;
-        rsp.parm = nargs;
-        rsp.followlen = sizeof(info);
-        sp->rc = fsql_write_response(sp->clnt, &rsp, info, infosz, 0, __func__,
-                                     __LINE__);
-    }
-    free(info);
-    if (sp->rc) {
-        luabb_error(lua, sp, "%s: couldn't send result back", __func__);
-        return 1;
-    }
-    parent->clnt->osql.sent_column_data = 1;
     return 0;
 }
 
@@ -1257,7 +1224,6 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
         return luaL_error(lua, sqlite3_errmsg(getdb(sp)));
     }
 
-    release_locks_on_emit_row(thd, clnt);
     lua_newtable(lua);
 
     int ncols = sqlite3_column_count(stmt);
@@ -1331,8 +1297,7 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
         }
         default:
             return luaL_error(lua, "unknown field type:%d for col:%s",
-                              thd->cinfo[col].type,
-                              thd->cinfo[col].column_name);
+                              type, sqlite3_column_name(stmt, col));
         }
         lua_setfield(lua, -2, sqlite3_column_name(stmt, col));
     }
@@ -1384,27 +1349,15 @@ typedef struct client_info {
 
 static int send_sp_trace(SP sp, const char *trace, int want_response)
 {
-    CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
-    if (want_response) {
-        sql_response.response_type = RESPONSE_TYPE__SP_DEBUG;
-    } else {
-        sql_response.response_type = RESPONSE_TYPE__SP_TRACE;
-    }
-    sql_response.n_value = 0;
-    sql_response.value = NULL;
-    sql_response.error_code = 0;
-    sql_response.info_string = (char *)trace;
-    sp->rc = newsql_write_response(
-        sp->clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE, &sql_response,
-        1 /*flush*/, malloc, __func__, __LINE__);
-    return sp->rc;
+    struct sqlclntstate *clnt = sp->clnt;
+    int type = want_response ? RESPONSE_DEBUG : RESPONSE_TRACE;
+    return clnt->write_response(clnt, type, (void *)trace, 0);
 }
 
 static clnt_info info_buf;
 
 static int get_remote_input(lua_State *lua, char *buffer)
 {
-    struct fsqlresp rsp;
     int rc = 0;
 
     SP sp = getsp(lua);
@@ -1412,21 +1365,19 @@ static int get_remote_input(lua_State *lua, char *buffer)
     info_buf.has_buffer = 0;
 
     char *trace = "\ncomdb2_lua> ";
-    if (sp->debug_clnt->is_newsql) {
-        sp->rc = send_sp_trace(sp, trace, 1);
-    } else {
-        rsp.response = FSQL_DEBUG_TRACE;
-        rsp.flags = 0;
-        rsp.rcode = 0;
-        rsp.parm = 0;
-        sp->rc = fsql_write_response(sp->debug_clnt, &rsp, (char *)trace,
-                                     strlen(trace) + 1, 1, __func__, __LINE__);
-    }
+    sp->rc = send_sp_trace(sp, trace, 1);
     if (sp->rc) {
         return luabb_error(lua, sp,
                            "get_remote_input: couldn't send results back");
     }
     pthread_mutex_lock(&lua_debug_mutex);
+    /*
+       AKSHAT
+       */
+    abort();
+    /*
+    clnt->read_response() ???
+
     if (!sp->debug_clnt->is_newsql) {
         if (info_buf.has_buffer == 0) {
             rc = sbuf2fread(buffer, 250, 1, sp->debug_clnt->sb);
@@ -1452,6 +1403,7 @@ static int get_remote_input(lua_State *lua, char *buffer)
         free(cmddata);
         cdb2__query__free_unpacked(query, NULL);
     }
+    */
     pthread_mutex_unlock(&lua_debug_mutex);
     return rc;
 }
@@ -1487,7 +1439,6 @@ static void InstructionCountHook(Lua, lua_Debug *);
 static int db_debug(lua_State *lua)
 {
     int nargs = lua_gettop(lua);
-    struct fsqlresp rsp;
     const char *trace;
     int rc;
 
@@ -1508,16 +1459,7 @@ static int db_debug(lua_State *lua)
 
     if (sp->debug_clnt->want_stored_procedure_debug) {
         trace = lua_tostring(lua, -1);
-        if (sp->clnt->is_newsql) {
-            rc = send_sp_trace(sp, trace, 0);
-        } else {
-            rsp.response = FSQL_DEBUG_TRACE;
-            rsp.flags = 0;
-            rsp.rcode = 0;
-            rsp.parm = 0;
-            rc = fsql_write_response(sp->debug_clnt, &rsp, (void *)trace,
-                                     strlen(trace) + 1, 1, __func__, __LINE__);
-        }
+        rc = send_sp_trace(sp, trace, 0);
         if (rc) {
             if (sp->debug_clnt != sp->clnt) {
                 /* To be given as lrl value. */
@@ -1649,7 +1591,6 @@ static int db_db_debug(Lua lua)
 static int db_trace(lua_State *lua)
 {
     int nargs = lua_gettop(lua);
-    struct fsqlresp rsp;
     const char *trace;
     int rc;
 
@@ -1663,19 +1604,7 @@ static int db_trace(lua_State *lua)
     SP sp = getsp(lua);
 
     if (sp->clnt->want_stored_procedure_trace) {
-        if (!sp->clnt->is_newsql) {
-            rsp.response = FSQL_DEBUG_TRACE;
-            rsp.flags = 0;
-            rsp.rcode = 0;
-            rsp.parm = 0;
-            rc = fsql_write_response(sp->clnt, &rsp, (char *)trace,
-                                     strlen(trace) + 1, 1, __func__, __LINE__);
-            if (rc)
-                return luabb_error(lua, sp, "%s: couldn't send results back",
-                                   __func__);
-        } else {
-            sp->rc = send_sp_trace(sp, trace, 0);
-        }
+        sp->rc = send_sp_trace(sp, trace, 0);
     }
 
     return 0;
@@ -2170,16 +2099,6 @@ static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
     return lua_prepare_sql_int(L, sp, sql, stmt, NULL);
 }
 
-static void push_sql_cols(Lua lua, sqlite3_stmt *stmt)
-{
-    int cols = sqlite3_column_count(stmt);
-    lua_checkstack(lua, cols + 10);
-    for (int i = 0; i < cols; ++i) {
-        lua_getfield(lua, -1, sqlite3_column_name(stmt, i));
-        lua_insert(lua, -2);
-    }
-}
-
 static void push_clnt_cols(Lua L, SP sp)
 {
     SP parent = sp->parent;
@@ -2206,8 +2125,6 @@ static int luatable_emit(Lua L)
     SP sp = getsp(L);
     sqlite3_stmt *stmt = get_sqlrow_stmt(L);
     if (stmt) {
-        push_sql_cols(L, stmt);
-        lua_pop(L, 1);
         cols = sqlite3_column_count(stmt);
     } else if (sp->parent->ntypes) {
         push_clnt_cols(L, sp);
@@ -2448,102 +2365,6 @@ static int dbtable_where(lua_State *lua)
     return 2;
 }
 
-#if 0
-/* Get column information from the first row (if any) and send it.
- * Sorry - I realize something very very similar already exists.
- * Needed for a quick change - hoping to re-unite duplicated code soon.
- * */
-static int send_column_info_for_result_set(SP sp, sqlite3_stmt *stmt, struct column_info *cols, int have_a_row) {
-    int rc;
-    int col;
-    int ncols;
-    struct sqlthdstate *thd;
-    SP parent;
-    struct fsqlresp resp;
-
-    parent = sp->parent;
-
-    ncols = sqlite3_column_count(stmt);
-    thd = sp->thd;
-
-    if (sp->clnt->req.parm && sp->clnt->req.parm != ncols)
-        return luabb_error(sp->lua, sp,
-          "number of type overrides doesn't match #columns in result set");
-    else if (sp->clnt->req.parm) {
-        if (sp->clnt->req.parm)
-            cols[col].type = htonl(sp->clnt->type_overrides[col]);
-    }
-    else if (rc == SQLITE_DONE) {
-        /* Don't have first row to make type decisions, fall
-         * back overrides, or to sqlite's at last resort. */
-        for (col = 0; col < ncols; col++) {
-            cols[col].type = htonl(
-              sqlite_str_to_type(sqlite3_column_decltype(stmt, col)));
-        }
-    } else {
-        for (col = 0; col < ncols; col++) {
-            int type;
-            type = sqlite3_column_type(stmt, col);
-            if (type == SQLITE_NULL)
-                type = sqlite_str_to_type(
-                  sqlite3_column_decltype(stmt, col));
-            else
-                type = sqlite_type_to_client_type(type);
-
-            cols[col].type = htonl(type);
-        }
-    }
-    for (col = 0; col < ncols; col++) {
-        strncpy(cols[col].column_name, sqlite3_column_name(stmt, col),
-          sizeof(cols[col].column_name));
-        cols[col].column_name[sizeof(cols[0].column_name)-1] = 0;
-    }
-
-    if (sp->clnt->is_newsql) {
-      for (col = 0; col < ncols; col++)
-          cols[col].type = ntohl(cols[col].type);
-      CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
-      CDB2SQLRESPONSE__Column column[ncols];
-      CDB2SQLRESPONSE__Column *column_ptr[ncols];
-      sql_response.response_type = 1;
-      sql_response.n_value = ncols;
-
-      for(int i = 0; i < ncols; i++)
-      {
-         column_ptr[i] = &column[i];
-         cdb2__sqlresponse__column__init(&column[i]);
-         column[i].has_type = 1;
-         column[i].type = cols[i].type;
-         column[i].value.len = 32;
-         column[i].value.data = cols[i].column_name;
-      }
-      sql_response.value = column_ptr;
-      sql_response.error_code = 0;
-
-      sp->rc = newsql_write_response(sp->clnt, 1002, &sql_response,
-                                     1 /*flush*/, malloc, __func__, __LINE__);
-    } else {
-      resp.response = FSQL_COLUMN_DATA;
-      resp.flags = 0;
-      resp.rcode = FSQL_OK;
-      resp.parm = ncols;
-      pthread_mutex_lock(parent->emit_mutex);
-      rc = fsql_write_response(sp->clnt, &resp, cols, ncols * sizeof(struct column_info), 0, __func__, __LINE__);
-      pthread_mutex_unlock(parent->emit_mutex);
-      if (rc)
-          return luabb_error(sp->lua, sp, "error sending back column data");
-      /* flip back because code expects native values later */
-      for (col = 0; col < ncols; col++)
-          cols[col].type = ntohl(cols[col].type);
-    }
-
-
-    parent->clnt->osql.sent_column_data = 1;
-
-    return 0;
-}
-#endif
-
 static inline const char *bad_handle()
 {
     return "Wrong sql handle state";
@@ -2730,6 +2551,7 @@ static void *dispatch_lua_thread(void *lt)
         l_thread->clnt->want_stored_procedure_trace;
     clnt.dbtran.mode = l_thread->clnt->dbtran.mode;
     clnt.is_newsql = l_thread->clnt->is_newsql;
+    clnt.write_response = l_thread->clnt->write_response;
     clnt.sp = l_thread->sp;
     clnt.sql = l_thread->sql;
     clnt.must_close_sb = 0;
@@ -2739,21 +2561,11 @@ static void *dispatch_lua_thread(void *lt)
     pthread_cond_init(&clnt.wait_cond, NULL);
     pthread_mutex_init(&clnt.write_lock, NULL);
     pthread_mutex_init(&clnt.dtran_mtx, NULL);
-
     strcpy(clnt.tzname, l_thread->clnt->tzname);
-    if (l_thread->clnt->have_endian &&
-        l_thread->clnt->endian == FSQL_ENDIAN_LITTLE_ENDIAN) {
-        clnt.have_endian = 1;
-        clnt.endian = FSQL_ENDIAN_LITTLE_ENDIAN;
-    } else {
-        clnt.have_endian = 0;
-        clnt.endian = FSQL_ENDIAN_BIG_ENDIAN;
-    }
 
     dispatch_sql_query(&clnt); // --> exec_thread()
 
     cleanup_clnt(&clnt);
-
     pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
     pthread_mutex_destroy(&clnt.write_lock);
@@ -3338,9 +3150,7 @@ static int dbstmt_emit(Lua L)
     sqlite3_stmt *stmt = dbstmt->stmt;
     int cols = sqlite3_column_count(stmt);
     int rc;
-    while ((rc = lua_sql_step(L, stmt)) == SQLITE_ROW) {
-        push_sql_cols(L, stmt);
-        lua_pop(L, 1);
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         l_send_back_row(L, stmt, cols);
     }
     reset_stmt(sp, dbstmt);
@@ -3712,19 +3522,12 @@ static int db_emit(Lua L)
 static int db_emiterror(lua_State *lua)
 {
     SP sp = getsp(lua);
-    struct fsqlresp resp;
-
     const char *errstr = lua_tostring(lua, -1);
-
     if (errstr) {
         logmsg(LOGMSG_ERROR, "err: %s\n", errstr);
-        resp.response = FSQL_ERROR;
-        resp.flags = 0;
         if (sp->rc == 0) sp->rc = -1;
-        resp.rcode = sp->rc;
-        resp.parm = 0;
-        fsql_write_response(sp->clnt, &resp, (void *)errstr, strlen(errstr) + 1,
-                            1, __func__, __LINE__);
+        struct sqlclntstate *clnt = sp->clnt;
+        clnt->write_response(clnt, RESPONSE_ERROR, (void *)errstr, sp->rc);
     }
     return 0;
 }
@@ -3788,29 +3591,25 @@ static int db_column_type(Lua L)
     if (strcmp(name, "short") == 0 || strcmp(name, "int") == 0 ||
         strcmp(name, "integer") == 0 || strcmp(name, "longlong") == 0 ||
         strcmp(name, "u_short") == 0 || strcmp(name, "u_int") == 0) {
-        clnttype = CDB2_INTEGER;
+        clnttype = SQLITE_INTEGER;
     } else if (strcmp(name, "float") == 0 || strcmp(name, "double") == 0 ||
                strcmp(name, "number") == 0 || strcmp(name, "real") == 0) {
-        clnttype = CDB2_REAL;
+        clnttype = SQLITE_FLOAT;
     } else if (strcmp(name, "blob") == 0 || strcmp(name, "byte") == 0) {
-        clnttype = CDB2_BLOB;
-    } else if (strcmp(name, "datetimeus") == 0) {
-        clnttype = CDB2_DATETIMEUS;
-    } else if (strcmp(name, "datetime") == 0) {
-        clnttype = CDB2_DATETIME;
-    } else if (strncmp(name, "date", 4) == 0) {
-        /* The type is deprecated. */
-        clnttype = CDB2_DATETIME;
+        clnttype = SQLITE_BLOB;
+    } else if (strcmp(name, "datetime") == 0 || strcmp(name, "datetimeus") == 0 ||
+               strncmp(name, "date", 4) == 0) {
+        clnttype = SQLITE_DATETIME;
     } else if (strcmp(name, "intervaldsus") == 0) {
-        clnttype = CDB2_INTERVALDSUS;
+        clnttype = SQLITE_INTERVAL_DSUS;
     } else if (strcmp(name, "intervalds") == 0) {
-        clnttype = CDB2_INTERVALDS;
+        clnttype = SQLITE_INTERVAL_DS;
     } else if (strcmp(name, "intervalym") == 0) {
-        clnttype = CDB2_INTERVALYM;
+        clnttype = SQLITE_INTERVAL_YM;
     } else {
         /* If the type is not known lets have the type as
         ** TEXT just like sqlite. */
-        clnttype = CDB2_CSTRING;
+        clnttype = SQLITE_TEXT;
     }
     free(name);
     pthread_mutex_lock(parent->emit_mutex);
@@ -3907,24 +3706,16 @@ static int db_copyrow(Lua lua)
 static int db_print(Lua lua)
 {
     int nargs = lua_gettop(lua);
-    struct fsqlresp rsp;
-    const char *trace;
-    int rc;
 
     if (nargs > 2)
         return luabb_error(lua, NULL, "wrong number of  arguments %d", nargs);
 
     SP sp = getsp(lua);
-    trace = lua_tostring(lua, -1);
-
+    const char *trace = lua_tostring(lua, -1);
     if (trace == NULL) return 0;
 
-    rsp.response = FSQL_DEBUG_TRACE;
-    rsp.flags = 0;
-    rsp.rcode = 0;
-    rsp.parm = 0;
-    rc = fsql_write_response(sp->clnt, &rsp, (char *)trace, strlen(trace) + 1,
-                             1, __func__, __LINE__);
+    struct sqlclntstate *clnt = sp->clnt;
+    int rc  = clnt->write_response(clnt, RESPONSE_DEBUG, (void*)trace, 0);
     if (rc)
         return luabb_error(lua, sp, "%s: couldn't send results back", __func__);
 
@@ -4706,7 +4497,6 @@ static int is_array(Lua L)
     if (n < 1) return 0;
     lua_pushnumber(L, n);
     if (lua_next(L, -2)) {
-        luabb_dumpcstack(L);
         // not array: there is stuff after numeric index
         lua_pop(L, 2);
         return 0;
@@ -4882,381 +4672,44 @@ annotate:
 
 static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
 {
-    struct fsqlresp rsp;
-    int col;
-    int rc;
-    int len = 0;
-    int offset = 0;
-    struct sqlfield fld[MAXCOLUMNS], *ffld /*flipped*/;
-    char *s;
-    char err[MAXCOLUMNS];
-    int little_endian = 0;
-    int is_type_set;
-
+    int rc = 0;
     SP sp = getsp(lua);
-    SP parent = sp->parent;
-
     assert(nargs > 0);
     if (nargs > MAXCOLUMNS) {
         return luabb_error(lua, sp, "attempt to read %d cols (maxcols:%d)",
                            nargs, MAXCOLUMNS);
     }
-
-    if (sp->thd->ncols && sp->thd->ncols != nargs) {
-        return luabb_error(
-            lua, sp,
-            "row() call has %d columns, prior call to column_names() had %d",
-            nargs, sp->thd->ncols);
-    }
-
-    /* flip our data if the client asked for little endian data */
-    if (sp->clnt->have_endian &&
-        sp->clnt->endian == FSQL_ENDIAN_LITTLE_ENDIAN) {
-        little_endian = 1;
-    }
-
-    if (!parent->clnt->osql.sent_column_data) {
-        rc = 0;
-        pthread_mutex_lock(parent->emit_mutex);
-        if (!parent->clnt->osql.sent_column_data) {
-            rc = send_col_data(lua, sp, stmt, nargs);
+    release_locks_on_emit_row(sp->thd, sp->clnt);
+    struct response_data arg = {0};
+    arg.ncols = nargs;
+    arg.stmt = stmt;
+    arg.sp = sp;
+    arg.pingpong = sp->pingpong;
+    struct sqlclntstate *clnt = sp->parent->clnt;
+    if (clnt->osql.sent_column_data == 0) {
+        pthread_mutex_lock(sp->emit_mutex);
+        if (clnt->osql.sent_column_data == 0) {
+            new_col_info(sp, nargs);
+            rc = clnt->write_response(clnt, RESPONSE_COLUMNS_LUA, &arg, 0);
+            clnt->osql.sent_column_data = 1;
         }
-        pthread_mutex_unlock(parent->emit_mutex);
+        pthread_mutex_unlock(sp->emit_mutex);
         if (rc) return rc;
     }
-
-    if (parent->ntypes != nargs)
-        return luabb_error(lua, sp, "expected %d columns, got %d",
-                           parent->ntypes, nargs);
-
-    const int stack_offset = lua_gettop(lua) - nargs;
-
-    /* compute offsets for data, check types */
-    offset = sizeof(struct sqlfield) * nargs;
-    for (col = 0; col < nargs; col++) {
-        int idx = stack_offset + col + 1; // col is 0-based
-        if (lua_isnil(lua, idx) || luabb_isnull(lua, idx)) {
-            fld[col].offset = -1;
-            fld[col].len = -1;
-            continue;
-        }
-
-        switch (parent->clnttype[col]) {
-
-        case CDB2_INTEGER:
-            if (offset % sizeof(long long))
-                offset += sizeof(long long) - (offset % sizeof(long long));
-            fld[col].offset = offset;
-            fld[col].len = sizeof(long long);
-            break;
-
-        case CDB2_CSTRING: {
-            const char *c = luabb_tostring(lua, idx);
-            fld[col].offset = offset;
-            /* Space for \0 at the end. */
-            fld[col].len = strlen(c) + 1;
-            break;
-        }
-
-        case CDB2_REAL:
-            if (offset % sizeof(double))
-                offset += sizeof(double) - (offset % sizeof(double));
-            fld[col].offset = offset;
-            fld[col].len = sizeof(double);
-            break;
-
-        case CDB2_DATETIME:
-        case CDB2_DATETIMEUS:
-            if (offset % sizeof(cdb2_client_datetime_t))
-                offset += sizeof(cdb2_client_datetime_t) -
-                          (offset % sizeof(cdb2_client_datetime_t));
-            fld[col].offset = offset;
-            fld[col].len = sizeof(cdb2_client_datetime_t);
-            break;
-
-        case CDB2_INTERVALYM:
-            if (offset % CLIENT_INTV_YM_LEN)
-                offset += CLIENT_INTV_YM_LEN - (offset % CLIENT_INTV_YM_LEN);
-            fld[col].offset = offset;
-            fld[col].len = CLIENT_INTV_YM_LEN;
-            break;
-
-        case CDB2_INTERVALDS:
-        case CDB2_INTERVALDSUS:
-            if (offset % CLIENT_INTV_DS_LEN)
-                offset += CLIENT_INTV_DS_LEN - (offset % CLIENT_INTV_DS_LEN);
-            fld[col].offset = offset;
-            fld[col].len = CLIENT_INTV_DS_LEN;
-            break;
-
-        case CDB2_BLOB: {
-            blob_t blb;
-            luabb_toblob(lua, idx, &blb);
-            fld[col].offset = offset;
-            fld[col].len = blb.length;
-            break;
-        }
-
-        default:
-            logmsg(LOGMSG_ERROR, "%s() unknown type:%d for col:%d", __func__,
-                   parent->clnttype[col], col);
-            break;
-        }
-        offset += fld[col].len;
-    }
-
-    if (sp->bufsz < offset) {
-        sp->buf = realloc(sp->buf, offset);
-        sp->bufsz = offset;
-    }
-
-    ffld = (struct sqlfield *)sp->buf;
-
-    /* loop again, write data and offsets */
-    for (col = 0; col < nargs; col++) {
-        int idx = stack_offset + col + 1; // col is 0-based
-        double dv;
-        long long lv;
-        cdb2_client_datetime_t cdt;
-
-        ffld[col].offset = htonl(fld[col].offset);
-        ffld[col].len = htonl(fld[col].len);
-
-        if (lua_isnil(lua, idx) || luabb_isnull(lua, idx)) {
-            continue;
-        }
-
-        switch (parent->clnttype[col]) {
-        case CDB2_INTEGER:
-            luabb_tointeger(lua, idx, &lv);
-            if (little_endian) lv = flibc_llflip(lv);
-            if (!buf_put(&lv, sizeof(lv),
-                         (uint8_t *)(sp->buf + fld[col].offset),
-                         sp->buf + sp->bufsz))
-                return luabb_error(lua, sp, "error adding column in buffer.");
-
-            break;
-
-        case CDB2_CSTRING: {
-            const char *v = luabb_tostring(lua, idx);
-            memcpy(sp->buf + fld[col].offset, v, fld[col].len);
-            break;
-        }
-
-        case CDB2_REAL:
-            luabb_toreal(lua, idx, &dv);
-            if (little_endian) dv = flibc_dblflip(dv);
-            if (!buf_put(&dv, sizeof(dv),
-                         (uint8_t *)(sp->buf + fld[col].offset),
-                         sp->buf + sp->bufsz))
-                return luabb_error(lua, sp, "error adding column in buffer.");
-            break;
-
-        case CDB2_DATETIMEUS:
-        case CDB2_DATETIME: {
-            /* Put this logic in function, can be used by cursor. */
-            datetime_t dtv;
-            luabb_todatetime(lua, idx, &dtv);
-
-            /* Adjust fraction as per client precision. */
-            if (parent->clnttype[col] == CDB2_DATETIME && dtv.prec == 6)
-                dtv.frac /= 1000;
-            else if (parent->clnttype[col] == CDB2_DATETIMEUS && dtv.prec == 3)
-                dtv.frac *= 1000;
-
-            if (little_endian) {
-                cdt.tm.tm_sec = flibc_intflip(dtv.tm.tm_sec);
-                cdt.tm.tm_min = flibc_intflip(dtv.tm.tm_min);
-                cdt.tm.tm_hour = flibc_intflip(dtv.tm.tm_hour);
-                cdt.tm.tm_mday = flibc_intflip(dtv.tm.tm_mday);
-                cdt.tm.tm_mon = flibc_intflip(dtv.tm.tm_mon);
-                cdt.tm.tm_year = flibc_intflip(dtv.tm.tm_year);
-                cdt.tm.tm_wday = flibc_intflip(dtv.tm.tm_wday);
-                cdt.tm.tm_yday = flibc_intflip(dtv.tm.tm_yday);
-                cdt.tm.tm_isdst = flibc_intflip(dtv.tm.tm_isdst);
-                cdt.msec = flibc_intflip(dtv.frac);
-            } else {
-                cdt.tm.tm_sec = dtv.tm.tm_sec;
-                cdt.tm.tm_min = dtv.tm.tm_min;
-                cdt.tm.tm_hour = dtv.tm.tm_hour;
-                cdt.tm.tm_mday = dtv.tm.tm_mday;
-                cdt.tm.tm_mon = dtv.tm.tm_mon;
-                cdt.tm.tm_year = dtv.tm.tm_year;
-                cdt.tm.tm_wday = dtv.tm.tm_wday;
-                cdt.tm.tm_yday = dtv.tm.tm_yday;
-                cdt.tm.tm_isdst = dtv.tm.tm_isdst;
-                cdt.msec = dtv.frac;
-            }
-            strcpy(cdt.tzname, dtv.tzname);
-            if (!client_datetime_put(&cdt,
-                                     (uint8_t *)(sp->buf + fld[col].offset),
-                                     sp->buf + sp->bufsz)) {
-                return luabb_error(lua, sp, "Invalid datetime.");
-            }
-            break;
-        }
-
-        case CDB2_BLOB: {
-            blob_t blb;
-            luabb_toblob(lua, idx, &blb);
-            memcpy(sp->buf + fld[col].offset, blb.data, fld[col].len);
-            break;
-        }
-
-        case CDB2_INTERVALYM: {
-            intv_t val;
-            luabb_tointervalym(lua, idx, &val);
-            cdb2_client_intv_ym_t ym;
-            if (little_endian) {
-                ym.sign = flibc_intflip(val.sign);
-                ym.years = flibc_intflip(val.u.ym.years);
-                ym.months = flibc_intflip(val.u.ym.months);
-            } else {
-                ym.sign = val.sign;
-                ym.years = val.u.ym.years;
-                ym.months = val.u.ym.months;
-            }
-            if (!client_intv_ym_put(&ym, (uint8_t *)(sp->buf + fld[col].offset),
-                                    sp->buf + sp->bufsz)) {
-                return luabb_error(lua, sp, "Invalid interval.");
-            }
-            break;
-        }
-
-        case CDB2_INTERVALDSUS:
-        case CDB2_INTERVALDS: {
-            intv_t val;
-            luabb_tointervalds(lua, idx, &val);
-
-            /* Adjust fraction as per client precision. */
-            if (parent->clnttype[col] == CDB2_INTERVALDS && val.u.ds.prec == 6)
-                val.u.ds.frac /= 1000;
-            else if (parent->clnttype[col] == CDB2_INTERVALDSUS &&
-                     val.u.ds.prec == 3)
-                val.u.ds.frac *= 1000;
-
-            cdb2_client_intv_ds_t ds;
-            if (little_endian) {
-                ds.sign = flibc_intflip(val.sign);
-                ds.days = flibc_intflip(val.u.ds.days);
-                ds.hours = flibc_intflip(val.u.ds.hours);
-                ds.mins = flibc_intflip(val.u.ds.mins);
-                ds.sec = flibc_intflip(val.u.ds.sec);
-                ds.msec = flibc_intflip(val.u.ds.frac);
-            } else {
-                ds.sign = val.sign;
-                ds.days = val.u.ds.days;
-                ds.hours = val.u.ds.hours;
-                ds.mins = val.u.ds.mins;
-                ds.sec = val.u.ds.sec;
-                ds.msec = val.u.ds.frac;
-            }
-            if (!client_intv_ds_put(&ds, (uint8_t *)(sp->buf + fld[col].offset),
-                                    sp->buf + sp->bufsz)) {
-                return luabb_error(lua, sp, "Invalid interval.");
-            }
-            break;
-        }
-
-        default: return luabb_error(lua, sp, "didn't expect to get here...");
-        }
-    }
-
-    if (sp->clnt->is_newsql) {
-        CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
-        CDB2SQLRESPONSE__Column column[nargs];
-        CDB2SQLRESPONSE__Column *column_ptr[nargs];
-        sql_response.response_type = 2;
-        sql_response.n_value = nargs;
-
-        for (int i = 0; i < nargs; i++) {
-            column_ptr[i] = &column[i];
-            cdb2__sqlresponse__column__init(&column[i]);
-            column[i].has_type = 0;
-            if (fld[i].len == -1) {
-                column[i].has_isnull = 1;
-                column[i].isnull = 1;
-                column[i].value.len = 0;
-                column[i].value.data = NULL;
-            } else {
-                column[i].value.len = fld[i].len;
-                column[i].value.data = sp->buf + fld[i].offset;
-            }
-        }
-        sql_response.value = column_ptr;
-        sql_response.error_code = 0;
-
-        sp->rc = newsql_write_response(
-            sp->clnt, sp->pingpong ? RESPONSE_HEADER__SQL_RESPONSE_PING
-                                   : RESPONSE_HEADER__SQL_RESPONSE,
-            &sql_response, 1 /*flush*/, malloc, __func__, __LINE__);
-    } else {
-        /* write row */
-        if (sp->pingpong) {
-            luaL_error(lua, NULL, "consumer:emit() requires cdb2-api");
-        }
-        rsp.response = FSQL_ROW_DATA;
-        rsp.flags = 0;
-        rsp.rcode = FSQL_OK;
-        rsp.parm = 0;
-        rsp.followlen = offset;
-
-        pthread_mutex_lock(parent->emit_mutex);
-        sp->rc = fsql_write_response(sp->clnt, &rsp, sp->buf, offset, 0,
-                                     __func__, __LINE__);
-        pthread_mutex_unlock(parent->emit_mutex);
-    }
-
-    if (sp->rc) {
-        /* This is non recoverable error, exit lua machine from here. */
-        return luabb_error(lua, sp, "%s: couldn't send results back", __func__);
-    }
-    sp->nrows++;
-    parent->nrows++;
-
-    lua_pop(lua, nargs);
-
-    return 0;
+    int type = stmt ? RESPONSE_ROW : RESPONSE_ROW_LUA;
+    return clnt->write_response(clnt, type, &arg, 0);
 }
 
 static int flush_rows(SP sp)
 {
-    if (sp->clnt->sb == NULL) // && sp->clnt->trigger_arg)
+    if (sp->clnt->sb == NULL)
         return 0;
-    int rc;
-    struct fsqlresp rsp;
-
-    /* If we didn't send back any rows, we need to send a columns header,
-       or the client will get confused - comdb2_api expects a FSQL_COLUMN_DATA
-       response before anything else */
+    struct sqlclntstate *clnt = sp->clnt;
     if ((sp->parent && !sp->parent->clnt->osql.sent_column_data) ||
         (!sp->parent && sp->nrows == 0)) {
-        if (sp->clnt->is_newsql) {
-            newsql_send_dummy_resp(sp->clnt, __func__, __LINE__);
-        } else {
-            rsp.response = FSQL_COLUMN_DATA;
-            rsp.flags = 0;
-            rsp.rcode = 0;
-            rsp.parm = 0;
-            rsp.followlen = 0;
-            rc = fsql_write_response(sp->clnt, &rsp, NULL, 0, 0, __func__,
-                                     __LINE__);
-            if (rc) return rc;
-        }
+        return clnt->write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
     }
-
-    if (sp->clnt->is_newsql) {
-        rc = newsql_send_last_row(sp->clnt, 0, __func__, __LINE__);
-    } else {
-        rsp.response = FSQL_ROW_DATA;
-        rsp.flags = 0;
-        rsp.rcode = FSQL_DONE;
-        rsp.parm = 0;
-        rsp.followlen = 0;
-        rc = fsql_write_response(sp->clnt, &rsp, NULL, 0, 1 /*flush*/, __func__,
-                                 __LINE__);
-    }
-    return rc;
+    return clnt->write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
 }
 
 static int push_param(Lua lua, struct sqlclntstate *clnt, struct schema *params,
@@ -6615,10 +6068,10 @@ int db_verify_table_callback(void *v, const char *buf)
         luabb_error(L, sp, "client disconnect");
         return -2;
     }
-
     if (buf[0] == '!' || buf[0] == '?') buf++;
-    int len = strlen(buf);
-    newsql_send_strbuf_response(sp->clnt, buf, len + 1);
+    char *row[] = {(char*)buf};
+    struct sqlclntstate *clnt = sp->clnt;
+    clnt->write_response(clnt, RESPONSE_ROW_STR, row, 1);
     return 0;
 }
 
@@ -6633,7 +6086,7 @@ void lua_final(sqlite3_context *context)
     lua_func_arg_t *arg = sqlite3_user_data(context);
     struct sqlthdstate *thd = arg->thd;
     char *spname = arg->name;
-    struct sqlclntstate *clnt = thd->sqlthd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->sqlthd->clnt;
     char *err = NULL;
     struct sp_state *state = sqlite3_aggregate_context(context, sizeof(*state));
     if (state->sp == NULL) {
@@ -6661,7 +6114,7 @@ void lua_step(sqlite3_context *context, int argc, sqlite3_value **argv)
     lua_func_arg_t *arg = sqlite3_user_data(context);
     struct sqlthdstate *thd = arg->thd;
     char *spname = arg->name;
-    struct sqlclntstate *clnt = thd->sqlthd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->sqlthd->clnt;
     char *err = NULL;
     struct sp_state *state = sqlite3_aggregate_context(context, sizeof(*state));
     if (state->sp == NULL) {
@@ -6694,7 +6147,7 @@ void lua_func(sqlite3_context *context, int argc, sqlite3_value **argv)
     lua_func_arg_t *arg = sqlite3_user_data(context);
     struct sqlthdstate *thd = arg->thd;
     char *spname = arg->name;
-    struct sqlclntstate *clnt = thd->sqlthd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->sqlthd->clnt;
     char *err = NULL;
     struct sp_state state = {0};
     check_sp(spname, clnt, &state);
@@ -6723,7 +6176,7 @@ void *exec_trigger(trigger_reg_t *reg)
     struct sqlthdstate thd;
     sqlengine_thd_start(NULL, &thd, THRTYPE_TRIGGER);
     thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
-    thd.sqlthd->sqlclntstate = &clnt;
+    thd.sqlthd->clnt = &clnt;
 
     // We're making unprotected calls to lua below.
     // luaL_error() will cause abort()

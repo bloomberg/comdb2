@@ -458,7 +458,7 @@ int analyze_get_nrecs(int iTable)
 
     /* get client structures */
     thd = pthread_getspecific(query_info_key);
-    client = thd->sqlclntstate;
+    client = thd->clnt;
 
     /* comdb2-ize table-num and ixnum */
     db = get_sqlite_db(thd, iTable, &ixnum);
@@ -491,7 +491,7 @@ int64_t analyze_get_sampled_nrecs(const char *dbname, int ixnum)
 
     /* get client structures */
     thd = pthread_getspecific(query_info_key);
-    client = thd->sqlclntstate;
+    client = thd->clnt;
 
     /* Punt if this wasn't sampled. */
     if (NULL == client->sampled_idx_tbl || client->n_cmp_idx <= 0) {
