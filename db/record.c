@@ -306,7 +306,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                   "no blobs flags with blob buffers");
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
-printf("AZ: add_record_int() rc=%d -- seems like failing to check blobs\n", rc);
+printf("AZ: add_record_int() err 4 rc=%d -- seems like failing to check blobs\n", rc);
         ERR;
     }
 
@@ -2892,17 +2892,22 @@ static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs,
              * then the blob shouldn't exist */
             else if (schema && (schema->member[idx].type == SERVER_VUTF8 ||
                                 schema->member[idx].type == SERVER_BLOB2) &&
-                     ntohl(blob->length) <= schema->member[idx].len - 5 /*hdr*/)
+                     ntohl(blob->length) <= schema->member[idx].len - 5 /*hdr*/) {
                 inconsistent = blobs[cblob].exists;
-
+printf("AZ: probl1 \n");
+            }
             /* otherwise, fall back to regular blob checks */
-            else if (blob->notnull)
+            else if (blob->notnull) {
                 inconsistent = !blobs[cblob].exists ||
                                blobs[cblob].length != ntohl(blob->length);
-
-            else
+printf("AZ: probl2 blobs[cblob].exists=%d, blobs[cblob].length=%d, blob->length=%d\n",
+        blobs[cblob].exists, blobs[cblob].length, blob->length);
+            abort();
+            }
+            else {
                 inconsistent = blobs[cblob].exists;
-
+printf("AZ: probl3 \n");
+            }
             if (inconsistent) {
                 if (iq->debug) {
                     reqprintf(iq, "INCONSISTENT BLOB BUFFERS FOR BLOB %d",

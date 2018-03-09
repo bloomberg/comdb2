@@ -1195,6 +1195,7 @@ static int process_this_session(
     uuidstr_t us;
 
     iq->queryid = osql_sess_queryid(sess);
+    iq->debug = 1; //AZ
 
     key = (oplog_key_t *)malloc(sizeof(oplog_key_t));
     if (!key) {
