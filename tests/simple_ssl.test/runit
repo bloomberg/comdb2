@@ -49,7 +49,7 @@ if [ $? != 0 ]; then
   exit 1
 fi
 
-./simple_ssl $dbnm
+${TESTSBUILDDIR}/simple_ssl $dbnm
 if [ $? != 0 ]; then
   echo "simple_ssl test failed."
   exit 1

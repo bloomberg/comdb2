@@ -15,7 +15,7 @@ fi
 function runtest
 {
     [[ "$debug" == 1 ]] && set -x
-    ./multithd -d $db -f $CDB2_CONFIG
+    $multithd -d $db -f $CDB2_CONFIG
     r=$?
     if [[ $r != 0 ]]; then
         echo "Testcase failure, rcode=$r"
