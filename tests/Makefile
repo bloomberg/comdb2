@@ -1,6 +1,6 @@
 export TESTSROOTDIR:=$(shell pwd)
 
-BUILDDIR:=$(shell readlink -f $(TESTSROOTDIR)/../build )
+BUILDDIR?=$(shell readlink -f $(TESTSROOTDIR)/../build )
 SRCHOME:=$(shell readlink -f $(TESTSROOTDIR)/../ )
 ifeq ($(SRCHOME),)
   SRCHOME:=$(TESTSROOTDIR)/..
@@ -89,7 +89,7 @@ executables: build test_exe
 # Run all non-disabled tests.
 all_tests: $(ALL_TESTS)
 
-basicops_nokey:
+basicops_nokey: executables
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
 	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTID=${TESTID} " >> ${TESTDIR}/test.log)

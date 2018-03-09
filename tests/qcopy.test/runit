@@ -6,6 +6,7 @@ set -e
 
 COPYDIR=$DBDIR/copy
 mkdir $COPYDIR
+export COMDB2AR_AROPTS="-x $COMDB2_EXE"
 $COPYCOMDB2_EXE -s ${DBDIR}/${DBNAME}.lrl $COPYDIR
 cd $COPYDIR
 grep -v name ${DBNAME}.lrl | grep -v "cluster nodes" > tmp && mv tmp ${DBNAME}.lrl

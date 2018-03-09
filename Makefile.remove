@@ -9,6 +9,7 @@ ifeq ($(BUILDDIR),)
 else
   DUMMY := $(shell ln -s $(BUILDDIR) $(SRCDIR)/build)
 endif
+export BUILDDIR
 
 CMAKE3 := $(shell command -v cmake3 2> /dev/null)
 ifdef CMAKE3
