@@ -254,14 +254,14 @@ set -e
 
 check_db_port_running_local() {
     dbport=`grep "\[ERROR\] net_listen: FAILED TO BIND to port" $TESTDIR/logs/${DBNAME}.db | grep -Po "port [0-9]*" | cut -f2 -d" " `
-    if [ "x$dbport" != "x" ] ; then
+    if [ "x$dbport" == "x" ] ; then
         return
     fi
     echo "checking what is running on localhost:$dbport"
     netstat -na | grep $dbport
     opid=`fuser -n tcp $dbport`
     echo "pid running on dbport: $opid"
-    [ -n "$opid" ] && ps -p $opid
+    [ -n "$opid" ] && ps -p $opid -o comm,args
     $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host localhost:$dbport $DBNAME 'select comdb2_dbname()' 2>&1
 }
 

@@ -16,10 +16,16 @@ echo creating new db with name $NEWNAME
 $COMDB2_EXE $NEWNAME --create --lrl ${DBNAME}.lrl
 echo starting new db $NEWNAME
 $COMDB2_EXE $NEWNAME --lrl ${DBNAME}.lrl &
+dbpid=$!
 
 function exiting {
     echo send exit to $NEWNAME
     $CDB2SQL_EXE $NEWNAME "exec procedure sys.cmd.send('exit')"
+
+
+    sleep 10
+    #just in case it is still up
+    kill -9 $dbpid
 
     echo deregister from pmux $NEWNAME
     ${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${NEWNAME} " ${pmux_port}
