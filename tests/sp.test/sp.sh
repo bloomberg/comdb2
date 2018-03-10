@@ -366,7 +366,7 @@ exec procedure close()
 create procedure bound version 'sptest' {$(cat bound.lua)}\$\$
 put default procedure bound 'sptest'
 EOF
-${TESTSROOTDIR}/tools/bound "$CDB2_CONFIG" $DBNAME
+${TESTSBUILDDIR}/bound "$CDB2_CONFIG" $DBNAME
 
 
 cdb2sql $SP_OPTIONS - <<EOF
@@ -1103,7 +1103,7 @@ EOF
 
 cdb2sql $SP_OPTIONS "select name, version, client_versioned, \"default\" from comdb2_procedures order by name, version, client_versioned, \"default\""
 
-${TESTSROOTDIR}/tools/utf8 "$CDB2_CONFIG" $DBNAME
+${TESTSBUILDDIR}/utf8 "$CDB2_CONFIG" $DBNAME
 cdb2sql $SP_OPTIONS - <<'EOF'
 create procedure json_utf8 version 'sptest' {
 local function main(strategy)

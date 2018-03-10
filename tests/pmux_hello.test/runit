@@ -4,7 +4,7 @@ debug=1
 [[ "$debug" == 1 ]] && set -x
 
 db=$1
-export COMDB2_PMUX_PORT=19500
+export COMDB2_PMUX_PORT=19900
 export pmux_pid=0
 export start_iters=10
 export start_sleep=5

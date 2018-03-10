@@ -153,7 +153,7 @@ keys {
 '
 
 # finally run the replication step
-${TESTSROOTDIR}/tools/localrep $dbname $destdb
+${TESTSBUILDDIR}/localrep $dbname $destdb
 src=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select * from t1" | sort | md5sum)
 dest=$(cdb2sql ${CDB2_OPTIONS} $destdb local "select * from t1" | sort | md5sum)
 
