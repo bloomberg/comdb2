@@ -15,7 +15,6 @@
  */
 
 #include <memory_sync.h>
-#include <unistd.h>
 #include "schemachange.h"
 #include "sc_callbacks.h"
 #include "sc_global.h"
@@ -502,7 +501,6 @@ inline void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
             bdberr != BDBERR_NOERROR)
             logmsg(LOGMSG_WARN, "%s: errors listing old files\n", __func__);
     } else {
-        int bdberr;
         if (bdb_del_unused_files_tran(db->handle, tran, &bdberr) ||
             bdberr != BDBERR_NOERROR)
             logmsg(LOGMSG_WARN, "errors deleting files\n");
