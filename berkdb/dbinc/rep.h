@@ -57,6 +57,8 @@
 #define REP_GEN_VOTE1   26  /* Send our your information for an election */
 #define REP_GEN_VOTE2   27 /* Send a "you are master" vote. */
 
+#define REP_LOG_FILL    28
+
 /* Shared replication structure. */
 
 typedef struct __rep {
