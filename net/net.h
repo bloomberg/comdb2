@@ -71,6 +71,12 @@ int net_is_connected(netinfo_type *netinfo_ptr, const char *hostname);
 int net_close_connection(netinfo_type *net, const char *hostname);
 
 enum {
+    NET_SEND_NODELAY = 0x00000001,
+    NET_SEND_NODROP  = 0x00000002,
+    NET_SEND_INORDER = 0x00000004
+};
+
+enum {
     NET_SEND_FAIL_INVALIDNODE = -1,
     NET_SEND_FAIL_NOSOCK = -2,
     NET_SEND_FAIL_SENDTOME = -3,
@@ -98,12 +104,22 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
                      int usertype, void *data, int datalen, uint8_t **payloadptr, 
                      int *payloadlen, int waitforack, int waitms);
 
+int net_send_flags(netinfo_type *netinfo,
+             const char *to_host, /* send to this node number */
+             int usertype, void *dta, int dtalen, uint32_t flags);
+
+
 int net_send(netinfo_type *netinfo,
              const char *to_host, /* send to this node number */
              int usertype, void *dta, int dtalen, int nodelay);
 
 int net_send_nodrop(netinfo_type *netinfo, const char *to_host, int usertype,
                     void *dta, int dtalen, int nodelay);
+
+
+int net_send_inorder_nodrop(netinfo_type *netinfo,
+                     const char *to_host,
+                     int usertype, void *dta, int dtalen, int nodelay);
 
 int net_send_inorder(netinfo_type *netinfo,
                      const char *to_host, /* send to this node number */

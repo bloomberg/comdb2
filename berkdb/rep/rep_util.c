@@ -8,6 +8,7 @@
 #include "db_config.h"
 #include "dbinc/db_swap.h"
 #include "logmsg.h"
+#include <epochlib.h>
 
 #ifndef lint
 static const char revid[] = "$Id: rep_util.c,v 1.103 2003/11/14 05:32:32 ubell Exp $";
@@ -81,6 +82,18 @@ __rep_check_alloc(dbenv, r, n)
 }
 
 int gbl_verbose_master_req;
+
+static inline int is_logput(int type) {
+    switch (type) {
+        case REP_LOG:
+        case REP_LOG_LOGPUT:
+        case REP_LOG_FILL:
+        case REP_LOG_MORE:
+            return 1;
+        default:
+            return 0;
+    }
+}
 
 /*
  * __rep_send_message --
@@ -185,13 +198,10 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 	myflags = 0;
 	if (LF_ISSET(DB_LOG_PERM)) {
 		myflags = DB_REP_PERMANENT;
-	} else if (rtype == REP_LOG || rtype == REP_LOG_LOGPUT) {
+	} else if (is_logput(rtype)) {
 		myflags = DB_REP_LOGPROGRESS;
-		if (flags & DB_REP_NOBUFFER) {
-			/* we wanted to flush this record */
-			myflags |= DB_REP_NOBUFFER;
-		}
-	} else if (rtype != REP_LOG && rtype != REP_LOG_LOGPUT) {
+        myflags |= (flags & (DB_REP_NOBUFFER|DB_REP_NODROP));
+	} else if (!is_logput(rtype)) {
 		myflags = DB_REP_NOBUFFER;
 	} else {
 		/*
@@ -293,6 +303,7 @@ __rep_print_logmsg(dbenv, logdbt, lsnp)
  */
 
 int gbl_abort_on_incorrect_upgrade;
+extern int last_all_resp;
 
 int
 __rep_new_master(dbenv, cntrl, eid)
@@ -384,9 +395,15 @@ __rep_new_master(dbenv, cntrl, eid)
 				    REP_VERIFY_REQ, &last_lsn, NULL, 0, NULL);
 			}
 		} else {
-			if (log_compare(&lsn, &cntrl->lsn) < 0)
-				(void)__rep_send_message(dbenv,
-				    eid, REP_ALL_REQ, &lsn, NULL, 0, NULL);
+			if (log_compare(&lsn, &cntrl->lsn) < 0) {
+                last_all_resp = comdb2_time_epochms();
+				if (__rep_send_message(dbenv,
+				    eid, REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) != 0) {
+                    last_all_resp = 0;
+                } else {
+                    last_all_resp = comdb2_time_epochms();
+                }
+            }
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 			F_CLR(rep, REP_F_NOARCHIVE);
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
@@ -422,8 +439,12 @@ empty:		MUTEX_LOCK(dbenv, db_rep->db_mutexp);
 			 */
 			lp->wait_recs = rep->max_gap;
 			MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
-			(void)__rep_send_message(dbenv, rep->master_id,
-			    REP_ALL_REQ, &lsn, NULL, 0, NULL);
+			if (__rep_send_message(dbenv, rep->master_id,
+			    REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) != 0) {
+                last_all_resp = 0;
+            } else {
+                last_all_resp = comdb2_time_epochms();
+            }
 		} else
 			MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 

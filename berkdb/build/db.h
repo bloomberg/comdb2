@@ -382,6 +382,7 @@ struct __db_dbt {
 #define	DB_REP_PERMANENT        0x0000002	/* Important--app. may want to flush. */
 #define  DB_REP_LOGPROGRESS      0x0000004   /* marks a new log record, not a commit though */
 #define DB_REP_FLUSH            0x0000008
+#define DB_REP_NODROP           0x0000010
 
 /*******************************************************
  * Locking.

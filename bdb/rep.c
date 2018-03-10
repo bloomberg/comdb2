@@ -411,6 +411,7 @@ typedef struct {
 #define REP_PGDUMP_REQ 25
 #define REP_GEN_VOTE1 26 /* Send out your information for an election */
 #define REP_GEN_VOTE2 27 /* Send a "you are master" vote. */
+#define REP_LOG_FILL 28
 
 /* COMDB2 MODIFICATION */
 /* We want to be able to throttle log propagation to avoid filling
@@ -981,21 +982,17 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
             }
 
             if (!dontsend) {
-                if (!is_logput) {
-                    rc = net_send_nodrop(bdb_state->repinfo->netinfo,
-                                         hostlist[i], USER_TYPE_BERKDB_REP, buf,
-                                         bufsz, nodelay);
-                } else {
-                    if (bdb_state->attr->net_inorder_logputs) {
-                        rc = net_send_inorder(bdb_state->repinfo->netinfo,
-                                              hostlist[i], USER_TYPE_BERKDB_REP,
-                                              buf, bufsz, nodelay);
-                    } else {
-                        rc =
-                            net_send(bdb_state->repinfo->netinfo, hostlist[i],
-                                     USER_TYPE_BERKDB_REP, buf, bufsz, nodelay);
-                    }
-                }
+                /* TODO (maybe this PR): make a single net_send interface with flags */
+                uint32_t flags = 0;
+                if (!is_logput || (flags & DB_REP_NODROP))
+                    flags |= NET_SEND_NODROP;
+
+                if (bdb_state->attr->net_inorder_logputs)
+                    flags |= NET_SEND_INORDER;
+
+                rc = net_send_flags(bdb_state->repinfo->netinfo,
+                        hostlist[i], USER_TYPE_BERKDB_REP, buf, bufsz, flags);
+
                 if (rc != 0)
                     rc = 1; /* haha, keep ignoring it */
             }

@@ -80,7 +80,7 @@ int gbl_fills_waitms = 100;
 
 int gbl_max_logput_queue = 1000;
 int gbl_apply_thread_pollms = 200;
-static int last_fill_req = 0;
+int last_all_resp = 0;
 
 void hexdump(unsigned char *key, int keylen);
 extern void fsnapf(FILE *, void *, int);
@@ -636,7 +636,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	REP_CONTROL *rp;
 	REP_VOTE_INFO *vi;
 	REP_GEN_VOTE_INFO *vig;
-	u_int32_t bytes, egen, committed_gen, flags, gen, gbytes, rectype, type;
+	u_int32_t bytes, egen, committed_gen, flags, sendflags, gen, gbytes, rectype, type;
 	int check_limit, cmp, done, do_req;
 	int match, old, recovering, ret, t_ret;
 	time_t savetime;
@@ -1020,11 +1020,13 @@ skip:				/*
 		F_SET(logc, DB_LOG_NO_PANIC);
 		memset(&data_dbt, 0, sizeof(data_dbt));
 		oldfilelsn = lsn = rp->lsn;
-		type = REP_LOG;
+		type = (gbl_decoupled_logputs && gbl_decoupled_fills) ? 
+            REP_LOG_FILL : REP_LOG;
 		flags = IS_ZERO_LSN(rp->lsn) ||
 		    IS_INIT_LSN(rp->lsn) ? DB_FIRST : DB_SET;
+        sendflags = DB_REP_NOBUFFER;
 		for (ret = __log_c_get(logc, &lsn, &data_dbt, flags);
-		    ret == 0 && type == REP_LOG;
+		    ret == 0 && type != REP_LOG_MORE;
 		    ret = __log_c_get(logc, &lsn, &data_dbt, DB_NEXT)) {
 			/*
 			 * When a log file changes, we'll have a real log
@@ -1034,7 +1036,7 @@ skip:				/*
 			if (lsn.file != oldfilelsn.file)
 				(void)__rep_send_message(dbenv,
 				    *eidp, REP_NEWFILE, &oldfilelsn, NULL,
-				    DB_REP_NOBUFFER, NULL);
+				    sendflags, NULL);
 			if (check_limit) {
 				/*
 				 * data_dbt.size is only the size of the log
@@ -1056,15 +1058,23 @@ skip:				/*
 					 */
 					rep->stat.st_nthrottles++;
 					type = REP_LOG_MORE;
+                    sendflags |= DB_REP_NODROP;
 					goto send;
 				}
 				bytes -= (data_dbt.size + sizeof(REP_CONTROL));
 			}
 
-send:			if (__rep_send_message(dbenv,
-				*eidp, type, &lsn, &data_dbt, DB_REP_NOBUFFER,
-				NULL) != 0)
-				break;
+send:		if (__rep_send_message(dbenv,
+                        *eidp, type, &lsn, &data_dbt, sendflags,
+                        NULL) != 0) {
+                /* Net queue could be full: send REP_LOG_MORE with the
+                 * NODROP flag lit */
+                type = REP_LOG_MORE;
+                sendflags |= DB_REP_NODROP;
+                __rep_send_message(dbenv, *eidp, type, &lsn, &data_dbt,
+                        sendflags, NULL);
+                break;
+            }
 
 			/*
 			 * If we are about to change files, then we'll need the
@@ -1091,8 +1101,10 @@ send:			if (__rep_send_message(dbenv,
 		fromline = __LINE__;
 		goto errlock;
 #endif
-	case REP_LOG:
+    case REP_LOG_FILL:
 	case REP_LOG_MORE:
+        last_all_resp = comdb2_time_epochms();
+	case REP_LOG:
 		CLIENT_ONLY(rep, rp);
 		MASTER_CHECK(dbenv, *eidp, rep);
 		if (!IN_ELECTION_TALLY(rep)) {
@@ -1140,11 +1152,16 @@ send:			if (__rep_send_message(dbenv,
 			if (master == db_eid_invalid)
 				ret = 0;
 			else if (__rep_send_message(dbenv,
-				master, REP_ALL_REQ, &lsn, NULL, 0, NULL) != 0)
+				master, REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) != 0) {
+                last_all_resp = 0;
 				break;
+            } else {
+                last_all_resp = comdb2_time_epochms();
+            }
 		}
 		fromline = __LINE__;
 		goto errlock;
+
 	case REP_LOG_REQ:
 		/* endianize the rec->data lsn */
 		MASTER_ONLY(rep, rp);
@@ -1184,9 +1201,11 @@ send:			if (__rep_send_message(dbenv,
 		ret = __log_c_get(logc, &rp->lsn, &data_dbt, DB_SET);
 
         int resp_rc;
+		type = (gbl_decoupled_logputs && gbl_decoupled_fills) ? 
+            REP_LOG_FILL : REP_LOG;
 		if (ret == 0) {
 			resp_rc = __rep_send_message(dbenv,
-			    *eidp, REP_LOG, &rp->lsn, &data_dbt,
+			    *eidp, type, &rp->lsn, &data_dbt,
 			    DB_REP_NOBUFFER
 			    /* we this to be flushed since the node is behind */
 			    , NULL);
@@ -6616,8 +6635,13 @@ finish:ZERO_LSN(lp->waiting_lsn);
 		 */
 		lp->wait_recs = rep->max_gap;
 		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
-		(void)__rep_send_message(dbenv,
-		    master, REP_ALL_REQ, &rp->lsn, NULL, 0, NULL);
+        last_all_resp = comdb2_time_epochms();
+		if (__rep_send_message(dbenv,
+		    master, REP_ALL_REQ, &rp->lsn, NULL, DB_REP_NODROP, NULL)) {
+            last_all_resp = 0;
+        } else {
+            last_all_resp = comdb2_time_epochms();
+        }
 	}
 	if (0) {
 errunlock2:	MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);

@@ -2252,6 +2252,22 @@ int net_send_inorder(netinfo_type *netinfo_ptr, const char *host, int usertype,
                         NULL, 0, 0, 1);
 }
 
+
+int net_send_inorder_nodrop(netinfo_type *netinfo_ptr, const char *host, int usertype,
+                     void *data, int datalen, int nodelay)
+{
+    return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 0,
+                        NULL, 0, 1, 1);
+}
+
+int net_send_flags(netinfo_type *netinfo_ptr, const char *host, int usertype,
+        void *data, int datalen, uint32_t flags)
+{
+    return net_send_int(netinfo_ptr, host, usertype, data, datalen, 
+            (flags & NET_SEND_NODELAY), 0, NULL, 0, (flags & NET_SEND_NODROP), 
+            (flags & NET_SEND_INORDER));
+}
+
 int net_send(netinfo_type *netinfo_ptr, const char *host, int usertype,
              void *data, int datalen, int nodelay)
 {
