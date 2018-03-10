@@ -274,8 +274,13 @@ check_db_port_running_node() {
     echo "checking what is running on ${node}:$dbport"
     if [ "$node" == "$HOSTNAME" ] ; then 
         netstat -na | grep $dbport
+        opid=`fuser -n tcp $dbport`
+        echo "pid running on dbport: $opid"
+    [ -n "$opid" ] && ps -p $opid -o comm,args
     else
         ssh -o StrictHostKeyChecking=no $node "netstat -na | grep $dbport" </dev/null
+        opid=`ssh -o StrictHostKeyChecking=no $node "fuser -n tcp $dbport" </dev/null`
+        echo "pid running on dbport: $opid"
     fi
     $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node:$dbport $DBNAME 'select comdb2_dbname()' 2>&1
 }

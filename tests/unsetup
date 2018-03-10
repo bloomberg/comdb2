@@ -122,20 +122,7 @@ else
     cleanup_cluster
 fi
 
-${TESTSROOTDIR}/tools/send_msg_port.sh "get comdb2/replication/${DBNAME}" ${pmux_port}
-dbport=$(${TESTSROOTDIR}/tools/send_msg_port.sh "get comdb2/replication/${DBNAME}" ${pmux_port})
 eval $deregister_db_port
-out=$(${TESTSROOTDIR}/tools/send_msg_port.sh "get comdb2/replication/${DBNAME}" ${pmux_port})
-cnt=0
-while [ $cnt -lt 10 ] ; do
-    out=$(${TESTSROOTDIR}/tools/send_msg_port.sh "get comdb2/replication/${DBNAME}" ${pmux_port})
-    if [ $out == "-1" ] ; then
-       break
-    fi
-    netstat -na | grep $dbport
-    sleep 1
-    cnt=$((cnt+1))
-done
 
 if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
     rm -rf ${DBDIR}
