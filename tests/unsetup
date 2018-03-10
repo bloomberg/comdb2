@@ -48,7 +48,7 @@ function build_pidfilelist() {
 
 function core_cluster {
     for node in $CLUSTER; do
-        if [ $node != `hostname` ] ; then
+        if [ "$node" != "$HOSTNAME" ] ; then
             ssh -o StrictHostKeyChecking=no $node "kill -6 \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
         else
             kill -6 $(cat ${TMPDIR}/${DBNAME}.$node.pid)
@@ -58,13 +58,14 @@ function core_cluster {
 
 function cleanup_cluster {    
     for node in $CLUSTER; do
-        if [ $node != `hostname` ] ; then
-            ssh -o StrictHostKeyChecking=no $node "${deregister_db}" < /dev/null
+        if [ "$node" != "$HOSTNAME" ] ; then
+            ${TESTSROOTDIR}/tools/send_msg_port.sh -h $node "get comdb2/replication/${DBNAME}" ${pmux_port}
+            ssh -o StrictHostKeyChecking=no $node "${deregister_db_port}" < /dev/null
         fi
         if [ "x$DBDIR" == "x" ] ; then 
             continue
         fi
-        if [ $node == `hostname` ]  ; then
+        if [ "$node" == "$HOSTNAME" ]  ; then
             continue;
         fi
 
@@ -78,7 +79,7 @@ function cleanup_cluster {
 }
 
 echo deregistering $DBNAME from pmux:$pmux_port
-deregister_db="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )"
+deregister_db_port="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )"
 
 if [[ "$NOKILL_ON_TIMEOUT" -eq 1 && "$successful" -eq "-1" ]]; then
     echo "Unsetup deferred"
@@ -121,7 +122,7 @@ else
     cleanup_cluster
 fi
 
-eval $deregister_db
+eval $deregister_db_port
 
 if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
     rm -rf ${DBDIR}
