@@ -124,9 +124,6 @@ bool compare_checksum(
     bool ret = false;
 
     int flags = O_RDONLY;
-#   ifndef __APPLE__
-    flags |= O_LARGEFILE;
-#   endif
     int new_fd = open(file.get_filepath().c_str(), flags);
     int old_fd = open(incr_file_name.c_str(), O_RDWR);
 
