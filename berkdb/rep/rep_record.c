@@ -72,15 +72,14 @@ extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
-
 int gbl_decoupled_fills = 1;
-int gbl_gap_max_ms = 100;
+int gbl_master_req_waitms = 200;
 int gbl_verify_waitms = 100;
 int gbl_fills_waitms = 100;
 
 int gbl_max_logput_queue = 1000;
-int gbl_apply_thread_pollms = 200;
-int last_all_resp = 0;
+int gbl_apply_thread_pollms = 100;
+int last_fill_resp = 0;
 
 void hexdump(unsigned char *key, int keylen);
 extern void fsnapf(FILE *, void *, int);
@@ -373,17 +372,28 @@ extern int bdb_the_lock_desired(void);
 void bdb_relthelock(const char *funcname, int line);
 void bdb_get_the_readlock(const char *idstr, const char *function, int line);
 void bdb_thread_start_rw(void);
+void get_master_lsn(void *bdb_state, DB_LSN *lsnout);
+int bdb_valid_lease(void *bdb_state);
+static int last_master_req = 0;
+
+extern int gbl_verbose_master_req;
 
 static void *apply_thread(void *arg) 
 {
     int ret;
+    int i_am_replicant;
+    int valid_lease;
 	LOG *lp;
 	DB_LOG *dblp;
+    DB_LSN master_lsn, my_lsn, first_repdb_lsn;
     DB_ENV *dbenv = (DB_ENV *)arg;
     struct queued_log *q, obj;
     struct timespec ts;
+    static DB_LSN last_waiting = {0};
 	REP *rep;
+    char *master_eid;
 	DB_REP *db_rep;
+    unsigned long long bytes_behind;
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
@@ -392,7 +402,7 @@ static void *apply_thread(void *arg)
     bdb_thread_start_rw();
 
     pthread_mutex_lock(&rep_queue_lock);
-    while (1) {
+    while (gbl_decoupled_logputs) {
         int pollms = (gbl_apply_thread_pollms > 0) ? gbl_apply_thread_pollms : 200;
         DBT rec = {0};
         DB_LSN ret_lsnp;
@@ -421,19 +431,52 @@ static void *apply_thread(void *arg)
             pthread_mutex_lock(&rep_queue_lock);
         }
 
-        if (!IN_ELECTION_TALLY(rep)) {
-            static DB_LSN last_waiting = {0};
-            static int last_fill_req = 0;
+        pthread_mutex_unlock(&rep_queue_lock);
+
+        get_master_lsn(dbenv->app_private, &master_lsn);
+
+        MUTEX_LOCK(dbenv, db_rep->db_mutexp);
+        master_eid = db_rep->region->master_id;
+        i_am_replicant = !F_ISSET(rep, REP_F_MASTER);
+        my_lsn = lp->ready_lsn;
+        first_repdb_lsn = lp->waiting_lsn;
+        MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
+
+        /* Issue a REP_MASTER_REQ if we don't know who is master */
+        if (master_eid == db_eid_invalid && (comdb2_time_epochms() - 
+                    last_master_req) > gbl_master_req_waitms) {
+			if (gbl_verbose_master_req) {
+				logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
+						__func__, __LINE__);
+			}
+			__rep_send_message(dbenv, db_eid_broadcast, REP_MASTER_REQ, NULL,
+                    NULL, 0, NULL);
+            last_master_req = comdb2_time_epochms();
+            pthread_mutex_lock(&rep_queue_lock);
+            continue;
+        }
+
+        if (!i_am_replicant || !gbl_decoupled_fills || IN_ELECTION_TALLY(rep)) {
+            pthread_mutex_lock(&rep_queue_lock);
+            continue;
+        }
+
+        if (log_compare(&master_lsn, &my_lsn) <= 0) {
+            pthread_mutex_lock(&rep_queue_lock);
+            continue;
+        }
+
+        bytes_behind = subtract_lsn(dbenv->app_private, &master_lsn, &my_lsn);
+        valid_lease = bdb_valid_lease(dbenv->app_private);
+
 
             /* See if we should do a REP_REQ_ALL request */
             if (0) {
-            } else if (gbl_decoupled_fills) {
-                char *eid;
-                pthread_mutex_unlock(&rep_queue_lock);
-                MUTEX_LOCK(dbenv, db_rep->db_mutexp);
-                eid = db_rep->region->master_id;
+            /* See if we should do a GAP request */
+            } else {
 
                 if (eid != db_eid_invalid) {
+                    MUTEX_LOCK(dbenv, db_rep->db_mutexp);
                     if (IS_ZERO_LSN(lp->waiting_lsn)) {
                         last_fill_req = 0;
                         memset(&last_waiting, 0, sizeof(last_waiting));
@@ -456,11 +499,14 @@ static void *apply_thread(void *arg)
                         }
                     }
                 }
-                MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
-                pthread_mutex_lock(&rep_queue_lock);
             }
         }
+        pthread_mutex_lock(&rep_queue_lock);
     }
+    apply_thd_created = 0;
+    memset(&apply_thd, 0, sizeof(apply_thd));
+    pthread_mutex_unlock(&rep_queue_lock);
+    return NULL;
 }
 
 void init_log_queue(void)
@@ -595,8 +641,6 @@ done:
 	return will_recover;
 }
 
-
-    extern int gbl_verbose_master_req;
 
 
 /*
@@ -841,15 +885,20 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		} else if (rp->rectype != REP_NEWMASTER) {
 
-			if (gbl_verbose_master_req) {
-				logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
-						__func__, __LINE__);
-			}
-			(void)__rep_send_message(dbenv,
-			    db_eid_broadcast, REP_MASTER_REQ, NULL, NULL, 0,
-			    NULL);
+            if ((comdb2_time_epochms() - last_master_req) > 
+                    gbl_master_req_waitms) {
+                if (gbl_verbose_master_req) {
+                    logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
+                            __func__, __LINE__);
+                }
+                (void)__rep_send_message(dbenv,
+                        db_eid_broadcast, REP_MASTER_REQ, NULL, NULL, 0,
+                        NULL);
+                last_master_req = comdb2_time_epochms();
+            }
 			fromline = __LINE__;
 			goto errlock;
+
 		}
 
 		/*
@@ -932,15 +981,20 @@ skip:				/*
                         master_req_print = now;
                     }
 
-					if (gbl_verbose_master_req) {
-						logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
-								__func__, __LINE__);
-					}
+                    if ((comdb2_time_epochms() - last_master_req) >  
+                            gbl_master_req_waitms) {
+                        if (gbl_verbose_master_req) {
+                            logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
+                                    __func__, __LINE__);
+                        }
 
-					(void)__rep_send_message(dbenv,
-					    db_eid_broadcast,
-					    REP_MASTER_REQ,
-					    NULL, NULL, 0, NULL);
+                        (void)__rep_send_message(dbenv,
+                                db_eid_broadcast,
+                                REP_MASTER_REQ,
+                                NULL, NULL, 0, NULL);
+
+                        last_master_req = comdb2_time_epochms();
+                    }
 				} else if (*eidp == rep->master_id) {
                     verify_req_count++;
                     if ((now = time(NULL)) > verify_req_print) {
@@ -1103,7 +1157,7 @@ send:		if (__rep_send_message(dbenv,
 #endif
     case REP_LOG_FILL:
 	case REP_LOG_MORE:
-        last_all_resp = comdb2_time_epochms();
+        last_fill_resp = comdb2_time_epochms();
 	case REP_LOG:
 		CLIENT_ONLY(rep, rp);
 		MASTER_CHECK(dbenv, *eidp, rep);
@@ -1121,13 +1175,19 @@ send:		if (__rep_send_message(dbenv,
             }
 		} else {
 
-			if (gbl_verbose_master_req) {
-				logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
-						__func__, __LINE__);
-			}
+            if ((comdb2_time_epochms() - last_master_req) > 
+                    gbl_master_req_waitms) {
 
-			(void)__rep_send_message(dbenv, db_eid_broadcast,
-				 	REP_MASTER_REQ, NULL, NULL, 0, NULL);
+                if (gbl_verbose_master_req) {
+                    logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
+                            __func__, __LINE__);
+                }
+
+                (void)__rep_send_message(dbenv, db_eid_broadcast,
+                        REP_MASTER_REQ, NULL, NULL, 0, NULL);
+
+                last_master_req = comdb2_time_epochms();
+            }
 			fromline = __LINE__;
 			goto errlock;
         }
@@ -1153,10 +1213,8 @@ send:		if (__rep_send_message(dbenv,
 				ret = 0;
 			else if (__rep_send_message(dbenv,
 				master, REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) != 0) {
-                last_all_resp = 0;
+                last_fill_resp = 0;
 				break;
-            } else {
-                last_all_resp = comdb2_time_epochms();
             }
 		}
 		fromline = __LINE__;
@@ -2812,16 +2870,22 @@ gap_check:		max_lsn_dbtp = NULL;
 			} else {
 				MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
-				if (gbl_verbose_master_req) {
-					logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
-							__func__, __LINE__);
-				}
+                if ((comdb2_time_epochms() - last_master_req) > 
+                        gbl_master_req_waitms) {
 
-				(void)__rep_send_message(dbenv,
-					db_eid_broadcast, REP_MASTER_REQ,
-				    NULL, NULL, 0, NULL);
-			}
-		}
+                    if (gbl_verbose_master_req) {
+                        logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
+                                __func__, __LINE__);
+                    }
+
+                    (void)__rep_send_message(dbenv,
+                            db_eid_broadcast, REP_MASTER_REQ,
+                            NULL, NULL, 0, NULL);
+
+                    last_master_req = comdb2_time_epochms();
+                }
+            }
+        }
 
 		/*
 		 * If this is permanent; let the caller know that we have
@@ -6635,12 +6699,12 @@ finish:ZERO_LSN(lp->waiting_lsn);
 		 */
 		lp->wait_recs = rep->max_gap;
 		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
-        last_all_resp = comdb2_time_epochms();
+        last_fill_resp = comdb2_time_epochms();
 		if (__rep_send_message(dbenv,
 		    master, REP_ALL_REQ, &rp->lsn, NULL, DB_REP_NODROP, NULL)) {
-            last_all_resp = 0;
+            last_fill_resp = 0;
         } else {
-            last_all_resp = comdb2_time_epochms();
+            last_fill_resp = comdb2_time_epochms();
         }
 	}
 	if (0) {

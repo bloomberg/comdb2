@@ -3947,6 +3947,16 @@ static int bdb_am_i_coherent_int(bdb_state_type *bdb_state)
     return (gettimeofday_ms() <= get_coherency_timestamp());
 }
 
+int bdb_valid_lease(void *in_bdb_state)
+{
+    int x;
+    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    BDB_READLOCK("bdb_am_i_coherent");
+    x = (gettimeofday_ms() <= get_coherency_timestamp());
+    BDB_RELLOCK();
+    return x;
+}
+
 int bdb_am_i_coherent(bdb_state_type *bdb_state)
 {
     int x;
