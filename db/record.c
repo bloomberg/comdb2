@@ -1989,12 +1989,9 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     rc = dat_del(iq, trans, rrn, genid);
     if (iq->debug)
         reqprintf(iq, "DEL RRN %d GENID 0x%llx RC %d", rrn, genid, rc);
-    if (rc == ERR_VERIFY && bdb_is_rowlocks_transaction(trans)) {
-        *opfailcode = OP_FAILED_VERIFY;
-        retrc = rc;
-        goto err;
-    } else if (rc != 0) {
-        *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_DTA;
+    if (rc != 0) {
+        *opfailcode = (rc == ERR_VERIFY) ? OP_FAILED_VERIFY
+                                         : OP_FAILED_INTERNAL + ERR_DEL_DTA;
         retrc = rc;
         goto err;
     }

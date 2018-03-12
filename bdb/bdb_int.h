@@ -1267,6 +1267,9 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
 int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
                void *to, size_t tolen, struct odh *odh, void **freeptr);
 
+int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
+                          size_t fromlen);
+
 int ip_updates_enabled_sc(bdb_state_type *bdb_state);
 int ip_updates_enabled(bdb_state_type *bdb_state);
 

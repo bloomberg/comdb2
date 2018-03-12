@@ -671,8 +671,8 @@ static int bdb_write_updateid(bdb_state_type *bdb_state, void *buf,
     return 0;
 }
 
-static int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
-                                 size_t fromlen)
+int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
+                          size_t fromlen)
 {
     int rc;
     struct odh odh_in;

@@ -319,8 +319,8 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
            fetch it */
         if (dta_out || bdb_state->attr->snapisol || is_blob) {
             /* This codepath does a direct lookup on a masked genid. */
-            void *freeptr = NULL;
-            struct odh odh = {0};
+            int updateid = 0;
+            int od_updateid = 0;
 
             search_genid = get_search_genid(bdb_state, genid);
             dbt_key.data = &search_genid;
@@ -348,29 +348,33 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
                 goto done;
             }
 
-            /* Unpack record. */
-            rc = bdb_unpack(bdb_state, dta_out_si.data, dta_out_si.size, NULL,
-                            0, &odh, &freeptr);
-            if (rc) {
-                if (freeptr)
-                    free(freeptr);
-                dbcp->c_close(dbcp);
-                goto done;
-            }
-
-            /* Verify updateid for rowlocks */
-            if (tran->logical_tran && dtafile == 0 &&
-                odh.updateid != get_updateid_from_genid(bdb_state, genid))
-                rc = DB_NOTFOUND;
-
             /* Copy the pointers if the user wanted the record. */
-            if (rc == 0 && dta_out) {
+            if (dta_out) {
                 dta_out->data = dta_out_si.data;
                 dta_out->size = dta_out_si.size;
             }
 
-            if (freeptr)
-                free(freeptr);
+            /* Verify updateid */
+            updateid = get_updateid_from_genid(bdb_state, genid);
+            od_updateid = bdb_retrieve_updateid(bdb_state, dta_out_si.data,
+                                                dta_out_si.size);
+            if (od_updateid >= 0) {
+                if (dtafile >= 1) {
+                    /* blobs */
+                    if (od_updateid > updateid)
+                        rc = DB_NOTFOUND;
+                } else {
+                    /* data */
+                    if (od_updateid != updateid)
+                        rc = DB_NOTFOUND;
+                }
+            } else {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to get updateid from odh for genid %llx\n",
+                       __FILE__, __LINE__, genid);
+                rc = DB_ODH_CORRUPT;
+            }
+
         } /* dta_out || snapisol || is_blob */
         else {
             /* Use the normal genid. */
