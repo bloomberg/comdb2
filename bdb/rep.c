@@ -970,13 +970,10 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
             logmsg(LOGMSG_USER, "--- sending seq %d to %s, nodelay is %d\n", tmpseq,
                     host, nodelay);
 
-        if (!outrc) {
-            rc = net_send(bdb_state->repinfo->netinfo, host,
-                          USER_TYPE_BERKDB_REP, buf, bufsz, nodelay);
-
-            if (rc != 0)
-                outrc = 1;
-        }
+        rc = net_send(bdb_state->repinfo->netinfo, host, USER_TYPE_BERKDB_REP,
+                      buf, bufsz, nodelay);
+        if (rc != 0)
+            outrc = 1;
     }
 
     if (useheap)
