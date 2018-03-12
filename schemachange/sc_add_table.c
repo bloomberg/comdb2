@@ -239,15 +239,25 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
         return SC_TABLE_ALREADY_EXIST;
     }
 
+    return 0;
+}
+
+int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
+                       tran_type *tran)
+{
+    int rc, bdberr;
+    struct dbtable *db;
+
     pthread_mutex_lock(&csc2_subsystem_mtx);
-    rc = add_table_to_environment(s->table, s->newcsc2, s, iq, trans);
+    rc = add_table_to_environment(s->table, s->newcsc2, s, iq, tran);
     pthread_mutex_unlock(&csc2_subsystem_mtx);
     if (rc) {
         sc_errf(s, "error adding new table locally\n");
         return rc;
     }
 
-    if (!(db = get_dbtable_by_name(s->table))) return SC_INTERNAL_ERROR;
+    if (!(db = get_dbtable_by_name(s->table)))
+        return SC_INTERNAL_ERROR;
 
     iq->usedb = db->sc_to = s->db = db;
     db->odh = s->headers;
@@ -259,14 +269,6 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     set_bdb_option_flags(db, s->headers, s->ip_updates, s->instant_sc,
                          db->version, s->compress, s->compress_blobs, 1);
 
-    return 0;
-}
-
-int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
-                       tran_type *tran)
-{
-    int rc, bdberr;
-    struct dbtable *db = s->db;
 
     sc_printf(s, "Start add table transaction ok\n");
     rc = load_new_table_schema_tran(thedb, tran, s->table, s->newcsc2);
@@ -303,12 +305,6 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     fix_lrl_ixlen_tran(tran);
-
-    /* TODO: verify that this does not need to get called because 
-     * already done in adjust_master_tables() <- add_table_to_environment() <- do_add_table()
-    create_sqlmaster_records(tran);
-    create_sqlite_master();
-    */
 
     db->sc_to = NULL;
     update_dbstore(db);
