@@ -31,11 +31,8 @@ fi
 # These change every time sqlite changes: just regenerate
 cat $logfile
 
-#grep 'dcb8d104a3fd67913c7d509dbdbe2051' $logfile # SELECT 1
-#grep 'f628909f02fd3d8f69c90bcd77c732a5' $logfile # SELECT 1+1
-
-grep '57d3bf4a162583e33381d79f2deac343' $logfile # SELECT 1
-grep 'fdf53d1d2812dbce0f56bf5b10369c1a' $logfile # SELECT 1+1
+grep '9269abf85f7fd161e398a8327ab32304' $logfile # SELECT 1
+grep '68ad0e6eb62704fdcd6b7e5fd6b29c26' $logfile # SELECT 1+1
 
 
 # Compare results with pre-calculated hashes

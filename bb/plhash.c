@@ -913,6 +913,13 @@ static int hash_default_strcmp(const void *a, const void *b,
     return strcmp(a, b);
 }
 
+/* case-insensitive */
+static int hash_default_strcasecmp(const void *a, const void *b,
+                                   int len __attribute_unused__)
+{
+    return strcasecmp(a, b);
+}
+
 static unsigned int hash_default_strlen(const unsigned char *key,
                                         int len __attribute_unused__)
 {
@@ -1103,6 +1110,13 @@ hash_t *hash_init_str(int keyoff)
 {
     return hash_init_user((hashfunc_t *)hash_default_strlen,
                           (cmpfunc_t *)hash_default_strcmp, keyoff, 0);
+}
+
+/* case-insensitive */
+hash_t *hash_init_strcase(int keyoff)
+{
+    return hash_init_user((hashfunc_t *)hash_default_strlen,
+                          (cmpfunc_t *)hash_default_strcasecmp, keyoff, 0);
 }
 
 hash_t *hash_init_fnvstr(int keyoff)

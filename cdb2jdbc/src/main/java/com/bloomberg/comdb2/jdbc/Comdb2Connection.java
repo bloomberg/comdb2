@@ -771,5 +771,9 @@ public class Comdb2Connection implements Connection {
         }
         return _ex; 
     }
+
+    public void clearAck() {
+        hndl.clearAck();
+    }
 }
 /* vim: set sw=4 ts=4 et: */

@@ -156,14 +156,14 @@ int SBUF2_FUNC(ssl_init)(int init_openssl, int init_crypto, int locking,
  * ca          - if *ca is null, return path to trusted CA in ca;
  *               else use *ca as the trusted CA
  * sesssz      - SSL session cache size
+ * ciphers     - cipher suites. ignored in client mode.
  *
  * RETURN VALUES
  * 0 upon success
  */
-int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx,
-                          const char *dir, char **cert,
-                          char **key, char **ca, long sesssz,
-                          char *err, size_t n);
+int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, const char *dir, char **cert,
+                            char **key, char **ca, long sesssz,
+                            const char *ciphers, char *err, size_t n);
 #define ssl_new_ctx SBUF2_FUNC(ssl_new_ctx)
 
 #endif

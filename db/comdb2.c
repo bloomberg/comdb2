@@ -177,7 +177,6 @@ int gbl_maxreclen;
 int gbl_penaltyincpercent = 20;
 int gbl_maxwthreadpenalty;
 int gbl_spstrictassignments = 0;
-int gbl_delayed_ondisk_tempdbs = 0;
 int gbl_lock_conflict_trace = 0;
 int gbl_move_deadlk_max_attempt = 500;
 
@@ -192,7 +191,6 @@ int gbl_watchdog_disable_at_start = 0; /* don't enable watchdog on start */
 int gbl_nonames = 1;
 int gbl_reject_osql_mismatch = 1;
 int gbl_abort_on_clear_inuse_rqid = 1;
-int gbl_abort_on_missing_session = 0;
 
 pthread_t gbl_invalid_tid; /* set this to our main threads tid */
 
@@ -232,10 +230,7 @@ int gbl_notimeouts = 0; /* set this if you don't need the server timeouts
 int gbl_nullfkey = 0;
 
 /* Default fast sql timeouts */
-int gbl_sqlrdtimeoutms = 10000;
 int gbl_sqlwrtimeoutms = 10000;
-
-int gbl_sql_client_stats = 1;
 
 long long gbl_converted_blocksql_requests = 0;
 
@@ -246,17 +241,12 @@ int gbl_honor_rangextunit_for_old_apis = 0;
 /* various roles for the prefault helper threads.  */
 int gbl_prefaulthelper_blockops = 1;
 int gbl_prefaulthelper_sqlreadahead = 1;
-int gbl_prefaulthelper_tagreadahead = 1;
 
 /* this many "next" ops trigger a readahead */
-int gbl_readaheadthresh = 0;
 int gbl_sqlreadaheadthresh = 0;
 
-/* readahead this many records */
-int gbl_readahead = 0;
-int gbl_sqlreadahead = 0;
-
 int gbl_iothreads = 0;
+int gbl_sqlreadahead = 0;
 int gbl_ioqueue = 0;
 int gbl_prefaulthelperthreads = 0;
 int gbl_osqlpfault_threads = 0;
@@ -365,7 +355,6 @@ int gbl_updategenids = 0;
 int gbl_osql_heartbeat_send = 5;
 int gbl_osql_heartbeat_alert = 7;
 int gbl_chkpoint_alarm_time = 60;
-int gbl_dump_queues_on_exit = 1;
 int gbl_incoherent_msg_freq = 60 * 60;  /* one hour between messages */
 int gbl_incoherent_alarm_time = 2 * 60; /* alarm if we are incoherent for
                                            more than two minutes */
@@ -411,12 +400,10 @@ int gbl_test_curtran_change_code = 0;
 int gbl_enable_pageorder_trace = 0;
 int gbl_disable_deadlock_trace = 1;
 int gbl_disable_overflow_page_trace = 1;
-int gbl_debug_rowlocks = 1; /* Default this to 0 if you see it */
 int gbl_simulate_rowlock_deadlock_interval = 0;
 int gbl_enable_berkdb_retry_deadlock_bias = 0;
 int gbl_enable_cache_internal_nodes = 1;
 int gbl_use_appsock_as_sqlthread = 0;
-int gbl_rep_collect_txn_time = 0;
 int gbl_rep_process_txn_time = 0;
 
 int gbl_osql_verify_retries_max =
@@ -2338,11 +2325,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
      * which was a complete farce really since the proxy ignored it and used
      * a value of 10 anyway. */
     dbenv->retry = 10;
-
-    /* default pagesizes */
-    dbenv->pagesize_dta = 4096;
-    dbenv->pagesize_freerec = 512;
-    dbenv->pagesize_ix = 4096;
 
     /*default sync mode:*/
     dbenv->rep_sync = REP_SYNC_FULL;
@@ -4504,9 +4486,6 @@ static void register_all_int_switches()
                         &gbl_prefault_verbose);
     register_int_switch("plannedsc", "Use planned schema change by default",
                         &gbl_default_plannedsc);
-    register_int_switch("pflt_readahead",
-                        "Enable prefaulting of readahead operations",
-                        &gbl_prefault_readahead);
     register_int_switch("pflt_toblock_lcl",
                         "Prefault toblock operations locally",
                         &gbl_prefault_toblock_local);
@@ -4524,8 +4503,6 @@ static void register_all_int_switches()
         "node1_rtcpuable",
         "If off then consumer code won't do rtcpu checks on node 1",
         &gbl_node1rtcpuable);
-    register_int_switch("clnt_sql_stats", "Trace back fds to client machines",
-                        &gbl_sql_client_stats);
     register_int_switch("sqlite3openserial",
                         "Serialise calls to sqlite3_open to prevent excess CPU",
                         &gbl_serialise_sqlite3_open);
@@ -4537,8 +4514,6 @@ static void register_all_int_switches()
         "lock_timing",
         "Berkeley DB will keep stats on time spent waiting for locks",
         &gbl_bb_berkdb_enable_lock_timing);
-    register_int_switch("qdump_atexit", "Dump queue stats at exit",
-                        &gbl_dump_queues_on_exit);
     register_int_switch(
         "memp_timing",
         "Berkeley DB will keep stats on time spent in __memp_fget",

@@ -63,6 +63,8 @@ private:
     bool m_swapped;
     // true if checksum needs to be swapped
 
+    int64_t m_filesize;
+    // file size as recorded in manifest
 public:
 
     FileInfo();
@@ -103,6 +105,7 @@ public:
     // get_type_string() method.  If the string is not recognised then the
     // type will be set to unknown.
 
+    void set_filesize(int64_t filesize) { m_filesize = filesize; }
 
     void set_sparse(bool sparse = true)
     {
@@ -123,6 +126,7 @@ public:
     bool get_crypto() const { return m_crypto; }
     bool get_sparse()const { return m_sparse; }
     bool get_swapped() const { return m_swapped; }
+    int64_t get_filesize() const { return m_filesize; }
 
 
     const char *get_type_string() const;
@@ -145,7 +149,7 @@ bool read_incr_FileInfo(const std::string& line, FileInfo& file,
         std::vector<uint32_t>& incr_pages);
 
 
-bool recognise_data_file(const std::string& filename, bool llmeta_mode,
+bool recognize_data_file(const std::string& filename,
         bool& is_data_file, bool& is_queue_file, bool& is_queuedb_file,
         std::string& out_table_name);
 // Determine if the given filename looks like a table or queue file.  If it does

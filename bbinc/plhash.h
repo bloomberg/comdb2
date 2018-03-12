@@ -91,6 +91,8 @@ typedef void hashfree_t(void *ptr);
 /* create hash table*/
 hash_t *hash_init(int keylen);         /* fixed len keylen at offset 0 */
 hash_t *hash_init_str(int keyoff);     /* string starts at keyoff */
+hash_t *
+hash_init_strcase(int keyoff); /* string starts at keyoff (case-insensitive) */
 hash_t *hash_init_fnvstr(int keyoff);  /* string starts at keyoff; use FNV */
 hash_t *hash_init_strptr(int keyoff);  /* string ptr at keyoff */
 hash_t *hash_init_key0len(int keyoff); /* string with len in key[0] at keyoff */

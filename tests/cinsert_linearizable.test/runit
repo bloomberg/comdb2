@@ -7,7 +7,7 @@
 db=$1
 failed=0
 debug_trace="-D"
-instest=${TESTSROOTDIR}/tools/insert
+instest=${TESTSBUILDDIR}/insert
 
 if [[ -z "$CLUSTER" ]]; then
     echo "This test is only relevant for a CLUSTERED instance."

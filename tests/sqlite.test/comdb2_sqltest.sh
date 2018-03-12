@@ -13,7 +13,7 @@ log=$6
 
 
 # sql-tester
-exe=comdb2_sqltest
+exe=${TESTSBUILDDIR}/comdb2_sqltest
 
 # direct output
 out=${TMPDIR}/cdb2_sqltest.$$.log

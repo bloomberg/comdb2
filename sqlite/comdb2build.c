@@ -157,6 +157,11 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             setError(pParse, SQLITE_ERROR, "Shards cannot be schema changed independently");
             return SQLITE_ERROR;
         }
+
+        if (db) {
+            /* use original tablename */
+            strncpy(dst, db->tablename, MAXTABLELEN);
+        }
     }
     else
     {
@@ -521,11 +526,6 @@ static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, int opt);
 
 int authenticateSC(const char * table,  Parse *pParse) 
 {
-    if (gbl_schema_change_in_progress) {
-        setError(pParse, SQLITE_ERROR, "Schema change already in progress");
-        return -1;
-    }
-
     Vdbe *v  = sqlite3GetVdbe(pParse);
     char *username = strstr(table, "@");
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -654,7 +654,8 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     sc->nothrevent = 1;
     
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL )) {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n",  sc->table);
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc->table);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -712,7 +713,8 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
 
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL ))
     {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n",  sc->table);
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc->table);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -764,7 +766,8 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
 
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL ))
     {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n",  sc->table);
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc->table);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -797,7 +800,8 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         goto out;
 
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL )) {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n",  sc->table);
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc->table);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -2368,27 +2372,25 @@ static int gen_key_name(struct comdb2_key *key, const char *table, char *out,
     unsigned long crc;
 
     /* Table name */
-    pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", table);
+    SNPRINTF(buf, sizeof(buf), pos, "%s", table)
 
     /* DATACOPY */
-    if (key->flags & KEY_DATACOPY) {
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DATACOPY");
-    }
+    if (key->flags & KEY_DATACOPY)
+        SNPRINTF(buf, sizeof(buf), pos, "%s", "DATACOPY")
 
     /* DUP */
-    if (key->flags & KEY_DUP) {
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DUP");
-    }
+    if (key->flags & KEY_DUP)
+        SNPRINTF(buf, sizeof(buf), pos, "%s", "DUP")
 
     LISTC_FOR_EACH(&key->idx_col_list, idx_column, lnk)
     {
         assert((idx_column->column->flags & COLUMN_DELETED) == 0);
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", idx_column->name);
-        if (idx_column->flags & INDEX_ORDER_DESC) {
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-        }
+        SNPRINTF(buf, sizeof(buf), pos, "%s", idx_column->name)
+        if (idx_column->flags & INDEX_ORDER_DESC)
+            SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
     }
 
+done:
     crc = crc32(0, (unsigned char *)buf, pos);
 
     snprintf(out, out_size, "$%s_%X", GEN_KEY_PREFIX, (unsigned int)crc);
@@ -2433,13 +2435,11 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 
             for (int j = 0; j < key->nmembers; j++) {
                 /* Column name */
-                pos += snprintf(buf + pos, sizeof(buf) - pos, "%s",
-                                key->member[j].name);
+                SNPRINTF(buf, sizeof(buf), pos, "%s", key->member[j].name)
 
                 /* Sort order */
-                if (key->member[j].flags & INDEX_DESCEND) {
-                    pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-                }
+                if (key->member[j].flags & INDEX_DESCEND)
+                    SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
             }
             break;
         }
@@ -2447,8 +2447,7 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
     assert(found);
 
     /* Parent table name */
-    pos += snprintf(buf + pos, sizeof(buf) - pos, "%s",
-                    pConstraint->table[parent_idx]);
+    SNPRINTF(buf, sizeof(buf), pos, "%s", pConstraint->table[parent_idx])
 
     /* Get the parent table */
     table = get_dbtable_by_name(pConstraint->table[parent_idx]);
@@ -2466,19 +2465,18 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 
             for (int j = 0; j < key->nmembers; j++) {
                 /* Column name */
-                pos += snprintf(buf + pos, sizeof(buf) - pos, "%s",
-                                key->member[j].name);
+                SNPRINTF(buf, sizeof(buf), pos, "%s", key->member[j].name)
 
                 /* Sort order */
-                if (key->member[j].flags & INDEX_DESCEND) {
-                    pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-                }
+                if (key->member[j].flags & INDEX_DESCEND)
+                    SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
             }
             break;
         }
     }
     assert(found);
 
+done:
     gen_constraint_name_int(buf, pos, out, out_size);
 
     return 0;
@@ -2495,30 +2493,28 @@ static int gen_constraint_name2(struct comdb2_constraint *constraint, char *out,
     LISTC_FOR_EACH(&constraint->child_idx_col_list, idx_column, lnk)
     {
         /* Column name */
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", idx_column->name);
+        SNPRINTF(buf, sizeof(buf), pos, "%s", idx_column->name)
 
         /* Sort order */
-        if (idx_column->flags & INDEX_ORDER_DESC) {
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-        }
+        if (idx_column->flags & INDEX_ORDER_DESC)
+            SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
     }
 
     /* Parent table name */
-    pos +=
-        snprintf(buf + pos, sizeof(buf) - pos, "%s", constraint->parent_table);
+    SNPRINTF(buf, sizeof(buf), pos, "%s", constraint->parent_table)
 
     /* Parent key columns and sort orders */
     LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_column, lnk)
     {
         /* Column name */
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", idx_column->name);
+        SNPRINTF(buf, sizeof(buf), pos, "%s", idx_column->name)
 
         /* Sort order */
-        if (idx_column->flags & INDEX_ORDER_DESC) {
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-        }
+        if (idx_column->flags & INDEX_ORDER_DESC)
+            SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
     }
 
+done:
     gen_constraint_name_int(buf, pos, out, out_size);
 
     return 0;
@@ -3303,6 +3299,47 @@ oom:
 
 cleanup:
     free_schema_change_type(sc);
+    free_ddl_context(pParse);
+    return;
+}
+
+void comdb2CreateTableLikeEnd(
+    Parse *pParse, /* Parse context */
+    Token *pName1, /* First part of the name of the table */
+    Token *pName2  /* Second part of the name of the table */
+)
+{
+    char *newTab;
+    char *otherTab;
+
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    assert(!use_sqlite_impl(pParse));
+
+    if (isRemote(pParse, &pName1, &pName2)) {
+        return;
+    }
+
+    otherTab = comdb2_strndup(ctx->mem, pName1->z, pName1->n);
+    if (otherTab == 0)
+        goto oom;
+    sqlite3Dequote(otherTab);
+
+    /* Retrieve the schema of the existing table. */
+    newTab = ctx->schema->name;
+    ctx->schema->name = otherTab;
+    if (retrieve_schema(pParse, ctx)) {
+        goto cleanup;
+    }
+    ctx->schema->name = newTab;
+
+    comdb2CreateTableEnd(pParse, 0, 0, 0, ctx->schema->table_options);
+
+    return;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+
+cleanup:
     free_ddl_context(pParse);
     return;
 }

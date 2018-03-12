@@ -836,14 +836,15 @@ int clear(void)
         }
 
         rc = cdb2_run_statement(db, "commit");
-        if (rc == 230) {
+        if (rc == 230 || rc == 4) {
             tdprintf(stderr, db, __func__, __LINE__,
                      "clear: commit rc %d %s - retrying\n", rc,
                      cdb2_errstr(db));
             continue;
         } else if (rc) {
             tdprintf(stderr, db, __func__, __LINE__,
-                     "XXX clear: commit rc %d %s\n", rc, cdb2_errstr(db));
+                     "XXX clear: commit rc %d %s iteration %d\n", rc, 
+                     cdb2_errstr(db), iteration);
             exit(1);
         }
 
@@ -919,6 +920,10 @@ int main(int argc, char *argv[])
             myexit(__func__, __LINE__, 1);
             break;
         }
+    }
+
+    if (debug_trace) {
+        fprintf(stderr, "Staring %s pid %d\n", argv0, getpid());
     }
 
     if (errors) {

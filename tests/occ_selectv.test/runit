@@ -20,7 +20,7 @@ cdb2sql ${CDB2_OPTIONS} $dbname default "WITH RECURSIVE cnt(x) AS (SELECT 1 UNIO
 sleep 10
 
 # Run the executable
-exe=${TESTSROOTDIR}/tools/selectv
+exe=${TESTSBUILDDIR}/selectv
 
 echo "Testing selectv..."
 $exe -d $dbname -o -t 5 > test.log 2>&1 &

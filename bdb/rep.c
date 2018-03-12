@@ -4947,7 +4947,8 @@ void *watcher_thread(void *arg)
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    print(bdb_state, "watcher_thread started as 0x%x\n", (int)pthread_self());
+    print(bdb_state, "watcher_thread started as 0x%p\n",
+          (intptr_t)pthread_self());
 
     poll(NULL, 0, (rand() % 100) + 1000);
 

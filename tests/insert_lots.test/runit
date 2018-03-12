@@ -89,7 +89,7 @@ THRDS=20
 CNT=100
 ITERATIONS=500
 
-./insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS> ins.out
+${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS> ins.out
 
 assertcnt $((THRDS * CNT * ITERATIONS))
 

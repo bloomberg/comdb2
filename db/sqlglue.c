@@ -1349,23 +1349,24 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
     int fieldctr;
     int current = 0;
     unsigned int crc;
-    current += snprintf(buf + current, sizeof buf - current, "%s", dbname);
-    if (schema->flags & SCHEMA_DATACOPY) {
-        current += snprintf(buf + current, sizeof buf - current, "DATACOPY");
-    }
-    if (schema->flags & SCHEMA_DUP) {
-        current += snprintf(buf + current, sizeof buf - current, "DUP");
-    }
-    if (schema->flags & SCHEMA_RECNUM) {
-        current += snprintf(buf + current, sizeof buf - current, "RECNUM");
-    }
+
+    SNPRINTF(buf, sizeof(buf), current, "%s", dbname)
+    if (schema->flags & SCHEMA_DATACOPY)
+        SNPRINTF(buf, sizeof(buf), current, "%s", "DATACOPY")
+
+    if (schema->flags & SCHEMA_DUP)
+        SNPRINTF(buf, sizeof(buf), current, "%s", "DUP")
+
+    if (schema->flags & SCHEMA_RECNUM)
+        SNPRINTF(buf, sizeof(buf), current, "%s", "RECNUM")
+
     for (fieldctr = 0; fieldctr < schema->nmembers; ++fieldctr) {
-        current += snprintf(buf + current, sizeof buf - current, "%s",
-                            schema->member[fieldctr].name);
-        if (schema->member[fieldctr].flags & INDEX_DESCEND) {
-            current += snprintf(buf + current, sizeof buf - current, "DESC");
-        }
+        SNPRINTF(buf, sizeof(buf), current, "%s", schema->member[fieldctr].name)
+        if (schema->member[fieldctr].flags & INDEX_DESCEND)
+            SNPRINTF(buf, sizeof(buf), current, "%s", "DESC")
     }
+
+done:
     crc = crc32(0, (unsigned char *)buf, current);
     snprintf(namebuf, len, "$%s_%X", csctag, crc);
 }
@@ -4504,8 +4505,8 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
     }
     get_current_lsn(clnt);
 
-    clnt->ddl_tables = hash_init_str(0);
-    clnt->dml_tables = hash_init_str(0);
+    clnt->ddl_tables = hash_init_strcase(0);
+    clnt->dml_tables = hash_init_strcase(0);
 
     if (pBt->is_temporary) {
         goto done;
@@ -11071,7 +11072,7 @@ void stat4dump(int more, char *table, int istrace)
 
     struct sqlclntstate clnt;
     reset_clnt(&clnt, NULL, 1);
-    clnt.sql = "select 1"; //* from sqlite_master limit 1;";
+    clnt.sql = "select * from sqlite_stat4"; //* from sqlite_master limit 1;";
 
     struct sql_thread *thd = start_sql_thread();
     get_copy_rootpages(thd);

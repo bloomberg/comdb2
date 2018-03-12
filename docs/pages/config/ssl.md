@@ -112,7 +112,7 @@ ssl_client_mode VERIFY_CA
 
 Now if a client certificate is not present, the connection will be rejected as well.
 
-For maximum security, you could request host name validation by changing SSL mode the LRL:
+For maximum security, you could request host name validation by changing SSL mode in the LRL:
 
 ```shell
 ssl_client_mode VERIFY_HOSTNAME
@@ -158,6 +158,7 @@ are refused to join the cluster.
 | `ssl_cert file`| Path to the certificate | `<ssl_cert_path>/server.crt` |
 | `ssl_key file` | Path to the key | `<ssl_cert_path>/server.key` |
 | `ssl_ca file` | Path to the trusted CA certificates | `<ssl_cert_path>/root.crt` |
+| `ssl_cipher_suites string` | list of accepted ciphers | `HIGH:!aNULL:!eNULL` |
 
 
 ## Client SSL Configuration Summary

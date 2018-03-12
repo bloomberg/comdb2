@@ -2192,7 +2192,7 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
         if (nodestats == NULL) {
             logmsg(
                 LOGMSG_ERROR,
-                "%s: failed to add client stats, task %s, stack %s, node %s\n",
+                "%s: failed to add client stats, task %s, stack %s, node %d\n",
                 __func__, NAME(task), NAME(stack), node);
         }
     }

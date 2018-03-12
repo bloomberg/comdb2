@@ -239,7 +239,6 @@ static const char *HELP_SQL[] = {
     "hist               - show recently run statements",
     "cancel N           - cancel running statement with id N",
     "cancelcnonce N      - cancel running statement with cnonce N",
-    "rdtimeout N        - set read timeout in ms",
     "wrtimeout N        - set write timeout in ms",
     "help               - this information", NULL,
 };
@@ -400,8 +399,6 @@ void replication_stats(struct dbenv *dbenv)
         logmsg(LOGMSG_USER, "   Max rep timeout      %d\n", dbenv->max_timeout_ms);
         logmsg(LOGMSG_USER, "   Max rep time         %d\n", dbenv->max_reptime_ms);
     }
-    logmsg(LOGMSG_USER, "   Minimum        %d ms\n",
-           bdb_attr_get(dbenv->bdb_attr, BDB_ATTR_MINREPTIMEOUT));
 }
 
 int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
@@ -660,18 +657,6 @@ void *handle_exit_thd(void *arg)
     stop_threads(thedb);
     allow_sc_to_run();
 
-    /* now that we are taking no more requests and have halted all request
-     * threads, take a final snapshot of our queues (this helps things
-     * like the audtqdb problem where we may want to know if the queue was
-     * empty when the db exited - if so the db can be reinited when it
-     * starts up again) */
-    if (thedb->num_qdbs > 0 && gbl_dump_queues_on_exit) {
-        int ii;
-        logmsg(LOGMSG_USER, "Final status of queues:\n");
-        for (ii = 0; ii < thedb->num_qdbs; ii++)
-            dbqueue_stat(thedb->qdbs[ii], 0, 0, 1 /*(blocking call)*/);
-    }
-
     flush_db();
     clean_exit();
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
@@ -880,6 +865,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             bdb_check_pageno(thedb->bdb_env, pgno);
         } else
             logmsg(LOGMSG_ERROR, "incorrect page no %d\n", pgno);
+    } else if (tokcmp(tok, ltok, "deletelogs") == 0) {
+        logmsg(LOGMSG_ERROR, "Calling delete logs function\n");
+        extern void delete_log_files(bdb_state_type *bdb_state);
+        delete_log_files(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "pushnext") == 0) {
         push_next_log();
     }
@@ -2602,7 +2591,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         MEMORY_SYNC;
     } else if (tokcmp(tok, ltok, "scforceabort") == 0) {
         logmsg(LOGMSG_USER, "Forcibly resetting schema change flat\n");
-        sc_set_running(0, 0, NULL, 0);
+        sc_set_running(NULL, 0, 0, NULL, 0);
     } else if (tokcmp(tok, ltok, "debug") == 0) {
         debug_trap(line + st, lline - st);
     }
@@ -3133,10 +3122,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                 char * cnonce = strdup(tok);
                 cancel_sql_statement_with_cnonce(cnonce);
             }
-        } else if (tokcmp(tok, ltok, "rdtimeout") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            gbl_sqlrdtimeoutms = toknum(tok, ltok);
-            logmsg(LOGMSG_USER, "SQL read timeout now set to %d ms\n", gbl_sqlrdtimeoutms);
         } else if (tokcmp(tok, ltok, "wrtimeout") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             gbl_sqlwrtimeoutms = toknum(tok, ltok);

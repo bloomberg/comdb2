@@ -1378,7 +1378,8 @@ inline void bdb_set_fld_hints(bdb_state_type *bdb_state, uint16_t *hints)
 
 inline void bdb_cleanup_fld_hints(bdb_state_type *bdb_state)
 {
-    if (bdb_state->fld_hints)
+    if (bdb_state && bdb_state->fld_hints) {
         free(bdb_state->fld_hints);
-    bdb_state->fld_hints = NULL;
+        bdb_state->fld_hints = NULL;
+    }
 }
