@@ -609,34 +609,6 @@ int bdb_sync_cluster(bdb_state_type *bdb_state, int sync_all)
     return rc;
 }
 
-static void send_context_to_all(bdb_state_type *bdb_state)
-{
-    const char *hostlist[REPMAX];
-    int count = 0;
-    unsigned long long gblcontext;
-    int i;
-
-    /* only the master can send these */
-    if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
-        return;
-
-    gblcontext = get_gblcontext(bdb_state);
-
-    /* send to all */
-    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-    for (i = 0; i < count; i++) {
-        if (gblcontext == -1ULL) {
-            logmsg(LOGMSG_ERROR, "SENDING context -1 to node %s\n",
-                   hostlist[i]);
-            cheap_stack_trace();
-        }
-
-        net_send(bdb_state->repinfo->netinfo, hostlist[i],
-                      USER_TYPE_GBLCONTEXT, &gblcontext,
-                      sizeof(unsigned long long), 0);
-    }
-}
-
 int is_incoherent(bdb_state_type *bdb_state, const char *host)
 {
     int is_incoherent;
@@ -956,32 +928,6 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
             if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
                 dontsend = (is_logput && throttle_updates_incoherent_nodes(
                                              bdb_state, hostlist[i]));
-
-                if (tran && gblcontext && nodelay) {
-
-                    if (!gbl_rowlocks && !dontsend) {
-
-                        if (gblcontext == -1ULL) {
-                            logmsg(LOGMSG_ERROR,
-                                   "SENDING context -1 to node %s\n",
-                                   hostlist[i]);
-                            cheap_stack_trace();
-                        }
-
-                        rc = net_send(bdb_state->repinfo->netinfo, hostlist[i],
-                                      USER_TYPE_GBLCONTEXT, &gblcontext,
-                                      sizeof(unsigned long long), 0);
-
-                        if (rc != 0)
-                            dontsend = 1;
-                    }
-                    /*
-                    else
-                    {
-                       fprintf(stderr, "Put a breakpoint here!\n");
-                    }
-                    */
-                }
             }
 
             if (!dontsend) {
@@ -1023,37 +969,6 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
         if (bdb_state->rep_trace)
             logmsg(LOGMSG_USER, "--- sending seq %d to %s, nodelay is %d\n", tmpseq,
                     host, nodelay);
-
-        if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
-            if ((flags & DB_REP_PERMANENT) && (tran)) {
-                if (gblcontext) {
-                    dontsend = is_logput && throttle_updates_incoherent_nodes(
-                                                bdb_state, host);
-
-                    /*
-                    fprintf(stderr, "sending gblcontext  0x%08llx to %d\n",
-                       bdb_state->gblcontext, eid);
-                    */
-
-                    if (!gbl_rowlocks && !dontsend) {
-
-                        if (gblcontext == -1ULL) {
-                            logmsg(LOGMSG_ERROR, "SENDING context -1 to node %s\n",
-                                    host);
-                            cheap_stack_trace();
-                        }
-
-                        rc = net_send(bdb_state->repinfo->netinfo, host,
-                                      USER_TYPE_GBLCONTEXT, &gblcontext,
-                                      sizeof(unsigned long long), nodelay);
-                        if (rc != 0) {
-                            outrc = 1;
-                        }
-                    } else {
-                        outrc = 1;
-                    }
-                }
-            }
 
         if (!outrc) {
             rc = net_send(bdb_state->repinfo->netinfo, host,
@@ -4818,9 +4733,6 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
                 from_node);
 
         bdb_state->attr->commitdelay = 0;
-
-        send_context_to_all(bdb_state);
-
         break;
 
     case USER_TYPE_GETCONTEXT:
@@ -5393,9 +5305,6 @@ void *watcher_thread(void *arg)
 
         /* sleep for somewhere between 1-2 seconds */
         poll(NULL, 0, (rand() % 1000) + 1000);
-
-        send_context_to_all(bdb_state);
-
     }
 }
 
