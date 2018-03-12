@@ -134,7 +134,6 @@ extern int gbl_verbose_send_coherency_lease;
 extern int gbl_reset_on_unelectable_cluster;
 extern int gbl_decoupled_logputs;
 extern int gbl_decoupled_fills;
-extern int gbl_gap_max_ms;
 extern int gbl_verify_waitms;
 extern int gbl_apply_thread_pollms;
 extern int gbl_rep_verify_always_grab_writelock;
@@ -151,6 +150,7 @@ extern int gbl_dbreg_abort_on_null_txn;
 extern int gbl_simulate_dropping_request;
 extern int gbl_max_logput_queue;
 extern int gbl_blocking_enque;
+extern int gbl_master_req_waitms;
 
 extern long long sampling_threshold;
 

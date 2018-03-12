@@ -1235,15 +1235,12 @@ REGISTER_TUNABLE("decoupled_logputs", "Perform logputs out-of-band. (Default: "
 REGISTER_TUNABLE("decoupled_fills", "Handle log-fills out-of-band. (Default: "
                  "on)", TUNABLE_BOOLEAN, &gbl_decoupled_fills,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("gap_max_ms", "Re-request gap after this interval (Default: "
-                 "100)", TUNABLE_INTEGER, &gbl_gap_max_ms,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("verify_waitms", "Re-request verifies after this interval.  "
                  "(Default: 100ms)", TUNABLE_INTEGER, &gbl_verify_waitms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("apply_pollms", "Apply-thread poll time before checking queue.",
-                 TUNABLE_INTEGER, &gbl_apply_thread_pollms, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("apply_pollms", "Apply-thread poll time before checking queue. "
+                 "(Default: 100ms)", TUNABLE_INTEGER, &gbl_apply_thread_pollms, 
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_verify_always_grab_writelock",
                  "Force every rep_verify to grab writelock.", TUNABLE_BOOLEAN,
                  &gbl_rep_verify_always_grab_writelock, EXPERIMENTAL | INTERNAL,
@@ -1255,7 +1252,6 @@ REGISTER_TUNABLE("rep_verify_will_recover_trace",
 REGISTER_TUNABLE("max_wr_rows_per_txn",
                  "Set the max written rows per transaction.", TUNABLE_INTEGER,
                  &gbl_max_wr_rows_per_txn, 0, NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE("print_deadlock_cycles",
                  "Print all deadlock cycles. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_print_deadlock_cycles, NOARG, NULL, NULL, NULL, NULL);
@@ -1288,8 +1284,11 @@ REGISTER_TUNABLE(
     "Max number of client stats stored in comdb2_clientstats. (Default 10000)",
     TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
     NULL);
-REGISTER_TUNABLE("max_logput_queue", "Maximum queued log-records. ",
-                 TUNABLE_INTEGER, &gbl_max_logput_queue,
+REGISTER_TUNABLE("max_logput_queue", "Maximum queued log-records. "
+                 "(Default 1000)", TUNABLE_INTEGER, &gbl_max_logput_queue,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("master_req_waitms", "Request master once per this interval. "
+                 "(Default 200ms)", TUNABLE_INTEGER, &gbl_master_req_waitms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 
