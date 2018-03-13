@@ -1,0 +1,79 @@
+#!/bin/bash
+
+# Verify log-fills
+
+[[ "$debug" == 1 ]] && set -x
+needcluster=1
+db=$1
+
+if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
+    echo "This test is only relevant for a CLUSTERED installation."
+    exit 0
+fi
+
+if [[ -z "$stage" ]]; then
+    echo "Setting stage to 'default' (set 'stage' var to override)."
+    stage="default"
+fi
+
+function createtables
+{
+    [[ "$debug" == 1 ]] && set -x
+    cdb2sql ${CDB2_OPTIONS} $DBNAME $stage "create table t1 {schema{int id int val null=yes} keys{ dup \"id\" = id }}" >/dev/null 2>&1
+}
+
+function waitforcoherency
+{
+    [[ "$debug" == 1 ]] && set -x
+    heal
+    ma=$(cdb2sql -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
+    m=${ma%%:*}
+    c=$(ssh $m "/opt/bb/bin/cdb2sql -tabs $db @localhost \"exec procedure sys.cmd.send('bdb cluster')\"")
+    echo "$c"
+    echo "$c" | egrep COHERENT
+    r=$?
+    while [[ $r == 0 ]] ; do
+        echo "$(date) waiting for $db cluster to become coherent"
+        heal
+        sleep 1
+        ma=$(cdb2sql -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
+        m=${ma%%:*}
+        c=$(ssh $m "/opt/bb/bin/cdb2sql -tabs $db @localhost \"exec procedure sys.cmd.send('bdb cluster')\"")
+        echo "$c"
+        echo "$c" | egrep COHERENT
+        r=$?
+    done
+}
+
+function insertforever
+{
+    sql=./sql.$$.$RANDOM.txt
+    j=0
+    echo "BEGIN" > $sql
+    while [[ $j -lt 1000 ]]; do 
+        echo "INSERT INTO T1 VALUES (1,1)" >> $sql
+    done
+    echo "COMMIT" >> $sql
+    while :; do 
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default - < $sql > /dev/null 2>&1  ; done
+    done
+}
+
+function runtestwithoptions
+{
+    [[ "$debug" == 1 ]] && set -x
+    createtables
+    insertforever 1000
+}
+
+function runtest
+{
+    [[ "$debug" == 1 ]] && set -x
+    runtestwithoptions
+}
+
+createtables
+runtest
+
+echo "Success"
+exit 0
