@@ -1290,6 +1290,10 @@ REGISTER_TUNABLE("max_logput_queue", "Maximum queued log-records. "
 REGISTER_TUNABLE("master_req_waitms", "Request master once per this interval. "
                  "(Default 200ms)", TUNABLE_INTEGER, &gbl_master_req_waitms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("req_all_threshold", "Use req_all if a replicant is behind by "
+                 "this amount or more.  (Default 10000000)",
+                 TUNABLE_INTEGER, &gbl_req_all_threshold,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 
 REGISTER_TUNABLE("osql_random_restart",
