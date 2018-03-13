@@ -50,8 +50,9 @@ function insertforever
     sql=./sql.$$.$RANDOM.txt
     j=0
     echo "BEGIN" > $sql
-    while [[ $j -lt 1000 ]]; do 
+    while [[ $j -lt $1 ]]; do 
         echo "INSERT INTO T1 VALUES (1,1)" >> $sql
+        let j=j+1
     done
     echo "COMMIT" >> $sql
     while :; do 
