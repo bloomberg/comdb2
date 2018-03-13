@@ -1281,18 +1281,21 @@ REGISTER_TUNABLE("dump_full_netqueue", "Dump net-queue on full rcode. "
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "max_clientstats",
-    "Max number of client stats stored in comdb2_clientstats. (Default 10000)",
+    "Max number of client stats stored in comdb2_clientstats. (Default: 10000)",
     TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
     NULL);
 REGISTER_TUNABLE("max_logput_queue", "Maximum queued log-records. "
-                 "(Default 1000)", TUNABLE_INTEGER, &gbl_max_logput_queue,
+                 "(Default: 1000)", TUNABLE_INTEGER, &gbl_max_logput_queue,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("master_req_waitms", "Request master once per this interval. "
-                 "(Default 200ms)", TUNABLE_INTEGER, &gbl_master_req_waitms,
+                 "(Default: 200ms)", TUNABLE_INTEGER, &gbl_master_req_waitms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("req_all_threshold", "Use req_all if a replicant is behind by "
-                 "this amount or more.  (Default 10000000)",
+                 "this amount or more.  (Default: 10000000)",
                  TUNABLE_INTEGER, &gbl_req_all_threshold,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verbose_fills", "Print fill trace.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_fills,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 
