@@ -1,17 +1,19 @@
 export TESTSROOTDIR:=$(shell pwd)
-
-SRCHOME:=$(shell readlink -f $(TESTSROOTDIR)/../ )
+SRCHOME:=$(shell readlink -f $(TESTSROOTDIR)/../)
 ifeq ($(SRCHOME),)
   SRCHOME:=$(TESTSROOTDIR)/..
 endif
 export SRCHOME
-export BUILDDIR?=$(shell readlink -f $(SRCHOME)/build )
+export BUILDSFX?=build
+export BUILDDIR?=$(shell readlink -f $(SRCHOME)/$(BUILDSFX))
 export TESTSBUILDDIR?=$(BUILDDIR)/tests/tools/
-
 export TESTID:=$(shell tools/get_random.sh)
-export TESTDIR:=$(TESTSROOTDIR)/test_$(TESTID)
+export TESTDIRROOT?=$(TESTSROOTDIR)
+export TESTDIR:=$(TESTDIRROOT)/test_$(TESTID)
+
 # List of disabled tests
 export DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
+
 # List of all tests that need to run. This is essentially a list of all
 # non-disabled tests.
 export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
@@ -23,41 +25,22 @@ TOTAL=$(words $(ALL_TESTS))
 endif
 
 # get md5sum of executable use check when running every test in a series
-export COMDB2AR_EXE:=$(TESTDIR)/comdb2ar
-export COMDB2_EXE:=$(TESTDIR)/comdb2
-export CDB2SQL_EXE:=$(TESTDIR)/cdb2sql
-export COPYCOMDB2_EXE:=$(TESTDIR)/copycomdb2
-export CDB2_SQLREPLAY_EXE:=$(TESTDIR)/cdb2_sqlreplay
-export PMUX_EXE:=$(TESTSROOTDIR)/pmux
+export COMDB2AR_EXE:=${BUILDDIR}/tools/comdb2ar/comdb2ar
+export COMDB2_EXE:=${BUILDDIR}/db/comdb2
+export CDB2SQL_EXE:=${BUILDDIR}/tools/cdb2sql/cdb2sql
+export COPYCOMDB2_EXE:=${BUILDDIR}/db/copycomdb2
+export CDB2_SQLREPLAY_EXE:=${BUILDDIR}/tools/cdb2_sqlreplay/cdb2_sqlreplay
+export PMUX_EXE:=${BUILDDIR}/tools/pmux/pmux
 
-all: executables basicops all_tests
+all: init basicops all_tests
 
-build:
-	@$(MAKE) -C $(BUILDDIR)
-
-test_exe: build
-	@$(MAKE) -C $(TESTSBUILDDIR)
-
-executables: build test_exe
+init:
 	@mkdir -p ${TESTDIR}
-	@ln -f ${BUILDDIR}/db/comdb2 ${TESTDIR}/comdb2
-	@ln -f ${BUILDDIR}/db/copycomdb2 ${TESTDIR}/copycomdb2
-	@ln -f ${BUILDDIR}/tools/cdb2_sqlreplay/cdb2_sqlreplay ${TESTDIR}/cdb2_sqlreplay
-	@ln -f ${BUILDDIR}/tools/cdb2sql/cdb2sql ${TESTDIR}/cdb2sql
-	@ln -f ${BUILDDIR}/tools/comdb2ar/comdb2ar ${TESTDIR}/comdb2ar
-	@ln -f ${BUILDDIR}/tools/pmux/pmux ${TESTSROOTDIR}/pmux
-	@command -v ${COMDB2_EXE} > /dev/null || (echo "${COMDB2_EXE} missing "; exit 1)
-	@command -v ${CDB2_SQLREPLAY_EXE} > /dev/null || (echo "${CDB2_SQLREPLAY_EXE} missing "; exit 1)
-	@command -v ${CDB2SQL_EXE} > /dev/null || (echo "${CDB2SQL_EXE} missing "; exit 1)
-	@command -v ${COMDB2AR_EXE} > /dev/null || (echo "${COMDB2AR_EXE} missing "; exit 1)
-	@command -v ${COPYCOMDB2_EXE} > /dev/null || (echo "${COPYCOMDB2_EXE} missing "; exit 1)
-	@command -v ${PMUX_EXE} > /dev/null || (echo "${PMUX_EXE} missing "; exit 1)
-
 
 # Run all non-disabled tests.
 all_tests: $(ALL_TESTS)
 
-basicops_nokey: executables
+basicops_nokey: init
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
 	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTID=${TESTID} " >> ${TESTDIR}/test.log)
@@ -69,13 +52,9 @@ basicops_nokey: executables
 	$(shell echo "" >> ${TESTDIR}/test.log)
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
 
-
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)
 	$(shell TOTAL="${TOTAL}" tools/smalldelay.sh)
-
-
-.PHONY: tools
 
 showparams: 
 	@echo TESTSROOTDIR=${TESTSROOTDIR}
@@ -83,14 +62,14 @@ showparams:
 	@echo TESTID=${TESTID}
 	@echo TESTDIR=${TESTDIR}
 	@echo CLUSTER=${CLUSTER}
+	@echo COMDB2AR_EXE=${COMDB2AR_EXE}
+	@echo COMDB2_EXE=${COMDB2_EXE}
+	@echo CDB2SQL_EXE=${CDB2SQL_EXE}
+	@echo COPYCOMDB2_EXE=${COPYCOMDB2_EXE}
+	@echo CDB2_SQLREPLAY_EXE=${CDB2_SQLREPLAY_EXE}
+	@echo PMUX_EXE=${PMUX_EXE}
 
-tools:
-	@$(MAKE) -sC tools
-
-$(patsubst %.test,%,$(shell ls -d *.test | grep -v crle)): test_exe basicops tools
-
-crle: basicops_nokey tools
-	@$(MAKE) -sC crle.test
+$(patsubst %.test,%,$(shell ls -d *.test)): basicops
 
 %: %.test
 	@N=`tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
@@ -119,11 +98,9 @@ testtotalclean: $(patsubst %.test,%.clean,$(shell ls -d *.test))
 	rm -f .*.failed
 	rm -fr dbs
 	rm -f $(TMPDIR)/cdb2test*
-	$(MAKE) -C tools clean
 
 clean: testclean
 
 testclean:
 	@rm -rf test_[0-9]*
 	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf *.trap; rm -rf $(TESTSROOTDIR)/test_[0-9]*' < /dev/null;)
-	@$(MAKE) -C tools clean
