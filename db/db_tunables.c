@@ -133,6 +133,7 @@ extern int gbl_verbose_send_coherency_lease;
 extern int gbl_reset_on_unelectable_cluster;
 extern int gbl_decoupled_logputs;
 extern int gbl_decoupled_fills;
+extern int gbl_verbose_fills;
 extern int gbl_verify_waitms;
 extern int gbl_apply_thread_pollms;
 extern int gbl_req_all_threshold;

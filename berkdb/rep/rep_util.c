@@ -82,6 +82,7 @@ __rep_check_alloc(dbenv, r, n)
 }
 
 int gbl_verbose_master_req;
+extern int gbl_verbose_fills;
 
 static inline int is_logput(int type) {
     switch (type) {
@@ -396,11 +397,17 @@ __rep_new_master(dbenv, cntrl, eid)
 			}
 		} else {
 			if (log_compare(&lsn, &cntrl->lsn) < 0) {
-                last_fill = comdb2_time_epochms();
-				if (__rep_send_message(dbenv,
-				    eid, REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) != 0) {
-                    last_fill = 0;
-                } 
+				if (__rep_send_message(dbenv, eid, REP_ALL_REQ, &lsn, 
+                            NULL, DB_REP_NODROP|DB_REP_NOBUFFER, NULL) == 0) {
+                    if (gbl_verbose_fills) {
+                        logmsg(LOGMSG_USER, "%s line %d sending REP_ALL_REQ\n",
+                                __func__, __LINE__);
+                    }
+                    last_fill = comdb2_time_epochms();
+                } else if (gbl_verbose_fills) {
+                    logmsg(LOGMSG_USER, "%s line %d failed REP_ALL_REQ\n",
+                            __func__, __LINE__);
+                }
             }
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 			F_CLR(rep, REP_F_NOARCHIVE);
@@ -437,10 +444,9 @@ empty:		MUTEX_LOCK(dbenv, db_rep->db_mutexp);
 			 */
 			lp->wait_recs = rep->max_gap;
 			MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
-            last_fill = comdb2_time_epochms();
 			if (__rep_send_message(dbenv, rep->master_id,
-			    REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) != 0) {
-                last_fill = 0;
+			    REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) == 0) {
+                last_fill = comdb2_time_epochms();
             } 
 		} else
 			MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);

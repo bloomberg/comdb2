@@ -982,7 +982,6 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
             }
 
             if (!dontsend) {
-                /* TODO (maybe this PR): make a single net_send interface with flags */
                 uint32_t flags = 0;
                 if (!is_logput || (flags & DB_REP_NODROP))
                     flags |= NET_SEND_NODROP;
