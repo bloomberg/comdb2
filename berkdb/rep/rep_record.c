@@ -79,7 +79,8 @@ int gbl_fills_waitms = 100;
 
 int gbl_max_logput_queue = 1000;
 int gbl_apply_thread_pollms = 100;
-int last_fill_resp = 0;
+int last_fill = 0;
+int gbl_req_all_threshold = 10000000;
 
 void hexdump(unsigned char *key, int keylen);
 extern void fsnapf(FILE *, void *, int);
@@ -377,6 +378,7 @@ int bdb_valid_lease(void *bdb_state);
 static int last_master_req = 0;
 
 extern int gbl_verbose_master_req;
+uint64_t subtract_lsn(void *bdb_state, DB_LSN *lsn1, DB_LSN *lsn2);
 
 static void *apply_thread(void *arg) 
 {
@@ -389,7 +391,6 @@ static void *apply_thread(void *arg)
     DB_ENV *dbenv = (DB_ENV *)arg;
     struct queued_log *q, obj;
     struct timespec ts;
-    static DB_LSN last_waiting = {0};
 	REP *rep;
     char *master_eid;
 	DB_REP *db_rep;
@@ -432,9 +433,7 @@ static void *apply_thread(void *arg)
         }
 
         pthread_mutex_unlock(&rep_queue_lock);
-
         get_master_lsn(dbenv->app_private, &master_lsn);
-
         MUTEX_LOCK(dbenv, db_rep->db_mutexp);
         master_eid = db_rep->region->master_id;
         i_am_replicant = !F_ISSET(rep, REP_F_MASTER);
@@ -445,6 +444,7 @@ static void *apply_thread(void *arg)
         /* Issue a REP_MASTER_REQ if we don't know who is master */
         if (master_eid == db_eid_invalid && (comdb2_time_epochms() - 
                     last_master_req) > gbl_master_req_waitms) {
+            last_fill = 0;
 			if (gbl_verbose_master_req) {
 				logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
 						__func__, __LINE__);
@@ -457,11 +457,18 @@ static void *apply_thread(void *arg)
         }
 
         if (!i_am_replicant || !gbl_decoupled_fills || IN_ELECTION_TALLY(rep)) {
+            last_fill = 0;
             pthread_mutex_lock(&rep_queue_lock);
             continue;
         }
 
         if (log_compare(&master_lsn, &my_lsn) <= 0) {
+            last_fill = 0;
+            pthread_mutex_lock(&rep_queue_lock);
+            continue;
+        }
+
+        if (comdb2_time_epochms() - last_fill < gbl_fills_waitms) {
             pthread_mutex_lock(&rep_queue_lock);
             continue;
         }
@@ -469,36 +476,25 @@ static void *apply_thread(void *arg)
         bytes_behind = subtract_lsn(dbenv->app_private, &master_lsn, &my_lsn);
         valid_lease = bdb_valid_lease(dbenv->app_private);
 
-
-            /* See if we should do a REP_REQ_ALL request */
-            if (0) {
-            /* See if we should do a GAP request */
-            } else {
-
-                if (eid != db_eid_invalid) {
-                    MUTEX_LOCK(dbenv, db_rep->db_mutexp);
-                    if (IS_ZERO_LSN(lp->waiting_lsn)) {
-                        last_fill_req = 0;
-                        memset(&last_waiting, 0, sizeof(last_waiting));
-                    } else if (
-                            (log_compare(&lp->waiting_lsn, &last_waiting) > 0) ||
-                            ((comdb2_time_epochms() - last_fill_req) >=
-                             gbl_fills_waitms)) {
-
-                        DBT max_lsn_dbt = {0};
-                        DB_LSN next_lsn = lp->ready_lsn, tmp_lsn;
-                        LOGCOPY_TOLSN(&tmp_lsn, &lp->waiting_lsn);
-                        max_lsn_dbt.data = &tmp_lsn;
-                        max_lsn_dbt.size = sizeof(lp->waiting_lsn); 
-
-                        if ((ret = __rep_send_message(dbenv, eid,
-                                        REP_LOG_REQ, &next_lsn, &max_lsn_dbt, 0,
-                                        NULL)) == 0) {
-                            last_fill_req = comdb2_time_epochms();
-                            memcpy(&last_waiting, &lp->waiting_lsn, sizeof(DB_LSN));
-                        }
-                    }
-                }
+        if (bytes_behind > gbl_req_all_threshold || 
+                IS_ZERO_LSN(first_repdb_lsn)) {
+            /* Request all records from the master */
+            if ((ret = __rep_send_message(dbenv, master_eid,
+                            REP_ALL_REQ, &my_lsn, NULL, 0,
+                            NULL)) == 0) {
+                last_fill = comdb2_time_epochms();
+            }
+        } else {
+            /* Request the gap to repdb */
+            DBT max_lsn_dbt = {0};
+            DB_LSN tmp_lsn = {0};
+            LOGCOPY_TOLSN(&tmp_lsn, &first_repdb_lsn);
+            max_lsn_dbt.data = &tmp_lsn;
+            max_lsn_dbt.size = sizeof(tmp_lsn); 
+            if ((ret = __rep_send_message(dbenv, master_eid,
+                            REP_LOG_REQ, &my_lsn, &max_lsn_dbt, 0,
+                            NULL)) == 0) {
+                last_fill = comdb2_time_epochms();
             }
         }
         pthread_mutex_lock(&rep_queue_lock);
@@ -1157,7 +1153,7 @@ send:		if (__rep_send_message(dbenv,
 #endif
     case REP_LOG_FILL:
 	case REP_LOG_MORE:
-        last_fill_resp = comdb2_time_epochms();
+        last_fill = comdb2_time_epochms();
 	case REP_LOG:
 		CLIENT_ONLY(rep, rp);
 		MASTER_CHECK(dbenv, *eidp, rep);
@@ -1213,7 +1209,7 @@ send:		if (__rep_send_message(dbenv,
 				ret = 0;
 			else if (__rep_send_message(dbenv,
 				master, REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) != 0) {
-                last_fill_resp = 0;
+                last_fill = 0;
 				break;
             }
 		}
@@ -1250,22 +1246,22 @@ send:		if (__rep_send_message(dbenv,
 		 * it, then we need to send all records up to the LSN in the
 		 * data dbt.
 		 */
-		lsn = rp->lsn;
+		oldfilelsn = lsn = rp->lsn;
 		fromline = __LINE__;
 		if ((ret = __log_cursor(dbenv, &logc)) != 0)
 			goto errlock;
 		F_SET(logc, DB_LOG_NO_PANIC);
 		memset(&data_dbt, 0, sizeof(data_dbt));
 		ret = __log_c_get(logc, &rp->lsn, &data_dbt, DB_SET);
-
         int resp_rc;
 		type = (gbl_decoupled_logputs && gbl_decoupled_fills) ? 
             REP_LOG_FILL : REP_LOG;
 		if (ret == 0) {
+            /* Flush if this is a single-record request */
+            oldfilelsn.offset += logc->c_len;
 			resp_rc = __rep_send_message(dbenv,
 			    *eidp, type, &rp->lsn, &data_dbt,
-			    DB_REP_NOBUFFER
-			    /* we this to be flushed since the node is behind */
+			    rec == NULL ? DB_REP_NOBUFFER : 0
 			    , NULL);
         } else if (ret == DB_NOTFOUND) {
 			R_LOCK(dbenv, &dblp->reginfo);
@@ -1328,12 +1324,22 @@ send:		if (__rep_send_message(dbenv,
 				    DB_NEXT)) != 0) {
 				if (ret == DB_NOTFOUND)
 					ret = 0;
-				break;;
+				break;
 			}
 			if (log_compare(&lsn, (DB_LSN *)rec->data) >= 0)
 				break;
+
+			if (lsn.file != oldfilelsn.file) {
+				__rep_send_message(dbenv,
+				    *eidp, REP_NEWFILE, &oldfilelsn, NULL,
+				    sendflags, NULL);
+            }
+
+            oldfilelsn = lsn;
+            oldfilelsn.offset += logc->c_len;
+
 			if (__rep_send_message(dbenv,
-				*eidp, REP_LOG, &lsn, &data_dbt,
+				*eidp, type, &lsn, &data_dbt,
 				DB_REP_NOBUFFER, NULL) != 0)
 				break;
 		}
@@ -6699,13 +6705,11 @@ finish:ZERO_LSN(lp->waiting_lsn);
 		 */
 		lp->wait_recs = rep->max_gap;
 		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
-        last_fill_resp = comdb2_time_epochms();
+        last_fill = comdb2_time_epochms();
 		if (__rep_send_message(dbenv,
 		    master, REP_ALL_REQ, &rp->lsn, NULL, DB_REP_NODROP, NULL)) {
-            last_fill_resp = 0;
-        } else {
-            last_fill_resp = comdb2_time_epochms();
-        }
+            last_fill = 0;
+        } 
 	}
 	if (0) {
 errunlock2:	MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);

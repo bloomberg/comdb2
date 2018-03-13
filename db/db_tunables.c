@@ -135,6 +135,7 @@ extern int gbl_decoupled_logputs;
 extern int gbl_decoupled_fills;
 extern int gbl_verify_waitms;
 extern int gbl_apply_thread_pollms;
+extern int gbl_req_all_threshold;
 extern int gbl_rep_verify_always_grab_writelock;
 extern int gbl_rep_verify_will_recover_trace;
 extern int gbl_max_wr_rows_per_txn;

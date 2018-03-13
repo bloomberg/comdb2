@@ -303,7 +303,7 @@ __rep_print_logmsg(dbenv, logdbt, lsnp)
  */
 
 int gbl_abort_on_incorrect_upgrade;
-extern int last_all_resp;
+extern int last_fill;
 
 int
 __rep_new_master(dbenv, cntrl, eid)
@@ -396,13 +396,11 @@ __rep_new_master(dbenv, cntrl, eid)
 			}
 		} else {
 			if (log_compare(&lsn, &cntrl->lsn) < 0) {
-                last_all_resp = comdb2_time_epochms();
+                last_fill = comdb2_time_epochms();
 				if (__rep_send_message(dbenv,
 				    eid, REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) != 0) {
-                    last_all_resp = 0;
-                } else {
-                    last_all_resp = comdb2_time_epochms();
-                }
+                    last_fill = 0;
+                } 
             }
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 			F_CLR(rep, REP_F_NOARCHIVE);
@@ -439,12 +437,11 @@ empty:		MUTEX_LOCK(dbenv, db_rep->db_mutexp);
 			 */
 			lp->wait_recs = rep->max_gap;
 			MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
+            last_fill = comdb2_time_epochms();
 			if (__rep_send_message(dbenv, rep->master_id,
 			    REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) != 0) {
-                last_all_resp = 0;
-            } else {
-                last_all_resp = comdb2_time_epochms();
-            }
+                last_fill = 0;
+            } 
 		} else
 			MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 
