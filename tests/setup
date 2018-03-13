@@ -22,6 +22,8 @@ for required in $vars; do
 #    echo "$required=$q"
 done
 
+source $TESTSROOTDIR/common
+
 DBDIR=$(realpath $DBDIR)
 
 # Setup a debugger to run comdb2 server
@@ -83,7 +85,7 @@ fi
 
 if [[ $debug -eq 1 ]]; then
     set +x
-    export PATH="${TESTDIR}/:${PATH}"
+    export PATH="$paths:${PATH}"
     RUNTEST="${PWD}/runtest.sh "
     echo "Once db is ready, please run: $RUNTEST"
     echo "#!/usr/bin/env bash" > $RUNTEST
@@ -91,7 +93,7 @@ if [[ $debug -eq 1 ]]; then
     for env in $vars; do
         echo "export $env=\"${!env}\"" >> $RUNTEST
     done
-    echo 'export PATH=${TESTDIR}/:${PATH}' >> $RUNTEST
+    echo "export PATH=${paths}"':${PATH}' >> $RUNTEST
     [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $RUNTEST
     [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $RUNTEST
     echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/" >> $RUNTEST
@@ -186,9 +188,7 @@ copy_files_to_cluster()
         if [ $node == $HOSTNAME ] ; then
             continue
         fi
-
-        ssh -o StrictHostKeyChecking=no $node "mkdir -p ${SRCHOME}" < /dev/null
-        ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
+        ssh -o StrictHostKeyChecking=no $node "mkdir -p ${SRCHOME} $d1 $d2 $d3 $d4 $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
         scp -o StrictHostKeyChecking=no $COMDB2AR_EXE $node:$COMDB2AR_EXE
         scp -o StrictHostKeyChecking=no $COMDB2_EXE $node:$COMDB2_EXE
         scp -o StrictHostKeyChecking=no $CDB2SQL_EXE $node:$CDB2SQL_EXE
@@ -196,7 +196,6 @@ copy_files_to_cluster()
             echo stop pmux on $node first before copying and starting it
             ssh -o StrictHostKeyChecking=no $node "$stop_pmux" < /dev/null
         fi
-
         set +e
         scp -o StrictHostKeyChecking=no $PMUX_EXE $node:$PMUX_EXE
         echo start pmux on $node if not running 
@@ -320,7 +319,7 @@ else
         if [ $node == $HOSTNAME ] ; then
             continue        # no copying to self
         fi
-        $COPYCOMDB2_EXE ${LRL} ${node}: &> $TESTDIR/logs/${DBNAME}.${node}.copy
+        comdb2ar="$COMDB2AR_EXE" $COPYCOMDB2_EXE ${LRL} ${node}: &> $TESTDIR/logs/${DBNAME}.${node}.copy
         if [[ $? -ne 0 ]]; then
             echo "FAILED: $COPYCOMDB2_EXE ${LRL} ${node}: "
             echo "see $TESTDIR/logs/${DBNAME}.${node}.copy "
