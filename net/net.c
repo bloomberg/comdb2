@@ -4173,7 +4173,8 @@ static int create_reader_writer_threads(host_node_type *host_node_ptr,
                                         const char *funcname)
 {
     int rc;
-
+    if (host_node_ptr->netinfo_ptr->exiting)
+        return 0;
     /* make sure we have a reader thread */
     if (!(host_node_ptr->have_reader_thread)) {
         rc = pthread_create(&(host_node_ptr->reader_thread_id),
