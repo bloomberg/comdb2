@@ -22,7 +22,7 @@ for required in $vars; do
 #    echo "$required=$q"
 done
 
-source $TESTSROOTDIR/common
+source $TESTSROOTDIR/setup.common
 
 DBDIR=$(realpath $DBDIR)
 

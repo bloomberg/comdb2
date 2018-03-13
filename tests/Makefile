@@ -4,12 +4,11 @@ ifeq ($(SRCHOME),)
   SRCHOME:=$(TESTSROOTDIR)/..
 endif
 export SRCHOME
-export BUILDSFX?=build
-export BUILDDIR?=$(shell readlink -f $(SRCHOME)/$(BUILDSFX))
-export TESTSBUILDDIR?=$(BUILDDIR)/tests/tools/
-export TESTID:=$(shell tools/get_random.sh)
-export TESTDIRROOT?=$(TESTSROOTDIR)
-export TESTDIR:=$(TESTDIRROOT)/test_$(TESTID)
+ifeq ($(TESTID),)
+export TESTID:=$(shell $(TESTSROOTDIR)/tools/get_random.sh)
+endif
+include $(TESTSROOTDIR)/Makefile.common
+
 
 # List of disabled tests
 export DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
@@ -17,20 +16,12 @@ export DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | 
 # List of all tests that need to run. This is essentially a list of all
 # non-disabled tests.
 export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
-    $(shell tools/get_tests_inorder.sh)))
+    $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh)))
 
 TOTAL=$(words $(MAKECMDGOALS))
 ifeq ($(TOTAL),0)
 TOTAL=$(words $(ALL_TESTS))
 endif
-
-# get md5sum of executable use check when running every test in a series
-export COMDB2AR_EXE:=${BUILDDIR}/tools/comdb2ar/comdb2ar
-export COMDB2_EXE:=${BUILDDIR}/db/comdb2
-export CDB2SQL_EXE:=${BUILDDIR}/tools/cdb2sql/cdb2sql
-export COPYCOMDB2_EXE:=${BUILDDIR}/db/copycomdb2
-export CDB2_SQLREPLAY_EXE:=${BUILDDIR}/tools/cdb2_sqlreplay/cdb2_sqlreplay
-export PMUX_EXE:=${BUILDDIR}/tools/pmux/pmux
 
 all: init basicops all_tests
 
@@ -53,8 +44,8 @@ basicops_nokey: init
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
 
 basicops: basicops_nokey
-	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)
-	$(shell TOTAL="${TOTAL}" tools/smalldelay.sh)
+	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" $(TESTSROOTDIR)/tools/keygen.sh)
+	$(shell TOTAL="${TOTAL}" $(TESTSROOTDIR)/tools/smalldelay.sh)
 
 showparams: 
 	@echo TESTSROOTDIR=${TESTSROOTDIR}
@@ -72,7 +63,7 @@ showparams:
 $(patsubst %.test,%,$(shell ls -d *.test)): basicops
 
 %: %.test
-	@N=`tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
+	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
 	@cp -r $< $(TESTDIR)/
 	@$(MAKE) -skC $(TESTDIR)/$<
 

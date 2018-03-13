@@ -20,32 +20,14 @@ ifeq ($(wildcard ${TESTSROOTDIR}/setup),)
   $(error TESTSROOTDIR is set incorrectly to ${TESTSROOTDIR} )
 endif
 
+export SRCHOME?=$(shell readlink -f $(TESTSROOTDIR)/../)
 ifeq ($(TESTID),)
-  # will need a testid, unless one is provided
-  export TESTID:=$(shell $(TESTSROOTDIR)/tools/get_random.sh)
+export TESTID:=$(shell $(TESTSROOTDIR)/tools/get_random.sh)
 endif
+include $(TESTSROOTDIR)/Makefile.common
 
-ifeq ($(TESTDIR),)
-  #if we don't have a testdir it means we are running from within a test dir
-  #we should export some globals and copy executable
-  export TESTDIR:=$(TESTSROOTDIR)/test_$(TESTID)
-  export SRCHOME:=$(shell readlink -f $(TESTSROOTDIR)/../)
-  export BUILDDIR?=$(shell readlink -f $(SRCHOME)/build )
-  export TESTSBUILDDIR?=$(BUILDDIR)/tests/tools/
-  #also defined in Makefile -- needed here because we can run tests from .test/
-  export COMDB2_EXE:=$(TESTDIR)/comdb2
-  export COMDB2AR_EXE:=$(TESTDIR)/comdb2ar
-  export CDB2SQL_EXE:=$(TESTDIR)/cdb2sql
-  export COPYCOMDB2_EXE:=$(TESTDIR)/copycomdb2
-  export CDB2_SQLREPLAY_EXE:=$(TESTDIR)/cdb2_sqlreplay
-  export PMUX_EXE:=$(TESTSROOTDIR)/pmux
 
-  $(shell mkdir -p ${TESTDIR}/ )
-  $(shell ln $(SRCHOME)/comdb2ar $(COMDB2AR_EXE) )
-  $(shell ln $(SRCHOME)/comdb2 $(COMDB2_EXE) )
-  $(shell ln $(SRCHOME)/cdb2sql $(CDB2SQL_EXE) )
-endif
-
+$(shell [ ! -f ${TESTDIR} ] &&  mkdir -p ${TESTDIR}/ )
 
 export CURRDIR?=$(shell pwd)
 export TESTCASE=$(patsubst %.test,%,$(shell basename $(CURRDIR)))
