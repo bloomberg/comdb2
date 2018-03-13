@@ -55,7 +55,7 @@ function insertforever
     done
     echo "COMMIT" >> $sql
     while :; do 
-        cdb2sql ${CDB2_OPTIONS} $DBNAME default - < $sql > /dev/null 2>&1  ; done
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default - < $sql > /dev/null 2>&1 
     done
 }
 
