@@ -989,6 +989,9 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                 if (bdb_state->attr->net_inorder_logputs)
                     flags |= NET_SEND_INORDER;
 
+                if (nodelay)
+                    flags |= NET_SEND_NODELAY;
+
                 rc = net_send_flags(bdb_state->repinfo->netinfo,
                         hostlist[i], USER_TYPE_BERKDB_REP, buf, bufsz, flags);
 
