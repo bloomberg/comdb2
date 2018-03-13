@@ -1094,8 +1094,8 @@ skip:				/*
 		oldfilelsn = lsn = rp->lsn;
 
         if (gbl_verbose_fills) {
-            logmsg(LOGMSG_USER, "%s line %d received REP_ALL_REQ from %d:%d\n",
-                    __func__, __LINE__, lsn.file, lsn.offset);
+            logmsg(LOGMSG_USER, "%s line %d received REP_ALL_REQ from %s %d:%d\n",
+                    __func__, __LINE__, *eidp, lsn.file, lsn.offset);
         }
 
 		type = (gbl_decoupled_logputs && gbl_decoupled_fills) ? 
@@ -1325,13 +1325,13 @@ send:		if ((rc = __rep_send_message(dbenv,
             REP_LOG_FILL : REP_LOG;
         if (gbl_verbose_fills) {
             if (rec && rec->size != 0) {
-                logmsg(LOGMSG_USER, "%s line %d REP_LOG_REQ from %d:%d to "
-                        "%d:%d\n", __func__, __LINE__, lsn.file, lsn.offset,
+                logmsg(LOGMSG_USER, "%s line %d received REP_LOG_REQ from %s %d:%d to "
+                        "%d:%d\n", __func__, __LINE__, *eidp, lsn.file, lsn.offset,
                         ((DB_LSN *)(rec->data))->file, 
                         ((DB_LSN *)(rec->data))->offset);
             } else {
-                logmsg(LOGMSG_USER, "%s line %d REP_LOG_REQ for %d:%d\n",
-                        __func__, __LINE__, lsn.file, lsn.offset);
+                logmsg(LOGMSG_USER, "%s line %d REP_LOG_REQ from %s %d:%d\n",
+                        __func__, __LINE__, *eidp, lsn.file, lsn.offset);
             }
         }
 		if (ret == 0) {
