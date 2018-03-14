@@ -9,7 +9,7 @@ SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 
 export HOSTNAME=${HOSTNAME:-`hostname`}
 export CLEANUPDBDIR=${CLEANUPDBDIR:-1}
-source $TESTSROOTDIR/common
+source $TESTSROOTDIR/setup.common
 export PATH="${paths}/:${PATH}"
 export pmux_port=${PMUXPORT:-5105}  # assign to 5105 if it was not set as a make parameter
 successful=0
