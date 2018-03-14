@@ -2,6 +2,7 @@
 decoupled_logputs on
 decoupled_fills on
 fill_throttle 100
+# print_net_queue_size on
 
 # Linearizable is serializable + durable-lsn logic
 enable_serial_isolation
@@ -14,9 +15,6 @@ setattr DURABLE_LSN_REQUEST_WAITMS 2000
 
 # new_snapshot is seeing bugs here: disable for now, old snapshot works correctly
 disable_new_snapshot
-
-# new snapshot_asof isn't prod-ready (and will be rewritten soon)
-# enable_new_snapshot_asof
 
 # Increase netpoll
 netpoll 2000

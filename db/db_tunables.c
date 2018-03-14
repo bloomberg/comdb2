@@ -156,6 +156,7 @@ extern int gbl_simulate_dropping_request;
 extern int gbl_max_logput_queue;
 extern int gbl_blocking_enque;
 extern int gbl_master_req_waitms;
+extern int gbl_print_net_queue_size;
 
 extern long long sampling_threshold;
 
