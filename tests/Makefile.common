@@ -8,6 +8,7 @@ export COMDB2AR_EXE?=${BUILDDIR}/tools/comdb2ar/comdb2ar
 export COMDB2_EXE?=${BUILDDIR}/db/comdb2
 export CDB2SQL_EXE?=${BUILDDIR}/tools/cdb2sql/cdb2sql
 export COPYCOMDB2_EXE?=${BUILDDIR}/db/copycomdb2
+export CDB2DUMP_EXE?=${BUILDDIR}/db/cdb2_dump
 export CDB2_SQLREPLAY_EXE?=${BUILDDIR}/tools/cdb2_sqlreplay/cdb2_sqlreplay
 export PMUX_EXE?=${BUILDDIR}/tools/pmux/pmux
 export pmux_port?=5105
