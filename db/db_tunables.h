@@ -1302,6 +1302,9 @@ REGISTER_TUNABLE("warn_queue_latency", "Trace for log queues processed that "
                  "are older than this.  (Default: 500ms)", TUNABLE_INTEGER, 
                  &gbl_warn_queue_latency_threshold, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("print_net_queue_size", "Trace for net queue size.  (Default: "
+                 "off)", TUNABLE_BOOLEAN, &gbl_print_net_queue_size, 
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 
 #endif /* _DB_TUNABLES_H */
