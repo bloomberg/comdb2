@@ -1,6 +1,6 @@
 include(${CMAKE_MODULE_PATH}/plugin.cmake)
 
-set(PLUGIN "logdelete")
+set(LIBNAME "logdelete")
 
 include_directories(
   ${PROJECT_SOURCE_DIR}/bb
@@ -30,4 +30,4 @@ include_directories(
 
 set(SOURCES logdelete.c)
 
-add_plugin(${PLUGIN} "STATIC" "${SOURCES}")
+add_plugin(${LIBNAME} "STATIC" "${SOURCES}")
