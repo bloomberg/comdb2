@@ -1886,9 +1886,6 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
         LOGCOPY_32(&rectype, logdta.data);
     }
 
-    if (tran->physical_tran)
-        bdb_tran_abort_phys(bdb_state, tran->physical_tran);
-
     while (rc == 0 && rectype != DB_llog_ltran_start) {
 
 #if 0

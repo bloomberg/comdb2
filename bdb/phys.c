@@ -215,6 +215,7 @@ static inline int micro_retry_check(bdb_state_type *bdb_state, tran_type *tran)
     extern int gbl_micro_retry_on_deadlock;
 
     if (gbl_rowlocks && gbl_micro_retry_on_deadlock && tran->micro_commit &&
+        !tran->single_physical_transaction &&
         !(gbl_locks_check_waiters && gbl_rowlocks_commit_on_waiters))
         return 1;
     else
@@ -267,7 +268,7 @@ int phys_dta_add(bdb_state_type *bdb_state, tran_type *logical_tran,
         goto done;
     }
 
-    if (dtafile == 0 && !logical_tran->single_physical_transaction) {
+    if (gbl_rowlocks && dtafile == 0) {
         int did_commit = 0;
         rc = tran_allocate_rlptr(logical_tran, &addlkptr, &addrowlk);
         if (rc) {
@@ -381,7 +382,7 @@ int phys_dta_del(bdb_state_type *bdb_state, tran_type *logical_tran, int rrn,
         goto done;
     }
 
-    if (dtafile == 0 && !logical_tran->single_physical_transaction) {
+    if (gbl_rowlocks && dtafile == 0) {
         int did_commit = 0;
         rc = tran_allocate_rlptr(logical_tran, &dellkptr, &delrowlk);
         if (rc) {
@@ -500,7 +501,7 @@ int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
         goto done;
     }
 
-    if (dtafile == 0 && !logical_tran->single_physical_transaction) {
+    if (gbl_rowlocks && dtafile == 0) {
         int did_commit = 0;
         rc = tran_allocate_rlptr(logical_tran, &oldlkptr, &oldrowlk);
         if (rc) {
@@ -629,8 +630,7 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
 
     /* Master-only locks unique ix value to ensure we aren't colliding with a
      * delete */
-    if (!bdb_state->ixdups[ixnum] &&
-        !logical_tran->single_physical_transaction) {
+    if (gbl_rowlocks && !bdb_state->ixdups[ixnum]) {
         int did_commit = 0;
         rc = tran_allocate_rlptr(logical_tran, &newlkptr, &newrowlk);
         if (rc) {
@@ -750,8 +750,7 @@ int phys_key_del(bdb_state_type *bdb_state, tran_type *logical_tran,
 
     /* Master-only locks unique ix values to prevent colliding inserts from
      * making this delete un-abortable */
-    if (!bdb_state->ixdups[ixnum] &&
-        !logical_tran->single_physical_transaction) {
+    if (gbl_rowlocks && !bdb_state->ixdups[ixnum]) {
         int did_commit = 0;
         rc = tran_allocate_rlptr(logical_tran, &dellkptr, &delrowlk);
         if (rc) {
