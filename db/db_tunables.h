@@ -1280,7 +1280,7 @@ REGISTER_TUNABLE(
     TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
     NULL);
 REGISTER_TUNABLE("max_logput_queue", "Maximum queued log-records. "
-                 "(Default: 1000)", TUNABLE_INTEGER, &gbl_max_logput_queue,
+                 "(Default: 10000)", TUNABLE_INTEGER, &gbl_max_logput_queue,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("master_req_waitms", "Request master once per this interval. "
                  "(Default: 200ms)", TUNABLE_INTEGER, &gbl_master_req_waitms,
@@ -1289,9 +1289,19 @@ REGISTER_TUNABLE("req_all_threshold", "Use req_all if a replicant is behind by "
                  "this amount or more.  (Default: 10000000)",
                  TUNABLE_INTEGER, &gbl_req_all_threshold,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fill_throttle", "Throttle fill-reqs to once per fill-throttle"
+                 " ms.  (Default: 100ms)", TUNABLE_INTEGER, &gbl_fills_waitms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("verbose_fills", "Print fill trace.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_verbose_fills,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verbose_repdups", "Print trace on duplicate replication.  "
+                 "(Default: off)", TUNABLE_BOOLEAN, &gbl_verbose_repdups,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("warn_queue_latency", "Trace for log queues processed that "
+                 "are older than this.  (Default: 500ms)", TUNABLE_INTEGER, 
+                 &gbl_warn_queue_latency_threshold, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 
 
 #endif /* _DB_TUNABLES_H */

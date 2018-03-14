@@ -74,10 +74,12 @@ int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_decoupled_fills = 1;
 int gbl_master_req_waitms = 200;
+// TODO: VERIFY_WAITMS
 int gbl_verify_waitms = 100;
 int gbl_fills_waitms = 100;
+int gbl_warn_queue_latency_threshold = 500;
 
-int gbl_max_logput_queue = 1000;
+int gbl_max_logput_queue = 10000;
 int gbl_apply_thread_pollms = 100;
 int last_fill = 0;
 int gbl_req_all_threshold = 10000000;
@@ -358,6 +360,7 @@ struct queued_log {
     REP_CONTROL rp;
     u_int32_t gen;
     u_int32_t size;
+    u_int32_t enqueued_time;
     char data[1];
 };
 
@@ -377,7 +380,8 @@ void get_master_lsn(void *bdb_state, DB_LSN *lsnout);
 int bdb_valid_lease(void *bdb_state);
 static int last_master_req = 0;
 
-int gbl_verbose_fills;
+int gbl_verbose_fills = 0;
+int gbl_verbose_repdups = 0;
 extern int gbl_verbose_master_req;
 uint64_t subtract_lsn(void *bdb_state, DB_LSN *lsn1, DB_LSN *lsn2);
 
@@ -406,6 +410,7 @@ static void *apply_thread(void *arg)
     pthread_mutex_lock(&rep_queue_lock);
     while (gbl_decoupled_logputs) {
         int pollms = (gbl_apply_thread_pollms > 0) ? gbl_apply_thread_pollms : 200;
+        int waitms;
         DBT rec = {0};
         DB_LSN ret_lsnp;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -416,6 +421,13 @@ static void *apply_thread(void *arg)
         while (!IN_ELECTION_TALLY(rep) && (q = listc_rtl(&log_queue))) {
             pthread_cond_broadcast(&release_cond);
             pthread_mutex_unlock(&rep_queue_lock);
+
+            if (gbl_warn_queue_latency_threshold > 0 && 
+                    (waitms = (comdb2_time_epochms() - q->enqueued_time)) >
+                    gbl_warn_queue_latency_threshold) {
+                logmsg(LOGMSG_USER, "Long apply queue-latency (%d ms) for "
+                        "%d:%d\n", waitms, q->rp.lsn.file, q->rp.lsn.offset);
+            }
 
             rec.data = q->data;
             rec.size = q->size;
@@ -485,8 +497,9 @@ static void *apply_thread(void *arg)
                             NULL)) == 0) {
                 last_fill = comdb2_time_epochms();
                 if (gbl_verbose_fills) {
-                    logmsg(LOGMSG_USER, "%s line %d successful REP_ALL_REQ\n",
-                            __func__, __LINE__);
+                    logmsg(LOGMSG_USER, "%s line %d successful REP_ALL_REQ from %d:%d "
+                            "behind=%llu\n", __func__, __LINE__, 
+                            my_lsn.file, my_lsn.offset, bytes_behind);
                 }
             } else if (gbl_verbose_fills) {
                 logmsg(LOGMSG_USER, "%s line %d REP_ALL_REQ failed %d\n",
@@ -551,25 +564,30 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
     DBT *rec;
 	uint32_t gen;
 {
-    int rc, count=0;
+    int rc, now;
+    static unsigned long long count=0;
     struct queued_log *q = (struct queued_log *)malloc(
             offsetof(struct queued_log, data) + rec->size);
     memcpy(&q->rp, rp, sizeof(REP_CONTROL));
     q->gen = gen;
     q->size = rec->size;
+    q->enqueued_time = comdb2_time_epochms();
     memcpy(&q->data, rec->data, q->size);
     pthread_mutex_lock(&rep_queue_lock);
 
     /* Block waiting for the queue to shrink */
     while(gbl_max_logput_queue > 0 && listc_size(&log_queue) >=
             gbl_max_logput_queue) {
+        static int lastpr = 0;
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += 1;
         count++;
-        if (count > 1) {
-            logmsg(LOGMSG_ERROR, "%s: rep_apply queue (size is %d)\n",
-                    __func__, listc_size(&log_queue));
+        if ((now = time(NULL)) - lastpr) {
+            logmsg(LOGMSG_ERROR, "%s: rep_apply queue (size is %d), "
+                    "count=%llu\n", __func__, listc_size(&log_queue),
+                    count);
+            lastpr = now;
         }
         rc = pthread_cond_timedwait(&release_cond, &rep_queue_lock, &ts);
     }
@@ -3031,11 +3049,19 @@ gap_check:		max_lsn_dbtp = NULL;
 		}
 		goto done;
 	} else {
+        static int lastpr = 0;
+        int now;
 		/*
 		 * We may miscount if we race, since we
 		 * don't currently hold the rep mutex.
 		 */
 		rep->stat.st_log_duplicated++;
+        if (gbl_verbose_repdups && ((now = time(NULL)) - lastpr)) {
+            logmsg(LOGMSG_USER, "%s dup for %d:%d count=%u\n",
+                    __func__, rp->lsn.file, rp->lsn.offset, 
+                    rep->stat.st_log_duplicated);
+            lastpr = now;
+        }
 		goto done;
 	}
 	if (ret != 0 || cmp < 0 || (cmp == 0 && IS_SIMPLE(rectype)))

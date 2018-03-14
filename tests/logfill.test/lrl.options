@@ -1,6 +1,7 @@
 # Enable decoupled logs and fills
 decoupled_logputs on
 decoupled_fills on
+fill_throttle 100
 
 # Linearizable is serializable + durable-lsn logic
 enable_serial_isolation
@@ -47,6 +48,7 @@ setattr UDP_DROP_WARN_PERCENT 100
 
 # Enable debug trace
 verbose_fills on
+verbose_repdups on
 
 # Disable compression so I can read printlog output
 init_with_compr none
