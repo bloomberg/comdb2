@@ -422,3 +422,65 @@ constraints
 (name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
 (name='mycons2', tablename='t2', keyname='$KEY_A44A20B', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
+(csc2='
+	tag ondisk {
+		int i null = yes
+		u_int j null = yes
+		u_longlong k null = yes
+	}
+	keys {
+		"idx1" = i
+		"idx2" = i + j
+	}
+	tag "tag1" {
+		int i
+		longlong j
+	}
+	tag "tag2" {
+		u_longlong j
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		u_int j null = yes 
+		u_longlong k null = yes 
+		int l null = yes 
+	}
+keys
+	{
+		"IDX1" = i 
+		"IDX2" = i + j 
+	}
+tag "tag1"
+	{
+		int i 
+		longlong j 
+	}
+tag "tag2"
+	{
+		u_longlong j 
+	}
+')
+[ALTER TABLE t1 DROP COLUMN j] failed with rc 240 (null)
+(csc2='schema
+	{
+		int i null = yes 
+		u_int j null = yes 
+		u_longlong k null = yes 
+	}
+keys
+	{
+		"IDX1" = i 
+		"IDX2" = i + j 
+	}
+tag "tag1"
+	{
+		int i 
+		longlong j 
+	}
+tag "tag2"
+	{
+		u_longlong j 
+	}
+')

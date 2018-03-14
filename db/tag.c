@@ -65,14 +65,7 @@ extern pthread_mutex_t csc2_subsystem_mtx;
 
 pthread_key_t unique_tag_key;
 
-struct dbtag {
-    char *tblname;
-    hash_t *tags;
-    LISTC_T(struct schema) taglist;
-};
-
 int gbl_use_t2t = 0;
-
 char gbl_ver_temp_table[] = ".COMDB2.TEMP.VER.";
 char gbl_ondisk_ver[] = ".ONDISK.VER.";
 char gbl_ondisk_ver_fmt[] = ".ONDISK.VER.%d";
@@ -84,7 +77,8 @@ static pthread_rwlock_t taglock;
 #else
 static pthread_mutex_t taglock;
 #endif
-static hash_t *tags;
+
+hash_t *gbl_tag_hash;
 
 int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
@@ -99,7 +93,7 @@ static inline int lock_taglock_read(void)
 #endif
 }
 
-static inline int lock_taglock(void)
+int lock_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
     return pthread_rwlock_wrlock(&taglock);
@@ -108,7 +102,7 @@ static inline int lock_taglock(void)
 #endif
 }
 
-static inline int unlock_taglock(void)
+int unlock_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
     return pthread_rwlock_unlock(&taglock);
@@ -156,8 +150,9 @@ int schema_init(void)
         logmsg(LOGMSG_ERROR, "schema_init:pthread_rwlock_init failed rc=%d\n", rc);
         return -1;
     }
-    tags = hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                          offsetof(struct dbtag, tblname), 0);
+    gbl_tag_hash =
+        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
+                       offsetof(struct dbtag, tblname), 0);
     rc = pthread_key_create(&unique_tag_key, free);
     if (rc) {
         logmsg(LOGMSG_ERROR, "schema_init:pthread_key_create failed rc=%d\n", rc);
@@ -179,7 +174,7 @@ void add_tag_schema(const char *table, struct schema *schema)
         exit(1);
     }
 
-    tag = hash_find_readonly(tags, &table);
+    tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL) {
         tag = malloc(sizeof(struct dbtag));
         if (tag == NULL) {
@@ -191,7 +186,7 @@ void add_tag_schema(const char *table, struct schema *schema)
         tag->tags =
             hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                            offsetof(struct schema, tag), 0);
-        hash_add(tags, tag);
+        hash_add(gbl_tag_hash, tag);
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
     }
     hash_add(tag->tags, schema);
@@ -212,7 +207,7 @@ void del_tag_schema(const char *table, const char *tagname)
         exit(1);
     }
 
-    struct dbtag *tag = hash_find_readonly(tags, &table);
+    struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL) {
         unlock_taglock();
         return; /* doesn't exist */
@@ -242,7 +237,7 @@ struct schema *find_tag_schema(const char *table, const char *tagname)
         exit(1);
     }
 
-    struct dbtag *tag = hash_find_readonly(tags, &table);
+    struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
     if (unlikely(tag == NULL)) {
         rc = unlock_taglock();
         if (rc != 0) {
@@ -1025,7 +1020,7 @@ void debug_dump_tags(const char *tblname)
 
     lock_taglock_read();
     logmsg(LOGMSG_USER, "TABLE %s\n", tblname);
-    tag = hash_find_readonly(tags, &tblname);
+    tag = hash_find_readonly(gbl_tag_hash, &tblname);
     if (tag == NULL) {
         unlock_taglock();
         return;
@@ -1441,7 +1436,7 @@ void add_tag_alias(const char *table, struct schema *s, char *name)
     struct schema *old;
 
     lock_taglock();
-    tag = hash_find_readonly(tags, &table);
+    tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL) {
         tag = malloc(sizeof(struct dbtag));
         tag->tblname = strdup(table);
@@ -1449,7 +1444,7 @@ void add_tag_alias(const char *table, struct schema *s, char *name)
             hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                            offsetof(struct schema, tag), 0);
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
-        hash_add(tags, tag);
+        hash_add(gbl_tag_hash, tag);
     }
     sc = clone_schema(s);
     free(sc->tag);
@@ -4419,7 +4414,7 @@ int compare_all_tags(const char *table, FILE *out)
         struct dbtag *tag;
         struct cmp_tag_struct info;
         bzero(&info, sizeof(info));
-        tag = hash_find_readonly(tags, &table);
+        tag = hash_find_readonly(gbl_tag_hash, &table);
         if (tag == NULL) {
             unlock_taglock();
             return 0;
@@ -6250,7 +6245,7 @@ static int backout_schemas_lockless(const char *tblname)
     struct dbtag *dbt;
     struct schema *sc, *tmp;
 
-    dbt = hash_find_readonly(tags, &tblname);
+    dbt = hash_find_readonly(gbl_tag_hash, &tblname);
     if (dbt == NULL) {
         return -1;
     }
@@ -6275,7 +6270,7 @@ void backout_schemas(char *tblname)
 
     lock_taglock();
 
-    dbt = hash_find_readonly(tags, &tblname);
+    dbt = hash_find_readonly(gbl_tag_hash, &tblname);
     if (dbt == NULL) {
         if (likely(timepart_is_timepart(tblname, 1))) {
             timepart_for_each_shard(tblname, backout_schemas_lockless);
@@ -6353,7 +6348,7 @@ void commit_schemas(const char *tblname)
     listc_init(&to_be_freed, offsetof(struct schema, lnk));
 
     lock_taglock();
-    dbt = hash_find_readonly(tags, &tblname);
+    dbt = hash_find_readonly(gbl_tag_hash, &tblname);
 
     if (dbt == NULL) {
         unlock_taglock();
@@ -6826,7 +6821,7 @@ void replace_tag_schema(struct dbtable *db, struct schema *schema)
     struct dbtag *dbt;
 
     lock_taglock();
-    dbt = hash_find_readonly(tags, &db->tablename);
+    dbt = hash_find_readonly(gbl_tag_hash, &db->tablename);
     if (dbt == NULL) {
         unlock_taglock();
         return;
@@ -6849,8 +6844,8 @@ void delete_schema(const char *tblname)
 {
     struct dbtag *dbt;
     lock_taglock();
-    dbt = hash_find(tags, &tblname);
-    hash_del(tags, dbt);
+    dbt = hash_find(gbl_tag_hash, &tblname);
+    hash_del(gbl_tag_hash, dbt);
     unlock_taglock();
     struct schema *schema = dbt->taglist.top;
     while (schema) {
@@ -6872,11 +6867,11 @@ void rename_schema(const char *oldname, char *newname)
 {
     struct dbtag *dbt;
     lock_taglock();
-    dbt = hash_find(tags, &oldname);
-    hash_del(tags, dbt);
+    dbt = hash_find(gbl_tag_hash, &oldname);
+    hash_del(gbl_tag_hash, dbt);
     free(dbt->tblname);
     dbt->tblname = newname;
-    hash_add(tags, dbt);
+    hash_add(gbl_tag_hash, dbt);
     unlock_taglock();
 }
 
