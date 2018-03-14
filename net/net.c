@@ -1056,26 +1056,27 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
         hosteq = 1;
 
     if ((!hosteq) || ((netinfo_ptr->myport != connect_message.to_portnum))) {
-        logmsg(LOGMSG_ERROR, "netinfo_ptr->hostname = %s, "
-                        "connect_message.to_hostname = %s\n",
-                netinfo_ptr->myhostname, connect_message.to_hostname);
+        logmsg(LOGMSG_ERROR,
+               "netinfo_ptr->hostname = %s, "
+               "connect_message.to_hostname = %s\n",
+               netinfo_ptr->myhostname, to_hostname);
         logmsg(LOGMSG_ERROR, 
                 "netinfo_ptr->myport != connect_message.to_portnum %d %d\n",
                 netinfo_ptr->myport, connect_message.to_portnum);
         logmsg(LOGMSG_ERROR, "origin: from=hostname=%s node=%d port=%d\n",
-                connect_message.my_hostname, connect_message.my_nodenum,
-                connect_message.my_portnum);
+               my_hostname, connect_message.my_nodenum,
+               connect_message.my_portnum);
         logmsg(LOGMSG_ERROR, "service: %s\n", netinfo_ptr->service);
 
         return -1;
     }
 
     if (netinfo_ptr->allow_rtn &&
-        !netinfo_ptr->allow_rtn(netinfo_ptr,
-                                intern(connect_message.my_hostname))) {
-        logmsg(LOGMSG_ERROR, 
-                "received connection from node %d which is not allowed\n",
-                connect_message.my_nodenum);
+        !netinfo_ptr->allow_rtn(netinfo_ptr, intern(my_hostname))) {
+        logmsg(LOGMSG_ERROR,
+               "received connection from node %d, hostname %s which is not "
+               "allowed\n",
+               connect_message.my_nodenum, my_hostname);
         return -2;
     }
 
