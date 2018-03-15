@@ -8295,10 +8295,12 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
                 }
                 memcpy(fileid, dbp->fileid, DB_FILE_ID_LEN);
                 hash_add(fileid_tbl, fileid);
-                /* char *txt;
+#ifdef NEWSI_DEBUG
+                char *txt;
                 hexdumpbuf(fileid, DB_FILE_ID_LEN, &txt);
-                printf("%s: hash_add fileid %s\n", __func__, txt);
-                free(txt); */
+                logmsg(LOGMSG_DEBUG, "%s: hash_add fileid %s\n", __func__, txt);
+                free(txt);
+#endif
                 dbp->close(dbp, NULL, DB_NOSYNC);
             }
         }

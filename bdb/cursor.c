@@ -1869,11 +1869,12 @@ retrieve_logfile_pglogs(unsigned int filenum, int create)
         pthread_mutex_init(&e->pglogs_mutex, NULL);
         hash_add(logfile_pglogs_repo, e);
 
-        /*
-        printf("%s filenum %d created ent %p, pglogs_hashtbl %p, "
+#ifdef NEWSI_DEBUG
+        logmsg(LOGMSG_DEBUG,
+               "%s filenum %d created ent %p, pglogs_hashtbl %p, "
                "relinks_hashtbl %p\n",
                __func__, filenum, e, e->pglogs_hashtbl, e->relinks_hashtbl);
-        */
+#endif
 
         if (!first_logfile)
             first_logfile = filenum;
@@ -1975,13 +1976,14 @@ retrieve_logfile_pglog_hashkey(bdb_state_type *bdb_state,
         ent->pgno = pgno;
         listc_init(&ent->lsns, offsetof(struct lsn_commit_list, lnk));
 #endif
-        /*
+#ifdef NEWSI_DEBUG
         char *buf;
         hexdumpbuf(fileid, DB_FILE_ID_LEN, &buf);
-        printf("%s: hash %p created ent %p for fileid[%s] pgno[%d]\n", __func__,
+        logmsg(LOGMSG_DEBUG,
+               "%s: hash %p created ent %p for fileid[%s] pgno[%d]\n", __func__,
                pglogs_hashtbl, ent, buf, pgno);
         free(buf);
-        */
+#endif
         hash_add(pglogs_hashtbl, ent);
     }
     return ent;
@@ -2636,19 +2638,21 @@ int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
                 log_compare(&bot->lsn, &lsnent->lsn) <= 0));
 #endif
     listc_abl(&pglogs_ent->lsns, lsnent);
-    /*
-    printf("%s: added lsn [%u][%u] addr %p to hash %p, ent %p list %p\n",
+#ifdef NEWSI_DEBUG
+    logmsg(LOGMSG_DEBUG,
+           "%s: added lsn [%u][%u] addr %p to hash %p, ent %p list %p\n",
            __func__, lsn.file, lsn.offset, lsnent, pglogs_hashtbl, pglogs_ent,
            &pglogs_ent->lsns);
     char *buf;
     hexdumpbuf(fileid, DB_FILE_ID_LEN, &buf);
-    printf("%s: FILEID: %s ", __func__, buf);
-    printf(" PGNO: %d ", pgno);
-    printf(" LSN: %d:%d ", lsn.file, lsn.offset);
-    printf(" commit_lsn: %d:%d ", commit_lsn.file, commit_lsn.offset);
-    printf("\n");
+    logmsg(LOGMSG_DEBUG, "%s: FILEID: %s ", __func__, buf);
+    logmsg(LOGMSG_DEBUG, " PGNO: %d ", pgno);
+    logmsg(LOGMSG_DEBUG, " LSN: %d:%d ", lsn.file, lsn.offset);
+    logmsg(LOGMSG_DEBUG, " commit_lsn: %d:%d ", commit_lsn.file,
+           commit_lsn.offset);
+    logmsg(LOGMSG_DEBUG, "\n");
     free(buf);
-    */
+#endif
 
     return 0;
 }
@@ -2659,18 +2663,19 @@ static int bdb_insert_logfile_pglog_int(bdb_state_type *bdb_state,
                                         unsigned char *fileid, db_pgno_t pgno,
                                         DB_LSN lsn, DB_LSN commit_lsn)
 {
-/*
-char *buf;
-hexdumpbuf(fileid, DB_FILE_ID_LEN, &buf);
-printf("%s: adding lsn [%u][%u] to hash %p, ent %p", __func__, lsn.file,
-       lsn.offset, pglogs_hashtbl, pglogs_ent);
-printf(" FILEID[%s] ", buf);
-printf(" PGNO[%d] ", pgno);
-printf(" LSN[%d:%d] ", lsn.file, lsn.offset);
-printf(" COMMIT_LSN[%d:%d] ", commit_lsn.file, commit_lsn.offset);
-printf("\n");
-free(buf);
-*/
+#ifdef NEWSI_DEBUG
+    char *buf;
+    hexdumpbuf(fileid, DB_FILE_ID_LEN, &buf);
+    logmsg(LOGMSG_DEBUG, "%s: adding lsn [%u][%u] to hash %p, ent %p", __func__,
+           lsn.file, lsn.offset, pglogs_hashtbl, pglogs_ent);
+    logmsg(LOGMSG_DEBUG, " FILEID[%s] ", buf);
+    logmsg(LOGMSG_DEBUG, " PGNO[%d] ", pgno);
+    logmsg(LOGMSG_DEBUG, " LSN[%d:%d] ", lsn.file, lsn.offset);
+    logmsg(LOGMSG_DEBUG, " COMMIT_LSN[%d:%d] ", commit_lsn.file,
+           commit_lsn.offset);
+    logmsg(LOGMSG_DEBUG, "\n");
+    free(buf);
+#endif
 #ifdef NEWSI_ASOF_USE_TEMPTABLE
     pglogs_tmptbl_key rec = {0};
     int bdberr;
@@ -2916,18 +2921,23 @@ int bdb_update_ltran_pglogs_hash(void *bdb_state, void *pglogs,
                 keylist[i].lsn, keylist[i].commit_lsn);
             if (rc)
                 abort();
-            /* fprintf(stderr, "%s: Inserted logical lsn [%d][%d] commit lsn
-               [%d][%d] to active logical tranid %llx\n",
-                  __func__, keylist[i].lsn.file, keylist[i].lsn.offset,
-                  keylist[i].commit_lsn.file, keylist[i].commit_lsn.offset,
-               logical_tranid); */
+#ifdef NEWSI_DEBUG
+            logmsg(LOGMSG_DEBUG,
+                   "%s: Inserted logical lsn [%d][%d] commit lsn [%d][%d] to "
+                   "active logical tranid %llx\n",
+                   __func__, keylist[i].lsn.file, keylist[i].lsn.offset,
+                   keylist[i].commit_lsn.file, keylist[i].commit_lsn.offset,
+                   logical_tranid);
+#endif
         }
-        /* else {
+#ifdef NEWSI_DEBUG
+        else {
             char *txt;
             hexdumpbuf(keylist[i].fileid, DB_FILE_ID_LEN, &txt);
-            printf("%s: skipping fileid %s\n", __func__, txt);
+            logmsg(LOGMSG_DEBUG, "%s: skipping fileid %s\n", __func__, txt);
             free(txt);
-        } */
+        }
+#endif
     }
     Pthread_mutex_unlock(&ltran_ent->pglogs_mutex);
 
@@ -3126,11 +3136,11 @@ int bdb_update_logfile_pglogs(void *bdb_state, void *pglogs, unsigned int nkeys,
                 keylist[i].fileid, keylist[i].pgno, keylist[i].lsn,
                 logical_commit_lsn);
         }
-#if NEWSI_DEBUG
+#ifdef NEWSI_DEBUG
         else {
             char *txt;
             hexdumpbuf(keylist[i].fileid, DB_FILE_ID_LEN, &txt);
-            printf("%s: skipping fileid %s\n", __func__, txt);
+            logmsg(LOGMSG_DEBUG, "%s: skipping fileid %s\n", __func__, txt);
             free(txt);
         }
 #endif
@@ -3168,8 +3178,10 @@ int bdb_update_timestamp_lsn(void *bdb_state, int32_t timestamp, DB_LSN lsn,
     rc = bdb_temp_table_insert(bdb_state, bdb_gbl_timestamp_lsn_cur, &tlkey,
                                sizeof(struct timestamp_lsn_key), NULL, 0,
                                &bdberr);
-    /* fprintf(stderr, "%s: inserted timestamp %lld, lsn [%d][%d]\n", __func__,
-     * timestamp, lsn.file, lsn.offset); */
+#ifdef NEWSI_DEBUG
+    logmsg(LOGMSG_DEBUG, "%s: inserted timestamp %lld, lsn [%d][%d]\n",
+           __func__, timestamp, lsn.file, lsn.offset);
+#endif
     Pthread_mutex_unlock(&bdb_gbl_timestamp_lsn_mutex);
 
     return rc;
@@ -3190,9 +3202,11 @@ void bdb_delete_timestamp_lsn(bdb_state_type *bdb_state, int32_t timestamp)
         foundkey = bdb_temp_table_key(bdb_gbl_timestamp_lsn_cur);
         if (foundkey->timestamp > timestamp)
             break;
-        /* fprintf(stderr, "%s: deleted timestamp %lld, lsn [%d][%d]\n",
-           __func__,
-              foundkey->timestamp, foundkey->lsn.file, foundkey->lsn.offset); */
+#ifdef NEWSI_DEBUG
+        logmsg(LOGMSG_DEBUG, "%s: deleted timestamp %lld, lsn [%d][%d]\n",
+               __func__, foundkey->timestamp, foundkey->lsn.file,
+               foundkey->lsn.offset);
+#endif
         rc = bdb_temp_table_delete(bdb_state, bdb_gbl_timestamp_lsn_cur,
                                    &bdberr);
         if (rc) {
@@ -3298,8 +3312,10 @@ static int bdb_update_pglogs_fileid_queues(void *bdb_state,
         pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
     }
 
-    // lkprintf(stderr, "enque_global: enqueued commit_lsn [%d][%d]\n",
-    // commit_lsn.file, commit_lsn.offset);
+#ifdef NEWSI_DEBUG
+    lkprintf(LOGMSG_DEBUG, "enque_global: enqueued commit_lsn [%d][%d]\n",
+             commit_lsn.file, commit_lsn.offset);
+#endif
 
     return 0;
 }
@@ -3565,10 +3581,12 @@ int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
 
     if (fileid_tbl && hash_find(fileid_tbl, fileid) == NULL) {
         Pthread_mutex_unlock(&l_entry->pglogs_mutex);
-        /* char *txt;
+#ifdef NEWSI_DEBUG
+        char *txt;
         hexdumpbuf(fileid, DB_FILE_ID_LEN, &txt);
-        printf("%s: skipping fileid %s\n", __func__, txt);
-        free(txt); */
+        logmsg(LOGMSG_DEBUG, "%s: skipping fileid %s\n", __func__, txt);
+        free(txt);
+#endif
         return 0;
     }
 
@@ -4499,9 +4517,9 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
         if (rc < 0)
             return rc;
 
-#if MERGE_DEBUG
-        fprintf(stderr, "%d %s:%d reordering rc=%d %llx\n", pthread_self(),
-                __FILE__, __LINE__, rc, *(unsigned long long *)key);
+#ifdef MERGE_DEBUG
+        logmsg(LOGMSG_DEBUG, "%d %s:%d reordering rc=%d %llx\n", pthread_self(),
+               __FILE__, __LINE__, rc, *(unsigned long long *)key);
 #endif
 
         /* if we have failed to reposition the cursor and this is a relative
@@ -4517,8 +4535,8 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
     if (rc < 0)
         return rc;
 #if MERGE_DEBUG
-    fprintf(stderr, "%d %s:%d bdb_cursor_move_and_skip_int rc=%d\n",
-            pthread_self(), __FILE__, __LINE__, rc);
+    logmsg(LOGMSG_DEBUG, "%d %s:%d bdb_cursor_move_and_skip_int rc=%d\n",
+           pthread_self(), __FILE__, __LINE__, rc);
 #endif
 
     /* now update the out-of-order flag */
@@ -4576,8 +4594,8 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
                 return rc;
 
 #if MERGE_DEBUG
-            fprintf(stderr, "%d %s:%d berkdb->move rc=%d\n", pthread_self(),
-                    __FILE__, __LINE__, rc);
+            logmsg(LOGMSG_DEBUG, "%d %s:%d berkdb->move rc=%d\n",
+                   pthread_self(), __FILE__, __LINE__, rc);
 #endif
         } else {
             /* Move the cursor for the next iteration. */
@@ -4630,8 +4648,8 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
         }
 
 #if MERGE_DEBUG
-        fprintf(stderr, "%s ignored %llx\n",
-                (cur->sd == berkdb) ? "shadow" : "real", genid);
+        logmsg(LOGMSG_DEBUG, "%s ignored %llx\n",
+               (cur->sd == berkdb) ? "shadow" : "real", genid);
 #endif
 
         /* ok, the found row is marked deleted, try to get
@@ -4667,7 +4685,8 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
     if (gbl_new_snapisol && cur->rl == berkdb && update_shadows) {
         rc2 = cur->rl->fileid(cur->rl, fileid, bdberr);
         if (rc2 < 0) {
-            printf("get fileid failed\n");
+            logmsg(LOGMSG_FATAL, "%s: get fileid failed, rc %d\n", __func__,
+                   rc2);
             abort();
         }
     }
@@ -4688,8 +4707,8 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
 
         rc = berkdb->find(berkdb, key, keylen, howcrt, bdberr);
 #if MERGE_DEBUG
-        fprintf(stderr, "%d %s:%d find() how=%d returned rc=%d\n",
-                pthread_self(), __FILE__, __LINE__, how, rc);
+        logmsg(LOGMSG_DEBUG, "%d %s:%d find() how=%d returned rc=%d\n",
+               pthread_self(), __FILE__, __LINE__, how, rc);
 #endif
         if (rc < 0)
             return rc;
@@ -4734,7 +4753,7 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
             break;
         if (rc == IX_NOTFND) {
             /*
-            fprintf( stderr, "%d %s:%d returing %d\n",
+            logmsg(LOGMSG_DEBUG, "%d %s:%d returing %d\n",
                   pthread_self(), __FILE__, __LINE__, IX_PASTEOF);
              */
 
@@ -4923,8 +4942,8 @@ step1:
                                       bdberr);
 
 #if MERGE_DEBUG
-        fprintf(stderr, "%d %s:%d rc=%d used_rl=%d [%d]\n", pthread_self(),
-                __FILE__, __LINE__, rc, cur->used_rl, how);
+        logmsg(LOGMSG_DEBUG, "%d %s:%d rc=%d used_rl=%d [%d]\n", pthread_self(),
+               __FILE__, __LINE__, rc, cur->used_rl, how);
 
         print_cursor_keys(cur, BDB_SHOW_RL);
 #endif
@@ -5205,11 +5224,11 @@ step1:
         if (rc != IX_FND) {
             cur->used_sd = 1;
 #if MERGE_DEBUG
-            fprintf(stderr,
-                    "NOT FOUND rc=%d; left pointing at the last row key_sd=\n",
-                    rc);
+            logmsg(LOGMSG_DEBUG,
+                   "NOT FOUND rc=%d; left pointing at the last row key_sd=\n",
+                   rc);
             print_cursor_keys(cur, BDB_SHOW_SD);
-            fprintf(stderr, " -- marked SD used\n");
+            logmsg(LOGMSG_DEBUG, " -- marked SD used\n");
 #endif
         } else {
             cur->used_sd = 0;
@@ -5241,11 +5260,11 @@ step1:
                 logmsg(LOGMSG_USER, " in shadow table.\n");
             }
 #if MERGE_DEBUG
-            printf("FOUND:\n\tkeylen=%d\n\tkey=\"", keysize_sd);
-            hexdump(LOGMSG_USER, key_sd, keysize_sd);
-            printf("\"\n\tdatalen=%d\n\tdata=\"", dtasize_sd);
-            hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
-            printf("\"\n");
+            logmsg(LOGMSG_DEBUG, "FOUND:\n\tkeylen=%d\n\tkey=\"", keysize_sd);
+            hexdump(LOGMSG_DEBUG, key_sd, keysize_sd);
+            logmsg(LOGMSG_DEBUG, "\"\n\tdatalen=%d\n\tdata=\"", dtasize_sd);
+            hexdump(LOGMSG_DEBUG, dta_sd, dtasize_sd);
+            logmsg(LOGMSG_DEBUG, "\"\n");
 #endif
         }
     } else {
@@ -5267,30 +5286,30 @@ step1:
          will have data. */
     if (cur->pageorder && cur->type == BDBC_DT) {
 #if MERGE_DEBUG
-        printf("find bdb_btree_merge RL_PO\n");
+        logmsg(LOGMSG_DEBUG, "find bdb_btree_merge RL_PO\n");
         if (dta_rl) {
-            printf("dta_rl == \n");
-            hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
+            logmsg(LOGMSG_DEBUG, "dta_rl == \n");
+            hexdump(LOGMSG_DEBUG, dta_rl, dtasize_rl);
         } else {
-            printf("dta_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_rl == NULL\n");
         }
         if (dta_po) {
-            printf("dta_po == \n");
-            hexdump(LOGMSG_USER, dta_po, dtasize_po);
+            logmsg(LOGMSG_DEBUG, "dta_po == \n");
+            hexdump(LOGMSG_DEBUG, dta_po, dtasize_po);
         } else {
-            printf("dta_po == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_po == NULL\n");
         }
         if (key_rl) {
-            printf("key_rl == \n");
-            hexdump(LOGMSG_USER, key_rl, keysize_rl);
+            logmsg(LOGMSG_DEBUG, "key_rl == \n");
+            hexdump(LOGMSG_DEBUG, key_rl, keysize_rl);
         } else {
-            printf("key_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_rl == NULL\n");
         }
         if (key_po) {
-            printf("key_po == \n");
-            hexdump(LOGMSG_USER, key_po, keysize_po);
+            logmsg(LOGMSG_DEBUG, "key_po == \n");
+            hexdump(LOGMSG_DEBUG, key_po, keysize_po);
         } else {
-            printf("key_po == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_po == NULL\n");
         }
 #endif
         return bdb_btree_merge(cur, -1, -1, -1, dta_rl, dtasize_rl, dta_po,
@@ -5305,30 +5324,30 @@ step1:
        */
     else if (dta_po && cur->type == BDBC_DT) {
 #if MERGE_DEBUG
-        printf("find bdb_btree_merge PO_SD\n");
+        logmsg(LOGMSG_DEBUG, "find bdb_btree_merge PO_SD\n");
         if (dta_po) {
-            printf("dta_po == \n");
-            hexdump(LOGMSG_USER, dta_po, dtasize_po);
+            logmsg(LOGMSG_DEBUG, "dta_po == \n");
+            hexdump(LOGMSG_DEBUG, dta_po, dtasize_po);
         } else {
-            printf("dta_po == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_po == NULL\n");
         }
         if (dta_sd) {
-            printf("dta_sd == \n");
-            hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
+            logmsg(LOGMSG_DEBUG, "dta_sd == \n");
+            hexdump(LOGMSG_DEBUG, dta_sd, dtasize_sd);
         } else {
-            printf("dta_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_sd == NULL\n");
         }
         if (key_po) {
-            printf("key_po == \n");
-            hexdump(LOGMSG_USER, key_po, keysize_po);
+            logmsg(LOGMSG_DEBUG, "key_po == \n");
+            hexdump(LOGMSG_DEBUG, key_po, keysize_po);
         } else {
-            printf("key_po == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_po == NULL\n");
         }
         if (key_sd) {
-            printf("key_sd == \n");
-            hexdump(LOGMSG_USER, key_sd, keysize_sd);
+            logmsg(LOGMSG_DEBUG, "key_sd == \n");
+            hexdump(LOGMSG_DEBUG, key_sd, keysize_sd);
         } else {
-            printf("key_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_sd == NULL\n");
         }
 #endif
         /* The '_sd' variables will be NULL for this case. */
@@ -5342,30 +5361,30 @@ step1:
     /* Normal case, before reaching the virtual stripe. */
     else if (cur->type == BDBC_DT) {
 #if MERGE_DEBUG
-        printf("find bdb_btree_merge BDBC_DT\n");
+        logmsg(LOGMSG_DEBUG, "find bdb_btree_merge BDBC_DT\n");
         if (dta_rl) {
-            printf("dta_rl == \n");
-            hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
+            logmsg(LOGMSG_DEBUG, "dta_rl == \n");
+            hexdump(LOGMSG_DEBUG, dta_rl, dtasize_rl);
         } else {
-            printf("dta_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_rl == NULL\n");
         }
         if (dta_sd) {
-            printf("dta_sd == \n");
-            hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
+            logmsg(LOGMSG_DEBUG, "dta_sd == \n");
+            hexdump(LOGMSG_DEBUG, dta_sd, dtasize_sd);
         } else {
-            printf("dta_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_sd == NULL\n");
         }
         if (key_rl) {
-            printf("key_rl == \n");
-            hexdump(LOGMSG_USER, key_rl, keysize_rl);
+            logmsg(LOGMSG_DEBUG, "key_rl == \n");
+            hexdump(LOGMSG_DEBUG, key_rl, keysize_rl);
         } else {
-            printf("key_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_rl == NULL\n");
         }
         if (key_sd) {
-            printf("key_sd == \n");
-            hexdump(LOGMSG_USER, key_sd, keysize_sd);
+            logmsg(LOGMSG_DEBUG, "key_sd == \n");
+            hexdump(LOGMSG_DEBUG, key_sd, keysize_sd);
         } else {
-            printf("key_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_sd == NULL\n");
         }
 #endif
         return bdb_btree_merge(cur, -1, -1, -1, dta_rl, dtasize_rl, dta_sd,
@@ -5388,30 +5407,30 @@ step1:
            cur->unpacked_datacopy = NULL;
         }
         */
-        printf("find bdb_btree_merge BDBC_IX\n");
+        logmsg(LOGMSG_DEBUG, "find bdb_btree_merge BDBC_IX\n");
         if (dta_rl) {
-            printf("dta_rl == \n");
-            hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
+            logmsg(LOGMSG_DEBUG, "dta_rl == \n");
+            hexdump(LOGMSG_DEBUG, dta_rl, dtasize_rl);
         } else {
-            printf("dta_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_rl == NULL\n");
         }
         if (dta_sd) {
-            printf("dta_sd == \n");
-            hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
+            logmsg(LOGMSG_DEBUG, "dta_sd == \n");
+            hexdump(LOGMSG_DEBUG, dta_sd, dtasize_sd);
         } else {
-            printf("dta_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_sd == NULL\n");
         }
         if (key_rl) {
-            printf("key_rl == \n");
-            hexdump(LOGMSG_USER, key_rl, keysize_rl);
+            logmsg(LOGMSG_DEBUG, "key_rl == \n");
+            hexdump(LOGMSG_DEBUG, key_rl, keysize_rl);
         } else {
-            printf("key_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_rl == NULL\n");
         }
         if (key_sd) {
-            printf("key_sd == \n");
-            hexdump(LOGMSG_USER, key_sd, keysize_sd);
+            logmsg(LOGMSG_DEBUG, "key_sd == \n");
+            hexdump(LOGMSG_DEBUG, key_sd, keysize_sd);
         } else {
-            printf("key_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_sd == NULL\n");
         }
 #endif
         return bdb_btree_merge(cur, -1, -1, -1, dta_rl, dtasize_rl, dta_sd,
@@ -5432,7 +5451,7 @@ static void set_datacopy(bdb_cursor_impl_t *cur, void *dta, int len)
         info->datacopy = dta;
         info->size = len;
         cur->unpacked_datacopy = NULL;
-        /*fprintf(stderr, "SETTING %p dta=%p sz=%d\n", cur, info->datacopy,
+        /*logmsg(LOGMSG_DEBUG, "SETTING %p dta=%p sz=%d\n", cur, info->datacopy,
          * info->size);*/
     }
 }
@@ -5504,9 +5523,9 @@ step1:
     /* STEP 1 */
     if (cur->rl) {
 #if MERGE_DEBUG
-        fprintf(stderr, "%d %s:%d used_rl=%d cur->genid=%llx [%d]\n",
-                pthread_self(), __FILE__, __LINE__, cur->used_rl, cur->genid,
-                how);
+        logmsg(LOGMSG_DEBUG, "%d %s:%d used_rl=%d cur->genid=%llx [%d]\n",
+               pthread_self(), __FILE__, __LINE__, cur->used_rl, cur->genid,
+               how);
 #endif
         if ((how != DB_NEXT && how != DB_PREV) || cur->used_rl) {
 
@@ -5516,8 +5535,8 @@ step1:
                 return rc;
 
 #if MERGE_DEBUG
-            fprintf(stderr, "%d %s:%d rc=%d used_rl=%d [%d]\n", pthread_self(),
-                    __FILE__, __LINE__, rc, cur->used_rl, how);
+            logmsg(LOGMSG_DEBUG, "%d %s:%d rc=%d used_rl=%d [%d]\n",
+                   pthread_self(), __FILE__, __LINE__, rc, cur->used_rl, how);
 
             print_cursor_keys(cur, BDB_SHOW_RL);
 #endif
@@ -5952,9 +5971,9 @@ step1:
 
     if (cur->sd && cur->shadow_tran->check_shadows) {
 #if MERGE_DEBUG
-        fprintf(stderr, "%d %s:%d used_sd=%d cur->genid=%llx [%d]\n",
-                pthread_self(), __FILE__, __LINE__, cur->used_sd, cur->genid,
-                how);
+        logmsg(LOGMSG_DEBUG, "%d %s:%d used_sd=%d cur->genid=%llx [%d]\n",
+               pthread_self(), __FILE__, __LINE__, cur->used_sd, cur->genid,
+               how);
         print_cursor_keys(cur, BDB_SHOW_BOTH);
 #endif
         if ((how != DB_NEXT && how != DB_PREV) || cur->used_sd) {
@@ -5965,8 +5984,8 @@ step1:
                 return rc;
 
 #if MERGE_DEBUG
-            fprintf(stderr, "%d %s:%d rc=%d used_sd=%d [%d]\n", pthread_self(),
-                    __FILE__, __LINE__, rc, cur->used_sd, how);
+            logmsg(LOGMSG_DEBUG, "%d %s:%d rc=%d used_sd=%d [%d]\n",
+                   pthread_self(), __FILE__, __LINE__, rc, cur->used_sd, how);
 
             print_cursor_keys(cur, BDB_SHOW_BOTH);
 #endif
@@ -6064,30 +6083,30 @@ step1:
     /* STEP 4 */
     if (cur->type == BDBC_DT) {
 #if MERGE_DEBUG
-        printf("move bdb_btree_merge BDBC_DT\n");
+        logmsg(LOGMSG_DEBUG, "move bdb_btree_merge BDBC_DT\n");
         if (dta_rl) {
-            printf("dta_rl == \n");
-            hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
+            logmsg(LOGMSG_DEBUG, "dta_rl == \n");
+            hexdump(LOGMSG_DEBUG, dta_rl, dtasize_rl);
         } else {
-            printf("dta_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_rl == NULL\n");
         }
         if (dta_sd) {
-            printf("dta_sd == \n");
-            hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
+            logmsg(LOGMSG_DEBUG, "dta_sd == \n");
+            hexdump(LOGMSG_DEBUG, dta_sd, dtasize_sd);
         } else {
-            printf("dta_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_sd == NULL\n");
         }
         if (key_rl) {
-            printf("key_rl == \n");
-            hexdump(LOGMSG_USER, key_rl, keysize_rl);
+            logmsg(LOGMSG_DEBUG, "key_rl == \n");
+            hexdump(LOGMSG_DEBUG, key_rl, keysize_rl);
         } else {
-            printf("key_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_rl == NULL\n");
         }
         if (key_sd) {
-            printf("key_sd == \n");
-            hexdump(LOGMSG_USER, key_sd, keysize_sd);
+            logmsg(LOGMSG_DEBUG, "key_sd == \n");
+            hexdump(LOGMSG_DEBUG, key_sd, keysize_sd);
         } else {
-            printf("key_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_sd == NULL\n");
         }
 #endif
         return bdb_btree_merge(cur, stripe_rl, page_rl, index_rl, dta_rl,
@@ -6098,30 +6117,30 @@ step1:
                                ver_rl, how);       /* bias */
     } else {
 #if MERGE_DEBUG
-        printf("move bdb_btree_merge BDBC_IX\n");
+        logmsg(LOGMSG_DEBUG, "move bdb_btree_merge BDBC_IX\n");
         if (dta_rl) {
-            printf("dta_rl == \n");
-            hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
+            logmsg(LOGMSG_DEBUG, "dta_rl == \n");
+            hexdump(LOGMSG_DEBUG, dta_rl, dtasize_rl);
         } else {
-            printf("dta_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_rl == NULL\n");
         }
         if (dta_sd) {
-            printf("dta_sd == \n");
-            hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
+            logmsg(LOGMSG_DEBUG, "dta_sd == \n");
+            hexdump(LOGMSG_DEBUG, dta_sd, dtasize_sd);
         } else {
-            printf("dta_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_sd == NULL\n");
         }
         if (key_rl) {
-            printf("key_rl == \n");
-            hexdump(LOGMSG_USER, key_rl, keysize_rl);
+            logmsg(LOGMSG_DEBUG, "key_rl == \n");
+            hexdump(LOGMSG_DEBUG, key_rl, keysize_rl);
         } else {
-            printf("key_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_rl == NULL\n");
         }
         if (key_sd) {
-            printf("key_sd == \n");
-            hexdump(LOGMSG_USER, key_sd, keysize_sd);
+            logmsg(LOGMSG_DEBUG, "key_sd == \n");
+            hexdump(LOGMSG_DEBUG, key_sd, keysize_sd);
         } else {
-            printf("key_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_sd == NULL\n");
         }
 #endif
         /*
@@ -6549,14 +6568,14 @@ static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
       rc = bdb_temp_table_close_cursor( cur->state, cur->cscur, bdberr );
       if (rc)
       {
-         fprintf( stderr, "%s: error closing cscur cursor %d %d\n",
+         fprintf(stderr, "%s: error closing cscur cursor %d %d\n",
                __func__, rc, *bdberr);
       }
 
       rc = bdb_temp_table_close( cur->state, cur->cstripe, bdberr );
       if (rc) 
       {
-         fprintf( stderr, "%s: error closing cstripe table %d %d\n",
+         fprintf(stderr, "%s: error closing cstripe table %d %d\n",
                __func__, rc, *bdberr);
       }
 
@@ -7498,14 +7517,15 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
     filenum = last_logfile;
     Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
-    /*
+#ifdef NEWSI_DEBUG
     char *buf = NULL;
     hexdumpbuf(infileid, DB_FILE_ID_LEN, &buf);
-    printf("%s: FILEID: %s, pgno %d, filenum %d, first_filenum %d\n", __func__,
+    logmsg(LOGMSG_DEBUG,
+           "%s: FILEID: %s, pgno %d, filenum %d, first_filenum %d\n", __func__,
            buf, pgno, filenum, first_filenum);
     free(buf);
     buf = NULL;
-    */
+#endif
 
     for (; filenum >= first_filenum; --filenum) {
         struct logfile_pglogs_entry *l_entry;
@@ -7612,14 +7632,15 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
                     if (add_before_lsnent == NULL) {
                         listc_abl(&client_pglog_ent->lsns, add_lsnent);
                     }
-                    /*
-                    fprintf(stderr, "NEWSI COPY FROM GLOBAL: LSN[%d][%d] "
-                                    "add_before_lsn[%d][%d]\n",
-                            add_lsnent->lsn.file, add_lsnent->lsn.offset,
-                            add_before_lsnent ? add_before_lsnent->lsn.file : 0,
-                            add_before_lsnent ? add_before_lsnent->lsn.offset
-                                              : 0);
-                    */
+#ifdef NEWSI_DEBUG
+                    logmsg(LOGMSG_DEBUG,
+                           "NEWSI COPY FROM GLOBAL: LSN[%d][%d] "
+                           "add_before_lsn[%d][%d]\n",
+                           add_lsnent->lsn.file, add_lsnent->lsn.offset,
+                           add_before_lsnent ? add_before_lsnent->lsn.file : 0,
+                           add_before_lsnent ? add_before_lsnent->lsn.offset
+                                             : 0);
+#endif
                 }
 
                 bdb_temp_table_move(bdb_state, pglog_ent->tmpcur, DB_PREV,
@@ -7653,14 +7674,15 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
                     if (add_before_lsnent == NULL) {
                         listc_abl(&client_pglog_ent->lsns, add_lsnent);
                     }
-                    /*
-                    fprintf(stderr, "NEWSI COPY FROM GLOBAL: LSN[%d][%d] "
-                                    "add_before_lsn[%d][%d]\n",
-                            add_lsnent->lsn.file, add_lsnent->lsn.offset,
-                            add_before_lsnent ? add_before_lsnent->lsn.file : 0,
-                            add_before_lsnent ? add_before_lsnent->lsn.offset
-                                              : 0);
-                    */
+#ifdef NEWSI_DEBUG
+                    logmsg(LOGMSG_DEBUG,
+                           "NEWSI COPY FROM GLOBAL: LSN[%d][%d] "
+                           "add_before_lsn[%d][%d]\n",
+                           add_lsnent->lsn.file, add_lsnent->lsn.offset,
+                           add_before_lsnent ? add_before_lsnent->lsn.file : 0,
+                           add_before_lsnent ? add_before_lsnent->lsn.offset
+                                             : 0);
+#endif
                 }
             }
 #endif
@@ -7816,15 +7838,18 @@ static int bdb_btree_update_shadows_for_page(bdb_cursor_impl_t *cur,
     memcpy(key.fileid, infileid, DB_FILE_ID_LEN);
     key.pgno = (key.pgno == 0) ? 1 : key.pgno;
 
-    /*
+#ifdef NEWSI_DEBUG
+    int len = (DB_FILE_ID_LEN * 2) + 1;
+    char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
     char *buf = NULL;
     hexdumpbuf(infileid, DB_FILE_ID_LEN, &buf);
-    printf("%s: shadow %p cur %p FILEID: %s, pgno %d, upto [%d][%d]\n",
+    logmsg(LOGMSG_DEBUG,
+           "%s: shadow %p cur %p FILEID: %s, pgno %d, upto [%d][%d]\n",
            __func__, cur->shadow_tran, cur, buf, key.pgno, upto.file,
            upto.offset);
     free(buf);
     buf = NULL;
-    */
+#endif
 
     relink_key.pgno = key.pgno;
     memcpy(relink_key.fileid, infileid, DB_FILE_ID_LEN);
@@ -7873,10 +7898,12 @@ static int bdb_btree_update_shadows_for_page(bdb_cursor_impl_t *cur,
             }
 
             deallocate_lsn_list(lsnent);
-            /* printf("%s: freed lsn addr %p on hash %p ent %p list %p\n",
-               __func__,
-               lsnent, cur->shadow_tran->pglogs_hashtbl, pglogs_ent,
-               &pglogs_ent->lsns); */
+#ifdef NEWSI_DEBUG
+            logmsg(LOGMSG_DEBUG,
+                   "%s: freed lsn addr %p on hash %p ent %p list %p\n",
+                   __func__, lsnent, cur->shadow_tran->pglogs_hashtbl,
+                   pglogs_ent, &pglogs_ent->lsns);
+#endif
         } else {
             listc_atl(&pglogs_ent->lsns, lsnent);
             break;
@@ -7891,15 +7918,15 @@ do_relink:
     while ((rlent = listc_rtl(&relinks_ent->relinks)) != NULL) {
         if (upto.file == 0 || upto.offset == 1 ||
             (log_compare(&rlent->lsn, &upto) <= 0)) {
-            /*
+#ifdef NEWSI_DEBUG
             hexdumpbuf(infileid, DB_FILE_ID_LEN, &buf);
-            fprintf(stderr,
-                    "NEWSI RELINK lsn[%d][%d], fileid[%s], pgno[%d], inh[%d]\n",
-                    rlent->lsn.file, rlent->lsn.offset, buf, relink_key.pgno,
-                    rlent->inh);
+            logmsg(LOGMSG_DEBUG,
+                   "NEWSI RELINK lsn[%d][%d], fileid[%s], pgno[%d], inh[%d]\n",
+                   rlent->lsn.file, rlent->lsn.offset, buf, relink_key.pgno,
+                   rlent->inh);
             free(buf);
             buf = NULL;
-            */
+#endif
             /* recursively call update shadows for relinked pages */
             rc = bdb_btree_update_shadows_for_page(cur, &rlent->inh, infileid,
                                                    rlent->lsn, dirty, bdberr);
@@ -7913,24 +7940,22 @@ do_relink:
     }
 
 out:
-#if 0
-   {
-      int len = (DB_FILE_ID_LEN * 2) + 1;
-      char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
-      hex_fid[len - 1] = '\0';
-      util_tohex(hex_fid, infileid, DB_FILE_ID_LEN);
+#ifdef NEWSI_DEBUG
+    hex_fid[len - 1] = '\0';
+    util_tohex(hex_fid, infileid, DB_FILE_ID_LEN);
 
-      if (maxlsn.file)
-      {
-         lkprintf(stderr, "shadtrn %p cur %p upd_shad_for_page: updated %s page %d to lsn [%d][%d]\n",
-               cur->shadow_tran, cur, hex_fid, *inpgno, maxlsn.file, maxlsn.offset);
-      }
-      else
-      {
-         lkprintf(stderr, "shadtrn %p cur %p upd_shad_for_page: nothing to update for %s page %d\n", 
-               cur->shadow_tran, cur, hex_fid, *inpgno);
-      }
-   }
+    if (maxlsn.file) {
+        lkprintf(LOGMSG_DEBUG,
+                 "shadtrn %p cur %p upd_shad_for_page: updated %s page %d to "
+                 "lsn [%d][%d]\n",
+                 cur->shadow_tran, cur, hex_fid, *inpgno, maxlsn.file,
+                 maxlsn.offset);
+    } else {
+        lkprintf(LOGMSG_DEBUG,
+                 "shadtrn %p cur %p upd_shad_for_page: nothing to update for "
+                 "%s page %d\n",
+                 cur->shadow_tran, cur, hex_fid, *inpgno);
+    }
 #endif
 
     return 0;
@@ -8181,19 +8206,20 @@ static int update_pglogs_from_global_queues_int(
     }
 
     if (qcur->last != current) {
-        /*
+#ifdef NEWSI_DEBUG
         int len = (DB_FILE_ID_LEN * 2) + 1;
         char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
         hex_fid[len - 1] = '\0';
         util_tohex(hex_fid, qcur->fileid, DB_FILE_ID_LEN);
-        fprintf(stderr, "shadtrn %p cur %p upd_pglogs_from_queue: %s last "
-                        "[%d][%d] updated to [%d][%d]\n",
-                cur->shadow_tran, cur, hex_fid,
-                qcur->last ? qcur->last->commit_lsn.file : 0,
-                qcur->last ? qcur->last->commit_lsn.offset : 0,
-                current ? current->commit_lsn.file : 0,
-                current ? current->commit_lsn.offset : 0);
-        */
+        logmsg(LOGMSG_DEBUG,
+               "shadtrn %p cur %p upd_pglogs_from_queue: %s last "
+               "[%d][%d] updated to [%d][%d]\n",
+               cur->shadow_tran, cur, hex_fid,
+               qcur->last ? qcur->last->commit_lsn.file : 0,
+               qcur->last ? qcur->last->commit_lsn.offset : 0,
+               current ? current->commit_lsn.file : 0,
+               current ? current->commit_lsn.offset : 0);
+#endif
     } else if (current != last) {
         assert(last == NULL || last->type == PGLOGS_QUEUE_RELINK ||
                log_compare(&last->commit_lsn, &cur->shadow_tran->birth_lsn) <=
@@ -8588,7 +8614,7 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
             }
 
             /*
-            fprintf( stderr, "%d %s:%d returning rc=%d keylen=%d key=%llx
+            logmsg(LOGMSG_DEBUG, "%d %s:%d returning rc=%d keylen=%d key=%llx
             found_key=%llx\n",
                   pthread_self(), __FILE__, __LINE__, rc, keylen,
                   *(unsigned long long*)key, *(unsigned long long*)found_key
@@ -8597,7 +8623,7 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
         }
         /*
         else
-           fprintf( stderr, "%d %s:%d returning rc=%d keylen=%d key=%llx\n",
+           logmsg(LOGMSG_DEBUG, "%d %s:%d returning rc=%d keylen=%d key=%llx\n",
                  pthread_self(), __FILE__, __LINE__, rc, keylen,
                  *(unsigned long long*)key);
          */
@@ -8614,11 +8640,10 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
         rc = bdb_cursor_find_and_skip(cur, berkdb, key, keylen, DB_SET_RANGE,
                                       1 /* keylen incremented */, 1, bdberr);
 #if MERGE_DEBUG
-        fprintf(
-            stderr,
-            "%d %s:%d rc=%d, used_sd=%d, used_rl=%d, cur->genid=%llx [%d]\n",
-            pthread_self(), __FILE__, __LINE__, rc, cur->used_sd, cur->used_rl,
-            cur->genid, how);
+        logmsg(LOGMSG_DEBUG,
+               "%d %s:%d rc=%d, used_sd=%d, used_rl=%d, cur->genid=%llx [%d]\n",
+               pthread_self(), __FILE__, __LINE__, rc, cur->used_sd,
+               cur->used_rl, cur->genid, how);
 #endif
 
         if (rc < 0)
@@ -8629,8 +8654,8 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
             if (((cur->rl == berkdb && cur->used_rl) ||
                  (cur->sd == berkdb && cur->used_sd))) {
 #if MERGE_DEBUG
-                fprintf(
-                    stderr,
+                logmsg(
+                    LOGMSG_DEBUG,
                     "%d %s:%d we used this value so for PREV need"
                     "to \nreturn rc=%d, berkdb is %s, used_sd=%d, used_rl=%d, "
                     "sd_eof=%d, rl_eof=%d, key=%x [%d]\n",

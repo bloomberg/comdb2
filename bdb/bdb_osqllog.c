@@ -3466,15 +3466,15 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
         }
 
         if (rc) {
-#if NEWSI_DEBUG
-            fprintf(stderr,
-                    "NEWSI tran %p shadow_tran %p birthlsn[%d][%d] "
-                    "applying log lsn[%d][%d] type[%d] genid[%llx] "
-                    "dbnum[%d] dtafile[%d] dtastripe[%d]\n",
-                    trn, shadow_tran, shadow_tran->birth_lsn.file,
-                    shadow_tran->birth_lsn.offset, rec->lsn.file,
-                    rec->lsn.offset, rec->type, rec->genid, rec->dbnum,
-                    rec->dtafile, rec->dtastripe);
+#ifdef NEWSI_DEBUG
+            logmsg(LOGMSG_DEBUG,
+                   "NEWSI tran %p shadow_tran %p birthlsn[%d][%d] applying log "
+                   "lsn[%d][%d] type[%d] genid[%llx] dbnum[%d] dtafile[%d] "
+                   "dtastripe[%d]\n",
+                   trn, shadow_tran, shadow_tran->birth_lsn.file,
+                   shadow_tran->birth_lsn.offset, rec->lsn.file,
+                   rec->lsn.offset, rec->type, rec->genid, rec->dbnum,
+                   rec->dtafile, rec->dtastripe);
 #endif
 
 #ifdef NEWSI_STAT
