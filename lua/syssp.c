@@ -207,15 +207,9 @@ static int db_comdb_verify(Lua L) {
         tbl = (char *) lua_tostring(L, -1);
     }
 
-    struct column_info col;
-    col.type = SQLITE_TEXT;
-    strncpy(col.column_name, "out", sizeof(col.column_name));
-
-    CDB2SQLRESPONSE__Column **columns = newsql_alloc_row(1);
-    if(!columns)
-        return luaL_error(L, "Alloc error.");
-    newsql_send_column_info(sp->clnt, &col, 1, NULL, columns);
-    newsql_dealloc_row(columns,1);
+    char *cols[] = {"out"};
+    struct sqlclntstate *clnt = sp->clnt;
+    clnt->write_response(clnt, RESPONSE_COLUMNS_STR, &cols, 1);
 
     int rc = 0;
 

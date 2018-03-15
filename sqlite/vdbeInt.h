@@ -685,7 +685,7 @@ int sqlite3VdbeMemHandleBom(Mem *pMem);
 /* COMDB2 MODIFICATION */
 int convMem2ClientDatetime(Mem *pMem, void *out);
 int convMem2ClientDatetimeStr(Mem *pMem, void *out, int outlen, int *outdtsz);
-int convDttz2ClientDatetime(dttz_t *dttz, const char *tzname, void *out, int sqltype);
+int convDttz2ClientDatetime(const dttz_t *, const char *tzname, void *out, int sqltype);
 
 int sqliteVdbeMemDecimalBasicArithmetics(Mem *a, Mem *b, int opcode, Mem * res, int flipped);
 

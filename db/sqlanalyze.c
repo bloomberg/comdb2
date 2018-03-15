@@ -687,7 +687,6 @@ int update_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
     return 0;
 }
 
-
 static int analyze_table_int(table_descriptor_t *td,
                              struct thr_handle *thr_self)
 {
