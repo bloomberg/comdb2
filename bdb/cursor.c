@@ -6562,28 +6562,6 @@ static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
         cur->vs_stab = NULL;
     }
 
-#if 0
-   if (cur->cstripe)
-   {
-      rc = bdb_temp_table_close_cursor( cur->state, cur->cscur, bdberr );
-      if (rc)
-      {
-         fprintf(stderr, "%s: error closing cscur cursor %d %d\n",
-               __func__, rc, *bdberr);
-      }
-
-      rc = bdb_temp_table_close( cur->state, cur->cstripe, bdberr );
-      if (rc) 
-      {
-         fprintf(stderr, "%s: error closing cstripe table %d %d\n",
-               __func__, rc, *bdberr);
-      }
-
-      cur->cscur = NULL;
-      cur->cstripe = NULL;
-   }
-#endif
-
     /* close shadows as well*/
     if (cur->addcur) {
         /* We own this cursor: destroy it. */
