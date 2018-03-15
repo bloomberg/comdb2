@@ -18,9 +18,11 @@
 #define INCLUDED_RTCPU_H
 
 void register_rtcpu_callbacks(int (*a)(const char *), int (*b)(void),
-                              int (*c)(const char *), int (*d)(const char *));
+                              int (*c)(const char *), int (*d)(const char *),
+                              int (*e)(const char *));
 int machine_is_up(const char *host);
 int machine_class(const char *host);
 int machine_dc(const char *host);
+int machine_num(const char *host);
 
 #endif

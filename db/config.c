@@ -297,7 +297,10 @@ static void add_legacy_default_options(struct dbenv *dbenv)
         "setattr DIRECTIO 0",
         "berkattr elect_highest_committed_gen 0",
         "unnatural_types 1",
-        "enable_sql_stmt_caching none"
+        "enable_sql_stmt_caching none",
+        "on accept_on_child_nets",
+        "setattr ENABLE_SEQNUM_GENERATIONS 0",
+        "setattr MASTER_LEASE 0"
     };
     for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++)
         defer_option(dbenv, DEFERRED_LEGACY_DEFAULTS, legacy_options[i], -1, 0);

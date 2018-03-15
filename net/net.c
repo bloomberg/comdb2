@@ -232,11 +232,15 @@ static int net_portmux_hello(void *);
 typedef struct {
     char to_hostname[HOSTNAME_LEN];
     int to_portnum;
-    int ssl; /* was `int to_nodenum` */
+    int flags; /* was `int to_nodenum` */
     char my_hostname[HOSTNAME_LEN];
     int my_portnum;
     int my_nodenum;
 } connect_message_type;
+
+/* flags for connect_message_typs */
+#define CONNECT_MSG_SSL 0x80000000
+#define CONNECT_MSG_TONODE 0x0000ffff /* backwards compatible */
 
 enum {
     NET_CONNECT_MESSAGE_TYPE_LEN = HOSTNAME_LEN + sizeof(int) + sizeof(int) +
@@ -260,8 +264,8 @@ static uint8_t *net_connect_message_put(const connect_message_type *msg_ptr,
                            sizeof(msg_ptr->to_hostname), p_buf, p_buf_end);
     p_buf = buf_put(&(msg_ptr->to_portnum), sizeof(msg_ptr->to_portnum), p_buf,
                     p_buf_end);
-    p_buf = buf_put(&(msg_ptr->ssl), sizeof(msg_ptr->ssl), p_buf,
-                    p_buf_end);
+    p_buf =
+        buf_put(&(msg_ptr->flags), sizeof(msg_ptr->flags), p_buf, p_buf_end);
     p_buf = buf_no_net_put(&(msg_ptr->my_hostname),
                            sizeof(msg_ptr->my_hostname), p_buf, p_buf_end);
     p_buf = buf_put(&(msg_ptr->my_portnum), sizeof(msg_ptr->my_portnum), p_buf,
@@ -283,8 +287,8 @@ static const uint8_t *net_connect_message_get(connect_message_type *msg_ptr,
                            sizeof(msg_ptr->to_hostname), p_buf, p_buf_end);
     p_buf = buf_get(&(msg_ptr->to_portnum), sizeof(msg_ptr->to_portnum), p_buf,
                     p_buf_end);
-    p_buf = buf_get(&(msg_ptr->ssl), sizeof(msg_ptr->ssl), p_buf,
-                    p_buf_end);
+    p_buf =
+        buf_get(&(msg_ptr->flags), sizeof(msg_ptr->flags), p_buf, p_buf_end);
     p_buf = buf_no_net_get(&(msg_ptr->my_hostname),
                            sizeof(msg_ptr->my_hostname), p_buf, p_buf_end);
     p_buf = buf_get(&(msg_ptr->my_portnum), sizeof(msg_ptr->my_portnum), p_buf,
@@ -1084,7 +1088,7 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
     *portnum = connect_message.my_portnum;
 
 #if WITH_SSL
-    if (connect_message.ssl) {
+    if (connect_message.flags & CONNECT_MSG_SSL) {
         if (gbl_rep_ssl_mode < SSL_ALLOW) {
             /* Reject if mis-configured. */
             logmsg(LOGMSG_ERROR,
@@ -1103,7 +1107,7 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
         return -1;
     }
 #else
-    if (connect_message.ssl) {
+    if (connect_message.flags & CONNECT_MSG_SSL) {
         logmsg(LOGMSG_ERROR, "Misconfiguration: Peer requested SSL, "
                              "but I am not built with SSL.\n");
         return -1;
@@ -1177,10 +1181,10 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
     }
     connect_message.to_portnum = host_node_ptr->port;
     /* It was `to_nodenum`. */
+    connect_message.flags = 0;
 #if WITH_SSL
-    connect_message.ssl = (gbl_rep_ssl_mode >= SSL_REQUIRE);
-#else
-    connect_message.ssl = 0;
+    if (gbl_rep_ssl_mode >= SSL_REQUIRE)
+        connect_message.flags |= CONNECT_MSG_SSL;
 #endif
 
     if (netinfo_ptr->myhostname_len >= HOSTNAME_LEN) {
