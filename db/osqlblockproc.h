@@ -44,11 +44,21 @@
 #include "osqlsession.h"
 #include "block_internal.h"
 #include "comdb2uuid.h"
+#include "plhash.h"
 
 struct bplog_func // UNDONE FABIO
     {
     int code;
     void *arg;
+};
+
+struct table_hits {
+    char *table;
+    int64_t finds, nexts, inserts, deletes, updates;
+};
+
+struct table_hit_stats {
+    hash_t *hits;
 };
 
 typedef struct bplog_func bplog_func_t;

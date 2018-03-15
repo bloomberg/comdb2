@@ -1437,6 +1437,13 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     struct query_path_component *qc = listc_rtl(&thd->query_stats);
     while (qc) {
+        struct dbtable *t = get_dbtable_by_name(qc->lcl_tbl_name);
+        if (t) {
+            if (qc->nfind)
+                ATOMIC_ADD(t->finds, qc->nfind);
+            if (qc->nnext)
+                ATOMIC_ADD(t->nexts, qc->nnext);
+        }
         free(qc);
         qc = listc_rtl(&thd->query_stats);
     }
