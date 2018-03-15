@@ -55,9 +55,7 @@ function insertforever
         let j=j+1
     done
     echo "COMMIT" >> $sql
-    while :; do 
-        cdb2sql ${CDB2_OPTIONS} $DBNAME default - < $sql > /dev/null 2>&1 
-    done
+    yes "$(cat $sql)" | cdb2sql ${CDB2_OPTIONS} $DBNAME default - > /dev/null 2>&1
 }
 
 function runtestwithoptions

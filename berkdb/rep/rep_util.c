@@ -230,8 +230,19 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 	if (LOG_SWAPPED())
 		__rep_control_swap(&cntrl);
 
+    if (LF_ISSET(DB_REP_TRACE)) {
+        logmsg(LOGMSG_USER, "%s line %d tracing for rtype %d\n", __func__, 
+                __LINE__, rtype);
+        myflags |= DB_REP_TRACE;
+    }
+
 	ret = dbenv->rep_send(dbenv, &cdbt, dbtp, &cntrl.lsn, eid, myflags,
 	    usr_ptr);
+
+    if (LF_ISSET(DB_REP_TRACE)) {
+        logmsg(LOGMSG_USER, "%s line %d rep_send returns %d\n", __func__, 
+                __LINE__, ret);
+    }
 
 	/* Do we need to swap back? */
 	if (LOG_SWAPPED())

@@ -73,7 +73,8 @@ int net_close_connection(netinfo_type *net, const char *hostname);
 enum {
     NET_SEND_NODELAY = 0x00000001,
     NET_SEND_NODROP  = 0x00000002,
-    NET_SEND_INORDER = 0x00000004
+    NET_SEND_INORDER = 0x00000004,
+    NET_SEND_TRACE   = 0x00000008
 };
 
 enum {

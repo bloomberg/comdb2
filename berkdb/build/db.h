@@ -382,7 +382,10 @@ struct __db_dbt {
 #define	DB_REP_PERMANENT        0x0000002	/* Important--app. may want to flush. */
 #define  DB_REP_LOGPROGRESS      0x0000004   /* marks a new log record, not a commit though */
 #define DB_REP_FLUSH            0x0000008
-#define DB_REP_NODROP           0x0000010
+
+/* Don't allow these to overlap with log_put flags */
+#define DB_REP_NODROP           0x0001000
+#define DB_REP_TRACE           0x0002000 /* Trace this through the net layer */
 
 /*******************************************************
  * Locking.
