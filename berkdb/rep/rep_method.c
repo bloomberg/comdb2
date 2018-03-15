@@ -869,9 +869,6 @@ __rep_set_rep_transport(dbenv, eid, f_send)
 extern pthread_mutex_t rep_queue_lock;
 extern void __rep_empty_log_queue_lk(void);
 
-extern int gbl_verbose_master_req;
-extern int gbl_last_master_req;
-extern int gbl_master_req_waitms;
 /*
  * __rep_elect --
  *	Called after master failure to hold/participate in an election for
@@ -943,18 +940,8 @@ __rep_elect(dbenv, nsites, priority, timeout, eidp)
 	fprintf(stderr, "%s:%d broadcasting REP_MASTER_REQ\n",
 	    __FILE__, __LINE__);
 #endif
-
-    if ((comdb2_time_epochms() - gbl_last_master_req) > gbl_master_req_waitms) {
-        if (gbl_verbose_master_req) {
-            logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ\n",
-                    __func__, __LINE__);
-        }
-
-        __rep_send_message(dbenv,
-                db_eid_broadcast, REP_MASTER_REQ, NULL, NULL, 0, NULL);
-
-        gbl_last_master_req = comdb2_time_epochms();
-    }
+	(void)__rep_send_message(dbenv,
+	    db_eid_broadcast, REP_MASTER_REQ, NULL, NULL, 0, NULL);
 	ret = __rep_wait(dbenv, timeout / 4, eidp, REP_F_EPHASE1);
 	switch (ret) {
 	case 0:
