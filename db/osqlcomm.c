@@ -6545,8 +6545,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         free_blob_buffers(blobs, MAXBLOBS);
 
         iq->sc = iq->sc_pending;
-        void *ptran = bdb_get_physical_tran(trans);
         while (iq->sc != NULL) {
+            void *ptran = bdb_get_physical_tran(trans);
             if (strcmp(iq->sc->original_master_node, gbl_mynode) != 0) {
                 return -1;
             }
@@ -6560,6 +6560,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
         
         if (iq->tranddl) {
+            void *ptran = bdb_get_physical_tran(trans);
             // assert that we have schemalk
             create_sqlmaster_records(ptran);
             create_sqlite_master();
