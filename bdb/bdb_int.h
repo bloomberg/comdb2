@@ -136,6 +136,9 @@ typedef enum {
     unsigned char fileid[DB_FILE_ID_LEN];                                      \
     db_pgno_t pgno;
 
+#define PAGE_KEY_SIZE                                                          \
+    (DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t))
+
 struct lsn_list {
     DB_LSN lsn;
     LINKC_T(struct lsn_list) lnk;
@@ -173,8 +176,8 @@ struct relink_list {
 
 enum { PGLOGS_QUEUE_PAGE = 1, PGLOGS_QUEUE_RELINK = 2 };
 
-struct shadows_pglogs_queue_key {
-    LINKC_T(struct shadows_pglogs_queue_key) lnk;
+struct pglogs_queue_key {
+    LINKC_T(struct pglogs_queue_key) lnk;
     unsigned long long logical_tranid;
     int type;
     db_pgno_t pgno;
@@ -187,24 +190,24 @@ struct shadows_pglogs_queue_key {
 #endif
 };
 
-struct shadows_asof_cursor {
+struct asof_cursor {
     unsigned char fileid[DB_FILE_ID_LEN];
-    struct shadows_pglogs_queue_key *cur;
+    struct pglogs_queue_key *cur;
 };
 
-struct shadows_fileid_pglogs_queue {
+struct fileid_pglogs_queue {
     unsigned char fileid[DB_FILE_ID_LEN];
     int deleteme;
     pthread_rwlock_t queue_lk;
-    LISTC_T(struct shadows_pglogs_queue_key) queue_keys;
+    LISTC_T(struct pglogs_queue_key) queue_keys;
 };
 
 // This is stored in a hash indexed by fileid.  All cursors pointed
 // at a fileid maintain a pointer to the same memory.
 struct pglogs_queue_cursor {
     unsigned char fileid[DB_FILE_ID_LEN];
-    struct shadows_fileid_pglogs_queue *queue;
-    struct shadows_pglogs_queue_key *last;
+    struct fileid_pglogs_queue *queue;
+    struct pglogs_queue_key *last;
 };
 
 struct pglogs_queue_heads {
@@ -218,21 +221,23 @@ struct page_logical_lsn_key {
     DB_LSN commit_lsn;
 };
 
-struct shadows_pglogs_key {
+struct pglogs_key {
     PAGE_KEY
     LISTC_T(struct lsn_list) lsns;
 #ifdef NEWSI_DEBUG_POOL
     void *pool;
 #endif
 };
+#define PGLOGS_KEY_OFFSET (offsetof(struct pglogs_key, fileid))
 
-struct shadows_pglogs_logical_key {
+struct pglogs_logical_key {
     PAGE_KEY
     LISTC_T(struct lsn_commit_list) lsns;
 #ifdef NEWSI_DEBUG_POOL
     void *pool;
 #endif
 };
+#define PGLOGS_LOGICAL_KEY_OFFSET (offsetof(struct pglogs_logical_key, fileid))
 
 struct pglogs_relink_key {
     PAGE_KEY
@@ -241,6 +246,7 @@ struct pglogs_relink_key {
     void *pool;
 #endif
 };
+#define PGLOGS_RELINK_KEY_OFFSET (offsetof(struct pglogs_relink_key, fileid))
 
 struct ltran_pglogs_key {
     unsigned long long logical_tranid;
@@ -248,7 +254,6 @@ struct ltran_pglogs_key {
     DB_LSN logical_commit_lsn; /* lsn of the physical commit of the logical
                                   transaction */
     hash_t *pglogs_hashtbl;
-    hash_t *relinks_hashtbl;
 };
 
 struct timestamp_lsn_key {
@@ -257,20 +262,45 @@ struct timestamp_lsn_key {
     unsigned long long context;
 };
 
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+typedef struct pglogs_tmptbl_key {
+    db_pgno_t pgno;
+    DB_LSN commit_lsn;
+    DB_LSN lsn;
+} pglogs_tmptbl_key;
+typedef struct {
+    unsigned char fileid[DB_FILE_ID_LEN];
+    struct temp_table *tmptbl;
+    struct temp_cursor *tmpcur;
+    pthread_mutex_t mtx;
+#ifdef NEWSI_DEBUG_POOL
+    void *pool;
+#endif
+} logfile_pglog_hashkey;
+
+typedef struct relinks_tmptbl_key {
+    db_pgno_t pgno;
+    DB_LSN lsn;
+    db_pgno_t inh;
+} relinks_tmptbl_key;
+typedef logfile_pglog_hashkey logfile_relink_hashkey;
+#define LOGFILE_PAGE_KEY_SIZE (DB_FILE_ID_LEN * sizeof(unsigned char))
+#else
+typedef struct pglogs_logical_key logfile_pglog_hashkey;
+typedef struct pglogs_relink_key logfile_relink_hashkey;
+#define LOGFILE_PAGE_KEY_SIZE                                                  \
+    (DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t))
+#endif
+
+#define LOGFILE_PGLOG_OFFSET (offsetof(logfile_pglog_hashkey, fileid))
+#define LOGFILE_RELINK_OFFSET (offsetof(logfile_relink_hashkey, fileid))
+
 struct logfile_pglogs_entry {
     u_int32_t filenum;
     pthread_mutex_t pglogs_mutex;
     hash_t *pglogs_hashtbl;
     hash_t *relinks_hashtbl;
 };
-
-struct shadows_pglogs_key *allocate_shadows_pglogs_key(void);
-struct shadows_pglogs_logical_key *allocate_shadows_pglogs_logical_key(void);
-struct lsn_list *allocate_lsn_list(void);
-struct lsn_commit_list *allocate_lsn_commit_list(void);
-struct pglogs_relink_key *allocate_pglogs_relink_key(void);
-struct relink_list *allocate_relink_list(void);
-void return_pglogs_queue_key(struct shadows_pglogs_queue_key *qk);
 
 struct checkpoint_list {
     DB_LSN lsn;
@@ -1237,6 +1267,9 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
 int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
                void *to, size_t tolen, struct odh *odh, void **freeptr);
 
+int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
+                          size_t fromlen);
+
 int ip_updates_enabled_sc(bdb_state_type *bdb_state);
 int ip_updates_enabled(bdb_state_type *bdb_state);
 
@@ -1296,14 +1329,6 @@ int ll_dta_upd(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
                int dtafile, int dtastripe, int participantstripid,
                int use_new_genid, DBT *verify_dta, DBT *dta, DBT *old_dta_out);
 
-int ll_dta_upd_rowlocks(bdb_state_type *bdb_state, int rrn,
-                        unsigned long long oldgenid,
-                        unsigned long long *newgenid, DB *dbp, tran_type *tran,
-                        int dtafile, int dtastripe, int participantstripid,
-                        int use_new_genid, DBT *verify_dta, DBT *dta,
-                        DBT *old_dta_out, DBT *lock, DB_LOCK *lk,
-                        unsigned long long *pvgenid, DBT *pvlock, DB_LOCK *plk);
-
 int ll_dta_upd_blob(bdb_state_type *bdb_state, int rrn,
                     unsigned long long oldgenid, unsigned long long newgenid,
                     DB *dbp, tran_type *tran, int dtafile,
@@ -1320,30 +1345,12 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
                unsigned long long oldgenid, unsigned long long genid, void *key,
                int ixnum, int keylen, void *dta, int dtalen);
 
-int ll_key_upd_rowlocks(bdb_state_type *bdb_state, tran_type *tran,
-                        char *table_name, unsigned long long oldgenid,
-                        unsigned long long genid, void *key, int ixnum,
-                        int keylen, void *dta, int dtalen);
-
 int ll_key_del(bdb_state_type *bdb_state, tran_type *tran, int ixnum, void *key,
                int keylen, int rrn, unsigned long long genid, int *payloadsz);
 
 int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
                unsigned long long genid, DB *dbp, int dtafile, int dtastripe,
                DBT *dta_out);
-
-int ll_key_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int ixnum,
-                        void *key, int keylen, int rrn,
-                        unsigned long long genid, int *payloadsz,
-                        unsigned long long *pvgenid,
-                        unsigned long long *nxgenid, DBT *pvlock, DB_LOCK *plk,
-                        DBT *nxlock, DB_LOCK *nlk);
-
-int ll_dta_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int rrn,
-                        unsigned long long genid, DB *dbp, int dtafile,
-                        int dtastripe, DBT *dta_out,
-                        unsigned long long *pvgenid, DBT *lkname,
-                        DB_LOCK *prevlk);
 
 int ll_dta_upgrade(bdb_state_type *bdb_state, int rrn, unsigned long long genid,
                    DB *dbp, tran_type *tran, int dtafile, int dtastripe,
@@ -1358,7 +1365,7 @@ int phys_dta_add(bdb_state_type *bdb_state, tran_type *tran,
                  DBT *dbt_key, DBT *dbt_data);
 
 int get_physical_transaction(bdb_state_type *bdb_state, tran_type *logical_tran,
-                             tran_type **outtran);
+                             tran_type **outtran, int force_commit);
 int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
                  unsigned long long oldgenid, unsigned long long *newgenid,
                  DB *dbp, tran_type *logical_tran, int dtafile, int dtastripe,
@@ -1657,10 +1664,11 @@ void bdb_dump_cursors(bdb_state_type *bdb_state, FILE *out);
 
 /* All flavors of rowlocks */
 int bdb_lock_ix_value_write(bdb_state_type *bdb_state, tran_type *tran, int idx,
-                            DBT *dbt_key, DB_LOCK *lk, DBT *lkname);
+                            DBT *dbt_key, DB_LOCK *lk, DBT *lkname,
+                            int trylock);
 int bdb_lock_row_write_getlock(bdb_state_type *bdb_state, tran_type *tran,
                                int idx, unsigned long long genid, DB_LOCK *dblk,
-                               DBT *lkname);
+                               DBT *lkname, int trylock);
 
 int bdb_lock_row_write_getlock_fromlid(bdb_state_type *bdb_state, int lid,
                                        int idx, unsigned long long genid,

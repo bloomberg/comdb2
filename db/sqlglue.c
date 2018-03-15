@@ -2828,6 +2828,7 @@ static inline int sqlite3VdbeCompareRecordPacked(KeyInfo *pKeyInfo, int k1len,
     return cmp;
 }
 
+unsigned long long release_locks_on_si_lockwait_cnt = 0;
 /* Release pagelocks if the replicant is waiting on this sql thread */
 static int cursor_move_postop(BtCursor *pCur)
 {
@@ -2843,6 +2844,7 @@ static int cursor_move_postop(BtCursor *pCur)
         extern int gbl_sql_random_release_interval;
         if (bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) {
             rc = release_locks("replication is waiting on si-session");
+            release_locks_on_si_lockwait_cnt++;
         } else if (gbl_sql_random_release_interval &&
                    !(rand() % gbl_sql_random_release_interval)) {
             rc = release_locks("random release cursor_move_postop");
@@ -4643,8 +4645,17 @@ int sqlite3BtreeCommit(Btree *pBt)
     case TRANLEVEL_SNAPISOL:
         if (clnt->dbtran.shadow_tran) {
             rc = snapisol_commit(clnt, thd, clnt->tzname);
-
-            rc = trans_commit_shadow(clnt->dbtran.shadow_tran, &bdberr);
+            if (!rc) {
+                irc = trans_commit_shadow(clnt->dbtran.shadow_tran, &bdberr);
+            } else {
+                irc = trans_abort_shadow((void **)&clnt->dbtran.shadow_tran,
+                                         &bdberr);
+            }
+            if (irc) {
+                logmsg(LOGMSG_ERROR, "%s:%d %s shadow failed rc=%d bdberr=%d\n",
+                       __func__, __LINE__, rc ? "abort" : "commit", irc,
+                       bdberr);
+            }
             clnt->dbtran.shadow_tran = NULL;
         }
         break;
@@ -4659,8 +4670,17 @@ int sqlite3BtreeCommit(Btree *pBt)
          */
         if (clnt->dbtran.shadow_tran) {
             rc = serial_commit(clnt, thd, clnt->tzname);
-
-            rc = trans_commit_shadow(clnt->dbtran.shadow_tran, &bdberr);
+            if (!rc) {
+                irc = trans_commit_shadow(clnt->dbtran.shadow_tran, &bdberr);
+            } else {
+                irc = trans_abort_shadow((void **)&clnt->dbtran.shadow_tran,
+                                         &bdberr);
+            }
+            if (irc) {
+                logmsg(LOGMSG_ERROR, "%s:%d %s shadow failed rc=%d bdberr=%d\n",
+                       __func__, __LINE__, rc ? "abort" : "commit", irc,
+                       bdberr);
+            }
             clnt->dbtran.shadow_tran = NULL;
         }
         break;
@@ -8935,7 +8955,7 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
         logmsg(LOGMSG_ERROR, "THD %lu:recover_deadlock, and lock desired\n",
                pthread_self());
     } else if (ptrace)
-        logmsg(LOGMSG_ERROR, "THD %lu:recover_deadlock\n", pthread_self());
+        logmsg(LOGMSG_INFO, "THD %lu:recover_deadlock\n", pthread_self());
 
     /* increment global counter */
     gbl_sql_deadlock_reconstructions++;

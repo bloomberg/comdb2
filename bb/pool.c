@@ -387,6 +387,7 @@ void pool_dumpx(pool_t *p, char *name)
     else
         warn = "";
     logmsg(LOGMSG_USER, "COUNT BLOCKS=%d %s\n", ii, warn);
+    logmsg(LOGMSG_USER, "TOTAL SIZE=%d\n", p->entsz * p->npool);
 }
 
 /* 041807dh: pool interface extension

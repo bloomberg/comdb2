@@ -55,6 +55,12 @@
 #include <printformats.h>
 #include <logmsg.h>
 
+#ifdef NEWSI_STAT
+#include <time.h>
+#include <sys/time.h>
+#include <util.h>
+#endif
+
 extern int gbl_dispatch_rowlocks_bench;
 
 /* TODO:
@@ -69,7 +75,7 @@ struct remembered_record {
 };
 
 /* Set to 1 to debug compensation records */
-static int debug_comp = 0;
+static int debug_comp = 1;
 
 /* Set to 1 to debug locks */
 static int debug_locks = 0;
@@ -974,8 +980,14 @@ int undo_add_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
     rc = ll_undo_add_dta_lk(bdb_state, tran, table_name, genid, undolsn,
                             add_dta_lk->dtafile, add_dta_lk->dtastripe);
 
-    if (rc && debug_comp)
+    if (rc && rc != DB_LOCK_DEADLOCK && debug_comp) {
+        bdb_state->dbenv->memp_sync(bdb_state->dbenv, NULL);
+        logmsg(LOGMSG_FATAL,
+               "%s: undo for lsn %u:%u ltranid %016llx failed rc %d\n",
+               __func__, undolsn->file, undolsn->offset, tran->logical_tranid,
+               rc);
         abort();
+    }
     return rc;
 }
 
@@ -1021,8 +1033,14 @@ if (rc) {
                            key->data, key->size /*add_ix_lk->keylen*/, undolsn);
 
 done:
-    if (rc && debug_comp)
+    if (rc && rc != DB_LOCK_DEADLOCK && debug_comp) {
+        bdb_state->dbenv->memp_sync(bdb_state->dbenv, NULL);
+        logmsg(LOGMSG_FATAL,
+               "%s: undo for lsn %u:%u ltranid %016llx failed rc %d\n",
+               __func__, undolsn->file, undolsn->offset, tran->logical_tranid,
+               rc);
         abort();
+    }
     return rc;
 }
 
@@ -1073,8 +1091,14 @@ debug:
                            keylen, dtabuf, dtalen);
 
 done:
-    if (rc && debug_comp)
+    if (rc && rc != DB_LOCK_DEADLOCK && debug_comp) {
+        bdb_state->dbenv->memp_sync(bdb_state->dbenv, NULL);
+        logmsg(LOGMSG_FATAL,
+               "%s: undo for lsn %u:%u ltranid %016llx failed rc %d\n",
+               __func__, undolsn->file, undolsn->offset, tran->logical_tranid,
+               rc);
         abort();
+    }
     free(keybuf);
     free(dtabuf);
 
@@ -1176,8 +1200,14 @@ int undo_del_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
                             dtalen);
 
 done:
-    if (rc && debug_comp)
+    if (rc && rc != DB_LOCK_DEADLOCK && debug_comp) {
+        bdb_state->dbenv->memp_sync(bdb_state->dbenv, NULL);
+        logmsg(LOGMSG_FATAL,
+               "%s: undo for lsn %u:%u ltranid %016llx failed rc %d\n",
+               __func__, undolsn->file, undolsn->offset, tran->logical_tranid,
+               rc);
         abort();
+    }
     free(dtabuf);
 
     return rc;
@@ -1789,6 +1819,10 @@ static void free_hash(hash_t *h)
     hash_free(h);
 }
 
+#ifdef NEWSI_STAT
+extern struct timeval comprec_time;
+extern unsigned long long num_comprec;
+#endif
 /* This is called by tran_abort when it's called on a logical transaction.
    Gets a log cursor, finds the last logical log record, and
    traverses the log in reverse lsn order for that logical
@@ -1803,7 +1837,7 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
     int rc = 0, deadlkcnt = 0;
     int did_something = 0;
     DBT logdta;
-    DB_LSN lsn, undolsn, getlsn, start_phys_txn;
+    DB_LSN lsn, undolsn, getlsn, start_phys_txn, last_regop_lsn;
     u_int32_t rectype;
 
     tran->aborted = 1;
@@ -1862,6 +1896,7 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
         if (tran->physical_tran == NULL) {
             memcpy(&start_phys_txn, &lsn, sizeof(lsn));
         }
+        last_regop_lsn = tran->last_regop_lsn;
 
         if (lsn.file == 0 && lsn.offset == 1) {
             logmsg(LOGMSG_ERROR, "reached last lsn but not a begin record type %d?\n",
@@ -1879,8 +1914,25 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
         }
 
         undolsn = lsn;
+#ifdef NEWSI_STAT
+        num_comprec++;
+#endif
+#ifdef NEWSI_STAT
+        struct timeval before, after, diff;
+        gettimeofday(&before, NULL);
+#endif
+
         rc = undo_physical_transaction(bdb_state, tran, &logdta, &did_something,
                                        &undolsn, &lsn);
+
+#ifdef NEWSI_STAT
+        gettimeofday(&after, NULL);
+        timeval_diff(&before, &after, &diff);
+        timeval_add(&comprec_time, &diff, &comprec_time);
+#endif
+        if (log_compare(&last_regop_lsn, &tran->last_regop_lsn))
+            memcpy(&start_phys_txn, &undolsn, sizeof(start_phys_txn));
+
         if (rc == DB_LOCK_DEADLOCK) {
             assert(tran->physical_tran != NULL);
             bdb_tran_abort_phys(bdb_state, tran->physical_tran);
@@ -1904,7 +1956,7 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
         if (did_something) {
             /* Will be NULL if we've seen nothing but comprecs */
             assert(tran->physical_tran != NULL);
-            if (tran->physical_tran)
+            if (tran->micro_commit && tran->physical_tran)
                 bdb_tran_commit_phys(bdb_state, tran->physical_tran);
         }
 
@@ -3377,8 +3429,14 @@ static int undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
     }
 
 done:
-    if (rc && debug_comp)
+    if (rc && rc != DB_LOCK_DEADLOCK && debug_comp) {
+        bdb_state->dbenv->memp_sync(bdb_state->dbenv, NULL);
+        logmsg(LOGMSG_FATAL,
+               "%s: undo for lsn %u:%u ltranid %016llx failed rc %d\n",
+               __func__, undolsn->file, undolsn->offset, tran->logical_tranid,
+               rc);
         abort();
+    }
     free(olddta);
 
     return rc;
@@ -3417,8 +3475,14 @@ static int undo_upd_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
                            upd_ix_lk->dtalen, undolsn, diff, offset, difflen);
 
 done:
-    if (rc && debug_comp)
+    if (rc && rc != DB_LOCK_DEADLOCK && debug_comp) {
+        bdb_state->dbenv->memp_sync(bdb_state->dbenv, NULL);
+        logmsg(LOGMSG_FATAL,
+               "%s: undo for lsn %u:%u ltranid %016llx failed rc %d\n",
+               __func__, undolsn->file, undolsn->offset, tran->logical_tranid,
+               rc);
         abort();
+    }
     free(diff);
 
     return rc;

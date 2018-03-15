@@ -178,7 +178,7 @@ retry:
 
     int rc;
     tran_type *tran;
-    if ((rc = get_physical_transaction(p_bdb_state, ltran, &tran)) != 0) {
+    if ((rc = get_physical_transaction(p_bdb_state, ltran, &tran, 0)) != 0) {
         if (bdb_tran_abort(p_bdb_state, ltran, bdberr) != 0)
             abort();
         logmsg(LOGMSG_ERROR, "%s: get_physical_transaction: %d\n", __func__, rc);

@@ -416,6 +416,7 @@ static int convert_record(struct convert_record_data *data)
     int dtalen = 0, rc, rrn, opfailcode = 0, ixfailnum = 0;
     unsigned long long genid, ngenid, check_genid;
     void *dta = NULL;
+    int no_wait_rowlock = 0;
 
     if (gbl_sc_thd_failed) {
         if (!data->s->retry_bad_genids)
@@ -496,6 +497,15 @@ static int convert_record(struct convert_record_data *data)
                        "Have old-style genids in table, disabling plan\n");
                 data->s->retry_bad_genids = 1;
                 return -1;
+            }
+            if (gbl_rowlocks) {
+                rc = bdb_trylock_row_write(data->from->handle, data->trans,
+                                           genid);
+                if (rc) {
+                    rc = RC_INTERNAL_RETRY;
+                    no_wait_rowlock = 1;
+                    goto err;
+                }
             }
         } else if (rc == 1) {
             /* we have finished all the records in our stripe
@@ -859,7 +869,7 @@ err: /*if (is_schema_change_doomed())*/
         data->trans = NULL;
         data->num_retry_errors++;
         data->totnretries++;
-        if (data->cmembers->is_decrease_thrds)
+        if (!no_wait_rowlock && data->cmembers->is_decrease_thrds)
             decrease_max_threads(&data->cmembers->maxthreads);
         else
             poll(0, 0, (rand() % 500 + 10));

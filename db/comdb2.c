@@ -642,7 +642,7 @@ int gbl_sc_inco_chk = 1;
 int gbl_track_queue_time = 1;
 int gbl_locks_check_waiters = 1;
 int gbl_update_startlsn_printstep = 0;
-int gbl_rowlocks_commit_on_waiters = 0;
+int gbl_rowlocks_commit_on_waiters = 1;
 int gbl_rowlocks_deadlock_trace = 0;
 
 int gbl_durable_wait_seqnum_test = 0;
@@ -3484,6 +3484,9 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_INFO, "new snapisol is not running\n");
         gbl_new_snapisol = 0;
         gbl_new_snapisol_asof = 0;
+#ifdef NEWSI_STAT
+        bdb_newsi_stat_init();
+#endif
     }
 
     /* We grab alot of genids in the process of opening llmeta */

@@ -6246,8 +6246,7 @@ int bdb_reinit(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
     return rc;
 }
 
-int bdb_remove_fileid_pglogs_queue(bdb_state_type *bdb_state,
-                                   unsigned char *fileid);
+void bdb_remove_fileid_pglogs(bdb_state_type *bdb_state, unsigned char *fileid);
 
 /* Pass in mangled file name, this will delete it. */
 static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
@@ -6269,7 +6268,7 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
 
         if ((rc = db_create(&dbp, dbenv, 0)) == 0 &&
             (rc = dbp->open(dbp, NULL, pname, NULL, DB_BTREE, 0, 0666)) == 0) {
-            bdb_remove_fileid_pglogs_queue(bdb_state, dbp->fileid);
+            bdb_remove_fileid_pglogs(bdb_state, dbp->fileid);
             dbp->close(dbp, NULL, DB_NOSYNC);
         }
 
@@ -8233,4 +8232,80 @@ void rename_bdb_state(bdb_state_type *bdb_state, const char *newname)
     if (bdb_state->name)
         free(bdb_state->name);
     bdb_state->name = strdup(newname);
+}
+
+int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
+                                   hash_t *fileid_tbl)
+{
+    const char *blob_ext = ".blob";
+    const char *data_ext = ".data";
+    const char *index_ext = ".index";
+
+    DB_ENV *dbenv;
+    DB *dbp;
+
+    struct dirent *buf;
+    struct dirent *ent;
+    DIR *dirp;
+    int error;
+
+    buf = malloc(4096);
+    if (!buf) {
+        logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
+        return -1;
+    }
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    dbenv = bdb_state->dbenv;
+
+    dirp = opendir(bdb_state->dir);
+    if (!dirp) {
+        logmsg(LOGMSG_ERROR, "%s: opendir failed\n", __func__);
+        free(buf);
+        return -1;
+    }
+
+    while ((error = bb_readdir(dirp, buf, &ent)) == 0 && ent != NULL) {
+        if (strlen(ent->d_name) > 5 &&
+            (strstr(ent->d_name, blob_ext) || strstr(ent->d_name, data_ext) ||
+             strstr(ent->d_name, index_ext))) {
+            char munged_name[FILENAMELEN];
+            char transname[256];
+            char *pname = NULL;
+            unsigned char *fileid = NULL;
+            if (snprintf(munged_name, sizeof(munged_name), "XXX.%s",
+                         ent->d_name) >= sizeof(munged_name)) {
+                logmsg(LOGMSG_ERROR, "%s: filename too long to munge: %s\n",
+                       __func__, ent->d_name);
+                closedir(dirp);
+                free(buf);
+                return -1;
+            }
+            pname = bdb_trans(munged_name, transname);
+
+            if (db_create(&dbp, dbenv, 0) == 0 &&
+                dbp->open(dbp, NULL, pname, NULL, DB_BTREE, 0, 0666) == 0) {
+                fileid = malloc(DB_FILE_ID_LEN);
+                if (fileid == NULL) {
+                    closedir(dirp);
+                    free(buf);
+                    return -1;
+                }
+                memcpy(fileid, dbp->fileid, DB_FILE_ID_LEN);
+                hash_add(fileid_tbl, fileid);
+#ifdef NEWSI_DEBUG
+                char *txt;
+                hexdumpbuf(fileid, DB_FILE_ID_LEN, &txt);
+                logmsg(LOGMSG_DEBUG, "%s: hash_add fileid %s\n", __func__, txt);
+                free(txt);
+#endif
+                dbp->close(dbp, NULL, DB_NOSYNC);
+            }
+        }
+    }
+
+    closedir(dirp);
+    free(buf);
 }
