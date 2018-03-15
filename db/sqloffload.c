@@ -767,6 +767,8 @@ static void osql_scdone_abort_callback(struct ireq *iq)
         iq->sc_pending = NULL;
         iq->sc_seed = 0;
     }
+    // createmastertbls only once instead of in backout_schema_change
+    
     if (iq->sc_locked) {
         unlock_schema_lk();
         iq->sc_locked = 0;
