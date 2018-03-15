@@ -24,9 +24,6 @@
 REGISTER_TUNABLE("abort_on_in_use_rqid", NULL, TUNABLE_BOOLEAN,
                  &gbl_abort_on_clear_inuse_rqid, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("abort_on_missing_session", NULL, TUNABLE_BOOLEAN,
-                 &gbl_abort_on_missing_session, READONLY | NOARG, NULL, NULL,
-                 NULL, NULL);
 REGISTER_TUNABLE("accept_osql_mismatch", NULL, TUNABLE_BOOLEAN,
                  &gbl_reject_osql_mismatch, READONLY | INVERSE_VALUE | NOARG,
                  NULL, NULL, NULL, NULL);
@@ -139,8 +136,6 @@ REGISTER_TUNABLE("ctrace_gzip", NULL, TUNABLE_INTEGER, &ctrace_gzip,
 REGISTER_TUNABLE("deadlock_policy_override", NULL, TUNABLE_INTEGER,
                  &gbl_deadlock_policy_override, READONLY, NULL, NULL,
                  deadlock_policy_override_update, NULL);
-REGISTER_TUNABLE("debug_rowlocks", NULL, TUNABLE_BOOLEAN, &gbl_debug_rowlocks,
-                 NOARG, NULL, NULL, NULL, NULL);
 /*
 REGISTER_TUNABLE("decimal_rounding", NULL, TUNABLE_INTEGER,
                  &gbl_decimal_rounding, READONLY, NULL, NULL, NULL, NULL);
@@ -153,9 +148,6 @@ REGISTER_TUNABLE("default_datetime_precision", NULL,
                  TUNABLE_INTEGER, &gbl_datetime_precision, READONLY, NULL, NULL,
                  NULL, NULL);
 */
-REGISTER_TUNABLE("delayed_ondisk_tempdbs", NULL, TUNABLE_INTEGER,
-                 &gbl_delayed_ondisk_tempdbs, READONLY | NOARG, NULL, NULL,
-                 NULL, NULL);
 REGISTER_TUNABLE("dir",
                  "Database directory. (Default: $COMDB2_ROOT/var/cdb2/$DBNAME)",
                  TUNABLE_STRING, &db->basedir, READONLY, NULL, NULL, NULL,
@@ -177,10 +169,6 @@ REGISTER_TUNABLE("disable_datetime_truncation",
                  "Disables 'enable_datetime_truncation'", TUNABLE_BOOLEAN,
                  &gbl_forbid_datetime_truncation, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("disable_direct_writes", "Disables 'enable_direct_writes'",
-                 TUNABLE_BOOLEAN, &db->enable_direct_writes,
-                 INVERSE_VALUE | READONLY | NOARG | READEARLY, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE("disable_inplace_blob_optimization",
                  "Disables 'enable_inplace_blob_optimization'", TUNABLE_BOOLEAN,
                  &gbl_inplace_blob_optimization,
@@ -256,10 +244,6 @@ REGISTER_TUNABLE("disallow_portmux_route", "Disables 'allow_portmux_route'",
 REGISTER_TUNABLE("dont_abort_on_in_use_rqid", "Disable 'abort_on_in_use_rqid'",
                  TUNABLE_BOOLEAN, &gbl_abort_on_clear_inuse_rqid,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("dont_abort_on_missing_session",
-                 "Disables 'abort_on_missing_session'", TUNABLE_BOOLEAN,
-                 &gbl_abort_on_missing_session,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_forbid_ulonglong", "Disables 'forbid_ulonglong'",
                  TUNABLE_BOOLEAN, &gbl_forbid_ulonglong,
                  INVERSE_VALUE | READONLY | NOARG | READEARLY, NULL, NULL, NULL,
@@ -318,9 +302,6 @@ REGISTER_TUNABLE("enable_datetime_promotion", NULL, TUNABLE_BOOLEAN,
 REGISTER_TUNABLE("enable_datetime_truncation", NULL, TUNABLE_BOOLEAN,
                  &gbl_forbid_datetime_truncation,
                  READONLY | INVERSE_VALUE | NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("enable_direct_writes", NULL, TUNABLE_BOOLEAN,
-                 &db->enable_direct_writes, READONLY | NOARG, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE("enable_inplace_blob_optimization",
                  "Enables inplace blob updates (blobs are updated in place in "
                  "their b-tree when possible, not deleted/added) Note: This "
@@ -721,9 +702,6 @@ REGISTER_TUNABLE("no_compress_page_compact_log",
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("nocrc32c", "Disables 'crc32c'", TUNABLE_BOOLEAN, &gbl_crc32c,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("nodebug_rowlocks", "Disables 'debug_rowlocks'",
-                 TUNABLE_BOOLEAN, &gbl_debug_rowlocks, INVERSE_VALUE | NOARG,
-                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("nodeid", NULL, TUNABLE_INTEGER, &gbl_mynodeid, READONLY, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("noearly", "Disables 'early'", TUNABLE_BOOLEAN, &gbl_early,
@@ -757,9 +735,6 @@ REGISTER_TUNABLE("norcache", "Disables 'rcache'", TUNABLE_BOOLEAN, &gbl_rcache,
 REGISTER_TUNABLE("noreallearly", "Disables 'reallearly'", TUNABLE_BOOLEAN,
                  &gbl_reallyearly, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("no_rep_collect_trace", "Disables 'rep_collect_trace'",
-                 TUNABLE_BOOLEAN, &gbl_rep_collect_txn_time,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("norepdebug", "Disables 'repdebug'", TUNABLE_BOOLEAN,
                  &gbl_repdebug, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
@@ -899,9 +874,6 @@ REGISTER_TUNABLE("prefaulthelper_blockops", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("prefaulthelper_sqlreadahead", NULL, TUNABLE_INTEGER,
                  &gbl_prefaulthelper_sqlreadahead, READONLY, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("prefaulthelper_tagreadahead", NULL, TUNABLE_INTEGER,
-                 &gbl_prefaulthelper_tagreadahead, READONLY, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE("prefaulthelperthreads",
                  "Max number of prefault helper threads. (Default: 0)",
                  TUNABLE_INTEGER, &gbl_prefaulthelperthreads, READONLY, NULL,
@@ -923,10 +895,6 @@ REGISTER_TUNABLE("rangextlim", NULL, TUNABLE_INTEGER, &gbl_rangextunit,
 REGISTER_TUNABLE(
     "rcache", "Keep a lookaside cache of root pages for B-trees. (Default: on)",
     TUNABLE_BOOLEAN, &gbl_rcache, READONLY | NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("readahead", NULL, TUNABLE_INTEGER, &gbl_readahead, READONLY,
-                 NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("readaheadthresh", NULL, TUNABLE_INTEGER, &gbl_readaheadthresh,
-                 READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("reallearly",
                  "Acknowledge as soon as a commit record is seen by the "
                  "replicant (before it's applied). This effectively makes "
@@ -943,9 +911,6 @@ REGISTER_TUNABLE("repchecksum",
                  "checksums. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_repchecksum, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("rep_collect_trace", NULL, TUNABLE_BOOLEAN,
-                 &gbl_rep_collect_txn_time, READONLY | NOARG, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE("repdebug", "Enables replication debug messages.",
                  TUNABLE_BOOLEAN, &gbl_repdebug, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
@@ -1034,10 +999,6 @@ REGISTER_TUNABLE("sqlflush", "Force flushing the current record "
                              "number of records. (Default: 0)",
                  TUNABLE_INTEGER, &gbl_sqlflush_freq, READONLY, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE(
-    "sqlrdtimeout",
-    "Set timeout for reading from an SQL connection. (Default: 100000ms)",
-    TUNABLE_INTEGER, &gbl_sqlrdtimeoutms, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sqlreadahead", NULL, TUNABLE_INTEGER, &gbl_sqlreadahead,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sqlreadaheadthresh", NULL, TUNABLE_INTEGER,

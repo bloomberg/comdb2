@@ -671,8 +671,8 @@ static int bdb_write_updateid(bdb_state_type *bdb_state, void *buf,
     return 0;
 }
 
-static int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
-                                 size_t fromlen)
+int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
+                          size_t fromlen)
 {
     int rc;
     struct odh odh_in;
@@ -1378,7 +1378,8 @@ inline void bdb_set_fld_hints(bdb_state_type *bdb_state, uint16_t *hints)
 
 inline void bdb_cleanup_fld_hints(bdb_state_type *bdb_state)
 {
-    if (bdb_state->fld_hints)
+    if (bdb_state && bdb_state->fld_hints) {
         free(bdb_state->fld_hints);
-    bdb_state->fld_hints = NULL;
+        bdb_state->fld_hints = NULL;
+    }
 }

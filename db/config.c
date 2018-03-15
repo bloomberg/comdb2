@@ -682,9 +682,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 ii=toknum(tok,ltok);
 
             bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEDTA, ii);
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEFREEREC, ii);
             bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEIX, ii);
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEBLOB, ii);
 #endif
         } else if (tokcmp(tok, ltok, "dta") == 0) {
             tok = segtok(line, len, &st, &ltok);
@@ -1053,10 +1051,15 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
+        gbl_new_snapisol = 1;
+        gbl_new_snapisol_asof = 1;
+        gbl_new_snapisol_logging = 1;
+        logmsg(LOGMSG_INFO, "Enabled snapshot isolation (default newsi)\n");
     } else if (tokcmp(tok, ltok, "enable_new_snapshot") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
         gbl_new_snapisol = 1;
+        gbl_new_snapisol_asof = 1;
         gbl_new_snapisol_logging = 1;
         logmsg(LOGMSG_INFO, "Enabled new snapshot\n");
     } else if (tokcmp(tok, ltok, "enable_new_snapshot_asof") == 0) {

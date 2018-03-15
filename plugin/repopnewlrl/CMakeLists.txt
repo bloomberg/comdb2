@@ -1,6 +1,6 @@
 include(${CMAKE_MODULE_PATH}/plugin.cmake)
 
-set(PLUGIN "repopnewlrl")
+set(LIBNAME "repopnewlrl")
 
 include_directories(
   ${PROJECT_SOURCE_DIR}/bb
@@ -29,4 +29,4 @@ include_directories(
 
 set(SOURCES repopnewlrl.c)
 
-add_plugin(${PLUGIN} "STATIC" "${SOURCES}")
+add_plugin(${LIBNAME} "STATIC" "${SOURCES}")

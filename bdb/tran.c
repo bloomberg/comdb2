@@ -605,8 +605,6 @@ int tran_allocate_rlptr(tran_type *tran, DBT **rlptr, DB_LOCK **rlock)
         tran->rc_list = new_rc_list;
         tran->rc_locks = new_rc_locks;
         tran->rc_max += step;
-
-        ret = 1;
     }
 
     if (!(tran->rc_list[tran->rc_count] = pool_getablk(tran->rc_pool))) {
@@ -1246,13 +1244,10 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
         tran->birth_lsn = tran->snapy_commit_lsn;
     }
 
-    tran->pglogs_hashtbl =
-        hash_init_o(offsetof(struct shadows_pglogs_key, fileid),
-                    DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+    tran->pglogs_hashtbl = hash_init_o(PGLOGS_KEY_OFFSET, PAGE_KEY_SIZE);
 
     tran->relinks_hashtbl =
-        hash_init_o(offsetof(struct pglogs_relink_key, fileid),
-                    DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+        hash_init_o(PGLOGS_RELINK_KEY_OFFSET, PAGE_KEY_SIZE);
 
     pthread_mutex_init(&tran->pglogs_mutex, NULL);
 
@@ -1665,7 +1660,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
            record if we were given one. */
 
         if (!needed_to_abort || blkseq) {
-            rc = get_physical_transaction(bdb_state, tran, &physical_tran);
+            rc = get_physical_transaction(bdb_state, tran, &physical_tran, 0);
             if (!physical_tran) {
                 logmsg(LOGMSG_FATAL, 
                         "%s %d error getting physical transaction, %d\n",
@@ -1742,7 +1737,8 @@ static int bdb_tran_commit_with_seqnum_int_int(
 
                 /* We've already aborted but failed with blkseq.  Get a physical
                  * transaction to write the commit record. */
-                rc = get_physical_transaction(bdb_state, tran, &physical_tran);
+                rc = get_physical_transaction(bdb_state, tran, &physical_tran,
+                                              0);
                 if (!physical_tran) {
                     logmsg(LOGMSG_FATAL, 
                             "%s %d error getting physical transaction, %d\n",

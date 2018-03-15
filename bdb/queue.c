@@ -384,7 +384,7 @@ static int bdb_queue_add_int(bdb_state_type *bdb_state, tran_type *intran,
     tran_type *tran;
 
     if (gbl_rowlocks) {
-        get_physical_transaction(bdb_state, intran, &tran);
+        get_physical_transaction(bdb_state, intran, &tran, 0);
     } else
         tran = intran;
 
@@ -1697,7 +1697,7 @@ static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
     struct bdb_queue_header hdr;
 
     if (gbl_rowlocks) {
-        get_physical_transaction(bdb_state, intran, &tran);
+        get_physical_transaction(bdb_state, intran, &tran, 0);
     } else
         tran = intran;
 

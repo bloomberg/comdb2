@@ -917,7 +917,7 @@ static int _convert_time(char *sql)
     thd = pthread_getspecific(query_info_key);
     sql_get_query_id(thd);
     client.debug_sqlclntstate = pthread_self();
-    thd->sqlclntstate = &client;
+    thd->clnt = &client;
 
     if ((rc = get_curtran(thedb->bdb_env, &client)) != 0) {
         logmsg(LOGMSG_ERROR, "%s: failed to open a new curtran, rc=%d\n", __func__, rc);
@@ -935,7 +935,7 @@ static int _convert_time(char *sql)
                msg ? msg : "<unknown error>");
         goto cleanup;
     }
-    thd->sqlclntstate = NULL;
+    thd->clnt = NULL;
 
     if ((crc = sqlite3_close(sqldb)) != 0)
         logmsg(LOGMSG_ERROR, "close rc %d\n", crc);
@@ -947,7 +947,7 @@ cleanup:
             logmsg(LOGMSG_ERROR, "%s: failed to close curtran\n", __func__);
     }
 
-    thd->sqlclntstate = NULL;
+    thd->clnt = NULL;
     done_sql_thread();
     return ret;
 }

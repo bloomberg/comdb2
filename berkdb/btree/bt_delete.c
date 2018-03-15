@@ -229,10 +229,6 @@ __bam_adjindx(dbc, h, indx, indx_copy, is_insert)
 
 unsigned int hash_fixedwidth(const unsigned char *genid);
 
-int bdb_relink_txn_pglogs(void *bdb_state, void *relinks_hashtbl,
-    pthread_mutex_t * mutexp, unsigned char *fileid, db_pgno_t pgno,
-    db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
-
 int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
     db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
 
@@ -488,22 +484,15 @@ err:		for (; epg <= cp->csp; ++epg) {
 			b.size = TYPE(parent) == P_IRECNO ? RINTERNAL_SIZE :
 			    BINTERNAL_SIZE(((BINTERNAL *)b.data)->len);
 			if ((ret = __bam_rsplit_log(dbp, dbc->txn,
-			    &child->lsn, 0, PGNO(child), &a,
-			    PGNO(parent), RE_NREC(parent), &b,
-			    &parent->lsn)) != 0)
+				&child->lsn, 0, PGNO(child), &a,
+				PGNO(parent), RE_NREC(parent), &b,
+				&parent->lsn)) != 0)
 				goto stop;
-			if (!dbc->txn->relinks_hashtbl) {
-				DB_ASSERT(F_ISSET(dbc->txn, TXN_COMPENSATE));
-			} else if (bdb_relink_txn_pglogs(dbp->dbenv->
-				app_private, dbc->txn->relinks_hashtbl,
-				&dbc->txn->pglogs_mutex, mpf->fileid,
-				PGNO(child), PGNO(parent), PGNO_INVALID,
-				child->lsn) != 0 ||
-			    bdb_relink_pglogs(dbp->dbenv->app_private,
+			if (bdb_relink_pglogs(dbp->dbenv->app_private,
 				mpf->fileid, PGNO(child), PGNO(parent),
 				PGNO_INVALID, child->lsn) != 0) {
-				logmsg(LOGMSG_ERROR, "%s: failed relink pglogs\n",
-				    __func__);
+				logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n",
+					__func__);
 				abort();
 			}
 		} else

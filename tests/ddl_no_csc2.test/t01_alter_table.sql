@@ -156,3 +156,29 @@ ALTER TABLE t2 DROP FOREIGN KEY "mycons1", DROP FOREIGN KEY "mycons2" $$
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
 DROP TABLE t2;
 DROP TABLE t1;
+
+CREATE TABLE t1 {
+	tag ondisk {
+		int i null = yes
+		u_int j null = yes
+		u_longlong k null = yes
+	}
+	keys {
+		"idx1" = i
+		"idx2" = i + j
+	}
+	tag "tag1" {
+		int i
+		longlong j
+	}
+	tag "tag2" {
+		u_longlong j
+	}
+} $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+ALTER TABLE t1 ADD COLUMN l INT $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+ALTER TABLE t1 DROP COLUMN j $$
+ALTER TABLE t1 DROP COLUMN l $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+DROP TABLE t1;

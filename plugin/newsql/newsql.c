@@ -833,8 +833,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
      * sqlthd will be NULL */
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
     if (sqlthd) {
-        bzero(&sqlthd->sqlclntstate->conn, sizeof(struct conninfo));
-        sqlthd->sqlclntstate->origin[0] = 0;
+        bzero(&sqlthd->clnt->conn, sizeof(struct conninfo));
+        sqlthd->clnt->origin[0] = 0;
     }
 
     while (query) {

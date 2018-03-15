@@ -1406,6 +1406,11 @@ public class Comdb2Handle extends AbstractConnection {
         }
     }
 
+    /* Clear the ack flag */
+    public void clearAck() {
+        ack = false;
+    }
+
     @Override
     public boolean nextWithException() {
 

@@ -534,7 +534,6 @@ ASYNCERR
 exit
 curlist
 autonalyze
-sqlrdtimeout
 pushlogs
 startlsn
 NOSTATEMENT

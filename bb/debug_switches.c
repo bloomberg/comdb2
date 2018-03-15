@@ -42,7 +42,6 @@ static struct debug_switches {
     int inline_mtraps;
     int osql_verbose_history_replay;
     int abort_on_invalid_context;
-    int use_phase_3;
     int reject_writes_on_rtcpu;
     int ignore_extra_blobs;
     int support_datetimes;
@@ -92,7 +91,6 @@ int init_debug_switches(void)
     debug_switches.inline_mtraps = 0;
     debug_switches.osql_verbose_history_replay = 0;
     debug_switches.abort_on_invalid_context = 0;
-    debug_switches.use_phase_3 = 1;
     debug_switches.reject_writes_on_rtcpu = 1;
     debug_switches.ignore_extra_blobs = 0;
     debug_switches.support_datetimes = 1;
@@ -156,8 +154,6 @@ int init_debug_switches(void)
                         &debug_switches.osql_verbose_history_replay);
     register_int_switch("abort_on_invalid_context", "abort_on_invalid_context",
                         &debug_switches.abort_on_invalid_context);
-    register_int_switch("use_phase_3", "use_phase_3",
-                        &debug_switches.use_phase_3);
     register_int_switch("reject_writes_on_rtcpu", "reject_writes_on_rtcpu",
                         &debug_switches.reject_writes_on_rtcpu);
     register_int_switch("ignore_extra_blobs", "ignore_extra_blobs",
@@ -286,10 +282,6 @@ int debug_switch_osql_verbose_history_replay(void)
 int debug_switch_abort_on_invalid_context(void)
 {
     return debug_switches.abort_on_invalid_context;
-}
-int debug_switch_use_phase_3(void)
-{
-    return debug_switches.use_phase_3;
 }
 int debug_switch_reject_writes_on_rtcpu(void)
 {

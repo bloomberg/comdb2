@@ -603,7 +603,7 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
         osql_shadtbl_begin_query(thedb->bdb_env, clnt);
     }
 
-    thd->sqlclntstate = clnt;
+    thd->clnt = clnt;
     bzero(pCur, sizeof(*pCur));
     pCur->genid = genid;
 

@@ -88,10 +88,19 @@ __bam_split_recover(dbenv, dbtp, lsnp, op, info)
 	dbp = file_dbp->peer;
 
 
-	if (mpf && bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
-            argp->left, PGNO_INVALID, argp->right, *lsnp) != 0) {
-		logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);
-		abort();
+	if (mpf) {
+		if (argp->root_pgno != PGNO_INVALID) {
+			/* root split */
+			ret = bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
+				argp->root_pgno, argp->left, argp->right, *lsnp);
+		} else {
+			ret = bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
+				argp->left, argp->root_pgno, argp->right, *lsnp);
+		}
+		if (ret) {
+			logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);
+			abort();
+		}
 	}
 
 
@@ -468,7 +477,7 @@ __bam_rsplit_recover(dbenv, dbtp, lsnp, op, info)
 	dbp = file_dbp->peer;
 
 	if (mpf && bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
-	    argp->pgno, argp->root_pgno, PGNO_INVALID, *lsnp) != 0) {
+		argp->pgno, argp->root_pgno, PGNO_INVALID, *lsnp) != 0) {
 		logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);
 		abort();
 	}

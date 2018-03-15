@@ -29,7 +29,7 @@ function myarch
 arch=$(myarch)
 isrmt=
 mch=
-ptn=${TESTSROOTDIR}/tools/ptrantest
+ptn=${TESTSBUILDDIR}/ptrantest
 
 # cdb2test makes sure the master is listed first, followed by our reader
 rmt=${rmt%%:*}

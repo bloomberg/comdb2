@@ -3209,23 +3209,6 @@ int dyns_field_type(int fidx)
 
 int dyns_get_table_count(void) { return ntables; }
 
-int dyns_get_table_tags(int loadtables, int *outtables,
-                        char tags[][MAX_TAG_LEN + 1])
-{
-    int loadtbl = 0, i = 0;
-    *outtables = 0;
-
-    if (loadtables <= 0)
-        return -1;
-    loadtbl = (loadtables > ntables) ? ntables : loadtables;
-
-    for (i = 0; i < loadtbl; i++) {
-        strncpy(tags[i], tables[i].table_tag, sizeof(tables[i].table_tag));
-        (*outtables)++;
-    }
-    return 0;
-}
-
 int dyns_get_table_tag_size(char *tabletag)
 {
     int i = 0;

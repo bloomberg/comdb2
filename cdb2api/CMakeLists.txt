@@ -35,6 +35,7 @@ if (NOT COMDB2_BUILD_STATIC)
   target_link_libraries(cdb2api_shared
     ${OPENSSL_LIBRARIES}
     ${PROTOBUF_C_LIBRARY}
+    ${UNWIND_LIBRARY}
   )
 ENDIF()
 configure_file(cdb2api.pc cdb2api.pc @ONLY)

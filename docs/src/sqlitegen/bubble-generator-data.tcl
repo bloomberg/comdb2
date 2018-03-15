@@ -535,23 +535,27 @@ set all_graphs {
 
   create-table-ddl {
       stack
-      {line CREATE TABLE {opt IF NOT EXISTS}}
-      {line {opt db-name .} table-name}
-      {stack
-          {line ( }
-          {loop
-              {line column-name column-type
-                  {opt {loop { column-constraint } { , } } } }
-              { , }
-          }
-          {opt
-              {loop
-                  {line , table-constraint }
+      {line CREATE TABLE {opt IF NOT EXISTS} {opt db-name .} table-name}
+      {or
+          {line LIKE {opt db-name .} existing-table-name }
+          {stack
+              {stack
+                  {line ( }
+                  {loop
+                      {line column-name column-type
+                          {opt {loop { column-constraint } { , } } } }
+                      { , }
+                  }
+                  {opt
+                      {loop
+                          {line , table-constraint }
+                      }
+                  }
+                  {line ) }
               }
+              {line {opt table-options }}
           }
-          {line ) }
       }
-      {line {opt table-options }}
   }
 
   column-constraint {

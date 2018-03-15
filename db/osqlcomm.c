@@ -5703,7 +5703,7 @@ int osql_comm_check_bdb_lock(void)
         struct sql_thread *thd = pthread_getspecific(query_info_key);
         if (!thd) return 0;
 
-        struct sqlclntstate *clnt = thd->sqlclntstate;
+        struct sqlclntstate *clnt = thd->clnt;
         int sleepms;
 
         logmsg(LOGMSG_DEBUG, "%s bdb_lock_desired so calling recover_deadlock\n",
@@ -6429,6 +6429,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
             sc->resume = 1;
 
         iq->sc = sc;
+        sc->iq = iq;
         if (sc->db == NULL) {
             sc->db = get_dbtable_by_name(sc->table);
         }

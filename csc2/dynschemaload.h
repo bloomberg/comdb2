@@ -75,8 +75,6 @@ int dyns_get_table_field_option(char *tag, int fidx, int option,
 int dyns_table_field_depth(char *tabletag, int fidx, dpth_t *dpthinfo,
                            int ndpthsinfo, int *ndpthout);
 int dyns_get_table_count(void);
-int dyns_get_table_tags(int loadtables, int *outtables,
-                        char tags[][MAX_TAG_LEN + 1]);
 int dyns_get_table_tag_size(char *tabletag);
 int dyns_get_table_field_count(char *tabletag);
 

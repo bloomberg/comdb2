@@ -136,7 +136,7 @@ static const char *usage_text =
     " default 'local')\n"
     " -v, --verbose       Verbose debug output, implies --debugtrace"
     "\n"
-    " Examples: \n"
+    "Examples: \n"
     " * Querying db with name mydb on local server \n"
     "     cdb2sql mydb 'select 1'\n"
     " * Query db via interactive session:\n"

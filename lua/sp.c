@@ -156,7 +156,8 @@ static int setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
     q->iq.usedb = qdb;
     q->consumer = consumer;
     q->info = *info;
-    strcpy(q->info.spname, info->spname);
+    // memcpy because variable size struct breaks fortify checks in strcpy.
+    memcpy(q->info.spname, info->spname, spname_len + 1);
     strcpy(q->info.spname + spname_len + 1, info->spname + spname_len + 1);
     return bdb_trigger_subscribe(qdb->handle, &q->cond, &q->lock, &q->open);
 }
@@ -6633,7 +6634,7 @@ void lua_final(sqlite3_context *context)
     lua_func_arg_t *arg = sqlite3_user_data(context);
     struct sqlthdstate *thd = arg->thd;
     char *spname = arg->name;
-    struct sqlclntstate *clnt = thd->sqlthd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->sqlthd->clnt;
     char *err = NULL;
     struct sp_state *state = sqlite3_aggregate_context(context, sizeof(*state));
     if (state->sp == NULL) {
@@ -6661,7 +6662,7 @@ void lua_step(sqlite3_context *context, int argc, sqlite3_value **argv)
     lua_func_arg_t *arg = sqlite3_user_data(context);
     struct sqlthdstate *thd = arg->thd;
     char *spname = arg->name;
-    struct sqlclntstate *clnt = thd->sqlthd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->sqlthd->clnt;
     char *err = NULL;
     struct sp_state *state = sqlite3_aggregate_context(context, sizeof(*state));
     if (state->sp == NULL) {
@@ -6694,7 +6695,7 @@ void lua_func(sqlite3_context *context, int argc, sqlite3_value **argv)
     lua_func_arg_t *arg = sqlite3_user_data(context);
     struct sqlthdstate *thd = arg->thd;
     char *spname = arg->name;
-    struct sqlclntstate *clnt = thd->sqlthd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->sqlthd->clnt;
     char *err = NULL;
     struct sp_state state = {0};
     check_sp(spname, clnt, &state);
@@ -6723,7 +6724,7 @@ void *exec_trigger(trigger_reg_t *reg)
     struct sqlthdstate thd;
     sqlengine_thd_start(NULL, &thd, THRTYPE_TRIGGER);
     thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
-    thd.sqlthd->sqlclntstate = &clnt;
+    thd.sqlthd->clnt = &clnt;
 
     // We're making unprotected calls to lua below.
     // luaL_error() will cause abort()

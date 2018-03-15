@@ -719,7 +719,7 @@ struct sql_thread {
     LISTC_T(struct query_path_component) query_stats;
     hash_t *query_hash;
     double cost;
-    struct sqlclntstate *sqlclntstate; /* pointer to originating sqlclnt */
+    struct sqlclntstate *clnt;
     /* custom error message to send to client */
     char *error;
     struct master_entry *rootpages;

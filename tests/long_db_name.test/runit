@@ -302,7 +302,7 @@ assertcnt $INITNUMREC
 
 
 echo "Now call task that uses cdb2api to ins/upd/del"
-${TESTSROOTDIR}/tools/cdb2api_caller $dbnm > cdb2api_caller.out
+${TESTSBUILDDIR}/cdb2api_caller $dbnm > cdb2api_caller.out
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" > select_all.out
 

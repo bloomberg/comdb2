@@ -391,7 +391,7 @@ int mark_schemachange_over_tran(const char *table, tran_type *tran)
     /* mark the schema change over */
     int bdberr;
 
-    bdb_delete_disable_plan_genid(thedb->bdb_env, tran, &bdberr);
+    bdb_delete_sc_seed(thedb->bdb_env, tran, table, &bdberr);
 
     if (bdb_set_in_schema_change(tran, table, NULL /*schema_change_data*/,
                                  0 /*schema_change_data_len*/, &bdberr) ||
@@ -492,8 +492,8 @@ int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
                              unsigned int *stored_sc_host)
 {
     int bdberr;
-    int rc = bdb_get_disable_plan_genid(thedb->bdb_env, NULL, stored_sc_genid,
-                                        stored_sc_host, &bdberr);
+    int rc = bdb_get_sc_seed(thedb->bdb_env, NULL, s->table, stored_sc_genid,
+                             stored_sc_host, &bdberr);
     if (rc == -1 && bdberr == BDBERR_FETCH_DTA) {
         /* No seed exists, proceed. */
     } else if (rc) {
@@ -503,9 +503,8 @@ int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
         return SC_INTERNAL_ERROR;
     } else {
         /* found some seed */
-        logmsg(LOGMSG_INFO, "stored seed %016llx, sc seed %016lx, stored host "
-                            "%u, sc host %u\n",
-               *stored_sc_genid, sc_seed, *stored_sc_host, sc_host);
+        logmsg(LOGMSG_INFO, "stored seed %016llx, stored host %u\n",
+               *stored_sc_genid, *stored_sc_host);
         logmsg(
             LOGMSG_WARN,
             "Resuming previously restarted schema change, disabling plan.\n");
@@ -584,12 +583,13 @@ void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
     if (!currdb || !currdb->sc_to) return;
 
     /* if (is_schema_change_doomed()) */
-    if (gbl_sc_abort) return;
+    if (gbl_sc_abort || currdb->sc_abort || iq->sc_should_abort)
+        return;
 
     int rebuild = currdb->sc_to->plan && currdb->sc_to->plan->dta_plan;
     if (verify_record_constraint(iq, currdb->sc_to, trans, od_dta, ins_keys,
                                  NULL, 0, ".ONDISK", rebuild, 1) != 0) {
-        gbl_sc_abort = 1;
+        currdb->sc_abort = 1;
         MEMORY_SYNC;
     }
 }

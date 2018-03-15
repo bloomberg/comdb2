@@ -243,7 +243,6 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
         free(pool);
         return NULL;
     }
-    pool->stack_sz = DEFAULT_THD_STACKSZ;
 #endif
     listc_init(&pool->thdlist, offsetof(struct thd, thdlist_linkv));
     listc_init(&pool->freelist, offsetof(struct thd, freelist_linkv));
@@ -262,6 +261,7 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     pool->wait = 0;
     pool->exit_on_create_fail = 1;
     pool->dump_on_full = 0;
+    pool->stack_sz = DEFAULT_THD_STACKSZ;
 
     pthread_cond_init(&pool->wait_for_thread, NULL);
 
