@@ -8202,17 +8202,17 @@ static int update_pglogs_from_global_queues_int(
         assert(last == NULL || last->type == PGLOGS_QUEUE_RELINK ||
                log_compare(&last->commit_lsn, &cur->shadow_tran->birth_lsn) <=
                    0);
-   }
+    }
 
-   qcur->last = current;
+    qcur->last = current;
 
 #ifdef NEWSI_STAT
-   gettimeofday(&after, NULL);
-   timeval_diff(&before, &after, &diff);
-   timeval_add(&client_copy_time, &diff, &client_copy_time);
+    gettimeofday(&after, NULL);
+    timeval_diff(&before, &after, &diff);
+    timeval_add(&client_copy_time, &diff, &client_copy_time);
 #endif
 
-   return 0;
+    return 0;
 }
 
 static int update_pglogs_from_global_queues(bdb_cursor_impl_t *cur,
