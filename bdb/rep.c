@@ -988,7 +988,10 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
 
             if (!dontsend) {
                 uint32_t sendflags = 0;
-                if (!is_logput || (flags & DB_REP_NODROP))
+                if (!is_logput)
+                    sendflags |= (NET_SEND_NODROP|NET_SEND_NODELAY);
+
+                if (flags & DB_REP_NODROP)
                     sendflags |= NET_SEND_NODROP;
 
                 if (bdb_state->attr->net_inorder_logputs)
