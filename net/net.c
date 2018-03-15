@@ -2107,7 +2107,7 @@ static void dump_queue(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
                         int usertype, void *data, int datalen, int nodelay,
                         int numtails, void **tails, int *taillens, int nodrop,
-                        int inorder)
+                        int inorder, int trace)
 {
     host_node_type *host_node_ptr;
     net_send_message_header tmphd, msghd;
@@ -2127,7 +2127,7 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     if (usertype == 2) {
         int last = __atomic_exchange_n(&curr_udp_cnt, 0, __ATOMIC_SEQ_CST);
         if (last > 0)
-            printf("udp_packets sent %d\n", last);
+            logmsg(LOGMSG_USER, "udp_packets sent %d\n", last);
     }
 #endif
 
@@ -2152,22 +2152,38 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, host);
     if (host_node_ptr == NULL) {
         Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning INVALIDNODE\n", __func__,
+                    __LINE__);
+        }
         return NET_SEND_FAIL_INVALIDNODE;
     }
 
     if (host_node_ptr->host == netinfo_ptr->myhostname) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning FAIL_SENDTOME\n", 
+                    __func__, __LINE__);
+        }
         rc = NET_SEND_FAIL_SENDTOME;
         goto end;
     }
 
     /* fail if we don't have a socket */
     if (host_node_ptr->fd == -1) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning NOSOCK\n", 
+                    __func__, __LINE__);
+        }
         rc = NET_SEND_FAIL_NOSOCK;
         goto end;
     }
 
     /* fail if we are closed */
     if (host_node_ptr->closed) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning CLOSED\n", 
+                    __func__, __LINE__);
+        }
         rc = NET_SEND_FAIL_CLOSED;
         goto end;
     }
@@ -2225,22 +2241,38 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
 
     /* queue is full */
     if (-2 == rc) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning QUEUE-FULL\n", __func__,
+                    __LINE__);
+        }
         rc = NET_SEND_FAIL_QUEUE_FULL;
     }
 
     /* write_list failed to malloc */
     else if (2 == rc) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning MALLOC-FAIL\n", __func__,
+                    __LINE__);
+        }
         rc = NET_SEND_FAIL_MALLOC_FAIL;
     }
 
     /* all other failures */
     else if (0 != rc) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning WRITEFAIL\n", __func__,
+                    __LINE__);
+        }
         rc = NET_SEND_FAIL_WRITEFAIL;
     }
 
     /* testpoint- throw 'queue-full' errors */
     if ((0 == rc) && (NET_TEST_QUEUE_FULL == netinfo_ptr->net_test) &&
         (rand() % 1000)) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d debug/random QUEUE-FULL\n", 
+                    __func__, __LINE__);
+        }
         rc = NET_SEND_FAIL_QUEUE_FULL;
     }
 
@@ -2280,7 +2312,7 @@ int net_send_inorder(netinfo_type *netinfo_ptr, const char *host, int usertype,
                      void *data, int datalen, int nodelay)
 {
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 0,
-                        NULL, 0, 0, 1);
+                        NULL, 0, 0, 1, 0);
 }
 
 
@@ -2288,7 +2320,7 @@ int net_send_inorder_nodrop(netinfo_type *netinfo_ptr, const char *host, int use
                      void *data, int datalen, int nodelay)
 {
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 0,
-                        NULL, 0, 1, 1);
+                        NULL, 0, 1, 1, 0);
 }
 
 int net_send_flags(netinfo_type *netinfo_ptr, const char *host, int usertype,
@@ -2296,7 +2328,7 @@ int net_send_flags(netinfo_type *netinfo_ptr, const char *host, int usertype,
 {
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, 
             (flags & NET_SEND_NODELAY), 0, NULL, 0, (flags & NET_SEND_NODROP), 
-            (flags & NET_SEND_INORDER));
+            (flags & NET_SEND_INORDER), (flags & NET_SEND_TRACE));
 }
 
 int net_send(netinfo_type *netinfo_ptr, const char *host, int usertype,
@@ -2304,7 +2336,7 @@ int net_send(netinfo_type *netinfo_ptr, const char *host, int usertype,
 {
 
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 0,
-                        NULL, 0, 0, 0);
+                        NULL, 0, 0, 0, 0);
 }
 
 int net_send_nodrop(netinfo_type *netinfo_ptr, const char *host, int usertype,
@@ -2312,7 +2344,7 @@ int net_send_nodrop(netinfo_type *netinfo_ptr, const char *host, int usertype,
 {
 
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 0,
-                        NULL, 0, 1, 0);
+                        NULL, 0, 1, 0, 0);
 }
 
 int net_send_tails(netinfo_type *netinfo_ptr, const char *host, int usertype,
@@ -2321,7 +2353,7 @@ int net_send_tails(netinfo_type *netinfo_ptr, const char *host, int usertype,
 {
 
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay,
-                        numtails, tails, taillens, 0, 0);
+                        numtails, tails, taillens, 0, 0, 0);
 }
 
 int net_send_tail(netinfo_type *netinfo_ptr, const char *host, int usertype,
@@ -2341,7 +2373,7 @@ int net_send_tail(netinfo_type *netinfo_ptr, const char *host, int usertype,
     printf("\n");
 #endif
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 1,
-                        &tail, &tailen, 0, 0);
+                        &tail, &tailen, 0, 0, 0);
 }
 
 /* returns all nodes MINUS you */

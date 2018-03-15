@@ -1310,7 +1310,9 @@ REGISTER_TUNABLE("warn_queue_latency", "Trace for log queues processed that "
 REGISTER_TUNABLE("print_net_queue_size", "Trace for net queue size.  (Default: "
                  "off)", TUNABLE_BOOLEAN, &gbl_print_net_queue_size, 
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
+REGISTER_TUNABLE("verbose_repmore_trace", "Verbose trace for rep-more requests."
+                 "  (Default: off)", TUNABLE_BOOLEAN, &gbl_trace_repmore_reqs,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("osql_random_restart",
                  "Restart socksql transmission randomly.  (Default: off)",

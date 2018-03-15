@@ -696,7 +696,7 @@ void rep_reset_send_callcount(void) { callcount = 0; }
 void rep_reset_send_bytecount(void) { bytecount = 0; }
 
 int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
-                    const DB_LSN *lsnp, char *host, int flags, void *usr_ptr)
+                    const DB_LSN *lsnp, char *host, uint32_t flags, void *usr_ptr)
 {
     bdb_state_type *bdb_state;
     char *buf;
@@ -981,19 +981,35 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                 }
             }
 
+            if (dontsend && (flags & DB_REP_TRACE)) {
+                logmsg(LOGMSG_USER, "%s line %d logput to %s throttled\n",
+                        __func__, __LINE__, hostlist[i]);
+            }
+
             if (!dontsend) {
-                uint32_t flags = 0;
+                uint32_t sendflags = 0;
                 if (!is_logput || (flags & DB_REP_NODROP))
-                    flags |= NET_SEND_NODROP;
+                    sendflags |= NET_SEND_NODROP;
 
                 if (bdb_state->attr->net_inorder_logputs)
-                    flags |= NET_SEND_INORDER;
+                    sendflags |= NET_SEND_INORDER;
 
                 if (nodelay)
-                    flags |= NET_SEND_NODELAY;
+                    sendflags |= NET_SEND_NODELAY;
+
+                if (flags & DB_REP_TRACE) {
+                    logmsg(LOGMSG_USER, "%s line %d calling net_send_flags\n",
+                            __func__, __LINE__);
+                    sendflags |= NET_SEND_TRACE;
+                }
 
                 rc = net_send_flags(bdb_state->repinfo->netinfo,
-                        hostlist[i], USER_TYPE_BERKDB_REP, buf, bufsz, flags);
+                        hostlist[i], USER_TYPE_BERKDB_REP, buf, bufsz, sendflags);
+
+                if (flags & DB_REP_TRACE) {
+                    logmsg(LOGMSG_USER, "%s line %d net_send_flags rc %d\n",
+                            __func__, __LINE__, rc);
+                }
 
                 if (rc != 0)
                     rc = 1; /* haha, keep ignoring it */
