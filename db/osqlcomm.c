@@ -1333,21 +1333,6 @@ uint8_t *client_query_stats_put(const struct client_query_stats *p_stats,
     return p_buf;
 }
 
-/* exposed for dbglog_support */
-const uint8_t *dbglog_hdr_put(const struct dbglog_hdr *p_dbglog_hdr,
-                              uint8_t *p_buf, const uint8_t *p_buf_end)
-{
-    if (p_buf_end < p_buf || DBGLOG_HDR_LEN > (p_buf_end - p_buf))
-        return NULL;
-
-    p_buf = buf_put(&(p_dbglog_hdr->type), sizeof(p_dbglog_hdr->type), p_buf,
-                    p_buf_end);
-    p_buf = buf_put(&(p_dbglog_hdr->len), sizeof(p_dbglog_hdr->len), p_buf,
-                    p_buf_end);
-
-    return p_buf;
-}
-
 typedef struct osql_done_xerr {
     osql_rpl_t hd;
     struct errstat dt;
@@ -6222,8 +6207,8 @@ static int conv_rc_sql2blkop(struct ireq *iq, int step, int ixnum, int rc,
         break;
 
     case ERR_SQL_PREP:
-        reqerrstr(iq, FSQL_PREPARE, "sql query syntax error");
-        ret = FSQL_PREPARE;
+        reqerrstr(iq, ERR_SQL_PREPARE, "sql query syntax error");
+        ret = ERR_SQL_PREPARE;
         break;
 
     case OSQL_FAILDISPATCH:
@@ -6575,18 +6560,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         /* p_buf is pointing at client_query_stats if there is one */
-        if (type == OSQL_DONE_STATS) /* Never set anywhere. */
-        {
+        if (type == OSQL_DONE_STATS) { /* Never set anywhere. */
             dump_client_query_stats_packed(iq->dbglog_file, p_buf);
         }
-#if 0
-            I THINK THIS IS ALREADY DONE;
-            MAYBE WE SHOULD CHECK THAT NOPS==RECEIVEDROWS
-            if(!rc && dt->nops)
-               *nops = dt->nops; /* UPDATE are counted differently; bpstat->receivedrows;*/
-            else
-               *nops = *receivedrows; /*pure offloading let row countng on srvr side*/
-#endif
 
         return rc ? rc : OSQL_RC_DONE; /* signal caller done processing this
                                           request */

@@ -9,7 +9,6 @@ set(src
   constraints.c
   db_tunables.c
   db_util.c
-  dbglog_support.c
   dbqueue.c
   debug.c
   endian.c
