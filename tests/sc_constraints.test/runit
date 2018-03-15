@@ -169,8 +169,8 @@ function delete_records
     strt=$(date +%s)
 
     while [[ $j -le $nrecs ]]; do 
-         cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from $tbl where a = $j" >> delete.out 2>&1 || $(echo "ERROR DELETING"; exit -1)
-         cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from $foreigntbl where a = $j" >> delete_${foreigntbl}.out 2>&1 || $(echo "ERROR DELETING"; exit -1)
+         cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from $tbl where a = $j" >> delete.out 2>&1 || failexit "ERROR DELETING"
+         cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from $foreigntbl where a = $j" >> delete_${foreigntbl}.out 2>&1 || failexit "ERROR DELETING"
          let j=j+1
 	     let remaining=remaining-1
          #assertcnt $remaining
