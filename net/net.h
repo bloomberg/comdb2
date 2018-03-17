@@ -58,6 +58,11 @@ typedef int GETLSNFP(struct netinfo_struct *netinfo, void *record, int len,
                      int *file, int *offset);
 typedef int NEWNODEFP(struct netinfo_struct *netinfo, char hostname[],
                       int portnum);
+typedef void *QSTATINITFP(struct netinfo_struct *netinfo, const char *nettype, 
+        char hostname[]);
+
+typedef void QSTATCLEARFP(struct netinfo_struct *netinfo, void *netstat);
+typedef void QSTATENQUEFP(struct netinfo_struct *netinfo, void *rec, int len, void *netstat);
 
 typedef int NETALLOWFP(struct netinfo_struct *netinfo, const char *hostname);
 
