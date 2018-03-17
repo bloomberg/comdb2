@@ -1622,7 +1622,7 @@ typedef struct __rep_control {
 */
 
 static inline int net_get_lsn(bdb_state_type *bdb_state, const void *buf,
-                              int buflen, DB_LSN *lsn)
+                              int buflen, DB_LSN *lsn, int *myrectype)
 {
     int wire_header_type, usertype, recsize, rectype;
     uint8_t *p_buf;
@@ -1680,9 +1680,30 @@ static inline int net_get_lsn(bdb_state_type *bdb_state, const void *buf,
                                      p_buf_end)))
         return -1;
 
-    /* Check for LOGPUT */
-    if (rectype != 7)
+    /* Copyout rectype */
+    *myrectype = rectype;
+
+    return 0;
+}
+
+static inline int net_getlsn_rectype_rtn(netinfo_type *netinfo_ptr, 
+        void *record, int len, int *file, int *offset, int *rectype)
+{
+    bdb_state_type *bdb_state;
+    DB_LSN lsn;
+    int myrectype;
+
+    bdb_state = net_get_usrptr(netinfo_ptr);
+
+    if ((net_get_lsn(bdb_state, record, len, &lsn, &myrectype)) != 0)
         return -1;
+
+    if (file)
+        *file = lsn.file;
+    if (offset)
+        *offset = lsn.offset;
+    if (rectype)
+        *rectype = myrectype;
 
     return 0;
 }
@@ -1690,17 +1711,85 @@ static inline int net_get_lsn(bdb_state_type *bdb_state, const void *buf,
 int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, int *file,
                    int *offset)
 {
+    int rectype;
+    if ((net_getlsn_rectype_rtn(netinfo_ptr, record, len, file, offset, 
+                &rectype) == 0) && (rectype == 7)) {
+        return 0;
+    }
+    return -1;
+}
+
+typedef struct net_queue_stat
+{
+    char *nettype;
+    char *hostname;
+
+    /* Keep track of the minimum and maximum lsn */
+    DB_LSN min_lsn;
+    DB_LSN max_lsn;
+
+    /* Keep track of how many of each type of record */
+    int max_type;
+    int *type_counts;
+
+    /* Other counts */
+    int unknown_count;
+    int total_count;
+} net_queue_stat_t;
+
+void *net_init_queue_stats_rtn(netinfo_type *netinfo_type, char *nettype, 
+        char *hostname) {
+    net_queue_stat_t *n = calloc(sizeof(*n), 1);
+    n->nettype = strdup(nettype);
+    n->hostname = strdup(hostname);
+    n->max_type = -1;
+    return n;
+}
+
+void net_clear_queue_stats_rtn(netinfo_type *netinfo_type, void *netstat)
+{
+    net_queue_stat_t *n = (net_queue_stat_t *)netstat;
+    bzero(&n->type_counts, sizeof(int) * n->max_type);
+    bzero(&n->max_lsn, sizeof(n->max_lsn));
+    bzero(&n->min_lsn, sizeof(n->min_lsn));
+    n->unknown_count = n->total_count = 0;
+}
+
+void net_enque_write_rtn(netinfo_type *netinfo_ptr, void *rec, int len, 
+        void *netstat)
+{
+    net_queue_stat_t *n = (net_queue_stat_t *)netstat;
     bdb_state_type *bdb_state;
     DB_LSN lsn;
+    int rectype, rc;
 
+    /* get a pointer back to our bdb_state */
     bdb_state = net_get_usrptr(netinfo_ptr);
 
-    if ((net_get_lsn(bdb_state, record, len, &lsn)) != 0)
-        return -1;
+    if ((rc = net_get_lsn(bdb_state, rec, len, &lsn, &rectype)) == 0) {
+        if (rectype > n->max_type) {
+            n->type_counts = realloc(n->type_counts, sizeof(int) * 
+                    (rectype + 1));
+            for (int i = n->max_type + 1; i <= rectype ; i++) {
+                n->type_counts[i] = 0;
+            }
+            n->max_type = rectype;
+        }
+        n->type_counts[rectype]++;
 
-    *file = lsn.file;
-    *offset = lsn.offset;
-    return 0;
+        if (n->min_lsn.file == 0) {
+            n->min_lsn = n->max_lsn = lsn;
+        } else {
+            if (log_compare(&lsn, &n->min_lsn) < 0)
+                n->min_lsn = lsn;
+            if (log_compare(&lsn, &n->max_lsn) > 0)
+                n->max_lsn = lsn;
+        }
+        n->total_count++;
+    } else {
+        n->unknown_count++;
+        n->total_count++;
+    }
 }
 
 /* Given two outgoing net buffers, which one is lower */
@@ -1716,10 +1805,10 @@ int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
 
     /* Do not tolerate malformed buffers.  I am inserting x with the inorder
      * flag.  It has to be correct. */
-    if ((rc = net_get_lsn(bdb_state, x, xlen, &xlsn)) != 0)
+    if ((rc = net_get_lsn(bdb_state, x, xlen, &xlsn, NULL)) != 0)
         abort();
 
-    if ((rc = net_get_lsn(bdb_state, y, ylen, &ylsn)) != 0)
+    if ((rc = net_get_lsn(bdb_state, y, ylen, &ylsn, NULL)) != 0)
         return -1;
 
     return log_compare(&xlsn, &ylsn);

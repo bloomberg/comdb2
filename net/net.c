@@ -2455,6 +2455,11 @@ int net_get_all_nodes_connected(netinfo_type *netinfo_ptr,
     return count;
 }
 
+int net_register_queue_stats(netinfo_type *netinfo_ptr, QSTATINITFP *init, 
+        QSTATENQUEFP *enque, QSTATCLEARFP *clear) {
+    return 0;
+}
+
 int net_register_getlsn(netinfo_type *netinfo_ptr, GETLSNFP func)
 {
     netinfo_ptr->getlsn_rtn = func;
