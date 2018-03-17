@@ -135,6 +135,8 @@ extern int gbl_decoupled_logputs;
 extern int gbl_decoupled_fills;
 extern int gbl_fills_waitms;
 extern int gbl_verbose_fills;
+extern int gbl_enque_log_more;
+extern int gbl_retry_fill_with_flush;
 extern int gbl_trace_repmore_reqs;
 extern int gbl_verbose_repdups;
 extern int gbl_verify_waitms;

@@ -1,17 +1,30 @@
+# Things to investigate
+# 1 What if there is no blocking for the writes?
+# 2 LC_Cache
+# 3 Don't enque dups in the net-layer
+
 # Enable decoupled logs and fills
+# This setting to 0 disables the max-queue setting
+# BTW, this breaks if you allow it to grow forever: try to understand
+max_logput_queue 0 
 decoupled_logputs on
 decoupled_fills on
 fill_throttle 100
+# retry_fill_with_flush on
+
+# Enable cache
+#cache 100 mb
+
 # print_net_queue_size on
 
 # Linearizable is serializable + durable-lsn logic
 enable_serial_isolation
 
 # Enable durable lsn logic
-setattr DURABLE_LSNS 1
+# setattr DURABLE_LSNS 1
 
 # Maximum time we'll wait to retrieve a durable LSN from the master
-setattr DURABLE_LSN_REQUEST_WAITMS 2000
+# setattr DURABLE_LSN_REQUEST_WAITMS 2000
 
 # new_snapshot is seeing bugs here: disable for now, old snapshot works correctly
 disable_new_snapshot

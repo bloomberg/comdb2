@@ -411,13 +411,15 @@ __rep_new_master(dbenv, cntrl, eid)
 				if (__rep_send_message(dbenv, eid, REP_ALL_REQ, &lsn, 
                             NULL, DB_REP_NODROP|DB_REP_NOBUFFER, NULL) == 0) {
                     if (gbl_verbose_fills) {
-                        logmsg(LOGMSG_USER, "%s line %d sending REP_ALL_REQ\n",
-                                __func__, __LINE__);
+                        logmsg(LOGMSG_USER, "%s line %d sending REP_ALL_REQ "
+                                "for %d:%d\n", __func__, __LINE__, lsn.file,
+                                lsn.offset);
                     }
                     last_fill = comdb2_time_epochms();
                 } else if (gbl_verbose_fills) {
-                    logmsg(LOGMSG_USER, "%s line %d failed REP_ALL_REQ\n",
-                            __func__, __LINE__);
+                    logmsg(LOGMSG_USER, "%s line %d failed REP_ALL_REQ for "
+                            "%d:%d\n", __func__, __LINE__, lsn.file, 
+                            lsn.offset);
                 }
             }
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
