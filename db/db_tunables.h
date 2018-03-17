@@ -1295,7 +1295,7 @@ REGISTER_TUNABLE("req_all_threshold", "Use req_all if a replicant is behind by "
                  TUNABLE_INTEGER, &gbl_req_all_threshold,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fill_throttle", "Throttle fill-reqs to once per fill-throttle"
-                 " ms.  (Default: 100ms)", TUNABLE_INTEGER, &gbl_fills_waitms,
+                 " ms.  (Default: 500ms)", TUNABLE_INTEGER, &gbl_fills_waitms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("verbose_fills", "Print fill trace.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_verbose_fills,
@@ -1309,6 +1309,9 @@ REGISTER_TUNABLE("warn_queue_latency", "Trace for log queues processed that "
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("print_net_queue_size", "Trace for net queue size.  (Default: "
                  "off)", TUNABLE_BOOLEAN, &gbl_print_net_queue_size, 
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("retry_fill_with_flush", "Retry fills with flush-flag set."
+                 "  (Default: off)", TUNABLE_BOOLEAN, &gbl_retry_fill_with_flush,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("verbose_repmore_trace", "Verbose trace for rep-more requests."
                  "  (Default: off)", TUNABLE_BOOLEAN, &gbl_trace_repmore_reqs,

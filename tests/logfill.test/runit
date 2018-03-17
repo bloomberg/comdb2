@@ -19,16 +19,16 @@ fi
 function createtables
 {
     [[ "$debug" == 1 ]] && set -x
-    cdb2sql ${CDB2_OPTIONS} $DBNAME $stage "create table t1 {schema{int id int val null=yes} keys{ dup \"id\" = id }}" >/dev/null 2>&1
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME $stage "create table t1 {schema{int id int val null=yes} keys{ dup \"id\" = id }}" >/dev/null 2>&1
 }
 
 function waitforcoherency
 {
     [[ "$debug" == 1 ]] && set -x
     heal
-    ma=$(cdb2sql -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
+    ma=$($CDB2SQL_EXE -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
     m=${ma%%:*}
-    c=$(ssh $m "/opt/bb/bin/cdb2sql -tabs $db @localhost \"exec procedure sys.cmd.send('bdb cluster')\"")
+    c=$(ssh $m "$CDB2SQL_EXE -tabs $db @localhost \"exec procedure sys.cmd.send('bdb cluster')\"")
     echo "$c"
     echo "$c" | egrep COHERENT
     r=$?
@@ -36,9 +36,9 @@ function waitforcoherency
         echo "$(date) waiting for $db cluster to become coherent"
         heal
         sleep 1
-        ma=$(cdb2sql -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
+        ma=$($CDB2SQL_EXE -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
         m=${ma%%:*}
-        c=$(ssh $m "/opt/bb/bin/cdb2sql -tabs $db @localhost \"exec procedure sys.cmd.send('bdb cluster')\"")
+        c=$(ssh $m "$CDB2SQL_EXE -tabs $db @localhost \"exec procedure sys.cmd.send('bdb cluster')\"")
         echo "$c"
         echo "$c" | egrep COHERENT
         r=$?
@@ -55,14 +55,24 @@ function insertforever
         let j=j+1
     done
     echo "COMMIT" >> $sql
-    yes "$(cat $sql)" | cdb2sql ${CDB2_OPTIONS} $DBNAME default - > /dev/null 2>&1
+    timeout=$(echo $TEST_TIMEOUT | sed 's/[^0-9]*//g')
+    ttimeout=$(echo "$timeout / 1.2" | bc)
+    chr=$(echo $TEST_TIMEOUT | sed 's/[0-9]*//g')
+    j=0
+
+    while [[ $j -lt $2 ]]; do 
+        timeout $ttimeout$chr yes "$(cat $sql)" | $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default - > /dev/null 2>&1 &
+        let j=j+1
+    done
+
+    wait
 }
 
 function runtestwithoptions
 {
     [[ "$debug" == 1 ]] && set -x
     createtables
-    insertforever 1000
+    insertforever 1000 3
 }
 
 function runtest
