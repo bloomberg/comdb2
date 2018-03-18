@@ -95,6 +95,7 @@
 
 #include "dbinc/log.h"
 #include "dbinc/txn.h"
+#include <rep_qstat.h>
 
 #include <bdb_queuedb.h>
 
@@ -2127,6 +2128,8 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
     return net_is_single_sanctioned_node(bdb_state->repinfo->netinfo);
 }
 
+int gbl_rep_qstats = 1;
+
 static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 {
     DB_ENV *dbenv;
@@ -2525,6 +2528,10 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     net_register_netcmp(bdb_state->repinfo->netinfo, net_cmplsn_rtn);
 
     net_register_getlsn(bdb_state->repinfo->netinfo, net_getlsn_rtn);
+
+    /* Register qstat if its enabled */
+    if (gbl_rep_qstats)
+        net_rep_qstat_init(bdb_state->repinfo->netinfo);
 
     /* set the callback data so we get our bdb_state pointer from these
      * calls. */

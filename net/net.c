@@ -815,6 +815,11 @@ fprintf(stderr, "[%s] using malloc for %d bytes\n",
         host_node_ptr->write_tail = insert;
     }
 
+    if (netinfo_ptr->qstat_enque_rtn) {
+        (netinfo_ptr->qstat_enque_rtn)(netinfo_ptr, host_node_ptr->qstat,
+                insert->payload.raw, insert->len);
+    }
+
     if (host_node_ptr->netinfo_ptr->trace && debug_switch_net_verbose())
         logmsg(LOGMSG_USER, "Queing %zu bytes %llu\n", insert->len, gettmms());
     host_node_ptr->enque_count++;
@@ -2455,8 +2460,29 @@ int net_get_all_nodes_connected(netinfo_type *netinfo_ptr,
     return count;
 }
 
-int net_register_queue_stats(netinfo_type *netinfo_ptr, QSTATINITFP *init, 
-        QSTATENQUEFP *enque, QSTATCLEARFP *clear) {
+int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit, 
+        QSTATREADERFP *reader, QSTATENQUEFP *enque, QSTATCLEARFP *qclear, 
+        QSTATFREEFP *qfree)
+{
+    host_node_type *tmp_host_ptr;
+
+    /* Set qstat for each existing node */
+    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+
+    for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
+            tmp_host_ptr = tmp_host_ptr->next) {
+        tmp_host_ptr->qstat = qinit(netinfo_ptr, netinfo_ptr->service,
+                tmp_host_ptr->host);
+
+    }
+
+    netinfo_ptr->qstat_free_rtn = qfree;
+    netinfo_ptr->qstat_init_rtn = qinit;
+    netinfo_ptr->qstat_reader_rtn = reader;
+    netinfo_ptr->qstat_enque_rtn = enque;
+    netinfo_ptr->qstat_clear_rtn = qclear;
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+
     return 0;
 }
 
@@ -2793,6 +2819,11 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
         goto err;
     }
 
+    if (netinfo_ptr->qstat_init_rtn) {
+        ptr->qstat = (netinfo_ptr->qstat_init_rtn)(netinfo_ptr, 
+                netinfo_ptr->service, hostname);
+    }
+
     netinfo_ptr->head = ptr;
     ptr->stats.bytes_written = ptr->stats.bytes_read = 0;
     ptr->stats.throttle_waits = ptr->stats.reorders = 0;
@@ -2870,6 +2901,10 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
             tmp->next = host_node_ptr->next;
         }
     }
+
+    /* Call qstat free routine if its set */
+    if (netinfo_ptr->qstat_free_rtn)
+        (netinfo_ptr->qstat_free_rtn)(netinfo_ptr, host_node_ptr->qstat);
 
     // if last_used is eq to host_node_ptr->host, clear last_used_node_ptr
     if (host_node_ptr == netinfo_ptr->last_used_node_ptr) {
@@ -4386,6 +4421,11 @@ static void *writer_thread(void *args)
             host_node_ptr->enque_count = 0;
             host_node_ptr->enque_bytes = 0;
 
+            if (netinfo_ptr->qstat_clear_rtn) {
+                (netinfo_ptr->qstat_clear_rtn)(netinfo_ptr, 
+                        host_node_ptr->qstat);
+            }
+
             /* release this before writing to sock*/
             Pthread_mutex_unlock(&(host_node_ptr->enquelk));
 
@@ -4672,7 +4712,7 @@ static void *reader_thread(void *arg)
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
     wire_header_type wire_header;
-    int rc;
+    int rc, set_qstat = 0;
     int th_start_time = comdb2_time_epoch();
     char fromhost[256], tohost[256];
 
@@ -4689,8 +4729,15 @@ static void *reader_thread(void *arg)
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
 
+
     while (!host_node_ptr->decom_flag && !host_node_ptr->closed &&
            !netinfo_ptr->exiting) {
+
+        if (set_qstat == 0 && netinfo_ptr->qstat_reader_rtn) {
+            (netinfo_ptr->qstat_reader_rtn)(netinfo_ptr, host_node_ptr->qstat);
+            set_qstat = 1;
+        }
+
         host_node_ptr->timestamp = time(NULL);
 
         if (netinfo_ptr->trace && debug_switch_net_verbose())

@@ -58,11 +58,13 @@ typedef int GETLSNFP(struct netinfo_struct *netinfo, void *record, int len,
                      int *file, int *offset);
 typedef int NEWNODEFP(struct netinfo_struct *netinfo, char hostname[],
                       int portnum);
-typedef void *QSTATINITFP(struct netinfo_struct *netinfo, const char *nettype, 
-        char hostname[]);
 
+typedef void *QSTATINITFP(struct netinfo_struct *netinfo, const char *nettype, 
+        const char hostname[]);
+typedef void QSTATREADERFP(struct netinfo_struct *netinfo, void *netstat);
 typedef void QSTATCLEARFP(struct netinfo_struct *netinfo, void *netstat);
-typedef void QSTATENQUEFP(struct netinfo_struct *netinfo, void *rec, int len, void *netstat);
+typedef void QSTATENQUEFP(struct netinfo_struct *netinfo, void *netstat, void *rec, int len);
+typedef void QSTATFREEFP(struct netinfo_struct *netinfo, void *netstat);
 
 typedef int NETALLOWFP(struct netinfo_struct *netinfo, const char *hostname);
 
@@ -141,6 +143,10 @@ int net_register_handler(netinfo_type *netinfo_ptr, int usertype, NETFP func);
 int net_register_hostdown(netinfo_type *netinfo_ptr, HOSTDOWNFP func);
 
 int net_register_getlsn(netinfo_type *netinfo_ptr, GETLSNFP func);
+
+int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
+        QSTATREADERFP *reader, QSTATENQUEFP *enque, QSTATCLEARFP *qclear,
+        QSTATFREEFP *qfree);
 
 /* register a callback that you can compare the order of things
    already on the write queue. */

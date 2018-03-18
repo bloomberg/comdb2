@@ -43,6 +43,7 @@ add_library(bdb
   queuedb.c
   read.c
   rep.c
+  rep_qstat.c
   rowlocks.c
   rowlocks_util.c
   serializable.c

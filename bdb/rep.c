@@ -378,54 +378,7 @@ typedef struct {
     u_int32_t flags;   /* log_put flag value. */
 } rep_control_type;
 
-#define REP_ALIVE 1       /* I am alive message. */
-#define REP_ALIVE_REQ 2   /* Request for alive messages. */
-#define REP_ALL_REQ 3     /* Request all log records greater than LSN. */
-#define REP_DUPMASTER 4   /* Duplicate master detected; propagate. */
-#define REP_FILE 5        /* Page of a database file. */
-#define REP_FILE_REQ 6    /* Request for a database file. */
-#define REP_LOG 7         /* Log record. */
-#define REP_LOG_MORE 8    /* There are more log records to request. */
-#define REP_LOG_REQ 9     /* Request for a log record. */
-#define REP_MASTER_REQ 10 /* Who is the master */
-#define REP_NEWCLIENT 11  /* Announces the presence of a new client. */
-#define REP_NEWFILE 12    /* Announce a log file change. */
-#define REP_NEWMASTER 13  /* Announces who the master is. */
-#define REP_NEWSITE                                                            \
-    14                     /* Announces that a site has heard from a new       \
-                            * site; like NEWCLIENT, but indirect.  A           \
-                            * NEWCLIENT message comes directly from the new    \
-                            * client while a NEWSITE comes indirectly from     \
-                            * someone who heard about a NEWSITE.               \
-                            */
-#define REP_PAGE 15        /* Database page. */
-#define REP_PAGE_REQ 16    /* Request for a database page. */
-#define REP_PLIST 17       /* Database page list. */
-#define REP_PLIST_REQ 18   /* Request for a page list. */
-#define REP_VERIFY 19      /* A log record for verification. */
-#define REP_VERIFY_FAIL 20 /* The client is outdated. */
-#define REP_VERIFY_REQ 21  /* Request for a log record to verify. */
-#define REP_VOTE1 22       /* Send out your information for an election. */
-#define REP_VOTE2 23       /* Send a "you are master" vote. */
-#define REP_LOG_LOGPUT 24
-#define REP_PGDUMP_REQ 25
-#define REP_GEN_VOTE1 26 /* Send out your information for an election */
-#define REP_GEN_VOTE2 27 /* Send a "you are master" vote. */
-#define REP_LOG_FILL 28
-
-/* COMDB2 MODIFICATION */
-/* We want to be able to throttle log propagation to avoid filling
-   the net queue; this will allow signal messages and catching up
-   log transfer to be transferred even though the database is under heavy
-   load
-   Problem is in berkdb_send_rtn both regular log messages and catching
-   up log replies are coming as REP_LOG
-   In __log_push we replace REP_LOG with REP_LOG_LOGPUT so we know
-   that this must be throttled; we revertto REP_LOG in the same routine
- */
-#define REP_LOG_LOGPUT 24 /* Master internal: same as REP_LOG */
-
-/*extern int __bdb_no_send;*/
+#include <dbinc/rep_types.h>
 
 int is_electable(bdb_state_type *bdb_state, int *out_num_up,
                  int *out_num_connected);
@@ -1621,7 +1574,7 @@ typedef struct __rep_control {
 } REP_CONTROL;
 */
 
-static inline int net_get_lsn(bdb_state_type *bdb_state, const void *buf,
+int net_get_lsn_rectype(bdb_state_type *bdb_state, const void *buf,
                               int buflen, DB_LSN *lsn, int *myrectype)
 {
     int wire_header_type, usertype, recsize, rectype;
@@ -1686,7 +1639,7 @@ static inline int net_get_lsn(bdb_state_type *bdb_state, const void *buf,
     return 0;
 }
 
-static inline int net_getlsn_rectype_rtn(netinfo_type *netinfo_ptr, 
+static int net_getlsn_rectype(netinfo_type *netinfo_ptr, 
         void *record, int len, int *file, int *offset, int *rectype)
 {
     bdb_state_type *bdb_state;
@@ -1695,7 +1648,7 @@ static inline int net_getlsn_rectype_rtn(netinfo_type *netinfo_ptr,
 
     bdb_state = net_get_usrptr(netinfo_ptr);
 
-    if ((net_get_lsn(bdb_state, record, len, &lsn, &myrectype)) != 0)
+    if ((net_get_lsn_rectype(bdb_state, record, len, &lsn, &myrectype)) != 0)
         return -1;
 
     if (file)
@@ -1712,84 +1665,11 @@ int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, int *file,
                    int *offset)
 {
     int rectype;
-    if ((net_getlsn_rectype_rtn(netinfo_ptr, record, len, file, offset, 
-                &rectype) == 0) && (rectype == 7)) {
+    if ((net_getlsn_rectype(netinfo_ptr, record, len, file, offset, &rectype)
+                == 0) && (rectype == 7)) {
         return 0;
     }
     return -1;
-}
-
-typedef struct net_queue_stat
-{
-    char *nettype;
-    char *hostname;
-
-    /* Keep track of the minimum and maximum lsn */
-    DB_LSN min_lsn;
-    DB_LSN max_lsn;
-
-    /* Keep track of how many of each type of record */
-    int max_type;
-    int *type_counts;
-
-    /* Other counts */
-    int unknown_count;
-    int total_count;
-} net_queue_stat_t;
-
-void *net_init_queue_stats_rtn(netinfo_type *netinfo_type, char *nettype, 
-        char *hostname) {
-    net_queue_stat_t *n = calloc(sizeof(*n), 1);
-    n->nettype = strdup(nettype);
-    n->hostname = strdup(hostname);
-    n->max_type = -1;
-    return n;
-}
-
-void net_clear_queue_stats_rtn(netinfo_type *netinfo_type, void *netstat)
-{
-    net_queue_stat_t *n = (net_queue_stat_t *)netstat;
-    bzero(&n->type_counts, sizeof(int) * n->max_type);
-    bzero(&n->max_lsn, sizeof(n->max_lsn));
-    bzero(&n->min_lsn, sizeof(n->min_lsn));
-    n->unknown_count = n->total_count = 0;
-}
-
-void net_enque_write_rtn(netinfo_type *netinfo_ptr, void *rec, int len, 
-        void *netstat)
-{
-    net_queue_stat_t *n = (net_queue_stat_t *)netstat;
-    bdb_state_type *bdb_state;
-    DB_LSN lsn;
-    int rectype, rc;
-
-    /* get a pointer back to our bdb_state */
-    bdb_state = net_get_usrptr(netinfo_ptr);
-
-    if ((rc = net_get_lsn(bdb_state, rec, len, &lsn, &rectype)) == 0) {
-        if (rectype > n->max_type) {
-            n->type_counts = realloc(n->type_counts, sizeof(int) * 
-                    (rectype + 1));
-            for (int i = n->max_type + 1; i <= rectype ; i++) {
-                n->type_counts[i] = 0;
-            }
-            n->max_type = rectype;
-        }
-        n->type_counts[rectype]++;
-
-        if (n->min_lsn.file == 0) {
-            n->min_lsn = n->max_lsn = lsn;
-        } else {
-            if (log_compare(&lsn, &n->min_lsn) < 0)
-                n->min_lsn = lsn;
-            if (log_compare(&lsn, &n->max_lsn) > 0)
-                n->max_lsn = lsn;
-        }
-        n->total_count++;
-    } else {
-        n->unknown_count++;
-        n->total_count++;
-    }
 }
 
 /* Given two outgoing net buffers, which one is lower */
@@ -1805,10 +1685,10 @@ int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
 
     /* Do not tolerate malformed buffers.  I am inserting x with the inorder
      * flag.  It has to be correct. */
-    if ((rc = net_get_lsn(bdb_state, x, xlen, &xlsn, NULL)) != 0)
+    if ((rc = net_get_lsn_rectype(bdb_state, x, xlen, &xlsn, NULL)) != 0)
         abort();
 
-    if ((rc = net_get_lsn(bdb_state, y, ylen, &ylsn, NULL)) != 0)
+    if ((rc = net_get_lsn_rectype(bdb_state, y, ylen, &ylsn, NULL)) != 0)
         return -1;
 
     return log_compare(&xlsn, &ylsn);
