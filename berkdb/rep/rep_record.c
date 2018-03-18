@@ -61,6 +61,8 @@ void bdb_get_writelock(void *bdb_state,
     const char *idstr, const char *funcname, int line);
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
+int rep_qstat_has_fills(void);
+void rep_qstat_lsn_range(DB_LSN *min_lsn, DB_LSN *max_lsn);
 
 extern int gbl_rep_printlock;
 extern int gbl_dispatch_rowlocks_bench;
@@ -385,6 +387,7 @@ int gbl_last_master_req = 0;
 int gbl_verbose_fills = 0;
 
 static int queue_log_more_count = 0;
+static int queue_log_fill_count = 0;
 int gbl_trace_repmore_reqs = 0;
 int gbl_verbose_repdups = 0;
 int gbl_retry_fill_with_flush = 0;
@@ -393,7 +396,7 @@ uint64_t subtract_lsn(void *bdb_state, DB_LSN *lsn1, DB_LSN *lsn2);
 
 static void *apply_thread(void *arg) 
 {
-    int ret, rc, log_more_count;
+    int ret, rc, log_more_count, log_fill_count;
     int i_am_replicant;
 	LOG *lp;
 	DB_LOG *dblp;
@@ -429,10 +432,15 @@ static void *apply_thread(void *arg)
                 queue_log_more_count--;
                 log_more_count = queue_log_more_count;
             }
+            if (q->rp.rectype == REP_LOG_FILL) {
+                queue_log_fill_count--;
+                log_fill_count = queue_log_fill_count;
+            }
 
             if (listc_size(&log_queue) == 0) {
                 memset(&max_queued_lsn, 0, sizeof(max_queued_lsn));
                 assert(queue_log_more_count == 0);
+                assert(queue_log_fill_count == 0);
             }
             pthread_mutex_unlock(&rep_queue_lock);
 
@@ -512,6 +520,7 @@ static void *apply_thread(void *arg)
 
         max_queued = max_queued_lsn;
         log_more_count = queue_log_more_count;
+        log_fill_count = queue_log_fill_count;
         pthread_mutex_unlock(&rep_queue_lock);
         get_master_lsn(dbenv->app_private, &master_lsn);
         MUTEX_LOCK(dbenv, db_rep->db_mutexp);
@@ -554,7 +563,7 @@ static void *apply_thread(void *arg)
         }
 
         /* There's a log_more in the queue */
-        if (log_more_count || comdb2_time_epochms() - 
+        if (log_more_count || log_fill_count || comdb2_time_epochms() -
                 last_fill < gbl_fills_waitms) {
             pthread_mutex_lock(&rep_queue_lock);
             continue;
@@ -656,6 +665,9 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
 
     if (q->rp.rectype == REP_LOG_MORE) {
         queue_log_more_count++;
+    }
+    if (q->rp.rectype == REP_LOG_FILL) {
+        queue_log_fill_count++;
     }
 
     /* Block waiting for the queue to shrink */
@@ -1202,6 +1214,16 @@ skip:				/*
                     "%d:%d\n", __func__, __LINE__, *eidp, lsn.file, lsn.offset);
         }
 
+        if (gbl_decoupled_logputs && gbl_decoupled_fills &&
+                rep_qstat_has_fills()) {
+            if (gbl_verbose_fills) {
+                logmsg(LOGMSG_USER, "%s line %d ignoring REP_ALL_REQ from %s "
+                        "for %d:%d on queued fills\n", __func__, __LINE__,
+                        *eidp, lsn.file, lsn.offset);
+            }
+			goto errlock;
+        }
+
 		type = (gbl_decoupled_logputs && gbl_decoupled_fills) ? 
             REP_LOG_FILL : REP_LOG;
 		flags = IS_ZERO_LSN(rp->lsn) ||
@@ -1430,6 +1452,17 @@ more:           if (type == REP_LOG_MORE) {
 			    (u_long)((DB_LSN *)rec->data)->offset);
 		}
 #endif
+
+        if (gbl_decoupled_logputs && gbl_decoupled_fills &&
+                rep_qstat_has_fills()) {
+            if (gbl_verbose_fills) {
+                logmsg(LOGMSG_USER, "%s line %d ignoring REP_LOG_REQ from %s "
+                        "for %d:%d on queued fills\n", __func__, __LINE__,
+                        *eidp, lsn.file, lsn.offset);
+            }
+			goto errlock;
+        }
+
 		/*
 		 * There are three different cases here.
 		 * 1. We asked for a particular LSN and got it.

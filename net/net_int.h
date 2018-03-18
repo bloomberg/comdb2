@@ -206,6 +206,7 @@ struct host_node_tag {
     int last_print_queue_time;
     int interval_max_queue_count;
     int interval_max_queue_bytes;
+    void *qstat;
 };
 
 /* Cut down data structure used for storing the sanc list. */
@@ -324,6 +325,11 @@ struct netinfo_struct {
     int use_getservbyname;
     int hellofd;
     GETLSNFP *getlsn_rtn;
+    QSTATINITFP *qstat_init_rtn;
+    QSTATREADERFP *qstat_reader_rtn;
+    QSTATENQUEFP *qstat_enque_rtn;
+    QSTATCLEARFP *qstat_clear_rtn;
+    QSTATFREEFP *qstat_free_rtn;
 };
 
 typedef struct ack_state_struct {
