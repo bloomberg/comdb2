@@ -59,5 +59,6 @@
 #define REP_GEN_VOTE2   27 /* Send a "you are master" vote. */
 
 #define REP_LOG_FILL    28
+#define REP_MAX_TYPE    29
 
 #endif
