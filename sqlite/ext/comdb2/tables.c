@@ -255,6 +255,8 @@ int comdb2SystblInit(
     rc = sqlite3_create_module(db, "comdb2_timepartshards", &systblTimepartShardsModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_timepartevents", &systblTimepartEventsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = systblTypeSamplesInit(db);
 #endif
   return rc;
 }
