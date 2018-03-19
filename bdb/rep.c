@@ -1033,38 +1033,30 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
             logmsg(LOGMSG_USER, "--- sending seq %d to %s, nodelay is %d\n", tmpseq,
                     host, nodelay);
 
-        if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
-            if ((flags & DB_REP_PERMANENT) && (tran)) {
-                if (bdb_state->attr->net_send_gblcontext && gblcontext) {
-                    dontsend = is_logput && throttle_updates_incoherent_nodes(
-                                                bdb_state, host);
-                    if (!gbl_rowlocks && !dontsend) {
+        uint32_t sendflags = 0;
 
-                        if (gblcontext == -1ULL) {
-                            logmsg(LOGMSG_ERROR,
-                                   "SENDING context -1 to node %s\n", host);
-                            cheap_stack_trace();
-                        }
+        if (!is_logput)
+            sendflags |= (NET_SEND_NODROP|NET_SEND_NODELAY);
 
-                        rc = net_send(bdb_state->repinfo->netinfo, host,
-                                      USER_TYPE_GBLCONTEXT, &gblcontext,
-                                      sizeof(unsigned long long), nodelay);
-                        if (rc != 0) {
-                            outrc = 1;
-                        }
-                    } else {
-                        outrc = 1;
-                    }
-                }
-            }
+        if (flags & DB_REP_NODROP)
+            sendflags |= NET_SEND_NODROP;
 
-        if (!outrc) {
-            rc = net_send(bdb_state->repinfo->netinfo, host,
-                          USER_TYPE_BERKDB_REP, buf, bufsz, nodelay);
+        if (bdb_state->attr->net_inorder_logputs)
+            sendflags |= NET_SEND_INORDER;
 
-            if (rc != 0)
-                outrc = 1;
+        if (nodelay)
+            sendflags |= NET_SEND_NODELAY;
+
+        if (flags & DB_REP_TRACE) {
+            logmsg(LOGMSG_USER, "%s line %d calling net_send_flags\n",
+                    __func__, __LINE__);
+            sendflags |= NET_SEND_TRACE;
         }
+
+        rc = net_send_flags(bdb_state->repinfo->netinfo, host,
+                      USER_TYPE_BERKDB_REP, buf, bufsz, sendflags);
+        if (rc != 0)
+            outrc = 1;
     }
 
     if (useheap)
