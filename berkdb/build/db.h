@@ -354,6 +354,7 @@ struct __db_trigger_subscription;
 /* Don't allow these to overlap with log_put flags */
 #define DB_REP_NODROP           0x0001000
 #define DB_REP_TRACE           0x0002000 /* Trace this through the net layer */
+#define DB_REP_SENDACK          0x0004000
 
 /*******************************************************
  * Locking.
