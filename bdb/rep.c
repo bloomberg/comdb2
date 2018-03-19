@@ -611,25 +611,60 @@ int is_incoherent(bdb_state_type *bdb_state, const char *host)
     return is_incoherent;
 }
 
-/* 1/10th of the logfile */
-int gbl_incoherent_logput_window = 1000000;
+int gbl_throttle_logput_trace = 0;
+/* Tiny: 100000 bytes */
+int gbl_incoherent_logput_window = 100000;
 
 static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
                                              const char *host)
 {
-    int ret = 0;
+    int ret = 0, now, pr=0;
+    static int lastpr = 0;
+    uint64_t throttles = 0;
     int64_t cntbytes;
 
+    if (gbl_throttle_logput_trace && ((now = time(NULL)) - lastpr)) {
+        pr = 1;
+        lastpr = now;
+    }
+
+    /* INCOHERENT & INCOHERENT_SLOW */
     if (is_incoherent(bdb_state, host)) {
+        uint32_t window = gbl_incoherent_logput_window;
         DB_LSN *lsnp, *masterlsn;
-        lsnp = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
-        masterlsn = &bdb_state->seqnum_info
-                         ->seqnums[nodeix(bdb_state->repinfo->master_host)]
-                         .lsn;
-        cntbytes = subtract_lsn(bdb_state, masterlsn, lsnp);
-        if (cntbytes > gbl_incoherent_logput_window) {
+        if (!window) {
             ret = 1;
+            throttles++;
+            if (pr) {
+                logmsg(LOGMSG_USER, "%s throttling logput to %s, incoherent, "
+                        "%llu throttles\n", __func__, host, throttles);
+            }
+        } else {
+            lsnp = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
+            masterlsn = &bdb_state->seqnum_info
+                ->seqnums[nodeix(bdb_state->repinfo->master_host)]
+                .lsn;
+            cntbytes = subtract_lsn(bdb_state, masterlsn, lsnp);
+            if (cntbytes > window) {
+                ret = 1;
+                throttles++;
+                if (pr) {
+                    logmsg(LOGMSG_USER, "%s throttling logput to %s, incoherent"
+                            "%llu bytes behind, total throttles=%llu\n",
+                            __func__, host, cntbytes, throttles);
+                }
+            } else {
+                if (pr) {
+                    logmsg(LOGMSG_USER, "%s NOT throttling logput to %s, "
+                            "incoherent and %llu bytes behind, total "
+                            "throttles=%llu\n", __func__, host, cntbytes, 
+                            throttles);
+                }
+            }
         }
+    } else if (pr) {
+        logmsg(LOGMSG_USER, "%s allowing logput to %s, coherent\n", __func__,
+                host, throttles);
     }
 
     return ret;
@@ -647,6 +682,9 @@ unsigned long long rep_get_send_bytecount(void) { return bytecount; }
 void rep_reset_send_callcount(void) { callcount = 0; }
 
 void rep_reset_send_bytecount(void) { bytecount = 0; }
+
+extern int gbl_decoupled_logputs;
+extern int gbl_decoupled_fills;
 
 int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                     const DB_LSN *lsnp, char *host, uint32_t flags, void *usr_ptr)
@@ -713,7 +751,9 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
 
     buf_get(&rectype, sizeof(rectype), p_buf, p_buf_end);
 
-    if (rectype == REP_LOG_LOGPUT) {
+    if (rectype == REP_LOG_LOGPUT || 
+            (gbl_decoupled_logputs && gbl_decoupled_fills && 
+             rectype == REP_LOG)) {
         is_logput = 1;
         rectype = REP_LOG;
         p_buf = (uint8_t *)&rep_control->rectype;
@@ -2262,6 +2302,8 @@ int verify_master_leases(bdb_state_type *bdb_state, const char *func,
     return verify_master_leases_int(bdb_state, comlist, comcount, func, line);
 }
 
+int gbl_catchup_window_trace = 0;
+
 static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                                      seqnum_type *seqnum, char *host,
                                      uint8_t is_tcp)
@@ -2273,7 +2315,8 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     int change_coherency;
     seqnum_type zero_seq;
     DB_LSN *masterlsn;
-    int rc, cntbytes;
+    int rc;
+    uint64_t cntbytes;
     struct waiting_for_lsn *waitforlsn = NULL;
     int now;
     int track_times;
@@ -2341,6 +2384,15 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         }
 
         change_coherency = (seqnum->commit_generation == mygen);
+
+        static int lastpr = 0;
+        int now;
+        // TODO XXX DELETE THIS
+        if ((now = time(NULL)) - lastpr) {
+            logmsg(LOGMSG_USER, "%s line %d change_coherency is %d for node %s, commit-gen=%d, mygen=%d\n",
+                    __func__, __LINE__, change_coherency, host, seqnum->commit_generation, mygen);
+            lastpr = now;
+        }
     } else
         change_coherency = 1;
 
@@ -2504,10 +2556,8 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                                     seqnum->lsn.offset, seqnum->generation, gen,
                                     bdb_state->repinfo->master_host);
                         }
-                    }
+                    } 
 
-                    /* INCOHERENT_WAIT if this node is within the catchup_window
-                     */
                     if (catchup_window &&
                         bdb_state->coherent_state[nodeix(host)] ==
                             STATE_INCOHERENT) {
@@ -2517,9 +2567,31 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                                           .lsn);
                         cntbytes =
                             subtract_lsn(bdb_state, masterlsn, &seqnum->lsn);
-                        if (cntbytes < catchup_window)
+                        if (cntbytes < catchup_window) {
                             bdb_state->coherent_state[nodeix(host)] =
                                 STATE_INCOHERENT_WAIT;
+                            if (gbl_catchup_window_trace) {
+                                logmsg(LOGMSG_USER, "%s line %d setting %s to "
+                                        "incoherent wait, seqnum lsn %d:%d, "
+                                        "master lsn %d:%d\n", __func__,__LINE__,
+                                        host, seqnum->lsn.file,
+                                        seqnum->lsn.offset, masterlsn->file, 
+                                        masterlsn->offset);
+                            }
+                        } else {
+                            static int lastpr = 0;
+                            int now;
+                            if ((now = time(NULL)) - lastpr) {
+                                logmsg(LOGMSG_USER, "%s line %d, %s stays "
+                                        "incoherent, "
+                                        "seqnum lsn %d:%d, master lsn %d:%d,"
+                                        "behind by %llu\n", __func__,__LINE__,
+                                        host, seqnum->lsn.file,
+                                        seqnum->lsn.offset, masterlsn->file,
+                                        masterlsn->offset, cntbytes);
+                                lastpr = now;
+                            }
+                        }
                     }
                 }
             }

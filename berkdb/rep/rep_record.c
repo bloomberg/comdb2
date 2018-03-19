@@ -76,6 +76,7 @@ int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_decoupled_fills = 1;
 int gbl_master_req_waitms = 200;
+int gbl_fill_sendack_threshold = 100000;
 // TODO: VERIFY_WAITMS
 int gbl_verify_waitms = 100;
 int gbl_fills_waitms = 500;
@@ -442,6 +443,10 @@ static void *apply_thread(void *arg)
                 assert(queue_log_more_count == 0);
                 assert(queue_log_fill_count == 0);
             }
+
+            assert(listc_size(&log_queue) >= queue_log_more_count);
+            assert(listc_size(&log_queue) >= queue_log_fill_count);
+
             pthread_mutex_unlock(&rep_queue_lock);
 
             if (gbl_warn_queue_latency_threshold > 0 &&
@@ -636,6 +641,7 @@ void __rep_empty_log_queue_lk(void)
     while (q = listc_rtl(&log_queue)) {
         free(q);
     }
+    queue_log_fill_count = queue_log_more_count = 0;
     memset(&max_queued_lsn, 0, sizeof(max_queued_lsn));
 }
 
@@ -658,18 +664,6 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
     memcpy(&q->data, rec->data, q->size);
     pthread_mutex_lock(&rep_queue_lock);
 
-    /* Set before enqueing */
-    if (log_compare(&q->rp.lsn, &max_queued_lsn) > 0) {
-        max_queued_lsn = q->rp.lsn;
-    }
-
-    if (q->rp.rectype == REP_LOG_MORE) {
-        queue_log_more_count++;
-    }
-    if (q->rp.rectype == REP_LOG_FILL) {
-        queue_log_fill_count++;
-    }
-
     /* Block waiting for the queue to shrink */
     while(gbl_max_logput_queue > 0 && listc_size(&log_queue) >=
             gbl_max_logput_queue) {
@@ -687,6 +681,17 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
         rc = pthread_cond_timedwait(&release_cond, &rep_queue_lock, &ts);
     }
 
+    /* Set before enqueing */
+    if (log_compare(&q->rp.lsn, &max_queued_lsn) > 0) {
+        max_queued_lsn = q->rp.lsn;
+    }
+
+    if (q->rp.rectype == REP_LOG_MORE) {
+        queue_log_more_count++;
+    }
+    if (q->rp.rectype == REP_LOG_FILL) {
+        queue_log_fill_count++;
+    }
     listc_abl(&log_queue, q);
 
     if (apply_thd_created == 0) {
@@ -805,7 +810,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	int fromline;
 	DB_LOG *dblp;
 	DB_LOGC *logc;
-	DB_LSN endlsn, lsn, oldfilelsn, tmplsn;
+	DB_LSN endlsn, lastlsn, lsn, oldfilelsn, tmplsn;
 	DB_REP *db_rep;
 	DBT *d, data_dbt, mylog;
 	LOG *lp;
@@ -893,7 +898,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 		 * just ignore the message and return.
 		 */
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-		if (F_ISSET(rp, DB_LOG_PERM)) {
+		if (F_ISSET(rp, DB_LOG_PERM) || F_ISSET(rp, DB_REP_SENDACK)) {
 			if (ret_lsnp != NULL) {
 				*ret_lsnp = rp->lsn;
 			}
@@ -1194,6 +1199,7 @@ skip:				/*
 	case REP_ALL_REQ:
 		MASTER_ONLY(rep, rp);
 		gbytes = bytes = 0;
+
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		gbytes = rep->gbytes;
 		bytes = rep->bytes;
@@ -1246,6 +1252,17 @@ skip:				/*
                             "%s for LSN %d:%d %d\n", __func__, __LINE__,
                             *eidp, oldfilelsn.file, oldfilelsn.offset, rc);
                 }
+            }
+
+            R_LOCK(dbenv, &dblp->reginfo);
+            lastlsn = lp->lsn;
+            R_UNLOCK(dbenv, &dblp->reginfo);
+            unsigned long long bytes_behind;
+
+            bytes_behind = subtract_lsn(dbenv->app_private, &lastlsn, &lsn);
+
+            if (bytes_behind >= gbl_fill_sendack_threshold) {
+                sendflags |= DB_REP_SENDACK;
             }
 
 			if (check_limit) {
@@ -2375,8 +2392,8 @@ dispatch_rectype(int rectype)
 	return 1;
 }
 
+int gbl_early_ack_trace = 0;
 void comdb2_early_ack(DB_ENV *, DB_LSN, uint32_t generation);
-
 
 
 // PUBLIC: void __rep_classify_type __P((u_int32_t, int *));
@@ -2785,7 +2802,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen)
 			/* Make this evaluate to a simple rectype. */
 			rectype = 0;
 		} else {
-			if (F_ISSET(rp, DB_LOG_PERM)) {
+			if (F_ISSET(rp, DB_LOG_PERM) || F_ISSET(rp, DB_REP_SENDACK)) {
 				gap = 1;
 				max_lsn = rp->lsn;
 			}
@@ -2899,7 +2916,7 @@ gap_check:		max_lsn_dbtp = NULL;
 			 * sure that we note that we've done so and that we
 			 * save its LSN.
 			 */
-			if (F_ISSET(rp, DB_LOG_PERM)) {
+			if (F_ISSET(rp, DB_LOG_PERM) || F_ISSET(rp, DB_REP_SENDACK)) {
 				gap = 1;
 				max_lsn = rp->lsn;
 			}
@@ -3197,7 +3214,8 @@ gap_check:		max_lsn_dbtp = NULL;
 		 * If this is permanent; let the caller know that we have
 		 * not yet written it to disk, but we've accepted it.
 		 */
-		if (ret == 0 && F_ISSET(rp, DB_LOG_PERM)) {
+		if (ret == 0 && (F_ISSET(rp, DB_LOG_PERM) || 
+                    F_ISSET(rp, DB_REP_SENDACK))) {
 			if (commit_gen != NULL)
 				*commit_gen = 0;
 			if (ret_lsnp != NULL)
@@ -4230,6 +4248,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		lock_dbt = &txn_gen_args->locks;
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		(*commit_gen) = rep->committed_gen = txn_gen_args->generation;
+        assert(*commit_gen);
         rep->committed_lsn = rctl->lsn;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} else {
@@ -4289,6 +4308,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		if (ret != 0)
 			goto err;
 
+        /* got all the locks.  ack back early */
 		if ((gbl_early) && (!gbl_reallyearly) &&
 		    !(maxlsn.file == 0 && maxlsn.offset == 0) &&
 		    (!txn_rl_args ||
@@ -4296,9 +4316,19 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			    !(txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK)) ||
 			F_ISSET(rctl, DB_LOG_REP_ACK))
 		    ) {
-			/* got all the locks.  ack back early */
+            static int lastpr = 0;
+            int now;
+
+            if (*commit_gen == 0 && rectype != DB___txn_regop) 
+                abort();
+            if (gbl_early_ack_trace && ((now = time(NULL)) - lastpr)) {
+                logmsg(LOGMSG_USER, "%s line %d send early-ack for %d:%d "
+                        "commit-gen %d\n", __func__, __LINE__, maxlsn.file,
+                        maxlsn.offset, *commit_gen);
+                lastpr = now;
+            }
 			comdb2_early_ack(dbenv, maxlsn, *commit_gen);
-		}
+		} 
 
 		if (txn_rl_args)
 			timestamp = txn_rl_args->timestamp;
@@ -4961,7 +4991,18 @@ bad_resize:	;
 		    !(txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK)) ||
 		F_ISSET(rctl, DB_LOG_REP_ACK))
 	    ) {
+        static int lastpr = 0;
+        int now;
+
 		/* got all the locks.  ack back early */
+        if (*commit_gen == 0 && rectype != DB___txn_regop) 
+            abort();
+        if (gbl_early_ack_trace && ((now = time(NULL)) - lastpr)) {
+            logmsg(LOGMSG_USER, "%s line %d send early-ack for %d:%d "
+                    "commit-gen %d\n", __func__, __LINE__, maxlsn.file,
+                    maxlsn.offset, *commit_gen);
+            lastpr = now;
+        }
 		comdb2_early_ack(dbenv, maxlsn, *commit_gen);
 	}
 

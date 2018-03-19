@@ -1267,7 +1267,7 @@ REGISTER_TUNABLE("time_rep_apply", "Display rep-apply times periodically. "
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("logput_window",
                  "Drop log-broadcasts for incoherent nodes "
-                 "more than this many bytes behind. (Default: 1000000)",
+                 "more than this many bytes behind. (Default: 100000)",
                  TUNABLE_INTEGER, &gbl_incoherent_logput_window,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dump_full_netqueue", "Dump net-queue on full rcode. "
@@ -1314,5 +1314,19 @@ REGISTER_TUNABLE("verbose_repmore_trace", "Verbose trace for rep-more requests."
 REGISTER_TUNABLE("rep_qstats", "Keep stats on rep net-queue.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_rep_qstats, EXPERIMENTAL | INTERNAL, 
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("throttle_logput_trace", "Print trace when stopping logputs "
+                 "to incoherent nodes.  (Default: off)", TUNABLE_BOOLEAN, 
+                 &gbl_throttle_logput_trace, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("catchup_window_trace", "Print master catchup window trace.  "
+                 "(Default: off)", TUNABLE_BOOLEAN, &gbl_catchup_window_trace,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("early_ack_trace", "Print trace when sending an early ack.  "
+                 "(Default: off)", TUNABLE_BOOLEAN, &gbl_early_ack_trace,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fill_sendack_threshold", "Fills requests acks within this "
+                 "threshold.  (Default: 100000)", TUNABLE_INTEGER, 
+                 &gbl_fill_sendack_threshold, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
