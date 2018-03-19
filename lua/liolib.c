@@ -161,6 +161,9 @@ static int io_tostring (lua_State *L) {
 static int io_open (lua_State *L) {
   const char *filename = luaL_checkstring(L, 1);
   const char *mode = luaL_optstring(L, 2, "r");
+  if (strcmp(mode, "r") != 0) {
+    return luaL_error(L, "Only read mode allowed");
+  }
   FILE **pf = newfile(L);
   *pf = fopen(filename, mode);
   return (*pf == NULL) ? pushresult(L, 0, filename) : 1;
