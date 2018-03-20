@@ -147,7 +147,7 @@ static void free_rep_net_queues(void *p, int n)
 }
 
 int systblRepNetQueueStatInit(sqlite3 *db) {
-    return create_system_table(db, "comdb2_rep_netqueue", get_rep_net_queues,
+    return create_system_table(db, "comdb2_replication_netqueue", get_rep_net_queues,
             free_rep_net_queues, sizeof(systable_rep_qstat_t),
             CDB2_CSTRING, "machine", offsetof(systable_rep_qstat_t, machine),
             CDB2_INTEGER, "total", offsetof(systable_rep_qstat_t, total),
