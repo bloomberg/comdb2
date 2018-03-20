@@ -1282,7 +1282,7 @@ REGISTER_TUNABLE(
     TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
     NULL);
 REGISTER_TUNABLE("max_logput_queue", "Maximum queued log-records. "
-                 "(Default: 10000)", TUNABLE_INTEGER, &gbl_max_logput_queue,
+                 "(Default: 100000)", TUNABLE_INTEGER, &gbl_max_logput_queue,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("master_req_waitms", "Request master once per this interval. "
                  "(Default: 200ms)", TUNABLE_INTEGER, &gbl_master_req_waitms,

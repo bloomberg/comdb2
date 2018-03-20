@@ -6,7 +6,7 @@
 # Enable decoupled logs and fills
 # This setting to 0 disables the max-queue setting
 # BTW, this breaks if you allow it to grow forever: try to understand
-max_logput_queue 100000
+#max_logput_queue 100000 # this is the default now
 decoupled_logputs on
 decoupled_fills on
 throttle_logput_trace on
