@@ -3,31 +3,12 @@
 #include <build/db.h>
 #include <dbinc/rep_types.h>
 #include "bdb_int.h"
+#include <rep_qstat.h>
 
 int net_get_lsn_rectype(bdb_state_type *bdb_state, const void *buf,
         int buflen, DB_LSN *lsn, int *myrectype);
 
 static __thread void *reader_qstat;
-
-typedef struct net_queue_stat
-{
-    char *nettype;
-    char *hostname;
-
-    pthread_mutex_t lock;
-
-    /* Keep track of the minimum and maximum lsn */
-    DB_LSN min_lsn;
-    DB_LSN max_lsn;
-
-    /* Keep track of how many of each type of record */
-    int max_type;
-    int *type_counts;
-
-    /* Other counts */
-    int unknown_count;
-    int total_count;
-} net_queue_stat_t;
 
 static void *net_init_queue_stats_rtn(netinfo_type *netinfo_type, 
         const char *nettype, const char hostname[]) {
