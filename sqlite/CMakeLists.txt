@@ -37,7 +37,7 @@ add_library(sqlite
   ext/comdb2/clientstats.c
   ext/comdb2/ezsystables.c
   ext/comdb2/typesamples.c 
-  ext/comdb2/repqstat.c 
+  ext/comdb2/repnetqueue.c
   ext/misc/completion.c
   ext/misc/json1.c
   ext/expert/sqlite3expert.c
