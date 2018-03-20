@@ -12,9 +12,11 @@ decoupled_fills on
 throttle_logput_trace on
 catchup_window_trace on
 early_ack_trace on
+commit_delay_trace on
 
+# Everything that worked is now default
 # Working without a catchup window now!
-catchup_window 0
+#catchup_window 0
 #logput_window 0
 #fill_throttle 100
 # retry_fill_with_flush on
