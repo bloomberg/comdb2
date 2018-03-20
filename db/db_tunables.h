@@ -1235,9 +1235,6 @@ REGISTER_TUNABLE("decoupled_logputs", "Perform logputs out-of-band. (Default: "
 REGISTER_TUNABLE("decoupled_fills", "Handle log-fills out-of-band. (Default: "
                  "on)", TUNABLE_BOOLEAN, &gbl_decoupled_fills,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("verify_waitms", "Re-request verifies after this interval.  "
-                 "(Default: 100ms)", TUNABLE_INTEGER, &gbl_verify_waitms,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("apply_pollms", "Apply-thread poll time before checking queue. "
                  "(Default: 100ms)", TUNABLE_INTEGER, &gbl_apply_thread_pollms, 
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
@@ -1272,7 +1269,7 @@ REGISTER_TUNABLE("time_rep_apply", "Display rep-apply times periodically. "
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("logput_window",
                  "Drop log-broadcasts for incoherent nodes "
-                 "more than this many bytes behind. (Default: 100000)",
+                 "more than this many bytes behind.  (Default: 20000000)",
                  TUNABLE_INTEGER, &gbl_incoherent_logput_window,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dump_full_netqueue", "Dump net-queue on full rcode. "
@@ -1330,7 +1327,7 @@ REGISTER_TUNABLE("early_ack_trace", "Print trace when sending an early ack.  "
                  "(Default: off)", TUNABLE_BOOLEAN, &gbl_early_ack_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fill_sendack_threshold", "Fills requests acks within this "
-                 "threshold.  (Default: 100000)", TUNABLE_INTEGER, 
+                 "threshold.  (Default: 20000000)", TUNABLE_INTEGER, 
                  &gbl_fill_sendack_threshold, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
 

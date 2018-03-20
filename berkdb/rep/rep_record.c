@@ -76,9 +76,7 @@ int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_decoupled_fills = 1;
 int gbl_master_req_waitms = 200;
-int gbl_fill_sendack_threshold = 100000;
-// TODO: VERIFY_WAITMS
-int gbl_verify_waitms = 100;
+int gbl_fill_sendack_threshold = 20000000;
 int gbl_fills_waitms = 500;
 int gbl_warn_queue_latency_threshold = 500;
 

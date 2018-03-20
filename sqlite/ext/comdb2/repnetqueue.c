@@ -46,7 +46,7 @@ typedef struct systable_rep_qstat {
     int64_t                 gen_vote1;
     int64_t                 gen_vote2;
     int64_t                 log_fill;
-    int64_t                 netlevel;
+    int64_t                 uncategorized;
     int64_t                 unknown;
 } systable_rep_qstat_t;
 
@@ -81,13 +81,14 @@ static void net_to_systable(struct netinfo_struct *netinfo_ptr, void *arg,
     s->machine = strdup(n->hostname);
     s->total = n->total_count;
     /* "unknown" messages here generally net-heartbeats */
-    s->netlevel = n->unknown_count;
+    s->uncategorized = n->unknown_count;
     s->max_lsn = malloc(MAX_LSN_STR);
     s->min_lsn = malloc(MAX_LSN_STR);
     snprintf(s->max_lsn, MAX_LSN_STR, "{%d:%d}", n->max_lsn.file,
             n->max_lsn.offset);
     snprintf(s->min_lsn, MAX_LSN_STR, "{%d:%d}", n->min_lsn.file,
             n->min_lsn.offset);
+    s->unknown = 0;
     for (i = 0 ; i <= n->max_type; i++) {
         switch(i) {
             case REP_ALIVE: s->alive = n->type_counts[i]; break;
@@ -181,7 +182,7 @@ int systblRepNetQueueStatInit(sqlite3 *db) {
             CDB2_INTEGER, "gen_vote1", offsetof(systable_rep_qstat_t, gen_vote1),
             CDB2_INTEGER, "gen_vote2", offsetof(systable_rep_qstat_t, gen_vote2),
             CDB2_INTEGER, "log_fill", offsetof(systable_rep_qstat_t, log_fill),
-            CDB2_INTEGER, "netlevel", offsetof(systable_rep_qstat_t, netlevel),
+            CDB2_INTEGER, "uncategorized", offsetof(systable_rep_qstat_t, uncategorized),
             CDB2_INTEGER, "unknown", offsetof(systable_rep_qstat_t, unknown),
             SYSTABLE_END_OF_FIELDS);
 }

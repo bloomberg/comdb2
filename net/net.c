@@ -2471,9 +2471,10 @@ int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
 
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
             tmp_host_ptr = tmp_host_ptr->next) {
-        tmp_host_ptr->qstat = qinit(netinfo_ptr, netinfo_ptr->service,
-                tmp_host_ptr->host);
-
+        if (strcmp(tmp_host_ptr->host, netinfo_ptr->myhostname) != 0) {
+            tmp_host_ptr->qstat = qinit(netinfo_ptr, netinfo_ptr->service,
+                    tmp_host_ptr->host);
+        }
     }
 
     netinfo_ptr->qstat_free_rtn = qfree;
@@ -2835,6 +2836,8 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     if (netinfo_ptr->qstat_init_rtn) {
         ptr->qstat = (netinfo_ptr->qstat_init_rtn)(netinfo_ptr, 
                 netinfo_ptr->service, hostname);
+    } else {
+        ptr->qstat = NULL; 
     }
 
     netinfo_ptr->head = ptr;
