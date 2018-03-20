@@ -85,6 +85,7 @@ int gbl_ignore_lost_master_time = 0;
 int gbl_prefault_latency = 0;
 
 extern struct thdpool *gbl_udppfault_thdpool;
+extern int gbl_commit_delay_trace;
 
 /* osqlcomm.c code, hurray! */
 extern void osql_decom_node(char *decom_host);
@@ -620,8 +621,8 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
 {
     int ret = 0, now, pr=0;
     static int lastpr = 0;
-    long long unsigned int throttles = 0;
-    int64_t cntbytes;
+    static unsigned long long throttles = 0;
+    unsigned long long cntbytes;
 
     if (gbl_throttle_logput_trace && ((now = time(NULL)) - lastpr)) {
         pr = 1;
@@ -657,7 +658,7 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
             } else {
                 if (pr) {
                     logmsg(LOGMSG_USER, "%s NOT throttling logput to %s, "
-                            "incoherent and %llu bytes behind, total "
+                            "incoherent and %llu bytes behind, total, "
                             "throttles=%llu\n", __func__, host, cntbytes, 
                             throttles);
                 }
@@ -665,7 +666,7 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
         }
     } else if (pr) {
         logmsg(LOGMSG_USER, "%s allowing logput to %s, coherent\n", __func__,
-                host, throttles);
+                host);
     }
 
     return ret;
@@ -2316,7 +2317,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     seqnum_type zero_seq;
     DB_LSN *masterlsn;
     int rc;
-    uint64_t cntbytes;
+    unsigned long long cntbytes;
     struct waiting_for_lsn *waitforlsn = NULL;
     int now;
     int track_times;
@@ -3358,7 +3359,8 @@ done_wait:
     if (!numfailed && !numskip &&
         bdb_state->attr->remove_commitdelay_on_coherent_cluster &&
         bdb_state->attr->commitdelay) {
-        logmsg(LOGMSG_INFO, "Cluster is in sync, removing commitdelay\n");
+        logmsg(gbl_commit_delay_trace ? LOGMSG_USER : LOGMSG_INFO, 
+                "Cluster is in sync, removing commitdelay\n");
         bdb_state->attr->commitdelay = 0;
     }
 
@@ -4732,6 +4734,14 @@ int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
     return rc;
 }
 
+int bdb_commitdelay(void *arg)
+{
+    bdb_state_type *bdb_state = arg;
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    return bdb_state->attr->commitdelay;
+}
+
 static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
                                   char *from_node, int usertype, void *dta,
                                   int dtalen, uint8_t is_tcp)
@@ -4883,14 +4893,16 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
         break;
 
     case USER_TYPE_COMMITDELAYMORE:
-        if (bdb_state->attr->commitdelay < bdb_state->attr->commitdelaymax) {
-            if (bdb_state->attr->commitdelay == 0)
-                bdb_state->attr->commitdelay = 1;
-            else
-                bdb_state->attr->commitdelay *= 2;
-        }
+        if (bdb_state->attr->commitdelay == 0)
+            bdb_state->attr->commitdelay = 1;
+        else
+            bdb_state->attr->commitdelay *= 2;
 
-        logmsg(LOGMSG_WARN, "--- got commitdelaymore req from node %s.  now %d\n",
+        if (bdb_state->attr->commitdelay > bdb_state->attr->commitdelaymax)
+            bdb_state->attr->commitdelay = bdb_state->attr->commitdelaymax;
+
+        logmsg(gbl_commit_delay_trace ? LOGMSG_USER : LOGMSG_WARN, 
+                "--- got commitdelaymore req from node %s.  now %d\n",
                 from_node, bdb_state->attr->commitdelay);
 
         break;
@@ -4901,6 +4913,9 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
 
         bdb_state->attr->commitdelay = 0;
         send_context_to_all(bdb_state);
+        logmsg(gbl_commit_delay_trace ? LOGMSG_USER : LOGMSG_WARN, 
+                "-- setting commitdelay to 0 on COMMITDELAYNONE\n");
+
         break;
 
     case USER_TYPE_GETCONTEXT:
@@ -5152,9 +5167,15 @@ void *watcher_thread(void *arg)
 
                 /* delay ourselves */
                 if (bdb_state->attr->commitdelay <
-                    bdb_state->attr->skipdelaybase)
+                    bdb_state->attr->skipdelaybase) {
                     bdb_state->attr->commitdelay =
                         bdb_state->attr->skipdelaybase;
+                    if (gbl_commit_delay_trace) {
+                        logmsg(LOGMSG_USER, "%s line %d setting commitdelay to"
+                                " skipdelaybase %d\n", __func__, __LINE__, 
+                                bdb_state->attr->skipdelaybase);
+                    }
+                }
 
                 /* try to jigger replication */
                 if (bdb_state->attr->goose_replication_for_incoherent_nodes) {

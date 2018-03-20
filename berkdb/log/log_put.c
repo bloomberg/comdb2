@@ -44,6 +44,7 @@ static const char revid[] = "$Id: log_put.c,v 11.145 2003/09/13 19:20:39 bostic 
 #include <netinet/in.h>
 
 #include "logmsg.h"
+#include <poll.h>
 
 extern unsigned long long get_commit_context(const void *, uint32_t generation);
 extern int bdb_update_startlwm_berk(void *statearg, unsigned long long ltranid,
@@ -120,7 +121,22 @@ __log_put_pp(dbenv, lsnp, udbt, flags)
 	return (ret);
 }
 
+int gbl_commit_delay_trace = 0;
 
+static inline int is_commit_record(int rectype) {
+    switch(rectype) {
+        /* regop regop_gen regop_rowlocks */
+        case (16):
+        case (10):
+        case (15):
+            return 1;
+            break;
+        default:
+            return 0;
+            break;
+    }
+}
+ 
 static int
 __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	DB_ENV *dbenv;
@@ -142,6 +158,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	u_int8_t *key;
 	unsigned long long ctx;
 	int rectype = 0;
+    int delay;
 
 	dblp = dbenv->lg_handle;
 	lp = dblp->reginfo.primary;
@@ -233,7 +250,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 
 	if (IS_REP_MASTER(dbenv)) {
 
-		/*
+	    /*
 		 * Replication masters need to drop the lock to send
 		 * messages, but we want to drop and reacquire it a minimal
 		 * number of times.
@@ -342,6 +359,30 @@ err:
 		R_UNLOCK(dbenv, &dblp->reginfo);
 	if (need_free)
 		__os_free(dbenv, dbt->data);
+
+    int bdb_commitdelay(void *arg);
+
+    /* Putting this here will serialize our commit-delays */
+	if (IS_REP_MASTER(dbenv) && is_commit_record(rectype) && 
+            (delay = bdb_commitdelay(dbenv->app_private))) {
+        static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+        static unsigned long long count=0;
+        static int lastpr = 0;
+        int now;
+
+        /* Don't lock out anything else */
+        pthread_mutex_lock(&lk);
+        poll(NULL, 0, delay);
+        pthread_mutex_unlock(&lk);
+        count++;
+        if (gbl_commit_delay_trace && (now = time(NULL))-lastpr) {
+            logmsg(LOGMSG_USER, "%s line %d commit-delayed for %d ms, %llu "
+                    "total-delays\n", __func__, __LINE__, delay, count);
+            lastpr = now;
+        }
+    }
+
+
 	/*
 	 * If auto-remove is set and we switched files, remove unnecessary
 	 * log files.

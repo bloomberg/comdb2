@@ -1327,9 +1327,13 @@ REGISTER_TUNABLE("early_ack_trace", "Print trace when sending an early ack.  "
                  "(Default: off)", TUNABLE_BOOLEAN, &gbl_early_ack_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fill_sendack_threshold", "Fills requests acks within this "
-                 "threshold.  (Default: 20000000)", TUNABLE_INTEGER, 
+                 "threshold.  (Default: 40000000)", TUNABLE_INTEGER, 
                  &gbl_fill_sendack_threshold, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("commit_delay_trace", "Verbose commit-delays.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_commit_delay_trace, 
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 
 REGISTER_TUNABLE("osql_random_restart",
                  "Restart socksql transmission randomly.  (Default: off)",

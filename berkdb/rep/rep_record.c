@@ -76,7 +76,7 @@ int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_decoupled_fills = 1;
 int gbl_master_req_waitms = 200;
-int gbl_fill_sendack_threshold = 20000000;
+int gbl_fill_sendack_threshold = 40000000;
 int gbl_fills_waitms = 500;
 int gbl_warn_queue_latency_threshold = 500;
 
@@ -1261,7 +1261,7 @@ skip:				/*
             R_UNLOCK(dbenv, &dblp->reginfo);
 
             bytes_behind = subtract_lsn(dbenv->app_private, &lastlsn, &lsn);
-            if (gbl_fill_sendack_threshold && bytes_behind >= 
+            if (gbl_fill_sendack_threshold && bytes_behind <
                     gbl_fill_sendack_threshold) {
                 sendflags |= DB_REP_SENDACK;
             }
@@ -1510,7 +1510,7 @@ more:           if (type == REP_LOG_MORE) {
         R_UNLOCK(dbenv, &dblp->reginfo);
 
         bytes_behind = subtract_lsn(dbenv->app_private, &lastlsn, &lsn);
-        if (gbl_fill_sendack_threshold && bytes_behind >= 
+        if (gbl_fill_sendack_threshold && bytes_behind <
                 gbl_fill_sendack_threshold) {
             sendflags |= DB_REP_SENDACK;
         }
@@ -1610,7 +1610,7 @@ more:           if (type == REP_LOG_MORE) {
             R_UNLOCK(dbenv, &dblp->reginfo);
 
             bytes_behind = subtract_lsn(dbenv->app_private, &lastlsn, &lsn);
-            if (gbl_fill_sendack_threshold && bytes_behind >= 
+            if (gbl_fill_sendack_threshold && bytes_behind <
                     gbl_fill_sendack_threshold) {
                 sendflags |= DB_REP_SENDACK;
             }
