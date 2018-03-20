@@ -32,6 +32,7 @@
 #include "sqllog.h"
 #include "ssl_bend.h"
 #include "translistener.h"
+#include "rtcpu.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -299,9 +300,10 @@ static void add_legacy_default_options(struct dbenv *dbenv)
         "unnatural_types 1",
         "enable_sql_stmt_caching none",
         "on accept_on_child_nets",
+        "env_messages",
+        "setattr COHERENCY_LEASE_UDP 0",
         "setattr ENABLE_SEQNUM_GENERATIONS 0",
-        "setattr MASTER_LEASE 0"
-    };
+        "setattr MASTER_LEASE 0"};
     for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++)
         defer_option(dbenv, DEFERRED_LEGACY_DEFAULTS, legacy_options[i], -1, 0);
 }
@@ -652,6 +654,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                     memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length) == 0) {
                     /* Assume I am better known by this name. */
                     gbl_mynode = intern(nodename);
+                    gbl_mynodeid = machine_num(gbl_mynode);
                 }
                 if (strcmp(gbl_mynode, nodename) == 0 &&
                     gbl_rep_node_pri == 0) {

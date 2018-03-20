@@ -4850,6 +4850,7 @@ static void getmyid(void)
 
         gbl_myhostname = strdup(name);
         gbl_mynode = intern(gbl_myhostname);
+        gbl_mynodeid = machine_num(gbl_mynode);
     }
 
     getmyaddr();

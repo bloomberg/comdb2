@@ -4294,10 +4294,14 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         break;
     }
 
-    case USER_TYPE_ADD_DUMMY:
-        add_dummy(bdb_state);
+    case USER_TYPE_ADD_DUMMY: {
+        extern pthread_attr_t gbl_pthread_attr_detached;
+        pthread_t tid;
+        pthread_create(&tid, &gbl_pthread_attr_detached, dummy_add_thread,
+                       bdb_state);
         net_ack_message(ack_handle, 0);
         break;
+    }
 
     case USER_TYPE_TRANSFERMASTER:
         p_buf = (uint8_t *)dta;

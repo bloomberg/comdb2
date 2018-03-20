@@ -534,13 +534,14 @@ static void *udp_reader(void *arg)
         /* Old format included source/dest node numbers - no longer have that
          * luxury - read them from
          * the packet past the data payload. */
-#if 0
         if (info->to != 0 && info->from != 0) {
-            fprintf(stderr, "unexpected to/from setting: from=%d to=%d\n",
-                    info->from, info->to);
+            logmsg(LOGMSG_ERROR,
+                   "unexpected to/from setting: from=%d to=%d type=%d\n",
+                   info->from, info->to, info->type);
+            ++recl_udp;
             continue;
         }
-#endif
+
         from = ack_info_from_host(info);
         /* sanity check? */
         if (info->hdrsz + info->fromlen > sizeof(buff) ||

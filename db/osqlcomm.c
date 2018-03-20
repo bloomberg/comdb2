@@ -728,9 +728,26 @@ static uint8_t *osqlcomm_schemachange_type_get(struct schema_change_type *sc,
 }
 
 static uint8_t *
-osqlcomm_schemachange_rpl_type_put(osql_uuid_rpl_t *hd,
+osqlcomm_schemachange_rpl_type_put(osql_rpl_t *hd,
                                    struct schema_change_type *sc,
                                    uint8_t *p_buf, uint8_t *p_buf_end)
+{
+    size_t sc_len = schemachange_packed_size(sc);
+
+    if (p_buf_end < p_buf ||
+        OSQLCOMM_RPL_TYPE_LEN + sc_len > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = osqlcomm_rpl_type_put(hd, p_buf, p_buf_end);
+    p_buf = buf_put_schemachange(sc, p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+static uint8_t *
+osqlcomm_schemachange_uuid_rpl_type_put(osql_uuid_rpl_t *hd,
+                                        struct schema_change_type *sc,
+                                        uint8_t *p_buf, uint8_t *p_buf_end)
 {
     size_t sc_len = schemachange_packed_size(sc);
 
@@ -6396,13 +6413,17 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
         }
     } break;
     case OSQL_SCHEMACHANGE: {
-        p_buf = (uint8_t *)msg + sizeof(osql_uuid_rpl_t);
-        p_buf_end = p_buf + msglen;
         struct schema_change_type *sc = new_schemachange_type();
+        p_buf_end = p_buf + msglen;
         p_buf = osqlcomm_schemachange_type_get(sc, p_buf, p_buf_end);
 
-        if (p_buf == NULL)
-            return -1;
+        if (p_buf == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to read schema change object\n",
+                   __func__, __LINE__);
+            reqerrstr(iq, ERR_SC,
+                      "internal error: failed to read schema change object");
+            return ERR_SC;
+        }
 
         if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC))
             sc->nothrevent = 0;
@@ -8829,38 +8850,60 @@ int osql_send_schemachange(char *tonode, unsigned long long rqid, uuid_t uuid,
                            SBUF2 *logsb)
 {
     netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
-    osql_uuid_rpl_t sc_rpl = {0};
 
     schemachange_packed_size(sc);
-    size_t osql_rpl_sc_size = OSQLCOMM_UUID_RPL_TYPE_LEN + sc->packed_len;
-    uint8_t *buf = alloca(osql_rpl_sc_size);
+    size_t osql_rpl_size =
+        ((rqid == OSQL_RQID_USE_UUID) ? OSQLCOMM_UUID_RPL_TYPE_LEN
+                                      : OSQLCOMM_RPL_TYPE_LEN) +
+        sc->packed_len;
+    uint8_t *buf = alloca(osql_rpl_size);
     uint8_t *p_buf = buf;
-    uint8_t *p_buf_end = p_buf + osql_rpl_sc_size;
+    uint8_t *p_buf_end = p_buf + osql_rpl_size;
     int rc = 0;
+    uuidstr_t us;
 
     if (check_master(tonode))
         return OSQL_SEND_ERROR_WRONGMASTER;
-
-    // rc = osql_send_usedb_logic(pCur, thd, nettype); // FIX IT: not sure if
-    // needed now I will look into it later
-
-    sc_rpl.type = OSQL_SCHEMACHANGE;
-    comdb2uuidcpy(sc_rpl.uuid, uuid);
 
     if (tonode)
         strcpy(sc->original_master_node, tonode);
     else
         strcpy(sc->original_master_node, gbl_mynode);
 
-    if (!(p_buf = osqlcomm_schemachange_rpl_type_put(&sc_rpl, sc, p_buf,
-                                                     p_buf_end))) {
-        logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                "osqlcomm_schemachange_rpl_type_put");
-        return -1;
+    if (rqid == OSQL_RQID_USE_UUID) {
+        osql_uuid_rpl_t hd_uuid = {0};
+
+        hd_uuid.type = OSQL_SCHEMACHANGE;
+        comdb2uuidcpy(hd_uuid.uuid, uuid);
+        if (!(p_buf = osqlcomm_schemachange_uuid_rpl_type_put(
+                  &hd_uuid, sc, p_buf, p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
+                   "osqlcomm_schemachange_uuid_rpl_type_put");
+            return -1;
+        }
+
+        type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
+    } else {
+        osql_rpl_t hd = {0};
+
+        hd.type = OSQL_SCHEMACHANGE;
+        hd.sid = rqid;
+
+        if (!(p_buf = osqlcomm_schemachange_rpl_type_put(&hd, sc, p_buf,
+                                                         p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
+                   "osqlcomm_schemachange_rpl_type_put");
+            return -1;
+        }
     }
 
-    rc =
-        offload_net_send(tonode, type, buf, sizeof(sc_rpl) + sc->packed_len, 0);
+    if (logsb) {
+        sbuf2printf(logsb, "[%llu %s] send OSQL_SCHEMACHANGE %s\n", rqid,
+                    comdb2uuidstr(uuid, us), sc->table);
+        sbuf2flush(logsb);
+    }
+
+    rc = offload_net_send(tonode, type, buf, osql_rpl_size + sc->packed_len, 0);
 
     return rc;
 }
@@ -9271,7 +9314,7 @@ int osql_send_bpfunc(char *tonode, unsigned long long rqid, uuid_t uuid,
         if (!osqlcomm_bpfunc_uuid_rpl_type_put(&hd_uuid, dt, p_buf,
                                                p_buf_end)) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                    "osqlcomm_schemachange_rpl_type_put");
+                   "osqlcomm_bpfunc_uuid_rpl_type_put");
             rc = -1;
             goto freemem;
         }
@@ -9285,7 +9328,7 @@ int osql_send_bpfunc(char *tonode, unsigned long long rqid, uuid_t uuid,
 
         if (!osqlcomm_bpfunc_rpl_type_put(&hd, dt, p_buf, p_buf_end)) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                    "osqlcomm_schemachange_rpl_type_put");
+                   "osqlcomm_bpfunc_rpl_type_put");
             rc = -1;
             goto freemem;
         }

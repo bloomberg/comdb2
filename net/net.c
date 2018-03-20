@@ -5329,7 +5329,7 @@ static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
            (unsigned)ntohs(lcl_addr_inet.sin_port));
 
     /* extract the suffix of subnet ex. '_n3' in name node1_n3 */
-    int myh_len = host_node_ptr->netinfo_ptr->myhostname_len;
+    int myh_len = strlen(host_node_ptr->netinfo_ptr->myhostname);
     if (strncmp(host_node_ptr->netinfo_ptr->myhostname, host, myh_len) == 0) {
         assert(myh_len <= sizeof(host));
         char *subnet = &host[myh_len];
@@ -5623,13 +5623,14 @@ static void *connect_and_accept(void *arg)
     /* Special port number to indicate we're meant for a different net. */
     portnum &= 0xffff;
     /* if connect message specifies a child net, use it */
-    if (netnum) {
+    if (netnum && netnum != netinfo_ptr->netnum) {
         netinfo_type *net;
         Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
         if (netnum < 0 || netnum >= netinfo_ptr->num_child_nets ||
             netinfo_ptr->child_nets[netnum] == NULL) {
-            logmsg(LOGMSG_ERROR, "connect message for netnum %d, "
-                                 "num_child_nets %d, not not registered\n",
+            logmsg(LOGMSG_ERROR,
+                   "connect message for netnum %d, num_child_nets %d, net not "
+                   "registered\n",
                    netnum, netinfo_ptr->num_child_nets);
             Pthread_rwlock_unlock(&(netinfo_ptr->lock));
             return NULL;
