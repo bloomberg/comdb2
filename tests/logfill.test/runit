@@ -60,8 +60,10 @@ function insertforever
     chr=$(echo $TEST_TIMEOUT | sed 's/[0-9]*//g')
     j=0
 
+    machine=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep -v MASTER | egrep lsn | head -1 | cut -f1 -d":" | tr -d '[:space:]')
+
     while [[ $j -lt $2 ]]; do 
-        timeout $ttimeout$chr yes "$(cat $sql)" | $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default - > /dev/null 2>&1 &
+        timeout $ttimeout$chr yes "$(cat $sql)" | $CDB2SQL_EXE --host $machine ${CDB2_OPTIONS} $DBNAME default - > /dev/null 2>&1 &
         let j=j+1
     done
 
@@ -73,6 +75,7 @@ function runtestwithoptions
     [[ "$debug" == 1 ]] && set -x
     createtables
     insertforever 1000 3
+    #insertforever 1000 10
 }
 
 function runtest

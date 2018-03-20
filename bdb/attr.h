@@ -564,7 +564,7 @@ DEF_ATTR(LEASE_RENEW_INTERVAL, lease_renew_interval, MSECS, 200,
          "How often we renew leases.")
 DEF_ATTR(DOWNGRADE_PENALTY, downgrade_penalty, MSECS, 10000,
          "Prevent upgrades for at least this many ms after a downgrade.")
-DEF_ATTR(CATCHUP_WINDOW, catchup_window, BYTES, 1000000,
+DEF_ATTR(CATCHUP_WINDOW, catchup_window, BYTES, 20000000,
          "Start waiting in waitforseqnum if replicant is within this many "
          "bytes of master.")
 DEF_ATTR(CATCHUP_ON_COMMIT, catchup_on_commit, BOOLEAN, 1,
