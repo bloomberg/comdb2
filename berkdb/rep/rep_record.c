@@ -80,7 +80,7 @@ int gbl_fill_sendack_threshold = 20000000;
 int gbl_fills_waitms = 500;
 int gbl_warn_queue_latency_threshold = 500;
 
-int gbl_max_logput_queue = 10000;
+int gbl_max_logput_queue = 100000;
 int gbl_apply_thread_pollms = 100;
 int last_fill = 0;
 int gbl_req_all_threshold = 10000000;
