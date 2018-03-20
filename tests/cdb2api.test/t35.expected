@@ -1,2 +1,2 @@
 (version='def')
-[exec procedure iowrite()] failed with rc -3 [local file = io.open("/tmp/a.tx...]:3: Only read mode allowed
+[exec procedure iowrite()] failed with rc -3 [local file = io.open("/tmp/a.tx...]:3: Function disabled for comdb2.
