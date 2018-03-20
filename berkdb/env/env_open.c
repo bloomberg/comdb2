@@ -533,10 +533,11 @@ foundlsn:
 		}
 	}
 	LIST_INIT(&dbenv->dblist);
-	if (dbenv->fileidhash != NULL)
+	if (dbenv->fileidhash != NULL) {
 		hash_clear(dbenv->fileidhash);
-	else
-		dbenv->fileidhash = hash_init(DB_FILE_ID_LEN);
+		hash_free(dbenv->fileidhash);
+	}
+	dbenv->fileidhash = hash_init(DB_FILE_ID_LEN);
 
 	if (F_ISSET(dbenv, DB_ENV_THREAD) && LF_ISSET(DB_INIT_MPOOL)) {
 		dbmp = dbenv->mp_handle;
@@ -932,10 +933,11 @@ __dbenv_refresh(dbenv, orig_flags, rep_check)
 	 * log file handles.  Ick.
 	 */
 	LIST_INIT(&dbenv->dblist);
-	if (dbenv->fileidhash != NULL)
+    if (dbenv->fileidhash != NULL) {
 		hash_clear(dbenv->fileidhash);
-	else
-		dbenv->fileidhash = hash_init(DB_FILE_ID_LEN);
+		hash_free(dbenv->fileidhash);
+	}
+	dbenv->fileidhash = hash_init(DB_FILE_ID_LEN);
 
 	if (dbenv->dblist_mutexp != NULL) {
 		dbmp = dbenv->mp_handle;

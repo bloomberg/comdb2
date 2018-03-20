@@ -4252,6 +4252,8 @@ static void *writer_thread(void *args)
 
     host_node_ptr = args;
     netinfo_ptr = host_node_ptr->netinfo_ptr;
+    if (netinfo_ptr->exiting)
+        return 0;
 
     host_node_ptr->writer_thread_arch_tid = getarchtid();
     if (gbl_verbose_net)
