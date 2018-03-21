@@ -907,7 +907,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		"DB_TXN->commit", flags,
 		DB_TXN_LOGICAL_BEGIN | DB_TXN_LOGICAL_COMMIT | DB_TXN_NOSYNC |
 		DB_TXN_SYNC | DB_TXN_REP_ACK | DB_TXN_DONT_GET_REPO_MTX |
-		DB_TXN_SCHEMA_LOCK) != 0)
+		DB_TXN_SCHEMA_LOCK | DB_TXN_LOGICAL_GEN) != 0)
 		flags = DB_TXN_SYNC;
 	if (__db_fcchk(dbenv,
 		"DB_TXN->commit", flags, DB_TXN_NOSYNC, DB_TXN_SYNC) != 0)
@@ -1057,6 +1057,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						gen = rep->gen;
 						MUTEX_UNLOCK(dbenv,
 						    db_rep->rep_mutexp);
+						ltranflags |= DB_TXN_LOGICAL_GEN;
 					} else
 						gen = 0;
 

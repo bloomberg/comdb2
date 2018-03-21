@@ -330,7 +330,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
         }
-    } else {
+    } else if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN)) {
         int bdberr = 0;
         rc = bdb_llog_scdone_tran(s->db->handle, type, input_tran, s->table,
                                   &bdberr);

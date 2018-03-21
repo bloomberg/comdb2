@@ -2717,9 +2717,9 @@ again:
         return 1;
     }
 
-    uint32_t gen;
-    if ((gen = bdb_state->seqnum_info->seqnums[nodeix(host)].generation) >
-        seqnum->generation) {
+    uint32_t gen = bdb_state->seqnum_info->seqnums[nodeix(host)].generation;
+    if (bdb_state->attr->enable_seqnum_generations &&
+        gen > seqnum->generation) {
         static unsigned long long higher_generation_reject = 0;
         static time_t pr = 0;
         time_t now;
@@ -2737,7 +2737,8 @@ again:
         return -10;
     }
 
-    if (gen < seqnum->generation) {
+    if (bdb_state->attr->enable_seqnum_generations &&
+        gen < seqnum->generation) {
         static time_t pr = 0;
         time_t now;
 
@@ -2751,9 +2752,9 @@ again:
     got_gen = gen;
     got_lsn = bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
 
-    if (gen == seqnum->generation &&
-        (log_compare(&bdb_state->seqnum_info->seqnums[nodeix(host)].lsn,
-                     &seqnum->lsn) >= 0)) {
+    if (bdb_seqnum_compare(bdb_state,
+                           &(bdb_state->seqnum_info->seqnums[nodeix(host)]),
+                           seqnum) >= 0) {
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         if (bdb_state->attr->wait_for_seqnum_trace) {
             logmsg(LOGMSG_USER, "%s line %d called from %d %s good rcode mach-gen %u mach_lsn %d:%d waiting for %u %d:%d\n", 
