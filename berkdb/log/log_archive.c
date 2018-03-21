@@ -124,7 +124,7 @@ __log_archive(dbenv, listp, flags)
 	DBT rec;
 	DB_LOG *dblp;
 	DB_LOGC *logc = NULL;
-	DB_LSN stable_lsn;
+	DB_LSN dbreg_lsn, stable_lsn;
 	__txn_ckp_args *ckp_args = NULL;
 	char **array, **arrayp, *name, *p, *pref, buf[MAXPATHLEN];
 	int array_size, db_arch_abs, n, rep_check, ret;
@@ -223,8 +223,27 @@ __log_archive(dbenv, listp, flags)
 	case 0:
 		if (start_recovery_at_dbregs) {
 			/* Remove any log files before the last stable LSN. */
-			ret = __db_find_recovery_start(dbenv, &stable_lsn);
-			if (ret && dbenv->attr.dbreg_errors_fatal) {
+			ret = __db_find_recovery_start(dbenv, &dbreg_lsn);
+			if (ret == 0) {
+				/* We need the recovery LSN in the checkpoint prior to the dbreg record.
+				   Consider the following example.
+				   [1583][32542163]__txn_ckp: rec: 11 txnid 0 prevlsn [0][0]
+				    	ckp_lsn: [1576][5255785]
+				   [1583][32596639]__txn_ckp: rec: 11 txnid 0 prevlsn [0][0]
+				    	ckp_lsn: [1583][32543779]
+
+				   [1583][32542163] and [1583][32596639] are 2 most recent checkpoints.
+				   The dbreg record is somewhere between [1583][32542163]
+				   and [1583][32543779]. A replicant may then truncate to
+				   [1583][32542163] whose ckp_lsn is [1576][5255785] and
+				   verify from there. Hence log files 1576 - 1582 cannot be deleted. */
+				if ((ret = __log_cursor(dbenv, &logc)) != 0)
+					goto err1;
+				if ((ret = __log_backup(dbenv, logc, &dbreg_lsn, &stable_lsn)) != 0) {
+					(void)__log_c_close(logc);
+					goto err1;
+				}
+			} else if (dbenv->attr.dbreg_errors_fatal) {
 				*listp = NULL;
 
 				if (ret == DB_NOTFOUND)
@@ -238,30 +257,26 @@ __log_archive(dbenv, listp, flags)
 				/*
 				 * A failure return means that there's no checkpoint
 				 * in the log (so we are not going to be deleting
-			 * any log files).
-			 */
-			*listp = NULL;
-			goto err1;
-		}
-		if ((ret = __log_cursor(dbenv, &logc)) != 0)
+				 * any log files).
+				 */
+				*listp = NULL;
 				goto err1;
-			if ((ret =
-				__log_c_get(logc, &stable_lsn, &rec,
-				    DB_SET)) != 0 ||
-			    (ret =
-				__txn_ckp_read(dbenv, rec.data,
-				    &ckp_args)) != 0) {
+			}
+			if ((ret = __log_cursor(dbenv, &logc)) != 0)
+				goto err1;
+			if ((ret = __log_c_get(logc, &stable_lsn, &rec, DB_SET)) != 0 ||
+					(ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0) {
 				/*
 				 * A return of DB_NOTFOUND may only mean that the
 				 * checkpoint LSN is before the beginning of the
 				 * log files that we still have.  This is not
 				 * an error;  it just means our work is done.
-			 */
-			if (ret == DB_NOTFOUND) {
-				*listp = NULL;
-				ret = 0;
-			}
-			(void)__log_c_close(logc);
+				 */
+				if (ret == DB_NOTFOUND) {
+					*listp = NULL;
+					ret = 0;
+				}
+				(void)__log_c_close(logc);
 				goto err1;
 			}
 			if ((ret = __log_c_close(logc)) != 0)
