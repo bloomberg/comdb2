@@ -1328,6 +1328,8 @@ REGISTER_TUNABLE("fill_sendack_threshold", "Fills requests acks within this "
 REGISTER_TUNABLE("commit_delay_trace", "Verbose commit-delays.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_commit_delay_trace, 
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
+REGISTER_TUNABLE("always_ack_fills", "Send ack-on-commit for all fills.  "
+                 "(Default: on)", TUNABLE_INTEGER, &gbl_always_ack_fills, 
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
