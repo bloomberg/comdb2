@@ -77,6 +77,7 @@ int gbl_decoupled_logputs = 1;
 int gbl_decoupled_fills = 1;
 int gbl_master_req_waitms = 200;
 int gbl_fill_sendack_threshold = 40000000;
+int gbl_always_ack_fills = 1;
 int gbl_fills_waitms = 500;
 int gbl_warn_queue_latency_threshold = 500;
 
@@ -1237,6 +1238,8 @@ skip:				/*
 		flags = IS_ZERO_LSN(rp->lsn) ||
 		    IS_INIT_LSN(rp->lsn) ? DB_FIRST : DB_SET;
         sendflags = 0;
+        if (gbl_always_ack_fills)
+            sendflags |= DB_REP_SENDACK;
 		for (ret = __log_c_get(logc, &lsn, &data_dbt, flags);
 		    ret == 0 && type != REP_LOG_MORE;
 		    ret = __log_c_get(logc, &lsn, &data_dbt, DB_NEXT)) {
@@ -1256,14 +1259,15 @@ skip:				/*
                 }
             }
 
-            R_LOCK(dbenv, &dblp->reginfo);
-            lastlsn = lp->lsn;
-            R_UNLOCK(dbenv, &dblp->reginfo);
+            if (!(sendflags & DB_REP_SENDACK) && gbl_fill_sendack_threshold) {
+                R_LOCK(dbenv, &dblp->reginfo);
+                lastlsn = lp->lsn;
+                R_UNLOCK(dbenv, &dblp->reginfo);
 
-            bytes_behind = subtract_lsn(dbenv->app_private, &lastlsn, &lsn);
-            if (gbl_fill_sendack_threshold && bytes_behind <
-                    gbl_fill_sendack_threshold) {
-                sendflags |= DB_REP_SENDACK;
+                bytes_behind = subtract_lsn(dbenv->app_private, &lastlsn, &lsn);
+                if (bytes_behind >= gbl_fill_sendack_threshold) {
+                    sendflags |= DB_REP_SENDACK;
+                }
             }
 
 			if (check_limit) {
@@ -1490,6 +1494,9 @@ more:           if (type == REP_LOG_MORE) {
 		ret = __log_c_get(logc, &rp->lsn, &data_dbt, DB_SET);
         int resp_rc;
         sendflags = 0;
+        if (gbl_always_ack_fills)
+            sendflags |= DB_REP_SENDACK;
+
 		type = (gbl_decoupled_logputs && gbl_decoupled_fills) ? 
             REP_LOG_FILL : REP_LOG;
         if (gbl_verbose_fills) {
@@ -1505,14 +1512,15 @@ more:           if (type == REP_LOG_MORE) {
         }
 
         /* Flush if this is a single-record request */
-        R_LOCK(dbenv, &dblp->reginfo);
-        lastlsn = lp->lsn;
-        R_UNLOCK(dbenv, &dblp->reginfo);
+        if (!(sendflags & DB_REP_SENDACK) && gbl_fill_sendack_threshold) {
+            R_LOCK(dbenv, &dblp->reginfo);
+            lastlsn = lp->lsn;
+            R_UNLOCK(dbenv, &dblp->reginfo);
 
-        bytes_behind = subtract_lsn(dbenv->app_private, &lastlsn, &lsn);
-        if (gbl_fill_sendack_threshold && bytes_behind <
-                gbl_fill_sendack_threshold) {
-            sendflags |= DB_REP_SENDACK;
+            bytes_behind = subtract_lsn(dbenv->app_private, &lastlsn, &lsn);
+            if (bytes_behind >= gbl_fill_sendack_threshold) {
+                sendflags |= DB_REP_SENDACK;
+            }
         }
 
         if (rec == NULL)
@@ -1605,14 +1613,15 @@ more:           if (type == REP_LOG_MORE) {
 			if (log_compare(&lsn, (DB_LSN *)rec->data) >= 0)
 				break;
 
-            R_LOCK(dbenv, &dblp->reginfo);
-            lastlsn = lp->lsn;
-            R_UNLOCK(dbenv, &dblp->reginfo);
+            if (!(sendflags & DB_REP_SENDACK) && gbl_fill_sendack_threshold) {
+                R_LOCK(dbenv, &dblp->reginfo);
+                lastlsn = lp->lsn;
+                R_UNLOCK(dbenv, &dblp->reginfo);
 
-            bytes_behind = subtract_lsn(dbenv->app_private, &lastlsn, &lsn);
-            if (gbl_fill_sendack_threshold && bytes_behind <
-                    gbl_fill_sendack_threshold) {
-                sendflags |= DB_REP_SENDACK;
+                bytes_behind = subtract_lsn(dbenv->app_private, &lastlsn, &lsn);
+                if (bytes_behind >= gbl_fill_sendack_threshold) {
+                    sendflags |= DB_REP_SENDACK;
+                }
             }
 
 			if (lsn.file != oldfilelsn.file) {
@@ -3221,7 +3230,6 @@ gap_check:		max_lsn_dbtp = NULL;
 			if (ret_lsnp != NULL)
 				*ret_lsnp = rp->lsn;
 			ret = DB_REP_NOTPERM;
-
 		}
 		goto done;
 	} else {

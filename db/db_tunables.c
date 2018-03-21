@@ -138,6 +138,7 @@ extern int gbl_catchup_window_trace;
 extern int gbl_early_ack_trace;
 extern int gbl_throttle_logput_trace;
 extern int gbl_fills_waitms;
+extern int gbl_always_ack_fills;
 extern int gbl_verbose_fills;
 extern int gbl_fill_sendack_threshold;
 extern int gbl_enque_log_more;
