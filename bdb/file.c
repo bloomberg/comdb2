@@ -2128,7 +2128,7 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
     return net_is_single_sanctioned_node(bdb_state->repinfo->netinfo);
 }
 
-int gbl_rep_qstats = 1;
+extern int gbl_commit_delay_trace;
 
 static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 {
@@ -2530,8 +2530,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     net_register_getlsn(bdb_state->repinfo->netinfo, net_getlsn_rtn);
 
     /* Register qstat if its enabled */
-    if (gbl_rep_qstats)
-        net_rep_qstat_init(bdb_state->repinfo->netinfo);
+    net_rep_qstat_init(bdb_state->repinfo->netinfo);
 
     /* set the callback data so we get our bdb_state pointer from these
      * calls. */
@@ -3150,6 +3149,11 @@ again:
         rc = net_send(bdb_state->repinfo->netinfo,
                       bdb_state->repinfo->master_host,
                       USER_TYPE_COMMITDELAYNONE, NULL, 0, 1);
+        if (gbl_commit_delay_trace) {
+            logmsg(LOGMSG_USER, "%s line %d sending COMMITDELAYNONE\n",
+                    __func__, __LINE__);
+
+        }
     }
 
     /*

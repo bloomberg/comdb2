@@ -146,7 +146,6 @@ extern int gbl_retry_fill_with_flush;
 extern int gbl_trace_repmore_reqs;
 extern int gbl_verbose_repdups;
 extern int gbl_apply_thread_pollms;
-extern int gbl_rep_qstats;
 extern int gbl_warn_queue_latency_threshold;
 extern int gbl_req_all_threshold;
 extern int gbl_rep_verify_always_grab_writelock;

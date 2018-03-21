@@ -5128,6 +5128,9 @@ void *watcher_thread(void *arg)
                             logmsg(LOGMSG_ERROR,
                                    "failed to send COMMITDELAYMORE to %s\n",
                                    bdb_state->repinfo->master_host);
+                        } else if (gbl_commit_delay_trace) {
+                            logmsg(LOGMSG_USER, "%s line %d requested "
+                                    "COMMITDELAYMORE\n", __func__, __LINE__);
                         }
                     }
 

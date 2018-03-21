@@ -230,7 +230,7 @@ DEF_ATTR(COMMITDELAYBEHINDTHRESH, commitdelaybehindthresh, BYTES, 1048576,
          "Call for election again and ask the master to delay commits if we "
          "are further than this far behind on startup.")
 /* we really should just remove this option */
-DEF_ATTR(NUMTIMESBEHIND, numtimesbehind, QUANTITY, 1000000000, NULL)
+DEF_ATTR(NUMTIMESBEHIND, numtimesbehind, QUANTITY, 5, NULL)
 DEF_ATTR(TOOMANYSKIPPED, toomanyskipped, QUANTITY, 2,
          "Call for election again and delay commits if more than this many "
          "nodes are incoherent.")
@@ -386,7 +386,7 @@ DEF_ATTR(NOMASTER_ALERT_SECONDS, nomaster_alert_seconds, QUANTITY, 60,
          "Replicants will alarm if there's no master for this many seconds.")
 DEF_ATTR(PRINT_FLUSH_LOG_MSG, print_flush_log_msg, BOOLEAN, 0,
          "Produce trace when flushing log files.")
-DEF_ATTR(ENABLE_INCOHERENT_DELAYMORE, enable_incoherent_delaymore, BOOLEAN, 0,
+DEF_ATTR(ENABLE_INCOHERENT_DELAYMORE, enable_incoherent_delaymore, BOOLEAN, 1,
          NULL)
 DEF_ATTR(MASTER_REJECT_REQUESTS, master_reject_requests, BOOLEAN, 1,
          "Master will reject SQL requests - they'll be routed to a replicant. "

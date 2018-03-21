@@ -1313,9 +1313,6 @@ REGISTER_TUNABLE("retry_fill_with_flush", "Retry fills with flush-flag set."
 REGISTER_TUNABLE("verbose_repmore_trace", "Verbose trace for rep-more requests."
                  "  (Default: off)", TUNABLE_BOOLEAN, &gbl_trace_repmore_reqs,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("rep_qstats", "Keep stats on rep net-queue.  (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_rep_qstats, EXPERIMENTAL | INTERNAL, 
-                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("throttle_logput_trace", "Print trace when stopping logputs "
                  "to incoherent nodes.  (Default: off)", TUNABLE_BOOLEAN, 
                  &gbl_throttle_logput_trace, EXPERIMENTAL | INTERNAL, NULL,
