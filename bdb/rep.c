@@ -5303,6 +5303,8 @@ void *watcher_thread(void *arg)
         /* sleep for somewhere between 1-2 seconds */
         poll(NULL, 0, (rand() % 1000) + 1000);
     }
+
+    bdb_thread_event(bdb_state, 0);
 }
 
 int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
