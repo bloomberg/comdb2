@@ -4850,7 +4850,7 @@ void *watcher_thread(void *arg)
     last_time = 0;
 
     bdb_state = (bdb_state_type *)arg;
-    bdb_thread_event(bdb_state, 1);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
 
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
@@ -5045,7 +5045,7 @@ void *watcher_thread(void *arg)
 
             BDB_RELLOCK();
 
-            bdb_thread_event(bdb_state, 0);
+            bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
             pthread_exit(NULL);
         }
 
@@ -5304,7 +5304,7 @@ void *watcher_thread(void *arg)
         poll(NULL, 0, (rand() % 1000) + 1000);
     }
 
-    bdb_thread_event(bdb_state, 0);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
 }
 
 int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
