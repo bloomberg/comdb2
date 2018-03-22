@@ -755,7 +755,10 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                 int rc = 0;
                 struct schema_change_type *s = iq->sc;
                 scdone_t type = -1;
-                if (s->fastinit && s->drop_table)
+                if (s->is_trigger || s->is_sfunc || s->is_afunc) {
+                    /* already sent scdone in finalize_schema_change_thd */
+                    type = -1;
+                } else if (s->fastinit && s->drop_table)
                     type = drop;
                 else if (s->fastinit)
                     type = fastinit;
@@ -763,10 +766,9 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                     type = add;
                 else if (s->rename)
                     type = rename_table;
-                else if (!s->is_trigger && !s->is_sfunc && !s->is_afunc &&
-                         s->type == DBTYPE_TAGGED_TABLE)
+                else if (s->type == DBTYPE_TAGGED_TABLE)
                     type = alter;
-                if (type < 0) {
+                if (type < 0 || s->db == NULL) {
                     logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
                            __func__, s->table);
                 } else {
