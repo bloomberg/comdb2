@@ -7167,6 +7167,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     } break;
     case OSQL_DBGLOG: {
         osql_dbglog_t dbglog;
+        const uint8_t *p_buf = (const uint8_t *)msg;
         const uint8_t *p_buf_end = p_buf + sizeof(osql_dbglog_t);
 
         osqlcomm_dbglog_type_get(&dbglog, p_buf, p_buf_end);
@@ -7174,9 +7175,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         if (!iq->dbglog_file)
             iq->dbglog_file = open_dbglog_file(dbglog.dbglog_cookie);
 
-        if (iq->queryid != dbglog.queryid)
-            dbglog_init_write_counters(iq);
-
+        dbglog_init_write_counters(iq);
         iq->queryid = dbglog.queryid;
     } break;
     case OSQL_RECGENID: {
