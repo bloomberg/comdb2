@@ -1307,9 +1307,6 @@ REGISTER_TUNABLE("warn_queue_latency", "Trace for log queues processed that "
 REGISTER_TUNABLE("print_net_queue_size", "Trace for net queue size.  (Default: "
                  "off)", TUNABLE_BOOLEAN, &gbl_print_net_queue_size, 
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("retry_fill_with_flush", "Retry fills with flush-flag set."
-                 "  (Default: off)", TUNABLE_BOOLEAN, &gbl_retry_fill_with_flush,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("verbose_repmore_trace", "Verbose trace for rep-more requests."
                  "  (Default: off)", TUNABLE_BOOLEAN, &gbl_trace_repmore_reqs,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
@@ -1323,15 +1320,8 @@ REGISTER_TUNABLE("catchup_window_trace", "Print master catchup window trace.  "
 REGISTER_TUNABLE("early_ack_trace", "Print trace when sending an early ack.  "
                  "(Default: off)", TUNABLE_BOOLEAN, &gbl_early_ack_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("fill_sendack_threshold", "Fills requests acks within this "
-                 "threshold.  (Default: 40000000)", TUNABLE_INTEGER, 
-                 &gbl_fill_sendack_threshold, EXPERIMENTAL | INTERNAL, NULL,
-                 NULL, NULL, NULL);
 REGISTER_TUNABLE("commit_delay_trace", "Verbose commit-delays.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_commit_delay_trace, 
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("always_ack_fills", "Send ack-on-commit for all fills.  "
-                 "(Default: on)", TUNABLE_INTEGER, &gbl_always_ack_fills, 
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("osql_random_restart",

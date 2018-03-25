@@ -76,8 +76,6 @@ int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_decoupled_fills = 1;
 int gbl_master_req_waitms = 200;
-int gbl_fill_sendack_threshold = 40000000;
-int gbl_always_ack_fills = 1;
 int gbl_fills_waitms = 500;
 int gbl_warn_queue_latency_threshold = 500;
 
@@ -419,7 +417,6 @@ static int queue_log_more_count = 0;
 static int queue_log_fill_count = 0;
 int gbl_trace_repmore_reqs = 0;
 int gbl_verbose_repdups = 0;
-int gbl_retry_fill_with_flush = 0;
 uint64_t subtract_lsn(void *bdb_state, DB_LSN *lsn1, DB_LSN *lsn2);
 
 static void *apply_thread(void *arg) 
@@ -1237,9 +1234,7 @@ skip:				/*
             REP_LOG_FILL : REP_LOG;
 		flags = IS_ZERO_LSN(rp->lsn) ||
 		    IS_INIT_LSN(rp->lsn) ? DB_FIRST : DB_SET;
-        sendflags = 0;
-        if (gbl_always_ack_fills)
-            sendflags |= DB_REP_SENDACK;
+        sendflags = DB_REP_SENDACK;
 		for (ret = __log_c_get(logc, &lsn, &data_dbt, flags);
 		    ret == 0 && type != REP_LOG_MORE;
 		    ret = __log_c_get(logc, &lsn, &data_dbt, DB_NEXT)) {
@@ -1256,17 +1251,6 @@ skip:				/*
                     logmsg(LOGMSG_USER, "%s line %d failed to send newfile to "
                             "%s for LSN %d:%d %d\n", __func__, __LINE__,
                             *eidp, oldfilelsn.file, oldfilelsn.offset, rc);
-                }
-            }
-
-            if (!(sendflags & DB_REP_SENDACK) && gbl_fill_sendack_threshold) {
-                R_LOCK(dbenv, &dblp->reginfo);
-                lastlsn = lp->lsn;
-                R_UNLOCK(dbenv, &dblp->reginfo);
-
-                bytes_behind = subtract_lsn(dbenv->app_private, &lastlsn, &lsn);
-                if (bytes_behind >= gbl_fill_sendack_threshold) {
-                    sendflags |= DB_REP_SENDACK;
                 }
             }
 
@@ -1304,23 +1288,10 @@ skip:				/*
 
 		    if ((rc = __rep_send_message(dbenv, *eidp, type, &lsn, &data_dbt, 
                             sendflags, NULL)) != 0) {
-
-                /* Retry with NODROP and NOBUFFER */
-                if (gbl_retry_fill_with_flush && (rc = (__rep_send_message(
-                                    dbenv, *eidp, type, &lsn, &data_dbt, 
-                                    (sendflags|DB_REP_NODROP| DB_REP_NOBUFFER),
-                                    NULL)) == 0)) {
-                        if (gbl_verbose_fills) {
-                            logmsg(LOGMSG_USER, "%s line %d resent REP_LOG_FILL"
-                                    " to %s with FLUSH & NODROP on %d\n", 
-                                    __func__, __LINE__, *eidp, rc);
-                        }
-                } else {
-                    logmsg(LOGMSG_USER, "%s line %d toggled to LOG_MORE for %s"
-                            " LSN %d:%d on %d\n", __func__, __LINE__, *eidp, 
-                            lsn.file, lsn.offset, rc);
-                    type = REP_LOG_MORE;
-                }
+                logmsg(LOGMSG_USER, "%s line %d toggled to LOG_MORE for %s"
+                        " LSN %d:%d on %d\n", __func__, __LINE__, *eidp, 
+                        lsn.file, lsn.offset, rc);
+                type = REP_LOG_MORE;
 
 more:           if (type == REP_LOG_MORE) {
                     /* Net queue could be full: send REP_LOG_MORE with the
@@ -1493,9 +1464,7 @@ more:           if (type == REP_LOG_MORE) {
 		memset(&data_dbt, 0, sizeof(data_dbt));
 		ret = __log_c_get(logc, &rp->lsn, &data_dbt, DB_SET);
         int resp_rc;
-        sendflags = 0;
-        if (gbl_always_ack_fills)
-            sendflags |= DB_REP_SENDACK;
+        sendflags = DB_REP_SENDACK;
 
 		type = (gbl_decoupled_logputs && gbl_decoupled_fills) ? 
             REP_LOG_FILL : REP_LOG;
@@ -1508,18 +1477,6 @@ more:           if (type == REP_LOG_MORE) {
             } else {
                 logmsg(LOGMSG_USER, "%s line %d REP_LOG_REQ from %s %d:%d\n",
                         __func__, __LINE__, *eidp, lsn.file, lsn.offset);
-            }
-        }
-
-        /* Flush if this is a single-record request */
-        if (!(sendflags & DB_REP_SENDACK) && gbl_fill_sendack_threshold) {
-            R_LOCK(dbenv, &dblp->reginfo);
-            lastlsn = lp->lsn;
-            R_UNLOCK(dbenv, &dblp->reginfo);
-
-            bytes_behind = subtract_lsn(dbenv->app_private, &lastlsn, &lsn);
-            if (bytes_behind >= gbl_fill_sendack_threshold) {
-                sendflags |= DB_REP_SENDACK;
             }
         }
 
@@ -1612,17 +1569,6 @@ more:           if (type == REP_LOG_MORE) {
 			}
 			if (log_compare(&lsn, (DB_LSN *)rec->data) >= 0)
 				break;
-
-            if (!(sendflags & DB_REP_SENDACK) && gbl_fill_sendack_threshold) {
-                R_LOCK(dbenv, &dblp->reginfo);
-                lastlsn = lp->lsn;
-                R_UNLOCK(dbenv, &dblp->reginfo);
-
-                bytes_behind = subtract_lsn(dbenv->app_private, &lastlsn, &lsn);
-                if (bytes_behind >= gbl_fill_sendack_threshold) {
-                    sendflags |= DB_REP_SENDACK;
-                }
-            }
 
 			if (lsn.file != oldfilelsn.file) {
 				if (resp_rc = __rep_send_message(dbenv,
