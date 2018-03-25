@@ -2,9 +2,16 @@
 
 # Verify log-fills
 
+debug=1
 [[ "$debug" == 1 ]] && set -x
 needcluster=1
 db=$1
+declare -a sigstopmachs
+declare -a pidlist
+pidix=0
+stopix=0
+write_machine=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep -v MASTER | egrep lsn | head -1 | cut -f1 -d":" | tr -d '[:space:]')
+master=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | egrep lsn | head -1 | cut -f1 -d":" | tr -d '[:space:]')
 
 if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
     echo "This test is only relevant for a CLUSTERED installation."
@@ -16,29 +23,59 @@ if [[ -z "$stage" ]]; then
     stage="default"
 fi
 
+function findstopmachs
+{
+    [[ "$debug" == 1 ]] && set -x
+    for x in $CLUSTER ; do 
+        if [ $x != $master -a $x != $write_machine ]; then
+            sigstopmachs[$stopix]=$x
+            let stopix=stopix+1
+        fi
+    done
+}
+
 function createtables
 {
     [[ "$debug" == 1 ]] && set -x
     $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME $stage "create table t1 {schema{int id int val null=yes} keys{ dup \"id\" = id }}" >/dev/null 2>&1
 }
 
+function addtopidlist
+{
+    [[ "$debug" == 1 ]] && set -x
+    pidlist[$pidix]=$1
+    let pidix=pidix+1
+}
+
+function killpidlist
+{
+    [[ "$debug" == 1 ]] && set -x
+    j=0
+    while [[ $j -lt $pidix ]]; do 
+        kill -9 ${pidlist[$j]}
+        let j=j+1
+    done
+}
+
+function errquit
+{
+    [[ "$debug" == 1 ]] && set -x
+    echo "$1"
+    killpidlist
+    exit 1
+}
+
 function waitforcoherency
 {
     [[ "$debug" == 1 ]] && set -x
-    heal
-    ma=$($CDB2SQL_EXE -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
-    m=${ma%%:*}
-    c=$(ssh $m "$CDB2SQL_EXE -tabs $db @localhost \"exec procedure sys.cmd.send('bdb cluster')\"")
+    c=$($CDB2SQL_EXE -tabs $db @$master "exec procedure sys.cmd.send('bdb cluster')")
     echo "$c"
     echo "$c" | egrep COHERENT
     r=$?
     while [[ $r == 0 ]] ; do
         echo "$(date) waiting for $db cluster to become coherent"
-        heal
         sleep 1
-        ma=$($CDB2SQL_EXE -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
-        m=${ma%%:*}
-        c=$(ssh $m "$CDB2SQL_EXE -tabs $db @localhost \"exec procedure sys.cmd.send('bdb cluster')\"")
+        c=$($CDB2SQL_EXE -tabs $db @$master "exec procedure sys.cmd.send('bdb cluster')")
         echo "$c"
         echo "$c" | egrep COHERENT
         r=$?
@@ -60,22 +97,63 @@ function insertforever
     chr=$(echo $TEST_TIMEOUT | sed 's/[0-9]*//g')
     j=0
 
-    machine=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep -v MASTER | egrep lsn | head -1 | cut -f1 -d":" | tr -d '[:space:]')
 
     while [[ $j -lt $2 ]]; do 
-        timeout $ttimeout$chr yes "$(cat $sql)" | $CDB2SQL_EXE --host $machine ${CDB2_OPTIONS} $DBNAME default - > /dev/null 2>&1 &
+        timeout $ttimeout$chr yes "$(cat $sql)" | $CDB2SQL_EXE --host $write_machine ${CDB2_OPTIONS} $DBNAME default - > /dev/null 2>&1 &
+        addtopidlist $!
         let j=j+1
     done
+}
 
-    wait
+function pauseandrestart
+{
+    [[ "$debug" == 1 ]] && set -x
+    pcount=$1
+    sleeptime=$2
+    if [ $pcount -gt $stopix ]; then
+        errquit "Cluster is too small to run test"
+    fi
+    j=0
+    while [[ $j -lt $pcount ]]; do
+        node=${sigstopmachs[$j]}
+        if [ $node == $(hostname) ] ; then
+            pid=$(cat ${TMPDIR}/${db}.${node}.pid)
+            if [[ -z "$pid" ]]; then pid=$(cat ${TMPDIR}/${db}.pid) ; fi
+            echo "Pausing $node pid $pid for $sleeptime seconds"
+            ( kill -SIGSTOP $pid ; sleep $sleeptime ; kill -SIGCONT $pid ) &
+        else
+            pid=$(ssh $node "cat ${TMPDIR}/${db}.${node}.pid")
+            if [[ -z "$pid" ]]; then pid=$(ssh $node "cat ${TMPDIR}/${db}.pid") ; fi
+            echo "Pausing $node pid $pid for $sleeptime seconds"
+            ssh $node "kill -SIGSTOP $pid ; sleep $sleeptime ; kill -SIGCONT $pid" < /dev/null &
+        fi
+
+        let j=j+1
+    done
+    sleep $sleeptime
+    waitforcoherency
 }
 
 function runtestwithoptions
 {
     [[ "$debug" == 1 ]] && set -x
+    findstopmachs
     createtables
-    #insertforever 1000 3
-    insertforever 1000 15
+    insertforever 1000 5
+
+    pauseandrestart 1 60
+#    pauseandrestart 1 120
+#    pauseandrestart 1 180
+
+#    pauseandrestart 2 60
+    pauseandrestart 2 120
+#    pauseandrestart 2 180
+
+#    pauseandrestart 3 60
+#    pauseandrestart 3 120
+#    pauseandrestart 3 180
+
+    killpidlist
 }
 
 function runtest
