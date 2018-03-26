@@ -653,7 +653,7 @@ REGISTER_TUNABLE("move_deadlock_max_attempt", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &name, DEPRECATED | READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("natural_types", "Same as 'nosurprise'", TUNABLE_BOOLEAN,
-                 &gbl_surprise, READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 &gbl_surprise, INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("netbufsz", "Size of the network buffer (per "
                              "node) for the replication network. "
                              "(Default: 1MB)",
@@ -1068,7 +1068,7 @@ REGISTER_TUNABLE("track_berk_locks", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("udp", NULL, TUNABLE_BOOLEAN, &gbl_udp, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("unnatural_types", "Same as 'surprise'", TUNABLE_BOOLEAN,
-                 &gbl_surprise, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
+                 &gbl_surprise, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
 REGISTER_TUNABLE("update_delete_limit", NULL, TUNABLE_BOOLEAN,
                  &gbl_update_delete_limit, READONLY | NOARG, NULL, NULL, NULL,
