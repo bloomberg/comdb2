@@ -5048,7 +5048,7 @@ static int meta_get_var_tran(tran_type *tran, struct dbtable *db,
     } else {
         /* silly loop to find record with the right length */
         int dtalen = 0;
-        *fndlen = DB_MAX_SERVER_KEY_SIZE;
+        *fndlen = MAXKEYLEN;
         *dta = NULL;
 
         if (tran) {

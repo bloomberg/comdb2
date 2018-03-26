@@ -1066,6 +1066,14 @@ inline int replicant_can_retry(struct sqlclntstate *clnt)
            clnt->verifyretry_off == 0;
 }
 
+static void send_query_effects(struct sqlclntstate *clnt)
+{
+    if (clnt->is_newsql || clnt->intrans || !clnt->want_query_effects)
+        return;
+    WRITE_RESPONSE(RESPONSE_EFFECTS, 0);
+    reset_query_effects(clnt);
+}
+
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse)
 {
@@ -1385,12 +1393,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     if (rc == SQLITE_OK) {
         /* send return code */
 
-        if (clnt->want_query_effects) {
-            rc = WRITE_RESPONSE(RESPONSE_EFFECTS, NULL);
-            if (!clnt->is_newsql) {
-                reset_query_effects(clnt);
-            }
-        }
+        send_query_effects(clnt);
 
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
@@ -1444,7 +1447,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         }
         /* if this is still an error, but not verify, pass it back to client */
-        else if (rc != DB_ERR_TRN_VERIFY) {
+        else if (rc != CDB2ERR_VERIFY_ERROR) {
             reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" SOCKSL retried done "
                                                  "(non verify error rc=%d) "
                                                  "sendresp=%d\n",
@@ -3184,7 +3187,7 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
             irc = (clnt->osql.error_is_remote)
                       ? irc
                       : blockproc2sql_error(irc, __func__, __LINE__);
-            if (irc == DB_ERR_TRN_VERIFY && replicant_can_retry(clnt) &&
+            if (irc == CDB2ERR_VERIFY_ERROR && replicant_can_retry(clnt) &&
                 !clnt->has_recording && clnt->osql.replay == OSQL_RETRY_NONE) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_DO);
             }
@@ -3193,13 +3196,13 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
         if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
             /* if this is still a verify error but we tried to many times,
                send error back anyway by resetting the replay field */
-            if (irc == DB_ERR_TRN_VERIFY &&
+            if (irc == CDB2ERR_VERIFY_ERROR &&
                 clnt->osql.replay == OSQL_RETRY_LAST) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
             }
             /* if this is still an error, but not verify, pass it back to
                client */
-            else if (irc && irc != DB_ERR_TRN_VERIFY) {
+            else if (irc && irc != CDB2ERR_VERIFY_ERROR) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
             }
             /* if this is a successful retrial of a previous verified-failed
@@ -3256,6 +3259,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
             pthread_mutex_lock(&clnt->wait_mutex);
             clnt->ready_for_heartbeats = 0;
             pthread_mutex_unlock(&clnt->wait_mutex);
+            send_query_effects(clnt);
             WRITE_RESPONSE(RESPONSE_ROW_LAST, 0);
         } else {
             send_run_error(clnt, errstr, rc);
@@ -3275,6 +3279,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         assert(clnt->is_newsql);
         clnt->send_one_row = 0;
         clnt->skip_feature = 1;
+        send_query_effects(clnt);
         WRITE_RESPONSE(RESPONSE_ROW_LAST_DUMMY, 0);
     }
 
@@ -3510,14 +3515,10 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
         if (rc) {
             int irc = errstat_get_rc(&err);
             switch(irc) {
-                case ERR_ROW_HEADER:
-                        send_run_error(clnt, errstat_get_str(&err), 
-                                             CDB2ERR_CONV_FAIL);
-                    break;
-                case ERR_CONVERSION_DT:
-                        send_run_error(clnt, errstat_get_str(&err), 
-                                             DB_ERR_CONV_FAIL);
-                    break;
+            case ERR_ROW_HEADER:
+            case ERR_CONVERSION_DT:
+                send_run_error(clnt, errstat_get_str(&err), CDB2ERR_CONV_FAIL);
+                break;
             }
             if (fast_error)
                 goto errors;
@@ -5196,6 +5197,24 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
     return rc;
 }
 
+enum {
+    /* LEGACY CODES */
+    DB_ERR_BAD_REQUEST = 110,  /* 199 */
+    DB_ERR_BAD_COMM_BUF = 111, /* 998 */
+    DB_ERR_BAD_COMM = 112,     /* 999 */
+    DB_ERR_NONKLESS = 114,     /* 212 */
+    /* GENERAL BLOCK TRN RCODES */
+    DB_ERR_TRN_BUF_INVALID = 200,   /* 105 */
+    DB_ERR_TRN_BUF_OVERFLOW = 201,  /* 106 */
+    DB_ERR_TRN_OPR_OVERFLOW = 202,  /* 205 */
+    DB_ERR_TRN_DB_FAIL = 204,       /* 220 */
+    DB_ERR_TRN_NOT_SERIAL = 230,
+    DB_ERR_TRN_SC = 240, /* should be client side code as well*/
+    /* INTERNAL DB ERRORS */
+    DB_ERR_INTR_GENERIC = 304,
+    DB_ERR_INTR_READ_ONLY = 305,
+};
+
 /*
  * convert a block processor code error
  * to an sql code error
@@ -5222,11 +5241,11 @@ int blockproc2sql_error(int rc, const char *func, int line)
     case 212:
         return DB_ERR_NONKLESS;
     case 220:
-        return DB_ERR_TRN_FAIL;
+        return CDB2ERR_DEADLOCK;
     case 222:
-        return DB_ERR_TRN_DUP;
-    case ERR_BLOCK_FAILED + ERR_VERIFY: //224
-        return DB_ERR_TRN_VERIFY;
+        return CDB2__ERROR_CODE__DUP_OLD;
+    case 224:
+        return CDB2ERR_VERIFY_ERROR;
     case 225:
         return DB_ERR_TRN_DB_FAIL;
     case 230:
@@ -5234,7 +5253,7 @@ int blockproc2sql_error(int rc, const char *func, int line)
     case 240:
         return DB_ERR_TRN_SC;
     case 301:
-        return DB_ERR_CONV_FAIL;
+        return CDB2ERR_CONV_FAIL;
     case 998:
         return DB_ERR_BAD_COMM_BUF;
     case 999:
@@ -5260,16 +5279,16 @@ int blockproc2sql_error(int rc, const char *func, int line)
         return CDB2ERR_CONSTRAINTS;
 
     case ERR_NULL_CONSTRAINT:
-        return DB_ERR_TRN_NULL_CONSTRAINT;
+        return CDB2ERR_NULL_CONSTRAINT;
 
     case SQLITE_ACCESS:
         return CDB2ERR_ACCESS;
 
     case 1229: /* ERR_BLOCK_FAILED + OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT */
-        return DB_ERR_TRN_FKEY;
+        return CDB2ERR_FKEY_VIOLATION;
 
     case ERR_UNCOMMITABLE_TXN:
-        return DB_ERR_TRN_VERIFY;
+        return CDB2ERR_VERIFY_ERROR;
 
     case ERR_REJECTED:
         return SQLHERR_MASTER_QUEUE_FULL;
@@ -5309,7 +5328,7 @@ int sqlserver2sqlclient_error(int rc)
     case SQLITE_INTERNAL:
         return CDB2ERR_INTERNAL;
     case ERR_CONVERT_DTA:
-        return DB_ERR_CONV_FAIL;
+        return CDB2ERR_CONV_FAIL;
     case SQLITE_TRAN_NOUNDO:
         return SQLHERR_ROLLBACK_NOLOG; /* this will suffice */
     default:

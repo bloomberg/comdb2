@@ -61,9 +61,15 @@ struct newsql_postponed_data {
 struct newsql_appdata {
     struct newsql_postponed_data *postponed;
     CDB2SQLQUERY *query;
+
+    /* row buf */
+    size_t packed_capacity;
+    void *packed_buf;
+
+    /* columns */
     int count;
     int capacity;
-    int type[0];
+    int type[0]; /* must be last */
 };
 
 static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
@@ -224,17 +230,23 @@ done:
     return rc;
 }
 
-#define RESPONSE_STACK_SIZE (16 * 1024)
+#define NEWSQL_MAX_RESPONSE_ON_STACK (16 * 1024)
 
 static int newsql_response_int(struct sqlclntstate *clnt,
                                const CDB2SQLRESPONSE *r, int h, int flush)
 {
     size_t len = cdb2__sqlresponse__get_packed_size(r);
-    uint8_t *malloc_buf = NULL, *buf;
-    if (len < RESPONSE_STACK_SIZE) {
+    uint8_t *buf;
+    if (len < NEWSQL_MAX_RESPONSE_ON_STACK) {
         buf = alloca(len);
     } else {
-        buf = malloc_buf = malloc(len);
+        struct newsql_appdata *appdata = clnt->appdata;
+        if (appdata->packed_capacity < len) {
+            appdata->packed_capacity = len + 1024;
+            free(appdata->packed_buf);
+            appdata->packed_buf = malloc(appdata->packed_capacity);
+        }
+        buf = appdata->packed_buf;
     }
     cdb2__sqlresponse__pack(r, buf);
 
@@ -253,7 +265,6 @@ static int newsql_response_int(struct sqlclntstate *clnt,
     rc = 0;
 done:
     pthread_mutex_unlock(&clnt->write_lock);
-    free(malloc_buf);
     return rc;
 }
 
@@ -280,7 +291,7 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     return type;
 }
 
-static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt,
+static struct newsql_appdata *newsql_appdata(struct sqlclntstate *clnt,
                                                  int ncols)
 {
     struct newsql_appdata *appdata = clnt->appdata;
@@ -311,6 +322,7 @@ static void free_newsql_appdata(struct sqlclntstate *clnt)
         free(appdata->postponed);
         appdata->postponed = NULL;
     }
+    free(appdata->packed_buf);
     free(appdata);
     clnt->appdata = NULL;
 }
@@ -329,7 +341,7 @@ extern int gbl_return_long_column_names;
 static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     int ncols = sqlite3_column_count(stmt);
-    struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
+    struct newsql_appdata *appdata = newsql_appdata(clnt, ncols);
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
     for (int i = 0; i < ncols; ++i) {
@@ -362,7 +374,7 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
     if (stmt && sqlite3_column_count(stmt) != ncols) {
         return -1;
     }
-    struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
+    struct newsql_appdata *appdata = newsql_appdata(clnt, ncols);
     size_t n_types = appdata->query ? appdata->query->n_types : 0;
     if (n_types && n_types != ncols) {
         return -2;
@@ -392,7 +404,7 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
 static int newsql_columns_str(struct sqlclntstate *clnt, char **names,
                               int ncols)
 {
-    struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
+    struct newsql_appdata *appdata = newsql_appdata(clnt, ncols);
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
     for (int i = 0; i < ncols; ++i) {
@@ -438,9 +450,13 @@ static int newsql_flush(struct sqlclntstate *clnt)
     return rc < 0;
 }
 
-static int newsql_heartbeat(struct sqlclntstate *c)
+static int newsql_heartbeat(struct sqlclntstate *clnt)
 {
-    return newsql_send_hdr(c, 0);
+    if (!clnt->heartbeat)
+        return 0;
+    if (!clnt->ready_for_heartbeats)
+        return 0;
+    return newsql_send_hdr(clnt, 0);
 }
 
 static int newsql_save_postponed_row(struct sqlclntstate *clnt,
@@ -556,7 +572,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
         return newsql_send_postponed_row(clnt);
     }
     int ncols = sqlite3_column_count(stmt);
-    struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
+    struct newsql_appdata *appdata = newsql_appdata(clnt, ncols);
     assert(ncols == appdata->count);
     int flip = 0;
 #   if BYTE_ORDER == BIG_ENDIAN
@@ -1224,7 +1240,7 @@ static void send_dbinforesponse(struct dbenv *dbenv, SBUF2 *sb)
     fill_dbinfo(dbinfo_response, dbenv->bdb_env);
     int len = cdb2__dbinforesponse__get_packed_size(dbinfo_response);
     uint8_t *buf, *malloc_buf = NULL;
-    if (len > RESPONSE_STACK_SIZE) {
+    if (len > NEWSQL_MAX_RESPONSE_ON_STACK) {
         buf = malloc_buf = malloc(len);
     } else {
         buf = alloca(len);
@@ -1620,7 +1636,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         goto done;
     }
     assert(query->sqlquery);
-    get_newsql_appdata(&clnt, 32);
+    newsql_appdata(&clnt, 32);
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
     clnt.query = query;
