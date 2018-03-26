@@ -2337,13 +2337,6 @@ static inline int check_user_password(struct sqlclntstate *clnt)
     return 0;
 }
 
-static int need_flush(struct sqlclntstate *clnt)
-{
-    return (clnt->conninfo.pid == 0 && sbuf2fileno(clnt->sb) == fileno(stdout))
-               ? 0
-               : 1;
-}
-
 void thr_set_current_sql(const char *sql)
 {
     char *prevsql;
@@ -2722,7 +2715,6 @@ static void _prepare_error(struct sqlthdstate *thd,
                                 struct sql_state *rec, int rc, 
                                 struct errstat *err)
 {
-    int flush_resp;
     const char *errstr;
 
     if (clnt->in_client_trans && (rec->status & CACHE_HAS_HINT ||
@@ -2739,7 +2731,6 @@ static void _prepare_error(struct sqlthdstate *thd,
         return;
     }
 
-    flush_resp = need_flush(clnt);
     if(rc == ERR_SQL_PREPARE && !rec->stmt)
         errstr = "no statement";
     else if (clnt->fdb_state.xerr.errval) {
@@ -2749,13 +2740,11 @@ static void _prepare_error(struct sqlthdstate *thd,
     }
     reqlog_logf(thd->logger, REQL_TRACE, "sqlite3_prepare failed %d: %s\n", rc,
                 errstr);
-    if (flush_resp) {
-        errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
-    } else {
-        if (clnt->saved_errstr)
-            free(clnt->saved_errstr);
-        clnt->saved_errstr = strdup(errstr);
+    errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
+    if (clnt->saved_errstr) {
+        free(clnt->saved_errstr);
     }
+    clnt->saved_errstr = strdup(errstr);
     if (clnt->want_query_effects) {
         clnt->had_errors = 1;
     }
@@ -3054,14 +3043,13 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
                                       struct sqlclntstate *clnt, int *outrc)
 {
     int rc;
-    int flush_resp = need_flush(clnt);
 
     sql_update_usertran_state(clnt);
 
     switch (clnt->ctrl_sqlengine) {
 
     case SQLENG_PRE_STRT_STATE:
-        *outrc = handle_sql_begin(thd, clnt, flush_resp);
+        *outrc = handle_sql_begin(thd, clnt, 1);
         return 1;
 
     case SQLENG_WRONG_STATE:
@@ -3070,7 +3058,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 
     case SQLENG_FNSH_STATE:
     case SQLENG_FNSH_RBK_STATE:
-        *outrc = handle_sql_commitrollback(thd, clnt, flush_resp);
+        *outrc = handle_sql_commitrollback(thd, clnt, 1);
         return 1;
 
     case SQLENG_NORMAL_PROCESS:
