@@ -2080,9 +2080,9 @@ retry:
 static int cdb2_convert_error_code(int rc)
 {
     switch (rc) {
-    case 1:
+    case CDB2__ERROR_CODE__DUP_OLD:
         return CDB2ERR_DUPLICATE;
-    case 1003:
+    case CDB2__ERROR_CODE__PREPARE_ERROR_OLD:
         return CDB2ERR_PREPARE_ERROR;
     default:
         return rc;

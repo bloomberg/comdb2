@@ -103,7 +103,6 @@ typedef long long tranid_t;
 #include "thdpool.h"
 #include "thrman.h"
 #include "comdb2uuid.h"
-#include "comdb2_legacy.h"
 #include "machclass.h"
 #include "tunables.h"
 
@@ -423,64 +422,6 @@ enum RCODES {
     , ERR_SQL_PREP = 2001 /* block sql error in sqlite3_prepare */
     , ERR_LIMIT = 2002 /* sql request exceeds max cost */
     , ERR_NOT_DURABLE = 2003 /* commit didn't make it to a majority */
-};
-
-enum dbt_api_return_codes {
-    DB_RC_SUCCESS = 0,
-
-    /* FIND RCODES */
-    DB_RC_FND = 0,
-    DB_RC_MORE = 1,
-    DB_ERR_NOTFND = 2,
-    DB_ERR_NOTFNDEOF = 3,
-    DB_ERR_CONVFIND = 4,
-    DB_ERR_CONVMORE = 5,
-    DB_ERR_CONVNOTFND = 6,
-    DB_ERR_CONVNOTFNDEOF = 7,
-    DB_ERR_EMPTY_TABLE = 8,
-    DB_ERR_NOTFNDRRN = 9,
-
-    /* GENERAL RCODES */
-    DB_ERR_ACCESS = 100,       /* 199 */
-    DB_ERR_BAD_REQUEST = 110,  /* 199 */
-    DB_ERR_BAD_COMM_BUF = 111, /* 998 */
-    DB_ERR_BAD_COMM = 112,     /* 999 */
-    DB_ERR_CONV_FAIL = 113,    /* 301 */
-    DB_ERR_NONKLESS = 114,     /* 212 */
-    DB_ERR_MALLOC = 115,
-    DB_ERR_NOTSUPPORTED = 116,
-    DB_ERR_BADCTRL = 117,
-    DB_ERR_DYNTAG_LOAD_FAIL = 118,
-    /* GENERAL BLOCK TRN RCODES */
-    DB_RC_TRN_OK = 0,
-    DB_ERR_TRN_DUP = 1,    /* dup add 2 , returned with 220 before */
-    DB_ERR_TRN_VERIFY = 2, /* verify 4, returned with 220 before */
-    DB_ERR_TRN_FKEY = 3,
-    DB_ERR_TRN_NULL_CONSTRAINT = 4, /* 318 */
-    DB_ERR_TRN_BUF_INVALID = 200,   /* 105 */
-    DB_ERR_TRN_BUF_OVERFLOW = 201,  /* 106 */
-    DB_ERR_TRN_OPR_OVERFLOW = 202,  /* 205 */
-    DB_ERR_TRN_FAIL = 203,          /* 220 */
-    DB_ERR_TRN_DB_FAIL = 204,       /* 220 */
-    DB_ERR_TRN_DB_CONN = 205,
-    DB_ERR_TRN_DB_IO = 206,
-    DB_ERR_TRN_NOT_SERIAL = 230,
-    DB_ERR_TRN_SC = 240,
-
-    /* INTERNAL DB ERRORS */
-    DB_ERR_INTR_NO_MASTER = 300,
-    DB_ERR_INTR_FWD = 301,
-    DB_ERR_INTR_NESTED_FWD = 302,
-    DB_ERR_INTR_MASTER_REJECT = 303,
-    DB_ERR_INTR_GENERIC = 304,
-    DB_ERR_INTR_READ_ONLY = 305,
-    DB_ERR_INTR_BLOB_RETR = 306,
-
-    /* TZNAME SET FAILURE */
-    DB_ERR_TZNAME_FAIL = 401,
-
-    DB_RC_RNG_OK = 0,
-    DB_RC_RNG_DONE = 1
 };
 
 #define IS_BAD_IX_FND_RCODE(rc)                                                \
@@ -3372,9 +3313,6 @@ FILE *io_override_get_std(void);
 void reqlog_set_origin(struct reqlogger *logger, const char *fmt, ...);
 const char *reqlog_get_origin(struct reqlogger *logger);
 void berkdb_iopool_process_message(char *line, int lline, int st);
-
-uint8_t *comdb2_field_type_put(const comdb2_field_type *field, uint8_t *p_buf,
-                               const uint8_t *p_buf_end);
 
 uint8_t *db_info2_iostats_put(const struct db_info2_iostats *p_iostats,
                               uint8_t *p_buf, const uint8_t *p_buf_end);

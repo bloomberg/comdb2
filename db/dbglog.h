@@ -17,13 +17,33 @@
 #ifndef INCLUDED_DBGLOG_H
 #define INCLUDED_DBGLOG_H
 
-#define open_dbglog_file(...) NULL
-#define dbglog_init_write_counters(...) 0
+#include <inttypes.h>
+struct ireq;
+struct sbuf2;
+struct dbglog_hdr;
+struct sql_thread;
+struct sqlclntstate;
+struct client_query_stats;
 
-#define dump_client_query_stats_packed(...) do { } while (0)
-#define dump_client_query_stats(...) do { } while (0)
-#define append_debug_logs_from_master(...) do { } while (0)
-#define dbglog_record_db_write(...) do { } while (0)
-#define dbglog_dump_write_stats(...) do { } while (0)
+int dbglog_init_write_counters(struct ireq *);
+int grab_dbglog_file(struct sbuf2 *, unsigned long long, struct sqlclntstate *);
+struct sbuf2 *open_dbglog_file(unsigned long long);
+void append_debug_logs_from_master(struct sbuf2 *, unsigned long long);
+void dbglog_dump_write_stats(struct ireq *);
+void dbglog_record_db_write(struct ireq *, char *);
+void dump_client_query_stats(struct sbuf2 *, struct client_query_stats *);
+void dump_client_query_stats_packed(struct sbuf2 *, const uint8_t *);
 
+struct dbglog_impl {
+    int (*dbglog_init_write_counters)(struct ireq *);
+    int (*grab_dbglog_file)(struct sbuf2 *, unsigned long long, struct sqlclntstate *);
+    struct sbuf2 *(*open_dbglog_file)(unsigned long long);
+    void (*append_debug_logs_from_master)(struct sbuf2 *, unsigned long long);
+    void (*dbglog_dump_write_stats)(struct ireq *);
+    void (*dbglog_record_db_write)(struct ireq *, char *);
+    void (*dump_client_query_stats)(struct sbuf2 *, struct client_query_stats *);
+    void (*dump_client_query_stats_packed)(struct sbuf2 *, const uint8_t *);
+};
+
+void set_dbglog_impl(struct dbglog_impl *);
 #endif

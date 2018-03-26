@@ -4059,22 +4059,22 @@ static void init_db_funcs(Lua L)
 
     luaL_newmetatable(L, dbtypes.db);
 
-    lua_pushinteger(L, DB_ERR_TRN_DUP);
+    lua_pushinteger(L, CDB2__ERROR_CODE__DUP_OLD);
     lua_setfield(L, -2, "err_dup");
 
-    lua_pushinteger(L, DB_ERR_TRN_VERIFY);
+    lua_pushinteger(L, CDB2ERR_VERIFY_ERROR);
     lua_setfield(L, -2, "err_verify");
 
-    lua_pushinteger(L, DB_ERR_TRN_FKEY);
+    lua_pushinteger(L, CDB2ERR_FKEY_VIOLATION);
     lua_setfield(L, -2, "err_fkey");
 
-    lua_pushinteger(L, DB_ERR_TRN_NULL_CONSTRAINT);
+    lua_pushinteger(L, CDB2ERR_NULL_CONSTRAINT);
     lua_setfield(L, -2, "err_null_constraint");
 
     lua_pushinteger(L, CDB2ERR_CONSTRAINTS);
     lua_setfield(L, -2, "err_selectv");
 
-    lua_pushinteger(L, DB_ERR_CONV_FAIL);
+    lua_pushinteger(L, CDB2ERR_CONV_FAIL);
     lua_setfield(L, -2, "err_conv");
 
     lua_pushstring(L, "__index");

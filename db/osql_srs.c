@@ -361,7 +361,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
         if (0 /*!bdb_am_i_coherent(thedb->bdb_env)*/) {
             fprintf(stderr, "Cannot replay, I am incoherent id=%d retries=%d\n",
                     clnt->queryid, clnt->verify_retries);
-            rc = DB_ERR_TRN_VERIFY;
+            rc = CDB2ERR_VERIFY_ERROR;
             break;
         }
         nq = 0;
