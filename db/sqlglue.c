@@ -6217,14 +6217,13 @@ unsigned long long get_rowid(BtCursor *pCur)
  ** in this case, if the genid is synthetic, it needs to pull the blobs from
  ** the SHADOW BLOB; we do this here
  */
-int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc, int fnum,
-                               Mem *m)
+static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
+                                      int fnum, Mem *m, void *dta)
 {
     struct ireq iq;
     blob_status_t blobs;
     int blobnum;
     struct field *f;
-    void *dta;
     int rc;
     int bdberr;
     int nretries = 0;
@@ -6283,14 +6282,6 @@ again:
      * after a deadlock (because we close all our cursors) */
     init_fake_ireq(thedb, &iq);
     iq.usedb = pCur->db;
-
-    if (pCur->dtabuf) {
-        dta = pCur->dtabuf;
-    } else {
-        dta = pCur->bdbcur->datacopy(pCur->bdbcur);
-    }
-
-    assert(dta);
 
     if (check_one_blob_consistency(&iq, iq.usedb->tablename, ".ONDISK", &blobs,
                                    dta, f->blob_index, 0)) {
@@ -6354,6 +6345,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
     int outdtsz = 0;
     int rc = 0;
     struct field *f = &(sc->member[fnum]);
+    void *record = in;
     uint8_t *in_orig = in = in + f->offset;
 
     if (f->flags & INDEX_DESCEND) {
@@ -6649,7 +6641,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
             /*fprintf(stderr, "m->n = %d\n", m->n); */
             m->flags = MEM_Blob;
         } else
-            rc = fetch_blob_into_sqlite_mem(pCur, sc, fnum, m);
+            rc = fetch_blob_into_sqlite_mem(pCur, sc, fnum, m, record);
 
         break;
     }
@@ -6673,7 +6665,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
             /*fprintf(stderr, "m->n = %d\n", m->n); */
             m->flags = MEM_Str | MEM_Ephem;
         } else
-            rc = fetch_blob_into_sqlite_mem(pCur, sc, fnum, m);
+            rc = fetch_blob_into_sqlite_mem(pCur, sc, fnum, m, record);
         break;
     }
 
@@ -6689,7 +6681,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
             m->flags = MEM_Blob;
             m->n = 0;
         } else {
-            rc = fetch_blob_into_sqlite_mem(pCur, sc, fnum, m);
+            rc = fetch_blob_into_sqlite_mem(pCur, sc, fnum, m, record);
         }
         break;
     }
