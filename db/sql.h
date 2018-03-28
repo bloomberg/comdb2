@@ -320,20 +320,22 @@ int sp_column_val(struct response_data *, int, int, void *);
 void *sp_column_ptr(struct response_data *, int, int, size_t *);
 
 typedef int(response_func)(struct sqlclntstate *, int, void *, int);
+typedef void *(replay_func)(struct sqlclntstate *, void *);
 
-response_func write_response;
-response_func read_response;
-
-struct clnt_plugin_interface {
+struct plugin_callbacks {
     response_func *write_response; /* newsql_write_response */
     response_func *read_response; /* newsql_read_response */
+    replay_func *save_stmt; /* newsql_save_stmt */
+    replay_func *restore_stmt; /* newsql_restore_stmt */
+    replay_func *destroy_stmt; /* newsql_destroy_stmt */
+    replay_func *print_stmt; /* newsql_print_stmt */
 };
 
 /* Client specific sql state */
 struct sqlclntstate {
     /* appsock plugin specific data */
     void *appdata;
-    struct clnt_plugin_interface plugin;
+    struct plugin_callbacks plugin;
 
     dbtran_type dbtran;
     pthread_mutex_t dtran_mtx; /* protect dbtran.dtran, if any,
@@ -898,6 +900,8 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
 
 #define cur_is_remote(pCur) (pCur->cursor_class == CURSORCLASS_REMOTE)
 
+response_func write_response;
+response_func read_response;
 int sql_writer(SBUF2 *, const char *, int);
 int typestr_to_type(const char *ctype);
 
