@@ -1323,6 +1323,15 @@ REGISTER_TUNABLE("early_ack_trace", "Print trace when sending an early ack.  "
 REGISTER_TUNABLE("commit_delay_trace", "Verbose commit-delays.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_commit_delay_trace, 
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("set_coherent_state_trace", "Verbose coherency trace.  "
+                 "(Default: off)", TUNABLE_BOOLEAN, 
+                 &gbl_set_coherent_state_trace, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("finish_fill_threshold", "Fill to end if end is less than "
+                 "this.  (Default: 40000000)", TUNABLE_INTEGER, 
+                 &gbl_finish_fill_threshold, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
+
 
 REGISTER_TUNABLE("osql_random_restart",
                  "Restart socksql transmission randomly.  (Default: off)",

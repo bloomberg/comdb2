@@ -76,8 +76,11 @@ int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_decoupled_fills = 1;
 int gbl_master_req_waitms = 200;
-int gbl_fills_waitms = 500;
+int gbl_fills_waitms = 1000;
 int gbl_warn_queue_latency_threshold = 500;
+
+/* Finish a fill if we are within a single logfile */
+int gbl_finish_fill_threshold = 40000000;
 
 int gbl_max_logput_queue = 100000;
 int gbl_apply_thread_pollms = 100;
@@ -574,26 +577,23 @@ static void *apply_thread(void *arg)
 
         /* Issue a REP_MASTER_REQ if we don't know who is master */
         if (master_eid == db_eid_invalid) {
-            last_fill = 0;
             send_master_req(dbenv, __func__, __LINE__);
             pthread_mutex_lock(&rep_queue_lock);
             continue;
         }
 
         if (!i_am_replicant || !gbl_decoupled_fills || IN_ELECTION_TALLY(rep)) {
-            last_fill = 0;
             pthread_mutex_lock(&rep_queue_lock);
             continue;
         }
 
         if (log_more_count || log_compare(&master_lsn, &my_lsn) <= 0) {
-            last_fill = 0;
             pthread_mutex_lock(&rep_queue_lock);
             continue;
         }
 
         /* There's a log_more in the queue */
-        if (log_more_count || log_fill_count || comdb2_time_epochms() -
+        if (log_fill_count || comdb2_time_epochms() -
                 last_fill < gbl_fills_waitms) {
             pthread_mutex_lock(&rep_queue_lock);
             continue;
@@ -1254,7 +1254,12 @@ skip:				/*
                 }
             }
 
-			if (check_limit) {
+            R_LOCK(dbenv, &dblp->reginfo);
+            bytes_behind = subtract_lsn(dbenv->app_private, &lp->lsn, &lsn);
+            R_UNLOCK(dbenv, &dblp->reginfo);
+
+			if (check_limit && (!gbl_finish_fill_threshold || 
+                        bytes_behind > gbl_finish_fill_threshold)) {
 				/*
 				 * data_dbt.size is only the size of the log
 				 * record;  it doesn't count the size of the
@@ -1400,7 +1405,6 @@ more:           if (type == REP_LOG_MORE) {
 				ret = 0;
 			else if (__rep_send_message(dbenv,
 				master, REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) != 0) {
-                last_fill = 0;
                 if (gbl_verbose_fills) {
                     logmsg(LOGMSG_USER, "%s line %d failed continue REP_ALL_REQ"
                             " lsn %d:%d\n", __func__, __LINE__, lsn.file,

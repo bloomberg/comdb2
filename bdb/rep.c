@@ -438,6 +438,36 @@ void bdb_transfermaster(bdb_state_type *bdb_state)
     }
 }
 
+int gbl_set_coherent_state_trace = 0;
+
+static inline char *state_to_str(int state)
+{
+    switch(state) {
+        case STATE_INCOHERENT:
+            return "INCOHERENT";
+        case STATE_INCOHERENT_WAIT:
+            return "INCOHERENT_WAIT";
+        case STATE_INCOHERENT_SLOW:
+            return "INCOHERENT_SLOW";
+        case STATE_COHERENT:
+            return "COHERENT";
+        default:
+            return "?UNKNOWN_STATE?";
+    }
+}
+
+/* You should have the lock */
+static inline void set_coherent_state(bdb_state_type *bdb_state, const char 
+        *hostname, int state, const char *func, int line)
+{
+    bdb_state->coherent_state[nodeix(hostname)] = state;
+    if (gbl_set_coherent_state_trace) {
+        logmsg(LOGMSG_USER, "%s line %d setting coherent state to %s\n",
+                func, line, state_to_str(state));
+
+    }
+}
+
 void bdb_transfermaster_tonode(bdb_state_type *bdb_state, char *tohost)
 {
     const char *hostlist[REPMAX];
@@ -652,7 +682,7 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
                 throttles++;
                 if (pr) {
                     logmsg(LOGMSG_USER, "%s throttling logput to %s, incoherent"
-                            "%llu bytes behind, total throttles=%llu\n",
+                            " %llu bytes behind, total throttles=%llu\n",
                             __func__, host, cntbytes, throttles);
                 }
             } else {
@@ -1749,12 +1779,7 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum)
     if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
         pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
-        bdb_state->coherent_state[nodeix(hostname)] = STATE_INCOHERENT_WAIT;
-#ifdef INCOHERENT_CTRACE
-        ctrace("%s:%d setting host %s to INCOHERENT_WAIT\n", __FILE__, __LINE__,
-               hostname);
-#endif
-
+        set_coherent_state(bdb_state, hostname, STATE_INCOHERENT_WAIT, __func__, __LINE__);
         pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         /* Colease thread will do this */
@@ -1952,15 +1977,12 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
              * replicant will run recovery to catch up
              */
             defer_commits(bdb_state, host, __func__);
-            bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT;
+            set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
+                    __LINE__);
         }
 
         /* hostdown can defer commits */
         bdb_state->last_downgrade_time[nodeix(host)] = gettimeofday_ms();
-#ifdef INCOHERENT_CTRACE
-        ctrace("%s %d setting host %s to INCOHERENT_WAIT\n", __FILE__, __LINE__,
-               host);
-#endif
         pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
         trigger_unregister_node(host);
     } 
@@ -2007,22 +2029,17 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
 void bdb_all_incoherent(bdb_state_type *bdb_state)
 {
     int i;
-
+    if (gbl_set_coherent_state_trace) {
+        logmsg(LOGMSG_USER, "%s line %d setting all nodes to INCOHERENT_WAIT\n",
+                __func__, __LINE__);
+    }
     pthread_mutex_lock(&(bdb_state->coherent_state_lock));
     for (i = 0; i < MAXNODES; i++) {
-#ifdef INCOHERENT_CTRACE
-        ctrace("%s %d setting node %d to INCOHERENT_WAIT\n", __FILE__, __LINE__,
-               i);
-#endif
         bdb_state->coherent_state[i] = STATE_INCOHERENT_WAIT;
     }
 
-    bdb_state->coherent_state[nodeix(bdb_state->repinfo->myhost)] =
-        STATE_COHERENT;
-#ifdef INCOHERENT_CTRACE
-    ctrace("%s %d setting node %d to COHERENT\n", __FILE__, __LINE__,
-           bdb_state->repinfo->myhost);
-#endif
+    set_coherent_state(bdb_state, bdb_state->repinfo->myhost,
+            STATE_COHERENT, __func__, __LINE__);
 
     pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 }
@@ -2411,12 +2428,8 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
             pthread_mutex_lock(&bdb_state->coherent_state_lock);
             if (bdb_state->coherent_state[nodeix(host)] ==
                 STATE_INCOHERENT_SLOW) {
-                logmsg(LOGMSG_USER, "making %s incoherent due to no activity\n", host);
-                bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT;
-#ifdef INCOHERENT_CTRACE
-                ctrace("%s:%d setting host %s to INCOHERENT\n", __FILE__,
-                       __LINE__, host);
-#endif
+                set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__, 
+                        __LINE__);
             }
             pthread_mutex_unlock(&bdb_state->coherent_state_lock);
             last_slow_node_check_time = comdb2_time_epochms();
@@ -2537,12 +2550,12 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                             (gettimeofday_ms() -
                              bdb_state->last_downgrade_time[nodeix(host)]) <=
                                 downgrade_penalty) {
-                            bdb_state->coherent_state[nodeix(host)] =
-                                STATE_INCOHERENT_WAIT;
+                            set_coherent_state(bdb_state, host,
+                                    STATE_INCOHERENT_WAIT, __func__, __LINE__);
                         } else {
                             /* dont send here under lock */
-                            bdb_state->coherent_state[nodeix(host)] =
-                                STATE_COHERENT;
+                            set_coherent_state(bdb_state, host, STATE_COHERENT,
+                                    __func__, __LINE__);
                             uint32_t gen;
                             bdb_state->dbenv->get_rep_gen(bdb_state->dbenv,
                                                           &gen);
@@ -2569,8 +2582,8 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                         cntbytes =
                             subtract_lsn(bdb_state, masterlsn, &seqnum->lsn);
                         if (cntbytes < catchup_window) {
-                            bdb_state->coherent_state[nodeix(host)] =
-                                STATE_INCOHERENT_WAIT;
+                            set_coherent_state(bdb_state, host, 
+                                    STATE_INCOHERENT_WAIT, __func__, __LINE__);
                             if (gbl_catchup_window_trace) {
                                 logmsg(LOGMSG_USER, "%s line %d setting %s to "
                                         "incoherent wait, seqnum lsn %d:%d, "
@@ -2704,14 +2717,10 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                     if (bdb_state->coherent_state[nodeix(worst_node)] ==
                         STATE_COHERENT)
                         defer_commits(bdb_state, worst_node, __func__);
-                    bdb_state->coherent_state[nodeix(host)] =
-                        STATE_INCOHERENT_SLOW;
+                    set_coherent_state(bdb_state, host, STATE_INCOHERENT_SLOW,
+                            __func__, __LINE__);
                     bdb_state->last_downgrade_time[nodeix(host)] =
                         gettimeofday_ms();
-#ifdef INCOHERENT_CTRACE
-                    ctrace("%s:%d setting host %s to COHERENT\n", __FILE__,
-                           __LINE__, worst_node);
-#endif
                 }
             }
         }
@@ -2748,11 +2757,8 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                       bdb_state->attr->slowrep_incoherent_factor +
                   bdb_state->attr->slowrep_incoherent_mintime))) {
                 print_message = 1;
-                bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT;
-#ifdef INCOHERENT_CTRACE
-                ctrace("%s:%d setting host %s to INCOHERENT\n", __FILE__,
-                       __LINE__, host);
-#endif
+                set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
+                        __LINE__);
             }
             pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
             if (print_message)
@@ -2836,11 +2842,8 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
                     defer_commits(bdb_state, host, __func__);
                 bdb_state->last_downgrade_time[nodeix(host)] =
                     gettimeofday_ms();
-                bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT;
-#ifdef INCOHERENT_CTRACE
-                ctrace("%s:%d setting host %s to INCOHERENT\n", __FILE__,
-                       __LINE__, host);
-#endif
+                set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
+                        __LINE__);
                 bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
         }
 
@@ -2967,10 +2970,6 @@ again:
     /* Timeout */
     else if (rc == ETIMEDOUT && remaining <= 0) {
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
-#ifdef INCOHERENT_CTRACE
-        ctrace("%s:%d: returning timeout for syncing to node %s\n", __FILE__,
-               __LINE__, host);
-#endif
         if (bdb_state->attr->wait_for_seqnum_trace) {
             logmsg(LOGMSG_USER, "%s line %d called from %d %s timed out, mach-gen %u mach_lsn %d:%d waiting for %u %d:%d\n", 
                     __func__, __LINE__, lineno, host, got_gen, got_lsn.file, got_lsn.offset,
@@ -3276,10 +3275,6 @@ got_ack:
             logmsg(LOGMSG_WARN, "replication timeout to node %s (%d ms), base node "
                             "was %s with %d ms\n",
                     nodelist[i], waitms, base_node, we_used);
-#ifdef INCOHERENT_CTRACE
-            ctrace("%s:%d : replication timeout to node %s\n", __FILE__,
-                   __LINE__, nodelist[i]);
-#endif
             numfailed++;
         }
 
@@ -3321,32 +3316,19 @@ got_ack:
                               .lsn);
                     cntbytes = subtract_lsn(bdb_state, masterlsn, &nodelsn);
 
-                    bdb_state->coherent_state[nodeix(nodelist[i])] =
-                        (cntbytes < catchup_window) ? STATE_INCOHERENT_WAIT
-                                                    : STATE_INCOHERENT;
+                    set_coherent_state(bdb_state, nodelist[i], 
+                            (cntbytes < catchup_window) ? STATE_INCOHERENT_WAIT
+                            : STATE_INCOHERENT, __func__, __LINE__);
                 } else
-                    bdb_state->coherent_state[nodeix(nodelist[i])] =
-                        STATE_INCOHERENT;
+                    set_coherent_state(bdb_state, nodelist[i], STATE_INCOHERENT,
+                            __func__, __LINE__);
 
                 /* Record the downgrade time */
                 bdb_state->last_downgrade_time[nodeix(nodelist[i])] =
                     gettimeofday_ms();
 
-#ifdef INCOHERENT_CTRACE
-                ctrace("%s %d setting node %s to INCOHERENT\n", __FILE__,
-                       __LINE__, nodelist[i]);
-#endif
                 bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
             }
-#ifdef INCOHERENT_CTRACE
-            else {
-                ctrace("%s:%d not setting %s to INCOHERENT because seqnum->lsn "
-                       "is %d:%d and node->lsn is %d:%d\n",
-                       __FILE__, __LINE__, nodelist[i], seqnum->lsn.file,
-                       seqnum->lsn.offset,
-                       nodelsn.file, nodelsn.offset);
-            }
-#endif
 
             Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
         }
@@ -4050,20 +4032,11 @@ void bdb_set_notcoherent(bdb_state_type *bdb_state, int notcoherent)
     ** Friendly reminder over net? */
     if (!bdb_state->passed_dbenv_open && notcoherent) {
         BDB_RELLOCK();
-#ifdef INCOHERENT_CTRACE
-        ctrace("%s %d ignoring not_coherent %d because we are not open\n",
-               __FILE__, __LINE__, notcoherent);
-#endif
         return;
     }
 
     bdb_state->not_coherent = notcoherent;
     bdb_state->not_coherent_time = comdb2_time_epoch();
-
-#ifdef INCOHERENT_CTRACE
-    ctrace("%s %d setting not_coherent to %d\n", __FILE__, __LINE__,
-           notcoherent);
-#endif
 
     BDB_RELLOCK();
 }
