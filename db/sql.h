@@ -319,16 +319,21 @@ int sp_column_nil(struct response_data *, int);
 int sp_column_val(struct response_data *, int, int, void *);
 void *sp_column_ptr(struct response_data *, int, int, size_t *);
 
-typedef int(*response_func)(struct sqlclntstate *, int, void *, int);
+typedef int(response_func)(struct sqlclntstate *, int, void *, int);
+
+response_func write_response;
+response_func read_response;
+
+struct clnt_plugin_interface {
+    response_func *write_response; /* newsql_write_response */
+    response_func *read_response; /* newsql_read_response */
+};
 
 /* Client specific sql state */
 struct sqlclntstate {
-    /* newsql_write_response, fastsql_write_response, etc */
-    response_func write_response;
-    /* newsql_read_response */
-    response_func read_response;
     /* appsock plugin specific data */
     void *appdata;
+    struct clnt_plugin_interface plugin;
 
     dbtran_type dbtran;
     pthread_mutex_t dtran_mtx; /* protect dbtran.dtran, if any,

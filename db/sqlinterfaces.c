@@ -198,7 +198,17 @@ int disable_server_sql_timeouts(void)
             gbl_sql_no_timeouts_on_release_locks);
 }
 
-#define WRITE_RESPONSE(R, D) clnt->write_response(clnt, R, (void *)D, 0)
+int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
+{
+    return clnt->plugin.write_response(clnt, R, D, I);
+}
+
+int read_response(struct sqlclntstate *clnt, int R, void *D, int I)
+{
+    return clnt->plugin.read_response(clnt, R, D, I);
+}
+
+#define WRITE_RESPONSE(R, D) write_response(clnt, R, (void *)D, 0)
 
 void handle_failed_dispatch(struct sqlclntstate *clnt, char *errstr)
 {
@@ -1499,7 +1509,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         outrc = rc;
 
         if (sendresponse) {
-            clnt->write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, rc);
+            write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, rc);
         }
     }
 
@@ -2801,7 +2811,7 @@ static int send_run_error(struct sqlclntstate *clnt, const char *err, int rc)
     pthread_mutex_lock(&clnt->wait_mutex);
     clnt->ready_for_heartbeats = 0;
     pthread_mutex_unlock(&clnt->wait_mutex);
-    return clnt->write_response(clnt, RESPONSE_ERROR, (void *)err, rc);
+    return write_response(clnt, RESPONSE_ERROR, (void *)err, rc);
 }
 
 static int handle_bad_engine(struct sqlclntstate *clnt)
@@ -3164,9 +3174,9 @@ static int send_row(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt,
         if (!rc && (clnt->num_retry == clnt->sql_query->retry) &&
                 (clnt->num_retry == 0 || clnt->sql_query->has_skip_rows == 0 ||
                  (clnt->sql_query->skip_rows < row_id)))
-            irc = clnt->write_response(clnt, RESPONSE_ROW, &arg, postpone);
+            irc = write_response(clnt, RESPONSE_ROW, &arg, postpone);
     } else {
-        irc = clnt->write_response(clnt, RESPONSE_ROW, &arg, postpone);
+        irc = write_response(clnt, RESPONSE_ROW, &arg, postpone);
     }
     return irc;
 }
@@ -3494,7 +3504,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
         clnt->had_errors = 1;
         if (rc == -1)
             rc = -3;
-        clnt->write_response(clnt, RESPONSE_ERROR, errstr, rc);
+        write_response(clnt, RESPONSE_ERROR, errstr, rc);
         if (errstr) {
             free(errstr);
         }
@@ -5575,16 +5585,21 @@ void run_internal_sql(char *sql)
     pthread_mutex_destroy(&clnt.dtran_mtx);
 }
 
-static int dummy_response(struct sqlclntstate *a, int b, void *c, int d)
+static int internal_response(struct sqlclntstate *a, int b, void *c, int d)
 {
     return 0;
+}
+
+static void internal_clnt_plugin_init(struct sqlclntstate *clnt)
+{
+    clnt->plugin.write_response = internal_response;
+    clnt->plugin.read_response = internal_response;
 }
 
 void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {
     reset_clnt(clnt, NULL, 1);
-    clnt->write_response = dummy_response;
-    clnt->read_response = dummy_response;
+    internal_clnt_plugin_init(clnt);
     pthread_mutex_init(&clnt->wait_mutex, NULL);
     pthread_cond_init(&clnt->wait_cond, NULL);
     pthread_mutex_init(&clnt->write_lock, NULL);

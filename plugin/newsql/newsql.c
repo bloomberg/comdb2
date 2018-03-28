@@ -912,6 +912,13 @@ static int newsql_read_response(struct sqlclntstate *c, int t, void *r, int e)
     }
 }
 
+static void newsql_clnt_plugin_init(struct sqlclntstate *clnt)
+{
+    get_newsql_appdata(clnt, 32);
+    clnt->plugin.write_response = newsql_write_response;
+    clnt->plugin.read_response = newsql_read_response;
+}
+
 /* Skip spaces and tabs, requires at least one space */
 static inline char *skipws(char *str)
 {
@@ -1612,8 +1619,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     thrman_change_type(thr_self, THRTYPE_APPSOCK_SQL);
 
     reset_clnt(&clnt, sb, 1);
-    clnt.write_response = newsql_write_response;
-    clnt.read_response = newsql_read_response;
+    newsql_clnt_plugin_init(&clnt);
     clnt.tzname[0] = '\0';
     clnt.is_newsql = 1;
 
@@ -1646,7 +1652,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         goto done;
     }
     assert(query->sqlquery);
-    get_newsql_appdata(&clnt, 32);
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
     clnt.query = query;
