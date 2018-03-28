@@ -92,14 +92,10 @@ function insertforever
         let j=j+1
     done
     echo "COMMIT" >> $sql
-    timeout=$(echo $TEST_TIMEOUT | sed 's/[^0-9]*//g')
-    ttimeout=$(echo "$timeout / 1.2" | bc)
-    chr=$(echo $TEST_TIMEOUT | sed 's/[0-9]*//g')
     j=0
 
-
     while [[ $j -lt $2 ]]; do 
-        timeout $ttimeout$chr yes "$(cat $sql)" | $CDB2SQL_EXE --host $write_machine ${CDB2_OPTIONS} $DBNAME default - > /dev/null 2>&1 &
+        timeout $TEST_TIMEOUT yes "$(cat $sql)" | $CDB2SQL_EXE --host $write_machine ${CDB2_OPTIONS} $DBNAME default - > /dev/null 2>&1 &
         addtopidlist $!
         let j=j+1
     done
