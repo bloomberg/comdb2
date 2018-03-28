@@ -479,7 +479,7 @@ static void pong(Lua L)
 {
     SP sp = getsp(L);
     struct sqlclntstate *clnt = sp->clnt;
-    if (clnt->read_response(clnt, RESPONSE_PING_PONG, NULL, 0) != 0) {
+    if (read_response(clnt, RESPONSE_PING_PONG, NULL, 0) != 0) {
         luaL_error(L, "client protocol error");
     }
     sp->pingpong = 0;
@@ -1350,7 +1350,7 @@ typedef struct client_info {
 static int send_sp_trace(struct sqlclntstate *clnt, const char *trace, int want_response)
 {
     int type = want_response ? RESPONSE_DEBUG : RESPONSE_TRACE;
-    return clnt->write_response(clnt, type, (void *)trace, 0);
+    return write_response(clnt, type, (void *)trace, 0);
 }
 
 static clnt_info info_buf;
@@ -1368,7 +1368,7 @@ static int get_remote_input(lua_State *lua, char *buffer, size_t sz)
         return luabb_error(lua, sp, "%s: couldn't send results back", __func__);
     }
     pthread_mutex_lock(&lua_debug_mutex);
-    int rc = clnt->read_response(clnt, RESPONSE_SP_CMD, buffer, sz);
+    int rc = read_response(clnt, RESPONSE_SP_CMD, buffer, sz);
     pthread_mutex_unlock(&lua_debug_mutex);
     return rc;
 }
@@ -2514,8 +2514,7 @@ static void *dispatch_lua_thread(void *lt)
         l_thread->clnt->want_stored_procedure_trace;
     clnt.dbtran.mode = l_thread->clnt->dbtran.mode;
     clnt.is_newsql = l_thread->clnt->is_newsql;
-    clnt.write_response = l_thread->clnt->write_response;
-    clnt.read_response = l_thread->clnt->read_response;
+    clnt.plugin = l_thread->clnt->plugin;
     clnt.sp = l_thread->sp;
     clnt.sql = l_thread->sql;
     clnt.must_close_sb = 0;
@@ -3656,7 +3655,7 @@ static int db_emiterror(lua_State *lua)
         logmsg(LOGMSG_ERROR, "err: %s\n", errstr);
         if (sp->rc == 0) sp->rc = -1;
         struct sqlclntstate *clnt = sp->clnt;
-        clnt->write_response(clnt, RESPONSE_ERROR, (void *)errstr, sp->rc);
+        write_response(clnt, RESPONSE_ERROR, (void *)errstr, sp->rc);
     }
     return 0;
 }
@@ -3845,7 +3844,7 @@ static int db_print(Lua lua)
     if (trace == NULL) return 0;
 
     struct sqlclntstate *clnt = sp->clnt;
-    int rc  = clnt->write_response(clnt, RESPONSE_DEBUG, (void*)trace, 0);
+    int rc  = write_response(clnt, RESPONSE_DEBUG, (void*)trace, 0);
     if (rc)
         return luabb_error(lua, sp, "%s: couldn't send results back", __func__);
 
@@ -4826,14 +4825,14 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
         pthread_mutex_lock(sp->emit_mutex);
         if (clnt->osql.sent_column_data == 0) {
             new_col_info(sp, nargs);
-            rc = clnt->write_response(clnt, RESPONSE_COLUMNS_LUA, &arg, 0);
+            rc = write_response(clnt, RESPONSE_COLUMNS_LUA, &arg, 0);
             clnt->osql.sent_column_data = 1;
         }
         pthread_mutex_unlock(sp->emit_mutex);
         if (rc) return rc;
     }
     int type = stmt ? RESPONSE_ROW : RESPONSE_ROW_LUA;
-    return clnt->write_response(clnt, type, &arg, 0);
+    return write_response(clnt, type, &arg, 0);
 }
 
 static int flush_rows(SP sp)
@@ -4843,9 +4842,9 @@ static int flush_rows(SP sp)
     struct sqlclntstate *clnt = sp->clnt;
     if ((sp->parent && !sp->parent->clnt->osql.sent_column_data) ||
         (!sp->parent && sp->nrows == 0)) {
-        return clnt->write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
+        return write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
     }
-    return clnt->write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
+    return write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
 }
 
 static int push_param(Lua lua, struct sqlclntstate *clnt, struct schema *params,
@@ -6207,7 +6206,7 @@ int db_verify_table_callback(void *v, const char *buf)
     if (buf[0] == '!' || buf[0] == '?') buf++;
     char *row[] = {(char*)buf};
     struct sqlclntstate *clnt = sp->clnt;
-    clnt->write_response(clnt, RESPONSE_ROW_STR, row, 1);
+    write_response(clnt, RESPONSE_ROW_STR, row, 1);
     return 0;
 }
 

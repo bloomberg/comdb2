@@ -1234,12 +1234,12 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
         io_override_set_std(NULL);
     if (rc || !stmt) {
         char * errstr = (char *)sqlite3_errmsg(hndl);
-        clnt->write_response(clnt, RESPONSE_ERROR_PREPARE, errstr, 0);
+        write_response(clnt, RESPONSE_ERROR_PREPARE, errstr, 0);
         return rc || 1;
     }
 
     char *cols[] = {"Plan"};
-    clnt->write_response(clnt, RESPONSE_COLUMNS_STR, &cols, 1);
+    write_response(clnt, RESPONSE_COLUMNS_STR, &cols, 1);
 
     strbuf *out = strbuf_new();
     if (!out) {
@@ -1264,7 +1264,7 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
             indent = 0;
         get_one_explain_line(hndl, out, v, indent, maxwidth, pc, cur);
         char *row[] = {(char*)strbuf_buf(out)};
-        clnt->write_response(clnt, RESPONSE_ROW_STR, row, 1);
+        write_response(clnt, RESPONSE_ROW_STR, row, 1);
         strbuf_clear(out);
     }
 
@@ -1275,7 +1275,7 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
         while (fgets(buf, sizeof(buf), f))
             strbuf_appendf(out, "%s", buf);
         char *row[] = {(char*)strbuf_buf(out)};
-        clnt->write_response(clnt, RESPONSE_ROW_STR, row, 1);
+        write_response(clnt, RESPONSE_ROW_STR, row, 1);
         fclose(f);
     }
 
@@ -1284,7 +1284,7 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
     out = NULL;
 
     sqlite3_finalize(stmt);
-    clnt->write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
+    write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
     return 0;
 }
 
