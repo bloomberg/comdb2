@@ -331,6 +331,16 @@ struct plugin_callbacks {
     replay_func *print_stmt; /* newsql_print_stmt */
 };
 
+#define plugin_set_callbacks(clnt, name)                                       \
+    do {                                                                       \
+        (clnt)->plugin.write_response = name##_write_response;                 \
+        (clnt)->plugin.read_response = name##_read_response;                   \
+        (clnt)->plugin.save_stmt = name##_save_stmt;                           \
+        (clnt)->plugin.restore_stmt = name##_restore_stmt;                     \
+        (clnt)->plugin.destroy_stmt = name##_destroy_stmt;                     \
+        (clnt)->plugin.print_stmt = name##_print_stmt;                         \
+    } while (0)
+
 /* Client specific sql state */
 struct sqlclntstate {
     /* appsock plugin specific data */
