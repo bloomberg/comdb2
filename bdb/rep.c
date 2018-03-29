@@ -3420,7 +3420,9 @@ int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum)
 
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
-        if (seqnum.generation == 0 || seqnum.lsn.file == 0)
+        if ((bdb_state->attr->enable_seqnum_generations &&
+             seqnum.generation == 0) ||
+            seqnum.lsn.file == 0)
             rc = -1;
     }
 
