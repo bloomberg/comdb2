@@ -3125,11 +3125,6 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         clnt->trans_has_sp = 1;
     }
 
-    /* this is a regular sql query, add it to history */
-    if (srs_tran_add_query(clnt))
-        logmsg(LOGMSG_ERROR, "Fail to add query to transaction replay session\n");
-
-
     if (stored_proc) {
         handle_stored_proc(thd, clnt);
         *outrc = 0;
@@ -3335,6 +3330,11 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     reqlog_set_event(thd->logger, "sql");
     run_stmt_setup(clnt, stmt);
+
+    /* this is a regular sql query, add it to history */
+    if (srs_tran_add_query(clnt))
+        logmsg(LOGMSG_ERROR,
+               "Fail to add query to transaction replay session\n");
 
     int ncols = sqlite3_column_count(stmt);
 
@@ -3597,7 +3597,7 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 /**
  * Main driver of SQL processing, for both sqlite and non-sqlite requests
  */
-int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     int outrc;
     int rc;
@@ -3740,29 +3740,10 @@ check_version:
 
 static void clean_queries_not_cached_in_srs(struct sqlclntstate *clnt)
 {
-    CDB2QUERY *query = NULL;
-
-    /* Tell appsock thread to wake up again */
     pthread_mutex_lock(&clnt->wait_mutex);
-    /* Take ownership of query, and free it. */
-    if (clnt->added_to_hist == 0) {
-        query = clnt->query;
-        /* clear sql before cond_signal(). */
-        if (query && /* query could not NULL. */
-            clnt->sql == query->sqlquery->sql_query)
-            clnt->sql = NULL;
-    }
-    clnt->query = NULL;
     clnt->done = 1;
-    /* Must yield before signal */
-    comdb2bma_yield_all();
     pthread_cond_signal(&clnt->wait_cond);
     pthread_mutex_unlock(&clnt->wait_mutex);
-
-    /* Free it while we are reading new query. */
-    if (query) {
-        cdb2__query__free_unpacked(query, &pb_alloc);
-    }
 }
 
 static void thr_set_user(int id)
@@ -3869,6 +3850,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
 
     thr_set_user(clnt->appsock_id);
 
+    clnt->added_to_hist = clnt->isselect = 0;
     clnt->osql.timings.query_dispatched = osql_log_time();
     clnt->deque_timeus = comdb2_time_epochus();
 

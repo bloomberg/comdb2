@@ -61,8 +61,9 @@ struct newsql_postponed_data {
 };
 
 struct newsql_appdata {
+    CDB2QUERY* query;
+    CDB2SQLQUERY *sqlquery;
     struct newsql_postponed_data *postponed;
-    CDB2SQLQUERY *query;
 
     /* row buf */
     size_t packed_capacity;
@@ -377,7 +378,7 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
         return -1;
     }
     struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
-    size_t n_types = appdata->query ? appdata->query->n_types : 0;
+    size_t n_types = appdata->sqlquery->n_types;
     if (n_types && n_types != ncols) {
         return -2;
     }
@@ -578,9 +579,9 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     assert(ncols == appdata->count);
     int flip = 0;
 #   if BYTE_ORDER == BIG_ENDIAN
-    if (appdata->query->little_endian)
+    if (appdata->sqlquery->little_endian)
 #   elif BYTE_ORDER == LITTLE_ENDIAN
-    if (!appdata->query->little_endian)
+    if (!appdata->sqlquery->little_endian)
 #   endif
         flip = 1;
     CDB2SQLRESPONSE__Column cols[ncols];
@@ -701,9 +702,9 @@ static int newsql_row_lua(struct sqlclntstate *clnt, struct response_data *arg)
     assert(ncols == appdata->count);
     int flip = 0;
 #   if BYTE_ORDER == BIG_ENDIAN
-    if (appdata->query->little_endian)
+    if (appdata->sqlquery->little_endian)
 #   elif BYTE_ORDER == LITTLE_ENDIAN
-    if (!appdata->query->little_endian)
+    if (!appdata->sqlquery->little_endian)
 #   endif
         flip = 1;
     CDB2SQLRESPONSE__Column cols[ncols];
@@ -912,11 +913,57 @@ static int newsql_read_response(struct sqlclntstate *c, int t, void *r, int e)
     }
 }
 
-static void newsql_clnt_plugin_init(struct sqlclntstate *clnt)
+struct newsql_stmt {
+    CDB2QUERY *query;
+    CDB2SQLQUERY *sqlquery;
+    char tzname[CDB2_MAX_TZNAME];
+};
+
+static void *newsql_save_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    struct newsql_stmt *stmt = malloc(sizeof(struct newsql_stmt));
+    stmt->query = appdata->query;
+    stmt->sqlquery = appdata->sqlquery;
+    strncpy0(stmt->tzname, clnt->tzname, sizeof(stmt->tzname));
+    return stmt;
+}
+
+static void *newsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    struct newsql_stmt *stmt = arg;
+    struct newsql_appdata *appdata = clnt->appdata;
+    appdata->query = stmt->query;
+    appdata->sqlquery = stmt->sqlquery;
+    strncpy0(clnt->tzname, stmt->tzname, sizeof(clnt->tzname));
+    clnt->sql = stmt->sqlquery->sql_query;
+    clnt->sql_query = stmt->sqlquery;
+    clnt->query = stmt->query;
+    return NULL;
+}
+
+static void *newsql_destroy_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    struct newsql_stmt *stmt = arg;
+    cdb2__query__free_unpacked(stmt->query, &pb_alloc);
+    free(stmt);
+}
+
+static void *newsql_print_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    struct newsql_stmt *stmt = arg;
+    return stmt->sqlquery->sql_query;
+}
+
+static void newsql_set_callbacks(struct sqlclntstate *clnt)
 {
     get_newsql_appdata(clnt, 32);
     clnt->plugin.write_response = newsql_write_response;
     clnt->plugin.read_response = newsql_read_response;
+    clnt->plugin.save_stmt = newsql_save_stmt;
+    clnt->plugin.restore_stmt = newsql_restore_stmt;
+    clnt->plugin.destroy_stmt = newsql_destroy_stmt;
+    clnt->plugin.print_stmt = newsql_print_stmt;
 }
 
 /* Skip spaces and tabs, requires at least one space */
@@ -1619,7 +1666,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     thrman_change_type(thr_self, THRTYPE_APPSOCK_SQL);
 
     reset_clnt(&clnt, sb, 1);
-    newsql_clnt_plugin_init(&clnt);
+    newsql_appdata(&clnt, 32);
+    newsql_set_callbacks(&clnt);
     clnt.tzname[0] = '\0';
     clnt.is_newsql = 1;
 
@@ -1690,22 +1738,20 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     }
 
     while (query) {
-        assert(query->sqlquery);
         struct newsql_appdata *appdata = clnt.appdata;
-        appdata->query = query->sqlquery;
-        clnt.sql_query = query->sqlquery;
-             sql_query = query->sqlquery;
+        sql_query = query->sqlquery;
+        appdata->query = query;
+        appdata->sqlquery = sql_query;
         clnt.sql = sql_query->sql_query;
+        clnt.is_newsql = 1;
         clnt.query = query;
-        clnt.added_to_hist = 0;
+        clnt.sql_query = sql_query;
         logmsg(LOGMSG_DEBUG, "Query '%s'\n", sql_query->sql_query);
-
         if (!clnt.in_client_trans) {
             bzero(&clnt.effects, sizeof(clnt.effects));
             bzero(&clnt.log_effects, sizeof(clnt.log_effects));
             clnt.trans_has_sp = 0;
         }
-        clnt.is_newsql = 1;
         if (clnt.dbtran.mode < TRANLEVEL_SOSQL) {
             clnt.dbtran.mode = TRANLEVEL_SOSQL;
         }
@@ -1827,17 +1873,11 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         if (rc && !clnt.in_client_trans)
             goto done;
 
-        pthread_mutex_lock(&clnt.wait_mutex);
-        if (clnt.query) {
-            if (clnt.added_to_hist == 1) {
-                clnt.query = NULL;
-            } else {
-                cdb2__query__free_unpacked(clnt.query, &pb_alloc);
-                clnt.query = NULL;
-            }
+        //pthread_mutex_lock(&clnt.wait_mutex);
+        if (!clnt.added_to_hist) {
+            cdb2__query__free_unpacked(query, &pb_alloc);
         }
-        pthread_mutex_unlock(&clnt.wait_mutex);
-
+        //pthread_mutex_unlock(&clnt.wait_mutex);
         query = read_newsql_query(dbenv, &clnt, sb);
     }
 
@@ -1868,15 +1908,9 @@ done:
         clnt.dbglog = NULL;
     }
 
-    if (clnt.query) {
-        if (clnt.added_to_hist == 1) {
-            clnt.query = NULL;
-        } else {
-            cdb2__query__free_unpacked(clnt.query, &pb_alloc);
-            clnt.query = NULL;
-        }
+    if (!clnt.added_to_hist) {
+        cdb2__query__free_unpacked(query, &pb_alloc);
     }
-
     free_newsql_appdata(&clnt);
 
     /* XXX free logical tran?  */
