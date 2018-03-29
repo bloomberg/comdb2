@@ -1600,6 +1600,7 @@ extern int gbl_allow_incoherent_sql;
 
 static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 {
+    CDB2QUERY *query = NULL;
     int rc = 0;
     struct sqlclntstate clnt;
     struct thr_handle *thr_self;
@@ -1683,7 +1684,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         goto done;
     }
 
-    CDB2QUERY *query = read_newsql_query(dbenv, &clnt, sb);
+    query = read_newsql_query(dbenv, &clnt, sb);
     if (query == NULL) {
         logmsg(LOGMSG_DEBUG, "Query is NULL.\n");
         goto done;
