@@ -5567,21 +5567,40 @@ void run_internal_sql(char *sql)
     pthread_mutex_destroy(&clnt.dtran_mtx);
 }
 
-static int internal_response(struct sqlclntstate *a, int b, void *c, int d)
+static int internal_write_response(struct sqlclntstate *a, int b, void *c, int d)
 {
     return 0;
 }
 
-static void internal_clnt_plugin_init(struct sqlclntstate *clnt)
+static int internal_read_response(struct sqlclntstate *a, int b, void *c, int d)
 {
-    clnt->plugin.write_response = internal_response;
-    clnt->plugin.read_response = internal_response;
+    return -1;
+}
+
+static void *internal_save_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    return strdup(clnt->sql);
+}
+
+static void *internal_restore_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    clnt->sql = arg;
+}
+
+static void *internal_destroy_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    free(arg);
+}
+
+static void *internal_print_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    return arg;
 }
 
 void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {
     reset_clnt(clnt, NULL, 1);
-    internal_clnt_plugin_init(clnt);
+    plugin_set_callbacks(clnt, internal);
     pthread_mutex_init(&clnt->wait_mutex, NULL);
     pthread_cond_init(&clnt->wait_cond, NULL);
     pthread_mutex_init(&clnt->write_lock, NULL);
