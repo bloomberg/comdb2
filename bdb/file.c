@@ -5162,6 +5162,18 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
     bdb_state = mymalloc(sizeof(bdb_state_type));
     bzero(bdb_state, sizeof(bdb_state_type));
     bdb_state->name = strdup(name);
+
+    /* This is a bit of a kludge.  We use the first 32 bytes of the table name
+     * as a key into llmeta. This has always been a bug - this is a quick patch
+     * for it for allow currently valid tablenames to be changed.  What changed?
+     * get_sc_to_name used to return a full (non-truncated) table name. Now it
+     * returns a truncated one.  That's because the bdb_state->name is not
+     * derivable by the name string passed to this routine (get_sc_to_name used
+     * to look at a global, which no longer exists.)  So this routine caps the
+     * limit instead of the caller capping the limit. */
+    if (strlen(name) >= 32 && bdbtype == BDBTYPE_TABLE)
+        bdb_state->name[31] = 0;
+
     bdb_state->dir = strdup(dir);
     bdb_state->bdbtype = bdbtype;
     tmp = get_sc_to_name(name);

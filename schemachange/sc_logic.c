@@ -823,7 +823,6 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
     nbytes = snprintf(NULL, 0, "%s%s", prefix, db->tablename);
     if (nbytes <= 0) nbytes = 2;
     nbytes++;
-    if (nbytes > 32) nbytes = 32;
     tmpname = malloc(nbytes);
     snprintf(tmpname, nbytes, "%s%s", prefix, db->tablename);
 
