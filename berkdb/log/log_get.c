@@ -24,6 +24,7 @@ static const char revid[] = "$Id: log_get.c,v 11.98 2003/09/13 19:20:38 bostic E
 #include "dbinc/log.h"
 #include "dbinc/db_swap.h"
 #include "dbinc/hash.h"
+#include <epochlib.h>
 
 typedef enum { L_ALREADY, L_ACQUIRED, L_NONE } RLOCK;
 
@@ -32,6 +33,7 @@ extern pthread_mutex_t log_write_lk;
 
 static int __log_c_close_pp __P((DB_LOGC *, u_int32_t));
 static int __log_c_get_pp __P((DB_LOGC *, DB_LSN *, DBT *, u_int32_t));
+static int __log_c_stat_pp __P((DB_LOGC *, DB_LOGC_STAT **));
 static int __log_c_get_int __P((DB_LOGC *, DB_LSN *, DBT *, u_int32_t));
 static int __log_c_hdrchk __P((DB_LOGC *, DB_LSN *, HDR *, int *));
 static int __log_c_incursor __P((DB_LOGC *, DB_LSN *, HDR *, u_int8_t **));
@@ -102,6 +104,53 @@ static inline int __log_cursor_cache(dbenv, logcp)
 }
 
 /*
+ * __log_cursor_complete --
+ *	Create a log cursor.
+ *
+ * PUBLIC: int __log_cursor_complete __P((DB_ENV *, DB_LOGC **, int bpsize, int maxrec));
+ */
+int
+__log_cursor_complete(dbenv, logcp, bpsize, maxrec)
+	DB_ENV *dbenv;
+	DB_LOGC **logcp;
+    int bpsize;
+    int maxrec;
+{
+	DB_LOGC *logc;
+	int ret;
+
+	*logcp = NULL;
+
+    if (bpsize || maxrec || (ret = __log_cursor_cache(dbenv, &logc)) != 0) {
+
+        /* Allocate memory for the cursor. */
+        if ((ret = __os_calloc(dbenv, 1, sizeof(DB_LOGC), &logc)) != 0)
+            return (ret);
+
+        logc->bp_size = bpsize ? bpsize : DB_LOGC_BUF_SIZE;
+        /*
+         * Set this to something positive.
+         */
+        logc->bp_maxrec = maxrec ? maxrec : MEGABYTE;
+        if ((ret = __os_malloc(dbenv, logc->bp_size, &logc->bp)) != 0) {
+            __os_free(dbenv, logc);
+            return (ret);
+        }
+
+        logc->dbenv = dbenv;
+        logc->close = __log_c_close_pp;
+        logc->get = __log_c_get_pp;
+        logc->stat = __log_c_stat_pp;
+    }
+
+    if (bpsize || maxrec)
+        F_SET(logc, DB_LOG_CUSTOM_SIZE);
+
+	*logcp = logc;
+	return (0);
+}
+
+/*
  * __log_cursor --
  *	Create a log cursor.
  *
@@ -112,34 +161,7 @@ __log_cursor(dbenv, logcp)
 	DB_ENV *dbenv;
 	DB_LOGC **logcp;
 {
-	DB_LOGC *logc;
-	int ret;
-
-	*logcp = NULL;
-
-    if ((ret = __log_cursor_cache(dbenv, &logc)) != 0) {
-
-        /* Allocate memory for the cursor. */
-        if ((ret = __os_calloc(dbenv, 1, sizeof(DB_LOGC), &logc)) != 0)
-            return (ret);
-
-        logc->bp_size = DB_LOGC_BUF_SIZE;
-        /*
-         * Set this to something positive.
-         */
-        logc->bp_maxrec = MEGABYTE;
-        if ((ret = __os_malloc(dbenv, logc->bp_size, &logc->bp)) != 0) {
-            __os_free(dbenv, logc);
-            return (ret);
-        }
-
-        logc->dbenv = dbenv;
-        logc->close = __log_c_close_pp;
-        logc->get = __log_c_get_pp;
-    }
-
-	*logcp = logc;
-	return (0);
+    return __log_cursor_complete(dbenv, logcp, 0, 0);
 }
 
 /*
@@ -183,7 +205,7 @@ __log_c_close(logc)
 
 	dbenv = logc->dbenv;
 
-    if (dbenv->attr.log_cursor_cache)
+    if (dbenv->attr.log_cursor_cache && !F_ISSET(logc, DB_LOG_CUSTOM_SIZE))
     {
         ZERO_LSN(logc->c_lsn);
         logc->c_len = 0;
@@ -219,6 +241,37 @@ __log_c_close(logc)
 	__os_free(dbenv, logc);
 
 	return (0);
+}
+
+/*
+ * __log_c_stat_pp
+ *  DB_LOGC->stat pre/post processing.
+ *
+ */
+static int
+__log_c_stat_pp(logc, stats)
+	DB_LOGC *logc;
+	DB_LOGC_STAT **stats;
+{
+	DB_ENV *dbenv;
+    DB_LOGC_STAT *st;
+    int ret;
+
+	dbenv = logc->dbenv;
+	PANIC_CHECK(dbenv);
+
+	if ((ret = __os_umalloc(dbenv, sizeof(DB_LOGC_STAT), &st)) != 0)
+		return (ret);
+
+    st->incursor_count = logc->incursor_count;
+    st->inregion_count = logc->inregion_count;
+    st->ondisk_count = logc->ondisk_count;
+    st->incursorus = logc->incursorus;
+    st->inregionus = logc->inregionus;
+    st->ondiskus = logc->ondiskus;
+    *stats = st;
+
+    return 0;
 }
 
 /*
@@ -719,7 +772,7 @@ __log_hdrswap(hdr, is_hmac)
  *	Check to see if the requested record is in the cursor's buffer.
  */
 static int
-__log_c_incursor(logc, lsn, hdr, pp)
+__log_c_incursor_int(logc, lsn, hdr, pp)
 	DB_LOGC *logc;
 	DB_LSN *lsn;
 	HDR *hdr;
@@ -781,6 +834,25 @@ __log_c_incursor(logc, lsn, hdr, pp)
 	return (0);
 }
 
+static int
+__log_c_incursor(logc, lsn, hdr, pp)
+	DB_LOGC *logc;
+	DB_LSN *lsn;
+	HDR *hdr;
+	u_int8_t **pp;
+{
+    int rc;
+    int64_t start;
+    start = comdb2_time_epochus();
+    rc = __log_c_incursor_int(logc, lsn, hdr, pp);
+    if (rc == 0 && pp != NULL) {
+        logc->incursorus += (comdb2_time_epochus() - start);
+        logc->incursor_count++;
+    }
+    return rc;
+}
+
+
 /*
  * segmented_copy --
  *  Utility function to accomodate wrapped log.
@@ -834,7 +906,7 @@ segmented_copy(dblp, lp, to_p, buf_offset, cp_sz)
  *	Check to see if the requested record is in the region's buffer.
  */
 static int
-__log_c_inregion(logc, lsn, rlockp, last_lsn, hdr, pp)
+__log_c_inregion_int(logc, lsn, rlockp, last_lsn, hdr, pp)
 	DB_LOGC *logc;
 	DB_LSN *lsn, *last_lsn;
 	RLOCK *rlockp;
@@ -1228,13 +1300,33 @@ __log_c_inregion(logc, lsn, rlockp, last_lsn, hdr, pp)
 }
 
 
+static int
+__log_c_inregion(logc, lsn, rlockp, last_lsn, hdr, pp)
+	DB_LOGC *logc;
+	DB_LSN *lsn, *last_lsn;
+	RLOCK *rlockp;
+	HDR *hdr;
+	u_int8_t **pp;
+{
+    int rc;
+    int64_t start;
+    start = comdb2_time_epochus();
+    rc = __log_c_inregion_int(logc, lsn, rlockp, last_lsn, hdr, pp);
+    if (rc == 0 && pp != NULL) {
+        logc->inregionus += (comdb2_time_epochus() - start);
+        logc->inregion_count++;
+    }
+    return rc;
+}
+
+
 
 /*
  * __log_c_ondisk --
  *	Read a record off disk.
  */
 static int
-__log_c_ondisk(logc, lsn, last_lsn, flags, hdr, pp, eofp)
+__log_c_ondisk_int(logc, lsn, last_lsn, flags, hdr, pp, eofp)
 	DB_LOGC *logc;
 	DB_LSN *lsn, *last_lsn;
 	int flags, *eofp;
@@ -1363,6 +1455,27 @@ __log_c_ondisk(logc, lsn, last_lsn, flags, hdr, pp, eofp)
 
 	return (0);
 }
+
+
+static int
+__log_c_ondisk(logc, lsn, last_lsn, flags, hdr, pp, eofp)
+	DB_LOGC *logc;
+	DB_LSN *lsn, *last_lsn;
+	int flags, *eofp;
+	HDR *hdr;
+	u_int8_t **pp;
+{
+    int rc;
+    int64_t start;
+    start = comdb2_time_epochus();
+    rc = __log_c_ondisk_int(logc, lsn, last_lsn, flags, hdr, pp, eofp);
+    if (rc == 0 && pp != NULL) {
+        logc->ondiskus += (comdb2_time_epochus() - start);
+        logc->ondisk_count++;
+    }
+    return rc;
+}
+
 
 /*
  * __log_c_hdrchk --

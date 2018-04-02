@@ -1326,6 +1326,10 @@ REGISTER_TUNABLE("finish_fill_threshold", "Fill to end if end is less than "
                  "this.  (Default: 40000000)", TUNABLE_INTEGER, 
                  &gbl_finish_fill_threshold, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("fillcursor_lookahead", "Set fill in-cursor buffer size.  "
+                 "  (Default: 40000000)", TUNABLE_INTEGER, 
+                 &gbl_fillcursor_lookahead, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
 
 
 #endif /* _DB_TUNABLES_H */
