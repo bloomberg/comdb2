@@ -6188,6 +6188,36 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
     return rc;
 }
 
+static int trigger_write_response(struct sqlclntstate *a, int b, void *c, int d)
+{
+    return 0;
+}
+
+static int trigger_read_response(struct sqlclntstate *a, int b, void *c, int d)
+{
+    return -1;
+}
+
+static void *trigger_save_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    return NULL;
+}
+
+static void *trigger_restore_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    return NULL;
+}
+
+static void *trigger_destroy_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    return NULL;
+}
+
+static void *trigger_print_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    return NULL;
+}
+
 ////////////////////////
 /// PUBLIC INTERFACE ///
 ////////////////////////
@@ -6305,8 +6335,10 @@ void *exec_trigger(trigger_reg_t *reg)
 
     struct sqlclntstate clnt;
     reset_clnt(&clnt, NULL, 1);
+    plugin_set_callbacks(&clnt, trigger);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
+    clnt.trans_has_sp = 1;
 
     struct sqlthdstate thd;
     sqlengine_thd_start(NULL, &thd, THRTYPE_TRIGGER);
