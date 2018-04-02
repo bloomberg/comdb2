@@ -1269,7 +1269,7 @@ REGISTER_TUNABLE("time_rep_apply", "Display rep-apply times periodically. "
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("logput_window",
                  "Drop log-broadcasts for incoherent nodes "
-                 "more than this many bytes behind.  (Default: 20000000)",
+                 "more than this many bytes behind.  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_incoherent_logput_window,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dump_full_netqueue", "Dump net-queue on full rcode. "

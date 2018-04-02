@@ -77,6 +77,7 @@ static void net_to_systable(struct netinfo_struct *netinfo_ptr, void *arg,
     }
 
     systable_rep_qstat_t *s = &gr->records[gr->count - 1];
+    memset(s, 0, sizeof(*s));
     pthread_mutex_lock(&n->lock);
     s->machine = strdup(n->hostname);
     s->total = n->total_count;

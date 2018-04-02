@@ -164,7 +164,7 @@ DEF_ATTR(LOGSEGMENTS, logsegments, QUANTITY, 1,
          "being flushed.")
 
 #ifdef BERKDB_4_2
-#define REPLIMIT_DEFAULT (40 * 1024 * 1024)
+#define REPLIMIT_DEFAULT (100 * 1024 * 1024)
 #elif defined(BERKDB_4_3) || defined(BERKDB_4_5) || defined(BERKDB_46)
 #define REPLIMIT_DEFAULT (1024 * 1024)
 #else
@@ -564,7 +564,7 @@ DEF_ATTR(LEASE_RENEW_INTERVAL, lease_renew_interval, MSECS, 200,
          "How often we renew leases.")
 DEF_ATTR(DOWNGRADE_PENALTY, downgrade_penalty, MSECS, 10000,
          "Prevent upgrades for at least this many ms after a downgrade.")
-DEF_ATTR(CATCHUP_WINDOW, catchup_window, BYTES, 0,
+DEF_ATTR(CATCHUP_WINDOW, catchup_window, BYTES, 40000000,
          "Start waiting in waitforseqnum if replicant is within this many "
          "bytes of master.")
 DEF_ATTR(CATCHUP_ON_COMMIT, catchup_on_commit, BOOLEAN, 0,

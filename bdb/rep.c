@@ -644,7 +644,7 @@ int is_incoherent(bdb_state_type *bdb_state, const char *host)
 
 int gbl_throttle_logput_trace = 0;
 /* Tiny: 100000 bytes */
-int gbl_incoherent_logput_window = 20000000;
+int gbl_incoherent_logput_window = 0;
 
 static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
                                              const char *host)

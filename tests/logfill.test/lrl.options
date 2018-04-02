@@ -15,14 +15,6 @@ early_ack_trace on
 commit_delay_trace on
 set_coherent_state_trace on
 
-# Everything that worked is now default
-# Okay - try again to disable catchup window
-#catchup_window 40000000
-#catchup_window 0
-#logput_window 0
-#fill_throttle 100
-# retry_fill_with_flush on
-
 # Enable cache
 #cache 100 mb
 
