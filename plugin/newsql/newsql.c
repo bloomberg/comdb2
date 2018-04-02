@@ -1897,8 +1897,7 @@ done:
         sbuf2close(clnt.dbglog);
         clnt.dbglog = NULL;
     }
-
-    if (!clnt.added_to_hist) {
+    if (query && !clnt.added_to_hist) {
         cdb2__query__free_unpacked(query, &pb_alloc);
     }
     free_newsql_appdata(&clnt);
