@@ -139,6 +139,7 @@ extern int gbl_early_ack_trace;
 extern int gbl_throttle_logput_trace;
 extern int gbl_fills_waitms;
 extern int gbl_finish_fill_threshold;
+extern int gbl_fillcursor_lookahead;
 extern int gbl_always_ack_fills;
 extern int gbl_verbose_fills;
 extern int gbl_set_coherent_state_trace;

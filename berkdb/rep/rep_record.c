@@ -81,6 +81,7 @@ int gbl_warn_queue_latency_threshold = 500;
 
 /* Finish a fill if we are within a single logfile */
 int gbl_finish_fill_threshold = 40000000;
+int gbl_fillcursor_lookahead = 40000000;
 
 int gbl_max_logput_queue = 100000;
 int gbl_apply_thread_pollms = 100;
@@ -835,6 +836,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	int fromline;
 	DB_LOG *dblp;
 	DB_LOGC *logc;
+    DB_LOGC_STAT *lcstat;
 	DB_LSN endlsn, lastlsn, lsn, oldfilelsn, tmplsn;
 	DB_REP *db_rep;
 	DBT *d, data_dbt, mylog;
@@ -1206,7 +1208,8 @@ skip:				/*
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		check_limit = gbytes != 0 || bytes != 0;
 		fromline = __LINE__;
-		if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		if ((ret = __log_cursor_complete(dbenv, &logc, gbl_fillcursor_lookahead,
+                        0)) != 0)
 			goto errlock;
 		/* A confused replicant can send a request
 		 * for an invalid log record, and cause the master
@@ -1345,6 +1348,16 @@ more:           if (type == REP_LOG_MORE) {
 		if (ret == DB_NOTFOUND) {
 			ret = 0;
         }
+
+        if (gbl_verbose_fills && 0 == logc->stat(logc, &lcstat)) {
+            logmsg(LOGMSG_USER, "%s line %d in-cursor:%d cnt, %llu us / "
+                    "in-region:%d cnt, %llu us / on-disk:%d cnt, %llu us\n",
+                    __func__, __LINE__, lcstat->incursor_count, 
+                    lcstat->incursorus, lcstat->inregion_count,
+                    lcstat->inregionus, lcstat->ondisk_count,
+                    lcstat->ondiskus);
+            __os_free(dbenv, lcstat);
+        }
 		if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 			ret = t_ret;
 		fromline = __LINE__;
@@ -1462,7 +1475,8 @@ more:           if (type == REP_LOG_MORE) {
 		 */
 		oldfilelsn = lsn = rp->lsn;
 		fromline = __LINE__;
-		if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		if ((ret = __log_cursor_complete(dbenv, &logc,
+                        gbl_fillcursor_lookahead, 0)) != 0)
 			goto errlock;
 		F_SET(logc, DB_LOG_NO_PANIC);
 		memset(&data_dbt, 0, sizeof(data_dbt));
@@ -1615,6 +1629,16 @@ more:           if (type == REP_LOG_MORE) {
                 }
             }
 		}
+
+        if (gbl_verbose_fills && 0 == logc->stat(logc, &lcstat)) {
+            logmsg(LOGMSG_USER, "%s line %d in-cursor:%d cnt, %llu us / "
+                    "in-region:%d cnt, %llu us / on-disk:%d cnt, %llu us\n",
+                    __func__, __LINE__, lcstat->incursor_count, 
+                    lcstat->incursorus, lcstat->inregion_count,
+                    lcstat->inregionus, lcstat->ondisk_count,
+                    lcstat->ondiskus);
+            __os_free(dbenv, lcstat);
+        }
 
 		if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 			ret = t_ret;
