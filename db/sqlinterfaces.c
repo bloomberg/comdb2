@@ -1943,7 +1943,7 @@ int typestr_to_type(const char *ctype)
     if (ctype == NULL)
         return SQLITE_TEXT;
     if ((strcmp("smallint", ctype) == 0) || (strcmp("int", ctype) == 0) ||
-        (strcmp("largeint", ctype) == 0))
+        (strcmp("largeint", ctype) == 0) || (strcmp("integer", ctype) == 0))
         return SQLITE_INTEGER;
     else if ((strcmp("smallfloat", ctype) == 0) ||
              (strcmp("float", ctype) == 0))
