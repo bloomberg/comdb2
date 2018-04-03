@@ -1672,15 +1672,11 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
             abort();
         }
 
-#if 0
-      if (schema->flags & SCHEMA_DUP) {
-         strbuf_append(sql, "create index ");
-      } else {
-         strbuf_append(sql, "create unique index ");
-      }
-#else
-        strbuf_append(sql, "create index ");
-#endif
+        if (schema->flags & SCHEMA_DUP) {
+            strbuf_append(sql, "create index ");
+        } else {
+            strbuf_append(sql, "create unique index ");
+        }
 
         strbuf_appendf(sql, "\"%s\" on \"%s\" (", namebuf, tbl->tablename);
         for (field = 0; field < schema->nmembers; field++) {
@@ -3573,7 +3569,11 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             goto done;
         }
 
-        if (queryOverlapsCursors(clnt, pCur) == 1) {
+        if ((queryOverlapsCursors(clnt, pCur) == 1) ||
+            /* We ignore the failure for REPLACE as same record could conflict
+             * for more that one unique indexes.
+             */
+            pCur->vdbe->is_replace == 1) {
             rc = bdb_tran_deltbl_isdeleted_dedup(pCur->bdbcur, pCur->genid, 0,
                                                  &bdberr);
             if (rc == 1) {
@@ -8230,6 +8230,8 @@ int sqlite3BtreeInsert(
             bdb_genid_is_recno(thedb->bdb_env, nKey))
             is_update = 0;
         else if (0 == pCur->genid)
+            is_update = 0;
+        else if (!bias)
             is_update = 0;
         else
             is_update = 1;

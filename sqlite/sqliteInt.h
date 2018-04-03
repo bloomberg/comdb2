@@ -1060,6 +1060,8 @@ typedef struct Cdb2TrigEvent Cdb2TrigEvent;
 typedef struct Cdb2TrigEvents Cdb2TrigEvents;
 typedef struct Cdb2TrigTables Cdb2TrigTables;
 typedef struct comdb2_ddl_context Cdb2DDL;
+typedef struct comdb2_on_conflict Cdb2OnConflict;
+typedef struct on_conflict on_conflict_t;
 
 /*
 ** Defer sourcing vdbe.h and btree.h until after the "u8" and
@@ -2022,7 +2024,7 @@ struct FKey {
 #define OE_Abort    2   /* Back out changes but do no rollback transaction */
 #define OE_Fail     3   /* Stop the operation but leave all prior changes */
 #define OE_Ignore   4   /* Ignore the error. Do not do the INSERT or UPDATE */
-#define OE_Replace  5   /* Delete existing record, then do INSERT or UPDATE */
+#define OE_Replace  5   /* Delete existing record, then do INSERT */
 
 #define OE_Restrict 6   /* OE_Abort for IMMEDIATE, OE_Rollback for DEFERRED */
 #define OE_SetNull  7   /* Set the foreign key value to NULL */
@@ -2030,6 +2032,8 @@ struct FKey {
 #define OE_Cascade  9   /* Cascade the changes */
 
 #define OE_Default  10  /* Do whatever the default action is */
+/* COMDB2 MODIFICATION */
+#define OE_Upsert   20  /* ON CONFLICT DO UPDATE */
 
 
 /*
@@ -3755,7 +3759,7 @@ void sqlite3DeleteTable(sqlite3*, Table*);
 # define sqlite3AutoincrementBegin(X)
 # define sqlite3AutoincrementEnd(X)
 #endif
-void sqlite3Insert(Parse*, SrcList*, Select*, IdList*, int);
+void sqlite3Insert(Parse*, SrcList*, Select*, IdList*, Cdb2OnConflict*);
 void *sqlite3ArrayAllocate(sqlite3*,void*,int,int*,int*);
 IdList *sqlite3IdListAppend(sqlite3*, IdList*, Token*);
 int sqlite3IdListIndex(IdList*,const char*);
@@ -3880,9 +3884,10 @@ void sqlite3GenerateRowIndexDelete(Parse*, Table*, int, int, int*, int);
 int sqlite3GenerateIndexKey(Parse*, Index*, int, int, int, int*,Index*,int);
 void sqlite3ResolvePartIdxLabel(Parse*,int);
 void sqlite3GenerateConstraintChecks(Parse*,Table*,int*,int,int,int,int,
-                                     u8,u8,int,int*,int*);
+                                     u8,u8,int,int*,int*,Cdb2OnConflict *);
 void sqlite3CompleteInsertion(Parse*,Table*,int,int,int,int*,int,int,int);
-int sqlite3OpenTableAndIndices(Parse*, Table*, int, u8, int, u8*, int*, int*);
+int sqlite3OpenTableAndIndices(Parse*, Table*, int, u8, int, u8*, int*, int*,
+                               Cdb2OnConflict *);
 void sqlite3BeginWriteOperation(Parse*, int, int);
 void sqlite3MultiWrite(Parse*);
 void sqlite3MayAbort(Parse*);
@@ -4506,5 +4511,16 @@ void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere);
 void sqlite3FingerprintInsert(sqlite3 *db, SrcList *, Select *, IdList *, With *);
 void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges, Expr *pWhere, int onError);
 void comdb2WriteTransaction(Parse*);
+
+struct comdb2_on_conflict {
+    int flag;
+    int regIsConf;
+    ExprList *setlist;
+    ExprSpan *where;
+};
+
+Cdb2OnConflict *comdb2OnConflictCreate(sqlite3 *db, int flag,
+                                       ExprList *setlist, ExprSpan *where);
+int comdb2OnConflictDelete(sqlite3 *db, Cdb2OnConflict *oc);
 
 #endif /* _SQLITEINT_H_ */

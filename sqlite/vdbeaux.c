@@ -5362,3 +5362,8 @@ void comdb2SetRecording(Vdbe *v)
 {
   v->recording = 1;
 }
+
+void comdb2SetIsReplace(Vdbe *v)
+{
+  v->is_replace = 1;
+}

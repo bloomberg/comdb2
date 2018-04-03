@@ -340,5 +340,6 @@ void sqlite3VdbeScanStatus(Vdbe*, int, int, int, LogEst, const char*);
 #endif
 
 void comdb2SetRecording(Vdbe *);
+void comdb2SetIsReplace(Vdbe *);
 
 #endif /* _SQLITE_VDBE_H_ */

@@ -4831,3 +4831,28 @@ cleanup:
     free(t_value);
     return;
 }
+
+Cdb2OnConflict *comdb2OnConflictCreate(sqlite3 *db, int flag,
+                                       ExprList *setlist, ExprSpan *where)
+{
+    Cdb2OnConflict *oc;
+
+    oc = sqlite3DbMallocZero(db, sizeof(Cdb2OnConflict));
+    if (!oc) {
+        return 0;
+    }
+
+    oc->flag = flag;
+    oc->setlist = setlist;
+    oc->where = where;
+    return oc;
+}
+
+int comdb2OnConflictDelete(sqlite3 *db, Cdb2OnConflict *oc)
+{
+    if (oc) {
+        sqlite3DbFree(db, oc->where);
+        sqlite3DbFree(db, oc);
+    }
+    return 0;
+}
