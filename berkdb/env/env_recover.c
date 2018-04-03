@@ -75,7 +75,6 @@ int bdb_is_open(void *bdb_state);
 
 #include "printformats.h"
 
-static int __log_backup __P((DB_ENV *, DB_LOGC *, DB_LSN *, DB_LSN *));
 static int __log_earliest __P((DB_ENV *, DB_LOGC *, int32_t *, DB_LSN *));
 static double __lsn_diff __P((DB_LSN *, DB_LSN *, DB_LSN *, u_int32_t, int));
 static int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,
@@ -1532,6 +1531,7 @@ __test_last_checkpoint(DB_ENV * dbenv, int file, int offset)
 
 /*
  * __log_backup --
+ * PUBLIC: int __log_backup __P((DB_ENV *, DB_LOGC *, DB_LSN *, DB_LSN *));
  *
  * This is used to find the earliest log record to process when a client
  * is trying to sync up with a master whose max LSN is less than this
@@ -1539,7 +1539,7 @@ __test_last_checkpoint(DB_ENV * dbenv, int file, int offset)
  *
  * Find the latest checkpoint whose ckp_lsn is less than the max lsn.
  */
-static int
+int
 __log_backup(dbenv, logc, max_lsn, start_lsn)
 	DB_ENV *dbenv;
 	DB_LOGC *logc;

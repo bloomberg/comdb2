@@ -1,0 +1,10 @@
+setattr CHECKPOINTTIME 3600
+setattr LOGFILESIZE 4194304
+setattr LOGMEMSIZE 1048576
+setattr MEMPTRICKLEMSECS 3600000
+setattr AUTOANALYZE 0
+setattr MIN_KEEP_LOGS 1
+setattr DEBUG_LOG_DELETION 1
+maxosqltransfer 2147483647
+override_cachekb 0
+cache 512 mb
