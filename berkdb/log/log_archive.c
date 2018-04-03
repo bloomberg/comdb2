@@ -243,6 +243,8 @@ __log_archive(dbenv, listp, flags)
 					(void)__log_c_close(logc);
 					goto err1;
 				}
+				if ((ret = __log_c_close(logc)) != 0)
+					goto err1;
 			} else if (dbenv->attr.dbreg_errors_fatal) {
 				*listp = NULL;
 
