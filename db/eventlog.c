@@ -141,7 +141,7 @@ cson_array *get_bind_array(struct reqlogger *logger, int nfields)
 }
 
 void add_to_bind_array(cson_array *arr, char *name, int type, void *val,
-                       int dlen, int isnull)
+                       int dlen)
 {
     if (!arr)
         return;
@@ -156,7 +156,7 @@ void add_to_bind_array(cson_array *arr, char *name, int type, void *val,
     cson_array_append(arr, binding);
     const char *strtype = "__NO_TYPE_ASSIGNED__";
 
-    if (isnull) {
+    if (val == NULL) {
         strtype = "int"; /* log null values as int for simplicity */
         cson_object_set(bobj, "value", cson_value_null());
         cson_object_set(bobj, "type",

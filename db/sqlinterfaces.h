@@ -57,6 +57,7 @@ BB_COMPILE_TIME_ASSERT(fsqlreq_size, sizeof(struct fsqlreq) == FSQLREQ_LEN);
 
 char *tranlevel_tostr(int lvl);
 
+struct sqlclntstate;
 int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
                      sqlite3_stmt *stmt, const char **errstr);
 

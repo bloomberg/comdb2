@@ -955,6 +955,24 @@ static void *newsql_print_stmt(struct sqlclntstate *clnt, void *arg)
     return stmt->sqlquery->sql_query;
 }
 
+static int newsql_param_count(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->sqlquery->n_bindvars;
+}
+
+static int newsql_get_param(struct sqlclntstate *clnt, struct param_data *param, int n)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    CDB2SQLQUERY *sqlquery = appdata->sqlquery;
+    if (n >= sqlquery->n_bindvars) {
+        return -1;
+    }
+    CDB2SQLQUERY__Bindvalue *val = sqlquery->bindvars[n];
+    memset(param, 0, sizeof(struct param_data));
+    return -1;
+}
+
 /* Skip spaces and tabs, requires at least one space */
 static inline char *skipws(char *str)
 {
