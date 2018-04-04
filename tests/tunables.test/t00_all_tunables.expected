@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=875)
+(TUNABLES_COUNT=876)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -464,6 +464,7 @@
 (name='net_max_queue', description='Maximum number of items to keep on replication network queue before dropping (per replicant). (Default: 25000)', type='INTEGER', value='25000', read_only='Y')
 (name='net_poll', description='Allow a connection to linger for this many milliseconds before identifying itself. Connections that take longer are shut down. (Default: 100ms)', type='INTEGER', value='100', read_only='Y')
 (name='net_portmux_register_interval', description='Check on this interval if our port is correctly registered with pmux for the replication net. (Default: 600ms)', type='INTEGER', value='600', read_only='Y')
+(name='net_send_gblcontext', description='Enable net_send for USER_TYPE_GBLCONTEXT.', type='BOOLEAN', value='OFF', read_only='N')
 (name='net_throttle_percent', description='', type='INTEGER', value='50', read_only='Y')
 (name='net_verbose', description='net_verbose', type='BOOLEAN', value='OFF', read_only='N')
 (name='netbufsz', description='Size of the network buffer (per node) for the replication network. (Default: 1MB)', type='INTEGER', value='1048576', read_only='Y')
