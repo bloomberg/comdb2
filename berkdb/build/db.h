@@ -637,6 +637,8 @@ struct __db_log_cursor_stat {
     unsigned long long incursorus;
     unsigned long long ondiskus;
     unsigned long long inregionus;
+    unsigned long long totalus;
+    unsigned long long lockwaitus;
 };
 
 /*
@@ -674,6 +676,8 @@ struct __db_log_cursor {
     u_int64_t incursorus;
     u_int64_t ondiskus;
     u_int64_t inregionus;
+    u_int64_t totalus;
+    u_int64_t lockwaitus;
 
 #define	DB_LOG_DISK		0x01	/* Log record came from disk. */
 #define	DB_LOG_LOCKED		0x02	/* Log region already locked */

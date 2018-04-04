@@ -118,8 +118,8 @@ function pauseandrestart
             echo "Pausing $node pid $pid for $sleeptime seconds"
             ( kill -SIGSTOP $pid ; sleep $sleeptime ; kill -SIGCONT $pid ) &
         else
-            pid=$(ssh $node "cat ${TMPDIR}/${db}.${node}.pid")
-            if [[ -z "$pid" ]]; then pid=$(ssh $node "cat ${TMPDIR}/${db}.pid") ; fi
+            pid=$(ssh $node "cat ${TMPDIR}/${db}.${node}.pid" < /dev/null)
+            if [[ -z "$pid" ]]; then pid=$(ssh $node "cat ${TMPDIR}/${db}.pid" < /dev/null) ; fi
             echo "Pausing $node pid $pid for $sleeptime seconds"
             ssh $node "kill -SIGSTOP $pid ; sleep $sleeptime ; kill -SIGCONT $pid" < /dev/null &
         fi
@@ -135,20 +135,9 @@ function runtestwithoptions
     [[ "$debug" == 1 ]] && set -x
     findstopmachs
     createtables
-    insertforever 1000 5
-
+    insertforever 1000 6
     pauseandrestart 1 60
-#    pauseandrestart 1 120
-#    pauseandrestart 1 180
-
-#    pauseandrestart 2 60
-    pauseandrestart 2 120
-#    pauseandrestart 2 180
-
-#    pauseandrestart 3 60
-#    pauseandrestart 3 120
-#    pauseandrestart 3 180
-
+    pauseandrestart 2 60
     killpidlist
 }
 

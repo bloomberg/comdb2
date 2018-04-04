@@ -142,6 +142,14 @@ __log_cursor_complete(dbenv, logcp, bpsize, maxrec)
         logc->get = __log_c_get_pp;
         logc->stat = __log_c_stat_pp;
     }
+    logc->incursor_count = 0;
+    logc->ondisk_count = 0;
+    logc->inregion_count = 0;
+    logc->incursorus = 0;
+    logc->ondiskus = 0;
+    logc->inregionus = 0;
+    logc->totalus = 0;
+    logc->lockwaitus = 0;
 
     if (bpsize || maxrec)
         F_SET(logc, DB_LOG_CUSTOM_SIZE);
@@ -269,6 +277,8 @@ __log_c_stat_pp(logc, stats)
     st->incursorus = logc->incursorus;
     st->inregionus = logc->inregionus;
     st->ondiskus = logc->ondiskus;
+    st->totalus = logc->totalus;
+    st->lockwaitus = logc->lockwaitus;
     *stats = st;
 
     return 0;
@@ -338,16 +348,8 @@ __log_persistswap(persist)
 	M_32_SWAP(persist->mode);
 }
 
-
-
-/*
- * __log_c_get --
- *	DB_LOGC->get.
- *
- * PUBLIC: int __log_c_get __P((DB_LOGC *, DB_LSN *, DBT *, u_int32_t));
- */
-int
-__log_c_get(logc, alsn, dbt, flags)
+static int
+__log_c_get_timed(logc, alsn, dbt, flags)
 	DB_LOGC *logc;
 	DB_LSN *alsn;
 	DBT *dbt;
@@ -413,6 +415,29 @@ __log_c_get(logc, alsn, dbt, flags)
 }
 
 /*
+ * __log_c_get --
+ *	DB_LOGC->get.
+ *
+ * PUBLIC: int __log_c_get __P((DB_LOGC *, DB_LSN *, DBT *, u_int32_t));
+ */
+int
+__log_c_get(logc, alsn, dbt, flags)
+	DB_LOGC *logc;
+	DB_LSN *alsn;
+	DBT *dbt;
+	u_int32_t flags;
+{
+    u_int64_t start;
+    int rc;
+
+    start = comdb2_time_epochus();
+    rc = __log_c_get_timed(logc, alsn, dbt, flags);
+    logc->totalus += (comdb2_time_epochus() - start);
+    return rc;
+}
+
+
+/*
  * __log_c_get_int --
  *	Get a log record; internal version.
  */
@@ -433,7 +458,7 @@ __log_c_get_int(logc, alsn, dbt, flags)
 	logfile_validity status;
 	u_int32_t cnt;
 	u_int8_t *rp;
-	int eof, is_hmac, ret;
+	int eof, is_hmac, ret, st, tot;
 
 	dbenv = logc->dbenv;
 	dblp = dbenv->lg_handle;
@@ -523,7 +548,10 @@ __log_c_get_int(logc, alsn, dbt, flags)
 	case DB_LAST:				/* Last log record. */
 		if (rlock == L_NONE) {
 			rlock = L_ACQUIRED;
+            st = comdb2_time_epochus();
 			R_LOCK(dbenv, &dblp->reginfo);
+            tot = (comdb2_time_epochus() - st);
+            logc->lockwaitus += (tot > 0 ? tot : 0);
 		}
 		nlsn.file = lp->lsn.file;
 		nlsn.offset = lp->lsn.offset - lp->len;
@@ -845,10 +873,11 @@ __log_c_incursor(logc, lsn, hdr, pp)
     int64_t start;
     start = comdb2_time_epochus();
     rc = __log_c_incursor_int(logc, lsn, hdr, pp);
-    if (rc == 0 && pp != NULL) {
-        logc->incursorus += (comdb2_time_epochus() - start);
+    logc->incursorus += (comdb2_time_epochus() - start);
+
+    if (rc == 0 && pp != NULL) 
         logc->incursor_count++;
-    }
+
     return rc;
 }
 
@@ -929,7 +958,7 @@ __log_c_inregion_int(logc, lsn, rlockp, last_lsn, hdr, pp)
 	u_int32_t inmemlen = 0;
 	int32_t buf_offset;
 	u_int32_t curseg, oldseg;
-	int ret;
+	int ret, st, tot;
 	u_int8_t *p;
 
 	dbenv = logc->dbenv;
@@ -942,7 +971,10 @@ __log_c_inregion_int(logc, lsn, rlockp, last_lsn, hdr, pp)
 	/* If we haven't yet acquired the log region lock, do so. */
 	if (*rlockp == L_NONE) {
 		*rlockp = L_ACQUIRED;
+        st = comdb2_time_epochus();
 		R_LOCK(dbenv, &dblp->reginfo);
+        tot = comdb2_time_epochus() - st;
+        logc->lockwaitus += (tot > 0 ? tot : 0);
 	}
 
 	/*
@@ -1312,8 +1344,8 @@ __log_c_inregion(logc, lsn, rlockp, last_lsn, hdr, pp)
     int64_t start;
     start = comdb2_time_epochus();
     rc = __log_c_inregion_int(logc, lsn, rlockp, last_lsn, hdr, pp);
+    logc->inregionus += (comdb2_time_epochus() - start);
     if (rc == 0 && pp != NULL) {
-        logc->inregionus += (comdb2_time_epochus() - start);
         logc->inregion_count++;
     }
     return rc;
@@ -1469,8 +1501,8 @@ __log_c_ondisk(logc, lsn, last_lsn, flags, hdr, pp, eofp)
     int64_t start;
     start = comdb2_time_epochus();
     rc = __log_c_ondisk_int(logc, lsn, last_lsn, flags, hdr, pp, eofp);
+    logc->ondiskus += (comdb2_time_epochus() - start);
     if (rc == 0 && pp != NULL) {
-        logc->ondiskus += (comdb2_time_epochus() - start);
         logc->ondisk_count++;
     }
     return rc;
