@@ -108,6 +108,7 @@
 #include "comdb2_atomic.h"
 #include "logmsg.h"
 #include <str0.h>
+#include <eventlog.h>
 
 /* delete this after comdb2_api.h changes makes it through */
 #define SQLHERR_MASTER_QUEUE_FULL -108
@@ -1543,9 +1544,6 @@ static int finalize_stmt_hash(void *stmt_entry, void *args)
 {
     stmt_hash_entry_type *entry = (stmt_hash_entry_type *)stmt_entry;
     sqlite3_finalize(entry->stmt);
-    if (entry->params_to_bind) {
-        free_tag_schema(entry->params_to_bind);
-    }
     if (entry->query && gbl_debug_temptables) {
         free(entry->query);
         entry->query = NULL;
@@ -1586,22 +1584,18 @@ int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
     if (hash_find(thd->stmt_caching_table, entry->sql) != NULL)
         return -1; // already there, dont add again
 
-    int ret = hash_add(thd->stmt_caching_table, entry);
-    if (ret != 0)
-        return ret;
-
+    if (hash_add(thd->stmt_caching_table, entry) != 0) {
+        return -1;
+    }
     sqlite3_reset(entry->stmt); // reset vdbe when adding to hash tbl
-    assert(hash_find(thd->stmt_caching_table, entry->sql) == entry);
-
-    void *list = NULL;
-    if (entry->params_to_bind) {
+    void *list;
+    if (sqlite3_bind_parameter_count(entry->stmt)) {
         list = &thd->param_stmt_list;
     } else {
         list = &thd->noparam_stmt_list;
     }
-
     listc_atl(list, entry);
-    return ret;
+    return 0;
 }
 
 static void cleanup_stmt_entry(stmt_hash_entry_type *entry)
@@ -1611,22 +1605,11 @@ static void cleanup_stmt_entry(stmt_hash_entry_type *entry)
         entry->query = NULL;
     }
     sqlite3_finalize(entry->stmt);
-    if (entry->params_to_bind) {
-        free_tag_schema(entry->params_to_bind);
-    }
     sqlite3_free(entry);
 }
 
-static void delete_last_stmt_entry(struct sqlthdstate *thd,
-                                   struct schema *params_to_bind)
+static void delete_last_stmt_entry(struct sqlthdstate *thd, void *list)
 {
-    void *list = NULL;
-    if (params_to_bind) {
-        list = &thd->param_stmt_list;
-    } else {
-        list = &thd->noparam_stmt_list;
-    }
-
     stmt_hash_entry_type *entry = listc_rbl(list);
     int rc = hash_del(thd->stmt_caching_table, entry);
     assert(rc == 0);
@@ -1645,7 +1628,7 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
     assert(entry);
 
     void *list = NULL;
-    if (entry->params_to_bind) {
+    if (sqlite3_bind_parameter_count(entry->stmt)) {
         list = &thd->param_stmt_list;
     } else {
         list = &thd->noparam_stmt_list;
@@ -1659,8 +1642,7 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
  * caller will need to finalize_stmt() in that case
  */
 static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
-                          char *actual_sql, sqlite3_stmt *stmt,
-                          struct schema *params_to_bind)
+                          const char *actual_sql, sqlite3_stmt *stmt)
 {
     if (strlen(sql) >= MAX_HASH_SQL_LENGTH) {
         return -1;
@@ -1674,25 +1656,24 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
     }
 
     void *list = NULL;
-    if (params_to_bind) {
+    if (sqlite3_bind_parameter_count(stmt)) {
         list = &thd->param_stmt_list;
     } else {
         list = &thd->noparam_stmt_list;
     }
 
     /* remove older entries */
-    if (gbl_max_sqlcache <= listc_size(list))
-        delete_last_stmt_entry(thd, params_to_bind);
+    if (gbl_max_sqlcache <= listc_size(list)) {
+        delete_last_stmt_entry(thd, list);
+    }
 
     stmt_hash_entry_type *entry = sqlite3_malloc(sizeof(stmt_hash_entry_type));
     strcpy(entry->sql, sql); /* sql is at most MAX_HASH_SQL_LENGTH - 1 */
     entry->stmt = stmt;
-    entry->params_to_bind = params_to_bind;
     if (actual_sql && gbl_debug_temptables)
         entry->query = strdup(actual_sql);
     else
         entry->query = NULL;
-
     return requeue_stmt_entry(thd, entry);
 }
 
@@ -1877,7 +1858,7 @@ int has_sqlcache_hint(const char *sql, const char **pstart, const char **pend)
     return 0;
 }
 
-int extract_sqlcache_hint(const char *sql, char *hint, int *hintlen)
+int extract_sqlcache_hint(const char *sql, char *hint, int hintlen)
 {
     const char *start = NULL;
     const char *end = NULL;
@@ -1888,9 +1869,9 @@ int extract_sqlcache_hint(const char *sql, char *hint, int *hintlen)
 
     if (ret) {
         length = end - start;
-        if (length >= *hintlen) {
+        if (length >= hintlen) {
             logmsg(LOGMSG_WARN, "Query has very long hint! \"%s\"\n", sql);
-            length = *hintlen - 1;
+            length = hintlen - 1;
         }
         strncpy(hint, start, length);
         hint[length] = '\0';
@@ -2474,33 +2455,43 @@ static void query_stats_setup(struct sqlthdstate *thd,
         reqlog_set_request(thd->logger, clnt->sql_query);
 }
 
+static int param_count(struct sqlclntstate *clnt)
+{
+    return clnt->plugin.param_count(clnt);
+}
+
+static int get_param(struct sqlclntstate *clnt, struct param_data *param, int n)
+{
+    return clnt->plugin.get_param(clnt, param, n);
+}
+
 static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                             struct sql_state *rec)
 {
     rec->status = CACHE_DISABLED;
-    if (gbl_enable_sql_stmt_caching == STMT_CACHE_ALL ||
-        (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM && clnt->tag)) {
-        int hint_len = sizeof(rec->cache_hint);
-        if (extract_sqlcache_hint(rec->sql, rec->cache_hint, &hint_len)) {
-            rec->status = CACHE_HAS_HINT;
-            if (find_stmt_table(thd, rec->cache_hint, &rec->stmt_entry) == 0) {
-                rec->status |= CACHE_FOUND_STMT;
-                rec->stmt = rec->stmt_entry->stmt;
-                rec->parameters_to_bind = rec->stmt_entry->params_to_bind;
-            } else {
-                /* We are not able to find the statement in cache,
-                 * and this is a partial statement. */
-                /* Try to find sql string stored in hash table */
-                if (find_sql_hint_table(rec->cache_hint, (char **)&rec->sql,
-                                        (char **)&(clnt->tag)) == 0) {
-                    rec->status |= CACHE_FOUND_STR;
-                }
-            }
+    if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE)
+        return;
+    if (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM &&
+        param_count(clnt) == 0)
+        return;
+    if (extract_sqlcache_hint(rec->sql, rec->cache_hint, HINT_LEN)) {
+        rec->status = CACHE_HAS_HINT;
+        if (find_stmt_table(thd, rec->cache_hint, &rec->stmt_entry) == 0) {
+            rec->status |= CACHE_FOUND_STMT;
+            rec->stmt = rec->stmt_entry->stmt;
+            // rec->parameters_to_bind = rec->stmt_entry->params_to_bind;
         } else {
-            if (find_stmt_table(thd, rec->sql, &rec->stmt_entry) == 0) {
-                rec->status = CACHE_FOUND_STMT;
-                rec->stmt = rec->stmt_entry->stmt;
+            /* We are not able to find the statement in cache, and this is a
+             * partial statement. Try to find sql string stored in hash table */
+            if (find_sql_hint_table(rec->cache_hint, (char **)&rec->sql,
+                                    (char **)&(clnt->tag)) == 0) {
+                rec->status |= CACHE_FOUND_STR;
             }
+        }
+    } else {
+        if (find_stmt_table(thd, rec->sql, &rec->stmt_entry) == 0) {
+            rec->status = CACHE_FOUND_STMT;
+            rec->stmt = rec->stmt_entry->stmt;
         }
     }
     if (rec->stmt) {
@@ -2527,12 +2518,12 @@ static void get_cached_params(struct sqlthdstate *thd,
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_ALL ||
         (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM && clnt->tag)) {
         hint_len = sizeof(rec->cache_hint);
-        if (extract_sqlcache_hint(clnt->sql, rec->cache_hint, &hint_len)) {
+        if (extract_sqlcache_hint(clnt->sql, rec->cache_hint, HINT_LEN)) {
             rec->status = CACHE_HAS_HINT;
             if (find_stmt_table(thd, rec->cache_hint, &rec->stmt_entry) == 0) {
                 rec->status |= CACHE_FOUND_STMT;
                 rec->stmt = rec->stmt_entry->stmt;
-                rec->parameters_to_bind = rec->stmt_entry->params_to_bind;
+                //rec->parameters_to_bind = rec->stmt_entry->params_to_bind;
             } else {
                 if (find_sql_hint_table(rec->cache_hint, (char **)&rec->sql,
                                         &(clnt->tag)) == 0) {
@@ -2555,43 +2546,6 @@ static int _dbglog_send_cost(struct sqlclntstate *clnt)
     return 0;
 }
 
-static int get_prepared_bound_param(struct sqlthdstate *thd,
-                                    struct sqlclntstate *clnt,
-                                    struct sql_state *rec, 
-                                    struct errstat *err)
-{
-    get_cached_params(thd, clnt, rec);
-
-    /* bind values here if it was a parametrized query */
-    if (clnt->tag && (rec->parameters_to_bind == NULL)) {
-        if ((rec->status & CACHE_HAS_HINT) && clnt->in_client_trans &&
-            strlen(clnt->tag) <= 1) {
-            /* Make the client retry the query.*/
-            errstat_set_rcstrf(err, ERR_PREPARE_RETRY, "%s",
-                               "invalid parametrized tag (api bug?)");
-            return -1;
-        }
-
-        rec->parameters_to_bind = new_dynamic_schema(
-            clnt->tag, strlen(clnt->tag), gbl_dump_sql_dispatched);
-        if (rec->parameters_to_bind == NULL) {
-            errstat_set_rcstrf(err, ERR_PREPARE, "%s",
-                               "invalid parametrized tag (api bug?)");
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
-static void clear_parameters_to_bind(struct sql_state *rec)
-{
-    if (rec->parameters_to_bind) {
-        free_tag_schema(rec->parameters_to_bind);
-        rec->parameters_to_bind = NULL;
-    }
-}
-
 /* This is called at the time of put_prepared_stmt_int()
  * to determine whether the given sql should be cached.
  * We should not cache ddl stmts, analyze commands,
@@ -2599,16 +2553,14 @@ static void clear_parameters_to_bind(struct sql_state *rec)
  * Ddl stmts and explain commands should not get to
  * put_prepared_stmt_int() so are not handled in this function.
  */
-static inline int dont_cache_sql(struct sqlclntstate *clnt, const char *sql)
+#define sql_equal(keyword) strncasecmp(sql, keyword, sizeof(keyword) - 1) == 0
+static inline int dont_cache_sql(const char *sql)
 {
-    if (strncasecmp(sql, "analyze", 7) == 0)
+    if (sql_equal("create") || sql_equal("alter") || sql_equal("rebuild") ||
+        sql_equal("drop") || sql_equal("analyze") || sql_equal("truncate") ||
+        sql_equal("put") || sql_equal("explain")) {
         return 1;
-    if (strncasecmp(sql, "rebuild", 7) == 0)
-        return 1;
-    if (strncasecmp(sql, "truncate", 8) == 0)
-        return 1;
-    if (strncasecmp(sql, "put", 3) == 0)
-        return 1;
+    }
     return 0;
 }
 
@@ -2624,7 +2576,7 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         return 1;
     }
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM &&
-        rec->parameters_to_bind == NULL) {
+        param_count(clnt) == 0) {
         return 1;
     }
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_CACHING_STMT_WITH_FDB) &&
@@ -2642,7 +2594,7 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
     if (rec->sql)
         sqlptr = rec->sql;
 
-    if (dont_cache_sql(clnt, sqlptr)) {
+    if (dont_cache_sql(sqlptr)) {
         return 1;
     }
 
@@ -2652,14 +2604,8 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
             add_sql_hint_table(rec->cache_hint, clnt->sql, clnt->tag);
         }
     }
-
-    int rc = add_stmt_table(thd, sqlptr,
-                            (char *)(gbl_debug_temptables ? rec->sql : NULL),
-                            stmt, rec->parameters_to_bind);
-    if (rc == 0) {
-        rec->parameters_to_bind = NULL;
-    }
-    return rc;
+    return add_stmt_table(thd, sqlptr, gbl_debug_temptables ? rec->sql : NULL,
+                          stmt);
 }
 
 /**
@@ -2675,7 +2621,6 @@ void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         sqlite3_finalize(rec->stmt);
         rec->stmt = NULL;
     }
-    clear_parameters_to_bind(rec);
     if ((rec->status & CACHE_HAS_HINT) && (rec->status & CACHE_FOUND_STR)) {
         char *k = rec->cache_hint;
         pthread_mutex_lock(&gbl_sql_lock);
@@ -2875,14 +2820,11 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     } else if (rc != 0) {
         return rc;
     }
-
     if (sql_set_transaction_mode(thd->sqldb, clnt, clnt->dbtran.mode) != 0) {
         return handle_bad_transaction_mode(thd, clnt);
     }
-
     query_stats_setup(thd, clnt);
     get_cached_stmt(thd, clnt, rec);
-
     if (rec->sql)
         reqlog_set_sql(thd->logger, rec->sql);
     const char *tail = NULL;
@@ -2983,26 +2925,81 @@ static int check_client_specified_conversions(struct sqlthdstate *thd,
     return 0;
 }
 
+static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
+                           struct sqlclntstate *clnt, char **err)
+{
+    int rc = 0;
+    int params = param_count(clnt);
+    struct cson_array *arr = get_bind_array(logger, params);
+    struct param_data p = {0};
+    for (int i = 0; i < params; ++i) {
+        if ((rc = get_param(clnt, &p, i)) != 0) {
+            rc = SQLITE_ERROR;
+            goto out;
+        }
+        if (p.pos == 0) {
+            p.pos = sqlite3_bind_parameter_index(stmt, p.name);
+        }
+        if (p.pos == 0) {
+            rc = SQLITE_ERROR;
+            goto out;
+        }
+        if (p.null || p.type == COMDB2_NULL_TYPE) {
+            rc = sqlite3_bind_null(stmt, p.pos);
+            add_to_bind_array(arr, p.name, p.type, NULL, p.len);
+            continue;
+        }
+        switch (p.type) {
+        case CLIENT_INT:
+        case CLIENT_UINT:
+            rc = sqlite3_bind_int64(stmt, p.pos, p.u.i);
+            break;
+        case CLIENT_REAL:
+            rc = sqlite3_bind_double(stmt, p.pos, p.u.d);
+            break;
+        case CLIENT_CSTR:
+        case CLIENT_PSTR:
+        case CLIENT_PSTR2:
+        case CLIENT_VUTF8:
+            rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
+            break;
+        case CLIENT_BLOB:
+        case CLIENT_BYTEARRAY:
+            rc = sqlite3_bind_blob(stmt, p.pos, p.u.p, p.len, NULL);
+            break;
+        case CLIENT_DATETIME:
+        case CLIENT_DATETIMEUS:
+            rc = sqlite3_bind_datetime(stmt, p.pos, &p.u.dt, clnt->tzname);
+            break;
+        case CLIENT_INTVYM:
+        case CLIENT_INTVDS:
+        case CLIENT_INTVDSUS:
+            rc = sqlite3_bind_interval(stmt, p.pos, p.u.tv);
+            break;
+        default:
+            rc = SQLITE_ERROR;
+            break;
+        }
+        if (rc) {
+            goto out;
+        }
+        add_to_bind_array(arr, p.name, p.type, &p.u, p.len);
+    }
+out:if (rc) {
+        *err = sqlite3_mprintf("Bad parameter:%s type:%d\n", p.name, p.type);
+    }
+    return rc;
+}
+
+
 static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                        struct sql_state *rec, struct errstat *err)
 {
     char *errstr = NULL;
-    int rc = 0;
-    bool newsqlbind = clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_bindvars;
-
-    if (newsqlbind || rec->parameters_to_bind) {
-        assert(!newsqlbind || rec->parameters_to_bind == NULL);
-        rc = bind_parameters(thd->logger, rec->stmt, rec->parameters_to_bind,
-                             clnt, &errstr);
-        if (rc) errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
-    } else if (sqlite3_bind_parameter_count(rec->stmt)) {
-        reqlog_logf(thd->logger, REQL_TRACE, "parameter bind failed \n");
-        errstat_set_rcstrf(err, ERR_PREPARE, "%s", 
-                           "Query specified parameters, but no values"
-                           " provided.");
-        rc = -1;
+    int rc = bind_parameters(thd->logger, rec->stmt, clnt, &errstr);
+    if (rc) {
+        errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
     }
-
     return rc;
 }
 
@@ -3019,27 +3016,21 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
     if ((rc = get_prepared_stmt(thd, clnt, rec, err)) != 0) {
         return rc;
     }
-    /* bind values here if it was a parametrized query */
-    if (clnt->tag && (rec->parameters_to_bind == NULL)) {
-        rec->parameters_to_bind = new_dynamic_schema(
-            clnt->tag, strlen(clnt->tag), gbl_dump_sql_dispatched);
-        if (rec->parameters_to_bind == NULL) {
-            errstat_set_str(err, "invalid parametrized tag (api bug?)");
-            errstat_set_rc(err, ERR_PREPARE_RETRY);
-            return -1;
-        }
+    int a = sqlite3_bind_parameter_count(rec->stmt);
+    int b = param_count(clnt);
+    if (a != b) {
+        errstat_set_rcstrf(err, ERR_PREPARE,
+                           "parameters in stmt:%d  "
+                           "parameters provided:%d",
+                           a, b);
+        return -1;
     }
-    int ncols = sqlite3_column_count(rec->stmt);
-    reqlog_logf(thd->logger, REQL_INFO, "ncols=%d", ncols);
-
-    rc = check_client_specified_conversions(thd, clnt, ncols, err);
-    if (rc)
+    reqlog_logf(thd->logger, REQL_INFO, "ncols=%d",
+                sqlite3_column_count(rec->stmt));
+    if (a == 0)
+        return 0;
+    if ((rc = bind_params(thd, clnt, rec, err)) != 0)
         return rc;
-
-    rc = bind_params(thd, clnt, rec, err);
-    if (rc)
-        return rc;
-
     return 0;
 }
 
@@ -3434,8 +3425,6 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
         thd->sqlthd->nmove = thd->sqlthd->nfind = thd->sqlthd->nwrite =
             thd->sqlthd->ntmpread = thd->sqlthd->ntmpwrite = 0;
 
-    clear_parameters_to_bind(rec);
-
     if (clnt->want_query_effects) {
         clnt->had_errors = 1;
     }
@@ -3488,6 +3477,8 @@ static void handle_stored_proc(struct sqlthdstate *thd,
 
     reqlog_set_event(thd->logger, "sp");
 
+    abort();
+    /*
     rc = get_prepared_bound_param(thd, clnt, &rec, &err);
     if (rc) {
         int irc = errstat_get_rc(&err);
@@ -3498,8 +3489,8 @@ static void handle_stored_proc(struct sqlthdstate *thd,
             WRITE_RESPONSE(RESPONSE_ERROR_PREPARE_RETRY, err.errstr);
         return;
     }
-
-    rc = exec_procedure(clnt->sql, &errstr, thd, rec.parameters_to_bind, clnt);
+    */
+    rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
         clnt->had_errors = 1;
         if (rc == -1)
@@ -5595,6 +5586,16 @@ static void *internal_destroy_stmt(struct sqlclntstate *clnt, void *arg)
 static void *internal_print_stmt(struct sqlclntstate *clnt, void *arg)
 {
     return arg;
+}
+
+static int internal_param_count(struct sqlclntstate *clnt)
+{
+    return -1;
+}
+
+static int internal_get_param(struct sqlclntstate *a, struct param_data *b, int c)
+{
+    return -1;
 }
 
 void start_internal_sql_clnt(struct sqlclntstate *clnt)

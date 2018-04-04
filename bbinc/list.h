@@ -46,6 +46,7 @@ typedef struct {
         size_t diff;                                                           \
         int count;                                                             \
     }
+
 #define LINKC_T(type)                                                          \
     struct {                                                                   \
         type *next;                                                            \

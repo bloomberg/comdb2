@@ -65,7 +65,7 @@ typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];
     sqlite3_stmt *stmt;
     char *query;
-    struct schema *params_to_bind;
+    //struct schema *params_to_bind;
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
 
@@ -319,8 +319,25 @@ int sp_column_nil(struct response_data *, int);
 int sp_column_val(struct response_data *, int, int, void *);
 void *sp_column_ptr(struct response_data *, int, int, size_t *);
 
+struct param_data {
+    char *name;
+    int type;
+    int null;
+    int pos;
+    int len;
+    union {
+        int64_t i;
+        double d;
+        void *p;
+        dttz_t dt;
+        intv_t tv;
+    } u;
+};
+
 typedef int(response_func)(struct sqlclntstate *, int, void *, int);
 typedef void *(replay_func)(struct sqlclntstate *, void *);
+typedef int(param_count_func)(struct sqlclntstate *);
+typedef int(param_func)(struct sqlclntstate *, struct param_data *, int);
 
 struct plugin_callbacks {
     response_func *write_response; /* newsql_write_response */
@@ -329,16 +346,23 @@ struct plugin_callbacks {
     replay_func *restore_stmt; /* newsql_restore_stmt */
     replay_func *destroy_stmt; /* newsql_destroy_stmt */
     replay_func *print_stmt; /* newsql_print_stmt */
+    param_count_func *param_count; /* newsql_param_count */
+    param_func *get_param; /* newsql_get_param */
 };
+
+#define make_plugin_callback(clnt, name, func)                                 \
+    (clnt)->plugin.func = name##_##func
 
 #define plugin_set_callbacks(clnt, name)                                       \
     do {                                                                       \
-        (clnt)->plugin.write_response = name##_write_response;                 \
-        (clnt)->plugin.read_response = name##_read_response;                   \
-        (clnt)->plugin.save_stmt = name##_save_stmt;                           \
-        (clnt)->plugin.restore_stmt = name##_restore_stmt;                     \
-        (clnt)->plugin.destroy_stmt = name##_destroy_stmt;                     \
-        (clnt)->plugin.print_stmt = name##_print_stmt;                         \
+        make_plugin_callback(clnt, name, write_response);                      \
+        make_plugin_callback(clnt, name, read_response);                       \
+        make_plugin_callback(clnt, name, save_stmt);                           \
+        make_plugin_callback(clnt, name, restore_stmt);                        \
+        make_plugin_callback(clnt, name, destroy_stmt);                        \
+        make_plugin_callback(clnt, name, print_stmt);                          \
+        make_plugin_callback(clnt, name, param_count);                         \
+        make_plugin_callback(clnt, name, get_param);                           \
     } while (0)
 
 /* Client specific sql state */
@@ -895,7 +919,7 @@ struct sql_state {
     char cache_hint[HINT_LEN];         /* hint copy, if any */
     const char *sql;                   /* the actual string used */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
-    struct schema *parameters_to_bind; /* fast pointer to parameters */
+    //struct schema *parameters_to_bind; /* fast pointer to parameters */
 };
 int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
                                struct sql_state *, struct errstat *,

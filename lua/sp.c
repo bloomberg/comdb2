@@ -4847,153 +4847,55 @@ static int flush_rows(SP sp)
     return write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
 }
 
-static int push_param(Lua lua, struct sqlclntstate *clnt, struct schema *params,
-                      int pos, int *blobno)
+static int push_param(Lua L, struct sqlclntstate *clnt, struct param_data *p)
 {
-    void *bufp = clnt->tagbuf;
-    void *nullbits = clnt->nullbits;
-    int numblobs = clnt->numblobs;
-    void **blobs = clnt->blobs;
-    int *bloblens = clnt->bloblens;
-
-    uint8_t *buf = bufp;
-    char parmname[32];
-    int isnull = 0;
-    blob_t blob;
-    int64_t ival;
-    uint64_t uval;
-    double dval;
-    char *str;
-    int datalen;
-    dttz_t dt;
-    int little_endian = 0;
-
-    CDB2SQLQUERY *sqlquery = clnt->sql_query;
-
-    struct field c_fld;
-    struct field *f = NULL;
-
-    if (params) {
-        f = &params->member[pos];
-        if (nullbits) isnull = btst(nullbits, pos) ? 1 : 0;
-    } else {
-        c_fld.type = convert_client_ftype(sqlquery->bindvars[pos]->type);
-        c_fld.datalen = sqlquery->bindvars[pos]->value.len;
-        c_fld.idx = -1;
-        c_fld.name = sqlquery->bindvars[pos]->varname;
-        c_fld.offset = 0;
-        f = &c_fld;
-        if ((buf = sqlquery->bindvars[pos]->value.data) == NULL) {
-            isnull = 1;
-        } else if (sqlquery->little_endian) {
-            if ((f->type == CLIENT_INT) || (f->type == CLIENT_UINT) ||
-                (f->type == CLIENT_REAL)) {
-#ifndef _LINUX_SOURCE
-                uint8_t val1[8];
-                memcpy(&val1, buf, c_fld.datalen);
-                const void *new_buf = buf_little_get(buf, c_fld.datalen, val1,
-                                                     val1 + c_fld.datalen);
-#else
-                const void *new_buf =
-                    buf_get(buf, c_fld.datalen, buf, buf + c_fld.datalen);
-#endif
-            }
-            little_endian = 1;
-        }
-    }
-
-    if (gbl_dump_sql_dispatched) {
-        logmsg(LOGMSG_USER,
-               "binding field %d name %s type %d %s pos %d null %d\n", pos,
-               f->name, f->type, strtype(f->type), pos, isnull);
-    }
-
-    if (isnull) {
-        luabb_pushnull(lua, DBTYPES_INTEGER);
+    if (p->null || p->type == COMDB2_NULL_TYPE) {
+        abort();
+        /*
+        p->type => lua type
+        */
+        luabb_pushnull(L, DBTYPES_INTEGER);
         return 0;
     }
-
-    int rc = 0;
-    switch (f->type) {
-    case CLIENT_INT:
-        if ((rc = get_int_field(f, buf, &ival)) == 0)
-            luabb_pushinteger(lua, ival);
-        break;
-    case CLIENT_UINT:
-        if ((rc = get_uint_field(f, buf, &uval)) == 0)
-            luabb_pushinteger(lua, uval);
-        break;
-    case CLIENT_REAL:
-        if ((rc = get_real_field(f, buf, &dval)) == 0)
-            luabb_pushreal(lua, dval);
-        break;
+    switch (p->type) {
+    case CLIENT_INT: 
+    case CLIENT_UINT: luabb_pushinteger(L, p->u.i); break;
+    case CLIENT_REAL: luabb_pushreal(L, p->u.d); break;
     case CLIENT_CSTR:
     case CLIENT_PSTR:
     case CLIENT_PSTR2:
-        if ((rc = get_str_field(f, buf, &str, &datalen)) == 0)
-            luabb_pushcstringlen(lua, str, datalen);
-        break;
+    case CLIENT_VUTF8: luabb_pushcstringlen(L, p->u.p, p->len); break;
     case CLIENT_BYTEARRAY:
-        if ((rc = get_byte_field(f, buf, &blob.data, &blob.length)) == 0) {
-            luabb_pushblob(lua, &blob);
-        }
+    case CLIENT_BLOB: {
+        blob_t b = {.length = p->len, .data = p->u.p};
+        luabb_pushblob(L, &b);
         break;
-    case CLIENT_BLOB:
-        if (params) {
-            if ((rc = get_blob_field(*blobno, clnt, &blob.data,
-                                     &blob.length)) == 0) {
-                luabb_pushblob(lua, &blob);
-                ++(*blobno);
-            }
-        } else {
-            blob.data = buf;
-            blob.length = f->datalen;
-            luabb_pushblob(lua, &blob);
-            ++(*blobno);
-        }
-        break;
-    case CLIENT_DATETIME:
-        if ((rc = get_datetime_field(f, buf, clnt->tzname, &dt,
-                                     little_endian)) == 0) {
-            /* TODO: need dttz -> datetime_t */
-            cdb2_client_datetime_t t;
-            datetime_t datetime;
-            dttz_to_client_datetime(&dt, clnt->tzname, &t);
-            client_datetime_to_datetime_t(&t, &datetime, 0);
-            luabb_pushdatetime(lua, &datetime);
-        }
-        break;
-    case CLIENT_DATETIMEUS:
-        if ((rc = get_datetimeus_field(f, buf, clnt->tzname, &dt,
-                                       little_endian)) == 0) {
-            /* TODO: need dttz -> datetime_t */
-            cdb2_client_datetimeus_t t;
-            datetime_t datetime;
-            dttz_to_client_datetimeus(&dt, clnt->tzname, &t);
-            client_datetimeus_to_datetime_t(&t, &datetime, 0);
-            luabb_pushdatetime(lua, &datetime);
-        }
-        break;
-    case CLIENT_VUTF8:
-        if (params) {
-            if ((rc = get_blob_field(*blobno, clnt, (void **)&str, &datalen)) ==
-                0) {
-                luabb_pushcstringlen(lua, str, datalen);
-                ++(*blobno);
-            }
-        } else {
-            luabb_pushcstringlen(lua, (char *)buf, f->datalen);
-            ++(*blobno);
-        }
-        break;
-    default: logmsg(LOGMSG_ERROR, "Unknown type %d\n", f->type); rc = -1;
     }
-
-    if (gbl_dump_sql_dispatched)
-        logmsg(LOGMSG_USER, "pos %d %s type %d %s len %d null %d bind rc %d\n",
-               pos, f->name, f->type, strtype(f->type), f->datalen, isnull, rc);
-
-    return rc;
+    case CLIENT_DATETIME: {
+        cdb2_client_datetime_t t;
+        dttz_to_client_datetime(&p->u.dt, clnt->tzname, &t);
+        datetime_t datetime;
+        client_datetime_to_datetime_t(&t, &datetime, 0);
+        luabb_pushdatetime(L, &datetime);
+        break;
+    }
+    case CLIENT_DATETIMEUS: {
+        cdb2_client_datetimeus_t t;
+        dttz_to_client_datetimeus(&p->u.dt, clnt->tzname, &t);
+        datetime_t datetime;
+        client_datetimeus_to_datetime_t(&t, &datetime, 0);
+        luabb_pushdatetime(L, &datetime);
+        break;
+    }
+    default:
+        logmsg(LOGMSG_ERROR, "Unknown type %d\n", p->type);
+        return -1;
+    }
+    if (gbl_dump_sql_dispatched) {
+        logmsg(LOGMSG_USER, "%s type %d %s len %d null %d bind\n", p->name,
+               p->type, strtype(p->type), p->len, p->null);
+    }
+    return 0;
 }
 
 typedef enum {
@@ -5017,31 +4919,9 @@ typedef struct {
         double d;
         char *c;
         blob_t b;
+        struct param_data p;
     } u;
 } sparg_t;
-
-static int getparam(struct schema *params, CDB2SQLQUERY *sqlquery,
-                    const char *name, int64_t *pos)
-{
-    int i;
-    if (sqlquery) {
-        for (i = 0; i < sqlquery->n_bindvars; ++i) {
-            if (strcmp(sqlquery->bindvars[i]->varname, name) == 0) {
-                *pos = i;
-                return 0;
-            }
-        }
-        return 1;
-    } else {
-        for (i = 0; i < params->nmembers; ++i) {
-            if (strcmp(params->member[i].name, name) == 0) {
-                *pos = i;
-                return 0;
-            }
-        }
-        return 1;
-    }
-}
 
 static const char *getnext(const char *in, char **a, char **b, void *buf,
                            int bufsz)
@@ -5092,8 +4972,7 @@ static inline int ascii2num(int a)
     return isdigit(a) ? a - '0' : isalpha(a) ? 0x0a + a - 'a' : 0xff;
 }
 
-static int getarg(const char **s_, CDB2SQLQUERY *sqlquery,
-                  struct schema *params, sparg_t *arg)
+static int getarg(const char **s_, struct sqlclntstate *clnt, sparg_t *arg)
 {
     arg->mbuf = NULL;
     uint8_t quoted = 0;
@@ -5130,8 +5009,9 @@ static int getarg(const char **s_, CDB2SQLQUERY *sqlquery,
     case '@':
         arg->type = arg_param;
         ++a; // lose '@'
-        if (!(params || sqlquery) ||
-            getparam(params, sqlquery, a, &arg->u.i) != 0) {
+        abort();
+        /*
+        if (param_count(clnt) == 0) {
             if (quoted) {
                 arg->type = arg_str;
                 arg->u.c = --a;
@@ -5139,6 +5019,11 @@ static int getarg(const char **s_, CDB2SQLQUERY *sqlquery,
                 goto err;
             }
         }
+         * needs more work
+        if (get_param_by_name() != 0) {
+            goto err;
+        }
+        */
         break;
     case 'x':
         arg->type = arg_blob;
@@ -5450,7 +5335,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
 }
 
 static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
-                     struct schema *params, int *argc)
+                     int *argc)
 {
     const char *s = *argstr;
     SP sp = clnt->sp;
@@ -5459,11 +5344,9 @@ static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
     const char *msg = s;
     int argcnt = 0;
     sparg_t arg;
-    int b = 0;
-    blob_t blob;
 
     int rc;
-    while ((rc = getarg(&s, clnt->sql_query, params, &arg)) > arg_end) {
+    while ((rc = getarg(&s, clnt, &arg)) > arg_end) {
         if ((rc = !lua_checkstack(lua, 1)) != 0) break;
         switch (arg.type) {
         case arg_null: luabb_pushnull(lua, DBTYPES_CSTRING); break;
@@ -5472,7 +5355,7 @@ static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
         case arg_str: lua_pushstring(lua, arg.u.c); break;
         case arg_blob: luabb_pushblob(lua, &arg.u.b); break;
         case arg_bool: lua_pushboolean(lua, arg.u.i); break;
-        case arg_param: rc = push_param(lua, clnt, params, arg.u.i, &b); break;
+        case arg_param: rc = push_param(lua, clnt, &arg.u.p); break;
         default: rc = 99; break;
         }
         free(arg.mbuf);
@@ -6095,10 +5978,10 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return rc;
 }
 
-static int exec_procedure_int(const char *s, char **err,
-                              struct sqlthdstate *thd, struct schema *params,
-                              struct sqlclntstate *clnt)
+static int exec_procedure_int(struct sqlthdstate *thd,
+                              struct sqlclntstate *clnt, char **err)
 {
+    const char *s = clnt->sql;
     char spname[MAX_SPNAME];
     long long sprc = 0;
     int rc, args, new_vm;
@@ -6124,7 +6007,7 @@ static int exec_procedure_int(const char *s, char **err,
 
     if (IS_SYS(spname)) init_sys_funcs(L);
 
-    if ((rc = push_args(&s, clnt, err, params, &args)) != 0) return rc;
+    if ((rc = push_args(&s, clnt, err, &args)) != 0) return rc;
 
     if ((rc = begin_sp(clnt, err)) != 0) return rc;
 
@@ -6216,6 +6099,16 @@ static void *trigger_destroy_stmt(struct sqlclntstate *clnt, void *arg)
 static void *trigger_print_stmt(struct sqlclntstate *clnt, void *arg)
 {
     return NULL;
+}
+
+static int trigger_param_count(struct sqlclntstate *clnt)
+{
+    return -1;
+}
+
+static int trigger_get_param(struct sqlclntstate *a, struct param_data *b, int c)
+{
+    return -1;
 }
 
 ////////////////////////
@@ -6424,10 +6317,9 @@ int exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return rc;
 }
 
-int exec_procedure(const char *s, char **err, struct sqlthdstate *thd,
-                   struct schema *params, struct sqlclntstate *clnt)
+int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **err)
 {
-    int rc = exec_procedure_int(s, err, thd, params, clnt);
+    int rc = exec_procedure_int(thd, clnt, err);
     if (clnt->sp) {
         reset_sp(clnt->sp);
     }
