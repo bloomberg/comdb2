@@ -1092,9 +1092,6 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
     if (useheap)
         free(buf);
 
-    /*Pthread_mutex_unlock(&(bdb_state->repinfo->send_lock));*/
-
-    /*return 0;*/
     return outrc;
 }
 
@@ -1348,8 +1345,12 @@ elect_again:
     old_master = bdb_state->repinfo->master_host;
     set_repinfo_master_host(bdb_state, db_eid_invalid, __func__, __LINE__);
 
+    /* Should be holding bdb readlock .. */
+    BDB_READLOCK("rep_elect");
+
     rc = bdb_state->dbenv->rep_elect(bdb_state->dbenv, elect_count, rep_pri,
                                      elect_time, &master_host);
+    BDB_RELLOCK();
 
     if (rc != 0) {
         if (rc == DB_REP_UNAVAIL)
@@ -2598,7 +2599,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                             if ((now = time(NULL)) - lastpr) {
                                 logmsg(LOGMSG_USER, "%s line %d, %s stays "
                                         "incoherent, "
-                                        "seqnum lsn %d:%d, master lsn %d:%d,"
+                                        "seqnum lsn %d:%d, master lsn %d:%d, "
                                         "behind by %llu\n", __func__,__LINE__,
                                         host, seqnum->lsn.file,
                                         seqnum->lsn.offset, masterlsn->file,
@@ -3630,8 +3631,8 @@ void send_myseqnum_to_all(bdb_state_type *bdb_state, int nodelay)
                           sizeof(seqnum_type), nodelay);
 
             if (rc) {
-                logmsg(LOGMSG_ERROR, "0x%lx %s:%d net_send rc=%d\n",
-                       pthread_self(), __FILE__, __LINE__, rc);
+                logmsg(LOGMSG_ERROR, "0x%lx %s:%d net_send rc=%d to %s\n",
+                       pthread_self(), __func__, __LINE__, rc, hostlist[i]);
             }
         }
     }
@@ -4975,6 +4976,16 @@ extern int gbl_lock_get_list_start;
 int bdb_clean_pglogs_queues(bdb_state_type *bdb_state);
 extern int db_is_stopped();
 
+int request_delaymore(void *bdb_state_in) 
+{
+    int rc;
+    bdb_state_type *bdb_state = (bdb_state_type *)bdb_state_in;
+    rc = net_send_flags(bdb_state->repinfo->netinfo, 
+            bdb_state->repinfo->master_host, USER_TYPE_COMMITDELAYMORE, NULL, 0,
+            NET_SEND_NODROP);
+    return rc;
+}
+
 void *watcher_thread(void *arg)
 {
     bdb_state_type *bdb_state;
@@ -5093,9 +5104,7 @@ void *watcher_thread(void *arg)
                                                          DB_REP_CLIENT);
 
                     if (bdb_state->attr->enable_incoherent_delaymore) {
-                        rc = net_send(bdb_state->repinfo->netinfo,
-                                      bdb_state->repinfo->master_host,
-                                      USER_TYPE_COMMITDELAYMORE, NULL, 0, 1);
+                        rc = request_delaymore(bdb_state);
 
                         if (rc != 0) {
                             logmsg(LOGMSG_ERROR,

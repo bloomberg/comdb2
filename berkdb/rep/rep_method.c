@@ -867,7 +867,6 @@ __rep_set_rep_transport(dbenv, eid, f_send)
 }
 
 extern pthread_mutex_t rep_queue_lock;
-extern void __rep_empty_log_queue_lk(void);
 extern void send_master_req(DB_ENV *dbenv, const char *func, int line);
 
 /*
@@ -978,7 +977,6 @@ restart:
     pthread_mutex_lock(&rep_queue_lock);
 	F_SET(rep, REP_F_EPHASE1 | REP_F_NOARCHIVE);
 	F_CLR(rep, REP_F_TALLY);
-    __rep_empty_log_queue_lk();
     pthread_mutex_unlock(&rep_queue_lock);
 
 	/* Tally our own vote */
@@ -1071,7 +1069,6 @@ restart:
         pthread_mutex_lock(&rep_queue_lock);
 		F_SET(rep, REP_F_EPHASE2);
 		F_CLR(rep, REP_F_EPHASE1);
-        __rep_empty_log_queue_lk();
         pthread_mutex_unlock(&rep_queue_lock);
 	}
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);

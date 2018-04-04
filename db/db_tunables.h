@@ -1328,15 +1328,13 @@ REGISTER_TUNABLE("set_coherent_state_trace", "Verbose coherency trace.  "
                  &gbl_set_coherent_state_trace, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("finish_fill_threshold", "Fill to end if end is less than "
-                 "this.  (Default: 40000000)", TUNABLE_INTEGER, 
+                 "this.  (Default: 60000000)", TUNABLE_INTEGER, 
                  &gbl_finish_fill_threshold, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("fillcursor_lookahead", "Set fill in-cursor buffer size.  "
-                 "  (Default: 40000000)", TUNABLE_INTEGER, 
-                 &gbl_fillcursor_lookahead, EXPERIMENTAL | INTERNAL, NULL,
+REGISTER_TUNABLE("req_delay_count_threshold", "Request commit-delay if falling behind "
+                 "this many times.  (Default: 5)", TUNABLE_INTEGER, 
+                 &gbl_req_delay_count_threshold, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
-
-
 REGISTER_TUNABLE("osql_random_restart",
                  "Restart socksql transmission randomly.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_osql_random_restart,

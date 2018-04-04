@@ -79,14 +79,15 @@ int gbl_master_req_waitms = 200;
 int gbl_fills_waitms = 1000;
 int gbl_warn_queue_latency_threshold = 500;
 
-/* Finish a fill if we are within a single logfile */
-int gbl_finish_fill_threshold = 40000000;
-int gbl_fillcursor_lookahead = 40000000;
+/* Finish a fill if we are within 1.5 logfiles */
+int gbl_finish_fill_threshold = 60000000;
 
 int gbl_max_logput_queue = 100000;
 int gbl_apply_thread_pollms = 100;
 int last_fill = 0;
 int gbl_req_all_threshold = 10000000;
+int gbl_req_delay_count_threshold = 5;
+extern int request_delaymore(void *bdb_state);
 
 extern void fsnapf(FILE *, void *, int);
 static int reset_recovery_processor(struct __recovery_processor *rp);
@@ -425,8 +426,9 @@ uint64_t subtract_lsn(void *bdb_state, DB_LSN *lsn1, DB_LSN *lsn2);
 
 static void *apply_thread(void *arg) 
 {
-    int ret, rc, log_more_count, log_fill_count;
+    int ret, rc, log_more_count, log_fill_count, now;
     int i_am_replicant;
+    uint32_t more_behind_count = 0;
 	LOG *lp;
 	DB_LOG *dblp;
     DB_LSN master_lsn, my_lsn, first_repdb_lsn, max_queued, comp_lsn;
@@ -436,7 +438,7 @@ static void *apply_thread(void *arg)
 	REP *rep;
     char *master_eid;
 	DB_REP *db_rep;
-    unsigned long long bytes_behind;
+    unsigned long long bytes_behind, last_behind=0;
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
@@ -482,7 +484,6 @@ static void *apply_thread(void *arg)
                     gbl_warn_queue_latency_threshold) {
                 static unsigned long long count;
                 static int last_print = 0;
-                int now;
                 count++;
                 if ((now = time(NULL)) - last_print) {
                     logmsg(LOGMSG_USER, "Long apply queue-latency (%d ms) for "
@@ -559,6 +560,7 @@ static void *apply_thread(void *arg)
             pthread_mutex_lock(&rep_queue_lock);
         }
 
+        bdb_get_the_readlock("apply_thread", __func__, __LINE__);
         max_queued = max_queued_lsn;
         log_more_count = queue_log_more_count;
         log_fill_count = queue_log_fill_count;
@@ -579,16 +581,20 @@ static void *apply_thread(void *arg)
         /* Issue a REP_MASTER_REQ if we don't know who is master */
         if (master_eid == db_eid_invalid) {
             send_master_req(dbenv, __func__, __LINE__);
+            bdb_relthelock(__func__, __LINE__);
             pthread_mutex_lock(&rep_queue_lock);
             continue;
         }
 
-        if (!i_am_replicant || !gbl_decoupled_fills || IN_ELECTION_TALLY(rep)) {
+        if (!i_am_replicant || !gbl_decoupled_fills || IN_ELECTION_TALLY(rep) ||
+                bdb_the_lock_desired()) {
+            bdb_relthelock(__func__, __LINE__);
             pthread_mutex_lock(&rep_queue_lock);
             continue;
         }
 
         if (log_more_count || log_compare(&master_lsn, &my_lsn) <= 0) {
+            bdb_relthelock(__func__, __LINE__);
             pthread_mutex_lock(&rep_queue_lock);
             continue;
         }
@@ -596,11 +602,44 @@ static void *apply_thread(void *arg)
         /* There's a log_more in the queue */
         if (log_fill_count || comdb2_time_epochms() -
                 last_fill < gbl_fills_waitms) {
+            bdb_relthelock(__func__, __LINE__);
             pthread_mutex_lock(&rep_queue_lock);
             continue;
         }
 
         bytes_behind = subtract_lsn(dbenv->app_private, &master_lsn, &my_lsn);
+        if (!bdb_valid_lease(dbenv->app_private)) {
+            if (last_behind && bytes_behind > last_behind) {
+                static int lastinc = 0;
+
+                /* Increment at most once per second */
+                if ((now = comdb2_time_epoch()) - lastinc) {
+                    lastinc = now;
+
+                    more_behind_count++;
+
+                    if (gbl_verbose_fills) {
+                        logmsg(LOGMSG_USER, "%s line %d more_behind_count=%d\n",
+                                __func__, __LINE__, more_behind_count);
+                    }
+                }
+            }
+
+            if (gbl_req_delay_count_threshold && more_behind_count >=
+                    gbl_req_delay_count_threshold) {
+                if (gbl_verbose_fills) {
+                    logmsg(LOGMSG_USER, "%s line %d requesting commit-delay, "
+                            "more_behind_count=%d\n", __func__, __LINE__,
+                            more_behind_count);
+                }
+                request_delaymore(dbenv->app_private);
+                more_behind_count = 0;
+            }
+
+        } else
+            more_behind_count = 0;
+        
+        last_behind = bytes_behind;
 
         if ((gbl_req_all_threshold && (bytes_behind > gbl_req_all_threshold)) ||
                 IS_ZERO_LSN(first_repdb_lsn)) {
@@ -645,6 +684,7 @@ static void *apply_thread(void *arg)
                 }
             }
         }
+        bdb_relthelock(__func__, __LINE__);
         pthread_mutex_lock(&rep_queue_lock);
     }
     apply_thd_created = 0;
@@ -659,18 +699,6 @@ void init_log_queue(void)
     listc_init(&log_queue, offsetof(struct queued_log, lnk));
 }
 
-/* We are holding the logqueue lock .. empty the queue */
-void __rep_empty_log_queue_lk(void)
-{
-    struct queued_log *q, obj;
-
-    while (q = listc_rtl(&log_queue)) {
-        free(q);
-    }
-    queue_log_fill_count = queue_log_more_count = 0;
-    memset(&max_queued_lsn, 0, sizeof(max_queued_lsn));
-}
-
 /* Enque a log-record to be applied by the log_applier */
 static int
 __rep_enqueue_log(dbenv, rp, rec, gen)
@@ -680,6 +708,7 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
 	uint32_t gen;
 {
     int rc, now;
+    int start, elapsed;
     static unsigned long long count=0;
     struct queued_log *q = (struct queued_log *)malloc(
             offsetof(struct queued_log, data) + rec->size);
@@ -688,7 +717,13 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
     q->size = rec->size;
     q->enqueued_time = comdb2_time_epochms();
     memcpy(&q->data, rec->data, q->size);
+    start = comdb2_time_epochms();
     pthread_mutex_lock(&rep_queue_lock);
+    if ((elapsed = (comdb2_time_epochms() - start)) >
+            gbl_warn_queue_latency_threshold) {
+        logmsg(LOGMSG_USER, "%s line %d: block on rep_queue_lock for %d ms\n",
+                __func__, __LINE__, elapsed);
+    }
 
     /* Block waiting for the queue to shrink */
     while(gbl_max_logput_queue > 0 && listc_size(&log_queue) >=
@@ -728,6 +763,13 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
     }
     pthread_cond_signal(&queue_cond);
     pthread_mutex_unlock(&rep_queue_lock);
+
+    if ((elapsed = (comdb2_time_epochms() - start)) >
+            gbl_warn_queue_latency_threshold) {
+        logmsg(LOGMSG_USER, "%s line %d: LONG enqueue-time %d ms\n",
+                __func__, __LINE__, elapsed);
+    }
+
     return 0;
 }
 
@@ -846,8 +888,10 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	REP_VOTE_INFO *vi;
 	REP_GEN_VOTE_INFO *vig;
 	u_int32_t bytes, egen, committed_gen, flags, sendflags, gen, gbytes, rectype, type;
-	int check_limit, cmp, done, do_req, rc;
-	int match, old, recovering, ret, t_ret;
+    u_int32_t maxlookahead;
+    unsigned long long bytes_sent;
+	int check_limit, cmp, done, do_req, rc, starttime, endtime, tottime;
+	int match, old, recovering, ret, t_ret, st, ed, sendtime;
 	time_t savetime;
 #if defined INSTRUMENT_REP_APPLY
 	static unsigned long long rpm_count = 0;
@@ -1201,6 +1245,9 @@ skip:				/*
 	case REP_ALL_REQ:
 		MASTER_ONLY(rep, rp);
 		gbytes = bytes = 0;
+        bytes_sent = 0;
+        starttime = comdb2_time_epochms();
+        sendtime = 0;
 
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		gbytes = rep->gbytes;
@@ -1208,7 +1255,8 @@ skip:				/*
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		check_limit = gbytes != 0 || bytes != 0;
 		fromline = __LINE__;
-		if ((ret = __log_cursor_complete(dbenv, &logc, gbl_fillcursor_lookahead,
+        dbenv->get_lg_max(dbenv, &maxlookahead);
+		if ((ret = __log_cursor_complete(dbenv, &logc, maxlookahead + 100000,
                         0)) != 0)
 			goto errlock;
 		/* A confused replicant can send a request
@@ -1247,6 +1295,7 @@ skip:				/*
 			 * to send a NEWFILE message with lsn [n-1][MAX].
 			 */
 			if (lsn.file != oldfilelsn.file) {
+                st = comdb2_time_epochus();
 				if ((rc = __rep_send_message(dbenv,
 				    *eidp, REP_NEWFILE, &oldfilelsn, NULL,
 				    sendflags, NULL)) != 0 && gbl_verbose_fills) {
@@ -1255,12 +1304,14 @@ skip:				/*
                             "%s for LSN %d:%d %d\n", __func__, __LINE__,
                             *eidp, oldfilelsn.file, oldfilelsn.offset, rc);
                 }
+                sendtime += (comdb2_time_epochus() - st);
             }
 
             R_LOCK(dbenv, &dblp->reginfo);
             bytes_behind = subtract_lsn(dbenv->app_private, &lp->lsn, &lsn);
             R_UNLOCK(dbenv, &dblp->reginfo);
 
+            bytes_sent += (data_dbt.size + sizeof(REP_CONTROL));
 			if (check_limit && (!gbl_finish_fill_threshold || 
                         bytes_behind > gbl_finish_fill_threshold)) {
 				/*
@@ -1294,6 +1345,7 @@ skip:				/*
 				bytes -= (data_dbt.size + sizeof(REP_CONTROL));
 			}
 
+            st = comdb2_time_epochus();
 		    if ((rc = __rep_send_message(dbenv, *eidp, type, &lsn, &data_dbt, 
                             sendflags, NULL)) != 0) {
                 logmsg(LOGMSG_USER, "%s line %d toggled to LOG_MORE for %s"
@@ -1330,6 +1382,7 @@ more:           if (type == REP_LOG_MORE) {
                 }
                 send_count++;
             }
+            sendtime += (comdb2_time_epochus() - st);
 
 			/*
 			 * If we are about to change files, then we'll need the
@@ -1351,15 +1404,24 @@ more:           if (type == REP_LOG_MORE) {
 
         if (gbl_verbose_fills && 0 == logc->stat(logc, &lcstat)) {
             logmsg(LOGMSG_USER, "%s line %d in-cursor:%d cnt, %llu us / "
-                    "in-region:%d cnt, %llu us / on-disk:%d cnt, %llu us\n",
-                    __func__, __LINE__, lcstat->incursor_count, 
-                    lcstat->incursorus, lcstat->inregion_count,
-                    lcstat->inregionus, lcstat->ondisk_count,
-                    lcstat->ondiskus);
+                    "in-region:%d cnt, %llu us / on-disk:%d cnt, %llu us, "
+                    "lock-wait: %llu us, tot %llu us\n", __func__, __LINE__, 
+                    lcstat->incursor_count, lcstat->incursorus, 
+                    lcstat->inregion_count, lcstat->inregionus, 
+                    lcstat->ondisk_count, lcstat->ondiskus, lcstat->lockwaitus,
+                    lcstat->totalus);
             __os_free(dbenv, lcstat);
         }
 		if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 			ret = t_ret;
+
+        if (gbl_verbose_fills) {
+            tottime = (endtime = comdb2_time_epochms()) - starttime;
+            logmsg(LOGMSG_USER, "%s line %d fill complete, sent %llu bytes in "
+                    "%d ms, %d bytes/ms send-time=%d us\n", __func__, __LINE__,
+                    bytes_sent, tottime, tottime == 0 ? 0 : 
+                    (int)(bytes_sent / tottime), sendtime);
+        }
 		fromline = __LINE__;
 		goto errlock;
 #ifdef NOTYET
@@ -1435,6 +1497,9 @@ more:           if (type == REP_LOG_MORE) {
 	case REP_LOG_REQ:
 		/* endianize the rec->data lsn */
 		MASTER_ONLY(rep, rp);
+        bytes_sent = 0;
+        sendtime = 0;
+        starttime = comdb2_time_epochms();
 		if (rec != NULL && rec->size != 0) {
 			memcpy(&tmplsn, rec->data, sizeof(tmplsn));
 			LOGCOPY_FROMLSN(rec->data, &tmplsn);
@@ -1475,8 +1540,9 @@ more:           if (type == REP_LOG_MORE) {
 		 */
 		oldfilelsn = lsn = rp->lsn;
 		fromline = __LINE__;
+        dbenv->get_lg_max(dbenv, &maxlookahead);
 		if ((ret = __log_cursor_complete(dbenv, &logc,
-                        gbl_fillcursor_lookahead, 0)) != 0)
+                        maxlookahead + 100000, 0)) != 0)
 			goto errlock;
 		F_SET(logc, DB_LOG_NO_PANIC);
 		memset(&data_dbt, 0, sizeof(data_dbt));
@@ -1503,12 +1569,16 @@ more:           if (type == REP_LOG_MORE) {
 
 		if (ret == 0) {
             oldfilelsn.offset += logc->c_len;
+            bytes_sent += (data_dbt.size + sizeof(REP_CONTROL));
+
+            st = comdb2_time_epochus();
             if (resp_rc = __rep_send_message(dbenv, *eidp, type, &rp->lsn,
                         &data_dbt, sendflags, NULL) 
                     != 0 && gbl_verbose_fills) {
                 logmsg(LOGMSG_USER, "%s line %d failed for %d:%d\n",
                         __func__, __LINE__, lsn.file, lsn.offset);
             } 
+            sendtime += (comdb2_time_epochus() - st);
         } else if (ret == DB_NOTFOUND) {
 			R_LOCK(dbenv, &dblp->reginfo);
 			endlsn = lp->lsn;
@@ -1542,6 +1612,7 @@ more:           if (type == REP_LOG_MORE) {
                                 "for LSN %d:%d\n", __func__, __LINE__, 
                                 lsn.file, lsn.offset);
                     }
+                    st = comdb2_time_epochus();
                     if (resp_rc = __rep_send_message(dbenv, *eidp,
                                 REP_VERIFY_FAIL, &lsn, NULL, 0,
                                 NULL) != 0 && gbl_verbose_fills) {
@@ -1550,8 +1621,10 @@ more:           if (type == REP_LOG_MORE) {
                                 "rep_verify_fail for LSN %d:%d\n", __func__,
                                 __LINE__, lsn.file, lsn.offset);
                     }
+                    sendtime += (comdb2_time_epochus() - st);
 				} else {
 					endlsn.offset += logc->c_len;
+                    st = comdb2_time_epochus();
 					if (resp_rc = __rep_send_message(dbenv, *eidp,
 					    REP_NEWFILE, &endlsn, NULL, 
                         rec == NULL ? DB_REP_NOBUFFER : 0, NULL) != 0 &&
@@ -1560,6 +1633,7 @@ more:           if (type == REP_LOG_MORE) {
                                 "for LSN %d:%d\n", __func__, __LINE__, 
                                 endlsn.file, endlsn.offset);
                     }
+                    sendtime += (comdb2_time_epochus() - st);
 				}
 			} else {
 				/* Case 3 */
@@ -1589,6 +1663,7 @@ more:           if (type == REP_LOG_MORE) {
 				break;
 
 			if (lsn.file != oldfilelsn.file) {
+                st = comdb2_time_epochus();
 				if (resp_rc = __rep_send_message(dbenv,
 				    *eidp, REP_NEWFILE, &oldfilelsn, NULL,
 				    (sendflags|DB_REP_NODROP|DB_REP_NOBUFFER), NULL) != 0 &&
@@ -1597,6 +1672,7 @@ more:           if (type == REP_LOG_MORE) {
                             "for LSN %d:%d, %d\n", __func__, __LINE__, 
                             oldfilelsn.file, oldfilelsn.offset, resp_rc);
                 }
+                sendtime += (comdb2_time_epochus() - st);
             }
 
             oldfilelsn = lsn;
@@ -1606,6 +1682,8 @@ more:           if (type == REP_LOG_MORE) {
             if (log_compare(&oldfilelsn, (DB_LSN *)rec->data) >= 0)
                 nobuf = DB_REP_NOBUFFER;
 
+            bytes_sent += (data_dbt.size + sizeof(REP_CONTROL));
+            st = comdb2_time_epochus();
 			if (resp_rc = __rep_send_message(dbenv, *eidp, type, &lsn, 
                 &data_dbt, sendflags|nobuf, NULL) != 0) {
 
@@ -1628,20 +1706,32 @@ more:           if (type == REP_LOG_MORE) {
                     break;
                 }
             }
+            sendtime += (comdb2_time_epochus() - st);
 		}
 
         if (gbl_verbose_fills && 0 == logc->stat(logc, &lcstat)) {
             logmsg(LOGMSG_USER, "%s line %d in-cursor:%d cnt, %llu us / "
-                    "in-region:%d cnt, %llu us / on-disk:%d cnt, %llu us\n",
-                    __func__, __LINE__, lcstat->incursor_count, 
-                    lcstat->incursorus, lcstat->inregion_count,
-                    lcstat->inregionus, lcstat->ondisk_count,
-                    lcstat->ondiskus);
+                    "in-region:%d cnt, %llu us / on-disk:%d cnt, %llu us, "
+                    "lock-wait: %llu us, tot %llu us\n", __func__, __LINE__, 
+                    lcstat->incursor_count, lcstat->incursorus, 
+                    lcstat->inregion_count, lcstat->inregionus, 
+                    lcstat->ondisk_count, lcstat->ondiskus, lcstat->lockwaitus,
+                    lcstat->totalus);
+
             __os_free(dbenv, lcstat);
         }
 
 		if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 			ret = t_ret;
+
+        if (gbl_verbose_fills) {
+            tottime = (endtime = comdb2_time_epochms()) - starttime;
+            logmsg(LOGMSG_USER, "%s line %d fill complete, sent %llu bytes in "
+                    "%d ms, %d bytes/ms send-time=%d us\n", __func__, __LINE__, 
+                    bytes_sent, tottime, tottime == 0 ? 0 : 
+                    (int)(bytes_sent / tottime), sendtime);
+        }
+
 		fromline = __LINE__;
 		goto errlock;
 	case REP_NEWSITE:
@@ -2180,7 +2270,6 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
             pthread_mutex_lock(&rep_queue_lock);
 			F_SET(rep, REP_F_EPHASE2);
 			F_CLR(rep, REP_F_EPHASE1);
-            __rep_empty_log_queue_lk();
             pthread_mutex_unlock(&rep_queue_lock);
 			if (master == rep->eid) {
 				(void)__rep_tally(dbenv, rep, rep->eid,
@@ -2659,8 +2748,6 @@ err:
 #undef ERR
 
 int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
-
-int bdb_the_lock_desired(void);
 
 /*
  * __rep_apply --

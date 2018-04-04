@@ -9,11 +9,14 @@
 #max_logput_queue 100000 # this is the default now
 decoupled_logputs on
 decoupled_fills on
+#fillcursor_lookahead 0
 throttle_logput_trace on
 catchup_window_trace on
 early_ack_trace on
 commit_delay_trace on
 set_coherent_state_trace on
+setattr COMMITDELAYMAX 128
+setattr TOOMANYSKIPPED 128
 
 # Enable cache
 #cache 100 mb

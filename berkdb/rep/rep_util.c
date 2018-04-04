@@ -316,6 +316,8 @@ __rep_print_logmsg(dbenv, logdbt, lsnp)
 
 int gbl_abort_on_incorrect_upgrade;
 extern int last_fill;
+extern int gbl_decoupled_logputs;
+extern int gbl_decoupled_fills;
 
 int
 __rep_new_master(dbenv, cntrl, eid)
@@ -407,7 +409,9 @@ __rep_new_master(dbenv, cntrl, eid)
 				    REP_VERIFY_REQ, &last_lsn, NULL, 0, NULL);
 			}
 		} else {
-			if (log_compare(&lsn, &cntrl->lsn) < 0) {
+            /* Let the apply-thread make this request */
+			if (log_compare(&lsn, &cntrl->lsn) < 0 && (!gbl_decoupled_logputs ||
+                    !gbl_decoupled_fills)) {
 				if (__rep_send_message(dbenv, eid, REP_ALL_REQ, &lsn, 
                             NULL, DB_REP_NODROP|DB_REP_NOBUFFER, NULL) == 0) {
                     if (gbl_verbose_fills) {
@@ -637,7 +641,6 @@ __rep_send_gen_vote(dbenv, lsnp, nsites, pri, tiebreaker, egen, committed_gen,
 }
 
 extern pthread_mutex_t rep_queue_lock;
-extern void __rep_empty_log_queue_lk(void);
 
 /*
  * __rep_elect_done
@@ -660,7 +663,6 @@ __rep_elect_done(dbenv, rep)
 	inelect = IN_ELECTION_TALLY(rep);
     pthread_mutex_lock(&rep_queue_lock);
 	F_CLR(rep, REP_F_EPHASE1 | REP_F_EPHASE2 | REP_F_TALLY);
-    __rep_empty_log_queue_lk();
     pthread_mutex_unlock(&rep_queue_lock);
 	rep->sites = 0;
 	rep->votes = 0;
