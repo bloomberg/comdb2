@@ -8902,7 +8902,7 @@ int osql_send_schemachange(char *tonode, unsigned long long rqid, uuid_t uuid,
         sbuf2flush(logsb);
     }
 
-    rc = offload_net_send(tonode, type, buf, osql_rpl_size + sc->packed_len, 0);
+    rc = offload_net_send(tonode, type, buf, osql_rpl_size, 0);
 
     return rc;
 }
