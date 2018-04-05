@@ -8,5 +8,5 @@ ifeq ($(TEST_TIMEOUT),)
 endif
 
 # this is a local test, don't need cluster
-export CLUSTER=
+unexport CLUSTER
 export COMDB2_UNITTEST=1

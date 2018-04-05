@@ -3630,7 +3630,7 @@ static void* sys_alloc(mstate m, size_t nb, int zeroout) {
           tbase = mp;
           tsize = rsize;
           mmap_flag = ALLOCFUNC_BIT;
-          if (mparams.nice != NICE_CONSERVATIVE && m->nallocs < 10)
+          if (mparams.nice < NICE_CONSERVATIVE && m->nallocs < 10)
               ++(m->nallocs);
       }
   }
@@ -4025,8 +4025,6 @@ static void* internal_realloc(mstate m, void* oldmem, size_t bytes) {
         size_t pofs = (char *)oldp - base;
         // offset of base of `top' to base of currently active segment
         size_t topofs = (char *)m->top - sp->base;
-        // new size of the segment
-        size_t rsize = granularity_align(pad_request(size + nb - oldsize) + TOP_FOOT_SIZE + SIZE_T_ONE);
         // offset of sp to the segment base
         size_t spofs = (char *)sp - base;
         // original dv and dvsize
@@ -4035,7 +4033,7 @@ static void* internal_realloc(mstate m, void* oldmem, size_t bytes) {
 
         /* Realloc */
         if (p == oldp && (size - oldsize - nextsize == TOP_FOOT_SIZE)) {
-          /* Extend base */
+          /* We may need to extend base to accommodate the request. */
 
           /* have to do the following before realloc().
              otherwise we may get a memory addressing fault as
@@ -4049,7 +4047,19 @@ static void* internal_realloc(mstate m, void* oldmem, size_t bytes) {
             unlink_chunk(m, next, nextsize);
           }
 
-          char *rebase = m->reallocfunc(base, rsize);
+          // new size of the segment
+          size_t rsize;
+          char *rebase;
+          if (oldsize + nextsize < nb) {
+            /* Not enough room, realloc the segment. */
+            rsize = granularity_align(pad_request(size + nb - oldsize) + TOP_FOOT_SIZE + SIZE_T_ONE);
+            rebase = m->reallocfunc(base, rsize);
+          } else {
+            /* The segment is already large enough. */
+            rebase = base;
+            rsize = size;
+          }
+
           if (rebase == NULL) { /* failed to extend. back out */
             if (next == origdv) {
               m->dv = origdv;

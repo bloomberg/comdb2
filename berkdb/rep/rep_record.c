@@ -69,7 +69,6 @@ extern int gbl_rowlocks;
 extern int gbl_optimize_truncate_repdb;
 extern int gbl_early;
 extern int gbl_reallyearly;
-extern int gbl_rep_collect_txn_time;
 extern int gbl_rep_process_txn_time;
 int gbl_rep_badgen_trace;
 
@@ -993,13 +992,14 @@ send:			if (__rep_send_message(dbenv,
 		memset(&data_dbt, 0, sizeof(data_dbt));
 		ret = __log_c_get(logc, &rp->lsn, &data_dbt, DB_SET);
 
-		if (ret == 0)	/* Case 1 */
-			(void)__rep_send_message(dbenv,
+        int resp_rc;
+		if (ret == 0) {
+			resp_rc = __rep_send_message(dbenv,
 			    *eidp, REP_LOG, &rp->lsn, &data_dbt,
 			    DB_REP_NOBUFFER
 			    /* we this to be flushed since the node is behind */
 			    , NULL);
-		else if (ret == DB_NOTFOUND) {
+        } else if (ret == DB_NOTFOUND) {
 			R_LOCK(dbenv, &dblp->reginfo);
 			endlsn = lp->lsn;
 			R_UNLOCK(dbenv, &dblp->reginfo);
@@ -1027,12 +1027,12 @@ send:			if (__rep_send_message(dbenv,
 						    (u_long)lsn.offset);
 					ret = DB_REP_OUTDATED;
 					/* Tell the replicant he's outdated. */
-					__rep_send_message(dbenv, *eidp,
+					resp_rc = __rep_send_message(dbenv, *eidp,
 					    REP_VERIFY_FAIL, &lsn, NULL, 0,
 					    NULL);
 				} else {
 					endlsn.offset += logc->c_len;
-					(void)__rep_send_message(dbenv, *eidp,
+					resp_rc = __rep_send_message(dbenv, *eidp,
 					    REP_NEWFILE, &endlsn, NULL, 0,
 					    NULL);
 				}
@@ -2098,7 +2098,7 @@ int bdb_the_lock_desired(void);
  * process and manage incoming log records.
  */
 static int
-__rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen)
+__rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen)
 	DB_ENV *dbenv;
 	REP_CONTROL *rp;
 	DBT *rec;
@@ -2848,6 +2848,40 @@ err:	if (dbc != NULL && (t_ret = __db_c_close(dbc)) != 0 && ret == 0) {
 	return (ret);
 }
 
+int gbl_time_rep_apply = 0;
+
+static int
+__rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen)
+	DB_ENV *dbenv;
+	REP_CONTROL *rp;
+	DBT *rec;
+	DB_LSN *ret_lsnp;
+	uint32_t *commit_gen;
+{
+    static unsigned long long rep_apply_count = 0;
+    static unsigned long long rep_apply_usc = 0;
+	static int lastpr = 0;
+    long long usecs;
+    int rc, now;
+    bbtime_t start = {0}, end = {0};
+
+    getbbtime(&start);
+    rc = __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen);
+    getbbtime(&end);
+    usecs = diff_bbtime(&end, &start);
+    rep_apply_count++;
+    rep_apply_usc += usecs;
+    if (gbl_time_rep_apply && (now = time(NULL)) > lastpr) {
+			logmsg(LOGMSG_USER,
+                "%s took %llu usecs, tot-usec=%llu cnt=%llu avg-usec=%llu\n",
+			    __func__, usecs, rep_apply_usc,
+			    rep_apply_count, rep_apply_usc / rep_apply_count);
+			lastpr = now;
+    }
+    return rc;
+}
+
+
 u_int32_t gbl_rep_lockid;
 
 static void
@@ -3421,9 +3455,9 @@ debug_dump_lsns(DB_LSN commit_lsn, LSN_COLLECTION * lc, int ret)
 
 extern int gbl_replicant_gather_rowlocks;
 int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
-    unsigned int nkeys, int is_logical_commit,
-    unsigned long long logical_tranid, DB_LSN logical_commit_lsn,
-    int32_t timestamp, unsigned long long context);
+	unsigned int nkeys, int is_logical_commit,
+	unsigned long long logical_tranid, DB_LSN logical_commit_lsn, uint32_t gen,
+	int32_t timestamp, unsigned long long context);
 
 /*
  * __rep_process_txn --
@@ -3680,11 +3714,11 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			timestamp = txn_args->timestamp;
 
 		ret =
-		    bdb_transfer_pglogs_to_queues(dbenv->app_private, pglogs,
-		    keycnt, (!txn_rl_args ||
+			bdb_transfer_pglogs_to_queues(dbenv->app_private, pglogs,
+			keycnt, (!txn_rl_args ||
 			(txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)),
-		    (txn_rl_args) ? txn_rl_args->ltranid : 0, rctl->lsn,
-		    timestamp, context);
+			(txn_rl_args) ? txn_rl_args->ltranid : 0, rctl->lsn,
+			*commit_gen, timestamp, context);
 		if (ret)
 			goto err;
 	}
@@ -4345,9 +4379,11 @@ bad_resize:	;
 		timestamp = txn_args->timestamp;
 
 	ret = bdb_transfer_pglogs_to_queues(dbenv->app_private, pglogs, keycnt,
-	    (!txn_rl_args || (txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)),
-	    (txn_rl_args) ? txn_rl_args->ltranid : 0,
-	    rctl->lsn, timestamp, rp->context);
+		(!txn_rl_args || (txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)),
+		(txn_rl_args) ? txn_rl_args->ltranid : 0,
+		rctl->lsn, *commit_gen, timestamp, rp->context);
+	if (pglogs)
+		__os_free(dbenv, pglogs);
 	if (ret)
 		goto err;
 

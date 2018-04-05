@@ -258,7 +258,7 @@ static shad_tbl_t *open_shadtbl(struct BtCursor *pCur)
 
     tbl = get_shadtbl(pCur);
     if (!tbl) {
-        struct sqlclntstate *clnt = thd->sqlclntstate;
+        struct sqlclntstate *clnt = thd->clnt;
         if (!clnt) {
             /* this is a bug */
             static int once = 0;
@@ -698,7 +698,7 @@ static shad_tbl_t *get_shadtbl(struct BtCursor *pCur)
        meantime? case in mind, index and data both recording
        genids */
     thd = pthread_getspecific(query_info_key);
-    clnt = thd->sqlclntstate;
+    clnt = thd->clnt;
 
     return osql_get_shadow_bydb(clnt, pCur->db);
 }
@@ -866,7 +866,7 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                      int nData)
 {
 
-    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
     int bdberr = 0;
     shad_tbl_t *tbl = NULL;
@@ -893,8 +893,8 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     set_genid_upd(&tmp);
 
     if (is_genid_synthetic(pCur->genid)) {
-        if (thd->sqlclntstate->dbtran.shadow_tran)
-            bdb_set_check_shadows(thd->sqlclntstate->dbtran.shadow_tran);
+        if (thd->clnt->dbtran.shadow_tran)
+            bdb_set_check_shadows(thd->clnt->dbtran.shadow_tran);
 
         /* Need to know if the synthetic genid is generated as a result of a
            insert or update
@@ -1000,8 +1000,8 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     }
 
     if (gbl_partial_indexes && pCur->db->ix_partial &&
-        (save_ins_keys(thd->sqlclntstate, tbl, tmp) ||
-         save_del_keys(thd->sqlclntstate, tbl, pCur->genid))) {
+        (save_ins_keys(thd->clnt, tbl, tmp) ||
+         save_del_keys(thd->clnt, tbl, pCur->genid))) {
         logmsg(LOGMSG_ERROR, "%s: error saving the shadow dirty keys\n", __func__);
         return -1;
     }
@@ -1022,7 +1022,7 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                      int nData)
 {
-    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
     int bdberr = 0;
     shad_tbl_t *tbl = NULL;
@@ -1051,8 +1051,8 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 #ifdef TEST_OSQL
     uuidstr_t us;
     fprintf(stdout, "[%llu %s] Inserted seq=%llu (%u) rc=%d pCur->genid=%llu\n",
-            thd->sqlclntstate->osql.rqid,
-            comdb2uuidstr(thd->sqlclntstate->osql.uuid, us), tmp,
+            thd->clnt->osql.rqid,
+            comdb2uuidstr(thd->clnt->osql.uuid, us), tmp,
             pthread_self(), rc, pCur->genid);
 #endif
 
@@ -1062,8 +1062,8 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         return -1;
     }
 
-    if (thd->sqlclntstate->dbtran.shadow_tran)
-        bdb_set_check_shadows(thd->sqlclntstate->dbtran.shadow_tran);
+    if (thd->clnt->dbtran.shadow_tran)
+        bdb_set_check_shadows(thd->clnt->dbtran.shadow_tran);
 
     /* if this is recom, snapisol or serial, we need to update the index shadows
      */
@@ -1074,7 +1074,7 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     }
 
     if (gbl_partial_indexes && pCur->db->ix_partial &&
-        save_ins_keys(thd->sqlclntstate, tbl, tmp)) {
+        save_ins_keys(thd->clnt, tbl, tmp)) {
         logmsg(LOGMSG_ERROR, "%s: error saving the shadow dirty keys\n", __func__);
         return -1;
     }
@@ -1082,14 +1082,14 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     tbl->seq = increment_seq(tbl->seq);
     /*++tbl->seq;*/
 
-    thd->sqlclntstate->osql.dirty = 1;
+    thd->clnt->osql.dirty = 1;
 
     return 0;
 }
 
 int osql_save_delrec(struct BtCursor *pCur, struct sql_thread *thd)
 {
-    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    osqlstate_t *osql = &thd->clnt->osql;
     shad_tbl_t *tbl = NULL;
     int rc = 0;
     int bdberr = 0;
@@ -1120,12 +1120,12 @@ int osql_save_delrec(struct BtCursor *pCur, struct sql_thread *thd)
     }
 
     if (gbl_partial_indexes && pCur->db->ix_partial &&
-        save_del_keys(thd->sqlclntstate, tbl, pCur->genid)) {
+        save_del_keys(thd->clnt, tbl, pCur->genid)) {
         logmsg(LOGMSG_ERROR, "%s: error saving the shadow dirty keys\n", __func__);
         return -1;
     }
 
-    thd->sqlclntstate->osql.dirty = 1;
+    thd->clnt->osql.dirty = 1;
 
     return 0;
 }
@@ -1133,7 +1133,7 @@ int osql_save_delrec(struct BtCursor *pCur, struct sql_thread *thd)
 int osql_save_index(struct BtCursor *pCur, struct sql_thread *thd,
                     int is_update, int is_delete)
 {
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     shad_tbl_t *tbl = NULL;
     int rc = 0;
@@ -1215,7 +1215,7 @@ int osql_save_dbq_consume(struct sqlclntstate *clnt, const char *spname,
 int osql_save_updcols(struct BtCursor *pCur, struct sql_thread *thd,
                       int *updCols)
 {
-    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    osqlstate_t *osql = &thd->clnt->osql;
     int bdberr = 0;
     shad_tbl_t *tbl = NULL;
     unsigned long long tmp = 0;
@@ -1314,7 +1314,7 @@ int osql_save_updcols(struct BtCursor *pCur, struct sql_thread *thd,
 
     tbl->updcols = 1;
 
-    thd->sqlclntstate->osql.dirty = 1;
+    thd->clnt->osql.dirty = 1;
 
     return 0;
 }
@@ -1323,7 +1323,7 @@ int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
                      blob_buffer_t *blobs, int maxblobs, int is_update)
 {
 
-    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
     int bdberr = 0;
     shad_tbl_t *tbl = NULL;
@@ -2059,19 +2059,19 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
     char *datacopy;
     int datacopylen;
 
-    if (thd->sqlclntstate && thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL)
+    if (thd->clnt && thd->clnt->dbtran.mode == TRANLEVEL_SOSQL)
         return 0;
 
     /* Add all the keys to the shadow indices */
     for (ix = 0; ix < pCur->db->nix; ix++) {
         /* only add keys when told */
         if (gbl_partial_indexes && pCur->db->ix_partial &&
-            !(thd->sqlclntstate->ins_keys & (1ULL << ix)))
+            !(thd->clnt->ins_keys & (1ULL << ix)))
             continue;
 
         snprintf(namebuf, sizeof(namebuf), ".ONDISK_IX_%d", ix);
         if (gbl_expressions_indexes && pCur->db->ix_expr) {
-            memcpy(key, thd->sqlclntstate->idxInsert[ix],
+            memcpy(key, thd->clnt->idxInsert[ix],
                    pCur->db->ix_keylen[ix]);
         } else {
             rc = stag_to_stag_buf(pCur->db->tablename, ".ONDISK",
@@ -2083,10 +2083,10 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
         }
 
         tmpcur = bdb_cursor_open(
-            pCur->db->handle, thd->sqlclntstate->dbtran.cursor_tran,
-            thd->sqlclntstate->dbtran.shadow_tran, ix, BDB_OPEN_SHAD,
+            pCur->db->handle, thd->clnt->dbtran.cursor_tran,
+            thd->clnt->dbtran.shadow_tran, ix, BDB_OPEN_SHAD,
             osql_get_shadtbl_addtbl_newcursor(pCur), 0, 0, NULL, NULL, NULL,
-            NULL, NULL, thd->sqlclntstate->bdb_osql_trak, bdberr);
+            NULL, NULL, thd->clnt->bdb_osql_trak, bdberr);
         if (tmpcur == NULL) {
             logmsg(LOGMSG_ERROR, "%s: bdb_cursor_open ix %d rc %d\n", __func__, ix, *bdberr);
             return SQLITE_INTERNAL;
@@ -2138,14 +2138,15 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
     int ix = 0;
     char namebuf[MAXTAGLEN];
     struct dbtable *db = pCur->db;
-    char key[MAXKEYLEN];
-    void *tran = thd->sqlclntstate->dbtran.shadow_tran;
+    char *key;
+    void *tran = thd->clnt->dbtran.shadow_tran;
     bdb_cursor_ifn_t *tmpcur = NULL;
     int rc = 0;
     unsigned long long genid = pCur->genid;
     void *dta = pCur->dtabuf;
+    key = alloca(MAXKEYLEN + sizeof(genid));
 
-    if (thd->sqlclntstate && thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL)
+    if (thd->clnt && thd->clnt->dbtran.mode == TRANLEVEL_SOSQL)
         return 0;
 
     /* none synthetic genids are added to the skip list
@@ -2163,12 +2164,12 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
     for (ix = 0; ix < db->nix; ix++) {
         /* only delete keys when told */
         if (gbl_partial_indexes && db->ix_partial &&
-            !(thd->sqlclntstate->del_keys & (1ULL << ix)))
+            !(thd->clnt->del_keys & (1ULL << ix)))
             continue;
 
         snprintf(namebuf, sizeof(namebuf), ".ONDISK_IX_%d", ix);
         if (gbl_expressions_indexes && db->ix_expr) {
-            memcpy(key, thd->sqlclntstate->idxDelete[ix], db->ix_keylen[ix]);
+            memcpy(key, thd->clnt->idxDelete[ix], db->ix_keylen[ix]);
         } else {
             rc = stag_to_stag_buf(db->tablename, ".ONDISK", dta, namebuf, key,
                                   NULL);
@@ -2177,18 +2178,20 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
                 return -1;
             }
         }
+        memcpy(&key[db->ix_keylen[ix]], &genid, sizeof(genid));
 
         tmpcur = bdb_cursor_open(
-            db->handle, thd->sqlclntstate->dbtran.cursor_tran,
-            thd->sqlclntstate->dbtran.shadow_tran, ix, BDB_OPEN_SHAD,
+            db->handle, thd->clnt->dbtran.cursor_tran,
+            thd->clnt->dbtran.shadow_tran, ix, BDB_OPEN_SHAD,
             osql_get_shadtbl_addtbl_newcursor(pCur), 0, 0, NULL, NULL, NULL,
-            NULL, NULL, thd->sqlclntstate->bdb_osql_trak, bdberr);
+            NULL, NULL, thd->clnt->bdb_osql_trak, bdberr);
         if (tmpcur == NULL) {
             logmsg(LOGMSG_ERROR, "%s:bdb_cursor_open ix %d rc %d\n", __func__, ix, *bdberr);
             return -1;
         }
 
-        rc = tmpcur->find(tmpcur, key, db->ix_keylen[ix], 0, bdberr);
+        rc = tmpcur->find(tmpcur, key, db->ix_keylen[ix] + sizeof(genid), 0,
+                          bdberr);
         if (rc) {
             int newbdberr;
             logmsg(LOGMSG_ERROR, "%s:bdb_cursor_find ix %d rc %d bdberr %d\n", __func__, ix,
@@ -2201,11 +2204,14 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
 
             return -1;
         }
-        if (memcmp(key, tmpcur->data(tmpcur), db->ix_keylen[ix]) != 0) {
+        if (memcmp(key, tmpcur->data(tmpcur),
+                   db->ix_keylen[ix] + sizeof(genid)) != 0) {
             logmsg(LOGMSG_ERROR, "%s:bdb_cursor_find did not find shadow index !\n",
                    __func__);
             return -1;
         }
+
+        assert(pCur->genid == tmpcur->genid(tmpcur));
 
         rc = tmpcur->delete (tmpcur, bdberr);
         if (rc) {
@@ -2598,7 +2604,7 @@ static int unpack_recgenid_key(recgenid_key_t *key, const uint8_t *buf, int len)
 int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
                           unsigned long long genid)
 {
-    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
     int bdberr = 0;
     shad_tbl_t *tbl = NULL;
@@ -2608,7 +2614,7 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
 
     /*create a common verify */
     if (!osql->verify_tbl) {
-        rc = osql_create_verify_temptbl(thedb->bdb_env, thd->sqlclntstate,
+        rc = osql_create_verify_temptbl(thedb->bdb_env, thd->clnt,
                                         &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to create verify rc=%d bdberr=%d\n",
@@ -2651,7 +2657,7 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
 int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
                       unsigned long long genid)
 {
-    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
     int bdberr = 0;
     recgenid_key_t key;
@@ -2775,8 +2781,8 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
 int osql_save_schemachange(struct sql_thread *thd,
                            struct schema_change_type *sc, int usedb)
 {
-    struct sqlclntstate *clnt = thd->sqlclntstate;
-    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    struct sqlclntstate *clnt = thd->clnt;
+    osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
     int bdberr = 0;
     void *packed_sc_data = NULL;
@@ -2785,7 +2791,7 @@ int osql_save_schemachange(struct sql_thread *thd,
     int packed_sc_key[2] = {0, -1};
 
     if (!osql->sc_tbl) {
-        rc = osql_create_schemachange_temptbl(thedb->bdb_env, thd->sqlclntstate,
+        rc = osql_create_schemachange_temptbl(thedb->bdb_env, thd->clnt,
                                               &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to create sc rc=%d bdberr=%d\n",
@@ -2922,15 +2928,15 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
 
 int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg)
 {
-    struct sqlclntstate *clnt = thd->sqlclntstate;
-    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    struct sqlclntstate *clnt = thd->clnt;
+    osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
     int bdberr = 0;
     void *bpfunc_data = NULL;
     size_t bpfunc_data_len = bpfunc_arg__get_packed_size(arg);
 
     if (!osql->bpfunc_tbl) {
-        rc = osql_create_bpfunc_temptbl(thedb->bdb_env, thd->sqlclntstate,
+        rc = osql_create_bpfunc_temptbl(thedb->bdb_env, thd->clnt,
                                         &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR,

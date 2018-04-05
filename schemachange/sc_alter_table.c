@@ -308,9 +308,9 @@ int gbl_test_scindex_deadlock = 0;
 int gbl_test_sc_resume_race = 0;
 int gbl_readonly_sc = 0;
 
-int do_alter_table(struct ireq *iq, tran_type *tran)
+int do_alter_table(struct ireq *iq, struct schema_change_type *s,
+                   tran_type *tran)
 {
-    struct schema_change_type *s = iq->sc;
     struct dbtable *db;
     int rc;
     int bdberr = 0;
@@ -344,14 +344,19 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
 
     if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
 
-    sc_printf(s, "starting schema update with seed %llx\n", sc_seed);
+    sc_printf(s, "starting schema update with seed %llx\n", iq->sc_seed);
 
-    if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) return rc;
+    pthread_mutex_lock(&csc2_subsystem_mtx);
+    if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
+        return rc;
+    }
 
     db->sc_to = newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, -1);
 
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
         return SC_INTERNAL_ERROR;
     }
     newdb->version = get_csc2_version(newdb->tablename);
@@ -362,6 +367,7 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
         backout(newdb);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
         return -1;
     }
 
@@ -427,13 +433,18 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
         }
     pi_done:
         unlock_schema_lk();
-        if (rc) return rc;
+        if (rc) {
+            pthread_mutex_unlock(&csc2_subsystem_mtx);
+            return rc;
+        }
         if (ret) {
+            pthread_mutex_unlock(&csc2_subsystem_mtx);
             backout(newdb);
             cleanup_newdb(newdb);
             return ret;
         }
     }
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     if (verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
         backout(newdb);
@@ -522,9 +533,9 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
     }
 
     pthread_rwlock_wrlock(&sc_live_rwlock);
-    sc_live = 1;
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
+    db->sc_abort = 0;
     pthread_rwlock_unlock(&sc_live_rwlock);
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race) {
@@ -574,13 +585,13 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
     if (rc && rc != SC_MASTER_DOWNGRADE) {
         /* For live schema change, MUST do this before trying to remove
          * the .new tables or you get crashes */
-        live_sc_off(db);
-
-        if (gbl_sc_abort) {
+        if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort) {
             sc_errf(s, "convert_all_records aborted\n");
         } else {
             sc_errf(s, "convert_all_records failed\n");
         }
+
+        live_sc_off(db);
 
         for (i = 0; i < gbl_dtastripe; i++) {
             sc_errf(s, "  > stripe %2d was at 0x%016llx\n", i,
@@ -596,9 +607,9 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
     return SC_OK;
 }
 
-int finalize_alter_table(struct ireq *iq, tran_type *transac)
+int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
+                         tran_type *transac)
 {
-    struct schema_change_type *s = iq->sc;
     int retries = 0;
     int rc, bdberr;
     struct dbtable *db = s->db;
@@ -621,10 +632,6 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
 
     /* Before this handle is closed, lets wait for all the db reads to
      * finish*/
-
-    pthread_rwlock_wrlock(&sc_live_rwlock);
-    sc_live = 0;
-    pthread_rwlock_unlock(&sc_live_rwlock);
 
     /* No insert transactions should happen after this
        so lock the table. */
@@ -779,7 +786,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
     memset(newdb, 0xff, sizeof(struct dbtable));
     free(newdb);
 
-    sc_printf(s, "Schema change finished, seed %llx\n", sc_seed);
+    sc_printf(s, "Schema change finished, seed %llx\n", iq->sc_seed);
     return 0;
 
 backout:
@@ -848,7 +855,7 @@ int do_upgrade_table_int(struct schema_change_type *s)
         rc = SC_MASTER_DOWNGRADE;
     else if (rc) {
         rc = SC_CONVERSION_FAILED;
-        if (gbl_sc_abort)
+        if (gbl_sc_abort || db->sc_abort || (s->iq && s->iq->sc_should_abort))
             sc_errf(s, "upgrade_all_records aborted\n");
         else
             sc_errf(s, "upgrade_all_records failed\n");

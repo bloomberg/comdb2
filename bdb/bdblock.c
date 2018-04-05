@@ -841,15 +841,11 @@ void bdb_stripe_done(bdb_state_type *bdb_state)
 void bdb_thread_event(bdb_state_type *bdb_state, int event)
 {
     bdb_state_type *parent;
-    int *mallocedtid;
-    int tid;
 
     if (bdb_state->parent)
         parent = bdb_state->parent;
     else
         parent = bdb_state;
-
-    tid = (int)pthread_self();
 
     switch (event) {
     case BDBTHR_EVENT_DONE_RDONLY: /* thread done */

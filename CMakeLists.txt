@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 if(NOT CMAKE_BUILD_TYPE)
   get_property(helpstring CACHE CMAKE_BUILD_TYPE PROPERTY HELPSTRING)
-  set(CMAKE_BUILD_TYPE Debug CACHE STRING ${helpstring} FORCE)
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING ${helpstring} FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "RelWithDebInfo" "Release")
 endif()
 
@@ -41,7 +41,9 @@ find_package(OpenSSL REQUIRED)
 find_package(Protobuf_C REQUIRED)
 find_package(Readline REQUIRED)
 find_package(SQLite3 REQUIRED)
-find_package(UUID REQUIRED)
+if (NOT ${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
+  find_package(UUID REQUIRED)
+endif()
 find_package(ZLIB REQUIRED)
 if(${CMAKE_SYSTEM_NAME} STREQUAL Linux OR ${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   find_package(Unwind REQUIRED)
@@ -59,8 +61,9 @@ endif()
 add_definitions(
   -DCOMDB2_ROOT=${CMAKE_INSTALL_PREFIX}
   -DCOMDB2_VERSION="2"
-  -DMONITOR_STACK
+  -D_FILE_OFFSET_BITS=64
 )
+
 option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)
 if(COMDB2_PER_THREAD_MALLOC)
   add_definitions(-DPER_THREAD_MALLOC)
@@ -68,25 +71,20 @@ else()
   add_definitions(-DUSE_SYS_ALLOC)
 endif()
 
-if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)
+add_definitions(-DNEWSI_ASOF_USE_TEMPTABLE)
+add_definitions(-DNEWSI_MEMPOOL)
+
+if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64 OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l)
   # This is mostly misused as little-endian
   add_definitions(-D_LINUX_SOURCE)
 endif()
-
-if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l)
-  # This is mostly misused as little-endian
-  add_definitions(-D_LINUX_SOURCE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64")
-endif()
-
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
   add_definitions(-D_GNU_SOURCE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread -lrt")
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   add_definitions(-D_DARWIN_C_SOURCE -D_XOPEN_SOURCE=600)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL AIX)

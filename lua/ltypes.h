@@ -119,13 +119,6 @@ typedef struct {
 } lua_dec_t;
 
 typedef struct {
-    struct tm tm;
-    unsigned int frac;
-    unsigned int prec;
-    char tzname[CDB2_MAX_TZNAME];
-} datetime_t;
-
-typedef struct {
     DBTYPES_COMMON;
     datetime_t val;
 } lua_datetime_t;

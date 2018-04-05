@@ -57,6 +57,8 @@ static const char revid[] = "$Id: txn_rec.c,v 11.54 2003/10/31 23:26:11 ubell Ex
 
 #define	IS_XA_TXN(R) (R->xid.size != 0)
 
+int set_commit_context(unsigned long long context, uint32_t *generation,
+		void *plsn, void *args, unsigned int rectype);
 /*
  * PUBLIC: int __txn_regop_gen_recover
  * PUBLIC:    __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
@@ -151,8 +153,12 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 	}
 
-	if (ret == 0)
+	if (ret == 0) {
+		if (argp->context)
+			set_commit_context(argp->context, &(argp->generation), lsnp, argp,
+				DB___txn_regop_gen);
 		*lsnp = argp->prev_lsn;
+	}
 
 	if (0) {
 err:		__db_err(dbenv,
@@ -486,8 +492,12 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 	}
 
-	if (ret == 0)
+	if (ret == 0) {
+		if (argp->context)
+			set_commit_context(argp->context, &(argp->generation), lsnp, argp,
+				DB___txn_regop_rowlocks);
 		*lsnp = argp->prev_lsn;
+	}
 
 	if (0) {
 err:		__db_err(dbenv,

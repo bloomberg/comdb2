@@ -174,6 +174,8 @@ __os_r_detach(dbenv, infop, destroy)
 
 	rp = infop->rp;
 
+	dbenv->set_use_sys_malloc(dbenv, 1);
+
 	if (infop->fd < 0 && infop->addr) {
 		__os_free(dbenv, infop->addr);
 	} else {
@@ -186,6 +188,9 @@ __os_r_detach(dbenv, infop, destroy)
 		close(infop->fd);
 		unlink(name);
 	}
+
+	dbenv->set_use_sys_malloc(dbenv, 0);
+
 	return (0);
 
 }

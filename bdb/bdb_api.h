@@ -1549,14 +1549,14 @@ int bdb_delete_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_set_sp_lua_default(bdb_state_type *bdb_state, tran_type *tran,
                            char *sp_name, int lua_ver, int *bdberr);
 
-int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long genid, unsigned int host,
-                               int *bdberr);
-int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long *genid, unsigned int *host,
-                               int *bdberr);
-int bdb_delete_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                                  int *bdberr);
+int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+                    const char *table, unsigned long long genid,
+                    unsigned int host, int *bdberr);
+int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+                    const char *table, unsigned long long *genid,
+                    unsigned int *host, int *bdberr);
+int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+                       const char *table, int *bdberr);
 
 enum {
     ACCESS_INVALID = 0,
@@ -1664,6 +1664,10 @@ int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran);
 int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *tblname,
                              tran_type *tran);
 int bdb_lock_tablename_read(bdb_state_type *, const char *name, tran_type *);
+int bdb_lock_row_write(bdb_state_type *bdb_state, tran_type *tran,
+                       unsigned long long genid);
+int bdb_trylock_row_write(bdb_state_type *bdb_state, tran_type *tran,
+                          unsigned long long genid);
 int bdb_reset_csc2_version(tran_type *trans, const char *dbname, int ver);
 void bdb_set_skip(bdb_state_type *bdb_state, int node);
 unsigned long long get_id(bdb_state_type *bdb_state);
@@ -1713,6 +1717,9 @@ void bdb_temp_table_flush(struct temp_table *);
 
 int bdb_tran_free_shadows(bdb_state_type *bdb_state, tran_type *tran);
 
+#ifdef NEWSI_STAT
+void bdb_newsi_stat_init();
+#endif
 int bdb_gbl_pglogs_init(bdb_state_type *bdb_state);
 int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state);
 
@@ -1847,7 +1854,7 @@ char *llmeta_get_tablename_alias(const char *tablename_alias, char **errstr);
 int llmeta_rem_tablename_alias(const char *tablename_alias, char **errstr);
 void llmeta_list_tablename_alias(void);
 
-int bdb_cleanup_private_blkseq(bdb_state_type *bdb_state);
+void bdb_cleanup_private_blkseq(bdb_state_type *bdb_state);
 int bdb_create_private_blkseq(bdb_state_type *bdb_state);
 int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe);
 int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
@@ -1930,6 +1937,7 @@ void lock_info_lockers(FILE *out, bdb_state_type *bdb_state);
 
 const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host);
 
+unsigned long long get_next_sc_seed(bdb_state_type *bdb_state);
 unsigned long long bdb_get_a_genid(bdb_state_type *bdb_state);
 
 /* Return the timestamp of the replicants coherency lease */
@@ -1990,5 +1998,8 @@ struct bias_info {
 void bdb_set_fld_hints(bdb_state_type *, uint16_t *);
 void bdb_cleanup_fld_hints(bdb_state_type *bdb_state);
 void rename_bdb_state(bdb_state_type *bdb_state, const char *newname);
+
+int request_durable_lsn_from_master(bdb_state_type *, uint32_t *, uint32_t *,
+                                    uint32_t *);
 
 #endif

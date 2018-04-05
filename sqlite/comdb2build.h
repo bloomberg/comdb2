@@ -41,8 +41,6 @@
 #define SET_ANALYZE_THREAD(opt, val) opt += (val & 0xFFFF)
 #define GET_ANALYZE_THREAD(opt) (opt & 0xFFFF)
 
-
-
 int  readIntFromToken(Token* t, int *rst);
 int  comdb2SqlSchemaChange_tran(OpFunc *arg);
 void comdb2CreateTableCSC2(Parse *, Token *, Token *, int, Token *, int, int);
@@ -52,6 +50,7 @@ void comdb2AlterTableStart(Parse *, Token *, Token *, int);
 void comdb2AlterTableEnd(Parse *);
 void comdb2CreateTableStart(Parse *, Token *, Token *, int, int, int, int);
 void comdb2CreateTableEnd(Parse *, Token *, Token *, u8, int);
+void comdb2CreateTableLikeEnd(Parse *, Token *, Token *);
 void comdb2AddColumn(Parse *, Token *, Token *);
 void comdb2AddDefaultValue(Parse *, ExprSpan *);
 void comdb2AddNull(Parse *);

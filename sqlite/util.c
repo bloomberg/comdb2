@@ -265,6 +265,18 @@ void sqlite3Dequote(char *z){
   z[j] = 0;
 }
 
+/* COMDB2 
+ * return true if string is correctly quoted
+ * ie first and last char are a quote...note that string should be null terminated
+ */
+int sqlite3IsCorrectlyQuoted(char *z){
+  char quote = z[0];
+  if(!sqlite3Isquote(quote)) return 1;
+  int i = 1;
+  while (z[i] != '\0') i++;
+  if( i > 1) return z[i-1] == quote;
+  return 0;
+}
 /*
 ** Generate a Token object from a string
 */

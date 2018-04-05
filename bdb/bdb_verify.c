@@ -334,7 +334,7 @@ static int bdb_verify_ll(
     bzero(&dbt_blob_key, sizeof(DBT));
     bzero(&dbt_blob_data, sizeof(DBT));
 
-    now = last = time_epochms();
+    now = last = comdb2_time_epochms();
 
     /* scan 1 - run through data, verify all the keys and blobs */
     for (dtastripe = 0; dtastripe < bdb_state->attr->dtastripe; dtastripe++) {
@@ -364,7 +364,7 @@ static int bdb_verify_ll(
             nrecs++;
             nrecs_progress++;
 
-            now = time_epochms();
+            now = comdb2_time_epochms();
 
             /* check if comdb2sc is killed */
             if ((now - last) > 1000) {
@@ -667,7 +667,7 @@ static int bdb_verify_ll(
             nrecs++;
             nrecs_progress++;
 
-            now = time_epochms();
+            now = comdb2_time_epochms();
 
             /* check if comdb2sc is killed */
             if ((now - last) > 1000) {
@@ -1025,10 +1025,18 @@ static int bdb_verify_ll(
                 genid_flipped = genid;
 #endif
 
-                if (bdb_state->attr->blobstripe)
-                    stripe = dtastripe;
-                else
-                    stripe = get_dtafile_from_genid(genid);
+                stripe = get_dtafile_from_genid(genid);
+
+                if (!bdb_state->blobstripe_convert_genid ||
+                    bdb_check_genid_is_newer(
+                        bdb_state, genid,
+                        bdb_state->blobstripe_convert_genid)) {
+                    /* verify blobstripe and datastripe is the same */
+                    if (dtastripe != stripe)
+                        locprint(sb, lua_callback, lua_params,
+                                 "!%016llx blobstripe %d != datastripe %d\n",
+                                 genid_flipped, dtastripe, stripe);
+                }
 
                 rc = bdb_state->dbp_data[0][stripe]->paired_cursor_from_lid(
                     bdb_state->dbp_data[0][stripe], lid, &cdata, 0);

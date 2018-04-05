@@ -577,9 +577,11 @@ int bdb_lock_minmax(bdb_state_type *bdb_state, int ixnum, int stripe,
 
 static int bdb_lock_ix_value_fromlid(bdb_state_type *bdb_state, int lid,
                                      unsigned long long *hashval, int idx,
-                                     DBT *key, DB_LOCK *dblk, DBT *lkname)
+                                     DBT *key, DB_LOCK *dblk, DBT *lkname,
+                                     int trylock)
 {
     int rc;
+    int tryflags = 0;
 
     /* bdb_state is the table that we're locking */
     assert(bdb_state->parent);
@@ -588,7 +590,11 @@ static int bdb_lock_ix_value_fromlid(bdb_state_type *bdb_state, int lid,
     if (rc)
         return rc;
 
-    rc = berkdb_lock_rowlock(bdb_state, lid, 0, lkname, DB_LOCK_WRITE, dblk);
+    if (trylock)
+        tryflags = DB_LOCK_NOWAIT;
+
+    rc = berkdb_lock_rowlock(bdb_state, lid, tryflags, lkname, DB_LOCK_WRITE,
+                             dblk);
     if (BDBERR_DEADLOCK == rc)
         rc = BDBERR_DEADLOCK_ROWLOCK;
 
@@ -732,24 +738,42 @@ int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *name,
 }
 
 int bdb_lock_ix_value_write(bdb_state_type *bdb_state, tran_type *tran, int idx,
-                            DBT *key, DB_LOCK *dblk, DBT *lkname)
+                            DBT *key, DB_LOCK *dblk, DBT *lkname, int trylock)
 {
     if (tran->tranclass != TRANCLASS_LOGICAL)
         return BDBERR_BADARGS;
 
     assert(NULL == tran->tid);
     return bdb_lock_ix_value_fromlid(bdb_state, tran->logical_lid, NULL, idx,
-                                     key, dblk, lkname);
+                                     key, dblk, lkname, trylock);
+}
+
+int bdb_lock_row_write(bdb_state_type *bdb_state, tran_type *tran,
+                       unsigned long long genid)
+{
+    DB_LOCK dblk;
+
+    return bdb_lock_row_fromlid_int(bdb_state, resolve_locker_id(tran), -1,
+                                    genid, BDB_LOCK_WRITE, &dblk, NULL, 0, 0);
+}
+
+int bdb_trylock_row_write(bdb_state_type *bdb_state, tran_type *tran,
+                          unsigned long long genid)
+{
+    DB_LOCK dblk;
+
+    return bdb_lock_row_fromlid_int(bdb_state, resolve_locker_id(tran), -1,
+                                    genid, BDB_LOCK_WRITE, &dblk, NULL, 1, 0);
 }
 
 int bdb_lock_row_write_getlock(bdb_state_type *bdb_state, tran_type *tran,
                                int idx, unsigned long long genid, DB_LOCK *dblk,
-                               DBT *lkname)
+                               DBT *lkname, int trylock)
 {
     int rc;
 
     rc = bdb_lock_row_int(bdb_state, tran, idx, genid, BDB_LOCK_WRITE, dblk,
-                          lkname, 0);
+                          lkname, trylock);
 
     return rc;
 }

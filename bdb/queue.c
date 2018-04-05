@@ -211,7 +211,7 @@ static unsigned long long get_queue_genid(bdb_state_type *bdb_state)
         next_seed = bdb_state->seed;
         Pthread_mutex_unlock(&(bdb_state->seed_lock));
 
-        iptr[0] = time_epoch();
+        iptr[0] = comdb2_time_epoch();
         iptr[1] = next_seed;
     } while (genid == 0);
 
@@ -384,7 +384,7 @@ static int bdb_queue_add_int(bdb_state_type *bdb_state, tran_type *intran,
     tran_type *tran;
 
     if (gbl_rowlocks) {
-        get_physical_transaction(bdb_state, intran, &tran);
+        get_physical_transaction(bdb_state, intran, &tran, 0);
     } else
         tran = intran;
 
@@ -1186,7 +1186,7 @@ static void lost_consumers_alarm(bdb_state_type *bdb_state,
 {
     static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
     uint32_t new_lost_consumers;
-    int ii, now = time_epoch();
+    int ii, now = comdb2_time_epoch();
 
     /* Don't repeat alarms too often */
     if (bdb_state->qpriv->known_lost_consumers == lost_consumers &&
@@ -1697,7 +1697,7 @@ static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
     struct bdb_queue_header hdr;
 
     if (gbl_rowlocks) {
-        get_physical_transaction(bdb_state, intran, &tran);
+        get_physical_transaction(bdb_state, intran, &tran, 0);
     } else
         tran = intran;
 

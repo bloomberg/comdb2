@@ -1248,6 +1248,8 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host);
 int net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum);
 int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
                    int ylen);
+int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, int *file,
+                   int *offset);
 
 static void net_startthread_rtn(void *arg)
 {
@@ -1399,14 +1401,14 @@ static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
     if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
         bdb_flush_cache(bdb_state);
     else {
-        start = time_epochms();
+        start = comdb2_time_epochms();
         rc = ll_checkpoint(bdb_state, force);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "txn_checkpoint err %d\n", rc);
             *bdberr = BDBERR_MISC;
             return -1;
         }
-        end = time_epochms();
+        end = comdb2_time_epochms();
         ctrace("checkpoint took %dms\n", end - start);
     }
 
@@ -2505,6 +2507,8 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
        be in lsn order */
     net_register_netcmp(bdb_state->repinfo->netinfo, net_cmplsn_rtn);
 
+    net_register_getlsn(bdb_state->repinfo->netinfo, net_getlsn_rtn);
+
     /* set the callback data so we get our bdb_state pointer from these
      * calls. */
     net_set_callback_data(bdb_state->repinfo->netinfo, bdb_state);
@@ -3233,12 +3237,23 @@ static int get_lowfilenum_sanclist(bdb_state_type *bdb_state)
     lowfilenum = INT_MAX;
 
     for (i = 0; i < numnodes; i++) {
-        if (bdb_state->seqnum_info->filenum[nodeix(nodes[i])] < lowfilenum)
+        if (bdb_state->seqnum_info->filenum[nodeix(nodes[i])] < lowfilenum) {
             lowfilenum = bdb_state->seqnum_info->filenum[nodeix(nodes[i])];
+            if (bdb_state->attr->debug_log_deletion) {
+                logmsg(LOGMSG_USER,
+                       "%s set lowfilenum to %d for machine "
+                       "%s\n",
+                       __func__, lowfilenum, nodes[i]);
+            }
+        }
     }
 
-    if (lowfilenum == INT_MAX)
+    if (lowfilenum == INT_MAX) {
         lowfilenum = 0;
+        if (bdb_state->attr->debug_log_deletion) {
+            logmsg(LOGMSG_USER, "%s defaulting lowfilenum to 0\n", __func__);
+        }
+    }
 
     return lowfilenum;
 }
@@ -3732,9 +3747,25 @@ int bdb_get_low_headroom_count(bdb_state_type *bdb_state)
     return bdb_state->low_headroom_count;
 }
 
+static pthread_mutex_t logdelete_lk = PTHREAD_MUTEX_INITIALIZER;
+
+void logdelete_lock(void)
+{
+    pthread_mutex_lock(&logdelete_lk);
+}
+
+void logdelete_unlock(void)
+{
+    pthread_mutex_unlock(&logdelete_lk);
+}
+
 void delete_log_files(bdb_state_type *bdb_state)
 {
+    BDB_READLOCK("logdelete_thread");
+    pthread_mutex_lock(&logdelete_lk);
     delete_log_files_int(bdb_state);
+    pthread_mutex_unlock(&logdelete_lk);
+    BDB_RELLOCK();
 }
 
 void bdb_print_log_files(bdb_state_type *bdb_state)
@@ -3812,8 +3843,8 @@ int calc_pagesize(int recsize)
     return pagesize;
 }
 
-static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                    int create, DB_TXN *tid)
+static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
+                        int create, DB_TXN *tid)
 {
     int rc;
     char tmpname[PATH_MAX];
@@ -3880,8 +3911,10 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
 
             if (bdb_new_file_version_all(bdb_state, &tran, &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
-                logmsg(LOGMSG_ERROR, "bdb_open_dbs: failed to update table and its "
-                                "file's version number\n");
+                logmsg(LOGMSG_ERROR,
+                       "bdb_open_dbs: failed to update table and its file's "
+                       "version number, bdberr %d\n",
+                       bdberr);
                 if (tid)
                     tid->abort(tid);
                 return -1;
@@ -4328,6 +4361,17 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
     }
 
     return 0;
+}
+
+static pthread_mutex_t open_dbs_mtx = PTHREAD_MUTEX_INITIALIZER;
+static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
+                    int create, DB_TXN *tid)
+{
+    int rc = 0;
+    Pthread_mutex_lock(&open_dbs_mtx);
+    rc = open_dbs_int(bdb_state, iammaster, upgrade, create, tid);
+    Pthread_mutex_unlock(&open_dbs_mtx);
+    return rc;
 }
 
 int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
@@ -6202,8 +6246,7 @@ int bdb_reinit(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
     return rc;
 }
 
-int bdb_remove_fileid_pglogs_queue(bdb_state_type *bdb_state,
-                                   unsigned char *fileid);
+void bdb_remove_fileid_pglogs(bdb_state_type *bdb_state, unsigned char *fileid);
 
 /* Pass in mangled file name, this will delete it. */
 static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
@@ -6225,7 +6268,7 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
 
         if ((rc = db_create(&dbp, dbenv, 0)) == 0 &&
             (rc = dbp->open(dbp, NULL, pname, NULL, DB_BTREE, 0, 0666)) == 0) {
-            bdb_remove_fileid_pglogs_queue(bdb_state, dbp->fileid);
+            bdb_remove_fileid_pglogs(bdb_state, dbp->fileid);
             dbp->close(dbp, NULL, DB_NOSYNC);
         }
 
@@ -8189,4 +8232,80 @@ void rename_bdb_state(bdb_state_type *bdb_state, const char *newname)
     if (bdb_state->name)
         free(bdb_state->name);
     bdb_state->name = strdup(newname);
+}
+
+int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
+                                   hash_t *fileid_tbl)
+{
+    const char *blob_ext = ".blob";
+    const char *data_ext = ".data";
+    const char *index_ext = ".index";
+
+    DB_ENV *dbenv;
+    DB *dbp;
+
+    struct dirent *buf;
+    struct dirent *ent;
+    DIR *dirp;
+    int error;
+
+    buf = malloc(4096);
+    if (!buf) {
+        logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
+        return -1;
+    }
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    dbenv = bdb_state->dbenv;
+
+    dirp = opendir(bdb_state->dir);
+    if (!dirp) {
+        logmsg(LOGMSG_ERROR, "%s: opendir failed\n", __func__);
+        free(buf);
+        return -1;
+    }
+
+    while ((error = bb_readdir(dirp, buf, &ent)) == 0 && ent != NULL) {
+        if (strlen(ent->d_name) > 5 &&
+            (strstr(ent->d_name, blob_ext) || strstr(ent->d_name, data_ext) ||
+             strstr(ent->d_name, index_ext))) {
+            char munged_name[FILENAMELEN];
+            char transname[256];
+            char *pname = NULL;
+            unsigned char *fileid = NULL;
+            if (snprintf(munged_name, sizeof(munged_name), "XXX.%s",
+                         ent->d_name) >= sizeof(munged_name)) {
+                logmsg(LOGMSG_ERROR, "%s: filename too long to munge: %s\n",
+                       __func__, ent->d_name);
+                closedir(dirp);
+                free(buf);
+                return -1;
+            }
+            pname = bdb_trans(munged_name, transname);
+
+            if (db_create(&dbp, dbenv, 0) == 0 &&
+                dbp->open(dbp, NULL, pname, NULL, DB_BTREE, 0, 0666) == 0) {
+                fileid = malloc(DB_FILE_ID_LEN);
+                if (fileid == NULL) {
+                    closedir(dirp);
+                    free(buf);
+                    return -1;
+                }
+                memcpy(fileid, dbp->fileid, DB_FILE_ID_LEN);
+                hash_add(fileid_tbl, fileid);
+#ifdef NEWSI_DEBUG
+                char *txt;
+                hexdumpbuf(fileid, DB_FILE_ID_LEN, &txt);
+                logmsg(LOGMSG_DEBUG, "%s: hash_add fileid %s\n", __func__, txt);
+                free(txt);
+#endif
+                dbp->close(dbp, NULL, DB_NOSYNC);
+            }
+        }
+    }
+
+    closedir(dirp);
+    free(buf);
 }

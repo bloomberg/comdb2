@@ -45,18 +45,13 @@ extern int gbl_broken_max_rec_sz;
 extern int gbl_broken_num_parser;
 extern int gbl_crc32c;
 extern int gbl_decom;
-extern int gbl_delayed_ondisk_tempdbs;
 extern int gbl_disable_rowlocks;
 extern int gbl_disable_rowlocks_logging;
 extern int gbl_disable_skip_rows;
 extern int gbl_disable_sql_dlmalloc;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
-extern int gbl_enable_block_offload;
 extern int gbl_enable_cache_internal_nodes;
-extern int gbl_enable_good_sql_return_codes;
 extern int gbl_partial_indexes;
-extern int gbl_enable_position_apis;
-extern int gbl_enable_sock_fstsnd;
 extern int gbl_sparse_lockerid_map;
 extern int gbl_spstrictassignments;
 extern int gbl_early;
@@ -64,7 +59,6 @@ extern int gbl_enque_reorder_lookahead;
 extern int gbl_exit_alarm_sec;
 extern int gbl_fdb_track;
 extern int gbl_fdb_track_hints;
-extern int gbl_fkrcode;
 extern int gbl_forbid_ulonglong;
 extern int gbl_force_highslot;
 extern int gbl_fdb_allow_cross_classes;
@@ -95,7 +89,6 @@ extern int gbl_prefault_udp;
 extern int gbl_print_syntax_err;
 extern int gbl_lclpooled_buffers;
 extern int gbl_reallyearly;
-extern int gbl_rep_collect_txn_time;
 extern int gbl_repdebug;
 extern int gbl_replicant_latches;
 extern int gbl_return_long_column_names;
@@ -143,6 +136,10 @@ extern int gbl_rep_verify_will_recover_trace;
 extern int gbl_max_wr_rows_per_txn;
 extern int gbl_force_serial_on_writelock;
 extern int gbl_processor_thd_poll;
+extern int gbl_time_rep_apply;
+extern int gbl_incoherent_logput_window;
+extern int gbl_dump_full_net_queue;
+extern int gbl_max_clientstats_cache;
 
 extern long long sampling_threshold;
 
@@ -681,6 +678,7 @@ static int sql_tranlevel_default_update(void *context, void *value)
         gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
     } else {
         logmsg(LOGMSG_ERROR, "Unknown transaction level requested\n");
+        gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
         return 1;
     }
     gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;

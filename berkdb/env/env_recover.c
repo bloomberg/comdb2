@@ -75,7 +75,6 @@ int bdb_is_open(void *bdb_state);
 
 #include "printformats.h"
 
-static int __log_backup __P((DB_ENV *, DB_LOGC *, DB_LSN *, DB_LSN *));
 static int __log_earliest __P((DB_ENV *, DB_LOGC *, int32_t *, DB_LSN *));
 static double __lsn_diff __P((DB_LSN *, DB_LSN *, DB_LSN *, u_int32_t, int));
 static int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,
@@ -1532,6 +1531,7 @@ __test_last_checkpoint(DB_ENV * dbenv, int file, int offset)
 
 /*
  * __log_backup --
+ * PUBLIC: int __log_backup __P((DB_ENV *, DB_LOGC *, DB_LSN *, DB_LSN *));
  *
  * This is used to find the earliest log record to process when a client
  * is trying to sync up with a master whose max LSN is less than this
@@ -1539,7 +1539,7 @@ __test_last_checkpoint(DB_ENV * dbenv, int file, int offset)
  *
  * Find the latest checkpoint whose ckp_lsn is less than the max lsn.
  */
-static int
+int
 __log_backup(dbenv, logc, max_lsn, start_lsn)
 	DB_ENV *dbenv;
 	DB_LOGC *logc;
@@ -1656,6 +1656,7 @@ __env_openfiles(dbenv, logc, txninfo,
 	DB_LSN lsn;
 	u_int32_t log_size;
 	int progress, ret;
+   DB_LSN last_good_lsn = {0};
 
 	/*
 	 * XXX
@@ -1697,10 +1698,31 @@ __env_openfiles(dbenv, logc, txninfo,
 			break;
 		}
 		if ((ret = __log_c_get(logc, &lsn, data, DB_NEXT)) != 0) {
-			if (ret == DB_NOTFOUND)
+			if (ret == DB_NOTFOUND) {
+            /* if we fail to get this lsn, and this is NOT the last
+            record, it can be a corrupted record in the middle, abort! */
+            DB_LSN cmp_lsn;
+            if (last_lsn == NULL) {
+               /* get here the know tail of the log */
+               ret = __log_c_get(logc, &cmp_lsn, data, DB_LAST);
+               if (ret)
+                  abort();  
+            } else {
+               cmp_lsn = *last_lsn;
+            }
+            if (last_good_lsn.file != cmp_lsn.file || last_good_lsn.offset != cmp_lsn.offset) {
+               __db_err(dbenv,
+                     "Recovery open file failed in the middle lsn %d.%d\n",
+                     (u_long)last_good_lsn.file, (u_long)last_good_lsn.offset);
+               abort();
+            }
+
 				ret = 0;
-			break;
-		}
+         }
+         break;
+		} else  {
+         last_good_lsn = lsn;
+      }
 	}
 
 	return (ret);
@@ -1708,14 +1730,15 @@ __env_openfiles(dbenv, logc, txninfo,
 
 void bdb_set_gbl_recoverable_lsn(void *lsn, int32_t timestamp);
 int bdb_update_logfile_pglogs(void *bdb_state, void *pglogs, unsigned int nkeys,
-    DB_LSN logical_commit_lsn);
+    DB_LSN logical_commit_lsn, hash_t *fileid_tbl);
 int bdb_update_ltran_pglogs_hash(void *bdb_state, void *pglogs,
     unsigned int nkeys, unsigned long long logical_tranid,
-    int is_logical_commit, DB_LSN logical_commit_lsn);
+    int is_logical_commit, DB_LSN logical_commit_lsn, hash_t *fileid_tbl);
 int transfer_ltran_pglogs_to_gbl(void *bdb_state,
     unsigned long long logical_tranid, DB_LSN logical_commit_lsn);
 int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
-    db_pgno_t pgno, db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
+    db_pgno_t pgno, db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn,
+    hash_t *fileid_tbl);
 int bdb_update_timestamp_lsn(void *bdb_state, int32_t timestamp, DB_LSN lsn,
     unsigned long long context);
 int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
@@ -1734,8 +1757,9 @@ extern int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn,
     uint32_t gen, unsigned long long ltranid, int push);
 
 int
-__recover_logfile_pglogs(dbenv)
+__recover_logfile_pglogs(dbenv, fileid_tbl)
 	DB_ENV *dbenv;
+   void *fileid_tbl;
 {
 	DB_LOGC *logc;
 	DB_LSN first_lsn, lsn;
@@ -1830,7 +1854,7 @@ __recover_logfile_pglogs(dbenv)
 			}
 			ret =
 			    bdb_update_logfile_pglogs(dbenv->app_private,
-			    keylist, keycnt, lsn);
+			    keylist, keycnt, lsn, fileid_tbl);
 			if (ret) {
 				GOTOERR;
          }
@@ -1862,7 +1886,7 @@ __recover_logfile_pglogs(dbenv)
 			}
 			ret =
 			    bdb_update_logfile_pglogs(dbenv->app_private,
-			    keylist, keycnt, lsn);
+			    keylist, keycnt, lsn, fileid_tbl);
 			if (ret) {
 				GOTOERR;
          }
@@ -1896,7 +1920,7 @@ __recover_logfile_pglogs(dbenv)
 			ret =
 			    bdb_update_ltran_pglogs_hash(dbenv->app_private,
 			    keylist, keycnt, txn_rl_args->ltranid,
-			    (txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT), lsn);
+			    (txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT), lsn, fileid_tbl);
 			if (ret) {
 				GOTOERR;
          }
@@ -1935,7 +1959,7 @@ __recover_logfile_pglogs(dbenv)
 					    bdb_relink_logfile_pglogs(dbenv->
 					    app_private, mpf->fileid,
 					    split_args->left, split_args->right,
-					    PGNO_INVALID, lsn);
+					    PGNO_INVALID, lsn, fileid_tbl);
 					if (ret) { 
 						GOTOERR;
                }
@@ -1964,7 +1988,7 @@ __recover_logfile_pglogs(dbenv)
 					    app_private, mpf->fileid,
 					    rsplit_args->pgno,
 					    rsplit_args->root_pgno,
-					    PGNO_INVALID, lsn);
+					    PGNO_INVALID, lsn, fileid_tbl);
 					if (ret) {
 						GOTOERR;
                }
@@ -1992,7 +2016,7 @@ __recover_logfile_pglogs(dbenv)
 					    app_private, mpf->fileid,
 					    relink_args->pgno,
 					    relink_args->prev,
-					    relink_args->next, lsn);
+					    relink_args->next, lsn, fileid_tbl);
 					if (ret) {
 						GOTOERR;
                }
@@ -2005,6 +2029,10 @@ __recover_logfile_pglogs(dbenv)
 				__os_free(dbenv, free_ptr);
 				free_ptr = NULL;
 			}
+			if (keylist)
+				__os_free(dbenv, keylist);
+			keylist = NULL;
+			keycnt = 0;
 		}
 
 		if (not_newsi_log_format) {
@@ -2024,11 +2052,16 @@ err:
 			free_ptr = NULL;
 		}
 
+		if (keylist)
+			__os_free(dbenv, keylist);
+		keylist = NULL;
+		keycnt = 0;
+
 		if (logc) {
 			logc->close(logc, 0);
 		}
 
 		return ret;
-	}
+}
 
 /* vim: set ts=3 sw=3: */

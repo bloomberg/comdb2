@@ -1,6 +1,6 @@
 include(${CMAKE_MODULE_PATH}/plugin.cmake)
 
-set(PLUGIN "repopnewlrl")
+set(LIBNAME "repopnewlrl")
 
 include_directories(
   ${PROJECT_SOURCE_DIR}/bb
@@ -22,10 +22,11 @@ include_directories(
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_BINARY_DIR}/sqlite
-  ${PROTOBUF_C_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
+  ${OPENSSL_INCLUDE_DIR}
+  ${PROTOBUF_C_INCLUDE_DIR}
 )
 
 set(SOURCES repopnewlrl.c)
 
-add_plugin(${PLUGIN} "STATIC" "${SOURCES}")
+add_plugin(${LIBNAME} "STATIC" "${SOURCES}")

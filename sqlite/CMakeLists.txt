@@ -28,12 +28,15 @@ add_library(sqlite
   ext/comdb2/procedures.c
   ext/comdb2/tablepermissions.c
   ext/comdb2/tables.c
-  ext/comdb2/tables.c
+  ext/comdb2/timepartitions.c
   ext/comdb2/tablesizes.c
   ext/comdb2/threadpools.c
   ext/comdb2/triggers.c
   ext/comdb2/tunables.c
   ext/comdb2/users.c
+  ext/comdb2/clientstats.c
+  ext/comdb2/ezsystables.c
+  ext/comdb2/typesamples.c 
   ext/misc/completion.c
   ext/misc/json1.c
   ext/expert/sqlite3expert.c
@@ -111,20 +114,21 @@ add_custom_command(
   COMMAND mkkeywordhash > keywordhash.h
 )
 
+find_program(tclsh NAMES tclsh tclsh8.5)
 add_executable(lemon lemon.c)
 add_custom_command(
   OUTPUT parse.c parse.h
   DEPENDS lemon lempar.c parse.y
   COMMAND lemon ${SQLITE_FLAGS} parse.y
   COMMAND ${CMAKE_COMMAND} -E copy parse.h parse.h.temp
-  COMMAND tclsh addopcodes.tcl parse.h.temp > parse.h
+  COMMAND ${tclsh} addopcodes.tcl parse.h.temp > parse.h
 )
 
 add_custom_command(
   OUTPUT opcodes.c opcodes.h
   DEPENDS parse.h vdbe.c
-  COMMAND cat parse.h ${CMAKE_CURRENT_SOURCE_DIR}/vdbe.c | tclsh mkopcodeh.tcl > opcodes.h
-  COMMAND sort -n -b -k 3 opcodes.h | tclsh mkopcodec.tcl opcodes.h > opcodes.c
+  COMMAND cat parse.h ${CMAKE_CURRENT_SOURCE_DIR}/vdbe.c | ${tclsh} mkopcodeh.tcl > opcodes.h
+  COMMAND sort -n -b -k 3 opcodes.h | ${tclsh} mkopcodec.tcl opcodes.h > opcodes.c
 )
 add_custom_command(
   OUTPUT serialget.c

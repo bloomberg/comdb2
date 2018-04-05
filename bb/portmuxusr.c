@@ -150,7 +150,7 @@ static int remaining_timeoutms(int startms, int timeoutms)
         return -1;
     }
 
-    int elapsedms = time_epochms() - startms;
+    int elapsedms = comdb2_time_epochms() - startms;
     return (elapsedms < timeoutms) ? timeoutms - elapsedms : 0;
 }
 
@@ -582,7 +582,7 @@ static int portmux_route_to(struct in_addr in, const char *app,
     if (timeoutms <= 0)
         timeoutms = portmux_default_timeout;
 
-    int startms = time_epochms();
+    int startms = comdb2_time_epochms();
 
     len = snprintf(cmd, sizeof(cmd), "rte %s/%s/%s%s\n", app, service, instance,
                    PORTMUX_VALIDATE() ? " v" : "");
@@ -796,7 +796,7 @@ static bool portmux_client_side_validation(int fd, const char *app,
     int state = 0;
     int next_state;
 
-    int startms = time_epochms();
+    int startms = comdb2_time_epochms();
     if (timeoutms < MIN_VALIDATION_TIMEOUTMS) {
         timeoutms = MIN_VALIDATION_TIMEOUTMS;
     }
@@ -951,7 +951,7 @@ static bool portmux_server_side_validation(portmux_fd_t *fds, int fd,
      * false if we have any communication errors or if the client sends us
      * V_NAK; returning true if the client sends us V_ACK.
      */
-    int startms = time_epochms();
+    int startms = comdb2_time_epochms();
 
     if (timeoutms < MIN_VALIDATION_TIMEOUTMS) {
         timeoutms = MIN_VALIDATION_TIMEOUTMS;
@@ -1301,7 +1301,7 @@ static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
     int result;
     bool build_pollfds = true;
 
-    int startms = time_epochms();
+    int startms = comdb2_time_epochms();
 
     while (true) {
         if (build_pollfds) {

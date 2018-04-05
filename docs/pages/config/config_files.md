@@ -194,17 +194,14 @@ warn_cstr|  on |Warn on validation of cstrings
 scpushlogs|  on |Push to next log after a schema changes
 pfltverbose|  on |Verbose errors in prefaulting code
 plannedsc|  on |Use planned schema change by default
-pflt_readahead|  on |Enable prefaulting of readahead operations
 pflt_toblock_lcl|  on |Prefault toblock operations locally
 pflt_toblock_rep|  on |Prefault toblock operations on replicants
 dflt_livesc|  on |Use live schema change by default
 dflt_plansc|  on |Use planned schema change by default
 consumer_rtcpu|  on |Don't send update broadcasts to machines that are marked offline
-clnt_sql_stats|  on |Trace back fds to client machines
 sqlite3openserial|  on |Serialize calls to sqlite3_open to prevent excess CPU
 thread_stats|  on |Berkeley DB will keep stats on what its threads are doing
 lock_timing|  on |Berkeley DB will keep stats on time spent waiting for locks
-qdump_atexit|  on |Dump queue stats at exit
 memp_timing|  off |Berkeley DB will keep stats on time spent in __memp_fget
 memp_pg_timing|  on |Berkeley DB will keep stats on time spent in __memp_pg
 shalloc_timing|  on |Berkeley DB will keep stats on time 
@@ -531,7 +528,8 @@ next word determines which option to set, and the following word determines its 
 |ENABLE_TEMPTABLE_CLEAN_EXIT|0 (BOOLEAN) | On exit, clean up temp tables (they are deleted on next startup regardless).
 |MAX_SQL_IDLE_TIME|3600 (QUANTITY) | Warn when an SQL connection remains idle for this long.
 |SEQNUM_WAIT_INTERVAL|500 (QUANTITY) | Wake up to check the state of the world this often while waiting for replication acks.
-|SOSQL_MAX_COMMIT_WAIT_SEC|600 (QUANTITY) | Wait for the master to commit a transaction for up to this long 
+|SOSQL_MAX_COMMIT_WAIT_SEC|600 (SECS) | Wait for the master to commit a transaction for up to this long 
+|SOSQL_DDL_MAX_COMMIT_WAIT_SEC|259200 (SECS) | Wait for the master to commit a DDL transaction for up to this long 
 |SOSQL_POKE_TIMEOUT_SEC|12 (QUANTITY) | On replicants, when checking on master for transaction status, retry the check after this many seconds.
 |SOSQL_POKE_FREQ_SEC|5 (QUANTITY) | On replicants, check this often for transaction status.
 |SQL_QUEUEING_DISABLE_TRACE|0 (BOOLEAN) | Disable trace when SQL requests are starting to queue.
@@ -783,7 +781,6 @@ These options are toggle-able at runtime.
 |update_shadows_interval | 0 | Set to higher than 0 to update snaphots on every Nth operation (default is for every operation)
 |enable_lowpri_snapisol | 0 | Give lower priority to locks acquired when updating snapshot state 
 |disable_lowpri_snapisol | |
-|sqlrdtimeout | 10000 (ms) | Set timeout for reading from an SQL connection.
 |sqlwrtimeout | 10000 (ms) | Set timeout for writing to an SQL connection.
 |log_delete_now | 1 | Set log deletion policy to delete logs as soon as possible.
 |log_delete_after_backup | 0 | Set log deletion policy to disable log deletion (can be set by backups, thought the default backups provided by copycomdb2 use a different mechanism)

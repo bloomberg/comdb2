@@ -120,18 +120,10 @@ void *memp_trickle_thread(void *arg)
     while (!bdb_state->passed_dbenv_open)
         sleep(1);
 
-    while (1) {
+    while (!db_is_stopped()) {
         int t1, t2;
 
         BDB_READLOCK("memp_trickle_thread");
-
-        if (db_is_stopped()) {
-            logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
-
-            BDB_RELLOCK();
-            bdb_thread_event(bdb_state, 0);
-            pthread_exit(NULL);
-        }
 
         /* time is in usecs, memptricklemsecs is in msecs */
         time = bdb_state->attr->memptricklemsecs * 1000;
@@ -152,8 +144,13 @@ void *memp_trickle_thread(void *arg)
 
         BDB_RELLOCK();
 
+        if (db_is_stopped())
+            break;
         usleep(time);
     }
+
+    bdb_thread_event(bdb_state, 0);
+    logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
 }
 
 void *deadlockdetect_thread(void *arg)
@@ -325,6 +322,8 @@ void *coherency_lease_thread(void *arg)
                      ? renew
                      : (lease_time / 3);
 
+        if (db_is_stopped())
+            break;
         poll(0, 0, pollms);
     }
 
@@ -358,9 +357,7 @@ void *logdelete_thread(void *arg)
         run_interval = (run_interval <= 0 ? 30 : run_interval);
 
         if ((now - last_run_time) >= run_interval) {
-            BDB_READLOCK("logdelete_thread");
             delete_log_files(bdb_state);
-            BDB_RELLOCK();
             last_run_time = now;
         }
         sleep(1);
@@ -427,8 +424,8 @@ void *checkpoint_thread(void *arg)
         /* Record the start time of the checkpoint operation.  If the checkpoint
          * hangs (this has happened) then another thread will use this to raise
          * an alarm. */
-        start = time_epochms();
-        bdb_state->checkpoint_start_time = time_epoch();
+        start = comdb2_time_epochms();
+        bdb_state->checkpoint_start_time = comdb2_time_epoch();
         MEMORY_SYNC;
 
         rc = ll_checkpoint(bdb_state, 0);
@@ -436,7 +433,7 @@ void *checkpoint_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "checkpoint failed rc %d\n", rc);
         }
-        end = time_epochms();
+        end = comdb2_time_epochms();
         bdb_state->checkpoint_start_time = 0;
         MEMORY_SYNC;
         ctrace("checkpoint (scheduled) took %d ms\n", end - start);
@@ -489,7 +486,7 @@ int bdb_get_checkpoint_time(bdb_state_type *bdb_state)
         bdb_state = bdb_state->parent;
     start = bdb_state->checkpoint_start_time;
     if (start != 0)
-        start = time_epoch() - start;
+        start = comdb2_time_epoch() - start;
     return start;
 }
 

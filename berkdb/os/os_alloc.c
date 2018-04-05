@@ -169,6 +169,8 @@ __os_ufree(dbenv, ptr)
 		dbenv->db_free(ptr);
 	else if (DB_GLOBAL(j_free) != NULL)
 		DB_GLOBAL(j_free) (ptr);
+	else if (dbenv != NULL && dbenv->use_sys_malloc)
+            free(ptr);
 	else
 		comdb2_free_berkdb(ptr);
 }
@@ -393,10 +395,10 @@ __os_free(dbenv, ptr)
 	if (size != 0)
 		memset(ptr, CLEAR_BYTE, size);
 #endif
-	COMPQUIET(dbenv, NULL);
-
 	if (DB_GLOBAL(j_free) != NULL)
 		DB_GLOBAL(j_free)(ptr);
+	else if (dbenv != NULL && dbenv->use_sys_malloc)
+            free(ptr);
 	else
 		comdb2_free_berkdb(ptr);
 }

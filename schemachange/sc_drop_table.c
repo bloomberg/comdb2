@@ -42,9 +42,9 @@ static int delete_table(struct dbtable *db, tran_type *tran)
     return 0;
 }
 
-int do_drop_table(struct ireq *iq, tran_type *tran)
+int do_drop_table(struct ireq *iq, struct schema_change_type *s,
+                  tran_type *tran)
 {
-    struct schema_change_type *s = iq->sc;
     struct dbtable *db;
     iq->usedb = db = s->db = get_dbtable_by_name(s->table);
     if (db == NULL) {
@@ -61,9 +61,9 @@ int do_drop_table(struct ireq *iq, tran_type *tran)
     return SC_OK;
 }
 
-int finalize_drop_table(struct ireq *iq, tran_type *tran)
+int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
+                        tran_type *tran)
 {
-    struct schema_change_type *s = iq->sc;
     struct dbtable *db = s->db;
     int rc = 0;
     int bdberr = 0;

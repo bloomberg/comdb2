@@ -243,7 +243,6 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
         free(pool);
         return NULL;
     }
-    pool->stack_sz = DEFAULT_THD_STACKSZ;
 #endif
     listc_init(&pool->thdlist, offsetof(struct thd, thdlist_linkv));
     listc_init(&pool->freelist, offsetof(struct thd, freelist_linkv));
@@ -262,6 +261,7 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     pool->wait = 0;
     pool->exit_on_create_fail = 1;
     pool->dump_on_full = 0;
+    pool->stack_sz = DEFAULT_THD_STACKSZ;
 
     pthread_cond_init(&pool->wait_for_thread, NULL);
 
@@ -564,7 +564,7 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
     } else {
         while ((next = listc_rtl(&thd->pool->queue)) != NULL) {
             if (thd->pool->maxqueueagems > 0 &&
-                time_epochms() - work->queue_time_ms >
+                comdb2_time_epochms() - work->queue_time_ms >
                     thd->pool->maxqueueagems) {
                 if (next->persistent_info) {
                     free(next->persistent_info);
@@ -699,7 +699,7 @@ static void *thdpool_thd(void *voidarg)
         }
         UNLOCK(&pool->mutex);
 
-        diffms = time_epochms() - work.queue_time_ms;
+        diffms = comdb2_time_epochms() - work.queue_time_ms;
         if (diffms > pool->longwaitms) {
             logmsg(LOGMSG_WARN, "%s(%s): long wait %d ms\n", __func__, pool->name,
                     diffms);
@@ -863,7 +863,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                      listc_size(&pool->queue) <
                          (pool->maxqueue + pool->maxqueueoverride))) {
                     if (thdpool_alarm_on_queing(listc_size(&pool->queue))) {
-                        int now = time_epoch();
+                        int now = comdb2_time_epoch();
 
                         if (now > pool->last_queue_alarm ||
                             listc_size(&pool->queue) > pool->last_alarm_max) {
@@ -944,7 +944,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
         item->work = work;
         item->work_fn = work_fn;
         item->persistent_info = persistent_info;
-        item->queue_time_ms = time_epochms();
+        item->queue_time_ms = comdb2_time_epochms();
         item->available = 1;
 
         /* Now wake up the thread with work to do. */

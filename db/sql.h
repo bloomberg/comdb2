@@ -73,15 +73,6 @@ typedef struct stmt_hash_entry {
 struct sqlthdstate {
     struct reqlogger *logger;
     struct sql_thread *sqlthd;
-
-    /* Scratch buffer. */
-    char *buf;
-    int maxbuflen;
-    int buflen;
-
-    struct column_info *cinfo;
-    struct sqlfield *offsets;
-
     struct thr_handle *thr_self;
     sqlite3 *sqldb;
 
@@ -94,7 +85,6 @@ struct sqlthdstate {
     int dbopen_gen;
     int analyze_gen;
     int views_gen;
-    int ncols;
     int started_backend;
 };
 
@@ -180,8 +170,8 @@ typedef struct osqlstate {
 
     int error_is_remote; /* set if xerr is the error for a distributed tran
                             (i.e. already translated */
-    int long_request;
     int dirty; /* optimization to nop selectv only transactions */
+    int running_ddl; /* ddl transaction */
 } osqlstate_t;
 
 enum ctrl_sqleng {
@@ -264,10 +254,6 @@ void currangearr_init(CurRangeArr *arr);
 void currangearr_append(CurRangeArr *arr, CurRange *r);
 CurRange *currangearr_get(CurRangeArr *arr, int n);
 void currangearr_double_if_full(CurRangeArr *arr);
-int currange_cmp(const void *p, const void *q);
-void currangearr_sort(CurRangeArr *arr);
-void currangearr_merge_neighbor(CurRangeArr *arr);
-void currangearr_coalesce(CurRangeArr *arr);
 void currangearr_build_hash(CurRangeArr *arr);
 void currangearr_free(CurRangeArr *arr);
 void currangearr_print(CurRangeArr *arr);
@@ -279,8 +265,70 @@ struct lua_State;
 enum early_verify_error { EARLY_ERR_VERIFY = 1, EARLY_ERR_SELECTV = 2 };
 #define FINGERPRINTSZ 16
 
+enum {
+  ERR_GENERIC = -1,
+  ERR_PREPARE = -2,
+  ERR_PREPARE_RETRY = -3,
+  ERR_ROW_HEADER = -4,
+  ERR_CONVERSION_DT = -5,
+};
+
+/* write response */
+enum {
+    RESPONSE_COLUMNS,
+    RESPONSE_COLUMNS_LUA,
+    RESPONSE_COLUMNS_STR,
+    RESPONSE_COST,
+    RESPONSE_DEBUG,
+    RESPONSE_EFFECTS,
+    RESPONSE_ERROR,
+    RESPONSE_ERROR_ACCESS,
+    RESPONSE_ERROR_BAD_STATE,
+    RESPONSE_ERROR_PREPARE,
+    RESPONSE_ERROR_PREPARE_RETRY,
+    RESPONSE_ERROR_REJECT,
+    RESPONSE_FLUSH,
+    RESPONSE_HEARTBEAT,
+    RESPONSE_ROW,
+    RESPONSE_ROW_LAST,
+    RESPONSE_ROW_LAST_DUMMY,
+    RESPONSE_ROW_LUA,
+    RESPONSE_ROW_STR,
+    RESPONSE_TRACE,
+};
+
+/* read response */
+enum {
+    RESPONSE_PING_PONG,
+    RESPONSE_SP_CMD,
+};
+
+struct response_data {
+    sqlite3_stmt *stmt;
+    struct errstat *err;
+    uint64_t row_id;
+    /* For RESPONSE_COLUMNS_LUA, RESPONSE_ROW_LUA */
+    int ncols;
+    int pingpong;
+    struct stored_proc *sp;
+};
+
+char *sp_column_name(struct response_data *, int);
+int sp_column_type(struct response_data *, int, size_t, int);
+int sp_column_nil(struct response_data *, int);
+int sp_column_val(struct response_data *, int, int, void *);
+void *sp_column_ptr(struct response_data *, int, int, size_t *);
+
+typedef int(*response_func)(struct sqlclntstate *, int, void *, int);
+
 /* Client specific sql state */
 struct sqlclntstate {
+    /* newsql_write_response, fastsql_write_response, etc */
+    response_func write_response;
+    /* newsql_read_response */
+    response_func read_response;
+    /* appsock plugin specific data */
+    void *appdata;
 
     dbtran_type dbtran;
     pthread_mutex_t dtran_mtx; /* protect dbtran.dtran, if any,
@@ -392,9 +440,6 @@ struct sqlclntstate {
 
     int have_password;
     char password[MAX_PASSWORD_LEN];
-
-    int have_endian;
-    int endian;
 
     int no_transaction;
 
@@ -723,13 +768,11 @@ struct sql_thread {
     LISTC_T(struct query_path_component) query_stats;
     hash_t *query_hash;
     double cost;
-    struct sqlclntstate *sqlclntstate; /* pointer to originating sqlclnt */
+    struct sqlclntstate *clnt;
     /* custom error message to send to client */
     char *error;
     struct master_entry *rootpages;
     int rootpage_nentries;
-    CDB2SQLRESPONSE__Column **columns;
-    int columns_count;
     unsigned char had_temptables;
     unsigned char had_tablescans;
 };
@@ -778,10 +821,6 @@ void reset_query_effects(struct sqlclntstate *);
 int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,
                      const char *tzname, blob_buffer_t *outblob, int maxblobs,
                      struct convert_failure *fail_reason, BtCursor *pCur);
-
-int emit_sql_row(struct sqlthdstate *thd, struct column_info *cols,
-                 struct sqlfield *offsets, struct sqlclntstate *clnt,
-                 sqlite3_stmt *stmt, int *irc, char *errstr, int maxerrstr);
 
 int has_sqlcache_hint(const char *sql, const char **start, const char **end);
 
@@ -846,4 +885,13 @@ void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
 void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *);
+
+int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
+             uint8_t flip_orig, const char *tzname);
+
+#define cur_is_remote(pCur) (pCur->cursor_class == CURSORCLASS_REMOTE)
+
+int sql_writer(SBUF2 *, const char *, int);
+int typestr_to_type(const char *ctype);
+
 #endif

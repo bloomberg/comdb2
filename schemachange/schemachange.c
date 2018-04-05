@@ -31,6 +31,7 @@
 #include "sc_add_table.h"
 #include "sc_callbacks.h"
 #include "sc_schema.h"
+#include "crc32c.h"
 #include "comdb2_atomic.h"
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
@@ -167,7 +168,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     strcpy(s->original_master_node, gbl_mynode);
     unsigned long long seed;
     const char *node = gbl_mynode;
-    if (trans && s->tran == trans && iq->sc_seed) {
+    if (s->tran == trans && iq->sc_seed) {
         seed = iq->sc_seed;
         logmsg(LOGMSG_INFO, "Starting schema change: "
                             "transactionally reuse seed 0x%llx\n",
@@ -196,7 +197,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         logmsg(LOGMSG_INFO, "Starting schema change: new seed 0x%llx\n", seed);
     }
 
-    rc = sc_set_running(1, seed, node, time(NULL));
+    rc = sc_set_running(s->table, 1, seed, node, time(NULL));
     if (rc != 0) {
         if (!doing_upgrade || s->fulluprecs || s->partialuprecs) {
             errstat_set_strf(&iq->errstat, "Schema change already in progress");
@@ -220,7 +221,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 sc_errf(s, "failed to cancel table upgrade threads\n");
                 free_schema_change_type(s);
                 return SC_CANT_SET_RUNNING;
-            } else if (sc_set_running(1, get_next_sc_seed(thedb->bdb_env),
+            } else if (sc_set_running(s->table, 1,
+                                      get_next_sc_seed(thedb->bdb_env),
                                       gbl_mynode, time(NULL)) != 0) {
                 free_schema_change_type(s);
                 return SC_CANT_SET_RUNNING;
@@ -228,21 +230,23 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         }
     }
 
-    if (thedb->master == gbl_mynode && !s->resume && iq->sc_seed != sc_seed) {
-        logmsg(LOGMSG_INFO, "Calling bdb_set_disable_plan_genid 0x%lx\n",
-               sc_seed);
+    iq->sc_host = node ? crc32c((uint8_t *)node, strlen(node)) : 0;
+    if (thedb->master == gbl_mynode && !s->resume && iq->sc_seed != seed) {
+        logmsg(LOGMSG_INFO, "Calling bdb_set_disable_plan_genid 0x%llx\n", seed);
         int bdberr;
-        int rc = bdb_set_disable_plan_genid(thedb->bdb_env, NULL, sc_seed,
-                                            sc_host, &bdberr);
+        int rc = bdb_set_sc_seed(thedb->bdb_env, NULL, s->table, seed,
+                                 iq->sc_host, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Couldn't save schema change seed\n");
         }
     }
-    iq->sc_seed = sc_seed;
+    iq->sc_seed = seed;
 
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
     arg->trans = trans;
     arg->iq = iq;
+    arg->sc = iq->sc;
+    iq->sc->usedbtablevers = iq->usedbtablevers;
 
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race) {
@@ -259,24 +263,38 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (s->nothrevent) {
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
+        pthread_mutex_lock(&s->mtx);
         rc = do_schema_change_tran(arg);
     } else {
+        int max_threads =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC_MAXTHREADS);
+        pthread_mutex_lock(&sc_async_mtx);
+        while (!s->resume && max_threads > 0 &&
+               sc_async_threads >= max_threads) {
+            logmsg(LOGMSG_INFO, "Waiting for avaiable schema change threads\n");
+            pthread_cond_wait(&sc_async_cond, &sc_async_mtx);
+        }
+        sc_async_threads++;
+        pthread_mutex_unlock(&sc_async_mtx);
+
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
         pthread_t tid;
-        if (trans)
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change_tran, arg);
-        else
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change, s);
+        pthread_mutex_lock(&s->mtx);
+        rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                            (void *(*)(void *))do_schema_change_tran, arg);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "start_schema_change:pthread_create rc %d %s\n", rc,
                    strerror(errno));
+
+            pthread_mutex_lock(&sc_async_mtx);
+            sc_async_threads--;
+            pthread_mutex_unlock(&sc_async_mtx);
+
             free(arg);
+            sc_set_running(s->table, 0, iq->sc_seed, gbl_mynode, time(NULL));
             free_schema_change_type(s);
-            sc_set_running(0, sc_seed, gbl_mynode, time(NULL));
             rc = SC_ASYNC_FAILED;
         } else {
             rc = SC_ASYNC;
@@ -288,14 +306,21 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 
 int start_schema_change(struct schema_change_type *s)
 {
-    struct ireq iq;
-    init_fake_ireq(thedb, &iq);
-    iq.sc = s;
+    struct ireq *iq = NULL;
+    iq = (struct ireq *)calloc(1, sizeof(*iq));
+    if (iq == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc ireq\n", __func__);
+        return -1;
+    }
+    init_fake_ireq(thedb, iq);
+    iq->sc = s;
+    s->iq = iq;
     if (s->db == NULL) {
         s->db = get_dbtable_by_name(s->table);
     }
-    iq.usedb = s->db;
-    return start_schema_change_tran(&iq, NULL);
+    iq->usedb = s->db;
+    iq->usedbtablevers = s->db ? s->db->tableversion : 0;
+    return start_schema_change_tran(iq, NULL);
 }
 
 void delay_if_sc_resuming(struct ireq *iq)
@@ -304,9 +329,9 @@ void delay_if_sc_resuming(struct ireq *iq)
 
     int diff;
     int printerr = 0;
-    int start_time = time_epochms();
+    int start_time = comdb2_time_epochms();
     while (gbl_sc_resume_start) {
-        if ((diff = time_epochms() - start_time) > 300 && !printerr) {
+        if ((diff = comdb2_time_epochms() - start_time) > 300 && !printerr) {
             logmsg(LOGMSG_WARN, "Delaying since gbl_sc_resume_start has not "
                                 "been reset to 0 for %dms\n",
                    diff);
@@ -351,8 +376,8 @@ int finalize_schema_change(struct ireq *iq, tran_type *trans)
             logmsg(LOGMSG_ERROR,
                    "start_schema_change:pthread_create rc %d %s\n", rc,
                    strerror(errno));
+            sc_set_running(s->table, 0, iq->sc_seed, gbl_mynode, time(NULL));
             free_schema_change_type(s);
-            sc_set_running(0, sc_seed, gbl_mynode, time(NULL));
             rc = SC_ASYNC_FAILED;
         } else {
             rc = SC_ASYNC;
@@ -544,7 +569,7 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
                             unsigned long long del_keys,
                             blob_buffer_t *oldblobs)
 {
-    if (!(sc_live && iq->usedb->sc_from == iq->usedb)) {
+    if (iq->usedb->sc_from != iq->usedb) {
         return 0;
     }
 
@@ -593,7 +618,7 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
                          blob_buffer_t *blobs, size_t maxblobs, int origflags,
                          int *rrn)
 {
-    if (!sc_live || iq->usedb->sc_from != iq->usedb) {
+    if (iq->usedb->sc_from != iq->usedb) {
         return 0;
     }
 
@@ -685,7 +710,7 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                             int origflags, int rrn, int deferredAdd,
                             blob_buffer_t *oldblobs, blob_buffer_t *newblobs)
 {
-    if (!(sc_live && iq->usedb->sc_from == iq->usedb)) {
+    if (iq->usedb->sc_from != iq->usedb) {
         return 0;
     }
 
@@ -786,9 +811,8 @@ int live_sc_post_update(struct ireq *iq, void *trans,
 /* I ORIGINALLY REMOVED THIS, THEN MERGING I SAW IT BACK IN COMDB2.C
     I AM LEAVING IT IN HERE FOR NOW (GOTTA ASK MARK)               */
 
-static int add_table_for_recovery(struct ireq *iq)
+static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
 {
-    struct schema_change_type *s = iq->sc;
     struct dbtable *db;
     struct dbtable *newdb;
     int bdberr;
@@ -797,7 +821,7 @@ static int add_table_for_recovery(struct ireq *iq)
     db = get_dbtable_by_name(s->table);
     if (db == NULL) {
         wrlock_schema_lk();
-        rc = do_add_table(iq, NULL);
+        rc = do_add_table(iq, s, NULL);
         unlock_schema_lk();
         return rc;
     }
@@ -953,7 +977,7 @@ int add_schema_change_tables()
             }
 
             iq.sc = s;
-            rc = add_table_for_recovery(&iq);
+            rc = add_table_for_recovery(&iq, s);
 
             free(s);
             return rc;
@@ -971,6 +995,7 @@ int sc_timepart_add_table(const char *existingTableName,
     char *schemabuf = NULL;
     struct dbtable *db;
 
+    init_schemachange_type(&sc);
     /* prepare sc */
     sc.onstack = 1;
     sc.type = DBTYPE_TAGGED_TABLE;
@@ -1038,8 +1063,8 @@ int sc_timepart_add_table(const char *existingTableName,
         goto error;
     }
 
-    if (sc_set_running(1, get_next_sc_seed(thedb->bdb_env), gbl_mynode,
-                       time(NULL)) != 0) {
+    if (sc_set_running(sc.table, 1, get_next_sc_seed(thedb->bdb_env),
+                       gbl_mynode, time(NULL)) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;
@@ -1069,6 +1094,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     char *schemabuf = NULL;
     int rc;
 
+    init_schemachange_type(&sc);
     /* prepare sc */
     sc.onstack = 1;
     sc.type = DBTYPE_TAGGED_TABLE;
@@ -1105,8 +1131,8 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
         goto error;
     }
 
-    if (sc_set_running(1, get_next_sc_seed(thedb->bdb_env), gbl_mynode,
-                       time(NULL)) != 0) {
+    if (sc_set_running(sc.table, 1, get_next_sc_seed(thedb->bdb_env),
+                       gbl_mynode, time(NULL)) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;
@@ -1300,9 +1326,6 @@ void sb_errf(SBUF2 *sb, const char *fmt, ...)
 
 void sc_printf(struct schema_change_type *s, const char *fmt, ...)
 {
-    if (s && s->iq && s->iq->tranddl) {
-        return;
-    }
     va_list args;
     va_start(args, fmt);
 
@@ -1323,9 +1346,6 @@ void sc_printf(struct schema_change_type *s, const char *fmt, ...)
 
 void sc_errf(struct schema_change_type *s, const char *fmt, ...)
 {
-    if (s && s->iq && s->iq->tranddl) {
-        return;
-    }
     va_list args;
     va_start(args, fmt);
 

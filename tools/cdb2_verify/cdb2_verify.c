@@ -134,27 +134,15 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 		dbenv->err(dbenv, ret, "set_passwd");
 		goto shutdown;
 	}
+
 	/*
-	 * Attach to an mpool if it exists, but if that fails, attach to a
-	 * private region.  In the latter case, declare a reasonably large
-	 * cache so that we don't fail when verifying large databases.
+	 * Declare a reasonably large cache so that we don't fail when verifying
+	 * large databases.
 	 */
-#if 0
-	private = 0;
-	if ((ret =
-	    dbenv->open(dbenv, home, DB_INIT_MPOOL | DB_USE_ENVIRON, 0)) != 0) {
-		if ((ret = dbenv->set_cachesize(dbenv, 0, cache, 1)) != 0) {
-			dbenv->err(dbenv, ret, "set_cachesize");
-			goto shutdown;
-		}
-		private = 1;
-		if ((ret = dbenv->open(dbenv, home,
-	    DB_CREATE | DB_INIT_MPOOL | DB_PRIVATE | DB_USE_ENVIRON, 0)) != 0) {
-			dbenv->err(dbenv, ret, "open");
-			goto shutdown;
-		}
+	if ((ret = dbenv->set_cachesize(dbenv, 0, cache, 1)) != 0) {
+		dbenv->err(dbenv, ret, "set_cachesize");
+		goto shutdown;
 	}
-#endif
 	private = 1;
 	int flags = DB_CREATE | DB_INIT_MPOOL | DB_PRIVATE | DB_USE_ENVIRON;
 	if ((ret = dbenv->open(dbenv, home, flags, 0)) != 0) {

@@ -855,6 +855,8 @@ __dbenv_close(dbenv, rep_check)
 	if (dbenv->comdb2_dirs.tmp_dir != NULL)
 		__os_free(dbenv, dbenv->comdb2_dirs.tmp_dir);
 
+        pthread_mutex_destroy(&dbenv->durable_lsn_lk);
+
 	/* Release DB list */
 	__os_free(dbenv, dbenv->dbs);
 
@@ -864,6 +866,7 @@ __dbenv_close(dbenv, rep_check)
 	/* Discard the structure. */
 	memset(dbenv, CLEAR_BYTE, sizeof(DB_ENV));
 	__os_free(NULL, dbenv);
+
 
 	return (ret);
 }
@@ -1013,8 +1016,6 @@ skip:
 		__os_closehandle(dbenv, dbenv->checkpoint);
 		dbenv->checkpoint = NULL;
 	}
-
-    pthread_mutex_destroy(&dbenv->durable_lsn_lk);
 
 	return (ret);
 }

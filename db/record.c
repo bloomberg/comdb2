@@ -608,7 +608,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     if (!(flags & RECFLAGS_NEW_SCHEMA)) {
         iq->usedb->write_count[RECORD_WRITE_INS]++;
-        gbl_sc_last_writer_time = time_epoch();
+        gbl_sc_last_writer_time = comdb2_time_epoch();
 
         /* For live schema change */
         rc = live_sc_post_add(iq, trans, *genid, od_dta, ins_keys, 
@@ -1734,7 +1734,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     iq->usedb->write_count[RECORD_WRITE_UPD]++;
-    gbl_sc_last_writer_time = time_epoch();
+    gbl_sc_last_writer_time = comdb2_time_epoch();
 
     dbglog_record_db_write(iq, "update");
     if (iq->__limits.maxcost && iq->cost > iq->__limits.maxcost)
@@ -1990,7 +1990,8 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (iq->debug)
         reqprintf(iq, "DEL RRN %d GENID 0x%llx RC %d", rrn, genid, rc);
     if (rc != 0) {
-        *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_DTA;
+        *opfailcode = (rc == ERR_VERIFY) ? OP_FAILED_VERIFY
+                                         : OP_FAILED_INTERNAL + ERR_DEL_DTA;
         retrc = rc;
         goto err;
     }
@@ -2099,7 +2100,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     iq->usedb->write_count[RECORD_WRITE_DEL]++;
-    gbl_sc_last_writer_time = time_epoch();
+    gbl_sc_last_writer_time = comdb2_time_epoch();
 
 err:
     dbglog_record_db_write(iq, "delete");
@@ -3257,7 +3258,7 @@ void testrep(int niter, int recsz)
     iq.usedb = thedb->dbs[0];
 
     n = 0;
-    now = last = time_epochms();
+    now = last = comdb2_time_epochms();
 
     for (i = 0; i < niter; i++) {
         tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
@@ -3277,7 +3278,7 @@ void testrep(int niter, int recsz)
             goto done;
         }
 
-        now = time_epochms();
+        now = comdb2_time_epochms();
         if ((now - last) > 1000) {
             logmsg(LOGMSG_ERROR, "%d\n", n);
             n = 0;

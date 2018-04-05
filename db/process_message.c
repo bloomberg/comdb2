@@ -57,7 +57,6 @@ extern int __berkdb_read_alarm_ms;
 #include "osqlrepository.h"
 #include "osqlcomm.h"
 #include "osqlblockproc.h"
-#include "comdb2_shm.h"
 #include "thdpool.h"
 #include "bdb_access.h"
 #include "analyze.h"
@@ -69,7 +68,6 @@ extern int __berkdb_read_alarm_ms;
 #include "views.h"
 #include <autoanalyze.h>
 #include "quantize.h"
-#include <machine.h>
 #include "timers.h"
 #include "crc32c.h"
 #include "ssl_bend.h"
@@ -80,7 +78,6 @@ extern int __berkdb_read_alarm_ms;
 #include <logmsg.h>
 
 extern int gbl_exit_alarm_sec;
-extern int gbl_sql_tranlevel_sosql_pref;
 extern int gbl_disable_rowlocks_logging;
 extern int gbl_disable_rowlocks;
 extern int gbl_disable_rowlocks_sleepns;
@@ -92,7 +89,6 @@ extern int gbl_dump_sql_dispatched;
 extern int gbl_dump_fsql_response;
 extern int gbl_time_osql;
 extern int gbl_time_fdb;
-extern int gbl_enable_good_sql_return_codes;
 extern int gbl_enable_cache_internal_nodes;
 extern int gbl_test_badwrite_intvl;
 extern int gbl_skip_ratio_trace;
@@ -243,7 +239,6 @@ static const char *HELP_SQL[] = {
     "hist               - show recently run statements",
     "cancel N           - cancel running statement with id N",
     "cancelcnonce N      - cancel running statement with cnonce N",
-    "rdtimeout N        - set read timeout in ms",
     "wrtimeout N        - set write timeout in ms",
     "help               - this information", NULL,
 };
@@ -404,8 +399,6 @@ void replication_stats(struct dbenv *dbenv)
         logmsg(LOGMSG_USER, "   Max rep timeout      %d\n", dbenv->max_timeout_ms);
         logmsg(LOGMSG_USER, "   Max rep time         %d\n", dbenv->max_reptime_ms);
     }
-    logmsg(LOGMSG_USER, "   Minimum        %d ms\n",
-           bdb_attr_get(dbenv->bdb_attr, BDB_ATTR_MINREPTIMEOUT));
 }
 
 int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
@@ -460,7 +453,7 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else if (tokcmp(tok, ltok, "log-delete-now") == 0) {
             dbenv->log_delete_age = 0;
         } else if (tokcmp(tok, ltok, "log-delete-before") == 0) {
-            dbenv->log_delete_age = time_epoch();
+            dbenv->log_delete_age = comdb2_time_epoch();
         } else if (tokcmp(tok, ltok, "log-delete-age-set") == 0) {
             int epoch;
             tok = segtok(line, lline, &st, &ltok);
@@ -470,13 +463,13 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
                 break;
             }
             if (dbenv->log_delete_age > 0) {
-                dbenv->log_delete_age = epoch ? epoch : time_epoch();
+                dbenv->log_delete_age = epoch ? epoch : comdb2_time_epoch();
             }
         } else if (tokcmp(tok, ltok, "log-delete") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             if (tokcmp(tok, ltok, "on") == 0) {
                 log_delete_counter_change(dbenv, LOG_DEL_ABS_ON);
-                cantim(TMEV_ENABLE_LOG_DELETE);
+                comdb2_cantim(TMEV_ENABLE_LOG_DELETE);
             } else if (tokcmp(tok, ltok, "off") == 0) {
                 int reenab;
                 log_delete_counter_change(dbenv, LOG_DEL_ABS_OFF);
@@ -484,10 +477,10 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
                 reenab = toknum(tok, ltok);
                 if (reenab > 0) {
                     /* re-enable log in n minutes */
-                    timer(reenab * 1000 * 60, TMEV_ENABLE_LOG_DELETE);
+                    comdb2_timer(reenab * 1000 * 60, TMEV_ENABLE_LOG_DELETE);
                 } else {
                     /* no re-enable requested */
-                    cantim(TMEV_ENABLE_LOG_DELETE);
+                    comdb2_cantim(TMEV_ENABLE_LOG_DELETE);
                 }
             } else {
                 logmsg(LOGMSG_USER, "must specify log-delete on or off\n");
@@ -620,9 +613,10 @@ static void on_off_trap(char *line, int lline, int *st, int *ltok, char *msg,
 extern int gbl_new_snapisol;
 #ifdef NEWSI_STAT
 void bdb_print_logfile_pglogs_stat();
+void bdb_clear_logfile_pglogs_stat();
 #endif
 void bdb_osql_trn_clients_status();
-
+void bdb_newsi_mempool_stat();
 
 void *handle_exit_thd(void *arg) 
 {
@@ -663,18 +657,6 @@ void *handle_exit_thd(void *arg)
     /* XXX this should probably have a timeout */
     stop_threads(thedb);
     allow_sc_to_run();
-
-    /* now that we are taking no more requests and have halted all request
-     * threads, take a final snapshot of our queues (this helps things
-     * like the audtqdb problem where we may want to know if the queue was
-     * empty when the db exited - if so the db can be reinited when it
-     * starts up again) */
-    if (thedb->num_qdbs > 0 && gbl_dump_queues_on_exit) {
-        int ii;
-        logmsg(LOGMSG_USER, "Final status of queues:\n");
-        for (ii = 0; ii < thedb->num_qdbs; ii++)
-            dbqueue_stat(thedb->qdbs[ii], 0, 0, 1 /*(blocking call)*/);
-    }
 
     flush_db();
     clean_exit();
@@ -874,28 +856,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else {
            logmsg(LOGMSG_USER, "sync cluster done. \n");
         }
-    } else if (tokcmp(tok, ltok, "enableprefersosql") == 0) {
-        if (!gbl_sql_tranlevel_sosql_pref) {
-            gbl_sql_tranlevel_sosql_pref = 1;
-            /* update bits */
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_PREFER_SOSQL);
-            for (i = 0; i < thedb->num_dbs; i++) {
-                if (thedb->dbs[i]->dbnum)
-                    comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                        CMDB2_SHMFLG_PREFER_SOSQL);
-            }
-        }
-    } else if (tokcmp(tok, ltok, "disableprefersosql") == 0) {
-        if (gbl_sql_tranlevel_sosql_pref) {
-            gbl_sql_tranlevel_sosql_pref = 0;
-            /* update bits */
-            comdb2_shm_clr_flag(thedb->dbnum, CMDB2_SHMFLG_PREFER_SOSQL);
-            for (i = 0; i < thedb->num_dbs; i++) {
-                if (thedb->dbs[i]->dbnum)
-                    comdb2_shm_clr_flag(thedb->dbs[i]->dbnum,
-                                        CMDB2_SHMFLG_PREFER_SOSQL);
-            }
-        }
     } else if (tokcmp(tok, ltok, "whohas") == 0) {
         int pgno = -1;
 
@@ -906,6 +866,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             bdb_check_pageno(thedb->bdb_env, pgno);
         } else
             logmsg(LOGMSG_ERROR, "incorrect page no %d\n", pgno);
+    } else if (tokcmp(tok, ltok, "deletelogs") == 0) {
+        logmsg(LOGMSG_ERROR, "Calling delete logs function\n");
+        extern void delete_log_files(bdb_state_type *bdb_state);
+        delete_log_files(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "pushnext") == 0) {
         push_next_log();
     }
@@ -991,12 +955,27 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         logmsg(LOGMSG_USER, "Enabled pageorder records per page check\n");
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PAGEORDER_RECSZ_CHK, 0);
     } else if (tokcmp(tok, ltok, "get_newsi_status") == 0) {
-       logmsg(LOGMSG_USER, "new snapshot is %s; new snapshot logging is %s; new snapshot "
+        extern unsigned long long release_locks_on_si_lockwait_cnt;
+        logmsg(LOGMSG_USER,
+               "new snapshot is %s; new snapshot logging is %s; new snapshot "
                "as-of is %s\n",
                gbl_new_snapisol ? "ENABLED" : "DISABLED",
                gbl_new_snapisol_logging ? "ENABLED" : "DISABLED",
                gbl_new_snapisol_asof ? "ENABLED" : "DISABLED");
         bdb_osql_trn_clients_status();
+        logmsg(LOGMSG_USER, "Release locks on snapisol lockwait count: %llu\n",
+               release_locks_on_si_lockwait_cnt);
+#ifdef NEWSI_MEMPOOL
+        if (gbl_new_snapisol) {
+            logmsg(LOGMSG_USER, "newsi memory pool stat:\n");
+            bdb_newsi_mempool_stat();
+        }
+#endif
+#ifdef NEWSI_STAT
+        bdb_print_logfile_pglogs_stat();
+    } else if (tokcmp(tok, ltok, "clear_newsi_status") == 0) {
+        bdb_clear_logfile_pglogs_stat();
+#endif
     } else if (tokcmp(tok, ltok, "stack_warn_threshold") == 0) {
         int thresh;
         tok = segtok(line, lline, &st, &ltok);
@@ -1223,7 +1202,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
            logmsg(LOGMSG_USER, "request report already on\n");
         } else {
             gbl_report = 1; /* update rate to log */
-            gbl_report_last = time_epochms();
+            gbl_report_last = comdb2_time_epochms();
             gbl_report_last_n = n_qtrap;
             logmsg(LOGMSG_USER, "request report turned on\n");
         }
@@ -1948,7 +1927,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else if (tokcmp(tok, ltok, "rmtpol") == 0) {
             char *host;
             logmsg(LOGMSG_USER, "I am running on a %s machine\n",
-                   get_mach_class_str(machine()));
+                   get_mach_class_str(gbl_mynode));
             tok = segtok(line, lline, &st, &ltok);
             if (ltok != 0) {
                 char *m = tokdup(tok, ltok);
@@ -1971,8 +1950,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             switch_status();
         } else if (tokcmp(tok, ltok, "clnt") == 0) {
             char *host = NULL;
+            tok = segtok(line, lline, &st, &ltok);
             if (ltok > 0) {
                 host = internn(tok, ltok);
+                tok = segtok(line, lline, &st, &ltok);
             }
             if (ltok == 0 || tokcmp(tok, ltok, "totals") == 0) {
                 if (host)
@@ -2201,7 +2182,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             gbl_debug_until = 0;
             logmsg(LOGMSG_USER, "Debugging off.\n");
         } else {
-            gbl_debug_until = time_epoch() + nsecs;
+            gbl_debug_until = comdb2_time_epoch() + nsecs;
             logmsg(LOGMSG_USER, "set full debugging for %d seconds\n", nsecs);
         }
     } else if (tokcmp(tok, ltok, "ndebg") == 0) {
@@ -2626,7 +2607,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         MEMORY_SYNC;
     } else if (tokcmp(tok, ltok, "scforceabort") == 0) {
         logmsg(LOGMSG_USER, "Forcibly resetting schema change flat\n");
-        sc_set_running(0, 0, NULL, 0);
+        sc_set_running(NULL, 0, 0, NULL, 0);
     } else if (tokcmp(tok, ltok, "debug") == 0) {
         debug_trap(line + st, lline - st);
     }
@@ -3157,10 +3138,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                 char * cnonce = strdup(tok);
                 cancel_sql_statement_with_cnonce(cnonce);
             }
-        } else if (tokcmp(tok, ltok, "rdtimeout") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            gbl_sqlrdtimeoutms = toknum(tok, ltok);
-            logmsg(LOGMSG_USER, "SQL read timeout now set to %d ms\n", gbl_sqlrdtimeoutms);
         } else if (tokcmp(tok, ltok, "wrtimeout") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             gbl_sqlwrtimeoutms = toknum(tok, ltok);
@@ -3420,12 +3397,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else if (tokcmp(tok, ltok, "reql") == 0) {
             reqlog_help();
         }
-    } else if (tokcmp(tok, ltok, "use_bbipc_fastseed") == 0) {
-        gbl_use_bbipc_global_fastseed = 1;
-        logmsg(LOGMSG_USER, "Using bbipc_global_fastseed.\n");
-    } else if (tokcmp(tok, ltok, "dont_use_bbipc_fastseed") == 0) {
-        gbl_use_bbipc_global_fastseed = 0;
-        logmsg(LOGMSG_USER, "Disabling bbipc_global_fastseed.\n");
     } else if (tokcmp(tok, ltok, "appsockpool") == 0) {
         thdpool_process_message(gbl_appsock_thdpool, line, lline, st);
     } else if (tokcmp(tok, ltok, "sqlenginepool") == 0) {
@@ -3784,29 +3755,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                     &gbl_berk_track_cursors);
     } else if (tokcmp(tok, ltok, "querylimit") == 0) {
         query_limit_cmd(line, lline, st);
-    } else if (tokcmp(tok, ltok, "enable_good_sql_return_codes") == 0) {
-        if (!gbl_enable_good_sql_return_codes) {
-            gbl_enable_good_sql_return_codes = 1;
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_GOODSQLCODES);
-            for (i = 0; i < thedb->num_dbs; i++) {
-                comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                    CMDB2_SHMFLG_GOODSQLCODES);
-            }
-            logmsg(LOGMSG_USER, "Enabled good sql return codes\n");
-
-        } else
-            logmsg(LOGMSG_USER, "Good sql return codes already enabled\n");
-    } else if (tokcmp(tok, ltok, "disable_good_sql_return_codes") == 0) {
-        if (gbl_enable_good_sql_return_codes) {
-            gbl_enable_good_sql_return_codes = 0;
-            comdb2_shm_clr_flag(thedb->dbnum, CMDB2_SHMFLG_GOODSQLCODES);
-            for (i = 0; i < thedb->num_dbs; i++) {
-                comdb2_shm_clr_flag(thedb->dbs[i]->dbnum,
-                                    CMDB2_SHMFLG_GOODSQLCODES);
-            }
-            logmsg(LOGMSG_USER, "Disabled good sql return codes\n");
-        } else
-            logmsg(LOGMSG_USER, "Good sql return codes already disabled\n");
     } else if (tokcmp(tok, ltok, "maxretries") == 0) {
         int n;
         tok = segtok(line, lline, &st, &ltok);
@@ -4352,24 +4300,16 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         int start, end;
 
         pthread_mutex_init(&lk, NULL);
-        start = time_epochms();
+        start = comdb2_time_epochms();
         for (i = 0; i < 100000000; i++) {
             pthread_mutex_lock(&lk);
             pthread_mutex_unlock(&lk);
         }
-        end = time_epochms();
+        end = comdb2_time_epochms();
 
         logmsg(LOGMSG_USER, "pthread took %dms (%d per second)\n", end - start,
                100000000 / (end - start) * 1000);
         bdb_lockspeed(dbenv->bdb_env);
-    } else if (tokcmp(tok, ltok, "blocksql_over_sockets") == 0) {
-        logmsg(LOGMSG_USER, "Enabled blocksql over sockets\n");
-        gbl_upgrade_blocksql_to_socksql = 1;
-        comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_SOSQL_DFLT);
-    } else if (tokcmp(tok, ltok, "noblocksql_over_sockets") == 0) {
-        logmsg(LOGMSG_USER, "Disabled blocksql over sockets\n");
-        gbl_upgrade_blocksql_to_socksql = 0;
-        comdb2_shm_clr_flag(thedb->dbnum, CMDB2_SHMFLG_SOSQL_DFLT);
     } else if (tokcmp(tok, ltok, "logevents") == 0) {
         extern void dump_log_event_counts(void);
         dump_log_event_counts();

@@ -219,9 +219,11 @@ res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_dbname()"`
 assertres $res $dbnm
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 
-lclhst=`hostname`
-res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm local "select comdb2_host()"`
-assertres $res $lclhst
+if [[ ! -n "$CLUSTER" ]]; then
+    lclhst=`hostname`
+    res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm local "select comdb2_host()"`
+    assertres $res $lclhst
+fi
 
 for node in $cluster ; do
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_host()"`
@@ -233,9 +235,11 @@ for node in $cluster ; do
     res=`cdb2sql --tabs $dbnm @$node:port=$port "select comdb2_dbname()"`
     assertres $res $dbnm
 
-    # this should also work
-    res=`cdb2sql --tabs $dbnm @$node "select comdb2_dbname()"`
-    assertres $res $dbnm
+    if [ ! -n $PMUXPORT ] ; then
+        # this should also work, if pmux is in standard port
+        res=`cdb2sql -v --tabs $dbnm @$node "select comdb2_dbname()"`
+        assertres $res $dbnm
+    fi
 
     # as should this
     res=`cdb2sql --tabs $dbnm --host $node:$port "select comdb2_dbname()"`
@@ -317,7 +321,7 @@ assertcnt $INITNUMREC
 
 
 echo "Now call task that uses cdb2api to ins/upd/del"
-${TESTSROOTDIR}/tools/cdb2api_caller $dbnm > cdb2api_caller.out
+${TESTSBUILDDIR}/cdb2api_caller $dbnm > cdb2api_caller.out
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" > select_all.out
 

@@ -572,7 +572,7 @@ __lock_dump_locker_int(lt, lip, fp, just_active_locks)
 	if (just_active_locks &&lip->nlocks == 0)
 		return;
 
-	if (F_ISSET(lip, DB_LOCKER_HAVE_WAITERS))
+	if (lip->has_waiters)
 		have_waiters = 1;
 	have_interesting_locks = 0;
 	if (just_active_locks) {

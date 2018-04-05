@@ -74,6 +74,15 @@ struct schema {
     LINKC_T(struct schema) lnk;
 };
 
+struct dbtag {
+    char *tblname;
+    hash_t *tags;
+    LISTC_T(struct schema) taglist;
+};
+
+int lock_taglock(void);
+int unlock_taglock(void);
+
 /* sql_record.flags */
 enum {
     SCHEMA_TABLE = 1,
@@ -175,11 +184,11 @@ enum {
     SC_BAD_INDEX_NAME = -5
 };
 
+extern hash_t *gbl_tag_hash;
 extern char gbl_ver_temp_table[];
 extern char gbl_ondisk_ver[];
 extern const int gbl_ondisk_ver_len;
 extern char gbl_ondisk_ver_fmt[];
-
 extern int gbl_use_t2t;
 
 int tag_init(void);

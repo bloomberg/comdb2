@@ -7,6 +7,7 @@
 #include <epochlib.h>
 #include <errno.h>
 #include <unistd.h>
+#include <time.h>
 
 static char *argv0=NULL;
 
@@ -23,7 +24,7 @@ void usage(FILE *f)
 static int cnt=0;
 static int iters = 1000;
 
-int time_epochms(void)
+int comdb2_time_epochms(void)
 {
     struct timeval tv;
     int rc;
@@ -35,11 +36,11 @@ int time_epochms(void)
     return (tv.tv_sec * 1000 + tv.tv_usec / 1000);
 }
 
-int time_epoch(void) { return time(NULL); }
+int comdb2_time_epoch(void) { return time(NULL); }
 
 long long get_timestamp(void)
 {
-    return time_epoch() * 1000 + time_epochms();
+    return comdb2_time_epoch() * 1000 + comdb2_time_epochms();
 }
 
 void setdata(unsigned char *data, int datasz)

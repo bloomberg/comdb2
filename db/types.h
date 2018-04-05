@@ -109,6 +109,13 @@ typedef struct intv {
     } u;
 } intv_t;
 
+typedef struct {
+    struct tm tm;
+    unsigned int frac;
+    unsigned int prec;
+    char tzname[CDB2_MAX_TZNAME];
+} datetime_t;
+
 /* Used for collecting blob data before a keyless add/upd/del.
  * An array of these also supplements */
 typedef struct blob_buffer {

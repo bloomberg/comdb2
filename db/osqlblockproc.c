@@ -113,7 +113,11 @@ typedef struct oplog_key {
 } oplog_key_t;
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
-                         int *nops, struct block_err *err, SBUF2 *logsb);
+                         int *nops, struct block_err *err, SBUF2 *logsb,
+                         int (*func)(struct ireq *, unsigned long long, uuid_t,
+                                     void *, char *, int, int *, int **,
+                                     blob_buffer_t blobs[MAXBLOBS], int,
+                                     struct block_err *, int *, SBUF2 *));
 static int osql_bplog_wait(blocksql_tran_t *tran);
 static int req2blockop(int reqtype);
 static int osql_bplog_loginfo(struct ireq *iq, osql_sess_t *sess);
@@ -313,10 +317,10 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
         /* please stop !!! */
         if (thedb->stopped || thedb->exiting) {
             if (stop_time == 0) {
-                stop_time = time_epoch();
+                stop_time = comdb2_time_epoch();
             } else {
                 if (stop_time + gbl_blocksql_grace /*seconds grace time*/ <=
-                    time_epoch()) {
+                    comdb2_time_epoch()) {
                     logmsg(LOGMSG_ERROR, 
                             "blocksql session closing early, db stopped\n");
                     return ERR_NOMASTER;
@@ -361,6 +365,60 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
 }
 
 /**
+ * Apply all schema changes and wait for them to finish
+ */
+int osql_bplog_schemachange(struct ireq *iq)
+{
+    blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
+    int rc = 0;
+    int nops = 0;
+    struct block_err err;
+    struct schema_change_type *sc;
+
+    iq->sc_pending = NULL;
+    iq->sc_seed = 0;
+    iq->sc_host = 0;
+    iq->sc_locked = 0;
+    iq->sc_should_abort = 0;
+
+    rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese.osqllog,
+                       osql_process_schemachange);
+
+    /* wait for all schema changes to finish */
+    iq->sc = sc = iq->sc_pending;
+    iq->sc_pending = NULL;
+    while (sc != NULL) {
+        pthread_mutex_lock(&sc->mtx);
+        sc->nothrevent = 1;
+        pthread_mutex_unlock(&sc->mtx);
+        iq->sc = sc->sc_next;
+        if (sc->sc_rc == SC_COMMIT_PENDING) {
+            sc->sc_next = iq->sc_pending;
+            iq->sc_pending = sc;
+        } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
+            free_schema_change_type(sc);
+            rc = ERR_NOMASTER;
+        } else {
+            free_schema_change_type(sc);
+            int sc_set_running(char *table, int running, uint64_t seed,
+                               const char *host, time_t time);
+            sc_set_running(sc->table, 0, iq->sc_seed, NULL, 0);
+            if (sc->sc_rc)
+                rc = ERR_SC;
+        }
+        sc = iq->sc;
+    }
+    if (rc) {
+        extern pthread_mutex_t csc2_subsystem_mtx;
+        pthread_mutex_lock(&csc2_subsystem_mtx);
+        csc2_free_all();
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
+    }
+    logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
+    return rc;
+}
+
+/**
  * Wait for all pending osql sessions of this transaction to
  * finish
  * Once all finished ok, we apply all the changes
@@ -372,7 +430,8 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
     int rc = 0;
 
     /* apply changes */
-    rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese.osqllog);
+    rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese.osqllog,
+                       osql_process_packet);
 
     iq->timings.req_applied = osql_log_time();
 
@@ -598,6 +657,14 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long seq, char *host)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)osql_sess_getbptran(sess);
+    if (!tran || !tran->db) {
+        /* something has gone wrong dispatching the socksql request, ignoring
+           when the bplog creation failed, the caller is responsible for
+           notifying the source that the session has gone awry
+         */
+        return 0;
+    }
+
     struct ireq *iq;
     int rc = 0, rc_op = 0;
     oplog_key_t key;
@@ -620,52 +687,42 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     key.seq = seq;
     comdb2uuidcpy(key.uuid, uuid);
 
-    if (!tran || !tran->db) {
-        /* something has gone wrong dispatching the socksql request, ignoring
-           when the bplog creation failed, the caller is responsible for
-           notifying the source that the session has gone awry
-         */
-        return 0;
-    }
-
     /* add the op into the temporary table */
     if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
         logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
         return rc;
     }
 
-    if (seq == 0 && osql_session_is_sorese(sess)) {
+    if (seq == 0 && osql_session_is_sorese(sess) && tran->rows > 0) {
         /* lets make sure that the temp table is empty since commit retries will
          * use same rqid*/
-        if (tran->rows > 0) {
-            sorese_info_t sorese_info = {0};
-            struct errstat generr = {0};
+        sorese_info_t sorese_info = {0};
+        struct errstat generr = {0};
 
-            logmsg(LOGMSG_ERROR, "%s Broken transaction, received first seq row but "
-                            "session already has rows?\n",
-                    __func__);
+        logmsg(LOGMSG_ERROR, "%s Broken transaction, received first seq row but "
+                "session already has rows?\n",
+                __func__);
 
-            sorese_info.rqid = rqid;
-            sorese_info.host = host;
-            sorese_info.type = -1; /* I don't need it */
+        sorese_info.rqid = rqid;
+        sorese_info.host = host;
+        sorese_info.type = -1; /* I don't need it */
 
-            generr.errval = RC_INTERNAL_RETRY;
-            strncpy(generr.errstr,
-                    "malformed transaction, received duplicated first row",
-                    sizeof(generr.errstr));
+        generr.errval = RC_INTERNAL_RETRY;
+        strncpy(generr.errstr,
+                "malformed transaction, received duplicated first row",
+                sizeof(generr.errstr));
 
-            if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
-                logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-            }
-
-            rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
-                                            RC_INTERNAL_RETRY);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
-            }
-
-            return -1;
+        if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
+            logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
         }
+
+        rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
+                RC_INTERNAL_RETRY);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
+        }
+
+        return -1;
     }
 
 #if 0 
@@ -691,46 +748,48 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         return rc;
     }
 
-    if (!rc_op && osql_comm_is_done(rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr,
-                                    osql_session_get_ireq(sess))) {
+    if (rc_op)
+        return rc_op;
 
-        osql_sess_set_complete(rqid, uuid, sess, xerr);
-
-        /* if we received a too early, check the coherency and mark blackout the
-         * node */
-        if (xerr && xerr->errval == OSQL_TOOEARLY) {
-            osql_comm_blkout_node(host);
-        }
-
-        if ((rc = osql_bplog_signal(tran))) {
-            return rc;
-        }
-
-        debug = debug_this_request(gbl_debug_until);
-        if (gbl_who > 0 && gbl_debug) {
-            debug = 1;
-        }
-
-        if (osql_session_is_sorese(sess)) {
-
-            osql_sess_lock(sess);
-            osql_sess_lock_complete(sess);
-            if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
-                iq = osql_session_get_ireq(sess);
-                osql_session_set_ireq(sess, NULL);
-                osql_sess_set_dispatched(sess, 1);
-                rc = handle_buf_sorese(thedb, iq, debug);
-            }
-            osql_sess_unlock_complete(sess);
-            osql_sess_unlock(sess);
-
-            return rc;
-        }
-
+    rc = osql_comm_is_done(rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr,
+                                    osql_session_get_ireq(sess));
+    if (rc == 0)
         return 0;
+
+    osql_sess_set_complete(rqid, uuid, sess, xerr);
+
+    /* if we received a too early, check the coherency and mark blackout the
+     * node */
+    if (xerr && xerr->errval == OSQL_TOOEARLY) {
+        osql_comm_blkout_node(host);
     }
 
-    return rc_op;
+    if ((rc = osql_bplog_signal(tran))) {
+        return rc;
+    }
+
+    debug = debug_this_request(gbl_debug_until);
+    if (gbl_who > 0 && gbl_debug) {
+        debug = 1;
+    }
+
+    if (osql_session_is_sorese(sess)) {
+
+        osql_sess_lock(sess);
+        osql_sess_lock_complete(sess);
+        if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
+            iq = osql_session_get_ireq(sess);
+            osql_session_set_ireq(sess, NULL);
+            osql_sess_set_dispatched(sess, 1);
+            rc = handle_buf_sorese(thedb, iq, debug);
+        }
+        osql_sess_unlock_complete(sess);
+        osql_sess_unlock(sess);
+
+        return rc;
+    }
+
+    return 0;
 }
 
 /**
@@ -1210,7 +1269,11 @@ int osql_bplog_reqlog_queries(struct ireq *iq)
 }
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
-                         int *nops, struct block_err *err, SBUF2 *logsb)
+                         int *nops, struct block_err *err, SBUF2 *logsb,
+                         int (*func)(struct ireq *, unsigned long long, uuid_t,
+                                     void *, char *, int, int *, int **,
+                                     blob_buffer_t blobs[MAXBLOBS], int,
+                                     struct block_err *, int *, SBUF2 *))
 {
 
     blocksql_info_t *info = NULL;
@@ -1260,7 +1323,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     LISTC_FOR_EACH(&tran->complete, info, c_reqs)
     {
         out_rc = process_this_session(iq, iq_tran, info->sess, &bdberr, nops,
-                                      err, logsb, dbc, osql_process_packet);
+                                      err, logsb, dbc, func);
         if (out_rc) {
             break;
         }

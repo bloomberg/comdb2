@@ -39,14 +39,12 @@ extern int gbl_exit;
 extern int gbl_recovery_timestamp;
 extern int gbl_recovery_lsn_file;
 extern int gbl_recovery_lsn_offset;
-extern int gbl_sql_tranlevel_sosql_pref;
 extern int gbl_upgrade_blocksql_2_socksql;
 extern int gbl_rep_node_pri;
 extern int gbl_bad_lrl_fatal;
 extern int gbl_disable_new_snapshot;
 
 extern char *gbl_recovery_options;
-extern char *gbl_dbdir;
 extern const char *gbl_repoplrl_fname;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern char **qdbs;
@@ -114,6 +112,21 @@ static int write_pidfile(const char *pidfile)
     return 0;
 }
 
+static void set_dbdir(char *dir)
+{
+    if (dir == NULL)
+        return;
+    if (*dir == '/') {
+        gbl_dbdir = strdup(dir);
+        return;
+    }
+    char *wd = getcwd(NULL, 0);
+    int n = snprintf(NULL, 0, "%s/%s", wd, dir);
+    gbl_dbdir = malloc(++n);
+    snprintf(gbl_dbdir, n, "%s/%s", wd, dir);
+    free(wd);
+}
+
 int handle_cmdline_options(int argc, char **argv, char **lrlname)
 {
     char *p;
@@ -153,7 +166,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
             break;
         case 4: /* recovery_lsn */ gbl_recovery_options = optarg; break;
         case 5: /* pidfile */ write_pidfile(optarg); break;
-        case 10: /* dir */ gbl_dbdir = optarg; break;
+        case 10: /* dir */ set_dbdir(optarg); break;
         }
     }
     return 0;
@@ -286,7 +299,7 @@ void getmyaddr()
 {
     struct hostent *h;
 
-    h = bb_gethostbyname(gbl_mynode);
+    h = comdb2_gethostbyname(gbl_mynode);
     if (h == NULL || h->h_addrtype != AF_INET) {
         /* default to localhost */
         gbl_myaddr.s_addr = INADDR_LOOPBACK;
@@ -623,7 +636,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 }
 
                 /* Check to see if this name is another name for me. */
-                h = bb_gethostbyname(nodename);
+                h = comdb2_gethostbyname(nodename);
                 if (h && h->h_addrtype == AF_INET &&
                     memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length) == 0) {
                     /* Assume I am better known by this name. */
@@ -669,9 +682,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 ii=toknum(tok,ltok);
 
             bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEDTA, ii);
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEFREEREC, ii);
             bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEIX, ii);
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEBLOB, ii);
 #endif
         } else if (tokcmp(tok, ltok, "dta") == 0) {
             tok = segtok(line, len, &st, &ltok);
@@ -1040,10 +1051,15 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
+        gbl_new_snapisol = 1;
+        gbl_new_snapisol_asof = 1;
+        gbl_new_snapisol_logging = 1;
+        logmsg(LOGMSG_INFO, "Enabled snapshot isolation (default newsi)\n");
     } else if (tokcmp(tok, ltok, "enable_new_snapshot") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
         gbl_new_snapisol = 1;
+        gbl_new_snapisol_asof = 1;
         gbl_new_snapisol_logging = 1;
         logmsg(LOGMSG_INFO, "Enabled new snapshot\n");
     } else if (tokcmp(tok, ltok, "enable_new_snapshot_asof") == 0) {
@@ -1125,10 +1141,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                    (gbl_sql_tranlevel_default == SQL_TDEF_SOCK) ? "socksql"
                                                                 : "blocksql");
             gbl_use_block_mode_status_code = 0;
-        } else if (ltok == 16 && !strncasecmp(tok, "prefer_blocksock", 16)) {
-            gbl_sql_tranlevel_sosql_pref = 1;
-            logmsg(LOGMSG_INFO, "prefer socksql over blocksql\n");
-
         } else if (ltok == 5 && !strncasecmp(tok, "recom", 5)) {
             gbl_sql_tranlevel_default = SQL_TDEF_RECOM;
             logmsg(LOGMSG_INFO, "sql default mode is read committed\n");

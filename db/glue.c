@@ -70,9 +70,6 @@
 #include "remote.h"
 
 #include <cdb2api.h>
-
-#include "comdb2_shm.h"
-
 #include <dlmalloc.h>
 
 #include "sqloffload.h"
@@ -89,7 +86,6 @@
 #include <alloca.h>
 #include <intern_strings.h>
 #include "debug_switches.h"
-#include <machine.h>
 #include <trigger.h>
 
 #include "views.h"
@@ -97,6 +93,8 @@
 
 #include "views.h"
 #include "logmsg.h"
+
+int (*comdb2_ipc_master_set)(char *host) = 0;
 
 /* ixrc != -1 is incorrect. Could be IX_PASTEOF or IX_EMPTY.
  * Don't want to vtag those results
@@ -300,11 +298,11 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
         *out_trans = bdb_tran_begin_logical(bdb_handle, 0, &bdberr);
         if (iq->tranddl && sc && *out_trans) {
             bdb_ltran_get_schema_lock(*out_trans);
-            int get_physical_transaction(bdb_state_type * bdb_state,
-                                         tran_type * logical_tran,
-                                         tran_type * *outtran);
+            int get_physical_transaction(
+                bdb_state_type * bdb_state, tran_type * logical_tran,
+                tran_type * *outtran, int force_commit);
             rc = get_physical_transaction(bdb_handle, *out_trans,
-                                          &physical_tran);
+                                          &physical_tran, 0);
             if (rc == BDBERR_READONLY) {
                 trans_abort_logical(iq, *out_trans, NULL, 0, NULL, 0);
                 *out_trans = NULL;
@@ -622,7 +620,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
     }
 
     /*wait for synchronization, if necessary */
-    start_ms = time_epochms();
+    start_ms = comdb2_time_epochms();
     switch (sync) {
     default:
 
@@ -697,7 +695,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
             poll(0, 0, next_commit - now);
     }
 
-    end_ms = time_epochms();
+    end_ms = comdb2_time_epochms();
     iq->reptimems = end_ms - start_ms;
 
     return rc;
@@ -2934,7 +2932,13 @@ static int new_master_callback(void *bdb_handle, char *host)
             logmsg(LOGMSG_WARN, "NEW MASTER NODE %s\n", host);
         }
         /*bdb_set_timeout(bdb_handle, 0, &bdberr);*/
+        sc_set_running(NULL, 0, 0, NULL, 0);
         osql_repository_cancelall();
+    }
+
+    /* poke master in comdb2 shm */
+    if (!gbl_exit && comdb2_ipc_master_set) {
+        comdb2_ipc_master_set(host);
     }
 
     gbl_lost_master_time = 0; /* reset this */
@@ -3024,7 +3028,7 @@ int is_node_up(const char *host)
 {
     int rc;
 
-    if (gbl_rtcpu_debug && CLASS_TEST == get_mach_class(machine())) {
+    if (gbl_rtcpu_debug && CLASS_TEST == get_mach_class(gbl_mynode)) {
         /* For debugging rtcpu problems use an "alternative" rtcpu system.
          * Basically look for a file in /bbsrc/db/comdb2/rtcpu - if a file
          * for the node exists, then it is considered rt'd off. */
@@ -3312,7 +3316,8 @@ static void net_close_all_dbs(void *hndl, void *uptr, char *fromnode,
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 
-struct start_sc {
+struct net_sc_msg {
+    char table[MAXTABLELEN + 1];
     uint64_t seed;
     int64_t time;
     char host[1];
@@ -3322,13 +3327,14 @@ static void net_start_sc(void *hndl, void *uptr, char *fromnode, int usertype,
                          void *dtap, int dtalen, uint8_t is_tcp)
 {
     int rc;
-    struct start_sc *sc;
+    struct net_sc_msg *sc;
 
-    sc = (struct start_sc *)dtap;
+    sc = (struct net_sc_msg *)dtap;
+    sc->table[sizeof(sc->table) - 1] = '\0';
     sc->seed = flibc_ntohll(sc->seed);
     sc->time = flibc_ntohll(sc->time);
 
-    rc = sc_set_running(1, sc->seed, sc->host, sc->time);
+    rc = sc_set_running(sc->table, 1, sc->seed, sc->host, sc->time);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 
@@ -3336,13 +3342,13 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
                         void *dtap, int dtalen, uint8_t is_tcp)
 {
     int rc;
-    uint64_t *seed;
-    if (dtalen != sizeof(uint64_t)) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-    seed = dtap;
-    rc = sc_set_running(0, *seed, NULL, 0);
+    struct net_sc_msg *sc;
+    sc = (struct net_sc_msg *)dtap;
+
+    sc->table[sizeof(sc->table) - 1] = '\0';
+    sc->seed = flibc_ntohll(sc->seed);
+
+    rc = sc_set_running(sc->table, 0, sc->seed, NULL, 0);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 
@@ -3607,25 +3613,40 @@ int broadcast_close_all_dbs(void)
     return send_to_all_nodes(NULL, 0, NET_CLOSE_ALL_DBS, MSGWAITTIME);
 }
 
-int broadcast_sc_end(uint64_t seed)
+int broadcast_sc_end(const char *table, uint64_t seed)
 {
-    return send_to_all_nodes(&seed, sizeof(seed), NET_STOP_SC, SCWAITTIME);
+    struct net_sc_msg *sc;
+    int len;
+    len = offsetof(struct net_sc_msg, host) + 1;
+
+    sc = alloca(len);
+    if (table)
+        strncpy0(sc->table, table, sizeof(sc->table));
+    else
+        sc->table[0] = '\0';
+    sc->seed = flibc_htonll(seed);
+
+    return send_to_all_nodes(sc, len, NET_STOP_SC, SCWAITTIME);
 }
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
-int broadcast_sc_start(uint64_t seed, uint32_t host, time_t t)
+int broadcast_sc_start(const char *table, uint64_t seed, uint32_t host,
+                       time_t t)
 {
-    struct start_sc *sc;
+    struct net_sc_msg *sc;
     int len;
     const char *from = get_hostname_with_crc32(thedb->bdb_env, host);
     if (from == NULL) {
         from = "unknown";
     }
 
-    len = offsetof(struct start_sc, host) + strlen(from) + 1;
-
+    len = offsetof(struct net_sc_msg, host) + strlen(from) + 1;
     sc = alloca(len);
+    if (table)
+        strncpy0(sc->table, table, sizeof(sc->table));
+    else
+        sc->table[0] = '\0';
     sc->seed = flibc_htonll(seed);
     sc->time = flibc_htonll(t);
     strcpy(sc->host, intern(from));
@@ -3824,11 +3845,6 @@ int open_bdb_env(struct dbenv *dbenv)
 
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DTASTRIPE, gbl_dtastripe);
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_BLOBSTRIPE, gbl_blobstripe);
-
-    if (debug_switch_use_phase_3())
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_USEPHASE3, 1);
-    else
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_USEPHASE3, 0);
 
     backend_update_sync(dbenv);
 
@@ -4115,9 +4131,27 @@ int backend_open(struct dbenv *dbenv)
                           dbenv->bdb_env, &bdberr);
 
         if (db->handle == NULL) {
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_IGNORE_BAD_TABLE)) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "bdb_open:failed to open table %s/%s, rcode %d, IGNORING\n",
+                    dbenv->basedir, db->tablename, bdberr);
+                /* this is a hack, lets just leak it */
+                if (ii == dbenv->num_dbs - 1) {
+                    dbenv->dbs[ii] == NULL;
+                } else {
+                    memcpy(dbenv->dbs[ii], dbenv->dbs[ii + 1],
+                           sizeof(dbenv->dbs[0]));
+                    dbenv->dbs[dbenv->num_dbs - 1] = NULL;
+                }
+                dbenv->num_dbs--;
+                ii--;
+                continue;
+            }
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open table %s/%s, rcode %d\n",
                    dbenv->basedir, db->tablename, bdberr);
+
             return -1;
         }
     }
@@ -4353,9 +4387,7 @@ int backend_close(struct dbenv *dbenv)
     }
 
     /* offloading sql goes here */
-    if (dbenv->nsiblings > 0) {
-        osql_net_exiting();
-    }
+    osql_net_exiting();
 
     return bdb_close_env(dbenv->bdb_env);
 }
@@ -5016,7 +5048,7 @@ static int meta_get_var_tran(tran_type *tran, struct dbtable *db,
     } else {
         /* silly loop to find record with the right length */
         int dtalen = 0;
-        *fndlen = DB_MAX_SERVER_KEY_SIZE;
+        *fndlen = MAXKEYLEN;
         *dta = NULL;
 
         if (tran) {

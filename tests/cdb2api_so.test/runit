@@ -9,13 +9,13 @@ if [[ -z $dbname ]] ; then
     exit 1
 fi
 
-ldd ./cdb2_client | grep "libcdb2api.so => not found" > /dev/null
+ldd ${TESTSBUILDDIR}/cdb2_client | grep "libcdb2api.so => not found" > /dev/null
 if [ $? -ne 1 ]; then
   echo 'Could not find libcdb2api.so' >&2
   exit 1
 fi
 
-./cdb2_client $dbname
+${TESTSBUILDDIR}/cdb2_client $dbname
 if [ $? -ne 0 ]; then
   exit 1
 fi

@@ -223,6 +223,16 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         struct block_err *err, int *receivedrows, SBUF2 *logsb);
 
 /**
+ * Handles each packet and start schema change
+ *
+ */
+int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
+                              uuid_t uuid, void *trans, char *msg, int msglen,
+                              int *flags, int **updCols,
+                              blob_buffer_t blobs[MAXBLOBS], int step,
+                              struct block_err *err, int *receivedrows,
+                              SBUF2 *logsb);
+/**
  * Sends a user command to offload net (used by "osqlnet")
  *
  */
@@ -315,14 +325,6 @@ void osql_net_exiting(void);
  */
 int osql_send_dbglog(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long dbglog_cookie, int queryid, int type);
-
-/**
- * Copy and pack the host-ordered dbglog_header- used to write endianized
- * dbglogfiles.
- *
- */
-const uint8_t *dbglog_hdr_put(const struct dbglog_hdr *p_dbglog_hdr,
-                              uint8_t *p_buf, const uint8_t *p_buf_end);
 
 /**
  * Interprets each packet and log info

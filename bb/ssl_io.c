@@ -208,9 +208,27 @@ static int ssl_verify_cn(const char *hostname, const X509 *cert)
 
 static int ssl_verify_ca(SBUF2 *sb, char *err, size_t n)
 {
+    /*
+    ** 1) Perform a reverse DNS lookup to get the hostname
+    **    associated with the source address.
+    ** 2) Perform a forward DNS lookup to get a list of addresses
+    **    associated with the hostname.
+    ** 3) If the source address is in the list, proceed;
+    **    otherwise, return 1 immediately.
+    ** 4) Perform SAN/CN validation.
+    **
+    ** The forward DNS lookup is necessary in case an attacker is
+    ** in control of reverse DNS for the source IP.
+    */
     const char *peerhost;
-    int rc;
+    struct sockaddr_in peeraddr;
+    struct in_addr *peer_in_addr, **p_fwd_in_addr;
+    socklen_t len = sizeof(struct sockaddr_in);
+    int rc, found_addr, herr;
+    char buf[8192];
+    struct hostent hostbuf, *hp = NULL;
 
+    /* Reverse lookup the hostname */
     peerhost = get_origin_mach_by_buf(sb);
 
     if (strcmp(peerhost, "???") == 0) {
@@ -218,6 +236,40 @@ static int ssl_verify_ca(SBUF2 *sb, char *err, size_t n)
                      "Could not obtain peer host name.");
         return 1;
     }
+
+    /* Should always succeed as get_origin_mach_by_buf()
+       returns a valid hostname. */
+    getpeername(sb->fd, (struct sockaddr *)&peeraddr, &len);
+
+/* Forward lookup the IPs */
+#if defined(_LINUX_SOURCE)
+    gethostbyname_r(peerhost, &hostbuf, buf, sizeof(buf), &hp, &herr);
+#elif defined(_SUN_SOURCE)
+    hp = gethostbyname_r(peerhost, &hostbuf, buf, sizeof(buf), &herr);
+#else
+    hp = gethostbyname(peerhost);
+#endif
+
+    if (hp == NULL) {
+        ssl_sfeprint(err, n, my_ssl_eprintln,
+                     "Failed to perform forward DNS lookup.");
+        return 1;
+    }
+
+    /* Find the source address in the address list returned
+       by the forward DNS lookup. */
+    for (found_addr = 0, peer_in_addr = &peeraddr.sin_addr,
+        p_fwd_in_addr = (struct in_addr **)hp->h_addr_list;
+         *p_fwd_in_addr != NULL; ++p_fwd_in_addr) {
+        if (peer_in_addr->s_addr == (*p_fwd_in_addr)->s_addr) {
+            found_addr = 1;
+            break;
+        }
+    }
+
+    /* Suspicious PTR record. Reject it. */
+    if (!found_addr)
+        return 1;
 
     /* Trust localhost */
     if (strcasecmp(peerhost, "localhost") == 0 ||
@@ -253,10 +305,42 @@ int SBUF2_FUNC(sslio_verify)(SBUF2 *sb, ssl_mode mode, char *err, size_t n)
     return rc;
 }
 
-static int sslio_accept_or_connect(SBUF2 *sb,
-                                   SSL_CTX *ctx, int (*SSL_func)(SSL *),
-                                   ssl_mode verify, char *err, size_t n,
-                                   SSL_SESSION *sess, int *unrecoverable)
+#ifdef SSL_DEBUG
+static void my_apps_ssl_info_callback(const SSL *s, int where, int ret)
+{
+    const char *str;
+    int w;
+
+    w = where & ~SSL_ST_MASK;
+
+    if (w & SSL_ST_CONNECT)
+        str = "SSL_connect";
+    else if (w & SSL_ST_ACCEPT)
+        str = "SSL_accept";
+    else
+        str = "undefined";
+
+    if (where & SSL_CB_LOOP) {
+        fprintf(stderr, "%s:%s\n", str, SSL_state_string_long(s));
+    } else if (where & SSL_CB_ALERT) {
+        str = (where & SSL_CB_READ) ? "read" : "write";
+        fprintf(stderr, "SSL3 alert %s:%s:%s\n", str,
+                SSL_alert_type_string_long(ret),
+                SSL_alert_desc_string_long(ret));
+    } else if (where & SSL_CB_EXIT) {
+        if (ret == 0)
+            fprintf(stderr, "%s:failed in %s\n", str, SSL_state_string_long(s));
+        else if (ret < 0) {
+            fprintf(stderr, "%s:error in %s\n", str, SSL_state_string_long(s));
+        }
+    }
+}
+#endif
+
+static int sslio_accept_or_connect(SBUF2 *sb, SSL_CTX *ctx,
+                                   int (*SSL_func)(SSL *), ssl_mode verify,
+                                   char *err, size_t n, SSL_SESSION *sess,
+                                   int *unrecoverable, const char *f)
 {
     int rc, ioerr, fd, flags;
 
@@ -298,6 +382,10 @@ static int sslio_accept_or_connect(SBUF2 *sb,
                           "Failed to set fd");
         goto error;
     }
+
+#ifdef SSL_DEBUG
+    SSL_set_info_callback(sb->ssl, my_apps_ssl_info_callback);
+#endif
 
     if (sess != NULL)
         SSL_set_session(sb->ssl, sess);
@@ -351,14 +439,12 @@ re_accept_or_connect:
     } else {
         *unrecoverable = 0;
     }
-
     /* Put blocking back. */
     if (fcntl(fd, F_SETFL, flags) < 0) {
         ssl_sfeprint(err, n, my_ssl_eprintln,
                      "fcntl: (%d) %s", errno, strerror(errno));
         return -1;
     }
-
     if (rc != 1) {
 error:
         if (sb->ssl != NULL) {
@@ -379,8 +465,10 @@ int SBUF2_FUNC(sslio_accept)(SBUF2 *sb, SSL_CTX *ctx,
                            ssl_mode mode, char *err, size_t n)
 {
     int dummy;
-    return sslio_accept_or_connect(sb, ctx, SSL_accept,
-                                   mode, err, n, NULL, &dummy);
+
+    int rc = sslio_accept_or_connect(sb, ctx, SSL_accept, mode, err, n, NULL,
+                                     &dummy, __func__);
+    return rc;
 }
 
 #if SBUF2_SERVER
@@ -388,16 +476,17 @@ int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx,
                             ssl_mode mode, char *err, size_t n)
 {
     int dummy;
-    return sslio_accept_or_connect(sb, ctx, SSL_connect,
-                                   mode, err, n, NULL, &dummy);
+    int rc = sslio_accept_or_connect(sb, ctx, SSL_connect, mode, err, n, NULL,
+                                     &dummy, __func__);
+    return rc;
 }
 #else
 int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx,
                             ssl_mode mode, char *err, size_t n,
                             SSL_SESSION *sess, int *unrecoverable)
 {
-    return sslio_accept_or_connect(sb, ctx, SSL_connect,
-                                   mode, err, n, sess, unrecoverable);
+    return sslio_accept_or_connect(sb, ctx, SSL_connect, mode, err, n, sess,
+                                   unrecoverable, __func__);
 }
 #endif
 

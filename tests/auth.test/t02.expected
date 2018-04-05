@@ -1,1 +1,1 @@
-[select 'user3'] failed with rc -106 invalid password
+[select 'user3'] failed with rc -106 access denied
