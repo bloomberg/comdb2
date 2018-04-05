@@ -51,8 +51,7 @@ endforeach()
 
 # cdb2api shared object
 target_link_libraries(cdb2_client cdb2api_shared ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
-# cdb2api_unit -- can move to it's own dir maybe
-include_directories(${PROJECT_SOURCE_DIR}/bb ${PROJECT_SOURCE_DIR}/build/protobuf/ )
+include_directories(${PROJECT_SOURCE_DIR}/bb ${PROJECT_BINARY_DIR}/protobuf/ )
 add_definitions(-DSBUF2_SERVER=0)
 target_link_libraries(cdb2api_unit cdb2api_shared ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS} )
 
