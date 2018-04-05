@@ -244,12 +244,14 @@ int process_deferred_options(struct dbenv *dbenv,
     struct deferred_option *opt;
     int rc;
 
-    LISTC_FOR_EACH(&dbenv->deferred_options[lvl], opt, lnk) {
+    LISTC_FOR_EACH(&dbenv->deferred_options[lvl], opt, lnk)
+    {
         callback(dbenv, opt->option, usrdata, opt->len);
     }
 }
 
-int clear_deferred_options(struct dbenv *dbenv, enum deferred_option_level lvl) {
+int clear_deferred_options(struct dbenv *dbenv, enum deferred_option_level lvl)
+{
     struct deferred_option *opt;
     opt = listc_rtl(&dbenv->deferred_options[lvl]);
     while (opt) {

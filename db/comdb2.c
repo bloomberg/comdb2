@@ -5096,7 +5096,7 @@ int main(int argc, char **argv)
         abort();
 
     process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
-                                 deferred_do_commands);
+                             deferred_do_commands);
     clear_deferred_options(thedb, DEFERRED_SEND_COMMAND);
 
     // db started - disable recsize kludge so

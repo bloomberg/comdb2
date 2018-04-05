@@ -21,9 +21,9 @@ void print_usage_and_exit();
 int handle_cmdline_options(int argc, char **argv, char **lrlname);
 int read_lrl_files(struct dbenv *dbenv, const char *lrlname);
 void process_deferred_options(struct dbenv *dbenv,
-                             enum deferred_option_level lvl, void *usrdata,
-                             int (*callback)(struct dbenv *env, char *option,
-                                             void *p, int len));
+                              enum deferred_option_level lvl, void *usrdata,
+                              int (*callback)(struct dbenv *env, char *option,
+                                              void *p, int len));
 int deferred_do_commands(struct dbenv *env, char *option, void *p, int len);
 int clear_deferred_options(struct dbenv *dbenv, enum deferred_option_level lvl);
 void getmyaddr();
