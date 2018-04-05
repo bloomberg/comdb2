@@ -1331,13 +1331,17 @@ REGISTER_TUNABLE("finish_fill_threshold", "Fill to end if end is less than "
                  "this.  (Default: 60000000)", TUNABLE_INTEGER, 
                  &gbl_finish_fill_threshold, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("req_delay_count_threshold", "Request commit-delay if falling behind "
-                 "this many times.  (Default: 5)", TUNABLE_INTEGER, 
+REGISTER_TUNABLE("req_delay_count_threshold", "Request commit-delay if falling "
+                 "behind this many times.  (Default: 5)", TUNABLE_INTEGER, 
                  &gbl_req_delay_count_threshold, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("osql_random_restart",
                  "Restart socksql transmission randomly.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_osql_random_restart,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("max_apply_dequeue", "Limit apply-processing to this many per "
+                 "loop.  this many times.  (Default: 1000)", TUNABLE_INTEGER, 
+                 &gbl_max_apply_dequeue, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

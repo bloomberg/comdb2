@@ -75,6 +75,7 @@ extern int gbl_rep_process_txn_time;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_decoupled_fills = 1;
+int gbl_max_apply_dequeue = 1000;
 int gbl_master_req_waitms = 200;
 int gbl_fills_waitms = 1000;
 int gbl_warn_queue_latency_threshold = 500;
@@ -448,8 +449,11 @@ static void *apply_thread(void *arg)
 
     pthread_mutex_lock(&rep_queue_lock);
     while (gbl_decoupled_logputs) {
-        int pollms = (gbl_apply_thread_pollms > 0) ? gbl_apply_thread_pollms : 200;
+        int pollms = (gbl_apply_thread_pollms > 0) ?
+            gbl_apply_thread_pollms : 200;
         int waitms;
+        int max_dequeue = (gbl_max_apply_dequeue > 0) ?
+            gbl_max_apply_dequeue : 1000;
         DBT rec = {0};
         DB_LSN ret_lsnp;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -457,7 +461,8 @@ static void *apply_thread(void *arg)
         ts.tv_sec += (ts.tv_nsec / 1000000000);
         ts.tv_nsec %= 1000000000;
         ret = pthread_cond_timedwait(&queue_cond, &rep_queue_lock, &ts);
-        while (!IN_ELECTION_TALLY(rep) && (q = listc_rtl(&log_queue))) {
+        while (!IN_ELECTION_TALLY(rep) && (max_dequeue-- > 0) &&
+                (q = listc_rtl(&log_queue))) {
             pthread_cond_broadcast(&release_cond);
             if (q->rp.rectype == REP_LOG_MORE) {
                 queue_log_more_count--;
@@ -571,6 +576,40 @@ static void *apply_thread(void *arg)
         i_am_replicant = !F_ISSET(rep, REP_F_MASTER);
         my_lsn = lp->ready_lsn;
 
+        bytes_behind = subtract_lsn(dbenv->app_private, &master_lsn, &my_lsn);
+        if (!bdb_valid_lease(dbenv->app_private)) {
+            if (last_behind && bytes_behind > last_behind) {
+                static int lastinc = 0;
+
+                /* Increment at most once per second */
+                if ((now = comdb2_time_epoch()) - lastinc) {
+                    lastinc = now;
+
+                    more_behind_count++;
+
+                    if (gbl_verbose_fills) {
+                        logmsg(LOGMSG_USER, "%s line %d more_behind_count=%d\n",
+                                __func__, __LINE__, more_behind_count);
+                    }
+                }
+            }
+
+            if (gbl_req_delay_count_threshold && more_behind_count >=
+                    gbl_req_delay_count_threshold) {
+                if (gbl_verbose_fills) {
+                    logmsg(LOGMSG_USER, "%s line %d requesting commit-delay, "
+                            "more_behind_count=%d\n", __func__, __LINE__,
+                            more_behind_count);
+                }
+                request_delaymore(dbenv->app_private);
+                more_behind_count = 0;
+            }
+
+        } else
+            more_behind_count = 0;
+        
+        last_behind = bytes_behind;
+
         /* If there's a larger lsn in the queue, use that */
         if (log_compare(&my_lsn, &max_queued) < 0) {
             my_lsn = max_queued;
@@ -606,40 +645,6 @@ static void *apply_thread(void *arg)
             pthread_mutex_lock(&rep_queue_lock);
             continue;
         }
-
-        bytes_behind = subtract_lsn(dbenv->app_private, &master_lsn, &my_lsn);
-        if (!bdb_valid_lease(dbenv->app_private)) {
-            if (last_behind && bytes_behind > last_behind) {
-                static int lastinc = 0;
-
-                /* Increment at most once per second */
-                if ((now = comdb2_time_epoch()) - lastinc) {
-                    lastinc = now;
-
-                    more_behind_count++;
-
-                    if (gbl_verbose_fills) {
-                        logmsg(LOGMSG_USER, "%s line %d more_behind_count=%d\n",
-                                __func__, __LINE__, more_behind_count);
-                    }
-                }
-            }
-
-            if (gbl_req_delay_count_threshold && more_behind_count >=
-                    gbl_req_delay_count_threshold) {
-                if (gbl_verbose_fills) {
-                    logmsg(LOGMSG_USER, "%s line %d requesting commit-delay, "
-                            "more_behind_count=%d\n", __func__, __LINE__,
-                            more_behind_count);
-                }
-                request_delaymore(dbenv->app_private);
-                more_behind_count = 0;
-            }
-
-        } else
-            more_behind_count = 0;
-        
-        last_behind = bytes_behind;
 
         if ((gbl_req_all_threshold && (bytes_behind > gbl_req_all_threshold)) ||
                 IS_ZERO_LSN(first_repdb_lsn)) {

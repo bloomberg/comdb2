@@ -134,6 +134,7 @@ extern int gbl_verbose_send_coherency_lease;
 extern int gbl_reset_on_unelectable_cluster;
 extern int gbl_decoupled_logputs;
 extern int gbl_decoupled_fills;
+extern int gbl_max_apply_dequeue;
 extern int gbl_catchup_window_trace;
 extern int gbl_early_ack_trace;
 extern int gbl_throttle_logput_trace;
