@@ -624,23 +624,35 @@ static void send_context_to_all(bdb_state_type *bdb_state)
     }
 }
 
-int is_incoherent(bdb_state_type *bdb_state, const char *host)
+static int is_incoherent_complete(bdb_state_type *bdb_state, const char *host, int *incohwait)
 {
-    int is_incoherent;
+    int is_incoherent, state;
 
     is_incoherent = 0;
 
+    if (incohwait)
+        *incohwait = 0;
+
     pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+    state = bdb_state->coherent_state[nodeix(host)];
+    pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
     /* STATE_COHERENT and STATE_INCOHERENT_LOCAL return COHERENT. */
-    if (bdb_state->coherent_state[nodeix(host)] == STATE_INCOHERENT ||
-        bdb_state->coherent_state[nodeix(host)] == STATE_INCOHERENT_SLOW)
+    if (state == STATE_INCOHERENT || state == STATE_INCOHERENT_SLOW)
         is_incoherent = 1;
 
-    pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+    if (incohwait && state == STATE_INCOHERENT_WAIT)
+        *incohwait = 1;
 
     return is_incoherent;
 }
+
+
+int is_incoherent(bdb_state_type *bdb_state, const char *host)
+{
+    return is_incoherent_complete(bdb_state, host, NULL);
+}
+
 
 int gbl_throttle_logput_trace = 0;
 /* Tiny: 100000 bytes */
@@ -3079,6 +3091,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     int do_slow_node_check = 0;
     DB_LSN *masterlsn;
     int numnodes;
+    int numwait;
     int rc;
     int waitms;
     int numskip;
@@ -3114,6 +3127,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     do {
         numnodes = 0;
         numskip = 0;
+        numwait = 0;
 
         if (durable_lsns) {
             total_connected = j = net_get_sanctioned_replicants(
@@ -3157,10 +3171,12 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
         }
 
         for (i = 0; i < j; i++) {
+            int wait = 0;
             /* is_incoherent returns 0 for COHERENT & INCOHERENT_WAIT */
-            if (!(is_incoherent(bdb_state, connlist[i]))) {
+            if (!(is_incoherent_complete(bdb_state, connlist[i], &wait))) {
                 nodelist[numnodes] = connlist[i];
                 numnodes++;
+                if (wait) numwait++;
             } else {
                 skiplist[numskip] = connlist[i];
                 numskip++;
@@ -3339,7 +3355,7 @@ done_wait:
 
     outrc = 0;
 
-    if (!numfailed && !numskip &&
+    if (!numfailed && !numskip && !numwait && 
         bdb_state->attr->remove_commitdelay_on_coherent_cluster &&
         bdb_state->attr->commitdelay) {
         logmsg(gbl_commit_delay_trace ? LOGMSG_USER : LOGMSG_INFO, 

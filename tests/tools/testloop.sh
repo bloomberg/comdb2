@@ -64,6 +64,7 @@ function mail_status
 function cleanup
 {
     [[ "$debug" == "1" ]] && set -x
+    ( cd ~/comdb2/tests && make clean )
     find ~/comdb2/tests/test_* -type d -mmin +$test_linger -exec rm -Rf {} \;
     find ~/comdb2/tests/tools/linearizable/jepsen/store -mtime 1 -exec rm -Rf {} \;
     find ~/comdb2/tests/test_* -mtime 1 -exec rm -Rf {} \;
