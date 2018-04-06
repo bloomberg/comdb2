@@ -38,8 +38,10 @@ assertcnt ()
 }
 
 echo $CDB2_CONFIG
-CNT=300
+CNT=10000
 
+
+echo 'part of a transaction'
 
 echo begin > ins.in
 for ((i=1;i<=$CNT;i++)) ; do
@@ -47,9 +49,27 @@ for ((i=1;i<=$CNT;i++)) ; do
 done >> ins.in
 echo commit >> ins.in
 
-cdb2sql -f ins.in ${CDB2_OPTIONS} $dbnm default > ins.out
+echo 'same as above but not part of a transaction'
 
-assertcnt $((CNT))
+for ((i=1;i<=$CNT;i++)) ; do
+    echo "insert into t1 values(guid(), randomblob(16), $i,$((2*i)))"
+done >> ins.in
+
+echo 'using cte for kicks and gigles'
+echo "INSERT INTO t1 (id,rndm,i,j) WITH i(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM i where x < $CNT) SELECT guid(), randomblob(16), x,($CNT-x) FROM i" >> ins.in
+
+
+PARALLEL=20
+for ((j=1;j<=$PARALLEL;j++)) ; do
+   cdb2sql -f ins.in ${CDB2_OPTIONS} $dbnm default > ins_${j}.out &
+done
+
+echo wait for all above background inserts to complete
+wait
+
 cdb2sql ${CDB2_OPTIONS} $dbnm 'select * from t1' > content.out
+echo 'failure in transactions inserting will mean count will be off'
+assertcnt $((CNT*PARALLEL*3))
 
+rm *.out
 echo "Success"
