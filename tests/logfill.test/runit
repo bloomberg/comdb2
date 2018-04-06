@@ -10,6 +10,7 @@ declare -a sigstopmachs
 declare -a pidlist
 pidix=0
 stopix=0
+pstack=/home/ubuntu/bin/pstack
 write_machine=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep -v MASTER | egrep lsn | head -1 | cut -f1 -d":" | tr -d '[:space:]')
 master=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | egrep lsn | head -1 | cut -f1 -d":" | tr -d '[:space:]')
 
@@ -68,6 +69,7 @@ function errquit
 function waitforcoherency
 {
     [[ "$debug" == 1 ]] && set -x
+    cnt=0
     c=$($CDB2SQL_EXE -tabs $db @$master "exec procedure sys.cmd.send('bdb cluster')")
     echo "$c"
     echo "$c" | egrep COHERENT
@@ -76,9 +78,31 @@ function waitforcoherency
         echo "$(date) waiting for $db cluster to become coherent"
         sleep 1
         c=$($CDB2SQL_EXE -tabs $db @$master "exec procedure sys.cmd.send('bdb cluster')")
+        echo " "
+        $CDB2SQL_EXE $db @$master "select * from comdb2_replication_netqueue"
+        echo " "
+
+        j=0
+        # If we haven't caught up in 15 minutes find out why
+        if [[ $cnt -gt 900 ]]; then
+            while [[ $j -lt $1 ]]; do
+                node=${sigstopmachs[$j]}
+                if [ $node == $(hostname) ] ; then
+                    pid=$(cat ${TMPDIR}/${db}.${node}.pid)
+                    if [[ -z "$pid" ]]; then pid=$(cat ${TMPDIR}/${db}.pid) ; fi
+                    $pstack $pid
+                else
+                    pid=$(ssh $node "cat ${TMPDIR}/${db}.${node}.pid" < /dev/null)
+                    if [[ -z "$pid" ]]; then pid=$(ssh $node "cat ${TMPDIR}/${db}.pid" < /dev/null) ; fi
+                    ssh $node "$pstack $pid" < /dev/null
+                fi
+            done
+        fi
+
         echo "$c"
         echo "$c" | egrep COHERENT
         r=$?
+        let cnt=cnt+1
     done
 }
 
@@ -127,7 +151,7 @@ function pauseandrestart
         let j=j+1
     done
     sleep $sleeptime
-    waitforcoherency
+    waitforcoherency $pcount
 }
 
 function runtestwithoptions

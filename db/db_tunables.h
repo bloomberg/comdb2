@@ -1331,7 +1331,7 @@ REGISTER_TUNABLE("req_delay_count_threshold", "Request commit-delay if falling "
                  &gbl_req_delay_count_threshold, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("max_apply_dequeue", "Limit apply-processing to this many per "
-                 "loop.  this many times.  (Default: 1000)", TUNABLE_INTEGER, 
+                 "loop.  this many times.  (Default: 100000)", TUNABLE_INTEGER, 
                  &gbl_max_apply_dequeue, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
 

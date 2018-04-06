@@ -75,7 +75,7 @@ extern int gbl_rep_process_txn_time;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_decoupled_fills = 1;
-int gbl_max_apply_dequeue = 1000;
+int gbl_max_apply_dequeue = 100000;
 int gbl_master_req_waitms = 200;
 int gbl_fills_waitms = 1000;
 int gbl_warn_queue_latency_threshold = 500;
