@@ -2188,7 +2188,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 fdbc->node = host;
             } else {
 
-                if (fdb->server_version == FDB_VER_WR_NAMES)
+                if (fdb->server_version >= FDB_VER_WR_NAMES)
                     tran_flags = FDB_MSG_TRAN_TBLNAME;
                 else
                     tran_flags = 0;
@@ -3510,7 +3510,7 @@ static fdb_tran_t *fdb_get_subtran(fdb_distributed_tran_t *dtran, fdb_t *fdb)
 
 static inline char *_get_tblname(fdb_cursor_t *fdbc)
 {
-    return (fdbc->ent->tbl->fdb->server_version == FDB_VER_WR_NAMES)
+    return (fdbc->ent->tbl->fdb->server_version >= FDB_VER_WR_NAMES)
                ? strdup(fdbc->ent->tbl->name)
                : NULL;
 }
