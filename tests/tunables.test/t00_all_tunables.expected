@@ -689,7 +689,7 @@
 (name='reset_deadlock_race', description='reset_deadlock_race', type='BOOLEAN', value='OFF', read_only='N')
 (name='reset_queue_cursor_mode', description='Reset queue consumeer read cursor after each consume', type='BOOLEAN', value='ON', read_only='N')
 (name='retry', description='', type='INTEGER', value='10', read_only='Y')
-(name='return_long_column_names', description='Enables returning of long column names. (Default: off)', type='INTEGER', value='1', read_only='Y')
+(name='return_long_column_names', description='Enables returning of long column names. (Default: ON)', type='BOOLEAN', value='ON', read_only='N')
 (name='rl_retry_on_deadlock', description='retry micro commit on deadlock', type='BOOLEAN', value='ON', read_only='N')
 (name='rllist_step', description='Reallocate rowlock lists in steps of this size.', type='INTEGER', value='10', read_only='N')
 (name='round_robin_stripes', description='Alternate to which table stripe new records are written. The default is to keep stripe affinity by writer. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')

@@ -4837,6 +4837,9 @@ static void register_all_int_switches()
     register_int_switch("mifid2_datetime_range",
                         "Extend datetime range to meet mifid2 requirements",
                         &gbl_mifid2_datetime_range);
+    register_int_switch("return_long_column_names",
+                        "Enables returning of long column names. (Default: ON)",
+                        &gbl_return_long_column_names);
 }
 
 static void getmyid(void)

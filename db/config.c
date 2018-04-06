@@ -303,6 +303,7 @@ static void add_legacy_default_options(struct dbenv *dbenv)
         "enable_sql_stmt_caching none",
         "on accept_on_child_nets",
         "env_messages",
+        "off return_long_column_names",
         "setattr NET_SEND_GBLCONTEXT 1",
         "setattr COHERENCY_LEASE_UDP 0",
         "setattr ENABLE_SEQNUM_GENERATIONS 0",

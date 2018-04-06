@@ -952,10 +952,6 @@ REGISTER_TUNABLE("reqltruncate", NULL, TUNABLE_INTEGER, &reqltruncate, READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("retry", NULL, TUNABLE_INTEGER, &db->retry, READONLY, NULL,
                  NULL, retry_update, NULL);
-REGISTER_TUNABLE("return_long_column_names",
-                 "Enables returning of long column names. (Default: off)",
-                 TUNABLE_INTEGER, &gbl_return_long_column_names,
-                 READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("round_robin_stripes",
                  "Alternate to which table stripe new records are written. The "
                  "default is to keep stripe affinity by writer. (Default: off)",
