@@ -1,0 +1,11 @@
+schema 
+{
+    byte        id[16]
+    short       i
+    int         j
+}
+
+keys 
+{
+    "PK"=id
+}

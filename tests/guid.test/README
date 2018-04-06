@@ -1,0 +1,2 @@
+Populate id field with random unique data using function guid() (from libuuid).
+Insert guid in field id primary key of size 16 bytes.

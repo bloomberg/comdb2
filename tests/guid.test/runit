@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+
+# Debug variable
+debug=0
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+# Number of insert_records function calls
+nins=0
+
+
+failexit()
+{
+    echo "Failed $1"
+    exit -1
+}
+
+assertcnt ()
+{
+    target=$1
+    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "count is now $cnt but should be $target"
+    fi
+}
+
+echo $CDB2_CONFIG
+CNT=300
+
+
+echo begin > ins.in
+for i in `seq $CNT` ; do
+    echo "insert into t1 values(guid(), $i,$i)"
+done >> ins.in
+echo commit >> ins.in
+
+cdb2sql -f ins.in ${CDB2_OPTIONS} $dbnm default > ins.out
+
+assertcnt $((CNT))
+cdb2sql ${CDB2_OPTIONS} $dbnm 'select * from t1' > content.out
+
+echo "Success"
