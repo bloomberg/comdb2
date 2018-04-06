@@ -8,6 +8,6 @@ schema
 
 keys 
 {
-    "PK"=id
-    "SECOND_K"=rndm
+        "PK"=id
+    dup "SECOND_K"=rndm
 }

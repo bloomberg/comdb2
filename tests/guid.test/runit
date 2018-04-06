@@ -67,9 +67,32 @@ done
 echo wait for all above background inserts to complete
 wait
 
+set -x
+
 cdb2sql ${CDB2_OPTIONS} $dbnm 'select * from t1' > content.out
 echo 'failure in transactions inserting will mean count will be off'
 assertcnt $((CNT*PARALLEL*3))
+
+echo make sure we can find all the ids
+cut -f1 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel1.in
+cdb2sql -f sel1.in ${CDB2_OPTIONS} $dbnm > sel1.out
+cnt=`grep "^(count" sel1.out | grep "=0" | wc -l`
+if [ $cnt != 0 ] ; then
+    failexit 'id not found'
+fi
+
+
+echo make sure we can find all the rndm
+cut -f2 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel2.in
+cdb2sql -f sel2.in ${CDB2_OPTIONS} $dbnm > sel2.out
+cnt=`grep "^(count" sel2.out | grep "=0" | wc -l`
+if [ $cnt != 0 ] ; then
+    failexit 'rndm not found'
+fi
+
+mult=`grep "^count" sel2.out | grep -v "=1" | wc -l`
+echo "found $mult with duplicate key for randomblob()"
+
 
 rm *.out
 echo "Success"

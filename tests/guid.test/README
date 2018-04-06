@@ -1,5 +1,7 @@
-Test uniqueness of guid() and randomblob(), also serves as an example usage:
-
-populate id field with random unique data using function guid() (from libuuid).
 Insert guid in field id primary key of size 16 bytes.
-Also, use randomblob(16) as a second unique key.
+
+Test uniqueness of guid() also serves as an example usage:
+populate id field with random unique data using function guid() (from libuuid).
+
+Also, while randomblob(16) can be used as a second key, it is not unique 
+when inserting from several threads in parallel, as this test does.
