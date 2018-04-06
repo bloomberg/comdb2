@@ -42,8 +42,8 @@ CNT=300
 
 
 echo begin > ins.in
-for i in `seq $CNT` ; do
-    echo "insert into t1 values(guid(), $i,$i)"
+for ((i=1;i<=$CNT;i++)) ; do
+    echo "insert into t1 values(guid(), randomblob(16), $i,$i)"
 done >> ins.in
 echo commit >> ins.in
 
