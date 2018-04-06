@@ -13,6 +13,9 @@
 ** to handle INSERT statements in SQLite.
 */
 #include "sqliteInt.h"
+
+int is_comdb2_index_unique(const char *tbl, char *idx);
+
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 
@@ -1672,17 +1675,22 @@ void sqlite3GenerateConstraintChecks(
 
     /* Find out what action to take in case there is a uniqueness conflict */
     onError = pIdx->onError;
-    if( onError==OE_None ){ 
+
+    int is_unique = is_comdb2_index_unique(pIdx->pTable->zName, pIdx->zName);
+    if ((!oc && (onError==OE_None)) || !is_unique) {
       sqlite3ReleaseTempRange(pParse, regIdx, pIdx->nColumn);
       sqlite3VdbeResolveLabel(v, addrUniqueOk);
       continue;  /* pIdx is not a UNIQUE index */
+    } else {
+        onError = OE_Abort;
     }
+
     if( overrideError!=OE_Default ){
       onError = overrideError;
     }else if( onError==OE_Default ){
       onError = OE_Abort;
     }
-    
+
     /* Check to see if the new index entry will be unique */
     sqlite3VdbeAddOp4Int(v, OP_NoConflict, iThisCur, addrUniqueOk,
                          regIdx, pIdx->nKeyCol); VdbeCoverage(v);

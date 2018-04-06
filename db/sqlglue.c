@@ -1672,11 +1672,8 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
             abort();
         }
 
-        if (schema->flags & SCHEMA_DUP) {
-            strbuf_append(sql, "create index ");
-        } else {
-            strbuf_append(sql, "create unique index ");
-        }
+        /* We lie to sqlite about the uniqueness of the indexes. */
+        strbuf_append(sql, "create index ");
 
         strbuf_appendf(sql, "\"%s\" on \"%s\" (", namebuf, tbl->tablename);
         for (field = 0; field < schema->nmembers; field++) {

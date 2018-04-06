@@ -45,7 +45,7 @@ keys
 	}
 ')
 (type='index', name='$IDX1_4DE4D8DB', tbl_name='t1', rootpage=5, sql='create index "$IDX1_4DE4D8DB" on "t1" ("i");', csc2=NULL)
-(type='index', name='$IDX2_5E8AC7D0', tbl_name='t1', rootpage=6, sql='create unique index "$IDX2_5E8AC7D0" on "t1" ("i");', csc2=NULL)
+(type='index', name='$IDX2_5E8AC7D0', tbl_name='t1', rootpage=6, sql='create index "$IDX2_5E8AC7D0" on "t1" ("i");', csc2=NULL)
 (type='index', name='$IDX3_4DE4D8DB', tbl_name='t1', rootpage=7, sql='create index "$IDX3_4DE4D8DB" on "t1" ("i");', csc2=NULL)
 (type='index', name='$IDX4_4DE4D8DB', tbl_name='t1', rootpage=8, sql='create index "$IDX4_4DE4D8DB" on "t1" ("i");', csc2=NULL)
 (type='index', name='$IDX5_4DE4D8DB', tbl_name='t1', rootpage=9, sql='create index "$IDX5_4DE4D8DB" on "t1" ("i");', csc2=NULL)
