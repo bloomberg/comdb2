@@ -340,7 +340,7 @@ __pgdump(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno)
 		    " error=%d\n", dbp->fname, pgno, fileid, ret);
 		return;
 	}
-	printf("pgdump> %s id %" PRIi32 " page %" PRIu32 "\n", dbp->fname,
+	logmsg(LOGMSG_USER, "pgdump> %s id %" PRIi32 " page %" PRIu32 "\n", dbp->fname,
 	    fileid, pgno);
 	dopage(dbp, pagep);
 	ret = __memp_fput(mpf, pagep, 0);
