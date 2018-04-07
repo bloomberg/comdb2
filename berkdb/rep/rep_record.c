@@ -638,6 +638,12 @@ static void *apply_thread(void *arg)
             continue;
         }
 
+        if (rep->in_recovery || F_ISSET(rep, REP_F_READY | REP_F_RECOVER)) {
+            bdb_relthelock(__func__, __LINE__);
+            pthread_mutex_lock(&rep_queue_lock);
+            continue;
+        }
+
         /* There's a log_more in the queue */
         if (log_fill_count || comdb2_time_epochms() -
                 last_fill < gbl_fills_waitms) {
