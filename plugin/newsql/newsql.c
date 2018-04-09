@@ -976,8 +976,27 @@ static int newsql_param_count(struct sqlclntstate *clnt)
     return appdata->sqlquery->n_bindvars;
 }
 
-static int newsql_get_param(struct sqlclntstate *clnt, struct param_data *param,
-                            int n)
+static int newsql_param_index(struct sqlclntstate *clnt, const char *name,
+                              int64_t *index)
+{
+    /*
+    ** Currently implemented like sqlite3_bind_parameter_index()
+    ** Can be done better with qsort + bsearch
+    */
+    struct newsql_appdata *appdata = clnt->appdata;
+    CDB2SQLQUERY *sqlquery = appdata->sqlquery;
+    size_t n = sqlquery->n_bindvars;
+    for (size_t i = 0; i < n; ++i) {
+        if (strcmp(sqlquery->bindvars[i]->varname, name) == 0) {
+            *index = i;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+static int newsql_param_value(struct sqlclntstate *clnt,
+                              struct param_data *param, int n)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;

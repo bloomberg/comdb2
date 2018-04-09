@@ -337,7 +337,8 @@ struct param_data {
 typedef int(response_func)(struct sqlclntstate *, int, void *, int);
 typedef void *(replay_func)(struct sqlclntstate *, void *);
 typedef int(param_count_func)(struct sqlclntstate *);
-typedef int(param_func)(struct sqlclntstate *, struct param_data *, int);
+typedef int(param_index_func)(struct sqlclntstate *, const char *, int64_t *);
+typedef int(param_value_func)(struct sqlclntstate *, struct param_data *, int);
 
 struct plugin_callbacks {
     response_func *write_response; /* newsql_write_response */
@@ -347,7 +348,8 @@ struct plugin_callbacks {
     replay_func *destroy_stmt; /* newsql_destroy_stmt */
     replay_func *print_stmt; /* newsql_print_stmt */
     param_count_func *param_count; /* newsql_param_count */
-    param_func *get_param; /* newsql_get_param */
+    param_index_func *param_index; /* newsql_param_index */
+    param_value_func *param_value; /* newsql_param_value */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
@@ -362,8 +364,14 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, destroy_stmt);                        \
         make_plugin_callback(clnt, name, print_stmt);                          \
         make_plugin_callback(clnt, name, param_count);                         \
-        make_plugin_callback(clnt, name, get_param);                           \
+        make_plugin_callback(clnt, name, param_index);                         \
+        make_plugin_callback(clnt, name, param_value);                         \
     } while (0)
+
+
+int param_count(struct sqlclntstate *);
+int param_index(struct sqlclntstate *, const char *, int64_t *);
+int param_value(struct sqlclntstate *, struct param_data *, int);
 
 /* Client specific sql state */
 struct sqlclntstate {

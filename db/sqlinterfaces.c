@@ -2455,14 +2455,19 @@ static void query_stats_setup(struct sqlthdstate *thd,
         reqlog_set_request(thd->logger, clnt->sql_query);
 }
 
-static int param_count(struct sqlclntstate *clnt)
+int param_count(struct sqlclntstate *clnt)
 {
     return clnt->plugin.param_count(clnt);
 }
 
-static int get_param(struct sqlclntstate *clnt, struct param_data *param, int n)
+int param_index(struct sqlclntstate *clnt, const char *name, int64_t *index)
 {
-    return clnt->plugin.get_param(clnt, param, n);
+    return clnt->plugin.param_index(clnt, name, index);
+}
+
+int param_value(struct sqlclntstate *clnt, struct param_data *param, int n)
+{
+    return clnt->plugin.param_value(clnt, param, n);
 }
 
 static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
@@ -2933,7 +2938,7 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
     struct cson_array *arr = get_bind_array(logger, params);
     struct param_data p = {0};
     for (int i = 0; i < params; ++i) {
-        if ((rc = get_param(clnt, &p, i)) != 0) {
+        if ((rc = param_value(clnt, &p, i)) != 0) {
             rc = SQLITE_ERROR;
             goto out;
         }
@@ -5592,7 +5597,12 @@ static int internal_param_count(struct sqlclntstate *clnt)
     return -1;
 }
 
-static int internal_get_param(struct sqlclntstate *a, struct param_data *b, int c)
+static int internal_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
+{
+    return -1;
+}
+
+static int internal_param_value(struct sqlclntstate *a, struct param_data *b, int c)
 {
     return -1;
 }
