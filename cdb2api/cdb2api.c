@@ -2440,7 +2440,7 @@ retry_next_record:
     retry:
         if (hndl->debug_trace) {
             fprintf(stderr, "td %p %s:%d retry: shouldretry=%d, "
-                            "hndl->snapshot_file=%p, num_retry=%d\n",
+                            "hndl->snapshot_file=%d, num_retry=%d\n",
                     (void *)pthread_self(), __func__, __LINE__, shouldretry,
                     hndl->snapshot_file, num_retry);
         }
@@ -2804,7 +2804,7 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
         if (log_calls)
             fprintf(stderr, "td %d %s:%d, %d) host=%s(%d)%s\n",
                     (uint32_t)pthread_self(), __func__, __LINE__,
-                    num_valid_hosts, valid_hosts[*num_valid_hosts],
+                    *num_valid_hosts, valid_hosts[*num_valid_hosts],
                     valid_ports[*num_valid_hosts],
                     (*master_node == *num_valid_hosts) ? "*" : "");
 
@@ -5221,7 +5221,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     if (getenv("CDB2_DEBUG")) {
         hndl->debug_trace = 1;
-        fprintf(stderr, "td %u %s debug trace enabled \n",
+        fprintf(stderr, "td %u %s %d debug trace enabled\n",
                 (uint32_t)pthread_self(), __func__, __LINE__);
     }
 
