@@ -1823,8 +1823,6 @@ enum comdb2_queue_types {
     REQ_PQREQUEST
 };
 
-int convert_client_ftype(int type);
-
 int handle_buf(struct dbenv *dbenv, uint8_t *p_buf, const uint8_t *p_buf_end,
                int debug, char *frommach); /* 040307dh: 64bits */
 int handle_buf_offload(struct dbenv *dbenv, uint8_t *p_buf,

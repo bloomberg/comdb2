@@ -11512,7 +11512,7 @@ static int bind_stmt_mem(struct schema *sc, sqlite3_stmt *stmt, Mem *m)
             case SERVER_INTVDS:
             case SERVER_INTVDSUS:
             case SERVER_DECIMAL:
-                rc = sqlite3_bind_interval(stmt, i + 1, m[i].du.tv);
+                rc = sqlite3_bind_interval(stmt, i + 1, &m[i].du.tv);
                 break;
             default:
                 logmsg(LOGMSG_ERROR, "Unknown type %d\n", f->type);
