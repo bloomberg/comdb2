@@ -4847,15 +4847,34 @@ static int flush_rows(SP sp)
     return write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
 }
 
+static int push_null(Lua L, int param_type)
+{
+    enum dbtypes_enum type;
+    switch (param_type) {
+    case COMDB2_NULL_TYPE: // who sends this?
+    case CLIENT_INT:
+    case CLIENT_UINT: type = DBTYPES_INTEGER; break;
+    case CLIENT_CSTR:
+    case CLIENT_PSTR:
+    case CLIENT_PSTR2:
+    case CLIENT_VUTF8: type = DBTYPES_CSTRING; break;
+    case CLIENT_BYTEARRAY:
+    case CLIENT_BLOB: type = DBTYPES_BLOB; break;
+    case CLIENT_DATETIME:
+    case CLIENT_DATETIMEUS: type = DBTYPES_DATETIME; break;
+    case CLIENT_INTVDS:
+    case CLIENT_INTVDSUS: type = DBTYPES_INTERVALDS; break;
+    case CLIENT_INTVYM: type = DBTYPES_INTERVALYM; break;
+    default: return -1;
+    }
+    luabb_pushnull(L, type);
+    return 0;
+}
+
 static int push_param(Lua L, struct sqlclntstate *clnt, struct param_data *p)
 {
     if (p->null || p->type == COMDB2_NULL_TYPE) {
-        abort();
-        /*
-        p->type => lua type
-        */
-        luabb_pushnull(L, DBTYPES_INTEGER);
-        return 0;
+        return push_null(L, p->type);
     }
     switch (p->type) {
     case CLIENT_INT:
@@ -5009,8 +5028,6 @@ static int getarg(const char **s_, struct sqlclntstate *clnt, sparg_t *arg)
     case '@':
         arg->type = arg_param;
         ++a; // lose '@'
-        abort();
-        /*
         if (param_count(clnt) == 0) {
             if (quoted) {
                 arg->type = arg_str;
@@ -5019,11 +5036,9 @@ static int getarg(const char **s_, struct sqlclntstate *clnt, sparg_t *arg)
                 goto err;
             }
         }
-         * needs more work
-        if (get_param_by_name() != 0) {
+        if (param_index(clnt, a, &arg->u.i) != 0) {
             goto err;
         }
-        */
         break;
     case 'x':
         arg->type = arg_blob;
@@ -6081,32 +6096,37 @@ static int trigger_read_response(struct sqlclntstate *a, int b, void *c, int d)
     return -1;
 }
 
-static void *trigger_save_stmt(struct sqlclntstate *clnt, void *arg)
+static void *trigger_save_stmt(struct sqlclntstate *a, void *b)
 {
     return NULL;
 }
 
-static void *trigger_restore_stmt(struct sqlclntstate *clnt, void *arg)
+static void *trigger_restore_stmt(struct sqlclntstate *a, void *b)
 {
     return NULL;
 }
 
-static void *trigger_destroy_stmt(struct sqlclntstate *clnt, void *arg)
+static void *trigger_destroy_stmt(struct sqlclntstate *a, void *b)
 {
     return NULL;
 }
 
-static void *trigger_print_stmt(struct sqlclntstate *clnt, void *arg)
+static void *trigger_print_stmt(struct sqlclntstate *a, void *b)
 {
     return NULL;
 }
 
-static int trigger_param_count(struct sqlclntstate *clnt)
+static int trigger_param_count(struct sqlclntstate *a)
 {
     return -1;
 }
 
-static int trigger_get_param(struct sqlclntstate *a, struct param_data *b, int c)
+static int trigger_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
+{
+    return -1;
+}
+
+static int trigger_param_value(struct sqlclntstate *a, struct param_data *b, int c)
 {
     return -1;
 }
