@@ -13574,6 +13574,54 @@ int client_datetimeus_to_dttz(const cdb2_client_datetimeus_t *in,
     client_dt_to_dttz_func_body(datetimeus, DATETIMEUS, 6, usec, unsigned int);
 }
 
+int get_int_field(int64_t *out, void *in, size_t len, int flip)
+{
+    int16_t i16;
+    int32_t i32;
+    int64_t i64;
+    switch (len) {
+    case sizeof(int16_t):
+        memcpy(&i16, in, len);
+        if (flip) i16 = flibc_shortflip(i16);
+        *out = i16;
+        break;
+    case sizeof(int32_t):
+        memcpy(&i32, in, len);
+        if (flip) i32 = flibc_intflip(i32);
+        *out = i32;
+        break;
+    case sizeof(int64_t):
+        memcpy(&i64, in, len);
+        if (flip) i64 = flibc_llflip(i64);
+        *out = i64;
+        break;
+    default:
+        return -1;
+    }
+    return 0;
+}
+
+int get_real_field(double *out, void *in, size_t len, int flip)
+{
+    float f;
+    double d;
+    switch (len) {
+    case sizeof(float):
+        memcpy(&f, in, len);
+        if (flip) f = flibc_floatflip(f);
+        *out = f;
+        break;
+    case sizeof(double):
+        memcpy(&d, in, len);
+        if (flip) d = flibc_dblflip(d);
+        *out = d;
+        break;
+    default:
+        return -1;
+    }
+    return 0;
+}
+
 /**
  * Zero don't properly memcmp in the format (sign,exp,coef)
  * This function normalize the zeros, which makes all zeros
@@ -14430,4 +14478,51 @@ void set_null_func(void *to, int sz) { set_null(to, sz); }
 void set_data_func(void *to, const void *from, int sz)
 {
     set_data(to, from, sz);
+}
+
+void client_intv_ym_to_intv_t(const cdb2_client_intv_ym_t *in, intv_t *out, int flip)
+{
+    memset(out, 0, sizeof(intv_t));
+    out->type = INTV_YM_TYPE;
+    intv_ym_t *ym = &out->u.ym;
+    if (flip) {
+        out->sign = flibc_intflip(in->sign);
+        ym->years = flibc_intflip(in->years);
+        ym->months = flibc_intflip(in->months);
+    } else {
+        out->sign = in->sign;
+        ym->years = in->years;
+        ym->months = in->months;
+    }
+}
+
+void client_intv_ds_to_intv_t(const cdb2_client_intv_ds_t *in, intv_t *out, int flip)
+{
+    memset(out, 0, sizeof(intv_t));
+    out->type = INTV_DS_TYPE;
+    intv_ds_t *ds = &out->u.ds;
+    ds->prec = DTTZ_PREC_MSEC;
+    ds->conv = 1;
+    if (flip) {
+        out->sign = flibc_intflip(in->sign);
+        ds->days =  flibc_intflip(in->days);
+        ds->hours = flibc_intflip(in->hours);
+        ds->mins = flibc_intflip(in->mins);
+        ds->sec = flibc_intflip(in->sec);
+        ds->frac = flibc_intflip(in->msec);
+    } else {
+        out->sign = in->sign;
+        ds->days =  in->days;
+        ds->hours = in->hours;
+        ds->mins = in->mins;
+        ds->sec = in->sec;
+        ds->frac = in->msec;
+    }
+}
+
+void client_intv_dsus_to_intv_t(const cdb2_client_intv_dsus_t *in, intv_t *out, int flip)
+{
+    client_intv_ds_to_intv_t((cdb2_client_intv_ds_t *)in, out, flip);
+    out->type = INTV_DSUS_TYPE;
+    out->u.ds.prec = DTTZ_PREC_USEC;
 }

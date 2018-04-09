@@ -327,7 +327,7 @@ struct param_data {
     int len;
     union {
         int64_t i;
-        double d;
+        double r;
         void *p;
         dttz_t dt;
         intv_t tv;

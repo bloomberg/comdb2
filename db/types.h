@@ -2034,6 +2034,9 @@ int client_datetimeus_to_dttz(const cdb2_client_datetimeus_t *, const char *tz,
                               dttz_t *, int little_endian);
 int timespec_to_dttz(const struct timespec *, dttz_t *, int);
 
+int get_int_field(int64_t *out, void *in, size_t len, int flip);
+int get_real_field(double *out, void *in, size_t len, int flip);
+
 short decimal_quantum_get(char *pdec, int len, int *sign);
 void decimal_quantum_set(char *pdec, int len, short *quantum, int *sign);
 struct dbtable;
@@ -2055,5 +2058,9 @@ void _normalizeIntervalYM(intv_ym_t *);
 void add_dttz_intvds(const dttz_t *, const intv_t *, dttz_t *);
 void sub_dttz_intvds(const dttz_t *, const intv_t *, dttz_t *);
 void sub_dttz_dttz(const dttz_t *, const dttz_t *, intv_t *);
+
+void client_intv_ym_to_intv_t(const cdb2_client_intv_ym_t *, intv_t *, int flip);
+void client_intv_ds_to_intv_t(const cdb2_client_intv_ds_t *, intv_t *, int flip);
+void client_intv_dsus_to_intv_t(const cdb2_client_intv_dsus_t *, intv_t *, int flip);
 
 #endif

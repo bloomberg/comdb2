@@ -2955,7 +2955,7 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             rc = sqlite3_bind_int64(stmt, p.pos, p.u.i);
             break;
         case CLIENT_REAL:
-            rc = sqlite3_bind_double(stmt, p.pos, p.u.d);
+            rc = sqlite3_bind_double(stmt, p.pos, p.u.r);
             break;
         case CLIENT_CSTR:
         case CLIENT_PSTR:
@@ -2974,7 +2974,7 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         case CLIENT_INTVYM:
         case CLIENT_INTVDS:
         case CLIENT_INTVDSUS:
-            rc = sqlite3_bind_interval(stmt, p.pos, p.u.tv);
+            rc = sqlite3_bind_interval(stmt, p.pos, &p.u.tv);
             break;
         default:
             rc = SQLITE_ERROR;
@@ -2990,7 +2990,6 @@ out:if (rc) {
     }
     return rc;
 }
-
 
 static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                        struct sql_state *rec, struct errstat *err)

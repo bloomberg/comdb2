@@ -2009,10 +2009,10 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
         return sqlite3_bind_datetime(stmt, position, &dt, d->tzname);
     case DBTYPES_INTERVALYM:
         i = &((lua_intervalym_t *)p)->val;
-        return sqlite3_bind_interval(stmt, position, *i);
+        return sqlite3_bind_interval(stmt, position, i);
     case DBTYPES_INTERVALDS:
         i = &((lua_intervalds_t *)p)->val;
-        return sqlite3_bind_interval(stmt, position, *i);
+        return sqlite3_bind_interval(stmt, position, i);
     default: return luabb_error(lua, NULL, "unsupported type for bind");
     }
 }
@@ -4858,9 +4858,9 @@ static int push_param(Lua L, struct sqlclntstate *clnt, struct param_data *p)
         return 0;
     }
     switch (p->type) {
-    case CLIENT_INT: 
+    case CLIENT_INT:
     case CLIENT_UINT: luabb_pushinteger(L, p->u.i); break;
-    case CLIENT_REAL: luabb_pushreal(L, p->u.d); break;
+    case CLIENT_REAL: luabb_pushreal(L, p->u.r); break;
     case CLIENT_CSTR:
     case CLIENT_PSTR:
     case CLIENT_PSTR2:
