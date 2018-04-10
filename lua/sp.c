@@ -1931,9 +1931,7 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
     if (lua_isnumber(lua, name)) {
         position = lua_tonumber(lua, name);
     } else if (lua_isstring(lua, name)) {
-        char parmname[32];
-        snprintf(parmname, sizeof(parmname), "@%s", lua_tostring(lua, name));
-        position = sqlite3_bind_parameter_index(stmt, parmname);
+        position = sqlite3_bind_parameter_index(stmt, lua_tostring(lua, name));
     } else {
         return luabb_error(lua, sp, "bad argument to 'bind'");
     }

@@ -1725,7 +1725,7 @@ int sqlite3VdbeParameterIndex(Vdbe *p, const char *zName, int nName){
     return 0;
   }
   if( zName ){
-    int adj = (zName[0] == '@' ? 1 : 0); /* COMDB2 MODIFICATION */
+    int adj = (zName[0] == '@' ? 0 : 1); /* COMDB2 MODIFICATION */
     for(i=0; i<p->nzVar; i++){
       const char *z = p->azVar[i];
       if( z ) z += adj; /* COMDB2 MODIFICATION */
