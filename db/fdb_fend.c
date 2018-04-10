@@ -3077,7 +3077,6 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
                         logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming "
                                              "row rc=%d \"%s\"\n",
                                __func__, rc, errstr);
-
                 }
 
                 return rc;
