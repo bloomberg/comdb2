@@ -339,6 +339,7 @@ typedef void *(replay_func)(struct sqlclntstate *, void *);
 typedef int(param_count_func)(struct sqlclntstate *);
 typedef int(param_index_func)(struct sqlclntstate *, const char *, int64_t *);
 typedef int(param_value_func)(struct sqlclntstate *, struct param_data *, int);
+typedef int(override_count_func)(struct sqlclntstate *);
 
 struct plugin_callbacks {
     response_func *write_response; /* newsql_write_response */
@@ -350,6 +351,7 @@ struct plugin_callbacks {
     param_count_func *param_count; /* newsql_param_count */
     param_index_func *param_index; /* newsql_param_index */
     param_value_func *param_value; /* newsql_param_value */
+    override_count_func *override_count; /* newsql_override_count */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
@@ -366,12 +368,14 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, param_count);                         \
         make_plugin_callback(clnt, name, param_index);                         \
         make_plugin_callback(clnt, name, param_value);                         \
+        make_plugin_callback(clnt, name, override_count);                      \
     } while (0)
 
 
 int param_count(struct sqlclntstate *);
 int param_index(struct sqlclntstate *, const char *, int64_t *);
 int param_value(struct sqlclntstate *, struct param_data *, int);
+int override_count(struct sqlclntstate *);
 
 /* Client specific sql state */
 struct sqlclntstate {
@@ -389,10 +393,7 @@ struct sqlclntstate {
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
     char *sql;
-    int sqllen;
-    int *type_overrides;
     int recno;
-    struct fsqlreq req;
     int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];
     int dtprec;
@@ -451,23 +452,6 @@ struct sqlclntstate {
     struct spversion_t spversion;
     int n_lua_stmt;
     int max_lua_stmt;
-
-    char *tag;
-    void *tagbuf; /* note: this is a pointer into the client appsock thread
-                     buffer, don't free */
-    int tagbufsz;
-    void *nullbits;
-    int numnullbits;
-
-    int numblobs;
-    void **blobs;
-    int *bloblens;
-    void *inline_blobs[MAXBLOBS];
-    int inline_bloblens[MAXBLOBS];
-    void **alloc_blobs;
-    int *alloc_bloblens;
-    int numallocblobs;
-
 
     unsigned int bdb_osql_trak; /* 32 debug bits interpreted by bdb for your
                                    "set debug bdb"*/
@@ -588,6 +572,8 @@ struct sqlclntstate {
     uint32_t init_gen;
     int8_t gen_changed;
     uint8_t skip_peer_chk;
+    uint8_t queue_me;
+    uint8_t fail_dispatch;
 
     char fingerprint[FINGERPRINTSZ];
     int ncontext;
@@ -927,7 +913,6 @@ struct sql_state {
     char cache_hint[HINT_LEN];         /* hint copy, if any */
     const char *sql;                   /* the actual string used */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
-    //struct schema *parameters_to_bind; /* fast pointer to parameters */
 };
 int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
                                struct sql_state *, struct errstat *,

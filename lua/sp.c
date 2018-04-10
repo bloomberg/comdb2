@@ -977,36 +977,6 @@ static dbtypes_enum sqlite_type_to_dbtype(int sqltype)
     }
 }
 
-static int check_param_count(struct sqlclntstate *clnt, int num)
-{
-    CDB2SQLQUERY *query = clnt->sql_query;
-    if ((query && query->n_types && query->n_types != num) ||
-        (clnt->req.parm && clnt->req.parm != num)) {
-        /* cdb2api or comdb2api params exist and don't match number of args */
-        return -1;
-    }
-    return 0;
-}
-
-static int check_param_range(struct sqlclntstate *clnt, int num)
-{
-    CDB2SQLQUERY *query = clnt->sql_query;
-    if ((query && query->n_types && query->n_types > num) ||
-        clnt->req.parm > num) {
-        return -1;
-    }
-    return 0;
-}
-
-static int typed_stmt(struct sqlclntstate *clnt)
-{
-    CDB2SQLQUERY *query = clnt->sql_query;
-    if ((query && query->n_types) || clnt->req.parm) {
-        return 1;
-    }
-    return 0;
-}
-
 static void donate_stmt(SP sp, dbstmt_t *dbstmt)
 {
     sqlite3_stmt *stmt = dbstmt->stmt;
@@ -3674,7 +3644,8 @@ static int db_column_name(Lua L)
         return luaL_error(L, "bad arguments to 'column_name'");
     }
     struct sqlclntstate *parent_clnt = parent->clnt;
-    if (check_param_range(parent_clnt, index) != 0) {
+    int count = override_count(parent_clnt);
+    if (count && count <= index) {
         free(name);
         return luaL_error(L,
                           "bad arguments to 'column_name' for typed-statement");
@@ -3711,7 +3682,7 @@ static int db_column_type(Lua L)
         return luaL_error(L, "bad arguments to 'column_type'");
     }
     struct sqlclntstate *parent_clnt = parent->clnt;
-    if (typed_stmt(parent_clnt)) {
+    if (override_count(parent_clnt)) {
         free(name);
         return luaL_error(L, "attempt to set column type for typed-statement");
     }
@@ -3761,7 +3732,7 @@ static int db_num_columns(Lua L)
     SP sp = getsp(L);
     SP parent = sp->parent;
     struct sqlclntstate *parent_clnt = parent->clnt;
-    if (typed_stmt(parent_clnt)) {
+    if (override_count(parent_clnt)) {
         return luaL_error(
             L, "attempt to set number of columns for typed-statement");
     }
@@ -6127,6 +6098,11 @@ static int trigger_param_index(struct sqlclntstate *a, const char *b, int64_t *c
 }
 
 static int trigger_param_value(struct sqlclntstate *a, struct param_data *b, int c)
+{
+    return -1;
+}
+
+static int trigger_override_count(struct sqlclntstate *a)
 {
     return -1;
 }

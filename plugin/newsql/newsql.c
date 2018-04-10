@@ -1074,6 +1074,12 @@ static int newsql_param_value(struct sqlclntstate *clnt,
     return -1;
 }
 
+static int newsql_override_count(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->sqlquery->n_types;
+}
+
 /* Skip spaces and tabs, requires at least one space */
 static inline char *skipws(char *str)
 {
@@ -1443,7 +1449,7 @@ static int do_query_on_master_check(struct dbenv *dbenv,
             allow_master_dbinfo = 1;
         } else if (CDB2_CLIENT_FEATURES__ALLOW_QUEUING ==
                    sql_query->features[ii]) {
-            clnt->req.flags |= SQLF_QUEUE_ME;
+            clnt->queue_me = 1;
         }
     }
 

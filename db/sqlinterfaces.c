@@ -1723,9 +1723,8 @@ lrucache *sql_hints = NULL;
 typedef struct {
     char *sql_hint;
     char *sql_str;
-    char *tag;
     lrucache_link lnk;
-    char mem[1];
+    char mem[0];
 } sql_hint_hash_entry_type;
 
 void delete_sql_hint_table() { lrucache_destroy(sql_hints); }
@@ -1770,30 +1769,18 @@ void reinit_sql_hint_table()
     pthread_mutex_unlock(&gbl_sql_lock);
 }
 
-static int add_sql_hint_table(char *sql_hint, char *sql_str, char *tag)
+static void add_sql_hint_table(char *sql_hint, char *sql_str)
 {
-    int ret = -1;
-    int len;
-    int sql_hint_len, sql_len, tag_len = 0;
-    sql_hint_hash_entry_type *entry;
+    int sql_hint_len = strlen(sql_hint) + 1;
+    int sql_len = strlen(sql_str) + 1;
+    int len = sql_hint_len + sql_len;
+    sql_hint_hash_entry_type *entry = malloc(sizeof(*entry) + len);
 
-    sql_hint_len = strlen(sql_hint) + 1;
-    sql_len = strlen(sql_str) + 1;
-    if (tag)
-        tag_len = strlen(tag) + 1;
-    len = sql_hint_len + sql_len + tag_len;
-
-    entry = malloc(offsetof(sql_hint_hash_entry_type, mem) + len);
-    memcpy(entry->mem, sql_hint, sql_hint_len);
     entry->sql_hint = entry->mem;
-    memcpy(entry->mem + sql_hint_len, sql_str, sql_len);
-    entry->sql_str = entry->mem + sql_hint_len;
-    if (tag) {
-        memcpy(entry->mem + sql_hint_len + sql_len, tag, tag_len);
-        entry->tag = entry->mem + sql_hint_len + sql_len;
-    } else {
-        entry->tag = NULL;
-    }
+    memcpy(entry->sql_hint, sql_hint, sql_hint_len);
+
+    entry->sql_str = entry->sql_hint + sql_hint_len;
+    memcpy(entry->sql_str, sql_str, sql_len);
 
     pthread_mutex_lock(&gbl_sql_lock);
     {
@@ -1805,11 +1792,9 @@ static int add_sql_hint_table(char *sql_hint, char *sql_str, char *tag)
         }
     }
     pthread_mutex_unlock(&gbl_sql_lock);
-
-    return ret;
 }
 
-static int find_sql_hint_table(char *sql_hint, char **sql_str, char **tag)
+static int find_sql_hint_table(char *sql_hint, char **sql_str)
 {
     sql_hint_hash_entry_type *entry;
     pthread_mutex_lock(&gbl_sql_lock);
@@ -1819,7 +1804,6 @@ static int find_sql_hint_table(char *sql_hint, char **sql_str, char **tag)
     pthread_mutex_unlock(&gbl_sql_lock);
     if (entry) {
         *sql_str = entry->sql_str;
-        *tag = entry->tag;
         return 0;
     }
     return -1;
@@ -2470,6 +2454,11 @@ int param_value(struct sqlclntstate *clnt, struct param_data *param, int n)
     return clnt->plugin.param_value(clnt, param, n);
 }
 
+int override_count(struct sqlclntstate *clnt)
+{
+    return clnt->plugin.override_count(clnt);
+}
+
 static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                             struct sql_state *rec)
 {
@@ -2484,12 +2473,10 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         if (find_stmt_table(thd, rec->cache_hint, &rec->stmt_entry) == 0) {
             rec->status |= CACHE_FOUND_STMT;
             rec->stmt = rec->stmt_entry->stmt;
-            // rec->parameters_to_bind = rec->stmt_entry->params_to_bind;
         } else {
             /* We are not able to find the statement in cache, and this is a
              * partial statement. Try to find sql string stored in hash table */
-            if (find_sql_hint_table(rec->cache_hint, (char **)&rec->sql,
-                                    (char **)&(clnt->tag)) == 0) {
+            if (find_sql_hint_table(rec->cache_hint, (char **)&rec->sql) == 0) {
                 rec->status |= CACHE_FOUND_STR;
             }
         }
@@ -2507,48 +2494,6 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             rec->stmt = NULL;
         }
     }
-}
-
-static void get_cached_params(struct sqlthdstate *thd,
-                              struct sqlclntstate *clnt,
-                              struct sql_state *rec)
-{
-    int hint_len;
-
-    bzero(rec, sizeof(*rec));
-
-    rec->status = CACHE_DISABLED;
-    rec->sql = clnt->sql;
-
-    if (gbl_enable_sql_stmt_caching == STMT_CACHE_ALL ||
-        (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM && clnt->tag)) {
-        hint_len = sizeof(rec->cache_hint);
-        if (extract_sqlcache_hint(clnt->sql, rec->cache_hint, HINT_LEN)) {
-            rec->status = CACHE_HAS_HINT;
-            if (find_stmt_table(thd, rec->cache_hint, &rec->stmt_entry) == 0) {
-                rec->status |= CACHE_FOUND_STMT;
-                rec->stmt = rec->stmt_entry->stmt;
-                //rec->parameters_to_bind = rec->stmt_entry->params_to_bind;
-            } else {
-                if (find_sql_hint_table(rec->cache_hint, (char **)&rec->sql,
-                                        &(clnt->tag)) == 0) {
-                    rec->status |= CACHE_FOUND_STR;
-                }
-            }
-        } else {
-            if (find_stmt_table(thd, rec->sql, &rec->stmt_entry) == 0) {
-                rec->status = CACHE_FOUND_STMT;
-                rec->stmt = rec->stmt_entry->stmt;
-            }
-        }
-    }
-}
-
-
-static int _dbglog_send_cost(struct sqlclntstate *clnt)
-{
-    dump_client_query_stats(clnt->dbglog, clnt->query_stats);
-    return 0;
 }
 
 /* This is called at the time of put_prepared_stmt_int()
@@ -2606,7 +2551,7 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
     if (rec->status & CACHE_HAS_HINT) {
         sqlptr = rec->cache_hint;
         if (!(rec->status & CACHE_FOUND_STR)) {
-            add_sql_hint_table(rec->cache_hint, clnt->sql, clnt->tag);
+            add_sql_hint_table(rec->cache_hint, clnt->sql);
         }
     }
     return add_stmt_table(thd, sqlptr, gbl_debug_temptables ? rec->sql : NULL,
@@ -2906,30 +2851,6 @@ int get_prepared_stmt_try_lock(struct sqlthdstate *thd,
     return rc;
 }
 
-static int check_client_specified_conversions(struct sqlthdstate *thd,
-                                              struct sqlclntstate *clnt,
-                                              int ncols, struct errstat *err)
-{
-    if ((clnt->req.parm && clnt->req.parm != ncols) ||
-        (clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_types &&
-         clnt->sql_query->n_types != ncols)) {
-        char errstr[128];
-        int loc_cols = clnt->req.parm;
-        if (clnt->is_newsql)
-            loc_cols = clnt->sql_query->n_types;
-        snprintf(errstr, sizeof(errstr),
-                 "Number of overrides:%d doesn't match number of columns:%d",
-                 loc_cols, ncols);
-        reqlog_logf(thd->logger, REQL_TRACE, "%s\n", errstr);
-
-        errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
-
-        return -1;
-    }
-
-    return 0;
-}
-
 static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                            struct sqlclntstate *clnt, char **err)
 {
@@ -3029,13 +2950,19 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
                            a, b);
         return -1;
     }
-    reqlog_logf(thd->logger, REQL_INFO, "ncols=%d",
-                sqlite3_column_count(rec->stmt));
+    int cols = sqlite3_column_count(rec->stmt);
+    int overrides = override_count(clnt);
+    if (overrides && overrides != cols) {
+        errstat_set_rcstrf(err, ERR_PREPARE,
+                           "columns in stmt:%d  "
+                           "column types provided:%d",
+                           cols, overrides);
+        return -1;
+    }
+    reqlog_logf(thd->logger, REQL_INFO, "ncols=%d", cols);
     if (a == 0)
         return 0;
-    if ((rc = bind_params(thd, clnt, rec, err)) != 0)
-        return rc;
-    return 0;
+    return bind_params(thd, clnt, rec, err);
 }
 
 static void handle_stored_proc(struct sqlthdstate *, struct sqlclntstate *);
@@ -3474,27 +3401,10 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 static void handle_stored_proc(struct sqlthdstate *thd,
                                struct sqlclntstate *clnt)
 {
-    struct sql_state rec;
-    struct errstat err;
+    struct sql_state rec = {0};
     char *errstr;
-    int rc;
-
     reqlog_set_event(thd->logger, "sp");
-
-    abort();
-    /*
-    rc = get_prepared_bound_param(thd, clnt, &rec, &err);
-    if (rc) {
-        int irc = errstat_get_rc(&err);
-        assert(irc == ERR_PREPARE || irc == ERR_PREPARE_RETRY);
-        if (irc == ERR_PREPARE)
-            WRITE_RESPONSE(RESPONSE_ERROR_PREPARE, err.errstr);
-        else if (irc == ERR_PREPARE_RETRY)
-            WRITE_RESPONSE(RESPONSE_ERROR_PREPARE_RETRY, err.errstr);
-        return;
-    }
-    */
-    rc = exec_procedure(thd, clnt, &errstr);
+    int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
         clnt->had_errors = 1;
         if (rc == -1)
@@ -3504,9 +3414,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
             free(errstr);
         }
     }
-
     test_no_btcursors(thd);
-
     sqlite_done(thd, clnt, &rec, 0);
 }
 
@@ -4023,7 +3931,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
 
     sqlcpy = strdup(msg);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
-                              clnt, (clnt->req.flags & SQLF_QUEUE_ME) ? 1 : 0,
+                              clnt, clnt->queue_me,
                               sqlcpy)) != 0) {
         if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
@@ -4035,7 +3943,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
         if (rc) {
             free(sqlcpy);
             /* say something back, if the client expects it */
-            if (clnt->req.flags & SQLF_FAILDISPATCH_ON) {
+            if (clnt->fail_dispatch) {
                 snprintf(msg, sizeof(msg), "%s: unable to dispatch sql query\n",
                          __func__);
                 handle_failed_dispatch(clnt, msg);
@@ -4251,13 +4159,6 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     if (clnt->spversion.version_str) {
         free(clnt->spversion.version_str);
         clnt->spversion.version_str = NULL;
-    }
-
-    if (clnt->numallocblobs) {
-        free(clnt->alloc_blobs);
-        clnt->alloc_blobs = NULL;
-        free(clnt->alloc_bloblens);
-        clnt->alloc_bloblens = NULL;
     }
 
     if (clnt->query_stats) {
@@ -5603,6 +5504,11 @@ static int internal_param_index(struct sqlclntstate *a, const char *b, int64_t *
 }
 
 static int internal_param_value(struct sqlclntstate *a, struct param_data *b, int c)
+{
+    return -1;
+}
+
+static int internal_override_count(struct sqlclntstate *clnt)
 {
     return -1;
 }
