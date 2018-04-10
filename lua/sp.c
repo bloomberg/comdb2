@@ -4840,28 +4840,30 @@ static int push_null(Lua L, int param_type)
     return 0;
 }
 
-static int push_param(Lua L, struct sqlclntstate *clnt, struct param_data *p)
+static int push_param(Lua L, struct sqlclntstate *clnt, int64_t index)
 {
-    if (p->null || p->type == COMDB2_NULL_TYPE) {
-        return push_null(L, p->type);
+    struct param_data p;
+    param_value(clnt, &p, index);
+    if (p.null || p.type == COMDB2_NULL_TYPE) {
+        return push_null(L, p.type);
     }
-    switch (p->type) {
+    switch (p.type) {
     case CLIENT_INT:
-    case CLIENT_UINT: luabb_pushinteger(L, p->u.i); break;
-    case CLIENT_REAL: luabb_pushreal(L, p->u.r); break;
+    case CLIENT_UINT: luabb_pushinteger(L, p.u.i); break;
+    case CLIENT_REAL: luabb_pushreal(L, p.u.r); break;
     case CLIENT_CSTR:
     case CLIENT_PSTR:
     case CLIENT_PSTR2:
-    case CLIENT_VUTF8: luabb_pushcstringlen(L, p->u.p, p->len); break;
+    case CLIENT_VUTF8: luabb_pushcstringlen(L, p.u.p, p.len); break;
     case CLIENT_BYTEARRAY:
     case CLIENT_BLOB: {
-        blob_t b = {.length = p->len, .data = p->u.p};
+        blob_t b = {.length = p.len, .data = p.u.p};
         luabb_pushblob(L, &b);
         break;
     }
     case CLIENT_DATETIME: {
         cdb2_client_datetime_t t;
-        dttz_to_client_datetime(&p->u.dt, clnt->tzname, &t);
+        dttz_to_client_datetime(&p.u.dt, clnt->tzname, &t);
         datetime_t datetime;
         client_datetime_to_datetime_t(&t, &datetime, 0);
         luabb_pushdatetime(L, &datetime);
@@ -4869,19 +4871,19 @@ static int push_param(Lua L, struct sqlclntstate *clnt, struct param_data *p)
     }
     case CLIENT_DATETIMEUS: {
         cdb2_client_datetimeus_t t;
-        dttz_to_client_datetimeus(&p->u.dt, clnt->tzname, &t);
+        dttz_to_client_datetimeus(&p.u.dt, clnt->tzname, &t);
         datetime_t datetime;
         client_datetimeus_to_datetime_t(&t, &datetime, 0);
         luabb_pushdatetime(L, &datetime);
         break;
     }
     default:
-        logmsg(LOGMSG_ERROR, "Unknown type %d\n", p->type);
+        logmsg(LOGMSG_ERROR, "Unknown type %d\n", p.type);
         return -1;
     }
     if (gbl_dump_sql_dispatched) {
-        logmsg(LOGMSG_USER, "%s type %d %s len %d null %d bind\n", p->name,
-               p->type, strtype(p->type), p->len, p->null);
+        logmsg(LOGMSG_USER, "%s type %d %s len %d null %d bind\n", p.name,
+               p.type, strtype(p.type), p.len, p.null);
     }
     return 0;
 }
@@ -4907,7 +4909,6 @@ typedef struct {
         double d;
         char *c;
         blob_t b;
-        struct param_data p;
     } u;
 } sparg_t;
 
@@ -5339,7 +5340,7 @@ static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
         case arg_str: lua_pushstring(lua, arg.u.c); break;
         case arg_blob: luabb_pushblob(lua, &arg.u.b); break;
         case arg_bool: lua_pushboolean(lua, arg.u.i); break;
-        case arg_param: rc = push_param(lua, clnt, &arg.u.p); break;
+        case arg_param: rc = push_param(lua, clnt, arg.u.i); break;
         default: rc = 99; break;
         }
         free(arg.mbuf);
