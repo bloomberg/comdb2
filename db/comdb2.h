@@ -37,20 +37,6 @@
 
 enum { IOTIMEOUTMS = 10000 };
 
-enum {
-    SQLF_QUEUE_ME = 1,
-    SQLF_FAILDISPATCH_ON = 2,
-    SQLF_CONVERTED_BLOSQL = 4,
-    SQLREQ_FLAG_WANT_SP_TRACE = 8,
-    SQLREQ_FLAG_WANT_SP_DEBUG = 16,
-    SQLF_WANT_NEW_ROW_DATA = 32,
-    SQLF_WANT_QUERY_EFFECTS = 64,
-    SQLF_WANT_READONLY_ACCESS = 128,
-    SQLF_WANT_VERIFYRETRY_OFF = 256
-};
-
-#define N_BBIPC 2
-
 struct dbtable;
 struct consumer;
 struct thr_handle;
