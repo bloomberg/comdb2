@@ -3,7 +3,7 @@
 # Runs the register linearizability test
 #debug=1
 #debug_trace="-D"
-#export COMDB2_DEBUG=1
+export COMDB2_DEBUG=1
 export CDB2JDBC_STATEMENT_QUERYEFFECTS=1
 
 [[ "$debug" == 1 ]] && set -x
