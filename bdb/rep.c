@@ -3779,12 +3779,22 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     case 0:
         bdb_state->repinfo->repstats.rep_zerorc++;
         uint32_t mygen;
+        DB_LSN last_locked_lsn;
 
         /* nothing interesting happened - all is a-ok */
 
         // we are in berkdb .. we are holding the bdb lock .. the generation can't change
         bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
         __log_txn_lsn(bdb_state->dbenv, &lastlsn, NULL, NULL);
+        bdb_state->dbenv->get_last_locked(bdb_state->dbenv, &last_locked_lsn);
+
+        if (log_compare(&lastlsn, &last_locked_lsn) > 0) {
+            logmsg(LOGMSG_ERROR, "%s line %d lastlsn %d:%d exceeds locked-lsn "
+                    "%d:%d\n", __func__, __LINE__, lastlsn.file, lastlsn.offset,
+                    last_locked_lsn.file, last_locked_lsn.offset);
+            /* Only possible if a different thread is applying */
+            assert(gbl_decoupled_logputs);
+        }
 
         /* we still need to account for log updates that missed by ISPERM logic
          */
@@ -3792,7 +3802,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         {
             Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
             bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
-                .lsn = lastlsn;
+                .lsn = last_locked_lsn;
             bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
                 .generation = mygen;
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
@@ -3902,6 +3912,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         bdb_state->repinfo->repstats.rep_isperm++;
 
         char *mynode = bdb_state->repinfo->myhost;
+
+        assert(!gbl_decoupled_logputs);
 
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
         logmsg(LOGMSG_INFO, "%s line %d setting my seqnum to %d:%d gen %d\n", 

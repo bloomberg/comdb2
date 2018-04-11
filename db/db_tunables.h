@@ -1343,5 +1343,10 @@ REGISTER_TUNABLE("max_apply_dequeue", "Limit apply-processing to this many per "
                  "loop.  this many times.  (Default: 100000)", TUNABLE_INTEGER, 
                  &gbl_max_apply_dequeue, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_getlock_latency", "Sleep on replicant before getting "
+                 "locks.  (Default: 0)", TUNABLE_INTEGER, 
+                 &gbl_getlock_latencyms, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */

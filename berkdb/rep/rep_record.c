@@ -88,7 +88,9 @@ int gbl_apply_thread_pollms = 100;
 int last_fill = 0;
 int gbl_req_all_threshold = 10000000;
 int gbl_req_delay_count_threshold = 5;
+int gbl_getlock_latencyms = 0;
 extern int request_delaymore(void *bdb_state);
+int __rep_set_last_locked(DB_ENV *dbenv, DB_LSN *lsn);
 
 extern void fsnapf(FILE *, void *, int);
 static int reset_recovery_processor(struct __recovery_processor *rp);
@@ -2760,6 +2762,18 @@ err:
 
 int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
 
+static inline int is_commit(int rectype)
+{
+    switch(rectype) {
+        case DB___txn_regop_rowlocks:
+        case DB___txn_regop:
+        case DB___txn_regop_gen:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
 /*
  * __rep_apply --
  *
@@ -3323,7 +3337,6 @@ gap_check:		max_lsn_dbtp = NULL;
 	if (ret != 0 || cmp < 0 || (cmp == 0 && IS_SIMPLE(rectype)))
 		goto done;
 
-
 	/*
 	 * If we got here, then we've got a log record in rp and rec that
 	 * we need to process.
@@ -3484,6 +3497,9 @@ gap_check:		max_lsn_dbtp = NULL;
 	default:
 		goto err;
 	}
+
+    if (!is_commit(rectype))
+        __rep_set_last_locked(dbenv, &(rp->lsn));
 
 	/* Check if we need to go back into the table. */
 	if (ret == 0) {
@@ -4354,6 +4370,11 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	gbl_rep_lockid = lockid;
 
 	if (get_locks_and_ack) {
+
+        int polltime;
+        if ((polltime = gbl_getlock_latencyms) > 0)
+            poll(0, 0, polltime);
+
 		if (!context) {
 			uint32_t flags =
 			    LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
@@ -4387,6 +4408,9 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 
 		if (ret != 0)
 			goto err;
+
+        /* Set the last-locked lsn */
+        __rep_set_last_locked(dbenv, &(rctl->lsn));
 
         /* got all the locks.  ack back early */
 		if ((gbl_early) && (!gbl_reallyearly) &&
@@ -5026,6 +5050,10 @@ bad_resize:	;
 
 	/* XXX new logic: collect the locks & commit context, and then send the ack */
 
+    int polltime;
+    if ((polltime = gbl_getlock_latencyms) > 0)
+        poll(0, 0, polltime);
+
 	if (!rp->context) {
 		uint32_t flags =
 		    LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
@@ -5064,6 +5092,9 @@ bad_resize:	;
 			gbl_rep_trans_deadlocked++;
 		goto err;
 	}
+
+    /* Set the last-locked lsn */
+    __rep_set_last_locked(dbenv, &(rctl->lsn));
 
 	if ((gbl_early) && (!gbl_reallyearly) &&
 	    !(maxlsn.file == 0 && maxlsn.offset == 0) &&
