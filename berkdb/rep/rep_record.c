@@ -3498,9 +3498,6 @@ gap_check:		max_lsn_dbtp = NULL;
 		goto err;
 	}
 
-    if (!is_commit(rectype))
-        __rep_set_last_locked(dbenv, &(rp->lsn));
-
 	/* Check if we need to go back into the table. */
 	if (ret == 0) {
 		if (log_compare(&lp->ready_lsn, &lp->waiting_lsn) == 0)
@@ -4410,6 +4407,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			goto err;
 
         /* Set the last-locked lsn */
+        assert(rctl->lsn.file > 0);
         __rep_set_last_locked(dbenv, &(rctl->lsn));
 
         /* got all the locks.  ack back early */
@@ -5094,6 +5092,7 @@ bad_resize:	;
 	}
 
     /* Set the last-locked lsn */
+    assert(rctl->lsn.file > 0);
     __rep_set_last_locked(dbenv, &(rctl->lsn));
 
 	if ((gbl_early) && (!gbl_reallyearly) &&

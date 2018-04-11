@@ -3785,16 +3785,11 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
         // we are in berkdb .. we are holding the bdb lock .. the generation can't change
         bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
-        __log_txn_lsn(bdb_state->dbenv, &lastlsn, NULL, NULL);
         bdb_state->dbenv->get_last_locked(bdb_state->dbenv, &last_locked_lsn);
 
-        if (log_compare(&lastlsn, &last_locked_lsn) > 0) {
-            logmsg(LOGMSG_ERROR, "%s line %d lastlsn %d:%d exceeds locked-lsn "
-                    "%d:%d\n", __func__, __LINE__, lastlsn.file, lastlsn.offset,
-                    last_locked_lsn.file, last_locked_lsn.offset);
-            /* Only possible if a different thread is applying */
+        /* This only matters for a commit-record */
+        if (log_compare(&lastlsn, &last_locked_lsn) > 0)
             assert(gbl_decoupled_logputs);
-        }
 
         /* we still need to account for log updates that missed by ISPERM logic
          */

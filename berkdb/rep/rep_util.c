@@ -891,6 +891,8 @@ __rep_set_last_locked(dbenv, last_locked_lsn)
     DB_LSN *last_locked_lsn;
 {
     pthread_mutex_lock(&dbenv->locked_lsn_lk);
+    if (last_locked_lsn->file <= 0) 
+        abort();
     dbenv->last_locked_lsn = *last_locked_lsn;
     pthread_mutex_unlock(&dbenv->locked_lsn_lk);
     return 0;
