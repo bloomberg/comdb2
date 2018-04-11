@@ -879,6 +879,42 @@ __op_rep_exit(dbenv)
 }
 
 /*
+ * __rep_set_last_locked --
+ *
+ *	Get the last "locked" lsn
+ *
+ * PUBLIC: int __rep_set_last_locked __P((DB_ENV *, DB_LSN *));
+ */
+int 
+__rep_set_last_locked(dbenv, last_locked_lsn)
+    DB_ENV *dbenv;
+    DB_LSN *last_locked_lsn;
+{
+    pthread_mutex_lock(&dbenv->locked_lsn_lk);
+    dbenv->last_locked_lsn = *last_locked_lsn;
+    pthread_mutex_unlock(&dbenv->locked_lsn_lk);
+    return 0;
+}
+
+/*
+ * __rep_get_last_locked --
+ *
+ *	Get the last "locked" lsn
+ *
+ * PUBLIC: int __rep_get_last_locked __P((DB_ENV *, DB_LSN *));
+ */
+int
+__rep_get_last_locked(dbenv, last_locked_lsn)
+	DB_ENV *dbenv;
+    DB_LSN *last_locked_lsn;
+{
+    pthread_mutex_lock(&dbenv->locked_lsn_lk);
+    *last_locked_lsn = dbenv->last_locked_lsn;
+    pthread_mutex_unlock(&dbenv->locked_lsn_lk);
+    return 0;
+}
+
+/*
  * __rep_get_gen --
  *
  *	Get the generation number from a replicated environment.
