@@ -144,6 +144,7 @@ extern int gbl_long_read_threshold;
 extern int gbl_always_ack_fills;
 extern int gbl_verbose_fills;
 extern int gbl_getlock_latencyms;
+extern int gbl_last_locked_seqnum;
 extern int gbl_set_coherent_state_trace;
 extern int gbl_enque_log_more;
 extern int gbl_trace_repmore_reqs;

@@ -4375,7 +4375,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	if (get_locks_and_ack) {
 
         int polltime;
-        if ((polltime = gbl_getlock_latencyms) > 0)
+        if ((0 == (rand() % 100)) && (polltime = gbl_getlock_latencyms) > 0)
             poll(0, 0, polltime);
 
 		if (!context) {
@@ -5053,9 +5053,8 @@ bad_resize:	;
 	}
 
 	/* XXX new logic: collect the locks & commit context, and then send the ack */
-
     int polltime;
-    if ((polltime = gbl_getlock_latencyms) > 0)
+    if ((0 == (rand() % 100)) && (polltime = gbl_getlock_latencyms) > 0)
         poll(0, 0, polltime);
 
 	if (!rp->context) {

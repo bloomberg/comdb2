@@ -3665,6 +3665,8 @@ void bdb_exiting(bdb_state_type *bdb_state)
     MEMORY_SYNC;
 }
 
+int gbl_last_locked_seqnum = 1;
+
 static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
                           DBT *rec)
 {
@@ -3779,17 +3781,15 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     case 0:
         bdb_state->repinfo->repstats.rep_zerorc++;
         uint32_t mygen;
-        DB_LSN last_locked_lsn;
 
         /* nothing interesting happened - all is a-ok */
 
         // we are in berkdb .. we are holding the bdb lock .. the generation can't change
         bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
-        bdb_state->dbenv->get_last_locked(bdb_state->dbenv, &last_locked_lsn);
-
-        /* This only matters for a commit-record */
-        if (log_compare(&lastlsn, &last_locked_lsn) > 0)
-            assert(gbl_decoupled_logputs);
+        if (gbl_last_locked_seqnum)
+            bdb_state->dbenv->get_last_locked(bdb_state->dbenv, &lastlsn);
+        else
+            __log_txn_lsn(bdb_state->dbenv, &lastlsn, NULL, NULL);
 
         /* we still need to account for log updates that missed by ISPERM logic
          */
@@ -3797,7 +3797,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         {
             Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
             bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
-                .lsn = last_locked_lsn;
+                .lsn = lastlsn;
             bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
                 .generation = mygen;
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
