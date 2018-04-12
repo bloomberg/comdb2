@@ -56,7 +56,7 @@ for ((i=1;i<=$CNT;i++)) ; do
 done >> ins.in
 
 echo 'using cte for kicks and gigles'
-echo "INSERT INTO t1 (id,rndm,i,j) WITH i(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM i where x < $CNT) SELECT guid(), randomblob(16), x,($CNT-x) FROM i" >> ins.in
+echo "INSERT INTO t1 (id,rndm,i,j) WITH tblx(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM tblx where x < $CNT) SELECT guid(), randomblob(16), x,($CNT-x) FROM tblx" >> ins.in
 
 
 PARALLEL=20
@@ -69,22 +69,38 @@ wait
 
 set -x
 
-cdb2sql ${CDB2_OPTIONS} $dbnm 'select * from t1' > content.out
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t1' > content.out
 echo 'failure in transactions inserting will mean count will be off'
 assertcnt $((CNT*PARALLEL*3))
 
-echo make sure we can find all the ids
-cut -f1 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel1.in
-cdb2sql -f sel1.in ${CDB2_OPTIONS} $dbnm > sel1.out
+echo "make sure we can find all the ids (field 1) from content.out"
+cut -f1 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel1
+lines_per_part=$(((CNT*PARALLEL*3 + 20 - 1) / 20))
+split --lines=$lines_per_part sel1 sel1_in.
+
+for fl in `ls sel1_in.*`; do
+    cdb2sql -f $fl ${CDB2_OPTIONS} $dbnm default > $fl.out &
+done
+
+
+echo "make sure we can find all the rndm (field 2) from content.out"
+cut -f2 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel2
+split --lines=$lines_per_part sel2 sel2_in.
+
+for fl in `ls sel2_in.*`; do
+    cdb2sql -f $fl ${CDB2_OPTIONS} $dbnm default > $fl.out &
+done
+
+echo "Wait for the selects to be done"
+wait
+cat sel1_in*.out > sel1.out
+cat sel2_in*.out > sel2.out
+
 cnt=`grep "^(count" sel1.out | grep "=0" | wc -l`
 if [ $cnt != 0 ] ; then
     failexit 'id not found'
 fi
 
-
-echo make sure we can find all the rndm
-cut -f2 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel2.in
-cdb2sql -f sel2.in ${CDB2_OPTIONS} $dbnm > sel2.out
 cnt=`grep "^(count" sel2.out | grep "=0" | wc -l`
 if [ $cnt != 0 ] ; then
     failexit 'rndm not found'
