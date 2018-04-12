@@ -4170,6 +4170,8 @@ int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
 	unsigned long long logical_tranid, DB_LSN logical_commit_lsn, uint32_t gen,
 	int32_t timestamp, unsigned long long context);
 
+static unsigned long long getlock_poll_count = 0;
+
 /*
  * __rep_process_txn --
  *
@@ -4375,8 +4377,26 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	if (get_locks_and_ack) {
 
         int polltime;
-        if ((0 == (rand() % 100)) && (polltime = gbl_getlock_latencyms) > 0)
+        if ((0 == (rand() % 20)) && (polltime = gbl_getlock_latencyms) > 0) {
+            static int lastpr = 0;
+            int now;
+            getlock_poll_count++;
+            if ((now = time(NULL)) != lastpr) {
+                logmsg(LOGMSG_USER, "%s line %d polling for %d ms before "
+                    "getlocks, %llu polls total\n", __func__, __LINE__, 
+                    polltime, getlock_poll_count);
+                lastpr = now;
+            }
             poll(0, 0, polltime);
+        } else if (gbl_getlock_latencyms) {
+            static int lastpr = 0;
+            int now;
+            if ((now = time(NULL)) != lastpr) {
+                logmsg(LOGMSG_USER, "%s line %d not-polling, %llu total "
+                        "polls\n", __func__, __LINE__, getlock_poll_count);
+                lastpr = now;
+            }
+        }
 
 		if (!context) {
 			uint32_t flags =
@@ -5054,8 +5074,26 @@ bad_resize:	;
 
 	/* XXX new logic: collect the locks & commit context, and then send the ack */
     int polltime;
-    if ((0 == (rand() % 100)) && (polltime = gbl_getlock_latencyms) > 0)
+    if ((0 == (rand() % 20)) && (polltime = gbl_getlock_latencyms) > 0) {
+        static int lastpr = 0;
+        int now;
+        getlock_poll_count++;
+        if ((now = time(NULL)) != lastpr) {
+            logmsg(LOGMSG_USER, "%s line %d polling for %d ms before "
+                    "getlocks, %llu polls total\n", __func__, __LINE__, 
+                    polltime, getlock_poll_count);
+            lastpr = now;
+        }
         poll(0, 0, polltime);
+    } else if (gbl_getlock_latencyms) {
+        static int lastpr = 0;
+        int now;
+        if ((now = time(NULL)) != lastpr) {
+            logmsg(LOGMSG_USER, "%s line %d not-polling, %llu total "
+                    "polls\n", __func__, __LINE__, getlock_poll_count);
+            lastpr = now;
+        }
+    }
 
 	if (!rp->context) {
 		uint32_t flags =
