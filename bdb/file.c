@@ -1753,9 +1753,8 @@ void get_my_lsn(bdb_state_type *bdb_state, DB_LSN *lsnout)
     memcpy(lsnout, &our_lsn, sizeof(DB_LSN));
 }
 
-void get_master_lsn(void *in_bdb_state, DB_LSN *lsnout)
+void get_master_lsn(bdb_state_type *bdb_state, DB_LSN *lsnout)
 {
-    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
     char *master_host = bdb_state->repinfo->master_host;
     if (master_host != db_eid_invalid && master_host != bdb_master_dupe) {
         memcpy(lsnout, &(bdb_state->seqnum_info

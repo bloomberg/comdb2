@@ -1182,7 +1182,7 @@ void bdb_set_key(bdb_state_type *bdb_state);
 uint64_t subtract_lsn(bdb_state_type *bdb_state, DB_LSN *lsn1, DB_LSN *lsn2);
 void get_my_lsn(bdb_state_type *bdb_state, DB_LSN *lsnout);
 void rep_all_req(bdb_state_type *bdb_state);
-void get_master_lsn(void *bdb_state, DB_LSN *lsnout);
+void get_master_lsn(bdb_state_type *bdb_state, DB_LSN *lsnout);
 void bdb_print_log_files(bdb_state_type *bdb_state);
 char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
 

@@ -2415,15 +2415,6 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         }
 
         change_coherency = (seqnum->commit_generation == mygen);
-
-        static int lastpr = 0;
-        int now;
-        // TODO XXX DELETE THIS
-        if ((now = time(NULL)) - lastpr) {
-            logmsg(LOGMSG_USER, "%s line %d change_coherency is %d for node %s, commit-gen=%d, mygen=%d\n",
-                    __func__, __LINE__, change_coherency, host, seqnum->commit_generation, mygen);
-            lastpr = now;
-        }
     } else
         change_coherency = 1;
 
@@ -2441,7 +2432,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
             pthread_mutex_lock(&bdb_state->coherent_state_lock);
             if (bdb_state->coherent_state[nodeix(host)] ==
                 STATE_INCOHERENT_SLOW) {
-                set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__, 
+                set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
                         __LINE__);
             }
             pthread_mutex_unlock(&bdb_state->coherent_state_lock);
@@ -2468,16 +2459,17 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     /* Completely possible .. it just means that the durable lsn will trail a
      * bit */
     if (bdb_state->attr->wait_for_seqnum_trace && 
-            log_compare(&bdb_state->seqnum_info->seqnums[nodeix(host)].lsn, &seqnum->lsn) > 0) {
-        logmsg(LOGMSG_USER, "%s seqnum from %s moving backwards from [%d][%d] gen %d to [%d][%d] gen %d\n",
-                __func__, host,
+            log_compare(&bdb_state->seqnum_info->seqnums[nodeix(host)].lsn,
+                &seqnum->lsn) > 0) {
+        logmsg(LOGMSG_USER, "%s seqnum from %s moving backwards from [%d][%d]" 
+                " gen %d to [%d][%d] gen %d\n", __func__, host,
                 bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.file,
                 bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.offset,
                 bdb_state->seqnum_info->seqnums[nodeix(host)].generation,
                 seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation);
     } else if (bdb_state->attr->wait_for_seqnum_trace) {
-        logmsg(LOGMSG_USER, "%s seqnum from %s moving from [%d][%d] gen %d to [%d][%d] gen %d\n",
-                __func__, host,
+        logmsg(LOGMSG_USER, "%s seqnum from %s moving from [%d][%d] gen %d to "
+                "[%d][%d] gen %d\n", __func__, host,
                 bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.file,
                 bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.offset,
                 bdb_state->seqnum_info->seqnums[nodeix(host)].generation,
@@ -2583,8 +2575,10 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                                     seqnum->lsn.offset, seqnum->generation, gen,
                                     bdb_state->repinfo->master_host);
                         }
-                    } 
+                    }
 
+                    /* INCOHERENT_WAIT if this node is within the catchup_window
+                     */
                     if (catchup_window &&
                         bdb_state->coherent_state[nodeix(host)] ==
                             STATE_INCOHERENT) {
@@ -2597,27 +2591,6 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                         if (cntbytes < catchup_window) {
                             set_coherent_state(bdb_state, host, 
                                     STATE_INCOHERENT_WAIT, __func__, __LINE__);
-                            if (gbl_catchup_window_trace) {
-                                logmsg(LOGMSG_USER, "%s line %d setting %s to "
-                                        "incoherent wait, seqnum lsn %d:%d, "
-                                        "master lsn %d:%d\n", __func__,__LINE__,
-                                        host, seqnum->lsn.file,
-                                        seqnum->lsn.offset, masterlsn->file, 
-                                        masterlsn->offset);
-                            }
-                        } else {
-                            static int lastpr = 0;
-                            int now;
-                            if ((now = time(NULL)) - lastpr) {
-                                logmsg(LOGMSG_USER, "%s line %d, %s stays "
-                                        "incoherent, "
-                                        "seqnum lsn %d:%d, master lsn %d:%d, "
-                                        "behind by %llu\n", __func__,__LINE__,
-                                        host, seqnum->lsn.file,
-                                        seqnum->lsn.offset, masterlsn->file,
-                                        masterlsn->offset, cntbytes);
-                                lastpr = now;
-                            }
                         }
                     }
                 }
@@ -3358,8 +3331,7 @@ done_wait:
     if (!numfailed && !numskip && !numwait && 
         bdb_state->attr->remove_commitdelay_on_coherent_cluster &&
         bdb_state->attr->commitdelay) {
-        logmsg(gbl_commit_delay_trace ? LOGMSG_USER : LOGMSG_INFO, 
-                "Cluster is in sync, removing commitdelay\n");
+        logmsg(LOGMSG_INFO, "Cluster is in sync, removing commitdelay\n");
         bdb_state->attr->commitdelay = 0;
     }
 
@@ -3908,11 +3880,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
         char *mynode = bdb_state->repinfo->myhost;
 
-        assert(!gbl_decoupled_logputs);
-
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-        logmsg(LOGMSG_INFO, "%s line %d setting my seqnum to %d:%d gen %d\n", 
-                __func__, __LINE__, permlsn.file, permlsn.offset, generation);
         bdb_state->seqnum_info->seqnums[nodeix(mynode)].lsn = permlsn;
         bdb_state->seqnum_info->seqnums[nodeix(mynode)].generation = generation;
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
@@ -4898,8 +4866,7 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
         if (bdb_state->attr->commitdelay > bdb_state->attr->commitdelaymax)
             bdb_state->attr->commitdelay = bdb_state->attr->commitdelaymax;
 
-        logmsg(gbl_commit_delay_trace ? LOGMSG_USER : LOGMSG_WARN, 
-                "--- got commitdelaymore req from node %s.  now %d\n",
+        logmsg(LOGMSG_WARN, "--- got commitdelaymore req from node %s.  now %d\n",
                 from_node, bdb_state->attr->commitdelay);
 
         break;
@@ -4912,7 +4879,6 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
         send_context_to_all(bdb_state);
         logmsg(gbl_commit_delay_trace ? LOGMSG_USER : LOGMSG_WARN, 
                 "-- setting commitdelay to 0 on COMMITDELAYNONE\n");
-
         break;
 
     case USER_TYPE_GETCONTEXT:
