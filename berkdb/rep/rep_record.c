@@ -2997,8 +2997,11 @@ gap_check:		max_lsn_dbtp = NULL;
 				 * We may miscount if we race, since we
 				 * don't currently hold the rep mutex.
 				 */
-				if (ret == 0)
+				if (ret == 0) {
 					rep->stat.st_log_records++;
+                    if (!is_commit(rectype))
+                        __rep_set_last_locked(dbenv, &(rp->lsn));
+                }
 
 				if (dbenv->attr.cache_lc)
 					__lc_cache_feed(dbenv, rp->lsn, *rec);
