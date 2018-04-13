@@ -4,7 +4,7 @@ done
 done
 done
 done
-(i=1, j=1)
+(i=1, j=0)
 done
 done
 (i=1, j=1)
@@ -12,5 +12,21 @@ done
 done
 done
 (i=1, j=2)
+done
+done
+done
+done
+done
+done
+done
+done
+(i=1, j=0)
+done
+done
+(i=1, j=1)
+done
+done
+done
+(i=1, j=1)
 done
 done
