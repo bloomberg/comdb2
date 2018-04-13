@@ -4548,6 +4548,15 @@ void fdb_clear_sqlite_cache(sqlite3 *sqldb, const char *dbname,
     sqlite3ResetOneSchemaByName(sqldb, "sqlite_stat4", dbname);
 }
 
+int fdb_table_exists(int rootpage)
+{
+    fdb_tbl_ent_t *ent = NULL;
+    ent = get_fdb_tbl_ent_by_rootpage(rootpage);
+    if (ent)
+        return 1;
+    return 0;
+}
+
 /**
  * Lock a remote table schema cache
  *

@@ -5212,6 +5212,10 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         rc = SQLITE_OK; /* this is processed based on clnt->osql.xerr */
         break;
 
+    case SQLITE_COMDB2SCHEMA:
+        *errstr = sqlite3_errmsg(sqldb);
+        break;
+
     default:
         logmsg(LOGMSG_DEBUG, "sql_check_errors got rc = %d, "
                              "returning as SQLITE_INTERNAL\n",
@@ -5335,8 +5339,8 @@ int sqlserver2sqlclient_error(int rc)
 {
     switch (rc) {
     case SQLITE_DEADLOCK:
-        return CDB2ERR_DEADLOCK;
     case SQLITE_BUSY:
+    case SQLITE_COMDB2SCHEMA:
         return CDB2ERR_DEADLOCK;
     case SQLITE_LIMIT:
         return SQLHERR_LIMIT;

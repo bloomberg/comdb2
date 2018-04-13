@@ -738,6 +738,8 @@ struct BtCursor {
     char *dataDdl;             /* DDL row, cached during CREATE operations */
     int nDataDdl;   /* length of the cached row for DDL instructions */
     int open_flags; /* flags used to open it */
+
+    int tableversion;
 };
 
 struct sql_hist {
