@@ -4340,6 +4340,11 @@ void get_current_lsn(struct sqlclntstate *clnt)
     }
 }
 
+static int get_snapshot(struct sqlclntstate *clnt, int *f, int *o)
+{
+    return clnt->plugin.get_snapshot(clnt, f, o);
+}
+
 int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
 {
     int rc = SQLITE_OK;
@@ -4349,9 +4354,8 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
     int snapshot_file = 0;
     int snapshot_offset = 0;
 
-    if (!clnt->snapshot && clnt->sql_query && clnt->sql_query->snapshot_info) {
-        snapshot_file = clnt->sql_query->snapshot_info->file;
-        snapshot_offset = clnt->sql_query->snapshot_info->offset;
+    if (!clnt->snapshot) {
+       get_snapshot(clnt, &snapshot_file, &snapshot_offset);
     }
 
     init_fake_ireq(thedb, &iq);
@@ -8654,8 +8658,9 @@ void cancel_sql_statement_with_cnonce(const char *cnonce)
     LISTC_FOR_EACH(&thedb->sql_threads, thd, lnk)
     {
         found = 1;
-        if (thd->clnt && thd->clnt->sql_query &&
-            thd->clnt->sql_query->has_cnonce) {
+        snap_uid_t snap;
+
+        if (thd->clnt && cnonce_value(thd->clnt, &snap) == 0) {
             const char *sptr = cnonce;
             int cnt = 0;
             void luabb_fromhex(uint8_t *out, const uint8_t *in, size_t len);
@@ -8664,14 +8669,13 @@ void cancel_sql_statement_with_cnonce(const char *cnonce)
                 luabb_fromhex(&num, (const uint8_t *)sptr, 2);
                 sptr+=2;
 
-                if (cnt > thd->clnt->sql_query->cnonce.len ||
-                        thd->clnt->sql_query->cnonce.data[cnt] != num) {
+                if (cnt > snap.keylen || snap.key[cnt] != num) {
                     found = 0;
                     break;
                 }
                 cnt++;
             }
-            if (found && cnt != thd->clnt->sql_query->cnonce.len)
+            if (found && cnt != snap.keylen)
                 found = 0;
 
             if (found) {
@@ -8724,8 +8728,9 @@ void sql_dump_running_statements(void)
             logmsg(LOGMSG_USER, "id %d %02d/%02d/%02d %02d:%02d:%02d %s%s\n", thd->id,
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
                    tm.tm_min, tm.tm_sec, rqid, thd->clnt->origin);
-            log_cnonce((char *)thd->clnt->sql_query->cnonce.data,
-                       thd->clnt->sql_query->cnonce.len);
+            snap_uid_t snap;
+            cnonce_value(thd->clnt, &snap);
+            log_cnonce(snap.key, snap.keylen);
             logmsg(LOGMSG_USER, "%s\n", thd->clnt->sql);
 
             if (thd->bt) {
@@ -11596,7 +11601,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     pthread_mutex_init(&clnt.write_lock, NULL);
     pthread_mutex_init(&clnt.dtran_mtx, NULL);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
-    set_high_availability(&clnt, 0);
+    clr_high_availability(&clnt);
     clnt.sql = sql;
     clnt.verify_indexes = 1;
     clnt.schema_mems = &sm;

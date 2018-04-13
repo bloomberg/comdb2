@@ -2473,18 +2473,18 @@ static const char *commit_parent(Lua L)
     return NULL;
 }
 
-static void *dispatch_lua_thread(void *lt)
+static void *dispatch_lua_thread(void *arg)
 {
-    dbthread_t *l_thread = lt;
+    dbthread_t *parent_thd = arg;
+    struct sqlclntstate *parent_clnt = parent_thd->clnt;
     struct sqlclntstate clnt;
-    reset_clnt(&clnt, l_thread->clnt->sb, 1);
-    clnt.want_stored_procedure_trace =
-        l_thread->clnt->want_stored_procedure_trace;
-    clnt.dbtran.mode = l_thread->clnt->dbtran.mode;
-    clnt.is_newsql = l_thread->clnt->is_newsql;
-    clnt.plugin = l_thread->clnt->plugin;
-    clnt.sp = l_thread->sp;
-    clnt.sql = l_thread->sql;
+    reset_clnt(&clnt, parent_clnt->sb, 1);
+    clnt.want_stored_procedure_trace = parent_clnt->want_stored_procedure_trace;
+    clnt.dbtran.mode = parent_clnt->dbtran.mode;
+    clnt.appdata = parent_clnt->appdata;
+    clnt.plugin = parent_clnt->plugin;
+    clnt.sp = parent_thd->sp;
+    clnt.sql = parent_thd->sql;
     clnt.must_close_sb = 0;
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
@@ -2492,7 +2492,7 @@ static void *dispatch_lua_thread(void *lt)
     pthread_cond_init(&clnt.wait_cond, NULL);
     pthread_mutex_init(&clnt.write_lock, NULL);
     pthread_mutex_init(&clnt.dtran_mtx, NULL);
-    strcpy(clnt.tzname, l_thread->clnt->tzname);
+    strcpy(clnt.tzname, parent_clnt->tzname);
 
     dispatch_sql_query(&clnt); // --> exec_thread()
 
@@ -2502,10 +2502,10 @@ static void *dispatch_lua_thread(void *lt)
     pthread_mutex_destroy(&clnt.write_lock);
     pthread_mutex_destroy(&clnt.dtran_mtx);
 
-    l_thread->finished_run = 1;
-    l_thread->lua_tid = 0;
-    pthread_cond_broadcast(&l_thread->lua_thread_cond);
-    pthread_cond_destroy(&l_thread->lua_thread_cond);
+    parent_thd->finished_run = 1;
+    parent_thd->lua_tid = 0;
+    pthread_cond_broadcast(&parent_thd->lua_thread_cond);
+    pthread_cond_destroy(&parent_thd->lua_thread_cond);
 
     return NULL;
 }
@@ -6056,56 +6056,6 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
     return rc;
 }
 
-static int trigger_write_response(struct sqlclntstate *a, int b, void *c, int d)
-{
-    return 0;
-}
-
-static int trigger_read_response(struct sqlclntstate *a, int b, void *c, int d)
-{
-    return -1;
-}
-
-static void *trigger_save_stmt(struct sqlclntstate *a, void *b)
-{
-    return NULL;
-}
-
-static void *trigger_restore_stmt(struct sqlclntstate *a, void *b)
-{
-    return NULL;
-}
-
-static void *trigger_destroy_stmt(struct sqlclntstate *a, void *b)
-{
-    return NULL;
-}
-
-static void *trigger_print_stmt(struct sqlclntstate *a, void *b)
-{
-    return NULL;
-}
-
-static int trigger_param_count(struct sqlclntstate *a)
-{
-    return -1;
-}
-
-static int trigger_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
-{
-    return -1;
-}
-
-static int trigger_param_value(struct sqlclntstate *a, struct param_data *b, int c)
-{
-    return -1;
-}
-
-static int trigger_override_count(struct sqlclntstate *a)
-{
-    return -1;
-}
-
 ////////////////////////
 /// PUBLIC INTERFACE ///
 ////////////////////////
@@ -6222,8 +6172,7 @@ void *exec_trigger(trigger_reg_t *reg)
     snprintf(sql, sizeof(sql), "exec procedure %s()", reg->spname);
 
     struct sqlclntstate clnt;
-    reset_clnt(&clnt, NULL, 1);
-    plugin_set_callbacks(&clnt, trigger);
+    start_internal_sql_clnt(&clnt);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
     clnt.trans_has_sp = 1;
