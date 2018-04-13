@@ -455,7 +455,7 @@ static void *apply_thread(void *arg)
             gbl_apply_thread_pollms : 200;
         int waitms;
         int max_dequeue = (gbl_max_apply_dequeue > 0) ?
-            gbl_max_apply_dequeue : 1000;
+            gbl_max_apply_dequeue : 100000;
         DBT rec = {0};
         DB_LSN ret_lsnp;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -509,6 +509,10 @@ static void *apply_thread(void *arg)
                 static unsigned long long count = 0;
                 int now;
                 ret = __rep_apply(dbenv, &q->rp, &rec, &ret_lsnp, &q->gen);
+                if (ret == 0 || ret == DB_REP_ISPERM) {
+                    void bdb_set_seqnum(void *);
+                    bdb_set_seqnum(dbenv->app_private);
+                }
                 count++;
                 if (gbl_verbose_fills && ((now = time(NULL)) - last_print)) {
                     logmsg(LOGMSG_USER, "%s line %d applied LSN %d:%d, applied "
@@ -526,17 +530,8 @@ static void *apply_thread(void *arg)
                     master_eid = rep->master_id;
                     MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
                     R_LOCK(dbenv, &dblp->reginfo);
-                    ready_lsn = lp->ready_lsn;
                     lsn = lp->lsn;
                     R_UNLOCK(dbenv, &dblp->reginfo);
-                    if (gbl_verbose_fills && log_compare(&ready_lsn, &lsn) &&
-                            ((now = time(NULL)) != lastpr)) {
-                        logmsg(LOGMSG_USER, "%s line %d lp->ready_lsn is %d:%d, "
-                                "lp->lsn is %d:%d\n", __func__, __LINE__,
-                                ready_lsn.file, ready_lsn.offset, lsn.file,
-                                lsn.offset);
-                        lastpr = now;
-                    }
                     int flags = (DB_REP_NODROP|DB_REP_NOBUFFER);
                     if (master_eid != db_eid_invalid && 
                             (rc = __rep_send_message(dbenv, master_eid, 
@@ -567,17 +562,22 @@ static void *apply_thread(void *arg)
             pthread_mutex_lock(&rep_queue_lock);
         }
 
+        if (IN_ELECTION_TALLY(rep))
+            continue;
+
         bdb_get_the_readlock("apply_thread", __func__, __LINE__);
         max_queued = max_queued_lsn;
         log_more_count = queue_log_more_count;
         log_fill_count = queue_log_fill_count;
         pthread_mutex_unlock(&rep_queue_lock);
         get_master_lsn(dbenv->app_private, &master_lsn);
+
         MUTEX_LOCK(dbenv, db_rep->db_mutexp);
         master_eid = db_rep->region->master_id;
         i_am_replicant = !F_ISSET(rep, REP_F_MASTER);
         my_lsn = lp->ready_lsn;
 
+        /* Delay more if we are falling further behind */
         bytes_behind = subtract_lsn(dbenv->app_private, &master_lsn, &my_lsn);
         if (!bdb_valid_lease(dbenv->app_private)) {
             if (last_behind && bytes_behind > last_behind) {
@@ -627,7 +627,7 @@ static void *apply_thread(void *arg)
             continue;
         }
 
-        if (!i_am_replicant || !gbl_decoupled_fills || IN_ELECTION_TALLY(rep) ||
+        if (!i_am_replicant || !gbl_decoupled_fills ||
                 bdb_the_lock_desired()) {
             bdb_relthelock(__func__, __LINE__);
             pthread_mutex_lock(&rep_queue_lock);
@@ -3343,6 +3343,7 @@ gap_check:		max_lsn_dbtp = NULL;
 	if (ret != 0 || cmp < 0 || (cmp == 0 && IS_SIMPLE(rectype)))
 		goto done;
 
+
 	/*
 	 * If we got here, then we've got a log record in rp and rec that
 	 * we need to process.
@@ -4376,6 +4377,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 
 	if (get_locks_and_ack) {
 
+        /* XXX Used to reproduce reads-follows-writes error - 
+         * We should delete after we're convinced the solution works */
         int polltime;
         if ((0 == (rand() % 20)) && (polltime = gbl_getlock_latencyms) > 0) {
             static int lastpr = 0;
@@ -4433,7 +4436,6 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			goto err;
 
         /* Set the last-locked lsn */
-        assert(rctl->lsn.file > 0);
         __rep_set_last_locked(dbenv, &(rctl->lsn));
 
         /* got all the locks.  ack back early */
@@ -5135,7 +5137,6 @@ bad_resize:	;
 	}
 
     /* Set the last-locked lsn */
-    assert(rctl->lsn.file > 0);
     __rep_set_last_locked(dbenv, &(rctl->lsn));
 
 	if ((gbl_early) && (!gbl_reallyearly) &&

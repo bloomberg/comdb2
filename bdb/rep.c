@@ -440,7 +440,7 @@ void bdb_transfermaster(bdb_state_type *bdb_state)
 
 int gbl_set_coherent_state_trace = 0;
 
-static inline char *state_to_str(int state)
+char *coherent_state_to_str(int state)
 {
     switch(state) {
         case STATE_INCOHERENT:
@@ -463,7 +463,7 @@ static inline void set_coherent_state(bdb_state_type *bdb_state, const char
     bdb_state->coherent_state[nodeix(hostname)] = state;
     if (gbl_set_coherent_state_trace) {
         logmsg(LOGMSG_USER, "%s line %d setting coherent state to %s\n",
-                func, line, state_to_str(state));
+                func, line, coherent_state_to_str(state));
 
     }
 }
@@ -624,7 +624,8 @@ static void send_context_to_all(bdb_state_type *bdb_state)
     }
 }
 
-static int is_incoherent_complete(bdb_state_type *bdb_state, const char *host, int *incohwait)
+static inline int is_incoherent_complete(bdb_state_type *bdb_state, 
+        const char *host, int *incohwait)
 {
     int is_incoherent, state;
 
@@ -653,15 +654,13 @@ int is_incoherent(bdb_state_type *bdb_state, const char *host)
     return is_incoherent_complete(bdb_state, host, NULL);
 }
 
-
 int gbl_throttle_logput_trace = 0;
-/* Tiny: 100000 bytes */
 int gbl_incoherent_logput_window = 0;
 
 static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
                                              const char *host)
 {
-    int ret = 0, now, pr=0;
+    int ret = 0, now, pr = 0;
     static int lastpr = 0;
     static unsigned long long throttles = 0;
     unsigned long long cntbytes;
@@ -707,8 +706,7 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
             }
         }
     } else if (pr) {
-        logmsg(LOGMSG_USER, "%s allowing logput to %s, coherent\n", __func__,
-                host);
+        logmsg(LOGMSG_USER, "%s allowing logput to %s\n", __func__, host);
     }
 
     return ret;
@@ -795,9 +793,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
 
     buf_get(&rectype, sizeof(rectype), p_buf, p_buf_end);
 
-    if (rectype == REP_LOG_LOGPUT || 
-            (gbl_decoupled_logputs && gbl_decoupled_fills && 
-             rectype == REP_LOG)) {
+    if (rectype == REP_LOG_LOGPUT) {
         is_logput = 1;
         rectype = REP_LOG;
         p_buf = (uint8_t *)&rep_control->rectype;
@@ -1050,7 +1046,6 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                     logmsg(LOGMSG_USER, "%s line %d net_send_flags rc %d\n",
                             __func__, __LINE__, rc);
                 }
-
                 if (rc != 0)
                     rc = 1; /* haha, keep ignoring it */
             }
@@ -1266,12 +1261,9 @@ elect_again:
     /* Database may be exiting. Re-check before we re-elect. */
     abort_election_on_exit(bdb_state);
 
+    /* Poll so we don't send whomaster reqs in a tight loop */
     if (elect_again)
         poll(NULL, 0, 100);
-
-    /* moved this below elect_again: so that if we get stuck in an election
-     * loop we can pick up changes to the election timeout - sam j */
-    /*elect_time = REPTIME;*/
 
     if (bdb_state->callback->electsettings_rtn) {
         int elect_time_microsecs = 0;
@@ -1792,7 +1784,8 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum)
     if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
         pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
-        set_coherent_state(bdb_state, hostname, STATE_INCOHERENT_WAIT, __func__, __LINE__);
+        set_coherent_state(bdb_state, hostname, STATE_INCOHERENT_WAIT,
+                __func__, __LINE__);
         pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         /* Colease thread will do this */
@@ -3639,13 +3632,35 @@ void bdb_exiting(bdb_state_type *bdb_state)
 
 int gbl_last_locked_seqnum = 1;
 
+void bdb_set_seqnum(void *in_bdb_state)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    DB_LSN lastlsn;
+    uint32_t mygen;
+
+    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
+
+    /* Always only use get_last_locked.  Leave the other in until we are sure
+     * that this code works. */
+    if (gbl_last_locked_seqnum)
+        bdb_state->dbenv->get_last_locked(bdb_state->dbenv, &lastlsn);
+    else
+        __log_txn_lsn(bdb_state->dbenv, &lastlsn, NULL, NULL);
+
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+    bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
+        .lsn = lastlsn;
+    bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
+        .generation = mygen;
+    Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+}
+
 static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
                           DBT *rec)
 {
     int rc;
     int r;
     DB_LSN permlsn;
-    DB_LSN lastlsn;
     uint32_t generation, commit_generation;
     int outrc;
     int time1, time2;
@@ -3752,35 +3767,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     switch (r) {
     case 0:
         bdb_state->repinfo->repstats.rep_zerorc++;
-        uint32_t mygen;
-
-        /* nothing interesting happened - all is a-ok */
-
-        // we are in berkdb .. we are holding the bdb lock .. the generation can't change
-        bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
-        if (gbl_last_locked_seqnum)
-            bdb_state->dbenv->get_last_locked(bdb_state->dbenv, &lastlsn);
-        else
-            __log_txn_lsn(bdb_state->dbenv, &lastlsn, NULL, NULL);
-
-        /* we still need to account for log updates that missed by ISPERM logic
-         */
-        /*if ( rectype == REP_LOG || rectype == REP_LOG_MORE)*/
-        {
-            Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-            bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
-                .lsn = lastlsn;
-            bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
-                .generation = mygen;
-            Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
-        }
-
-        /*
-        fprintf(stderr, "%s line %d case 0 lastlsn = <%d:%d>\n", __FILE__,
-        __LINE__,
-              lastlsn.file, lastlsn.offset);
-        */
-
+        bdb_set_seqnum(bdb_state);
         break;
 
     case DB_REP_NEWSITE:
@@ -3880,6 +3867,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
         char *mynode = bdb_state->repinfo->myhost;
 
+        /* Can only happen for decoupled apply thread */
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
         bdb_state->seqnum_info->seqnums[nodeix(mynode)].lsn = permlsn;
         bdb_state->seqnum_info->seqnums[nodeix(mynode)].generation = generation;

@@ -746,6 +746,7 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
     fill_ssl_info(dbinfo_response);
 }
 
+char *coherent_state_to_str(int state);
 static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
 {
     struct host_node_info nodes[REPMAX];
@@ -792,19 +793,10 @@ static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
             break;
 
         case STATE_INCOHERENT:
-            coherent_state = "INCOHERENT";
-            break;
-
         case STATE_INCOHERENT_SLOW:
-            coherent_state = "INCOHERENT_SLOW";
-            break;
-
-        /* Incoherent local is only meaningful on the master */
         case STATE_INCOHERENT_WAIT:
-            if (iammaster)
-                coherent_state = "INCOHERENT_WAIT";
-            else
-                coherent_state = "";
+            coherent_state = coherent_state_to_str(
+                    bdb_state->coherent_state[nodeix(nodes[ii].host)]);
             break;
 
         default:
@@ -818,6 +810,8 @@ static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
                 coherent_state);
     }
 }
+
+char *coherent_state_to_str(int state);
 
 /* This is public (called by db layer) and used for the incoherent
  * alerts, so don't fiddle with the format withouyt taking that into
@@ -849,16 +843,19 @@ void bdb_short_netinfo_dump(FILE *out, bdb_state_type *bdb_state)
         }
         if (bdb_state->repinfo->master_host == nodes[ii].host)
             status_mstr = "MASTER";
-        else if (bdb_state->coherent_state[nodeix(nodes[ii].host)] ==
-                 STATE_INCOHERENT)
-            status_mstr = "INCOHERENT";
-        else if (bdb_state->coherent_state[nodeix(nodes[ii].host)] ==
-                 STATE_INCOHERENT_SLOW)
-            status_mstr = "INCOHERENT_SLOW";
-        else if (bdb_state->coherent_state[ii] == STATE_INCOHERENT_WAIT)
-            status_mstr = "INCOHERENT_WAIT";
-        else
-            status_mstr = " ";
+        else {
+            switch(bdb_state->coherent_state[nodeix(nodes[ii].host)]) {
+                case STATE_INCOHERENT:
+                case STATE_INCOHERENT_WAIT:
+                case STATE_INCOHERENT_SLOW:
+                    status_mstr = coherent_state_to_str(
+                            bdb_state->coherent_state[nodeix(nodes[ii].host)]);
+                    break;
+                case STATE_COHERENT:
+                    status_mstr = " ";
+                    break;
+            }
+        }
 
         lsnp = &bdb_state->seqnum_info->seqnums[nodeix(nodes[ii].host)].lsn;
 
