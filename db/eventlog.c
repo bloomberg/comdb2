@@ -437,15 +437,13 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(obj, "bound_parameters", logger->bound_param_cson);
     }
 
+    snap_uid_t snap, *p = NULL;
     if (logger->iq && logger->iq->have_snap_info) /* for txn type */
-        cson_object_set(obj, "cnonce",
-                        cson_value_new_string(logger->iq->snap_info.key,
-                                              logger->iq->snap_info.keylen));
-    else if (logger->request != NULL &&
-             logger->request->has_cnonce) /* for sql*/
-        cson_object_set(obj, "cnonce", cson_value_new_string(
-                                           (char *)logger->request->cnonce.data,
-                                           logger->request->cnonce.len));
+        p = &logger->iq->snap_info;
+    else if (logger->clnt && cnonce_value(logger->clnt, &snap) == 0)
+        p = &snap;
+    if (p)
+        cson_object_set(obj, "cnonce", cson_value_new_string(p->key, p->keylen));
 
     if (logger->have_id)
         cson_object_set(obj, "id",

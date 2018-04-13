@@ -2685,11 +2685,6 @@ void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,
     logger->have_fingerprint = 1;
 }
 
-void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *request)
-{
-    logger->request = request;
-}
-
 void reqlog_set_event(struct reqlogger *logger, const char *evtype)
 {
     logger->event_type = evtype;
@@ -2721,6 +2716,11 @@ void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context)
 {
     logger->ncontext = ncontext;
     logger->context = context;
+}
+
+void reqlog_set_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
+{
+    logger->clnt = clnt;
 }
 
 int reqlog_fingerprint_to_hex(struct reqlogger *logger, char *hexstr, size_t n)

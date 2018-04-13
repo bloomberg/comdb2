@@ -334,24 +334,54 @@ struct param_data {
     } u;
 };
 
+typedef int(plugin_func)(struct sqlclntstate *);
 typedef int(response_func)(struct sqlclntstate *, int, void *, int);
 typedef void *(replay_func)(struct sqlclntstate *, void *);
-typedef int(param_count_func)(struct sqlclntstate *);
 typedef int(param_index_func)(struct sqlclntstate *, const char *, int64_t *);
 typedef int(param_value_func)(struct sqlclntstate *, struct param_data *, int);
-typedef int(override_count_func)(struct sqlclntstate *);
+typedef int(cnonce_value_func)(struct sqlclntstate *, snap_uid_t *);
+typedef int(get_snapshot_func)(struct sqlclntstate *, int *, int *);
+typedef void(add_steps_func)(struct sqlclntstate *, double steps);
+typedef void(setup_client_info_func)(struct sqlclntstate *, struct sqlthdstate *, char *);
+typedef int(skip_row_func)(struct sqlclntstate *, uint64_t);
+typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
 
 struct plugin_callbacks {
     response_func *write_response; /* newsql_write_response */
     response_func *read_response; /* newsql_read_response */
+
     replay_func *save_stmt; /* newsql_save_stmt */
     replay_func *restore_stmt; /* newsql_restore_stmt */
     replay_func *destroy_stmt; /* newsql_destroy_stmt */
     replay_func *print_stmt; /* newsql_print_stmt */
-    param_count_func *param_count; /* newsql_param_count */
+
+    // bound params
+    plugin_func *param_count; /* newsql_param_count */
     param_index_func *param_index; /* newsql_param_index */
     param_value_func *param_value; /* newsql_param_value */
-    override_count_func *override_count; /* newsql_override_count */
+
+    // run_statement_typed
+    plugin_func *override_count; /* newsql_override_count */
+
+    plugin_func *get_cnonce; /* newsql_get_cnonce */
+    plugin_func *set_cnonce; /* newsql_set_cnonce */
+    plugin_func *clr_cnonce; /* newsql_clr_cnonce */
+    cnonce_value_func *cnonce_value; /* newsql_cnonce_value */
+
+    get_snapshot_func *get_snapshot; /* newsql_get_snapshot */
+    plugin_func *upd_snapshot; /* newsql_update_snapshot */
+    plugin_func *clr_snapshot; /* newsql_clear_snapshot */
+
+    plugin_func *get_high_availability; /* newsql_get_high_availability */
+    plugin_func *set_high_availability; /* newsql_set_high_availability */
+    plugin_func *clr_high_availability; /* newsql_clr_high_availability */
+
+    plugin_func *high_availability_snapshot; /* newsql_high_availability_snapshot */
+
+    add_steps_func *add_steps; /* newsql_add_steps */
+    setup_client_info_func *setup_client_info; /* newsql_setup_client_info */
+    skip_row_func *skip_row; /* newsql_skip_row */
+    log_context_func *log_context; /* newsql_log_context */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
@@ -369,13 +399,32 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, param_index);                         \
         make_plugin_callback(clnt, name, param_value);                         \
         make_plugin_callback(clnt, name, override_count);                      \
+        make_plugin_callback(clnt, name, get_cnonce);                          \
+        make_plugin_callback(clnt, name, set_cnonce);                          \
+        make_plugin_callback(clnt, name, clr_cnonce);                          \
+        make_plugin_callback(clnt, name, cnonce_value);                        \
+        make_plugin_callback(clnt, name, get_snapshot);                        \
+        make_plugin_callback(clnt, name, upd_snapshot);                        \
+        make_plugin_callback(clnt, name, clr_snapshot);                        \
+        make_plugin_callback(clnt, name, get_high_availability);               \
+        make_plugin_callback(clnt, name, set_high_availability);               \
+        make_plugin_callback(clnt, name, clr_high_availability);               \
+        make_plugin_callback(clnt, name, high_availability_snapshot);          \
+        make_plugin_callback(clnt, name, add_steps);                           \
+        make_plugin_callback(clnt, name, setup_client_info);                   \
+        make_plugin_callback(clnt, name, skip_row);                            \
+        make_plugin_callback(clnt, name, log_context);                         \
     } while (0)
-
 
 int param_count(struct sqlclntstate *);
 int param_index(struct sqlclntstate *, const char *, int64_t *);
 int param_value(struct sqlclntstate *, struct param_data *, int);
 int override_count(struct sqlclntstate *);
+int cnonce_value(struct sqlclntstate *, snap_uid_t *);
+int get_high_availability(struct sqlclntstate *);
+int set_high_availability(struct sqlclntstate *);
+int clr_high_availability(struct sqlclntstate *);
+
 
 /* Client specific sql state */
 struct sqlclntstate {
@@ -508,9 +557,6 @@ struct sqlclntstate {
     int is_readonly;
     int send_intransresults;
     int is_expert;
-    int is_newsql;
-    CDB2SQLQUERY *sql_query; /* Needed to fetch the bind variables. */
-    CDB2QUERY *query;
     int added_to_hist;
 
     struct thr_handle *thr_self;

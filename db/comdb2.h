@@ -2808,13 +2808,13 @@ void reqlog_set_vreplays(struct reqlogger *logger, int replays);
 void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus);
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fp, size_t n);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
-void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *q);
 void reqlog_set_event(struct reqlogger *logger, const char *evtype);
 void reqlog_add_table(struct reqlogger *logger, const char *table);
 void reqlog_set_error(struct reqlogger *logger, const char *error,
                       int error_code);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
+void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
 /* Convert raw fingerprint to hex string, and write at most `n' characters of
    the result to `hexstr'. Return the number of characters written. */
 int reqlog_fingerprint_to_hex(struct reqlogger *logger, char *hexstr, size_t n);
@@ -3525,10 +3525,6 @@ int set_rowlocks(void *trans, int enable);
 /* 0: Return null constraint error for not-null constraint violation on updates
    1: Return conversion error instead */
 extern int gbl_upd_null_cstr_return_conv_err;
-
-/* High availability getter & setter */
-int get_high_availability(struct sqlclntstate *clnt);
-void set_high_availability(struct sqlclntstate *clnt, int val);
 
 /* Update the tunable at runtime. */
 comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value);
