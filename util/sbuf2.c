@@ -132,18 +132,9 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
     return 0;
 }
 
-#ifdef INSTRUMENT_SBUF_CLOSE
-#include "logmsg.h"
-#include "cheapstack.h"
-#endif
-
 /* flush output, close fd, and free SBUF2.*/
 int SBUF2_FUNC(sbuf2close)(SBUF2 *sb)
 {
-#ifdef INSTRUMENT_SBUF_CLOSE
-    fprintf(stderr, "Closing sbuf");
-    cheap_stack_trace();
-#endif
     if (sb == 0)
         return -1;
     if (sb->fd < 0)

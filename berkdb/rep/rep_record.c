@@ -62,7 +62,6 @@ void bdb_get_writelock(void *bdb_state,
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
 int rep_qstat_has_fills(void);
-void rep_qstat_lsn_range(DB_LSN *min_lsn, DB_LSN *max_lsn);
 
 extern int gbl_rep_printlock;
 extern int gbl_dispatch_rowlocks_bench;
@@ -317,9 +316,8 @@ void send_master_req(DB_ENV *dbenv, const char *func, int line)
     int now, spanms=0, has_master_req;
 
     call_count++;
-    if (!rep_qstat_has_master_req() && 
-            (!gbl_master_req_waitms || (spanms = (comdb2_time_epochms() -
-            gbl_last_master_req)) > gbl_master_req_waitms)) {
+    if (!gbl_master_req_waitms || (spanms = (comdb2_time_epochms() -
+            gbl_last_master_req)) > gbl_master_req_waitms) {
         req_count++;
         if (gbl_verbose_master_req && ((now = time(NULL)) - lastpr)) {
             logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ, "

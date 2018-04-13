@@ -845,6 +845,7 @@ void bdb_short_netinfo_dump(FILE *out, bdb_state_type *bdb_state)
                 case STATE_INCOHERENT:
                 case STATE_INCOHERENT_WAIT:
                 case STATE_INCOHERENT_SLOW:
+                default:
                     status_mstr = coherent_state_to_str(
                             bdb_state->coherent_state[nodeix(nodes[ii].host)]);
                     break;
