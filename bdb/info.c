@@ -746,7 +746,6 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
     fill_ssl_info(dbinfo_response);
 }
 
-char *coherent_state_to_str(int state);
 static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
 {
     struct host_node_info nodes[REPMAX];
@@ -810,8 +809,6 @@ static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
                 coherent_state);
     }
 }
-
-char *coherent_state_to_str(int state);
 
 /* This is public (called by db layer) and used for the incoherent
  * alerts, so don't fiddle with the format withouyt taking that into
