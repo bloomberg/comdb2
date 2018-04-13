@@ -84,21 +84,21 @@ function waitforcoherency
 
         j=0
         # If we haven't caught up in 15 minutes find out why
-        if [[ $cnt -gt 900 ]]; then
-            while [[ $j -lt $1 ]]; do
-                node=${sigstopmachs[$j]}
-                if [ $node == $(hostname) ] ; then
-                    pid=$(cat ${TMPDIR}/${db}.${node}.pid)
-                    if [[ -z "$pid" ]]; then pid=$(cat ${TMPDIR}/${db}.pid) ; fi
-                    $pstack $pid
-                else
-                    pid=$(ssh $node "cat ${TMPDIR}/${db}.${node}.pid" < /dev/null)
-                    if [[ -z "$pid" ]]; then pid=$(ssh $node "cat ${TMPDIR}/${db}.pid" < /dev/null) ; fi
-                    ssh $node "$pstack $pid" < /dev/null
-                fi
-            done
-        fi
-
+#        if [[ $cnt -gt 900 ]]; then
+#            while [[ $j -lt $1 ]]; do
+#                node=${sigstopmachs[$j]}
+#                if [ $node == $(hostname) ] ; then
+#                    pid=$(cat ${TMPDIR}/${db}.${node}.pid)
+#                    if [[ -z "$pid" ]]; then pid=$(cat ${TMPDIR}/${db}.pid) ; fi
+#                    $pstack $pid
+#                else
+#                    pid=$(ssh $node "cat ${TMPDIR}/${db}.${node}.pid" < /dev/null)
+#                    if [[ -z "$pid" ]]; then pid=$(ssh $node "cat ${TMPDIR}/${db}.pid" < /dev/null) ; fi
+#                    ssh $node "$pstack $pid" < /dev/null
+#                fi
+#            done
+#        fi
+#
         echo "$c"
         echo "$c" | egrep COHERENT
         r=$?

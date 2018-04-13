@@ -2044,31 +2044,8 @@ readloop:
         return firstResp == null ? -1 : firstResp.value.get(column).type;
     }
 
-
-    private final static char[] hexArray = "0123456789ABCDEF".toCharArray();
-
-    private static String bytesToHex(byte[] bytes) {
-        char[] hexChars = new char[bytes.length * 2];
-        for ( int j = 0; j < bytes.length; j++ ) {
-            int v = bytes[j] & 0xFF;
-            hexChars[j * 2] = hexArray[v >>> 4];
-            hexChars[j * 2 + 1] = hexArray[v & 0x0F];
-        }
-        return new String(hexChars);
-    }
-
     @Override
     public byte[] columnValue(int column) {
-        if (debug) {
-            if (lastResp == null) {
-                tdlog(Level.FINEST, "columnValue col %d returning null on null lastResp", column);
-            } else {
-                byte[] bytes = lastResp.value.get(column).value;
-                ByteBuffer bb = ByteBuffer.wrap(bytes);
-                long value = bb.getLong();
-                tdlog(Level.FINEST, "columnValue col %d returning %d", column, value);
-            }
-        }
         return lastResp == null ? null : lastResp.value.get(column).value;
     }
 

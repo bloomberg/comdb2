@@ -78,13 +78,13 @@ static void net_to_systable(struct netinfo_struct *netinfo_ptr, void *arg,
 
     systable_rep_qstat_t *s = &gr->records[gr->count - 1];
     memset(s, 0, sizeof(*s));
+    s->max_lsn = malloc(MAX_LSN_STR);
+    s->min_lsn = malloc(MAX_LSN_STR);
     pthread_mutex_lock(&n->lock);
     s->machine = strdup(n->hostname);
     s->total = n->total_count;
-    /* "unknown" messages here generally net-heartbeats */
+    /* "unknown" messages are net-level */
     s->uncategorized = n->unknown_count;
-    s->max_lsn = malloc(MAX_LSN_STR);
-    s->min_lsn = malloc(MAX_LSN_STR);
     snprintf(s->max_lsn, MAX_LSN_STR, "{%d:%d}", n->max_lsn.file,
             n->max_lsn.offset);
     snprintf(s->min_lsn, MAX_LSN_STR, "{%d:%d}", n->min_lsn.file,

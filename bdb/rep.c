@@ -624,7 +624,7 @@ static void send_context_to_all(bdb_state_type *bdb_state)
     }
 }
 
-static inline int is_incoherent_complete(bdb_state_type *bdb_state, 
+static inline int is_incoherent_complete(bdb_state_type *bdb_state,
         const char *host, int *incohwait)
 {
     int is_incoherent, state;
@@ -1040,7 +1040,8 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                 }
 
                 rc = net_send_flags(bdb_state->repinfo->netinfo,
-                        hostlist[i], USER_TYPE_BERKDB_REP, buf, bufsz, sendflags);
+                        hostlist[i], USER_TYPE_BERKDB_REP, buf, bufsz,
+                        sendflags);
 
                 if (flags & DB_REP_TRACE) {
                     logmsg(LOGMSG_USER, "%s line %d net_send_flags rc %d\n",
@@ -3867,7 +3868,6 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
         char *mynode = bdb_state->repinfo->myhost;
 
-        /* Can only happen for decoupled apply thread */
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
         bdb_state->seqnum_info->seqnums[nodeix(mynode)].lsn = permlsn;
         bdb_state->seqnum_info->seqnums[nodeix(mynode)].generation = generation;

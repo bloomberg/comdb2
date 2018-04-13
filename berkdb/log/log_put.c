@@ -126,9 +126,9 @@ int gbl_commit_delay_trace = 0;
 static inline int is_commit_record(int rectype) {
     switch(rectype) {
         /* regop regop_gen regop_rowlocks */
-        case (16):
-        case (10):
-        case (15):
+        case (DB___txn_regop): 
+        case (DB___txn_regop_gen):
+        case (DB___txn_regop_rowlocks):
             return 1;
             break;
         default:
@@ -362,7 +362,6 @@ err:
 
     int bdb_commitdelay(void *arg);
 
-    /* Putting this here will serialize our commit-delays */
 	if (IS_REP_MASTER(dbenv) && is_commit_record(rectype) && 
             (delay = bdb_commitdelay(dbenv->app_private))) {
         static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;

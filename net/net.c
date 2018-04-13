@@ -620,35 +620,8 @@ static int write_list(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
     size_t datasz;
     char *ptr;
     int rc;
-    int now;
 
     Pthread_mutex_lock(&(host_node_ptr->enquelk));
-
-    /* Print size of write-queue if enabled */
-    if (gbl_print_net_queue_size) {
-        if ((now = comdb2_time_epoch()) - host_node_ptr->last_print_queue_time) {
-            host_node_printf(LOGMSG_USER, host_node_ptr, "Enque-count=%d "
-                    "Intvl-max-count=%d Enque-bytes=%d Intvl-max_bytes=%d\n", 
-                    host_node_ptr->enque_count,
-                    host_node_ptr->interval_max_queue_count, 
-                    host_node_ptr->enque_bytes,
-                    host_node_ptr->interval_max_queue_bytes);
-            host_node_ptr->interval_max_queue_count = 0;
-            host_node_ptr->interval_max_queue_bytes = 0;
-            host_node_ptr->last_print_queue_time = now;
-        } else {
-            if (host_node_ptr->enque_count > 
-                    host_node_ptr->interval_max_queue_count) {
-                host_node_ptr->interval_max_queue_count = 
-                    host_node_ptr->enque_count;
-            }
-            if (host_node_ptr->enque_bytes > 
-                    host_node_ptr->interval_max_queue_bytes) {
-                host_node_ptr->interval_max_queue_bytes = 
-                    host_node_ptr->enque_bytes;
-            }
-        }
-    }
 
     /* let 1 message always slip in */
     if (host_node_ptr->enque_count) {
@@ -1800,7 +1773,6 @@ int net_get_queue_size(netinfo_type *netinfo_ptr, const char *hostname,
     return 0;
 }
 
-
 int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
                                  int usertype, void *data, int datalen,
                                  uint8_t **payloadptr, int *payloadlen,
@@ -2321,8 +2293,8 @@ int net_send_inorder(netinfo_type *netinfo_ptr, const char *host, int usertype,
 }
 
 
-int net_send_inorder_nodrop(netinfo_type *netinfo_ptr, const char *host, int usertype,
-                     void *data, int datalen, int nodelay)
+int net_send_inorder_nodrop(netinfo_type *netinfo_ptr, const char *host,
+        int usertype, void *data, int datalen, int nodelay)
 {
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 0,
                         NULL, 0, 1, 1, 0);

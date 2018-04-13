@@ -56,7 +56,6 @@ static const char revid[] =
 
 #ifndef TESTSUITE
 int bdb_am_i_coherent(void *bdb_state);
-void bdb_thread_event(void *bdb_state, int event);
 void bdb_get_writelock(void *bdb_state,
     const char *idstr, const char *funcname, int line);
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
@@ -414,6 +413,7 @@ extern int bdb_the_lock_desired(void);
 void bdb_relthelock(const char *funcname, int line);
 void bdb_get_the_readlock(const char *idstr, const char *function, int line);
 void bdb_thread_start_rw(void);
+void bdb_thread_done_rw(void);
 void get_master_lsn(void *bdb_state, DB_LSN *lsnout);
 int bdb_valid_lease(void *bdb_state);
 
@@ -701,6 +701,7 @@ static void *apply_thread(void *arg)
     apply_thd_created = 0;
     memset(&apply_thd, 0, sizeof(apply_thd));
     pthread_mutex_unlock(&rep_queue_lock);
+    bdb_thread_done_rw();
     return NULL;
 }
 
@@ -3797,7 +3798,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
      *  ... so we should NOT need to get the bdb readlock here */
 	void *bdb_state = dbenv->app_private;
 
-    bdb_thread_event(bdb_state, 3 /* start rdwr */);
+    bdb_thread_start_rw();
 
 	/* Sleep here if the user has asked us to & if we are coherent */
 	if ((polltm = gbl_processor_thd_poll) > 0 && 
@@ -4122,7 +4123,7 @@ err:
 		pthread_rwlock_unlock(&dbenv->ser_lk);
 	}
 
-    bdb_thread_event(bdb_state, 2 /* done rdwr */);
+    bdb_thread_done_rw();
 }
 
 static void
