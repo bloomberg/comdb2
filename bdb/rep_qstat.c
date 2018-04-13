@@ -88,9 +88,9 @@ static void net_enque_free(netinfo_type *netinfo_ptr, void *netstat)
     free(n);
 }
 
-void net_rep_qstat_init(netinfo_type *netinfo_ptr) 
+void net_rep_qstat_init(netinfo_type *netinfo_ptr)
 {
-    net_register_queue_stat(netinfo_ptr, net_init_queue_stats_rtn, 
+    net_register_queue_stat(netinfo_ptr, net_init_queue_stats_rtn,
             net_start_reader, net_enque_write_rtn, net_clear_queue_stats_rtn,
             net_enque_free);
 }

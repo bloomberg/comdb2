@@ -880,6 +880,11 @@ void bdb_thread_event(bdb_state_type *bdb_state, int event)
     }
 }
 
+void bdb_thread_done_rw(void)
+{
+    bdb_thread_event(gbl_bdb_state, BDBTHR_EVENT_DONE_RDWR);
+}
+
 void bdb_thread_start_rw(void)
 {
     bdb_thread_event(gbl_bdb_state, BDBTHR_EVENT_START_RDWR);
