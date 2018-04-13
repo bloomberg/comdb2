@@ -1860,4 +1860,6 @@ int has_low_headroom(const char *path, int threshold, int debug);
 const char *deadlock_policy_str(u_int32_t policy);
 int deadlock_policy_max();
 
+char *coherent_state_to_str(int state);
+
 #endif /* __bdb_int_h__ */
