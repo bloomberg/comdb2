@@ -837,13 +837,15 @@ void sqlite3Insert(
   /* COMDB2 MODIFICATION */
   /* Perform some inits and checks for ON COFLICT specific options. */
   if (onError == OE_Replace) {
-      comdb2SetIsReplace(v);
+      comdb2SetReplace(v);
   } else if (onError == OE_Upsert) {
       int *aXRef;
       Index *pPk; /* The PRIMARY KEY index */
       NameContext sNC;
 
       assert(oc->setlist);
+
+      comdb2SetUpsert(v);
 
       pPk = HasRowid(pTab) ? 0 : sqlite3PrimaryKeyIndex(pTab);
 
@@ -892,8 +894,9 @@ void sqlite3Insert(
               }
           }
       }
+  } else if (onError == OE_Ignore) {
+      comdb2SetIgnore(v);
   }
-
 
   /* This is the top of the main insertion loop */
   if( useTempTable ){
@@ -1154,7 +1157,7 @@ void sqlite3Insert(
     /* COMDB2 MODIFICATION */
     if((gbl_partial_indexes && pTab->hasPartIdx) ||
        (gbl_expressions_indexes && pTab->hasExprIdx) ||
-       (oc != 0)){
+       (oc && oc->flag != OE_Ignore)){
         for(idx=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, idx++){
             sqlite3VdbeAddOp1(v, OP_Close, idx+iIdxCur);
         }
@@ -1388,8 +1391,10 @@ void sqlite3GenerateConstraintChecks(
 
   /* COMDB2 MODIFICATION */
   /* Initialize ON CONFLICT rowset register. */
-  regRowSet = ++pParse->nMem;
-  sqlite3VdbeAddOp3(v, OP_Null, 0, regRowSet, 0);
+  if (oc->flag != OE_Ignore) {
+      regRowSet = ++pParse->nMem;
+      sqlite3VdbeAddOp3(v, OP_Null, 0, regRowSet, 0);
+  }
 
   /* pPk is the PRIMARY KEY index for WITHOUT ROWID tables and NULL for
   ** normal rowid tables.  nPkField is the number of key fields in the 
@@ -1604,6 +1609,10 @@ void sqlite3GenerateConstraintChecks(
       ipkBottom = sqlite3VdbeAddOp0(v, OP_Goto);
       sqlite3VdbeJumpHere(v, ipkTop);
     }
+  }
+
+  if (oc && oc->flag == OE_Ignore) {
+      return;
   }
 
   /* Test all UNIQUE constraints by creating entries for each UNIQUE
@@ -1956,6 +1965,12 @@ void sqlite3CompleteInsertion(
   if( useSeekResult ){
     pik_flags |= OPFLAG_USESEEKRESULT;
   }
+  if (comdb2ForceVerify(pParse->pVdbe)) {
+    pik_flags |= OPFLAG_FORCE_VERIFY;
+  } else if(comdb2IgnoreFailure(pParse->pVdbe)) {
+    pik_flags |= OPFLAG_IGNORE_FAILURE;
+  }
+
   sqlite3VdbeAddOp3(v, OP_Insert, iDataCur, regRec, regNewData);
   if( !pParse->nested ){
     sqlite3VdbeChangeP4(v, -1, (char *)pTab, P4_TABLE);
@@ -2025,7 +2040,7 @@ int sqlite3OpenTableAndIndices(
   /* COMDB2 MODIFICATION */
   if( (gbl_partial_indexes && pTab->hasPartIdx) ||
       (gbl_expressions_indexes && pTab->hasExprIdx) ||
-      (oc != 0) ) {
+      (oc && oc->flag != OE_Ignore) ) {
       for(i=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
         int iIdxCur = iBase++;
         assert( pIdx->pSchema==pTab->pSchema );

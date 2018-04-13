@@ -133,7 +133,7 @@ int osql_send_updcols(char *tohost, unsigned long long rqid, uuid_t uuid,
 int osql_send_updrec(char *tonode, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long ins_keys,
                      unsigned long long del_keys, char *pData, int nData,
-                     int type, SBUF2 *logsb);
+                     int type, SBUF2 *logsb, int flags);
 
 /**
  * Send INSREC op
@@ -142,7 +142,8 @@ int osql_send_updrec(char *tonode, unsigned long long rqid, uuid_t uuid,
  */
 int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long dirty_keys,
-                     char *pData, int nData, int type, SBUF2 *logsb);
+                     char *pData, int nData, int type, SBUF2 *logsb,
+                     int flags);
 
 /**
  * Send DELREC op

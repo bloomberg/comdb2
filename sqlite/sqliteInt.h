@@ -3155,6 +3155,12 @@ struct AuthContext {
 #define OPFLAG_SAVEPOSITION  0x02    /* OP_Delete: keep cursor position */
 #define OPFLAG_AUXDELETE     0x04    /* OP_Delete: index in a DELETE op */
 
+/* COMDB2 MODIFICATION: The following bits are to support MERGE/UPSERT,
+ * IGNORE and REPLACE.
+ * */
+#define OPFLAG_FORCE_VERIFY  0x40    /* */
+#define OPFLAG_IGNORE_FAILURE 0x80   /* */
+
 /*
  * Each trigger present in the database schema is stored as an instance of
  * struct Trigger.

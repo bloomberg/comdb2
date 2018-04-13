@@ -5363,7 +5363,32 @@ void comdb2SetRecording(Vdbe *v)
   v->recording = 1;
 }
 
-void comdb2SetIsReplace(Vdbe *v)
+void comdb2SetReplace(Vdbe *v)
 {
-  v->is_replace = 1;
+  v->oe_flag = OE_Replace;
+}
+
+void comdb2SetUpsert(Vdbe *v)
+{
+  v->oe_flag = OE_Upsert;
+}
+
+void comdb2SetIgnore(Vdbe *v)
+{
+  v->oe_flag = OE_Ignore;
+}
+
+int comdb2ForceVerify(Vdbe *v)
+{
+    switch(v->oe_flag) {
+    case OE_Replace: /* fallthrough */
+    case OE_Upsert:
+      return 1;
+    }
+    return 0;
+}
+
+int comdb2IgnoreFailure(Vdbe *v)
+{
+  return (v->oe_flag == OE_Ignore) ? 1 : 0;
 }

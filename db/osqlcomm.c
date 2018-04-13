@@ -1720,11 +1720,12 @@ osqlcomm_index_uuid_rpl_type_get(osql_index_uuid_rpl_t *p_osql_index_uuid_rpl,
 typedef struct osql_ins {
     unsigned long long seq;
     unsigned long long dk; /* flag to indicate which keys to modify */
+    unsigned long long flags;     /* Some additional information */
     int nData;
     char pData[4]; /* alignment! - pass some useful data instead of padding */
 } osql_ins_t;
 
-enum { OSQLCOMM_INS_TYPE_LEN = 8 + 8 + 4 + 4 };
+enum { OSQLCOMM_INS_TYPE_LEN = 8 + 8 + 8 + 4 + 4};
 
 BB_COMPILE_TIME_ASSERT(osqlcomm_ins_type_len,
                        sizeof(osql_ins_t) == OSQLCOMM_INS_TYPE_LEN);
@@ -1744,6 +1745,8 @@ static uint8_t *osqlcomm_ins_type_put(const osql_ins_t *p_osql_ins,
     if (send_dk)
         p_buf = buf_no_net_put(&(p_osql_ins->dk), sizeof(p_osql_ins->dk), p_buf,
                                p_buf_end);
+    p_buf = buf_no_net_put(&(p_osql_ins->flags), sizeof(p_osql_ins->flags),
+                           p_buf, p_buf_end);
     p_buf = buf_put(&(p_osql_ins->nData), sizeof(p_osql_ins->nData), p_buf,
                     p_buf_end);
     /* leave p_buf pointing at pData */
@@ -1767,6 +1770,8 @@ static const uint8_t *osqlcomm_ins_type_get(osql_ins_t *p_osql_ins,
     if (recv_dk)
         p_buf = buf_no_net_get(&(p_osql_ins->dk), sizeof(p_osql_ins->dk), p_buf,
                                p_buf_end);
+    p_buf = buf_no_net_get(&(p_osql_ins->flags), sizeof(p_osql_ins->flags),
+                           p_buf, p_buf_end);
     p_buf = buf_get(&(p_osql_ins->nData), sizeof(p_osql_ins->nData), p_buf,
                     p_buf_end);
     /* leave p_buf pointing at pData */
@@ -2012,11 +2017,12 @@ typedef struct osql_upd {
     unsigned long long genid;
     unsigned long long ins_keys;
     unsigned long long del_keys;
+    unsigned long long flags;     /* Some additional information */
     int nData;
     char pData[4]; /* alignment! - pass some useful data instead of padding */
 } osql_upd_t;
 
-enum { OSQLCOMM_UPD_TYPE_LEN = 8 + 8 + 8 + 4 + 4 };
+enum { OSQLCOMM_UPD_TYPE_LEN = 8 + 8 + 8 + 8 + 4 + 4 };
 
 BB_COMPILE_TIME_ASSERT(osqlcomm_upd_type_len,
                        sizeof(osql_upd_t) == OSQLCOMM_UPD_TYPE_LEN);
@@ -2039,6 +2045,8 @@ static uint8_t *osqlcomm_upd_type_put(const osql_upd_t *p_osql_upd,
         p_buf = buf_no_net_put(&(p_osql_upd->del_keys),
                                sizeof(p_osql_upd->del_keys), p_buf, p_buf_end);
     }
+    p_buf = buf_no_net_put(&(p_osql_upd->flags), sizeof(p_osql_upd->flags),
+                           p_buf, p_buf_end);
     p_buf = buf_put(&(p_osql_upd->nData), sizeof(p_osql_upd->nData), p_buf,
                     p_buf_end);
     /* don't copy any of the pData */
@@ -2065,6 +2073,8 @@ static const uint8_t *osqlcomm_upd_type_get(osql_upd_t *p_osql_upd,
         p_buf = buf_no_net_get(&(p_osql_upd->del_keys),
                                sizeof(p_osql_upd->del_keys), p_buf, p_buf_end);
     }
+    p_buf = buf_no_net_get(&(p_osql_upd->flags), sizeof(p_osql_upd->flags),
+                           p_buf, p_buf_end);
     p_buf = buf_get(&(p_osql_upd->nData), sizeof(p_osql_upd->nData), p_buf,
                     p_buf_end);
     /* don't copy any of the pData */
@@ -3793,7 +3803,7 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
 int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long ins_keys,
                      unsigned long long del_keys, char *pData, int nData,
-                     int type, SBUF2 *logsb)
+                     int type, SBUF2 *logsb, int flags)
 {
     netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
     uint8_t buf[OSQLCOMM_UPD_UUID_RPL_TYPE_LEN > OSQLCOMM_UPD_RPL_TYPE_LEN
@@ -3830,6 +3840,7 @@ int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         upd_uuid_rpl.dt.genid = genid;
         upd_uuid_rpl.dt.ins_keys = ins_keys;
         upd_uuid_rpl.dt.del_keys = del_keys;
+        upd_uuid_rpl.dt.flags = flags;
         upd_uuid_rpl.dt.nData = nData;
         sent = sizeof(upd_uuid_rpl.dt.pData);
         if (!(p_buf = osqlcomm_upd_uuid_rpl_type_put(&upd_uuid_rpl, p_buf,
@@ -4048,7 +4059,8 @@ int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
  */
 int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long dirty_keys,
-                     char *pData, int nData, int type, SBUF2 *logsb)
+                     char *pData, int nData, int type, SBUF2 *logsb,
+                     int flags)
 {
     netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
     int msglen;
@@ -4074,6 +4086,7 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         comdb2uuidcpy(ins_uuid_rpl.hd.uuid, uuid);
         ins_uuid_rpl.dt.seq = genid;
         ins_uuid_rpl.dt.dk = dirty_keys;
+        ins_uuid_rpl.dt.flags = flags;
         ins_uuid_rpl.dt.nData = nData;
 
         if (send_dk)
@@ -6511,6 +6524,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     if (gbl_toblock_net_throttle && is_write_request(type))
         net_throttle_wait(thedb->handle_sibling);
 
+    printf("osql_process_packet(): %s\n", osql_reqtype_str(type));
+
     switch (type) {
     case OSQL_DONE:
     case OSQL_DONE_SNAP:
@@ -6757,7 +6772,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         blobs, MAXBLOBS, /*blobs*/
                         &err->errcode, &err->ixnum, &rrn, &genid, /*new id*/
                         dt.dk, BLOCK2_ADDKL, step,
-                        addflags); /* do I need this?*/
+                        addflags, dt.flags); /* do I need this?*/
         free_blob_buffers(blobs, MAXBLOBS);
         if (iq->idxInsert || iq->idxDelete) {
             free_cached_idx(iq->idxInsert);
@@ -6775,12 +6790,20 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (rc != 0) {
             if (err->errcode == OP_FAILED_UNIQ) {
-                /* this can happen if we're skipping delayed key adds */
-                reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint "
-                                                   "duplicate key '%s' on "
-                                                   "table '%s' index %d",
-                          get_keynm_from_db_idx(iq->usedb, err->ixnum),
-                          iq->usedb->tablename, err->ixnum);
+                if ((dt.flags & OSQL_FORCE_VERIFY) != 0) {
+                    err->errcode = OP_FAILED_VERIFY;
+                    rc = ERR_VERIFY;
+                } else if (rc == IX_DUP &&
+                           (dt.flags & OSQL_IGNORE_FAILURE) != 0) {
+                    return 0;
+                } else {
+                    /* this can happen if we're skipping delayed key adds */
+                    reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint "
+                                                       "duplicate key '%s' on "
+                                                       "table '%s' index %d",
+                              get_keynm_from_db_idx(iq->usedb, err->ixnum),
+                              iq->usedb->tablename, err->ixnum);
+                }
             } else if (rc != RC_INTERNAL_RETRY) {
                 reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY,
                           "unable to add record rc = %d", rc);
@@ -6889,8 +6912,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                             function's default behaviour and
                                             have
                                             it erase any blobs that haven't been
-                                            collected. */
-            );
+                                            collected. */, dt.flags);
 
         free_blob_buffers(blobs, MAXBLOBS);
         if (iq->idxInsert || iq->idxDelete) {

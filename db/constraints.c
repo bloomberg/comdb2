@@ -31,6 +31,7 @@
 #include "block_internal.h"
 #include <assert.h>
 #include "logmsg.h"
+#include "osqlsqlthr.h"
 
 static void *get_constraint_table_cursor(void *table);
 
@@ -206,7 +207,7 @@ static inline void free_cached_delayed_indexes(struct ireq *iq)
 int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *usedb,
                   const uint8_t *p_buf_req_start, const uint8_t *p_buf_req_end,
                   int optype, int rrn, int ixnum, unsigned long long genid,
-                  unsigned long long ins_keys, int blkpos)
+                  unsigned long long ins_keys, int blkpos, int rec_flags)
 {
     void *cur = NULL;
     int type = CTE_ADD, rc = 0;
@@ -241,6 +242,7 @@ int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *used
     cte_record.ctop.fwdct.ixnum = ixnum;
     cte_record.ctop.fwdct.rrn = rrn;
     cte_record.ctop.fwdct.optype = optype;
+    cte_record.ctop.fwdct.flags = rec_flags;
 
     rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
                                sizeof(int) + sizeof(long long), &cte_record,
@@ -875,7 +877,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                         0,    /*maxblobs*/
                         &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL,
                         0, /*blkpos*/
-                        UPDFLAGS_CASCADE);
+                        UPDFLAGS_CASCADE, 0);
                     if (iq->debug)
                         reqpopprefixes(iq, 1);
                     iq->usedb = currdb;
@@ -1206,7 +1208,12 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                           iq->usedb->tablename, doidx);
 
                 *blkpos = curop->blkpos;
-                *errout = OP_FAILED_UNIQ;
+                if ((curop->flags & OSQL_FORCE_VERIFY) != 0) {
+                    *errout = OP_FAILED_VERIFY;
+                    rc = ERR_VERIFY;
+                } else {
+                    *errout = OP_FAILED_UNIQ;
+                }
                 *ixout = doidx;
                 close_constraint_table_cursor(cur);
                 free_cached_delayed_indexes(iq);

@@ -520,7 +520,7 @@ struct Vdbe {
   char *explainTrace;
   int dtprec;             /* datetime precision - make it u32 to silence compiler */
   struct timespec tspec;  /* time of prepare, used for stable now() */
-  u8 is_replace;          /* Is REPLACE command? */
+  u8 oe_flag;             /* ON CONFLICT action */
 };
 
 /*
