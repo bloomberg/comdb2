@@ -5107,7 +5107,8 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         break;
 
     case SQLITE_TOOBIG:
-        *errstr = "transaction too big";
+        *errstr = "transaction too big, try increasing the limit using 'SET "
+            "maxtransize N'";
         rc = ERR_TRAN_TOO_BIG;
         break;
 
