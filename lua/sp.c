@@ -3147,54 +3147,43 @@ int db_csvcopy(Lua lua)
     lua_remove(lua, 1);
 
     SP sp = getsp(lua);
-    int fd = -1;
 
-    int rc;
+    int rc = 0;
     const char *fname = lua_tostring(lua, 1);
+    char *tablename = NULL;
+    char *cSeparator = ",";
+    char *header = NULL;
+    FILE *fp = NULL;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    int nargs;
+    strbuf *columns, *params, *sql;
+
+
     if (fname == NULL) {
         return luaL_error(lua, "Expected file name");
     } else if (strncmp(thedb->basedir, fname, strlen(thedb->basedir)) != 0) {
         return luaL_error(lua, "File not in database directory");
     }
-    printf("Filename %s\n", fname);
-
-    fd = fopen(fname, "r");
-
-    if (fd == -1) {
-        lua_pushnil(lua);
-        lua_pushinteger(lua, sp->rc);
-    } else {
-        lua_pushinteger(lua, 0); /* Success return code */
-    }
-
-    char *tablename = NULL;
-    char *cSeparator = ",";
-    char *header = NULL;
 
     if (lua_gettop(lua) >= 2 && !lua_isnil(lua, 2) && !luabb_isnull(lua, 2)) {
        tablename = luabb_tostring(lua, 2);
     }
 
-    printf("TableName %s\n", tablename);
-
     if (lua_gettop(lua) >= 3 && !lua_isnil(lua, 3) && !luabb_isnull(lua, 3)) {
        cSeparator = luabb_tostring(lua, 3);
     }
 
-    printf("cSeparator %s\n", cSeparator);
-
     if (lua_gettop(lua) >= 4 && !lua_isnil(lua, 4) && !luabb_isnull(lua, 4)) {
        header = luabb_tostring(lua, 4);
-       printf("HEADER = %s", header);
     }
 
-    char *line = NULL;
-    size_t len = 0;
-    ssize_t read;
+    fp = fopen(fname, "r");
 
-
-    int nargs;
-    strbuf *columns, *params, *sql;
+    if (fp == NULL) {
+        return luaL_error(lua, "CSV file not found.");
+    }
 
     columns = strbuf_new();
     params = strbuf_new();
@@ -3203,12 +3192,11 @@ int db_csvcopy(Lua lua)
     strbuf_append(params, "(");
 
     if (header == NULL) {
-        read = getline(&line, &len, fd);
+        read = getline(&line, &len, fp);
         header = line;
     } 
 
     /* Make sql query */
-
     CSVReader csv = {0};
     csv.in = header;
     csv.nLine = 1;
@@ -3218,7 +3206,6 @@ int db_csvcopy(Lua lua)
     int cols = 0, lines = 0;
 
     while (csv_read_one_field(&csv)) {
-      //lua_pushstring(lua, csv.z);
       char *quoted_col = sqlite3_mprintf("\"%w\",", csv.z);
       strbuf_append(columns, quoted_col);
       sqlite3_free(quoted_col);
@@ -3241,7 +3228,6 @@ int db_csvcopy(Lua lua)
                    n2, strbuf_buf(columns), strbuf_buf(params));
 
     char *sqlstr = strbuf_disown(sql);
-    printf("SQL IS %s\n", sqlstr);
 
     strbuf_free(sql);
     strbuf_free(columns);
@@ -3252,48 +3238,56 @@ int db_csvcopy(Lua lua)
     rc = lua_prepare_sql(lua, sp, sqlstr, &stmt);
     free(sqlstr);
     if (rc != 0) {
-        printf("value of rc %d\n",rc);
-        lua_pushinteger(lua, rc); /* Failure return code. */
-        return 1;
+        rc = luaL_error(lua, sp->error);
+        goto done;
     }
  
-    read = getline(&line, &len, fd);
+    read = getline(&line, &len, fp);
+
     while (read > 0) {
-        printf("First row %s\n",line);
-        CSVReader csv = {0};
         csv.in = line;
-        csv.nLine = 1;
-        csv.lua = lua;
-        csv.cSeparator = cSeparator[0];
-    	csv_append_char(&csv, 0); /* To ensure sCsv.z is allocated */
+        csv.pos = 0;
     	int cols = 0, lines = 0;
         int pos = 1;
-        char *b_val[256];
+        char *b_val[SQLITE_MAX_VARIABLE_NUMBER]; // Bind values
 
     	while (csv_read_one_field(&csv)) {
-      	  //lua_pushstring(lua, csv.z);
           b_val[pos-1] = strdup(csv.z);
-      	  printf("VALUE %s pos %d len %d\n", b_val[pos-1], pos, strlen(b_val[pos-1]));
           rc = sqlite3_bind_text(stmt, pos, b_val[pos-1], strlen(b_val[pos-1]), NULL);
-          printf("value of rc %d\n",rc);
           pos++;
+          if (pos >= SQLITE_MAX_VARIABLE_NUMBER) {
+              rc = luaL_error(lua, "Mismatch between columns and csv fields");
+          }
       	  if (csv.cTerm == 0) break;
    	 }
          while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) ;
-         for (int i = 0; i < pos-1; i++)
+
+         for (int i = 0; i < pos-1; i++) {
              free(b_val[i]);
-         if (rc != SQLITE_DONE)  {
-             break;
+             b_val[i] = NULL;
          }
          free(line);
          line = NULL;
-         read = getline(&line, &len, fd);
-         free(csv.z);
+
+         if (rc != SQLITE_DONE)  {
+             break;
+         }
+         read = getline(&line, &len, fp);
          sqlite3_reset(stmt);
     }
-    sqlite3_finalize(stmt);
-    fclose(fd);
-    return 1;
+
+    rc = 0;
+
+done:
+    if (csv.z)
+        free(csv.z);
+    if (stmt)
+        sqlite3_finalize(stmt);
+    if (fp)
+        fclose(fp);
+    if (rc == 0)
+        lua_pushinteger(lua, rc);
+    return rc;
 }
 
 static int db_exec(Lua lua)
