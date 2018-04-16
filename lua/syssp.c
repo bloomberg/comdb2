@@ -304,7 +304,7 @@ static const luaL_Reg sys_funcs[] = {
     { "cluster", db_cluster },
     { "comdbg_tables", db_comdbg_tables },
     { "send", db_send },
-    { "csvcopy", db_csvcopy},
+    { "load", db_csvcopy},
     { "comdb_analyze", db_comdb_analyze },
     { "comdb_verify", db_comdb_verify },
     { NULL, NULL }
@@ -408,9 +408,9 @@ static struct sp_source syssps[] = {
         "end\n"
     }
     ,{
-        "sys.cmd.csvcopy",
+        "sys.cmd.load",
         "local function main(csv,tbl,seperator, header)\n"
-        "sys.csvcopy(db,csv,tbl,seperator,header)\n"
+        "sys.load(db,csv,tbl,seperator,header)\n"
         "end\n"
     }
 };

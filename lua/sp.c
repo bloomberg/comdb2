@@ -3149,10 +3149,10 @@ int db_csvcopy(Lua lua)
     SP sp = getsp(lua);
 
     int rc = 0;
-    const char *fname = lua_tostring(lua, 1);
-    char *tablename = NULL;
-    char *cSeparator = ",";
-    char *header = NULL;
+    const char *fname_orig = lua_tostring(lua, 1);
+    const char *tablename = NULL;
+    const char *cSeparator = ",";
+    const char *header = NULL;
     FILE *fp = NULL;
     char *line = NULL;
     size_t len = 0;
@@ -3160,10 +3160,14 @@ int db_csvcopy(Lua lua)
     int nargs;
     strbuf *columns, *params, *sql;
 
+    char path[PATH_MAX + 1];
+    char *fname = realpath(fname_orig, path);
+
+    int basedir_len = strlen(thedb->basedir);
 
     if (fname == NULL) {
-        return luaL_error(lua, "Expected file name");
-    } else if (strncmp(thedb->basedir, fname, strlen(thedb->basedir)) != 0) {
+        return luaL_error(lua, "File doesn't exist");
+    } else if ((strncmp(thedb->basedir, fname, basedir_len) != 0) || (fname[basedir_len] != '/')) {
         return luaL_error(lua, "File not in database directory");
     }
 
