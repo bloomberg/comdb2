@@ -3377,7 +3377,8 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     } else {
         if (snapylsn.file <= lowfilenum) {
             if (bdb_state->attr->debug_log_deletion) {
-                logmsg(LOGMSG_USER, "Setting lowfilenum to %d from %d because snapylsn is "
+                logmsg(LOGMSG_USER,
+                       "Setting lowfilenum to %d from %d because snapylsn is "
                        "%d:%d\n",
                        snapylsn.file - 1, lowfilenum, snapylsn.file,
                        snapylsn.offset);
@@ -3385,7 +3386,8 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
             lowfilenum = snapylsn.file - 1;
         } else {
             if (bdb_state->attr->debug_log_deletion) {
-                logmsg(LOGMSG_USER, "Ignoring snapylsn because %d:%d is already <= %d\n",
+                logmsg(LOGMSG_USER,
+                       "Ignoring snapylsn because %d:%d is already <= %d\n",
                        snapylsn.file, snapylsn.offset, lowfilenum);
             }
         }
