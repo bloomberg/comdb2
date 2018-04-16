@@ -1272,3 +1272,25 @@ __log_autoremove(dbenv)
 	}
 	return;
 }
+
+/*
+ * __log_sync_lsn --
+ *  Return the last sync LSN.
+ *
+ * PUBLIC: int __log_sync_lsn __P((DB_ENV *, DB_LSN *));
+ */
+    int
+__log_sync_lsn(dbenv, lsnp)
+    DB_ENV *dbenv;
+    DB_LSN *lsnp;
+{
+    DB_LOG *dblp;
+    LOG *lp;
+
+    dblp = dbenv->lg_handle;
+    lp = dblp->reginfo.primary;
+    R_LOCK(dbenv, &dblp->reginfo);
+    *lsnp = lp->s_lsn;
+    R_UNLOCK(dbenv, &dblp->reginfo);
+    return (0);
+}

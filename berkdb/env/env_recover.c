@@ -2064,4 +2064,100 @@ err:
 		return ret;
 }
 
-/* vim: set ts=3 sw=3: */
+/*
+ * __env_find_verify_recover_start --
+ *  We need to be able to recover to the 1st matchable commit record
+ *  preceding the last sync LSN. The function returns the recovery
+ *  starting point in `lsnp'.
+ *
+ * PUBLIC: int __env_find_verify_recover_start __P((DB_ENV *, DB_LSN *));
+ */
+int
+__env_find_verify_recover_start(dbenv, lsnp)
+	DB_ENV *dbenv;
+	DB_LSN *lsnp;
+{
+	int ret;
+	u_int32_t rectype;
+	DB_LSN txnlsn;
+	__txn_ckp_args *ckp_args;
+	__db_debug_args *debug_args;
+	DBT rec = {0};
+	DB_LOGC *logc = NULL;
+	int optype = 0;
+
+	rec.flags = DB_DBT_REALLOC;
+
+	/* Step 1: Find the 1st matchable commit record
+	           lower than the last sync LSN. */
+	if ((ret = __log_sync_lsn(dbenv, lsnp)) != 0)
+		goto err;
+	if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		goto err;
+	if ((ret = __log_c_get(logc, lsnp, &rec, DB_PREV)) != 0)
+		goto err;
+
+	do {
+		LOGCOPY_32(&rectype, rec.data);
+	} while(!matchable_log_type(rectype) &&
+			(ret = __log_c_get(logc, lsnp, &rec, DB_PREV)) == 0);
+
+	if (ret != 0)
+		goto err;
+
+	/* Step 2: find the checkpoint LSN of the checkpoint
+	           preceding the commit record. */
+	if ((ret = __txn_getckp(dbenv, &txnlsn)) != 0)
+		goto err;
+
+	while ((ret = __log_c_get(logc, &txnlsn, &rec, DB_SET)) == 0) {
+		if ((ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0)
+			return (ret);
+		if (log_compare(&txnlsn, lsnp) < 0) {
+			*lsnp = ckp_args->ckp_lsn;
+			txnlsn = ckp_args->last_ckp;
+			__os_free(dbenv, ckp_args);
+			break;
+		}
+
+		txnlsn = ckp_args->last_ckp;
+		if (IS_ZERO_LSN(txnlsn))
+			goto err;
+		__os_free(dbenv, ckp_args);
+	}
+
+	/* Step 3: find the checkpoint preceding the ckp LSN from Step 2. */
+	while ((ret = __log_c_get(logc, &txnlsn, &rec, DB_SET)) == 0) {
+		if ((ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0)
+			return (ret);
+		if (log_compare(&txnlsn, lsnp) < 0) {
+			*lsnp = txnlsn;
+			__os_free(dbenv, ckp_args);
+			break;
+		}
+
+		txnlsn = ckp_args->last_ckp;
+		if (IS_ZERO_LSN(txnlsn))
+			goto err;
+		__os_free(dbenv, ckp_args);
+	}
+
+	/* Step 4: find the start of DBREG records of the ckp from Step 3. */
+	do {
+		LOGCOPY_32(&rectype, rec.data);
+		optype = -1;
+		if (rectype == DB___db_debug) {
+			ret = __db_debug_read(dbenv, rec.data, &debug_args);
+			if (ret)
+				goto err;
+			LOGCOPY_32(&optype, debug_args->op.data);
+			__os_free(dbenv, debug_args);
+		}
+	} while ((rectype != DB___db_debug || optype != 2) &&
+			(ret = __log_c_get(logc, lsnp, &rec, DB_PREV)) == 0);
+
+err:
+	if (logc)
+		(void)__log_c_close(logc);
+	return (ret);
+}
