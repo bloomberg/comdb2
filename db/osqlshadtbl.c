@@ -2078,8 +2078,7 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                               (gbl_partial_indexes && tbl->ix_partial)
                                   ? get_del_keys(clnt, tbl, genid)
                                   : -1ULL,
-                              data, ldata, osql_nettype, osql->logsb,
-                              get_rec_flags(clnt, tbl, *seq, 0));
+                              data, ldata, osql_nettype, osql->logsb);
 
         if (rc) {
             rc = SQLITE_INTERNAL;

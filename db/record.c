@@ -799,7 +799,7 @@ int upgrade_record(struct ireq *iq, void *trans, unsigned long long vgenid,
                       NULL,       /*blobs*/
                       0,          /*maxblobs*/
                       &dummy_genid, -1ULL, -1ULL, opfailcode, ixfailnum, opcode,
-                      blkpos, RECFLAGS_UPGRADE_RECORD, 0);
+                      blkpos, RECFLAGS_UPGRADE_RECORD);
 }
 
 /* We used to return conversion error (113) for
@@ -828,7 +828,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                blob_buffer_t *blobs, size_t maxblobs, unsigned long long *genid,
                unsigned long long ins_keys, unsigned long long del_keys,
                int *opfailcode, int *ixfailnum, int opcode, int blkpos,
-               int flags, int rec_flags)
+               int flags)
 {
     int rc;
     int retrc = 0;
@@ -1563,7 +1563,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 (ins_keys & (1ULL << ixnum))) {
                 rc = add_key(iq, trans, ixnum, ins_keys, rrn, *genid, od_dta,
                              od_len, opcode, blkpos, opfailcode, newkey,
-                             od_dta_tail, od_tail_len, do_inline, rec_flags);
+                             od_dta_tail, od_tail_len, do_inline, 0);
 
                 if (iq->debug)
                     reqprintf(iq, "add_key IX %d RRN %d RC %d", ixnum, rrn, rc);
@@ -3257,7 +3257,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                     (uint8_t *)record + reclen, NULL /*p_buf_vrec*/,
                     NULL /*p_buf_vrec_end*/, fldnullmap, NULL /*updCols*/,
                     blobs, maxblobs, &fndgenid, -1ULL, -1ULL, opfailcode,
-                    ixfailnum, opcode, blkpos, flags, 0);
+                    ixfailnum, opcode, blkpos, flags);
 
     if (rc != 0) {
         if (iq->debug) {

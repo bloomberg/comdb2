@@ -2017,12 +2017,11 @@ typedef struct osql_upd {
     unsigned long long genid;
     unsigned long long ins_keys;
     unsigned long long del_keys;
-    unsigned long long flags;     /* Some additional information */
     int nData;
     char pData[4]; /* alignment! - pass some useful data instead of padding */
 } osql_upd_t;
 
-enum { OSQLCOMM_UPD_TYPE_LEN = 8 + 8 + 8 + 8 + 4 + 4 };
+enum { OSQLCOMM_UPD_TYPE_LEN = 8 + 8 + 8 + 4 + 4 };
 
 BB_COMPILE_TIME_ASSERT(osqlcomm_upd_type_len,
                        sizeof(osql_upd_t) == OSQLCOMM_UPD_TYPE_LEN);
@@ -2045,8 +2044,6 @@ static uint8_t *osqlcomm_upd_type_put(const osql_upd_t *p_osql_upd,
         p_buf = buf_no_net_put(&(p_osql_upd->del_keys),
                                sizeof(p_osql_upd->del_keys), p_buf, p_buf_end);
     }
-    p_buf = buf_no_net_put(&(p_osql_upd->flags), sizeof(p_osql_upd->flags),
-                           p_buf, p_buf_end);
     p_buf = buf_put(&(p_osql_upd->nData), sizeof(p_osql_upd->nData), p_buf,
                     p_buf_end);
     /* don't copy any of the pData */
@@ -2073,8 +2070,6 @@ static const uint8_t *osqlcomm_upd_type_get(osql_upd_t *p_osql_upd,
         p_buf = buf_no_net_get(&(p_osql_upd->del_keys),
                                sizeof(p_osql_upd->del_keys), p_buf, p_buf_end);
     }
-    p_buf = buf_no_net_get(&(p_osql_upd->flags), sizeof(p_osql_upd->flags),
-                           p_buf, p_buf_end);
     p_buf = buf_get(&(p_osql_upd->nData), sizeof(p_osql_upd->nData), p_buf,
                     p_buf_end);
     /* don't copy any of the pData */
@@ -3803,7 +3798,7 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
 int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long ins_keys,
                      unsigned long long del_keys, char *pData, int nData,
-                     int type, SBUF2 *logsb, int flags)
+                     int type, SBUF2 *logsb)
 {
     netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
     uint8_t buf[OSQLCOMM_UPD_UUID_RPL_TYPE_LEN > OSQLCOMM_UPD_RPL_TYPE_LEN
@@ -3840,7 +3835,6 @@ int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         upd_uuid_rpl.dt.genid = genid;
         upd_uuid_rpl.dt.ins_keys = ins_keys;
         upd_uuid_rpl.dt.del_keys = del_keys;
-        upd_uuid_rpl.dt.flags = flags;
         upd_uuid_rpl.dt.nData = nData;
         sent = sizeof(upd_uuid_rpl.dt.pData);
         if (!(p_buf = osqlcomm_upd_uuid_rpl_type_put(&upd_uuid_rpl, p_buf,
@@ -6912,7 +6906,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                             function's default behaviour and
                                             have
                                             it erase any blobs that haven't been
-                                            collected. */, dt.flags);
+                                            collected. */);
 
         free_blob_buffers(blobs, MAXBLOBS);
         if (iq->idxInsert || iq->idxDelete) {

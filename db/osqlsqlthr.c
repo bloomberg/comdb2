@@ -1323,7 +1323,7 @@ static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                                           : -1ULL,
             (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys
                                                           : -1ULL,
-            pData, nData, nettype, osql->logsb, flags);
+            pData, nData, nettype, osql->logsb);
         RESTART_SOCKSQL;
     }
 

@@ -2661,7 +2661,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                blob_buffer_t *blobs, size_t maxblobs, unsigned long long *genid,
                unsigned long long ins_keys, unsigned long long del_keys,
                int *opfailcode, int *ixfailnum, int opcode, int blkpos,
-               int flags, int rec_flags);
+               int flags);
 
 int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                unsigned long long genid, unsigned long long del_keys,

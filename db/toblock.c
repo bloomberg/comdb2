@@ -3451,7 +3451,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             NULL /*p_buf_vrec_end*/, nulls, NULL, /*updcols*/
                             blobs, MAXBLOBS, &genid, -1ULL, -1ULL, &err.errcode,
                             &err.ixnum, hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY, 0);
+                            RECFLAGS_DYNSCHEMA_NULLS_ONLY);
             free_blob_buffers(blobs, MAXBLOBS);
             if (rc != 0) {
                 numerrs = 1;
@@ -3559,7 +3559,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             0,    /*maxblobs*/
                             &genid, -1ULL, -1ULL, &err.errcode, &err.ixnum,
                             hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY, 0);
+                            RECFLAGS_DYNSCHEMA_NULLS_ONLY);
 
             if (rc != 0) {
                 numerrs = 1;
@@ -3933,7 +3933,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             0,    /*maxblobs*/
                             &genid, -1ULL, -1ULL, &err.errcode, &err.ixnum,
                             hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY, 0);
+                            RECFLAGS_DYNSCHEMA_NULLS_ONLY);
 
             if (rc != 0) {
                 numerrs = 1;
