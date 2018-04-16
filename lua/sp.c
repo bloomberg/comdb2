@@ -3254,6 +3254,10 @@ int db_csvcopy(Lua lua)
     	while (csv_read_one_field(&csv)) {
           b_val[pos-1] = strdup(csv.z);
           rc = sqlite3_bind_text(stmt, pos, b_val[pos-1], strlen(b_val[pos-1]), NULL);
+          if (rc) {
+              rc = luaL_error(lua, sqlite3_errmsg(stmt));
+              goto done;
+          }
           pos++;
           if (pos >= SQLITE_MAX_VARIABLE_NUMBER) {
               rc = luaL_error(lua, "Mismatch between number of columns and csv fields");
@@ -3271,7 +3275,8 @@ int db_csvcopy(Lua lua)
         line = NULL;
 
         if (rc != SQLITE_DONE)  {
-            break;
+            rc = luaL_error(lua, sqlite3_errmsg(stmt));
+            goto done;
         }
         read = getline(&line, &len, fp);
         sqlite3_reset(stmt);
