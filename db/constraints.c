@@ -1208,12 +1208,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                           iq->usedb->tablename, doidx);
 
                 *blkpos = curop->blkpos;
-                if ((curop->flags & OSQL_FORCE_VERIFY) != 0) {
-                    *errout = OP_FAILED_VERIFY;
-                    rc = ERR_VERIFY;
-                } else {
-                    *errout = OP_FAILED_UNIQ;
-                }
+                *errout = OP_FAILED_UNIQ;
                 *ixout = doidx;
                 close_constraint_table_cursor(cur);
                 free_cached_delayed_indexes(iq);
