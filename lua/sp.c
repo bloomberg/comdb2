@@ -3256,24 +3256,25 @@ int db_csvcopy(Lua lua)
           rc = sqlite3_bind_text(stmt, pos, b_val[pos-1], strlen(b_val[pos-1]), NULL);
           pos++;
           if (pos >= SQLITE_MAX_VARIABLE_NUMBER) {
-              rc = luaL_error(lua, "Mismatch between columns and csv fields");
+              rc = luaL_error(lua, "Mismatch between number of columns and csv fields");
+              goto done;
           }
       	  if (csv.cTerm == 0) break;
-   	 }
-         while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) ;
+        }
+        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) ;
 
-         for (int i = 0; i < pos-1; i++) {
-             free(b_val[i]);
-             b_val[i] = NULL;
-         }
-         free(line);
-         line = NULL;
+        for (int i = 0; i < pos-1; i++) {
+            free(b_val[i]);
+            b_val[i] = NULL;
+        }
+        free(line);
+        line = NULL;
 
-         if (rc != SQLITE_DONE)  {
-             break;
-         }
-         read = getline(&line, &len, fp);
-         sqlite3_reset(stmt);
+        if (rc != SQLITE_DONE)  {
+            break;
+        }
+        read = getline(&line, &len, fp);
+        sqlite3_reset(stmt);
     }
 
     rc = 0;
