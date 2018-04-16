@@ -371,7 +371,7 @@ fi
 stats_should_be $savedCnt  $lastRun 0 $lastRun
 
 
-cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr aa_testing 1")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm "put tunable 'debug.autoanalyze' 1"
 insert_records_tran t1 10000
 echo 'Insert 1001 records to table t2, because we will be analyzing t1, t2 may remain without autoanalyze'
 insert_records_tran t2 1001

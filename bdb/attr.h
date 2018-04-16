@@ -444,7 +444,6 @@ DEF_ATTR(AA_MIN_PERCENT, aa_min_percent, QUANTITY, 20,
          "Percent change above which we kick off analyze.")
 DEF_ATTR(AA_MIN_PERCENT_JITTER, aa_min_percent_jitter, QUANTITY, 300,
          "Additional jitter factor for determining percent change.")
-DEF_ATTR(AA_TESTING, aa_testing, BOOLEAN, 0, "turn AA TESTING on/off")
 DEF_ATTR(PLANNER_SHOW_SCANSTATS, planner_show_scanstats, BOOLEAN, 0, NULL)
 DEF_ATTR(PLANNER_WARN_ON_DISCREPANCY, planner_warn_on_discrepancy, BOOLEAN, 0,
          NULL)

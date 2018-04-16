@@ -172,6 +172,8 @@ extern int gbl_ack_trace;
 /* bdb/bdblock.c */
 extern int gbl_bdblock_debug;
 
+extern int gbl_debug_aa;
+
 /* bdb/os_namemangle_46.c */
 extern int gbl_namemangle_loglevel;
 

@@ -35,6 +35,7 @@
 const char *aa_counter_str = "autoanalyze_counter";
 const char *aa_lastepoch_str = "autoanalyze_lastepoch";
 static volatile bool auto_analyze_running = false;
+int gbl_debug_aa;
 
 /* reset autoanalyze counters to zero
  */
@@ -109,7 +110,7 @@ void *auto_analyze_table(void *arg)
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
     sbuf2free(sb);
     free(tblname);
-    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_TESTING)) {
+    if (gbl_debug_aa) {
         ctrace("AUTOANALYZE:sleep(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1");
         sleep(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
     }
