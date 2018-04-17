@@ -3404,9 +3404,11 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
 
         if (asoflsn.file <= lowfilenum) {
             if (bdb_state->attr->debug_log_deletion) {
-               logmsg(LOGMSG_USER, "Setting lowfilenum to %d from %d because asoflsn is "
+                logmsg(LOGMSG_USER,
+                       "Setting lowfilenum to %d from %d because asoflsn is "
                        "%d:%d\n",
-                       asoflsn.file - 1, lowfilenum, asoflsn.file, asoflsn.offset);
+                       asoflsn.file - 1, lowfilenum, asoflsn.file,
+                       asoflsn.offset);
             }
             lowfilenum = asoflsn.file - 1;
         }
