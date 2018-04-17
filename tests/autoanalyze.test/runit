@@ -357,7 +357,6 @@ stats_should_be $savedCnt $lastRun 200 $prevDate
 echo "Turn on autoanalyze"
 cdb2sql --tabs --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr autoanalyze 1")'
 
-insert_records_tran t1 1
 sleep $T_TO_SLEEP
 date
 
