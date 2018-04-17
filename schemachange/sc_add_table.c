@@ -26,7 +26,8 @@
 #include "sc_csc2.h"
 
 static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
-                                       struct ireq *iq, void *trans)
+                                       struct ireq *iq, void *trans,
+                                       int fastinit)
 {
     int rc;
     int pi = 0; // partial indexes
@@ -50,7 +51,8 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
 
     extern int gbl_partial_indexes;
     extern int gbl_expressions_indexes;
-    if (((gbl_partial_indexes && newdb->ix_partial) ||
+    if (!fastinit &&
+        ((gbl_partial_indexes && newdb->ix_partial) ||
          (gbl_expressions_indexes && newdb->ix_expr)) &&
         newdb->dbenv->master == gbl_mynode)
         rc = new_indexes_syntax_check(iq);
@@ -184,7 +186,7 @@ int add_table_to_environment(char *table, const char *csc2,
         hash_add(thedb->db_hash, newdb);
     }
 
-    rc = adjust_master_tables(newdb, csc2, iq, trans);
+    rc = adjust_master_tables(newdb, csc2, iq, trans, s && s->fastinit);
     if (rc) {
         gbl_sc_commit_count--;
         --thedb->num_dbs;
