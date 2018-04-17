@@ -9657,8 +9657,16 @@ static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
     if (*bdberr == 0) {
         int rc2 = cursor_move_postop(pCur);
         if (rc2) {
-            rc = SQLITE_CLIENT_CHANGENODE;
-            *bdberr = BDBERR_NOT_DURABLE;
+            logmsg(LOGMSG_ERROR, "cursor_move_postop returned %d\n", rc2);
+            *bdberr = BDBERR_DEADLOCK;
+            if (rc2 < 0) {
+                rc = SQLITE_BUSY;
+            } else if (rc2 == SQLITE_CLIENT_CHANGENODE) {
+                rc = SQLITE_CLIENT_CHANGENODE;
+                *bdberr = BDBERR_NOT_DURABLE;
+            } else {
+                rc = rc2;
+            }
         }
     }
 

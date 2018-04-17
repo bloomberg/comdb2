@@ -3115,7 +3115,11 @@ static int dbstmt_emit(Lua L)
     int cols = sqlite3_column_count(stmt);
     int rc;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        l_send_back_row(L, stmt, cols);
+        rc = l_send_back_row(L, stmt, cols);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed with rc %d\n", __func__, rc);
+            break;
+        }
     }
     reset_stmt(sp, dbstmt);
     if (rc == SQLITE_DONE) rc = 0;
@@ -4644,7 +4648,11 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
         return luabb_error(lua, sp, "attempt to read %d cols (maxcols:%d)",
                            nargs, MAXCOLUMNS);
     }
-    release_locks_on_emit_row(sp->thd, sp->clnt);
+    rc = release_locks_on_emit_row(sp->thd, sp->clnt);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s release_locks_on_emit_row %d\n", __func__, rc);
+        return rc;
+    }
     struct response_data arg = {0};
     arg.ncols = nargs;
     arg.stmt = stmt;

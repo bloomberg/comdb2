@@ -2281,16 +2281,17 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 {
     extern int gbl_sql_release_locks_on_emit_row;
     extern int gbl_locks_check_waiters;
+    int rc = 0;
     if (gbl_locks_check_waiters && gbl_sql_release_locks_on_emit_row) {
         extern int gbl_sql_random_release_interval;
         if (bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) {
-            release_locks("lockwait at emit-row");
+            rc = release_locks("lockwait at emit-row");
         } else if (gbl_sql_random_release_interval &&
                    !(rand() % gbl_sql_random_release_interval)) {
-            release_locks("random release emit-row");
+            rc = release_locks("random release emit-row");
         }
     }
-    return 0;
+    return rc;
 }
 
 static int check_sql(struct sqlclntstate *clnt, int *sp)
@@ -3365,7 +3366,12 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     do {
         /* replication contention reduction */
-        release_locks_on_emit_row(thd, clnt);
+        rc = release_locks_on_emit_row(thd, clnt);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: release_locks_on_emit_row failed\n",
+                   __func__);
+            goto out;
+        }
 
         if (clnt->isselect == 1) {
             clnt->effects.num_selected++;
@@ -4503,7 +4509,11 @@ retry:
         if (rc < 0) {
             if (errno == EINTR || errno == EAGAIN) {
                 if (gbl_sql_release_locks_on_slow_reader && !released_locks) {
-                    release_locks("slow reader");
+                    if (release_locks("slow reader") != 0) {
+                        logmsg(LOGMSG_ERROR, "%s release_locks failed\n",
+                               __func__);
+                        return -1;
+                    }
                     released_locks = 1;
                 }
                 goto retry;

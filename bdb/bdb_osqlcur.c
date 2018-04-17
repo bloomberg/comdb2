@@ -468,12 +468,14 @@ int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
                 rc = release_locks("random release update shadows");
                 released_locks = 1;
             }
-
-            /* Generation changed: ask client to retry */
             if (rc != 0) {
                 logcur->close(logcur, 0);
                 logmsg(LOGMSG_ERROR, "%s release_locks %d\n", __func__, rc);
-                *bdberr = BDBERR_NOT_DURABLE;
+                /* Generation changed: ask client to retry */
+                if (rc == 210 /* SQLITE_CLIENT_CHANGENODE */)
+                    *bdberr = BDBERR_NOT_DURABLE;
+                else
+                    *bdberr = BDBERR_DEADLOCK;
                 return -1;
             }
         }
