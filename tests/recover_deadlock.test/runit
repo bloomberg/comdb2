@@ -47,7 +47,7 @@ for i in $(seq 1 $NRECS); do
 done | cdb2sql ${CDB2_OPTIONS} $dbnm default - >/dev/null
 
 cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-if [[ $cnt != $NRECS]] ; then
+if [[ $cnt != $NRECS ]] ; then
     echo "count is now $cnt but should be $NRECS"
     exit 1
 fi
