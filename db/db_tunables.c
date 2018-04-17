@@ -917,6 +917,7 @@ const char *tunable_type(comdb2_tunable_type type)
     case TUNABLE_COMPOSITE: return "COMPOSITE";
     default: assert(0);
     }
+    return "???";
 }
 
 /* Register all db tunables. */

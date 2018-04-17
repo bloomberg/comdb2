@@ -151,6 +151,7 @@ void *memp_trickle_thread(void *arg)
 
     bdb_thread_event(bdb_state, 0);
     logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
+    return NULL;
 }
 
 void *deadlockdetect_thread(void *arg)

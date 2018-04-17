@@ -17,9 +17,11 @@ set(libs
   sockpool
   ${PROTOBUF_C_LIBRARY}
   ${SQLITE3_LIBRARY}
+  ${CMAKE_DL_LIBS}
 )
+
 if(WITH_SSL)
-  list(APPEND libs ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
+  list(APPEND libs ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES})
 endif()
 
 list(APPEND libs ${UNWIND_LIBRARY})

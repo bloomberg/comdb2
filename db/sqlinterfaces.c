@@ -5080,10 +5080,12 @@ static void *internal_save_stmt(struct sqlclntstate *clnt, void *arg)
 static void *internal_restore_stmt(struct sqlclntstate *clnt, void *arg)
 {
     clnt->sql = arg;
+    return NULL;
 }
 static void *internal_destroy_stmt(struct sqlclntstate *clnt, void *arg)
 {
     free(arg);
+    return NULL;
 }
 static void *internal_print_stmt(struct sqlclntstate *clnt, void *arg)
 {
@@ -5091,7 +5093,7 @@ static void *internal_print_stmt(struct sqlclntstate *clnt, void *arg)
 }
 static int internal_param_count(struct sqlclntstate *a)
 {
-    return -1;
+    return 0;
 }
 static int internal_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
 {
