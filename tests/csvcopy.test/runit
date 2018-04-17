@@ -12,6 +12,7 @@ if [[ -z $dbname ]] ; then
 fi
 
 cp *.csv $DBDIR/.
+cp agg.csv $DBDIR/../.
 
 for testreq in `ls t*.req` ; do
     # Setup all the tables this test case needs :-
