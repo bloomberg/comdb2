@@ -111,7 +111,8 @@ void *auto_analyze_table(void *arg)
     sbuf2free(sb);
     free(tblname);
     if (gbl_debug_aa) {
-        ctrace("AUTOANALYZE:sleep(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1");
+        ctrace("AUTOANALYZE: sleep for testing for %d seconds\n",
+                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
         sleep(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
     }
 
@@ -429,7 +430,7 @@ void *auto_analyze_main(void *unused)
             sprintf(str, "%d", newautoanalyze_counter);
             bdb_set_table_parameter(NULL, tbl->tablename, aa_counter_str, str);
             // we want to check again next time this function is called
-            aa_last_check_time = 0; 
+            aa_last_check_time = 0;
         }
 
         tbl->aa_saved_counter = newautoanalyze_counter;
