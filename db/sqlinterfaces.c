@@ -1123,12 +1123,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                                     (clnt->sql) ? clnt->sql : "(???.)", irc,
                                     rc);
                     } else {
-                        if (rc == SQLITE_TOOBIG) {
-                            strncpy(clnt->osql.xerr.errstr,
-                                    "transaction too big",
-                                    sizeof(clnt->osql.xerr.errstr));
-                            rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
-                        } else if (rc == SQLITE_ABORT) {
+                        if (rc == SQLITE_ABORT) {
                             /* convert this to user code */
                             rc = blockproc2sql_error(clnt->osql.xerr.errval,
                                                      __func__, __LINE__);
@@ -1197,12 +1192,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                                         : "SNAPISOL",
                                     irc, rc);
                     } else {
-                        if (rc == SQLITE_TOOBIG) {
-                            strncpy(clnt->osql.xerr.errstr,
-                                    "transaction too big",
-                                    sizeof(clnt->osql.xerr.errstr));
-                            rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
-                        } else if (rc == SQLITE_ABORT) {
+                        if (rc == SQLITE_ABORT) {
                             /* convert this to user code */
                             rc = blockproc2sql_error(clnt->osql.xerr.errval,
                                                      __func__, __LINE__);
@@ -1455,6 +1445,13 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         }
 
+        if (rc == SQLITE_TOOBIG) {
+            strncpy(clnt->osql.xerr.errstr,
+                    "transaction too big, try increasing the limit using 'SET "
+                    "maxtransize N'",
+                    sizeof(clnt->osql.xerr.errstr));
+            rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
+        }
 
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
