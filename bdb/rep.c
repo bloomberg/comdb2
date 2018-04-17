@@ -5403,6 +5403,7 @@ void *watcher_thread(void *arg)
     }
 
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
+    return NULL;
 }
 
 int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,

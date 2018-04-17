@@ -1145,6 +1145,7 @@ static void *newsql_destroy_stmt(struct sqlclntstate *clnt, void *arg)
     struct newsql_stmt *stmt = arg;
     cdb2__query__free_unpacked(stmt->query, &pb_alloc);
     free(stmt);
+    return NULL;
 }
 
 static void *newsql_print_stmt(struct sqlclntstate *clnt, void *arg)
@@ -1463,6 +1464,7 @@ static int newsql_log_context(struct sqlclntstate *clnt,
 
     /* Whether latched from previous run, or just set, pass this to logger. */
     reqlog_set_context(logger, clnt->ncontext, clnt->context);
+    return 0;
 }
 
 

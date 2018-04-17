@@ -8353,4 +8353,5 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
 
     closedir(dirp);
     free(buf);
+    return 0;
 }
