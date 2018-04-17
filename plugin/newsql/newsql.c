@@ -1218,6 +1218,14 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt)
                 } else {
                     clnt->ignore_coherency = 0;
                 }
+            } else if (strncasecmp(sqlstr, "intransresults", 14) == 0) {
+                sqlstr += 14;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->send_intransresults = 0;
+                } else {
+                    clnt->send_intransresults = 1;
+                }
             } else {
                 rc = ii + 1;
             }

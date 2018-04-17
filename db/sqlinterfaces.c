@@ -791,8 +791,8 @@ static void update_snapshot_info(struct sqlclntstate *clnt)
     if (clnt->is_newsql && clnt->sql_query &&
         (clnt->sql_query->n_features > 0) && (gbl_disable_skip_rows == 0)) {
         for (int ii = 0; ii < clnt->sql_query->n_features; ii++) {
-            if (CDB2_CLIENT_FEATURES__SKIP_ROWS ==
-                clnt->sql_query->features[ii]) {
+            if (!clnt->send_intransresults && (CDB2_CLIENT_FEATURES__SKIP_ROWS ==
+                clnt->sql_query->features[ii])) {
                 clnt->skip_feature = 1;
                 clnt->want_query_effects = 1;
                 if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
