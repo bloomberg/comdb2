@@ -685,7 +685,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2 order by id" > select_t2
 # Start a snapshot isolation session-coprocess
 coproc stdbuf -oL cdb2sql -s ${CDB2_OPTIONS} $dbnm default -
 cpid=$!
-echo me: $$ COPROC $cppid fd in ${COPROC[0]} out ${COPROC[1]}
+echo me: $$ COPROC $cpid fd in ${COPROC[0]} out ${COPROC[1]}
 
 
 # Set the started-coprocess flag
