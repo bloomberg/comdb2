@@ -363,20 +363,19 @@ struct plugin_callbacks {
     // run_statement_typed
     plugin_func *override_count; /* newsql_override_count */
 
-    plugin_func *get_cnonce; /* newsql_get_cnonce */
+    plugin_func *has_cnonce; /* newsql_has_cnonce */
     plugin_func *set_cnonce; /* newsql_set_cnonce */
     plugin_func *clr_cnonce; /* newsql_clr_cnonce */
-    cnonce_value_func *cnonce_value; /* newsql_cnonce_value */
+    cnonce_value_func *get_cnonce; /* newsql_has_cnonce */
 
     get_snapshot_func *get_snapshot; /* newsql_get_snapshot */
     plugin_func *upd_snapshot; /* newsql_update_snapshot */
     plugin_func *clr_snapshot; /* newsql_clear_snapshot */
 
-    plugin_func *get_high_availability; /* newsql_get_high_availability */
+    plugin_func *has_high_availability; /* newsql_has_high_availability */
     plugin_func *set_high_availability; /* newsql_set_high_availability */
     plugin_func *clr_high_availability; /* newsql_clr_high_availability */
-
-    plugin_func *high_availability_snapshot; /* newsql_high_availability_snapshot */
+    plugin_func *get_high_availability; /* newsql_get_high_availability*/
 
     add_steps_func *add_steps; /* newsql_add_steps */
     setup_client_info_func *setup_client_info; /* newsql_setup_client_info */
@@ -399,17 +398,17 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, param_index);                         \
         make_plugin_callback(clnt, name, param_value);                         \
         make_plugin_callback(clnt, name, override_count);                      \
-        make_plugin_callback(clnt, name, get_cnonce);                          \
+        make_plugin_callback(clnt, name, has_cnonce);                          \
         make_plugin_callback(clnt, name, set_cnonce);                          \
         make_plugin_callback(clnt, name, clr_cnonce);                          \
-        make_plugin_callback(clnt, name, cnonce_value);                        \
+        make_plugin_callback(clnt, name, get_cnonce);                          \
         make_plugin_callback(clnt, name, get_snapshot);                        \
         make_plugin_callback(clnt, name, upd_snapshot);                        \
         make_plugin_callback(clnt, name, clr_snapshot);                        \
-        make_plugin_callback(clnt, name, get_high_availability);               \
+        make_plugin_callback(clnt, name, has_high_availability);               \
         make_plugin_callback(clnt, name, set_high_availability);               \
         make_plugin_callback(clnt, name, clr_high_availability);               \
-        make_plugin_callback(clnt, name, high_availability_snapshot);          \
+        make_plugin_callback(clnt, name, get_high_availability);               \
         make_plugin_callback(clnt, name, add_steps);                           \
         make_plugin_callback(clnt, name, setup_client_info);                   \
         make_plugin_callback(clnt, name, skip_row);                            \
@@ -420,8 +419,8 @@ int param_count(struct sqlclntstate *);
 int param_index(struct sqlclntstate *, const char *, int64_t *);
 int param_value(struct sqlclntstate *, struct param_data *, int);
 int override_count(struct sqlclntstate *);
-int cnonce_value(struct sqlclntstate *, snap_uid_t *);
-int get_high_availability(struct sqlclntstate *);
+int get_cnonce(struct sqlclntstate *, snap_uid_t *);
+int has_high_availability(struct sqlclntstate *);
 int set_high_availability(struct sqlclntstate *);
 int clr_high_availability(struct sqlclntstate *);
 

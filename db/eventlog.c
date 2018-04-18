@@ -440,7 +440,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
     snap_uid_t snap, *p = NULL;
     if (logger->iq && logger->iq->have_snap_info) /* for txn type */
         p = &logger->iq->snap_info;
-    else if (logger->clnt && cnonce_value(logger->clnt, &snap) == 0)
+    else if (logger->clnt && get_cnonce(logger->clnt, &snap) == 0)
         p = &snap;
     if (p)
         cson_object_set(obj, "cnonce", cson_value_new_string(p->key, p->keylen));

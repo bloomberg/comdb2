@@ -211,9 +211,9 @@ int read_response(struct sqlclntstate *clnt, int R, void *D, int I)
     return clnt->plugin.read_response(clnt, R, D, I);
 }
 
-int get_cnonce(struct sqlclntstate *clnt)
+int has_cnonce(struct sqlclntstate *clnt)
 {
-    return clnt->plugin.get_cnonce(clnt);
+    return clnt->plugin.has_cnonce(clnt);
 }
 
 int set_cnonce(struct sqlclntstate *clnt)
@@ -226,9 +226,9 @@ int clr_cnonce(struct sqlclntstate *clnt)
     return clnt->plugin.clr_cnonce(clnt);
 }
 
-int cnonce_value(struct sqlclntstate *clnt, snap_uid_t *snap)
+int get_cnonce(struct sqlclntstate *clnt, snap_uid_t *snap)
 {
-    return clnt->plugin.cnonce_value(clnt, snap);
+    return clnt->plugin.get_cnonce(clnt, snap);
 }
 
 static int clr_snapshot(struct sqlclntstate *clnt)
@@ -241,9 +241,9 @@ static int upd_snapshot(struct sqlclntstate *clnt)
     return clnt->plugin.upd_snapshot(clnt);
 }
 
-int get_high_availability(struct sqlclntstate *clnt)
+int has_high_availability(struct sqlclntstate *clnt)
 {
-    return clnt->plugin.get_high_availability(clnt);
+    return clnt->plugin.has_high_availability(clnt);
 }
 
 int set_high_availability(struct sqlclntstate *clnt)
@@ -256,9 +256,9 @@ int clr_high_availability(struct sqlclntstate *clnt)
     return clnt->plugin.clr_high_availability(clnt);
 }
 
-static int high_availability_snapshot(struct sqlclntstate *clnt)
+static int get_high_availability(struct sqlclntstate *clnt)
 {
-    return clnt->plugin.high_availability_snapshot(clnt);
+    return clnt->plugin.get_high_availability(clnt);
 }
 
 static void setup_client_info(struct sqlclntstate *clnt, struct sqlthdstate *thd, char *replay)
@@ -1049,7 +1049,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                                        pthread_self(), __func__, __LINE__, rc);
                             }
                         } else if (rc == SQLITE_CLIENT_CHANGENODE) {
-                            rc = get_high_availability(clnt)
+                            rc = has_high_availability(clnt)
                                      ? CDB2ERR_CHANGENODE
                                      : SQLHERR_MASTER_TIMEOUT;
                         }
@@ -1085,7 +1085,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                             "td=%lu no-shadow-tran %s line %d, returning %d\n",
                             pthread_self(), __func__, __LINE__, rc);
                     } else if (rc == SQLITE_CLIENT_CHANGENODE) {
-                        rc = get_high_availability(clnt) ? CDB2ERR_CHANGENODE
+                        rc = has_high_availability(clnt) ? CDB2ERR_CHANGENODE
                                                      : SQLHERR_MASTER_TIMEOUT;
                         logmsg(
                             LOGMSG_ERROR,
@@ -2081,16 +2081,6 @@ static void query_stats_setup(struct sqlthdstate *thd,
 
     if (clnt->rawnodestats)
         clnt->rawnodestats->sql_queries++;
-
-    /* global stats */
-
-    /****************************/
-    /* <TODO>: move to fastsql  */
-    /****************************/
-    // ATOMIC_ADD(gbl_nsql, 1);
-    /****************************/
-    /* </TODO>: move to fastsql */
-    /****************************/
 
     /* sql thread stats */
     thd->sqlthd->startms = comdb2_time_epochms();
@@ -3123,7 +3113,7 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         return rc;
 
     /* is this a snapshot? special processing */
-    rc = high_availability_snapshot(clnt);
+    rc = get_high_availability(clnt);
     if (rc) {
         logmsg(LOGMSG_DEBUG, "ha_retrieve_snapshot() returned rc=%d\n", rc);
         return 0;
@@ -3138,9 +3128,7 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     }
 
     /* This is a request that require a sqlite engine */
-    rc = handle_sqlite_requests(thd, clnt);
-
-    return rc;
+    return handle_sqlite_requests(thd, clnt);
 }
 
 // call with schema_lk held + no_transaction
@@ -3218,7 +3206,7 @@ check_version:
         get_copy_rootpages_nolock(thd->sqlthd);
         if (clnt->dbtran.cursor_tran) {
             if (thedb->timepart_views) {
-                int has_cnonce = get_cnonce(clnt);
+                int cnonce = has_cnonce(clnt);
                 clr_cnonce(clnt);
                 /* how about we are gonna add the views ? */
                 rc = views_sqlite_update(thedb->timepart_views, thd->sqldb,
@@ -3228,7 +3216,7 @@ check_version:
                             "failed to create views rc=%d errstr=\"%s\"\n",
                             xerr.errval, xerr.errstr);
                 }
-                if (has_cnonce)
+                if (cnonce)
                     set_cnonce(clnt);
             }
 
@@ -5111,7 +5099,7 @@ static int internal_clr_cnonce(struct sqlclntstate *a)
 {
     return -1;
 }
-static int internal_get_cnonce(struct sqlclntstate *a)
+static int internal_has_cnonce(struct sqlclntstate *a)
 {
     return 0;
 }
@@ -5119,7 +5107,7 @@ static int internal_set_cnonce(struct sqlclntstate *a)
 {
     return -1;
 }
-static int internal_cnonce_value(struct sqlclntstate *a, snap_uid_t *b)
+static int internal_get_cnonce(struct sqlclntstate *a, snap_uid_t *b)
 {
     return -1;
 }
@@ -5135,7 +5123,7 @@ static int internal_clr_snapshot(struct sqlclntstate *a)
 {
     return -1;
 }
-static int internal_get_high_availability(struct sqlclntstate *a)
+static int internal_has_high_availability(struct sqlclntstate *a)
 {
     return 0;
 }
@@ -5147,9 +5135,9 @@ static int internal_clr_high_availability(struct sqlclntstate *a)
 {
     return -1;
 }
-static int internal_high_availability_snapshot(struct sqlclntstate *a)
+static int internal_get_high_availability(struct sqlclntstate *a)
 {
-    return -1;
+    return 0;
 }
 static void internal_add_steps(struct sqlclntstate *a, double b)
 {
