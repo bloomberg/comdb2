@@ -86,6 +86,7 @@ public class Constants {
         /* linux */
         public static final int CDB2ERR_TRAN_MODE_UNSUPPORTED = -107;
 
+        public static final int CDB2ERR_SCHEMA = -110;
 
         public static final int CDB2ERR_VERIFY_ERROR = 2;
         public static final int CDB2ERR_FKEY_VIOLATION = 3;

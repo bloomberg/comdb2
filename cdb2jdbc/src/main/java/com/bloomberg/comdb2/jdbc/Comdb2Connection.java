@@ -772,6 +772,7 @@ public class Comdb2Connection implements Connection {
             case Constants.Errors.CDB2ERR_VERIFY_ERROR:
             case Constants.Errors.CDB2ERR_NONKLESS:
             case Constants.Errors.CDB2ERR_MALLOC:
+            case Constants.Errors.CDB2ERR_SCHEMA:
             default:
                 /* sql state "COMDB" catches all others */
                 _ex = new SQLException(msg, "COMDB", rc, ex);

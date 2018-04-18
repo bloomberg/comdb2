@@ -63,7 +63,7 @@ cdb2sql --host $mach $dbnm "select * from t1" > select.out 2>&1 &
 sleep 3
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 wait
-grep "rc 203.*was schema changed" select.out
+grep "rc -110.*was schema changed" select.out
 if [[ $? != 0 ]]; then
     echo "expected select to fail but it succeeded"
     exit 1
@@ -82,7 +82,7 @@ cdb2sql --host $mach $dbnm "select * from t1" > select.out 2>&1 &
 sleep 3
 cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
 wait
-grep "rc 203.*was schema changed" select.out
+grep "rc -110.*was schema changed" select.out
 if [[ $? != 0 ]]; then
     echo "expected select to fail but it succeeded"
     exit 1
@@ -96,7 +96,7 @@ cdb2sql --host $mach $dbnm "select * from t1" > select.out 2>&1 &
 sleep 3
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 wait
-grep "rc 203.*was schema changed" select.out
+grep "rc -110.*was schema changed" select.out
 if [[ $? != 0 ]]; then
     echo "expected select to fail but it succeeded"
     exit 1

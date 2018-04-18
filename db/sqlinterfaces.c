@@ -5350,7 +5350,6 @@ int sqlserver2sqlclient_error(int rc)
     switch (rc) {
     case SQLITE_DEADLOCK:
     case SQLITE_BUSY:
-    case SQLITE_COMDB2SCHEMA:
         return CDB2ERR_DEADLOCK;
     case SQLITE_LIMIT:
         return SQLHERR_LIMIT;
@@ -5372,6 +5371,8 @@ int sqlserver2sqlclient_error(int rc)
         return CDB2ERR_CONV_FAIL;
     case SQLITE_TRAN_NOUNDO:
         return SQLHERR_ROLLBACK_NOLOG; /* this will suffice */
+    case SQLITE_COMDB2SCHEMA:
+        return CDB2ERR_SCHEMA;
     default:
         return CDB2ERR_UNKNOWN;
     }
