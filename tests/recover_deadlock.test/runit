@@ -16,6 +16,7 @@ if [ "$mach" = "" ]; then
    exit 0
 fi
 
+function test_init {
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 drop table if exists t1
 create table t1 {
@@ -51,9 +52,32 @@ if [[ $cnt != $NRECS ]] ; then
     echo "count is now $cnt but should be $NRECS"
     exit 1
 fi
+}
+
+test_init
+# random recover deadlock
+cdb2sql --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 20')"
+# Test truncate
+echo "Testing truncate"
+cdb2sql --host $mach $dbnm "select * from t1" > select.out 2>&1 &
+sleep 3
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
+wait
+grep "rc 203.*was schema changed" select.out
+if [[ $? != 0 ]]; then
+    echo "expected select to fail but it succeeded"
+    exit 1
+fi
+
+sleep 5
+cdb2sql --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 0')"
+test_init
 
 # random recover deadlock
 cdb2sql --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 20')"
+
+# Test rebuild/alter
+echo "Testing rebuild/alter"
 cdb2sql --host $mach $dbnm "select * from t1" > select.out 2>&1 &
 sleep 3
 cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
@@ -66,6 +90,8 @@ fi
 
 sleep 5
 
+# Test drop
+echo "Testing drop"
 cdb2sql --host $mach $dbnm "select * from t1" > select.out 2>&1 &
 sleep 3
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
