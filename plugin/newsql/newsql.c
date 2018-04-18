@@ -48,7 +48,7 @@ int handle_failed_dispatch(struct sqlclntstate *clnt, char *errstr);
 int sbuf_is_local(SBUF2 *sb);
 
 static int newsql_clr_snapshot(struct sqlclntstate *);
-static int newsql_get_high_availability(struct sqlclntstate *);
+static int newsql_has_high_availability(struct sqlclntstate *);
 
 struct newsqlheader {
     int type;        /*  newsql request/response type */
@@ -209,7 +209,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     CDB2SQLRESPONSE__Snapshotinfo snapshotinfo =                               \
         CDB2__SQLRESPONSE__SNAPSHOTINFO__INIT;                                 \
                                                                                \
-    if (newsql_get_high_availability(clnt)) {                                  \
+    if (newsql_has_high_availability(clnt)) {                                  \
         int file = 0, offset = 0, rc;                                          \
         if (fill_snapinfo(clnt, &file, &offset)) {                             \
             sql_response.error_code = CDB2ERR_CHANGENODE;                      \
@@ -364,7 +364,7 @@ static int is_snap_uid_retry(struct sqlclntstate *clnt)
         return 0;
     }
 
-    if (newsql_get_high_availability(clnt) == 0) {
+    if (newsql_has_high_availability(clnt) == 0) {
         if (gbl_abort_on_unset_ha_flag) {
             // We shouldn't be here - try to understand why
             fflush(stdout);
@@ -1272,7 +1272,7 @@ static int newsql_clr_cnonce(struct sqlclntstate *clnt)
     return 0;
 }
 
-static int newsql_get_cnonce(struct sqlclntstate *clnt)
+static int newsql_has_cnonce(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
@@ -1287,7 +1287,7 @@ static int newsql_set_cnonce(struct sqlclntstate *clnt)
     return 0;
 }
 
-static int newsql_cnonce_value(struct sqlclntstate *clnt, snap_uid_t *snap)
+static int newsql_get_cnonce(struct sqlclntstate *clnt, snap_uid_t *snap)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
@@ -1328,14 +1328,14 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
        send_one_row on clnt even if the snapshot info has been populated. */
     if (!clnt->send_intransresults && sqlquery->n_features > 0 && gbl_disable_skip_rows == 0) {
         for (int ii = 0; ii < sqlquery->n_features; ii++) {
-            if (CDB2_CLIENT_FEATURES__SKIP_ROWS == sqlquery->features[ii]) {
-                clnt->skip_feature = 1;
-                if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-                     clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
-                    newsql_get_high_availability(clnt)) {
-                    clnt->send_one_row = 1;
-                    clnt->skip_feature = 0;
-                }
+            if (CDB2_CLIENT_FEATURES__SKIP_ROWS != sqlquery->features[ii])
+                continue;
+            clnt->skip_feature = 1;
+            if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
+                 clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
+                newsql_has_high_availability(clnt)) {
+                clnt->send_one_row = 1;
+                clnt->skip_feature = 0;
             }
         }
     }
@@ -1363,7 +1363,7 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
     return 0;
 }
 
-static int newsql_get_high_availability(struct sqlclntstate *clnt)
+static int newsql_has_high_availability(struct sqlclntstate *clnt)
 {
     return clnt->high_availability_flag;
 }
@@ -1380,8 +1380,7 @@ static int newsql_clr_high_availability(struct sqlclntstate *clnt)
     return 0;
 }
 
-/* return 0 if continue, 1 if done */
-static int newsql_high_availability_snapshot(struct sqlclntstate *clnt)
+static int newsql_get_high_availability(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;

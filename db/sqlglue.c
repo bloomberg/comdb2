@@ -8660,7 +8660,7 @@ void cancel_sql_statement_with_cnonce(const char *cnonce)
         found = 1;
         snap_uid_t snap;
 
-        if (thd->clnt && cnonce_value(thd->clnt, &snap) == 0) {
+        if (thd->clnt && get_cnonce(thd->clnt, &snap) == 0) {
             const char *sptr = cnonce;
             int cnt = 0;
             void luabb_fromhex(uint8_t *out, const uint8_t *in, size_t len);
@@ -8729,7 +8729,7 @@ void sql_dump_running_statements(void)
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
                    tm.tm_min, tm.tm_sec, rqid, thd->clnt->origin);
             snap_uid_t snap;
-            cnonce_value(thd->clnt, &snap);
+            get_cnonce(thd->clnt, &snap);
             log_cnonce(snap.key, snap.keylen);
             logmsg(LOGMSG_USER, "%s\n", thd->clnt->sql);
 

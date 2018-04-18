@@ -1327,9 +1327,9 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
     osql->tran_ops = 0; /* reset transaction size counter*/
 
     extern int gbl_always_send_cnonce;
-    int send_cnonce = gbl_always_send_cnonce ? 1 : get_high_availability(clnt);
+    int send_cnonce = gbl_always_send_cnonce ? 1 : has_high_availability(clnt);
     if (osql->rqid == OSQL_RQID_USE_UUID && send_cnonce &&
-        cnonce_value(clnt, &snap_info) == 0 && !clnt->trans_has_sp) {
+        get_cnonce(clnt, &snap_info) == 0 && !clnt->trans_has_sp) {
 
         /* pass to master the state of verify retry.
          * if verify retry is on and error is retryable, don't write to
