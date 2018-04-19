@@ -33,8 +33,10 @@ struct sbuf2;
 
 extern int gbl_sqlwrtimeoutms;
 extern int active_appsock_conns;
+#if WITH_SSL
 extern ssl_mode gbl_client_ssl_mode;
 extern SSL_CTX *gbl_ssl_ctx;
+#endif
 
 int disable_server_sql_timeouts(void);
 int tdef_to_tranlevel(int tdef);

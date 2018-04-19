@@ -984,6 +984,7 @@ run:
         /* maybe remote is old code, retry in unversioned mode */
         switch (rc) {
         case FDB_ERR_SSL:
+#if WITH_SSL
             /* remote needs sql */
             fdb_cursor_close_on_open(cur, 0);
             if (gbl_client_ssl_mode >= SSL_ALLOW) {
@@ -992,6 +993,7 @@ run:
                 assert(fdb->server_version >= FDB_VER_SSL);
                 goto run;
             }
+#endif
             goto done;
 
         case FDB_ERR_FDB_VERSION:
@@ -3060,6 +3062,7 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
 
                     pCur->bt->fdb->server_version = protocol_version;
                 } else if (rc == FDB_ERR_SSL) {
+#if WITH_SSL
                     /* extract ssl config */
                     unsigned int ssl_cfg;
 
@@ -3068,6 +3071,7 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
                     logmsg(LOGMSG_INFO, "%s: remote db %s needs ssl %d\n",
                            __func__, pCur->bt->fdb->dbname, ssl_cfg);
                     pCur->bt->fdb->ssl = ssl_cfg;
+#endif
                 } else {
                     if (rc != FDB_ERR_SSL)
                         logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming "
