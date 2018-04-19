@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-set -x
+#set -x
+# on exit call_unsetup
+
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 if [[ "$(arch)" == "armv7l" ]] ; then
     t=${TEST_TIMEOUT%%m}
@@ -52,51 +54,38 @@ find_cores() {
     if [ "x$COREDIR" == "x" ] ; then 
         COREDIR=$TESTDIR
     fi
+    grep '%p' /proc/sys/kernel/core_pattern > /dev/null
+    local has_pattern=$?
+    local CORECMD="find ${COREDIR} | grep core"
 
-    if grep '%p' /proc/sys/kernel/core_pattern > /dev/null ; then
+    if [ $has_pattern -eq 0 ] ; then
         local PID=$(cat ${TMPDIR}/${DBNAME}.$HOSTNAME.pid)
-        local COREFL=`basename $cpat | sed "s/%e/comdb2/g; s/.%t//g; s/%p/$PID/g"`
-        local CORECMD="find ${COREDIR} | grep $COREFL"
-
-        local cr=`"$CORECMD"`
-        if [[ -n "$cr" ]] ; then
-            echo $cr
-            return
-        fi
-
-        for node in ${CLUSTER/$HOSTNAME/} ; do
-            PID=ssh -o StrictHostKeyChecking=no $node "cat ${TMPDIR}/${DBNAME}.pid" </dev/null
-            COREFL=`basename $cpat | sed "s/%e/comdb2/g; s/.%t//g; s/%p/$PID/g"`
-            CORECMD="find ${COREDIR} | grep $COREFL"
-            cr=`ssh -o StrictHostKeyChecking=no $node "$CORECMD" < /dev/null`
-
-            if [[ -n "$cr" ]] ; then
-                echo "$node:$cr"
-                return 
-            fi
-        done
-
-    else
-        local CORECMD="find ${COREDIR} | grep core"
-
-        local cr=`"$CORECMD"`
-        if [[ -n "$cr" ]] ; then
-            echo $cr
-            return
-        fi
-
-        for node in ${CLUSTER/$HOSTNAME/} ; do
-            cr=`ssh -o StrictHostKeyChecking=no $node "$CORECMD" < /dev/null`
-
-            if [[ -n "$cr" ]] ; then
-                echo "$node:$cr"
-                return 
-            fi
-        done
+        local COREFL=`basename $cpat | sed "s/%e/comdb2/g; s/.%t//g; s/.%u//g; s/.%g//; s/.%s//; s/.%h//; s/%p/$PID/g"`
+        CORECMD="find ${COREDIR} | grep $COREFL"
     fi
 
+    local cr=`"$CORECMD"`
+    if [[ -n "$cr" ]] ; then
+        #gdb $2/comdb2 core >>tee.log 2>&1
+        echo $cr
+        return
+    fi
 
+    for node in ${CLUSTER/$HOSTNAME/} ; do
+        if [ $has_pattern -eq 0 ] ; then
+            PID=ssh -o StrictHostKeyChecking=no $node "cat ${TMPDIR}/${DBNAME}.pid" </dev/null
+            COREFL=`basename $cpat | sed "s/%e/comdb2/g; s/.%t//g; s/.%u//g; s/.%g//; s/.%s//; s/.%h//; s/%p/$PID/g"`
+            CORECMD="find ${COREDIR} | grep $COREFL"
+        fi
 
+        cr=`ssh -o StrictHostKeyChecking=no $node "$CORECMD" < /dev/null`
+
+        if [[ -n "$cr" ]] ; then
+            #gdb $2/comdb2 core >>tee.log 2>&1
+            echo "$node:$cr"
+            return 
+        fi
+    done
 }
 
 call_setup() {
