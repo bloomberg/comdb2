@@ -2530,7 +2530,7 @@ retry_next_record:
         }
         for (ii = 0; ii < hndl->lastresponse->n_features; ii++) {
             if (hndl->in_trans && (CDB2_SERVER_FEATURES__SKIP_ROWS ==
-                hndl->lastresponse->features[ii]))
+                                   hndl->lastresponse->features[ii]))
                 hndl->skip_feature = 1;
         }
 
