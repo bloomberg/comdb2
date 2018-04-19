@@ -48,32 +48,39 @@ find_cores() {
     # assumes core location and pattern is the same as local machine
     # for all machines in cluster 
 
-
-    read cpat <<<  `cat /proc/sys/kernel/core_pattern` 
+    local cpat=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
     local COREDIR=`dirname $cpat`; 
-    if [ "x$COREDIR" == "x" ] ; then 
+    if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then 
         COREDIR=$TESTDIR
     fi
     grep '%p' /proc/sys/kernel/core_pattern > /dev/null
     local has_pattern=$?
+    local COREFL="core"
     local CORECMD="find ${COREDIR} | grep core"
+    local PIDFL=${TMPDIR}/${DBNAME}.pid
+    if [[ -z "$CLUSTER" ]] || [[ `echo $CLUSTER | grep $HOSTNAME ` ]]; then
+        if [[ -n "$CLUSTER" ]] ; then
+            PIDFL=${TMPDIR}/${DBNAME}.$HOSTNAME.pid
+        fi
 
-    if [ $has_pattern -eq 0 ] ; then
-        local PID=$(cat ${TMPDIR}/${DBNAME}.$HOSTNAME.pid)
-        local COREFL=`basename $cpat | sed "s/%e/comdb2/g; s/.%t//g; s/.%u//g; s/.%g//; s/.%s//; s/.%h//; s/%p/$PID/g"`
-        CORECMD="find ${COREDIR} | grep $COREFL"
-    fi
+        if [ $has_pattern -eq 0 ] ; then
+            local PID=$(< ${PIDFL})
+            COREFL=`basename $cpat | sed "s/%e/comdb2/g; s/.%t//g; s/.%u//g; s/.%g//; s/.%s//; s/.%h//; s/%p/$PID/g"`
+            CORECMD="find ${COREDIR} | grep $COREFL"
+        fi
 
-    local cr=`"$CORECMD"`
-    if [[ -n "$cr" ]] ; then
-        #gdb $2/comdb2 core >>tee.log 2>&1
-        echo $cr
-        return
+        eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
+        if [[ -n "$cr" ]] ; then
+            which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &> core_stacktrace.$HOSTNAME.txt
+            echo $cr
+            return
+        fi
     fi
 
     for node in ${CLUSTER/$HOSTNAME/} ; do
         if [ $has_pattern -eq 0 ] ; then
-            PID=ssh -o StrictHostKeyChecking=no $node "cat ${TMPDIR}/${DBNAME}.pid" </dev/null
+            PIDFL=${TMPDIR}/${DBNAME}.pid
+            local PID=`ssh -o StrictHostKeyChecking=no $node "cat ${PIDFL}" </dev/null`
             COREFL=`basename $cpat | sed "s/%e/comdb2/g; s/.%t//g; s/.%u//g; s/.%g//; s/.%s//; s/.%h//; s/%p/$PID/g"`
             CORECMD="find ${COREDIR} | grep $COREFL"
         fi
@@ -81,12 +88,13 @@ find_cores() {
         cr=`ssh -o StrictHostKeyChecking=no $node "$CORECMD" < /dev/null`
 
         if [[ -n "$cr" ]] ; then
-            #gdb $2/comdb2 core >>tee.log 2>&1
+            ssh -o StrictHostKeyChecking=no $node "which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr " < /dev/null &> core_stacktrace.$node.txt
             echo "$node:$cr"
             return 
         fi
     done
 }
+
 
 call_setup() {
     [[ $COMDB2_UNITTEST == 1 ]] && return
