@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+set -x
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 if [[ "$(arch)" == "armv7l" ]] ; then
     t=${TEST_TIMEOUT%%m}
@@ -42,19 +43,60 @@ warn_long_setup() {
 }
 
 find_cores() {
-    cr=`find ${TESTDIR} | grep core`
-    if [[ -n "$cr" ]] ; then
-        echo $cr
-        return
-    fi
-    for node in ${CLUSTER/$HOSTNAME/} ; do
-        cr=`ssh -o StrictHostKeyChecking=no $node "find ${TESTDIR} | grep core" < /dev/null`
+    # assumes core location and pattern is the same as local machine
+    # for all machines in cluster 
 
+
+    read cpat <<<  `cat /proc/sys/kernel/core_pattern` 
+    local COREDIR=`dirname $cpat`; 
+    if [ "x$COREDIR" == "x" ] ; then 
+        COREDIR=$TESTDIR
+    fi
+
+    if grep '%p' /proc/sys/kernel/core_pattern > /dev/null ; then
+        local PID=$(cat ${TMPDIR}/${DBNAME}.$HOSTNAME.pid)
+        local COREFL=`basename $cpat | sed "s/%e/comdb2/g; s/.%t//g; s/%p/$PID/g"`
+        local CORECMD="find ${COREDIR} | grep $COREFL"
+
+        local cr=`"$CORECMD"`
         if [[ -n "$cr" ]] ; then
-            echo "$node:$cr"
-            return 
+            echo $cr
+            return
         fi
-    done
+
+        for node in ${CLUSTER/$HOSTNAME/} ; do
+            PID=ssh -o StrictHostKeyChecking=no $node "cat ${TMPDIR}/${DBNAME}.pid" </dev/null
+            COREFL=`basename $cpat | sed "s/%e/comdb2/g; s/.%t//g; s/%p/$PID/g"`
+            CORECMD="find ${COREDIR} | grep $COREFL"
+            cr=`ssh -o StrictHostKeyChecking=no $node "$CORECMD" < /dev/null`
+
+            if [[ -n "$cr" ]] ; then
+                echo "$node:$cr"
+                return 
+            fi
+        done
+
+    else
+        local CORECMD="find ${COREDIR} | grep core"
+
+        local cr=`"$CORECMD"`
+        if [[ -n "$cr" ]] ; then
+            echo $cr
+            return
+        fi
+
+        for node in ${CLUSTER/$HOSTNAME/} ; do
+            cr=`ssh -o StrictHostKeyChecking=no $node "$CORECMD" < /dev/null`
+
+            if [[ -n "$cr" ]] ; then
+                echo "$node:$cr"
+                return 
+            fi
+        done
+    fi
+
+
+
 }
 
 call_setup() {
