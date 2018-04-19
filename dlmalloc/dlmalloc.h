@@ -498,6 +498,12 @@ void mspace_free(mspace msp, void* mem);
 void* mspace_realloc(mspace msp, void* mem, size_t newsize);
 
 /*
+  mspace_resize behaves as mspace_realloc, but does not memcpy
+  if it must reposition the memory block.
+*/
+void* mspace_resize(mspace msp, void* mem, size_t newsize);
+
+/*
   mspace_calloc behaves as calloc, but operates within
   the given space.
 */
