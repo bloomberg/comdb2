@@ -4696,7 +4696,7 @@ TYPES_INLINE int SERVER_UINT_to_CLIENT_BYTEARRAY(
     tmpbuf = alloca(inlen);                                                    \
     *outnull = 0;                                                              \
     SERVER_##sfrom##_to_CLIENT_##sto(in, inlen, inopts, inblob, tmpbuf,        \
-                                     inlen - 1, outnull, outdtsz, outopts,     \
+                                     inlen - 1, outnull, outdtsz, NULL,        \
                                      outblob);                                 \
     if (*outnull) return 0;                                                    \
     return CLIENT_##sto##_to_CLIENT_##cto(tmpbuf, inlen - 1, outopts, inblob,  \
