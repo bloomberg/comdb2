@@ -84,7 +84,7 @@ find_cores() {
         if [[ -n "$cr" ]] ; then
             which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &> core_stacktrace.$HOSTNAME.txt
             echo $cr
-            return
+            #return
         fi
     fi
 
@@ -104,7 +104,7 @@ find_cores() {
         if [[ -n "$cr" ]] ; then
             ssh -o StrictHostKeyChecking=no $node "which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr " < /dev/null &> core_stacktrace.$node.txt
             echo "$node:$cr"
-            return 
+            #return 
         fi
     done
 }
@@ -144,22 +144,21 @@ timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:
 
 rc=${PIPESTATUS[0]}
 cr=`find_cores`
-COREMSG=''
 
 if [[ -n "$cr" ]] ; then
-    COREMSG=" NB: core dumped ($cr)"
-fi
-if [[ $rc -eq 124 ]] ; then
-    echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase) $COREMSG"
-    echo "!$TESTCASE: timeout. $COREMSG" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: failed with core dumped ($cr)"
+    echo "!$TESTCASE: failed with core dumped" >> ${TESTDIR}/test.log
+elif [[ $rc -eq 124 ]] ; then
+    echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: timeout" >> ${TESTDIR}/test.log
     successful=-1
 elif [[ $rc -eq 0 ]] ; then
-    echo "!$TESTCASE: success (logs in ${TESTDIR}/logs/${DBNAME}.testcase) $COREMSG"
-    echo "!$TESTCASE: success. $COREMSG" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: success (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: success" >> ${TESTDIR}/test.log
     successful=1
 else
-    echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase) $COREMSG"
-    echo "!$TESTCASE: failed. $COREMSG" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
 fi
 
 call_unsetup

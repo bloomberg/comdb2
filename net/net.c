@@ -4599,7 +4599,7 @@ static void *reader_thread(void *arg)
             /* if we loop it should be ok; TODO: maybe wanna have
              * a modulo operation to report errors w/ a certain periodicity? */
             host_node_ptr->distress++;
-            goto done;
+            break;
         } else {
             if (host_node_ptr->distress) {
                 unsigned cycles = host_node_ptr->distress;
@@ -4609,6 +4609,9 @@ static void *reader_thread(void *arg)
                                  __func__, cycles);
             }
         }
+
+        if(netinfo_ptr->exiting)
+            break;
 
         /* We received data - update our timestamp.  We used to do this only
          * for heartbeat messages; do this for all types of message. */
