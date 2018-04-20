@@ -34,8 +34,8 @@ EXPOSE 5105
 
 COPY . /build/
 
-WORKDIR /build
+WORKDIR /build/build
 
-RUN make deb-current && dpkg -i build/comdb2*.deb
+RUN cmake .. && make package && dpkg -i comdb2*.deb
 
 ENV PATH="/opt/bb/bin:${PATH}"

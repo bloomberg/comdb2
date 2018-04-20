@@ -1786,20 +1786,27 @@ static int process_local_shadtbl_index(struct sqlclntstate *clnt,
     int ncols;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
     struct temp_cursor *tmp_cur = NULL;
+    unsigned long long dk = -1ULL;
 
     if (!gbl_expressions_indexes || !tbl->ix_expr)
         return 0;
 
     if (is_delete) {
         tmp_cur = tbl->delidx_cur;
+        if (gbl_partial_indexes && tbl->ix_partial)
+            dk = get_del_keys(clnt, tbl, seq);
     } else {
         tmp_cur = tbl->insidx_cur;
+        if (gbl_partial_indexes && tbl->ix_partial)
+            dk = get_ins_keys(clnt, tbl, seq);
     }
 
     for (i = 0; i < tbl->nix; i++) {
         index_key_t *key;
         /* key gets set into cur->key, and is freed when a new key is
            submitted or when the cursor is closed */
+        if (gbl_partial_indexes && tbl->ix_partial && !(dk & (1ULL << i)))
+            continue;
         key = (index_key_t *)malloc(sizeof(index_key_t));
         key->seq = seq;
         key->ixnum = i;

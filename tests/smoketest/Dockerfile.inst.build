@@ -11,8 +11,8 @@ EXPOSE 5105
 
 COPY . /build/
 
-WORKDIR /build/
+WORKDIR /build/build
 
-RUN make install
+RUN cmake3 .. && make install
 
 ENV PATH="/opt/bb/bin:${PATH}"
