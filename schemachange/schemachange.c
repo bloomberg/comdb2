@@ -51,6 +51,37 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         return SC_NOT_MASTER;
     }
 
+    /* not implemented: skipping for now */
+    if (!s->resume && s->preempted) {
+        sc_errf(s, "Preempt table %s option %d\n", s->tablename, s->preempted);
+        struct schema_change_type *alter =
+            preempt_ongoing_alter(s->tablename, s->preempted);
+        if (!alter) {
+            errstat_set_strf(&iq->errstat, "Invalid option");
+            free_schema_change_type(s);
+            return SC_INVALID_OPTIONS;
+        }
+        free_schema_change_type(s);
+        iq->sc = s = alter;
+        /* wait for previous schemachange thread to exit */
+        while (1) {
+            Pthread_mutex_lock(&s->mtx);
+            if (s->sc_rc == SC_DETACHED)
+                break;
+            Pthread_mutex_unlock(&s->mtx);
+            sleep(1);
+        }
+        s->sc_rc = 0;
+        s->resume = SC_PREEMPT_RESUME;
+        s->nothrevent = 0;
+        s->finalize = 0;
+        Pthread_mutex_unlock(&s->mtx);
+    }
+    if (s->alteronly == SC_ALTER_PENDING) {
+        s->nothrevent = 0;
+        s->finalize = 0;
+    }
+
     if (!s->resume &&
         (s->addonly || s->drop_table || s->fastinit || s->alteronly)) {
         struct schema_change_type *last_sc = NULL;
@@ -102,7 +133,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             Pthread_mutex_lock(&s->mtx);
             s->finalize_only = 1;
             s->nothrevent = 1;
-            s->resume = SC_RESUME;
+            s->resume = SC_OSQL_RESUME;
             Pthread_mutex_unlock(&s->mtx);
             uuidstr_t us;
             comdb2uuidstr(s->uuid, us);
@@ -173,7 +204,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         logmsg(LOGMSG_INFO, "Starting schema change: "
                             "transactionally reuse seed 0x%llx\n",
                seed);
-    } else if (s->resume) {
+    } else if (s->resume && !s->preempted) {
         unsigned int host = 0;
         logmsg(LOGMSG_INFO, "Resuming schema change: fetching seed\n");
         if ((rc = fetch_schema_change_seed(s, thedb, &seed, &host))) {
@@ -198,7 +229,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     }
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
-    rc = sc_set_running(s->tablename, 1, seed, node, time(NULL));
+    rc = sc_set_running(s->tablename, s->preempted ? 2 : 1, seed, node,
+                        time(NULL));
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
                us, rc);
@@ -286,9 +318,18 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
         pthread_t tid;
-        Pthread_mutex_lock(&s->mtx);
-        rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                            (void *(*)(void *))do_schema_change_tran, arg);
+
+        if (s->alteronly == SC_ALTER_PENDING ||
+            s->preempted == SC_ACTION_RESUME) {
+            free(arg);
+            arg = NULL;
+            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                                (void *(*)(void *))do_schema_change_locked, s);
+        } else {
+            Pthread_mutex_lock(&s->mtx);
+            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                                (void *(*)(void *))do_schema_change_tran, arg);
+        }
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "start_schema_change:pthread_create rc %d %s\n", rc,
@@ -298,7 +339,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             sc_async_threads--;
             Pthread_mutex_unlock(&sc_async_mtx);
 
-            free(arg);
+            if (arg)
+                free(arg);
             sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode,
                            time(NULL));
             free_schema_change_type(s);

@@ -57,8 +57,10 @@ static enum thrtype prepare_sc_thread(struct schema_change_type *s)
             thrman_change_type(thr_self, THRTYPE_SCHEMACHANGE);
         } else
             thr_self = thrman_register(THRTYPE_SCHEMACHANGE);
-        if (!s->nothrevent)
+        if (!s->nothrevent) {
             backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+            logmsg(LOGMSG_INFO, "Preparing schema change read write thread\n");
+        }
     }
     return oldtype;
 }
@@ -103,6 +105,9 @@ static int mark_sc_in_llmeta_tran(struct schema_change_type *s, void *trans)
              retries < max_retries &&
              (bdb_set_in_schema_change(trans, s->tablename, packed_sc_data,
                                        packed_sc_data_len, &bdberr) ||
+              bdb_set_schema_change_status(trans, s->tablename, packed_sc_data,
+                                           packed_sc_data_len, BDB_SC_RUNNING,
+                                           NULL, &bdberr) ||
               bdberr != BDBERR_NOERROR);
              ++retries) {
             sc_errf(s, "could not mark schema change in progress in the "
@@ -258,7 +263,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
                        struct schema_change_type *s, tran_type *input_tran,
                        scdone_t type)
 {
-    int rc;
+    int rc, bdberr = 0;
     tran_type *tran = input_tran;
 
     if (tran == NULL) {
@@ -278,6 +283,17 @@ static int do_finalize(ddl_t func, struct ireq *iq,
             sc_del_unused_files(s->db);
         }
         return rc;
+    }
+
+    if ((rc = mark_schemachange_over_tran(s->db->tablename, tran)))
+        return rc;
+
+    if (bdb_set_schema_change_status(tran, s->tablename, NULL, 0,
+                                     BDB_SC_COMMITTED, NULL, &bdberr) ||
+        bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to set bdb schema change status, bdberr %d\n",
+               __func__, bdberr);
     }
 
     if (input_tran == NULL) {
@@ -335,7 +351,7 @@ static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
 static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
                   struct schema_change_type *s, tran_type *tran, scdone_t type)
 {
-    int rc;
+    int rc, bdberr = 0;
     if (s->finalize_only) {
         return s->sc_rc;
     }
@@ -357,9 +373,36 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
             "Master node downgrading - new master will resume schemachange\n");
         return SC_MASTER_DOWNGRADE;
     }
-    if (rc) {
+    if (rc == SC_PAUSED) {
+        errstat_set_strf(&iq->errstat, "Schema change was paused");
+        if (bdb_set_schema_change_status(NULL, s->tablename, NULL, 0,
+                                         BDB_SC_PAUSED, NULL, &bdberr) ||
+            bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to set bdb schema change status, bdberr %d\n",
+                   __func__, bdberr);
+        }
+        return rc;
+    } else if (rc == SC_PREEMPTED) {
+        errstat_set_strf(&iq->errstat, "Schema change was preempted");
+        return rc;
+    } else if (rc) {
+        if (rc == SC_ABORTED)
+            errstat_set_strf(&iq->errstat, "Schema change was aborted");
         mark_schemachange_over_tran(s->tablename, NULL); // non-tran ??
         broadcast_sc_end(s->tablename, iq->sc_seed);
+        if (bdb_set_schema_change_status(
+                NULL, s->tablename, NULL, 0, BDB_SC_ABORTED,
+                errstat_get_str(&iq->errstat), &bdberr) ||
+            bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to set bdb schema change status, bdberr %d\n",
+                   __func__, bdberr);
+        }
+    } else if (s->preempted == SC_ACTION_RESUME ||
+               s->alteronly == SC_ALTER_PENDING) {
+        s->finalize = 0;
+        rc = SC_COMMIT_PENDING;
     } else if (s->finalize) {
         if (!iq->sc_locked)
             wrlock_schema_lk();
@@ -422,6 +465,47 @@ int do_alter_stripes(struct schema_change_type *s)
     return rc;
 }
 
+char *get_ddl_type_str(struct schema_change_type *s)
+{
+    if (s->addsp)
+        return "ADDSP";
+    else if (s->delsp)
+        return "DELSP";
+    else if (s->defaultsp)
+        return "DEFAULTSP";
+    else if (s->showsp)
+        return "SHOWSP";
+    else if (s->is_trigger)
+        return "IS_TRIGGER";
+    else if (s->is_sfunc)
+        return "IS_SFUNC";
+    else if (s->is_afunc)
+        return "IS_AFUNC";
+    else if (s->fastinit && s->drop_table)
+        return "DROP";
+    else if (s->fastinit)
+        return "TRUNCATE";
+    else if (s->addonly)
+        return "CREATE";
+    else if (s->rename)
+        return "RENAME";
+    else if (s->fulluprecs || s->partialuprecs)
+        return "UPGRADE";
+    else if (s->type == DBTYPE_TAGGED_TABLE)
+        return "ALTER";
+    else if (s->type == DBTYPE_QUEUE)
+        return "ALTER QUEUE";
+    else if (s->type == DBTYPE_MORESTRIPE)
+        return "ALTER STRIPE";
+
+    return "UNKNOWN";
+}
+
+char *get_ddl_csc2(struct schema_change_type *s)
+{
+    return s->newcsc2 ? s->newcsc2 : "";
+}
+
 int do_schema_change_tran(sc_arg_t *arg)
 {
     struct ireq *iq = arg->iq;
@@ -436,6 +520,12 @@ int do_schema_change_tran(sc_arg_t *arg)
     s->iq = iq;
     enum thrtype oldtype = prepare_sc_thread(s);
     int rc = SC_OK;
+    int detached = 0;
+
+    if (s->alteronly == SC_ALTER_PENDING || s->preempted == SC_ACTION_RESUME)
+        detached = 1;
+    if (s->resume && s->alteronly && s->preempted == SC_ACTION_PAUSE)
+        detached = 1;
 
     if (s->addsp)
         rc = do_add_sp(s, iq);
@@ -490,24 +580,44 @@ int do_schema_change_tran(sc_arg_t *arg)
                 backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
         }
     }
-    reset_sc_thread(oldtype, s);
-    if (rc && rc != SC_COMMIT_PENDING) {
+    if (rc && rc != SC_COMMIT_PENDING && s->preempted != SC_ACTION_RESUME) {
         logmsg(LOGMSG_ERROR, ">>> SCHEMA CHANGE ERROR: TABLE %s, RC %d\n",
                s->tablename, rc);
         iq->sc_should_abort = 1;
     }
-    s->sc_rc = rc;
+    if (detached)
+        s->sc_rc = SC_DETACHED;
+    else
+        s->sc_rc = rc;
     if (!s->nothrevent) {
         Pthread_mutex_lock(&sc_async_mtx);
         sc_async_threads--;
         Pthread_cond_broadcast(&sc_async_cond);
         Pthread_mutex_unlock(&sc_async_mtx);
     }
-    if (s->resume == SC_NEW_MASTER_RESUME || rc == SC_COMMIT_PENDING ||
-        (!s->nothrevent && !s->finalize)) {
+    if (rc == SC_COMMIT_PENDING && (s->preempted == SC_ACTION_RESUME ||
+                                    s->alteronly == SC_ALTER_PENDING)) {
+        int bdberr = 0;
+        add_ongoing_alter(s);
+        if (bdb_set_schema_change_status(NULL, s->tablename, NULL, 0,
+                                         BDB_SC_COMMIT_PENDING, NULL,
+                                         &bdberr) ||
+            bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to set bdb schema change status, bdberr %d\n",
+                   __func__, bdberr);
+        }
+        reset_sc_thread(oldtype, s);
+        Pthread_mutex_unlock(&s->mtx);
+        return 0;
+    } else if (s->resume == SC_NEW_MASTER_RESUME || rc == SC_COMMIT_PENDING ||
+               rc == SC_PREEMPTED || rc == SC_PAUSED ||
+               (!s->nothrevent && !s->finalize)) {
+        reset_sc_thread(oldtype, s);
         Pthread_mutex_unlock(&s->mtx);
         return rc;
     }
+    reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);
     if (rc == SC_MASTER_DOWNGRADE) {
         sc_set_running(s->tablename, 0, iq->sc_seed, NULL, 0);
@@ -724,6 +834,7 @@ int resume_schema_change(void)
 
     /* if a schema change is currently running don't try to resume one */
     sc_set_running(NULL, 0, 0, NULL, 0);
+    clear_ongoing_alter();
 
     hash_t *tpt_sc_hash =
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
@@ -872,7 +983,7 @@ int resume_schema_change(void)
                     tpt_sc->s = s;
                     tpt_sc->nshards++;
                 }
-            } else if (s->finalize == 0) {
+            } else if (s->finalize == 0 && s->alteronly != SC_ALTER_PENDING) {
                 s->sc_next = sc_resuming;
                 sc_resuming = s;
             }
@@ -1321,6 +1432,7 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
 
 int scdone_abort_cleanup(struct ireq *iq)
 {
+    int bdberr = 0;
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
     sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode, time(NULL));
@@ -1333,5 +1445,13 @@ int scdone_abort_cleanup(struct ireq *iq)
         }
     }
     broadcast_sc_end(s->tablename, iq->sc_seed);
+    if (bdb_set_schema_change_status(NULL, s->tablename, NULL, 0,
+                                     BDB_SC_ABORTED,
+                                     errstat_get_str(&iq->errstat), &bdberr) ||
+        bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to set bdb schema change status, bdberr %d\n",
+               __func__, bdberr);
+    }
     return 0;
 }
