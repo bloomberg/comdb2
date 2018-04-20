@@ -361,6 +361,15 @@ int osql_bplog_schemachange(struct ireq *iq)
             sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
             free_schema_change_type(sc);
             rc = ERR_NOMASTER;
+        } else if (sc->sc_rc == SC_PAUSED) {
+            pthread_mutex_lock(&sc->mtx);
+            sc->sc_rc = SC_DETACHED;
+            pthread_mutex_unlock(&sc->mtx);
+        } else if (sc->sc_rc == SC_PREEMPTED) {
+            pthread_mutex_lock(&sc->mtx);
+            sc->sc_rc = SC_DETACHED;
+            pthread_mutex_unlock(&sc->mtx);
+            rc = ERR_SC;
         } else {
             sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
             if (sc->sc_rc)

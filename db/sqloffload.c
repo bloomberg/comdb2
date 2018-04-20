@@ -721,7 +721,7 @@ extern int gbl_readonly_sc;
 
 static void osql_scdone_commit_callback(struct ireq *iq)
 {
-    int bdberr;
+    int bdberr = 0;
     int write_scdone =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN) ? 0 : 1;
     gbl_readonly_sc = 0;

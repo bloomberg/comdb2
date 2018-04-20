@@ -564,3 +564,19 @@ Table of users for the database that do or do not have operator access.
 
 * `username` - Name of the user
 * `isOP` - 'Y' if 'username' has operator access
+
+## comdb2_sc_status
+
+Information about recent schema changes.
+
+    comdb2_sc_status(name, type, newcsc2, start, status, last_updated,
+                     converted, error)
+
+* `name` - Name of the table.
+* `type` - Type of the schema change.
+* `newcsc2` - New schema in csc2 format.
+* `start` - Start time of the schema change.
+* `status` - Current status of the schema change.
+* `last_updated` - Time of the last status change.
+* `converted` - Number of records converted.
+* `error` - Error message of the schema change.
