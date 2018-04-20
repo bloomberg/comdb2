@@ -61,9 +61,9 @@ find_cores() {
     if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then 
         COREDIR=$TESTDIR
     fi
-    grep '%p' /proc/sys/kernel/core_pattern > /dev/null
+    grep '%e\|%t\|%u\|%g\|%s\|%h\|p' /proc/sys/kernel/core_pattern > /dev/null
     local has_pattern=$?
-    local COREFL="core"
+    local COREFL=$cpat
     local CORECMD="find ${COREDIR} -mmin -10 -regex '.*core.*'"
     local PIDFL=${TMPDIR}/${DBNAME}.pid
     if [[ -z "$CLUSTER" ]] || [[ `echo $CLUSTER | grep $HOSTNAME ` ]]; then
@@ -73,8 +73,8 @@ find_cores() {
 
         if [ $has_pattern -eq 0 ] ; then
             local PID=$(< ${PIDFL})
-            COREFL=`basename $cpat | sed "s/%e/comdb2/g; s/.%t//g; s/.%u//g; s/.%g//; s/.%s//; s/.%h//; s/%p/$PID/g"`
-            CORECMD="find ${COREDIR} -mmin -10 -regex '.*${COREFL}.*'"
+            COREFL=`echo $cpat | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
+            CORECMD="find ${COREDIR} -mmin -10 -regex '${COREFL}.*'"
             if [ "x$PID" == "x" ] ; then
                 CORECMD="echo ''"
             fi
@@ -95,8 +95,8 @@ find_cores() {
             if [ "x$PID" == "x" ] ; then
                 continue
             fi
-            COREFL=`basename $cpat | sed "s/%e/comdb2/g; s/.%t//g; s/.%u//g; s/.%g//; s/.%s//; s/.%h//; s/%p/$PID/g"`
-            CORECMD="find ${COREDIR} -mmin -10 -regex '.*${COREFL}.*'"
+            COREFL=`echo $cpat | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
+            CORECMD="find ${COREDIR} -mmin -10 -regex '${COREFL}.*'"
         fi
 
         cr=`ssh -o StrictHostKeyChecking=no $node "$CORECMD" < /dev/null`
@@ -144,21 +144,22 @@ timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:
 
 rc=${PIPESTATUS[0]}
 cr=`find_cores`
+COREMSG=''
 
 if [[ -n "$cr" ]] ; then
-    echo "!$TESTCASE: failed with core dumped ($cr)"
-    echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
-elif [[ $rc -eq 124 ]] ; then
-    echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
-    echo "!$TESTCASE: timeout" >> ${TESTDIR}/test.log
+    COREMSG=" NB: core dumped ($cr)"
+fi
+if [[ $rc -eq 124 ]] ; then
+    echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase) $COREMSG"
+    echo "!$TESTCASE: timeout. $COREMSG" >> ${TESTDIR}/test.log
     successful=-1
 elif [[ $rc -eq 0 ]] ; then
-    echo "!$TESTCASE: success (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
-    echo "!$TESTCASE: success" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: success (logs in ${TESTDIR}/logs/${DBNAME}.testcase) $COREMSG"
+    echo "!$TESTCASE: success. $COREMSG" >> ${TESTDIR}/test.log
     successful=1
 else
-    echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
-    echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase) $COREMSG"
+    echo "!$TESTCASE: failed. $COREMSG" >> ${TESTDIR}/test.log
 fi
 
 call_unsetup
