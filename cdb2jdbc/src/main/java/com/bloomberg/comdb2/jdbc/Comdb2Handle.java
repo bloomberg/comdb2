@@ -1602,11 +1602,12 @@ readloop:
 
             nSetsSent = sets.size();
 
-            if (inTxn && CDB2ServerFeatures.SKIP_ROWS_VALUE > 0
-                    && lastResp.features != null) {
+            if (inTxn && lastResp.features != null) {
                 for (int feature : lastResp.features) {
-                    skipFeature = true;
-                    break;
+                    if (CDB2ServerFeatures.SKIP_ROWS_VALUE == feature) {
+                        skipFeature = true;
+                        break;
+                    }
                 }
             }
             tdlog(Level.FINEST,
