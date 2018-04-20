@@ -3300,9 +3300,11 @@ gap_check:		max_lsn_dbtp = NULL;
                     if (rc = __rep_send_message(dbenv, eid,
                                 REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
                                 NULL) == 0) { 
-                        logmsg(LOGMSG_USER, "%s line %d good REP_LOG_REQ "
-                                "for %d:%d\n", __func__, __LINE__, 
-                                next_lsn.file, next_lsn.offset);
+                        if (gbl_verbose_fills) {
+                            logmsg(LOGMSG_USER, "%s line %d good REP_LOG_REQ "
+                                    "for %d:%d\n", __func__, __LINE__, 
+                                    next_lsn.file, next_lsn.offset);
+                        }
                     } else if (gbl_verbose_fills) {
                         logmsg(LOGMSG_USER, "%s line %d failed REP_LOG_REQ "
                                 "for %d:%d, %d\n", __func__, __LINE__, 
