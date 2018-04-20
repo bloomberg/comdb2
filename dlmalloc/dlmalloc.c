@@ -1080,6 +1080,12 @@ void mspace_free(mspace msp, void* mem);
 void* mspace_realloc(mspace msp, void* mem, size_t newsize);
 
 /*
+  mspace_resize behaves as mspace_realloc, but does not memcpy
+  if it must reposition the memory block.
+*/
+void* mspace_resize(mspace msp, void* mem, size_t newsize);
+
+/*
   mspace_calloc behaves as calloc, but operates within
   the given space.
 */
@@ -3966,7 +3972,7 @@ static void* tmalloc_small(mstate m, size_t nb) {
 
 /* --------------------------- realloc support --------------------------- */
 
-static void* internal_realloc(mstate m, void* oldmem, size_t bytes) {
+static void* internal_realloc(mstate m, void* oldmem, size_t bytes, int cpymem) {
   if (bytes >= MAX_REQUEST) {
     MALLOC_FAILURE_ACTION;
     return 0;
@@ -4133,8 +4139,10 @@ static void* internal_realloc(mstate m, void* oldmem, size_t bytes) {
     else {
       void* newmem = internal_malloc(m, bytes);
       if (newmem != 0) {
-        size_t oc = oldsize - overhead_for(oldp);
-        memcpy(newmem, oldmem, (oc < bytes)? oc : bytes);
+        if (cpymem) {
+          size_t oc = oldsize - overhead_for(oldp);
+          memcpy(newmem, oldmem, (oc < bytes)? oc : bytes);
+        }
         internal_free(m, oldmem);
       }
       return newmem;
@@ -4627,7 +4635,7 @@ void* dlrealloc(void* oldmem, size_t bytes) {
       return 0;
     }
 #endif /* FOOTERS */
-    return internal_realloc(m, oldmem, bytes);
+    return internal_realloc(m, oldmem, bytes, 1);
   }
 }
 
@@ -5067,7 +5075,7 @@ void* mspace_calloc(mspace msp, size_t n_elements, size_t elem_size) {
   return mem;
 }
 
-void* mspace_realloc(mspace msp, void* oldmem, size_t bytes) {
+static void* internal_mspace_realloc(mspace msp, void* oldmem, size_t bytes, int cpymem) {
   if (oldmem == 0)
     return mspace_malloc(msp, bytes);
 #ifdef REALLOC_ZERO_BYTES_FREES
@@ -5087,8 +5095,18 @@ void* mspace_realloc(mspace msp, void* oldmem, size_t bytes) {
       USAGE_ERROR_ACTION(ms,ms);
       return 0;
     }
-    return internal_realloc(ms, oldmem, bytes);
+    return internal_realloc(ms, oldmem, bytes, cpymem);
   }
+}
+
+void* mspace_realloc(mspace msp, void* oldmem, size_t bytes)
+{
+  return internal_mspace_realloc(msp, oldmem, bytes, 1);
+}
+
+void* mspace_resize(mspace msp, void* oldmem, size_t bytes)
+{
+  return internal_mspace_realloc(msp, oldmem, bytes, 0);
 }
 
 void* mspace_memalign(mspace msp, size_t alignment, size_t bytes) {

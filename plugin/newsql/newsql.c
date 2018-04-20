@@ -245,8 +245,8 @@ static int newsql_response_int(struct sqlclntstate *clnt,
         struct newsql_appdata *appdata = clnt->appdata;
         if (appdata->packed_capacity < len) {
             appdata->packed_capacity = len + 1024;
-            free(appdata->packed_buf);
-            appdata->packed_buf = malloc(appdata->packed_capacity);
+            appdata->packed_buf =
+                malloc_resize(appdata->packed_buf, appdata->packed_capacity);
         }
         buf = appdata->packed_buf;
     }
