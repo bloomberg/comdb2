@@ -2079,7 +2079,7 @@ __env_find_verify_recover_start(dbenv, lsnp)
 {
 	int ret;
 	u_int32_t rectype;
-	DB_LSN txnlsn;
+	DB_LSN txnlsn, s_lsn;
 	__txn_ckp_args *ckp_args;
 	__db_debug_args *debug_args;
 	DBT rec = {0};
@@ -2090,17 +2090,17 @@ __env_find_verify_recover_start(dbenv, lsnp)
 
 	/* Step 1: Find the 1st matchable commit record
 	           lower than the last sync LSN. */
-	if ((ret = __log_sync_lsn(dbenv, lsnp)) != 0)
+	if ((ret = __log_sync_lsn(dbenv, &s_lsn)) != 0)
 		goto err;
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
 		goto err;
-	if ((ret = __log_c_get(logc, lsnp, &rec, DB_PREV)) != 0)
+	if ((ret = __log_c_get(logc, lsnp, &rec, DB_LAST)) != 0)
 		goto err;
 
 	do {
 		LOGCOPY_32(&rectype, rec.data);
-	} while(!matchable_log_type(rectype) &&
-			(ret = __log_c_get(logc, lsnp, &rec, DB_PREV)) == 0);
+	} while ((!matchable_log_type(rectype) || log_compare(lsnp, &s_lsn) >= 0) &&
+	         (ret = __log_c_get(logc, lsnp, &rec, DB_PREV)) == 0);
 
 	if (ret != 0)
 		goto err;
