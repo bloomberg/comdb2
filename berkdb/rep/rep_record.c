@@ -312,7 +312,12 @@ lc_free(DB_ENV *dbenv, struct __recovery_processor *rp, LSN_COLLECTION * lc)
 	lc->nalloc = 0;
 }
 
-static inline int
+/*
+ * matchable_log_type --
+ *
+ * PUBLIC: int matchable_log_type __P((int));
+ */
+int
 matchable_log_type(int rectype)
 {
 	extern int gbl_only_match_commit_records;

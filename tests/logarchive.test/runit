@@ -46,7 +46,7 @@ sleep 10
 loremipsum="INSERT INTO t VALUES ('Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer nec odio. Praesent libero. Sed cursus ante dapibus diam. Sed nisi. Nulla quis sem at nibh elementum imperdiet. Duis sagittis ipsum. Praesent mauris. Fusce nec tellus sed augue semper porta. Mauris massa. Vestibulum lacinia arcu eget nulla. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Curabitur sodales ligula in libero. Sed dignissim lacinia nunc.')"
 rm -f inserts.sql
 echo BEGIN >inserts.sql
-yes "$loremipsum" | head -20000 >>inserts.sql
+yes "$loremipsum" | head -10000 >>inserts.sql
 echo COMMIT >>inserts.sql
 
 ########################################
@@ -81,6 +81,39 @@ cdb2sql $CDB2_OPTIONS $dbnm $HOST $master 'exec procedure sys.cmd.send("flush")'
 ###### Get a list of log files that can be safely deleted. ######
 echo Sleep 10 seconds to process replication messages.
 sleep 10
+
+###### More flushes to get a new log file,
+###### so that the last sync LSN and the rep verify record are not in the same log file.
+######
+echo Doing checkpoints to push forward the log files even farther...
+masterlsn=`cdb2sql $CDB2_OPTIONS $TABS $dbnm $HOST $master 'exec procedure sys.cmd.send("bdb txnstat")' | grep last_ckp | cut -d' ' -f2`
+masterlsnfile=`echo "$masterlsn" | cut -d':' -f1`
+masterlsnfiletarget=$masterlsnfile
+while true; do
+  ckptimes=0
+  while [ $ckptimes -le 100 ]; do
+    let ckptimes=$ckptimes+1
+    cdb2sql $CDB2_OPTIONS $dbnm $HOST $master 'exec procedure sys.cmd.send("flush")' >/dev/null
+  done
+  masterlsnfile=`cdb2sql $CDB2_OPTIONS $TABS $dbnm $HOST $master 'exec procedure sys.cmd.send("bdb txnstat")' | grep last_ckp | cut -d' ' -f2 | cut -d':' -f1`
+  echo $masterlsnfile $masterlsnfiletarget
+  if [ $masterlsnfile -gt $masterlsnfiletarget ]; then
+    break
+  fi
+done
+echo Sleeping 10 seconds and do 1 more checkpoint
+sleep 10
+cdb2sql $CDB2_OPTIONS $dbnm $HOST $master 'exec procedure sys.cmd.send("flush")' >/dev/null
+
+# Let replicants catch up.
+for onenode in `cdb2sql $CDB2_OPTIONS $TABS $dbnm $DEFAULT 'exec procedure sys.info.cluster()' | cut -d$'\t' -f1`; do
+    while true; do
+        cdb2sql $TABS $dbnm $HOST $onenode 'SELECT 1' >/dev/null
+        if [[ $? -eq 0 ]]; then
+            break;
+        fi
+    done
+done
 
 reproduced=1
 masterlsn=`cdb2sql $CDB2_OPTIONS $TABS $dbnm $HOST $master 'exec procedure sys.cmd.send("bdb txnstat")' | grep last_ckp | cut -d' ' -f2`
