@@ -424,6 +424,7 @@ static int queue_log_fill_count = 0;
 int gbl_trace_repmore_reqs = 0;
 int gbl_verbose_repdups = 0;
 uint64_t subtract_lsn(void *bdb_state, DB_LSN *lsn1, DB_LSN *lsn2);
+void comdb2_early_ack(DB_ENV *, DB_LSN, uint32_t generation);
 
 static void *apply_thread(void *arg) 
 {
@@ -510,6 +511,11 @@ static void *apply_thread(void *arg)
                 if (ret == 0 || ret == DB_REP_ISPERM) {
                     void bdb_set_seqnum(void *);
                     bdb_set_seqnum(dbenv->app_private);
+
+                    if (ret == DB_REP_ISPERM && !gbl_early && !gbl_reallyearly) {
+                        /* Call this but not really early anymore */
+                        comdb2_early_ack(dbenv, ret_lsnp, q->gen);
+                    }
                 }
                 count++;
                 if (gbl_verbose_fills && ((now = time(NULL)) - last_print)) {
@@ -2491,7 +2497,6 @@ dispatch_rectype(int rectype)
 }
 
 int gbl_early_ack_trace = 0;
-void comdb2_early_ack(DB_ENV *, DB_LSN, uint32_t generation);
 
 
 // PUBLIC: void __rep_classify_type __P((u_int32_t, int *));

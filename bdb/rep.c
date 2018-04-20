@@ -2463,11 +2463,13 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                 seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation);
     } else if (bdb_state->attr->wait_for_seqnum_trace) {
         logmsg(LOGMSG_USER, "%s seqnum from %s moving from [%d][%d] gen %d to "
-                "[%d][%d] gen %d\n", __func__, host,
+                "[%d][%d] gen %d commit_gen %d mygen %d change_coherency %d\n", 
+                __func__, host,
                 bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.file,
                 bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.offset,
                 bdb_state->seqnum_info->seqnums[nodeix(host)].generation,
-                seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation);
+                seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation, 
+                seqnum->commit_generation, mygen, change_coherency);
     }
     memcpy(&(bdb_state->seqnum_info->seqnums[nodeix(host)]), seqnum,
            sizeof(seqnum_type));
