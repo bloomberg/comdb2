@@ -41,6 +41,7 @@ struct bdb_state_tag;
 void bdb_set_rep_handle_dead(struct bdb_state_tag *);
 #endif
 
+int gbl_verbose_master_req = 0;
 
 /*
  * rep_util.c:
@@ -81,7 +82,6 @@ __rep_check_alloc(dbenv, r, n)
 	return (0);
 }
 
-int gbl_verbose_master_req;
 extern int gbl_verbose_fills;
 
 static inline int is_logput(int type) {
