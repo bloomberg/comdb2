@@ -21,3 +21,7 @@ schema
     decimal64   alltypes_decimal64              null=yes
     decimal128  alltypes_decimal128             null=yes
 }
+
+keys {
+	"PK"=alltypes_short
+}
