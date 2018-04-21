@@ -121,6 +121,8 @@ extern int gbl_fdb_track;
 extern int gbl_return_long_column_names;
 extern int gbl_stable_rootpages_test;
 
+extern int gbl_expressions_indexes;
+
 /* Once and for all:
 
    struct sqlthdstate:
@@ -877,6 +879,11 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                     SQLENG_PRE_STRT_STATE);
             clnt->in_client_trans = 1;
+
+            assert(clnt->ddl_tables == NULL && clnt->dml_tables == NULL);
+            clnt->ddl_tables = hash_init_strcase(0);
+            clnt->dml_tables = hash_init_strcase(0);
+
             update_snapshot_info(clnt);
         }
     } else if (!strncasecmp(clnt->sql, "commit", 6)) {
@@ -1072,6 +1079,20 @@ static void send_query_effects(struct sqlclntstate *clnt)
         return;
     WRITE_RESPONSE(RESPONSE_EFFECTS, 0);
     reset_query_effects(clnt);
+}
+
+static int free_it(void *obj, void *arg)
+{
+    free(obj);
+    return 0;
+}
+static void destroy_hash(hash_t *h)
+{
+    if (!h)
+        return;
+    hash_for(h, free_it, NULL);
+    hash_clear(h);
+    hash_free(h);
 }
 
 int handle_sql_commitrollback(struct sqlthdstate *thd,
@@ -1374,6 +1395,31 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             break; // TODO: should return here?
         }
     }
+
+    clnt->ins_keys = 0ULL;
+    clnt->del_keys = 0ULL;
+
+    if (gbl_expressions_indexes) {
+        if (clnt->idxInsert)
+            free(clnt->idxInsert);
+        if (clnt->idxDelete)
+            free(clnt->idxDelete);
+        clnt->idxInsert = clnt->idxDelete = NULL;
+    }
+
+    if (clnt->arr) {
+        currangearr_free(clnt->arr);
+        clnt->arr = NULL;
+    }
+    if (clnt->selectv_arr) {
+        currangearr_free(clnt->selectv_arr);
+        clnt->selectv_arr = NULL;
+    }
+
+    destroy_hash(clnt->ddl_tables);
+    destroy_hash(clnt->dml_tables);
+    clnt->ddl_tables = NULL;
+    clnt->dml_tables = NULL;
 
     /* reset the state after send_done; we use ctrl_sqlengine to know
        if this is a user rollback or an sqlite engine error */
@@ -4237,14 +4283,8 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->query_stats = NULL;
     }
 
-    if (clnt->ddl_tables) {
-        hash_clear(clnt->ddl_tables);
-        hash_free(clnt->ddl_tables);
-    }
-    if (clnt->dml_tables) {
-        hash_clear(clnt->dml_tables);
-        hash_free(clnt->dml_tables);
-    }
+    destroy_hash(clnt->ddl_tables);
+    destroy_hash(clnt->dml_tables);
     clnt->ddl_tables = NULL;
     clnt->dml_tables = NULL;
 }

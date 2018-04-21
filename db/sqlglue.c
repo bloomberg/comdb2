@@ -4445,6 +4445,12 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
     }
 #endif
 
+    if (wrflag) {
+        // cache here the nature of the query; only works because each sql
+        // is a standalone sqlite transaction
+        clnt->iswrite = wrflag;
+    }
+
     /* already have a transaction, keep using it until it commits/aborts */
     if (clnt->intrans || clnt->no_transaction ||
         (clnt->ctrl_sqlengine != SQLENG_STRT_STATE &&
@@ -4474,18 +4480,20 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
      * (this will block any more access here until after a commit/rollback)
      */
 
-    clnt->ins_keys = 0ULL;
-    clnt->del_keys = 0ULL;
+    if (pBt->is_temporary) {
+        goto done;
+    }
 
-    if (gbl_expressions_indexes) {
-        clnt->idxInsert = calloc(MAXINDEX, sizeof(uint8_t *));
-        clnt->idxDelete = calloc(MAXINDEX, sizeof(uint8_t *));
-        if (!clnt->idxInsert || !clnt->idxDelete) {
-            logmsg(LOGMSG_ERROR, "%s:%d malloc failed\n", __func__, __LINE__);
-            rc = SQLITE_NOMEM;
+    if (clnt->dbtran.mode <= TRANLEVEL_RECOM && wrflag == 0) { // read-only
+        if (clnt->has_recording == 0 ||                        // not selectv
+            clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) { // singular selectv
+            rc = SQLITE_OK;
             goto done;
         }
     }
+
+    clnt->ins_keys = 0ULL;
+    clnt->del_keys = 0ULL;
 
     if (clnt->arr) {
         currangearr_free(clnt->arr);
@@ -4504,27 +4512,9 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
         clnt->selectv_arr = malloc(sizeof(CurRangeArr));
         currangearr_init(clnt->selectv_arr);
     }
+
     get_current_lsn(clnt);
 
-    clnt->ddl_tables = hash_init_strcase(0);
-    clnt->dml_tables = hash_init_strcase(0);
-
-    if (pBt->is_temporary) {
-        goto done;
-    }
-
-    if (clnt->dbtran.mode <= TRANLEVEL_RECOM && wrflag == 0) { // read-only
-        if (clnt->has_recording == 0 ||                        // not selectv
-            clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) { // singular selectv
-            rc = SQLITE_OK;
-            goto done;
-        }
-    }
-    if (wrflag) {
-        // cache here the nature of the query; only works because each sql
-        // is a standalone sqlite transaction
-        clnt->iswrite = wrflag;
-    }
     if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE)
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
 
@@ -4723,8 +4713,10 @@ int sqlite3BtreeCommit(Btree *pBt)
     clnt->del_keys = 0ULL;
 
     if (gbl_expressions_indexes) {
-        free(clnt->idxInsert);
-        free(clnt->idxDelete);
+        if (clnt->idxInsert)
+            free(clnt->idxInsert);
+        if (clnt->idxDelete)
+            free(clnt->idxDelete);
         clnt->idxInsert = clnt->idxDelete = NULL;
     }
 
@@ -4738,15 +4730,6 @@ int sqlite3BtreeCommit(Btree *pBt)
     }
 
     reset_clnt_flags(clnt);
-
-    if (clnt->ddl_tables) {
-        hash_free(clnt->ddl_tables);
-    }
-    if (clnt->dml_tables) {
-        hash_free(clnt->dml_tables);
-    }
-    clnt->ddl_tables = NULL;
-    clnt->dml_tables = NULL;
 
 done:
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "Commit(pBt %d)      = %s\n",
@@ -4837,8 +4820,10 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
     clnt->del_keys = 0ULL;
 
     if (gbl_expressions_indexes) {
-        free(clnt->idxInsert);
-        free(clnt->idxDelete);
+        if (clnt->idxInsert)
+            free(clnt->idxInsert);
+        if (clnt->idxDelete)
+            free(clnt->idxDelete);
         clnt->idxInsert = clnt->idxDelete = NULL;
     }
 
@@ -4852,15 +4837,6 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
     }
 
     reset_clnt_flags(clnt);
-
-    if (clnt->ddl_tables) {
-        hash_free(clnt->ddl_tables);
-    }
-    if (clnt->dml_tables) {
-        hash_free(clnt->dml_tables);
-    }
-    clnt->ddl_tables = NULL;
-    clnt->dml_tables = NULL;
 
 done:
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "Rollback(pBt %d)      = %s\n",
@@ -7557,6 +7533,18 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     if (trans)
         pthread_mutex_unlock(&clnt->dtran_mtx);
 
+    if (gbl_expressions_indexes && clnt->iswrite &&
+        cur->fdbc->tbl_has_expridx(cur)) {
+        if (!clnt->idxInsert)
+            clnt->idxInsert = calloc(MAXINDEX, sizeof(uint8_t *));
+        if (!clnt->idxDelete)
+            clnt->idxDelete = calloc(MAXINDEX, sizeof(uint8_t *));
+        if (!clnt->idxInsert || !clnt->idxDelete) {
+            logmsg(LOGMSG_ERROR, "%s:%d malloc failed\n", __func__, __LINE__);
+            return SQLITE_NOMEM;
+        }
+    }
+
     return 0;
 }
 
@@ -7747,6 +7735,17 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         else
             rc = SQLITE_INTERNAL;
         return rc;
+    }
+
+    if (gbl_expressions_indexes && clnt->iswrite && cur->db->ix_expr) {
+        if (!clnt->idxInsert)
+            clnt->idxInsert = calloc(MAXINDEX, sizeof(uint8_t *));
+        if (!clnt->idxDelete)
+            clnt->idxDelete = calloc(MAXINDEX, sizeof(uint8_t *));
+        if (!clnt->idxInsert || !clnt->idxDelete) {
+            logmsg(LOGMSG_ERROR, "%s:%d malloc failed\n", __func__, __LINE__);
+            rc = SQLITE_NOMEM;
+        }
     }
 
     return rc;
