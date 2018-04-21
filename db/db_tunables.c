@@ -143,6 +143,7 @@ extern int gbl_dump_full_net_queue;
 extern int gbl_max_clientstats_cache;
 extern int gbl_decoupled_logputs;
 extern int gbl_decoupled_fills;
+extern int gbl_net_writer_thread_poll_ms;
 extern int gbl_max_apply_dequeue;
 extern int gbl_catchup_window_trace;
 extern int gbl_early_ack_trace;

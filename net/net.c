@@ -4367,6 +4367,8 @@ void kill_subnet(char *subnet)
     Pthread_mutex_unlock(&nets_list_lk);
 }
 
+int gbl_net_writer_thread_poll_ms = 1000;
+
 static void *writer_thread(void *args)
 {
     netinfo_type *netinfo_ptr;
@@ -4534,7 +4536,7 @@ static void *writer_thread(void *args)
         rc = gettimeofday(&tv, NULL);
         timeval_to_timespec(&tv, &waittime);
 #endif
-        add_millisecs_to_timespec(&waittime, 5000);
+        add_millisecs_to_timespec(&waittime, gbl_net_writer_thread_poll_ms);
 
         pthread_cond_timedwait(&(host_node_ptr->write_wakeup),
                                &(host_node_ptr->enquelk), &waittime);

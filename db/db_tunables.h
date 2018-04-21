@@ -1351,6 +1351,10 @@ REGISTER_TUNABLE("rep_getlock_latency", "Sleep on replicant before getting "
                  "locks.  (Default: 0)", TUNABLE_INTEGER, 
                  &gbl_getlock_latencyms, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("net_writer_poll_ms", "Poll time for net writer thread.  "
+                 "(Default: 1000)", TUNABLE_INTEGER, 
+                 &gbl_net_writer_thread_poll_ms, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
 
 
 #endif /* _DB_TUNABLES_H */

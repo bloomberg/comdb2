@@ -737,7 +737,7 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
     memcpy(&q->data, rec->data, q->size);
     start = comdb2_time_epochms();
     pthread_mutex_lock(&rep_queue_lock);
-    if ((elapsed = (comdb2_time_epochms() - start)) >
+    if (gbl_verbose_fills && (elapsed = (comdb2_time_epochms() - start)) >
             gbl_warn_queue_latency_threshold) {
         logmsg(LOGMSG_USER, "%s line %d: block on rep_queue_lock for %d ms\n",
                 __func__, __LINE__, elapsed);
@@ -782,10 +782,10 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
     pthread_cond_signal(&queue_cond);
     pthread_mutex_unlock(&rep_queue_lock);
 
-    if ((elapsed = (comdb2_time_epochms() - start)) >
+    if (gbl_verbose_fills && (elapsed = (comdb2_time_epochms() - start)) >
             gbl_warn_queue_latency_threshold) {
-        logmsg(LOGMSG_USER, "%s line %d: LONG enqueue-time %d ms\n",
-                __func__, __LINE__, elapsed);
+        logmsg(LOGMSG_USER, "%s line %d: LONG enqueue-time %d ms\n", __func__,
+                __LINE__, elapsed);
     }
 
     return 0;
@@ -957,15 +957,14 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 
 	if (gbl_verbose_master_req) {
 		switch (rp->rectype) {
-			case REP_MASTER_REQ:
-				logmsg(LOGMSG_USER, "%s processing REP_MASTER_REQ\n",
-					__func__);
-				break;
-			case REP_NEWMASTER:
-				logmsg(LOGMSG_USER, "%s processing REP_NEWMASTER\n", __func__);
-				break;
-				default: 
-					break;
+            case REP_MASTER_REQ:
+                logmsg(LOGMSG_USER, "%s processing REP_MASTER_REQ\n", __func__);
+                break;
+            case REP_NEWMASTER:
+                logmsg(LOGMSG_USER, "%s processing REP_NEWMASTER\n", __func__);
+                break;
+            default: 
+                break;
 		}
 	}
 
@@ -1318,9 +1317,11 @@ skip:				/*
 				    *eidp, REP_NEWFILE, &oldfilelsn, NULL,
 				    sendflags, NULL)) != 0 && gbl_verbose_fills) {
 
-                    logmsg(LOGMSG_USER, "%s line %d failed to send newfile to "
-                            "%s for LSN %d:%d %d\n", __func__, __LINE__,
-                            *eidp, oldfilelsn.file, oldfilelsn.offset, rc);
+                    if (gbl_verbose_fills) {
+                        logmsg(LOGMSG_USER, "%s line %d failed to send newfile "
+                                "to %s for LSN %d:%d %d\n", __func__, __LINE__,
+                                *eidp, oldfilelsn.file, oldfilelsn.offset, rc);
+                    }
                 }
                 sendtime += (comdb2_time_epochus() - st);
             }
@@ -1763,8 +1764,10 @@ more:           if (type == REP_LOG_MORE) {
 			R_LOCK(dbenv, &dblp->reginfo);
 			lsn = lp->lsn;
 			R_UNLOCK(dbenv, &dblp->reginfo);
-            logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
-                    __func__, __LINE__);
+            if (gbl_verbose_master_req) {
+                logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
+                        __func__, __LINE__);
+            }
 			(void)__rep_send_message(dbenv,
 			    *eidp, REP_NEWMASTER, &lsn, NULL, 0, NULL);
 		}
@@ -1805,15 +1808,17 @@ more:           if (type == REP_LOG_MORE) {
 	case REP_MASTER_REQ:
 		if (F_ISSET(rep, REP_F_MASTER)) {
 			R_LOCK(dbenv, &dblp->reginfo);
-			lsn = lp->lsn;
-			R_UNLOCK(dbenv, &dblp->reginfo);
-                        logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER: "
-                                            "gen=%u egen=%d\n",
-                               __func__, __LINE__, rep->gen, rep->egen);
-                        (void)__rep_send_message(dbenv, db_eid_broadcast,
-                                                 REP_NEWMASTER, &lsn, NULL, 0,
-                                                 NULL);
-                }
+            lsn = lp->lsn;
+            R_UNLOCK(dbenv, &dblp->reginfo);
+            if (gbl_verbose_master_req) {
+                logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER: "
+                        "gen=%u egen=%d\n",
+                        __func__, __LINE__, rep->gen, rep->egen);
+            }
+            (void)__rep_send_message(dbenv, db_eid_broadcast,
+                    REP_NEWMASTER, &lsn, NULL, 0,
+                    NULL);
+        }
                 /*
 		 * Otherwise, clients just ignore it.
 		 */
@@ -1837,7 +1842,9 @@ more:           if (type == REP_LOG_MORE) {
 				fromline = __LINE__;
 				goto errlock;
 		}
-        logmsg(LOGMSG_USER, "Received NEW MASTER from %s\n", *eidp);
+        if (gbl_verbose_master_req) {
+            logmsg(LOGMSG_USER, "Received NEW MASTER from %s\n", *eidp);
+        }
 		ret = __rep_new_master(dbenv, rp, *eidp);
 		fromline = __LINE__;
 		goto errlock;
@@ -2121,8 +2128,10 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			R_LOCK(dbenv, &dblp->reginfo);
 			lsn = lp->lsn;
 			R_UNLOCK(dbenv, &dblp->reginfo);
-            logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
-                    __func__, __LINE__);
+            if (gbl_verbose_master_req) {
+                logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
+                        __func__, __LINE__);
+            }
 			(void)__rep_send_message(dbenv,
 			    *eidp, REP_NEWMASTER, &lsn, NULL, 0, NULL);
 			fromline = __LINE__;
@@ -2327,8 +2336,10 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			lsn = lp->lsn;
 			R_UNLOCK(dbenv, &dblp->reginfo);
 			rep->stat.st_elections_won++;
-			logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
-					__func__, __LINE__);
+            if (gbl_verbose_master_req) {
+                logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
+                        __func__, __LINE__);
+            }
 			(void)__rep_send_message(dbenv,
 				*eidp, REP_NEWMASTER, &lsn, NULL, 0, NULL);
 			fromline = __LINE__;
