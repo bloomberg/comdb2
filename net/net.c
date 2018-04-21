@@ -4173,6 +4173,8 @@ static int create_reader_writer_threads(host_node_type *host_node_ptr,
                                         const char *funcname)
 {
     int rc;
+    if (host_node_ptr->netinfo_ptr->exiting)
+        return 0;
 
     /* make sure we have a reader thread */
     if (!(host_node_ptr->have_reader_thread)) {
@@ -5218,8 +5220,10 @@ static void *connect_thread(void *arg)
 
     poll(NULL, 0, 1000);
 
-    /* lock, unlink, free, damn it */
-    rem_from_netinfo(netinfo_ptr, host_node_ptr);
+    if (!netinfo_ptr->exiting) {
+        /* lock, unlink, free, damn it */
+        rem_from_netinfo(netinfo_ptr, host_node_ptr);
+    }
 
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
