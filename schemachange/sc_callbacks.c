@@ -488,28 +488,27 @@ int schema_change_abort_callback(void)
 /* Deletes all the files that are no longer needed after a schema change.  Also
  * sets a timer that the checkpoint thread checks by calling
  * sc_del_unused_files_check_progress() */
-void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
+inline void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
 {
     int bdberr;
-
     pthread_mutex_lock(&gbl_sc_lock);
     sc_del_unused_files_start_ms = comdb2_time_epochms();
     pthread_mutex_unlock(&gbl_sc_lock);
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
-        if (bdb_list_unused_files_tran(db->handle, tran, &bdberr,
-                                       "schemachange") ||
+        if (bdb_list_unused_files_tran(db->handle, tran, 
+                                       &bdberr, "schemachange") ||
             bdberr != BDBERR_NOERROR)
-            logmsg(LOGMSG_WARN, "errors listing old files\n");
+            logmsg(LOGMSG_WARN, "%s: errors listing old files\n", __func__);
     } else {
         if (bdb_del_unused_files_tran(db->handle, tran, &bdberr) ||
             bdberr != BDBERR_NOERROR)
             logmsg(LOGMSG_WARN, "errors deleting files\n");
     }
-
     pthread_mutex_lock(&gbl_sc_lock);
     sc_del_unused_files_start_ms = 0;
     pthread_mutex_unlock(&gbl_sc_lock);
+
 }
 
 void sc_del_unused_files(struct dbtable *db)
@@ -545,9 +544,8 @@ void sc_del_unused_files_check_progress(void)
 
 static int delete_table_rep(char *table, void *tran)
 {
-    struct dbtable *db;
     int rc, bdberr;
-    db = get_dbtable_by_name(table);
+    struct dbtable *db = get_dbtable_by_name(table);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "delete_table_rep : invalid table %s\n", table);
         return -1;

@@ -20,6 +20,5 @@
 int load_auto_analyze_counters(void);
 void stat_auto_analyze(void);
 void *auto_analyze_main(void *);
-void *auto_analyze_table(void *arg);
 
 #endif // INCLUDE_AUTOANALYZE_H
