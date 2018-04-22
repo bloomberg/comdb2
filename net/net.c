@@ -4612,9 +4612,6 @@ static void *reader_thread(void *arg)
             }
         }
 
-        if(netinfo_ptr->exiting)
-            break;
-
         /* We received data - update our timestamp.  We used to do this only
          * for heartbeat messages; do this for all types of message. */
         host_node_ptr->timestamp = comdb2_time_epoch();
