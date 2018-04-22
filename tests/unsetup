@@ -47,6 +47,7 @@ function build_pidfilelist() {
 }
 
 function core_cluster {
+    local node
     for node in $CLUSTER; do
         if [ "$node" != "$HOSTNAME" ] ; then
             ssh -o StrictHostKeyChecking=no $node "kill -6 \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null

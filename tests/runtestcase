@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+#set -x
+# on exit call_unsetup
+
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 if [[ "$(arch)" == "armv7l" ]] ; then
     t=${TEST_TIMEOUT%%m}
@@ -41,21 +44,72 @@ warn_long_setup() {
     return 0
 }
 
+#
+# Find cores from running a test -- primarily aimed to find cores from the
+# comdb2 executable in the directory where cores are saved.
+# If core_pattern is the default 'core' then it will find and report any cores 
+# in the TESTDIR, even those from other programs.
+# If core_pattern includes name (%e) and pid (%p), then we will search 
+# in the cores directory (if not set then in TESTDIR) for core file 
+# containing comdb2 and pid in core filename.
 find_cores() {
-    cr=`find ${TESTDIR} | grep core`
-    if [[ -n "$cr" ]] ; then
-        echo $cr
-        return
+    # assumes core location and pattern is the same as local machine
+    # for all machines in cluster 
+    local COREAGE=$((TEST_TIMEOUT + 10))
+
+    local cpat=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
+    local COREDIR=`dirname $cpat`; 
+    if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then 
+        COREDIR=$TESTDIR
     fi
+    grep '%e\|%t\|%u\|%g\|%s\|%h\|p' /proc/sys/kernel/core_pattern > /dev/null
+    local has_pattern=$?
+    local COREFL=$cpat
+    local CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '.*core.*'"
+    local PIDFL=${TMPDIR}/${DBNAME}.pid
+    if [[ -z "$CLUSTER" ]] || [[ `echo $CLUSTER | grep $HOSTNAME ` ]]; then
+        if [[ -n "$CLUSTER" ]] ; then
+            PIDFL=${TMPDIR}/${DBNAME}.$HOSTNAME.pid
+        fi
+
+        if [ $has_pattern -eq 0 ] ; then
+            local PID=$(< ${PIDFL})
+            COREFL=`echo $cpat | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
+            CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*'"
+            if [ "x$PID" == "x" ] ; then
+                CORECMD="echo ''"
+            fi
+        fi
+
+        eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
+        if [[ -n "$cr" ]] ; then
+            which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &> core_stacktrace.$HOSTNAME.txt
+            echo $cr
+            #return
+        fi
+    fi
+
     for node in ${CLUSTER/$HOSTNAME/} ; do
-        cr=`ssh -o StrictHostKeyChecking=no $node "find ${TESTDIR} | grep core" < /dev/null`
+        if [ $has_pattern -eq 0 ] ; then
+            PIDFL=${TMPDIR}/${DBNAME}.pid
+            local PID=`ssh -o StrictHostKeyChecking=no $node "cat ${PIDFL}" </dev/null`
+            if [ "x$PID" == "x" ] ; then
+                continue
+            fi
+            COREFL=`echo $cpat | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
+            CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*'"
+        fi
+
+        cr=`ssh -o StrictHostKeyChecking=no $node "$CORECMD" < /dev/null`
 
         if [[ -n "$cr" ]] ; then
+            ssh -o StrictHostKeyChecking=no $node "which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr " < /dev/null &> core_stacktrace.$node.txt
             echo "$node:$cr"
-            return 
+            #return 
         fi
     done
 }
+
 
 call_setup() {
     [[ $COMDB2_UNITTEST == 1 ]] && return
@@ -94,7 +148,7 @@ cr=`find_cores`
 
 if [[ -n "$cr" ]] ; then
     echo "!$TESTCASE: failed with core dumped ($cr)"
-    echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: failed with core dumped" >> ${TESTDIR}/test.log
 elif [[ $rc -eq 124 ]] ; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TESTDIR}/test.log
