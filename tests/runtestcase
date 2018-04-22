@@ -55,6 +55,7 @@ warn_long_setup() {
 find_cores() {
     # assumes core location and pattern is the same as local machine
     # for all machines in cluster 
+    local COREAGE=60
 
     local cpat=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
     local COREDIR=`dirname $cpat`; 
@@ -64,7 +65,7 @@ find_cores() {
     grep '%e\|%t\|%u\|%g\|%s\|%h\|p' /proc/sys/kernel/core_pattern > /dev/null
     local has_pattern=$?
     local COREFL=$cpat
-    local CORECMD="find ${COREDIR} -mmin -10 -regex '.*core.*'"
+    local CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '.*core.*'"
     local PIDFL=${TMPDIR}/${DBNAME}.pid
     if [[ -z "$CLUSTER" ]] || [[ `echo $CLUSTER | grep $HOSTNAME ` ]]; then
         if [[ -n "$CLUSTER" ]] ; then
@@ -74,7 +75,7 @@ find_cores() {
         if [ $has_pattern -eq 0 ] ; then
             local PID=$(< ${PIDFL})
             COREFL=`echo $cpat | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
-            CORECMD="find ${COREDIR} -mmin -10 -regex '${COREFL}.*'"
+            CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*'"
             if [ "x$PID" == "x" ] ; then
                 CORECMD="echo ''"
             fi
@@ -96,7 +97,7 @@ find_cores() {
                 continue
             fi
             COREFL=`echo $cpat | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
-            CORECMD="find ${COREDIR} -mmin -10 -regex '${COREFL}.*'"
+            CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*'"
         fi
 
         cr=`ssh -o StrictHostKeyChecking=no $node "$CORECMD" < /dev/null`
