@@ -112,7 +112,7 @@ void *auto_analyze_table(void *arg)
     free(tblname);
     if (gbl_debug_aa) {
         ctrace("AUTOANALYZE: sleep for testing for %d seconds\n",
-                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
+               bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
         sleep(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
     }
 
