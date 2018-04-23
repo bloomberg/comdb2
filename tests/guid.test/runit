@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+
+# Debug variable
+debug=0
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+# Number of insert_records function calls
+nins=0
+
+
+failexit()
+{
+    echo "Failed $1"
+    exit -1
+}
+
+assertcnt ()
+{
+    target=$1
+    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "count is now $cnt but should be $target"
+    fi
+}
+
+echo $CDB2_CONFIG
+CNT=10000
+
+
+echo 'part of a transaction'
+
+echo begin > ins.in
+for ((i=1;i<=$CNT;i++)) ; do
+    echo "insert into t1 values(guid(), randomblob(16), $i,$i)"
+done >> ins.in
+echo commit >> ins.in
+
+echo 'same as above but not part of a transaction'
+
+for ((i=1;i<=$CNT;i++)) ; do
+    echo "insert into t1 values(guid(), randomblob(16), $i,$((2*i)))"
+done >> ins.in
+
+echo 'using cte for kicks and gigles'
+echo "INSERT INTO t1 (id,rndm,i,j) WITH tblx(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM tblx where x < $CNT) SELECT guid(), randomblob(16), x,($CNT-x) FROM tblx" >> ins.in
+
+
+PARALLEL=20
+for ((j=1;j<=$PARALLEL;j++)) ; do
+   cdb2sql -f ins.in ${CDB2_OPTIONS} $dbnm default > ins_${j}.out &
+done
+
+echo wait for all above background inserts to complete
+wait
+
+set -x
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t1' > content.out
+echo 'failure in transactions inserting will mean count will be off'
+assertcnt $((CNT*PARALLEL*3))
+
+echo "make sure we can find all the ids (field 1) from content.out"
+cut -f1 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel1
+lines_per_part=$(((CNT*PARALLEL*3 + 20 - 1) / 20))
+split --lines=$lines_per_part sel1 sel1_in.
+
+for fl in `ls sel1_in.*`; do
+    cdb2sql -f $fl ${CDB2_OPTIONS} $dbnm default > $fl.out &
+done
+
+
+echo "make sure we can find all the rndm (field 2) from content.out"
+cut -f2 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel2
+split --lines=$lines_per_part sel2 sel2_in.
+
+for fl in `ls sel2_in.*`; do
+    cdb2sql -f $fl ${CDB2_OPTIONS} $dbnm default > $fl.out &
+done
+
+echo "Wait for the selects to be done"
+wait
+cat sel1_in*.out > sel1.out
+cat sel2_in*.out > sel2.out
+
+cnt=`grep "^(count" sel1.out | grep "=0" | wc -l`
+if [ $cnt != 0 ] ; then
+    failexit 'id not found'
+fi
+
+cnt=`grep "^(count" sel2.out | grep "=0" | wc -l`
+if [ $cnt != 0 ] ; then
+    failexit 'rndm not found'
+fi
+
+mult=`grep "^count" sel2.out | grep -v "=1" | wc -l`
+echo "found $mult with duplicate key for randomblob()"
+
+
+rm *.out
+echo "Success"

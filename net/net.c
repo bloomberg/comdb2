@@ -4175,6 +4175,7 @@ static int create_reader_writer_threads(host_node_type *host_node_ptr,
     int rc;
     if (host_node_ptr->netinfo_ptr->exiting)
         return 0;
+
     /* make sure we have a reader thread */
     if (!(host_node_ptr->have_reader_thread)) {
         rc = pthread_create(&(host_node_ptr->reader_thread_id),
@@ -4602,7 +4603,7 @@ static void *reader_thread(void *arg)
             /* if we loop it should be ok; TODO: maybe wanna have
              * a modulo operation to report errors w/ a certain periodicity? */
             host_node_ptr->distress++;
-            goto done;
+            break;
         } else {
             if (host_node_ptr->distress) {
                 unsigned cycles = host_node_ptr->distress;
@@ -5218,8 +5219,10 @@ static void *connect_thread(void *arg)
 
     poll(NULL, 0, 1000);
 
-    /* lock, unlink, free, damn it */
-    rem_from_netinfo(netinfo_ptr, host_node_ptr);
+    if (!netinfo_ptr->exiting) {
+        /* lock, unlink, free, damn it */
+        rem_from_netinfo(netinfo_ptr, host_node_ptr);
+    }
 
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);

@@ -203,7 +203,7 @@ static int systbl_column(
             }
             else {
                 cdb2_client_datetimeus_t *dt = (cdb2_client_datetimeus_t*) field;
-                rc = client_datetimeus_to_dttz((cdb2_client_datetime_t*) dt, tz, &dtz, le);
+                rc = client_datetimeus_to_dttz((cdb2_client_datetimeus_t*) dt, tz, &dtz, le);
             }
 
             if (rc == 0)

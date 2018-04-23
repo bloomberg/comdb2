@@ -126,7 +126,7 @@ int convMem2ClientDatetime(Mem *pMem, void *out) {
         _convMem2ClientDatetime(pMem, out, sizeof(cdb2_client_datetime_t), &outdtsz, 0);
 }
 
-int convDttz2ClientDatetime(dttz_t *dttz, const char *tzname, void *out, int sqltype) {
+int convDttz2ClientDatetime(const dttz_t *dttz, const char *tzname, void *out, int sqltype) {
 
     int     outdtsz;
     Mem     mem;

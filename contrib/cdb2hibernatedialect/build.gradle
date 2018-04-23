@@ -1,0 +1,18 @@
+apply plugin: "java"
+apply plugin: 'maven'
+apply plugin: 'groovy'
+
+group = 'com.bloomberg.comdb2'
+version = '0.1.0'
+
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+dependencies {
+    testCompile 'junit:junit:4.11'
+    
+    compile 'org.hibernate:hibernate-core:5.2.12.Final'
+}
