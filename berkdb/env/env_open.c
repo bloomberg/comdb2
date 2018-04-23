@@ -933,7 +933,7 @@ __dbenv_refresh(dbenv, orig_flags, rep_check)
 	 * log file handles.  Ick.
 	 */
 	LIST_INIT(&dbenv->dblist);
-    if (dbenv->fileidhash != NULL) {
+	if (dbenv->fileidhash != NULL) {
 		hash_clear(dbenv->fileidhash);
 		hash_free(dbenv->fileidhash);
 	}
