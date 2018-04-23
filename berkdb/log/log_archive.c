@@ -124,7 +124,7 @@ __log_archive(dbenv, listp, flags)
 	DBT rec;
 	DB_LOG *dblp;
 	DB_LOGC *logc = NULL;
-	DB_LSN dbreg_lsn, stable_lsn;
+	DB_LSN stable_lsn;
 	__txn_ckp_args *ckp_args = NULL;
 	char **array, **arrayp, *name, *p, *pref, buf[MAXPATHLEN];
 	int array_size, db_arch_abs, n, rep_check, ret;
@@ -223,29 +223,8 @@ __log_archive(dbenv, listp, flags)
 	case 0:
 		if (start_recovery_at_dbregs) {
 			/* Remove any log files before the last stable LSN. */
-			ret = __db_find_recovery_start(dbenv, &dbreg_lsn);
-			if (ret == 0) {
-				/* We need the recovery LSN in the checkpoint prior to the dbreg record.
-				   Consider the following example.
-				   [1583][32542163]__txn_ckp: rec: 11 txnid 0 prevlsn [0][0]
-				    	ckp_lsn: [1576][5255785]
-				   [1583][32596639]__txn_ckp: rec: 11 txnid 0 prevlsn [0][0]
-				    	ckp_lsn: [1583][32543779]
-
-				   [1583][32542163] and [1583][32596639] are 2 most recent checkpoints.
-				   The dbreg record is somewhere between [1583][32542163]
-				   and [1583][32543779]. A replicant may then truncate to
-				   [1583][32542163] whose ckp_lsn is [1576][5255785] and
-				   verify from there. Hence log files 1576 - 1582 cannot be deleted. */
-				if ((ret = __log_cursor(dbenv, &logc)) != 0)
-					goto err1;
-				if ((ret = __log_backup(dbenv, logc, &dbreg_lsn, &stable_lsn)) != 0) {
-					(void)__log_c_close(logc);
-					goto err1;
-				}
-				if ((ret = __log_c_close(logc)) != 0)
-					goto err1;
-			} else if (dbenv->attr.dbreg_errors_fatal) {
+			ret = __env_find_verify_recover_start(dbenv, &stable_lsn);
+			if (ret != 0 && dbenv->attr.dbreg_errors_fatal) {
 				*listp = NULL;
 
 				if (ret == DB_NOTFOUND)

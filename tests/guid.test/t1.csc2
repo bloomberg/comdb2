@@ -1,0 +1,13 @@
+schema 
+{
+    byte        id[16]
+    byte        rndm[16]
+    short       i
+    int         j
+}
+
+keys 
+{
+        "PK"=id
+    dup "SECOND_K"=rndm
+}

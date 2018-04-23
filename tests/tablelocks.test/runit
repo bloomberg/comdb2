@@ -34,6 +34,9 @@ echo "Downgrade master"
 master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
 cdb2sql ${CDB2_OPTIONS} $dbname --host $master "exec procedure sys.cmd.send('downgrade')"
 
+echo "Sleep 10s more to make sure sql recovery phase is done"
+sleep 10
+
 #drop table 
 echo "Trying to drop to table; if locks are working, this will wait for select"
 cdb2sql ${CDB2_OPTIONS} $dbname default "drop table t1"
