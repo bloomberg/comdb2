@@ -1,6 +1,12 @@
 ## Overview
 
-This is the comdb2 test suite.  To run the full suite, build and install the
+This is the comdb2 test suite.  To run the full suite you don't need to:
+1) build comdb2 by doing the following from the top level dir
+  mkdir build
+  cmake ..
+  make -j$(nproc)
+
+and install the
 database with `make && sudo user=$USER make install`, make sure `pmux` is running
 (`pmux -l`), then run `make` in the tests directory.  Any failure will stop the
 run.  `make -k` will allow other tests to run.  `make -j5` will let 5 tests to

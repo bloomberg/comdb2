@@ -180,18 +180,12 @@ stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} &&
 
 COPIEDTOCLUSTER=${TMPDIR}/copiedtocluster.log
 
+SSH_OPT="-o StrictHostKeyChecking=no "
 #use connection sharing via master node
-SSH_OPT="-o StrictHostKeyChecking=no -o ControlPath=$TESTDIR/%r%h%p"
+SSH_MSTR="-o ControlPath=$TESTDIR/%r%h%p"
 
 
-exiting()
-{
-    for node in ${CLUSTER/$HOSTNAME/}; do
-        ssh $SSH_OPT -O exit $node
-    done
-}
-
-start_ssh_master_cluster() 
+copy_files_to_cluster() 
 {
     echo copying executables to each node except localhost
     for node in ${CLUSTER/$HOSTNAME/}; do
@@ -199,28 +193,21 @@ start_ssh_master_cluster()
             echo "Error: hostname is in the CLUSTER list -HOSTNAME"
             exit 1
         fi
-        ssh $SSH_OPT -MNf $node
-    done
-    trap exiting EXIT
-}
 
-
-copy_files_to_cluster() 
-{
-    echo copying executables to each node except localhost
-    for node in ${CLUSTER/$HOSTNAME/}; do
-        ssh $SSH_OPT $node "mkdir -p ${SRCHOME} $d1 $d2 $d3 $d4 $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
-        scp $SSH_OPT $COMDB2AR_EXE $node:$COMDB2AR_EXE
-        scp $SSH_OPT $COMDB2_EXE $node:$COMDB2_EXE
-        scp $SSH_OPT $CDB2SQL_EXE $node:$CDB2SQL_EXE
+        ssh $SSH_OPT $SSH_MSTR -MNf $node   #start master ssh session for node
+        ssh $SSH_OPT $SSH_MSTR $node "mkdir -p ${SRCHOME} $d1 $d2 $d3 $d4 $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
+        scp $SSH_OPT $SSH_MSTR $COMDB2AR_EXE $node:$COMDB2AR_EXE
+        scp $SSH_OPT $SSH_MSTR $COMDB2_EXE $node:$COMDB2_EXE
+        scp $SSH_OPT $SSH_MSTR $CDB2SQL_EXE $node:$CDB2SQL_EXE
         if [ -n "$RESTARTPMUX" ] ; then
             echo stop pmux on $node first before copying and starting it
-            ssh $SSH_OPT $node "$stop_pmux" < /dev/null
+            ssh $SSH_OPT $SSH_MSTR $node "$stop_pmux" < /dev/null
         fi
         set +e
-        scp $SSH_OPT $PMUX_EXE $node:$PMUX_EXE
+        scp $SSH_OPT $SSH_MSTR $PMUX_EXE $node:$PMUX_EXE
         echo start pmux on $node if not running 
-        ssh $SSH_OPT $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' $pmux_cmd" < /dev/null
+        ssh $SSH_OPT $SSH_MSTR $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' $pmux_cmd" < /dev/null
+        ssh $SSH_OPT $SSH_MSTR -O exit $node #close master ssh session
         set -e
     done
 }
@@ -241,8 +228,6 @@ fi
 # if CLUSTER is length is nonzero
 
 if [ -n "$CLUSTER" ] ; then 
-    start_ssh_master_cluster
-
     #if file does not exist, copy to cluster
     { > $COPIEDTOCLUSTER ; } &> /dev/null 
     if [ $? -eq 0 ] ; then
@@ -343,16 +328,26 @@ else
     COMDB2AR_AROPTS="-C preserve"
     COMDB2AR_EXOPTS="-x $COMDB2_EXE"
 
-#$COMDB2AR_EXE $COMDB2AR_AROPTS c ${LRL} 2> $TESTDIR/logs/${DBNAME}.arstatus > $TESTDIR/${DBNAME}.ar
-    for node in ${CLUSTER/$HOSTNAME/}; do
-        cat $TESTDIR/${DBNAME}.ar | ssh $SSH_OPT $node "$COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $TESTDIR/logs/${DBNAME}.${node}.copy
+    $COMDB2AR_EXE $COMDB2AR_AROPTS c ${LRL} 2> $TESTDIR/logs/${DBNAME}.arstatus > $TESTDIR/${DBNAME}.ar
+    [ ! -f $TESTDIR/${DBNAME}.ar ] && echo "failed to create $TESTDIR/${DBNAME}.ar" && exit 1
 
+    i=0
+    declare -a pids
+    for node in ${CLUSTER/$HOSTNAME/}; do
+        cat $TESTDIR/${DBNAME}.ar | ssh $SSH_OPT $node "$COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $TESTDIR/logs/${DBNAME}.${node}.copy &
+        pids[$i]=$!
+        let i=i+1
+    done
+    i=0
+    for node in ${CLUSTER/$HOSTNAME/}; do
+        wait ${pids[$i]}
 #comdb2ar="$COMDB2AR_EXE" $COPYCOMDB2_EXE ${LRL} ${node}: &> $TESTDIR/logs/${DBNAME}.${node}.copy
         if [[ $? -ne 0 ]]; then
             echo "FAILED: $COPYCOMDB2_EXE ${LRL} ${node}: "
             echo "see $TESTDIR/logs/${DBNAME}.${node}.copy "
             exit 1
         fi
+        let i=i+1
     done
 
     echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
@@ -374,7 +369,7 @@ else
             scp $SSH_OPT ${TESTDIR}/replicant_vars $node:${TESTDIR}/replicant_vars
             # redirect output from CMD to a subshell which runs awk to prepend time
             # could also use connection sharing and close master ssh session in unsetup
-            ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &>$TESTDIR/logs/${DBNAME}.${node}.db &
+            ssh -n $SSH_OPT -tt $node ${CMD} &>$TESTDIR/logs/${DBNAME}.${node}.db &
             # $! will be pid of ssh (if we had used pipe, $! would be pid of awk)
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         fi
@@ -404,8 +399,4 @@ else
     done
 fi
 
-if [ -n "$CLUSTER" ] ; then 
-    trap - EXIT
-    exiting
-fi
 echo 'setup successful'
