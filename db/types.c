@@ -13574,7 +13574,7 @@ int client_datetimeus_to_dttz(const cdb2_client_datetimeus_t *in,
     client_dt_to_dttz_func_body(datetimeus, DATETIMEUS, 6, usec, unsigned int);
 }
 
-int get_int_field(int64_t *out, void *in, size_t len, int flip)
+static int get_int_field(int64_t *out, void *in, size_t len, int flip)
 {
     int16_t i16;
     int32_t i32;
@@ -13601,7 +13601,7 @@ int get_int_field(int64_t *out, void *in, size_t len, int flip)
     return 0;
 }
 
-int get_real_field(double *out, void *in, size_t len, int flip)
+static int get_real_field(double *out, void *in, size_t len, int flip)
 {
     float f;
     double d;
@@ -14480,7 +14480,8 @@ void set_data_func(void *to, const void *from, int sz)
     set_data(to, from, sz);
 }
 
-void client_intv_ym_to_intv_t(const cdb2_client_intv_ym_t *in, intv_t *out, int flip)
+static void client_intv_ym_to_intv_t(const cdb2_client_intv_ym_t *in,
+                                     intv_t *out, int flip)
 {
     memset(out, 0, sizeof(intv_t));
     out->type = INTV_YM_TYPE;
@@ -14496,7 +14497,8 @@ void client_intv_ym_to_intv_t(const cdb2_client_intv_ym_t *in, intv_t *out, int 
     }
 }
 
-void client_intv_ds_to_intv_t(const cdb2_client_intv_ds_t *in, intv_t *out, int flip)
+static void client_intv_ds_to_intv_t(const cdb2_client_intv_ds_t *in,
+                                     intv_t *out, int flip)
 {
     memset(out, 0, sizeof(intv_t));
     out->type = INTV_DS_TYPE;
@@ -14520,9 +14522,62 @@ void client_intv_ds_to_intv_t(const cdb2_client_intv_ds_t *in, intv_t *out, int 
     }
 }
 
-void client_intv_dsus_to_intv_t(const cdb2_client_intv_dsus_t *in, intv_t *out, int flip)
+static void client_intv_dsus_to_intv_t(const cdb2_client_intv_dsus_t *in,
+                                       intv_t *out, int flip)
 {
     client_intv_ds_to_intv_t((cdb2_client_intv_ds_t *)in, out, flip);
     out->type = INTV_DSUS_TYPE;
     out->u.ds.prec = DTTZ_PREC_USEC;
+}
+
+int get_type(struct param_data *param, void *p, int len, int type,
+             const char *tzname, int little)
+{
+    int flip = 0;
+#   if BYTE_ORDER == BIG_ENDIAN
+    if (little)
+#   elif BYTE_ORDER == LITTLE_ENDIAN
+    if (!little)
+#   endif
+        flip = 1;
+    switch (type) {
+    case CLIENT_INT:
+    case CLIENT_UINT:
+        param->len = sizeof(param->u.i);
+        return get_int_field(&param->u.i, p, len, flip);
+    case CLIENT_REAL:
+        param->len = sizeof(param->u.r);
+        return get_real_field(&param->u.r, p, len, flip);
+    case CLIENT_CSTR:
+    case CLIENT_PSTR:
+    case CLIENT_PSTR2:
+    case CLIENT_VUTF8:
+        param->u.p = p;
+        param->len = len;
+        return 0;
+    case CLIENT_BLOB:
+    case CLIENT_BYTEARRAY:
+        param->u.p = p;
+        param->len = len;
+        return 0;
+    case CLIENT_DATETIME:
+        param->len = sizeof(param->u.dt);
+        return client_datetime_to_dttz(p, tzname, &param->u.dt, little);
+    case CLIENT_DATETIMEUS:
+        param->len = sizeof(param->u.dt);
+        return client_datetimeus_to_dttz(p, tzname, &param->u.dt, little);
+    case CLIENT_INTVYM:
+        param->len = sizeof(param->u.tv);
+        client_intv_ym_to_intv_t(p, &param->u.tv, flip);
+        return 0;
+    case CLIENT_INTVDS:
+        param->len = sizeof(param->u.tv);
+        client_intv_ds_to_intv_t(p, &param->u.tv, flip);
+        return 0;
+    case CLIENT_INTVDSUS:
+        param->len = sizeof(param->u.tv);
+        client_intv_dsus_to_intv_t(p, &param->u.tv, flip);
+        return 0;
+    }
+    return -1;
 }
