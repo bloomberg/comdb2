@@ -18,9 +18,9 @@ export DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | 
 export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
     $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh)))
 
-TOTAL=$(words $(MAKECMDGOALS))
+TOTAL=$(words $(MAKECMDGOALS))  # targets passed to make
 ifeq ($(TOTAL),0)
-TOTAL=$(words $(ALL_TESTS))
+TOTAL=$(words $(ALL_TESTS))     # if no targets passed, will do ALL_TESTS
 endif
 
 all: init basicops all_tests
