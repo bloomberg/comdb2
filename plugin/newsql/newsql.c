@@ -1189,73 +1189,16 @@ static int newsql_param_value(struct sqlclntstate *clnt,
     }
     CDB2SQLQUERY__Bindvalue *val = sqlquery->bindvars[n];
     param->name = val->varname;
-    param->null = val->has_isnull ? val->isnull : 0;
     param->pos = val->has_index ? val->index : 0;
-    if (param->null) {
-        param->type = newsql_to_client_type(val->type);
+    param->type = newsql_to_client_type(val->type);
+    if ((val->has_isnull && val->isnull) || val->value.data == NULL) {
+        param->null = 1;
         return 0;
-    }
-    if (val->value.data == NULL) {
-        return -1;
     }
     int little = appdata->sqlquery->little_endian;
-    int flip = 0;
-#   if BYTE_ORDER == BIG_ENDIAN
-    if (little)
-#   elif BYTE_ORDER == LITTLE_ENDIAN
-    if (!little)
-#   endif
-        flip = 1;
     void *p = val->value.data;
     int len = val->value.len;
-    switch (val->type) {
-    case CDB2_INTEGER:
-        param->type = CLIENT_INT;
-        param->len = sizeof(param->u.i);
-        return get_int_field(&param->u.i, p, len, flip);
-    case CDB2_REAL:
-        param->type = CLIENT_REAL;
-        param->len = sizeof(param->u.r);
-        return get_real_field(&param->u.r, p, len, flip);
-    case CDB2_CSTRING:
-        param->type = CLIENT_CSTR;
-        param->u.p = p;
-        param->len = len;
-        return 0;
-    case CDB2_BLOB:
-        param->type = CLIENT_BLOB;
-        param->u.p = p;
-        param->len = len;
-        return 0;
-    case CDB2_DATETIME:
-        param->type = CLIENT_DATETIME;
-        param->len = sizeof(param->u.dt);
-        return client_datetime_to_dttz((cdb2_client_datetime_t *)p,
-                                       clnt->tzname, &param->u.dt,
-                                       appdata->sqlquery->little_endian);
-    case CDB2_DATETIMEUS:
-        param->type = CLIENT_DATETIMEUS;
-        param->len = sizeof(param->u.dt);
-        return client_datetimeus_to_dttz((cdb2_client_datetimeus_t *)p,
-                                         clnt->tzname, &param->u.dt,
-                                         appdata->sqlquery->little_endian);
-    case CDB2_INTERVALYM:
-        param->type = CLIENT_INTVYM;
-        param->len = sizeof(param->u.tv);
-        client_intv_ym_to_intv_t((cdb2_client_intv_ym_t *)p, &param->u.tv, flip);
-        return 0;
-    case CDB2_INTERVALDS:
-        param->type = CLIENT_INTVDS;
-        param->len = sizeof(param->u.tv);
-        client_intv_ds_to_intv_t((cdb2_client_intv_ds_t *)p, &param->u.tv, flip);
-        return 0;
-    case CDB2_INTERVALDSUS:
-        param->type = CLIENT_INTVDSUS;
-        param->len = sizeof(param->u.tv);
-        client_intv_dsus_to_intv_t((cdb2_client_intv_dsus_t *)p, &param->u.tv, flip);
-        return 0;
-    }
-    return -1;
+    return get_type(param, p, len, param->type, clnt->tzname, little);
 }
 
 static int newsql_override_count(struct sqlclntstate *clnt)
