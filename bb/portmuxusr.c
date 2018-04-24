@@ -1778,6 +1778,13 @@ void set_portmux_port(int port)
     portmux_port = port;
 }
 
+void clear_portmux_bind_path()
+{
+    if (gbl_portmux_unix_socket) 
+        free(gbl_portmux_unix_socket);
+    gbl_portmux_unix_socket = NULL;
+}
+
 char *get_portmux_bind_path(void)
 {
     return gbl_portmux_unix_socket;

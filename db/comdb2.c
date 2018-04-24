@@ -1372,8 +1372,7 @@ void clean_exit(void)
 
     eventlog_stop();
 
-    extern char *gbl_portmux_unix_socket;
-    free(gbl_portmux_unix_socket);
+    clear_portmux_bind_path();
     cleanup_file_locations();
     ctrace_closelog();
 

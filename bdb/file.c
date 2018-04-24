@@ -1449,6 +1449,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     int i;
     int bdberr;
     int last;
+    netinfo_type *netinfo_ptr = bdb_state->repinfo->netinfo;
 
     BDB_READLOCK("bdb_close_int");
 
@@ -1458,13 +1459,8 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     /* lock everyone out of the bdb code */
     BDB_WRITELOCK("bdb_close_int");
 
-    if (is_real_netinfo(bdb_state->repinfo->netinfo)) {
-        /* get me off the network */
-        send_decom_all(bdb_state, net_get_mynode(bdb_state->repinfo->netinfo));
-    }
-
-    if (is_real_netinfo(bdb_state->repinfo->netinfo)) {
-        net_exiting(bdb_state->repinfo->netinfo);
+    if (is_real_netinfo(netinfo_ptr)) {
+        net_exiting(netinfo_ptr);
 
         sleep(1);
 
@@ -1566,6 +1562,12 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     memset(bdb_state, 0xff, sizeof(bdb_state));
     free(bdb_state);
      */
+
+    if (is_real_netinfo(netinfo_ptr)) {
+        /* get me off the network */
+        send_decom_all(bdb_state, net_get_mynode(netinfo_ptr));
+    }
+    net_cleanup_netinfo(netinfo_ptr);
 
     /* DO NOT RELEASE the write lock.  just let it be. */
     return 0;
