@@ -1095,6 +1095,7 @@ int bdb_del_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner);
 int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
                                int *bdberr, char *powner);
+int bdb_list_dropped_files(bdb_state_type *bdb_state, int *bdberr);
 
 /* make new stripes */
 int bdb_create_stripes(bdb_state_type *bdb_state, int newdtastripe,
@@ -1399,6 +1400,10 @@ int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long *version_num, int *bdberr);
 int bdb_get_file_version_qdb(bdb_state_type *, tran_type *,
                              unsigned long long *version, int *bdberr);
+int bdb_get_file_version_data_by_name(tran_type *tran, const char *name,
+        int file_num, unsigned long long *version_num, int *bdberr);
+int bdb_get_file_version_index_by_name(tran_type *tran, const char *name,
+        int file_num, unsigned long long *version_num, int *bdberr);
 
 int bdb_del_file_versions(bdb_state_type *bdb_state, tran_type *input_trans,
                           int *bdberr);
@@ -1710,6 +1715,7 @@ extern struct thdpool *gbl_pgcompact_thdpool;
 int pgcompact_thdpool_init(void);
 
 int get_dbnum_by_handle(bdb_state_type *bdb_state);
+int get_dbnum_by_name(bdb_state_type *bdb_state, const char *name);
 int send_myseqnum_to_master(bdb_state_type *, int nodelay);
 
 const char *bdb_temp_table_filename(struct temp_table *);
@@ -2001,5 +2007,19 @@ void rename_bdb_state(bdb_state_type *bdb_state, const char *newname);
 
 int request_durable_lsn_from_master(bdb_state_type *, uint32_t *, uint32_t *,
                                     uint32_t *);
+
+int bdb_process_each_entry(bdb_state_type *bdb_state, void *key, int klen,
+        int (*func)(bdb_state_type *bdb_state, void *arg, void *rec), void *arg, 
+        int *bdberr);
+
+int bdb_process_each_table_version_entry(bdb_state_type *bdb_state, 
+    int (*func)(bdb_state_type *bdb_state,const char* tblname, int *bdberr), int *bdberr);
+
+int bdb_process_each_table_dta_entry(bdb_state_type *bdb_state, const char *tblname,
+        unsigned long long version, int *bdberr);
+int bdb_process_each_table_idx_entry(bdb_state_type *bdb_state, const char *tblname,
+        unsigned long long version, int *bdberr);
+
+int bdb_check_files_on_disk( bdb_state_type *bdb_state, const char *tblname, int *bdberr);
 
 #endif

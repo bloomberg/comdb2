@@ -1161,12 +1161,19 @@ static void *purge_old_files_thread(void *arg)
         if (db_is_stopped())
             continue;
 
-        if (!bdb_have_unused_files() || dbenv->stopped) {
+     if (!bdb_have_unused_files() && gbl_master_changed_oldfiles)
+      {
+         gbl_master_changed_oldfiles = 0;
+         if((rc = bdb_process_each_table_version_entry(
+                     dbenv->bdb_env, bdb_check_files_on_disk, &bdberr)) != 0)
+         {
+            logmsg(LOGMSG_ERROR, "%s: bdb_list_unused_files failed with rc=%d\n",
+               __func__,rc);
             sleep(empty_pause);
             continue;
-        }
-        if (db_is_stopped())
-            continue;
+         }
+      }
+
 
         init_fake_ireq(thedb, &iq);
         iq.use_handle = thedb->bdb_env;
@@ -1211,17 +1218,6 @@ static void *purge_old_files_thread(void *arg)
             trans_abort(&iq, trans);
             sleep(empty_pause);
             continue;
-        }
-
-        if (empty && gbl_master_changed_oldfiles) {
-            gbl_master_changed_oldfiles = 0;
-            if ((rc = bdb_list_unused_files(dbenv->bdb_env, &bdberr,
-                                            "purge_old_files_thread"))) {
-                logmsg(LOGMSG_ERROR, "%s: bdb_list_unused_files failed with rc=%d\n",
-                        __func__, rc);
-                sleep(empty_pause);
-                continue;
-            }
         }
     }
 
