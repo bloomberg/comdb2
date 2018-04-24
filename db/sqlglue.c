@@ -3517,7 +3517,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
 
     if (clnt->is_readonly &&
         /* exclude writes in a temp table for a select */
-        (pCur->cursor_class != CURSORCLASS_TEMPTABLE || clnt->iswrite)){
+        (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect)) {
         errstat_set_strf(&clnt->osql.xerr, "SET READONLY ON for the client");
         rc = SQLITE_ACCESS;
         goto done;
@@ -4444,12 +4444,6 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
                clnt->ctrl_sqlengine);
     }
 #endif
-
-    if (wrflag) {
-        // cache here the nature of the query; only works because each sql
-        // is a standalone sqlite transaction
-        clnt->iswrite = wrflag;
-    }
 
     /* already have a transaction, keep using it until it commits/aborts */
     if (clnt->intrans || clnt->no_transaction ||
@@ -7483,7 +7477,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     if ((iTable >= RTPAGE_START) && !fdb_is_sqlite_stat(fdb, cur->rootpage)) {
         /* I would like to open here a transaction if this is
            an actual update */
-        if (clnt->iswrite /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {
+        if (!clnt->isselect /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {
             trans =
                 fdb_trans_begin_or_join(clnt, fdb, (char *)tid, 0 /* TODO */);
         } else {
@@ -7533,7 +7527,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     if (trans)
         pthread_mutex_unlock(&clnt->dtran_mtx);
 
-    if (gbl_expressions_indexes && clnt->iswrite &&
+    if (gbl_expressions_indexes && !clnt->isselect &&
         cur->fdbc->tbl_has_expridx(cur)) {
         if (!clnt->idxInsert)
             clnt->idxInsert = calloc(MAXINDEX, sizeof(uint8_t *));
@@ -7737,7 +7731,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         return rc;
     }
 
-    if (gbl_expressions_indexes && clnt->iswrite && cur->db->ix_expr) {
+    if (gbl_expressions_indexes && !clnt->isselect && cur->db->ix_expr) {
         if (!clnt->idxInsert)
             clnt->idxInsert = calloc(MAXINDEX, sizeof(uint8_t *));
         if (!clnt->idxDelete)
@@ -8027,7 +8021,7 @@ int sqlite3BtreeInsert(
 
     if (clnt->is_readonly &&
         /* exclude writes in a temp table for a select */
-        (pCur->cursor_class != CURSORCLASS_TEMPTABLE || clnt->iswrite)){
+        (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect)) {
         errstat_set_strf(&clnt->osql.xerr, "SET READONLY ON for the client");
         rc = SQLITE_ACCESS;
         goto done;

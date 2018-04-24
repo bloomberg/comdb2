@@ -3189,7 +3189,6 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     clnt->has_recording |= v->recording;
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
     comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
-    clnt->iswrite = 0; /* reset before step() */
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
@@ -3283,7 +3282,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
           clnt->in_client_trans && !clnt->isselect &&
           !(rc && !clnt->had_errors))) {
 
-        if (clnt->iswrite && postponed_write) {
+        if (!clnt->isselect && postponed_write) {
             int irc = send_row(clnt, NULL, row_id, rc, 0, NULL);
             if (irc)
                 return irc;
@@ -3386,7 +3385,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
 
         /* return row, if needed */
-        if (!clnt->iswrite && clnt->osql.replay != OSQL_RETRY_DO) {
+        if (clnt->isselect && clnt->osql.replay != OSQL_RETRY_DO) {
             postponed_write = 0;
             ++row_id;
 
@@ -4312,7 +4311,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     /* start off in comdb2 mode till we're told otherwise */
     clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
-    clnt->iswrite = 0;
     clnt->heartbeat = 0;
     clnt->limits.maxcost = gbl_querylimits_maxcost;
     clnt->limits.tablescans_ok = gbl_querylimits_tablescans_ok;
