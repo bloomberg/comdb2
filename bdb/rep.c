@@ -460,11 +460,13 @@ char *coherent_state_to_str(int state)
 static inline void set_coherent_state(bdb_state_type *bdb_state, const char 
         *hostname, int state, const char *func, int line)
 {
-    bdb_state->coherent_state[nodeix(hostname)] = state;
-    if (gbl_set_coherent_state_trace) {
-        logmsg(LOGMSG_USER, "%s line %d setting coherent state to %s\n",
-                func, line, coherent_state_to_str(state));
+    if (bdb_state->coherent_state[nodeix(hostname)] != state) {
+        bdb_state->coherent_state[nodeix(hostname)] = state;
+        if (gbl_set_coherent_state_trace) {
+            logmsg(LOGMSG_USER, "%s line %d setting coherent state to %s\n",
+                    func, line, coherent_state_to_str(state));
 
+        }
     }
 }
 
