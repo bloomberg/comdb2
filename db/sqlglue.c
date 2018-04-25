@@ -4489,6 +4489,11 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
     clnt->ins_keys = 0ULL;
     clnt->del_keys = 0ULL;
 
+    if (gbl_expressions_indexes) {
+        free_cached_idx(clnt->idxInsert);
+        free_cached_idx(clnt->idxDelete);
+    }
+
     if (clnt->arr) {
         currangearr_free(clnt->arr);
         clnt->arr = NULL;
@@ -4707,11 +4712,8 @@ int sqlite3BtreeCommit(Btree *pBt)
     clnt->del_keys = 0ULL;
 
     if (gbl_expressions_indexes) {
-        if (clnt->idxInsert)
-            free(clnt->idxInsert);
-        if (clnt->idxDelete)
-            free(clnt->idxDelete);
-        clnt->idxInsert = clnt->idxDelete = NULL;
+        free_cached_idx(clnt->idxInsert);
+        free_cached_idx(clnt->idxDelete);
     }
 
     if (clnt->arr) {
@@ -4814,11 +4816,8 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
     clnt->del_keys = 0ULL;
 
     if (gbl_expressions_indexes) {
-        if (clnt->idxInsert)
-            free(clnt->idxInsert);
-        if (clnt->idxDelete)
-            free(clnt->idxDelete);
-        clnt->idxInsert = clnt->idxDelete = NULL;
+        free_cached_idx(clnt->idxInsert);
+        free_cached_idx(clnt->idxDelete);
     }
 
     if (clnt->arr) {

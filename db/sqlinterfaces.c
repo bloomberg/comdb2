@@ -1086,13 +1086,12 @@ static int free_it(void *obj, void *arg)
     free(obj);
     return 0;
 }
-static void destroy_hash(hash_t *h)
+static inline void destroy_hash(hash_t *h)
 {
     if (!h)
         return;
     hash_for(h, free_it, NULL);
     hash_clear(h);
-    hash_free(h);
 }
 
 int handle_sql_commitrollback(struct sqlthdstate *thd,
@@ -1398,14 +1397,6 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
     clnt->ins_keys = 0ULL;
     clnt->del_keys = 0ULL;
-
-    if (gbl_expressions_indexes) {
-        if (clnt->idxInsert)
-            free(clnt->idxInsert);
-        if (clnt->idxDelete)
-            free(clnt->idxDelete);
-        clnt->idxInsert = clnt->idxDelete = NULL;
-    }
 
     if (clnt->arr) {
         currangearr_free(clnt->arr);
@@ -4280,6 +4271,14 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     if (clnt->query_stats) {
         free(clnt->query_stats);
         clnt->query_stats = NULL;
+    }
+
+    if (gbl_expressions_indexes) {
+        if (clnt->idxInsert)
+            free(clnt->idxInsert);
+        if (clnt->idxDelete)
+            free(clnt->idxDelete);
+        clnt->idxInsert = clnt->idxDelete = NULL;
     }
 
     destroy_hash(clnt->ddl_tables);

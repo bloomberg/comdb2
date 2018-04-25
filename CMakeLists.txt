@@ -10,7 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 if(NOT CMAKE_BUILD_TYPE)
   get_property(helpstring CACHE CMAKE_BUILD_TYPE PROPERTY HELPSTRING)
   set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING ${helpstring} FORCE)
-  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug")
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "RelWithDebInfo" "Release")
 endif()
 
 if(COMDB2_BUILD_STATIC)
@@ -64,7 +64,7 @@ add_definitions(
   -D_FILE_OFFSET_BITS=64
 )
 
-option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" OFF)
+option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)
 if(COMDB2_PER_THREAD_MALLOC)
   add_definitions(-DPER_THREAD_MALLOC)
 else()
