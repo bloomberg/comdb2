@@ -8553,16 +8553,42 @@ static int table_file_callback(bdb_state_type *bdb_state, unsigned long long *fi
 static int bdb_process_each_table_entry(bdb_state_type *bdb_state,
         int type, const char *tblname, unsigned long long version, int *bdberr)
 {
-    struct llmeta_file_type_dbname_file_num_key key = {0};
+    struct llmeta_file_type_dbname_key key_struct = {0};
+    char key[ LLMETA_IXLEN ] = { 0 };
+    uint8_t *p_buf, 
+        *p_buf_start,
+        *p_buf_end;
+    size_t key_offset = 0;
+
     if(bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    key.file_type = htonl(type);
-    strncpy(key.dbname, tblname, sizeof(key.dbname));
-    key.dbname_len = htonl(strlen(key.dbname)+1/* NULL byte */);
+    key_struct.file_type = type;	 
+    strncpy(key_struct.dbname, tblname, sizeof(key_struct.dbname));
+    key_struct.dbname_len = strlen(key_struct.dbname)+1/* NULL byte */;
 
-    return bdb_process_each_entry(bdb_state, &key, 
-            offsetof(struct llmeta_file_type_dbname_file_num_key, file_num), 
+    if( key_struct.dbname_len > LLMETA_TBLLEN )
+    {
+        fprintf( stderr, "%s: db_name is too long\n", __func__ );
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    p_buf_start = p_buf = (uint8_t *)key;
+    p_buf_end = (uint8_t *)(key + LLMETA_IXLEN);
+
+    p_buf = llmeta_file_type_dbname_key_put(&key_struct, p_buf, p_buf_end);
+
+    if(!p_buf)
+    {
+        logmsg(LOGMSG_ERROR,"%s: llmeta_file_type_dbname_key_put returns NULL\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    key_offset = p_buf - p_buf_start;
+
+    return bdb_process_each_entry(bdb_state, &key, key_offset,
             (int(*)(bdb_state_type*,void*,void*))table_file_callback,
             &version, bdberr);
 }
