@@ -1713,7 +1713,7 @@ __env_openfiles(dbenv, logc, txninfo,
             if (last_good_lsn.file != cmp_lsn.file || last_good_lsn.offset != cmp_lsn.offset) {
                __db_err(dbenv,
                      "Recovery open file failed in the middle lsn %d.%d\n",
-                     (u_long)last_good_lsn.file, (u_long)last_good_lsn.offset);
+                     last_good_lsn.file, last_good_lsn.offset);
                abort();
             }
 
