@@ -1666,6 +1666,7 @@ static char *_describe_row(const char *tblname, const char *prefix,
     char *cols_str;
     char *tmp_str;
     int i;
+    char *in_default;
 
     assert(op_type == VIEWS_TRIGGER_QUERY || op_type == VIEWS_TRIGGER_INSERT ||
            op_type == VIEWS_TRIGGER_UPDATE);
@@ -1680,15 +1681,34 @@ static char *_describe_row(const char *tblname, const char *prefix,
 
     cols_str = sqlite3_mprintf("%s", (prefix) ? prefix : "");
     for (i = 0; i < gdb->schema->nmembers; i++) {
-        tmp_str = sqlite3_mprintf(
-            "%s%s\"%s\"%s%s%s%s", cols_str,
-            (op_type == VIEWS_TRIGGER_INSERT) ? "new." : "",
-            gdb->schema->member[i].name,
-            (op_type == VIEWS_TRIGGER_UPDATE) ? "=new.\"" : "",
-            (op_type == VIEWS_TRIGGER_UPDATE) ? gdb->schema->member[i].name
-                                              : "",
-            (op_type == VIEWS_TRIGGER_UPDATE) ? "\"" : "",
-            (i < (gdb->schema->nmembers - 1)) ? ", " : "");
+        /* take care of default fields */
+        if (!(op_type==VIEWS_TRIGGER_INSERT && gdb->schema->member[i].in_default))
+
+      {
+         tmp_str = sqlite3_mprintf("%s%s\"%s\"%s%s%s%s",
+               cols_str,
+               (op_type==VIEWS_TRIGGER_INSERT)?"new.":"",
+               gdb->schema->member[i].name,
+               (op_type==VIEWS_TRIGGER_UPDATE)?"=new.\"":"",
+               (op_type==VIEWS_TRIGGER_UPDATE)?gdb->schema->member[i].name:"",
+               (op_type==VIEWS_TRIGGER_UPDATE)?"\"":"",
+               (i<(gdb->schema->nmembers-1))?", ":"");
+      }
+      else
+      {
+         in_default = sql_field_default_trans(&gdb->schema->member[i], 0);
+         if (!in_default)
+            goto malloc;
+
+         tmp_str = sqlite3_mprintf("%scoalesce(new.\"%s\", %s)%s",
+               cols_str,
+               gdb->schema->member[i].name,
+               in_default,
+               (i<(gdb->schema->nmembers-1))?", ":"");
+         sqlite3_free(in_default);
+      }
+
+
         sqlite3_free(cols_str);
         if (!tmp_str) {
             goto malloc;
@@ -2858,6 +2878,26 @@ void timepart_events_column(sqlite3_context *ctx, int iRowid, int iCol)
         break;
     }
 }
+
+void check_columns_null_and_dbstore(const char *name, struct dbtable *tbl)
+{
+   /* if a column has both a default and a null value, NULL cannot be explicitely
+   be inserted as value */
+
+   struct schema *sc = tbl->schema;
+   int i;
+
+   for (i=0;i<sc->nmembers; i++) 
+   {
+      if (sc->member[i].in_default && !(sc->member[i].flags & NO_NULL))
+      {
+         logmsg(LOGMSG_WARN,
+               "WARNING: Partition %s schema field %s that has dbstore but cannot be set NULL\n",
+               name, sc->member[i].name);
+      }
+   }
+}
+
 
 #include "views_serial.c"
 

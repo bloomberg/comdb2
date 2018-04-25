@@ -3645,6 +3645,8 @@ check_version:
                 logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d\n", __func__,
                         rc);
                 thd->sqldb = NULL;
+                /* there is no really way forward, grab core */
+                abort();
             }
             thd->dbopen_gen = gbl_dbopen_gen;
         }
