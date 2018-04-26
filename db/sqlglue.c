@@ -3332,6 +3332,7 @@ int sqlite3BtreeOpen(
                     zFilename);
             free(bt);
             bt = NULL;
+            rc = SQLITE_ERROR;
         }
 
         *ppBtree = bt;
