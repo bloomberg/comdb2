@@ -2439,16 +2439,66 @@ retry:
 
     *p_version_num = version_num.version_num;
 
-    if (llmeta_bdb_state) {
-        parent = llmeta_bdb_state->parent;
-        assert(parent);
-        if (bdb_cmp_genids(version_num.version_num, parent->gblcontext) > 0) {
-            parent->gblcontext = version_num.version_num;
-        }
+    parent = llmeta_bdb_state->parent;
+    assert(parent);
+    if (bdb_cmp_genids(version_num.version_num, parent->gblcontext) > 0) {
+        parent->gblcontext = version_num.version_num;
     }
 
     *bdberr = BDBERR_NOERROR;
     return 0;
+}
+
+int bdb_get_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
+                              int dtanum, unsigned long long *version_num,
+                              int *bdberr)
+{
+    return bdb_get_file_version(tran, bdb_state->name,
+                                LLMETA_FVER_FILE_TYPE_DTA, dtanum, version_num,
+                                bdberr);
+}
+
+int bdb_get_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
+                               int ixnum, unsigned long long *version_num,
+                               int *bdberr)
+{
+    return bdb_get_file_version(tran, (bdb_state)->name,
+                                LLMETA_FVER_FILE_TYPE_IX, ixnum, version_num,
+                                bdberr);
+}
+
+int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
+                               unsigned long long *version_num, int *bdberr)
+{
+    return bdb_get_file_version(tran, (bdb_state)->name,
+                                LLMETA_FVER_FILE_TYPE_TBL, 0, version_num,
+                                bdberr);
+}
+
+int bdb_get_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
+                             unsigned long long *version_num, int *bdberr)
+{
+    return bdb_get_file_version(tran, bdb_state->name,
+                                LLMETA_FVER_FILE_TYPE_QDB, 0, version_num,
+                                bdberr);
+}
+
+int bdb_get_file_version_data_by_name(tran_type *tran, const char *name,
+                                      int file_num,
+                                      unsigned long long *version_num,
+                                      int *bdberr)
+{
+    return bdb_get_file_version(tran, name, LLMETA_FVER_FILE_TYPE_DTA, file_num,
+                                version_num, bdberr);
+}
+
+int bdb_get_file_version_index_by_name(tran_type *tran, const char *name,
+                                       int file_num,
+                                       unsigned long long *version_num,
+                                       int *bdberr)
+{
+    return bdb_get_file_version(tran, name, LLMETA_FVER_FILE_TYPE_IX, file_num,
+                                version_num, bdberr);
 }
 
 static int bdb_get_pagesize(tran_type *tran, /* transaction to use */
@@ -2611,42 +2661,6 @@ retry:
     *bdberr = BDBERR_NOERROR;
 
     return 0;
-}
-
-/* calls bdb_get_file_version for a datafile */
-int bdb_get_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
-                              int dtanum, unsigned long long *version_num,
-                              int *bdberr)
-{
-    return bdb_get_file_version(tran, bdb_state->name,
-                                LLMETA_FVER_FILE_TYPE_DTA, dtanum, version_num,
-                                bdberr);
-}
-
-/* calls bdb_get_file_version for an indexfile */
-int bdb_get_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
-                               int ixnum, unsigned long long *version_num,
-                               int *bdberr)
-{
-    return bdb_get_file_version(tran, bdb_state->name, LLMETA_FVER_FILE_TYPE_IX,
-                                ixnum, version_num, bdberr);
-}
-
-/* calls bdb_get_file_version for a table */
-int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long *version_num, int *bdberr)
-{
-    return bdb_get_file_version(tran, bdb_state->name,
-                                LLMETA_FVER_FILE_TYPE_TBL, 0 /*file_num*/,
-                                version_num, bdberr);
-}
-
-int bdb_get_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
-                             unsigned long long *version_num, int *bdberr)
-{
-    return bdb_get_file_version(tran, bdb_state->name,
-                                LLMETA_FVER_FILE_TYPE_QDB, 0, version_num,
-                                bdberr);
 }
 
 int bdb_get_pagesize_data(bdb_state_type *bdb_state, tran_type *tran,
@@ -8465,6 +8479,147 @@ int bdb_get_all_for_versioned_sp(char *name, char ***versions, int *num)
     *num = n;
     *versions = ret;
     return rc;
+}
+
+int bdb_process_each_entry(bdb_state_type *bdb_state, void *key, int klen,
+                           int (*func)(bdb_state_type *bdb_state, void *arg,
+                                       void *rec),
+                           void *arg, int *bdberr)
+{
+    int fnd;
+    uint8_t out[LLMETA_IXLEN];
+    uint8_t nxt[LLMETA_IXLEN];
+    int rc;
+    int irc = 0;
+
+    rc = bdb_lite_fetch_partial(llmeta_bdb_state, key, klen, out, &fnd, bdberr);
+    while (rc == 0 && fnd == 1) {
+        if (memcmp(key, out, klen) != 0) {
+            break;
+        }
+
+        if ((irc = (*func)(bdb_state, arg, out)) != 0)
+            break;
+
+        rc = bdb_lite_fetch_keys_fwd(llmeta_bdb_state, out, nxt, 1, &fnd,
+                                     bdberr);
+        memcpy(out, nxt, sizeof(out));
+    }
+    return irc ? irc : rc;
+}
+
+static int table_version_callback(bdb_state_type *bdb_state, void *arg,
+                                  struct llmeta_sane_table_version *rec)
+{
+    const char *tblname = rec->tblname;
+    int bdberr;
+    int rc;
+
+#if 0  
+    /* This test would skip alter leaked file; we don't need to */
+    if (get_dbnum_by_name(bdb_state, tblname) < 0)
+    {
+        fprintf(stderr, "Found deleted file %s\n", tblname);
+        rc = bdb_purge_unused_files_by_name(tblname);
+    }
+#else
+    rc = ((int (*)(bdb_state_type *, const char *, int *))arg)(
+        bdb_state, tblname, &bdberr);
+#endif
+
+    return rc;
+}
+
+int bdb_process_each_table_version_entry(bdb_state_type *bdb_state,
+                                         int (*func)(bdb_state_type *bdb_state,
+                                                     const char *tblname,
+                                                     int *bdberr),
+                                         int *bdberr)
+{
+    struct llmeta_file_type_key key = {0};
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    key.file_type = htonl(LLMETA_TABLE_VERSION);
+
+    return bdb_process_each_entry(
+        bdb_state, &key, sizeof(key.file_type),
+        (int (*)(bdb_state_type *, void *, void *))table_version_callback,
+        (void *)func, bdberr);
+}
+
+static int table_file_callback(bdb_state_type *bdb_state,
+                               unsigned long long *file_version,
+                               struct llmeta_file_type_dbname_file_num_key *rec)
+{
+    int rc;
+    unsigned long long version;
+    int fndlen;
+    int bdberr;
+
+    rc = bdb_lite_exact_fetch(llmeta_bdb_state, rec, &version, sizeof(version),
+                              &fndlen, &bdberr);
+
+    return (rc == 0 && fndlen == sizeof(version) && version == *file_version);
+}
+
+static int bdb_process_each_table_entry(bdb_state_type *bdb_state, int type,
+                                        const char *tblname,
+                                        unsigned long long version, int *bdberr)
+{
+    struct llmeta_file_type_dbname_key key_struct = {0};
+    char key[LLMETA_IXLEN] = {0};
+    uint8_t *p_buf, *p_buf_start, *p_buf_end;
+    size_t key_offset = 0;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    key_struct.file_type = type;
+    strncpy(key_struct.dbname, tblname, sizeof(key_struct.dbname));
+    key_struct.dbname_len = strlen(key_struct.dbname) + 1 /* NULL byte */;
+
+    if (key_struct.dbname_len > LLMETA_TBLLEN) {
+        fprintf(stderr, "%s: db_name is too long\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    p_buf_start = p_buf = (uint8_t *)key;
+    p_buf_end = (uint8_t *)(key + LLMETA_IXLEN);
+
+    p_buf = llmeta_file_type_dbname_key_put(&key_struct, p_buf, p_buf_end);
+
+    if (!p_buf) {
+        logmsg(LOGMSG_ERROR,
+               "%s: llmeta_file_type_dbname_key_put returns NULL\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    key_offset = p_buf - p_buf_start;
+
+    return bdb_process_each_entry(
+        bdb_state, &key, key_offset,
+        (int (*)(bdb_state_type *, void *, void *))table_file_callback,
+        &version, bdberr);
+}
+
+int bdb_process_each_table_dta_entry(bdb_state_type *bdb_state,
+                                     const char *tblname,
+                                     unsigned long long version, int *bdberr)
+{
+    return bdb_process_each_table_entry(bdb_state, LLMETA_FVER_FILE_TYPE_DTA,
+                                        tblname, version, bdberr);
+}
+
+int bdb_process_each_table_idx_entry(bdb_state_type *bdb_state,
+                                     const char *tblname,
+                                     unsigned long long version, int *bdberr)
+{
+    return bdb_process_each_table_entry(bdb_state, LLMETA_FVER_FILE_TYPE_IX,
+                                        tblname, version, bdberr);
 }
 
 /*

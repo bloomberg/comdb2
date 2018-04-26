@@ -6647,6 +6647,24 @@ int get_dbnum_by_handle(bdb_state_type *bdb_state)
     return -1;
 }
 
+int get_dbnum_by_name(bdb_state_type *bdb_state, const char *name)
+{
+    int i;
+
+    Pthread_mutex_lock(&(bdb_state->children_lock));
+
+    for (i = 0; i < bdb_state->parent->numchildren; i++)
+        if (strncasecmp(bdb_state->parent->children[i]->name, name,
+                        strlen(name)) == 0) {
+            Pthread_mutex_unlock(&(bdb_state->children_lock));
+            return i;
+        }
+
+    Pthread_mutex_unlock(&(bdb_state->children_lock));
+
+    return -1;
+}
+
 static int bdb_close_only_int(bdb_state_type *bdb_state, int *bdberr)
 {
     int i;
@@ -7277,6 +7295,173 @@ int bdb_get_first_logfile(bdb_state_type *bdb_state, int *bdberr)
     return lognum;
 }
 
+/* check if any of the file on disks start with tblname, and have the known name
+   format
+   (depending on file type), and if they are, queue them to the to-be-deleted
+   file list
+ */
+int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
+                            int *bdberr)
+{
+    const char *data_ext = ".data";
+    const char *index_ext = ".index";
+    const char *blob_ext = ".blob";
+    int rc = 0;
+    char table_prefix[80];
+    unsigned long long file_version;
+    unsigned long long version_num;
+
+    struct dirent *buf;
+    struct dirent *ent;
+    DIR *dirp;
+    int error;
+    int lognum = 0;
+
+    assert(bdb_state->parent == NULL);
+
+    if (bdb_state->attr->keep_referenced_files) {
+        lognum = bdb_get_first_logfile(bdb_state, bdberr);
+        if (lognum == -1)
+            return -1;
+    }
+
+    if (!bdb_state || !bdberr) {
+        logmsg(LOGMSG_ERROR, "%s: null or invalid argument\n", __func__);
+        if (bdberr)
+            *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    /* must be large enough to hold a dirent struct with the longest possible
+     * filename */
+    buf = malloc(4096);
+    if (!buf) {
+        logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
+        *bdberr = BDBERR_MALLOC;
+
+        return -1;
+    }
+
+    /* open the db's directory */
+    dirp = opendir(bdb_state->dir);
+    if (!dirp) {
+        logmsg(LOGMSG_ERROR, "%s: opendir failed\n", __func__);
+        *bdberr = BDBERR_MISC;
+        free(buf);
+        return -1;
+    }
+
+    /* */
+    if (snprintf(table_prefix, sizeof(table_prefix), "%s_", tblname) >=
+        sizeof(table_prefix)) {
+        logmsg(LOGMSG_ERROR, "%s: tablename too long\n", __func__);
+        *bdberr = BDBERR_MISC;
+        free(buf);
+        closedir(dirp);
+        return -1;
+    }
+
+    /* for each file in the db's directory */
+    while ((error = readdir_r(dirp, buf, &ent)) == 0 && ent != NULL) {
+        /* if the file's name is longer then the prefix and it belongs to our
+         * table */
+        if ((strlen(ent->d_name) > strlen(table_prefix)) &&
+            strncmp(ent->d_name, table_prefix, strlen(table_prefix)) == 0) {
+            const char *file_name_post_prefix;
+            unsigned long long invers;
+            char *endp;
+
+            /* file version should start right after the prefix */
+            file_name_post_prefix = ent->d_name + strlen(table_prefix);
+
+            /* try to parse a file version */
+            invers = strtoull(file_name_post_prefix, &endp, 16 /*base*/);
+
+            /* if no file_version was found after the prefix or the next thing
+             * after the file version isn't .blob or .data or .index */
+            if (endp == file_name_post_prefix ||
+                (strncmp(endp, data_ext, strlen(data_ext)) != 0 &&
+                 strncmp(endp, index_ext, strlen(index_ext)) != 0 &&
+                 strncmp(endp, blob_ext, strlen(blob_ext)) != 0)) {
+                file_version = 0;
+            } else {
+                uint8_t *p_buf = (uint8_t *)&invers,
+                        *p_buf_end = p_buf + sizeof(invers);
+                struct bdb_file_version_num_type p_file_version_num_type;
+
+                bdb_file_version_num_get(&p_file_version_num_type, p_buf,
+                                         p_buf_end);
+
+                file_version = p_file_version_num_type.version_num;
+            }
+
+            /*fprintf(stderr, "found version %s %016llx on disk\n",*/
+            /*ent->d_name, file_version); */
+
+            /* brute force scan to find any files on disk that we aren't
+             * actually using */
+            if (file_version) {
+                int found_in_llmeta = 0;
+                int i;
+
+                rc = bdb_process_each_table_dta_entry(bdb_state, tblname,
+                                                      file_version, bdberr);
+                if (rc == 1)
+                    found_in_llmeta = 1;
+                else {
+                    rc = bdb_process_each_table_idx_entry(bdb_state, tblname,
+                                                          file_version, bdberr);
+                    if (rc == 1)
+                        found_in_llmeta = 1;
+                }
+
+                /* if the file's version wasn't found in llmeta, delete it */
+                if (!found_in_llmeta) {
+                    char munged_name[FILENAMELEN];
+
+                    if (snprintf(munged_name, sizeof(munged_name), "XXX.%s",
+                                 ent->d_name) >= sizeof(munged_name)) {
+                        logmsg(LOGMSG_ERROR,
+                               "%s: filename too long to munge: %s\n", __func__,
+                               ent->d_name);
+                        continue;
+                    }
+
+                    /* dont add filename more than once in the list */
+                    if (oldfile_list_contains(munged_name))
+                        continue;
+
+                    if (oldfile_list_add(strdup(munged_name), lognum)) {
+                        print(bdb_state,
+                              "failed to collect old file (list full) %s\n",
+                              ent->d_name);
+                        goto done;
+                    } else {
+                        /*fprintf(stderr, "deleting file %s\n", ent->d_name);*/
+                        print(bdb_state, "requeued old file %s\n", ent->d_name);
+                    }
+                }
+            }
+        }
+    }
+
+done:
+
+    closedir(dirp);
+    free(buf);
+
+    *bdberr = BDBERR_NOERROR;
+    return 0;
+}
+
+/* given an existing table pointed by bdb_state, check the disk for older
+   versions of it
+   (i.e. not matching current metadata versioning information), and queue those
+   for deletion
+   NOTE: obviously, this is only working for recovering to-be-deleted files
+   during
+   alter and fastinit process
+*/
 static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                                     int *bdberr, char *powner, int delay)
 {
@@ -7296,6 +7481,8 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     DIR *dirp;
     int error;
     int lognum = 0;
+
+    assert(bdb_state->parent != NULL);
 
     if (delay && bdb_state->attr->keep_referenced_files) {
         lognum = bdb_get_first_logfile(bdb_state, bdberr);
