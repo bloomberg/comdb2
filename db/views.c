@@ -298,7 +298,8 @@ int timepart_add_view(void *tran, timepart_views_t *views,
             goto done;
         }
     } else {
-        fprintf(stderr, "Time partitions rollouts are stopped; no rollouts!\n");
+        logmsg(LOGMSG_WARN,
+               "Time partitions rollouts are stopped; no rollouts!\n");
     }
 
     /* adding the view to the list */
