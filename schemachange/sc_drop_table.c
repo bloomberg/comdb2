@@ -114,8 +114,11 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
 
     if (gbl_replicate_local) local_replicant_write_clear(db);
 
+#if 0
+    /* handle in osql_scdone_commit_callback and osql_scdone_abort_callback */
     /* delete files we don't need now */
     sc_del_unused_files_tran(db, tran);
+#endif
 
     return 0;
 }

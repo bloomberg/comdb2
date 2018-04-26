@@ -740,6 +740,8 @@ static void osql_scdone_commit_callback(struct ireq *iq)
         while (iq->sc != NULL) {
             sc_next = iq->sc->sc_next;
             broadcast_sc_end(iq->sc->table, iq->sc_seed);
+            if (iq->sc->db)
+                sc_del_unused_files(iq->sc->db);
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }

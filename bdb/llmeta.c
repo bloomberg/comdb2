@@ -2321,7 +2321,7 @@ backout:
 }
 
 /* looks up the version of a file in the file version db
- * returns <0 if there was an error, 0 the lookup was successful or if  the key
+ * returns <0 if there was an error, 0 the lookup was successful or 1 if the key
  * wasn't found in the llmeta db */
 static int bdb_get_file_version(
     tran_type *tran,                    /* transaction to use */
@@ -2416,6 +2416,12 @@ retry:
                     "%s: *ERROR* bdb_lite_exact_fetch too much contention "
                     "%d count %d\n",
                     __func__, *bdberr, retries);
+        }
+
+        /* it might be ok if no data was found,
+         * return 1 and *p_version_num = 0ULL */
+        if (*bdberr == BDBERR_FETCH_DTA) {
+            return 1;
         }
 
         /*fail on all other errors*/
@@ -3524,7 +3530,7 @@ backout:
  * returns <0 if there was an error, 0 the lookup was successful or if  the key
  * wasn't found in the llmeta db */
 int bdb_get_in_schema_change(
-    const char *db_name,            /* name of table to check */
+    tran_type *input_trans, const char *db_name, /* name of table to check */
     void **schema_change_data,      /* if this points to NULL it means we
                                      * are no longer in a schema change
                                      * if !NULL it means that we are in the
@@ -3586,13 +3592,13 @@ int bdb_get_in_schema_change(
 
 retry:
     /* try to fetch the schema change data */
-    rc = bdb_lite_exact_var_fetch(llmeta_bdb_state, key, schema_change_data,
-                                  &datalen, bdberr);
+    rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, input_trans, key,
+                                       schema_change_data, &datalen, bdberr);
 
     /* handle return codes */
     if (rc || *bdberr != BDBERR_NOERROR) {
 
-        if (*bdberr == BDBERR_DEADLOCK) {
+        if (*bdberr == BDBERR_DEADLOCK && !input_trans) {
             if (++retries < 500 /*gbl_maxretries*/)
                 goto retry;
 
@@ -8481,10 +8487,11 @@ int bdb_get_all_for_versioned_sp(char *name, char ***versions, int *num)
     return rc;
 }
 
-int bdb_process_each_entry(bdb_state_type *bdb_state, void *key, int klen,
-                           int (*func)(bdb_state_type *bdb_state, void *arg,
-                                       void *rec),
-                           void *arg, int *bdberr)
+static int bdb_process_each_entry(bdb_state_type *bdb_state, tran_type *tran,
+                                  void *key, int klen,
+                                  int (*func)(bdb_state_type *bdb_state,
+                                              void *arg, void *rec),
+                                  void *arg, int *bdberr)
 {
     int fnd;
     uint8_t out[LLMETA_IXLEN];
@@ -8492,7 +8499,8 @@ int bdb_process_each_entry(bdb_state_type *bdb_state, void *key, int klen,
     int rc;
     int irc = 0;
 
-    rc = bdb_lite_fetch_partial(llmeta_bdb_state, key, klen, out, &fnd, bdberr);
+    rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, tran, key, klen, out,
+                                     &fnd, bdberr);
     while (rc == 0 && fnd == 1) {
         if (memcmp(key, out, klen) != 0) {
             break;
@@ -8501,8 +8509,8 @@ int bdb_process_each_entry(bdb_state_type *bdb_state, void *key, int klen,
         if ((irc = (*func)(bdb_state, arg, out)) != 0)
             break;
 
-        rc = bdb_lite_fetch_keys_fwd(llmeta_bdb_state, out, nxt, 1, &fnd,
-                                     bdberr);
+        rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, tran, out, nxt, 1,
+                                          &fnd, bdberr);
         memcpy(out, nxt, sizeof(out));
     }
     return irc ? irc : rc;
@@ -8544,7 +8552,7 @@ int bdb_process_each_table_version_entry(bdb_state_type *bdb_state,
     key.file_type = htonl(LLMETA_TABLE_VERSION);
 
     return bdb_process_each_entry(
-        bdb_state, &key, sizeof(key.file_type),
+        bdb_state, NULL, &key, sizeof(key.file_type),
         (int (*)(bdb_state_type *, void *, void *))table_version_callback,
         (void *)func, bdberr);
 }
@@ -8564,7 +8572,8 @@ static int table_file_callback(bdb_state_type *bdb_state,
     return (rc == 0 && fndlen == sizeof(version) && version == *file_version);
 }
 
-static int bdb_process_each_table_entry(bdb_state_type *bdb_state, int type,
+static int bdb_process_each_table_entry(bdb_state_type *bdb_state,
+                                        tran_type *tran, int type,
                                         const char *tblname,
                                         unsigned long long version, int *bdberr)
 {
@@ -8601,25 +8610,25 @@ static int bdb_process_each_table_entry(bdb_state_type *bdb_state, int type,
     key_offset = p_buf - p_buf_start;
 
     return bdb_process_each_entry(
-        bdb_state, &key, key_offset,
+        bdb_state, tran, &key, key_offset,
         (int (*)(bdb_state_type *, void *, void *))table_file_callback,
         &version, bdberr);
 }
 
-int bdb_process_each_table_dta_entry(bdb_state_type *bdb_state,
+int bdb_process_each_table_dta_entry(bdb_state_type *bdb_state, tran_type *tran,
                                      const char *tblname,
                                      unsigned long long version, int *bdberr)
 {
-    return bdb_process_each_table_entry(bdb_state, LLMETA_FVER_FILE_TYPE_DTA,
-                                        tblname, version, bdberr);
+    return bdb_process_each_table_entry(
+        bdb_state, tran, LLMETA_FVER_FILE_TYPE_DTA, tblname, version, bdberr);
 }
 
-int bdb_process_each_table_idx_entry(bdb_state_type *bdb_state,
+int bdb_process_each_table_idx_entry(bdb_state_type *bdb_state, tran_type *tran,
                                      const char *tblname,
                                      unsigned long long version, int *bdberr)
 {
-    return bdb_process_each_table_entry(bdb_state, LLMETA_FVER_FILE_TYPE_IX,
-                                        tblname, version, bdberr);
+    return bdb_process_each_table_entry(
+        bdb_state, tran, LLMETA_FVER_FILE_TYPE_IX, tblname, version, bdberr);
 }
 
 /*

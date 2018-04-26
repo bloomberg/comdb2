@@ -680,8 +680,9 @@ int resume_schema_change(void)
         int bdberr;
         void *packed_sc_data = NULL;
         size_t packed_sc_data_len;
-        if (bdb_get_in_schema_change(thedb->dbs[i]->tablename, &packed_sc_data,
-                                     &packed_sc_data_len, &bdberr) ||
+        if (bdb_get_in_schema_change(NULL /*tran*/, thedb->dbs[i]->tablename,
+                                     &packed_sc_data, &packed_sc_data_len,
+                                     &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_WARN,
                    "resume_schema_change: failed to discover "
@@ -1187,7 +1188,7 @@ int backout_schema_change(struct ireq *iq)
         delete_db(s->table);
         create_sqlmaster_records(NULL);
         create_sqlite_master();
-    } else {
+    } else if (s->db) {
         reload_db_tran(s->db, NULL);
         sc_del_unused_files(s->db);
     }
