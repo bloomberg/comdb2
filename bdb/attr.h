@@ -608,6 +608,8 @@ DEF_ATTR(TIMEPART_CHECK_SHARD_EXISTENCE, timepart_check_shard_existence,
 DEF_ATTR(
     IGNORE_BAD_TABLE, ignore_bad_table, BOOLEAN, 0,
     "Allow a database with a corrupt table to come up, without that table.")
+DEF_ATTR(TIMEPART_NO_ROLLOUT, timepart_no_rollout, BOOLEAN, 0,
+         "Prevent new rollouts for time partitions.")
 /* Keep enabled for the merge */
 DEF_ATTR(DURABLE_LSNS, durable_lsns, BOOLEAN, 0, NULL)
 /* Keep disabled:  we get it when we add to the trn_repo */
