@@ -1350,7 +1350,8 @@ void clean_exit(void)
     /* TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
       them to quit.
     */
-    sleep(4);
+    if (!gbl_create_mode)
+        sleep(4);
 
     cleanup_q_vars();
     cleanup_switches();
@@ -1372,7 +1373,6 @@ void clean_exit(void)
 
     eventlog_stop();
 
-    clear_portmux_bind_path();
     cleanup_file_locations();
     ctrace_closelog();
 
@@ -1397,6 +1397,7 @@ void clean_exit(void)
     cleanup_interned_strings();
     cleanup_peer_hash();
     free(gbl_dbdir);
+    clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
 

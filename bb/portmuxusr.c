@@ -47,6 +47,11 @@
 #include <logmsg.h>
 #include <mem.h>
 
+#ifndef PORTMUXUSR_TESTSUITE
+#include "mem_bb.h"
+#include "mem_override.h"
+#endif
+
 int gbl_pmux_route_enabled = 1;
 
 #define PORTMUX_ROUTE_MODE_ENABLED() gbl_pmux_route_enabled
@@ -536,18 +541,17 @@ static int portmux_get_unix_socket(const char *unix_bind_path)
     /*connect to portmux unix socket*/
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
+    int uslen = strlen(gbl_portmux_unix_socket);
 
-    if (strlen(gbl_portmux_unix_socket) >= sizeof(addr.sun_path)) {
+    if (uslen >= sizeof(addr.sun_path)) {
         logmsg(LOGMSG_ERROR, "%s:%d Portmux unix socket path too long.",
                __func__, __LINE__);
         return -1;
     } else {
-        strncpy(addr.sun_path, gbl_portmux_unix_socket,
-                strlen(gbl_portmux_unix_socket));
+        strncpy(addr.sun_path, gbl_portmux_unix_socket, uslen);
     }
 
-    len = offsetof(struct sockaddr_un, sun_path) +
-          strlen(gbl_portmux_unix_socket);
+    len = offsetof(struct sockaddr_un, sun_path) + uslen;
 
     if (connect(listenfd, (struct sockaddr *)&addr, len) < 0) {
         if ((errno != ENOENT) && (errno != ECONNREFUSED)) {
@@ -1780,8 +1784,7 @@ void set_portmux_port(int port)
 
 void clear_portmux_bind_path()
 {
-    if (gbl_portmux_unix_socket) 
-        free(gbl_portmux_unix_socket);
+    free(gbl_portmux_unix_socket);
     gbl_portmux_unix_socket = NULL;
 }
 

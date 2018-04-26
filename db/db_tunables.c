@@ -1177,6 +1177,7 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
         PARSE_TOKEN;
         DO_VERIFY(t, buf);
 
+
         if (t->update) {
             DO_UPDATE(t, buf);
         } else {
