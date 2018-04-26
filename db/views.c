@@ -281,19 +281,25 @@ int timepart_add_view(void *tran, timepart_views_t *views,
 
     view->roll_time = tm;
 
-    print_dbg_verbose(view->name, &view->source_id, "III", "Adding phase 1 at %d\n", 
-                      view->roll_time - preemptive_rolltime);
+    if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_NO_ROLLOUT)) {
+        print_dbg_verbose(view->name, &view->source_id, "III",
+                          "Adding phase 1 at %d\n",
+                          view->roll_time - preemptive_rolltime);
 
-    rc = (cron_add_event(timepart_sched, NULL,
-                         view->roll_time - preemptive_rolltime,
-                         _view_cron_phase1, tmp_str = strdup(view->name), NULL,
-                         NULL, &view->source_id, err) == NULL)
-             ? err->errval
-             : VIEW_NOERR;
-    if (rc != VIEW_NOERR) {
-        if (tmp_str)
-            free(tmp_str);
-        goto done;
+        rc = (cron_add_event(timepart_sched, NULL,
+                             view->roll_time - preemptive_rolltime,
+                             _view_cron_phase1, tmp_str = strdup(view->name),
+                             NULL, NULL, &view->source_id, err) == NULL)
+                 ? err->errval
+                 : VIEW_NOERR;
+        if (rc != VIEW_NOERR) {
+            if (tmp_str)
+                free(tmp_str);
+            goto done;
+        }
+    } else {
+        logmsg(LOGMSG_WARN,
+               "Time partitions rollouts are stopped; no rollouts!\n");
     }
 
     /* adding the view to the list */
@@ -2056,6 +2062,14 @@ int views_cron_restart(timepart_views_t *views)
         /* queue all the events required for this */
         for(i=0;i<views->nviews; i++)
         {
+
+            /* are the rollouts stopped? */
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_NO_ROLLOUT)) {
+                logmsg(LOGMSG_WARN, "Time partitions rollouts are stopped; "
+                                    "will not start rollouts!\n");
+                goto done;
+            }
+
             view = views->views[i];
 
             rc = _view_restart(view, &xerr);
