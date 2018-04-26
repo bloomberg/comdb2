@@ -908,6 +908,7 @@ static int _convert_time(char *sql)
 
     struct sqlclntstate client;
     reset_clnt(&client, NULL, 1);
+    strncpy(client.tzname, "UTC", sizeof(client.tzname));
     sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     client.dbtran.mode = TRANLEVEL_SOSQL;
     client.sql = sql;
