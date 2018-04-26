@@ -121,6 +121,8 @@ extern int gbl_fdb_track;
 extern int gbl_return_long_column_names;
 extern int gbl_stable_rootpages_test;
 
+extern int gbl_expressions_indexes;
+
 /* Once and for all:
 
    struct sqlthdstate:
@@ -877,6 +879,11 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                     SQLENG_PRE_STRT_STATE);
             clnt->in_client_trans = 1;
+
+            assert(clnt->ddl_tables == NULL && clnt->dml_tables == NULL);
+            clnt->ddl_tables = hash_init_strcase(0);
+            clnt->dml_tables = hash_init_strcase(0);
+
             update_snapshot_info(clnt);
         }
     } else if (!strncasecmp(clnt->sql, "commit", 6)) {
@@ -1072,6 +1079,19 @@ static void send_query_effects(struct sqlclntstate *clnt)
         return;
     WRITE_RESPONSE(RESPONSE_EFFECTS, 0);
     reset_query_effects(clnt);
+}
+
+static int free_it(void *obj, void *arg)
+{
+    free(obj);
+    return 0;
+}
+static inline void destroy_hash(hash_t *h)
+{
+    if (!h)
+        return;
+    hash_for(h, free_it, NULL);
+    hash_clear(h);
 }
 
 int handle_sql_commitrollback(struct sqlthdstate *thd,
@@ -1374,6 +1394,23 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             break; // TODO: should return here?
         }
     }
+
+    clnt->ins_keys = 0ULL;
+    clnt->del_keys = 0ULL;
+
+    if (clnt->arr) {
+        currangearr_free(clnt->arr);
+        clnt->arr = NULL;
+    }
+    if (clnt->selectv_arr) {
+        currangearr_free(clnt->selectv_arr);
+        clnt->selectv_arr = NULL;
+    }
+
+    destroy_hash(clnt->ddl_tables);
+    destroy_hash(clnt->dml_tables);
+    clnt->ddl_tables = NULL;
+    clnt->dml_tables = NULL;
 
     /* reset the state after send_done; we use ctrl_sqlengine to know
        if this is a user rollback or an sqlite engine error */
@@ -3143,7 +3180,6 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     clnt->has_recording |= v->recording;
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
     comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
-    clnt->iswrite = 0; /* reset before step() */
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
@@ -3237,7 +3273,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
           clnt->in_client_trans && !clnt->isselect &&
           !(rc && !clnt->had_errors))) {
 
-        if (clnt->iswrite && postponed_write) {
+        if (!clnt->isselect && postponed_write) {
             int irc = send_row(clnt, NULL, row_id, rc, 0, NULL);
             if (irc)
                 return irc;
@@ -3340,7 +3376,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
 
         /* return row, if needed */
-        if (!clnt->iswrite && clnt->osql.replay != OSQL_RETRY_DO) {
+        if (clnt->isselect && clnt->osql.replay != OSQL_RETRY_DO) {
             postponed_write = 0;
             ++row_id;
 
@@ -4237,14 +4273,16 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->query_stats = NULL;
     }
 
-    if (clnt->ddl_tables) {
-        hash_clear(clnt->ddl_tables);
-        hash_free(clnt->ddl_tables);
+    if (gbl_expressions_indexes) {
+        if (clnt->idxInsert)
+            free(clnt->idxInsert);
+        if (clnt->idxDelete)
+            free(clnt->idxDelete);
+        clnt->idxInsert = clnt->idxDelete = NULL;
     }
-    if (clnt->dml_tables) {
-        hash_clear(clnt->dml_tables);
-        hash_free(clnt->dml_tables);
-    }
+
+    destroy_hash(clnt->ddl_tables);
+    destroy_hash(clnt->dml_tables);
     clnt->ddl_tables = NULL;
     clnt->dml_tables = NULL;
 }
@@ -4272,7 +4310,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     /* start off in comdb2 mode till we're told otherwise */
     clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
-    clnt->iswrite = 0;
     clnt->heartbeat = 0;
     clnt->limits.maxcost = gbl_querylimits_maxcost;
     clnt->limits.tablescans_ok = gbl_querylimits_tablescans_ok;
