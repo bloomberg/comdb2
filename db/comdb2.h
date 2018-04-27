@@ -2577,6 +2577,7 @@ char *getdbrelpath(const char *relpath);
 void addresource(const char *name, const char *filepath);
 const char *getresourcepath(const char *name);
 void dumpresources(void);
+void cleanresources(void);
 
 /* for the hackery that gets findnext passing "lastgenid" */
 void split_genid(unsigned long long genid, unsigned int *rrn1,
