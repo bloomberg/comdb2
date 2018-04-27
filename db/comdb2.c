@@ -1335,6 +1335,18 @@ void clean_exit_sigwrap(int signum) {
    clean_exit();
 }
 
+static void free_sqlite_table(struct dbenv *dbenv)
+{    
+    for (int i = dbenv->num_dbs - 1; i >= 0; i--) {
+        struct dbtable *tbl = dbenv->dbs[i];
+        delete_schema(tbl->tablename); // tags hash
+        delete_db(tbl->tablename);     // will free db
+        bdb_cleanup_fld_hints(tbl->handle);
+        freedb(tbl);
+    }
+    free(dbenv->dbs);
+}
+
 /* clean_exit will be called to cleanup db structures upon exit
  * NB: This function can be called by clean_exit_sigwrap() when the db is not
  * up yet at which point we may not have much to cleanup.
@@ -1380,13 +1392,7 @@ void clean_exit(void)
     net_cleanup_subnets();
     cleanup_sqlite_master();
 
-    for (int i = thedb->num_dbs - 1; i >= 0; i--) {
-        struct dbtable *tbl = thedb->dbs[i];
-        delete_schema(tbl->tablename); // tags hash
-        delete_db(tbl->tablename);     // will free db
-        bdb_cleanup_fld_hints(tbl->handle);
-        freedb(tbl);
-    }
+    free_sqlite_table(thedb);
 
     if (thedb->db_hash) {
         hash_clear(thedb->db_hash);
@@ -1397,6 +1403,8 @@ void clean_exit(void)
     cleanup_interned_strings();
     cleanup_peer_hash();
     free(gbl_dbdir);
+    free(gbl_myhostname);
+
     cleanresources(); //list of lrls
     clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
@@ -2985,6 +2993,8 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     }
     return 0;
 }
+
+
 
 static void load_dbstore_tableversion(struct dbenv *dbenv)
 {
