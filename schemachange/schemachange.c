@@ -116,7 +116,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             int bdberr;
             void *packed_sc_data = NULL;
             size_t packed_sc_data_len;
-            if (bdb_get_in_schema_change(s->table, &packed_sc_data,
+            if (bdb_get_in_schema_change(trans, s->table, &packed_sc_data,
                                          &packed_sc_data_len, &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
                 logmsg(LOGMSG_WARN, "%s: failed to discover whether table: "
@@ -914,8 +914,9 @@ int add_schema_change_tables()
         int bdberr;
         void *packed_sc_data = NULL;
         size_t packed_sc_data_len = 0;
-        if (bdb_get_in_schema_change(thedb->dbs[i]->tablename, &packed_sc_data,
-                                     &packed_sc_data_len, &bdberr) ||
+        if (bdb_get_in_schema_change(NULL /*tran*/, thedb->dbs[i]->tablename,
+                                     &packed_sc_data, &packed_sc_data_len,
+                                     &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR,
                    "%s: failed to discover "

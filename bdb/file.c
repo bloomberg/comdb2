@@ -7295,6 +7295,72 @@ int bdb_get_first_logfile(bdb_state_type *bdb_state, int *bdberr)
     return lognum;
 }
 
+/* Lets check new prefix for ongoing schema changes:
+ * This is a bit of a kludge. We use the first 32 bytes of the table
+ * name as a key into llmeta. See bdb_open_int().
+ *
+ * Return 1 if file_version is currently being used as new.tblname
+ *
+ * NOTE:
+    When we check llmeta to determine if a file can be deleted,
+    we have to check new. prefix for schemachange first because
+    we are not reading llmeta transactionally and ongoing schema
+    change can commit at any time.
+ *
+ * Example:
+ * By checking new. prefix first, we have:
+ * 1. check is_table_in_schema_change
+ * 2. check llmeta for new.tblname
+ * 3. check llmeta for tblname
+ *
+ * Then if an onging schema change commits/aborts before 1,
+ * we can delete any files not found in step 3. Else if an ongoing
+ * schema change commits before 2 (after 1), step 3 will see
+ * the committed file verison in llmeta (i.e. don't delete). If the
+ * schema change commits/aborts after 2, step 2 would have returned
+ * found already and the unused files will be handled in the next run.
+ *
+ * Counterexample:
+ * If we don't check new. prefix first, we would have:
+ * 1. check llmeta for tblname
+ * 2. check is_table_in_schema_change
+ * 3. check llmeta for new.tblname
+ *
+ * Then if an ongoing schema change commits between 2 and 3,
+ * we will end up deleting a wrong file as in this case
+ * neither step 1 nor 3 would find the file version in llmeta.
+ */
+static inline int bdb_is_new_sc_file(bdb_state_type *bdb_state, tran_type *tran,
+                                     const char *tblname,
+                                     unsigned long long version, int *bdberr)
+{
+    int rc = 0;
+    char newname[32] = {0}; // LLMETA_TBLLEN = 32
+    snprintf(newname, 32, "%s%s", NEW_PREFIX, tblname);
+
+    rc = is_table_in_schema_change(tblname, tran);
+    if (rc == 0) // table not in_schema_change
+        return 0;
+    else if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to check in_schema_change for %s\n",
+               __func__, __LINE__, tblname);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    rc = bdb_process_each_table_dta_entry(bdb_state, tran, newname, version,
+                                          bdberr);
+    if (rc == 1)
+        return 1;
+
+    rc = bdb_process_each_table_idx_entry(bdb_state, tran, newname, version,
+                                          bdberr);
+    if (rc == 1)
+        return 1;
+
+    return rc;
+}
+
 /* check if any of the file on disks start with tblname, and have the known name
    format
    (depending on file type), and if they are, queue them to the to-be-deleted
@@ -7404,19 +7470,54 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                 int found_in_llmeta = 0;
                 int i;
 
-                rc = bdb_process_each_table_dta_entry(bdb_state, tblname,
-                                                      file_version, bdberr);
-                if (rc == 1)
+                /* We have to check new. prefix for schemachange first.
+                 * See NOTE in bdb_is_new_sc_file()
+                 */
+                rc = bdb_is_new_sc_file(bdb_state, NULL, tblname, file_version,
+                                        bdberr);
+                if (rc == 1) {
                     found_in_llmeta = 1;
-                else {
-                    rc = bdb_process_each_table_idx_entry(bdb_state, tblname,
-                                                          file_version, bdberr);
-                    if (rc == 1)
+                    rc = 0;
+                } else if (rc) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s:%d failed to check llmeta for %s, rc %d, bdberr "
+                           "%d\n",
+                           __func__, __LINE__, ent->d_name, rc, *bdberr);
+                    continue;
+                }
+
+                if (!found_in_llmeta) {
+                    rc = bdb_process_each_table_dta_entry(
+                        bdb_state, NULL, tblname, file_version, bdberr);
+                    if (rc == 1) {
                         found_in_llmeta = 1;
+                        rc = 0;
+                    } else if (rc) {
+                        logmsg(LOGMSG_ERROR,
+                               "%s:%d failed to check llmeta for %s, rc %d, "
+                               "bdberr %d\n",
+                               __func__, __LINE__, ent->d_name, rc, *bdberr);
+                        continue;
+                    }
+                }
+
+                if (!found_in_llmeta) {
+                    rc = bdb_process_each_table_idx_entry(
+                        bdb_state, NULL, tblname, file_version, bdberr);
+                    if (rc == 1) {
+                        found_in_llmeta = 1;
+                        rc = 0;
+                    } else if (rc) {
+                        logmsg(LOGMSG_ERROR,
+                               "%s:%d failed to check llmeta for %s, rc %d, "
+                               "bdberr %d\n",
+                               __func__, __LINE__, ent->d_name, rc, *bdberr);
+                        continue;
+                    }
                 }
 
                 /* if the file's version wasn't found in llmeta, delete it */
-                if (!found_in_llmeta) {
+                if (rc == 0 && !found_in_llmeta) {
                     char munged_name[FILENAMELEN];
 
                     if (snprintf(munged_name, sizeof(munged_name), "XXX.%s",
@@ -7437,7 +7538,8 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                               ent->d_name);
                         goto done;
                     } else {
-                        /*fprintf(stderr, "deleting file %s\n", ent->d_name);*/
+                        logmsg(LOGMSG_INFO, "%s: requeued file %s\n", __func__,
+                               ent->d_name);
                         print(bdb_state, "requeued old file %s\n", ent->d_name);
                     }
                 }
@@ -7582,6 +7684,22 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                 int found_in_llmeta = 0;
                 int i;
 
+                /* We have to check new. prefix for schemachange first.
+                 * See NOTE in bdb_is_new_sc_file()
+                 */
+                rc = bdb_is_new_sc_file(bdb_state, tran, bdb_state->name,
+                                        file_version, bdberr);
+                if (rc == 1) {
+                    found_in_llmeta = 1;
+                    rc = 0;
+                } else if (rc) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s:%d failed to check llmeta for %s, rc %d, bdberr "
+                           "%d\n",
+                           __func__, __LINE__, ent->d_name, rc, *bdberr);
+                    continue;
+                }
+
                 /* try to find the file version amongst the active data files */
                 for (i = 0; i < bdb_state->numdtafiles; ++i) {
                     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
@@ -7596,7 +7714,12 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                             found_in_llmeta = 1;
                             break;
                         }
-                    }
+                    } else if (rc == 1) {
+                        /* table doesnt exist in llmeta, not an error */
+                        *bdberr = BDBERR_NOERROR;
+                        rc = 0;
+                    } else
+                        break;
                 }
 
                 /* try to find the file version amongst the active indices */
@@ -7608,7 +7731,19 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                     if (rc == 0) {
                         if (version_num == file_version)
                             found_in_llmeta = 1;
-                    }
+                    } else if (rc == 1) {
+                        /* table doesnt exist in llmeta, not an error */
+                        *bdberr = BDBERR_NOERROR;
+                        rc = 0;
+                    } else
+                        break;
+                }
+                if (rc) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s:%d failed to check llmeta for %s, rc %d, bdberr "
+                           "%d\n",
+                           __func__, __LINE__, ent->d_name, rc, *bdberr);
+                    continue;
                 }
 
                 /* if the file's version wasn't found in llmeta, delete it */
@@ -7633,10 +7768,14 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                                   "failed to collect old file (list full) %s\n",
                                   ent->d_name);
                         } else {
+                            logmsg(LOGMSG_INFO, "%s: collected file %s\n",
+                                   __func__, ent->d_name);
                             print(bdb_state, "collected old file %s\n",
                                   ent->d_name);
                         }
                     } else {
+                        logmsg(LOGMSG_INFO, "%s: deleting file %s\n", __func__,
+                               ent->d_name);
                         print(bdb_state, "deleting file %s\n", ent->d_name);
                         DB_TXN *tid;
                         if (bdb_state->dbenv->txn_begin(bdb_state->dbenv,
@@ -7750,6 +7889,7 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
         return 1;
     }
 
+    logmsg(LOGMSG_INFO, "deleting file %s\n", munged_name);
     print(bdb_state, "deleting file %s\n", munged_name);
 
     if ((rc = bdb_del_file(bdb_state, tran->tid, munged_name, bdberr))) {

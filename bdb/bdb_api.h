@@ -850,6 +850,9 @@ int bdb_lite_fetch_keys_bwd_tran(bdb_state_type *bdb_state, tran_type *tran,
                                  int *numfnd, int *bdberr);
 int bdb_lite_fetch_partial(bdb_state_type *bdb_state, void *key_in, int klen_in,
                            void *key_out, int *fnd, int *bdberr);
+int bdb_lite_fetch_partial_tran(bdb_state_type *bdb_state, tran_type *tran,
+                                void *key_in, int klen_in, void *key_out,
+                                int *fnd, int *bdberr);
 
 /* queue operations are for queue tables - fifos with multiple consumers */
 
@@ -1461,7 +1464,8 @@ int bdb_del_list_free(void *list, int *bdberr);
 int bdb_set_in_schema_change(tran_type *input_trans, const char *db_name,
                              void *schema_change_data,
                              size_t schema_change_data_len, int *bdberr);
-int bdb_get_in_schema_change(const char *db_name, void **schema_change_data,
+int bdb_get_in_schema_change(tran_type *input_trans, const char *db_name,
+                             void **schema_change_data,
                              size_t *schema_change_data_len, int *bdberr);
 
 int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
@@ -2012,21 +2016,16 @@ void rename_bdb_state(bdb_state_type *bdb_state, const char *newname);
 int request_durable_lsn_from_master(bdb_state_type *, uint32_t *, uint32_t *,
                                     uint32_t *);
 
-int bdb_process_each_entry(bdb_state_type *bdb_state, void *key, int klen,
-                           int (*func)(bdb_state_type *bdb_state, void *arg,
-                                       void *rec),
-                           void *arg, int *bdberr);
-
 int bdb_process_each_table_version_entry(bdb_state_type *bdb_state,
                                          int (*func)(bdb_state_type *bdb_state,
                                                      const char *tblname,
                                                      int *bdberr),
                                          int *bdberr);
 
-int bdb_process_each_table_dta_entry(bdb_state_type *bdb_state,
+int bdb_process_each_table_dta_entry(bdb_state_type *bdb_state, tran_type *tran,
                                      const char *tblname,
                                      unsigned long long version, int *bdberr);
-int bdb_process_each_table_idx_entry(bdb_state_type *bdb_state,
+int bdb_process_each_table_idx_entry(bdb_state_type *bdb_state, tran_type *tran,
                                      const char *tblname,
                                      unsigned long long version, int *bdberr);
 

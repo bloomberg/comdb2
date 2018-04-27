@@ -780,9 +780,11 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         bdb_handle_dbp_add_hash(db->handle, olddb_bthashsz);
     }
 
-    /* This happens in lockstep with bdb_set_in_schema_change */
+#if 0
+    /* handle in osql_scdone_commit_callback and osql_scdone_abort_callback */
     /* delete files we don't need now */
     sc_del_unused_files_tran(db, transac);
+#endif
     memset(newdb, 0xff, sizeof(struct dbtable));
     free(newdb);
 
