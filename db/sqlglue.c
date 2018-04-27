@@ -1904,6 +1904,9 @@ void sqlinit(void)
     memset(comdb2_maxkey, 0xff, sizeof(comdb2_maxkey));
     pthread_mutex_init(&gbl_sql_lock, NULL);
     sql_dlmalloc_init();
+    /* initialize global structures in sqlite */
+    if (sqlite3_initialize())
+        abort();
 }
 
 /* Calculate space needed to store a sqlite version of a record for

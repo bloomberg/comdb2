@@ -3153,10 +3153,14 @@ opendb_out:
 #endif
 
   /* COMDB2 MODIFICATION */
+  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_lock(&mutex);
+  /* these modify global structures */
   register_lua_sfuncs(db, thd);
   register_lua_afuncs(db, thd);
   register_date_functions(db); 
   db->should_fingerprint = 0;
+  pthread_mutex_unlock(&mutex);
 
 #if defined(SQLITE_HAS_CODEC)
   if( rc==SQLITE_OK ){

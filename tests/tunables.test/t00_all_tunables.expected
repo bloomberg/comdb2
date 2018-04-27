@@ -770,7 +770,7 @@
 (name='sqlenginepool.mint', description='Minimum number of threads in the pool.', type='INTEGER', value='4', read_only='N')
 (name='sqlenginepool.stacksz', description='Thread stack size.', type='INTEGER', value='4194304', read_only='N')
 (name='sqlflush', description='Force flushing the current record stream to client every specified number of records. (Default: 0)', type='INTEGER', value='0', read_only='Y')
-(name='sqlite3openserial', description='Serialise calls to sqlite3_open to prevent excess CPU', type='BOOLEAN', value='ON', read_only='N')
+(name='sqlite3openserial', description='Serialise calls to sqlite3_open to prevent excess CPU', type='BOOLEAN', value='OFF', read_only='N')
 (name='sqlite_sorter_tempdir_reqfree', description='Refuse to create a sorter for queries if less than this percent of disk space is available (and return an error to the application).', type='INTEGER', value='6', read_only='N')
 (name='sqlreadahead', description='', type='INTEGER', value='0', read_only='Y')
 (name='sqlreadaheadthresh', description='', type='INTEGER', value='0', read_only='Y')

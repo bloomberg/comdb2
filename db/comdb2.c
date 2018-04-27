@@ -220,7 +220,7 @@ int gbl_upgrade_blocksql_2_socksql =
           files; if any blocksql requests will actually
           by socksql */
 
-int gbl_serialise_sqlite3_open = 1;
+int gbl_serialise_sqlite3_open = 0;
 
 int gbl_nice = 0;
 
