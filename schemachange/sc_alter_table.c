@@ -722,11 +722,13 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     /* kludge: fix lrls */
     fix_lrl_ixlen_tran(transac);
 
+    /*
     if (create_sqlmaster_records(transac)) {
         sc_errf(s, "create_sqlmaster_records failed\n");
         goto failed;
     }
-    create_sqlite_master(); /* create sql statements */
+    create_sqlite_master(); // create sql statements
+    */
 
     live_sc_off(db);
 

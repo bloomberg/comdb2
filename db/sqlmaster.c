@@ -54,7 +54,7 @@ void cleanup_sqlite_master()
  * Create sqlite_master row and populate the associated hash
  *
  */
-int create_sqlite_master()
+void create_sqlite_master()
 {
     int tblnum;
     int tbl_idx;
@@ -68,7 +68,7 @@ int create_sqlite_master()
     master_entry_t *new_arr = calloc(local_nentries, sizeof(master_entry_t));
     if (!new_arr) {
         fprintf(stderr, "MALLOC OOM\n");
-        return -1;
+        abort();
     }
 
     for (i = 0, tblnum = 0; tblnum < thedb->num_dbs; tblnum++) {
@@ -103,8 +103,6 @@ int create_sqlite_master()
 
     sqlmaster = new_arr;
     sqlmaster_nentries = local_nentries;
-
-    return 0;
 }
 
 inline static void fill_mem_str(Mem *m, char *str)
