@@ -1092,6 +1092,7 @@ static inline void destroy_hash(hash_t *h)
         return;
     hash_for(h, free_it, NULL);
     hash_clear(h);
+    hash_free(h);
 }
 
 int handle_sql_commitrollback(struct sqlthdstate *thd,
