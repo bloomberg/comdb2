@@ -2840,7 +2840,7 @@ void net_cleanup_netinfo(netinfo_type *netinfo_ptr)
 {
     host_node_type *ptr;
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-    for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
+    while ((ptr = netinfo_ptr->head) != NULL) {
         rem_from_netinfo_ll(netinfo_ptr, ptr);
     }
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));

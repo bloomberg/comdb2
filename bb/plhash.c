@@ -1100,6 +1100,14 @@ hash_t *hash_init_user(hashfunc_t *hashfunc, cmpfunc_t *cmpfunc, int keyoff,
                                    keysz);
 }
 
+hash_t *hash_init_strptr_with_free(int keyoff, hashfree_t *hashfree)
+{
+
+    return hash_setalloc_init_user((hashfunc_t *)hash_default_strptrlen,
+            (cmpfunc_t *)hash_default_strptrcmp, malloc, hashfree,
+            keyoff, 0);
+}
+
 hash_t *hash_init_strptr(int keyoff)
 {
     return hash_init_user((hashfunc_t *)hash_default_strptrlen,

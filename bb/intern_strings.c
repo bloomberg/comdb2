@@ -34,9 +34,18 @@ struct interned_string {
     int64_t ref;
 };
 
+void intern_free(void *ptr)
+{
+    printf("AZ : freeing ptr %p\n", ptr);
+    struct interned_string *obj = ptr;
+    free(obj->str);
+    obj->str = NULL;
+    free(obj);
+}
+
 static void init_interned_strings(void)
 {
-    interned_strings = hash_init_strptr(offsetof(struct interned_string, str));
+    interned_strings = hash_init_strptr_with_free(offsetof(struct interned_string, str), intern_free);
     if (interned_strings == NULL) {
         logmsg(LOGMSG_FATAL, "can't create hash table for hostname strings\n");
         abort();
@@ -101,4 +110,5 @@ void cleanup_interned_strings()
 {
     hash_clear(interned_strings);
     hash_free(interned_strings);
+    pthread_mutex_destroy(&intern_lk);
 }
