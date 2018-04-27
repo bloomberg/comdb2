@@ -1,7 +1,6 @@
 #ifndef INCLUDED_REQLOG_INT_H
 #define INCLUDED_REQLOG_INT_H
 
-#include "sqlquery.pb-c.h"
 #include "list.h"
 #include "comdb2.h"
 #include "cdb2_constants.h"
