@@ -16,7 +16,9 @@ setattr CATCHUP_WINDOW 40000000
 setattr CATCHUP_ON_COMMIT 1
 early_ack_trace on
 commit_delay_trace on
+durable_set_trace on
 set_coherent_state_trace on
+set_seqnum_trace on
 setattr COMMITDELAYMAX 128
 setattr TOOMANYSKIPPED 128
 
