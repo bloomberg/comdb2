@@ -44,7 +44,6 @@
 
 #include <sqlite3.h>
 #include "comdb2uuid.h"
-#include <sqlresponse.pb-c.h>
 
 char *tranlevel_tostr(int lvl);
 struct sqlclntstate;

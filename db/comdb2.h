@@ -80,7 +80,6 @@ typedef long long tranid_t;
 #include "tag.h"
 #include "errstat.h"
 #include "comdb2_rcodes.h"
-#include "sqlquery.pb-c.h"
 #include "repl_wait.h"
 #include "types.h"
 #include "thread_util.h"

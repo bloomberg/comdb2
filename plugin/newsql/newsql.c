@@ -28,6 +28,9 @@ typedef struct VdbeSorter VdbeSorter;
 #include "comdb2_atomic.h"
 #include <str0.h>
 
+#include <sqlquery.pb-c.h>
+#include <sqlresponse.pb-c.h>
+
 struct thr_handle;
 struct sbuf2;
 

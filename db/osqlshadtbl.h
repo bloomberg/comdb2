@@ -18,7 +18,6 @@
 #define _OSQL_SHADTBL_H_
 
 #include <comdb2.h>
-#include "bpfunc.pb-c.h"
 
 struct BtCursor;
 struct sql_thread;

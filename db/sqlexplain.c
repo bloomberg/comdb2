@@ -17,7 +17,6 @@
 #include <strings.h>
 #include "sql.h"
 #include "sqlexplain.h"
-#include "sqlresponse.pb-c.h"
 
 /*
   enhancements to sqlites built in explain facility.
