@@ -3313,9 +3313,8 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_INFO, "%d log files found in %s\n", nlogfiles, txndir);
         if (nlogfiles == 0) {
             logmsg(LOGMSG_FATAL, "ZERO log files found in %s!\n", txndir);
-            logmsg(LOGMSG_FATAL, "Cannot start without logfiles.  If this is\n");
-            logmsg(LOGMSG_INFO, "a clustered database then you should fixcomdb2\n");
-            logmsg(LOGMSG_INFO, "from the master.\n");
+            logmsg(LOGMSG_FATAL, "Cannot start without logfiles.\n");
+            logmsg(LOGMSG_FATAL, "If this is a clustered database then you should copycomdb2 from the master.\n");
             if (!noabort)
                 exit(1);
         }
