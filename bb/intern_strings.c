@@ -30,8 +30,8 @@ static pthread_mutex_t intern_lk = PTHREAD_MUTEX_INITIALIZER;
 static hash_t *interned_strings = NULL;
 
 struct interned_string {
-    int64_t ref;
     char *str;
+    int64_t ref;
 };
 
 static void init_interned_strings(void)
@@ -53,14 +53,17 @@ char *intern(const char *str)
     pthread_mutex_lock(&intern_lk);
     s = hash_find_readonly(interned_strings, &str);
     if (s == NULL) {
-        s = malloc(sizeof(int64_t) + sizeof(char*)+ strlen(str) + 1);
+        s = malloc(sizeof(struct interned_string));
         if (s == NULL) {
             pthread_mutex_unlock(&intern_lk);
             return NULL;
         }
-        s->str = ((char *)s) + sizeof(struct interned_string);
-        strcpy(s->str, str);
-        s->ref=0;
+        s->str = strdup(str);
+        if (s->str == NULL) {
+            free(s);
+            pthread_mutex_unlock(&intern_lk);
+            return NULL;
+        }
         hash_add(interned_strings, s);
     }
     s->ref++;
@@ -85,7 +88,7 @@ int isinterned(const char *node)
     struct interned_string *s;
 
     pthread_mutex_lock(&intern_lk);
-    s = hash_find(interned_strings, &node);
+    s = hash_find_readonly(interned_strings, &node);
     pthread_mutex_unlock(&intern_lk);
 
     if (s && s->str == node)
@@ -94,10 +97,11 @@ int isinterned(const char *node)
     return 0;
 }
 
-int intern_free(void *ptr, void *unused)
+static int intern_free(void *ptr, void *unused)
 {
-    printf("AZ : freeing ptr %p\n", ptr);
     struct interned_string *obj = ptr;
+    free(obj->str);
+    obj->str = NULL;
     free(obj);
     return 0;
 }
@@ -108,5 +112,6 @@ void cleanup_interned_strings()
     hash_for(interned_strings, intern_free, NULL);
     hash_clear(interned_strings);
     hash_free(interned_strings);
+    interned_strings = NULL;
     pthread_mutex_destroy(&intern_lk);
 }

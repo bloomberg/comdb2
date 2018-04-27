@@ -5397,6 +5397,7 @@ static void create_service_file(const char *lrlname)
                "WantedBy=multi-user.target\n",
             pw->pw_name);
 
+    free(comdb2_path);
     fclose(f);
 #endif
     return;
