@@ -77,6 +77,8 @@ int gbl_max_apply_dequeue = 100000;
 int gbl_master_req_waitms = 200;
 int gbl_fills_waitms = 1000;
 int gbl_warn_queue_latency_threshold = 500;
+int gbl_inmem_repdb = 1;
+int gbl_inmem_repdb_maxlog = 1000;
 
 /* Finish a fill if we are within 1.5 logfiles */
 int gbl_finish_fill_threshold = 60000000;
@@ -110,7 +112,7 @@ extern int set_commit_context(unsigned long long context, uint32_t *generation,
 extern int gbl_berkdb_verify_skip_skipables;
 
 static int __rep_apply __P((DB_ENV *, REP_CONTROL *, DBT *, DB_LSN *,
-	uint32_t *));
+	uint32_t *, int));
 static int __rep_dorecovery __P((DB_ENV *, DB_LSN *, DB_LSN *));
 static int __rep_lsn_cmp __P((const void *, const void *));
 static int __rep_newfile __P((DB_ENV *, REP_CONTROL *, DB_LSN *));
@@ -394,11 +396,18 @@ static DB_LSN max_queued_lsn = {0};
 
 struct queued_log {
 	LINKC_T(struct queued_log) lnk;
-    REP_CONTROL rp;
+    REP_CONTROL *rp;
     u_int32_t gen;
     u_int32_t size;
     u_int32_t enqueued_time;
-    char data[1];
+    char *data;
+};
+
+struct repdb_rec {
+	LINKC_T(struct repdb_rec) lnk;
+    REP_CONTROL *repctl;
+    void *data;
+    int size;
 };
 
 pthread_mutex_t rep_queue_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -408,6 +417,7 @@ static pthread_t apply_thd;
 static int apply_thd_created = 0;
 static int log_queue_inited = 0;
 LISTC_T(struct queued_log) log_queue;
+LISTC_T(struct repdb_rec) repdb_queue;
 
 extern int bdb_the_lock_desired(void); 
 void bdb_relthelock(const char *funcname, int line);
@@ -465,11 +475,11 @@ static void *apply_thread(void *arg)
         while (!IN_ELECTION_TALLY(rep) && (max_dequeue-- > 0) &&
                 (q = listc_rtl(&log_queue))) {
             pthread_cond_broadcast(&release_cond);
-            if (q->rp.rectype == REP_LOG_MORE) {
+            if (q->rp->rectype == REP_LOG_MORE) {
                 queue_log_more_count--;
                 log_more_count = queue_log_more_count;
             }
-            if (q->rp.rectype == REP_LOG_FILL) {
+            if (q->rp->rectype == REP_LOG_FILL) {
                 queue_log_fill_count--;
                 log_fill_count = queue_log_fill_count;
             }
@@ -494,7 +504,7 @@ static void *apply_thread(void *arg)
                 if ((now = time(NULL)) - last_print) {
                     logmsg(LOGMSG_USER, "Long apply queue-latency (%d ms) for "
                             "%d:%d, total long-queue-latencies=%llu\n", waitms,
-                            q->rp.lsn.file, q->rp.lsn.offset, count);
+                            q->rp->lsn.file, q->rp->lsn.offset, count);
                     last_print = now;
                 }
             }
@@ -507,7 +517,7 @@ static void *apply_thread(void *arg)
                 static int last_print = 0;
                 static unsigned long long count = 0;
                 int now;
-                ret = __rep_apply(dbenv, &q->rp, &rec, &ret_lsnp, &q->gen);
+                ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
                 if (ret == 0 || ret == DB_REP_ISPERM) {
                     void bdb_set_seqnum(void *);
                     bdb_set_seqnum(dbenv->app_private);
@@ -520,13 +530,13 @@ static void *apply_thread(void *arg)
                 count++;
                 if (gbl_verbose_fills && ((now = time(NULL)) - last_print)) {
                     logmsg(LOGMSG_USER, "%s line %d applied LSN %d:%d, applied "
-                            "%llu total\n", __func__, __LINE__, q->rp.lsn.file,
-                            q->rp.lsn.offset, count);
+                            "%llu total\n", __func__, __LINE__, q->rp->lsn.file,
+                            q->rp->lsn.offset, count);
                     last_print = now;
                 }
 
                 /* Continue LOG_MORE */
-                if (q->rp.rectype == REP_LOG_MORE && log_more_count == 0) {
+                if (q->rp->rectype == REP_LOG_MORE && log_more_count == 0) {
                     static int lastpr = 0;
                     int now = 0;
                     DB_LSN ready_lsn, lsn;
@@ -562,6 +572,11 @@ static void *apply_thread(void *arg)
 
             if (ret != 0 && ret != DB_REP_ISPERM && ret != DB_REP_NOTPERM)
                 abort();
+            /* If this is null, we've stuck both in inmem_repdb */
+            if (rec.data) {
+                free(q->data);
+                free(q->rp);
+            }
             free(q);
             pthread_mutex_lock(&rep_queue_lock);
         }
@@ -711,10 +726,10 @@ static void *apply_thread(void *arg)
     return NULL;
 }
 
-void init_log_queue(void)
+void init_log_repdb_queue(void)
 {
-    fprintf(stderr, "INITIALIZING LOG QUEUE\n");
     listc_init(&log_queue, offsetof(struct queued_log, lnk));
+    listc_init(&repdb_queue, offsetof(struct repdb_rec, lnk));
 }
 
 /* Enque a log-record to be applied by the log_applier */
@@ -729,12 +744,14 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
     int start, elapsed;
     static unsigned long long count=0;
     struct queued_log *q = (struct queued_log *)malloc(
-            offsetof(struct queued_log, data) + rec->size);
-    memcpy(&q->rp, rp, sizeof(REP_CONTROL));
+            sizeof(struct queued_log));
+    q->rp = malloc(sizeof(REP_CONTROL));
+    memcpy(q->rp, rp, sizeof(REP_CONTROL));
     q->gen = gen;
     q->size = rec->size;
     q->enqueued_time = comdb2_time_epochms();
-    memcpy(&q->data, rec->data, q->size);
+    q->data = malloc(q->size);
+    memcpy(q->data, rec->data, q->size);
     start = comdb2_time_epochms();
     pthread_mutex_lock(&rep_queue_lock);
     if (gbl_verbose_fills && (elapsed = (comdb2_time_epochms() - start)) >
@@ -761,14 +778,14 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
     }
 
     /* Set before enqueing */
-    if (log_compare(&q->rp.lsn, &max_queued_lsn) > 0) {
-        max_queued_lsn = q->rp.lsn;
+    if (log_compare(&q->rp->lsn, &max_queued_lsn) > 0) {
+        max_queued_lsn = q->rp->lsn;
     }
 
-    if (q->rp.rectype == REP_LOG_MORE) {
+    if (q->rp->rectype == REP_LOG_MORE) {
         queue_log_more_count++;
     }
-    if (q->rp.rectype == REP_LOG_FILL) {
+    if (q->rp->rectype == REP_LOG_FILL) {
         queue_log_fill_count++;
     }
     listc_abl(&log_queue, q);
@@ -1469,7 +1486,7 @@ more:           if (type == REP_LOG_MORE) {
             } else {
                 fromline = __LINE__;
                 if ((ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
-                                commit_gen)) != 0)
+                                commit_gen, 0)) != 0)
                     goto errlock;
             }
 		} else {
@@ -1827,7 +1844,7 @@ more:           if (type == REP_LOG_MORE) {
 	case REP_NEWFILE:
 		CLIENT_ONLY(rep, rp);
 		MASTER_CHECK(dbenv, *eidp, rep);
-		ret = __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen);
+		ret = __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, 0);
 		fromline = __LINE__;
 		goto errlock;
 	case REP_NEWMASTER:
@@ -2798,12 +2815,13 @@ static inline int is_commit(int rectype)
  * process and manage incoming log records.
  */
 static int
-__rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen)
+__rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	DB_ENV *dbenv;
 	REP_CONTROL *rp;
 	DBT *rec;
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
+    int decoupled;
 {
 	__dbreg_register_args dbreg_args;
 	__txn_ckp_args *ckp_args = NULL;
@@ -2824,6 +2842,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen)
 	int cmp, do_req, gap, ret, t_ret, rc;
 	int num_retries;
 	int disabled_minwrite_noread = 0;
+    int inmem_repdb = gbl_inmem_repdb;
 	char *eid;
 
 	db_rep = dbenv->rep_handle;
@@ -2979,21 +2998,48 @@ gap_check:		max_lsn_dbtp = NULL;
 			lp->wait_recs = 0;
 			lp->rcvd_recs = 0;
 			ZERO_LSN(lp->max_wait_lsn);
-			if (dbc == NULL &&
-			    (ret = __db_cursor(dbp, NULL, &dbc, 0)) != 0) {
-				abort();
-				goto err;
-			}
 
-			/* The DBTs need to persist through another call. */
-			F_SET(&control_dbt, DB_DBT_REALLOC);
-			F_SET(&rec_dbt, DB_DBT_REALLOC);
-			if ((ret = __db_c_get(dbc,
-				    &control_dbt, &rec_dbt,
-				    DB_RMW | DB_FIRST)) != 0) {
-				abort();
-				goto err;
-			}
+            /* In-memory drop in replacement */
+            if (inmem_repdb) {
+                struct repdb_rec *r = listc_rtl(&repdb_queue);
+
+                if (r == NULL)
+                    abort();
+
+                if (control_dbt.data)
+                    free(control_dbt.data);
+
+                if (rec_dbt.data)
+                    free(rec_dbt.data);
+
+                control_dbt.data = r->repctl;
+                control_dbt.size = sizeof(*r->repctl);
+                rec_dbt.data = r->data;
+                rec_dbt.size = r->size;
+                rp = (REP_CONTROL *)control_dbt.data;
+                if (IS_ZERO_LSN(rp->lsn))
+                    abort();
+                if (log_compare(&lp->ready_lsn, &rp->lsn) != 0)
+                    abort();
+                free(r);
+                ret = 0;
+            } else {
+                if (dbc == NULL &&
+                        (ret = __db_cursor(dbp, NULL, &dbc, 0)) != 0) {
+                    abort();
+                    goto err;
+                }
+
+                /* The DBTs need to persist through another call. */
+                F_SET(&control_dbt, DB_DBT_REALLOC);
+                F_SET(&rec_dbt, DB_DBT_REALLOC);
+                if ((ret = __db_c_get(dbc,
+                                &control_dbt, &rec_dbt,
+                                DB_RMW | DB_FIRST)) != 0) {
+                    abort();
+                    goto err;
+                }
+            }
 
 			rp = (REP_CONTROL *)control_dbt.data;
 			rec = &rec_dbt;
@@ -3036,10 +3082,11 @@ gap_check:		max_lsn_dbtp = NULL;
 				R_UNLOCK(dbenv, &dblp->reginfo);
 				rectype = 0;
 			}
-			if ((ret = __db_c_del(dbc, 0)) != 0) {
-				abort();
-				goto err;
-			}
+
+            if (!inmem_repdb && (ret = __db_c_del(dbc, 0)) != 0) {
+                abort();
+                goto err;
+            }
 
 			/*
 			 * If we just processed a permanent log record, make
@@ -3066,29 +3113,42 @@ gap_check:		max_lsn_dbtp = NULL;
 			 * interested in its contents, just in its LSN.
 			 * Optimize by doing a partial get of the data item.
 			 */
-			memset(&nextrec_dbt, 0, sizeof(nextrec_dbt));
-			F_SET(&nextrec_dbt, DB_DBT_PARTIAL);
-			nextrec_dbt.ulen = nextrec_dbt.dlen = 0;
+            if (inmem_repdb) {
+                struct repdb_rec *r = LISTC_TOP(&repdb_queue);
+                if (!r) {
+                    /* set ret to 0 (repdb case sets ret to db_c_close rc) */
+                    ret = 0;
+                    ZERO_LSN(lp->waiting_lsn);
+                    break;
+                }
+                ret = 0;
+                grp = r->repctl;
+                lp->waiting_lsn = grp->lsn;
+            } else {
+                memset(&nextrec_dbt, 0, sizeof(nextrec_dbt));
+                F_SET(&nextrec_dbt, DB_DBT_PARTIAL);
+                nextrec_dbt.ulen = nextrec_dbt.dlen = 0;
 
-			memset(&lsn_dbt, 0, sizeof(lsn_dbt));
-			ret = __db_c_get(dbc, &lsn_dbt, &nextrec_dbt, DB_NEXT);
-			if (ret != DB_NOTFOUND && ret != 0) {
-				abort();
-				goto err;
-			}
+                memset(&lsn_dbt, 0, sizeof(lsn_dbt));
+                ret = __db_c_get(dbc, &lsn_dbt, &nextrec_dbt, DB_NEXT);
+                if (ret != DB_NOTFOUND && ret != 0) {
+                    abort();
+                    goto err;
+                }
 
-			if (ret == DB_NOTFOUND) {
-				ZERO_LSN(lp->waiting_lsn);
-				/*
-				 * Whether or not the current record is
-				 * simple, there's no next one, and
-				 * therefore we haven't got anything
-				 * else to do right now.  Break out.
-				 */
-				break;
-			}
-			grp = (REP_CONTROL *)lsn_dbt.data;
-			lp->waiting_lsn = grp->lsn;
+                if (ret == DB_NOTFOUND) {
+                    ZERO_LSN(lp->waiting_lsn);
+                    /*
+                     * Whether or not the current record is
+                     * simple, there's no next one, and
+                     * therefore we haven't got anything
+                     * else to do right now.  Break out.
+                     */
+                    break;
+                }
+                grp = (REP_CONTROL *)lsn_dbt.data;
+                lp->waiting_lsn = grp->lsn;
+            }
 
 			/*
 			 * If the current rectype is simple, we're done with it,
@@ -3261,17 +3321,67 @@ gap_check:		max_lsn_dbtp = NULL;
 			lastpr = now;
 		}
 #endif
-		ret = __db_put(dbp, NULL, &key_dbt, rec, 0);
-		if (ret != 0)
-			abort();
+        /* Only add less than the oldest */
+        if (inmem_repdb) {
+            struct repdb_rec *r, *p;
+            if (listc_size(&repdb_queue) < gbl_inmem_repdb_maxlog || 
+                    (repdb_queue.bot != NULL && (log_compare(&rp->lsn, 
+                    &(LISTC_BOT(&repdb_queue)->repctl->lsn)) < 0))) {
+                r = malloc(sizeof(*r));
+
+                /* Borrow memory if we can */
+                if (decoupled) {
+                    r->repctl = rp;
+                    r->data = rec->data;
+                    r->size = rec->size;
+                    rec->data = NULL;
+                } else {
+                    r->repctl = malloc(sizeof(*rp));
+                    memcpy(r->repctl, rp, sizeof(*rp));
+                    r->data = malloc(rec->size);
+                    memcpy(r->data, rec->data, rec->size);
+                    r->size = rec->size;
+                }
+
+                int lcmp;
+                for (p = LISTC_BOT(&repdb_queue) ; (p != NULL) &&
+                        ((lcmp = log_compare(&rp->lsn, &p->repctl->lsn)) < 0) ;
+                        p = p->lnk.prev)
+                    ;
+
+                if (p == NULL) {
+                    listc_atl(&repdb_queue, r);
+                } else if (lcmp == 0) {
+                    /* Already there */
+                    free(r->repctl);
+                    free(r->data);
+                    free(r);
+                }
+                else {
+                    listc_add_after(&repdb_queue, r, p);
+                }
+            }
+
+            /* Limit size of list to tunable */
+            while (listc_size(&repdb_queue) > gbl_inmem_repdb_maxlog) {
+                r = listc_rbl(&repdb_queue);
+                free(r->repctl); free(r->data); free(r);
+            }
+            ret = 0;
+        } else {
+            ret = __db_put(dbp, NULL, &key_dbt, rec, 0);
+            if (ret != 0)
+                abort();
+        }
 
 		rep->stat.st_log_queued++;
 		rep->stat.st_log_queued_total++;
 		if (rep->stat.st_log_queued_max < rep->stat.st_log_queued)
 			rep->stat.st_log_queued_max = rep->stat.st_log_queued;
 
-		if (ret != 0)
+		if (ret != 0) {
 			goto done;
+        }
 
 		if (IS_ZERO_LSN(lp->waiting_lsn) ||
 		    log_compare(&rp->lsn, &lp->waiting_lsn) < 0) {
@@ -3357,8 +3467,9 @@ gap_check:		max_lsn_dbtp = NULL;
         }
 		goto done;
 	}
-	if (ret != 0 || cmp < 0 || (cmp == 0 && IS_SIMPLE(rectype)))
+	if (ret != 0 || cmp < 0 || (cmp == 0 && IS_SIMPLE(rectype))) {
 		goto done;
+    }
 
 
 	/*
@@ -3399,8 +3510,9 @@ gap_check:		max_lsn_dbtp = NULL;
 			(u_int8_t *) & ckp_args));
 #endif
 
-		if ((ret = __txn_ckp_read(dbenv, rec->data, &ckp_args)) != 0)
+		if ((ret = __txn_ckp_read(dbenv, rec->data, &ckp_args)) != 0) {
 			goto err;
+        }
 
 		ret =
 		    bdb_checkpoint_list_push(rp->lsn, ckp_args->ckp_lsn,
@@ -3461,15 +3573,16 @@ gap_check:		max_lsn_dbtp = NULL;
 				}
 
 				if (dbenv->num_recovery_processor_threads &&
-				    dbenv->num_recovery_worker_threads)
+				    dbenv->num_recovery_worker_threads) {
 					ret =
 					    __rep_process_txn_concurrent(dbenv,
 					    rp, rec, &ltrans, rp->lsn, max_lsn,
 					    commit_gen, dbenv->prev_commit_lsn);
-				else
+                } else {
 					ret =
 					    __rep_process_txn(dbenv, rp, rec,
 					    &ltrans, max_lsn, commit_gen);
+                }
 
 				/* Always release locks in order.  This is probably too conservative. */
 				if (0 == ret)
@@ -3521,6 +3634,15 @@ gap_check:		max_lsn_dbtp = NULL;
 	default:
 		goto err;
 	}
+
+    if (inmem_repdb) {
+        if (control_dbt.data) 
+            free(control_dbt.data);
+
+        if (rec_dbt.data)
+            free(rec_dbt.data);
+        control_dbt.data = rec_dbt.data = NULL;
+    }
 
 	/* Check if we need to go back into the table. */
 	if (ret == 0) {
@@ -3580,12 +3702,13 @@ err:	if (dbc != NULL && (t_ret = __db_c_close(dbc)) != 0 && ret == 0) {
 int gbl_time_rep_apply = 0;
 
 static int
-__rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen)
+__rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	DB_ENV *dbenv;
 	REP_CONTROL *rp;
 	DBT *rec;
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
+    int decoupled;
 {
     static unsigned long long rep_apply_count = 0;
     static unsigned long long rep_apply_usc = 0;
@@ -3595,7 +3718,7 @@ __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen)
     bbtime_t start = {0}, end = {0};
 
     getbbtime(&start);
-    rc = __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen);
+    rc = __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled);
     getbbtime(&end);
     usecs = diff_bbtime(&end, &start);
     rep_apply_count++;
@@ -6887,6 +7010,16 @@ __truncate_repdb(dbenv)
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
+
+    if (gbl_inmem_repdb) {
+        struct repdb_rec *r;
+        while (r = listc_rtl(&repdb_queue)) {
+            free(r->repctl);
+            free(r->data);
+            free(r);
+        }
+        return 0;
+    }
 
 	if (!F_ISSET(rep, REP_ISCLIENT) || !db_rep->rep_db)
 		return DB_NOTFOUND;

@@ -1355,6 +1355,18 @@ REGISTER_TUNABLE("net_writer_poll_ms", "Poll time for net writer thread.  "
                  "(Default: 1000)", TUNABLE_INTEGER, 
                  &gbl_net_writer_thread_poll_ms, EXPERIMENTAL | INTERNAL, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("inmem_repdb", "Repdb becomes an in-memory list.  "
+                 "(Default: on)", TUNABLE_BOOLEAN, &gbl_inmem_repdb, 
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("inmem_repdb_maxlog", "Maximum records for in-memory replist.  "
+                 "(Default: 1000)", TUNABLE_INTEGER, &gbl_inmem_repdb_maxlog,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("durable_set_trace", "Trace setting durable lsn.  "
+                 "(Default: off)", TUNABLE_BOOLEAN, &gbl_durable_set_trace, 
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("set_seqnum_trace", "Trace setting setting seqnum.  "
+                 "(Default: off)", TUNABLE_BOOLEAN, &gbl_set_seqnum_trace,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 
 #endif /* _DB_TUNABLES_H */

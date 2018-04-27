@@ -463,8 +463,8 @@ static inline void set_coherent_state(bdb_state_type *bdb_state, const char
     if (bdb_state->coherent_state[nodeix(hostname)] != state) {
         bdb_state->coherent_state[nodeix(hostname)] = state;
         if (gbl_set_coherent_state_trace) {
-            logmsg(LOGMSG_USER, "%s line %d setting coherent state to %s\n",
-                    func, line, coherent_state_to_str(state));
+            logmsg(LOGMSG_USER, "%s line %d setting %s coherent state to %s\n",
+                    func, line, hostname, coherent_state_to_str(state));
 
         }
     }
@@ -2330,6 +2330,7 @@ int verify_master_leases(bdb_state_type *bdb_state, const char *func,
 }
 
 int gbl_catchup_window_trace = 0;
+extern int gbl_set_seqnum_trace;
 
 static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                                      seqnum_type *seqnum, char *host,
@@ -2476,6 +2477,11 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     memcpy(&(bdb_state->seqnum_info->seqnums[nodeix(host)]), seqnum,
            sizeof(seqnum_type));
 
+    if (gbl_set_seqnum_trace) {
+        logmsg(LOGMSG_USER, "%s line %d set %s seqnum to %d:%d\n", __func__,
+                __LINE__, host, seqnum->lsn.file, seqnum->lsn.offset);
+    }
+
     if (change_coherency && track_times) {
         if (bdb_state->seqnum_info->time_10seconds[nodeix(host)] == NULL) {
             if (bdb_state->seqnum_info->waitlist[nodeix(host)] == NULL) {
@@ -2601,16 +2607,25 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
 
 /* returns -999 on timeout */
 static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
-                                                    seqnum_type *seqnum,
+                                                    seqnum_type *master_seqnum,
                                                     char *host)
 {
+    seqnum_type *host_seqnum;
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+    host_seqnum = &bdb_state->seqnum_info->seqnums[nodeix(host)];
 
     /*fprintf(stderr, "calling bdb_seqnum_compare\n");*/
-    if (bdb_seqnum_compare(bdb_state,
-                           &(bdb_state->seqnum_info->seqnums[nodeix(host)]),
-                           seqnum) >= 0) {
+    if (bdb_seqnum_compare(bdb_state, host_seqnum, master_seqnum) >= 0) {
         /*fprintf(stderr, "compared >=, returning\n");*/
+        if (gbl_set_coherent_state_trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning COHERENT for %s, "
+                    "master_seqnum=%d:%d generation %d ptr %p, incoming "
+                    "seqnum=%d:%d generation %d\n", __func__, __LINE__, host,
+                    master_seqnum->lsn.file, master_seqnum->lsn.offset,
+                    master_seqnum->generation, master_seqnum,
+                    host_seqnum->lsn.file, host_seqnum->lsn.offset,
+                    host_seqnum->generation);
+        }
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         return 0;
     }
@@ -3640,6 +3655,8 @@ int gbl_last_locked_seqnum = 1;
 void bdb_set_seqnum(void *in_bdb_state)
 {
     bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    static int lastpr = 0;
+    int now;
     DB_LSN lastlsn;
     uint32_t mygen;
 
@@ -3647,16 +3664,27 @@ void bdb_set_seqnum(void *in_bdb_state)
 
     /* Always only use get_last_locked.  Leave the other in until we are sure
      * that this code works. */
-    if (gbl_last_locked_seqnum)
+    if (gbl_last_locked_seqnum && 
+            bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
         bdb_state->dbenv->get_last_locked(bdb_state->dbenv, &lastlsn);
     else
         __log_txn_lsn(bdb_state->dbenv, &lastlsn, NULL, NULL);
 
-    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-    bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
-        .lsn = lastlsn;
-    bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
-        .generation = mygen;
+    if (lastlsn.file > 0) {
+        Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+        bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
+            .lsn = lastlsn;
+        bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
+            .generation = mygen;
+
+        if (gbl_set_seqnum_trace && (now = time(NULL)) - lastpr) {
+            logmsg(LOGMSG_USER, "%s line %d set %s seqnum to %d:%d gen %d\n", 
+                    __func__, __LINE__, bdb_state->repinfo->myhost, lastlsn.file,
+                    lastlsn.offset, mygen);
+            lastpr = now;
+        }
+    }
+
     Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 }
 
