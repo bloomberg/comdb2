@@ -78,7 +78,7 @@ int gbl_master_req_waitms = 200;
 int gbl_fills_waitms = 1000;
 int gbl_warn_queue_latency_threshold = 500;
 int gbl_inmem_repdb = 1;
-int gbl_inmem_repdb_maxlog = 1000;
+int gbl_inmem_repdb_maxlog = 10000;
 
 /* Finish a fill if we are within 1.5 logfiles */
 int gbl_finish_fill_threshold = 60000000;

@@ -1359,7 +1359,7 @@ REGISTER_TUNABLE("inmem_repdb", "Repdb becomes an in-memory list.  "
                  "(Default: on)", TUNABLE_BOOLEAN, &gbl_inmem_repdb, 
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("inmem_repdb_maxlog", "Maximum records for in-memory replist.  "
-                 "(Default: 1000)", TUNABLE_INTEGER, &gbl_inmem_repdb_maxlog,
+                 "(Default: 10000)", TUNABLE_INTEGER, &gbl_inmem_repdb_maxlog,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("durable_set_trace", "Trace setting durable lsn.  "
                  "(Default: off)", TUNABLE_BOOLEAN, &gbl_durable_set_trace, 
