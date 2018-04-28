@@ -19,7 +19,7 @@ commit_delay_trace on
 durable_set_trace on
 set_coherent_state_trace on
 #set_seqnum_trace on
-setattr COMMITDELAYMAX 128
+setattr COMMITDELAYMAX 1025
 setattr TOOMANYSKIPPED 128
 
 # Enable cache
