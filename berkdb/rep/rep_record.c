@@ -745,6 +745,12 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
     static unsigned long long count=0;
     struct queued_log *q = (struct queued_log *)malloc(
             sizeof(struct queued_log));
+	REP *rep;
+	DB_REP *db_rep;
+
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+
     q->rp = malloc(sizeof(REP_CONTROL));
     memcpy(q->rp, rp, sizeof(REP_CONTROL));
     q->gen = gen;
@@ -765,6 +771,17 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
             gbl_max_logput_queue) {
         static int lastpr = 0;
         struct timespec ts;
+
+        if (IN_ELECTION_TALLY(rep)) {
+            pthread_mutex_unlock(&rep_queue_lock);
+            if (gbl_verbose_fills) {
+                logmsg(LOGMSG_USER, "%s line %d: dropping logput on election\n",
+                        __func__, __LINE__);
+            }
+            free(q->rp); free(q->data); free(q);
+            return 0;
+        }
+
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += 1;
         count++;
