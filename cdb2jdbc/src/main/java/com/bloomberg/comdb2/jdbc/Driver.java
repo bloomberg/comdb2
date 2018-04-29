@@ -174,7 +174,12 @@ public class Driver implements java.sql.Driver {
                 attributes = url.substring(indx + 1);
         }
 
-        ret = new Comdb2Connection(dbStr, clusterStr);
+        /* Don't look up. Just set attributes.
+           We will look up the database before returning. */
+        ret = new Comdb2Connection();
+        ret.setDatabase(dbStr);
+        ret.setCluster(clusterStr);
+
         /* add user supplied hosts, if any */
         ret.addHosts(hosts);
         ret.addPorts(ports);

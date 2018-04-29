@@ -151,7 +151,8 @@ public class Comdb2Statement implements Statement {
             !lowerCase.startsWith("alter") &&
             !lowerCase.startsWith("drop") &&
             !lowerCase.startsWith("truncate"))
-            throw Comdb2Connection.createSQLException(hndl.errorString(),
+            throw Comdb2Connection.createSQLException(
+                    "The SQL statement can only be an INSERT, UPDATE, DELETE or DDL.",
                     Constants.Errors.CDB2ERR_PREPARE_ERROR, sql, hndl.getLastThrowable());
 
         ResultSet rs = executeQuery(sql);

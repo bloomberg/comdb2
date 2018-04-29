@@ -31,7 +31,7 @@ import com.bloomberg.comdb2.jdbc.Cdb2Query.Cdb2SqlQuery;
  */
 public class BBSysUtils {
     private static Logger logger = Logger.getLogger(BBSysUtils.class.getName());
-    static private boolean debug = false;
+    static boolean debug = false;
 
     /**
      * Comdb2db configuration files.
@@ -566,12 +566,21 @@ public class BBSysUtils {
         }
 
         if (hndl.isDirectCpu) {
+            boolean atLeastOneValid = false;
             for (int i = 0; i != hndl.myDbPorts.size(); ++i) {
-                if (hndl.myDbPorts.get(i) == -1) {
-                    hndl.myDbPorts.set(i, getPortMux(hndl.myDbHosts.get(i),
-                                hndl.portMuxPort, "comdb2", "replication", hndl.myDbName));
+                if (hndl.myDbPorts.get(i) != -1)
+                    atLeastOneValid = true;
+                else {
+                    int dbport = getPortMux(hndl.myDbHosts.get(i),
+                            hndl.portMuxPort, "comdb2", "replication", hndl.myDbName);
+                    if (dbport != -1) {
+                        atLeastOneValid = true;
+                        hndl.myDbPorts.set(i, dbport);
+                    }
                 }
             }
+            if (!atLeastOneValid)
+                throw new NoDbHostFoundException(hndl.myDbName);
             return;
         }
 
