@@ -549,8 +549,15 @@ static void *apply_thread(void *arg)
                     lsn = lp->lsn;
 
                     /* IMPORTANT: backup if beyond the end of the logfile */
-                    if (lsn.offset >= log_max)
+                    if (lsn.offset >= log_max) {
                         lsn.offset -= lp->len;
+                        if (gbl_verbose_fills) {
+                            logmsg(LOGMSG_USER, "%s line %d changed EOF lsn "
+                                    "from %d:%d to %d:%d\n", __func__, __LINE__,
+                                    lsn.file, lsn.offset + lp->len, lsn.file,
+                                    lsn.offset);
+                        }
+                    }
 
                     R_UNLOCK(dbenv, &dblp->reginfo);
 
@@ -605,8 +612,14 @@ static void *apply_thread(void *arg)
         my_lsn = lp->lsn;
 
         /* IMPORTANT: backup if beyond the end of the logfile */
-        if (my_lsn.offset >= log_max)
+        if (my_lsn.offset >= log_max) {
             my_lsn.offset -= lp->len;
+            if (gbl_verbose_fills) {
+                logmsg(LOGMSG_USER, "%s line %d changed EOF lsn from %d:%d to "
+                        "%d:%d\n", __func__, __LINE__, my_lsn.file, 
+                        my_lsn.offset + lp->len, my_lsn.file, my_lsn.offset);
+            }
+        }
 
         /* Delay more if we are falling further behind */
         bytes_behind = subtract_lsn(dbenv->app_private, &master_lsn, &my_lsn);
