@@ -440,10 +440,11 @@ static void *apply_thread(void *arg)
 {
     int ret, rc, log_more_count, log_fill_count, now;
     int i_am_replicant;
+    u_int32_t log_max;
     uint32_t more_behind_count = 0;
 	LOG *lp;
 	DB_LOG *dblp;
-    DB_LSN master_lsn, my_lsn, first_repdb_lsn, max_queued, comp_lsn;
+    DB_LSN master_lsn, my_lsn, first_repdb_lsn;
     DB_ENV *dbenv = (DB_ENV *)arg;
     struct queued_log *q, obj;
     struct timespec ts;
@@ -467,6 +468,7 @@ static void *apply_thread(void *arg)
             gbl_max_apply_dequeue : 100000;
         DBT rec = {0};
         DB_LSN ret_lsnp;
+        dbenv->get_lg_max(dbenv, &log_max);
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_nsec += (pollms * 1000000);
         ts.tv_sec += (ts.tv_nsec / 1000000000);
@@ -545,7 +547,14 @@ static void *apply_thread(void *arg)
                     MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
                     R_LOCK(dbenv, &dblp->reginfo);
                     lsn = lp->lsn;
+
+                    /* IMPORTANT: backup if beyond the end of the logfile */
+                    if (lsn.offset >= log_max)
+                        lsn.offset -= lp->len;
+
                     R_UNLOCK(dbenv, &dblp->reginfo);
+
+
                     int flags = (DB_REP_NODROP|DB_REP_NOBUFFER);
                     if (master_eid != db_eid_invalid && 
                             (rc = __rep_send_message(dbenv, master_eid, 
@@ -585,7 +594,6 @@ static void *apply_thread(void *arg)
             continue;
 
         bdb_get_the_readlock("apply_thread", __func__, __LINE__);
-        max_queued = max_queued_lsn;
         log_more_count = queue_log_more_count;
         log_fill_count = queue_log_fill_count;
         pthread_mutex_unlock(&rep_queue_lock);
@@ -594,7 +602,11 @@ static void *apply_thread(void *arg)
         MUTEX_LOCK(dbenv, db_rep->db_mutexp);
         master_eid = db_rep->region->master_id;
         i_am_replicant = !F_ISSET(rep, REP_F_MASTER);
-        my_lsn = lp->ready_lsn;
+        my_lsn = lp->lsn;
+
+        /* IMPORTANT: backup if beyond the end of the logfile */
+        if (my_lsn.offset >= log_max)
+            my_lsn.offset -= lp->len;
 
         /* Delay more if we are falling further behind */
         bytes_behind = subtract_lsn(dbenv->app_private, &master_lsn, &my_lsn);
@@ -631,10 +643,6 @@ static void *apply_thread(void *arg)
         
         last_behind = bytes_behind;
 
-        /* If there's a larger lsn in the queue, use that */
-        if (log_compare(&my_lsn, &max_queued) < 0) {
-            my_lsn = max_queued;
-        }
         first_repdb_lsn = lp->waiting_lsn;
         MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 
