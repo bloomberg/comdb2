@@ -51,6 +51,6 @@ df $TSTDBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0
 ${COMDB2_EXE} testdb${i} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
 grep "Created database" out || failexit "expected 'Created database'"
 
-#rm -rf $TSTDBDIR
+rm -rf $TSTDBDIR
 
 exit 0

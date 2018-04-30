@@ -2366,8 +2366,8 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     logmsg(LOGMSG_INFO, "database %s starting\n", dbenv->envname);
 
     if (!dbenv->basedir) {
-            logmsg(LOGMSG_FATAL, "DB directory is not set in lrl\n");
-            return NULL; 
+        logmsg(LOGMSG_FATAL, "DB directory is not set in lrl\n");
+        return NULL;
     } else if (gbl_create_mode) {
         /* make sure the database directory exists! */
         rc = mkdir(dbenv->basedir, 0774);
