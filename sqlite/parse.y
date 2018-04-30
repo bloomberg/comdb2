@@ -227,6 +227,7 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
 %left CONCAT.
 %left COLLATE.
 %right BITNOT.
+%nonassoc ON.
 
 // An IDENTIFIER can be a generic identifier, or one of several
 // keywords.  Any non-standard keyword can also be an identifier.
@@ -239,7 +240,8 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
 //
 %fallback ID
   ABORT ACTION AFTER ANALYZE ASC ATTACH BEFORE BEGIN BY CASCADE CAST COLUMNKW
-  CONFLICT DATABASE DEFERRED DESC DETACH EACH END EXCLUSIVE EXPLAIN FAIL
+  CONFLICT DATABASE DEFERRED DESC DETACH DO
+  EACH END EXCLUSIVE EXPLAIN FAIL
   IGNORE IMMEDIATE INITIALLY INSTEAD LIKE_KW MATCH NO PLAN
   QUERY OF OFFSET PRAGMA RAISE RECURSIVE RELEASE REPLACE RESTRICT ROW
   ROLLBACK SAVEPOINT TEMP TRIGGER VACUUM VIEW VIRTUAL WITH WITHOUT
@@ -723,10 +725,27 @@ joinop(X) ::= JOIN_KW(A) nm(B) JOIN.
 joinop(X) ::= JOIN_KW(A) nm(B) nm(C) JOIN.
                   {X = sqlite3JoinType(pParse,&A,&B,&C);/*X-overwrites-A*/}
 
+// There is a parsing abiguity in an upsert statement that uses a
+// SELECT on the RHS of a the INSERT:
+//
+//      INSERT INTO tab SELECT * FROM aaa JOIN bbb ON CONFLICT ...
+//                                        here ----^^
+//
+// When the ON token is encountered, the parser does not know if it is
+// the beginning of an ON CONFLICT clause, or the beginning of an ON
+// clause associated with the JOIN.  The conflict is resolved in favor
+// of the JOIN.  If an ON CONFLICT clause is intended, insert a dummy
+// WHERE clause in between, like this:
+//
+//      INSERT INTO tab SELECT * FROM aaa JOIN bbb WHERE true ON CONFLICT ...
+//
+// The [AND] and [OR] precedence marks in the rules for on_opt cause the
+// ON in this context to always be interpreted as belonging to the JOIN.
+//
 %type on_opt {Expr*}
 %destructor on_opt {sqlite3ExprDelete(pParse->db, $$);}
-on_opt(N) ::= ON expr(E).   {N = E.pExpr;}
-on_opt(N) ::= .             {N = 0;}
+on_opt(N) ::= ON expr(E).  {N = E.pExpr;}
+on_opt(N) ::= .     [OR]   {N = 0;}
 
 // Note that this block abuses the Token type just a little. If there is
 // no "INDEXED BY" clause, the returned token is empty (z==0 && n==0). If
@@ -846,7 +865,7 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
   sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
-  sqlite3Update(pParse,X,Y,W.pExpr,R,O,L.pLimit,L.pOffset);
+  sqlite3Update(pParse,X,Y,W.pExpr,R,O,L.pLimit,L.pOffset,0);
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
@@ -856,7 +875,7 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
   sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
-  sqlite3Update(pParse,X,Y,W.pExpr,R,0,0,0);
+  sqlite3Update(pParse,X,Y,W.pExpr,R,0,0,0,0);
 }
 %endif
 
@@ -880,23 +899,38 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 
 ////////////////////////// The INSERT command /////////////////////////////////
 //
-cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) select(S). {
+cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) select(S)
+        upsert(U). {
   sqlite3WithPush(pParse, W, 1);
   sqlite3FingerprintInsert(pParse->db, X, S, F, W);
-  sqlite3Insert(pParse, X, S, F, R);
+  sqlite3Insert(pParse, X, S, F, R, U);
 }
 cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) DEFAULT VALUES.
 {
   sqlite3WithPush(pParse, W, 1);
   sqlite3FingerprintInsert(pParse->db, X, NULL, F, W);
-  sqlite3Insert(pParse, X, NULL, F, R);
+  sqlite3Insert(pParse, X, NULL, F, R, 0);
 }
+
+%type upsert {Upsert*}
+
+// Because upsert only occurs at the tip end of the INSERT rule for cmd,
+// there is never a case where the value of the upsert pointer will not
+// be destroyed by the cmd action.  So comment-out the destructor to
+// avoid unreachable code.
+//%destructor upsert {sqlite3UpsertDelete(pParse->db,$$);}
+upsert(A) ::= . { A = 0; }
+upsert(A) ::= ON CONFLICT LP sortlist(T) RP where_opt(TW)
+              DO UPDATE SET setlist(Z) where_opt(W).
+              { A = sqlite3UpsertNew(pParse->db,T,TW.pExpr,Z,W.pExpr);}
+upsert(A) ::= ON CONFLICT LP sortlist(T) RP where_opt(TW) DO NOTHING.
+              { A = sqlite3UpsertNew(pParse->db,T,TW.pExpr,0,0); }
+upsert(A) ::= ON CONFLICT DO NOTHING.
+              { A = sqlite3UpsertNew(pParse->db,0,0,0,0); }
 
 %type insert_cmd {int}
 insert_cmd(A) ::= INSERT orconf(R).   {A = R;}
-%ifdef COMDB2_UNSUPPORTED
-insert_cmd(A) ::= REPLACE.            {A = OE_Replace;} 
-%endif
+insert_cmd(A) ::= REPLACE.            {A = OE_Replace;}
 
 %type idlist_opt {IdList*}
 %destructor idlist_opt {sqlite3IdListDelete(pParse->db, $$);}
