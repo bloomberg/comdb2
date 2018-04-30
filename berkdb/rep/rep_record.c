@@ -548,19 +548,9 @@ static void *apply_thread(void *arg)
                     R_LOCK(dbenv, &dblp->reginfo);
                     lsn = lp->lsn;
 
-                    /* IMPORTANT: backup if beyond the end of the logfile */
-                    if (lsn.offset >= log_max) {
-                        lsn.offset -= lp->len;
-                        if (gbl_verbose_fills) {
-                            logmsg(LOGMSG_USER, "%s line %d changed EOF lsn "
-                                    "from %d:%d to %d:%d\n", __func__, __LINE__,
-                                    lsn.file, lsn.offset + lp->len, lsn.file,
-                                    lsn.offset);
-                        }
-                    }
-
+                    /* IMPORTANT: always overlap the last log record */
+                    lsn.offset -= lp->len;
                     R_UNLOCK(dbenv, &dblp->reginfo);
-
 
                     int flags = (DB_REP_NODROP|DB_REP_NOBUFFER);
                     if (master_eid != db_eid_invalid && 
@@ -612,14 +602,7 @@ static void *apply_thread(void *arg)
         my_lsn = lp->lsn;
 
         /* IMPORTANT: backup if beyond the end of the logfile */
-        if (my_lsn.offset >= log_max) {
-            my_lsn.offset -= lp->len;
-            if (gbl_verbose_fills) {
-                logmsg(LOGMSG_USER, "%s line %d changed EOF lsn from %d:%d to "
-                        "%d:%d\n", __func__, __LINE__, my_lsn.file, 
-                        my_lsn.offset + lp->len, my_lsn.file, my_lsn.offset);
-            }
-        }
+        my_lsn.offset -= lp->len;
 
         /* Delay more if we are falling further behind */
         bytes_behind = subtract_lsn(dbenv->app_private, &master_lsn, &my_lsn);
