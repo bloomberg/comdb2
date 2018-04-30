@@ -296,12 +296,12 @@ cd $DBDIR >/dev/null
 if [[ -z "$CLUSTER" ]]; then
 
     if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-        echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS -pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
+        echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
         exit 0
     fi
 
     echo "!$TESTCASE: starting single node"
-    ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS -pidfile ${TMPDIR}/$DBNAME.pid &> $TESTDIR/logs/${DBNAME}.db &
+    ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/$DBNAME.pid &> $TESTDIR/logs/${DBNAME}.db &
     dbpid=$!
 
     set +e
@@ -328,14 +328,14 @@ else
     done
 
     echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
-    CMD="cd ${TESTDIR}; source replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | tee $TESTDIR/${DBNAME}.db"
+    CMD="cd ${TESTDIR}; source replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | tee $TESTDIR/${DBNAME}.db"
     echo "!$TESTCASE: starting"
     for node in $CLUSTER; do
         if [ $node == $HOSTNAME ] ; then # dont ssh to ourself -- just start db locally
             if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-                echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} -pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
+                echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
             else
-                ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &> $TESTDIR/logs/${DBNAME}.${node}.db &
+                ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid &> $TESTDIR/logs/${DBNAME}.${node}.db &
             fi
             continue
         fi

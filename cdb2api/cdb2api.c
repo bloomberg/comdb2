@@ -2555,8 +2555,8 @@ retry_next_record:
             hndl->num_set_commands_sent = hndl->num_set_commands;
         }
         for (ii = 0; ii < hndl->lastresponse->n_features; ii++) {
-            if (hndl->in_trans && CDB2_SERVER_FEATURES__SKIP_ROWS &&
-                hndl->lastresponse->features[ii])
+            if (hndl->in_trans && (CDB2_SERVER_FEATURES__SKIP_ROWS ==
+                                   hndl->lastresponse->features[ii]))
                 hndl->skip_feature = 1;
         }
 

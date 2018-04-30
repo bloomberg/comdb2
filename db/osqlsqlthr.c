@@ -910,15 +910,6 @@ err:
                    __FILE__, __LINE__, rc);
    }
 
-   if (clnt->ddl_tables) {
-       hash_free(clnt->ddl_tables);
-   }
-   if (clnt->dml_tables) {
-       hash_free(clnt->dml_tables);
-   }
-   clnt->ddl_tables = NULL;
-   clnt->dml_tables = NULL;
-
    return rcout;
 }
 
@@ -974,15 +965,6 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
         clnt->osql.tablename = NULL;
         clnt->osql.tablenamelen = 0;
     }
-
-    if (clnt->ddl_tables) {
-        hash_free(clnt->ddl_tables);
-    }
-    if (clnt->dml_tables) {
-        hash_free(clnt->dml_tables);
-    }
-    clnt->ddl_tables = NULL;
-    clnt->dml_tables = NULL;
 
     return rcout;
 }

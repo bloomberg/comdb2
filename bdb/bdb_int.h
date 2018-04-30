@@ -1844,6 +1844,7 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
                                int *bdberr);
 void wait_for_sc_to_stop(void);
 void allow_sc_to_run(void);
+int is_table_in_schema_change(const char *tbname, tran_type *tran);
 
 void bdb_temp_table_init(bdb_state_type *bdb_state);
 

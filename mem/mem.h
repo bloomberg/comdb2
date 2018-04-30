@@ -344,6 +344,13 @@ void *comdb2_calloc(comdb2ma ma, size_t n, size_t size);
 void *comdb2_realloc(comdb2ma ma, void *ptr, size_t n);
 
 /*
+** Resize a memory block.
+** The function behaves as comdb2_realloc(), but it does not memcpy
+** if it must reposition the memory block.
+*/
+void *comdb2_resize(comdb2ma cm, void *ptr, size_t n);
+
+/*
 ** Comdb2ma free.
 **
 ** comdb2_free doesn't need a comdb2ma parameter. The allocator address is kept
@@ -486,6 +493,11 @@ void *comdb2_calloc_static(int indx, size_t n, size_t size);
 ** n    - size
 */
 void *comdb2_realloc_static(int indx, void *ptr, size_t n);
+
+/*
+** resize in a static allocator.
+*/
+void *comdb2_resize_static(int indx, void *ptr, size_t n);
 
 /* Just an alias. */
 #define comdb2_free_static comdb2_free
@@ -641,4 +653,3 @@ void comdb2_bfree_nl(comdb2bma ma, void *ptr);
 
 #endif /* COMDB2_OMIT_BMEM */
 #endif /* INCLUDED_MEM_H */
-

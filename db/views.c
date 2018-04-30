@@ -281,19 +281,25 @@ int timepart_add_view(void *tran, timepart_views_t *views,
 
     view->roll_time = tm;
 
-    print_dbg_verbose(view->name, &view->source_id, "III", "Adding phase 1 at %d\n", 
-                      view->roll_time - preemptive_rolltime);
+    if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_NO_ROLLOUT)) {
+        print_dbg_verbose(view->name, &view->source_id, "III",
+                          "Adding phase 1 at %d\n",
+                          view->roll_time - preemptive_rolltime);
 
-    rc = (cron_add_event(timepart_sched, NULL,
-                         view->roll_time - preemptive_rolltime,
-                         _view_cron_phase1, tmp_str = strdup(view->name), NULL,
-                         NULL, &view->source_id, err) == NULL)
-             ? err->errval
-             : VIEW_NOERR;
-    if (rc != VIEW_NOERR) {
-        if (tmp_str)
-            free(tmp_str);
-        goto done;
+        rc = (cron_add_event(timepart_sched, NULL,
+                             view->roll_time - preemptive_rolltime,
+                             _view_cron_phase1, tmp_str = strdup(view->name),
+                             NULL, NULL, &view->source_id, err) == NULL)
+                 ? err->errval
+                 : VIEW_NOERR;
+        if (rc != VIEW_NOERR) {
+            if (tmp_str)
+                free(tmp_str);
+            goto done;
+        }
+    } else {
+        logmsg(LOGMSG_WARN,
+               "Time partitions rollouts are stopped; no rollouts!\n");
     }
 
     /* adding the view to the list */
@@ -908,6 +914,7 @@ static int _convert_time(char *sql)
 
     struct sqlclntstate client;
     reset_clnt(&client, NULL, 1);
+    strncpy(client.tzname, "UTC", sizeof(client.tzname));
     sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     client.dbtran.mode = TRANLEVEL_SOSQL;
     client.sql = sql;
@@ -1666,6 +1673,7 @@ static char *_describe_row(const char *tblname, const char *prefix,
     char *cols_str;
     char *tmp_str;
     int i;
+    char *in_default;
 
     assert(op_type == VIEWS_TRIGGER_QUERY || op_type == VIEWS_TRIGGER_INSERT ||
            op_type == VIEWS_TRIGGER_UPDATE);
@@ -1680,15 +1688,32 @@ static char *_describe_row(const char *tblname, const char *prefix,
 
     cols_str = sqlite3_mprintf("%s", (prefix) ? prefix : "");
     for (i = 0; i < gdb->schema->nmembers; i++) {
-        tmp_str = sqlite3_mprintf(
-            "%s%s\"%s\"%s%s%s%s", cols_str,
-            (op_type == VIEWS_TRIGGER_INSERT) ? "new." : "",
-            gdb->schema->member[i].name,
-            (op_type == VIEWS_TRIGGER_UPDATE) ? "=new.\"" : "",
-            (op_type == VIEWS_TRIGGER_UPDATE) ? gdb->schema->member[i].name
-                                              : "",
-            (op_type == VIEWS_TRIGGER_UPDATE) ? "\"" : "",
-            (i < (gdb->schema->nmembers - 1)) ? ", " : "");
+        /* take care of default fields */
+        if (!(op_type == VIEWS_TRIGGER_INSERT &&
+              gdb->schema->member[i].in_default))
+
+        {
+            tmp_str = sqlite3_mprintf(
+                "%s%s\"%s\"%s%s%s%s", cols_str,
+                (op_type == VIEWS_TRIGGER_INSERT) ? "new." : "",
+                gdb->schema->member[i].name,
+                (op_type == VIEWS_TRIGGER_UPDATE) ? "=new.\"" : "",
+                (op_type == VIEWS_TRIGGER_UPDATE) ? gdb->schema->member[i].name
+                                                  : "",
+                (op_type == VIEWS_TRIGGER_UPDATE) ? "\"" : "",
+                (i < (gdb->schema->nmembers - 1)) ? ", " : "");
+        } else {
+            in_default = sql_field_default_trans(&gdb->schema->member[i], 0);
+            if (!in_default)
+                goto malloc;
+
+            tmp_str =
+                sqlite3_mprintf("%scoalesce(new.\"%s\", %s)%s", cols_str,
+                                gdb->schema->member[i].name, in_default,
+                                (i < (gdb->schema->nmembers - 1)) ? ", " : "");
+            sqlite3_free(in_default);
+        }
+
         sqlite3_free(cols_str);
         if (!tmp_str) {
             goto malloc;
@@ -2056,6 +2081,14 @@ int views_cron_restart(timepart_views_t *views)
         /* queue all the events required for this */
         for(i=0;i<views->nviews; i++)
         {
+
+            /* are the rollouts stopped? */
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_NO_ROLLOUT)) {
+                logmsg(LOGMSG_WARN, "Time partitions rollouts are stopped; "
+                                    "will not start rollouts!\n");
+                goto done;
+            }
+
             view = views->views[i];
 
             rc = _view_restart(view, &xerr);
@@ -2856,6 +2889,25 @@ void timepart_events_column(sqlite3_context *ctx, int iRowid, int iCol)
     case VIEWS_EVENT_ARG3:
         sqlite3_result_null(ctx);
         break;
+    }
+}
+
+void check_columns_null_and_dbstore(const char *name, struct dbtable *tbl)
+{
+    /* if a column has both a default and a null value, NULL cannot be
+    explicitely
+    be inserted as value */
+
+    struct schema *sc = tbl->schema;
+    int i;
+
+    for (i = 0; i < sc->nmembers; i++) {
+        if (sc->member[i].in_default && !(sc->member[i].flags & NO_NULL)) {
+            logmsg(LOGMSG_WARN,
+                   "WARNING: Partition %s schema field %s that "
+                   "has dbstore but cannot be set NULL\n",
+                   name, sc->member[i].name);
+        }
     }
 }
 

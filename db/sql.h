@@ -460,10 +460,9 @@ struct sqlclntstate {
     char *saved_errstr;  /* if had_errors, save the error string */
     int saved_rc;        /* if had_errors, save the return code */
 
-    int iswrite;    /* track each query if it is a read or a write */
     int isselect;   /* track if the query is a select query.*/
     int isUnlocked;
-    int writeTransaction; /* different from iswrite above */
+    int writeTransaction;
     int want_query_effects;
     int send_one_row;
     int verify_retries; /* how many verify retries we've borne */
@@ -474,6 +473,7 @@ struct sqlclntstate {
     int snapshot_offset;
     int is_hasql_retry;
     int is_readonly;
+    int send_intransresults;
     int is_expert;
     int is_newsql;
     CDB2SQLQUERY *sql_query; /* Needed to fetch the bind variables. */

@@ -245,8 +245,8 @@ static int newsql_response_int(struct sqlclntstate *clnt,
         struct newsql_appdata *appdata = clnt->appdata;
         if (appdata->packed_capacity < len) {
             appdata->packed_capacity = len + 1024;
-            free(appdata->packed_buf);
-            appdata->packed_buf = malloc(appdata->packed_capacity);
+            appdata->packed_buf =
+                malloc_resize(appdata->packed_buf, appdata->packed_capacity);
         }
         buf = appdata->packed_buf;
     }
@@ -1219,6 +1219,14 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt)
                     clnt->ignore_coherency = 1;
                 } else {
                     clnt->ignore_coherency = 0;
+                }
+            } else if (strncasecmp(sqlstr, "intransresults", 14) == 0) {
+                sqlstr += 14;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->send_intransresults = 0;
+                } else {
+                    clnt->send_intransresults = 1;
                 }
             } else {
                 rc = ii + 1;

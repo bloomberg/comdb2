@@ -7,6 +7,7 @@ set -x
 # Debug variable
 debug=0
 
+#dbnm is modified to a very long string in this test's Makefile
 dbnm=$1
 
 if [ "x$dbnm" == "x" ] ; then
@@ -310,5 +311,12 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("sql hist")'
 
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
 assertres $res 1
+
+# make sure that long tablename throws an error
+set +e
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create table long_table_name_which_should_fail { schema { int a } }" 2>&1`
+if [ $res != "[create table long_table_name_which_should_fail { schema { int a } }] failed with rc -3 Tablename is too long" ] ; then
+    failexit "res is $res and not 'failed with rc -3 Tablename is too long'"
+fi
 
 echo "Success"
