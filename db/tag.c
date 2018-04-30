@@ -6901,6 +6901,7 @@ void freeschema_internals(struct schema *schema)
         free(schema->sqlitetag);
         schema->sqlitetag = NULL;
     }
+    free(schema->ix);
 }
 
 void freeschema(struct schema *schema)
