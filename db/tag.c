@@ -7074,6 +7074,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     int foundix = db->dbs_idx;
     int version = get_csc2_version_tran(db->tablename, tran);
     int len;
+    void *old_bdb_handle, *new_bdb_handle;
     char *csc2 = NULL;
 
     pthread_mutex_lock(&csc2_subsystem_mtx);
@@ -7123,21 +7124,29 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     }
     pthread_mutex_unlock(&csc2_subsystem_mtx);
 
+    old_bdb_handle = db->handle;
+    new_bdb_handle = newdb->handle;
+
     set_odh_options_tran(newdb, tran);
     transfer_db_settings(db, newdb);
     restore_constraint_pointers(db, newdb);
-    bdb_close_only(db->handle, &bdberr);
-    rc = bdb_free_and_replace(db->handle, newdb->handle, &bdberr);
+    free_db_and_replace(db, newdb);
+    fix_constraint_pointers(db, newdb);
+
+    bdb_close_only(old_bdb_handle, &bdberr);
+    /* swap the handle in place */
+    rc = bdb_free_and_replace(old_bdb_handle, new_bdb_handle, &bdberr);
     if (rc)
         logmsg(LOGMSG_ERROR, "%s:%d bdb_free rc %d %d\n", __FILE__, __LINE__, rc,
                 bdberr);
-    free_db_and_replace(db, newdb);
-    fix_constraint_pointers(db, newdb);
+    db->handle = old_bdb_handle;
+
     memset(newdb, 0xff, sizeof(struct dbtable));
     free(newdb);
     replace_db_idx(db, foundix);
     fix_lrl_ixlen_tran(tran);
     free(csc2);
+    free(new_bdb_handle);
     return 0;
 
 err:

@@ -757,18 +757,16 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     bdb_handle_reset_tran(new_bdb_handle, transac);
 
-    rc = bdb_free_and_replace(old_bdb_handle, new_bdb_handle, &bdberr);
-    if (rc) {
-        sc_errf(s, "Failed freeing old db, bdberr %d\n", bdberr);
-        goto failed;
-    } else
-        sc_printf(s, "bdb free ok\n");
-
-    /* reliable per table versioning */
-    rc = table_version_upsert(db, transac, &bdberr);
-    if (rc) {
-        sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
-        goto failed;
+    if (s->alteronly) {
+        /* reliable per table versioning */
+        rc = table_version_upsert(db, transac, &bdberr);
+        if (rc) {
+            sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
+            goto failed;
+        }
+    } else {
+        db->tableversion = table_version_select(db, transac);
+        sc_printf(s, "Reusing version %d for rebuild\n", db->tableversion);
     }
 
     set_odh_options_tran(db, transac);
@@ -780,6 +778,16 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         bdb_handle_dbp_add_hash(db->handle, olddb_bthashsz);
     }
 
+    /* swap the handle in place */
+    rc = bdb_free_and_replace(old_bdb_handle, new_bdb_handle, &bdberr);
+    if (rc) {
+        sc_errf(s, "Failed freeing old db, bdberr %d\n", bdberr);
+        goto failed;
+    } else
+        sc_printf(s, "bdb free ok\n");
+
+    db->handle = old_bdb_handle;
+
 #if 0
     /* handle in osql_scdone_commit_callback and osql_scdone_abort_callback */
     /* delete files we don't need now */
@@ -787,6 +795,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 #endif
     memset(newdb, 0xff, sizeof(struct dbtable));
     free(newdb);
+    free(new_bdb_handle);
 
     sc_printf(s, "Schema change finished, seed %llx\n", iq->sc_seed);
     return 0;
