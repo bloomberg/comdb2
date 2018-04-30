@@ -2354,18 +2354,21 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     /* Register all db tunables. */
     if ((register_db_tunables(dbenv))) {
-        logmsg(LOGMSG_FATAL, "Failed to initialize tunables");
+        logmsg(LOGMSG_FATAL, "Failed to initialize tunables\n");
         exit(1);
     }
 
     if (read_lrl_files(dbenv, lrlname)) {
-        logmsg(LOGMSG_FATAL, "Failed to initialize tunables");
+        logmsg(LOGMSG_FATAL, "Failure in reading lrl file(s)\n");
         exit(1);
     }
 
     logmsg(LOGMSG_INFO, "database %s starting\n", dbenv->envname);
 
-    if (gbl_create_mode) {
+    if (!dbenv->basedir) {
+        logmsg(LOGMSG_FATAL, "DB directory is not set in lrl\n");
+        return NULL;
+    } else if (gbl_create_mode) {
         /* make sure the database directory exists! */
         rc = mkdir(dbenv->basedir, 0774);
         if (rc && errno != EEXIST) {
@@ -2379,7 +2382,7 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
         if (!S_ISDIR(sb.st_mode)) {
             logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n",
                    dbenv->basedir);
-            return 0;
+            return NULL;
         }
     }
 
