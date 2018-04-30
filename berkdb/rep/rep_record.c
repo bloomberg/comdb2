@@ -1716,9 +1716,8 @@ more:           if (type == REP_LOG_MORE) {
 					ret = 0;
 				break;
 			}
-			if (log_compare(&lsn, (DB_LSN *)rec->data) >= 0)
-				break;
 
+            /* IMPORTANT: send NEWFILE before breaking out of loop */
 			if (lsn.file != oldfilelsn.file) {
                 st = comdb2_time_epochus();
 				if (resp_rc = __rep_send_message(dbenv,
@@ -1731,6 +1730,9 @@ more:           if (type == REP_LOG_MORE) {
                 }
                 sendtime += (comdb2_time_epochus() - st);
             }
+
+			if (log_compare(&lsn, (DB_LSN *)rec->data) >= 0)
+				break;
 
             oldfilelsn = lsn;
             oldfilelsn.offset += logc->c_len;
