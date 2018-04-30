@@ -1708,7 +1708,6 @@ more:           if (type == REP_LOG_MORE) {
          * gbl_req_all_threshold turns into a REQ_ALL.
 		 */
 		while (ret == 0 && rec != NULL && rec->size != 0) {
-            u_int32_t nobuf = 0;
 			if ((ret =
 				__log_c_get(logc, &lsn, &data_dbt,
 				    DB_NEXT)) != 0) {
@@ -1737,14 +1736,10 @@ more:           if (type == REP_LOG_MORE) {
             oldfilelsn = lsn;
             oldfilelsn.offset += logc->c_len;
 
-            /* Test to see if this is the last record requested */
-            if (log_compare(&oldfilelsn, (DB_LSN *)rec->data) >= 0)
-                nobuf = DB_REP_NOBUFFER;
-
             bytes_sent += (data_dbt.size + sizeof(REP_CONTROL));
             st = comdb2_time_epochus();
 			if (resp_rc = __rep_send_message(dbenv, *eidp, type, &lsn, 
-                &data_dbt, sendflags|nobuf, NULL) != 0) {
+                &data_dbt, sendflags, NULL) != 0) {
 
                 if (gbl_verbose_fills) {
                     logmsg(LOGMSG_USER, "%s line %d failed to send log "
