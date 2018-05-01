@@ -910,15 +910,6 @@ err:
                    __FILE__, __LINE__, rc);
    }
 
-   if (clnt->ddl_tables) {
-       hash_free(clnt->ddl_tables);
-   }
-   if (clnt->dml_tables) {
-       hash_free(clnt->dml_tables);
-   }
-   clnt->ddl_tables = NULL;
-   clnt->dml_tables = NULL;
-
    return rcout;
 }
 
@@ -974,15 +965,6 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
         clnt->osql.tablename = NULL;
         clnt->osql.tablenamelen = 0;
     }
-
-    if (clnt->ddl_tables) {
-        hash_free(clnt->ddl_tables);
-    }
-    if (clnt->dml_tables) {
-        hash_free(clnt->dml_tables);
-    }
-    clnt->ddl_tables = NULL;
-    clnt->dml_tables = NULL;
 
     return rcout;
 }
@@ -1429,7 +1411,7 @@ static int check_osql_capacity(struct sql_thread *thd)
     osql->sentops++;
     osql->tran_ops++;
 
-    if (clnt->osql_max_trans && osql->tran_ops >= clnt->osql_max_trans) {
+    if (clnt->osql_max_trans && osql->tran_ops > clnt->osql_max_trans) {
         /* This trace is used by ALMN 1779 to alert database owners.. please do
          * not change without reference to that almn. */
         logmsg(LOGMSG_ERROR, "check_osql_capacity: transaction size %d too big "

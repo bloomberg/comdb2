@@ -163,7 +163,10 @@ public class Comdb2Handle extends AbstractConnection {
         return ret;
     }
 
-    public Comdb2Handle(String dbname, String cluster) {
+    /* Default constructor does not discover the database.
+       This allows us to alter attributes of the handle
+       without discovering twice. */
+    public Comdb2Handle() {
         super(new ProtobufProtocol(), null);
         sets = new ArrayList<String>();
 
@@ -185,10 +188,14 @@ public class Comdb2Handle extends AbstractConnection {
         tdlog(Level.FINEST, "Created handle with uuid %s", uuid);
         bindVars = new HashMap<String, Cdb2BindValue>();
         queryList = new ArrayList<QueryItem>();
+    }
+
+    public Comdb2Handle(String dbname, String cluster) {
+        this();
         myDbName = dbname;
         myDbCluster = cluster;
         try {
-            this.lookup();
+            lookup();
         }
         catch(NoDbHostFoundException e) {}
     }
@@ -323,6 +330,7 @@ public class Comdb2Handle extends AbstractConnection {
 
     public void setDebug(boolean on) {
         debug = on;
+        BBSysUtils.debug = on;
     }
 
     public void setMaxRetries(int retries) {
@@ -397,6 +405,14 @@ public class Comdb2Handle extends AbstractConnection {
 
     public void setComdb2dbMaxAge(int age) {
         this.age = age;
+    }
+
+    public void setDatabase(String db) {
+        myDbName = db;
+    }
+
+    public void setCluster(String cluster) {
+        myDbCluster = cluster;
     }
 
     private int retryQueries(int nretry, boolean runlast) {
@@ -1602,11 +1618,12 @@ readloop:
 
             nSetsSent = sets.size();
 
-            if (inTxn && CDB2ServerFeatures.SKIP_ROWS_VALUE > 0
-                    && lastResp.features != null) {
+            if (inTxn && lastResp.features != null) {
                 for (int feature : lastResp.features) {
-                    skipFeature = true;
-                    break;
+                    if (CDB2ServerFeatures.SKIP_ROWS_VALUE == feature) {
+                        skipFeature = true;
+                        break;
+                    }
                 }
             }
             tdlog(Level.FINEST,
@@ -1778,7 +1795,11 @@ readloop:
          */
 
         // last time we were at dbHostIdx, this time start from (dbHostIdx + 1)
-        int start_req = ++dbHostIdx;
+        int start_req;
+        if (dbHostIdx == myDbHosts.size())
+            start_req = dbHostIdx = 0;
+        else
+            start_req = ++dbHostIdx;
 
         for (; dbHostIdx < myDbHosts.size(); ++dbHostIdx) {
             if (dbHostIdx == masterIndexInMyDbHosts

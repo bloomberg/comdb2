@@ -777,6 +777,46 @@ void *comdb2_realloc(comdb2ma cm, void *ptr, size_t n)
     return (void *)out;
 }
 
+/* This function is a clone of comdb2_realloc except it invokes mspace_resize(). */
+void *comdb2_resize(comdb2ma cm, void *ptr, size_t n)
+{
+    void **out = NULL;
+
+    if (ptr == NULL) {
+        out = comdb2_malloc(cm, n);
+    } else if (n == 0) {
+        comdb2_free(ptr);
+    } else {
+        out = (void **)ptr;
+        if (!COMDB2MA_OK_SENTINEL(out)) {
+            /* sentinel does not match. ptr could be allocated by system call.
+               hand it over to system realloc. */
+            out = realloc(ptr, n);
+        } else {
+            cm = (comdb2ma)out[COMDB2MA_ALLOC_OFS];
+            if (COMDB2MA_LOCK(cm) != 0)
+                out = NULL;
+            else {
+                if (COMDB2MA_HAS_CAP(cm) && (n > comdb2_malloc_usable_size(out)) &&
+                    COMDB2MA_CAP(cm)) {
+                    errno = ENOMEM;
+                    out = NULL;
+                } else {
+                    out = mspace_resize(cm->m, (void *)(out + COMDB2MA_SENTINEL_OFS),
+                                        n + COMDB2MA_OVERHEAD);
+                    if (out != NULL) {
+                        out[0] = COMDB2MA_SENTINEL(out, cm);
+                        out[1] = (void *)cm;
+                        out -= COMDB2MA_SENTINEL_OFS;
+                    }
+                }
+                COMDB2MA_UNLOCK(cm);
+            }
+        }
+    }
+    return (void *)out;
+}
+
 static void comdb2_free_int(comdb2ma cm, void *ptr)
 {
     void **p = (void **)ptr;
@@ -950,6 +990,12 @@ void *comdb2_realloc_static(int indx, void *ptr, size_t n)
 {
     STATIC_RANGE_CHECK(indx, NULL);
     return comdb2_realloc(get_area(indx), ptr, n);
+}
+
+void *comdb2_resize_static(int indx, void *ptr, size_t n)
+{
+    STATIC_RANGE_CHECK(indx, NULL);
+    return comdb2_resize(get_area(indx), ptr, n);
 }
 
 char *comdb2_strdup_static(int indx, const char *s)

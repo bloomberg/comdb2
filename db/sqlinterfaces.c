@@ -121,6 +121,8 @@ extern int gbl_fdb_track;
 extern int gbl_return_long_column_names;
 extern int gbl_stable_rootpages_test;
 
+extern int gbl_expressions_indexes;
+
 /* Once and for all:
 
    struct sqlthdstate:
@@ -788,7 +790,7 @@ static void update_snapshot_info(struct sqlclntstate *clnt)
 
     /* We need to restore skip_feature, want_query_effects and
        send_one_row on clnt even if the snapshot info has been populated. */
-    if (clnt->is_newsql && clnt->sql_query &&
+    if (!clnt->send_intransresults && clnt->is_newsql && clnt->sql_query &&
         (clnt->sql_query->n_features > 0) && (gbl_disable_skip_rows == 0)) {
         for (int ii = 0; ii < clnt->sql_query->n_features; ii++) {
             if (CDB2_CLIENT_FEATURES__SKIP_ROWS ==
@@ -877,6 +879,11 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                     SQLENG_PRE_STRT_STATE);
             clnt->in_client_trans = 1;
+
+            assert(clnt->ddl_tables == NULL && clnt->dml_tables == NULL);
+            clnt->ddl_tables = hash_init_strcase(0);
+            clnt->dml_tables = hash_init_strcase(0);
+
             update_snapshot_info(clnt);
         }
     } else if (!strncasecmp(clnt->sql, "commit", 6)) {
@@ -1074,6 +1081,20 @@ static void send_query_effects(struct sqlclntstate *clnt)
     reset_query_effects(clnt);
 }
 
+static int free_it(void *obj, void *arg)
+{
+    free(obj);
+    return 0;
+}
+static inline void destroy_hash(hash_t *h)
+{
+    if (!h)
+        return;
+    hash_for(h, free_it, NULL);
+    hash_clear(h);
+    hash_free(h);
+}
+
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse)
 {
@@ -1123,12 +1144,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                                     (clnt->sql) ? clnt->sql : "(???.)", irc,
                                     rc);
                     } else {
-                        if (rc == SQLITE_TOOBIG) {
-                            strncpy(clnt->osql.xerr.errstr,
-                                    "transaction too big",
-                                    sizeof(clnt->osql.xerr.errstr));
-                            rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
-                        } else if (rc == SQLITE_ABORT) {
+                        if (rc == SQLITE_ABORT) {
                             /* convert this to user code */
                             rc = blockproc2sql_error(clnt->osql.xerr.errval,
                                                      __func__, __LINE__);
@@ -1197,12 +1213,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                                         : "SNAPISOL",
                                     irc, rc);
                     } else {
-                        if (rc == SQLITE_TOOBIG) {
-                            strncpy(clnt->osql.xerr.errstr,
-                                    "transaction too big",
-                                    sizeof(clnt->osql.xerr.errstr));
-                            rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
-                        } else if (rc == SQLITE_ABORT) {
+                        if (rc == SQLITE_ABORT) {
                             /* convert this to user code */
                             rc = blockproc2sql_error(clnt->osql.xerr.errval,
                                                      __func__, __LINE__);
@@ -1375,6 +1386,23 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         }
     }
 
+    clnt->ins_keys = 0ULL;
+    clnt->del_keys = 0ULL;
+
+    if (clnt->arr) {
+        currangearr_free(clnt->arr);
+        clnt->arr = NULL;
+    }
+    if (clnt->selectv_arr) {
+        currangearr_free(clnt->selectv_arr);
+        clnt->selectv_arr = NULL;
+    }
+
+    destroy_hash(clnt->ddl_tables);
+    destroy_hash(clnt->dml_tables);
+    clnt->ddl_tables = NULL;
+    clnt->dml_tables = NULL;
+
     /* reset the state after send_done; we use ctrl_sqlengine to know
        if this is a user rollback or an sqlite engine error */
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
@@ -1455,6 +1483,13 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         }
 
+        if (rc == SQLITE_TOOBIG) {
+            strncpy(clnt->osql.xerr.errstr,
+                    "transaction too big, try increasing the limit using 'SET "
+                    "maxtransize N'",
+                    sizeof(clnt->osql.xerr.errstr));
+            rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
+        }
 
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
@@ -3143,7 +3178,6 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     clnt->has_recording |= v->recording;
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
     comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
-    clnt->iswrite = 0; /* reset before step() */
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
@@ -3237,7 +3271,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
           clnt->in_client_trans && !clnt->isselect &&
           !(rc && !clnt->had_errors))) {
 
-        if (clnt->iswrite && postponed_write) {
+        if (!clnt->isselect && postponed_write) {
             int irc = send_row(clnt, NULL, row_id, rc, 0, NULL);
             if (irc)
                 return irc;
@@ -3340,7 +3374,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
 
         /* return row, if needed */
-        if (!clnt->iswrite && clnt->osql.replay != OSQL_RETRY_DO) {
+        if (clnt->isselect && clnt->osql.replay != OSQL_RETRY_DO) {
             postponed_write = 0;
             ++row_id;
 
@@ -3645,6 +3679,8 @@ check_version:
                 logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d\n", __func__,
                         rc);
                 thd->sqldb = NULL;
+                /* there is no really way forward, grab core */
+                abort();
             }
             thd->dbopen_gen = gbl_dbopen_gen;
         }
@@ -4237,14 +4273,16 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->query_stats = NULL;
     }
 
-    if (clnt->ddl_tables) {
-        hash_clear(clnt->ddl_tables);
-        hash_free(clnt->ddl_tables);
+    if (gbl_expressions_indexes) {
+        if (clnt->idxInsert)
+            free(clnt->idxInsert);
+        if (clnt->idxDelete)
+            free(clnt->idxDelete);
+        clnt->idxInsert = clnt->idxDelete = NULL;
     }
-    if (clnt->dml_tables) {
-        hash_clear(clnt->dml_tables);
-        hash_free(clnt->dml_tables);
-    }
+
+    destroy_hash(clnt->ddl_tables);
+    destroy_hash(clnt->dml_tables);
     clnt->ddl_tables = NULL;
     clnt->dml_tables = NULL;
 }
@@ -4272,7 +4310,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     /* start off in comdb2 mode till we're told otherwise */
     clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
-    clnt->iswrite = 0;
     clnt->heartbeat = 0;
     clnt->limits.maxcost = gbl_querylimits_maxcost;
     clnt->limits.tablescans_ok = gbl_querylimits_tablescans_ok;
@@ -4381,6 +4418,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->wrong_db = 0;
     clnt->hasql_on = 0;
     set_high_availability(clnt, 0);
+    clnt->send_intransresults = 0;
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
@@ -5109,7 +5147,8 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         break;
 
     case SQLITE_TOOBIG:
-        *errstr = "transaction too big";
+        *errstr = "transaction too big, try increasing the limit using 'SET "
+                  "maxtransize N'";
         rc = ERR_TRAN_TOO_BIG;
         break;
 

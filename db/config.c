@@ -1413,12 +1413,12 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
     /* if env variable is set, process another lrl.. */
     const char *envlrlname = getenv("COMDB2_CONFIG");
     if (envlrlname && !read_lrl_file(dbenv, envlrlname, 1 /*required*/)) {
-        return 0;
+        return 1;
     }
 
     /* this database */
     if (lrlname && !read_lrl_file(dbenv, lrlname, 1 /*required*/)) {
-        return 0;
+        return 1;
     }
 
     /* switch to keyless mode as long as no mode has been selected yet */
