@@ -81,25 +81,23 @@ public class Comdb2Connection implements Connection {
         return ret;
     }
 
-    private Comdb2Connection() {
-        /* empty constructor for duplicate(). */
-    }
-
-    public Comdb2Connection(String db, String cluster) {
-        this(db, cluster, -1);
+    /* Default constructor does not discover the database.
+       This allows us to alter attributes of the connections
+       and its underlying handle without discovering twice. */
+    public Comdb2Connection() {
+        hndl = new Comdb2Handle();
     }
 
     public Comdb2Handle dbHandle() {
         return this.hndl;
     }
 
-    public Comdb2Connection(String db, String cluster, int timeout) {
+    public Comdb2Connection(String db, String cluster) {
         /**
          * The handle is opened in the constructor.
          */
         this.db = db;
         this.cluster = cluster;
-        this.timeout = timeout;
         hndl = new Comdb2Handle(db, cluster);
     }
 
@@ -142,6 +140,16 @@ public class Comdb2Connection implements Connection {
 
     void addPorts(List<Integer> ports) {
         hndl.addPorts(ports);
+    }
+
+    public void setDatabase(String db) {
+        this.db = db;
+        hndl.setDatabase(db);
+    }
+
+    public void setCluster(String cluster) {
+        this.cluster = cluster;
+        hndl.setCluster(cluster);
     }
 
     public void setPrefMach(String mach) {
