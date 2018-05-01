@@ -1602,8 +1602,8 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
             tbl->nops++;
 
-            if (clnt->osql_max_trans && ((tbl->nops + crt_nops) >
-                                         clnt->osql_max_trans)) {
+            if (clnt->osql_max_trans &&
+                ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
                 return SQLITE_TOOBIG;
             }
 
@@ -1893,8 +1893,8 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
             tbl->nops++;
 
-            if (clnt->osql_max_trans && ((tbl->nops + crt_nops) >
-                                         clnt->osql_max_trans)) {
+            if (clnt->osql_max_trans &&
+                ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
                 free(seq);
                 return SQLITE_TOOBIG;
             }
@@ -1974,8 +1974,8 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         /* counting operations */
         tbl->nops++;
 
-        if (clnt->osql_max_trans && ((tbl->nops + crt_nops) >
-                                     clnt->osql_max_trans)) {
+        if (clnt->osql_max_trans &&
+            ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
             return SQLITE_TOOBIG;
         }
 
