@@ -1,0 +1,56 @@
+[DROP TABLE t1] failed with rc -3 no such table: t1
+[DROP TABLE t2] failed with rc -3 no such table: t2
+sqlite_stat1
+sqlite_stat4
+t1
+t2
+sqlite_stat1
+sqlite_stat4
+t1
+t2
+sqlite_stat1
+sqlite_stat4
+t1
+t2
+sqlite_stat1
+sqlite_stat4
+t1
+t2
+unknown @ls sub-command foo
+table name required
+table name required
+schema
+	{
+		int i 
+	}
+keys
+	{
+		"COMDB2_PK" = i 
+	}
+
+schema
+	{
+		int i 
+	}
+keys
+	{
+		"COMDB2_PK" = i 
+	}
+constraints
+	{
+		"COMDB2_PK" -> <"t1":"COMDB2_PK"> 
+	}
+
+schema
+	{
+		int i 
+	}
+keys
+	{
+		"COMDB2_PK" = i 
+	}
+constraints
+	{
+		"COMDB2_PK" -> <"t1":"COMDB2_PK"> 
+	}
+
