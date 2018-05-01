@@ -145,6 +145,7 @@
 (name='deadlock_writers_with_least_writes', description='If AUTODEADLOCKDETECT is off, prefer transaction with least write as deadlock victim.', type='BOOLEAN', value='ON', read_only='N')
 (name='deadlock_youngest_ever', description='If AUTODEADLOCKDETECT is off, prefer youngest transaction as deadlock victim.', type='BOOLEAN', value='OFF', read_only='N')
 (name='deadlockdetectms', description='When automatic deadlock detection is disabled, run the deadlock detector this often.', type='INTEGER', value='100', read_only='N')
+(name='debug.autoanalyze', description='debug autoanalyze operations', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_addrem_dbregs', description='Generate debug records for addrems', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_bdb_lock_stack', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_deadlock_replicant_percent', description='Percent of replicant events getting deadlocks', type='INTEGER', value='0', read_only='N')

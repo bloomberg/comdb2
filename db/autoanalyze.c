@@ -35,6 +35,7 @@
 const char *aa_counter_str = "autoanalyze_counter";
 const char *aa_lastepoch_str = "autoanalyze_lastepoch";
 static volatile bool auto_analyze_running = false;
+int gbl_debug_aa;
 
 /* reset autoanalyze counters to zero
  */
@@ -108,8 +109,14 @@ void *auto_analyze_table(void *arg)
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
     sbuf2free(sb);
-    auto_analyze_running = false;
     free(tblname);
+    if (gbl_debug_aa) {
+        ctrace("AUTOANALYZE: sleep for testing for %d seconds\n",
+               bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
+        sleep(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
+    }
+
+    auto_analyze_running = false;
     return NULL;
 }
 
@@ -302,12 +309,9 @@ void stat_auto_analyze(void)
 void *auto_analyze_main(void *unused)
 {
     int now = comdb2_time_epoch();
-    if (now - gbl_sc_last_writer_time >
+    static int aa_last_check_time;
+    if (now - aa_last_check_time <
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME)) {
-#ifdef DEBUG
-        ctrace("AUTOANALYZE: no writes in the last %d sec\n",
-               now - gbl_sc_last_writer_time);
-#endif
         return NULL; // nothing to do
     }
 
@@ -318,6 +322,7 @@ void *auto_analyze_main(void *unused)
     }
 
     static int loc_call_counter = 0;
+    aa_last_check_time = now;
 
     logmsg(LOGMSG_DEBUG, "%s: loc_call_counter %d\n", __func__,
            loc_call_counter);
@@ -424,6 +429,8 @@ void *auto_analyze_main(void *unused)
             char str[12] = {0};
             sprintf(str, "%d", newautoanalyze_counter);
             bdb_set_table_parameter(NULL, tbl->tablename, aa_counter_str, str);
+            // we want to check again next time this function is called
+            aa_last_check_time = 0;
         }
 
         tbl->aa_saved_counter = newautoanalyze_counter;
@@ -441,4 +448,3 @@ void *auto_analyze_main(void *unused)
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
     return NULL;
 }
-
