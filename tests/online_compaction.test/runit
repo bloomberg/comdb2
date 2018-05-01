@@ -27,9 +27,9 @@ echo "MASTER is $master"
 #ln cdb2_stat
 myhostname=`hostname`
 if [ "$master" != "$myhostname" ] ; then
-    ssh -o StrictHostKeyChecking=no $master "ln $COMDB2_EXE ${bindir}/cdb2_stat"
+    ssh -o StrictHostKeyChecking=no $master "ln -f $COMDB2_EXE ${bindir}/cdb2_stat"
 else
-    ln $COMDB2_EXE ${bindir}/cdb2_stat
+    ln -f $COMDB2_EXE ${bindir}/cdb2_stat
 fi
 
 
@@ -88,9 +88,9 @@ while [ $outloop -le 4 ]; do
   ffbefore=0
   ffintbefore=0
   if [ "$master" = "$mynode" ] || [ "$master" = "$myfnode" ]; then
-    cdb2_stat -d $newfile 2>&1
-    ffbefore=`cdb2_stat -d $newfile 2>&1 | grep 'tree leaf.*ff' | awk '{print substr($10,2,length($10)-2);}'`
-    ffintbefore=`cdb2_stat -d $newfile 2>&1 | grep 'tree internal.*ff' | awk '{print substr($10,2,length($10)-2);}'`
+    ${bindir}/cdb2_stat -d $newfile 2>&1
+    ffbefore=`${bindir}/cdb2_stat -d $newfile 2>&1 | grep 'tree leaf.*ff' | awk '{print substr($10,2,length($10)-2);}'`
+    ffintbefore=`${bindir}/cdb2_stat -d $newfile 2>&1 | grep 'tree internal.*ff' | awk '{print substr($10,2,length($10)-2);}'`
   else
     ffbefore=`$a_ssh $master "ls -t $dbdir/t_* | head -1 | xargs ${bindir}/cdb2_stat -d 2>&1 | grep 'tree leaf.*ff'" | awk '{print substr($10,2,length($10)-2)}'`
     ffintbefore=`$a_ssh $master "ls -t $dbdir/t_* | head -1 | xargs ${bindir}/cdb2_stat -d 2>&1 | grep 'tree internal.*ff'" | awk '{print substr($10,2,length($10)-2)}'`
@@ -112,9 +112,9 @@ while [ $outloop -le 4 ]; do
   ffafter=0
   ffintafter=0
   if [ "$master" = "$mynode" ] || [ "$master" = "$myfnode" ]; then
-    cdb2_stat -d $newfile 2>&1
-    ffafter=`cdb2_stat -d $newfile 2>&1 | grep 'tree leaf.*ff' | awk '{print substr($10,2,length($10)-2);}'`
-    ffintafter=`cdb2_stat -d $newfile 2>&1 | grep 'tree internal.*ff' | awk '{print substr($10,2,length($10)-2);}'`
+    ${bindir}/cdb2_stat -d $newfile 2>&1
+    ffafter=`${bindir}/cdb2_stat -d $newfile 2>&1 | grep 'tree leaf.*ff' | awk '{print substr($10,2,length($10)-2);}'`
+    ffintafter=`${bindir}/cdb2_stat -d $newfile 2>&1 | grep 'tree internal.*ff' | awk '{print substr($10,2,length($10)-2);}'`
   else
     ffafter=`$a_ssh $master "ls -t $dbdir/t_* | head -1 | xargs ${bindir}/cdb2_stat -d 2>&1 | grep 'tree leaf.*ff'" | awk '{print substr($10,2,length($10)-2)}'`
     ffintafter=`$a_ssh $master "ls -t $dbdir/t_* | head -1 | xargs ${bindir}/cdb2_stat -d 2>&1 | grep 'tree internal.*ff'" | awk '{print substr($10,2,length($10)-2)}'`

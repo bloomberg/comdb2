@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+set -e
+
+${TESTSBUILDDIR}/cdb2api_unit
+
+./test_get_comdb2db_hosts

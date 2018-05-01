@@ -1025,10 +1025,18 @@ static int bdb_verify_ll(
                 genid_flipped = genid;
 #endif
 
-                if (bdb_state->attr->blobstripe)
-                    stripe = dtastripe;
-                else
-                    stripe = get_dtafile_from_genid(genid);
+                stripe = get_dtafile_from_genid(genid);
+
+                if (!bdb_state->blobstripe_convert_genid ||
+                    bdb_check_genid_is_newer(
+                        bdb_state, genid,
+                        bdb_state->blobstripe_convert_genid)) {
+                    /* verify blobstripe and datastripe is the same */
+                    if (dtastripe != stripe)
+                        locprint(sb, lua_callback, lua_params,
+                                 "!%016llx blobstripe %d != datastripe %d\n",
+                                 genid_flipped, dtastripe, stripe);
+                }
 
                 rc = bdb_state->dbp_data[0][stripe]->paired_cursor_from_lid(
                     bdb_state->dbp_data[0][stripe], lid, &cdata, 0);

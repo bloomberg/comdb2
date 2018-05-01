@@ -40,7 +40,6 @@
 #include "prefault.h"
 #include "logmsg.h"
 
-int gbl_prefault_readahead = 1;
 int gbl_prefault_toblock_bcast = 1;
 int gbl_prefault_toblock_local = 1;
 

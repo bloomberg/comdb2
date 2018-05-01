@@ -327,14 +327,6 @@ int osql_send_dbglog(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long dbglog_cookie, int queryid, int type);
 
 /**
- * Copy and pack the host-ordered dbglog_header- used to write endianized
- * dbglogfiles.
- *
- */
-const uint8_t *dbglog_hdr_put(const struct dbglog_hdr *p_dbglog_hdr,
-                              uint8_t *p_buf, const uint8_t *p_buf_end);
-
-/**
  * Interprets each packet and log info
  * about it
  *

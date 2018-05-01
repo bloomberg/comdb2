@@ -1,6 +1,6 @@
 include(${CMAKE_MODULE_PATH}/plugin.cmake)
 
-set(PLUGIN "newsql")
+set(LIBNAME "newsql")
 
 include_directories(
   ${PROJECT_SOURCE_DIR}/bb
@@ -30,7 +30,7 @@ include_directories(
 
 set(SOURCES newsql.c)
 
-add_plugin(${PLUGIN} "STATIC" "${SOURCES}")
+add_plugin(${LIBNAME} "STATIC" "${SOURCES}")
 
 # Wait for parse.h
-add_dependencies(${PLUGIN} sqlite)
+add_dependencies(${LIBNAME} sqlite)

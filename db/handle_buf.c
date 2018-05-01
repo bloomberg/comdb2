@@ -857,7 +857,7 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p
     iq->sqlhistory[0] = '\0';
 
     iq->where = "setup";
-    iq->frommach = frommach;
+    iq->frommach = frommach ? intern(frommach) : NULL;
     iq->frompid = frompid;
     iq->gluewhere = "-";
     iq->debug = debug_this_request(gbl_debug_until) || (debug && gbl_debug);

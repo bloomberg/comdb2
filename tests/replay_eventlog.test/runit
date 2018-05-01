@@ -237,7 +237,7 @@ assertcnt $NEWNUMREC
 
 set -e
 #echo "Now call task that uses cdb2api to ins/upd/del"
-${TESTSROOTDIR}/tools/cdb2api_caller $dbnm t1 > cdb2api_caller.out
+${TESTSBUILDDIR}/cdb2api_caller $dbnm t1 > cdb2api_caller.out
 
 cdb2sql --host $node $dbnm "select * from t1 order by alltypes_u_short" > orig.txt
 

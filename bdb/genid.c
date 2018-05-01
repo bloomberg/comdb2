@@ -65,6 +65,7 @@
 #include "genid.h"
 #include "logmsg.h"
 
+int gbl_block_set_commit_genid_trace = 0;
 static unsigned long long commit_genid;
 static DB_LSN commit_lsn;
 static uint32_t commit_generation;
@@ -294,6 +295,23 @@ static unsigned int get_dupecount_from_genid(unsigned long long genid)
     return ntohs(sptr[2]);
 }
 
+static inline void set_gblcontext_int(bdb_state_type *bdb_state,
+                                      unsigned long long gblcontext)
+{
+    if (gblcontext == -1ULL) {
+        logmsg(LOGMSG_ERROR, "SETTING CONTEXT TO -1\n");
+        cheap_stack_trace();
+    }
+    if (bdb_cmp_genids(gblcontext, bdb_state->gblcontext) < 0) {
+        if (gbl_block_set_commit_genid_trace) {
+            logmsg(LOGMSG_ERROR, "Blocked attempt to set lower gblcontext\n");
+            cheap_stack_trace();
+        }
+    } else {
+        bdb_state->gblcontext = gblcontext;
+    }
+}
+
 /* setter/getters that grab a lock. */
 void set_gblcontext(bdb_state_type *bdb_state, unsigned long long gblcontext)
 {
@@ -302,14 +320,8 @@ void set_gblcontext(bdb_state_type *bdb_state, unsigned long long gblcontext)
 
     Pthread_mutex_lock(&(bdb_state->gblcontext_lock));
 
-    /*fprintf(stderr, "setting gblcontext to %llu\n", gblcontext);*/
+    set_gblcontext_int(bdb_state, gblcontext);
 
-    if (gblcontext == -1ULL) {
-        logmsg(LOGMSG_ERROR, "SETTING CONTEXT TO -1\n");
-        cheap_stack_trace();
-    }
-
-    bdb_state->gblcontext = gblcontext;
     Pthread_mutex_unlock(&(bdb_state->gblcontext_lock));
 }
 
@@ -361,11 +373,13 @@ int genid_contains_time(bdb_state_type *bdb_state)
     return bdb_state->genid_format == LLMETA_GENID_ORIGINAL;
 }
 
-int gbl_block_set_commit_genid_trace = 0;
-static inline void set_commit_genid_lsn_gen(unsigned long long genid,
+static inline void set_commit_genid_lsn_gen(bdb_state_type *bdb_state,
+                                            unsigned long long genid,
                                             const DB_LSN *lsn,
                                             const uint32_t *generation)
 {
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
     if (bdb_cmp_genids(genid, commit_genid) < 0) {
 
         /* This can occur legitamately after a rep_verify_match */
@@ -378,6 +392,8 @@ static inline void set_commit_genid_lsn_gen(unsigned long long genid,
     commit_genid = genid;
     if (lsn) commit_lsn = *lsn;
     if (generation) commit_generation = *generation;
+
+    set_gblcontext_int(bdb_state, genid);
 }
 
 static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
@@ -431,7 +447,7 @@ static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
     bdb_state->gblcontext = genid;
 
     if (lsn) {
-        set_commit_genid_lsn_gen(genid, lsn, &generation);
+        set_commit_genid_lsn_gen(bdb_state, genid, lsn, &generation);
     }
 
     Pthread_mutex_unlock(&(bdb_state->gblcontext_lock));
@@ -528,7 +544,7 @@ try_again:
 
     /* this limps at a different speed compare to gblcontext */
     if (lsn) {
-        set_commit_genid_lsn_gen(genid, lsn, &generation);
+        set_commit_genid_lsn_gen(bdb_state, genid, lsn, &generation);
     }
 
     Pthread_mutex_unlock(&(bdb_state->gblcontext_lock));
@@ -1077,7 +1093,7 @@ void bdb_set_commit_genid( bdb_state_type *bdb_state, unsigned long long context
 
     Pthread_mutex_lock(&(bdb_state->gblcontext_lock));
 
-    set_commit_genid_lsn_gen(context, (const DB_LSN *)plsn,
+    set_commit_genid_lsn_gen(bdb_state, context, (const DB_LSN *)plsn,
                              (const uint32_t *)generation);
 
     Pthread_mutex_unlock(&(bdb_state->gblcontext_lock));

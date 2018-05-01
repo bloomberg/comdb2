@@ -21,7 +21,7 @@ for testreq in `ls t*.sql` ; do
     else
         echo "failed $testname"
         echo "see diffs here: $HOSTNAME"
-        echo "> diff ${PWD}/{$testname.expected,$testname.output}"
+        echo "> diff -u ${PWD}/{$testname.expected,$testname.output}"
         echo
         exit 1
     fi

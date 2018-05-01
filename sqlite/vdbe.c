@@ -3980,8 +3980,11 @@ case OP_OpenWrite:
   pCur->pKeyInfo = pKeyInfo;
 
   /* Since it performs no memory allocation or IO, the only value that
-  ** sqlite3BtreeCursor() may return is SQLITE_OK. */
+  ** sqlite3BtreeCursor() may return is SQLITE_OK.
+  In COMDB2 this can fail!
   assert( rc==SQLITE_OK );
+  */
+  if( rc ) goto abort_due_to_error;
 
   /* Set the VdbeCursor.isTable variable. Previous versions of
   ** SQLite used to check if the root-page flags were sane at this point
@@ -6121,7 +6124,7 @@ case OP_ParseSchema: {
 
   iDb = pOp->p1;
   assert( iDb>=0 && iDb<db->nDb );
-  assert( DbHasProperty(db, iDb, DB_SchemaLoaded) );
+  assert( iDb>1 || DbHasProperty(db, iDb, DB_SchemaLoaded) );
   /* Used to be a conditional */ {
     zMaster = SCHEMA_TABLE(iDb);
     initData.db = db;

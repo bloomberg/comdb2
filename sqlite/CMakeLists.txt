@@ -35,6 +35,8 @@ add_library(sqlite
   ext/comdb2/tunables.c
   ext/comdb2/users.c
   ext/comdb2/clientstats.c
+  ext/comdb2/ezsystables.c
+  ext/comdb2/typesamples.c 
   ext/misc/completion.c
   ext/misc/json1.c
   ext/expert/sqlite3expert.c

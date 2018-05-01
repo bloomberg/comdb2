@@ -241,6 +241,8 @@ int cdb2_clear_contexts(cdb2_hndl_tp *hndl);
    with WITH_SSL. */
 int cdb2_init_ssl(int init_libssl, int init_libcrypto);
 int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl);
+
+int cdb2_clear_ack(cdb2_hndl_tp *hndl);
 #if defined __cplusplus
 }
 #endif

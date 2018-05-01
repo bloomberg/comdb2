@@ -69,7 +69,6 @@ extern int gbl_rowlocks;
 extern int gbl_optimize_truncate_repdb;
 extern int gbl_early;
 extern int gbl_reallyearly;
-extern int gbl_rep_collect_txn_time;
 extern int gbl_rep_process_txn_time;
 int gbl_rep_badgen_trace;
 
@@ -313,7 +312,12 @@ lc_free(DB_ENV *dbenv, struct __recovery_processor *rp, LSN_COLLECTION * lc)
 	lc->nalloc = 0;
 }
 
-static inline int
+/*
+ * matchable_log_type --
+ *
+ * PUBLIC: int matchable_log_type __P((int));
+ */
+int
 matchable_log_type(int rectype)
 {
 	extern int gbl_only_match_commit_records;
@@ -3456,9 +3460,9 @@ debug_dump_lsns(DB_LSN commit_lsn, LSN_COLLECTION * lc, int ret)
 
 extern int gbl_replicant_gather_rowlocks;
 int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
-    unsigned int nkeys, int is_logical_commit,
-    unsigned long long logical_tranid, DB_LSN logical_commit_lsn,
-    int32_t timestamp, unsigned long long context);
+	unsigned int nkeys, int is_logical_commit,
+	unsigned long long logical_tranid, DB_LSN logical_commit_lsn, uint32_t gen,
+	int32_t timestamp, unsigned long long context);
 
 /*
  * __rep_process_txn --
@@ -3715,11 +3719,11 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			timestamp = txn_args->timestamp;
 
 		ret =
-		    bdb_transfer_pglogs_to_queues(dbenv->app_private, pglogs,
-		    keycnt, (!txn_rl_args ||
+			bdb_transfer_pglogs_to_queues(dbenv->app_private, pglogs,
+			keycnt, (!txn_rl_args ||
 			(txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)),
-		    (txn_rl_args) ? txn_rl_args->ltranid : 0, rctl->lsn,
-		    timestamp, context);
+			(txn_rl_args) ? txn_rl_args->ltranid : 0, rctl->lsn,
+			*commit_gen, timestamp, context);
 		if (ret)
 			goto err;
 	}
@@ -4380,9 +4384,11 @@ bad_resize:	;
 		timestamp = txn_args->timestamp;
 
 	ret = bdb_transfer_pglogs_to_queues(dbenv->app_private, pglogs, keycnt,
-	    (!txn_rl_args || (txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)),
-	    (txn_rl_args) ? txn_rl_args->ltranid : 0,
-	    rctl->lsn, timestamp, rp->context);
+		(!txn_rl_args || (txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)),
+		(txn_rl_args) ? txn_rl_args->ltranid : 0,
+		rctl->lsn, *commit_gen, timestamp, rp->context);
+	if (pglogs)
+		__os_free(dbenv, pglogs);
 	if (ret)
 		goto err;
 

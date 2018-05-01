@@ -10,7 +10,7 @@ dbnm=$1
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t2"
 
-${TESTSROOTDIR}/tools/recom -d $dbnm
+${TESTSBUILDDIR}/recom -d $dbnm
 
 if [[ $? != 0 ]]; then
 

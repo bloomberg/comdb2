@@ -22,6 +22,7 @@
 #include "dbinc_auto/mp_ext.h"
 
 #include <crc32c.h>
+#include <logmsg.h>
 
 void inspect_page(DB *, PAGE *);
 
@@ -179,7 +180,8 @@ check_chksum(DB *dbp, PAGE *p)
 	uint32_t calc, chksum, *chksump = getchksump(dbp, p);
 
 	if (chksump == NULL) {
-		printf("PGTYPE: %s - skipping chksum\n", type2str(TYPE(p)));
+		logmsg(LOGMSG_USER, "PGTYPE: %s - skipping chksum\n", type2str(TYPE(p)));
+#include <logmsg.h>
 		return;
 	}
 	int size = getchksumsz(dbp, p);
@@ -203,7 +205,7 @@ dometa(DB *dbp, PAGE *p)
 	DBMETA *meta = (DBMETA *)p;
 	BTMETA *bm;
 
-	printf("MAGIC:0x%x %s ENDIAN\n", meta->magic,
+	logmsg(LOGMSG_USER, "MAGIC:0x%x %s ENDIAN\n", meta->magic,
 #if defined(__x86_64) || defined(__x86)
 	    F_ISSET(dbp, DB_AM_SWAP) ? "BIG" : "LITTLE"
 #else
@@ -213,16 +215,16 @@ dometa(DB *dbp, PAGE *p)
 
 	switch (TYPE(p)) {
 	case P_HASHMETA:
-		printf("LAST_PAGE:%d\n", meta->last_pgno);
+		logmsg(LOGMSG_USER, "LAST_PAGE:%d\n", meta->last_pgno);
 		break;
 	case P_BTREEMETA:
 		bm = (BTMETA *)meta;
-		printf("ROOT:%d\n", bm->root);
-		printf("LAST_PAGE:%d\n", meta->last_pgno);
-		printf("CHKSUM:%s\n", YESNO(F_ISSET(dbp, DB_AM_CHKSUM)));
+		logmsg(LOGMSG_USER, "ROOT:%d\n", bm->root);
+		logmsg(LOGMSG_USER, "LAST_PAGE:%d\n", meta->last_pgno);
+		logmsg(LOGMSG_USER, "CHKSUM:%s\n", YESNO(F_ISSET(dbp, DB_AM_CHKSUM)));
 		break;
 	case P_QAMMETA:
-		printf("LAST_PAGE:%d\n", meta->last_pgno);
+		logmsg(LOGMSG_USER, "LAST_PAGE:%d\n", meta->last_pgno);
 		break;
 	default:
 		abort();
@@ -263,6 +265,10 @@ bad:	fprintf(stderr, "BAD META PAGE\n");
 	exit(EXIT_FAILURE);
 }
 
+#define MIN(A,B) ((A)<(B)?(A):(B))
+
+extern void print_hex(uint8_t * b, unsigned l, int newline);
+
 static void
 inspect_internal_page(DB *dbp, PAGE *p)
 {
@@ -270,8 +276,10 @@ inspect_internal_page(DB *dbp, PAGE *p)
 
 	for (i = 0; i < NUM_ENT(p); i++) {
 		BINTERNAL *bi = GET_BINTERNAL(dbp, p, i);
-
-		printf("%d. pgno:%u nrecs:%u\n", i, bi->pgno, bi->nrecs);
+        //internal page info: pgno, numrecs if available, subtree leftmost key
+        logmsg(LOGMSG_USER, "%d. pgno:%u nrecs:%u lkey:", i, bi->pgno, bi->nrecs);
+        print_hex(bi->data, MIN(bi->len, 32), 0);
+        logmsg(LOGMSG_USER, "\n");
 	}
 }
 
@@ -287,8 +295,8 @@ dopage(DB *dbp, PAGE *p)
 
 	uint8_t type = TYPE(p);
 
-	printf("PAGE TYPE: %s\n", type2str(type));
-	printf("PAGE LEVEL: %d\n", LEVEL(p));
+	logmsg(LOGMSG_USER, "PAGE TYPE: %s\n", type2str(type));
+	logmsg(LOGMSG_USER, "PAGE LEVEL: %d\n", LEVEL(p));
 	switch (type) {
 	case P_HASHMETA:
 	case P_BTREEMETA:
@@ -332,7 +340,7 @@ __pgdump(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno)
 		    " error=%d\n", dbp->fname, pgno, fileid, ret);
 		return;
 	}
-	printf("pgdump> %s id %" PRIi32 " page %" PRIu32 "\n", dbp->fname,
+	logmsg(LOGMSG_USER, "pgdump> %s id %" PRIi32 " page %" PRIu32 "\n", dbp->fname,
 	    fileid, pgno);
 	dopage(dbp, pagep);
 	ret = __memp_fput(mpf, pagep, 0);

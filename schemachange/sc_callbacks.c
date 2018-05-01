@@ -37,15 +37,15 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     uint32_t lid = 0;
     extern uint32_t gbl_rep_lockid;
     struct dbtable *db = get_dbtable_by_name(name);
-   
+
     if (!db) {
         logmsg(LOGMSG_ERROR, "%s: unable to find table %s\n", __func__, name);
         return -1;
     }
 
-    if(rename_db(db, newtable)) {
-        logmsg(LOGMSG_ERROR, "%s: failed to rename %s to %s \n", __func__,
-               name, newtable);
+    if (rename_db(db, newtable)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to rename %s to %s \n", __func__, name,
+               newtable);
         return -1;
     }
 
@@ -59,8 +59,9 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     bdb_set_tran_lockerid(tran, gbl_rep_lockid);
 
     if (bdb_table_version_select(newtable, tran, &db->tableversion, &bdberr)) {
-        logmsg(LOGMSG_ERROR, "%s: failed to retrieve table version for new %s \n",
-               __func__, name, newtable);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to retrieve table version for new %s \n", __func__,
+               newtable);
         return -1;
     }
 
@@ -70,10 +71,10 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
 
     bdb_set_tran_lockerid(tran, lid);
     rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
-    if (rc) 
-        logmsg(LOGMSG_FATAL, "%s failed to abort transaction\n", __func__, rc);
+    if (rc)
+        logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__, rc);
 
-    sc_set_running(0 /*running*/, 0 /*seed*/, NULL, 0);
+    sc_set_running((char *)name, 0 /*running*/, 0 /*seed*/, NULL, 0);
 
     return rc;
 }
@@ -153,7 +154,7 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
         /* If this goes wrong then abort the schema change. */
         logmsg(LOGMSG_ERROR,
                "Aborting schema change due to unexpected error\n");
-        gbl_sc_abort = 1;
+        usedb->sc_abort = 1;
         MEMORY_SYNC;
     } else if (rc == 0) {
         (iq->sc_deletes)++;
@@ -222,7 +223,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
     blob_buffer_t *add_idx_blobs = NULL;
     int rc = 0;
 
-    if (!(sc_live && usedb->sc_from == iq->usedb)) {
+    if (usedb->sc_from != iq->usedb) {
         return 0;
     }
 #ifdef DEBUG_SC
@@ -275,7 +276,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
                                 ".NEW..ONDISK", new_dta, &reason, add_idx_blobs,
                                 add_idx_blobs ? MAXBLOBS : 0, 1);
     if (rc) {
-        gbl_sc_abort = 1;
+        usedb->sc_abort = 1;
         MEMORY_SYNC;
         free(new_dta);
         free_blob_status_data(oldblobs);
@@ -304,7 +305,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
                rc, newgenid);
         logmsg(LOGMSG_ERROR,
                "Aborting schema change due to unexpected error\n");
-        gbl_sc_abort = 1;
+        iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
     }
     if (iq->debug) {
@@ -345,7 +346,7 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
                                 (const char *)od_dta, ".NEW..ONDISK", new_dta,
                                 &reason, blobs, maxblobs, 1);
     if (rc) {
-        gbl_sc_abort = 1;
+        usedb->sc_abort = 1;
         MEMORY_SYNC;
         free(new_dta);
         return rc;
@@ -370,7 +371,7 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
             logmsg(LOGMSG_ERROR, "Aborting schema change due to constraint "
                                  "violation in new schema\n");
 
-            gbl_sc_abort = 1;
+            usedb->sc_abort = 1;
             MEMORY_SYNC;
             free(new_dta);
             return 0;
@@ -405,7 +406,7 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
                genid);
         logmsg(LOGMSG_ERROR,
                "Aborting schema change due to unexpected error\n");
-        gbl_sc_abort = 1;
+        iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
     }
 
@@ -456,7 +457,7 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
                __func__, rc, oldgenid, newgenid);
         logmsg(LOGMSG_ERROR,
                "Aborting schema change due to unexpected error\n");
-        gbl_sc_abort = 1;
+        iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
     } else if (rc == 0) {
         (iq->sc_updates)++;
@@ -490,6 +491,9 @@ int schema_change_abort_callback(void)
 void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
 {
     int bdberr;
+
+    if (db == NULL)
+        return;
 
     pthread_mutex_lock(&gbl_sc_lock);
     sc_del_unused_files_start_ms = comdb2_time_epochms();
@@ -822,19 +826,20 @@ done:
         }
     }
 
-    sc_set_running(0 /*running*/, 0 /*seed*/, NULL, 0);
+    sc_set_running((char *)table, 0 /*running*/, 0 /*seed*/, NULL, 0);
     return rc; /* success */
 }
 
-void getMachineAndTimeFromFstSeed(const char **mach, time_t *timet)
+void getMachineAndTimeFromFstSeed(uint64_t seed, uint32_t host,
+                                  const char **mach, time_t *timet)
 {
     /* fastseeds are formed from an epoch time, machine number and
      * duplication factor, so we can decode the fastseed to get the
      * master machine that started the schema change and the time at which
      * it was done. */
-    unsigned int *iptr = (unsigned int *)&sc_seed;
+    unsigned int *iptr = (unsigned int *)&seed;
 
-    *mach = get_hostname_with_crc32(thedb->bdb_env, sc_host);
+    *mach = get_hostname_with_crc32(thedb->bdb_env, host);
     *timet = ntohl(iptr[0]);
     return;
 }

@@ -416,6 +416,7 @@ static int convert_record(struct convert_record_data *data)
     int dtalen = 0, rc, rrn, opfailcode = 0, ixfailnum = 0;
     unsigned long long genid, ngenid, check_genid;
     void *dta = NULL;
+    int no_wait_rowlock = 0;
 
     if (gbl_sc_thd_failed) {
         if (!data->s->retry_bad_genids)
@@ -424,7 +425,8 @@ static int convert_record(struct convert_record_data *data)
                     data->stripe, gbl_sc_thd_failed - 1);
         return -1;
     }
-    if (gbl_sc_abort) {
+    if (gbl_sc_abort || data->from->sc_abort ||
+        (data->s->iq && data->s->iq->sc_should_abort)) {
         sc_errf(data->s, "Schema change aborted\n");
         return -1;
     }
@@ -495,6 +497,15 @@ static int convert_record(struct convert_record_data *data)
                        "Have old-style genids in table, disabling plan\n");
                 data->s->retry_bad_genids = 1;
                 return -1;
+            }
+            if (gbl_rowlocks) {
+                rc = bdb_trylock_row_write(data->from->handle, data->trans,
+                                           genid);
+                if (rc) {
+                    rc = RC_INTERNAL_RETRY;
+                    no_wait_rowlock = 1;
+                    goto err;
+                }
             }
         } else if (rc == 1) {
             /* we have finished all the records in our stripe
@@ -843,7 +854,8 @@ static int convert_record(struct convert_record_data *data)
     }
 
 err: /*if (is_schema_change_doomed())*/
-    if (gbl_sc_abort) {
+    if (gbl_sc_abort || data->from->sc_abort ||
+        (data->s->iq && data->s->iq->sc_should_abort)) {
         /*
         rc = ERR_CONSTR;
         break;
@@ -857,7 +869,7 @@ err: /*if (is_schema_change_doomed())*/
         data->trans = NULL;
         data->num_retry_errors++;
         data->totnretries++;
-        if (data->cmembers->is_decrease_thrds)
+        if (!no_wait_rowlock && data->cmembers->is_decrease_thrds)
             decrease_max_threads(&data->cmembers->maxthreads);
         else
             poll(0, 0, (rand() % 500 + 10));
@@ -1066,7 +1078,8 @@ cleanup:
                   "stripe %d\n",
                   data->nrecs, data->totnretries, data->stripe);
     } else {
-        if (gbl_sc_abort) {
+        if (gbl_sc_abort || data->from->sc_abort ||
+            (data->s->iq && data->s->iq->sc_should_abort)) {
             sc_errf(data->s,
                     "conversion aborted after %lld records, while working on"
                     " stripe %d with %d retries\n",
@@ -1309,7 +1322,8 @@ static int upgrade_records(struct convert_record_data *data)
     db_seqnum_type ss;
 
     // if sc has beed aborted, return
-    if (gbl_sc_abort) {
+    if (gbl_sc_abort || data->from->sc_abort ||
+        (data->s->iq && data->s->iq->sc_should_abort)) {
         sc_errf(data->s, "Schema change aborted\n");
         return -1;
     }
@@ -1570,7 +1584,8 @@ cleanup:
                   "successfully upgraded %lld records. skipped %lld records.\n",
                   data->nrecs, data->nrecskip);
     } else {
-        if (gbl_sc_abort) {
+        if (gbl_sc_abort || data->from->sc_abort ||
+            (data->s->iq && data->s->iq->sc_should_abort)) {
             sc_errf(data->s, "conversion aborted after %lld records upgraded "
                              "and %lld records skipped, "
                              "while working on stripe %d\n",

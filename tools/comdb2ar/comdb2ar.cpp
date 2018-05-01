@@ -30,15 +30,15 @@ const char *help_text[] = {
 "  First, create a full backup in incremental mode-",
 "     comdb2ar c -I create -b /bb/bin/increment [opts] /bb/bin/mydb.lrl > output",
 "  Then, create an increment-",
-"     comdb2ar c -I inc -b /bb/bin/increment [opt] /bb/bin/mydb.lrl > output",
+"     comdb2ar c -I inc -b /bb/bin/increment [opts] /bb/bin/mydb.lrl > output",
 "",
 "  Database mydb is serialised into tape archive format on to stdout.",
 "  -s   serialise support files only (lrl, csc2 etc, no data or log files)",
 "  -L   do not disable log file deletion (dangerous)",
 "",
-"To deserialise a db: comdb2ar.tsk [opts] x [/bb/bin /bb/data/mydb] <input",
+"To deserialise a db: comdb2ar.tsk [opts] x [/bb/bin /bb/data/mydb] < input",
 "To deserialise a db incrementally:",
-"  comdb2ar x -I restore -b /bb/bin/restore_increment [/bb/bin/ /bb/data/mydb] < input",
+"  cat db.tar in1.tar in2.tar | comdb2ar x -I restore [/bb/bin/ /bb/data/mydb] ",
 "Where input is each increment concatenated together",
 "  i.e. cat mydb.tar mydb_incr1.tar mydb_incr2.tar",
 "",
@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
     extern char *optarg;
     extern int optind, optopt;
 
-    enum modes_enum {CREATE_MODE, EXTRACT_MODE, NO_MODE};
+    enum modes_enum {CREATE_MODE, EXTRACT_MODE, PARTIAL_CREATE_MODE, PARTIAL_RESTORE_MODE, NO_MODE};
     modes_enum mode = NO_MODE;
 
     int c;
@@ -107,6 +107,7 @@ int main(int argc, char *argv[])
     bool incr_ex = false;
     std::string incr_path;
     bool incr_path_specified = false;
+    bool dryrun = false;
 
     // TODO: should really consider using comdb2file.c
     char *s = getenv("COMDB2_ROOT");
@@ -209,6 +210,10 @@ int main(int argc, char *argv[])
                 }
                 break;
 
+            case 'y':
+                dryrun = true;
+                break;
+
             case '?':
                 std::cerr << "Unrecognised option: -" << (char)c << std::endl;
                 usage();
@@ -234,6 +239,14 @@ int main(int argc, char *argv[])
         switch(*cp) {
             case 'c':
                 mode = CREATE_MODE;
+                break;
+
+            case 'p':
+                mode = PARTIAL_CREATE_MODE;
+                break;
+
+            case 'P':
+                mode = PARTIAL_RESTORE_MODE;
                 break;
 
             case 'x':
@@ -315,7 +328,8 @@ int main(int argc, char *argv[])
              legacy_mode,
              is_disk_full,
              run_with_done_file,
-             incr_ex
+             incr_ex,
+             dryrun
            );
         } catch(std::exception& e) {
             std::cerr << e.what() << std::endl;
@@ -324,6 +338,34 @@ int main(int argc, char *argv[])
             } else {
               errexit();
             }
+        }
+    } else if (mode == PARTIAL_CREATE_MODE) {
+        // A lot like create, we create a tarball, but we don't do
+        // lots of other things that create does, so it's a great
+        // deal easier to skip that code
+        try {
+            const std::string lrlpath(argv[1]);
+            create_partials(lrlpath, do_direct_io);
+        }
+        catch(std::exception& e) {
+            std::cerr << e.what() << std::endl;
+            errexit();
+        }
+    } else if (mode == PARTIAL_RESTORE_MODE) {
+        // Also a lot like restore, with enough differences
+        // that it's incredibly ... unclean ... to make the
+        // restore code do what we need
+        if (argc != 2) {
+            std::cerr << "Expected lrl path." << std::endl;
+            std::exit(2);
+        }
+        std::string lrlpath = argv[1];
+        try {
+            restore_partials(lrlpath, comdb2_task, run_full_recovery, false, dryrun);
+        }
+        catch(std::exception& e) {
+            std::cerr << e.what() << std::endl;
+            errexit();
         }
     }
 

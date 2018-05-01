@@ -4,7 +4,7 @@ debug=1
 [[ "$debug" == 1 ]] && set -x
 
 db=$1
-export COMDB2_PMUX_PORT=19500
+export COMDB2_PMUX_PORT=19900
 export pmux_pid=0
 export start_iters=10
 export start_sleep=5
@@ -83,7 +83,7 @@ function verify_hello_reuse
     # Create a db
     DBDIR=$TESTDIR/$DBNAME
     mkdir $DBDIR
-    mkdir -p $DBDIR/var/log/cdb2/
+    mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
 
     # Create config file
     echo "$db 0 localhost" > $CDB2_CONFIG
@@ -259,7 +259,10 @@ function runtest
 {
     [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
 
-    # Start pmux
+    echo Send exit in case previous pmux still running
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "exit" ${COMDB2_PMUX_PORT}
+
+    echo Start pmux
     ${PMUX_EXE} -n -r 22000:22090 -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} &
     pmux_pid=$!
 

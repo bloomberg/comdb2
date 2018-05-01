@@ -395,6 +395,12 @@ int osql_bplog_schemachange(struct ireq *iq)
     struct block_err err;
     struct schema_change_type *sc;
 
+    iq->sc_pending = NULL;
+    iq->sc_seed = 0;
+    iq->sc_host = 0;
+    iq->sc_locked = 0;
+    iq->sc_should_abort = 0;
+
     rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese.osqllog,
                        osql_process_schemachange);
 
@@ -414,9 +420,9 @@ int osql_bplog_schemachange(struct ireq *iq)
             rc = ERR_NOMASTER;
         } else {
             free_schema_change_type(sc);
-            int sc_set_running(int running, uint64_t seed, const char *host,
-                               time_t time);
-            sc_set_running(0, iq->sc_seed, NULL, 0);
+            int sc_set_running(char *table, int running, uint64_t seed,
+                               const char *host, time_t time);
+            sc_set_running(sc->table, 0, iq->sc_seed, NULL, 0);
             if (sc->sc_rc)
                 rc = ERR_SC;
         }
@@ -685,6 +691,14 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long seq, const char *host)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)osql_sess_getbptran(sess);
+    if (!tran || !tran->db) {
+        /* something has gone wrong dispatching the socksql request, ignoring
+           when the bplog creation failed, the caller is responsible for
+           notifying the source that the session has gone awry
+         */
+        return 0;
+    }
+
     struct ireq *iq = osql_session_get_ireq(sess);
     int rc = 0, rc_op = 0;
     oplog_key_t key;
@@ -753,52 +767,42 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     key.seq = seq;
     comdb2uuidcpy(key.uuid, uuid);
 
-    if (!tran || !tran->db) {
-        /* something has gone wrong dispatching the socksql request, ignoring
-           when the bplog creation failed, the caller is responsible for
-           notifying the source that the session has gone awry
-         */
-        return 0;
-    }
-
     /* add the op into the temporary table */
     if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
         logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
         return rc;
     }
 
-    if (seq == 0 && osql_session_is_sorese(sess)) {
+    if (seq == 0 && osql_session_is_sorese(sess) && tran->rows > 0) {
         /* lets make sure that the temp table is empty since commit retries will
          * use same rqid*/
-        if (tran->rows > 0) {
-            sorese_info_t sorese_info = {0};
-            struct errstat generr = {0};
+        sorese_info_t sorese_info = {0};
+        struct errstat generr = {0};
 
-            logmsg(LOGMSG_ERROR, "%s Broken transaction, received first seq row but "
-                            "session already has rows?\n",
-                    __func__);
+        logmsg(LOGMSG_ERROR, "%s Broken transaction, received first seq row but "
+                "session already has rows?\n",
+                __func__);
 
-            sorese_info.rqid = rqid;
-            sorese_info.host = host;
-            sorese_info.type = -1; /* I don't need it */
+        sorese_info.rqid = rqid;
+        sorese_info.host = host;
+        sorese_info.type = -1; /* I don't need it */
 
-            generr.errval = RC_INTERNAL_RETRY;
-            strncpy(generr.errstr,
-                    "malformed transaction, received duplicated first row",
-                    sizeof(generr.errstr));
+        generr.errval = RC_INTERNAL_RETRY;
+        strncpy(generr.errstr,
+                "malformed transaction, received duplicated first row",
+                sizeof(generr.errstr));
 
-            if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
-                logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-            }
-
-            rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
-                                            RC_INTERNAL_RETRY);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
-            }
-
-            return -1;
+        if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
+            logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
         }
+
+        rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
+                RC_INTERNAL_RETRY);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
+        }
+
+        return -1;
     }
 
 #if 0 
@@ -827,45 +831,48 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         return rc;
     }
 
-    if (!rc_op && osql_comm_is_done(rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr,
-                                    osql_session_get_ireq(sess))) {
+    if (rc_op)
+        return rc_op;
 
-        osql_sess_set_complete(rqid, uuid, sess, xerr);
-
-        /* if we received a too early, check the coherency and mark blackout the
-         * node */
-        if (xerr && xerr->errval == OSQL_TOOEARLY) {
-            osql_comm_blkout_node(host);
-        }
-
-        if ((rc = osql_bplog_signal(tran))) {
-            return rc;
-        }
-
-        debug = debug_this_request(gbl_debug_until);
-        if (gbl_who > 0 && gbl_debug) {
-            debug = 1;
-        }
-
-        if (osql_session_is_sorese(sess)) {
-
-            osql_sess_lock(sess);
-            osql_sess_lock_complete(sess);
-            if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
-                osql_session_set_ireq(sess, NULL);
-                osql_sess_set_dispatched(sess, 1);
-                rc = handle_buf_sorese(thedb, iq, debug);
-            }
-            osql_sess_unlock_complete(sess);
-            osql_sess_unlock(sess);
-
-            return rc;
-        }
-
+    rc = osql_comm_is_done(rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr,
+                                    osql_session_get_ireq(sess));
+    if (rc == 0)
         return 0;
+
+    osql_sess_set_complete(rqid, uuid, sess, xerr);
+
+    /* if we received a too early, check the coherency and mark blackout the
+     * node */
+    if (xerr && xerr->errval == OSQL_TOOEARLY) {
+        osql_comm_blkout_node(host);
     }
 
-    return rc_op;
+    if ((rc = osql_bplog_signal(tran))) {
+        return rc;
+    }
+
+    debug = debug_this_request(gbl_debug_until);
+    if (gbl_who > 0 && gbl_debug) {
+        debug = 1;
+    }
+
+    if (osql_session_is_sorese(sess)) {
+
+        osql_sess_lock(sess);
+        osql_sess_lock_complete(sess);
+        if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
+            //iq = osql_session_get_ireq(sess);
+            osql_session_set_ireq(sess, NULL);
+            osql_sess_set_dispatched(sess, 1);
+            rc = handle_buf_sorese(thedb, iq, debug);
+        }
+        osql_sess_unlock_complete(sess);
+        osql_sess_unlock(sess);
+
+        return rc;
+    }
+
+    return 0;
 }
 
 /**

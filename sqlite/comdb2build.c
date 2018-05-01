@@ -112,7 +112,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
       tmp_dst[max_length - 1] = '\0';
     }
 
-    if(gbl_allow_user_schema && thd->sqlclntstate->user[0] != '\0' && strcasecmp(thd->sqlclntstate->user,DEFAULT_USER) != 0) {
+    if(gbl_allow_user_schema && thd->clnt->user[0] != '\0' && strcasecmp(thd->clnt->user,DEFAULT_USER) != 0) {
         char* username = strstr(tmp_dst, "@");
         if (username) {
             /* Do nothing. */
@@ -122,14 +122,14 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             char userschema[MAXTABLELEN];
             int bdberr; 
             bdb_state_type *bdb_state = thedb->bdb_env;
-            if (bdb_tbl_access_userschema_get(bdb_state, NULL, thd->sqlclntstate->user, userschema, &bdberr) == 0) {
+            if (bdb_tbl_access_userschema_get(bdb_state, NULL, thd->clnt->user, userschema, &bdberr) == 0) {
               if (userschema[0] == '\0') {
                 snprintf(dst, MAXTABLELEN, "%s", tmp_dst);
               } else {
                 snprintf(dst, MAXTABLELEN, "%s@%s", tmp_dst, userschema);
               }
             } else {
-              snprintf(dst, MAXTABLELEN, "%s@%s",tmp_dst, thd->sqlclntstate->user);
+              snprintf(dst, MAXTABLELEN, "%s@%s",tmp_dst, thd->clnt->user);
             }
         }
     } else {
@@ -156,6 +156,11 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
         {
             setError(pParse, SQLITE_ERROR, "Shards cannot be schema changed independently");
             return SQLITE_ERROR;
+        }
+
+        if (db) {
+            /* use original tablename */
+            strncpy(dst, db->tablename, MAXTABLELEN);
         }
     }
     else
@@ -304,7 +309,7 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
         sqlite3VdbeAddTable(v, t);
     }
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    thd->sqlclntstate->verifyretry_off = 1;
+    thd->clnt->verifyretry_off = 1;
     return comdb2prepareNoRows(v, pParse, int_arg, arg, func, freeFunc);
 }
 
@@ -318,10 +323,10 @@ int comdb2AuthenticateUserDDL(Vdbe* v, const char *tablename, Parse* pParse)
      if (authOn != 0)
         return SQLITE_OK;
 
-     if (thd->sqlclntstate && tablename)
+     if (thd->clnt && tablename)
      {
         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, 
-            tablename, thd->sqlclntstate->user, &bdberr))
+            tablename, thd->clnt->user, &bdberr))
           return SQLITE_AUTH;
         else
             return SQLITE_OK;
@@ -351,10 +356,10 @@ static int comdb2AuthenticateOpPassword(Vdbe* v, Parse* pParse)
      bdb_state_type *bdb_state = thedb->bdb_env;
      int bdberr; 
 
-     if (thd->sqlclntstate)
+     if (thd->clnt)
      {
          /* Authenticate the password first, as we haven't been doing it so far. */
-         struct sqlclntstate *s = thd->sqlclntstate;
+         struct sqlclntstate *s = thd->clnt;
          if (bdb_user_password_check(s->user, s->password, NULL))
          {
             return SQLITE_AUTH;
@@ -362,7 +367,7 @@ static int comdb2AuthenticateOpPassword(Vdbe* v, Parse* pParse)
          
          /* Check if the user is OP user. */
          if (bdb_tbl_op_access_get(bdb_state, NULL, 0, 
-             tablename, thd->sqlclntstate->user, &bdberr))
+             tablename, thd->clnt->user, &bdberr))
              return SQLITE_AUTH;
          else
              return SQLITE_OK;
@@ -407,7 +412,7 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
 
     /*
     */
-    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    osqlstate_t *osql = &thd->clnt->osql;
     osql->xerr.errval = 0;
     f->errorMsg = osql->xerr.errstr;
     return f->rc;
@@ -438,7 +443,7 @@ static int comdb2SqlSchemaChange(OpFunc *f)
 int comdb2SqlSchemaChange_tran(OpFunc *f)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int sentops = 0;
@@ -521,15 +526,10 @@ static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, int opt);
 
 int authenticateSC(const char * table,  Parse *pParse) 
 {
-    if (gbl_schema_change_in_progress) {
-        setError(pParse, SQLITE_ERROR, "Schema change already in progress");
-        return -1;
-    }
-
     Vdbe *v  = sqlite3GetVdbe(pParse);
     char *username = strstr(table, "@");
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    if (username && strcmp(username+1, thd->sqlclntstate->user) == 0) {
+    if (username && strcmp(username+1, thd->clnt->user) == 0) {
         return 0;
     } else if (comdb2AuthenticateUserDDL(v, table, pParse) == 0) {
         return 0;
@@ -654,7 +654,8 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     sc->nothrevent = 1;
     
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL )) {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n",  sc->table);
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc->table);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -712,7 +713,8 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
 
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL ))
     {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n",  sc->table);
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc->table);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -764,7 +766,8 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
 
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL ))
     {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n",  sc->table);
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc->table);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -797,7 +800,8 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         goto out;
 
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL )) {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n",  sc->table);
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc->table);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -1501,8 +1505,8 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
     {
         struct sql_thread *thd = pthread_getspecific(query_info_key);
         /* Check if its password change request */
-        if (!(thd && thd->sqlclntstate &&
-                   strcmp(thd->sqlclntstate->user, password->user) == 0 )) {
+        if (!(thd && thd->clnt &&
+                   strcmp(thd->clnt->user, password->user) == 0 )) {
             setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
             return;
         }
@@ -1679,20 +1683,20 @@ void resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName)
    if ((zDB && (!strcasecmp(zDB, "main") || !strcasecmp(zDB, "temp"))))
    {
        sprintf(tableName, "%s", p->zName);
-   } else if (thd->sqlclntstate && (thd->sqlclntstate->user[0] != '\0') && !strstr(p->zName, "@")
+   } else if (thd->clnt && (thd->clnt->user[0] != '\0') && !strstr(p->zName, "@")
           && strncasecmp(p->zName, "sqlite_", 7) && strncasecmp(p->zName, "comdb2", 6))
    {
        char userschema[MAXTABLELEN];
        int bdberr; 
        bdb_state_type *bdb_state = thedb->bdb_env;
-       if (bdb_tbl_access_userschema_get(bdb_state, NULL, thd->sqlclntstate->user, userschema, &bdberr) == 0) {
+       if (bdb_tbl_access_userschema_get(bdb_state, NULL, thd->clnt->user, userschema, &bdberr) == 0) {
          if (userschema[0] == '\0') {
            snprintf(tableName, MAXTABLELEN, "%s", p->zName);
          } else {
            snprintf(tableName, MAXTABLELEN, "%s@%s", p->zName, userschema);
          }
        } else {
-         snprintf(tableName, MAXTABLELEN, "%s@%s", p->zName, thd->sqlclntstate->user);
+         snprintf(tableName, MAXTABLELEN, "%s@%s", p->zName, thd->clnt->user);
        }
    } else {
        sprintf(tableName, "%s", p->zName);
@@ -1915,6 +1919,9 @@ struct comdb2_schema {
     LISTC_T(struct comdb2_key) key_list;
     /* Staging list of new/existing constraints */
     LISTC_T(struct comdb2_constraint) constraint_list;
+
+    /* Link */
+    LINKC_T(struct comdb2_schema) lnk;
 };
 
 /* DDL context flags */
@@ -1924,6 +1931,8 @@ enum { DDL_NOOP = 1 << 0, DDL_DRYRUN = 1 << 1 };
 struct comdb2_ddl_context {
     /* Table definition */
     struct comdb2_schema *schema;
+    /* User tag definitions */
+    LISTC_T(struct comdb2_schema) tag_list;
     /* Flags */
     int flags;
     /* Memory allocator. */
@@ -1938,58 +1947,69 @@ enum {
     FLAG_EXTRA_BYTE = 1 << 2,
 };
 
-#define COMDB2_TYPE(A, B, C)                                                   \
-    {                                                                          \
-        A, sizeof(A) - 1, B, C                                                 \
-    }
+/* A mapping from SQL types to Comdb2 types. */
+#define TYPE_MAPPING                                                           \
+    XMACRO_TYPE(SQL_TYPE_USHORT, "u_short", "u_short", 0)                      \
+    XMACRO_TYPE(SQL_TYPE_SHORT, "short", "short", 0)                           \
+    XMACRO_TYPE(SQL_TYPE_UINT, "u_int", "u_int", 0)                            \
+    XMACRO_TYPE(SQL_TYPE_INT, "int", "int", 0)                                 \
+    XMACRO_TYPE(SQL_TYPE_LONGLONG, "longlong", "longlong", 0)                  \
+    XMACRO_TYPE(SQL_TYPE_ULONGLONG, "u_longlong", "u_longlong", 0)             \
+    XMACRO_TYPE(SQL_TYPE_CSTRING, "cstring", "cstring",                        \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT)                         \
+    XMACRO_TYPE(SQL_TYPE_VUTF8, "vutf8", "vutf8",                              \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT)                         \
+    XMACRO_TYPE(SQL_TYPE_BLOB, "blob", "blob",                                 \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT)                         \
+    XMACRO_TYPE(SQL_TYPE_BYTE, "byte", "byte",                                 \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT)                         \
+    XMACRO_TYPE(SQL_TYPE_DATETIME, "datetime", "datetime", FLAG_QUOTE_DEFAULT) \
+    XMACRO_TYPE(SQL_TYPE_DATETIMEUS, "datetimeus", "datetimeus",               \
+                FLAG_QUOTE_DEFAULT)                                            \
+    XMACRO_TYPE(SQL_TYPE_INTERVALDS, "intervalds", "intervalds",               \
+                FLAG_QUOTE_DEFAULT)                                            \
+    XMACRO_TYPE(SQL_TYPE_INTERVALDSUS, "intervaldsus", "intervaldsus",         \
+                FLAG_QUOTE_DEFAULT)                                            \
+    XMACRO_TYPE(SQL_TYPE_INTERVALYM, "intervalym", "intervalym",               \
+                FLAG_QUOTE_DEFAULT)                                            \
+    XMACRO_TYPE(SQL_TYPE_DECIMAL32, "decimal32", "decimal32", 0)               \
+    XMACRO_TYPE(SQL_TYPE_DECIMAL64, "decimal64", "decimal64", 0)               \
+    XMACRO_TYPE(SQL_TYPE_DECIMAL128, "decimal128", "decimal128", 0)            \
+    XMACRO_TYPE(SQL_TYPE_FLOAT, "float", "float", 0)                           \
+    XMACRO_TYPE(SQL_TYPE_DOUBLE, "double", "double", 0)                        \
+    /* Additional types mapped to a Comdb2 type. */                            \
+    XMACRO_TYPE(SQL_TYPE_VARCHAR, "varchar", "cstring",                        \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT | FLAG_EXTRA_BYTE)       \
+    XMACRO_TYPE(SQL_TYPE_CHAR, "char", "cstring",                              \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT | FLAG_EXTRA_BYTE)       \
+    XMACRO_TYPE(SQL_TYPE_TEXT, "text", "vutf8",                                \
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT)                         \
+    XMACRO_TYPE(SQL_TYPE_INTEGER, "integer", "int", 0)                         \
+    XMACRO_TYPE(SQL_TYPE_SMALLINT, "smallint", "short", 0)                     \
+    XMACRO_TYPE(SQL_TYPE_BIGINT, "bigint", "longlong", 0)                      \
+    XMACRO_TYPE(SQL_TYPE_REAL, "real", "float", 0)                             \
+    /* End marker */                                                           \
+    XMACRO_TYPE(SQL_TYPE_LAST, 0, 0, 0)
 
-struct comdb2_type_mapping {
-    /* SQL type */
-    char *sql_type;
-    int sql_type_len;
+#define XMACRO_TYPE(code, sql_str, comdb2_str, flags) code,
+typedef enum { TYPE_MAPPING } type_codes;
+#undef XMACRO_TYPE
 
-    /* Comdb2 type */
-    char *comdb2_type;
+#define XMACRO_TYPE(code, sql_str, comdb2_str, flags) sql_str,
+static const char *type_sql_str[] = {TYPE_MAPPING};
+#undef XMACRO_TYPE
 
-    /* Type properties */
-    int flag;
-} type_mapping[] = {
-    /*
-      Comdb2 types.
-      WARNING: DO NOT CHANGE THE ORDER!
-    */
-    COMDB2_TYPE("u_short", "u_short", 0),
-    COMDB2_TYPE("short", "short", 0),
-    COMDB2_TYPE("u_int", "u_int", 0),
-    COMDB2_TYPE("int", "int", 0),
-    COMDB2_TYPE("longlong", "longlong", 0),
-    COMDB2_TYPE("cstring", "cstring", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("vutf8", "vutf8", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("blob", "blob", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("byte", "byte", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("datetime", "datetime", FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("datetimeus", "datetimeus", FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("intervalds", "intervalds", FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("intervaldsus", "intervaldsus", FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("intervalym", "intervalym", FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("decimal32", "decimal32", 0),
-    COMDB2_TYPE("decimal64", "decimal64", 0),
-    COMDB2_TYPE("decimal128", "decimal128", 0),
-    COMDB2_TYPE("float", "float", 0),
-    COMDB2_TYPE("double", "double", 0),
+#define XMACRO_TYPE(code, sql_str, comdb2_str, flags) sizeof(sql_str) - 1,
+static size_t type_sql_str_len[] = {TYPE_MAPPING};
+#undef XMACRO_TYPE
 
-    /* Additional types mapped to a Comdb2 type. */
-    COMDB2_TYPE("varchar", "cstring",
-                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT | FLAG_EXTRA_BYTE),
-    COMDB2_TYPE("char", "cstring",
-                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT | FLAG_EXTRA_BYTE),
-    COMDB2_TYPE("text", "vutf8", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("integer", "int", 0),
-    COMDB2_TYPE("smallint", "short", 0),
-    COMDB2_TYPE("bigint", "longlong", 0),
-    COMDB2_TYPE("real", "float", 0),
-    /* End marker */
-    {NULL, 0, NULL, 0}};
+#define XMACRO_TYPE(code, sql_str, comdb2_str, flags) comdb2_str,
+static const char *type_comdb2_str[] = {TYPE_MAPPING};
+#undef XMACRO_TYPE
+
+#define XMACRO_TYPE(code, sql_str, comdb2_str, flags) flags,
+static int type_flags[] = {TYPE_MAPPING};
+#undef XMACRO_TYPE
 
 /*
   Allocate Comdb2 DDL context to be used during parsing.
@@ -2020,6 +2040,8 @@ static struct comdb2_ddl_context *create_ddl_context(Parse *pParse)
         return NULL;
     }
 
+    /* Initialize various lists */
+    listc_init(&ctx->tag_list, offsetof(struct comdb2_schema, lnk));
     listc_init(&ctx->schema->column_list, offsetof(struct comdb2_column, lnk));
     listc_init(&ctx->schema->key_list, offsetof(struct comdb2_key, lnk));
     listc_init(&ctx->schema->constraint_list,
@@ -2069,25 +2091,23 @@ static int comdb2_parse_sql_type(const char *type, int *size)
 
     type_len = strlen(type);
 
-    for (int i = 0; type_mapping[i].sql_type != NULL; ++i) {
+    for (int i = 0; i < SQL_TYPE_LAST; ++i) {
 
         /* Check if current type could accept size. */
-        accepts_size = (type_mapping[i].flag & FLAG_ALLOW_ARRAY);
+        accepts_size = (type_flags[i] & FLAG_ALLOW_ARRAY);
 
-        if ((accepts_size == 0) && (type_mapping[i].sql_type_len != type_len)) {
+        if ((accepts_size == 0) && (type_sql_str_len[i] != type_len)) {
             continue;
         }
 
-        if (strncasecmp(type, type_mapping[i].sql_type,
-                        type_mapping[i].sql_type_len) == 0) {
-
+        if (strncasecmp(type, type_sql_str[i], type_sql_str_len[i]) == 0) {
             /* No size specified. */
-            if (type_mapping[i].sql_type_len == strlen(type)) {
+            if ((type_sql_str_len[i]) == strlen(type)) {
                 *size = 0;
                 return i;
             }
 
-            if (type[type_mapping[i].sql_type_len] != '(') {
+            if (type[type_sql_str_len[i]] != '(') {
                 /* Malformed size. */
                 return -1;
             }
@@ -2100,11 +2120,10 @@ static int comdb2_parse_sql_type(const char *type, int *size)
             }
 
             errno = 0;
-            *size =
-                strtol(type + type_mapping[i].sql_type_len + 1, &endptr, 10);
+            *size = strtol(type + type_sql_str_len[i] + 1, &endptr, 10);
 
             /* Correction: cstring types require an additional byte. */
-            if ((type_mapping[i].flag & FLAG_EXTRA_BYTE) != 0) {
+            if ((type_flags[i] & FLAG_EXTRA_BYTE) != 0) {
                 (*size)++;
             }
 
@@ -2143,63 +2162,145 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
     switch (*type) {
     case SERVER_UINT:
         switch (in_len) {
-        case 3: *type = 0; break;
-        case 5: *type = 2; break;
-        default: goto err;
+        case 3:
+            *type = SQL_TYPE_USHORT;
+            break;
+        case 5:
+            *type = SQL_TYPE_UINT;
+            break;
+        case 9:
+            *type = SQL_TYPE_ULONGLONG;
+            break;
+        default:
+            goto err;
+        }
+        break;
+    case CLIENT_UINT:
+        switch (in_len) {
+        case 2:
+            *type = SQL_TYPE_USHORT;
+            break;
+        case 4:
+            *type = SQL_TYPE_UINT;
+            break;
+        case 8:
+            *type = SQL_TYPE_ULONGLONG;
+            break;
+        default:
+            goto err;
         }
         break;
     case SERVER_BINT:
         switch (in_len) {
-        case 3: *type = 1; break;
-        case 5: *type = 3; break;
-        case 9: *type = 4; break;
-        default: goto err;
+        case 3:
+            *type = SQL_TYPE_SHORT;
+            break;
+        case 5:
+            *type = SQL_TYPE_INT;
+            break;
+        case 9:
+            *type = SQL_TYPE_LONGLONG;
+            break;
+        default:
+            goto err;
+        }
+        break;
+    case CLIENT_INT:
+        switch (in_len) {
+        case 2:
+            *type = SQL_TYPE_SHORT;
+            break;
+        case 4:
+            *type = SQL_TYPE_INT;
+            break;
+        case 8:
+            *type = SQL_TYPE_LONGLONG;
+            break;
+        default:
+            goto err;
         }
         break;
     case SERVER_BREAL:
         in_len--;
+        /* fallthrough */
+    case CLIENT_REAL:
         switch (in_len) {
-        case 4: *type = 17; break;
-        case 8: *type = 18; break;
-        default: goto err;
+        case 4:
+            *type = SQL_TYPE_FLOAT;
+            break;
+        case 8:
+            *type = SQL_TYPE_DOUBLE;
+            break;
+        default:
+            goto err;
         }
         break;
-    case SERVER_BCSTR:
-        *type = 5;
+    case SERVER_BCSTR: /* fallthrough */
+    case CLIENT_CSTR:
+        *type = SQL_TYPE_CSTRING;
         *len = in_len;
         break;
-    case SERVER_BYTEARRAY:
-        *type = 8;
+    case SERVER_BYTEARRAY: /* fallthrough */
+    case CLIENT_BYTEARRAY:
+        *type = SQL_TYPE_BYTE;
         *len = in_len - 1;
         break;
-    case SERVER_DATETIME: *type = 9; break;
-    case SERVER_INTVYM: *type = 13; break;
-    case SERVER_INTVDS: *type = 11; break;
-    case SERVER_VUTF8:
-        *type = 6;
+    case SERVER_DATETIME: /* fallthrough */
+    case CLIENT_DATETIME:
+        *type = SQL_TYPE_DATETIME;
+        break;
+    case SERVER_INTVYM: /* fallthrough */
+    case CLIENT_INTVYM:
+        *type = SQL_TYPE_INTERVALYM;
+        break;
+    case SERVER_INTVDS: /* fallthrough */
+    case CLIENT_INTVDS:
+        *type = SQL_TYPE_INTERVALDS;
+        break;
+    case SERVER_VUTF8: /* fallthrough */
+    case CLIENT_VUTF8:
+        *type = SQL_TYPE_VUTF8;
         *len = in_len - 5;
         break;
     case SERVER_DECIMAL:
         switch (in_len) {
-        case 7: *type = 14; break;
-        case 13: *type = 15; break;
-        case 22: *type = 16; break;
-        default: goto err;
+        case 7:
+            *type = SQL_TYPE_DECIMAL32;
+            break;
+        case 13:
+            *type = SQL_TYPE_DECIMAL64;
+            break;
+        case 22:
+            *type = SQL_TYPE_DECIMAL128;
+            break;
+        default:
+            goto err;
         }
         break;
-    case SERVER_BLOB: /* fallthrough */
-    case SERVER_BLOB2:
-        *type = 7;
+    case SERVER_BLOB:  /* fallthrough */
+    case SERVER_BLOB2: /* fallthrough */
+    case CLIENT_BLOB:  /* fallthrough */
+    case CLIENT_BLOB2:
+        *type = SQL_TYPE_BLOB;
         *len = in_len - 5;
         break;
-    case SERVER_DATETIMEUS: *type = 10; break;
-    case SERVER_INTVDSUS: *type = 12; break;
-    default: goto err;
+    case SERVER_DATETIMEUS: /* fallthrough */
+    case CLIENT_DATETIMEUS:
+        *type = SQL_TYPE_DATETIMEUS;
+        break;
+    case SERVER_INTVDSUS: /* fallthrough */
+    case CLIENT_INTVDSUS:
+        *type = SQL_TYPE_INTERVALDSUS;
+        break;
+    default:
+        goto err;
     }
     return 0;
 err:
-    logmsg(LOGMSG_ERROR, "%s:%d Invalid type encountered\n", __FILE__,
-           __LINE__);
+    logmsg(LOGMSG_ERROR,
+           "%s:%d Invalid/unhandled type encountered (type: %d, "
+           "len: %d). Please report a bug.\n",
+           __FILE__, __LINE__, *type, in_len);
     return 1;
 }
 
@@ -2227,8 +2328,7 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
             continue;
 
         /* Append type and name */
-        strbuf_appendf(csc2, "\n\t\t%s ",
-                       type_mapping[column->type].comdb2_type);
+        strbuf_appendf(csc2, "\n\t\t%s ", type_comdb2_str[column->type]);
         strbuf_appendf(csc2, "%s", column->name);
         if (column->len > 0) {
             strbuf_appendf(csc2, "[%d] ", column->len);
@@ -2238,15 +2338,13 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
 
         /* Append default. The default is always a null-terminated string. */
         if (column->def) {
-            assert(column->type < ((sizeof(type_mapping) /
-                                    sizeof(struct comdb2_type_mapping)) -
-                                   1));
+            assert(column->type < SQL_TYPE_LAST);
 
             /*
               Check whether the default value needs to be quoted. Note: CSC2
               does not allow single quoted value.
             */
-            if ((type_mapping[column->type].flag & FLAG_QUOTE_DEFAULT) != 0) {
+            if ((type_flags[column->type] & FLAG_QUOTE_DEFAULT) != 0) {
                 strbuf_appendf(csc2, "dbstore = \"%s\" ", column->def);
             } else {
                 strbuf_appendf(csc2, "dbstore = %s ", column->def);
@@ -2346,6 +2444,27 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
     if (nconstraints)
         strbuf_append(csc2, "\n\t}\n");
 
+    /* Tags */
+    struct comdb2_schema *tag;
+    LISTC_FOR_EACH(&ctx->tag_list, tag, lnk)
+    {
+        strbuf_appendf(csc2, "tag \"%s\"\n\t{", tag->name);
+
+        column = 0;
+        LISTC_FOR_EACH(&tag->column_list, column, lnk)
+        {
+            /* Append type and name */
+            strbuf_appendf(csc2, "\n\t\t%s ", type_comdb2_str[column->type]);
+            strbuf_appendf(csc2, "%s", column->name);
+            if (column->len > 0) {
+                strbuf_appendf(csc2, "[%d] ", column->len);
+            } else {
+                strbuf_append(csc2, " ");
+            }
+        }
+        strbuf_append(csc2, "\n\t}\n");
+    }
+
     str = strdup((char *)strbuf_buf(csc2));
     strbuf_free(csc2);
 
@@ -2368,27 +2487,25 @@ static int gen_key_name(struct comdb2_key *key, const char *table, char *out,
     unsigned long crc;
 
     /* Table name */
-    pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", table);
+    SNPRINTF(buf, sizeof(buf), pos, "%s", table)
 
     /* DATACOPY */
-    if (key->flags & KEY_DATACOPY) {
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DATACOPY");
-    }
+    if (key->flags & KEY_DATACOPY)
+        SNPRINTF(buf, sizeof(buf), pos, "%s", "DATACOPY")
 
     /* DUP */
-    if (key->flags & KEY_DUP) {
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DUP");
-    }
+    if (key->flags & KEY_DUP)
+        SNPRINTF(buf, sizeof(buf), pos, "%s", "DUP")
 
     LISTC_FOR_EACH(&key->idx_col_list, idx_column, lnk)
     {
         assert((idx_column->column->flags & COLUMN_DELETED) == 0);
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", idx_column->name);
-        if (idx_column->flags & INDEX_ORDER_DESC) {
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-        }
+        SNPRINTF(buf, sizeof(buf), pos, "%s", idx_column->name)
+        if (idx_column->flags & INDEX_ORDER_DESC)
+            SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
     }
 
+done:
     crc = crc32(0, (unsigned char *)buf, pos);
 
     snprintf(out, out_size, "$%s_%X", GEN_KEY_PREFIX, (unsigned int)crc);
@@ -2433,13 +2550,11 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 
             for (int j = 0; j < key->nmembers; j++) {
                 /* Column name */
-                pos += snprintf(buf + pos, sizeof(buf) - pos, "%s",
-                                key->member[j].name);
+                SNPRINTF(buf, sizeof(buf), pos, "%s", key->member[j].name)
 
                 /* Sort order */
-                if (key->member[j].flags & INDEX_DESCEND) {
-                    pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-                }
+                if (key->member[j].flags & INDEX_DESCEND)
+                    SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
             }
             break;
         }
@@ -2447,8 +2562,7 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
     assert(found);
 
     /* Parent table name */
-    pos += snprintf(buf + pos, sizeof(buf) - pos, "%s",
-                    pConstraint->table[parent_idx]);
+    SNPRINTF(buf, sizeof(buf), pos, "%s", pConstraint->table[parent_idx])
 
     /* Get the parent table */
     table = get_dbtable_by_name(pConstraint->table[parent_idx]);
@@ -2466,19 +2580,18 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 
             for (int j = 0; j < key->nmembers; j++) {
                 /* Column name */
-                pos += snprintf(buf + pos, sizeof(buf) - pos, "%s",
-                                key->member[j].name);
+                SNPRINTF(buf, sizeof(buf), pos, "%s", key->member[j].name)
 
                 /* Sort order */
-                if (key->member[j].flags & INDEX_DESCEND) {
-                    pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-                }
+                if (key->member[j].flags & INDEX_DESCEND)
+                    SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
             }
             break;
         }
     }
     assert(found);
 
+done:
     gen_constraint_name_int(buf, pos, out, out_size);
 
     return 0;
@@ -2495,30 +2608,28 @@ static int gen_constraint_name2(struct comdb2_constraint *constraint, char *out,
     LISTC_FOR_EACH(&constraint->child_idx_col_list, idx_column, lnk)
     {
         /* Column name */
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", idx_column->name);
+        SNPRINTF(buf, sizeof(buf), pos, "%s", idx_column->name)
 
         /* Sort order */
-        if (idx_column->flags & INDEX_ORDER_DESC) {
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-        }
+        if (idx_column->flags & INDEX_ORDER_DESC)
+            SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
     }
 
     /* Parent table name */
-    pos +=
-        snprintf(buf + pos, sizeof(buf) - pos, "%s", constraint->parent_table);
+    SNPRINTF(buf, sizeof(buf), pos, "%s", constraint->parent_table)
 
     /* Parent key columns and sort orders */
     LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_column, lnk)
     {
         /* Column name */
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", idx_column->name);
+        SNPRINTF(buf, sizeof(buf), pos, "%s", idx_column->name)
 
         /* Sort order */
-        if (idx_column->flags & INDEX_ORDER_DESC) {
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", "DESC");
-        }
+        if (idx_column->flags & INDEX_ORDER_DESC)
+            SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
     }
 
+done:
     gen_constraint_name_int(buf, pos, out, out_size);
 
     return 0;
@@ -2783,6 +2894,61 @@ static int retrieve_table_options(struct dbtable *table)
     return table_options;
 }
 
+/* Retrieve table columns */
+static int retrieve_columns(Parse *pParse, struct comdb2_ddl_context *ctx,
+                            struct schema *src_schema,
+                            struct comdb2_schema *dst_schema)
+{
+    struct comdb2_column *column;
+    char *def_str;
+
+    for (int i = 0; i < src_schema->nmembers; i++) {
+        column = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_column));
+        if (column == 0)
+            goto oom;
+
+        /* Name */
+        column->name = comdb2_strdup(ctx->mem, src_schema->member[i].name);
+        if (column->name == 0)
+            goto oom;
+
+        /* Convert the default value to string. */
+        if (src_schema->member[i].in_default) {
+            def_str = sql_field_default_trans(&src_schema->member[i], 0);
+            /* Remove the quotes around the default value (if any). */
+            sqlite3Dequote(def_str);
+
+            column->def = comdb2_strdup(ctx->mem, def_str);
+            sqlite3_free(def_str);
+        }
+
+        /* Type */
+        column->type = src_schema->member[i].type;
+
+        /* Length */
+        column->len = src_schema->member[i].len;
+
+        /* Flags */
+        if (src_schema->member[i].flags & NO_NULL) {
+            column->flags |= COLUMN_NO_NULL;
+        }
+
+        /* Copy column_conv_opts */
+        column->convopts = src_schema->member[i].convopts;
+
+        /* Convert type and length */
+        fix_type_and_len(&column->type, (int *)&column->len);
+
+        /* Add it to the list */
+        listc_abl(&dst_schema->column_list, column);
+    }
+    return 0;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+    return 1;
+}
+
 /*
   Fetch the schema definition of the table being altered.
 */
@@ -2791,7 +2957,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
     struct dbtable *table;
     struct dbtable *parent_table;
     struct schema *schema;
-    char *def_str;
+    struct dbtag *tag;
 
     assert(ctx != 0);
 
@@ -2806,47 +2972,9 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
     /* Retrieve the table options. */
     ctx->schema->table_options = retrieve_table_options(table);
 
-    /* Retrieve table columns */
-    struct comdb2_column *column;
-    for (int i = 0; i < schema->nmembers; i++) {
-        column = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_column));
-        if (column == 0)
-            goto oom;
-
-        /* Name */
-        column->name = comdb2_strdup(ctx->mem, schema->member[i].name);
-        if (column->name == 0)
-            goto oom;
-
-        /* Convert the default value to string. */
-        if (schema->member[i].in_default) {
-            def_str = sql_field_default_trans(&schema->member[i], 0);
-            /* Remove the quotes around the default value (if any). */
-            sqlite3Dequote(def_str);
-
-            column->def = comdb2_strdup(ctx->mem, def_str);
-            sqlite3_free(def_str);
-        }
-
-        /* Type */
-        column->type = schema->member[i].type;
-
-        /* Length */
-        column->len = schema->member[i].len;
-
-        /* Flags */
-        if (schema->member[i].flags & NO_NULL) {
-            column->flags |= COLUMN_NO_NULL;
-        }
-
-        /* Copy column_conv_opts */
-        column->convopts = schema->member[i].convopts;
-
-        /* Convert type and length */
-        fix_type_and_len(&column->type, (int *)&column->len);
-
-        /* Add it to the list */
-        listc_abl(&ctx->schema->column_list, column);
+    /* Retrieve table columns. */
+    if (retrieve_columns(pParse, ctx, schema, ctx->schema)) {
+        return 1;
     }
 
     /* Populate keys list */
@@ -3065,6 +3193,46 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
             listc_abl(&ctx->schema->constraint_list, constraint);
         }
     }
+
+    /* Fetch all user-defined tags. */
+    lock_taglock();
+    tag = hash_find_readonly(gbl_tag_hash, &ctx->schema->name);
+    if (tag) {
+        struct schema *old_tag;
+        LISTC_FOR_EACH(&tag->taglist, old_tag, lnk)
+        {
+
+            /* Skip internal tags. */
+            if (old_tag->tag[0] != '.' &&
+                (old_tag->flags & SCHEMA_INDEX) == 0) {
+                struct comdb2_schema *new_tag =
+                    comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_schema));
+                if (!new_tag) {
+                    unlock_taglock();
+                    goto oom;
+                }
+
+                new_tag->name = comdb2_strdup(ctx->mem, old_tag->tag);
+                if (new_tag->name == 0) {
+                    unlock_taglock();
+                    goto oom;
+                }
+
+                /* Retrieve tag columns. */
+                listc_init(&new_tag->column_list,
+                           offsetof(struct comdb2_column, lnk));
+                if (retrieve_columns(pParse, ctx, old_tag, new_tag)) {
+                    unlock_taglock();
+                    return 1;
+                }
+
+                /* Add it to the list */
+                listc_abl(&ctx->tag_list, new_tag);
+            }
+        }
+    }
+    unlock_taglock();
+
     return 0;
 
 oom:
@@ -3303,6 +3471,47 @@ oom:
 
 cleanup:
     free_schema_change_type(sc);
+    free_ddl_context(pParse);
+    return;
+}
+
+void comdb2CreateTableLikeEnd(
+    Parse *pParse, /* Parse context */
+    Token *pName1, /* First part of the name of the table */
+    Token *pName2  /* Second part of the name of the table */
+)
+{
+    char *newTab;
+    char *otherTab;
+
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    assert(!use_sqlite_impl(pParse));
+
+    if (isRemote(pParse, &pName1, &pName2)) {
+        return;
+    }
+
+    otherTab = comdb2_strndup(ctx->mem, pName1->z, pName1->n);
+    if (otherTab == 0)
+        goto oom;
+    sqlite3Dequote(otherTab);
+
+    /* Retrieve the schema of the existing table. */
+    newTab = ctx->schema->name;
+    ctx->schema->name = otherTab;
+    if (retrieve_schema(pParse, ctx)) {
+        goto cleanup;
+    }
+    ctx->schema->name = newTab;
+
+    comdb2CreateTableEnd(pParse, 0, 0, 0, ctx->schema->table_options);
+
+    return;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+
+cleanup:
     free_ddl_context(pParse);
     return;
 }

@@ -2,6 +2,9 @@
 #
 #send message to port 
 
+host=localhost
+
+[ "$1" == "-h" ] && shift && host=$1 && shift 
 msg=$1
 port=$2
 
@@ -17,7 +20,7 @@ if [ "x$port" == "x" ] ; then
     failexit "port empty"
 fi
 
-exec 3<>/dev/tcp/localhost/$port || failexit "no listener in port $port"
+exec 3<>/dev/tcp/$host/$port || failexit "no listener in port $port"
 
 echo $msg >&3
 

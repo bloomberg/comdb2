@@ -136,7 +136,7 @@ static const char *usage_text =
     " default 'local')\n"
     " -v, --verbose       Verbose debug output, implies --debugtrace"
     "\n"
-    " Examples: \n"
+    "Examples: \n"
     " * Querying db with name mydb on local server \n"
     "     cdb2sql mydb 'select 1'\n"
     " * Query db via interactive session:\n"
@@ -1193,14 +1193,15 @@ int main(int argc, char *argv[])
     if (argc - optind < 1) {
         cdb2sql_usage(EXIT_FAILURE);
     }
-    if (strlen(argv[optind]) >= MAX_DBNAME_LENGTH) {
+
+    dbname = argv[optind];
+    if (strlen(dbname) >= MAX_DBNAME_LENGTH) {
         fprintf(stderr, "DB name \"%s\" too long\n", dbname);
         return 1;
     }
     if (verbose)
         debug_trace = 1;
 
-    dbname = argv[optind];
     optind++;
     if (dbtype == NULL && dbtype_valid(argv[optind])) {
         dbtype = argv[optind];

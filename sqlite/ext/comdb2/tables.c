@@ -72,7 +72,7 @@ static int checkRowidAccess(systbl_tables_cursor *pCur) {
     char *x = pDb->tablename;
     int bdberr;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    int rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->sqlclntstate->user, x, ACCESS_READ, &bdberr);
+    int rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->clnt->user, x, ACCESS_READ, &bdberr);
     if (rc == 0)
        return SQLITE_OK;
     pCur->iRowid++;
@@ -255,6 +255,8 @@ int comdb2SystblInit(
     rc = sqlite3_create_module(db, "comdb2_timepartshards", &systblTimepartShardsModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_timepartevents", &systblTimepartEventsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = systblTypeSamplesInit(db);
 #endif
   return rc;
 }

@@ -23,6 +23,39 @@
 #include "endian_core.h"
 #include <flibc.h>
 
+typedef struct {
+    char name[32];    /* name of field as a \0 terminated string */
+    int type;         /* one of the types in dynschematypes.h    */
+    unsigned int len; /* length of field in bytes                */
+    unsigned int off; /* offset of field in record structure     */
+    int reserved[5];
+} comdb2_field_type;
+
+static uint8_t *comdb2_field_type_put(const comdb2_field_type *field, uint8_t *p_buf,
+                               const uint8_t *p_buf_end)
+{
+    if ((p_buf = buf_no_net_put(&field->name, sizeof(field->name), p_buf,
+                                p_buf_end)) == NULL)
+        return NULL;
+    if ((p_buf = buf_put(&field->type, sizeof(field->type), p_buf,
+                         p_buf_end)) == NULL)
+        return NULL;
+    if ((p_buf = buf_put(&field->len, sizeof(field->len), p_buf, p_buf_end)) ==
+        NULL)
+        return NULL;
+    if ((p_buf = buf_put(&field->off, sizeof(field->off), p_buf, p_buf_end)) ==
+        NULL)
+        return NULL;
+    if ((p_buf = buf_put(&field->reserved[0], sizeof(field->reserved[0]), p_buf,
+                         p_buf_end)) == NULL)
+        return NULL;
+    if ((p_buf = buf_no_net_put(&field->reserved[1], 4 * sizeof(int), p_buf,
+                                p_buf_end)) == NULL)
+        return NULL;
+
+    return p_buf;
+}
+
 /* Local replicant logging routines */
 int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
                             blob_buffer_t *blobs, int *opfailcode)

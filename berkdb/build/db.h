@@ -1033,7 +1033,6 @@ struct __db_txn {
 					 * existing startlsn usage, so
 					 * this is a new one */
 	void            *pglogs_hashtbl;
-	void            *relinks_hashtbl;
    pthread_mutex_t pglogs_mutex;
 };
 
@@ -2865,7 +2864,7 @@ int get_context_from_lsn(DB_ENV *dbenv, DB_LSN lsn,
 
 void __log_txn_lsn(DB_ENV *, DB_LSN *, u_int32_t *, u_int32_t *);
 
-int __recover_logfile_pglogs(DB_ENV *);
+int __recover_logfile_pglogs(DB_ENV *, void *);
 
 //#################################### THREAD POOL FOR LOADING PAGES ASYNCHRNOUSLY (WELL NO CALLBACK YET.....) 
 

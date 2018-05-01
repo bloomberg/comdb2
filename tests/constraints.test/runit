@@ -90,7 +90,7 @@ function runstepper
     typeset log=$3
 
     # teststepper
-    typeset stp=${TESTSROOTDIR}/tools/stepper
+    typeset stp=${TESTSBUILDDIR}/stepper
 
     # echo
     echo "> $stp $db $tcs $log"

@@ -45,7 +45,6 @@ extern int gbl_broken_max_rec_sz;
 extern int gbl_broken_num_parser;
 extern int gbl_crc32c;
 extern int gbl_decom;
-extern int gbl_delayed_ondisk_tempdbs;
 extern int gbl_disable_rowlocks;
 extern int gbl_disable_rowlocks_logging;
 extern int gbl_disable_skip_rows;
@@ -90,7 +89,6 @@ extern int gbl_prefault_udp;
 extern int gbl_print_syntax_err;
 extern int gbl_lclpooled_buffers;
 extern int gbl_reallyearly;
-extern int gbl_rep_collect_txn_time;
 extern int gbl_repdebug;
 extern int gbl_replicant_latches;
 extern int gbl_return_long_column_names;
@@ -681,6 +679,7 @@ static int sql_tranlevel_default_update(void *context, void *value)
         gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
     } else {
         logmsg(LOGMSG_ERROR, "Unknown transaction level requested\n");
+        gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
         return 1;
     }
     gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;

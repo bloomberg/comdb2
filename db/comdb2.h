@@ -103,7 +103,6 @@ typedef long long tranid_t;
 #include "thdpool.h"
 #include "thrman.h"
 #include "comdb2uuid.h"
-#include "comdb2_legacy.h"
 #include "machclass.h"
 #include "tunables.h"
 
@@ -418,68 +417,11 @@ enum RCODES {
     , ERR_VERIFY_PI = 319
     , ERR_UNCOMMITABLE_TXN = 404 /* txn is uncommitable, returns ERR_VERIFY rather than retry */
     , ERR_INCOHERENT = 996 /* prox2 understands it should retry another node for 996 */
+    , ERR_SQL_PREPARE = 1003
     , ERR_NO_AUXDB = 2000 /* requested auxiliary database not available */
     , ERR_SQL_PREP = 2001 /* block sql error in sqlite3_prepare */
     , ERR_LIMIT = 2002 /* sql request exceeds max cost */
     , ERR_NOT_DURABLE = 2003 /* commit didn't make it to a majority */
-};
-
-enum dbt_api_return_codes {
-    DB_RC_SUCCESS = 0,
-
-    /* FIND RCODES */
-    DB_RC_FND = 0,
-    DB_RC_MORE = 1,
-    DB_ERR_NOTFND = 2,
-    DB_ERR_NOTFNDEOF = 3,
-    DB_ERR_CONVFIND = 4,
-    DB_ERR_CONVMORE = 5,
-    DB_ERR_CONVNOTFND = 6,
-    DB_ERR_CONVNOTFNDEOF = 7,
-    DB_ERR_EMPTY_TABLE = 8,
-    DB_ERR_NOTFNDRRN = 9,
-
-    /* GENERAL RCODES */
-    DB_ERR_ACCESS = 100,       /* 199 */
-    DB_ERR_BAD_REQUEST = 110,  /* 199 */
-    DB_ERR_BAD_COMM_BUF = 111, /* 998 */
-    DB_ERR_BAD_COMM = 112,     /* 999 */
-    DB_ERR_CONV_FAIL = 113,    /* 301 */
-    DB_ERR_NONKLESS = 114,     /* 212 */
-    DB_ERR_MALLOC = 115,
-    DB_ERR_NOTSUPPORTED = 116,
-    DB_ERR_BADCTRL = 117,
-    DB_ERR_DYNTAG_LOAD_FAIL = 118,
-    /* GENERAL BLOCK TRN RCODES */
-    DB_RC_TRN_OK = 0,
-    DB_ERR_TRN_DUP = 1,    /* dup add 2 , returned with 220 before */
-    DB_ERR_TRN_VERIFY = 2, /* verify 4, returned with 220 before */
-    DB_ERR_TRN_FKEY = 3,
-    DB_ERR_TRN_NULL_CONSTRAINT = 4, /* 318 */
-    DB_ERR_TRN_BUF_INVALID = 200,   /* 105 */
-    DB_ERR_TRN_BUF_OVERFLOW = 201,  /* 106 */
-    DB_ERR_TRN_OPR_OVERFLOW = 202,  /* 205 */
-    DB_ERR_TRN_FAIL = 203,          /* 220 */
-    DB_ERR_TRN_DB_FAIL = 204,       /* 220 */
-    DB_ERR_TRN_DB_CONN = 205,
-    DB_ERR_TRN_DB_IO = 206,
-    DB_ERR_TRN_NOT_SERIAL = 230,
-    DB_ERR_TRN_SC = 240,
-
-    /* INTERNAL DB ERRORS */
-    DB_ERR_INTR_NO_MASTER = 300,
-    DB_ERR_INTR_FWD = 301,
-    DB_ERR_INTR_NESTED_FWD = 302,
-    DB_ERR_INTR_MASTER_REJECT = 303,
-    DB_ERR_INTR_GENERIC = 304,
-    DB_ERR_INTR_READ_ONLY = 305,
-    DB_ERR_INTR_BLOB_RETR = 306,
-
-    /* TZNAME SET FAILURE */
-    DB_ERR_TZNAME_FAIL = 401,
-
-    DB_RC_RNG_OK = 0,
-    DB_RC_RNG_DONE = 1
 };
 
 #define IS_BAD_IX_FND_RCODE(rc)                                                \
@@ -835,6 +777,7 @@ struct dbtable {
 
     struct dbtable *sc_from; /* point to the source db, replace global sc_from */
     struct dbtable *sc_to; /* point to the new db, replace global sc_to */
+    int sc_abort;
     unsigned long long *sc_genids; /* schemachange stripe pointers */
 
     unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
@@ -964,12 +907,6 @@ struct dbenv {
     int retry;
 
     int rep_always_wait;
-
-    int pagesize_dta;
-    int pagesize_freerec;
-    int pagesize_ix;
-
-    int enable_direct_writes;
 
     pthread_t purge_old_blkseq_tid;
     pthread_t purge_old_files_tid;
@@ -1397,6 +1334,8 @@ struct ireq {
     struct schema_change_type *sc_pending;
     double cost;
     uint64_t sc_seed;
+    uint32_t sc_host;
+
     uint64_t txnsize;
     unsigned long long last_genid;
 
@@ -1451,6 +1390,7 @@ struct ireq {
     bool sc_locked : 1;
     bool have_snap_info : 1;
     bool tranddl : 1;
+    bool sc_should_abort : 1;
 
     int written_row_count;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
@@ -1569,7 +1509,6 @@ extern int gbl_uses_accesscontrol_tableXnode;
 extern int gbl_upd_key;
 extern unsigned long long gbl_sqltick;
 extern int gbl_nonames;
-extern int gbl_abort_on_missing_session;
 extern int gbl_reject_osql_mismatch;
 extern int gbl_abort_on_clear_inuse_rqid;
 
@@ -1594,13 +1533,10 @@ extern int gbl_net_max_queue;
 extern int gbl_nullfkey;
 extern int gbl_prefaulthelper_blockops;
 extern int gbl_prefaulthelper_sqlreadahead;
-extern int gbl_prefaulthelper_tagreadahead;
 extern int gbl_maxblockops;
 extern int gbl_rangextunit;
 extern int gbl_honor_rangextunit_for_old_apis;
-extern int gbl_readahead;
 extern int gbl_sqlreadahead;
-extern int gbl_readaheadthresh;
 extern int gbl_sqlreadaheadthresh;
 extern int gbl_iothreads;
 extern int gbl_ioqueue;
@@ -1722,8 +1658,6 @@ extern long long gbl_nnewsql_steps;
 
 extern unsigned int gbl_masterrejects;
 
-extern int gbl_sql_client_stats;
-
 extern int gbl_selectv_rangechk;
 
 extern int gbl_init_with_rowlocks;
@@ -1741,7 +1675,6 @@ extern int gbl_replicate_local_concurrent;
 
 extern int gbl_verify_abort;
 
-extern int gbl_sqlrdtimeoutms;
 extern int gbl_sqlwrtimeoutms;
 extern int gbl_sort_nulls_correctly;
 
@@ -1758,7 +1691,6 @@ extern int gbl_check_client_tags;
 
 extern int gbl_max_tables_info;
 
-extern int gbl_prefault_readahead;
 extern int gbl_prefault_toblock_bcast;
 extern int gbl_prefault_toblock_local;
 
@@ -1784,7 +1716,6 @@ extern int gbl_debug_log_twophase;
 extern int gbl_debug_log_twophase_transactions;
 
 extern int gbl_chkpoint_alarm_time;
-extern int gbl_dump_queues_on_exit;
 
 extern int gbl_incoherent_msg_freq;
 extern int gbl_incoherent_alarm_time;
@@ -1797,7 +1728,6 @@ extern int gbl_disable_deadlock_trace;
 extern int gbl_enable_pageorder_trace;
 extern int gbl_disable_overflow_page_trace;
 extern int gbl_simulate_rowlock_deadlock_interval;
-extern int gbl_debug_rowlocks;
 
 extern int gbl_max_columns_soft_limit;
 
@@ -2006,6 +1936,8 @@ void apply_new_stripe_settings(int newdtastripe, int newblobstripe);
 void sc_del_unused_files_check_progress(void);
 
 /* update sync parameters*/
+void logdelete_lock(void);
+void logdelete_unlock(void);
 void backend_update_sync(struct dbenv *dbenv);
 void backend_sync_stat(struct dbenv *dbenv);
 
@@ -2481,8 +2413,9 @@ int broadcast_close_db(char *table);
 int broadcast_close_only_db(char *table);
 int broadcast_morestripe_and_open_all_dbs(int newdtastripe, int newblobstripe);
 int broadcast_close_all_dbs(void);
-int broadcast_sc_end(uint64_t seed);
-int broadcast_sc_start(uint64_t seed, uint32_t host, time_t t);
+int broadcast_sc_end(const char *table, uint64_t seed);
+int broadcast_sc_start(const char *table, uint64_t seed, uint32_t host,
+                       time_t t);
 int broadcast_sc_ok(void);
 int broadcast_flush_all(void);
 
@@ -3380,9 +3313,6 @@ FILE *io_override_get_std(void);
 void reqlog_set_origin(struct reqlogger *logger, const char *fmt, ...);
 const char *reqlog_get_origin(struct reqlogger *logger);
 void berkdb_iopool_process_message(char *line, int lline, int st);
-
-uint8_t *comdb2_field_type_put(const comdb2_field_type *field, uint8_t *p_buf,
-                               const uint8_t *p_buf_end);
 
 uint8_t *db_info2_iostats_put(const struct db_info2_iostats *p_iostats,
                               uint8_t *p_buf, const uint8_t *p_buf_end);

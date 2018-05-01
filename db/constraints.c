@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 #include <plbitlib.h>
 #include <alloca.h>
@@ -1836,8 +1837,8 @@ static char *get_temp_ct_dbname(long long *ctid)
     char *s;
     size_t buflen = strlen(thedb->basedir) + 64;
     s = malloc(buflen);
-    snprintf(s, buflen, "%s/%s.tmpdbs/_temp_ct_%d_%llu.db", thedb->basedir,
-             thedb->envname, (int)pthread_self(), *ctid);
+    snprintf(s, buflen, "%s/%s.tmpdbs/_temp_ct_%" PRIdPTR "_%llu.db",
+             thedb->basedir, thedb->envname, (intptr_t)pthread_self(), *ctid);
     *ctid = *ctid + 1LL;
     return s;
 }

@@ -45,7 +45,6 @@ extern int gbl_bad_lrl_fatal;
 extern int gbl_disable_new_snapshot;
 
 extern char *gbl_recovery_options;
-extern char *gbl_dbdir;
 extern const char *gbl_repoplrl_fname;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern char **qdbs;
@@ -113,6 +112,21 @@ static int write_pidfile(const char *pidfile)
     return 0;
 }
 
+static void set_dbdir(char *dir)
+{
+    if (dir == NULL)
+        return;
+    if (*dir == '/') {
+        gbl_dbdir = strdup(dir);
+        return;
+    }
+    char *wd = getcwd(NULL, 0);
+    int n = snprintf(NULL, 0, "%s/%s", wd, dir);
+    gbl_dbdir = malloc(++n);
+    snprintf(gbl_dbdir, n, "%s/%s", wd, dir);
+    free(wd);
+}
+
 int handle_cmdline_options(int argc, char **argv, char **lrlname)
 {
     char *p;
@@ -152,7 +166,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
             break;
         case 4: /* recovery_lsn */ gbl_recovery_options = optarg; break;
         case 5: /* pidfile */ write_pidfile(optarg); break;
-        case 10: /* dir */ gbl_dbdir = optarg; break;
+        case 10: /* dir */ set_dbdir(optarg); break;
         }
     }
     return 0;
@@ -668,9 +682,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 ii=toknum(tok,ltok);
 
             bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEDTA, ii);
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEFREEREC, ii);
             bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEIX, ii);
-            bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGESIZEBLOB, ii);
 #endif
         } else if (tokcmp(tok, ltok, "dta") == 0) {
             tok = segtok(line, len, &st, &ltok);
@@ -1039,10 +1051,15 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
+        gbl_new_snapisol = 1;
+        gbl_new_snapisol_asof = 1;
+        gbl_new_snapisol_logging = 1;
+        logmsg(LOGMSG_INFO, "Enabled snapshot isolation (default newsi)\n");
     } else if (tokcmp(tok, ltok, "enable_new_snapshot") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
         gbl_new_snapisol = 1;
+        gbl_new_snapisol_asof = 1;
         gbl_new_snapisol_logging = 1;
         logmsg(LOGMSG_INFO, "Enabled new snapshot\n");
     } else if (tokcmp(tok, ltok, "enable_new_snapshot_asof") == 0) {
@@ -1396,12 +1413,12 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
     /* if env variable is set, process another lrl.. */
     const char *envlrlname = getenv("COMDB2_CONFIG");
     if (envlrlname && !read_lrl_file(dbenv, envlrlname, 1 /*required*/)) {
-        return 0;
+        return 1;
     }
 
     /* this database */
     if (lrlname && !read_lrl_file(dbenv, lrlname, 1 /*required*/)) {
-        return 0;
+        return 1;
     }
 
     /* switch to keyless mode as long as no mode has been selected yet */

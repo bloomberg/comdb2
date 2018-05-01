@@ -32,11 +32,11 @@ for testreq in `ls t*.req` ; do
         eval $cmd &>> create.out
     done
     if [ "$(uname)" == "Linux" ]; then
-      cmd="${TESTSROOTDIR}/tools/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
+      cmd="${TESTSBUILDDIR}/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
     elif [ "$(uname)" == "AIX" ]; then
-      cmd="${TESTSROOTDIR}/tools/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
+      cmd="${TESTSBUILDDIR}/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
     else t  
-      cmd="${TESTSROOTDIR}/tools/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
+      cmd="${TESTSBUILDDIR}/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
     fi  
     echo $cmd "> $testname.output"
     $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/" > $testname.output
