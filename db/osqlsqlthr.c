@@ -157,7 +157,7 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
 
     if ((rc = access_control_check_sql_write(pCur, thd)))
         return rc;
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
         if (rc != SQLITE_OK) 
             return rc;
@@ -233,7 +233,7 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if ((rc = access_control_check_sql_write(pCur, thd)))
         return rc;
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
         if (rc != SQLITE_OK) 
             return rc;
@@ -275,7 +275,7 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if ((rc = access_control_check_sql_write(pCur, thd)))
         return rc;
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
         if (rc != SQLITE_OK) 
             return rc;

@@ -2901,9 +2901,9 @@ printf("AZ: probl1 \n");
             else if (blob->notnull) {
                 inconsistent = !blobs[cblob].exists ||
                                blobs[cblob].length != ntohl(blob->length);
-printf("AZ: probl2 blobs[cblob].exists=%d, blobs[cblob].length=%d, blob->length=%d\n",
-        blobs[cblob].exists, blobs[cblob].length, blob->length);
-            abort();
+printf("AZ: probl2 blobs[cblob].exists=%d, blobs[cblob].length=%d, blob->length=%d, inconsistent=%d\n",
+        blobs[cblob].exists, blobs[cblob].length, ntohl(blob->length), inconsistent);
+                if (inconsistent == 1) abort();
             }
             else {
                 inconsistent = blobs[cblob].exists;
