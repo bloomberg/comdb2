@@ -5291,14 +5291,14 @@ static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
     }
 
     char host[NI_MAXHOST], service[NI_MAXSERV];
+    /* get our host name for local _into_ address of connection */
     int s = getnameinfo((struct sockaddr *)&lcl_addr_inet, lcl_len, host,
                         NI_MAXHOST, service, NI_MAXSERV, 0);
 
     if (s != 0) {
-        logmsg(LOGMSG_ERROR, "Error from getaddrinfo: %s\n", gai_strerror(s));
-        logmsg(LOGMSG_WARN, "Incoming connection into unknown (%s:%u)\n",
+        logmsg(LOGMSG_WARN, "Incoming connection into unknown (%s:%u): %s\n",
                inet_ntoa(lcl_addr_inet.sin_addr),
-               (unsigned)ntohs(lcl_addr_inet.sin_port));
+               (unsigned)ntohs(lcl_addr_inet.sin_port), gai_strerror(s));
         return;
     }
 
