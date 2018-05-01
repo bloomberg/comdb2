@@ -51,9 +51,8 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
 
     extern int gbl_partial_indexes;
     extern int gbl_expressions_indexes;
-    if (!fastinit &&
-        ((gbl_partial_indexes && newdb->ix_partial) ||
-         (gbl_expressions_indexes && newdb->ix_expr)) &&
+    if (!fastinit && ((gbl_partial_indexes && newdb->ix_partial) ||
+                      (gbl_expressions_indexes && newdb->ix_expr)) &&
         newdb->dbenv->master == gbl_mynode)
         rc = new_indexes_syntax_check(iq);
 
