@@ -1,7 +1,7 @@
 #!/bin/sh
 bash -n "$0" | exit 1
 
-NRECS=1000
+NRECS=600
 dbnm=$1
 
 function getrepnode {
@@ -39,6 +39,7 @@ schema {
 
 keys {
     dup "comdb2_seqno" = comdb2_seqno
+    dup "idx" = id
 }
 }$$
 EOF
@@ -56,44 +57,60 @@ fi
 
 test_init
 # random recover deadlock
-cdb2sql --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 20')"
+cdb2sql --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 200')"
+
 # Test truncate
 echo "Testing truncate"
-cdb2sql --host $mach $dbnm "select * from t1" > select.out 2>&1 &
-sleep 3
+(cdb2sql --host $mach $dbnm "select * from t1" > select.out 2>&1 || touch select.failed) &
+sleep 1
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 wait
-grep "rc -110.*was schema changed" select.out
-if [[ $? != 0 ]]; then
-    echo "expected select to fail but it succeeded"
+if [ -f select.failed ] ; then
+    echo "expected select to succeed but it failed"
     exit 1
 fi
-
 sleep 5
+
 cdb2sql --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 0')"
 test_init
-
+cdb2sql --host $mach $dbnm "select * from t1 order by id" > expect.out 2>&1
 # random recover deadlock
-cdb2sql --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 20')"
+cdb2sql --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 200')"
 
-# Test rebuild/alter
-echo "Testing rebuild/alter"
-cdb2sql --host $mach $dbnm "select * from t1" > select.out 2>&1 &
-sleep 3
+# Test rebuild
+echo "Testing rebuild"
+cdb2sql --host $mach $dbnm "select * from t1 order by id" > select.out 2>&1 &
+sleep 1
 cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
+sleep 10
+cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
+sleep 10
+cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
+wait
+diff expect.out select.out
+if [[ $? != 0 ]]; then
+    echo "expected select to succeed but it failed"
+    exit 1
+fi
+sleep 5
+
+# Test alter
+echo "Testing alter"
+cdb2sql --host $mach $dbnm "select * from t1 order by id" > select.out 2>&1 &
+sleep 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop index idx"
 wait
 grep "rc -110.*was schema changed" select.out
 if [[ $? != 0 ]]; then
     echo "expected select to fail but it succeeded"
     exit 1
 fi
-
 sleep 5
 
 # Test drop
 echo "Testing drop"
 cdb2sql --host $mach $dbnm "select * from t1" > select.out 2>&1 &
-sleep 3
+sleep 1
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 wait
 grep "rc -110.*was schema changed" select.out

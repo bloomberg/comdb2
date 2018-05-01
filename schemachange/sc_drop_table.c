@@ -89,7 +89,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-    if ((rc = table_version_upsert(db, tran, &bdberr)) != 0) {
+    if (s->drop_table && (rc = table_version_upsert(db, tran, &bdberr)) != 0) {
         sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
         return rc;
     }

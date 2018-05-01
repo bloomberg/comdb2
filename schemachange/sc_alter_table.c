@@ -757,7 +757,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     bdb_handle_reset_tran(new_bdb_handle, transac);
 
-    if (s->alteronly) {
+    if (!s->same_schema) {
         /* reliable per table versioning */
         rc = table_version_upsert(db, transac, &bdberr);
         if (rc) {
@@ -766,7 +766,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         }
     } else {
         db->tableversion = table_version_select(db, transac);
-        sc_printf(s, "Reusing version %d for rebuild\n", db->tableversion);
+        sc_printf(s, "Reusing version %d for same schema\n", db->tableversion);
     }
 
     set_odh_options_tran(db, transac);

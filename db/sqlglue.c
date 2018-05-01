@@ -9029,9 +9029,8 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
 #endif
 
     if (unlikely(gbl_sql_random_release_interval)) {
-        logmsg(LOGMSG_INFO, "%s: sleeping %ds\n", __func__,
-               gbl_sql_random_release_interval);
-        sleep(gbl_sql_random_release_interval);
+        logmsg(LOGMSG_INFO, "%s: sleeping 10s\n", __func__);
+        sleep(10);
         logmsg(LOGMSG_INFO, "%s: done sleeping\n", __func__);
     }
 
@@ -9123,6 +9122,11 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
                 sqlite3VdbeError(cur->vdbe, "table \"%s\" was schema changed",
                                  cur->db->tablename);
                 return SQLITE_COMDB2SCHEMA;
+            } else if (!cur->bt->is_remote && cur->db) {
+                if (cur->ixnum == -1)
+                    cur->sc = cur->db->schema;
+                else
+                    cur->sc = cur->db->ixschema[cur->ixnum];
             }
         }
     }
