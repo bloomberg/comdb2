@@ -455,6 +455,9 @@ void *get_val(const char **sqlstr, int type, int *vallen)
     return NULL;
 }
 
+static int run_statement(const char *sql, int ntypes, int *types,
+                         int *start_time, int *run_time);
+
 static int process_escape(const char *cmdstr)
 {
     char copy[256];
@@ -524,6 +527,40 @@ static int process_escape(const char *cmdstr)
     } else if (strcmp(tok, "time") == 0) {
         time_mode = time_mode ? 0 : 1;
         printf("Timing mode %s\n", time_mode ? "ON" : "OFF");
+    } else if ((strcmp(tok, "ls") == 0) || (strcmp(tok, "list") == 0)) {
+        tok = strtok_r(NULL, delims, &lasts);
+        if (!tok || strcmp(tok, "tables") == 0) {
+            int start_time_ms, run_time_ms;
+            const char *sql = "SELECT tablename FROM comdb2_tables";
+            int saved_printmode;
+
+            saved_printmode = printmode;
+            printmode = TABS;
+            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            printmode = saved_printmode;
+        } else {
+            fprintf(stderr, "unknown @ls sub-command %s\n", tok);
+            return -1;
+        }
+    } else if ((strcmp(tok, "desc") == 0) || (strcmp(tok, "describe") == 0)) {
+        tok = strtok_r(NULL, delims, &lasts);
+        if (!tok) {
+            fprintf(stderr, "table name required\n");
+            return -1;
+        } else {
+            int start_time_ms, run_time_ms;
+            char sql[100];
+            int saved_printmode;
+
+            snprintf(sql, sizeof(sql),
+                     "SELECT csc2 FROM sqlite_master WHERE "
+                     "name = '%s' and type = 'table'",
+                     tok);
+            saved_printmode = printmode;
+            printmode = TABS;
+            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            printmode = saved_printmode;
+        }
     } else {
         fprintf(stderr, "unknown command %s\n", tok);
         return -1;
