@@ -1411,7 +1411,7 @@ static int check_osql_capacity(struct sql_thread *thd)
     osql->sentops++;
     osql->tran_ops++;
 
-    if (clnt->osql_max_trans && osql->tran_ops >= clnt->osql_max_trans) {
+    if (clnt->osql_max_trans && osql->tran_ops > clnt->osql_max_trans) {
         /* This trace is used by ALMN 1779 to alert database owners.. please do
          * not change without reference to that almn. */
         logmsg(LOGMSG_ERROR, "check_osql_capacity: transaction size %d too big "
