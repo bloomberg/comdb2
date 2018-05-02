@@ -624,6 +624,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     bdb_lock_table_write(db->handle, transac);
 
+    db->sc_to = newdb;
+
     /* All records converted ok.  Whether this is live schema change or
      * not, the db is readonly at this point so we can reset the live
      * schema change flag. */
