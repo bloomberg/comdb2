@@ -3188,7 +3188,7 @@ int db_csvcopy(Lua lua)
     fp = fopen(fname, "r");
 
     if (fp == NULL) {
-        return luaL_error(lua, "CSV file not found.");
+        return luaL_error(lua, strerror(errno));
     }
 
     columns = strbuf_new();
