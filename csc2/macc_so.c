@@ -801,6 +801,8 @@ void key_setprimary(void) { workkeyflag |= PRIMARY; }
 
 void key_setdatakey(void) { workkeyflag |= DATAKEY; }
 
+void key_setuniqnulls(void) { workkeyflag |= UNIQNULLS; }
+
 void key_piece_clear() /* used by parser, clears work key */
 {
     workkey = 0;          /* clear work key */
