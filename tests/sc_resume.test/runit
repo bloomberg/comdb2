@@ -401,7 +401,7 @@ if ! diff allrows_pre.out allrows_post.out ; then
     failexit "pre values are different from post"
 fi
 
-assert_vers t1 2
+assert_vers t1 1
 do_verify
 
 
@@ -442,7 +442,7 @@ insert_records_oneshot 601 800
 echo "after insert, t=$SECONDS"
 
 
-assert_vers t1 2
+assert_vers t1 1
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "select * from t1 order by c" > allrows_pre.out
 
 
@@ -462,8 +462,8 @@ if ! diff allrows_pre.out allrows_post.out ; then
     failexit "pre values are different from post"
 fi
 
-echo "version should now be 3"
-assert_vers t1 3
+echo "version should now be 2"
+assert_vers t1 2
 do_verify
 
 
@@ -474,8 +474,8 @@ echo "TESTING KILLING MASTER WHILE PERFORMING ALTER AGAIN"
 echo 'alter to t1_2, then to t1_3 again'
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }"
 
-echo "version should now be 4"
-assert_vers t1 4
+echo "version should now be 3"
+assert_vers t1 3
 do_verify
 
 echo 'alter to t1_3 while interrupting by killing master node'
@@ -505,8 +505,8 @@ echo "master node now $master"
 assert_sc_seed $seed4
 
 
-echo "version should still be 4 because new master takes a while to startup"
-assert_vers t1 4
+echo "version should still be 3 because new master takes a while to startup"
+assert_vers t1 3
 
 coproc stdbuf -oL cdb2sql -s ${CDB2_OPTIONS} $dbnm default - 
 cppid=$!
@@ -541,7 +541,7 @@ if [ $diff -gt 1 ] ; then
     failexit "count does not match is $cnt but should be $target"
 fi
 
-assert_vers t1 5
+assert_vers t1 4
 do_verify
 
 if [ ! -n "$CLUSTER" ] ; then
@@ -558,8 +558,8 @@ kill_restart_node $master
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }"
 
-echo "version should now be 6"
-assert_vers t1 6
+echo "version should now be 5"
+assert_vers t1 5
 do_verify
 
 sleep 5
@@ -592,7 +592,7 @@ echo "master node now $master"
 
 wait_for_sc
 
-assert_vers t1 7
+assert_vers t1 6
 assert_schema t1 t1_2.csc2
 do_verify
 

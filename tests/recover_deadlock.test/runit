@@ -1,19 +1,28 @@
 #!/bin/sh
 bash -n "$0" | exit 1
 
-NRECS=600
+NRECS=1000
 dbnm=$1
 
 function getrepnode {
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep -v MASTER | grep lsn | head -1 | cut -f1 -d":" | tr -d '[:space:]'
 }
 
+function getmaster {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
+
 # Make sure we talk to the same host
 mach=`getrepnode`
 
 if [ "$mach" = "" ]; then
-   echo "Run test in cluster mode. Returning PASS."
-   exit 0
+    mach=`getmaster`
+    echo "Running standalone on $mach"
+fi
+
+if [ "$mach" = "" ]; then
+    echo "Failed to get a node from the cluster"
+    exit 1
 fi
 
 function test_init {

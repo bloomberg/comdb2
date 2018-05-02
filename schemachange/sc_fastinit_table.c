@@ -15,7 +15,6 @@
  */
 
 #include <memory_sync.h>
-#include <autoanalyze.h>
 #include <translistener.h>
 
 #include "schemachange.h"

@@ -8932,6 +8932,25 @@ int pause_pagelock_cursors(void *arg)
     return 0;
 }
 
+/* set every pCur->db and pCur->sc to NULL because they might
+ * not be valid anymore after a schema change
+ */
+static void recover_deadlock_sc_cleanup(struct sql_thread *thd)
+{
+    BtCursor *cur = NULL;
+    pthread_mutex_lock(&thd->lk);
+    if (thd->bt) {
+        LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+        {
+            if (!cur->bt->is_remote && cur->db) {
+                cur->db = NULL;
+                cur->sc = NULL;
+            }
+        }
+    }
+    pthread_mutex_unlock(&thd->lk);
+}
+
 /**
  * This open a new curtran and walk the list of BtCursors,
  * repositioning any cursor that has a bdbcursor (by closing, reopening
@@ -9017,6 +9036,7 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
             logmsg(LOGMSG_ERROR, 
                     "%s: fail to put curtran, rc=%d, return changenode\n",
                     __func__, rc);
+            recover_deadlock_sc_cleanup(thd);
             return SQLITE_CLIENT_CHANGENODE;
         } else {
             logmsg(LOGMSG_ERROR, "%s: fail to close curtran, rc=%d\n", __func__, rc);
@@ -9121,6 +9141,7 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
                        cur->db->tableversion);
                 sqlite3VdbeError(cur->vdbe, "table \"%s\" was schema changed",
                                  cur->db->tablename);
+                recover_deadlock_sc_cleanup(thd);
                 return SQLITE_COMDB2SCHEMA;
             } else if (!cur->bt->is_remote && cur->db) {
                 if (cur->ixnum == -1)
