@@ -82,14 +82,15 @@ void bdb_cleanup_private_blkseq(bdb_state_type *bdb_state)
         return;
     for (int stripe = 0; stripe < bdb_state->attr->private_blkseq_stripes;
          stripe++) {
-        if (bdb_state->blkseq_env[stripe]) {
+        DB_ENV *env = bdb_state->blkseq_env[stripe];
+        if (env) {
             pthread_mutex_destroy(&bdb_state->blkseq_lk[stripe]);
             for (int i = 0; i < 2; i++) {
                 DB *to_be_deleted = bdb_state->blkseq[i][stripe];
                 to_be_deleted->close(to_be_deleted, NULL, DB_NOSYNC);
             }
 
-            free(bdb_state->blkseq_env[stripe]);
+            env->close(env, 0);
             bdb_state->blkseq_env[stripe] = NULL;
         }
     }

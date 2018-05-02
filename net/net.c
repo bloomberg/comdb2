@@ -2758,6 +2758,66 @@ void netinfo_lock(netinfo_type *netinfo_ptr, int seconds)
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 }
 
+static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
+                                host_node_type *host_node_ptr)
+{
+    host_node_type *tmp = netinfo_ptr->head;
+
+    if (host_node_ptr == tmp) {
+        netinfo_ptr->head = host_node_ptr->next;
+    } else {
+        while (tmp && tmp->next != host_node_ptr)
+            tmp = tmp->next;
+
+        if (!tmp) {
+            logmsg(LOGMSG_WARN, "%s: failed to find host_node in %s netinfo list!"
+                    "(probably removed from net_decom_node)\n",
+                    __func__, netinfo_ptr->service);
+        } else {
+            logmsg(LOGMSG_INFO, "%s: found host_node in %s netinfo list\n",
+                    __func__, netinfo_ptr->service);
+
+            tmp->next = host_node_ptr->next;
+        }
+    }
+
+    // if last_used is eq to host_node_ptr->host, clear last_used_node_ptr
+    if (host_node_ptr == netinfo_ptr->last_used_node_ptr) {
+        netinfo_ptr->last_used_node_ptr = NULL;
+    }
+
+    if (host_node_ptr->write_head != NULL) {
+        /* purge anything pending to be sent */
+        Pthread_mutex_lock(&(host_node_ptr->write_lock));
+        empty_write_list(host_node_ptr);
+        Pthread_mutex_unlock(&(host_node_ptr->write_lock));
+    }
+
+    /* This routine (& 'free') is only called when the connect-thread exits
+     */
+    pthread_mutex_destroy(&(host_node_ptr->lock));
+    pthread_mutex_destroy(&(host_node_ptr->timestamp_lock));
+    pthread_mutex_destroy(&(host_node_ptr->pool_lock));
+    pthread_mutex_destroy(&(host_node_ptr->write_lock));
+    pthread_mutex_destroy(&(host_node_ptr->enquelk));
+    pthread_mutex_destroy(&(host_node_ptr->wait_mutex));
+    pthread_mutex_destroy(&(host_node_ptr->throttle_lock));
+
+    pthread_cond_destroy(&(host_node_ptr->ack_wakeup));
+    pthread_cond_destroy(&(host_node_ptr->write_wakeup));
+    pthread_cond_destroy(&(host_node_ptr->throttle_wakeup));
+
+    pool_free(host_node_ptr->write_pool);
+#ifndef PER_THREAD_MALLOC
+    comdb2ma_destroy(host_node_ptr->msp);
+#endif
+
+    free(host_node_ptr->user_data_buf);
+    sbuf2free(host_node_ptr->sb);
+
+    free(host_node_ptr);
+}
+
 /* called from connect thread upon exiting:
  * when db is exiting or when host_node_ptr decom_flag is set
  */
@@ -2771,64 +2831,21 @@ static void rem_from_netinfo(netinfo_type *netinfo_ptr,
         return;
 
     Pthread_rwlock_wrlock(&(netinfo_ptr->lock));
-    {
-        host_node_type *tmp = netinfo_ptr->head;
+    rem_from_netinfo_ll(netinfo_ptr, host_node_ptr);
 
-        if (host_node_ptr == tmp) {
-            netinfo_ptr->head = host_node_ptr->next;
-        } else {
-            while (tmp && tmp->next != host_node_ptr)
-                tmp = tmp->next;
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+}
 
-            if (!tmp) {
-                logmsg(LOGMSG_WARN, "%s: failed to find host_node in %s netinfo list!"
-                        "(probably removed from net_decom_node)\n",
-                        __func__, netinfo_ptr->service);
-            } else {
-                logmsg(LOGMSG_INFO, "%s: found host_node in %s netinfo list\n",
-                        __func__, netinfo_ptr->service);
-
-                tmp->next = host_node_ptr->next;
-            }
-        }
-
-        // if last_used is eq to host_node_ptr->host, clear last_used_node_ptr
-        if (host_node_ptr == netinfo_ptr->last_used_node_ptr) {
-            netinfo_ptr->last_used_node_ptr = NULL;
-        }
-
-        if (host_node_ptr->write_head != NULL) {
-            /* purge anything pending to be sent */
-            Pthread_mutex_lock(&(host_node_ptr->write_lock));
-            empty_write_list(host_node_ptr);
-            Pthread_mutex_unlock(&(host_node_ptr->write_lock));
-        }
-
-        /* This routine (& 'free') is only called when the connect-thread exits
-         */
-        pthread_mutex_destroy(&(host_node_ptr->lock));
-        pthread_mutex_destroy(&(host_node_ptr->timestamp_lock));
-        pthread_mutex_destroy(&(host_node_ptr->pool_lock));
-        pthread_mutex_destroy(&(host_node_ptr->write_lock));
-        pthread_mutex_destroy(&(host_node_ptr->enquelk));
-        pthread_mutex_destroy(&(host_node_ptr->wait_mutex));
-        pthread_mutex_destroy(&(host_node_ptr->throttle_lock));
-
-        pthread_cond_destroy(&(host_node_ptr->ack_wakeup));
-        pthread_cond_destroy(&(host_node_ptr->write_wakeup));
-        pthread_cond_destroy(&(host_node_ptr->throttle_wakeup));
-
-        pool_free(host_node_ptr->write_pool);
-#ifndef PER_THREAD_MALLOC
-        comdb2ma_destroy(host_node_ptr->msp);
-#endif
-
-        free(host_node_ptr->user_data_buf);
-
-        free(host_node_ptr);
+void net_cleanup_netinfo(netinfo_type *netinfo_ptr)
+{
+    host_node_type *ptr;
+    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+    while ((ptr = netinfo_ptr->head) != NULL) {
+        rem_from_netinfo_ll(netinfo_ptr, ptr);
     }
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 }
+
 
 sanc_node_type *net_add_to_sanctioned(netinfo_type *netinfo_ptr,
                                       char hostname[], int portnum)
