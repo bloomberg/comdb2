@@ -121,15 +121,6 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
         goto tran_error;
     }
 
-    /*
-    rc = create_sqlmaster_records(tran);
-    if (rc) {
-        sc_errf(s, "create_sqlmaster_records failed\n");
-        goto recover_memory;
-    }
-    create_sqlite_master(); // create sql statements
-    */
-
     gbl_sc_commit_count++;
 
     live_sc_off(db);

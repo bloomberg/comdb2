@@ -298,11 +298,6 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
 
     fix_lrl_ixlen_tran(tran);
 
-    /* TODO: will be called in osqlcomm.c on OSQL_DONE
-    create_sqlmaster_records(tran);
-    create_sqlite_master();
-    */
-
     db->sc_to = NULL;
     update_dbstore(db);
     sc_printf(s, "Add table ok\n");
