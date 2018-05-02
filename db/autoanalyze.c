@@ -411,8 +411,9 @@ void *auto_analyze_main(void *unused)
             char *tblname = strdup(tbl->tablename);
             pthread_create(&analyze, &gbl_pthread_attr_detached,
                            auto_analyze_table, tblname);
-        } else if (delta > 0 && save_freq > 0 && (call_counter % save_freq) 
-                == 0) { // save updated autoanalyze counter
+        } else if (delta > 0 && save_freq > 0 &&
+                   (call_counter % save_freq) ==
+                       0) { // save updated autoanalyze counter
             ctrace("AUTOANALYZE: Table %s, saving counter (%d, %d); last run "
                    "time %s\n",
                    tbl->tablename, tbl->aa_saved_counter, delta,
