@@ -57,16 +57,14 @@ find_cores() {
     # for all machines in cluster 
     local COREAGE=60
 
-    local CPAT=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
-    local COREDIR=`dirname $CPAT`; 
+    local cpat=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
+    local COREDIR=`dirname $cpat`; 
     if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then 
         COREDIR=$TESTDIR
-    else
-        CPAT=`basename $CPAT`
     fi
     grep '%e\|%t\|%u\|%g\|%s\|%h\|p' /proc/sys/kernel/core_pattern > /dev/null
     local has_pattern=$?  # here we assume core pattern is same for all machines
-    local COREFL=$CPAT
+    local COREFL=$cpat
     local CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '.*core.*'"
     local PIDFL=${TMPDIR}/${DBNAME}.pid
     if [[ -z "$CLUSTER" ]] || [[ `echo $CLUSTER | grep $HOSTNAME ` ]]; then
@@ -76,7 +74,7 @@ find_cores() {
 
         if [ $has_pattern -eq 0 ] ; then
             local PID=$(cat ${PIDFL} 2> /dev/null)
-            COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
+            COREFL=`echo $cpat | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
             CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '.*${COREFL}.*'"
             if [ "x$PID" == "x" ] ; then
                 CORECMD="echo ''"
@@ -98,7 +96,7 @@ find_cores() {
             if [ "x$PID" == "x" ] ; then
                 continue
             fi
-            COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
+            COREFL=`echo $cpat | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
             CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '.*${COREFL}.*'"
         fi
 
