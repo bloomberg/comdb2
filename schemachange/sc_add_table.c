@@ -72,6 +72,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+            newdb->ix_nullsunique,
             newdb->numblobs + 1, thedb->bdb_env, 0, &bdberr, trans);
         open_auxdbs(newdb, 1);
     } else {
@@ -80,6 +81,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+            newdb->ix_nullsunique,
             newdb->numblobs + 1, thedb->bdb_env, trans, &bdberr);
         open_auxdbs(newdb, 0);
     }

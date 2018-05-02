@@ -840,6 +840,7 @@ struct bdb_state_tag {
         [MAXIX]; /*does this index contain any columns that allow nulls?*/
     signed char ixdups[MAXIX];   /* 1 if ix allows dupes, else 0 */
     signed char ixrecnum[MAXIX]; /* 1 if we turned on recnum mode for btrees */
+    signed char ixuniqnulls[MAXIX]; /* 1 if NULLs are treated as unique */
 
     short keymaxsz; /* size of the keymax buffer */
 

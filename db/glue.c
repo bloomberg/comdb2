@@ -4127,6 +4127,7 @@ int backend_open(struct dbenv *dbenv)
             bdb_open_more(db->tablename, dbenv->basedir, db->lrl, db->nix,
                           (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
                           db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
+                          db->ix_nullsunique,
                           db->numblobs + 1, /* main record + n blobs */
                           dbenv->bdb_env, &bdberr);
 

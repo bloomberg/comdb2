@@ -1579,6 +1579,9 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
         if (dyns_is_idx_datacopy(ix))
             s->flags |= SCHEMA_DATACOPY;
 
+        if (dyns_is_idx_uniqnull(ix))
+            s->flags |= SCHEMA_UNIQNULL;
+
         s->nix = 0;
         s->ix = NULL;
         s->ixnum = ix;
@@ -7113,6 +7116,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
         db->tablename, thedb->basedir, newdb->lrl, newdb->nix,
         (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
         newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+        newdb->ix_nullsunique,
         newdb->numblobs + 1, thedb->bdb_env, tran, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
