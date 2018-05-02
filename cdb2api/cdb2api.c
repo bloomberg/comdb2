@@ -2459,8 +2459,9 @@ retry_next_record:
                 __func__);
     retry:
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %p %s:%d retry: shouldretry=%d, "
-                            "hndl->snapshot_file=%d, num_retry=%d\n",
+            fprintf(stderr,
+                    "td %p %s:%d retry: shouldretry=%d, "
+                    "hndl->snapshot_file=%d, num_retry=%d\n",
                     (void *)pthread_self(), __func__, __LINE__, shouldretry,
                     hndl->snapshot_file, num_retry);
         }
