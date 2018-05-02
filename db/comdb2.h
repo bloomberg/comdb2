@@ -674,6 +674,7 @@ struct dbtable {
     signed char ix_datacopy[MAXINDEX];
     signed char ix_collattr[MAXINDEX];
     signed char ix_nullsallowed[MAXINDEX];
+    signed char ix_nullsunique[MAXINDEX];
     signed char ix_disabled[MAXINDEX];
     struct ireq *iq; /* iq used at sc time */
     int has_datacopy_ix; /* set to 1 if we have datacopy indexes */

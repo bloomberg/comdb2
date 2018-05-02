@@ -1610,17 +1610,24 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
         }
 
         tbl->ix_nullsallowed[ii] = 0;
-        /*
-          XXX todo
-          tbl->ix_nullsallowed[ii]=dyns_is_idx_nullsallowed(ii);
-          if (tbl->ix_nullallowed[ii]<0)
-          {
-          fprintf(stderr,"cant find index %d datacopy in csc schema %s\n",
-          ii,tblname);
+        /* XXX todo
+        tbl->ix_nullsallowed[ii] = dyns_is_idx_nullsallowed(ii);
+        if (tbl->ix_nullallowed[ii] < 0)
+        {
+            logmsg(LOGMSG_ERROR, "cant find index %d nullsallowed in csc schema %s\n",
+                    ii, tblname);
             cleanup_newdb(tbl);
             return NULL;
-          }
+        }
         */
+
+        tbl->ix_nullsunique[ii] = dyns_is_idx_uniqnull(ii);
+        if (tbl->ix_nullsunique[ii] < 0) {
+            logmsg(LOGMSG_ERROR, "cant find index %d uniqnull in csc schema %s\n",
+                    ii, tblname);
+            cleanup_newdb(tbl);
+            return NULL;
+        }
     }
     tbl->n_rev_constraints =
         0; /* this will be initialized at verification time */

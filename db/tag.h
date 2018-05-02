@@ -92,7 +92,8 @@ enum {
     SCHEMA_RECNUM = 8 /* recnum flag set */
     ,
     SCHEMA_DYNAMIC = 16,
-    SCHEMA_DATACOPY = 32 /* datacopy flag set on index */
+    SCHEMA_DATACOPY = 32, /* datacopy flag set on index */
+    SCHEMA_UNIQNULL = 64  /* uniqnull flag set on index */
 };
 
 /* sql_record_member.flags */

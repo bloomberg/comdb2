@@ -57,7 +57,7 @@
 %token T_CONSTRAINTS T_CASCADE
 %token T_CON_ON  T_CON_UPDATE T_CON_DELETE T_RESTRICT
 
-%token T_RECNUMS T_PRIMARY T_DATAKEY 
+%token T_RECNUMS T_PRIMARY T_DATAKEY T_UNIQNULLS
 %token T_YES T_NO
 
 %token T_ASCEND T_DESCEND T_DUP					/*MODIFIERS*/
@@ -408,6 +408,7 @@ keyflags:	T_DUP		{ key_setdup(); }
                 | T_RECNUMS     { key_setrecnums(); }
                 | T_PRIMARY     { key_setprimary(); }
                 | T_DATAKEY     { key_setdatakey(); }
+                | T_UNIQNULLS   { key_setuniqnulls(); }
 		;
 
 compoundkey:	keypiece

@@ -5101,6 +5101,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
              short numix, const short ixlen[], const signed char ixdups[],
              const signed char ixrecnum[], const signed char ixdta[],
              const signed char ixcollattr[], const signed char ixnulls[],
+             const signed char ixuniqnulls[],
              int numdtafiles, bdb_attr_type *bdb_attr,
              bdb_callback_type *bdb_callback, void *usr_ptr,
              netinfo_type *netinfo, int upgrade, int create, int *bdberr,
@@ -5389,6 +5390,11 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
                 bdb_state->ixnulls[i] = ixnulls[i];
             else
                 bdb_state->ixnulls[i] = 0;
+
+            if (ixuniqnulls)
+                bdb_state->ixuniqnulls[i] = ixuniqnulls[i];
+            else
+                bdb_state->ixuniqnulls[i] = 0;
         }
 
         /* determine the largest key size and the total key size */
@@ -5810,6 +5816,7 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
         name, dir, 0, 0, NULL, NULL, NULL, NULL,
         NULL,           /* numix, ixlen, ixdups, ixrecnum, ixdta, ixcollattr */
         NULL,           /* ixnulls */
+        NULL,           /* ixuniqnulls */
         0,              /* numdtafiles */
         bdb_attr,       /* bdb_attr */
         bdb_callback,   /* bdb_callback */
@@ -5826,6 +5833,7 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                 const short ixlen[], const signed char ixdups[],
                 const signed char ixrecnum[], const signed char ixdta[],
                 const signed char ixcollattr[], const signed char ixnulls[],
+                const signed char ixuniqnulls[],
                 int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
                 int *bdberr, tran_type *trans)
 {
@@ -5842,7 +5850,8 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
         ret =
             bdb_open_int(0, /* envonly */
                          name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta,
-                         ixcollattr, ixnulls, numdtafiles, NULL, /* bdb_attr */
+                         ixcollattr, ixnulls, ixuniqnulls, numdtafiles,
+                         NULL, /* bdb_attr */
                          NULL, /* bdb_callback */
                          NULL, /* usr_ptr */
                          NULL, /* netinfo */
@@ -5857,7 +5866,8 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
         ret =
             bdb_open_int(0, /* envonly */
                          name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta,
-                         ixcollattr, ixnulls, numdtafiles, NULL, /* bdb_attr */
+                         ixcollattr, ixnulls, ixuniqnulls, numdtafiles,
+                         NULL, /* bdb_attr */
                          NULL, /* bdb_callback */
                          NULL, /* usr_ptr */
                          NULL, /* netinfo */
@@ -5878,6 +5888,7 @@ bdb_open_more_int(const char name[], const char dir[], int lrl, short numix,
                   const short ixlen[], const signed char ixdups[],
                   const signed char ixrecnum[], const signed char ixdta[],
                   const signed char ixcollattr[], const signed char ixnulls[],
+                  const signed char ixuniqnulls[],
                   int numdtafiles, bdb_state_type *parent_bdb_handle,
                   int *bdberr)
 {
@@ -5887,7 +5898,8 @@ bdb_open_more_int(const char name[], const char dir[], int lrl, short numix,
 
     ret = bdb_open_int(0, /* envonly */
                        name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta,
-                       ixcollattr, ixnulls, numdtafiles, NULL, /* bdb_attr */
+                       ixcollattr, ixnulls, ixuniqnulls, numdtafiles,
+                       NULL,                               /* bdb_attr */
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
@@ -5904,12 +5916,14 @@ bdb_create(const char name[], const char dir[], int lrl, short numix,
            const short ixlen[], const signed char ixdups[],
            const signed char ixrecnum[], const signed char ixdta[],
            const signed char ixcollattr[], const signed char ixnulls[],
+           const signed char ixuniqnulls[],
            int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
            int *bdberr)
 {
     return bdb_create_tran(name, dir, lrl, numix, ixlen, ixdups, ixrecnum,
-                           ixdta, ixcollattr, ixnulls, numdtafiles,
-                           parent_bdb_handle, temp, bdberr, NULL);
+                           ixdta, ixcollattr, ixnulls, ixuniqnulls,
+                           numdtafiles, parent_bdb_handle, temp, bdberr,
+                           NULL);
 }
 
 /* open another database in the same transaction/replication
@@ -5919,6 +5933,7 @@ bdb_open_more(const char name[], const char dir[], int lrl, short numix,
               const short ixlen[], const signed char ixdups[],
               const signed char ixrecnum[], const signed char ixdta[],
               const signed char ixcollattr[], const signed char ixnulls[],
+              const signed char ixuniqnulls[],
               int numdtafiles, bdb_state_type *parent_bdb_handle, int *bdberr)
 {
     bdb_state_type *bdb_state, *ret;
@@ -5930,7 +5945,8 @@ bdb_open_more(const char name[], const char dir[], int lrl, short numix,
 
     ret = bdb_open_int(0, /* envonly */
                        name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta,
-                       ixcollattr, ixnulls, numdtafiles, NULL, /* bdb_attr */
+                       ixcollattr, ixnulls, ixuniqnulls, numdtafiles,
+                       NULL,                               /* bdb_attr */
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
@@ -5951,6 +5967,7 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                    const short ixlen[], const signed char ixdups[],
                    const signed char ixrecnum[], const signed char ixdta[],
                    const signed char ixcollattr[], const signed char ixnulls[],
+                   const signed char ixuniqnulls[],
                    int numdtafiles, bdb_state_type *parent_bdb_handle,
                    tran_type *tran, int *bdberr)
 {
@@ -5963,7 +5980,8 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
 
     ret = bdb_open_int(0, /* envonly */
                        name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta,
-                       ixcollattr, ixnulls, numdtafiles, NULL, /* bdb_attr */
+                       ixcollattr, ixnulls, ixuniqnulls, numdtafiles,
+                       NULL,                               /* bdb_attr */
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
@@ -5983,6 +6001,7 @@ bdb_state_type *bdb_open_more_tran_int(
     const short ixlen[], const signed char ixdups[],
     const signed char ixrecnum[], const signed char ixdta[],
     const signed char ixcollattr[], const signed char ixnulls[],
+    const signed char ixuniqnulls[],
     int numdtafiles, bdb_state_type *parent_bdb_handle, DB_TXN *tid,
     int *bdberr)
 {
@@ -5992,7 +6011,8 @@ bdb_state_type *bdb_open_more_tran_int(
 
     ret = bdb_open_int(0, /* envonly */
                        name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta,
-                       ixcollattr, ixnulls, numdtafiles, NULL, /* bdb_attr */
+                       ixcollattr, ixnulls, ixuniqnulls, numdtafiles,
+                       NULL,                               /* bdb_attr */
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
@@ -6030,6 +6050,7 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
     signed char ixrecnum[1] = {0};
     signed char ixdta[1] = {0};
     signed char ixnulls[1] = {0};
+    signed char ixuniqnulls[1] = {0};
     short ixlen;
 
     ixlen = ixlen_in;
@@ -6043,7 +6064,8 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
 
     ret = bdb_open_int(0, /* envonly */
                        name, dir, lrl, numix, &ixlen, ixdups, ixrecnum, ixdta,
-                       NULL, ixnulls, numdtafiles, NULL,   /* bdb_attr */
+                       NULL, ixnulls, ixuniqnulls, numdtafiles,
+                       NULL,                               /* bdb_attr */
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
@@ -6079,6 +6101,7 @@ bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
         NULL,                              /* ixdta */
         NULL,                              /* ixcollattr */
         NULL,                              /* ixnulls */
+        NULL,                              /* ixuniqnulls */
         1,                                 /* numdtafiles (berkdb queue file) */
         NULL,                              /* bdb_attr */
         NULL,                              /* bdb_callback */
@@ -6118,6 +6141,7 @@ bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
                      NULL,                 /* ixdta */
                      NULL,                 /* ixcollattr */
                      NULL,                 /* ixnulls */
+                     NULL,                 /* ixuniqnulls */
                      1,                    /* numdtafiles (berkdb queue file) */
                      NULL,                 /* bdb_attr */
                      NULL,                 /* bdb_callback */
@@ -6153,6 +6177,7 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
     signed char ixrecnum[1] = {0};
     signed char ixdta[1] = {0};
     signed char ixnulls[1] = {0};
+    signed char ixuniqnulls[1] = {0};
     short ixlen;
 
     ixlen = ixlen_in;
@@ -6171,8 +6196,10 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
     } else {
         ret = bdb_open_int(
             0, /* envonly */
-            name, dir, lrl, numix, &ixlen, ixdups, ixrecnum, ixdta, NULL,
-            ixnulls, numdtafiles, NULL, /* bdb_attr */
+            name, dir, lrl, numix, &ixlen, ixdups, ixrecnum, ixdta,
+            NULL,                       /* ixcollattr */
+            ixnulls, ixuniqnulls, numdtafiles,
+            NULL,                       /* bdb_attr */
             NULL,                       /* bdb_callback */
             NULL,                       /* usr_ptr */
             NULL,                       /* netinfo */

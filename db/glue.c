@@ -3781,7 +3781,7 @@ int open_auxdbs(struct dbtable *db, int force_create)
                                      0, db->dbenv->bdb_env, &bdberr);
         else
             db->meta = bdb_create(name, db->dbenv->basedir, 0, numix, ixlen,
-                                  ixdups, ixrecnum, ixdta, NULL, NULL,
+                                  ixdups, ixrecnum, ixdta, NULL, NULL, NULL,
                                   numdtafiles, db->dbenv->bdb_env, 0, &bdberr);
     } else {
         /* see if we have a lite meta table - if so use that.  otherwise
@@ -3793,7 +3793,7 @@ int open_auxdbs(struct dbtable *db, int force_create)
                 ctrace("bdb_open_more(meta) cannot open lite meta %d\n",
                        bdberr);
             db->meta = bdb_open_more(name, db->dbenv->basedir, 0, numix, ixlen,
-                                     ixdups, ixrecnum, ixdta, NULL, NULL,
+                                     ixdups, ixrecnum, ixdta, NULL, NULL, NULL,
                                      numdtafiles, db->dbenv->bdb_env, &bdberr);
         }
     }
@@ -4127,6 +4127,7 @@ int backend_open(struct dbenv *dbenv)
             bdb_open_more(db->tablename, dbenv->basedir, db->lrl, db->nix,
                           (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
                           db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
+                          db->ix_nullsunique,
                           db->numblobs + 1, /* main record + n blobs */
                           dbenv->bdb_env, &bdberr);
 
