@@ -1,0 +1,17 @@
+create procedure dyn_lib version 'def' {
+require 'torch'
+local function main(tbl)
+   local stmt = db:exec('select * from '..tbl)
+   local row = stmt:fetch()
+   while(row)
+   do
+     local a = torch.pow(tonumber(tostring(row.x)),tonumber(tostring(row.y)))
+     db:emit(a)
+     row = stmt:fetch()
+   end 
+end
+}$$
+
+put default procedure dyn_lib 'def'
+
+exec procedure dyn_lib()
