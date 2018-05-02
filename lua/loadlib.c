@@ -451,7 +451,7 @@ static const int sentinel_ = 0;
 static int ll_require (lua_State *L) {
   extern int gbl_allow_lua_dynamic_libs;
   if (!gbl_allow_lua_dynamic_libs) {
-    luaL_error(L, "dynamic libraries not enabled; check your comdb2 documentation");
+    luaL_error(L, "dynamic libraries not enabled; check comdb2 documentation");
     return 1;
   }
   const char *name = luaL_checkstring(L, 1);
