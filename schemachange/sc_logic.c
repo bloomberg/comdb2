@@ -1190,8 +1190,6 @@ int backout_schema_change(struct ireq *iq)
     if (s->addonly) {
         delete_temp_table(iq, s->db);
         delete_db(s->table);
-        create_sqlmaster_records(NULL);
-        create_sqlite_master();
     } else if (s->db) {
         reload_db_tran(s->db, NULL);
         sc_del_unused_files(s->db);

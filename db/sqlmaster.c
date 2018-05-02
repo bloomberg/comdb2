@@ -108,7 +108,7 @@ master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
  * Create sqlite_master row and populate the associated hash
  *
  */
-int create_sqlite_master()
+void create_sqlite_master()
 {
     master_entry_t *new_arr = NULL;
     int local_nentries = 0;
@@ -117,15 +117,13 @@ int create_sqlite_master()
         create_master_entry_array(thedb->dbs, thedb->num_dbs, &local_nentries);
     if (!new_arr) {
         logmsg(LOGMSG_ERROR, "%s: MALLOC OOM\n", __func__);
-        return -1;
+        abort();
     }
 
     destroy_sqlite_master(sqlmaster, sqlmaster_nentries);
 
     sqlmaster = new_arr;
     sqlmaster_nentries = local_nentries;
-
-    return 0;
 }
 
 inline static void fill_mem_str(Mem *m, char *str)

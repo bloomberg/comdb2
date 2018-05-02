@@ -2470,7 +2470,7 @@ int get_copy_rootpages(struct sql_thread *thd);
 master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
                                           int *nents);
 void cleanup_sqlite_master();
-int create_sqlite_master();
+void create_sqlite_master();
 int destroy_sqlite_master(master_entry_t *, int);
 int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db);
 void handle_isql(struct dbtable *db, SBUF2 *sb);

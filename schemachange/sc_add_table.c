@@ -40,27 +40,19 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
         newdb->csc2_schema = strdup(csc2);
         newdb->csc2_schema_len = strlen(newdb->csc2_schema);
     }
-    rc = create_sqlmaster_records(trans);
-
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "create_sqlmaster_records failed rc %d\n", rc);
-        return SC_INTERNAL_ERROR;
-    }
-    /* TODO: ask why this function has no return codes */
-    create_sqlite_master(); /* create sql statements */
 
     extern int gbl_partial_indexes;
     extern int gbl_expressions_indexes;
     if (!fastinit &&
         ((gbl_partial_indexes && newdb->ix_partial) ||
          (gbl_expressions_indexes && newdb->ix_expr)) &&
-        newdb->dbenv->master == gbl_mynode)
+        newdb->dbenv->master == gbl_mynode) {
         rc = new_indexes_syntax_check(iq, newdb);
+        if (rc)
+            return SC_CSC2_ERROR;
+    }
 
-    if (rc)
-        return SC_CSC2_ERROR;
-    else
-        return 0;
+    return 0;
 }
 
 static inline int get_db_handle(struct dbtable *newdb, void *trans)
@@ -306,8 +298,10 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
 
     fix_lrl_ixlen_tran(tran);
 
+    /* TODO: will be called in osqlcomm.c on OSQL_DONE
     create_sqlmaster_records(tran);
     create_sqlite_master();
+    */
 
     db->sc_to = NULL;
     update_dbstore(db);

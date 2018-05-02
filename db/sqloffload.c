@@ -822,7 +822,12 @@ static void osql_scdone_abort_callback(struct ireq *iq)
         iq->sc_pending = NULL;
         iq->sc_seed = 0;
         iq->sc_should_abort = 0;
+
+        // createmastertbls only once
+        create_sqlmaster_records(NULL);
+        create_sqlite_master();
     }
+    
     if (iq->sc_locked) {
         unlock_schema_lk();
         iq->sc_locked = 0;
