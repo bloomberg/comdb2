@@ -19,7 +19,17 @@ t2
 unknown @ls sub-command foo
 table name required
 table name required
-schema
+Columns:
+(column='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
+
+Keys:
+(keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+
+Constraints:
+(name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+
+CSC2:
+(csc2='schema
 	{
 		int i 
 	}
@@ -27,8 +37,18 @@ keys
 	{
 		"COMDB2_PK" = i 
 	}
+')
+Columns:
+(column='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 
-schema
+Keys:
+(keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+
+Constraints:
+(name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+
+CSC2:
+(csc2='schema
 	{
 		int i 
 	}
@@ -40,8 +60,18 @@ constraints
 	{
 		"COMDB2_PK" -> <"t1":"COMDB2_PK"> 
 	}
+')
+Columns:
+(column='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 
-schema
+Keys:
+(keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+
+Constraints:
+(name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+
+CSC2:
+(csc2='schema
 	{
 		int i 
 	}
@@ -53,4 +83,4 @@ constraints
 	{
 		"COMDB2_PK" -> <"t1":"COMDB2_PK"> 
 	}
-
+')

@@ -548,18 +548,58 @@ static int process_escape(const char *cmdstr)
             fprintf(stderr, "table name required\n");
             return -1;
         } else {
-            int start_time_ms, run_time_ms;
-            char sql[100];
-            int saved_printmode;
+            int start_time_ms;
+            int run_time_ms;
+            int rc;
+            char sql[200];
+            FILE *out = stdout;
 
+            if (printmode & STDERR)
+                out = stderr;
+
+            fprintf(out, "Columns:\n");
+            snprintf(sql, sizeof(sql),
+                     "SELECT columnname AS column, type, size, sqltype, "
+                     "varinlinesize, defaultvalue, dbload, isnullable FROM "
+                     "comdb2_columns WHERE tablename = '%s'",
+                     tok);
+            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            if (rc != 0) {
+                return rc;
+            }
+            fprintf(out, "\n");
+
+            fprintf(out, "Keys:\n");
+            snprintf(sql, sizeof(sql),
+                     "select keyname, isunique, isdatacopy, isrecnum, "
+                     "condition from comdb2_keys where tablename = '%s'",
+                     tok);
+            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            if (rc != 0) {
+                return rc;
+            }
+            fprintf(out, "\n");
+
+            fprintf(out, "Constraints:\n");
+            snprintf(sql, sizeof(sql),
+                     "select * from comdb2_constraints where tablename = '%s' "
+                     "OR foreigntablename = '%s'",
+                     tok, tok);
+            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            if (rc != 0) {
+                return rc;
+            }
+            fprintf(out, "\n");
+
+            fprintf(out, "CSC2:\n");
             snprintf(sql, sizeof(sql),
                      "SELECT csc2 FROM sqlite_master WHERE "
                      "name = '%s' and type = 'table'",
                      tok);
-            saved_printmode = printmode;
-            printmode = TABS;
-            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
-            printmode = saved_printmode;
+            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            if (rc != 0) {
+                return rc;
+            }
         }
     } else {
         fprintf(stderr, "unknown command %s\n", tok);
