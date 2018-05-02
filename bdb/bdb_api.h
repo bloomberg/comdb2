@@ -470,6 +470,7 @@ bdb_open_more(const char name[], const char dir[], int lrl, short numix,
               const short ixlen[], const signed char ixdups[],
               const signed char ixrecnum[], const signed char ixdta[],
               const signed char ixcollattr[], const signed char ixnulls[],
+              const signed char ixuniqnulls[],
               int numdtafiles, bdb_state_type *parent_bdb_handle, int *bdberr);
 
 /* same, but using a transaction */
@@ -478,6 +479,7 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                    const short ixlen[], const signed char ixdups[],
                    const signed char ixrecnum[], const signed char ixdta[],
                    const signed char ixcollattr[], const signed char ixnulls[],
+                   const signed char ixuniqnulls[],
                    int numdtafiles, bdb_state_type *parent_bdb_handle,
                    tran_type *tran, int *bdberr);
 
@@ -516,6 +518,7 @@ bdb_create(const char name[], const char dir[], int lrl, short numix,
            const short ixlen[], const signed char ixdups[],
            const signed char ixrecnum[], const signed char ixdta[],
            const signed char ixcollattr[], const signed char ixnulls[],
+           const signed char ixuniqnulls[],
            int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
            int *bdberr);
 
@@ -524,6 +527,7 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                 const short ixlen[], const signed char ixdups[],
                 const signed char ixrecnum[], const signed char ixdta[],
                 const signed char ixcollattr[], const signed char ixnulls[],
+                const signed char ixuniqnulls[],
                 int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
                 int *bdberr, tran_type *);
 
