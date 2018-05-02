@@ -3166,13 +3166,15 @@ int db_csvcopy(Lua lua)
     int basedir_len = strlen(thedb->basedir);
 
     if (fname == NULL) {
-        return luaL_error(lua, "File doesn't exist");
+        return luaL_error(lua, strerror(errno));
     } else if ((strncmp(thedb->basedir, fname, basedir_len) != 0) || (fname[basedir_len] != '/')) {
         return luaL_error(lua, "File not in database directory");
     }
 
     if (lua_gettop(lua) >= 2 && !lua_isnil(lua, 2) && !luabb_isnull(lua, 2)) {
        tablename = luabb_tostring(lua, 2);
+    } else {
+        return luaL_error(lua, "Table name not specified");
     }
 
     if (lua_gettop(lua) >= 3 && !lua_isnil(lua, 3) && !luabb_isnull(lua, 3)) {
@@ -3251,7 +3253,7 @@ int db_csvcopy(Lua lua)
     while (read > 0) {
         csv.in = line;
         csv.pos = 0;
-    	int cols = 0, lines = 0;
+        int cols = 0, lines = 0;
         int pos = 1;
         char *b_val[SQLITE_MAX_VARIABLE_NUMBER]; // Bind values
 
