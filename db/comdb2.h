@@ -2462,13 +2462,17 @@ int create_sqlmaster_records(void *tran);
 void form_new_style_name(char *namebuf, int len, struct schema *schema,
                          const char *csctag, const char *dbname);
 
+typedef struct master_entry master_entry_t;
+int get_copy_rootpages_custom(struct sql_thread *thd, master_entry_t *ents,
+                              int nents);
 int get_copy_rootpages_nolock(struct sql_thread *thd);
 int get_copy_rootpages(struct sql_thread *thd);
+master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
+                                          int *nents);
 void cleanup_sqlite_master();
 int create_sqlite_master();
-typedef struct master_entry master_entry_t;
 int destroy_sqlite_master(master_entry_t *, int);
-int new_indexes_syntax_check(struct ireq *iq);
+int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db);
 void handle_isql(struct dbtable *db, SBUF2 *sb);
 void handle_timesql(SBUF2 *sb, struct dbtable *db);
 int handle_sql(SBUF2 *sb);

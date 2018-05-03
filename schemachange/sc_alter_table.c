@@ -376,72 +376,15 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     if ((gbl_partial_indexes && newdb->ix_partial) ||
         (gbl_expressions_indexes && newdb->ix_expr)) {
         int ret = 0;
-        char temp_newdb_name[MAXTABLELEN];
-        struct dbtable *temp_newdb;
-        int len = strlen(s->table);
-        len = crc32c((uint8_t *)s->table, len);
-        snprintf(temp_newdb_name, MAXTABLELEN, "sc_alter_temp_%X", len);
-        wrlock_schema_lk();
-        {
-            temp_newdb = newdb_from_schema(thedb, temp_newdb_name, NULL, 0,
-                                           thedb->num_dbs, 0);
-            if (temp_newdb == NULL) {
-                rc = SC_INTERNAL_ERROR;
-                goto pi_done;
-            }
-            temp_newdb->dtastripe = gbl_dtastripe;
-            if (add_cmacc_stmt(temp_newdb, 0)) {
-                logmsg(LOGMSG_ERROR, "%s: add_cmacc_stmt failed\n", __func__);
-                rc = SC_CSC2_ERROR;
-                goto pi_done;
-            }
-
-            if (verify_constraints_exist(temp_newdb, NULL, NULL, s) != 0) {
-                logmsg(LOGMSG_ERROR, "%s: Verify constraints failed \n",
-                       __func__);
-                rc = -1;
-                goto pi_done;
-            }
-
-            if (!sc_via_ddl_only() && validate_ix_names(temp_newdb)) {
-                rc = -1;
-                goto pi_done;
-            }
-
-            thedb->dbs =
-                realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct dbtable *));
-            thedb->dbs[thedb->num_dbs++] = temp_newdb;
-            /* Add table to the hash. */
-            hash_add(thedb->db_hash, temp_newdb);
-            create_sqlmaster_records(tran);
-            create_sqlite_master(); /* create sql statements */
-            ret = new_indexes_syntax_check(iq);
-            newdb->ix_blob = temp_newdb->ix_blob;
-            newdb->schema->ix_blob = newdb->ix_blob;
-            delete_schema(temp_newdb_name);
-            delete_db(temp_newdb_name);
-            cleanup_newdb(temp_newdb);
-            create_sqlmaster_records(tran);
-            create_sqlite_master(); /* create sql statements */
-            if (ret) {
-                sc_errf(s, "New indexes syntax error\n");
-                ret = SC_CSC2_ERROR;
-                goto pi_done;
-            } else {
-                sc_printf(s, "New indexes ok\n");
-            }
-        }
-    pi_done:
-        unlock_schema_lk();
-        if (rc) {
-            pthread_mutex_unlock(&csc2_subsystem_mtx);
-            return rc;
-        }
+        ret = new_indexes_syntax_check(iq, newdb);
         if (ret) {
             pthread_mutex_unlock(&csc2_subsystem_mtx);
+            sc_errf(s, "New indexes syntax error\n");
             backout(newdb);
             cleanup_newdb(newdb);
-            return ret;
+            return SC_CSC2_ERROR;
+        } else {
+            sc_printf(s, "New indexes ok\n");
         }
     }
     pthread_mutex_unlock(&csc2_subsystem_mtx);

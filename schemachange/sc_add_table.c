@@ -55,7 +55,7 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
         ((gbl_partial_indexes && newdb->ix_partial) ||
          (gbl_expressions_indexes && newdb->ix_expr)) &&
         newdb->dbenv->master == gbl_mynode)
-        rc = new_indexes_syntax_check(iq);
+        rc = new_indexes_syntax_check(iq, newdb);
 
     if (rc)
         return SC_CSC2_ERROR;
