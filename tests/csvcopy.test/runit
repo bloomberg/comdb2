@@ -14,6 +14,14 @@ fi
 cp *.csv $DBDIR/.
 cp agg.csv $DBDIR/../.
 
+for node in $CLUSTER; do
+    if [ $node == $HOSTNAME ] ; then
+        continue
+    fi
+    scp -o StrictHostKeyChecking=no *.csv $node:$DBDIR/.
+    scp -o StrictHostKeyChecking=no agg.csv $node:$DBDIR/../.
+done
+
 for testreq in `ls t*.req` ; do
     # Setup all the tables this test case needs :-
     # First drop the table (its ok if this fails,
