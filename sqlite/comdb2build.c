@@ -3868,9 +3868,9 @@ static void comdb2AddIndexInt(
         char *where_clause;
         size_t where_sz;
 
-        where_sz = pPIWhere->zEnd - pPIWhere->zStart - 2;
+        where_sz = pPIWhere->zEnd - pPIWhere->zStart;
         assert(where_sz > 0);
-        where_clause = comdb2_strndup(ctx->mem, pPIWhere->zStart + 1, where_sz);
+        where_clause = comdb2_strndup(ctx->mem, pPIWhere->zStart, where_sz + 1);
         if (where_clause == 0)
             goto oom;
 
