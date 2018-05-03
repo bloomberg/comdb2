@@ -343,6 +343,10 @@ int gbl_maxblockops = 25000;
 int gbl_replicate_local = 0;
 int gbl_replicate_local_concurrent = 0;
 
+int gbl_poll_rep_remote = 0;
+char gbl_remote_database[MAX_DBNAME_LENGTH];
+char gbl_remote_cluster[128];
+
 /* TMP BROKEN DATETIME */
 int gbl_allowbrokendatetime = 1;
 int gbl_sort_nulls_correctly = 1;
@@ -5092,6 +5096,9 @@ int main(int argc, char **argv)
 
     if (comdb2ma_stats_cron() != 0)
         abort();
+
+    if (gbl_poll_rep_remote)
+        local_rep_sched();
 
     if (process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
                                  deferred_do_commands)) {

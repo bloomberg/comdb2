@@ -730,7 +730,6 @@ void dbqueue_admin(struct dbenv *dbenv)
             }
         }
     }
-
     pthread_mutex_lock(&dbenv->dbqueue_admin_lk);
     dbenv->dbqueue_admin_running = 0;
     pthread_mutex_unlock(&dbenv->dbqueue_admin_lk);

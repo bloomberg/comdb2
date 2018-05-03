@@ -32,6 +32,7 @@ struct spversion_t {
 int exec_procedure(const char *s, char **err, struct sqlthdstate *, struct schema *, struct sqlclntstate *);
 int exec_thread(struct sqlthdstate *, struct sqlclntstate *);
 void *exec_trigger(struct trigger_reg *);
+void *exec_repsp();
 void close_sp(struct sqlclntstate *);
 
 void lua_final(struct sqlite3_context *);
