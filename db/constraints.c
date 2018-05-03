@@ -1189,7 +1189,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
 
             /* add the key */
             rc = ix_addk(iq, trans, key, doidx, genid, addrrn, od_dta_tail,
-                         od_tail_len);
+                         od_tail_len, ix_isnullk(iq->usedb, key, doidx));
 
             if (iq->debug) {
                 reqprintf(iq, "%p:ADDKYCNSTRT  TBL %s IX %d RRN %d KEY ", trans,

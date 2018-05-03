@@ -879,8 +879,8 @@ int ix_isnullk(struct dbtable *db, void *key, int ixnum)
     dbixschema = db->ixschema[ixnum];
     if (!dbixschema) return 0;
     for (ifld = 0; ifld < dbixschema->nmembers; ifld++)
- {
-        struct field *dbixfield = dbixschema->member[ifld];
+    {
+        struct field *dbixfield = &dbixschema->member[ifld];
         if (dbixfield) {
             const char *bkey = (const char *)key;
             int offset = dbixfield->offset;
@@ -893,7 +893,7 @@ int ix_isnullk(struct dbtable *db, void *key, int ixnum)
 }
 
 int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
-                  unsigned long long genid, int rrn, void *dta, int dtalen)
+                  unsigned long long genid, int rrn, void *dta, int dtalen, int isnull)
 {
     struct dbtable *db = iq->usedb;
     int rc, bdberr;
@@ -916,7 +916,7 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 
     iq->gluewhere = "bdb_prim_addkey";
     rc = bdb_prim_addkey_genid(bdb_handle, trans, key, ixnum, rrn, genid, dta,
-                               dtalen, 0 /* XXX TODO, are there null values? */,
+                               dtalen, isnull,
                                &bdberr);
     iq->gluewhere = "bdb_prim_addkey done";
     if (rc == 0)
@@ -4545,7 +4545,7 @@ retry:
             goto backout;
         }
 
-        rc = ix_addk(&iq, trans, key, i, genid, rrn, buf, db->lrl);
+        rc = ix_addk(&iq, trans, key, i, genid, rrn, buf, db->lrl, ix_isnullk(iq.usedb, key, i));
         if (rc) {
             if (rc == RC_INTERNAL_RETRY)
                 need_to_retry = 1;
@@ -4941,7 +4941,7 @@ retry:
             if (rc)
                 goto backout;
         }
-        rc = ix_addk_auxdb(AUXDB_META, &iq, trans, hdr, 0, genid, rrn, NULL, 0);
+        rc = ix_addk_auxdb(AUXDB_META, &iq, trans, hdr, 0, genid, rrn, NULL, 0, ix_isnullk(iq.usedb, hdr, 0));
         if (iq.debug)
             logmsg(LOGMSG_USER, "meta_put:ix_addk_auxdb RC %d\n", rc);
         if (rc)

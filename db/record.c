@@ -539,7 +539,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
             /* add the key */
             rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
-                         od_len_tail);
+                         od_len_tail, ix_isnullk(iq->usedb, key, ixnum));
             if (iq->debug) {
                 reqprintf(iq, "ix_addk IX %d LEN %u KEY ", ixnum, ixkeylen);
                 reqdumphex(iq, key, ixkeylen);
@@ -701,7 +701,7 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
         }
 
         rc = ix_addk(iq, trans, newkey, ixnum, genid, rrn, od_dta_tail,
-                     od_tail_len);
+                     od_tail_len, ix_isnullk(iq->usedb, newkey, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_addk IX %d RRN %d KEY ", ixnum, rrn);
             reqdumphex(iq, newkey, getkeysize(iq->usedb, ixnum));
@@ -2173,7 +2173,7 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
         }
 
         rc = ix_addk(iq, trans, key, ixnum, newgenid, 2, (void *)od_dta_tail,
-                     od_tail_len);
+                     od_tail_len, ix_isnullk(iq->usedb, key, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_addk IX %d KEY ", ixnum);
             reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
