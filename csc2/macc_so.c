@@ -2535,7 +2535,7 @@ int dyns_is_idx_recnum(int index)
 /* does this index treat all NULL values are UNIQUE? */
 int dyns_is_idx_uniqnulls(int index)
 {
-    return dyns_is_idx_flagged(index, NULLS);
+    return dyns_is_idx_flagged(index, UNIQNULLS);
 }
 
 int dyns_get_idx_tag(int index, char *tag, int tlen, char **where)
