@@ -880,6 +880,12 @@ int ix_isnullk(struct dbtable *db, void *key, int ixnum)
             db, key, ixnum);
         return 0;
     }
+    if (db->ix_dupes[ixnum]) {
+        fprintf(stderr,
+            "ix_isnullk: UNIQUE disabled, db = %p, key = %p, ixnum = %d\n",
+            db, key, ixnum);
+        return 0;
+    }
     if (!db->ix_nullsallowed[ixnum]) {
         fprintf(stderr,
             "ix_isnullk: nulls not allowed, db = %p, key = %p, ixnum = %d\n",
