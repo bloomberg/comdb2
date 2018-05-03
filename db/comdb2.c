@@ -883,9 +883,16 @@ void showdbenv(struct dbenv *dbenv)
         logmsg(LOGMSG_ERROR, "   data reclen %-3d bytes\n", usedb->lrl);
 
         for (ii = 0; ii < usedb->nix; ii++) {
-            logmsg(LOGMSG_USER, "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c\n",
-                   ii, usedb->ix_keylen[ii], (usedb->ix_dupes[ii] ? 'y' : 'n'),
-                   (usedb->ix_recnums[ii] ? 'y' : 'n'));
+            logmsg(LOGMSG_USER,
+                   "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c"
+                   " datacopy? %c collattr? %c uniqnulls %c disabled %c\n",
+                   ii, usedb->ix_keylen[ii],
+                   (usedb->ix_dupes[ii] ? 'y' : 'n'),
+                   (usedb->ix_recnums[ii] ? 'y' : 'n'),
+                   (usedb->ix_datacopy[ii] ? 'y' : 'n'),
+                   (usedb->ix_collattr[ii] ? 'y' : 'n'),
+                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'),
+                   (usedb->ix_disabled[ii] ? 'y' : 'n'));
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
