@@ -884,7 +884,7 @@ int ix_isnullk(struct dbtable *db, void *key, int ixnum)
         if (dbixfield) {
             const char *bkey = (const char *)key;
             int offset = dbixfield->offset;
-            if (offset >= 0 && stype_is_null(bkey[offset])) {
+            if (offset >= 0 && stype_is_null((bkey + offset))) {
                 return 1;
             }
         }
@@ -939,10 +939,10 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 
 /*index routines */
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
-            unsigned long long genid, int rrn, void *dta, int dtalen)
+            unsigned long long genid, int rrn, void *dta, int dtalen, int isnull)
 {
     return ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, genid, rrn, dta,
-                         dtalen);
+                         dtalen, isnull);
 }
 
 int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
