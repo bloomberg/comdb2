@@ -1601,7 +1601,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
         }
 
         tbl->ix_nullsallowed[ii] = dyns_is_idx_uniqnulls(ii);
-        if (tbl->ix_nullallowed[ii] < 0) {
+        if (tbl->ix_nullsallowed[ii] < 0) {
           logmsg(LOGMSG_ERROR, "cant find index %d uniqnulls in csc schema %s\n",
                   ii, tblname);
           cleanup_newdb(tbl);
