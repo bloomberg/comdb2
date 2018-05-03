@@ -870,6 +870,28 @@ int cmp_context(struct ireq *iq, unsigned long long genid,
 /*        TRANSACTIONAL INDEX ROUTINES        */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
+int ix_isnullk(struct dbtable *db, void *key, int ixnum)
+{
+    struct schema *dbixschema;
+    int ifld;
+    if (!db || !key || ixnum < 0 || ixnum >= db->nix) return 0;
+    if (!db->ix_nullsallowed[ixnum]) return 0;
+    dbixschema = db->ixschema[ixnum];
+    if (!dbixschema) return 0;
+    for (ifld = 0; ifld < dbixschema->nmembers; ifld++)
+ {
+        struct field *dbixfield = dbixschema->member[ifld];
+        if (dbixfield) {
+            const char *bkey = (const char *)key;
+            int offset = dbixfield->offset;
+            if (offset >= 0 && stype_is_null(bkey[offset])) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
                   unsigned long long genid, int rrn, void *dta, int dtalen)
 {
