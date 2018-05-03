@@ -874,10 +874,25 @@ int ix_isnullk(struct dbtable *db, void *key, int ixnum)
 {
     struct schema *dbixschema;
     int ifld;
-    if (!db || !key || ixnum < 0 || ixnum >= db->nix) return 0;
-    if (!db->ix_nullsallowed[ixnum]) return 0;
+    if (!db || !key || ixnum < 0 || ixnum >= db->nix) {
+        fprintf(stderr,
+            "ix_isnullk: bad args, db = %p, key = %p, ixnum = %d\n",
+            db, key, ixnum);
+        return 0;
+    }
+    if (!db->ix_nullsallowed[ixnum]) {
+        fprintf(stderr,
+            "ix_isnullk: nulls not allowed, db = %p, key = %p, ixnum = %d\n",
+            db, key, ixnum);
+        return 0;
+    }
     dbixschema = db->ixschema[ixnum];
-    if (!dbixschema) return 0;
+    if (!dbixschema) {
+        fprintf(stderr,
+            "ix_isnullk: missing schema, db = %p, key = %p, ixnum = %d\n",
+            db, key, ixnum);
+        return 0;
+    }
     for (ifld = 0; ifld < dbixschema->nmembers; ifld++)
     {
         struct field *dbixfield = &dbixschema->member[ifld];
@@ -885,10 +900,16 @@ int ix_isnullk(struct dbtable *db, void *key, int ixnum)
             const char *bkey = (const char *)key;
             int offset = dbixfield->offset;
             if (offset >= 0 && stype_is_null((bkey + offset))) {
+                fprintf(stderr,
+                    "ix_isnullk: found NULL, db = %p, key = %p, ixnum = %d, ifld = %d\n",
+                    db, key, ixnum, ifld);
                 return 1;
             }
         }
     }
+    fprintf(stderr,
+        "ix_isnullk: no NULL, db = %p, key = %p, ixnum = %d\n",
+        db, key, ixnum);
     return 0;
 }
 
