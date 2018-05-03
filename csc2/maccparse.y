@@ -408,6 +408,7 @@ keyflags:	T_DUP		{ key_setdup(); }
                 | T_RECNUMS     { key_setrecnums(); }
                 | T_PRIMARY     { key_setprimary(); }
                 | T_DATAKEY     { key_setdatakey(); }
+                | T_UNIQNULLS   { key_setuniqnulls(); }
 		;
 
 compoundkey:	keypiece

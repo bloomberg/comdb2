@@ -801,6 +801,8 @@ void key_setprimary(void) { workkeyflag |= PRIMARY; }
 
 void key_setdatakey(void) { workkeyflag |= DATAKEY; }
 
+void key_setuniqnulls(void) { workkeyflag |= UNIQNULLS; }
+
 void key_piece_clear() /* used by parser, clears work key */
 {
     workkey = 0;          /* clear work key */
@@ -2528,6 +2530,12 @@ int dyns_is_idx_primary(int index)
 int dyns_is_idx_recnum(int index)
 {
     return dyns_is_idx_flagged(index, RECNUMS);
+}
+
+/* does this index treat all NULL values are UNIQUE? */
+int dyns_is_idx_uniqnulls(int index)
+{
+    return dyns_is_idx_flagged(index, NULLS);
 }
 
 int dyns_get_idx_tag(int index, char *tag, int tlen, char **where)
