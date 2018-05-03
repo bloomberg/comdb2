@@ -1,5 +1,5 @@
 #!/bin/sh
-set -x 
+#set -x 
 
 if [ ! -f ${TESTDIR} ] ; then
     mkdir -p ${TESTDIR}
