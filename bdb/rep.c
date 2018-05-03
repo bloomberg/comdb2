@@ -1511,13 +1511,25 @@ done:
     return NULL;
 }
 
-void *dummy_add_thread(void *arg)
+static void *dummy_add_thread_int(void *arg, int add_delay)
 {
     bdb_state_type *bdb_state = arg;
     thread_started("dummy add");
     bdb_thread_event(bdb_state, 1);
-    add_thread_int(bdb_state, 1);
+    add_thread_int(bdb_state, add_delay);
     bdb_thread_event(bdb_state, 0);
+    return NULL;
+}
+
+void *dummy_add_thread_nodelay(void *arg)
+{
+    dummy_add_thread_int(arg, 0 /* add_delay */);
+    return NULL;
+}
+
+void *dummy_add_thread(void *arg)
+{
+    dummy_add_thread_int(arg, 1 /* add_delay */);
     return NULL;
 }
 
@@ -4378,8 +4390,8 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     case USER_TYPE_ADD_DUMMY: {
         extern pthread_attr_t gbl_pthread_attr_detached;
         pthread_t tid;
-        pthread_create(&tid, &gbl_pthread_attr_detached, dummy_add_thread,
-                       bdb_state);
+        pthread_create(&tid, &gbl_pthread_attr_detached,
+                       dummy_add_thread_nodelay, bdb_state);
         net_ack_message(ack_handle, 0);
         break;
     }
