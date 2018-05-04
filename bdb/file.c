@@ -6748,9 +6748,22 @@ static int bdb_free_int(bdb_state_type *bdb_state, bdb_state_type *replace,
         bdb_handle_dbp_drop_hash(child);
         memset(child, 0xff, sizeof(bdb_state_type));
 
-        if (replace)
+        if (replace) {
             memcpy(child, replace, sizeof(bdb_state_type));
-        else
+
+            Pthread_mutex_lock(&(bdb_state->children_lock));
+
+            /* find ourselves and swap it. */
+            for (int i = 0; i < bdb_state->numchildren; i++)
+                if (bdb_state->children[i] == replace) {
+                    logmsg(LOGMSG_DEBUG, "%s swapping %p with %p\n", i, replace,
+                           child);
+                    bdb_state->children[i] = child;
+                    break;
+                }
+
+            Pthread_mutex_unlock(&(bdb_state->children_lock));
+        } else
             free(child);
     }
 

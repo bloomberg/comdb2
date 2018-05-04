@@ -82,7 +82,7 @@ function do_rebuild_track_pid
 
         do_verify $loc_dbnm $loc_tbl
         let scnt=scnt+1
-        assert_vers $((tblver + 1))
+        assert_vers $tblver
     done
 
     echo "Performed $scnt schema-changes."

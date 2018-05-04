@@ -517,6 +517,7 @@ These return codes can be found in ```cdb2api.h```
 | -105 |```CDB2ERR_TRAN_IO_ERROR``` | <a id="CDB2ERR_TRAN_IO_ERROR"/>I/O error. 
 | -106 |```CDB2ERR_ACCESS``` | <a id="CDB2ERR_ACCESS"/>Access denied. 
 | -107 |```CDB2ERR_TRAN_MODE_UNSUPPORTED``` | <a id="CDB2ERR_TRAN_MODE_UNSUPPORTED"/>Transaction mode is unsupported. 
+| -110 |```CDB2ERR_SCHEMA``` | <a id="CDB2ERR_SCHEMA"/>Table schema was changed in the middle of query execution.
 | 2    |```CDB2ERR_VERIFY_ERROR``` | <a id="CDB2ERR_VERIFY_ERROR"/>An update failed because the record being updated was changed more recently than it was first read.  This could happen if a transaction attempts to update the same record twice, or it could happen if two concurrent transactions are trying to update the same record (one will win, and the other will lose). 
 | 3    |```CDB2ERR_FKEY_VIOLATION``` | <a id="CDB2ERR_FKEY_VIOLATION"/>Foreign key violation. 
 | 4    |```CDB2ERR_NULL_CONSTRAINT``` | <a id="CDB2ERR_NULL_CONSTRAINT"/>Null constraint violation. 

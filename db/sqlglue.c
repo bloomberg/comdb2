@@ -563,8 +563,25 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
         rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
 
         if (rc != 0) {
+            if (rc < 0)
+                return SQLITE_BUSY;
+            else
+                return rc;
+        }
+
+        logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
+
+        clnt->deadlock_recovered++;
+    } else if (gbl_sql_random_release_interval &&
+               !(rand() % gbl_sql_random_release_interval)) {
+
+        rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+        if (rc != 0) {
             logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
-            return (rc == SQLITE_CLIENT_CHANGENODE) ? rc : SQLITE_BUSY;
+            if (rc < 0)
+                return SQLITE_BUSY;
+            else
+                return rc;
         }
 
         logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
@@ -6235,10 +6252,12 @@ again:
             nretries++;
             if ((rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0)) != 0) {
                 if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %zu failed dd recovery\n",
-                           __func__, pthread_self());
-
-                return (rc == SQLITE_CLIENT_CHANGENODE) ? rc : SQLITE_DEADLOCK;
+                    logmsg(LOGMSG_ERROR, "%s: %zu failed dd recovery, rc %d\n",
+                           __func__, pthread_self(), rc);
+                if (rc < 0)
+                    return SQLITE_BUSY;
+                else
+                    return rc;
             }
             if (nretries >= gbl_maxretries) {
                 logmsg(LOGMSG_ERROR, "too much contention fetching "
@@ -6808,6 +6827,7 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     bdb_temp_table_set_cmp_func(cur->sampled_idx->tbl, (tmptbl_cmp)xCmp);
 
     cur->db = db;
+    cur->tableversion = cur->db->tableversion;
     cur->sc = cur->db->ixschema[cur->ixnum];
     cur->rootpage = iTable;
     cur->bt = pBt;
@@ -7070,6 +7090,7 @@ static int sqlite3BtreeCursor_master(
 
     cur->tblpos = 0;
     cur->db = NULL;
+    cur->tableversion = 0;
 
     /* buffer just contains rrn */
     m.flags = MEM_Int;
@@ -7194,6 +7215,13 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         db = get_sqlite_db(thd, iTable, NULL);
 
         if (!db) {
+            if (after_recovery && !fdb_table_exists(iTable)) {
+                logmsg(LOGMSG_ERROR, "%s: no such table: %s\n", __func__,
+                       tab->zName);
+                sqlite3VdbeError(p, "table \"%s\" was schema changed",
+                                 tab->zName);
+                return SQLITE_SCHEMA;
+            }
             nRemoteTables++;
             continue;
         }
@@ -7255,7 +7283,7 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
                                  db->tablename);
                 sqlite3VdbeTransferError(p);
 
-                return SQLITE_ABORT;
+                return SQLITE_SCHEMA;
             }
         }
 
@@ -7575,8 +7603,8 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     /* INVALID: assert(iTable < thd->rootpage_nentries + RTPAGE_START); */
 
     cur->db = get_sqlite_db(thd, iTable, &cur->ixnum);
-
     assert(cur->db);
+    cur->tableversion = cur->db->tableversion;
 
     /* initialize the shadow, if any  */
     cur->shadtbl = osql_get_shadow_bydb(thd->clnt, cur->db);
@@ -8795,13 +8823,9 @@ retry:
             /* NOTE: we need to make sure the versions are the same */
 
         } else {
-            if (rc == SQLITE_SCHEMA) {
-                /* btrees have changed under my feet */
-                return rc;
-            }
-
-            logmsg(LOGMSG_ERROR, "%s: failed to lock back tables!\n", __func__);
-            /* KEEP GOING, THIS MIGHT NOT BE THAT BAD */
+            logmsg(LOGMSG_ERROR, "%s: failed to lock back tables!, rc %d\n",
+                   __func__, rc);
+            rcode = rc;
         }
     }
 
@@ -8908,6 +8932,25 @@ int pause_pagelock_cursors(void *arg)
     return 0;
 }
 
+/* set every pCur->db and pCur->sc to NULL because they might
+ * not be valid anymore after a schema change
+ */
+static void recover_deadlock_sc_cleanup(struct sql_thread *thd)
+{
+    BtCursor *cur = NULL;
+    pthread_mutex_lock(&thd->lk);
+    if (thd->bt) {
+        LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+        {
+            if (!cur->bt->is_remote && cur->db) {
+                cur->db = NULL;
+                cur->sc = NULL;
+            }
+        }
+    }
+    pthread_mutex_unlock(&thd->lk);
+}
+
 /**
  * This open a new curtran and walk the list of BtCursors,
  * repositioning any cursor that has a bdbcursor (by closing, reopening
@@ -8993,6 +9036,7 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
             logmsg(LOGMSG_ERROR, 
                     "%s: fail to put curtran, rc=%d, return changenode\n",
                     __func__, rc);
+            recover_deadlock_sc_cleanup(thd);
             return SQLITE_CLIENT_CHANGENODE;
         } else {
             logmsg(LOGMSG_ERROR, "%s: fail to close curtran, rc=%d\n", __func__, rc);
@@ -9004,11 +9048,11 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
    bdb_bdblock_print(thedb->bdb_env, buf);
 #endif
 
-    /*
-     * fprintf(stderr, "sleeping\n");
-     * sleep(5);
-     * fprintf(stderr, "done sleeping\n");
-     */
+    if (unlikely(gbl_sql_random_release_interval)) {
+        logmsg(LOGMSG_INFO, "%s: sleeping 10s\n", __func__);
+        sleep(10);
+        logmsg(LOGMSG_INFO, "%s: done sleeping\n", __func__);
+    }
 
     /* NOTE: as empirically proven, bdb lock starvation does occur in the wild
        one of the issues is that sleeping tasks are jumping back into the fray
@@ -9046,8 +9090,8 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
     /* get a new curtran */
     rc = get_curtran(thedb->bdb_env, clnt);
     if (rc) {
-        if (rc == SQLITE_SCHEMA)
-            return SQLITE_SCHEMA;
+        if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA)
+            return SQLITE_COMDB2SCHEMA;
 
         if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
             logmsg(LOGMSG_ERROR, 
@@ -9087,6 +9131,23 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
                             bdberr);
                     return -700;
                 }
+            }
+            if (!cur->bt->is_remote &&
+                cur->tableversion != cur->db->tableversion) {
+                pthread_mutex_unlock(&thd->lk);
+                logmsg(LOGMSG_ERROR,
+                       "%s: table version for %s changed from %d to %lld\n",
+                       __func__, cur->db->tablename, cur->tableversion,
+                       cur->db->tableversion);
+                sqlite3VdbeError(cur->vdbe, "table \"%s\" was schema changed",
+                                 cur->db->tablename);
+                recover_deadlock_sc_cleanup(thd);
+                return SQLITE_COMDB2SCHEMA;
+            } else if (!cur->bt->is_remote && cur->db) {
+                if (cur->ixnum == -1)
+                    cur->sc = cur->db->schema;
+                else
+                    cur->sc = cur->db->ixschema[cur->ixnum];
             }
         }
     }
@@ -9621,8 +9682,16 @@ static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
     if (*bdberr == 0) {
         int rc2 = cursor_move_postop(pCur);
         if (rc2) {
-            rc = SQLITE_CLIENT_CHANGENODE;
-            *bdberr = BDBERR_NOT_DURABLE;
+            logmsg(LOGMSG_ERROR, "cursor_move_postop returned %d\n", rc2);
+            *bdberr = BDBERR_DEADLOCK;
+            if (rc2 < 0) {
+                rc = SQLITE_BUSY;
+            } else if (rc2 == SQLITE_CLIENT_CHANGENODE) {
+                rc = SQLITE_CLIENT_CHANGENODE;
+                *bdberr = BDBERR_NOT_DURABLE;
+            } else {
+                rc = rc2;
+            }
         }
     }
 

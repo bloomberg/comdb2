@@ -4019,12 +4019,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         logmsg(LOGMSG_ERROR, "Usage: testrep num_items item_size\n");
     } else if (tokcmp(tok, ltok, "random_lock_release_interval") == 0) {
         int tmp;
-        tok = segtok(line, sizeof(line), &st, &ltok);
-
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for random_release_locks_interval\n");
-            return 0;
-        }
+        tok = segtok(line, lline, &st, &ltok);
 
         tmp = toknum(tok, ltok);
         if (tmp >= 0) {
