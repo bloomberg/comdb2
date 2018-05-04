@@ -80,6 +80,8 @@ static void net_enque_write_rtn(netinfo_type *netinfo_ptr, void *netstat,
 static void net_enque_free(netinfo_type *netinfo_ptr, void *netstat)
 {
     net_queue_stat_t *n = (net_queue_stat_t *)netstat;
+    if (netstat == NULL)
+        return;
     free(n->nettype);
     free(n->hostname);
     if (n->type_counts)
