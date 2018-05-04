@@ -192,9 +192,7 @@ int isql_run(struct sqlclntstate *clnt, const char *sql, int mode)
 
     assert(clnt);
 
-#ifdef DEBUGQUERY
-    printf("isql_exec() sql: '%s'\n", sql);
-#endif
+    logmsg(LOGMSG_DEBUG, "isql_run() sql: '%s'\n", sql);
 
     clnt->sql = (char *)sql;
     clnt->isql_exec_mode = mode;
