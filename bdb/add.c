@@ -61,7 +61,7 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
     unsigned int *iptr;
     void *mallocedkeydata;
     unsigned int stackkeydata[3];
-    int odh_len = 0;
+    void *pKeyMaxBuf = 0;
 
     *bdberr = BDBERR_NOERROR;
 
@@ -103,8 +103,7 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
         keydata_len += dtalen;
         if (bdb_state->ixdta[ixnum] && bdb_state->ondisk_header &&
             bdb_state->datacopy_odh) {
-            odh_len = ODH_SIZE_RESERVE;
-            keydata_len += odh_len;
+            keydata_len += ODH_SIZE_RESERVE;
         }
     }
 
@@ -163,7 +162,7 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
     /* depending on the index flags and the provided field (column?) values, we
      * may want to use the genid as part of the index key.  currently, this is
      * only done when supporting multiple NULL values in a UNIQUE index. */
-    bdb_maybe_use_genid_for_key(bdb_state, &dbt_key, ixdta, ixnum, genid, isnull);
+    bdb_maybe_use_genid_for_key(bdb_state, &dbt_key, ixdta, ixnum, genid, isnull, &pKeyMaxBuf);
 
     /* set up the dbt_data */
     memset(&dbt_data, 0, sizeof(dbt_data));
@@ -173,6 +172,8 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
     /* write to the index */
     rc = ll_key_add(bdb_state, genid, tran, ixnum, &dbt_key, &dbt_data);
 
+    if (pKeyMaxBuf)
+        free(pKeyMaxBuf);
     if (mallocedkeydata)
         free(mallocedkeydata);
     if (rc == DB_KEYEXIST) {

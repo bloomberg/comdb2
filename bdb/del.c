@@ -57,6 +57,7 @@ static int bdb_prim_delkey_int(bdb_state_type *bdb_state, tran_type *tran,
     DBC *dbcp;
     unsigned int keydata[3];
     unsigned int *iptr;
+    void *pKeyMaxBuf = 0;
 
     if (bdb_write_preamble(bdb_state, bdberr))
         return -1;
@@ -70,9 +71,12 @@ static int bdb_prim_delkey_int(bdb_state_type *bdb_state, tran_type *tran,
         abort();
     }
 
-    bdb_maybe_use_genid_for_key(bdb_state, &dbt_key, ixdta, ixnum, genid, isnull);
+    bdb_maybe_use_genid_for_key(bdb_state, &dbt_key, ixdta, ixnum, genid, isnull, &pKeyMaxBuf);
 
     rc = ll_key_del(bdb_state, tran, ixnum, dbt_key.data, dbt_key.size, rrn, genid, NULL);
+
+    if (pKeyMaxBuf)
+        free(pKeyMaxBuf);
 
     if (rc != 0) {
         switch (rc) {

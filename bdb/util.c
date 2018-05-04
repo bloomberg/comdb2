@@ -51,10 +51,12 @@ int bdb_keycontainsgenid(bdb_state_type *bdb_state, int ixnum)
 int bdb_maybe_use_genid_for_key(
                                bdb_state_type *bdb_state, DBT *p_dbt_key,
                                void *ixdta, int ixnum,
-                               unsigned long long genid, int isnull)
+                               unsigned long long genid, int isnull,
+                               void **ppKeyMaxBuf)
 {
     int rc = 0;
-    unsigned char keymax[BDB_KEY_MAX + sizeof(unsigned long long)];
+
+    assert(ppKeyMaxBuf);
 
     /* set up the dbt_key */
     memset(p_dbt_key, 0, sizeof(DBT));
@@ -75,16 +77,20 @@ int bdb_maybe_use_genid_for_key(
             rc = 1;
 
         assert(bdb_state->ixlen[ixnum] <= BDB_KEY_MAX);
-        memcpy(keymax, ixdta, bdb_state->ixlen[ixnum]);
 
-        p_dbt_key->data = keymax;
+        *ppKeyMaxBuf = malloc(BDB_KEY_MAX + sizeof(unsigned long long));
+        memcpy(*ppKeyMaxBuf, ixdta, bdb_state->ixlen[ixnum]);
+
+        p_dbt_key->data = *ppKeyMaxBuf;
         p_dbt_key->size = bdb_state->ixlen[ixnum];
 
-        memcpy(keymax + bdb_state->ixlen[ixnum], &tmpgenid,
+        memcpy(*ppKeyMaxBuf + bdb_state->ixlen[ixnum], &tmpgenid,
                sizeof(unsigned long long));
         p_dbt_key->size += sizeof(unsigned long long);
     } else {
         /* in place if we dont have dups */
+        *ppKeyMaxBuf = 0;
+
         p_dbt_key->data = ixdta;
         p_dbt_key->size = bdb_state->ixlen[ixnum];
     }

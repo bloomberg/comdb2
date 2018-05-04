@@ -282,6 +282,7 @@ static int bdb_prim_updkey_genid_int(bdb_state_type *bdb_state, tran_type *tran,
     int stripe;
     int *iptr;
     DBT dbt_key;
+    void *pKeyMaxBuf = 0;
 
     if (bdb_write_preamble(bdb_state, bdberr))
         return -1;
@@ -296,11 +297,14 @@ static int bdb_prim_updkey_genid_int(bdb_state_type *bdb_state, tran_type *tran,
         return 1;
     }
 
-    bdb_maybe_use_genid_for_key(bdb_state, &dbt_key, key, ixnum, genid, isnull);
+    bdb_maybe_use_genid_for_key(bdb_state, &dbt_key, key, ixnum, genid, isnull, &pKeyMaxBuf);
     assert(!bdb_keycontainsgenid(bdb_state, ixnum) || bdb_inplace_cmp_genids(bdb_state, oldgenid, genid));
 
     rc = ll_key_upd(bdb_state, tran, bdb_state->name, oldgenid, genid, dbt_key.data, ixnum,
                     dbt_key.size, dta, dtalen);
+
+    if (pKeyMaxBuf)
+        free(pKeyMaxBuf);
 
     if (rc) {
         *bdberr = rc;
