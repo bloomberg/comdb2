@@ -188,7 +188,7 @@ copy_files_to_cluster()
         if [ $node == $HOSTNAME ] ; then
             continue
         fi
-        ssh -o StrictHostKeyChecking=no $node "mkdir -p ${SRCHOME} $d1 $d2 $d3 $d4 $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
+        ssh -o StrictHostKeyChecking=no $node "mkdir -p $d1 $d2 $d3 $PMUX_DIR $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
         scp -o StrictHostKeyChecking=no $COMDB2AR_EXE $node:$COMDB2AR_EXE
         scp -o StrictHostKeyChecking=no $COMDB2_EXE $node:$COMDB2_EXE
         scp -o StrictHostKeyChecking=no $CDB2SQL_EXE $node:$CDB2SQL_EXE
@@ -199,7 +199,7 @@ copy_files_to_cluster()
         set +e
         scp -o StrictHostKeyChecking=no $PMUX_EXE $node:$PMUX_EXE
         echo start pmux on $node if not running 
-        ssh -o StrictHostKeyChecking=no $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' $pmux_cmd" < /dev/null
+        ssh -o StrictHostKeyChecking=no $node "COMDB2_PMUX_FILE='$PMUX_DIR/pmux.sqlite' $pmux_cmd" < /dev/null
         set -e
     done
 }
@@ -328,7 +328,7 @@ else
     done
 
     echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
-    CMD="cd ${TESTDIR}; source replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | tee $TESTDIR/${DBNAME}.db"
+    CMD="cd ${DBDIR}; source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | tee $TESTDIR/${DBNAME}.db"
     echo "!$TESTCASE: starting"
     for node in $CLUSTER; do
         if [ $node == $HOSTNAME ] ; then # dont ssh to ourself -- just start db locally

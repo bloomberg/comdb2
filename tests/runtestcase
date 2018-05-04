@@ -60,24 +60,25 @@ find_cores() {
     local CPAT=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
     local COREDIR=`dirname $CPAT`; 
     if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then 
-        COREDIR=$TESTDIR
+        COREDIR=$DBDIR
     else
         CPAT=`basename $CPAT`
     fi
-    grep '%e\|%t\|%u\|%g\|%s\|%h\|p' /proc/sys/kernel/core_pattern > /dev/null
-    local has_pattern=$?  # here we assume core pattern is same for all machines
-    local COREFL=$CPAT
-    local CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '.*core.*'"
+    local has_pattern=0  # We assume core pattern is same for all machines
+    grep '%e\|%t\|%u\|%g\|%s\|%h\|%p' /proc/sys/kernel/core_pattern > /dev/null && has_pattern=1
+    local COREFL="$COREDIR/$CPAT"
+    local CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '$COREFL'"
     local PIDFL=${TMPDIR}/${DBNAME}.pid
     if [[ -z "$CLUSTER" ]] || [[ `echo $CLUSTER | grep $HOSTNAME ` ]]; then
         if [[ -n "$CLUSTER" ]] ; then
             PIDFL=${TMPDIR}/${DBNAME}.$HOSTNAME.pid
         fi
 
-        if [ $has_pattern -eq 0 ] ; then
+        if [ $has_pattern -eq 1 ] ; then
             local PID=$(cat ${PIDFL} 2> /dev/null)
             COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
-            CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '.*${COREFL}.*'"
+            COREFL=$COREDIR/$COREFL
+            CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*'"
             if [ "x$PID" == "x" ] ; then
                 CORECMD="echo ''"
             fi
@@ -92,14 +93,15 @@ find_cores() {
     fi
 
     for node in ${CLUSTER/$HOSTNAME/} ; do
-        if [ $has_pattern -eq 0 ] ; then
+        if [ $has_pattern -eq 1 ] ; then
             PIDFL=${TMPDIR}/${DBNAME}.pid
             local PID=`ssh -o StrictHostKeyChecking=no $node "cat ${PIDFL} 2> /dev/null" </dev/null`
             if [ "x$PID" == "x" ] ; then
                 continue
             fi
             COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
-            CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '.*${COREFL}.*'"
+            COREFL=$COREDIR/$COREFL
+            CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*'"
         fi
 
         cr=`ssh -o StrictHostKeyChecking=no $node "$CORECMD" < /dev/null`
