@@ -3628,12 +3628,13 @@ int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
 int gbl_set_seqnum_trace = 0;
 
 static inline void set_seqnum_host(void *in_bdb_state, char *host, DB_LSN lsn,
-        const char *func, int line) {
+                                   const char *func, int line)
+{
     bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
     bdb_state->seqnum_info->seqnums[nodeix(host)].lsn = lsn;
     if (gbl_set_seqnum_trace) {
-        logmsg(LOGMSG_USER, "%s line %d setting host %s lsn to %d:%d\n",
-                func, line, host, lsn.file, lsn.offset);
+        logmsg(LOGMSG_USER, "%s line %d setting host %s lsn to %d:%d\n", func,
+               line, host, lsn.file, lsn.offset);
     }
 }
 
@@ -3684,18 +3685,19 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
             abort();
 
         set_seqnum_host(bdb_state, master, commit_lsn, __func__, __LINE__);
-        bdb_state->seqnum_info->seqnums[nodeix(master)].generation = 
-            bdb_state->seqnum_info->seqnums[nodeix(master)].commit_generation = gen;
+        bdb_state->seqnum_info->seqnums[nodeix(master)].generation =
+            bdb_state->seqnum_info->seqnums[nodeix(master)].commit_generation =
+                gen;
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         bdb_set_commit_lsn_gen(bdb_state, &commit_lsn, gen);
         master_cnt++;
         if (doprint) {
             logmsg(LOGMSG_USER, "%s: setting seqnum_info ptr %p on master to "
-                    "[%d][%d] gen [%d] master-count=%llu "
-                    "not-master-count=%llu\n", __func__, 
-                    &bdb_state->seqnum_info->seqnums[nodeix(master)], 
-                    commit_lsn.file, commit_lsn.offset, gen, master_cnt,
-                    notmaster_cnt);
+                                "[%d][%d] gen [%d] master-count=%llu "
+                                "not-master-count=%llu\n",
+                   __func__, &bdb_state->seqnum_info->seqnums[nodeix(master)],
+                   commit_lsn.file, commit_lsn.offset, gen, master_cnt,
+                   notmaster_cnt);
         }
     }
     else {

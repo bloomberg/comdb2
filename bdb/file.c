@@ -3151,8 +3151,7 @@ again:
                       USER_TYPE_COMMITDELAYNONE, NULL, 0, 1);
         if (gbl_commit_delay_trace) {
             logmsg(LOGMSG_USER, "%s line %d sending COMMITDELAYNONE\n",
-                    __func__, __LINE__);
-
+                   __func__, __LINE__);
         }
     }
 
@@ -5002,7 +5001,7 @@ int bdb_upgrade(bdb_state_type *bdb_state, int *done)
     logmsg(LOGMSG_DEBUG, "%s:%d %s set file = 0\n", __FILE__, __LINE__, __func__);
     if (gbl_set_seqnum_trace) {
         logmsg(LOGMSG_USER, "%s line %d setting all seqnums to 0\n", __func__,
-                __LINE__);
+               __LINE__);
     }
     for (i = 0; i < MAXNODES; i++) {
         bdb_state->seqnum_info->seqnums[i].lsn.file = 0;

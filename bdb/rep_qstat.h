@@ -18,8 +18,7 @@
 #define __rep_qstat_h
 #include <net.h>
 
-typedef struct net_queue_stat
-{
+typedef struct net_queue_stat {
     char *nettype;
     char *hostname;
 
