@@ -10,6 +10,13 @@ if [[ "$(arch)" == "armv7l" ]] ; then
 fi
 SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 
+if [[ -n "$NUMNODESTOUSE" ]] ; then
+    ncl=`echo $CLUSTER | tr ' *' '\n' | sed '/^[[:space:]]*$/d' | shuf -n $NUMNODESTOUSE | xargs echo`
+    # from now on, CLUSTER will be a subset of original machines
+    export CLUSTER=$ncl
+fi
+
+
 export HOSTNAME=${HOSTNAME:-`hostname`}
 export CLEANUPDBDIR=${CLEANUPDBDIR:-1}
 source $TESTSROOTDIR/setup.common
@@ -132,6 +139,9 @@ call_setup() {
     if [[ -n "$cr" ]] ; then
         echo "!$TESTCASE: setup failed with core dumped ($cr)"
         echo "!$TESTCASE: setup failed with core dumped ($cr)" >> ${TESTDIR}/test.log
+        call_unsetup
+        sleep 0.1
+        exit 1
     elif [[ $ret != "setup successful" ]] ; then
         echo "!$TESTCASE: setup failed (rc=$ret)" >> ${TESTDIR}/test.log
         echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${DBNAME}.setup"
@@ -148,6 +158,7 @@ echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
 
 rc=${PIPESTATUS[0]}
+sleep 1
 cr=`find_cores`
 
 if [[ -n "$cr" ]] ; then
