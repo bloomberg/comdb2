@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2017, Bloomberg Finance L.P.
+   Copyright 2015, 2018, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -11826,13 +11826,7 @@ done:
     return rc;
 }
 
-struct schema_mem {
-    struct schema *sc;
-    Mem *min;
-    Mem *mout;
-};
-
-static int bind_stmt_mem(struct schema *sc, sqlite3_stmt *stmt, Mem *m)
+int bind_stmt_mem(struct schema *sc, sqlite3_stmt *stmt, Mem *m)
 {
     int i, rc;
     struct field *f;
@@ -11883,102 +11877,29 @@ static int bind_stmt_mem(struct schema *sc, sqlite3_stmt *stmt, Mem *m)
     return 0;
 }
 
-void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm)
-{
-    struct schema_mem *psm = (struct schema_mem *)sm;
-    bind_stmt_mem(psm->sc, stmt, psm->min);
-}
-
-/* verify_indexes_column_value
-** Make a hard copy of the result column from an internal sql query
-** so that we have access to the result even after the sql thread exits.
-**
-** pFrom is the result from a sql thread, pTo is a hard copy of pFrom.
-** The hard copy will be converted to ondisk format in mem_to_ondisk in
-** function indexes_expressions_data.
-*/
-int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
-{
-    struct schema_mem *psm = (struct schema_mem *)sm;
-    Mem *pTo = psm->mout;
-    Mem *pFrom = sqlite3_column_value(stmt, 0);
-    if (pTo) {
-        memcpy(pTo, pFrom, MEMCELLSIZE);
-        pTo->db = NULL;
-        pTo->szMalloc = 0;
-        pTo->zMalloc = NULL;
-        pTo->n = 0;
-        pTo->z = NULL;
-        pTo->flags &= ~MEM_Dyn;
-        if (pFrom->flags & (MEM_Blob | MEM_Str)) {
-            if (pFrom->zMalloc && pFrom->szMalloc) {
-                pTo->szMalloc = pFrom->szMalloc;
-                pTo->zMalloc = malloc(pTo->szMalloc);
-                if (pTo->zMalloc == NULL)
-                    return SQLITE_NOMEM;
-                memcpy(pTo->zMalloc, pFrom->zMalloc, pTo->szMalloc);
-                pTo->z = pTo->zMalloc;
-                pTo->n = pFrom->n;
-            } else if (pFrom->z && pFrom->n) {
-                pTo->n = pFrom->n;
-                pTo->szMalloc = pFrom->n + 1;
-                pTo->zMalloc = malloc(pTo->szMalloc);
-                if (pTo->zMalloc == NULL)
-                    return SQLITE_NOMEM;
-                memcpy(pTo->zMalloc, pFrom->z, pFrom->n);
-                pTo->zMalloc[pFrom->n] = 0;
-                pTo->z = pTo->zMalloc;
-            }
-        }
-    }
-    return 0;
-}
-
-static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
-                                     Mem *mout, int *exist)
+int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
+                             Mem *mout, int *exist)
 {
     struct sqlclntstate clnt;
-    struct schema_mem sm;
     int rc;
 
-    sm.sc = sc;
-    sm.min = min;
-    sm.mout = mout;
+    rc = isql_init(&clnt);
+    if (rc)
+        goto cleanup;
 
-    reset_clnt(&clnt, NULL, 1);
-    pthread_mutex_init(&clnt.wait_mutex, NULL);
-    pthread_cond_init(&clnt.wait_cond, NULL);
-    pthread_mutex_init(&clnt.write_lock, NULL);
-    pthread_mutex_init(&clnt.dtran_mtx, NULL);
-    clnt.dbtran.mode = TRANLEVEL_SOSQL;
-    set_high_availability(&clnt, 0);
-    clnt.sql = sql;
-    clnt.verify_indexes = 1;
-    clnt.schema_mems = &sm;
+    clnt.isql_data->s = sc;
+    clnt.isql_data->in = min;
+    clnt.isql_data->out = mout;
 
-    rc = dispatch_sql_query(&clnt);
+    rc = isql_run(&clnt, sql, ISQL_EXEC_QUICK);
+    if (rc)
+        goto cleanup;
 
-    if (clnt.has_sqliterow)
+    if (clnt.isql_data->row_count)
         *exist = 1;
 
-    clnt_reset_cursor_hints(&clnt);
-    osql_clean_sqlclntstate(&clnt);
-
-    if (clnt.dbglog) {
-        sbuf2close(clnt.dbglog);
-        clnt.dbglog = NULL;
-    }
-
-    /* XXX free logical tran?  */
-
-    clnt.dbtran.mode = TRANLEVEL_INVALID;
-    if (clnt.query_stats)
-        free(clnt.query_stats);
-
-    pthread_mutex_destroy(&clnt.wait_mutex);
-    pthread_cond_destroy(&clnt.wait_cond);
-    pthread_mutex_destroy(&clnt.write_lock);
-    pthread_mutex_destroy(&clnt.dtran_mtx);
+cleanup:
+    rc = isql_destroy(&clnt);
 
     return rc;
 }

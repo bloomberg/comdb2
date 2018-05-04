@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -3340,14 +3340,6 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     *fast_error = 1;
 
-    if (clnt->verify_indexes && steprc == SQLITE_ROW) {
-        clnt->has_sqliterow = 1;
-        return verify_indexes_column_value(stmt, clnt->schema_mems);
-    } else if (clnt->verify_indexes && steprc == SQLITE_DONE) {
-        clnt->has_sqliterow = 0;
-        return 0;
-    }
-
     if ((rc = send_columns(clnt, stmt)) != 0) {
         goto out;
     }
@@ -3805,42 +3797,6 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
 int gbl_debug_sqlthd_failures;
 
-static int execute_verify_indexes(struct sqlthdstate *thd,
-                                  struct sqlclntstate *clnt)
-{
-    int rc;
-    if (thd->sqldb == NULL) {
-        /* open sqlite db without copying rootpages */
-        rc = sqlite3_open_serial("db", &thd->sqldb, thd);
-        if (unlikely(rc != 0)) {
-            logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d\n", __func__,
-                   rc);
-            thd->sqldb = NULL;
-        } else {
-            /* setting gen to -1 so real SQLs will reopen vm */
-            thd->dbopen_gen = -1;
-            thd->analyze_gen = -1;
-        }
-    }
-    sqlite3_stmt *stmt;
-    const char *tail;
-    rc = sqlite3_prepare_v2(thd->sqldb, clnt->sql, -1, &stmt, &tail);
-    if (rc != SQLITE_OK) {
-        return rc;
-    }
-    bind_verify_indexes_query(stmt, clnt->schema_mems);
-    run_stmt_setup(clnt, stmt);
-    if ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        clnt->has_sqliterow = 1;
-        return verify_indexes_column_value(stmt, clnt->schema_mems);
-    }
-    clnt->has_sqliterow = 0;
-    if (rc == SQLITE_DONE) {
-        return 0;
-    }
-    return rc;
-}
-
 void sqlengine_work_appsock(void *thddata, void *work)
 {
     struct sqlthdstate *thd = thddata;
@@ -3913,8 +3869,8 @@ void sqlengine_work_appsock(void *thddata, void *work)
            reset it here before returning */
         bzero(&clnt->fdb_state.xerr, sizeof(clnt->fdb_state.xerr));
         clnt->fdb_state.preserve_err = 0;
-    } else if (clnt->verify_indexes) {
-        clnt->query_rc = execute_verify_indexes(thd, clnt);
+    } else if (clnt->isql_exec_mode == ISQL_EXEC_QUICK) {
+        clnt->query_rc = isql_exec(thd, clnt);
     } else {
         clnt->query_rc = execute_sql_query(thd, clnt);
     }
@@ -4404,9 +4360,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     clnt->ins_keys = 0ULL;
     clnt->del_keys = 0ULL;
-    clnt->has_sqliterow = 0;
-    clnt->verify_indexes = 0;
-    clnt->schema_mems = NULL;
     clnt->init_gen = 0;
     for (int i = 0; i < clnt->ncontext; i++) {
         free(clnt->context[i]);
@@ -4417,6 +4370,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->statement_query_effects = 0;
     clnt->wrong_db = 0;
     clnt->send_intransresults = 0;
+
+    assert(!clnt->isql_data);
+    assert(!clnt->isql_exec_mode);
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
@@ -5525,90 +5481,4 @@ void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
     if (!sqlthd)
         return;
     comdb2_set_sqlite_vdbe_dtprec_int(p, sqlthd->clnt);
-}
-
-void run_internal_sql(char *sql)
-{
-    struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
-    clnt.sql = skipws(sql);
-
-    dispatch_sql_query(&clnt);
-    if (clnt.query_rc || clnt.saved_errstr) {
-        logmsg(LOGMSG_ERROR, "%s: Error from query: '%s' (rc = %d) \n", __func__, sql,
-               clnt.query_rc);
-        if (clnt.saved_errstr)
-            logmsg(LOGMSG_ERROR, "%s: Error: '%s' \n", __func__, clnt.saved_errstr);
-    }
-    clnt_reset_cursor_hints(&clnt);
-    osql_clean_sqlclntstate(&clnt);
-
-    if (clnt.dbglog) {
-        sbuf2close(clnt.dbglog);
-        clnt.dbglog = NULL;
-    }
-
-    cleanup_clnt(&clnt);
-
-    pthread_mutex_destroy(&clnt.wait_mutex);
-    pthread_cond_destroy(&clnt.wait_cond);
-    pthread_mutex_destroy(&clnt.write_lock);
-    pthread_mutex_destroy(&clnt.dtran_mtx);
-}
-
-static int dummy_response(struct sqlclntstate *a, int b, void *c, int d)
-{
-    return 0;
-}
-
-void start_internal_sql_clnt(struct sqlclntstate *clnt)
-{
-    reset_clnt(clnt, NULL, 1);
-    clnt->write_response = dummy_response;
-    clnt->read_response = dummy_response;
-    pthread_mutex_init(&clnt->wait_mutex, NULL);
-    pthread_cond_init(&clnt->wait_cond, NULL);
-    pthread_mutex_init(&clnt->write_lock, NULL);
-    pthread_mutex_init(&clnt->dtran_mtx, NULL);
-    clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
-    set_high_availability(clnt, 0);
-    clnt->is_newsql = 0;
-}
-
-int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
-{
-#ifdef DEBUGQUERY
-    printf("run_internal_sql_clnt() sql '%s'\n", sql);
-#endif
-    clnt->sql = skipws(sql);
-    dispatch_sql_query(clnt);
-    int rc = 0;
-
-    if (clnt->query_rc || clnt->saved_errstr) {
-        logmsg(LOGMSG_ERROR, "%s: Error from query: '%s' (rc = %d) \n", __func__, sql,
-               clnt->query_rc);
-        if (clnt->saved_errstr)
-            logmsg(LOGMSG_ERROR, "%s: Error: '%s' \n", __func__, clnt->saved_errstr);
-        rc = 1;
-    }
-    return rc;
-}
-
-void end_internal_sql_clnt(struct sqlclntstate *clnt)
-{
-    clnt_reset_cursor_hints(clnt);
-    osql_clean_sqlclntstate(clnt);
-
-    if (clnt->dbglog) {
-        sbuf2close(clnt->dbglog);
-        clnt->dbglog = NULL;
-    }
-
-    clnt->dbtran.mode = TRANLEVEL_INVALID;
-    cleanup_clnt(clnt);
-
-    pthread_mutex_destroy(&clnt->wait_mutex);
-    pthread_cond_destroy(&clnt->wait_cond);
-    pthread_mutex_destroy(&clnt->write_lock);
-    pthread_mutex_destroy(&clnt->dtran_mtx);
 }

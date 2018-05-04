@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -79,10 +79,6 @@ enum {
 
 struct sql_thread;
 double query_cost(struct sql_thread *thd);
-void run_internal_sql(char *sql);
-void start_internal_sql_clnt(struct sqlclntstate *clnt);
-int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql);
-void end_internal_sql_clnt(struct sqlclntstate *clnt);
 void reset_clnt_flags(struct sqlclntstate *);
 
 #endif

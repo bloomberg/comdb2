@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@
 #include <comdb2_atomic.h>
 #include <ctrace.h>
 #include <logmsg.h>
+#include "isql.h"
 
 /* amount of thread-memory initialized for this thread */
 static int analyze_thread_memory = 1048576;
@@ -128,14 +129,14 @@ int backout_stats_frm_tbl(struct sqlclntstate *clnt, const char *table,
     char sql[256];
     snprintf(sql, sizeof(sql), "delete from sqlite_stat%d where tbl='%s'",
              stattbl, table);
-    int rc = run_internal_sql_clnt(clnt, sql);
+    int rc = isql_run(clnt, sql, ISQL_EXEC_NORMAL);
     if (rc)
         return rc;
 
     snprintf(sql, sizeof(sql),
              "update sqlite_stat%d set tbl='%s' where tbl='cdb2.%s.sav'",
              stattbl, table, table);
-    rc = run_internal_sql_clnt(clnt, sql);
+    rc = isql_run(clnt, sql, ISQL_EXEC_NORMAL);
     return rc;
 }
 
@@ -173,7 +174,8 @@ static int check_stat1_and_flag(SBUF2 *sb)
         sbuf2printf(sb, "?%s: analyze requires sqlite_stat1 to run\n",
                     __func__);
         sbuf2printf(sb, "FAILED\n");
-        logmsg(LOGMSG_ERROR, "%s: analyze requires sqlite_stat1 to run\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: analyze requires sqlite_stat1 to run\n",
+               __func__);
         return -1;
     }
 
@@ -191,30 +193,42 @@ static int check_stat1_and_flag(SBUF2 *sb)
 void cleanup_stats(SBUF2 *sb)
 {
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
+    int rc;
+
+    rc = isql_init(&clnt);
+    if (!rc) {
+        logmsg(LOGMSG_ERROR, "%s: isql_init() failed\n", __func__);
+        goto cleanup;
+    }
+
     clnt.sb = sb;
 
     if (get_dbtable_by_name("sqlite_stat1")) {
-        run_internal_sql_clnt(&clnt,
-                              "delete from sqlite_stat1 where idx is null");
-        run_internal_sql_clnt(&clnt, "delete from sqlite_stat1 where idx not "
-                                     "in (select name from sqlite_master where "
-                                     "type='index')");
+        isql_run(&clnt, "delete from sqlite_stat1 where idx is null",
+                 ISQL_EXEC_NORMAL);
+        isql_run(&clnt, "delete from sqlite_stat1 where idx not "
+                        "in (select name from sqlite_master where "
+                        "type='index')",
+                 ISQL_EXEC_NORMAL);
     }
 
     if (get_dbtable_by_name("sqlite_stat2"))
-        run_internal_sql_clnt(&clnt, "delete from sqlite_stat2 where idx not "
-                                     "in (select name from sqlite_master where "
-                                     "type='index')");
+        isql_run(&clnt, "delete from sqlite_stat2 where idx not "
+                        "in (select name from sqlite_master where "
+                        "type='index')",
+                 ISQL_EXEC_NORMAL);
 
     if (get_dbtable_by_name("sqlite_stat4"))
-        run_internal_sql_clnt(&clnt, "delete from sqlite_stat4 where idx not "
-                                     "in (select name from sqlite_master where "
-                                     "type='index' UNION select "
-                                     "'cdb2.'||name||'.sav' from sqlite_master "
-                                     "where type='index')");
+        isql_run(&clnt, "delete from sqlite_stat4 where idx not "
+                        "in (select name from sqlite_master where "
+                        "type='index' UNION select "
+                        "'cdb2.'||name||'.sav' from sqlite_master "
+                        "where type='index')",
+                 ISQL_EXEC_NORMAL);
+cleanup:
+    isql_destroy(&clnt);
 
-    end_internal_sql_clnt(&clnt);
+    return;
 }
 
 /* returns the index or NULL */
@@ -690,6 +704,8 @@ int update_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
 static int analyze_table_int(table_descriptor_t *td,
                              struct thr_handle *thr_self)
 {
+    int rc;
+
 #ifdef DEBUG
     printf("analyze_table_int() table '%s': scale %d\n", td->table, td->scale);
 #endif
@@ -707,7 +723,8 @@ static int analyze_table_int(table_descriptor_t *td,
     if (td->scale == 0) {
         sbuf2printf(td->sb, "?Coverage for table '%s' is 0, skipping analyze\n",
                     td->table);
-        logmsg(LOGMSG_INFO, "coverage for table '%s' is 0, skipping analyze\n", td->table);
+        logmsg(LOGMSG_INFO, "coverage for table '%s' is 0, skipping analyze\n",
+               td->table);
         return TABLE_SKIPPED;
     }
 
@@ -718,14 +735,18 @@ static int analyze_table_int(table_descriptor_t *td,
     SBUF2 *sb2 = sbuf2open(fileno(stdout), 0);
 
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
+    rc = isql_init(&clnt);
+    if (rc)
+        goto cleanup;
+
     clnt.osql_max_trans = 0; // allow large transactions
     clnt.sb = sb2;
     sbuf2settimeout(clnt.sb, 0, 0);
 
-    logmsg(LOGMSG_INFO, "Analyze thread starting, table %s (%d%%)\n", td->table, td->scale);
+    logmsg(LOGMSG_INFO, "Analyze thread starting, table %s (%d%%)\n", td->table,
+           td->scale);
 
-    int rc = run_internal_sql_clnt(&clnt, "BEGIN");
+    rc = isql_run(&clnt, "BEGIN", ISQL_EXEC_NORMAL);
     if (rc)
         goto cleanup;
 
@@ -733,7 +754,7 @@ static int analyze_table_int(table_descriptor_t *td,
     snprintf(sql, sizeof(sql),
              "delete from sqlite_stat1 where tbl='cdb2.%s.sav'", td->table);
 
-    rc = run_internal_sql_clnt(&clnt, sql);
+    rc = isql_run(&clnt, sql, ISQL_EXEC_NORMAL);
     if (rc)
         goto error;
 
@@ -741,7 +762,7 @@ static int analyze_table_int(table_descriptor_t *td,
              "update sqlite_stat1 set tbl='cdb2.%s.sav' where tbl='%s'",
              td->table, td->table);
 
-    rc = run_internal_sql_clnt(&clnt, sql);
+    rc = isql_run(&clnt, sql, ISQL_EXEC_NORMAL);
     if (rc)
         goto error;
 
@@ -749,7 +770,7 @@ static int analyze_table_int(table_descriptor_t *td,
         snprintf(sql, sizeof(sql),
                  "delete from sqlite_stat2 where tbl='cdb2.%s.sav'", td->table);
 
-        rc = run_internal_sql_clnt(&clnt, sql);
+        rc = isql_run(&clnt, sql, ISQL_EXEC_NORMAL);
         if (rc)
             goto error;
 
@@ -757,7 +778,7 @@ static int analyze_table_int(table_descriptor_t *td,
                  "update sqlite_stat2 set tbl='cdb2.%s.sav' where tbl='%s'",
                  td->table, td->table);
 
-        rc = run_internal_sql_clnt(&clnt, sql);
+        rc = isql_run(&clnt, sql, ISQL_EXEC_NORMAL);
         if (rc)
             goto error;
     }
@@ -766,7 +787,7 @@ static int analyze_table_int(table_descriptor_t *td,
         snprintf(sql, sizeof(sql),
                  "delete from sqlite_stat4 where tbl='cdb2.%s.sav'", td->table);
 
-        rc = run_internal_sql_clnt(&clnt, sql);
+        rc = isql_run(&clnt, sql, ISQL_EXEC_NORMAL);
         if (rc)
             goto error;
 
@@ -774,7 +795,7 @@ static int analyze_table_int(table_descriptor_t *td,
                  "update sqlite_stat4 set tbl='cdb2.%s.sav' where tbl='%s'",
                  td->table, td->table);
 
-        rc = run_internal_sql_clnt(&clnt, sql);
+        rc = isql_run(&clnt, sql, ISQL_EXEC_NORMAL);
         if (rc)
             goto error;
     }
@@ -788,7 +809,8 @@ static int analyze_table_int(table_descriptor_t *td,
 
     /* sample if enabled & large */
     if (sampled_tables_enabled && totsiz > sampling_threshold) {
-        logmsg(LOGMSG_INFO, "Sampling table '%s' at %d%% coverage\n", td->table, td->scale);
+        logmsg(LOGMSG_INFO, "Sampling table '%s' at %d%% coverage\n", td->table,
+               td->scale);
         sampled_table = 1;
         rc = sample_indicies(td, &clnt, tbl, td->scale, td->sb);
         if (rc) {
@@ -801,13 +823,13 @@ static int analyze_table_int(table_descriptor_t *td,
 
     /* run analyze as sql query */
     snprintf(sql, sizeof(sql), "analyzesqlite main.\"%s\"", td->table);
-    rc = run_internal_sql_clnt(&clnt, sql);
+    rc = isql_run(&clnt, sql, ISQL_EXEC_NORMAL);
     clnt.is_analyze = 0;
     if (rc)
         goto error;
 
     snprintf(sql, sizeof(sql), "COMMIT");
-    rc = run_internal_sql_clnt(&clnt, sql);
+    rc = isql_run(&clnt, sql, ISQL_EXEC_NORMAL);
 
 cleanup:
     sbuf2flush(sb2);
@@ -818,10 +840,11 @@ cleanup:
                     td->table, sql);
     } else {
         sbuf2printf(td->sb, "?Analyze completed table %s\n", td->table);
-       logmsg(LOGMSG_INFO, "Analyze completed, table %s\n", td->table);
+        logmsg(LOGMSG_INFO, "Analyze completed, table %s\n", td->table);
     }
 
-    end_internal_sql_clnt(&clnt);
+    isql_destroy(&clnt);
+
     if (sampled_table) {
         cleanup_sampled_indicies(&clnt, tbl);
     }
@@ -829,7 +852,7 @@ cleanup:
     return rc;
 
 error:
-    run_internal_sql_clnt(&clnt, "ROLLBACK");
+    isql_run(&clnt, "ROLLBACK", ISQL_EXEC_NORMAL);
     goto cleanup;
 }
 
@@ -1243,7 +1266,7 @@ static inline int analyze_backout_table(struct sqlclntstate *clnt, char *table)
 {
     if (is_sqlite_stat(table))
         return 0;
-    int rc = run_internal_sql_clnt(clnt, "BEGIN");
+    int rc = isql_run(clnt, "BEGIN", ISQL_EXEC_NORMAL);
     if (rc)
         return rc;
 
@@ -1262,25 +1285,29 @@ static inline int analyze_backout_table(struct sqlclntstate *clnt, char *table)
         if (rc)
             goto error;
     }
-    rc = run_internal_sql_clnt(clnt, "COMMIT");
+    rc = isql_run(clnt, "COMMIT", ISQL_EXEC_NORMAL);
     return rc;
 
 error:
     logmsg(LOGMSG_ERROR, "backout error, rolling back transaction\n");
-    run_internal_sql_clnt(clnt, "ROLLBACK");
+    isql_run(clnt, "ROLLBACK", ISQL_EXEC_NORMAL);
     return rc;
 }
 
 void handle_backout(SBUF2 *sb, char *table)
 {
+    int rc;
+
     if (check_stat1_and_flag(sb))
         return;
 
     struct sqlclntstate clnt;
-    start_internal_sql_clnt(&clnt);
+    rc = isql_init(&clnt);
+    if (rc)
+        goto cleanup;
+
     SBUF2 *sb2 = sbuf2open(fileno(stdout), 0);
 
-    int rc = 0;
     clnt.sb = sb2;
 
     rdlock_schema_lk();
@@ -1306,7 +1333,9 @@ void handle_backout(SBUF2 *sb, char *table)
         sbuf2printf(sb, "FAILED\n");
     }
 
-    end_internal_sql_clnt(&clnt);
+cleanup:
+    isql_destroy(&clnt);
+
     sbuf2flush(sb);
 }
 
@@ -1315,22 +1344,43 @@ void handle_backout(SBUF2 *sb, char *table)
  */
 void add_idx_stats(const char *tbl, const char *oldname, const char *newname)
 {
+    struct sqlclntstate clnt;
+    char sql[256];
+    int rc;
+
     if (NULL == get_dbtable_by_name("sqlite_stat1"))
         return; // stat1 does not exist, nothing to do
 
-    char sql[256];
+    rc = isql_init(&clnt);
+    if (!rc) {
+        logmsg(LOGMSG_ERROR, "%s: isql_init() failed\n", __func__);
+        goto cleanup;
+    }
+
     snprintf(sql, sizeof(sql), "INSERT INTO sqlite_stat1 select tbl, '%s' as "
                                "idx, stat FROM sqlite_stat1 WHERE tbl='%s' and "
                                "idx='%s' \n",
              newname, tbl, oldname);
-    run_internal_sql(sql);
+
+    rc = isql_run(&clnt, sql, ISQL_EXEC_NORMAL);
+    if (!rc) {
+        logmsg(LOGMSG_ERROR, "%s: isql_run() failed (sql: %s)\n", __func__,
+               sql);
+        goto cleanup;
+    }
 
     if (get_dbtable_by_name("sqlite_stat2")) {
         snprintf(sql, sizeof(sql), "INSERT INTO sqlite_stat2 select tbl, '%s' "
                                    "as idx, sampleno, sample FROM sqlite_stat2 "
                                    "WHERE tbl='%s' and idx='%s' \n",
                  newname, tbl, oldname);
-        run_internal_sql(sql);
+
+        rc = isql_run(&clnt, sql, ISQL_EXEC_NORMAL);
+        if (!rc) {
+            logmsg(LOGMSG_ERROR, "%s: isql_run() failed (sql: %s)\n", __func__,
+                   sql);
+            goto cleanup;
+        }
     }
 
     if (get_dbtable_by_name("sqlite_stat4")) {
@@ -1339,8 +1389,20 @@ void add_idx_stats(const char *tbl, const char *oldname, const char *newname)
                                    "sqlite_stat4 WHERE tbl='%s' and idx='%s' "
                                    "\n",
                  newname, tbl, oldname);
-        run_internal_sql(sql);
+        rc = isql_run(&clnt, sql, ISQL_EXEC_NORMAL);
+        if (!rc) {
+            logmsg(LOGMSG_ERROR, "%s: isql_run() failed (sql: %s)\n", __func__,
+                   sql);
+            goto cleanup;
+        }
     }
+cleanup:
+    rc = isql_destroy(&clnt);
+    if (!rc) {
+        logmsg(LOGMSG_ERROR, "%s: isql_destroy() failed\n", __func__);
+    }
+
+    return;
 }
 
 int do_analyze(char *tbl, int percent)
@@ -1363,4 +1425,3 @@ int do_analyze(char *tbl, int percent)
     sbuf2free(sb2);
     return rc;
 }
-

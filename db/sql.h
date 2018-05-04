@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@
 #include "osqlcheckboard.h"
 #include "osqlshadtbl.h"
 #include "fwd_types.h"
-
+#include "isql.h"
 #include "fdb_fend.h"
 #include <sp.h>
 
@@ -516,9 +516,6 @@ struct sqlclntstate {
     /* partial indexes */
     unsigned long long ins_keys;
     unsigned long long del_keys;
-    int has_sqliterow;
-    int verify_indexes;
-    void *schema_mems;
 
     /* indexes on expressions */
     uint8_t **idxInsert;
@@ -553,6 +550,9 @@ struct sqlclntstate {
     int verify_remote_schemas;
     char *argv0;
     char *stack;
+
+    uint8_t isql_exec_mode;
+    isql_data_t *isql_data;
 };
 
 /* Query stats. */
