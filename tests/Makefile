@@ -4,6 +4,7 @@ ifeq ($(SRCHOME),)
   SRCHOME:=$(TESTSROOTDIR)/..
 endif
 export SRCHOME
+export TMPDIR=$(TESTDIR)/tmp
 ifeq ($(TESTID),)
 export TESTID:=$(shell $(TESTSROOTDIR)/tools/get_random.sh)
 endif
@@ -26,7 +27,7 @@ endif
 all: init basicops all_tests
 
 init:
-	@mkdir -p ${TESTDIR}
+	@mkdir -p ${TESTDIR} ${TMPDIR}
 
 # Run all non-disabled tests.
 all_tests: $(ALL_TESTS)
@@ -46,6 +47,7 @@ basicops_nokey: init
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" $(TESTSROOTDIR)/tools/keygen.sh)
 	$(shell TOTAL="${TOTAL}" $(TESTSROOTDIR)/tools/smalldelay.sh)
+	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" TESTSROOTDIR="${TESTSROOTDIR}" TMPDIR="${TMPDIR}" COMDB2_EXE=${COMDB2_EXE} CDB2SQL_EXE=${CDB2SQL_EXE} COMDB2AR_EXE=${COMDB2AR_EXE} PMUX_EXE=${PMUX_EXE} pmux_port=${pmux_port} ${TESTSROOTDIR}/tools/copy_files_to_cluster.sh > ${TESTDIR}/copy_files_to_cluster.log || echo "copy_files_to_cluster failed" )
 
 showparams: 
 	@echo TESTSROOTDIR=${TESTSROOTDIR}
@@ -94,4 +96,4 @@ clean: testclean
 
 testclean:
 	@rm -rf test_[0-9]* $(TESTDIR)/
-	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf *.trap; rm -rf $(TESTSROOTDIR)/test_[0-9]* $(TESTDIR)/' < /dev/null;)
+	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf $(TESTSROOTDIR)/test_[0-9]* $(TESTDIR)/' < /dev/null;)

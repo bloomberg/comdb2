@@ -41,7 +41,9 @@ export COMDB2_ROOT=$(TESTDIR)
 export COMDB2_UNITTEST?=0
 
 ifneq ($(INSETUP),)
+  # we are in setup or running make from within a testdir
   $(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" ${TESTSROOTDIR}/tools/keygen.sh )
+  $(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" TESTSROOTDIR="${TESTSROOTDIR}" TMPDIR="${TMPDIR}" COMDB2_EXE=${COMDB2_EXE} CDB2SQL_EXE=${CDB2SQL_EXE} COMDB2AR_EXE=${COMDB2AR_EXE} PMUX_EXE=${PMUX_EXE} pmux_port=${pmux_port} ${TESTSROOTDIR}/tools/copy_files_to_cluster.sh > ${TESTDIR}/copy_files_to_cluster.log || echo "copy_files_to_cluster failed" )
 endif
 
 test:: tool unit
