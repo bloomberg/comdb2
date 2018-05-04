@@ -40,13 +40,12 @@ assertcnt ()
 
 assert_vers()
 {
-    tbl=$1
-    target=$2
-    newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$tbl')")
+    local loc_tbl=$1
+    local target=$2
+    local newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$loc_tbl')")
     if [[ $newver != $target ]] ; then
         failexit "newver is now $newver but should be $target"
     fi
-    tblver=$newver
 }
 
 assert_schema()
@@ -306,6 +305,7 @@ set -e
 
 INITNUMREC=100
 
+#table t1 was added upon init of the DB from lrl.options
 assert_vers t1 0
 assert_schema t1 alltypes.csc2
 
