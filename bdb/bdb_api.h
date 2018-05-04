@@ -732,7 +732,7 @@ int bdb_prim_addkey_genid(bdb_state_type *bdb_handle, tran_type *tran,
                           int isnull, int *bdberr);
 int bdb_prim_delkey_genid(bdb_state_type *bdb_handle, tran_type *tran,
                           void *ixdta, int ixnum, int rrn,
-                          unsigned long long genid, int *bdberr);
+                          unsigned long long genid, int isnull, int *bdberr);
 int bdb_prim_updkey_genid(bdb_state_type *bdb_state, tran_type *tran, void *key,
                           int keylen, int ixnum, unsigned long long oldgenid,
                           unsigned long long genid, void *dta, int dtalen,
