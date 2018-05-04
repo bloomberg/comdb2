@@ -305,7 +305,6 @@ static void add_legacy_default_options(struct dbenv *dbenv)
         "env_messages",
         "off return_long_column_names",
         "setattr NET_SEND_GBLCONTEXT 1",
-        "setattr COHERENCY_LEASE_UDP 0",
         "setattr ENABLE_SEQNUM_GENERATIONS 0",
         "setattr MASTER_LEASE 0",
         "setattr SC_DONE_SAME_TRAN 0"};
