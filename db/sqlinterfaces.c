@@ -895,17 +895,6 @@ inline int replicant_can_retry(struct sqlclntstate *clnt)
            clnt->verifyretry_off == 0;
 }
 
-static void send_query_effects(struct sqlclntstate *clnt)
-{
-    if (clnt->intrans) {
-        return;
-    }
-    if (clnt->want_query_effects) {
-        WRITE_RESPONSE(RESPONSE_EFFECTS, 0);
-        reset_query_effects(clnt);
-    }
-}
-
 static int free_it(void *obj, void *arg)
 {
     free(obj);
@@ -1246,7 +1235,11 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     if (rc == SQLITE_OK) {
         /* send return code */
 
-        send_query_effects(clnt);
+        WRITE_RESPONSE(RESPONSE_EFFECTS, 0);
+        /*
+         * TODO Move want query effects check and reset to fastsql
+         * reset_query_effects(clnt);
+         */
 
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
@@ -2300,9 +2293,7 @@ static void _prepare_error(struct sqlthdstate *thd,
         free(clnt->saved_errstr);
     }
     clnt->saved_errstr = strdup(errstr);
-    if (clnt->want_query_effects) {
-        clnt->had_errors = 1;
-    }
+    clnt->had_errors = 1;
     if (gbl_print_syntax_err) {
         logmsg(LOGMSG_WARN, "sqlite3_prepare() failed for: %s [%s]\n", clnt->sql,
                 errstr);
@@ -2677,25 +2668,30 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     return 0;
 }
 
+static int skip_response(struct sqlclntstate *clnt)
+{
+    if (clnt->osql.replay == OSQL_RETRY_DO)
+        return 1;
+    if (is_with_statement(clnt->sql) || clnt->isselect)
+        return 0;
+    if (clnt->in_client_trans)
+        return 1;
+    return 0; /* single stmt by itself (read or write) */
+}
+
 static int send_columns(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt)
 {
-    int rc = 0;
-    if ((!clnt->osql.replay || (clnt->dbtran.mode == TRANLEVEL_RECOM &&
-                                !clnt->osql.sent_column_data)) &&
-        !((clnt->want_query_effects && !is_with_statement(clnt->sql)) &&
-          clnt->in_client_trans && !clnt->isselect)) {
-        rc = WRITE_RESPONSE(RESPONSE_COLUMNS, stmt);
-        clnt->osql.sent_column_data = 1;
-    }
-    return rc;
+    if (clnt->osql.sent_column_data || skip_response(clnt))
+        return 0;
+    clnt->osql.sent_column_data = 1;
+    return WRITE_RESPONSE(RESPONSE_COLUMNS, stmt);
 }
 
 static int send_row(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt,
                     uint64_t row_id, int postpone, struct errstat *err)
 {
-    if (skip_row(clnt, row_id)) {
+    if (skip_row(clnt, row_id) || skip_response(clnt))
         return 0;
-    }
     struct response_data arg = {0};
     arg.err = err;
     arg.stmt = stmt;
@@ -2781,10 +2777,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
                                   struct sql_state *rec, int postponed_write,
                                   int ncols, uint64_t row_id)
 {
-    char *errstr = NULL;
-    int rc;
     test_no_btcursors(thd);
-
     if (clnt->client_understands_query_stats) {
         record_query_cost(thd->sqlthd, clnt);
         WRITE_RESPONSE(RESPONSE_COST, 0);
@@ -2795,45 +2788,23 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         }
         clnt->prev_cost_string = get_query_cost_as_string(thd->sqlthd, clnt);
     }
-
-    rc = rc_sqlite_to_client(thd, clnt, rec, &errstr);
-
-    if ((clnt->osql.replay == OSQL_RETRY_NONE ||
-         clnt->osql.replay == OSQL_RETRY_HALT) &&
-        !((clnt->want_query_effects && !is_with_statement(clnt->sql)) &&
-          clnt->in_client_trans && !clnt->isselect &&
-          !(rc && !clnt->had_errors))) {
-
-        if (!clnt->isselect && postponed_write && !rc) {
-            int irc = send_row(clnt, NULL, row_id, 0, NULL);
-            if (irc)
-                return irc;
-        }
-
-        if (rc == SQLITE_OK) {
-            pthread_mutex_lock(&clnt->wait_mutex);
-            clnt->ready_for_heartbeats = 0;
-            pthread_mutex_unlock(&clnt->wait_mutex);
-            send_query_effects(clnt);
+    char *errstr = NULL;
+    int rc = rc_sqlite_to_client(thd, clnt, rec, &errstr);
+    if (rc != 0) {
+        send_run_error(clnt, errstr, rc);
+        clnt->had_errors = 1;
+    } else {
+        pthread_mutex_lock(&clnt->wait_mutex);
+        clnt->ready_for_heartbeats = 0;
+        pthread_mutex_unlock(&clnt->wait_mutex);
+        if (!skip_response(clnt)) {
+            if (postponed_write) {
+                send_row(clnt, NULL, row_id, 0, NULL);
+            }
+            WRITE_RESPONSE(RESPONSE_EFFECTS, 0);
             WRITE_RESPONSE(RESPONSE_ROW_LAST, 0);
-        } else {
-            clnt->had_errors = 1;
-            send_run_error(clnt, errstr, rc);
         }
-    } else if ((clnt->osql.replay == OSQL_RETRY_NONE ||
-                clnt->osql.replay == OSQL_RETRY_HALT) &&
-               clnt->want_query_effects &&
-               (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) &&
-               !clnt->isselect) {
-            rc = WRITE_RESPONSE(RESPONSE_EFFECTS, 0);
-            if (rc)
-                return rc;
-    } else if (!clnt->isselect && clnt->send_one_row) {
-        clnt->send_one_row = 0;
-        clnt->skip_feature = 1;
-        WRITE_RESPONSE(RESPONSE_ROW_LAST_DUMMY, 0);
     }
-
     return 0;
 }
 
@@ -2916,12 +2887,9 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         if (clnt->isselect && clnt->osql.replay != OSQL_RETRY_DO) {
             postponed_write = 0;
             ++row_id;
-
-            if (!clnt->want_query_effects || clnt->isselect) {
-                rc = send_row(clnt, stmt, row_id, 0, err);
-                if (rc)
-                    goto out;
-            }
+            rc = send_row(clnt, stmt, row_id, 0, err);
+            if (rc)
+                goto out;
         } else {
             postponed_write = 1;
             send_row(clnt, stmt, row_id, 1, NULL);
@@ -2935,14 +2903,11 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     } while ((rc = sqlite3_step(stmt)) == SQLITE_ROW);
 
-/* whatever sqlite returns in sqlite3_step is only used to step out of the loop,
-   otherwise ignored; we are gonna
-   get it from sqlite (or osql.xerr) */
+    /* whatever sqlite returns in sqlite3_step is only used to step out of the
+     * loop, otherwise ignored; we are gonna get it from sqlite (or osql.xerr)
+     */
 
 postprocessing:
-    if (rc == SQLITE_DONE)
-        rc = 0;
-
     /* closing: error codes, postponed write result and so on*/
     rc = post_sqlite_processing(thd, clnt, rec, postponed_write, ncols, row_id);
 
@@ -2958,9 +2923,7 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
         thd->sqlthd->nmove = thd->sqlthd->nfind = thd->sqlthd->nwrite =
             thd->sqlthd->ntmpread = thd->sqlthd->ntmpwrite = 0;
 
-    if (clnt->want_query_effects) {
-        clnt->had_errors = 1;
-    }
+    clnt->had_errors = 1;
 
     if (clnt->using_case_insensitive_like)
         toggle_case_sensitive_like(thd->sqldb, 0);
@@ -3841,7 +3804,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->saved_rc = 0;
     clnt->want_stored_procedure_debug = 0;
     clnt->want_stored_procedure_trace = 0;
-    clnt->want_query_effects = 0;
     clnt->send_one_row = 0;
     clnt->verifyretry_off = 0;
     clnt->is_expert = 0;

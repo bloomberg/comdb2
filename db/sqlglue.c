@@ -481,8 +481,7 @@ int authenticate_cursor(BtCursor *pCur, int how)
 
 int peer_dropped_connection(struct sqlclntstate *clnt)
 {
-    if (clnt == NULL || clnt->sb == NULL || clnt->conninfo.pid == 0 ||
-        clnt->skip_peer_chk) {
+    if (clnt == NULL || clnt->sb == NULL || clnt->skip_peer_chk) {
         return 0;
     }
     int rc;
@@ -498,8 +497,6 @@ int peer_dropped_connection(struct sqlclntstate *clnt)
                 errno, strerror(errno));
         return 1;
     }
-    if ((fd.revents & POLLIN) && clnt->want_query_effects)
-        return 0;
     // shouldn't have any events
     return 1;
 }

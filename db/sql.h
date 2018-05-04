@@ -544,7 +544,6 @@ struct sqlclntstate {
     int isselect;   /* track if the query is a select query.*/
     int isUnlocked;
     int writeTransaction;
-    int want_query_effects;
     int send_one_row;
     int verify_retries; /* how many verify retries we've borne */
     int verifyretry_off;
