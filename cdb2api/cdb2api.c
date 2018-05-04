@@ -840,8 +840,7 @@ static inline int get_char(FILE *fp, const char *buf, int *chrno)
     return ch;
 }
 
-static int read_line(char *line, int *len, int maxlen, FILE *fp,
-                     const char *buf, int *chrno)
+static int read_line(char *line, int maxlen, FILE *fp, char *buf, int *chrno)
 {
     int ch = get_char(fp, buf, chrno);
     while (ch == ' ' || ch == '\n')
@@ -893,17 +892,13 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                               int *comdb2db_found, int *stack_at_open)
 {
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
-    int len = 0;
     int line_no = 0;
 
     if (hndl && hndl->debug_trace) {
         fprintf(stderr, "td %u %s:%d \n", (uint32_t)pthread_self(), __func__,
                 __LINE__);
     }
-    while (read_line((char *)&line, &len, sizeof(line), fp, buf, &line_no) != -1) {
-        if (len >= sizeof(line))
-            return;
-
+    while (read_line((char *)&line, sizeof(line), fp, buf, &line_no) != -1) {
         char *last = NULL;
         char *tok = NULL;
         tok = strtok_r(line, " :", &last);
