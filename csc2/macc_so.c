@@ -859,6 +859,11 @@ static void key_add_comn(int ix, char *tag, char *exprname,
         any_errors++;
         return;
     }
+    if ((workkeyflag & DUPKEY) && (workkeyflag & UNIQNULLS)) {
+        csc2_error("ERROR: DUPLICATES NOT ALLOWED ON UNIQUE NULLS\n");
+        any_errors++;
+        return;
+    }
 #endif
     if (ix == -1) {
         int lastix = -1;
