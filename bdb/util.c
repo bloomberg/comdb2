@@ -48,6 +48,49 @@ int bdb_keycontainsgenid(bdb_state_type *bdb_state, int ixnum)
             ((!bdb_state->ixdups[ixnum] && bdb_state->ixnulls[ixnum])));
 }
 
+int bdb_maybe_use_genid_for_key(
+                               bdb_state_type *bdb_state, DBT *p_dbt_key,
+                               void *ixdta, int ixnum,
+                               unsigned long long genid, int isnull)
+{
+    int rc = 0;
+    unsigned char keymax[BDB_KEY_MAX + sizeof(unsigned long long)];
+
+    /* set up the dbt_key */
+    memset(p_dbt_key, 0, sizeof(DBT));
+
+    /* indexes with dupes get a genid tacked on, same for indexes that
+       dont allow dupes but allow for nulls.  the genid is the sanitized
+       'search' genid.  */
+
+    if (bdb_keycontainsgenid(bdb_state, ixnum)) {
+        unsigned long long tmpgenid;
+
+        tmpgenid = get_search_genid(bdb_state, genid);
+
+        /* use 0 as the genid if no null values to keep it unique */
+        if (bdb_state->ixnulls[ixnum] && !isnull)
+            tmpgenid = 0;
+        else
+            rc = 1;
+
+        memcpy(keymax, ixdta, bdb_state->ixlen[ixnum]);
+
+        p_dbt_key->data = keymax;
+        p_dbt_key->size = bdb_state->ixlen[ixnum];
+
+        memcpy(keymax + bdb_state->ixlen[ixnum], &tmpgenid,
+               sizeof(unsigned long long));
+        p_dbt_key->size += sizeof(unsigned long long);
+    } else {
+        /* in place if we dont have dups */
+        p_dbt_key->data = ixdta;
+        p_dbt_key->size = bdb_state->ixlen[ixnum];
+    }
+
+    return rc;
+}
+
 void timeval_to_timespec(struct timeval *tv, struct timespec *ts)
 {
     ts->tv_sec = tv->tv_sec;

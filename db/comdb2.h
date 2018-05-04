@@ -1998,12 +1998,12 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
                   unsigned long long genid, int rrn, void *dta, int dtalen, int isnull);
 int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
                unsigned long long genid, unsigned long long oldgenid, void *dta,
-               int dtalen);
+               int dtalen, int isnull);
 
 int ix_delk(struct ireq *iq, void *trans, void *key, int ixnum, int rrn,
-            unsigned long long genid);
+            unsigned long long genid, int isnull);
 int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
-                  int rrn, unsigned long long genid);
+                  int rrn, unsigned long long genid, int isnull);
 
 enum {
     IX_FIND_IGNORE_INCOHERENT = 1

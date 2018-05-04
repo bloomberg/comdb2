@@ -973,7 +973,7 @@ int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
 
 int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
                unsigned long long oldgenid, unsigned long long genid, void *dta,
-               int dtalen)
+               int dtalen, int isnull)
 {
     struct dbtable *db = iq->usedb;
     int rc, bdberr;
@@ -991,7 +991,7 @@ int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
 
     iq->gluewhere = "bdb_prim_updkey";
     rc = bdb_prim_updkey_genid(bdb_handle, trans, key, keylen, ixnum, genid,
-                               oldgenid, dta, dtalen, &bdberr);
+                               oldgenid, dta, dtalen, isnull, &bdberr);
     iq->gluewhere = "bdb_prim_updkey done";
 
     if (rc == 0)
@@ -1013,7 +1013,7 @@ int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
 }
 
 int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
-                  int rrn, unsigned long long genid)
+                  int rrn, unsigned long long genid, int isnull)
 {
     struct dbtable *db = iq->usedb;
     int rc, bdberr;
@@ -1028,7 +1028,7 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_delkey";
     rc = bdb_prim_delkey_genid(bdb_handle, trans, key, ixnum, rrn, genid,
-                               &bdberr);
+                               isnull, &bdberr);
     iq->gluewhere = "bdb_prim_delkey done";
     if (rc == 0)
         return 0;
@@ -1055,9 +1055,9 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 }
 
 int ix_delk(struct ireq *iq, void *trans, void *key, int ixnum, int rrn,
-            unsigned long long genid)
+            unsigned long long genid, int isnull)
 {
-    return ix_delk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, rrn, genid);
+    return ix_delk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, rrn, genid, isnull);
 }
 
 int dat_upv(struct ireq *iq, void *trans, int vptr, void *vdta, int vlen,
@@ -4945,7 +4945,7 @@ retry:
             if (iq.debug)
                 logmsg(LOGMSG_USER, "meta_put:update genid 0x%llx rrn %d\n", genid, rrn);
             /* delete old key */
-            rc = ix_delk_auxdb(AUXDB_META, &iq, trans, hdr, 0, rrn, genid);
+            rc = ix_delk_auxdb(AUXDB_META, &iq, trans, hdr, 0, rrn, genid, ix_isnullk(iq.usedb, hdr, 0));
             if (iq.debug)
                 logmsg(LOGMSG_USER, "meta_put:ix_delk_auxdb RC %d\n", rc);
             if (rc)

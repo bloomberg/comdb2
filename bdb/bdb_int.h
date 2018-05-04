@@ -1489,6 +1489,7 @@ void add_millisecs_to_timespec(struct timespec *orig, int millisecs);
 int setup_waittime(struct timespec *waittime, int waitms);
 
 int bdb_keycontainsgenid(bdb_state_type *bdb_state, int ixnum);
+int bdb_maybe_use_genid_for_key(bdb_state_type *bdb_state, DBT *p_dbt_key, void *ixdta, int ixnum, unsigned long long genid, int isnull);
 
 void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay);
 
