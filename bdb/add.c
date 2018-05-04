@@ -48,6 +48,49 @@
 #include "genid.h"
 #include "logmsg.h"
 
+static int bdb_maybe_use_genid_for_key(
+                               bdb_state_type *bdb_state, DBT *p_dbt_key,
+                               void *ixdta, int ixnum,
+                               unsigned long long genid, int isnull)
+{
+    int rc = 0;
+    unsigned char keymax[BDB_KEY_MAX + sizeof(unsigned long long)];
+
+    /* set up the dbt_key */
+    memset(p_dbt_key, 0, sizeof(DBT));
+
+    /* indexes with dupes get a genid tacked on, same for indexes that
+       dont allow dupes but allow for nulls.  the genid is the sanitized
+       'search' genid.  */
+
+    if (bdb_keycontainsgenid(bdb_state, ixnum)) {
+        unsigned long long tmpgenid;
+
+        tmpgenid = get_search_genid(bdb_state, genid);
+
+        /* use 0 as the genid if no null values to keep it unique */
+        if (bdb_state->ixnulls[ixnum] && !isnull)
+            tmpgenid = 0;
+        else
+            rc = 1;
+
+        memcpy(keymax, ixdta, bdb_state->ixlen[ixnum]);
+
+        p_dbt_key->data = keymax;
+        p_dbt_key->size = bdb_state->ixlen[ixnum];
+
+        memcpy(keymax + bdb_state->ixlen[ixnum], &tmpgenid,
+               sizeof(unsigned long long));
+        p_dbt_key->size += sizeof(unsigned long long);
+    } else {
+        /* in place if we dont have dups */
+        p_dbt_key->data = ixdta;
+        p_dbt_key->size = bdb_state->ixlen[ixnum];
+    }
+
+    return rc;
+}
+
 /* if dta is not null, it will be tailed after the genid in btree data part */
 static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
                                void *ixdta, int ixnum, int rrn,
@@ -61,7 +104,6 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
     unsigned int *iptr;
     void *mallocedkeydata;
     unsigned int stackkeydata[3];
-    unsigned char keymax[BDB_KEY_MAX + sizeof(unsigned long long)];
     int odh_len = 0;
 
     *bdberr = BDBERR_NOERROR;
@@ -161,35 +203,10 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
 
       */
 
-    /* set up the dbt_key */
-    memset(&dbt_key, 0, sizeof(dbt_key));
-
-    /* indexes with dupes get a genid tacked on, same for indexes that
-       dont allow dupes but allow for nulls.  the genid is the sanitized
-       'search' genid.  */
-
-    if (bdb_keycontainsgenid(bdb_state, ixnum)) {
-        unsigned long long tmpgenid;
-
-        tmpgenid = get_search_genid(bdb_state, genid);
-
-        /* use 0 as the genid if no null values to keep it unique */
-        if (bdb_state->ixnulls[ixnum] && !isnull)
-            tmpgenid = 0;
-
-        memcpy(keymax, ixdta, bdb_state->ixlen[ixnum]);
-
-        dbt_key.data = keymax;
-        dbt_key.size = bdb_state->ixlen[ixnum];
-
-        memcpy(keymax + bdb_state->ixlen[ixnum], &tmpgenid,
-               sizeof(unsigned long long));
-        dbt_key.size += sizeof(unsigned long long);
-    } else {
-        /* in place if we dont have dups */
-        dbt_key.data = ixdta;
-        dbt_key.size = bdb_state->ixlen[ixnum];
-    }
+    /* depending on the index flags and the provided field (column?) values, we
+     * may want to use the genid as part of the index key.  currently, this is
+     * only done when supporting multiple NULL values in a UNIQUE index. */
+    bdb_maybe_use_genid_for_key(bdb_state, &dbt_key, ixdta, ixnum, genid, isnull);
 
     /* set up the dbt_data */
     memset(&dbt_data, 0, sizeof(dbt_data));
