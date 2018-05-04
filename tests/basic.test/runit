@@ -33,8 +33,9 @@ assertgoodexitcode ()
 
 assertbadexitcode ()
 {
-    if [ $? -eq 0 ] ; then
-        failexit "exit code is now $? but should not be 0"
+    rc=$1
+    if [ $rc -eq 0 ] ; then
+        failexit "exit code is now $rc but should not be 0"
     fi
 }
 
@@ -351,8 +352,11 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create unique index t3_x on t3(x)"
 assertgoodexitcode
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(1)"
 assertgoodexitcode
+set -errexit
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(1)"
-assertbadexitcode
+exitCode=$?
+set +errexit
+assertbadexitcode $exitCode
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(2)"
 assertgoodexitcode
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
@@ -361,12 +365,12 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
 assertgoodexitcode
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
 assertgoodexitcode
-assertres $res "NULL\nNULL\n1\n2"
+assertres "${res}" "NULL\nNULL\n1\n2"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t3 where x is null"
 assertgoodexitcode
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
 assertgoodexitcode
-assertres $res "1\n2"
+assertres "${res}" "1\n2"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop index t3_x"
 assertgoodexitcode
 
