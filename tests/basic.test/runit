@@ -24,13 +24,6 @@ failexit()
     exit -1
 }
 
-assertgoodexitcode ()
-{
-    if [ $? -ne 0 ] ; then
-        failexit "exit code is now $? but should be 0"
-    fi
-}
-
 assertbadexitcode ()
 {
     rc=$1
