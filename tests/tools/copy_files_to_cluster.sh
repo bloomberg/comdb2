@@ -2,7 +2,7 @@
 
 #set -x
 
-vars="HOSTNAME TESTSROOTDIR TESTDIR TMPDIR COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port"
+vars="HOSTNAME TESTSROOTDIR TESTDIR COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port"
 for required in $vars; do
     q=${!required}
     if [[ -z "$q" ]]; then
@@ -37,29 +37,14 @@ copy_files_to_cluster()
 }
 
 
-mkdir -p $TMPDIR
-echo noclobber ensures atomicity to copy files
-set -o noclobber 
-{ > ${TMPDIR}/started_pmux_${pmux_port}.log ; } &> /dev/null
-if [ $? -eq 0 ] ; then
-    if [ -n "$RESTARTPMUX" ] ; then
-        echo stop pmux on localhost
-        eval $stop_pmux
-    fi
-    echo start pmux on local host if not running
-    COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" $pmux_cmd
+if [ -n "$RESTARTPMUX" ] ; then
+    echo stop pmux on localhost
+    eval $stop_pmux
 fi
+echo start pmux on local host if not running
+COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" $pmux_cmd
 
-COPIEDTOCLUSTER=${TMPDIR}/copiedtocluster.log
-# if CLUSTER is length is nonzero, and file does not exist, copy to cluster
+# if CLUSTER is length is nonzero copy to cluster
 if [[ -n "$CLUSTER" ]] ; then 
-    { > $COPIEDTOCLUSTER ; } &> /dev/null 
-    if [ $? -eq 0 ] ; then
-        set -e  # from here, a bad rc will mean failure and exit
-        copy_files_to_cluster
-    fi
+    copy_files_to_cluster
 fi
-set +o noclobber 
-
-
-

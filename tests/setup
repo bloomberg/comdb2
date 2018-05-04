@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 set -e
-#set -x
+set -x
 
 debug=0
 
@@ -267,6 +267,9 @@ if [[ -z "$CLUSTER" ]]; then
     done
 else
     echo "!$TESTCASE: copying to cluster"
+    if [[ -n "$NUMNODESTOUSE" ]]; then
+        echo "$TESTCASE: cluster is $CLUSTER"
+    fi
     for node in ${CLUSTER/$HOSTNAME/}; do
         if [ $node == $HOSTNAME ] ; then
             continue        # no copying to self
