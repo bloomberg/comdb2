@@ -3758,7 +3758,9 @@ static int init(int argc, char **argv)
 
     /* some dbs have lots of tables and spew on startup.  this just wastes
      * peoples time shunting spew */
-    /*showdbenv(thedb);*/
+    if (getenv("CDB2_SHOW_DBENV")) {
+        showdbenv(thedb);
+    }
 
     if (gbl_net_max_queue) {
         net_set_max_queue(thedb->handle_sibling, gbl_net_max_queue);
