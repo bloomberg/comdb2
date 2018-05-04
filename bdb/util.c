@@ -74,6 +74,7 @@ int bdb_maybe_use_genid_for_key(
         else
             rc = 1;
 
+        assert(bdb_state->ixlen[ixnum] <= BDB_KEY_MAX);
         memcpy(keymax, ixdta, bdb_state->ixlen[ixnum]);
 
         p_dbt_key->data = keymax;
