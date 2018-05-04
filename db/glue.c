@@ -899,8 +899,7 @@ int ix_isnullk(struct dbtable *db, void *key, int ixnum)
             db, key, ixnum); */
         return 0;
     }
-    for (ifld = 0; ifld < dbixschema->nmembers; ifld++)
-    {
+    for (ifld = 0; ifld < dbixschema->nmembers; ifld++) {
         struct field *dbixfield = &dbixschema->member[ifld];
         if (dbixfield) {
             const char *bkey = (const char *)key;
