@@ -795,7 +795,7 @@ static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
         case STATE_INCOHERENT_SLOW:
         case STATE_INCOHERENT_WAIT:
             coherent_state = coherent_state_to_str(
-                    bdb_state->coherent_state[nodeix(nodes[ii].host)]);
+                bdb_state->coherent_state[nodeix(nodes[ii].host)]);
             break;
 
         default:
@@ -841,17 +841,17 @@ void bdb_short_netinfo_dump(FILE *out, bdb_state_type *bdb_state)
         if (bdb_state->repinfo->master_host == nodes[ii].host)
             status_mstr = "MASTER";
         else {
-            switch(bdb_state->coherent_state[nodeix(nodes[ii].host)]) {
-                case STATE_INCOHERENT:
-                case STATE_INCOHERENT_WAIT:
-                case STATE_INCOHERENT_SLOW:
-                default:
-                    status_mstr = coherent_state_to_str(
-                            bdb_state->coherent_state[nodeix(nodes[ii].host)]);
-                    break;
-                case STATE_COHERENT:
-                    status_mstr = " ";
-                    break;
+            switch (bdb_state->coherent_state[nodeix(nodes[ii].host)]) {
+            case STATE_INCOHERENT:
+            case STATE_INCOHERENT_WAIT:
+            case STATE_INCOHERENT_SLOW:
+            default:
+                status_mstr = coherent_state_to_str(
+                    bdb_state->coherent_state[nodeix(nodes[ii].host)]);
+                break;
+            case STATE_COHERENT:
+                status_mstr = " ";
+                break;
             }
         }
 

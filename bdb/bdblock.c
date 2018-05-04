@@ -577,7 +577,7 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
     lk->lockref++;
 }
 
-void bdb_get_the_readlock(const char *idstr, const char *function, int line) 
+void bdb_get_the_readlock(const char *idstr, const char *function, int line)
 {
     return bdb_get_readlock(gbl_bdb_state, idstr, function, line);
 }
@@ -654,7 +654,7 @@ void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
     }
 }
 
-void bdb_relthelock(const char *funcname, int line) 
+void bdb_relthelock(const char *funcname, int line)
 {
     return bdb_rellock(gbl_bdb_state, funcname, line);
 }

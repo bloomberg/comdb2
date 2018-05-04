@@ -790,7 +790,7 @@ fprintf(stderr, "[%s] using malloc for %d bytes\n",
 
     if (netinfo_ptr->qstat_enque_rtn) {
         (netinfo_ptr->qstat_enque_rtn)(netinfo_ptr, host_node_ptr->qstat,
-                insert->payload.raw, insert->len);
+                                       insert->payload.raw, insert->len);
     }
 
     if (host_node_ptr->netinfo_ptr->trace && debug_switch_net_verbose())
@@ -2130,15 +2130,15 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
         Pthread_rwlock_unlock(&(netinfo_ptr->lock));
         if (trace) {
             logmsg(LOGMSG_USER, "%s line %d returning INVALIDNODE\n", __func__,
-                    __LINE__);
+                   __LINE__);
         }
         return NET_SEND_FAIL_INVALIDNODE;
     }
 
     if (host_node_ptr->host == netinfo_ptr->myhostname) {
         if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d returning FAIL_SENDTOME\n", 
-                    __func__, __LINE__);
+            logmsg(LOGMSG_USER, "%s line %d returning FAIL_SENDTOME\n",
+                   __func__, __LINE__);
         }
         rc = NET_SEND_FAIL_SENDTOME;
         goto end;
@@ -2147,8 +2147,8 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     /* fail if we don't have a socket */
     if (host_node_ptr->fd == -1) {
         if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d returning NOSOCK\n", 
-                    __func__, __LINE__);
+            logmsg(LOGMSG_USER, "%s line %d returning NOSOCK\n", __func__,
+                   __LINE__);
         }
         rc = NET_SEND_FAIL_NOSOCK;
         goto end;
@@ -2157,8 +2157,8 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     /* fail if we are closed */
     if (host_node_ptr->closed) {
         if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d returning CLOSED\n", 
-                    __func__, __LINE__);
+            logmsg(LOGMSG_USER, "%s line %d returning CLOSED\n", __func__,
+                   __LINE__);
         }
         rc = NET_SEND_FAIL_CLOSED;
         goto end;
@@ -2219,7 +2219,7 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     if (-2 == rc) {
         if (trace) {
             logmsg(LOGMSG_USER, "%s line %d returning QUEUE-FULL\n", __func__,
-                    __LINE__);
+                   __LINE__);
         }
         rc = NET_SEND_FAIL_QUEUE_FULL;
     }
@@ -2228,7 +2228,7 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     else if (2 == rc) {
         if (trace) {
             logmsg(LOGMSG_USER, "%s line %d returning MALLOC-FAIL\n", __func__,
-                    __LINE__);
+                   __LINE__);
         }
         rc = NET_SEND_FAIL_MALLOC_FAIL;
     }
@@ -2237,7 +2237,7 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     else if (0 != rc) {
         if (trace) {
             logmsg(LOGMSG_USER, "%s line %d returning WRITEFAIL\n", __func__,
-                    __LINE__);
+                   __LINE__);
         }
         rc = NET_SEND_FAIL_WRITEFAIL;
     }
@@ -2246,8 +2246,8 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     if ((0 == rc) && (NET_TEST_QUEUE_FULL == netinfo_ptr->net_test) &&
         (rand() % 1000)) {
         if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d debug/random QUEUE-FULL\n", 
-                    __func__, __LINE__);
+            logmsg(LOGMSG_USER, "%s line %d debug/random QUEUE-FULL\n",
+                   __func__, __LINE__);
         }
         rc = NET_SEND_FAIL_QUEUE_FULL;
     }
@@ -2291,20 +2291,20 @@ int net_send_inorder(netinfo_type *netinfo_ptr, const char *host, int usertype,
                         NULL, 0, 0, 1, 0);
 }
 
-
 int net_send_inorder_nodrop(netinfo_type *netinfo_ptr, const char *host,
-        int usertype, void *data, int datalen, int nodelay)
+                            int usertype, void *data, int datalen, int nodelay)
 {
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 0,
                         NULL, 0, 1, 1, 0);
 }
 
 int net_send_flags(netinfo_type *netinfo_ptr, const char *host, int usertype,
-        void *data, int datalen, uint32_t flags)
+                   void *data, int datalen, uint32_t flags)
 {
-    return net_send_int(netinfo_ptr, host, usertype, data, datalen, 
-            (flags & NET_SEND_NODELAY), 0, NULL, 0, (flags & NET_SEND_NODROP), 
-            (flags & NET_SEND_INORDER), (flags & NET_SEND_TRACE));
+    return net_send_int(netinfo_ptr, host, usertype, data, datalen,
+                        (flags & NET_SEND_NODELAY), 0, NULL, 0,
+                        (flags & NET_SEND_NODROP), (flags & NET_SEND_INORDER),
+                        (flags & NET_SEND_TRACE));
 }
 
 int net_send(netinfo_type *netinfo_ptr, const char *host, int usertype,
@@ -2431,9 +2431,9 @@ int net_get_all_nodes_connected(netinfo_type *netinfo_ptr,
     return count;
 }
 
-int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit, 
-        QSTATREADERFP *reader, QSTATENQUEFP *enque, QSTATCLEARFP *qclear, 
-        QSTATFREEFP *qfree)
+int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
+                            QSTATREADERFP *reader, QSTATENQUEFP *enque,
+                            QSTATCLEARFP *qclear, QSTATFREEFP *qfree)
 {
     host_node_type *tmp_host_ptr;
 
@@ -2441,10 +2441,10 @@ int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
 
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
-            tmp_host_ptr = tmp_host_ptr->next) {
+         tmp_host_ptr = tmp_host_ptr->next) {
         if (strcmp(tmp_host_ptr->host, netinfo_ptr->myhostname) != 0) {
-            tmp_host_ptr->qstat = qinit(netinfo_ptr, netinfo_ptr->service,
-                    tmp_host_ptr->host);
+            tmp_host_ptr->qstat =
+                qinit(netinfo_ptr, netinfo_ptr->service, tmp_host_ptr->host);
         }
     }
 
@@ -2458,15 +2458,15 @@ int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
     return 0;
 }
 
-void net_queue_stat_iterate(netinfo_type *netinfo_ptr, QSTATITERFP qs_iter, void *arg)
+void net_queue_stat_iterate(netinfo_type *netinfo_ptr, QSTATITERFP qs_iter,
+                            void *arg)
 {
     host_node_type *tmp_host_ptr;
 
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
-            tmp_host_ptr = tmp_host_ptr->next) {
+         tmp_host_ptr = tmp_host_ptr->next) {
         qs_iter(netinfo_ptr, arg, tmp_host_ptr->qstat);
-
     }
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 }
@@ -2805,10 +2805,10 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     }
 
     if (netinfo_ptr->qstat_init_rtn) {
-        ptr->qstat = (netinfo_ptr->qstat_init_rtn)(netinfo_ptr, 
-                netinfo_ptr->service, hostname);
+        ptr->qstat = (netinfo_ptr->qstat_init_rtn)(
+            netinfo_ptr, netinfo_ptr->service, hostname);
     } else {
-        ptr->qstat = NULL; 
+        ptr->qstat = NULL;
     }
 
     netinfo_ptr->head = ptr;
@@ -4411,8 +4411,8 @@ static void *writer_thread(void *args)
             host_node_ptr->enque_bytes = 0;
 
             if (netinfo_ptr->qstat_clear_rtn) {
-                (netinfo_ptr->qstat_clear_rtn)(netinfo_ptr, 
-                        host_node_ptr->qstat);
+                (netinfo_ptr->qstat_clear_rtn)(netinfo_ptr,
+                                               host_node_ptr->qstat);
             }
 
             /* release this before writing to sock*/
@@ -4717,7 +4717,6 @@ static void *reader_thread(void *arg)
 
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
-
 
     while (!host_node_ptr->decom_flag && !host_node_ptr->closed &&
            !netinfo_ptr->exiting) {
