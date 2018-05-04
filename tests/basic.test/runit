@@ -347,31 +347,31 @@ assertres $res 1
 
 echo "create and use UNIQUE INDEX with multiple NULL values"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t3(x INTEGER)"
-assertgoodexitcode
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create unique index t3_x on t3(x)"
-assertgoodexitcode
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(1)"
-assertgoodexitcode
 set -errexit
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(1)"
 exitCode=$?
 set +errexit
 assertbadexitcode $exitCode
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(2)"
-assertgoodexitcode
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
-assertgoodexitcode
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
-assertgoodexitcode
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
-assertgoodexitcode
 assertres "${res}" "NULL\nNULL\n1\n2"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t3 where x is null"
-assertgoodexitcode
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
-assertgoodexitcode
 assertres "${res}" "1\n2"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
+assertres "${res}" "NULL\nNULL\n1\n2"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t3 set x = NULL where x = 1"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
+assertres "${res}" "NULL\nNULL\nNULL\n2"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t3 set x = NULL"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
+assertres "${res}" "NULL\nNULL\nNULL\nNULL"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop index t3_x"
-assertgoodexitcode
 
 echo "Success"
