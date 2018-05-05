@@ -6564,14 +6564,13 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             }
             iq->sc = iq->sc->sc_next;
         }
-        
+
         if (iq->tranddl) {
             void *ptran = bdb_get_physical_tran(trans);
-            //TODO: assert that we have schemalk
+            // TODO: assert that we have schemalk
             create_sqlmaster_records(ptran);
             create_sqlite_master();
         }
-
 
         // TODO Notify all bpfunc of success
 

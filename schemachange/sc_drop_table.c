@@ -75,7 +75,8 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     /* at this point if a backup is going on, it will be bad */
     gbl_sc_commit_count++;
 
-    if (s->drop_table && (rc = mark_schemachange_over_tran(db->tablename, tran)))
+    if (s->drop_table &&
+        (rc = mark_schemachange_over_tran(db->tablename, tran)))
         return rc;
 
     delete_table(db, tran);
@@ -90,8 +91,8 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-    if (s->drop_table) { 
-        if((rc = table_version_upsert(db, tran, &bdberr)) != 0) {
+    if (s->drop_table) {
+        if ((rc = table_version_upsert(db, tran, &bdberr)) != 0) {
             sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
             return rc;
         }

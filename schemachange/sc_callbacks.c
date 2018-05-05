@@ -500,8 +500,8 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
     pthread_mutex_unlock(&gbl_sc_lock);
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
-        if (bdb_list_unused_files_tran(db->handle, tran, 
-                                       &bdberr, "schemachange") ||
+        if (bdb_list_unused_files_tran(db->handle, tran, &bdberr,
+                                       "schemachange") ||
             bdberr != BDBERR_NOERROR)
             logmsg(LOGMSG_WARN, "%s: errors listing old files\n", __func__);
     } else {
@@ -715,7 +715,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         logmsg(LOGMSG_INFO, "Replicant bulkimporting table:%s\n", table);
         reload_after_bulkimport(db, tran);
     } else {
-        assert (type == alter || type == fastinit);
+        assert(type == alter || type == fastinit);
 
         logmsg(LOGMSG_INFO, "Replicant %s table:%s\n",
                type == alter ? "altering" : "fastinit-ing", table);
@@ -740,7 +740,6 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         }
     }
 
-
     if (type == add || type == drop || type == alter || type == fastinit) {
         if (create_sqlmaster_records(tran)) {
             logmsg(LOGMSG_FATAL,
@@ -754,7 +753,6 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         if (type == drop)
             goto done;
     }
-
 
     free(table_copy);
     free(csc2text);

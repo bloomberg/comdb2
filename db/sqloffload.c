@@ -827,7 +827,7 @@ static void osql_scdone_abort_callback(struct ireq *iq)
         create_sqlmaster_records(NULL);
         create_sqlite_master();
     }
-    
+
     if (iq->sc_locked) {
         unlock_schema_lk();
         iq->sc_locked = 0;
