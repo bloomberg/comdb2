@@ -840,7 +840,8 @@ static inline int get_char(FILE *fp, const char *buf, int *chrno)
     return ch;
 }
 
-static int read_line(char *line, int maxlen, FILE *fp, char *buf, int *chrno)
+static int read_line(char *line, int maxlen, FILE *fp, const char *buf,
+                     int *chrno)
 {
     int ch = get_char(fp, buf, chrno);
     while (ch == ' ' || ch == '\n')
