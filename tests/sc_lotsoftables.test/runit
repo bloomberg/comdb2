@@ -5,7 +5,7 @@ bash -n "$0" | exit 1
 debug=0
 
 dbnm=$1
-tblcnt=100
+tblcnt=150
 
 if [ "x$dbnm" == "x" ] ; then
     echo "need a DB name"
@@ -179,23 +179,24 @@ function flushall
 
 
 
+PRFIX=my_table_name_
 
 echo "Test with insert, SC should not fail"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t0 { `cat t1_1.csc2 ` }"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table ${PRFIX}0 { `cat t1_1.csc2 ` }"
 
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 500')"
 for i in `seq 1 $tblcnt`; do
   echo "create t$i: "
-  time cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t$i  { `cat t1_1.csc2 ` }"
-  insert_records t$i $i
-  #echo truncate t0
-  #time cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t0"
+  time cdb2sql ${CDB2_OPTIONS} $dbnm default "create table ${PRFIX}$i  { `cat t1_1.csc2 ` }"
+  insert_records ${PRFIX}$i $i
+  echo truncate ${PRFIX}0
+  time cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate ${PRFIX}0"
 
-  flushall
+  #flushall
 done
 
 for i in `seq 1 $tblcnt`; do
-    assertcnt t$i $i
+    assertcnt ${PRFIX}$i $i
     #echo rebuild t1
     #time cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
     #assertcnt t$i $i
@@ -203,9 +204,9 @@ for i in `seq 1 $tblcnt`; do
     #flushall
 done
 
-RESTART_DELAY=35
-echo "killrestart all nodes"
-kill_restart_cluster $RESTART_DELAY
+#RESTART_DELAY=35
+#echo "killrestart all nodes"
+#kill_restart_cluster $RESTART_DELAY
 
 #    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr MIN_KEEP_LOGS 1')"
 #    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr MIN_KEEP_LOGS_AGE 10')"
