@@ -169,9 +169,6 @@ pmux_cmd="$PMUX_EXE -l"
 
 # If PMUXPORT is defined we will overwrite the default pmux port with that
 if [ -n "$PMUXPORT" ] ; then
-    pmux_socket=/tmp/pmux.socket.$PMUXPORT
-    pmux_port_range="-r $((pmux_port+1)):$((pmux_port+200))"
-    pmux_cmd="$PMUX_EXE -l -p $PMUXPORT -b $pmux_socket $pmux_port_range"
     echo "comdb2_config:portmuxport=$PMUXPORT" >> $CDB2_CONFIG
     echo "portmux_port $PMUXPORT" >> ${LRL}
     echo "portmux_bind_path $pmux_socket" >> ${LRL}

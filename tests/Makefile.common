@@ -14,4 +14,13 @@ export CDB2_SQLREPLAY_EXE?=${BUILDDIR}/tools/cdb2_sqlreplay/cdb2_sqlreplay
 export PMUX_EXE?=${BUILDDIR}/tools/pmux/pmux
 export pmux_port?=5105
 export MAKEFILE_COMMON_INCLUDED=1
+
+# See logic in setup
+ifeq ($(PMUXPORT),)
+export pmux_cmd="${PMUX_EXE} -l"
+else
+export pmux_socket=/tmp/pmux.socket.$PMUXPORT
+export pmux_port_range="-r $((pmux_port+1)):$((pmux_port+200))"
+export pmux_cmd="${PMUX_EXE} -l -p ${PMUXPORT} -b ${pmux_socket} ${pmux_port_range}"
+endif
 endif
