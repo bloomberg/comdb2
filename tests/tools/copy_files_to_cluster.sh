@@ -2,7 +2,7 @@
 
 #set -x
 
-vars="HOSTNAME TESTSROOTDIR TESTDIR COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port"
+vars="HOSTNAME TESTSROOTDIR TESTDIR COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port pmux_cmd"
 for required in $vars; do
     q=${!required}
     if [[ -z "$q" ]]; then
