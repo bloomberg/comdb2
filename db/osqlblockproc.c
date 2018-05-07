@@ -740,7 +740,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
     key.tbl_idx = INT_MAX;
-    key.stripe = INT_MAX;
+    key.stripe = 0;
 
     extern int gbl_reorder_blkseq_no_deadlock;
     if (gbl_reorder_blkseq_no_deadlock) {
@@ -1252,8 +1252,8 @@ printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
         int realkeylen = bdb_temp_table_keysize(dbc);
         char mus[37];
         comdb2uuidstr(((oplog_key_t*)realkey)->uuid, mus);
-
-printf("AZ: key rqid=%d, uuid=%s, tbl_idx=%d, wseq=%d\n", ((oplog_key_t*)realkey)->rqid, mus, ((oplog_key_t*)realkey)->tbl_idx, ((oplog_key_t*)realkey)->seq);
+        oplog_key_t* opkey = (oplog_key_t *)realkey;
+printf("AZ: key rqid=%d, uuid=%s, wseq=%d, tbl_idx=%d, stripe=%d\n", opkey->rqid, mus, opkey->seq, opkey->tbl_idx, opkey->stripe);
 
         char *data = bdb_temp_table_data(dbc);
         int datalen = bdb_temp_table_datasize(dbc);

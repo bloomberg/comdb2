@@ -14,6 +14,25 @@ failexit()
 }
 
 
+f1() {
+    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
+begin
+insert into t1 values (1, x'abcd')
+insert into t2 values (1, x'abcd')
+commit
+EOF
+}
+
+f2() {
+    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
+begin
+insert into t2 values (2, x'dcba')
+insert into t1 values (2, x'dcba')
+commit
+EOF
+}
+
+
 
 # debug=1
 
@@ -40,23 +59,10 @@ for node in $cluster ; do
     cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('on extended_sql_debug_trace')"
 done
 
-f1() {
-    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
-begin
-insert into t1 values (1, x'abcd')
-insert into t2 values (1, x'abcd')
-commit
-EOF
-}
+master=`getmaster`
 
-f2() {
-    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
-begin
-insert into t2 values (2, x'dcba')
-insert into t1 values (2, x'dcba')
-commit
-EOF
-}
+echo turn off ordering
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('reorder_blkseq_no_deadlock off')"
 
 echo run two transactions that will get in a deadlock
 echo will see DEADLOCK-CYCLE: in db log
@@ -78,11 +84,9 @@ if ! diff content.expected content.out ; then
 fi
 
 echo turn on ordering
-for node in $cluster ; do
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('reorder_blkseq_no_deadlock on')"
-done
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('reorder_blkseq_no_deadlock on')"
 
-echo there should be no dedlocks now
+echo there should be NO dedlocks now
 f1 &
 f2 &
 
@@ -105,7 +109,6 @@ if ! diff content.expected content.out ; then
 fi
 
 
-master=`getmaster`
 logfl=`cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('reql stat')" | grep "Eventlog enabled" | cut -f2 -d ':'`
 if [ "x$logfl" == "x" ]; then
     cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('reql stat')"
@@ -125,7 +128,7 @@ zcat $logfl > $logflunziped
 
 ddlk_cnt=`grep -c deadlock_cycle $logflunziped `
 if [ $ddlk_cnt != 1 ]; then
-    failexit 'expected only one deadlock in eventslog'
+    failexit 'expected only one deadlock in eventslog (from first trans)'
 fi
 
 cnonce_cnt=`grep deadlock_cycle $logflunziped | head -1 | sed 's/}/}\n/' | grep -c cnonce`
