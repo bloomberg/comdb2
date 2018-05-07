@@ -1991,7 +1991,7 @@ int load_record(struct dbtable *db, void *buf);
 void load_data_done(struct dbtable *db);
 
 /*index routines*/
-int ix_isnullk(struct dbtable *db, void *key, int ixnum);
+int ix_isnullk(void *db_table, void *key, int ixnum);
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
             unsigned long long genid, int rrn, void *dta, int dtalen, int isnull);
 int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,

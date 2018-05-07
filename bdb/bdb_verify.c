@@ -35,6 +35,9 @@
 #include "genid.h"
 #include "logmsg.h"
 
+/* NOTE: This is from "comdb2.h". */
+extern int ix_isnullk(void *db_table, void *key, int ixnum);
+
 /* print to sb if available lua callback otherwise */
 static int locprint(SBUF2 *sb, int (*lua_callback)(void *, const char *), 
         void *lua_params, char *fmt, ...)

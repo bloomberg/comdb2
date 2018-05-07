@@ -870,8 +870,9 @@ int cmp_context(struct ireq *iq, unsigned long long genid,
 /*        TRANSACTIONAL INDEX ROUTINES        */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-int ix_isnullk(struct dbtable *db, void *key, int ixnum)
+int ix_isnullk(void *db_table, void *key, int ixnum)
 {
+    struct dbtable *db = db_table;
     struct schema *dbixschema;
     int ifld;
     if (!db || !key || ixnum < 0 || ixnum >= db->nix) {
