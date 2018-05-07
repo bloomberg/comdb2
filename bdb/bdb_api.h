@@ -67,9 +67,6 @@ typedef struct bulk_dump bulk_dump;
 struct dtadump;
 typedef struct dtadump dtadump;
 
-/* NOTE: From "comdb2.h". */
-struct dbtable;
-
 typedef struct bdb_cursor_ser bdb_cursor_ser_t;
 struct bdb_cursor_ser {
     uint8_t opaque[64];
@@ -1626,7 +1623,7 @@ int bdb_user_password_delete(tran_type *tran, char *user);
 int bdb_user_get_all(char ***users, int *num);
 
 int bdb_verify(
-    SBUF2 *sb, bdb_state_type *bdb_state, dbtable *tbl,
+    SBUF2 *sb, bdb_state_type *bdb_state, void *db_table,
     int (*formkey_callback)(void *parm, void *dta, void *blob_parm, int ix,
                             void *keyout, int *keysz),
     int (*get_blob_sizes_callback)(void *parm, void *dta, int blobs[16],
