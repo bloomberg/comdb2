@@ -71,7 +71,9 @@ public class Comdb2Handle extends AbstractConnection {
     boolean statement_effects = false;
     boolean verifyretry = false;
     int soTimeout = 5000;
+    boolean hasComdb2dbTimeout;
     int comdb2dbTimeout = 5000;
+    boolean hasConnectTimeout;
     int connectTimeout = 100;
     int dbinfoTimeout = 500;
 
@@ -159,7 +161,9 @@ public class Comdb2Handle extends AbstractConnection {
         ret.statement_effects = statement_effects;
         ret.verifyretry = verifyretry;
         ret.soTimeout = soTimeout;
+        ret.hasComdb2dbTimeout = hasComdb2dbTimeout;
         ret.comdb2dbTimeout = comdb2dbTimeout;
+        ret.hasConnectTimeout = hasConnectTimeout;
         ret.connectTimeout = connectTimeout;
         ret.dbinfoTimeout = dbinfoTimeout;
 
@@ -489,7 +493,7 @@ public class Comdb2Handle extends AbstractConnection {
                     BBSysUtils.dbInfoQuery(this,
                             dbinfo, myDbName, myDbNum,
                             null, 0, validHosts, validPorts);
-                } catch (NoDbHostFoundException e) {
+                } catch (IOException e) {
                     validHosts.clear();
                 }
 
@@ -1141,7 +1145,7 @@ public class Comdb2Handle extends AbstractConnection {
                         BBSysUtils.dbInfoQuery(this,
                                 dbinfo, myDbName, myDbNum,
                                 null, 0, validHosts, validPorts);
-                    } catch (NoDbHostFoundException e) {
+                    } catch (IOException e) {
                         validHosts.clear();
                     }
 

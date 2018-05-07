@@ -125,10 +125,12 @@ public class Comdb2Connection implements Connection {
     }
 
     public void setConnectTimeout(int timeout) {
+        hndl.hasConnectTimeout = true;
         hndl.connectTimeout = timeout;
     }
 
     public void setComdb2dbTimeout(int timeout) {
+        hndl.hasComdb2dbTimeout = true;
         hndl.comdb2dbTimeout = timeout;
     }
 
