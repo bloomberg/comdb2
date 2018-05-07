@@ -336,8 +336,6 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
 
     if (p_buf >= p_buf_end) return NULL;
 
-    bzero(s, sizeof(struct schema_change_type));
-
     p_buf = (uint8_t *)buf_get(&s->rqid, sizeof(s->rqid), p_buf, p_buf_end);
 
     p_buf =
@@ -565,8 +563,6 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
 {
     /* get the beginning */
     uint8_t *p_buf = (uint8_t *)packed, *p_buf_end = p_buf + packed_len;
-
-    bzero(s, sizeof(struct schema_change_type));
 
     /* unpack all the data */
     p_buf = buf_get_schemachange(s, p_buf, p_buf_end);
