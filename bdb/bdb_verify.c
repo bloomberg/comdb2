@@ -560,6 +560,11 @@ static int bdb_verify_ll(
                 if (bdb_keycontainsgenid(bdb_state, ix)) {
                     unsigned long long masked_genid =
                         get_search_genid(bdb_state, genid);
+
+                    /* use 0 as the genid if no null values to keep it unique */
+                    if (bdb_state->ixnulls[ix] && !ix_isnullk(callback_parm, dbt_key.data, ix))
+                        masked_genid = 0;
+
                     memcpy((char *)dbt_key.data + keylen, &masked_genid,
                            sizeof(unsigned long long));
                     dbt_key.size += sizeof(unsigned long long);
