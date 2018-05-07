@@ -36,7 +36,6 @@
 
 #include "fwd_types.h"
 #include "bdb_net.h"
-#include "comdb2.h"
 
 #include <assert.h>
 /*#include "protobuf/sqlresponse.pb-c.h"*/
@@ -67,6 +66,9 @@ typedef struct bulk_dump bulk_dump;
 
 struct dtadump;
 typedef struct dtadump dtadump;
+
+/* NOTE: From "comdb2.h". */
+struct dbtable;
 
 typedef struct bdb_cursor_ser bdb_cursor_ser_t;
 struct bdb_cursor_ser {
