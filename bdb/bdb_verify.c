@@ -34,7 +34,6 @@
 
 #include "genid.h"
 #include "logmsg.h"
-#include "comdb2.h"
 
 /* print to sb if available lua callback otherwise */
 static int locprint(SBUF2 *sb, int (*lua_callback)(void *, const char *), 
