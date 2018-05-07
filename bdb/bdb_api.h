@@ -36,6 +36,8 @@
 
 #include "fwd_types.h"
 #include "bdb_net.h"
+#include "comdb2.h"
+
 #include <assert.h>
 /*#include "protobuf/sqlresponse.pb-c.h"*/
 
