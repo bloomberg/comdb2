@@ -3145,6 +3145,8 @@ static int init(int argc, char **argv)
         cacheszkb = atoi(argv[optind]);
     }
 
+    gbl_mynodeid = machine_num(gbl_mynode);
+
     pthread_attr_init(&gbl_pthread_attr);
     pthread_attr_setstacksize(&gbl_pthread_attr, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&gbl_pthread_attr, PTHREAD_CREATE_DETACHED);
@@ -4835,6 +4837,9 @@ static void register_all_int_switches()
     register_int_switch("mifid2_datetime_range",
                         "Extend datetime range to meet mifid2 requirements",
                         &gbl_mifid2_datetime_range);
+    register_int_switch("return_long_column_names",
+                        "Enables returning of long column names. (Default: ON)",
+                        &gbl_return_long_column_names);
 }
 
 static void getmyid(void)
@@ -5093,11 +5098,9 @@ int main(int argc, char **argv)
     if (comdb2ma_stats_cron() != 0)
         abort();
 
-    if (process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
-                                 deferred_do_commands)) {
-        logmsg(LOGMSG_FATAL, "failed to process deferred options\n");
-        exit(1);
-    }
+    process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
+                             deferred_do_commands);
+    clear_deferred_options(thedb, DEFERRED_SEND_COMMAND);
 
     // db started - disable recsize kludge so
     // new schemachanges won't allow broken size.

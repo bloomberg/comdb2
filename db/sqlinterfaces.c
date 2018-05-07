@@ -1943,7 +1943,7 @@ int typestr_to_type(const char *ctype)
     if (ctype == NULL)
         return SQLITE_TEXT;
     if ((strcmp("smallint", ctype) == 0) || (strcmp("int", ctype) == 0) ||
-        (strcmp("largeint", ctype) == 0))
+        (strcmp("largeint", ctype) == 0) || (strcmp("integer", ctype) == 0))
         return SQLITE_INTEGER;
     else if ((strcmp("smallfloat", ctype) == 0) ||
              (strcmp("float", ctype) == 0))
@@ -3285,9 +3285,8 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
             send_query_effects(clnt);
             WRITE_RESPONSE(RESPONSE_ROW_LAST, 0);
         } else {
+            clnt->had_errors = 1;
             send_run_error(clnt, errstr, rc);
-            if (rc)
-                return rc;
         }
     } else if ((clnt->osql.replay == OSQL_RETRY_NONE ||
                 clnt->osql.replay == OSQL_RETRY_HALT) &&

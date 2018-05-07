@@ -321,7 +321,9 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
 
         hash_del(center->cursorsuuid_hash, cur);
     } else {
-        cur = hash_find(center->cursors_hash, cid);
+        svc_cursor_t curkey = {0};
+        curkey.cid = cid;
+        cur = hash_find(center->cursors_hash, &curkey);
         if (!cur) {
             pthread_rwlock_unlock(&center->cursors_rwlock);
 
@@ -436,7 +438,13 @@ int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
 
     /* retrieve cursor */
     pthread_rwlock_rdlock(&center->cursors_rwlock);
-    cur = hash_find_readonly(center->cursors_hash, cid);
+    if (isuuid)
+        cur = hash_find_readonly(center->cursorsuuid_hash, cid);
+    else {
+        svc_cursor_t curkey = {0};
+        curkey.cid = cid;
+        cur = hash_find_readonly(center->cursors_hash, &curkey);
+    }
     pthread_rwlock_unlock(&center->cursors_rwlock);
 
     /* TODO: we assumed here nobody can close this cursor except ourselves; pls
@@ -1195,7 +1203,13 @@ int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
 
     /* retrieve cursor */
     pthread_rwlock_rdlock(&center->cursors_rwlock);
-    cur = hash_find_readonly(center->cursors_hash, cid);
+    if (isuuid)
+        cur = hash_find_readonly(center->cursorsuuid_hash, cid);
+    else {
+        svc_cursor_t curkey = {0};
+        curkey.cid = cid;
+        cur = hash_find_readonly(center->cursors_hash, &curkey);
+    }
     pthread_rwlock_unlock(&center->cursors_rwlock);
 
     if (cur) {
@@ -1328,7 +1342,7 @@ void fdb_svc_trans_destroy(struct sqlclntstate *clnt)
  * Retrieve a transaction, if any, for a cid
  *
  */
-int fdb_svc_trans_get_tid(const char *cid, char *tid, int isuuid)
+int fdb_svc_trans_get_tid(char *cid, char *tid, int isuuid)
 {
     svc_cursor_t *cur;
 
@@ -1338,8 +1352,11 @@ int fdb_svc_trans_get_tid(const char *cid, char *tid, int isuuid)
     pthread_rwlock_rdlock(&center->cursors_rwlock);
     if (isuuid)
         cur = hash_find_readonly(center->cursorsuuid_hash, cid);
-    else
-        cur = hash_find_readonly(center->cursors_hash, cid);
+    else {
+        svc_cursor_t curkey = {0};
+        curkey.cid = cid;
+        cur = hash_find_readonly(center->cursors_hash, &curkey);
+    }
 
     if (cur) {
         if (isuuid)
