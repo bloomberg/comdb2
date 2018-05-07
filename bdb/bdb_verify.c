@@ -557,7 +557,7 @@ static int bdb_verify_ll(
 
                 memcpy(dbt_key.data, expected_keybuf, keylen);
                 dbt_key.size = keylen;
-                if (bdb_state->ixdups[ix]) {
+                if (bdb_keycontainsgenid(bdb_state, ix)) {
                     unsigned long long masked_genid =
                         get_search_genid(bdb_state, genid);
                     memcpy((char *)dbt_key.data + keylen, &masked_genid,
@@ -864,8 +864,9 @@ static int bdb_verify_ll(
                 goto next_key;
             }
 
-            if (bdb_state->ixdups[ix])
+            if (bdb_keycontainsgenid(bdb_state, ix))
                 keylen += sizeof(unsigned long long);
+
             if (keylen != dbt_key.size) {
                 ret = 1;
                 locprint(sb, lua_callback, lua_params,
