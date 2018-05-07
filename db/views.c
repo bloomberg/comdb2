@@ -2901,9 +2901,8 @@ void check_columns_null_and_dbstore(const char *name, struct dbtable *tbl)
 
     for (i = 0; i < sc->nmembers; i++) {
         if (sc->member[i].in_default && !(sc->member[i].flags & NO_NULL)) {
-            logmsg(LOGMSG_WARN,
-                   "WARNING: Partition %s schema field %s that "
-                   "has dbstore but cannot be set NULL\n",
+            logmsg(LOGMSG_WARN, "WARNING: Partition %s schema field %s that "
+                                "has dbstore but cannot be set NULL\n",
                    name, sc->member[i].name);
         }
     }
