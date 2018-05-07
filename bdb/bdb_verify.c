@@ -34,6 +34,7 @@
 
 #include "genid.h"
 #include "logmsg.h"
+#include "comdb2.h"
 
 /* print to sb if available lua callback otherwise */
 static int locprint(SBUF2 *sb, int (*lua_callback)(void *, const char *), 
@@ -53,7 +54,7 @@ static int locprint(SBUF2 *sb, int (*lua_callback)(void *, const char *),
 }
 
 static int bdb_verify_ll(
-    SBUF2 *sb, bdb_state_type *bdb_state,
+    SBUF2 *sb, bdb_state_type *bdb_state, dbtable *tbl,
     int (*formkey_callback)(void *parm, void *dta, void *blob_parm, int ix,
                             void *keyout, int *keysz),
     int (*get_blob_sizes_callback)(void *parm, void *dta, int blobs[16],
@@ -70,7 +71,7 @@ static int bdb_verify_ll(
     int attempt_fix, unsigned int lid);
 
 int bdb_verify(
-    SBUF2 *sb, bdb_state_type *bdb_state,
+    SBUF2 *sb, bdb_state_type *bdb_state, dbtable *tbl,
     int (*formkey_callback)(void *parm, void *dta, void *blob_parm, int ix,
                             void *keyout, int *keysz),
     int (*get_blob_sizes_callback)(void *parm, void *dta, int blobs[16],
@@ -100,7 +101,7 @@ int bdb_verify(
         return rc;
     }
 
-    rc = bdb_verify_ll(sb, bdb_state, formkey_callback, get_blob_sizes_callback,
+    rc = bdb_verify_ll(sb, bdb_state, tbl, formkey_callback, get_blob_sizes_callback,
                        vtag_callback, add_blob_buffer_callback,
                        free_blob_buffer_callback, verify_indexes_callback,
                        callback_parm, 
@@ -275,7 +276,7 @@ extern int gbl_expressions_indexes;
 int is_comdb2_index_expression(const char *dbname);
 /* TODO: handle deadlock, get rowlocks if db in rowlocks mode */
 static int bdb_verify_ll(
-    SBUF2 *sb, bdb_state_type *bdb_state,
+    SBUF2 *sb, bdb_state_type *bdb_state, dbtable *tbl,
     int (*formkey_callback)(void *parm, void *dta, void *blob_parm, int ix,
                             void *keyout, int *keysz),
     int (*get_blob_sizes_callback)(void *parm, void *dta, int blobs[16],
@@ -562,7 +563,7 @@ static int bdb_verify_ll(
                         get_search_genid(bdb_state, genid);
 
                     /* use 0 as the genid if no null values to keep it unique */
-                    if (bdb_state->ixnulls[ix] && !ix_isnullk(callback_parm, dbt_key.data, ix))
+                    if (bdb_state->ixnulls[ix] && !ix_isnullk(tbl, dbt_key.data, ix))
                         masked_genid = 0;
 
                     memcpy((char *)dbt_key.data + keylen, &masked_genid,

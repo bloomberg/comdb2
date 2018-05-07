@@ -1622,7 +1622,7 @@ int bdb_user_password_delete(tran_type *tran, char *user);
 int bdb_user_get_all(char ***users, int *num);
 
 int bdb_verify(
-    SBUF2 *sb, bdb_state_type *bdb_state,
+    SBUF2 *sb, bdb_state_type *bdb_state, dbtable *tbl,
     int (*formkey_callback)(void *parm, void *dta, void *blob_parm, int ix,
                             void *keyout, int *keysz),
     int (*get_blob_sizes_callback)(void *parm, void *dta, int blobs[16],
