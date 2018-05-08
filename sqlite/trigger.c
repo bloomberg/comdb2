@@ -722,7 +722,7 @@ static int codeTriggerProgram(
           targetSrcList(pParse, pStep),
           sqlite3SelectDup(db, pStep->pSelect, 0), 
           sqlite3IdListDup(db, pStep->pIdList), 
-          pParse->eOrconf
+          0
         );
         break;
       }

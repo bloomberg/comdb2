@@ -239,8 +239,8 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
 //
 %fallback ID
   ABORT ACTION AFTER ANALYZE ASC ATTACH BEFORE BEGIN BY CASCADE CAST COLUMNKW
-  CONFLICT DATABASE DEFERRED DESC DETACH EACH END EXCLUSIVE EXPLAIN FAIL
-  IGNORE IMMEDIATE INITIALLY INSTEAD LIKE_KW MATCH NO PLAN
+  CONFLICT DATABASE DEFERRED DESC DETACH DO EACH END EXCLUSIVE EXPLAIN FAIL
+  IGNORE IMMEDIATE INITIALLY INSTEAD LIKE_KW MATCH NO NOTHING PLAN
   QUERY OF OFFSET PRAGMA RAISE RECURSIVE RELEASE REPLACE RESTRICT ROW
   ROLLBACK SAVEPOINT TEMP TRIGGER VACUUM VIEW VIRTUAL WITH WITHOUT
 %ifdef SQLITE_OMIT_COMPOUND_SELECT
@@ -866,37 +866,56 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
 setlist(A) ::= setlist(A) COMMA nm(X) EQ expr(Y). {
   A = sqlite3ExprListAppend(pParse, A, Y.pExpr);
   sqlite3ExprListSetName(pParse, A, &X, 1);
+  sqlite3ExprListSetSpan(pParse, A, &Y);
 }
 setlist(A) ::= setlist(A) COMMA LP idlist(X) RP EQ expr(Y). {
   A = sqlite3ExprListAppendVector(pParse, A, X, Y.pExpr);
+  sqlite3ExprListSetSpan(pParse, A, &Y);
 }
 setlist(A) ::= nm(X) EQ expr(Y). {
   A = sqlite3ExprListAppend(pParse, 0, Y.pExpr);
   sqlite3ExprListSetName(pParse, A, &X, 1);
+  sqlite3ExprListSetSpan(pParse, A, &Y);
 }
+
 setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
   A = sqlite3ExprListAppendVector(pParse, 0, X, Y.pExpr);
+  sqlite3ExprListSetSpan(pParse, A, &Y);
 }
 
 ////////////////////////// The INSERT command /////////////////////////////////
 //
-cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) select(S). {
+cmd ::= with(W) INSERT INTO fullname(X) idlist_opt(F) select(S) onconf_opt(A).{
   sqlite3WithPush(pParse, W, 1);
   sqlite3FingerprintInsert(pParse->db, X, S, F, W);
-  sqlite3Insert(pParse, X, S, F, R);
+  sqlite3Insert(pParse, X, S, F, A);
 }
+
+cmd ::= with(W) replace_cmd(A) INTO fullname(X) idlist_opt(F) select(S). {
+  sqlite3WithPush(pParse, W, 1);
+  sqlite3FingerprintInsert(pParse->db, X, S, F, W);
+  sqlite3Insert(pParse, X, S, F, A);
+}
+
+%ifdef COMDB2_UNSUPPORTED
 cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) DEFAULT VALUES.
 {
   sqlite3WithPush(pParse, W, 1);
   sqlite3FingerprintInsert(pParse->db, X, NULL, F, W);
   sqlite3Insert(pParse, X, NULL, F, R);
 }
+%endif
 
 %type insert_cmd {int}
 insert_cmd(A) ::= INSERT orconf(R).   {A = R;}
 %ifdef COMDB2_UNSUPPORTED
-insert_cmd(A) ::= REPLACE.            {A = OE_Replace;} 
+insert_cmd(A) ::= REPLACE.            {A = OE_Replace;}
 %endif
+
+%type replace_cmd {Cdb2OnConflict*}
+%destructor replace_cmd {comdb2OnConflictDelete(pParse->db, $$);}
+replace_cmd(A) ::= REPLACE.
+    {A = comdb2OnConflictCreate(pParse->db, OE_Replace, 0, 0);}
 
 %type idlist_opt {IdList*}
 %destructor idlist_opt {sqlite3IdListDelete(pParse->db, $$);}
@@ -909,6 +928,21 @@ idlist(A) ::= idlist(A) COMMA nm(Y).
     {A = sqlite3IdListAppend(pParse->db,A,&Y);}
 idlist(A) ::= nm(Y).
     {A = sqlite3IdListAppend(pParse->db,0,&Y); /*A-overwrites-Y*/}
+
+%type onconf_opt {Cdb2OnConflict*}
+%destructor onconf_opt {comdb2OnConflictDelete(pParse->db, $$);}
+onconf_opt(A) ::= . { A = 0; }
+onconf_opt(A) ::= ON CONFLICT onconf_act(X). { A = X; }
+%type onconf_act {Cdb2OnConflict*}
+onconf_act(A) ::= DO NOTHING. {
+    A = comdb2OnConflictCreate(pParse->db, OE_Ignore, 0, 0);
+}
+onconf_act(A) ::= DO REPLACE. {
+    A = comdb2OnConflictCreate(pParse->db, OE_Replace, 0, 0);
+}
+onconf_act(A) ::= DO UPDATE SET setlist(L). {
+    A = comdb2OnConflictCreate(pParse->db, OE_Upsert, L, 0);
+}
 
 /////////////////////////// Expression Processing /////////////////////////////
 //
@@ -1073,6 +1107,7 @@ term(A) ::= CTIME_KW(OP). {
 
 expr(A) ::= LP(L) nexprlist(X) COMMA expr(Y) RP(R). {
   ExprList *pList = sqlite3ExprListAppend(pParse, X, Y.pExpr);
+  //sqlite3ExprListSetSpan(pParse,pList,&Y);
   A.pExpr = sqlite3PExpr(pParse, TK_VECTOR, 0, 0, 0);
   if( A.pExpr ){
     A.pExpr->x.pList = pList;

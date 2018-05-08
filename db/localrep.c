@@ -707,7 +707,7 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
     rc = add_record(&aiq, trans, p_buf_tag_name, p_buf_tag_name_end, p_buf_data,
                     p_buf_data_end, (unsigned char *)nulls, blobs, MAXBLOBS,
                     &err, &fix, &rrn, &genid, -1ULL, BLOCK2_ADDKL, 0,
-                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS);
+                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS, 0);
 
     iq->blkstate->pos++;
 
@@ -761,7 +761,7 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     rc = add_record(iq, trans, p_buf_tag_name, p_buf_tag_name_end, p_buf_data,
                     p_buf_data_end, nulls, blobs, MAXBLOBS, &err, &fix, &rrn,
                     &genid, -1ULL, BLOCK2_ADDKL, 0,
-                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS);
+                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS, 0);
 
     if (iq->debug)
         reqpopprefixes(iq, 1);

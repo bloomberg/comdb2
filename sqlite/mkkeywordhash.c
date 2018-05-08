@@ -330,6 +330,8 @@ static Keyword aKeywordTable[] = {
   { "DDL",              "TK_DDL",           ALWAYS,                 0},
   { "USERSCHEMA",       "TK_USERSCHEMA",    ALWAYS,                 0},
   { "ZLIB",             "TK_ZLIB",          ALWAYS,                 0},
+  { "DO",               "TK_DO",            ALWAYS,                 0},
+  { "NOTHING",          "TK_NOTHING",       ALWAYS,                 0},
 };
 
 /* Number of keywords */

@@ -908,7 +908,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         break;
     case OP_NotExists:
         strbuf_appendf(out,
-                       "If record id in R%d can't be found using cursor [%d]",
+                       "If record id in R%d can't be found using cursor [%d], ",
                        op->p3, op->p1);
         if (op->p2)
             strbuf_appendf(out, "go to %d", op->p2);

@@ -525,7 +525,7 @@ void sqlite3DeleteFrom(
       }
       testcase( IsVirtual(pTab) );
       sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, OPFLAG_FORDELETE,
-                                 iTabCur, aToOpen, &iDataCur, &iIdxCur);
+                                 iTabCur, aToOpen, &iDataCur, &iIdxCur, 0);
       assert( pPk || IsVirtual(pTab) || iDataCur==iTabCur );
       assert( pPk || IsVirtual(pTab) || iIdxCur==iDataCur+1 );
       if( eOnePass==ONEPASS_MULTI ) sqlite3VdbeJumpHere(v, iAddrOnce);

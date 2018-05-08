@@ -1699,6 +1699,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             bzero(&clnt.effects, sizeof(clnt.effects));
             bzero(&clnt.log_effects, sizeof(clnt.log_effects));
             clnt.trans_has_sp = 0;
+            clnt.verify_retries = 0;
         }
         clnt.is_newsql = 1;
         if (clnt.dbtran.mode < TRANLEVEL_SOSQL) {

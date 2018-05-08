@@ -324,7 +324,7 @@ void sqlite3Update(
    * Comdb2 modification: create our updCols array.
    */
   if(isView && strncmp(pTab->aCol[0].zName, "__hidden__rowid",
-                       strlen("__hidden__rowid")+1) == 0){
+                       sizeof("__hidden__rowid")) == 0){
           sqlite3CreateUpdCols(v, db, pTab->nCol-1, aXRef+1);
   } else {
     sqlite3CreateUpdCols(v, db, pTab->nCol, aXRef);
@@ -470,7 +470,7 @@ void sqlite3Update(
     /* COMDB2 MODIFICATION */
     /* AZ: if i dont call, i get a segfault */
     sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, iBaseCur, aToOpen,
-                               0, 0);
+                               0, 0, 0);
   }
 
   /* Top of the update loop */
@@ -617,7 +617,7 @@ void sqlite3Update(
     assert( regOldRowid>0 );
     sqlite3GenerateConstraintChecks(pParse, pTab, aRegIdx, iDataCur, iIdxCur,
         regNewRowid, regOldRowid, chngKey, onError, labelContinue, &bReplace,
-        aXRef);
+        aXRef, 0);
 
     /* Do FK constraint checks. */
     if( hasFK ){
