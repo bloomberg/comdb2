@@ -1,21 +1,21 @@
 [DROP TABLE t1] failed with rc -3 no such table: t1
 [DROP TABLE t2] failed with rc -3 no such table: t2
-sqlite_stat1
-sqlite_stat4
-t1
-t2
-sqlite_stat1
-sqlite_stat4
-t1
-t2
-sqlite_stat1
-sqlite_stat4
-t1
-t2
-sqlite_stat1
-sqlite_stat4
-t1
-t2
+(tablename='sqlite_stat1')
+(tablename='sqlite_stat4')
+(tablename='t1')
+(tablename='t2')
+(tablename='sqlite_stat1')
+(tablename='sqlite_stat4')
+(tablename='t1')
+(tablename='t2')
+(tablename='sqlite_stat1')
+(tablename='sqlite_stat4')
+(tablename='t1')
+(tablename='t2')
+(tablename='sqlite_stat1')
+(tablename='sqlite_stat4')
+(tablename='t1')
+(tablename='t2')
 unknown @ls sub-command foo
 table name required
 table name required

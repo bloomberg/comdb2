@@ -476,10 +476,10 @@ static int process_escape(const char *cmdstr)
     if (!tok)
         return 0;
 
-    if (strcmp(tok, "cdb2_close") == 0) {
+    if (strcasecmp(tok, "cdb2_close") == 0) {
         cdb2_close(cdb2h);
         cdb2h = NULL;
-    } else if (strcmp(tok, "redirect") == 0) {
+    } else if (strcasecmp(tok, "redirect") == 0) {
         tok = strtok_r(NULL, delims, &lasts);
 
         /* Close the redirect file. */
@@ -511,38 +511,34 @@ static int process_escape(const char *cmdstr)
             }
             dup2(fileno(redirect), 1);
         }
-    } else if (strcmp(tok, "row_sleep") == 0) {
+    } else if (strcasecmp(tok, "row_sleep") == 0) {
         tok = strtok_r(NULL, delims, &lasts);
         if (!tok) {
             fprintf(stderr, "expected row sleep in seconds\n");
             return -1;
         }
         rowsleep = atoi(tok);
-    } else if (strcmp(tok, "strblobs") == 0) {
+    } else if (strcasecmp(tok, "strblobs") == 0) {
         string_blobs = 1;
         printf("Blobs will be displayed as strings\n");
-    } else if (strcmp(tok, "hexblobs") == 0) {
+    } else if (strcasecmp(tok, "hexblobs") == 0) {
         string_blobs = 0;
         printf("Blobs will be displayed as hex\n");
-    } else if (strcmp(tok, "time") == 0) {
+    } else if (strcasecmp(tok, "time") == 0) {
         time_mode = time_mode ? 0 : 1;
         printf("Timing mode %s\n", time_mode ? "ON" : "OFF");
-    } else if ((strcmp(tok, "ls") == 0) || (strcmp(tok, "list") == 0)) {
+    } else if ((strcasecmp(tok, "ls") == 0) || (strcasecmp(tok, "list") == 0)) {
         tok = strtok_r(NULL, delims, &lasts);
-        if (!tok || strcmp(tok, "tables") == 0) {
+        if (!tok || strcasecmp(tok, "tables") == 0) {
             int start_time_ms, run_time_ms;
             const char *sql = "SELECT tablename FROM comdb2_tables";
-            int saved_printmode;
 
-            saved_printmode = printmode;
-            printmode = TABS;
             run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
-            printmode = saved_printmode;
         } else {
             fprintf(stderr, "unknown @ls sub-command %s\n", tok);
             return -1;
         }
-    } else if ((strcmp(tok, "desc") == 0) || (strcmp(tok, "describe") == 0)) {
+    } else if ((strcasecmp(tok, "desc") == 0) || (strcasecmp(tok, "describe") == 0)) {
         tok = strtok_r(NULL, delims, &lasts);
         if (!tok) {
             fprintf(stderr, "table name required\n");
