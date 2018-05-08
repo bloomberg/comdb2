@@ -2,7 +2,7 @@
 
 #set -x
 
-vars="HOSTNAME TESTSROOTDIR TESTDIR COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port pmux_cmd"
+vars="HOSTNAME TESTSROOTDIR TESTDIR COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE"
 for required in $vars; do
     q=${!required}
     if [[ -z "$q" ]]; then
@@ -12,7 +12,21 @@ for required in $vars; do
 #    echo "$required=$q"
 done
 
+pmux_port=${pmux_port:-5105}
 source $TESTSROOTDIR/setup.common
+
+pmux_cmd="${PMUX_EXE} -l"
+if [ -n "${PMUXPORT}" ] ; then
+    pmux_port=${PMUXPORT}
+    pmux_socket=/tmp/pmux.socket.${PMUXPORT}
+    pmux_port_range="-r $((pmux_port+1)):$((pmux_port+200))"
+    pmux_cmd="${PMUX_EXE} -l -p ${PMUXPORT} -b ${pmux_socket} ${pmux_port_range}"
+fi
+
+
+
+stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} && echo exit >&3 ) || echo PMUX DOWN"
+
 copy_files_to_cluster() 
 {
     echo copying executables to each node except localhost
@@ -42,9 +56,10 @@ if [ -n "$RESTARTPMUX" ] ; then
     eval $stop_pmux
 fi
 echo start pmux on local host if not running
-COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" $pmux_cmd
+COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" $pmux_cmd 2>&1
 
 # if CLUSTER is length is nonzero copy to cluster
 if [[ -n "$CLUSTER" ]] ; then 
+    set -e
     copy_files_to_cluster
 fi
