@@ -74,25 +74,29 @@ cleanup_cluster() {
     fi
 
     for node in ${CLUSTER/$HOSTNAME/}; do
-        if [ "$node" != "$HOSTNAME" ] ; then
-            ${TESTSROOTDIR}/tools/send_msg_port.sh -h $node "get comdb2/replication/${DBNAME}" ${pmux_port}
-            echo deregistering $DBNAME from $node pmux:$pmux_port
-            ssh -o StrictHostKeyChecking=no $node "${deregister_db_port}" < /dev/null
-        fi
+        ${TESTSROOTDIR}/tools/send_msg_port.sh -h $node "get comdb2/replication/${DBNAME}" ${pmux_port}
+        echo deregistering $DBNAME from $node pmux:$pmux_port
+        ssh -o StrictHostKeyChecking=no $node "${deregister_db_port}" < /dev/null
         if [ "x$DBDIR" == "x" ] ; then 
             continue
-        fi
-        if [ "$node" == "$HOSTNAME" ]  ; then
-            continue;
         fi
 
         if [ "$successful" != "1" ] ; then 
             echo copy $node:${TESTDIR} content locally to $TESTDIR/$node for investigation
-            scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node < /dev/null
+            scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node < /dev/null &
         elif [ "$CLEANUPDBDIR" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
-            ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.*" < /dev/null
+            ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.*" < /dev/null &
         fi
     done
+    wait
+}
+
+flush_node() {
+    local node=$1
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("flush")' &
+    sleep 1
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("reql events off")' &
+    sleep 1
 }
 
 
@@ -118,12 +122,10 @@ else
     pidfilelist=""
 
     for node in $CLUSTER; do
-        cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("flush")' &
-        sleep 1
-        cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("reql events off")' &
-        sleep 1
+        flush_node $node &
         build_pidfilelist ${TMPDIR}/${DBNAME}.${node}.pid
     done
+    wait
 
     # for clustered, killing ssh session which is running comdb2 cmd 
     # will kill server on that node

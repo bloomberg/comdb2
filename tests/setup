@@ -281,7 +281,6 @@ else
     i=0
     for node in ${CLUSTER/$HOSTNAME/}; do
         wait ${pids[$i]}
-#comdb2ar="$COMDB2AR_EXE" $COPYCOMDB2_EXE ${LRL} ${node}: &> $TESTDIR/logs/${DBNAME}.${node}.copy
         if [[ $? -ne 0 ]]; then
             echo "FAILED: $COPYCOMDB2_EXE ${LRL} ${node}: "
             echo "see $TESTDIR/logs/${DBNAME}.${node}.copy "

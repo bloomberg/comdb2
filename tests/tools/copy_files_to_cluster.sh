@@ -31,32 +31,47 @@ SSH_OPT="-o StrictHostKeyChecking=no "
 #use connection sharing via master node
 SSH_MSTR="-o ControlPath=$TESTDIR/%r%h%p"
 
+copy_files_to_node() {
+    local node=$1
+    echo "copying to node $node"
+    ssh $SSH_OPT $SSH_MSTR -MNf $node   #start master ssh session for node
+    ssh $SSH_OPT $SSH_MSTR $node "mkdir -p $d1 $d2 $d3 $PMUX_DIR $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
+    scp $SSH_OPT $SSH_MSTR $COMDB2AR_EXE $node:$COMDB2AR_EXE
+    scp $SSH_OPT $SSH_MSTR $COMDB2_EXE $node:$COMDB2_EXE
+    scp $SSH_OPT $SSH_MSTR $CDB2SQL_EXE $node:$CDB2SQL_EXE
+    if [ -n "$RESTARTPMUX" ] ; then
+        echo stop pmux on $node first before copying and starting it
+        ssh $SSH_OPT $SSH_MSTR $node "$stop_pmux" < /dev/null
+    fi
+    set +e
+    scp $SSH_OPT $SSH_MSTR $PMUX_EXE $node:$PMUX_EXE
+    echo start pmux on $node if not running 
+    ssh $SSH_OPT $SSH_MSTR $node "COMDB2_PMUX_FILE='$PMUX_DIR/pmux.sqlite' $pmux_cmd" < /dev/null
+    ssh $SSH_OPT $SSH_MSTR -O exit $node #close master ssh session
+    set -e
+}
 
 copy_files_to_cluster() 
 {
     echo copying executables to each node except localhost
+    local node
+    local i=0
+    declare -a pids
     for node in ${CLUSTER/$HOSTNAME/}; do
         if [ $node == $HOSTNAME ] ; then
             echo "Error: hostname is in the CLUSTER list -HOSTNAME"
             exit 1
         fi
-
-        ssh $SSH_OPT $SSH_MSTR -MNf $node   #start master ssh session for node
-        ssh $SSH_OPT $SSH_MSTR $node "mkdir -p $d1 $d2 $d3 $PMUX_DIR $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
-        scp $SSH_OPT $SSH_MSTR $COMDB2AR_EXE $node:$COMDB2AR_EXE
-        scp $SSH_OPT $SSH_MSTR $COMDB2_EXE $node:$COMDB2_EXE
-        scp $SSH_OPT $SSH_MSTR $CDB2SQL_EXE $node:$CDB2SQL_EXE
-        if [ -n "$RESTARTPMUX" ] ; then
-            echo stop pmux on $node first before copying and starting it
-            ssh $SSH_OPT $SSH_MSTR $node "$stop_pmux" < /dev/null
-        fi
-        set +e
-        scp $SSH_OPT $SSH_MSTR $PMUX_EXE $node:$PMUX_EXE
-        echo start pmux on $node if not running 
-        ssh $SSH_OPT $SSH_MSTR $node "COMDB2_PMUX_FILE='$PMUX_DIR/pmux.sqlite' $pmux_cmd" < /dev/null
-        ssh $SSH_OPT $SSH_MSTR -O exit $node #close master ssh session
-        set -e
+        copy_files_to_node $node &
+        pids[$i]=$!
+        let i=i+1
     done
+    i=0
+    for node in ${CLUSTER/$HOSTNAME/}; do
+        wait ${pids[$i]}
+        let i=i+1
+    done
+    echo "done copying to all cluster nodes"
 }
 
 
@@ -71,4 +86,5 @@ COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" $pmux_cmd 2>&1
 if [[ -n "$CLUSTER" ]] ; then 
     set -e
     copy_files_to_cluster
+    set +e
 fi
