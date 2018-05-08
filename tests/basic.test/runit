@@ -348,23 +348,32 @@ exitCode=$?
 set +errexit
 assertbadexitcode $exitCode
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(2)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
 assertres "${res}" "NULL\nNULL\n1\n2"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t3 where x is null"
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
 assertres "${res}" "1\n2"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
 assertres "${res}" "NULL\nNULL\n1\n2"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "update t3 set x = NULL where x = 1"
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
 assertres "${res}" "NULL\nNULL\nNULL\n2"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "update t3 set x = NULL"
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
 assertres "${res}" "NULL\nNULL\nNULL\nNULL"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop index t3_x"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
 
 echo "Success"
