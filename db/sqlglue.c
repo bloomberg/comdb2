@@ -1668,10 +1668,9 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
     for (int ixnum = 0; ixnum < tbl->nix; ixnum++) {
         strbuf_clear(sql);
 
-        snprintf(namebuf, sizeof(namebuf), ".ONDISK_ix_%d", ixnum);
-        schema = find_tag_schema(tbl->tablename, namebuf);
+        schema = tbl->schema->ix[ixnum];
         if (schema == NULL) {
-            logmsg(LOGMSG_ERROR, "No %s tag for table %s\n", namebuf,
+            logmsg(LOGMSG_ERROR, "No index %d schema for table %s\n", ixnum,
                    tbl->tablename);
             strbuf_free(sql);
             return -1;
@@ -1965,7 +1964,7 @@ int schema_var_size(struct schema *sc)
 
 static int indexes_thread_memory = 1048576;
 /* force an update on sqlite_master to test partial indexes syntax*/
-int new_indexes_syntax_check(struct ireq *iq)
+int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
 {
     int rc = 0;
     sqlite3 *hndl = NULL;
@@ -1973,12 +1972,28 @@ int new_indexes_syntax_check(struct ireq *iq)
     const char *temp = "select 1 from sqlite_master limit 1";
     char *err = NULL;
     int got_curtran = 0;
+    master_entry_t *ents = NULL;
+    int nents = 0;
 
     if (!gbl_partial_indexes)
         return -1;
 
     sql_mem_init(NULL);
     thread_memcreate(indexes_thread_memory);
+
+    rc = create_sqlmaster_record(db, NULL);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to create sqlmaster record\n",
+               __func__);
+        sql_mem_shutdown(NULL);
+        return -1;
+    }
+    ents = create_master_entry_array(&db, 1, &nents);
+    if (!ents) {
+        logmsg(LOGMSG_ERROR, "%s: failed to create master entries\n", __func__);
+        sql_mem_shutdown(NULL);
+        return -1;
+    }
 
     reset_clnt(&client, NULL, 1);
     client.sb = NULL;
@@ -1991,7 +2006,9 @@ int new_indexes_syntax_check(struct ireq *iq)
     client.debug_sqlclntstate = pthread_self();
     sqlthd->clnt = &client;
 
-    get_copy_rootpages_nolock(sqlthd);
+    get_copy_rootpages_custom(sqlthd, ents, nents);
+
+    destroy_sqlite_master(ents, nents);
 
     rc = sqlite3_open_serial("db", &hndl, NULL);
     if (rc) {
