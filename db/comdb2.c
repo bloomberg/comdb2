@@ -1330,7 +1330,7 @@ void clean_exit_sigwrap(int signum) {
 }
 
 static void free_sqlite_table(struct dbenv *dbenv)
-{    
+{
     for (int i = dbenv->num_dbs - 1; i >= 0; i--) {
         struct dbtable *tbl = dbenv->dbs[i];
         delete_schema(tbl->tablename); // tags hash
@@ -1399,7 +1399,7 @@ void clean_exit(void)
     free(gbl_dbdir);
     free(gbl_myhostname);
 
-    cleanresources(); //list of lrls
+    cleanresources(); // list of lrls
     clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
@@ -2991,8 +2991,6 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     return 0;
 }
 
-
-
 static void load_dbstore_tableversion(struct dbenv *dbenv)
 {
     int i;
@@ -3330,7 +3328,8 @@ static int init(int argc, char **argv)
         if (nlogfiles == 0) {
             logmsg(LOGMSG_FATAL, "ZERO log files found in %s!\n", txndir);
             logmsg(LOGMSG_FATAL, "Cannot start without logfiles.\n");
-            logmsg(LOGMSG_FATAL, "If this is a clustered database then you should copycomdb2 from the master.\n");
+            logmsg(LOGMSG_FATAL, "If this is a clustered database then you "
+                                 "should copycomdb2 from the master.\n");
             if (!noabort)
                 exit(1);
         }

@@ -106,7 +106,6 @@ static int intern_free(void *ptr, void *unused)
     return 0;
 }
 
-
 void cleanup_interned_strings()
 {
     hash_for(interned_strings, intern_free, NULL);

@@ -2775,12 +2775,13 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
             tmp = tmp->next;
 
         if (!tmp) {
-            logmsg(LOGMSG_WARN, "%s: failed to find host_node in %s netinfo list!"
-                    "(probably removed from net_decom_node)\n",
-                    __func__, netinfo_ptr->service);
+            logmsg(LOGMSG_WARN,
+                   "%s: failed to find host_node in %s netinfo list!"
+                   "(probably removed from net_decom_node)\n",
+                   __func__, netinfo_ptr->service);
         } else {
             logmsg(LOGMSG_INFO, "%s: found host_node in %s netinfo list\n",
-                    __func__, netinfo_ptr->service);
+                   __func__, netinfo_ptr->service);
 
             tmp->next = host_node_ptr->next;
         }
@@ -2850,7 +2851,6 @@ void net_cleanup_netinfo(netinfo_type *netinfo_ptr)
     }
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 }
-
 
 sanc_node_type *net_add_to_sanctioned(netinfo_type *netinfo_ptr,
                                       char hostname[], int portnum)
