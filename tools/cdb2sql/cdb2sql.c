@@ -455,6 +455,9 @@ void *get_val(const char **sqlstr, int type, int *vallen)
     return NULL;
 }
 
+static int run_statement(const char *sql, int ntypes, int *types,
+                         int *start_time, int *run_time);
+
 static int process_escape(const char *cmdstr)
 {
     char copy[256];
@@ -473,10 +476,10 @@ static int process_escape(const char *cmdstr)
     if (!tok)
         return 0;
 
-    if (strcmp(tok, "cdb2_close") == 0) {
+    if (strcasecmp(tok, "cdb2_close") == 0) {
         cdb2_close(cdb2h);
         cdb2h = NULL;
-    } else if (strcmp(tok, "redirect") == 0) {
+    } else if (strcasecmp(tok, "redirect") == 0) {
         tok = strtok_r(NULL, delims, &lasts);
 
         /* Close the redirect file. */
@@ -508,22 +511,92 @@ static int process_escape(const char *cmdstr)
             }
             dup2(fileno(redirect), 1);
         }
-    } else if (strcmp(tok, "row_sleep") == 0) {
+    } else if (strcasecmp(tok, "row_sleep") == 0) {
         tok = strtok_r(NULL, delims, &lasts);
         if (!tok) {
             fprintf(stderr, "expected row sleep in seconds\n");
             return -1;
         }
         rowsleep = atoi(tok);
-    } else if (strcmp(tok, "strblobs") == 0) {
+    } else if (strcasecmp(tok, "strblobs") == 0) {
         string_blobs = 1;
         printf("Blobs will be displayed as strings\n");
-    } else if (strcmp(tok, "hexblobs") == 0) {
+    } else if (strcasecmp(tok, "hexblobs") == 0) {
         string_blobs = 0;
         printf("Blobs will be displayed as hex\n");
-    } else if (strcmp(tok, "time") == 0) {
+    } else if (strcasecmp(tok, "time") == 0) {
         time_mode = time_mode ? 0 : 1;
         printf("Timing mode %s\n", time_mode ? "ON" : "OFF");
+    } else if ((strcasecmp(tok, "ls") == 0) || (strcasecmp(tok, "list") == 0)) {
+        tok = strtok_r(NULL, delims, &lasts);
+        if (!tok || strcasecmp(tok, "tables") == 0) {
+            int start_time_ms, run_time_ms;
+            const char *sql = "SELECT tablename FROM comdb2_tables";
+
+            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+        } else {
+            fprintf(stderr, "unknown @ls sub-command %s\n", tok);
+            return -1;
+        }
+    } else if ((strcasecmp(tok, "desc") == 0) || (strcasecmp(tok, "describe") == 0)) {
+        tok = strtok_r(NULL, delims, &lasts);
+        if (!tok) {
+            fprintf(stderr, "table name required\n");
+            return -1;
+        } else {
+            int start_time_ms;
+            int run_time_ms;
+            int rc;
+            char sql[200];
+            FILE *out = stdout;
+
+            if (printmode & STDERR)
+                out = stderr;
+
+            fprintf(out, "Columns:\n");
+            snprintf(sql, sizeof(sql),
+                     "SELECT columnname AS column, type, size, sqltype, "
+                     "varinlinesize, defaultvalue, dbload, isnullable FROM "
+                     "comdb2_columns WHERE tablename = '%s'",
+                     tok);
+            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            if (rc != 0) {
+                return rc;
+            }
+            fprintf(out, "\n");
+
+            fprintf(out, "Keys:\n");
+            snprintf(sql, sizeof(sql),
+                     "select keyname, isunique, isdatacopy, isrecnum, "
+                     "condition from comdb2_keys where tablename = '%s'",
+                     tok);
+            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            if (rc != 0) {
+                return rc;
+            }
+            fprintf(out, "\n");
+
+            fprintf(out, "Constraints:\n");
+            snprintf(sql, sizeof(sql),
+                     "select * from comdb2_constraints where tablename = '%s' "
+                     "OR foreigntablename = '%s'",
+                     tok, tok);
+            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            if (rc != 0) {
+                return rc;
+            }
+            fprintf(out, "\n");
+
+            fprintf(out, "CSC2:\n");
+            snprintf(sql, sizeof(sql),
+                     "SELECT csc2 FROM sqlite_master WHERE "
+                     "name = '%s' and type = 'table'",
+                     tok);
+            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            if (rc != 0) {
+                return rc;
+            }
+        }
     } else {
         fprintf(stderr, "unknown command %s\n", tok);
         return -1;
