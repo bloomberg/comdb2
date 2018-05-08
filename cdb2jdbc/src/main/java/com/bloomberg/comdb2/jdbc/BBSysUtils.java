@@ -491,7 +491,8 @@ public class BBSysUtils {
                     hndl.comdb2dbName = COMDB2DB;
 
                 /* set cluster type if default */
-                if (hndl.myDbCluster.equalsIgnoreCase("default")) {
+                if (hndl.myDbHosts.size() == 0 &&
+                    hndl.myDbCluster.equalsIgnoreCase("default")) {
                     if (hndl.defaultType == null)
                         throw new NoDbHostFoundException(hndl.myDbName,
                                 "No default type configured?");
@@ -574,6 +575,7 @@ public class BBSysUtils {
                 } catch (IOException ioe) {
                     /* Record last error during database discovery. */
                     error_during_discovery = ioe;
+                    connerr = "An I/O error occurred.";
                 }
             }
 
@@ -583,7 +585,8 @@ public class BBSysUtils {
                     continue;
 
                 if (hndl.comdb2dbHosts.size() == 0)
-                    throw new NoDbHostFoundException(hndl.comdb2dbName, error_during_discovery);
+                    throw new NoDbHostFoundException(hndl.comdb2dbName,
+                            "Could not find comdb2db.", error_during_discovery);
                 else {
                     /* prepare diagnosis info */
                     String diagnosis = String.format("[pmux=%d][%s=%s@%d] %s",
@@ -611,6 +614,7 @@ public class BBSysUtils {
                 } catch (IOException ioe) {
                     /* Record last error during database discovery. */
                     error_during_discovery = ioe;
+                    connerr = "An I/O error occurred.";
                 }
             }
 
@@ -623,11 +627,12 @@ public class BBSysUtils {
                 } catch (IOException ioe) {
                     /* Record last error during database discovery. */
                     error_during_discovery = ioe;
+                    connerr = "An I/O error occurred.";
                 }
             }
 
             if (!found) {
-                /* Could not get machines. Retry. */
+                /* Could not get machines of the database. Retry. */
                 if (retries < hndlRetries)
                     continue;
                 throw new NoDbHostFoundException(hndl.myDbName, error_during_discovery);
@@ -684,6 +689,7 @@ public class BBSysUtils {
                     break;
                 } catch (IOException ioe) {
                     error_during_discovery = ioe;
+                    connerr = "An I/O error occurred.";
                 }
             }
 
