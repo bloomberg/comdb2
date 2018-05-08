@@ -1,3 +1,4 @@
+# Disable everything that actively checkpoints
 setattr CHECKPOINTTIME 3600
 setattr LOGFILESIZE 4194304
 setattr LOGMEMSIZE 1048576
@@ -5,6 +6,12 @@ setattr MEMPTRICKLEMSECS 3600000
 setattr AUTOANALYZE 0
 setattr MIN_KEEP_LOGS 1
 setattr DEBUG_LOG_DELETION 1
+# No dummy records.
+setattr NEW_MASTER_DUMMY_ADD_DELAY 3600
+# Disable txn_regop_gen
+berkattr elect_highest_committed_gen 0
+setattr ENABLE_SEQNUM_GENERATIONS 0
+setattr MASTER_LEASE 0
 maxosqltransfer 2147483647
 override_cachekb 0
 cache 512 mb

@@ -31,7 +31,7 @@ import com.bloomberg.comdb2.jdbc.Cdb2Query.Cdb2SqlQuery;
  */
 public class BBSysUtils {
     private static Logger logger = Logger.getLogger(BBSysUtils.class.getName());
-    static private boolean debug = false;
+    static boolean debug = false;
 
     /**
      * Comdb2db configuration files.
@@ -187,12 +187,14 @@ public class BBSysUtils {
      * @param instance
      * @return
      */
-    private static int getPortMux(String host, int port, String app, String service, String instance) {
+    private static int getPortMux(String host, int port,
+            int soTimeout, int connectTimeout,
+            String app, String service, String instance) {
         SockIO io = null;
         try {
             String name = String.format("get %s/%s/%s\n", app, service, instance);
 
-            io = new SockIO(host, port, null);
+            io = new SockIO(host, port, null, soTimeout, connectTimeout);
 
             io.write(name.getBytes());
             io.flush();
@@ -245,7 +247,8 @@ public class BBSysUtils {
 
         try {
             if (dbInfoResp == null) {
-                io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null);
+                io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null,
+                                hndl.dbinfoTimeout, hndl.connectTimeout);
 
                 /*********************************
                  * Sending data...
@@ -379,7 +382,8 @@ public class BBSysUtils {
         SockIO io = null;
 
         try {
-            io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null);
+            io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null,
+                            hndl.comdb2dbTimeout, hndl.connectTimeout);
 
             /*********************************
              * Sending data...
@@ -566,12 +570,22 @@ public class BBSysUtils {
         }
 
         if (hndl.isDirectCpu) {
+            boolean atLeastOneValid = false;
             for (int i = 0; i != hndl.myDbPorts.size(); ++i) {
-                if (hndl.myDbPorts.get(i) == -1) {
-                    hndl.myDbPorts.set(i, getPortMux(hndl.myDbHosts.get(i),
-                                hndl.portMuxPort, "comdb2", "replication", hndl.myDbName));
+                if (hndl.myDbPorts.get(i) != -1)
+                    atLeastOneValid = true;
+                else {
+                    int dbport = getPortMux(hndl.myDbHosts.get(i),
+                            hndl.portMuxPort, hndl.soTimeout, hndl.connectTimeout,
+                            "comdb2", "replication", hndl.myDbName);
+                    if (dbport != -1) {
+                        atLeastOneValid = true;
+                        hndl.myDbPorts.set(i, dbport);
+                    }
                 }
             }
+            if (!atLeastOneValid)
+                throw new NoDbHostFoundException(hndl.myDbName);
             return;
         }
 
@@ -602,7 +616,9 @@ public class BBSysUtils {
 			int comdb2dbPort = -1;
 			String connerr = "";
             for (String comdb2dbHost : hndl.comdb2dbHosts) {
-                comdb2dbPort = BBSysUtils.getPortMux(comdb2dbHost, hndl.portMuxPort, "comdb2", "replication", hndl.comdb2dbName);
+                comdb2dbPort = BBSysUtils.getPortMux(comdb2dbHost, hndl.portMuxPort,
+                                                     hndl.soTimeout, hndl.connectTimeout,
+                                                     "comdb2", "replication", hndl.comdb2dbName);
                 if (comdb2dbPort < 0)
 					connerr = "port error";
                 else {
@@ -701,7 +717,9 @@ public class BBSysUtils {
                 if (hndl.myDbPorts.get(i) >= 0)
                     port = hndl.myDbPorts.get(i);
                 else
-                    port = getPortMux(host, hndl.portMuxPort, "comdb2", "replication", hndl.myDbName);
+                    port = getPortMux(host, hndl.portMuxPort,
+                            hndl.soTimeout, hndl.connectTimeout,
+                            "comdb2", "replication", hndl.myDbName);
 
                 if (port < 0) {
                     connerr = "port error";

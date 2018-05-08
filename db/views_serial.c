@@ -564,6 +564,8 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
         goto error;
     }
 
+    check_columns_null_and_dbstore(view->name, db);
+
     /* check to see if the name exists either as a table, or part of a
        different partition */
     rc = comdb2_partition_check_name_reuse(first_shard, &err_partname, 

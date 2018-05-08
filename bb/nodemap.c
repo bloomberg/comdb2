@@ -61,6 +61,9 @@ volatile static __thread struct node_index lnodes[MAXCACHE];
  * a change to the global list, clear the local cache.  */
 static int nodeix_global(const char *node)
 {
+    if (!isinterned(node))
+        abort();
+
     for (int i = 0; i < numnodes; i++) {
         if (nodes[i].node == node) {
             if (lnumnodes < MAXCACHE) {

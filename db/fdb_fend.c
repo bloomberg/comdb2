@@ -984,6 +984,7 @@ run:
         /* maybe remote is old code, retry in unversioned mode */
         switch (rc) {
         case FDB_ERR_SSL:
+#if WITH_SSL
             /* remote needs sql */
             fdb_cursor_close_on_open(cur, 0);
             if (gbl_client_ssl_mode >= SSL_ALLOW) {
@@ -992,6 +993,7 @@ run:
                 assert(fdb->server_version >= FDB_VER_SSL);
                 goto run;
             }
+#endif
             goto done;
 
         case FDB_ERR_FDB_VERSION:
@@ -2186,7 +2188,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 fdbc->node = host;
             } else {
 
-                if (fdb->server_version == FDB_VER_WR_NAMES)
+                if (fdb->server_version >= FDB_VER_WR_NAMES)
                     tran_flags = FDB_MSG_TRAN_TBLNAME;
                 else
                     tran_flags = 0;
@@ -3060,6 +3062,7 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
 
                     pCur->bt->fdb->server_version = protocol_version;
                 } else if (rc == FDB_ERR_SSL) {
+#if WITH_SSL
                     /* extract ssl config */
                     unsigned int ssl_cfg;
 
@@ -3068,6 +3071,7 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
                     logmsg(LOGMSG_INFO, "%s: remote db %s needs ssl %d\n",
                            __func__, pCur->bt->fdb->dbname, ssl_cfg);
                     pCur->bt->fdb->ssl = ssl_cfg;
+#endif
                 } else {
                     if (rc != FDB_ERR_SSL)
                         logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming "
@@ -3506,7 +3510,7 @@ static fdb_tran_t *fdb_get_subtran(fdb_distributed_tran_t *dtran, fdb_t *fdb)
 
 static inline char *_get_tblname(fdb_cursor_t *fdbc)
 {
-    return (fdbc->ent->tbl->fdb->server_version == FDB_VER_WR_NAMES)
+    return (fdbc->ent->tbl->fdb->server_version >= FDB_VER_WR_NAMES)
                ? strdup(fdbc->ent->tbl->name)
                : NULL;
 }
@@ -4542,6 +4546,15 @@ void fdb_clear_sqlite_cache(sqlite3 *sqldb, const char *dbname,
     sqlite3ResetOneSchemaByName(sqldb, "sqlite_stat1", dbname);
     sqlite3ResetOneSchemaByName(sqldb, "sqlite_stat2", dbname);
     sqlite3ResetOneSchemaByName(sqldb, "sqlite_stat4", dbname);
+}
+
+int fdb_table_exists(int rootpage)
+{
+    fdb_tbl_ent_t *ent = NULL;
+    ent = get_fdb_tbl_ent_by_rootpage(rootpage);
+    if (ent)
+        return 1;
+    return 0;
 }
 
 /**

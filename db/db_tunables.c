@@ -172,6 +172,8 @@ extern int gbl_ack_trace;
 /* bdb/bdblock.c */
 extern int gbl_bdblock_debug;
 
+extern int gbl_debug_aa;
+
 /* bdb/os_namemangle_46.c */
 extern int gbl_namemangle_loglevel;
 
@@ -1176,6 +1178,7 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
     case TUNABLE_STRING: {
         PARSE_TOKEN;
         DO_VERIFY(t, buf);
+
 
         if (t->update) {
             DO_UPDATE(t, buf);

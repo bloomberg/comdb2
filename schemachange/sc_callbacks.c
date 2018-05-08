@@ -492,6 +492,9 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
 {
     int bdberr;
 
+    if (db == NULL)
+        return;
+
     pthread_mutex_lock(&gbl_sc_lock);
     sc_del_unused_files_start_ms = comdb2_time_epochms();
     pthread_mutex_unlock(&gbl_sc_lock);

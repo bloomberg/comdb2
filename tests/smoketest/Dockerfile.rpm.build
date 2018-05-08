@@ -11,8 +11,8 @@ EXPOSE 5105
 
 COPY . /build/
 
-WORKDIR /build
+WORKDIR /build/build
 
-RUN make rpm-current && rpm -i build/comdb2*.rpm
+RUN cmake3 .. && make package && rpm -i comdb2*.rpm
 
 ENV PATH="/opt/bb/bin:${PATH}"

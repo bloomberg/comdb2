@@ -35,6 +35,7 @@
 const char *aa_counter_str = "autoanalyze_counter";
 const char *aa_lastepoch_str = "autoanalyze_lastepoch";
 static volatile bool auto_analyze_running = false;
+int gbl_debug_aa;
 
 /* reset autoanalyze counters to zero
  */
@@ -108,8 +109,14 @@ void *auto_analyze_table(void *arg)
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
     sbuf2free(sb);
-    auto_analyze_running = false;
     free(tblname);
+    if (gbl_debug_aa) {
+        ctrace("AUTOANALYZE: sleep for testing for %d seconds\n",
+               bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
+        sleep(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
+    }
+
+    auto_analyze_running = false;
     return NULL;
 }
 
@@ -301,26 +308,16 @@ void stat_auto_analyze(void)
  */
 void *auto_analyze_main(void *unused)
 {
-    int now = comdb2_time_epoch();
-    if (now - gbl_sc_last_writer_time >
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME)) {
-#ifdef DEBUG
-        ctrace("AUTOANALYZE: no writes in the last %d sec\n",
-               now - gbl_sc_last_writer_time);
-#endif
-        return NULL; // nothing to do
-    }
-
     if (NULL == get_dbtable_by_name("sqlite_stat1")) {
         logmsg(LOGMSG_DEBUG,
                "ANALYZE REQUIRES sqlite_stat1 to run but table is MISSING\n");
         return NULL;
     }
 
-    static int loc_call_counter = 0;
+    static int call_counter = 0;
+    int now = comdb2_time_epoch();
 
-    logmsg(LOGMSG_DEBUG, "%s: loc_call_counter %d\n", __func__,
-           loc_call_counter);
+    logmsg(LOGMSG_DEBUG, "%s: call_counter %d\n", __func__, call_counter);
 
     bdb_state_type *bdb_state = thedb->bdb_env;
 
@@ -334,7 +331,7 @@ void *auto_analyze_main(void *unused)
     int min_percent = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_MIN_PERCENT);
     int min_percent_jitter =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_MIN_PERCENT_JITTER);
-    loc_call_counter++;
+    call_counter++;
 
     int strt = comdb2_time_epochms();
 
@@ -415,8 +412,8 @@ void *auto_analyze_main(void *unused)
             pthread_create(&analyze, &gbl_pthread_attr_detached,
                            auto_analyze_table, tblname);
         } else if (delta > 0 && save_freq > 0 &&
-                   (loc_call_counter % save_freq) ==
-                       0) { // save updated counter
+                   (call_counter % save_freq) ==
+                       0) { // save updated autoanalyze counter
             ctrace("AUTOANALYZE: Table %s, saving counter (%d, %d); last run "
                    "time %s\n",
                    tbl->tablename, tbl->aa_saved_counter, delta,
@@ -441,4 +438,3 @@ void *auto_analyze_main(void *unused)
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
     return NULL;
 }
-

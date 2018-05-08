@@ -225,9 +225,21 @@ char *comdb2_file(char *fmt, ...)
     return out;
 }
 
+static int locations_free(void *ptr, void *unused)
+{
+    struct location *obj = ptr;
+    free(obj->type);
+    obj->type = NULL;
+    free(obj->dir);
+    obj->dir = NULL;
+    free(obj);
+    return 0;
+}
+
 void cleanup_file_locations()
 {
     if (locations) {
+        hash_for(locations, locations_free, NULL);
         hash_clear(locations);
         hash_free(locations);
         locations = NULL;

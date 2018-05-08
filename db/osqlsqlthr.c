@@ -910,15 +910,6 @@ err:
                    __FILE__, __LINE__, rc);
    }
 
-   if (clnt->ddl_tables) {
-       hash_free(clnt->ddl_tables);
-   }
-   if (clnt->dml_tables) {
-       hash_free(clnt->dml_tables);
-   }
-   clnt->ddl_tables = NULL;
-   clnt->dml_tables = NULL;
-
    return rcout;
 }
 
@@ -974,15 +965,6 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
         clnt->osql.tablename = NULL;
         clnt->osql.tablenamelen = 0;
     }
-
-    if (clnt->ddl_tables) {
-        hash_free(clnt->ddl_tables);
-    }
-    if (clnt->dml_tables) {
-        hash_free(clnt->dml_tables);
-    }
-    clnt->ddl_tables = NULL;
-    clnt->dml_tables = NULL;
 
     return rcout;
 }
@@ -1429,7 +1411,7 @@ static int check_osql_capacity(struct sql_thread *thd)
     osql->sentops++;
     osql->tran_ops++;
 
-    if (clnt->osql_max_trans && osql->tran_ops >= clnt->osql_max_trans) {
+    if (clnt->osql_max_trans && osql->tran_ops > clnt->osql_max_trans) {
         /* This trace is used by ALMN 1779 to alert database owners.. please do
          * not change without reference to that almn. */
         logmsg(LOGMSG_ERROR, "check_osql_capacity: transaction size %d too big "
@@ -1734,15 +1716,14 @@ int osql_schemachange_logic(struct schema_change_type *sc,
 
             if (usedb) {
                 rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid,
-                                     sc->table, NET_OSQL_BLOCK_RPL_UUID,
-                                     osql->logsb, version);
+                                     sc->table, NET_OSQL_SOCK_RPL, osql->logsb,
+                                     version);
                 RESTART_SOCKSQL;
             }
         }
         if (rc == SQLITE_OK) {
-            rc = osql_send_schemachange(host, rqid,
-                                        thd->clnt->osql.uuid, sc,
-                                        NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+            rc = osql_send_schemachange(host, rqid, thd->clnt->osql.uuid, sc,
+                                        NET_OSQL_SOCK_RPL, osql->logsb);
             RESTART_SOCKSQL;
         }
     }

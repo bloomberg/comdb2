@@ -32,6 +32,7 @@
 #include "sqllog.h"
 #include "ssl_bend.h"
 #include "translistener.h"
+#include "rtcpu.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -199,13 +200,14 @@ int deferred_do_commands(struct dbenv *env, char *option, void *p, int len)
 {
     char *tok;
     int st = 0, tlen = 0;
+    int rc = 0;
 
     tok = segtok(option, len, &st, &tlen);
     if (tokcmp(tok, tlen, "sqllogger") == 0)
         sqllogger_process_message(option + st, len - st);
     else if (tokcmp(tok, tlen, "do") == 0)
-        process_command(env, option + st, len - st, 0);
-    return 0;
+        rc = process_command(env, option + st, len - st, 0);
+    return rc;
 }
 
 /* handles "if"'s, returns 1 if this isn't an "if" statement or if the statement
@@ -242,16 +244,21 @@ int process_deferred_options(struct dbenv *dbenv,
     struct deferred_option *opt;
     int rc;
 
+    LISTC_FOR_EACH(&dbenv->deferred_options[lvl], opt, lnk)
+    {
+        callback(dbenv, opt->option, usrdata, opt->len);
+    }
+}
+
+int clear_deferred_options(struct dbenv *dbenv, enum deferred_option_level lvl)
+{
+    struct deferred_option *opt;
     opt = listc_rtl(&dbenv->deferred_options[lvl]);
     while (opt) {
-        rc = callback(dbenv, opt->option, usrdata, opt->len);
-
-        if (rc) return rc;
         free(opt->option);
         free(opt);
         opt = listc_rtl(&dbenv->deferred_options[lvl]);
     }
-    return 0;
 }
 
 static void init_deferred_options(struct dbenv *dbenv)
@@ -290,7 +297,17 @@ static void add_legacy_default_options(struct dbenv *dbenv)
         "norcache",
         "usenames",
         "dont_return_long_column_names",
-        "setattr DIRECTIO 0"};
+        "setattr DIRECTIO 0",
+        "berkattr elect_highest_committed_gen 0",
+        "unnatural_types 1",
+        "enable_sql_stmt_caching none",
+        "on accept_on_child_nets",
+        "env_messages",
+        "off return_long_column_names",
+        "setattr NET_SEND_GBLCONTEXT 1",
+        "setattr ENABLE_SEQNUM_GENERATIONS 0",
+        "setattr MASTER_LEASE 0",
+        "setattr SC_DONE_SAME_TRAN 0"};
     for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++)
         defer_option(dbenv, DEFERRED_LEGACY_DEFAULTS, legacy_options[i], -1, 0);
 }
@@ -339,8 +356,7 @@ static int pre_read_option(struct dbenv *dbenv, char *line, int llen)
 static int pre_read_deferred_callback(struct dbenv *env, char *option, void *p,
                                       int len)
 {
-    pre_read_option(env, option, len);
-    return 0;
+    return pre_read_option(env, option, len);
 }
 
 static void pre_read_lrl_file(struct dbenv *dbenv, const char *lrlname)
@@ -413,6 +429,7 @@ struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
         fclose(ff);
         return NULL;
     }
+    clear_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS);
 
     /* process legacy options (we deferred them) */
 
@@ -641,6 +658,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                     memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length) == 0) {
                     /* Assume I am better known by this name. */
                     gbl_mynode = intern(nodename);
+                    gbl_mynodeid = machine_num(gbl_mynode);
                 }
                 if (strcmp(gbl_mynode, nodename) == 0 &&
                     gbl_rep_node_pri == 0) {
@@ -1413,12 +1431,12 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
     /* if env variable is set, process another lrl.. */
     const char *envlrlname = getenv("COMDB2_CONFIG");
     if (envlrlname && !read_lrl_file(dbenv, envlrlname, 1 /*required*/)) {
-        return 0;
+        return 1;
     }
 
     /* this database */
     if (lrlname && !read_lrl_file(dbenv, lrlname, 1 /*required*/)) {
-        return 0;
+        return 1;
     }
 
     /* switch to keyless mode as long as no mode has been selected yet */

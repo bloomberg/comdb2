@@ -6525,6 +6525,7 @@ again:
     return rc;
 }
 
+extern bdb_state_type *gbl_bdb_state;
 static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
 {
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
@@ -6537,7 +6538,7 @@ static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
     }
 
     if (cur->skip) {
-        rc = bdb_temp_table_close_cursor(cur->state, cur->skip, bdberr);
+        rc = bdb_temp_table_close_cursor(gbl_bdb_state, cur->skip, bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: error closing skip table %d %d\n", __func__,
                     rc, *bdberr);
@@ -6546,13 +6547,13 @@ static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
     }
 
     if (cur->vs_skip) {
-        rc = bdb_temp_table_close_cursor(cur->state, cur->vs_skip, bdberr);
+        rc = bdb_temp_table_close_cursor(gbl_bdb_state, cur->vs_skip, bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: error closing vs_skip cursor %d %d\n",
                     __func__, rc, *bdberr);
         }
 
-        rc = bdb_temp_table_close(cur->state, cur->vs_stab, bdberr);
+        rc = bdb_temp_table_close(gbl_bdb_state, cur->vs_stab, bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: error closing vs_stab table %d %d\n", __func__,
                     rc, *bdberr);
@@ -6565,7 +6566,7 @@ static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
     /* close shadows as well*/
     if (cur->addcur) {
         /* We own this cursor: destroy it. */
-        rc = bdb_temp_table_close_cursor(cur->state, cur->addcur, bdberr);
+        rc = bdb_temp_table_close_cursor(gbl_bdb_state, cur->addcur, bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: error closing add table %d %d\n", __func__, rc,
                     *bdberr);
@@ -6574,7 +6575,6 @@ static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
     }
 
     if (cur->rl) {
-        verify_pageorder_tablescan(cur);
         rc = cur->rl->close(cur->rl, bdberr);
         if (rc)
             logmsg(LOGMSG_ERROR, "%s:%d rc=%d bdberr=%d\n", __FILE__, __LINE__, rc,

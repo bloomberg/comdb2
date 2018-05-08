@@ -94,7 +94,7 @@ static int hostname_wildcard_match(const char *s, const char *p)
     const char *ts;
     const char *dotasterisk;
 
-    /* Use optimized libc function first. 
+    /* Use optimized libc function first.
        If no exact match, we use wildcard matching
        and accept the overhead. */
     if (strcasecmp(s, p) == 0)
@@ -242,7 +242,9 @@ static int ssl_verify_ca(SBUF2 *sb, char *err, size_t n)
     getpeername(sb->fd, (struct sockaddr *)&peeraddr, &len);
 
 /* Forward lookup the IPs */
-#if defined(_LINUX_SOURCE)
+#if defined(__APPLE__)
+    hp = gethostbyname(peerhost);
+#elif defined(_LINUX_SOURCE)
     gethostbyname_r(peerhost, &hostbuf, buf, sizeof(buf), &hp, &herr);
 #elif defined(_SUN_SOURCE)
     hp = gethostbyname_r(peerhost, &hostbuf, buf, sizeof(buf), &herr);
@@ -276,7 +278,7 @@ static int ssl_verify_ca(SBUF2 *sb, char *err, size_t n)
             strcasecmp(peerhost, "localhost.localdomain") == 0)
         return 0;
 
-    /* Per RFC 6125, If SANs are presented, they must be used and 
+    /* Per RFC 6125, If SANs are presented, they must be used and
        the Comman Name must be ignored. */
     rc = ssl_verify_san(peerhost, sb->cert);
     if (rc == -1)
@@ -594,7 +596,7 @@ rewrite:
 
 int SBUF2_FUNC(sslio_close)(SBUF2 *sb, int reuse)
 {
-    /* Upon success, the 1st call to SSL_shutdown 
+    /* Upon success, the 1st call to SSL_shutdown
        returns 0, and the 2nd returns 1. */
     int rc = 0;
     if (sb->ssl == NULL)

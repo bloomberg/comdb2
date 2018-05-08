@@ -1602,7 +1602,8 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
             tbl->nops++;
 
-            if ((tbl->nops + crt_nops) > g_osql_max_trans) {
+            if (clnt->osql_max_trans &&
+                ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
                 return SQLITE_TOOBIG;
             }
 
@@ -1786,20 +1787,27 @@ static int process_local_shadtbl_index(struct sqlclntstate *clnt,
     int ncols;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
     struct temp_cursor *tmp_cur = NULL;
+    unsigned long long dk = -1ULL;
 
     if (!gbl_expressions_indexes || !tbl->ix_expr)
         return 0;
 
     if (is_delete) {
         tmp_cur = tbl->delidx_cur;
+        if (gbl_partial_indexes && tbl->ix_partial)
+            dk = get_del_keys(clnt, tbl, seq);
     } else {
         tmp_cur = tbl->insidx_cur;
+        if (gbl_partial_indexes && tbl->ix_partial)
+            dk = get_ins_keys(clnt, tbl, seq);
     }
 
     for (i = 0; i < tbl->nix; i++) {
         index_key_t *key;
         /* key gets set into cur->key, and is freed when a new key is
            submitted or when the cursor is closed */
+        if (gbl_partial_indexes && tbl->ix_partial && !(dk & (1ULL << i)))
+            continue;
         key = (index_key_t *)malloc(sizeof(index_key_t));
         key->seq = seq;
         key->ixnum = i;
@@ -1892,7 +1900,8 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
             tbl->nops++;
 
-            if ((tbl->nops + crt_nops) > g_osql_max_trans) {
+            if (clnt->osql_max_trans &&
+                ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
                 free(seq);
                 return SQLITE_TOOBIG;
             }
@@ -1972,7 +1981,8 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         /* counting operations */
         tbl->nops++;
 
-        if ((tbl->nops + crt_nops) > g_osql_max_trans) {
+        if (clnt->osql_max_trans &&
+            ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
             return SQLITE_TOOBIG;
         }
 
@@ -2037,7 +2047,8 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 static int process_local_shadtbl_dbq(struct sqlclntstate *clnt, int *bdberr,
                                      int *crt_nops)
 {
-    if (*crt_nops >= g_osql_max_trans) {
+
+    if (clnt->osql_max_trans && (*crt_nops) > clnt->osql_max_trans) {
         return SQLITE_TOOBIG;
     }
     shadbq_t *shadbq = &clnt->osql.shadbq;
@@ -2891,7 +2902,7 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
             return ERR_SC;
         } else if (packed_sc_key[1] >= 0) {
             rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, sc->table,
-                                 NET_OSQL_BLOCK_RPL_UUID, osql->logsb,
+                                 NET_OSQL_SOCK_RPL, osql->logsb,
                                  packed_sc_key[1]);
             if (rc) {
                 logmsg(LOGMSG_ERROR,
@@ -2902,7 +2913,7 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
         }
 
         rc = osql_send_schemachange(osql->host, osql->rqid, osql->uuid, sc,
-                                    NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+                                    NET_OSQL_SOCK_RPL, osql->logsb);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: error writting record to master in offload mode!\n",

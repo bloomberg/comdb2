@@ -70,6 +70,10 @@ public class Comdb2Handle extends AbstractConnection {
     boolean pmuxrte = false;
     boolean statement_effects = false;
     boolean verifyretry = false;
+    int soTimeout = 5000;
+    int comdb2dbTimeout = 5000;
+    int connectTimeout = 100;
+    int dbinfoTimeout = 500;
 
     private boolean in_retry = false;
     private boolean temp_trans = false;
@@ -152,6 +156,13 @@ public class Comdb2Handle extends AbstractConnection {
         ret.tcpbufsz = tcpbufsz;
         ret.age = age;
         ret.pmuxrte = pmuxrte;
+        ret.statement_effects = statement_effects;
+        ret.verifyretry = verifyretry;
+        ret.soTimeout = soTimeout;
+        ret.comdb2dbTimeout = comdb2dbTimeout;
+        ret.connectTimeout = connectTimeout;
+        ret.dbinfoTimeout = dbinfoTimeout;
+
         ret.sslmode = sslmode;
         ret.sslcert = sslcert;
         ret.sslcertpass = sslcertpass;
@@ -163,7 +174,10 @@ public class Comdb2Handle extends AbstractConnection {
         return ret;
     }
 
-    public Comdb2Handle(String dbname, String cluster) {
+    /* Default constructor does not discover the database.
+       This allows us to alter attributes of the handle
+       without discovering twice. */
+    public Comdb2Handle() {
         super(new ProtobufProtocol(), null);
         sets = new ArrayList<String>();
 
@@ -185,10 +199,14 @@ public class Comdb2Handle extends AbstractConnection {
         tdlog(Level.FINEST, "Created handle with uuid %s", uuid);
         bindVars = new HashMap<String, Cdb2BindValue>();
         queryList = new ArrayList<QueryItem>();
+    }
+
+    public Comdb2Handle(String dbname, String cluster) {
+        this();
         myDbName = dbname;
         myDbCluster = cluster;
         try {
-            this.lookup();
+            lookup();
         }
         catch(NoDbHostFoundException e) {}
     }
@@ -323,6 +341,7 @@ public class Comdb2Handle extends AbstractConnection {
 
     public void setDebug(boolean on) {
         debug = on;
+        BBSysUtils.debug = on;
     }
 
     public void setMaxRetries(int retries) {
@@ -397,6 +416,14 @@ public class Comdb2Handle extends AbstractConnection {
 
     public void setComdb2dbMaxAge(int age) {
         this.age = age;
+    }
+
+    public void setDatabase(String db) {
+        myDbName = db;
+    }
+
+    public void setCluster(String cluster) {
+        myDbCluster = cluster;
     }
 
     private int retryQueries(int nretry, boolean runlast) {
@@ -1602,11 +1629,12 @@ readloop:
 
             nSetsSent = sets.size();
 
-            if (inTxn && CDB2ServerFeatures.SKIP_ROWS_VALUE > 0
-                    && lastResp.features != null) {
+            if (inTxn && lastResp.features != null) {
                 for (int feature : lastResp.features) {
-                    skipFeature = true;
-                    break;
+                    if (CDB2ServerFeatures.SKIP_ROWS_VALUE == feature) {
+                        skipFeature = true;
+                        break;
+                    }
                 }
             }
             tdlog(Level.FINEST,
@@ -1712,7 +1740,8 @@ readloop:
            we're not on it, connect to it. */
         if (prefIdx != -1 && dbHostIdx != prefIdx) {
             io = new SockIO(myDbHosts.get(prefIdx),
-                    myDbPorts.get(prefIdx), tcpbufsz, pmuxrte ? myDbName : null);
+                    myDbPorts.get(prefIdx), tcpbufsz, pmuxrte ? myDbName : null,
+                    soTimeout, connectTimeout);
             if (io.open()) {
                 try {
                     io.write("newsql\n");
@@ -1749,7 +1778,9 @@ readloop:
                         || try_node == dbHostConnected)
                     continue;
 
-                io = new SockIO(myDbHosts.get(try_node), myDbPorts.get(try_node), tcpbufsz, pmuxrte ? myDbName : null);
+                io = new SockIO(myDbHosts.get(try_node), myDbPorts.get(try_node),
+                                tcpbufsz, pmuxrte ? myDbName : null,
+                                soTimeout, connectTimeout);
                 if (io.open()) {
                     try {
                         io.write("newsql\n");
@@ -1778,7 +1809,11 @@ readloop:
          */
 
         // last time we were at dbHostIdx, this time start from (dbHostIdx + 1)
-        int start_req = ++dbHostIdx;
+        int start_req;
+        if (dbHostIdx == myDbHosts.size())
+            start_req = dbHostIdx = 0;
+        else
+            start_req = ++dbHostIdx;
 
         for (; dbHostIdx < myDbHosts.size(); ++dbHostIdx) {
             if (dbHostIdx == masterIndexInMyDbHosts
@@ -1786,7 +1821,9 @@ readloop:
                     || dbHostIdx == dbHostConnected)
                 continue;
 
-            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx), tcpbufsz, pmuxrte ? myDbName : null);
+            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx),
+                            tcpbufsz, pmuxrte ? myDbName : null,
+                            soTimeout, connectTimeout);
             if (io.open()) {
                 try {
                     io.write("newsql\n");
@@ -1815,7 +1852,9 @@ readloop:
                     || dbHostIdx == dbHostConnected)
                 continue;
 
-            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx), tcpbufsz, pmuxrte ? myDbName : null);
+            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx),
+                            tcpbufsz, pmuxrte ? myDbName : null, 
+                            soTimeout, connectTimeout);
             if (io.open()) {
                 try {
                     io.write("newsql\n");
@@ -1842,7 +1881,9 @@ readloop:
          */
         if (masterIndexInMyDbHosts >= 0) {
             io = new SockIO(myDbHosts.get(masterIndexInMyDbHosts),
-                    myDbPorts.get(masterIndexInMyDbHosts), tcpbufsz, pmuxrte ? myDbName : null);
+                            myDbPorts.get(masterIndexInMyDbHosts),
+                            tcpbufsz, pmuxrte ? myDbName : null,
+                            soTimeout, connectTimeout);
             if (io.open()) {
                 try {
                     io.write("newsql\n");

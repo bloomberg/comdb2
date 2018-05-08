@@ -51,6 +51,8 @@
 
 #include <logmsg.h>
 
+#include <autoanalyze.h>
+
 #if 0
 #define TEST_QSQL_REQ
 #define TEST_OSQL
@@ -730,16 +732,67 @@ static void osql_genid48_commit_callback(struct ireq *iq)
 
 extern int gbl_readonly_sc;
 
+static void autoanalyze_after_fastinit(char *table)
+{
+    pthread_t analyze;
+    char *tblname = strdup(table); // will be freed in auto_analyze_table()
+    pthread_create(&analyze, &gbl_pthread_attr_detached, auto_analyze_table,
+                   tblname);
+}
+
 static void osql_scdone_commit_callback(struct ireq *iq)
 {
     int bdberr;
+    int write_scdone =
+        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN) ? 0 : 1;
     gbl_readonly_sc = 0;
     if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
         struct schema_change_type *sc_next;
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
             sc_next = iq->sc->sc_next;
+            if (write_scdone) {
+                int rc = 0;
+                struct schema_change_type *s = iq->sc;
+                scdone_t type = -1;
+                if (s->is_trigger || s->is_sfunc || s->is_afunc) {
+                    /* already sent scdone in finalize_schema_change_thd */
+                    type = -1;
+                } else if (s->fastinit && s->drop_table)
+                    type = drop;
+                else if (s->fastinit)
+                    type = fastinit;
+                else if (s->addonly)
+                    type = add;
+                else if (s->rename)
+                    type = rename_table;
+                else if (s->type == DBTYPE_TAGGED_TABLE)
+                    type = alter;
+                if (type < 0 || s->db == NULL) {
+                    logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
+                           __func__, s->table);
+                } else {
+                    rc = bdb_llog_scdone(s->db->handle, type, 1, &bdberr);
+                    if (rc || bdberr != BDBERR_NOERROR) {
+                        /* We are here because we are running in R6 compatible
+                         * mode. For R7 or later, use SC_DONE_SAME_TRAN.
+                         *
+                         * Don't quite know what to do here, the schema change
+                         * is committed but one or more replicants dont get the
+                         * scdone to reload tables. We really need to somehow
+                         * bounce the replicants, but there's no way to do this.
+                         */
+                        logmsg(LOGMSG_ERROR,
+                               "%s: Failed to log scdone for table %s\n",
+                               __func__, s->table);
+                    }
+                }
+            }
             broadcast_sc_end(iq->sc->table, iq->sc_seed);
+            if (iq->sc->db)
+                sc_del_unused_files(iq->sc->db);
+            if (iq->sc->fastinit && !iq->sc->drop_table)
+                autoanalyze_after_fastinit(iq->sc->table);
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }

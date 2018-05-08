@@ -330,7 +330,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
         }
-    } else {
+    } else if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN)) {
         int bdberr = 0;
         rc = bdb_llog_scdone_tran(s->db->handle, type, input_tran, s->table,
                                   &bdberr);
@@ -680,8 +680,9 @@ int resume_schema_change(void)
         int bdberr;
         void *packed_sc_data = NULL;
         size_t packed_sc_data_len;
-        if (bdb_get_in_schema_change(thedb->dbs[i]->tablename, &packed_sc_data,
-                                     &packed_sc_data_len, &bdberr) ||
+        if (bdb_get_in_schema_change(NULL /*tran*/, thedb->dbs[i]->tablename,
+                                     &packed_sc_data, &packed_sc_data_len,
+                                     &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_WARN,
                    "resume_schema_change: failed to discover "
@@ -822,7 +823,6 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
     nbytes = snprintf(NULL, 0, "%s%s", prefix, db->tablename);
     if (nbytes <= 0) nbytes = 2;
     nbytes++;
-    if (nbytes > 32) nbytes = 32;
     tmpname = malloc(nbytes);
     snprintf(tmpname, nbytes, "%s%s", prefix, db->tablename);
 
@@ -1187,7 +1187,7 @@ int backout_schema_change(struct ireq *iq)
         delete_db(s->table);
         create_sqlmaster_records(NULL);
         create_sqlite_master();
-    } else {
+    } else if (s->db) {
         reload_db_tran(s->db, NULL);
         sc_del_unused_files(s->db);
     }

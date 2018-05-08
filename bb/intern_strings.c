@@ -51,7 +51,7 @@ char *intern(const char *str)
 
     pthread_once(&once, init_interned_strings);
     pthread_mutex_lock(&intern_lk);
-    s = hash_find(interned_strings, &str);
+    s = hash_find_readonly(interned_strings, &str);
     if (s == NULL) {
         s = malloc(sizeof(struct interned_string));
         if (s == NULL) {
@@ -88,7 +88,7 @@ int isinterned(const char *node)
     struct interned_string *s;
 
     pthread_mutex_lock(&intern_lk);
-    s = hash_find(interned_strings, &node);
+    s = hash_find_readonly(interned_strings, &node);
     pthread_mutex_unlock(&intern_lk);
 
     if (s && s->str == node)
@@ -97,8 +97,21 @@ int isinterned(const char *node)
     return 0;
 }
 
+static int intern_free(void *ptr, void *unused)
+{
+    struct interned_string *obj = ptr;
+    free(obj->str);
+    obj->str = NULL;
+    free(obj);
+    return 0;
+}
+
+
 void cleanup_interned_strings()
 {
+    hash_for(interned_strings, intern_free, NULL);
     hash_clear(interned_strings);
     hash_free(interned_strings);
+    interned_strings = NULL;
+    pthread_mutex_destroy(&intern_lk);
 }

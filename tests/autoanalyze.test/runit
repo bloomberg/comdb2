@@ -38,6 +38,22 @@ dup "B" =  b
 }
 '
 
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2 {
+schema
+{
+    int      a
+    cstring  b[32]
+    blob     c
+    int      d
+}
+
+keys
+{
+dup "A" =  a
+dup "B" =  b
+}
+}
+'
 
 failexit() 
 {
@@ -45,56 +61,8 @@ failexit()
     exit -1
 }
 
-# Do schema changes
-do_schema_changes()
-{
-    typeset max=$1
-    typeset iter=0
-    typeset scnt=0
 
-    schema=t$(( scnt % 2 + 1)).csc2
 
-    while [[ $scnt -lt $max ]]; do 
-
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat $schema ` }"
-
-        if [[ $? != 0 ]]; then
-
-            echo "Error schema-changing on iteration $scnt"
-            echo "Testcase failed"
-            return 1
-
-        fi
-
-        let scnt=scnt+1
-
-    done
-
-    return 0
-}
-
-do_rebuild()
-{
-    typeset max=$1
-    typeset iter=0
-    typeset scnt=0
-
-    schema=t$(( scnt % 2 + 1)).csc2
-
-    while [[ $scnt -lt $max ]]; do 
-
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
-
-        if [[ $? != 0 ]]; then
-            echo "Error schema-changing on iteration $scnt"
-            echo "Testcase failed"
-            return 1
-        fi
-        let scnt=scnt+1
-    done
-
-    return 0
-}
 
 delete_records()
 {
@@ -149,13 +117,12 @@ insert_records()
 insert_records_tran()
 {
     j=0
-    nrecs=$1
+    tbl=$1
+    nrecs=$2
     echo "Inserting $nrecs records as one transaction."
-    echo "" > inserts.in
-
-    echo "begin" >> inserts.in
+    echo "begin" > inserts.in
     while [[ $j -lt $nrecs ]]; do 
-        echo "insert into t1(a,b,c,d) values ($j,'test1',x'1234',$j)"
+        echo "insert into $tbl (a,b,c,d) values ($j,'test1',x'1234',$j)"
         let j=j+1
     done >> inserts.in
     echo "commit" >> inserts.in
@@ -226,7 +193,7 @@ echo ""; cat stat.out | grep "Table t1"
 stats_should_be $savedCnt $lastRun 0 0
 
 echo ""
-insert_records_tran 900
+insert_records_tran t1 900
 
 echo ""
 echo "stats should have data, but date still be blank"
@@ -330,7 +297,7 @@ sleep 2
 echo "Testing Fastinit"
 
 prevDate=$lastRun
-insert_records_tran 100
+insert_records_tran t1 100
 
 get_autoanalyze_stat $master
 echo ""; cat stat.out | grep "Table t1" 
@@ -380,16 +347,16 @@ cdb2sql --tabs --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr au
 
 sleep 1
 
-insert_records_tran 200
+insert_records_tran t1 200
 prevDate=$lastRun
 
 get_autoanalyze_stat $master
 echo ""; cat stat.out | grep "Table t1" 
 stats_should_be $savedCnt $lastRun 200 $prevDate
 
+echo "Turn on autoanalyze"
 cdb2sql --tabs --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr autoanalyze 1")'
 
-insert_records_tran 1
 sleep $T_TO_SLEEP
 date
 
@@ -401,6 +368,22 @@ if [ $lastRun -eq $prevDate ] ; then
 fi
 
 stats_should_be $savedCnt  $lastRun 0 $lastRun
+
+
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm "put tunable 'debug.autoanalyze' 1"
+insert_records_tran t1 10000
+echo 'Insert 1001 records to table t2, because we will be analyzing t1, t2 may remain without autoanalyze'
+insert_records_tran t2 1001
+cdb2sql --tabs --host $master ${CDB2_OPTIONS} $dbnm  'exec procedure sys.cmd.send("stat autoanalyze")' | grep "Table t2"
+
+sleep $((T_TO_SLEEP*3))
+
+echo "stats for table t2"
+read cnt <<< `cdb2sql --tabs --host $master ${CDB2_OPTIONS} $dbnm  'exec procedure sys.cmd.send("stat autoanalyze")' | grep "Table t2" | cut -d= -f2 | awk '{print $1}'`
+echo "analyze count for t2 $cnt"
+if [ "$cnt" != "0" ]; then
+    failexit "analyze count should be zero for t2 since autoanalyze should have kicked in for that table"
+fi
 
 
 #can also test downgrade master until it is a different node

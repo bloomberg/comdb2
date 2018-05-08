@@ -402,5 +402,7 @@ int fdb_get_remote_version(const char *dbname, const char *table,
                            enum mach_class class, int local,
                            unsigned long long *version);
 
+int fdb_table_exists(int rootpage);
+
 #endif
 

@@ -1,0 +1,15 @@
+delete from t1 where 1
+
+exec procedure sys.cmd.load('DBDIR/agg1.csv', 't1')
+
+select * from t1 order by name
+
+exec procedure sys.cmd.load('DBDIR/agg1.csv', 't1', ':')
+
+select * from t1 order by name
+
+delete from t1 where 1
+
+exec procedure sys.cmd.load('DBDIR/agg1.csv', 't1',':', 'name:value:time')
+
+select * from t1 order by name

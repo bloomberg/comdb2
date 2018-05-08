@@ -313,3 +313,35 @@ int replicant_reload_analyze_stats()
     logmsg(LOGMSG_DEBUG, "Replicant invalidating SQLite stats\n");
     return 0;
 }
+
+int is_table_in_schema_change(const char *tbname, tran_type *tran)
+{
+    int bdberr;
+    void *packed_sc_data = NULL;
+    size_t packed_sc_data_len;
+    int rc = 0;
+    rc = bdb_get_in_schema_change(tran, tbname, &packed_sc_data,
+                                  &packed_sc_data_len, &bdberr);
+    if (rc || bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR, "%s: failed to read llmeta\n", __func__);
+        return -1;
+    }
+    if (packed_sc_data) {
+        struct schema_change_type *s = new_schemachange_type();
+        if (s == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: out of memory\n", __func__);
+            return -1;
+        }
+        rc = unpack_schema_change_type(s, packed_sc_data, packed_sc_data_len);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to unpack schema change\n",
+                   __func__);
+            return -1;
+        }
+        rc = (strcasecmp(tbname, s->table) == 0);
+        free(packed_sc_data);
+        free_schema_change_type(s);
+        return rc;
+    }
+    return 0;
+}

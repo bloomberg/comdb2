@@ -166,6 +166,18 @@ static char *ibm_getargv0(void)
 }
 #endif
 
+#define SQLCACHEHINT "/*+ RUNCOMDB2SQL "
+#define SQLCACHEHINTLENGTH 17
+
+static inline const char *cdb2_skipws(const char *str)
+{
+    if (str) {
+        while (*str && isspace(*str))
+            str++;
+    }
+    return str;
+}
+
 static char *getargv0(void)
 {
 #if defined(__APPLE__)
@@ -195,6 +207,9 @@ static void do_init_once(void)
     _ARGV0 = getargv0();
 }
 
+/* if sqlstr is a read stmt will return 1 otherwise return 0
+ * returns -1 if sqlstr is null
+ */
 static int is_sql_read(const char *sqlstr)
 {
     const char get[] = "GET";
@@ -205,8 +220,7 @@ static int is_sql_read(const char *sqlstr)
 
     if (sqlstr == NULL)
         return -1;
-    while (sqlstr && isspace(*sqlstr))
-        sqlstr++;
+    sqlstr = cdb2_skipws(sqlstr);
     int slen = strlen(sqlstr);
     if (slen) {
         if (slen < sizeof(get) - 1)
@@ -814,7 +828,7 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
                 (void *)pthread_self(), cfg_info);
 }
 
-static inline int get_char(FILE *fp, char *buf, int *chrno)
+static inline int get_char(FILE *fp, const char *buf, int *chrno)
 {
     int ch;
     if (fp) {
@@ -826,7 +840,7 @@ static inline int get_char(FILE *fp, char *buf, int *chrno)
     return ch;
 }
 
-static int read_line(char *line, int *len, int maxlen, FILE *fp, char *buf,
+static int read_line(char *line, int maxlen, FILE *fp, const char *buf,
                      int *chrno)
 {
     int ch = get_char(fp, buf, chrno);
@@ -870,25 +884,22 @@ static ssl_mode ssl_string_to_mode(const char *s) {
 }
 #endif
 
-static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
-                              char *buf, char comdb2db_hosts[][64],
-                              int *num_hosts, int *comdb2db_num, char *dbname,
+static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
+                              const char *comdb2db_name, const char *buf,
+                              char comdb2db_hosts[][64], int *num_hosts,
+                              int *comdb2db_num, const char *dbname,
                               char db_hosts[][64], int *num_db_hosts,
                               int *dbnum, int *dbname_found,
                               int *comdb2db_found, int *stack_at_open)
 {
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
-    int len = 0;
     int line_no = 0;
 
     if (hndl && hndl->debug_trace) {
         fprintf(stderr, "td %u %s:%d \n", (uint32_t)pthread_self(), __func__,
                 __LINE__);
     }
-    while (read_line((char *)&line, &len, sizeof(line), fp, buf, &line_no) != -1) {
-        if (len >= sizeof(line))
-            return;
-
+    while (read_line((char *)&line, sizeof(line), fp, buf, &line_no) != -1) {
         char *last = NULL;
         char *tok = NULL;
         tok = strtok_r(line, " :", &last);
@@ -1026,10 +1037,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
     }
 }
 
-static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
-                             int dbnum, char *host, char valid_hosts[][64],
-                             int *valid_ports, int *master_node,
-                             int *num_valid_hosts,
+static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
+                             const char *dbname, int dbnum, const char *host,
+                             char valid_hosts[][64], int *valid_ports,
+                             int *master_node, int *num_valid_hosts,
                              int *num_valid_sameroom_hosts);
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
@@ -1048,8 +1059,8 @@ static int get_config_file(const char *dbname, char *f, size_t s)
 /* read all available comdb2 configuration files
  */
 static int read_available_comdb2db_configs(
-    cdb2_hndl_tp *hndl, char comdb2db_hosts[][64], char *comdb2db_name,
-    int *num_hosts, int *comdb2db_num, char *dbname, char db_hosts[][64],
+    cdb2_hndl_tp *hndl, char comdb2db_hosts[][64], const char *comdb2db_name,
+    int *num_hosts, int *comdb2db_num, const char *dbname, char db_hosts[][64],
     int *num_db_hosts, int *dbnum, int *comdb2db_found, int *dbname_found)
 {
     char filename[PATH_MAX];
@@ -1114,40 +1125,14 @@ static int read_available_comdb2db_configs(
     return 0;
 }
 
-static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
-                              int *comdb2db_ports, int *master,
-                              char *comdb2db_name, int *num_hosts,
-                              int *comdb2db_num, char *dbname, char *dbtype,
-                              char db_hosts[][64], int *num_db_hosts,
-                              int *dbnum, int just_defaults)
+/* populate comdb2db_hosts based on hostname info of comdb2db_name
+ * returns -1 if error or no osts wa found
+ * returns 0 if hosts were found
+ * this function has functionality similar to cdb2_tcpresolve()
+ */
+static int get_host_by_name(const char *comdb2db_name,
+                            char comdb2db_hosts[][64], int *num_hosts)
 {
-    int rc;
-    int comdb2db_found = 0;
-    int dbname_found = 0;
-
-    if (hndl && hndl->debug_trace) {
-        fprintf(stderr, "td %u %s:%d \n", (uint32_t)pthread_self(), __func__,
-                __LINE__);
-    }
-
-    rc = read_available_comdb2db_configs(
-        hndl, comdb2db_hosts, comdb2db_name, num_hosts, comdb2db_num, dbname,
-        db_hosts, num_db_hosts, dbnum, &comdb2db_found, &dbname_found);
-    if (rc == -1)
-        return rc;
-
-    if (master)
-        *master = -1;
-
-    if (just_defaults || comdb2db_found || dbname_found)
-        return 0;
-
-    int ret = cdb2_dbinfo_query(hndl, cdb2_default_cluster, comdb2db_name,
-                                *comdb2db_num, NULL, comdb2db_hosts,
-                                comdb2db_ports, master, num_hosts, NULL);
-    if (ret == 0)
-        return 0;
-
     char tmp[8192];
     int tmplen = 8192;
     int herr;
@@ -1175,14 +1160,51 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
         return -1;
     }
 
-    rc = -1;
-    int i = 0;
+    int rc = -1;
     struct in_addr **addr_list = (struct in_addr **)hp->h_addr_list;
-    for (i = 0; addr_list[i] != NULL; i++) {
+    for (int i = 0; addr_list[i] != NULL; i++) {
         strcpy(comdb2db_hosts[i], inet_ntoa(*addr_list[i]));
         (*num_hosts)++;
         rc = 0;
     }
+    return rc;
+}
+
+static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
+                              int *comdb2db_ports, int *master,
+                              const char *comdb2db_name, int *num_hosts,
+                              int *comdb2db_num, const char *dbname,
+                              char *dbtype, char db_hosts[][64],
+                              int *num_db_hosts, int *dbnum, int just_defaults)
+{
+    int rc;
+    int comdb2db_found = 0;
+    int dbname_found = 0;
+
+    if (hndl && hndl->debug_trace) {
+        fprintf(stderr, "td %u %s:%d \n", (uint32_t)pthread_self(), __func__,
+                __LINE__);
+    }
+
+    rc = read_available_comdb2db_configs(
+        hndl, comdb2db_hosts, comdb2db_name, num_hosts, comdb2db_num, dbname,
+        db_hosts, num_db_hosts, dbnum, &comdb2db_found, &dbname_found);
+    if (rc == -1)
+        return rc;
+
+    if (master)
+        *master = -1;
+
+    if (just_defaults || comdb2db_found || dbname_found)
+        return 0;
+
+    rc = cdb2_dbinfo_query(hndl, cdb2_default_cluster, comdb2db_name,
+                           *comdb2db_num, NULL, comdb2db_hosts, comdb2db_ports,
+                           master, num_hosts, NULL);
+    if (rc == 0)
+        return 0;
+
+    rc = get_host_by_name(comdb2db_name, comdb2db_hosts, num_hosts);
     return rc;
 }
 
@@ -1596,8 +1618,9 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 }
 #endif
 
-static int cdb2portmux_route(const char *remote_host, char *app, char *service,
-                             const char *instance, int debug)
+static int cdb2portmux_route(const char *remote_host, const char *app,
+                             const char *service, const char *instance,
+                             int debug)
 {
     char name[128];
     char res[32];
@@ -1734,8 +1757,8 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
 }
 
 /* returns port number, or -1 for error*/
-static int cdb2portmux_get(const char *remote_host, char *app, char *service,
-                           const char *instance, int debug)
+static int cdb2portmux_get(const char *remote_host, const char *app,
+                           const char *service, const char *instance, int debug)
 {
     char name[128]; /* app/service/dbname */
     char res[32];
@@ -2183,8 +2206,8 @@ retry_read:
     return 0;
 }
 
-static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
-                           char *sql, int n_set_commands,
+static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
+                           const char *sql, int n_set_commands,
                            int n_set_commands_sent, char **set_commands,
                            int n_bindvars, CDB2SQLQUERY__Bindvalue **bindvars,
                            int ntypes, int *types, int is_begin, int skip_nrows,
@@ -2214,10 +2237,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         if (hndl)
             hndl->sent_client_info = 1;
     }
-    sqlquery.dbname = dbname;
-    while (isspace(*sql))
-        sql++;
-    sqlquery.sql_query = sql;
+    sqlquery.dbname = (char *)dbname;
+    sqlquery.sql_query = (char *)cdb2_skipws(sql);
 #if _LINUX_SOURCE
     sqlquery.little_endian = 1;
 #else
@@ -2439,8 +2460,9 @@ retry_next_record:
                 __func__);
     retry:
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %p %s:%d retry: shouldretry=%d, "
-                            "hndl->snapshot_file=%p, num_retry=%d\n",
+            fprintf(stderr,
+                    "td %p %s:%d retry: shouldretry=%d, "
+                    "hndl->snapshot_file=%d, num_retry=%d\n",
                     (void *)pthread_self(), __func__, __LINE__, shouldretry,
                     hndl->snapshot_file, num_retry);
         }
@@ -2529,8 +2551,8 @@ retry_next_record:
             hndl->num_set_commands_sent = hndl->num_set_commands;
         }
         for (ii = 0; ii < hndl->lastresponse->n_features; ii++) {
-            if (hndl->in_trans && CDB2_SERVER_FEATURES__SKIP_ROWS &&
-                hndl->lastresponse->features[ii])
+            if (hndl->in_trans && (CDB2_SERVER_FEATURES__SKIP_ROWS ==
+                                   hndl->lastresponse->features[ii]))
                 hndl->skip_feature = 1;
         }
 
@@ -2707,18 +2729,6 @@ static void make_random_str(char *str, size_t max_len, int *len)
     return;
 }
 
-#define SQLCACHEHINT "/*+ RUNCOMDB2SQL "
-#define SQLCACHEHINTLENGTH 17
-
-static inline const char *cdb2_skipws(const char *str)
-{
-    if (str) {
-        while (*str && isspace(*str))
-            str++;
-    }
-    return str;
-}
-
 static int cdb2_query_with_hint(cdb2_hndl_tp *hndl, const char *sqlquery,
                                 char *short_identifier, char **hint,
                                 char **query_hint)
@@ -2804,7 +2814,7 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
         if (log_calls)
             fprintf(stderr, "td %d %s:%d, %d) host=%s(%d)%s\n",
                     (uint32_t)pthread_self(), __func__, __LINE__,
-                    num_valid_hosts, valid_hosts[*num_valid_hosts],
+                    *num_valid_hosts, valid_hosts[*num_valid_hosts],
                     valid_ports[*num_valid_hosts],
                     (*master_node == *num_valid_hosts) ? "*" : "");
 
@@ -3301,7 +3311,6 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
     }
 
     consume_previous_query(hndl);
-    sql = cdb2_skipws(sql);
     if (!sql)
         return 0;
 
@@ -4030,6 +4039,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
         hndl->temp_trans = 1;
     }
 
+    sql = cdb2_skipws(sql);
     rc = cdb2_run_statement_typed_int(hndl, sql, ntypes, types, __LINE__);
 
     // XXX This code does not work correctly for WITH statements
@@ -4296,11 +4306,11 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl)
     return 0;
 }
 
-static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
-                                int comdb2db_num, char *host, int port,
-                                char hosts[][64], int *num_hosts, char *dbname,
-                                char *cluster, int *dbnum, int *num_same_room,
-                                int num_retries)
+static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
+                                int comdb2db_num, const char *host, int port,
+                                char hosts[][64], int *num_hosts,
+                                const char *dbname, char *cluster, int *dbnum,
+                                int *num_same_room, int num_retries)
 {
     char sql_query[256];
     *dbnum = 0;
@@ -4466,10 +4476,14 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
     return 0;
 }
 
-static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
-                             int dbnum, char *host, char valid_hosts[][64],
-                             int *valid_ports, int *master_node,
-                             int *num_valid_hosts,
+/* get dbinfo
+ * returns -1 on error
+ * returns 0 if number of hosts it finds is > 0
+ */
+static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
+                             const char *dbname, int dbnum, const char *host,
+                             char valid_hosts[][64], int *valid_ports,
+                             int *master_node, int *num_valid_hosts,
                              int *num_valid_sameroom_hosts)
 {
     char newsql_typestr[128];
@@ -4536,7 +4550,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
     CDB2QUERY query = CDB2__QUERY__INIT;
 
     CDB2DBINFO dbinfoquery = CDB2__DBINFO__INIT;
-    dbinfoquery.dbname = dbname;
+    dbinfoquery.dbname = (char *)dbname;
     query.dbinfo = &dbinfoquery;
 
     int len = cdb2__query__get_packed_size(&query);
@@ -4565,13 +4579,10 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
     hdr.compression = ntohl(hdr.compression);
     hdr.length = ntohl(hdr.length);
 
-    CDB2DBINFORESPONSE *dbinfo_response = NULL;
-    char *p = NULL;
-    p = malloc(hdr.length);
+    char *p = malloc(hdr.length);
     if (!p) {
         sprintf(hndl->errstr, "%s: out of memory", __func__);
         sbuf2close(sb);
-        free(p);
         return -1;
     }
 
@@ -4581,8 +4592,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
         free(p);
         return -1;
     }
-    dbinfo_response = cdb2__dbinforesponse__unpack(NULL, hdr.length,
-                                                   (const unsigned char *)p);
+    CDB2DBINFORESPONSE *dbinfo_response = cdb2__dbinforesponse__unpack(
+        NULL, hdr.length, (const unsigned char *)p);
 
     if (dbinfo_response == NULL) {
         sprintf(hndl->errstr, "%s: Got no dbinfo response from comdb2 database",
@@ -5221,7 +5232,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     if (getenv("CDB2_DEBUG")) {
         hndl->debug_trace = 1;
-        fprintf(stderr, "td %u %s debug trace enabled \n",
+        fprintf(stderr, "td %u %s %d debug trace enabled\n",
                 (uint32_t)pthread_self(), __func__, __LINE__);
     }
 
