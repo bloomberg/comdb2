@@ -457,6 +457,7 @@ set all_graphs {
           {line
               {opt dup}
               {opt datacopy}
+              {opt uniqnulls}
               {line /string-literal = }
           }
           {stack
