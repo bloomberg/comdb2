@@ -18,6 +18,7 @@ touch $OUT
 
 function timepart_stats
 {
+    set -x
     # check the current partitions 
     echo cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | 
         egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
@@ -37,15 +38,6 @@ function timepart_stats
 
     echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, shardname from comdb2_timepartshards" >> $OUT
     cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, shardname from comdb2_timepartshards" >> $OUT
-    if (( $? != 0 )) ; then
-        echo "FAILURE"
-        exit 1
-    fi
-
-    #randomly we catch a drop event here; sleep to skip the deterministically
-    sleep 6
-    echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
-    cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
     if (( $? != 0 )) ; then
         echo "FAILURE"
         exit 1
@@ -74,11 +66,14 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 
+sleep 6
+
 timepart_stats
 
 # test 3: check attempt to drop a shard
-shard=`cdb2sql -tag ${CDB2_OPTIONS} $dbname default 'select shardname from comdb2_timepartshards limit 1'`
-cdb2sql ${CDB2_OPTIONS} $dbname default "drop table ${shard}" >> $OUT
+shard=`cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'select shardname from comdb2_timepartshards limit 1'`
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "drop table ${shard}" 
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table \'${shard}\'" >> $OUT
 if (( $? == 0 )) ; then
    echo "FAILURE to stop dropping a shard"
    exit 1
