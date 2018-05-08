@@ -12,7 +12,7 @@ while [[ $# -gt 0 && $1 = -* ]]; do
     shift
 done
 
-vars="HOSTNAME TESTID SRCHOME TESTCASE DBNAME DBDIR BUILDDIR TESTSBUILDDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port"
+vars="HOSTNAME TESTID SRCHOME TESTCASE DBNAME DBDIR BUILDDIR TESTSBUILDDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE pmux_port"
 for required in $vars; do
     q=${!required}
     if [[ -z "$q" ]]; then
@@ -164,16 +164,13 @@ echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
 
 set +e
 
-#pmux_port is assigned in runtestcase
-pmux_cmd="$PMUX_EXE -l"
-
 # If PMUXPORT is defined we will overwrite the default pmux port with that
-if [ -n "$PMUXPORT" ] ; then
-    echo "comdb2_config:portmuxport=$PMUXPORT" >> $CDB2_CONFIG
-    echo "portmux_port $PMUXPORT" >> ${LRL}
+if [ -n "${PMUXPORT}" ] ; then
+    pmux_socket=/tmp/pmux.socket.${PMUXPORT}
+    echo "comdb2_config:portmuxport=${PMUXPORT}" >> $CDB2_CONFIG
+    echo "portmux_port ${PMUXPORT}" >> ${LRL}
     echo "portmux_bind_path $pmux_socket" >> ${LRL}
 fi
-stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} && echo exit >&3 ) || echo PMUX DOWN"
 
 export COMDB2AR_EXOPTS="-x $COMDB2_EXE"
 
