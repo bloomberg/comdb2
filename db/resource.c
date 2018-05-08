@@ -164,3 +164,11 @@ void dumpresources(void)
         logmsg(LOGMSG_USER, "%s -> %s\n", res->name, res->filepath);
     }
 }
+
+void cleanresources(void)
+{
+    void *ent;
+    while ((ent = listc_rtl(&list)) != NULL) {
+        free(ent);
+    }
+}

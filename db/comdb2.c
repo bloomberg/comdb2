@@ -1336,6 +1336,18 @@ void clean_exit_sigwrap(int signum) {
    clean_exit();
 }
 
+static void free_sqlite_table(struct dbenv *dbenv)
+{
+    for (int i = dbenv->num_dbs - 1; i >= 0; i--) {
+        struct dbtable *tbl = dbenv->dbs[i];
+        delete_schema(tbl->tablename); // tags hash
+        delete_db(tbl->tablename);     // will free db
+        bdb_cleanup_fld_hints(tbl->handle);
+        freedb(tbl);
+    }
+    free(dbenv->dbs);
+}
+
 /* clean_exit will be called to cleanup db structures upon exit
  * NB: This function can be called by clean_exit_sigwrap() when the db is not
  * up yet at which point we may not have much to cleanup.
@@ -1351,7 +1363,8 @@ void clean_exit(void)
     /* TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
       them to quit.
     */
-    sleep(4);
+    if (!gbl_create_mode)
+        sleep(4);
 
     cleanup_q_vars();
     cleanup_switches();
@@ -1373,8 +1386,6 @@ void clean_exit(void)
 
     eventlog_stop();
 
-    extern char *gbl_portmux_unix_socket;
-    free(gbl_portmux_unix_socket);
     cleanup_file_locations();
     ctrace_closelog();
 
@@ -1382,13 +1393,7 @@ void clean_exit(void)
     net_cleanup_subnets();
     cleanup_sqlite_master();
 
-    for (int i = thedb->num_dbs - 1; i >= 0; i--) {
-        struct dbtable *tbl = thedb->dbs[i];
-        delete_schema(tbl->tablename); // tags hash
-        delete_db(tbl->tablename);     // will free db
-        bdb_cleanup_fld_hints(tbl->handle);
-        freedb(tbl);
-    }
+    free_sqlite_table(thedb);
 
     if (thedb->db_hash) {
         hash_clear(thedb->db_hash);
@@ -1399,6 +1404,10 @@ void clean_exit(void)
     cleanup_interned_strings();
     cleanup_peer_hash();
     free(gbl_dbdir);
+    free(gbl_myhostname);
+
+    cleanresources(); // list of lrls
+    clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
 
@@ -3136,6 +3145,8 @@ static int init(int argc, char **argv)
         cacheszkb = atoi(argv[optind]);
     }
 
+    gbl_mynodeid = machine_num(gbl_mynode);
+
     pthread_attr_init(&gbl_pthread_attr);
     pthread_attr_setstacksize(&gbl_pthread_attr, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&gbl_pthread_attr, PTHREAD_CREATE_DETACHED);
@@ -3319,7 +3330,8 @@ static int init(int argc, char **argv)
         if (nlogfiles == 0) {
             logmsg(LOGMSG_FATAL, "ZERO log files found in %s!\n", txndir);
             logmsg(LOGMSG_FATAL, "Cannot start without logfiles.\n");
-            logmsg(LOGMSG_FATAL, "If this is a clustered database then you should copycomdb2 from the master.\n");
+            logmsg(LOGMSG_FATAL, "If this is a clustered database then you "
+                                 "should copycomdb2 from the master.\n");
             if (!noabort)
                 exit(1);
         }
@@ -4828,6 +4840,9 @@ static void register_all_int_switches()
     register_int_switch("mifid2_datetime_range",
                         "Extend datetime range to meet mifid2 requirements",
                         &gbl_mifid2_datetime_range);
+    register_int_switch("return_long_column_names",
+                        "Enables returning of long column names. (Default: ON)",
+                        &gbl_return_long_column_names);
 }
 
 static void getmyid(void)
@@ -5086,11 +5101,9 @@ int main(int argc, char **argv)
     if (comdb2ma_stats_cron() != 0)
         abort();
 
-    if (process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
-                                 deferred_do_commands)) {
-        logmsg(LOGMSG_FATAL, "failed to process deferred options\n");
-        exit(1);
-    }
+    process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
+                             deferred_do_commands);
+    clear_deferred_options(thedb, DEFERRED_SEND_COMMAND);
 
     // db started - disable recsize kludge so
     // new schemachanges won't allow broken size.
@@ -5397,6 +5410,7 @@ static void create_service_file(const char *lrlname)
                "WantedBy=multi-user.target\n",
             pw->pw_name);
 
+    free(comdb2_path);
     fclose(f);
 #endif
     return;

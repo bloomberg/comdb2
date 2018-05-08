@@ -297,6 +297,7 @@ struct __db_dbt {
 #define DB_TXN_LOGICAL_COMMIT 0x0040000 /* Contains a logical commit */
 #define DB_TXN_DONT_GET_REPO_MTX   0x0080000 /* Get the repo mutex on this commit */
 #define DB_TXN_SCHEMA_LOCK         0x0100000 /* Get the schema-lock */
+#define DB_TXN_LOGICAL_GEN         0x0200000 /* Contains generation info (txn_regop_rl) */
 /*
  * Flags private to DB_ENV->set_encrypt.
  */

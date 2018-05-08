@@ -711,6 +711,7 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
 
+    sc->same_schema = 1;
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL ))
     {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
@@ -799,6 +800,7 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     if (authenticateSC(sc->table, pParse))
         goto out;
 
+    sc->same_schema = 1;
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL )) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->table);
@@ -3882,9 +3884,9 @@ static void comdb2AddIndexInt(
         char *where_clause;
         size_t where_sz;
 
-        where_sz = pPIWhere->zEnd - pPIWhere->zStart - 2;
+        where_sz = pPIWhere->zEnd - pPIWhere->zStart;
         assert(where_sz > 0);
-        where_clause = comdb2_strndup(ctx->mem, pPIWhere->zStart + 1, where_sz);
+        where_clause = comdb2_strndup(ctx->mem, pPIWhere->zStart, where_sz + 1);
         if (where_clause == 0)
             goto oom;
 

@@ -330,7 +330,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
         }
-    } else {
+    } else if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN)) {
         int bdberr = 0;
         rc = bdb_llog_scdone_tran(s->db->handle, type, input_tran, s->table,
                                   &bdberr);
@@ -823,7 +823,6 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
     nbytes = snprintf(NULL, 0, "%s%s", prefix, db->tablename);
     if (nbytes <= 0) nbytes = 2;
     nbytes++;
-    if (nbytes > 32) nbytes = 32;
     tmpname = malloc(nbytes);
     snprintf(tmpname, nbytes, "%s%s", prefix, db->tablename);
 

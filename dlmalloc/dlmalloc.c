@@ -3547,97 +3547,99 @@ static void* sys_alloc(mstate m, size_t nb, int zeroout) {
        (!zeroout && m->allocfunc) 
      ) {
       size_t rsize = granularity_align(nb + TOP_FOOT_SIZE + SIZE_T_ONE);
-      char *mp;
+      if (rsize > nb) { /* Check for wrap around 0. */
+        char *mp;
 
-      /* 
-       * CONSERVATIVE: Round up the requested size to the nearest multiple of
-       *               page size.
-       *               Example:
-       *               8193B -> 12KB
-       *      
-       * MODERATE:     Round up the requested size to the nearest multiple of
-       *               page size, and then grow the value exponentially up to
-       *               1MB. For requested size >= 1MB, fall back to
-       *               CONSERVATIVE. In addition, the exponential factor is
-       *               halved upon a successful sys_trim().
-       *               Example:
-       *               8193B -> 12KB (1st time)
-       *               8193B -> 12KB -> 24KB (2nd)
-       *               8193B -> 12KB -> 48KB (3rd)
-       *               8193B -> 12KB -> 96KB (4th)
-       *               ... successful sys_trim() ...
-       *               8193B -> 12KB -> 48KB (5th)
-       *                    
-       * AGGRESSIVE:   Round up the requested size to the nearest multiple
-       *               of page size, and then round it up to the nearest
-       *               power of 2, and furthermore grow the value exponentially
-       *               up to 1MB. For requested size >= 1MB, fall back to
-       *               CONSERVATIVE.
-       *               Example:
-       *               8193B -> 12KB -> 16KB (1st time)
-       *               8193B -> 12KB -> 32KB (2nd)
-       *               8193B -> 12KB -> 64KB (3rd)
-       *               8193B -> 12KB -> 128KB (4th)
-       *               ... successful sys_trim() ...
-       *               8193B -> 12KB -> 128KB (5th)
-       */
+        /* 
+         * CONSERVATIVE: Round up the requested size to the nearest multiple of
+         *               page size.
+         *               Example:
+         *               8193B -> 12KB
+         *      
+         * MODERATE:     Round up the requested size to the nearest multiple of
+         *               page size, and then grow the value exponentially up to
+         *               1MB. For requested size >= 1MB, fall back to
+         *               CONSERVATIVE. In addition, the exponential factor is
+         *               halved upon a successful sys_trim().
+         *               Example:
+         *               8193B -> 12KB (1st time)
+         *               8193B -> 12KB -> 24KB (2nd)
+         *               8193B -> 12KB -> 48KB (3rd)
+         *               8193B -> 12KB -> 96KB (4th)
+         *               ... successful sys_trim() ...
+         *               8193B -> 12KB -> 48KB (5th)
+         *                    
+         * AGGRESSIVE:   Round up the requested size to the nearest multiple
+         *               of page size, and then round it up to the nearest
+         *               power of 2, and furthermore grow the value exponentially
+         *               up to 1MB. For requested size >= 1MB, fall back to
+         *               CONSERVATIVE.
+         *               Example:
+         *               8193B -> 12KB -> 16KB (1st time)
+         *               8193B -> 12KB -> 32KB (2nd)
+         *               8193B -> 12KB -> 64KB (3rd)
+         *               8193B -> 12KB -> 128KB (4th)
+         *               ... successful sys_trim() ...
+         *               8193B -> 12KB -> 128KB (5th)
+         */
 
-      /* We may have more policies in the future so let's switch-case here. */
-      switch (mparams.nice) {
-      case NICE_AGGRESSIVE:
-          if (rsize < (1ULL << (20 - m->nallocs))) {
-              unsigned int power = 0;
-              --rsize;
+        /* We may have more policies in the future so let's switch-case here. */
+        switch (mparams.nice) {
+        case NICE_AGGRESSIVE:
+            if (rsize < (1ULL << (20 - m->nallocs))) {
+                unsigned int power = 0;
+                --rsize;
 
-              // unroll the following loop to reduce overhead
-              // while (rsize >>= 1) ++power;
+                // unroll the following loop to reduce overhead
+                // while (rsize >>= 1) ++power;
 
 #define ilg2(n) (rsize) & (1ULL << (n))
-              power = ilg2(19) ? 19 :
-                      ilg2(18) ? 18 :
-                      ilg2(17) ? 17 :
-                      ilg2(16) ? 16 :
-                      ilg2(15) ? 15 :
-                      ilg2(14) ? 14 :
-                      ilg2(13) ? 13 :
-                      ilg2(12) ? 12 :
-                      ilg2(11) ? 11 :
-                      ilg2(10) ? 10 :
-                      ilg2( 9) ?  9 :
-                      ilg2( 8) ?  8 :
-                      ilg2( 7) ?  7 :
-                      ilg2( 6) ?  6 :
-                      ilg2( 5) ?  5 :
-                      ilg2( 4) ?  4 :
-                      ilg2( 3) ?  3 :
-                      ilg2( 2) ?  2 :
-                      ilg2( 1) ?  1 : 0;
-              rsize = 1ULL << (power + 1 + m->nallocs);
-          } else if (rsize < (1ULL << 20)) {
-              rsize = (1ULL << 20);
-          }
-          break;
-      case NICE_MODERATE:
-          if (rsize < (1ULL << (20 - m->nallocs))) {
-              rsize *= (1ULL << m->nallocs);
-          } else if (rsize < (1ULL << 20)) {
-              rsize = (1ULL << 20);
-          }
-          break;
-      case NICE_CONSERVATIVE:
-      default:
-          break;
-      }
+                power = ilg2(19) ? 19 :
+                        ilg2(18) ? 18 :
+                        ilg2(17) ? 17 :
+                        ilg2(16) ? 16 :
+                        ilg2(15) ? 15 :
+                        ilg2(14) ? 14 :
+                        ilg2(13) ? 13 :
+                        ilg2(12) ? 12 :
+                        ilg2(11) ? 11 :
+                        ilg2(10) ? 10 :
+                        ilg2( 9) ?  9 :
+                        ilg2( 8) ?  8 :
+                        ilg2( 7) ?  7 :
+                        ilg2( 6) ?  6 :
+                        ilg2( 5) ?  5 :
+                        ilg2( 4) ?  4 :
+                        ilg2( 3) ?  3 :
+                        ilg2( 2) ?  2 :
+                        ilg2( 1) ?  1 : 0;
+                rsize = 1ULL << (power + 1 + m->nallocs);
+            } else if (rsize < (1ULL << 20)) {
+                rsize = (1ULL << 20);
+            }
+            break;
+        case NICE_MODERATE:
+            if (rsize < (1ULL << (20 - m->nallocs))) {
+                rsize *= (1ULL << m->nallocs);
+            } else if (rsize < (1ULL << 20)) {
+                rsize = (1ULL << 20);
+            }
+            break;
+        case NICE_CONSERVATIVE:
+        default:
+            break;
+        }
 
-      mp = zeroout ? m->alloc0func(1, rsize) : m->allocfunc(rsize);
-      if (mp == NULL)
-          tbase = CMFAIL;
-      else {
-          tbase = mp;
-          tsize = rsize;
-          mmap_flag = ALLOCFUNC_BIT;
-          if (mparams.nice < NICE_CONSERVATIVE && m->nallocs < 10)
-              ++(m->nallocs);
+        mp = zeroout ? m->alloc0func(1, rsize) : m->allocfunc(rsize);
+        if (mp == NULL)
+            tbase = CMFAIL;
+        else {
+            tbase = mp;
+            tsize = rsize;
+            mmap_flag = ALLOCFUNC_BIT;
+            if (mparams.nice < NICE_CONSERVATIVE && m->nallocs < 10)
+                ++(m->nallocs);
+        }
       }
   }
 

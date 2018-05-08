@@ -31,6 +31,7 @@
 #include "block_internal.h"
 #include <assert.h>
 #include "logmsg.h"
+#include "views.h"
 
 static void *get_constraint_table_cursor(void *table);
 
@@ -2009,6 +2010,13 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
                 constraint_err(s, from_db, ct, jj, "foreign table not found");
                 n_errors++;
                 continue;
+            } else {
+                if (timepart_is_shard(rdb->tablename, 1)) {
+                    constraint_err(s, from_db, ct, jj,
+                                   "foreign table is a shard");
+                    n_errors++;
+                    continue;
+                }
             }
             if (rdb == new_db) {
                 snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->keynm[jj]);

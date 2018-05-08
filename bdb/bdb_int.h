@@ -1858,7 +1858,6 @@ int berkdb_commit_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,
 
 void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                            int *do_add);
-void populate_deleted_files(bdb_state_type *bdb_state);
 
 int has_low_headroom(const char *path, int threshold, int debug);
 

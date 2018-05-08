@@ -232,11 +232,15 @@ static int net_portmux_hello(void *);
 typedef struct {
     char to_hostname[HOSTNAME_LEN];
     int to_portnum;
-    int ssl; /* was `int to_nodenum` */
+    int flags; /* was `int to_nodenum` */
     char my_hostname[HOSTNAME_LEN];
     int my_portnum;
     int my_nodenum;
 } connect_message_type;
+
+/* flags for connect_message_typs */
+#define CONNECT_MSG_SSL 0x80000000
+#define CONNECT_MSG_TONODE 0x0000ffff /* backwards compatible */
 
 enum {
     NET_CONNECT_MESSAGE_TYPE_LEN = HOSTNAME_LEN + sizeof(int) + sizeof(int) +
@@ -260,8 +264,8 @@ static uint8_t *net_connect_message_put(const connect_message_type *msg_ptr,
                            sizeof(msg_ptr->to_hostname), p_buf, p_buf_end);
     p_buf = buf_put(&(msg_ptr->to_portnum), sizeof(msg_ptr->to_portnum), p_buf,
                     p_buf_end);
-    p_buf = buf_put(&(msg_ptr->ssl), sizeof(msg_ptr->ssl), p_buf,
-                    p_buf_end);
+    p_buf =
+        buf_put(&(msg_ptr->flags), sizeof(msg_ptr->flags), p_buf, p_buf_end);
     p_buf = buf_no_net_put(&(msg_ptr->my_hostname),
                            sizeof(msg_ptr->my_hostname), p_buf, p_buf_end);
     p_buf = buf_put(&(msg_ptr->my_portnum), sizeof(msg_ptr->my_portnum), p_buf,
@@ -283,8 +287,8 @@ static const uint8_t *net_connect_message_get(connect_message_type *msg_ptr,
                            sizeof(msg_ptr->to_hostname), p_buf, p_buf_end);
     p_buf = buf_get(&(msg_ptr->to_portnum), sizeof(msg_ptr->to_portnum), p_buf,
                     p_buf_end);
-    p_buf = buf_get(&(msg_ptr->ssl), sizeof(msg_ptr->ssl), p_buf,
-                    p_buf_end);
+    p_buf =
+        buf_get(&(msg_ptr->flags), sizeof(msg_ptr->flags), p_buf, p_buf_end);
     p_buf = buf_no_net_get(&(msg_ptr->my_hostname),
                            sizeof(msg_ptr->my_hostname), p_buf, p_buf_end);
     p_buf = buf_get(&(msg_ptr->my_portnum), sizeof(msg_ptr->my_portnum), p_buf,
@@ -1056,26 +1060,27 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
         hosteq = 1;
 
     if ((!hosteq) || ((netinfo_ptr->myport != connect_message.to_portnum))) {
-        logmsg(LOGMSG_ERROR, "netinfo_ptr->hostname = %s, "
-                        "connect_message.to_hostname = %s\n",
-                netinfo_ptr->myhostname, connect_message.to_hostname);
+        logmsg(LOGMSG_ERROR,
+               "netinfo_ptr->hostname = %s, "
+               "connect_message.to_hostname = %s\n",
+               netinfo_ptr->myhostname, to_hostname);
         logmsg(LOGMSG_ERROR, 
                 "netinfo_ptr->myport != connect_message.to_portnum %d %d\n",
                 netinfo_ptr->myport, connect_message.to_portnum);
         logmsg(LOGMSG_ERROR, "origin: from=hostname=%s node=%d port=%d\n",
-                connect_message.my_hostname, connect_message.my_nodenum,
-                connect_message.my_portnum);
+               my_hostname, connect_message.my_nodenum,
+               connect_message.my_portnum);
         logmsg(LOGMSG_ERROR, "service: %s\n", netinfo_ptr->service);
 
         return -1;
     }
 
     if (netinfo_ptr->allow_rtn &&
-        !netinfo_ptr->allow_rtn(netinfo_ptr,
-                                intern(connect_message.my_hostname))) {
-        logmsg(LOGMSG_ERROR, 
-                "received connection from node %d which is not allowed\n",
-                connect_message.my_nodenum);
+        !netinfo_ptr->allow_rtn(netinfo_ptr, intern(my_hostname))) {
+        logmsg(LOGMSG_ERROR,
+               "received connection from node %d, hostname %s which is not "
+               "allowed\n",
+               connect_message.my_nodenum, my_hostname);
         return -2;
     }
 
@@ -1083,7 +1088,7 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
     *portnum = connect_message.my_portnum;
 
 #if WITH_SSL
-    if (connect_message.ssl) {
+    if (connect_message.flags & CONNECT_MSG_SSL) {
         if (gbl_rep_ssl_mode < SSL_ALLOW) {
             /* Reject if mis-configured. */
             logmsg(LOGMSG_ERROR,
@@ -1102,7 +1107,7 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
         return -1;
     }
 #else
-    if (connect_message.ssl) {
+    if (connect_message.flags & CONNECT_MSG_SSL) {
         logmsg(LOGMSG_ERROR, "Misconfiguration: Peer requested SSL, "
                              "but I am not built with SSL.\n");
         return -1;
@@ -1176,10 +1181,10 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
     }
     connect_message.to_portnum = host_node_ptr->port;
     /* It was `to_nodenum`. */
+    connect_message.flags = 0;
 #if WITH_SSL
-    connect_message.ssl = (gbl_rep_ssl_mode >= SSL_REQUIRE);
-#else
-    connect_message.ssl = 0;
+    if (gbl_rep_ssl_mode >= SSL_REQUIRE)
+        connect_message.flags |= CONNECT_MSG_SSL;
 #endif
 
     if (netinfo_ptr->myhostname_len >= HOSTNAME_LEN) {
@@ -2758,6 +2763,67 @@ void netinfo_lock(netinfo_type *netinfo_ptr, int seconds)
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 }
 
+static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
+                                host_node_type *host_node_ptr)
+{
+    host_node_type *tmp = netinfo_ptr->head;
+
+    if (host_node_ptr == tmp) {
+        netinfo_ptr->head = host_node_ptr->next;
+    } else {
+        while (tmp && tmp->next != host_node_ptr)
+            tmp = tmp->next;
+
+        if (!tmp) {
+            logmsg(LOGMSG_WARN,
+                   "%s: failed to find host_node in %s netinfo list!"
+                   "(probably removed from net_decom_node)\n",
+                   __func__, netinfo_ptr->service);
+        } else {
+            logmsg(LOGMSG_INFO, "%s: found host_node in %s netinfo list\n",
+                   __func__, netinfo_ptr->service);
+
+            tmp->next = host_node_ptr->next;
+        }
+    }
+
+    // if last_used is eq to host_node_ptr->host, clear last_used_node_ptr
+    if (host_node_ptr == netinfo_ptr->last_used_node_ptr) {
+        netinfo_ptr->last_used_node_ptr = NULL;
+    }
+
+    if (host_node_ptr->write_head != NULL) {
+        /* purge anything pending to be sent */
+        Pthread_mutex_lock(&(host_node_ptr->write_lock));
+        empty_write_list(host_node_ptr);
+        Pthread_mutex_unlock(&(host_node_ptr->write_lock));
+    }
+
+    /* This routine (& 'free') is only called when the connect-thread exits
+     */
+    pthread_mutex_destroy(&(host_node_ptr->lock));
+    pthread_mutex_destroy(&(host_node_ptr->timestamp_lock));
+    pthread_mutex_destroy(&(host_node_ptr->pool_lock));
+    pthread_mutex_destroy(&(host_node_ptr->write_lock));
+    pthread_mutex_destroy(&(host_node_ptr->enquelk));
+    pthread_mutex_destroy(&(host_node_ptr->wait_mutex));
+    pthread_mutex_destroy(&(host_node_ptr->throttle_lock));
+
+    pthread_cond_destroy(&(host_node_ptr->ack_wakeup));
+    pthread_cond_destroy(&(host_node_ptr->write_wakeup));
+    pthread_cond_destroy(&(host_node_ptr->throttle_wakeup));
+
+    pool_free(host_node_ptr->write_pool);
+#ifndef PER_THREAD_MALLOC
+    comdb2ma_destroy(host_node_ptr->msp);
+#endif
+
+    free(host_node_ptr->user_data_buf);
+    sbuf2free(host_node_ptr->sb);
+
+    free(host_node_ptr);
+}
+
 /* called from connect thread upon exiting:
  * when db is exiting or when host_node_ptr decom_flag is set
  */
@@ -2771,61 +2837,17 @@ static void rem_from_netinfo(netinfo_type *netinfo_ptr,
         return;
 
     Pthread_rwlock_wrlock(&(netinfo_ptr->lock));
-    {
-        host_node_type *tmp = netinfo_ptr->head;
+    rem_from_netinfo_ll(netinfo_ptr, host_node_ptr);
 
-        if (host_node_ptr == tmp) {
-            netinfo_ptr->head = host_node_ptr->next;
-        } else {
-            while (tmp && tmp->next != host_node_ptr)
-                tmp = tmp->next;
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+}
 
-            if (!tmp) {
-                logmsg(LOGMSG_WARN, "%s: failed to find host_node in %s netinfo list!"
-                        "(probably removed from net_decom_node)\n",
-                        __func__, netinfo_ptr->service);
-            } else {
-                logmsg(LOGMSG_INFO, "%s: found host_node in %s netinfo list\n",
-                        __func__, netinfo_ptr->service);
-
-                tmp->next = host_node_ptr->next;
-            }
-        }
-
-        // if last_used is eq to host_node_ptr->host, clear last_used_node_ptr
-        if (host_node_ptr == netinfo_ptr->last_used_node_ptr) {
-            netinfo_ptr->last_used_node_ptr = NULL;
-        }
-
-        if (host_node_ptr->write_head != NULL) {
-            /* purge anything pending to be sent */
-            Pthread_mutex_lock(&(host_node_ptr->write_lock));
-            empty_write_list(host_node_ptr);
-            Pthread_mutex_unlock(&(host_node_ptr->write_lock));
-        }
-
-        /* This routine (& 'free') is only called when the connect-thread exits
-         */
-        pthread_mutex_destroy(&(host_node_ptr->lock));
-        pthread_mutex_destroy(&(host_node_ptr->timestamp_lock));
-        pthread_mutex_destroy(&(host_node_ptr->pool_lock));
-        pthread_mutex_destroy(&(host_node_ptr->write_lock));
-        pthread_mutex_destroy(&(host_node_ptr->enquelk));
-        pthread_mutex_destroy(&(host_node_ptr->wait_mutex));
-        pthread_mutex_destroy(&(host_node_ptr->throttle_lock));
-
-        pthread_cond_destroy(&(host_node_ptr->ack_wakeup));
-        pthread_cond_destroy(&(host_node_ptr->write_wakeup));
-        pthread_cond_destroy(&(host_node_ptr->throttle_wakeup));
-
-        pool_free(host_node_ptr->write_pool);
-#ifndef PER_THREAD_MALLOC
-        comdb2ma_destroy(host_node_ptr->msp);
-#endif
-
-        free(host_node_ptr->user_data_buf);
-
-        free(host_node_ptr);
+void net_cleanup_netinfo(netinfo_type *netinfo_ptr)
+{
+    host_node_type *ptr;
+    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+    while ((ptr = netinfo_ptr->head) != NULL) {
+        rem_from_netinfo_ll(netinfo_ptr, ptr);
     }
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 }
@@ -5307,7 +5329,7 @@ static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
            (unsigned)ntohs(lcl_addr_inet.sin_port));
 
     /* extract the suffix of subnet ex. '_n3' in name node1_n3 */
-    int myh_len = host_node_ptr->netinfo_ptr->myhostname_len;
+    int myh_len = strlen(host_node_ptr->netinfo_ptr->myhostname);
     if (strncmp(host_node_ptr->netinfo_ptr->myhostname, host, myh_len) == 0) {
         assert(myh_len <= sizeof(host));
         char *subnet = &host[myh_len];
@@ -5601,13 +5623,14 @@ static void *connect_and_accept(void *arg)
     /* Special port number to indicate we're meant for a different net. */
     portnum &= 0xffff;
     /* if connect message specifies a child net, use it */
-    if (netnum) {
+    if (netnum && netnum != netinfo_ptr->netnum) {
         netinfo_type *net;
         Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
         if (netnum < 0 || netnum >= netinfo_ptr->num_child_nets ||
             netinfo_ptr->child_nets[netnum] == NULL) {
-            logmsg(LOGMSG_ERROR, "connect message for netnum %d, "
-                                 "num_child_nets %d, not not registered\n",
+            logmsg(LOGMSG_ERROR,
+                   "connect message for netnum %d, num_child_nets %d, net not "
+                   "registered\n",
                    netnum, netinfo_ptr->num_child_nets);
             Pthread_rwlock_unlock(&(netinfo_ptr->lock));
             return NULL;

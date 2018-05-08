@@ -199,11 +199,11 @@ static int systbl_column(
 #endif
             if ((t->fields[i].type & FIELD_TYPE_MASK) == CDB2_DATETIME) {
                 cdb2_client_datetime_t *dt = (cdb2_client_datetime_t*) field;
-                rc = client_datetime_to_dttz((cdb2_client_datetime_t*) dt, tz, &dtz, le);
+                rc = client_datetime_to_dttz(dt, tz, &dtz, le);
             }
             else {
                 cdb2_client_datetimeus_t *dt = (cdb2_client_datetimeus_t*) field;
-                rc = client_datetimeus_to_dttz((cdb2_client_datetimeus_t*) dt, tz, &dtz, le);
+                rc = client_datetimeus_to_dttz(dt, tz, &dtz, le);
             }
 
             if (rc == 0)

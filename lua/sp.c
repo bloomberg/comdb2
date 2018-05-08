@@ -3115,7 +3115,11 @@ static int dbstmt_emit(Lua L)
     int cols = sqlite3_column_count(stmt);
     int rc;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        l_send_back_row(L, stmt, cols);
+        rc = l_send_back_row(L, stmt, cols);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed with rc %d\n", __func__, rc);
+            break;
+        }
     }
     reset_stmt(sp, dbstmt);
     if (rc == SQLITE_DONE) rc = 0;
@@ -3137,6 +3141,167 @@ static int dbstmt_rows_changed(Lua L)
     no_stmt_chk(L, dbstmt);
     lua_pushinteger(L, dbstmt->rows_changed);
     return 1;
+}
+
+int db_csvcopy(Lua lua)
+{
+    luaL_checkudata(lua, 1, dbtypes.db);
+    lua_remove(lua, 1);
+
+    SP sp = getsp(lua);
+
+    int rc = 0;
+    const char *fname_orig = lua_tostring(lua, 1);
+    const char *tablename = NULL;
+    const char *cSeparator = ",";
+    const char *header = NULL;
+    FILE *fp = NULL;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    int nargs;
+    strbuf *columns, *params, *sql;
+
+    char path[PATH_MAX + 1];
+    char *fname = realpath(fname_orig, path);
+
+    int basedir_len = strlen(thedb->basedir);
+
+    if (fname == NULL) {
+        return luaL_error(lua, strerror(errno));
+    } else if ((strncmp(thedb->basedir, fname, basedir_len) != 0) || (fname[basedir_len] != '/')) {
+        return luaL_error(lua, "File not in database directory");
+    }
+
+    if (lua_gettop(lua) >= 2 && !lua_isnil(lua, 2) && !luabb_isnull(lua, 2)) {
+       tablename = luabb_tostring(lua, 2);
+    } else {
+        return luaL_error(lua, "Table name not specified");
+    }
+
+    if (lua_gettop(lua) >= 3 && !lua_isnil(lua, 3) && !luabb_isnull(lua, 3)) {
+       cSeparator = luabb_tostring(lua, 3);
+    }
+
+    if (lua_gettop(lua) >= 4 && !lua_isnil(lua, 4) && !luabb_isnull(lua, 4)) {
+       header = luabb_tostring(lua, 4);
+    }
+
+    fp = fopen(fname, "r");
+
+    if (fp == NULL) {
+        return luaL_error(lua, strerror(errno));
+    }
+
+    columns = strbuf_new();
+    params = strbuf_new();
+
+    strbuf_append(columns, "(");
+    strbuf_append(params, "(");
+
+    if (header == NULL) {
+        read = getline(&line, &len, fp);
+        header = line;
+    } 
+
+    /* Make sql query */
+    CSVReader csv = {0};
+    csv.in = header;
+    csv.nLine = 1;
+    csv.lua = lua;
+    csv.cSeparator = cSeparator[0];
+    csv_append_char(&csv, 0); /* To ensure sCsv.z is allocated */
+    int cols = 0, lines = 0;
+
+    while (csv_read_one_field(&csv)) {
+      char *quoted_col = sqlite3_mprintf("\"%w\",", csv.z);
+      strbuf_append(columns, quoted_col);
+      sqlite3_free(quoted_col);
+      strbuf_appendf(params, "?,");
+      if (csv.cTerm == 0) break;
+    }
+    free(line);
+    line = NULL;
+
+    strbuf_del(columns, 1);
+    strbuf_del(params, 1);
+
+    strbuf_append(columns, ")");
+    strbuf_append(params, ")");
+
+    char n1[MAXTABLELEN], separator[2], n2[MAXTABLELEN];
+    query_tbl_name(tablename, n1, separator, n2);
+    sql = strbuf_new();
+    strbuf_appendf(sql, "INSERT INTO %s%s\"%s\" %s VALUES %s", n1, separator,
+                   n2, strbuf_buf(columns), strbuf_buf(params));
+
+    char *sqlstr = strbuf_disown(sql);
+
+    strbuf_free(sql);
+    strbuf_free(columns);
+    strbuf_free(params);
+    
+    db_reset(lua);
+    sqlite3_stmt *stmt = NULL;
+    rc = lua_prepare_sql(lua, sp, sqlstr, &stmt);
+    free(sqlstr);
+    if (rc != 0) {
+        rc = luaL_error(lua, sp->error);
+        goto done;
+    }
+ 
+    read = getline(&line, &len, fp);
+
+    while (read > 0) {
+        csv.in = line;
+        csv.pos = 0;
+        int cols = 0, lines = 0;
+        int pos = 1;
+        char *b_val[SQLITE_MAX_VARIABLE_NUMBER]; // Bind values
+
+    	while (csv_read_one_field(&csv)) {
+          b_val[pos-1] = strdup(csv.z);
+          rc = sqlite3_bind_text(stmt, pos, b_val[pos-1], strlen(b_val[pos-1]), NULL);
+          if (rc) {
+              rc = luaL_error(lua, sqlite3_errmsg(stmt));
+              goto done;
+          }
+          pos++;
+          if (pos >= SQLITE_MAX_VARIABLE_NUMBER) {
+              rc = luaL_error(lua, "Mismatch between number of columns and csv fields");
+              goto done;
+          }
+      	  if (csv.cTerm == 0) break;
+        }
+        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) ;
+
+        for (int i = 0; i < pos-1; i++) {
+            free(b_val[i]);
+            b_val[i] = NULL;
+        }
+        free(line);
+        line = NULL;
+
+        if (rc != SQLITE_DONE)  {
+            rc = luaL_error(lua, sqlite3_errmsg(stmt));
+            goto done;
+        }
+        read = getline(&line, &len, fp);
+        sqlite3_reset(stmt);
+    }
+
+    rc = 0;
+
+done:
+    if (csv.z)
+        free(csv.z);
+    if (stmt)
+        sqlite3_finalize(stmt);
+    if (fp)
+        fclose(fp);
+    if (rc == 0)
+        lua_pushinteger(lua, rc);
+    return rc;
 }
 
 static int db_exec(Lua lua)
@@ -4644,7 +4809,11 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
         return luabb_error(lua, sp, "attempt to read %d cols (maxcols:%d)",
                            nargs, MAXCOLUMNS);
     }
-    release_locks_on_emit_row(sp->thd, sp->clnt);
+    rc = release_locks_on_emit_row(sp->thd, sp->clnt);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s release_locks_on_emit_row %d\n", __func__, rc);
+        return rc;
+    }
     struct response_data arg = {0};
     arg.ncols = nargs;
     arg.stmt = stmt;
