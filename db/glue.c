@@ -876,28 +876,22 @@ int ix_isnullk(void *db_table, void *key, int ixnum)
     struct schema *dbixschema;
     int ifld;
     if (!db || !key || ixnum < 0 || ixnum >= db->nix) {
-        /* fprintf(stderr,
+        logmsg(LOGMSG_ERROR,
             "ix_isnullk: bad args, db = %p, key = %p, ixnum = %d\n",
-            db, key, ixnum); */
+            db, key, ixnum);
         return 0;
     }
     if (db->ix_dupes[ixnum]) {
-        /* fprintf(stderr,
-            "ix_isnullk: UNIQUE disabled, db = %p, key = %p, ixnum = %d\n",
-            db, key, ixnum); */
         return 0;
     }
     if (!db->ix_nullsallowed[ixnum]) {
-        /* fprintf(stderr,
-            "ix_isnullk: nulls not allowed, db = %p, key = %p, ixnum = %d\n",
-            db, key, ixnum); */
         return 0;
     }
     dbixschema = db->ixschema[ixnum];
     if (!dbixschema) {
-        /* fprintf(stderr,
+        logmsg(LOGMSG_ERROR,
             "ix_isnullk: missing schema, db = %p, key = %p, ixnum = %d\n",
-            db, key, ixnum); */
+            db, key, ixnum);
         return 0;
     }
     for (ifld = 0; ifld < dbixschema->nmembers; ifld++) {
