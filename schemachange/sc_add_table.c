@@ -196,7 +196,7 @@ int add_table_to_environment(char *table, const char *csc2,
         if (rc == SC_CSC2_ERROR) sc_errf(s, "New indexes syntax error\n");
         goto err;
     }
-    newdb->schema->ix_blob = newdb->ix_blob;
+    newdb->ix_blob = newdb->schema->ix_blob;
 
     /*
     ** if ((rc = write_csc2_file(newdb, csc2))) {

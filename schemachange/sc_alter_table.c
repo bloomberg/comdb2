@@ -386,6 +386,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         } else {
             sc_printf(s, "New indexes ok\n");
         }
+        newdb->ix_blob = newdb->schema->ix_blob;
     }
     pthread_mutex_unlock(&csc2_subsystem_mtx);
 

@@ -1962,13 +1962,20 @@ int schema_var_size(struct schema *sc)
     return sz;
 }
 
+struct schema_mem {
+    struct schema *sc;
+    Mem *min;
+    Mem *mout;
+};
+
 static int indexes_thread_memory = 1048576;
 /* force an update on sqlite_master to test partial indexes syntax*/
 int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
 {
     int rc = 0;
     sqlite3 *hndl = NULL;
-    struct sqlclntstate client;
+    struct sqlclntstate client = {0};
+    struct schema_mem sm = {0};
     const char *temp = "select 1 from sqlite_master limit 1";
     char *err = NULL;
     int got_curtran = 0;
@@ -2000,6 +2007,12 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
     client.sql = (char *)temp;
     sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     client.dbtran.mode = TRANLEVEL_SOSQL;
+
+    /* schema_mems is used to pass db->schema to is_comdb2_index_blob so we can
+     * mark db->schema->ix_blob if the index expression has blob fields */
+    sm.sc = db->schema;
+    client.verify_indexes = 1;
+    client.schema_mems = &sm;
 
     struct sql_thread *sqlthd = start_sql_thread();
     sql_get_query_id(sqlthd);
@@ -10695,24 +10708,35 @@ int is_comdb2_index_expression(const char *dbname)
 
 int is_comdb2_index_blob(const char *dbname, int icol)
 {
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->clnt;
+    struct schema_mem *sm = clnt ? clnt->schema_mems : NULL;
+
     struct dbtable *db = get_dbtable_by_name(dbname);
-    if (db) {
+    struct schema *schema = NULL;
+
+    if (sm && sm->sc)
+        schema = sm->sc; /* use the given schema for new_indexes_syntax_check */
+    else if (db)
+        schema = db->schema;
+
+    if (schema) {
         struct field *f;
-        if (icol < 0 || icol >= db->schema->nmembers)
+        if (icol < 0 || icol >= schema->nmembers)
             return -1;
-        switch (db->schema->member[icol].type) {
+        switch (schema->member[icol].type) {
         case CLIENT_BLOB:
         case SERVER_BLOB:
         case CLIENT_BLOB2:
         case SERVER_BLOB2:
         case CLIENT_VUTF8:
         case SERVER_VUTF8:
-            db->ix_blob = 1;
+            /* mark ix_blob 1 in schema */
+            schema->ix_blob = 1;
             return 1;
         default:
             return 0;
         }
-        return db->ix_expr;
     }
     return 0;
 }
@@ -11911,12 +11935,6 @@ done:
 
     return rc;
 }
-
-struct schema_mem {
-    struct schema *sc;
-    Mem *min;
-    Mem *mout;
-};
 
 static int bind_stmt_mem(struct schema *sc, sqlite3_stmt *stmt, Mem *m)
 {
