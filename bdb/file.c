@@ -1487,6 +1487,17 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     }
     Pthread_mutex_unlock(&(bdb_state->children_lock));
 
+    /* Wait for ongoing election to abort. */
+    while (1) {
+        Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
+        int in_election = bdb_state->repinfo->in_election;
+        Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
+        if (!in_election)
+            break;
+        logmsg(LOGMSG_WARN, "%s: Election in progress.\n", __func__);
+        sleep(1);
+    }
+
     /* close all database files.   doesn't fail. */
     if (!envonly) {
         rc = close_dbs(bdb_state, NULL);

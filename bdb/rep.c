@@ -1136,6 +1136,22 @@ void defer_commits_for_upgrade(bdb_state_type *bdb_state, const char *host,
 void set_repinfo_master_host(bdb_state_type *bdb_state, char *master,
                              const char *func, uint32_t line);
 
+/* Abort election and reset in_election flag if db is exiting. */
+static void abort_election_on_exit(bdb_state_type *bdb_state)
+{
+    if (!bdb_state->exiting)
+        return;
+
+    print(bdb_state, "elect_thread: exiting\n");
+
+    Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
+    bdb_state->repinfo->in_election = 0;
+    Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
+
+    bdb_thread_event(bdb_state, 0);
+    pthread_exit(NULL);
+}
+
 static void *elect_thread(void *args)
 {
     int rc, count, i;
@@ -1189,16 +1205,7 @@ static void *elect_thread(void *args)
 
     Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
 
-    if (bdb_state->exiting) {
-        print(bdb_state, "elect_thread: exiting\n");
-
-        Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
-        bdb_state->repinfo->in_election = 0;
-        Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
-
-        bdb_thread_event(bdb_state, 0);
-        pthread_exit(NULL);
-    }
+    abort_election_on_exit(bdb_state);
 
     if (op == REOPEN_AND_LOSE) {
         rc = bdb_reopen_inline(bdb_state);
@@ -1208,21 +1215,12 @@ static void *elect_thread(void *args)
         }
     }
 
-    /*
-    fprintf(stderr, "************  calling rep_elect(%d, %d, %d)\n",
-       net_count_nodes(bdb_state->repinfo->netinfo), REP_PRI, REPTIME);
-       */
-
     /* base is in millesecondss, we need microseconds */
     elect_time = bdb_state->attr->electtimebase * 1000;
 
 elect_again:
-
-    /*poll(NULL, 0, 100);*/
-
-    /* moved this below elect_again: so that if we get stuck in an election
-     * loop we can pick up changes to the election timeout - sam j */
-    /*elect_time = REPTIME;*/
+    /* Database may be exiting. Re-check before we re-elect. */
+    abort_election_on_exit(bdb_state);
 
     if (bdb_state->callback->electsettings_rtn) {
         int elect_time_microsecs = 0;
