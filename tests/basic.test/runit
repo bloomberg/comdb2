@@ -24,14 +24,6 @@ failexit()
     exit -1
 }
 
-assertbadexitcode ()
-{
-    rc=$1
-    if [ $rc -eq 0 ] ; then
-        failexit "exit code is now $rc but should not be 0"
-    fi
-}
-
 assertcnt ()
 {
     target=$1
@@ -337,43 +329,5 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("sql hist")'
 
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
 assertres $res 1
-
-echo "create and use UNIQUE INDEX with multiple NULL values"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t3(x INTEGER)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create unique index t3_x on t3(x)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(1)"
-set -errexit
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(1)"
-exitCode=$?
-set +errexit
-assertbadexitcode $exitCode
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(2)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
-res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
-assertres "${res}" "NULL\nNULL\n1\n2"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t3 where x is null"
-res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
-assertres "${res}" "1\n2"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(NULL)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
-res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
-assertres "${res}" "NULL\nNULL\n1\n2"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "update t3 set x = NULL where x = 1"
-res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
-assertres "${res}" "NULL\nNULL\nNULL\n2"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "update t3 set x = NULL"
-res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select x from t3 order by x"`
-assertres "${res}" "NULL\nNULL\nNULL\nNULL"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop index t3_x"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t3')"
 
 echo "Success"
