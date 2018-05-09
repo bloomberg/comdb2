@@ -11,8 +11,8 @@ echo "!$TESTCASE: stopping"
 #parameter $1 indicates if test is successful or not
 successful=$1
 
-function kill_by_pidfile() {
-    pidfile=$1
+kill_by_pidfile() {
+    local pidfile=$1
     if [[ -f $pidfile ]]; then
         local pid=$(cat $pidfile)
         local pstr=$(ps -p $pid -o args | grep comdb2)
@@ -31,8 +31,8 @@ function kill_by_pidfile() {
     fi
 }
 
-function build_pidfilelist() {
-    pidfile=$1
+build_pidfilelist() {
+    local pidfile=$1
     if [[ -f $pidfile ]]; then
         local pid=$(cat $pidfile)
         ps -p $pid -o args | grep -q "comdb2 ${DBNAME}"
@@ -48,45 +48,57 @@ function build_pidfilelist() {
 
 core_all_nodes() {
     local node
-    local PIDFL=${TMPDIR}/${DBNAME}.pid
+    local pidfl=${TMPDIR}/${DBNAME}.pid
     if [[ -z "$CLUSTER" ]] || [[ `echo $CLUSTER | grep $HOSTNAME ` ]]; then
         if [[ -n "$CLUSTER" ]] ; then
-            PIDFL=${TMPDIR}/${DBNAME}.$HOSTNAME.pid
+            pidfl=${TMPDIR}/${DBNAME}.$HOSTNAME.pid
         fi
-        cat ${PIDFL} | xargs kill -6 
+        cat ${pidfl} | xargs kill -6 
     fi
 
     for node in ${CLUSTER/$HOSTNAME/} ; do
-         PIDFL=${TMPDIR}/${DBNAME}.pid
-         ssh -o StrictHostKeyChecking=no $node "cat ${PIDFL} | xargs kill -6 " </dev/null
+         pidfl=${TMPDIR}/${DBNAME}.pid
+         ssh -o StrictHostKeyChecking=no $node "cat ${pidfl} | xargs kill -6 " </dev/null
     done
 }
 
+deregister_db_port="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )"
 
-function cleanup_cluster {    
-    for node in $CLUSTER; do
-        if [ "$node" != "$HOSTNAME" ] ; then
-            ${TESTSROOTDIR}/tools/send_msg_port.sh -h $node "get comdb2/replication/${DBNAME}" ${pmux_port}
-            ssh -o StrictHostKeyChecking=no $node "${deregister_db_port}" < /dev/null
-        fi
+cleanup_cluster() {    
+    local node
+    echo deregistering $DBNAME from $HOSTNAME pmux:$pmux_port
+    eval $deregister_db_port
+
+    if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
+        rm -rf ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.*
+    fi
+
+    for node in ${CLUSTER/$HOSTNAME/}; do
+        ${TESTSROOTDIR}/tools/send_msg_port.sh -h $node "get comdb2/replication/${DBNAME}" ${pmux_port}
+        echo deregistering $DBNAME from $node pmux:$pmux_port
+        ssh -o StrictHostKeyChecking=no $node "${deregister_db_port}" < /dev/null
         if [ "x$DBDIR" == "x" ] ; then 
             continue
-        fi
-        if [ "$node" == "$HOSTNAME" ]  ; then
-            continue;
         fi
 
         if [ "$successful" != "1" ] ; then 
             echo copy $node:${TESTDIR} content locally to $TESTDIR/$node for investigation
-            scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node < /dev/null
-        elif [ "$CLEANUPDBDIR" == "1" ] ; then 
-            ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR}" < /dev/null
+            scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node < /dev/null &
+        elif [ "$CLEANUPDBDIR" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
+            ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.*" < /dev/null &
         fi
     done
+    wait
 }
 
-echo deregistering $DBNAME from pmux:$pmux_port
-deregister_db_port="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )"
+flush_node() {
+    local node=$1
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("flush")' &
+    sleep 1
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("reql events off")' &
+    sleep 1
+}
+
 
 if [[ "$NOKILL_ON_TIMEOUT" -eq 1 && "$successful" -eq "-1" ]]; then
     echo "Unsetup deferred"
@@ -110,12 +122,10 @@ else
     pidfilelist=""
 
     for node in $CLUSTER; do
-        cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("flush")' &
-        sleep 1
-        cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("reql events off")' &
-        sleep 1
+        flush_node $node &
         build_pidfilelist ${TMPDIR}/${DBNAME}.${node}.pid
     done
+    wait
 
     # for clustered, killing ssh session which is running comdb2 cmd 
     # will kill server on that node
@@ -123,14 +133,7 @@ else
         echo "killing $pidfilelist"
         kill -9 $pidfilelist
     fi
-    cleanup_cluster
 fi
 
-eval $deregister_db_port
-
-if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
-    rm -rf ${DBDIR}
-    rm -rf ${TESTDIR}/var/log/cdb2/${DBNAME}.*
-fi
-
+cleanup_cluster
 echo "Unsetup completed"

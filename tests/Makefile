@@ -18,9 +18,9 @@ export DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | 
 export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
     $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh)))
 
-TOTAL=$(words $(MAKECMDGOALS))  # targets passed to make
-ifeq ($(TOTAL),0)
-TOTAL=$(words $(ALL_TESTS))     # if no targets passed, will do ALL_TESTS
+TOTAL=$(words $(MAKECMDGOALS) )  # targets passed to make
+ifeq ($(MAKECMDGOALS),)
+TOTAL=$(words $(ALL_TESTS) )     # if no targets passed, will do ALL_TESTS
 endif
 
 all: init basicops all_tests
@@ -40,8 +40,8 @@ basicops_nokey: init
 	$(shell echo "TESTSROOTDIR=${TESTSROOTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "DISABLED= $(sort ${DISABLED_TESTS}) " >> ${TESTDIR}/test.log)
+	$(shell echo "MAKECMDGOALS=${MAKECMDGOALS}" >> ${TESTDIR}/test.log)
 	$(shell echo "" >> ${TESTDIR}/test.log)
-	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
 
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" $(TESTSROOTDIR)/tools/keygen.sh)
