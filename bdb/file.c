@@ -1494,7 +1494,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
         Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
         if (!in_election)
             break;
-        fprintf(stderr, "%s Election in progress.\n", __func__);
+        logmsg(LOGMSG_WARN, "%s: Election in progress.\n", __func__);
         sleep(1);
     }
 
