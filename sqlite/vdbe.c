@@ -5023,9 +5023,8 @@ case OP_InsertInt: {
     x.nZero = 0;
   }
   x.pKey = 0;
-  rc = sqlite3BtreeInsert(pC->uc.pCursor, &x,
-                          (pOp->p5 & OPFLAG_APPEND)!=0, seekResult
-  );
+  rc = sqlite3BtreeInsert(pC->uc.pCursor, &x, (pOp->p5 & OPFLAG_ISUPDATE)!=0,
+                          seekResult, (int) pOp->p5);
   pC->deferredMoveto = 0;
   pC->cacheStatus = CACHE_STALE;
 
@@ -5694,9 +5693,10 @@ case OP_IdxInsert: {        /* in2 */
   }else{
     x.nKey = pIn2->n;
     x.pKey = pIn2->z;
-    rc = sqlite3BtreeInsert(pC->uc.pCursor, &x, pOp->p3, 
-        ((pOp->p5 & OPFLAG_USESEEKRESULT) ? pC->seekResult : 0)
-        );
+    rc = sqlite3BtreeInsert(pC->uc.pCursor, &x, pOp->p3,
+                            ((pOp->p5 & OPFLAG_USESEEKRESULT) ?
+                             pC->seekResult : 0),
+                            (int) pOp->p5);
     assert( pC->deferredMoveto==0 );
     pC->cacheStatus = CACHE_STALE;
   }

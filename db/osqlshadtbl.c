@@ -54,6 +54,11 @@ typedef struct index_key {
     unsigned long long ixnum; /* index num in the row */
 } index_key_t;
 
+typedef struct rec_flags {
+    unsigned long long seq;
+    int flags;
+} rec_flags_t;
+
 static shad_tbl_t *get_shadtbl(struct BtCursor *pCur);
 static shad_tbl_t *open_shadtbl(struct BtCursor *pCur);
 static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
@@ -144,6 +149,12 @@ static int destroy_shadtbl(shad_tbl_t *tbl)
         destroy_idx_hash(tbl->addidx_hash);
     if (tbl->delidx_hash)
         destroy_idx_hash(tbl->delidx_hash);
+
+    if (tbl->ins_rec_hash)
+        destroy_idx_hash(tbl->ins_rec_hash);
+    if (tbl->upd_rec_hash)
+        destroy_idx_hash(tbl->upd_rec_hash);
+
     if (tbl->delidx_tbl)
         destroy_tablecursor(tbl->env->bdb_env, tbl->delidx_cur, tbl->delidx_tbl,
                             &bdberr);
@@ -483,6 +494,11 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
                                    sizeof(unsigned long long));
     tbl->delidx_hash = hash_init_o(offsetof(struct rec_dirty_keys, seq),
                                    sizeof(unsigned long long));
+
+    tbl->ins_rec_hash = hash_init_o(offsetof(rec_flags_t, seq),
+                                    sizeof(unsigned long long));
+    tbl->upd_rec_hash = hash_init_o(offsetof(rec_flags_t, seq),
+                                    sizeof(unsigned long long));
 
     listc_abl(&clnt->osql.shadtbls, tbl);
     pCur->shadtbl = tbl;
@@ -853,6 +869,53 @@ static unsigned long long get_del_keys(struct sqlclntstate *clnt,
     return get_dirty_keys(clnt, tbl, seq, 0);
 }
 
+
+static int save_rec_flags(struct sqlclntstate *clnt, shad_tbl_t *tbl,
+                          unsigned long long seq, int flags,
+                          int ins /* 1 for add, 0 for del */)
+{
+    hash_t *h;
+    rec_flags_t tmp;
+    rec_flags_t *rec_flags;
+
+    tmp.seq = seq;
+    h = ins ? tbl->ins_rec_hash : tbl->upd_rec_hash;
+
+    assert(h);
+    assert(hash_find(h, &tmp) == NULL);
+
+    rec_flags = calloc(1, sizeof(rec_flags_t));
+    if (!rec_flags) {
+        logmsg(LOGMSG_ERROR, "%s: unable to allocate %zu bytes\n", __func__,
+               sizeof(rec_flags_t));
+        return -1;
+    }
+
+    rec_flags->seq = seq;
+    rec_flags->flags = flags;
+    hash_add(h, rec_flags);
+
+    return 0;
+}
+
+static int get_rec_flags(struct sqlclntstate *clnt, shad_tbl_t *tbl,
+                         unsigned long long seq,
+                         int ins /* 1 for add, 0 for del */)
+{
+    hash_t *h;
+    rec_flags_t tmp;
+    rec_flags_t *rec_flags;
+
+    tmp.seq = seq;
+    h = ins ? tbl->ins_rec_hash : tbl->upd_rec_hash;
+
+    rec_flags = hash_find(h, &tmp);
+    if (rec_flags)
+        return rec_flags->flags;
+
+    return 0;
+}
+
 /*
  * NOTE:
  * Handle upd table for multiple updates of synthetic rows
@@ -863,7 +926,7 @@ static unsigned long long get_del_keys(struct sqlclntstate *clnt,
  *
  */
 int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-                     int nData)
+                     int nData, int flags)
 {
 
     osqlstate_t *osql = &thd->clnt->osql;
@@ -1006,6 +1069,10 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         return -1;
     }
 
+    if (save_rec_flags(thd->clnt, tbl, tmp, flags, 0 /* updrec */)) {
+        return -1;
+    }
+
 #ifdef TEST_OSQL
     uuidstr_t us;
     fprintf(stdout,
@@ -1020,7 +1087,7 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 }
 
 int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-                     int nData)
+                     int nData, int flags)
 {
     osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
@@ -1076,6 +1143,10 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (gbl_partial_indexes && pCur->db->ix_partial &&
         save_ins_keys(thd->clnt, tbl, tmp)) {
         logmsg(LOGMSG_ERROR, "%s: error saving the shadow dirty keys\n", __func__);
+        return -1;
+    }
+
+    if (save_rec_flags(thd->clnt, tbl, tmp, flags, 1 /* insrec */)) {
         return -1;
     }
 
@@ -1914,7 +1985,8 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                                   (gbl_partial_indexes && tbl->ix_partial)
                                       ? get_ins_keys(clnt, tbl, *seq)
                                       : -1ULL,
-                                  data, ldata, osql_nettype, osql->logsb);
+                                  data, ldata, osql_nettype, osql->logsb,
+                                  get_rec_flags(clnt, tbl, *seq, 1));
 
             if (rc) {
                 logmsg(LOGMSG_USER, 

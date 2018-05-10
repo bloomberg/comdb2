@@ -1683,15 +1683,8 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
             abort();
         }
 
-#if 0
-      if (schema->flags & SCHEMA_DUP) {
-         strbuf_append(sql, "create index ");
-      } else {
-         strbuf_append(sql, "create unique index ");
-      }
-#else
+        /* We lie to sqlite about the uniqueness of the indexes. */
         strbuf_append(sql, "create index ");
-#endif
 
         strbuf_appendf(sql, "\"%s\" on \"%s\" (", namebuf, tbl->tablename);
         for (field = 0; field < schema->nmembers; field++) {
@@ -3617,7 +3610,11 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             goto done;
         }
 
-        if (queryOverlapsCursors(clnt, pCur) == 1) {
+        if ((queryOverlapsCursors(clnt, pCur) == 1) ||
+            /* We ignore the failure for REPLACE as same record could conflict
+             * for more that one unique indexes.
+             */
+            pCur->vdbe->oe_flag == OE_Replace) {
             rc = bdb_tran_deltbl_isdeleted_dedup(pCur->bdbcur, pCur->genid, 0,
                                                  &bdberr);
             if (rc == 1) {
@@ -8050,7 +8047,7 @@ int sqlite3BtreeBeginStmt(Btree *pBt, int iStatement)
 int sqlite3BtreeInsert(
     BtCursor *pCur, /* Insert data into the table of this cursor */
     const BtreePayload *pPayload, /* The key and data of the new record */
-    int bias, int seekResult)
+    int bias, int seekResult, int flags)
 {
     const void *pKey = pPayload->pKey;
     sqlite3_int64 nKey = pPayload->nKey;
@@ -8285,6 +8282,8 @@ int sqlite3BtreeInsert(
             is_update = 0;
         else if (0 == pCur->genid)
             is_update = 0;
+        else if (!bias)
+            is_update = 0;
         else
             is_update = 1;
 
@@ -8293,15 +8292,25 @@ int sqlite3BtreeInsert(
                 clnt->ins_keys = -1ULL;
                 clnt->del_keys = -1ULL;
             }
+
+            int rec_flags = 0;
+            if (flags != 0) {
+                rec_flags |= ((flags & OPFLAG_FORCE_VERIFY) ?
+                               OSQL_FORCE_VERIFY : 0);
+                rec_flags |= ((flags & OPFLAG_IGNORE_FAILURE) ?
+                               OSQL_IGNORE_FAILURE : 0);
+            }
+
             if (is_update) { /* Updating an existing record. */
                 rc = osql_updrec(pCur, thd, pCur->ondisk_buf,
                                  getdatsize(pCur->db), pCur->vdbe->updCols,
-                                 blobs, MAXBLOBS);
+                                 blobs, MAXBLOBS, rec_flags);
                 clnt->effects.num_updated++;
                 clnt->log_effects.num_updated++;
             } else {
                 rc = osql_insrec(pCur, thd, pCur->ondisk_buf,
-                                 getdatsize(pCur->db), blobs, MAXBLOBS);
+                                 getdatsize(pCur->db), blobs, MAXBLOBS,
+                                 rec_flags);
                 clnt->effects.num_inserted++;
                 clnt->log_effects.num_inserted++;
             }

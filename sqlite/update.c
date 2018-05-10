@@ -473,7 +473,7 @@ void sqlite3Update(
     /* COMDB2 MODIFICATION */
     /* AZ: if i dont call, i get a segfault */
     sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, iBaseCur, aToOpen,
-                               0, 0);
+                               0, 0, 0);
   }
 
   /* Top of the update loop */

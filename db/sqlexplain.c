@@ -892,9 +892,11 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     case OP_NoConflict:
     case OP_NotFound:
     case OP_Found:
-        strbuf_appendf(out, "If cursor [%d] %scontain%s ", op->p1,
-                       op->opcode == OP_NotFound ? "doesn't " : "",
-                       op->opcode == OP_NotFound ? "" : "s");
+        if (op->opcode != OP_Found) {
+            strbuf_appendf(out, "If cursor [%d] does not contain ", op->p1);
+        } else {
+            strbuf_appendf(out, "If cursor [%d] contains ", op->p1);
+        }
         if (op->p4.i == 1) {
             strbuf_appendf(out, "R%d", op->p3);
         } else if (op->p4.i > 1) {
@@ -907,7 +909,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         break;
     case OP_NotExists:
         strbuf_appendf(out,
-                       "If record id in R%d can't be found using cursor [%d]",
+                       "If record id in R%d can't be found using cursor [%d], ",
                        op->p3, op->p1);
         if (op->p2)
             strbuf_appendf(out, "go to %d", op->p2);

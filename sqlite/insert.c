@@ -13,6 +13,9 @@
 ** to handle INSERT statements in SQLite.
 */
 #include "sqliteInt.h"
+
+int is_comdb2_index_unique(const char *tbl, char *idx);
+
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 
@@ -547,6 +550,11 @@ void sqlite3Insert(
     goto insert_cleanup;
   }
 
+  /* COMDB2 MODIFICATION */
+  if (pUpsert && (pUpsert->oeFlag == OE_Replace)) {
+    onError = OE_Replace;
+  }
+
   /* If the Select object is really just a simple VALUES() list with a
   ** single row (the common case) then keep that one row of values
   ** and discard the other (unused) parts of the pSelect object
@@ -660,8 +668,6 @@ void sqlite3Insert(
   if( pColumn ){
     for(i=0; i<pColumn->nId; i++){
       pColumn->a[i].idx = -1;
-    }
-    for(i=0; i<pColumn->nId; i++){
       for(j=0; j<pTab->nCol; j++){
         if( sqlite3StrICmp(pColumn->a[i].zName, pTab->aCol[j].zName)==0 ){
           pColumn->a[i].idx = j;
@@ -808,11 +814,12 @@ void sqlite3Insert(
   if( !isView ){
     int nIdx;
     nIdx = sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, -1, 0,
-                                      &iDataCur, &iIdxCur);
+                                      &iDataCur, &iIdxCur, pUpsert);
     aRegIdx = sqlite3DbMallocRawNN(db, sizeof(int)*(nIdx+1));
     if( aRegIdx==0 ){
       goto insert_cleanup;
     }
+    /* TODO: nIdx+1 ? */
     for(i=0; i<nIdx; i++){
       aRegIdx[i] = ++pParse->nMem;
     }
@@ -826,6 +833,22 @@ void sqlite3Insert(
       sqlite3UpsertAnalyzeTarget(pParse, pTabList, pUpsert);
     }
   }
+
+  if (pUpsert) {
+    switch (pUpsert->oeFlag) {
+      case OE_Replace:
+        comdb2SetReplace(v);
+        break;
+      case OE_Update:
+        comdb2SetUpsert(v);
+        break;
+      case OE_Ignore:
+        comdb2SetIgnore(v);
+        break;
+      default:
+        assert(0);
+    }
+  }
 #endif
 
 
@@ -836,7 +859,7 @@ void sqlite3Insert(
     **
     **         rewind temp table, if empty goto D
     **      C: loop over rows of intermediate table
-    **           transfer values form intermediate table into <table>
+    **           transfer values from intermediate table into <table>
     **         end loop
     **      D: ...
     */
@@ -1062,11 +1085,13 @@ void sqlite3Insert(
   }
 
   if( !IsVirtual(pTab) && !isView ){
-    /* Close all tables opened */
+    /* Close all tables and indexes. */
     if( iDataCur<iIdxCur ) sqlite3VdbeAddOp1(v, OP_Close, iDataCur);
+
     /* COMDB2 MODIFICATION */
     if( (gbl_partial_indexes && pTab->hasPartIdx) ||
-        (gbl_expressions_indexes && pTab->hasExprIdx) ){
+        (gbl_expressions_indexes && pTab->hasExprIdx) ||
+        (pUpsert && pUpsert->oeFlag != OE_Ignore)){
       for(idx=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, idx++){
         sqlite3VdbeAddOp1(v, OP_Close, idx+iIdxCur);
       }
@@ -1324,7 +1349,8 @@ void sqlite3GenerateConstraintChecks(
 
   /* COMDB2 MODIFICATION */
   if( (!gbl_partial_indexes || !pTab->hasPartIdx) &&
-      (!gbl_expressions_indexes || !pTab->hasExprIdx) )
+      (!gbl_expressions_indexes || !pTab->hasExprIdx) &&
+      (pUpsert == 0))
     return;
 
   isUpdate = regOldData!=0;
@@ -1459,11 +1485,13 @@ void sqlite3GenerateConstraintChecks(
 
   if( pUpsert ){
     if( pUpsert->pUpsertTarget==0 ){
+#if 0
       /* An ON CONFLICT DO NOTHING clause, without a constraint-target.
       ** Make all unique constraint resolution be OE_Ignore */
       assert( pUpsert->pUpsertSet==0 );
       overrideError = OE_Ignore;
       pUpsert = 0;
+#endif
     }else if( (pUpIdx = pUpsert->pUpsertIdx)!=0 ){
       /* If the constraint-target is on some column other than
       ** then ROWID, then we might need to move the UPSERT around
@@ -1611,6 +1639,14 @@ void sqlite3GenerateConstraintChecks(
     }
   }
 
+  /* In case of DO NOTHING, we bail out here and 'ignore' the error (if any)
+   * on the master instead in order to ensure that this command never fails
+   * due to duplicate key error.
+   */
+  if (pUpsert && pUpsert->oeFlag == OE_Ignore) {
+      return;
+  }
+
   /* Test all UNIQUE constraints by creating entries for each UNIQUE
   ** index and making sure that duplicate entries do not already exist.
   ** Compute the revised record entries for indices as we go.
@@ -1625,6 +1661,10 @@ void sqlite3GenerateConstraintChecks(
     int addrUniqueOk;    /* Jump here if the UNIQUE constraint is satisfied */
 
     if( aRegIdx[ix]==0 ) continue;  /* Skip indices that do not change */
+
+    /* COMDB2 MODIFICATION */
+    if( pUpIdx && pUpIdx!=pIdx ) continue;
+
     if( pUpIdx==pIdx ){
       addrUniqueOk = sAddr.upsertBtm;
       upsertBypass = sqlite3VdbeGoto(v, 0);
@@ -1689,11 +1729,19 @@ void sqlite3GenerateConstraintChecks(
 
     /* Find out what action to take in case there is a uniqueness conflict */
     onError = pIdx->onError;
-    if( onError==OE_None ){ 
+
+    /* COMDB2 MODIFICATION */
+    int is_unique = is_comdb2_index_unique(pIdx->pTable->zName, pIdx->zName);
+    if (is_unique) {
+      onError = OE_Abort;
+    }
+
+    if((!pUpsert && onError==OE_None) || !is_unique){
       sqlite3ReleaseTempRange(pParse, regIdx, pIdx->nColumn);
       sqlite3VdbeResolveLabel(v, addrUniqueOk);
       continue;  /* pIdx is not a UNIQUE index */
     }
+
     if( overrideError!=OE_Default ){
       onError = overrideError;
     }else if( onError==OE_Default ){
@@ -1902,6 +1950,12 @@ void sqlite3CompleteInsertion(
   if( useSeekResult ){
     pik_flags |= OPFLAG_USESEEKRESULT;
   }
+  if (comdb2ForceVerify(pParse->pVdbe)) {
+      pik_flags |= OPFLAG_FORCE_VERIFY;
+  } else if(comdb2IgnoreFailure(pParse->pVdbe)) {
+      pik_flags |= OPFLAG_IGNORE_FAILURE;
+  }
+
   sqlite3VdbeAddOp3(v, OP_Insert, iDataCur, regRec, regNewData);
   if( !pParse->nested ){
     sqlite3VdbeChangeP4(v, -1, (char *)pTab, P4_TABLE);
@@ -1938,7 +1992,8 @@ int sqlite3OpenTableAndIndices(
   int iBase,       /* Use this for the table cursor, if there is one */
   u8 *aToOpen,     /* If not NULL: boolean for each table and index */
   int *piDataCur,  /* Write the database source cursor number here */
-  int *piIdxCur    /* Write the first index cursor number here */
+  int *piIdxCur,   /* Write the first index cursor number here */
+  Upsert *pUpsert  /* ON CONFLICT clauses for upsert, or NULL */
 ){
   int i;
   int iDb;
@@ -1968,7 +2023,8 @@ int sqlite3OpenTableAndIndices(
   if( piIdxCur ) *piIdxCur = iBase;
   /* COMDB2 MODIFICATION */
   if( (gbl_partial_indexes && pTab->hasPartIdx) ||
-      (gbl_expressions_indexes && pTab->hasExprIdx) ){
+      (gbl_expressions_indexes && pTab->hasExprIdx) ||
+      pUpsert){
     for(i=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
       int iIdxCur = iBase++;
       assert( pIdx->pSchema==pTab->pSchema );

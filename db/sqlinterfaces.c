@@ -2962,6 +2962,11 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
     if (!irc) {
         irc = errstat_get_rc(&clnt->osql.xerr);
         if (irc) {
+            /* Do not retry on ERR_UNCOMMITABLE_TXN. */
+            if (clnt->osql.xerr.errval == ERR_UNCOMMITABLE_TXN) {
+                osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
+            }
+
             *perrstr = (char *)errstat_get_str(&clnt->osql.xerr);
             /* convert this to a user code */
             irc = (clnt->osql.error_is_remote)

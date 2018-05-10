@@ -899,18 +899,28 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 
 ////////////////////////// The INSERT command /////////////////////////////////
 //
-cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) select(S)
+cmd ::= with(W) INSERT INTO fullname(X) idlist_opt(F) select(S)
         upsert(U). {
   sqlite3WithPush(pParse, W, 1);
   sqlite3FingerprintInsert(pParse->db, X, S, F, W);
-  sqlite3Insert(pParse, X, S, F, R, U);
+  sqlite3Insert(pParse, X, S, F, 0, U);
 }
+
+cmd ::= with(W) REPLACE INTO fullname(X) idlist_opt(F) select(S). {
+  sqlite3WithPush(pParse, W, 1);
+  sqlite3FingerprintInsert(pParse->db, X, S, F, W);
+  sqlite3Insert(pParse, X, S, F, 0,
+                sqlite3UpsertNew(pParse->db,0,0,0,0, OE_Replace));
+}
+
+%ifdef COMDB2_UNSUPPORTED
 cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) DEFAULT VALUES.
 {
   sqlite3WithPush(pParse, W, 1);
   sqlite3FingerprintInsert(pParse->db, X, NULL, F, W);
   sqlite3Insert(pParse, X, NULL, F, R, 0);
 }
+%endif
 
 %type upsert {Upsert*}
 
@@ -922,11 +932,18 @@ cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) DEFAULT VALUES.
 upsert(A) ::= . { A = 0; }
 upsert(A) ::= ON CONFLICT LP sortlist(T) RP where_opt(TW)
               DO UPDATE SET setlist(Z) where_opt(W).
-              { A = sqlite3UpsertNew(pParse->db,T,TW.pExpr,Z,W.pExpr);}
+              { A = sqlite3UpsertNew(pParse->db,T,TW.pExpr,Z,W.pExpr,
+                                     OE_Update);}
+
+// TODO (NC): Enable support for the following.
+%ifdef COMDB2_UNSUPPORTED
 upsert(A) ::= ON CONFLICT LP sortlist(T) RP where_opt(TW) DO NOTHING.
-              { A = sqlite3UpsertNew(pParse->db,T,TW.pExpr,0,0); }
+              { A = sqlite3UpsertNew(pParse->db,T,TW.pExpr,0,0,OE_Ignore); }
+%endif
+upsert(A) ::= ON CONFLICT DO REPLACE.
+              { A = sqlite3UpsertNew(pParse->db,0,0,0,0,OE_Replace); }
 upsert(A) ::= ON CONFLICT DO NOTHING.
-              { A = sqlite3UpsertNew(pParse->db,0,0,0,0); }
+              { A = sqlite3UpsertNew(pParse->db,0,0,0,0,OE_Ignore); }
 
 %type insert_cmd {int}
 insert_cmd(A) ::= INSERT orconf(R).   {A = R;}

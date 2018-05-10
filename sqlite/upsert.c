@@ -15,6 +15,9 @@
 #include "sqliteInt.h"
 
 #ifndef SQLITE_OMIT_UPSERT
+
+int is_comdb2_index_unique(const char *tbl, char *idx);
+
 /*
 ** Free a list of Upsert objects
 */
@@ -37,7 +40,8 @@ Upsert *sqlite3UpsertDup(sqlite3 *db, Upsert *p){
            sqlite3ExprListDup(db, p->pUpsertTarget, 0),
            sqlite3ExprDup(db, p->pUpsertTargetWhere, 0),
            sqlite3ExprListDup(db, p->pUpsertSet, 0),
-           sqlite3ExprDup(db, p->pUpsertWhere, 0)
+           sqlite3ExprDup(db, p->pUpsertWhere, 0),
+           p->oeFlag
          );
 }
 
@@ -49,7 +53,8 @@ Upsert *sqlite3UpsertNew(
   ExprList *pTarget,     /* Target argument to ON CONFLICT, or NULL */
   Expr *pTargetWhere,    /* Optional WHERE clause on the target */
   ExprList *pSet,        /* UPDATE columns, or NULL for a DO NOTHING */
-  Expr *pWhere           /* WHERE clause for the ON CONFLICT UPDATE */
+  Expr *pWhere,          /* WHERE clause for the ON CONFLICT UPDATE */
+  int oeFlag             /* ON CONFLICT action flag */
 ){
   Upsert *pNew;
   pNew = sqlite3DbMallocRaw(db, sizeof(Upsert));
@@ -65,6 +70,7 @@ Upsert *sqlite3UpsertNew(
     pNew->pUpsertSet = pSet;
     pNew->pUpsertWhere = pWhere;
     pNew->pUpsertIdx = 0;
+    pNew->oeFlag = oeFlag;
   }
   return pNew;
 }
@@ -136,7 +142,9 @@ int sqlite3UpsertAnalyzeTarget(
   /* Check for matches against other indexes */
   for(pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext){
     int ii, jj, nn;
-    if( !IsUniqueIndex(pIdx) ) continue;
+    int is_comdb2_unique = is_comdb2_index_unique(pIdx->pTable->zName,
+                                                  pIdx->zName);
+    if( !is_comdb2_unique && !IsUniqueIndex(pIdx) ) continue;
     if( pTarget->nExpr!=pIdx->nKeyCol ) continue;
     if( pIdx->pPartIdxWhere ){
       if( pUpsert->pUpsertTargetWhere==0 ) continue;

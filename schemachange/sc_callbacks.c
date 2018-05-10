@@ -404,7 +404,7 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
                     &opfailcode, &ixfailnum, rrn, &genid, ins_keys,
                     BLOCK2_ADDKL, // opcode
                     0,            // blkpos
-                    addflags);
+                    addflags, 0);
 
     iq->usedb = usedb;
 

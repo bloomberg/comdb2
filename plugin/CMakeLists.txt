@@ -18,7 +18,8 @@ unset(PLUGIN_LIBRARIES CACHE)
 file(GLOB files RELATIVE ${PLUGIN_BASE_DIR} ${PLUGIN_BASE_DIR}/*)
 
 foreach(file ${files})
-  if(IS_DIRECTORY ${PLUGIN_BASE_DIR}/${file})
+  if((IS_DIRECTORY ${PLUGIN_BASE_DIR}/${file}) AND
+      (NOT (${file} STREQUAL "CMakeFiles")))
     add_subdirectory(${file})
   endif()
 endforeach()

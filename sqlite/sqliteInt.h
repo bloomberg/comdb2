@@ -1062,6 +1062,12 @@ typedef struct Cdb2TrigEvents Cdb2TrigEvents;
 typedef struct Cdb2TrigTables Cdb2TrigTables;
 typedef struct comdb2_ddl_context Cdb2DDL;
 
+void comdb2SetReplace(Vdbe *v);
+void comdb2SetUpsert(Vdbe *v);
+void comdb2SetIgnore(Vdbe *v);
+int comdb2ForceVerify(Vdbe *v);
+int comdb2IgnoreFailure(Vdbe *v);
+
 /*
 ** Defer sourcing vdbe.h and btree.h until after the "u8" and
 ** "BusyHandler" typedefs. vdbe.h also requires a few of the opaque
@@ -2733,6 +2739,7 @@ struct Upsert {
   int regData;              /* First register holding array of VALUES */
   int iDataCur;             /* Index of the data cursor */
   int iIdxCur;              /* Index of the first index cursor */
+  int oeFlag;               /* ON CONFLICT action flag */
 };
 
 /*
@@ -3187,6 +3194,12 @@ struct AuthContext {
 #define OPFLAG_PERMUTE       0x01    /* OP_Compare: use the permutation */
 #define OPFLAG_SAVEPOSITION  0x02    /* OP_Delete: keep cursor position */
 #define OPFLAG_AUXDELETE     0x04    /* OP_Delete: index in a DELETE op */
+
+/* COMDB2 MODIFICATION: The following bits are to support MERGE/UPSERT,
+ * IGNORE and REPLACE.
+ */
+#define OPFLAG_FORCE_VERIFY  0x40
+#define OPFLAG_IGNORE_FAILURE 0x80
 
 /*
  * Each trigger present in the database schema is stored as an instance of
@@ -3921,7 +3934,8 @@ void sqlite3ResolvePartIdxLabel(Parse*,int);
 void sqlite3GenerateConstraintChecks(Parse*,Table*,int*,int,int,int,int,
                                      u8,u8,int,int*,int*,Upsert*);
 void sqlite3CompleteInsertion(Parse*,Table*,int,int,int,int*,int,int,int);
-int sqlite3OpenTableAndIndices(Parse*, Table*, int, u8, int, u8*, int*, int*);
+int sqlite3OpenTableAndIndices(Parse*, Table*, int, u8, int, u8*, int*, int*,
+                               Upsert*);
 void sqlite3BeginWriteOperation(Parse*, int, int);
 void sqlite3MultiWrite(Parse*);
 void sqlite3MayAbort(Parse*);
@@ -4290,13 +4304,13 @@ const char *sqlite3JournalModename(int);
 #define sqlite3WithDelete(x,y)
 #endif
 #ifndef SQLITE_OMIT_UPSERT
-  Upsert *sqlite3UpsertNew(sqlite3*,ExprList*,Expr*,ExprList*,Expr*);
+  Upsert *sqlite3UpsertNew(sqlite3*,ExprList*,Expr*,ExprList*,Expr*,int);
   void sqlite3UpsertDelete(sqlite3*,Upsert*);
   Upsert *sqlite3UpsertDup(sqlite3*,Upsert*);
   int sqlite3UpsertAnalyzeTarget(Parse*,SrcList*,Upsert*);
   void sqlite3UpsertDoUpdate(Parse*,Upsert*,Table*,Index*,int);
 #else
-#define sqlite3UpsertNew(v,w,x,y,z) ((Upsert*)0)
+#define sqlite3UpsertNew(v,w,x,y,z,e) ((Upsert*)0)
 #define sqlite3UpsertDelete(x,y)
 #define sqlite3UpsertDup(x,y)       ((Upsert*)0)
 #endif

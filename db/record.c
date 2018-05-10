@@ -107,7 +107,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                const uint8_t *p_buf_rec_end, const unsigned char fldnullmap[32],
                blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
                int *ixfailnum, int *rrn, unsigned long long *genid,
-               unsigned long long ins_keys, int opcode, int blkpos, int flags)
+               unsigned long long ins_keys, int opcode, int blkpos, int flags,
+               int rec_flags)
 {
     char tag[MAXTAGLEN + 1];
     int is_od_tag;
@@ -399,6 +400,65 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ERR;
     }
 
+    if ((rec_flags & OSQL_IGNORE_FAILURE) != 0) {
+        for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum ++) {
+            int ixkeylen;
+            char ixtag[MAXTAGLEN];
+            char key[MAXKEYLEN];
+            char mangled_key[MAXKEYLEN];
+            int failcode = 0;
+            int fndrrn = 0;
+            unsigned long long fndgenid = 0LL;
+
+            ixkeylen = getkeysize(iq->usedb, ixnum);
+            if (ixkeylen < 0) {
+                if (iq->debug)
+                    reqprintf(iq, "BAD INDEX %d OR KEYLENGTH %d", ixnum,
+                              ixkeylen);
+                reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+                reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY,
+                          "bad index %d or keylength %d", ixnum, ixkeylen);
+                *ixfailnum = ixnum;
+                *opfailcode = OP_FAILED_BAD_REQUEST;
+                retrc = ERR_BADREQ;
+                ERR;
+            }
+
+            snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
+
+            if (iq->idxInsert)
+                rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail,
+                                          &od_len_tail, mangled_key, od_dta,
+                                          od_len, key);
+            else
+                rc = create_key_from_ondisk_sch_blobs(
+                    iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_len_tail,
+                    mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL,
+                    blobs, maxblobs, iq->tzname);
+            if (rc == -1) {
+                if (iq->debug)
+                    reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
+                reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+                reqerrstr(iq, COMDB2_ADD_RC_INVL_IDX, "cannot form index %d",
+                          ixnum);
+                *ixfailnum = ixnum;
+                *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
+                retrc = rc;
+                ERR;
+			}
+
+            rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, key,
+                                     &fndrrn, &fndgenid, NULL, NULL, 0, trans);
+            if (rc == IX_FND) {
+                retrc = IX_DUP;
+                *ixfailnum = ixnum;
+                /* If following changes, update OSQL_INSREC in osqlcomm.c */
+                *opfailcode = OP_FAILED_UNIQ; /* really? */
+                ERR
+            }
+        }
+    }
+
     /*
      * Add the data record
      */
@@ -461,7 +521,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (!(flags & RECFLAGS_NEW_SCHEMA)) {
             /* enqueue the add of the key for constaint checking purposes */
             rc = insert_add_op(iq, iq->blkstate, iq->usedb, NULL, NULL, opcode,
-                               *rrn, -1, *genid, ins_keys, blkpos);
+                               *rrn, -1, *genid, ins_keys, blkpos, rec_flags);
             if (rc != 0) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO PUSH KEYOP");
@@ -658,7 +718,8 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
                    unsigned long long ins_keys, int rrn,
                    unsigned long long genid, void *od_dta, size_t od_len,
                    int opcode, int blkpos, int *opfailcode, char *newkey,
-                   char *od_dta_tail, int od_tail_len, int do_inline)
+                   char *od_dta_tail, int od_tail_len, int do_inline,
+                   int rec_flags)
 {
     int rc;
 
@@ -672,7 +733,7 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
         const uint8_t *p_buf_req_end = NULL;
         rc = insert_add_op(iq, iq->blkstate, iq->usedb, p_buf_req_start,
                            p_buf_req_end, opcode, rrn, ixnum, genid, ins_keys,
-                           blkpos);
+                           blkpos, rec_flags);
         if (iq->debug)
             reqprintf(iq, "insert_add_op IX %d RRN %d RC %d", ixnum, rrn, rc);
         if (rc != 0) {
@@ -1488,7 +1549,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 (ins_keys & (1ULL << ixnum))) {
                 rc = add_key(iq, trans, ixnum, ins_keys, rrn, *genid, od_dta,
                              od_len, opcode, blkpos, opfailcode, newkey,
-                             od_dta_tail, od_tail_len, do_inline);
+                             od_dta_tail, od_tail_len, do_inline, 0);
 
                 if (iq->debug)
                     reqprintf(iq, "add_key IX %d RRN %d RC %d", ixnum, rrn, rc);
