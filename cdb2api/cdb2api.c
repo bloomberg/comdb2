@@ -2667,6 +2667,8 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         struct timeval tv;
         int nrec = 0;
         uint64_t starttime;
+        sbuf2settimeout(hndl->sb, CDB2_AUTO_CONSUME_TIMEOUT_MS,
+                        CDB2_AUTO_CONSUME_TIMEOUT_MS);
         gettimeofday(&tv, NULL);
         starttime = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000; // in ms
         while (cdb2_next_record_int(hndl, 0) == CDB2_OK) {
@@ -2678,6 +2680,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
                 break;
         }
         if (hndl->debug_trace) {
+            gettimeofday(&tv, NULL);
             fprintf(stderr, "%s: auto consume %d records took %lu ms\n",
                     __func__, nrec, ((uint64_t)tv.tv_sec) * 1000 +
                                         tv.tv_usec / 1000 - starttime);
