@@ -1644,7 +1644,7 @@ void sqlite3GenerateConstraintChecks(
    * due to duplicate key error.
    */
   if (pUpsert && pUpsert->oeFlag == OE_Ignore) {
-      return;
+    return;
   }
 
   /* Test all UNIQUE constraints by creating entries for each UNIQUE
@@ -1951,9 +1951,9 @@ void sqlite3CompleteInsertion(
     pik_flags |= OPFLAG_USESEEKRESULT;
   }
   if (comdb2ForceVerify(pParse->pVdbe)) {
-      pik_flags |= OPFLAG_FORCE_VERIFY;
+    pik_flags |= OPFLAG_FORCE_VERIFY;
   } else if(comdb2IgnoreFailure(pParse->pVdbe)) {
-      pik_flags |= OPFLAG_IGNORE_FAILURE;
+    pik_flags |= OPFLAG_IGNORE_FAILURE;
   }
 
   sqlite3VdbeAddOp3(v, OP_Insert, iDataCur, regRec, regNewData);

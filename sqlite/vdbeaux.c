@@ -5399,12 +5399,12 @@ void comdb2SetIgnore(Vdbe *v)
 
 int comdb2ForceVerify(Vdbe *v)
 {
-    switch(v->oe_flag) {
-    case OE_Replace: /* fallthrough */
-    case OE_Update:
-      return 1;
-    }
-    return 0;
+  switch(v->oe_flag) {
+  case OE_Replace: /* fallthrough */
+  case OE_Update:
+    return 1;
+  }
+  return 0;
 }
 
 int comdb2IgnoreFailure(Vdbe *v)
