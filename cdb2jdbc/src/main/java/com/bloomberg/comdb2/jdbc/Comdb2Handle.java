@@ -216,7 +216,7 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     public void lookup() throws NoDbHostFoundException {
-        BBSysUtils.getDbHosts(this, false);
+        DatabaseDiscovery.getDbHosts(this, false);
     }
 
     /* attribute setters - bb precious */
@@ -345,7 +345,7 @@ public class Comdb2Handle extends AbstractConnection {
 
     public void setDebug(boolean on) {
         debug = on;
-        BBSysUtils.debug = on;
+        DatabaseDiscovery.debug = on;
     }
 
     public void setMaxRetries(int retries) {
@@ -490,7 +490,7 @@ public class Comdb2Handle extends AbstractConnection {
                 ArrayList<String> validHosts = new ArrayList<String>();
                 ArrayList<Integer> validPorts = new ArrayList<Integer>();
                 try {
-                    BBSysUtils.dbInfoQuery(this,
+                    DatabaseDiscovery.dbInfoQuery(this,
                             dbinfo, myDbName, myDbNum,
                             null, 0, validHosts, validPorts);
                 } catch (IOException e) {
@@ -1142,7 +1142,7 @@ public class Comdb2Handle extends AbstractConnection {
                     ArrayList<String> validHosts = new ArrayList<String>();
                     ArrayList<Integer> validPorts = new ArrayList<Integer>();
                     try {
-                        BBSysUtils.dbInfoQuery(this,
+                        DatabaseDiscovery.dbInfoQuery(this,
                                 dbinfo, myDbName, myDbNum,
                                 null, 0, validHosts, validPorts);
                     } catch (IOException e) {
@@ -1913,7 +1913,7 @@ readloop:
            Re-check information about db. */
         if (!isDirectCpu && refresh_dbinfo_if_failed) {
             try {
-                BBSysUtils.getDbHosts(this, true);
+                DatabaseDiscovery.getDbHosts(this, true);
                 reopen(false);
             } catch (NoDbHostFoundException e) {
                 logger.log(Level.SEVERE, "Failed to refresh dbinfo", e);
