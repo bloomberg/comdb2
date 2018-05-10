@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <cdb2api.h>
+#include <gettimeofday_ms.h>
 
 static char *argv0 = NULL;
 
@@ -41,6 +42,7 @@ int main(int argc, char *argv[])
     int ret, type;
     int err = 0, opt;
     char sql[1024];
+    uint64_t start, end, tot;
 
     argv0 = argv[0];
     c = default_config();
@@ -118,6 +120,12 @@ int main(int argc, char *argv[])
     }
 
 done:
+    start = gettimeofday_ms();
     cdb2_close(sqlh);
+    end = gettimeofday_ms();
+    tot = end - start;
+    printf("cdb2_close took %d ms\n", tot);
+    if (tot >= 3)
+        exit(1);
     return 0;
 }

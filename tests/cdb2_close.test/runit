@@ -7,11 +7,14 @@ export exe=${TESTSBUILDDIR}/cdb2_close_early
 set -e
 
 cdb2sql ${CDB2_OPTIONS} $db default "create table t1 (i int)"
-cdb2sql ${CDB2_OPTIONS} $db default "WITH RECURSIVE cnt(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM cnt LIMIT 200) insert into t1(i) SELECT x FROM cnt"
+cdb2sql ${CDB2_OPTIONS} $db default "insert into t1 select * from generate_series(1,200)"
 
 $exe -d $db -e > out.txt 2>&1
-
 grep "auto consume 199 records" out.txt
+
+cdb2sql ${CDB2_OPTIONS} $db default "insert into t1 select * from generate_series(1,100000)"
+$exe -d $db -e > out2.txt 2>&1
+grep "auto consume.*records took 2 ms" out2.txt
 
 echo "Passed"
 exit 0
