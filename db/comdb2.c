@@ -5133,6 +5133,27 @@ int main(int argc, char **argv)
     return 0;
 }
 
+int add_db(struct dbtable *db)
+{
+    pthread_rwlock_wrlock(&thedb_lock);
+
+    if (hash_find_readonly(thedb->db_hash, db) != 0) {
+        pthread_rwlock_unlock(&thedb_lock);
+        return -1;
+    }
+
+    thedb->dbs =
+        realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct dbtable *));
+    db->dbs_idx = thedb->num_dbs;
+    thedb->dbs[thedb->num_dbs++] = db;
+
+    /* Add table to the hash. */
+    hash_add(thedb->db_hash, db);
+
+    pthread_rwlock_unlock(&thedb_lock);
+    return 0;
+}
+
 void delete_db(char *db_name)
 {
     int idx;

@@ -373,8 +373,6 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
     if (s->finalize_only) {
         return s->sc_rc;
     }
-    if (type != alter)
-        wrlock_schema_lk();
     set_original_tablename(s);
     if ((rc = check_table_version(iq, s)) != 0) { // non-tran ??
         goto end;
@@ -397,15 +395,15 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         mark_schemachange_over_tran(s->table, NULL); // non-tran ??
         broadcast_sc_end(s->table, iq->sc_seed);
     } else if (s->finalize) {
+        wrlock_schema_lk();
         rc = do_finalize(post, iq, s, tran, type);
+        unlock_schema_lk();
         broadcast_sc_end(s->table, iq->sc_seed);
     } else {
         rc = SC_COMMIT_PENDING;
     }
 end:
     s->sc_rc = rc;
-    if (type != alter)
-        unlock_schema_lk();
     return rc;
 }
 
@@ -578,17 +576,11 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
     pthread_mutex_lock(&s->mtx);
     enum thrtype oldtype = prepare_sc_thread(s);
     int rc = SC_OK;
-    int keep_sc_locked = iq->sc_locked;
 
     if (s->type == DBTYPE_TAGGED_TABLE) {
         /* check for rename outside of taking schema lock */
         /* handle renaming sqlite_stat1 entries for idx */
         check_for_idx_rename(s->newdb, s->db);
-    }
-
-    if (!iq->sc_locked) {
-        wrlock_schema_lk();
-        iq->sc_locked = 1;
     }
 
     if (gbl_test_scindex_deadlock) {
@@ -614,10 +606,6 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         rc = do_finalize(finalize_alter_table, iq, s, trans, alter);
     else if (s->fulluprecs || s->partialuprecs)
         rc = finalize_upgrade_table(s);
-    if (!keep_sc_locked) {
-        unlock_schema_lk();
-        iq->sc_locked = 0;
-    }
 
     reset_sc_thread(oldtype, s);
     pthread_mutex_unlock(&s->mtx);
@@ -1189,7 +1177,8 @@ int backout_schema_change(struct ireq *iq)
     sc_set_running(s->table, 0, iq->sc_seed, gbl_mynode, time(NULL));
     if (s->addonly) {
         delete_temp_table(iq, s->db);
-        delete_db(s->table);
+        if (s->addonly == SC_DONE_ADD)
+            delete_db(s->table);
     } else if (s->db) {
         reload_db_tran(s->db, NULL);
         sc_del_unused_files(s->db);

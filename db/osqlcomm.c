@@ -6556,6 +6556,12 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             if (strcmp(iq->sc->original_master_node, gbl_mynode) != 0) {
                 return -1;
             }
+            if (!iq->sc_locked) {
+                /* unlock in osql_scdone_commit_callback /
+                 * osql_scdone_abort_callback */
+                wrlock_schema_lk();
+                iq->sc_locked = 1;
+            }
             if (iq->sc->db) iq->usedb = iq->sc->db;
             rc = finalize_schema_change(iq, ptran);
             iq->usedb = NULL;
@@ -6567,7 +6573,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (iq->tranddl) {
             void *ptran = bdb_get_physical_tran(trans);
-            // TODO: assert that we have schemalk
             create_sqlmaster_records(ptran);
             create_sqlite_master();
         }

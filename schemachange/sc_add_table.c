@@ -26,8 +26,7 @@
 #include "sc_csc2.h"
 
 static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
-                                       struct ireq *iq, void *trans,
-                                       int fastinit)
+                                       struct ireq *iq, void *trans)
 {
     int rc;
     int pi = 0; // partial indexes
@@ -43,8 +42,7 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
 
     extern int gbl_partial_indexes;
     extern int gbl_expressions_indexes;
-    if (!fastinit &&
-        ((gbl_partial_indexes && newdb->ix_partial) ||
+    if (((gbl_partial_indexes && newdb->ix_partial) ||
          (gbl_expressions_indexes && newdb->ix_expr)) &&
         newdb->dbenv->master == gbl_mynode) {
         rc = new_indexes_syntax_check(iq, newdb);
@@ -110,6 +108,7 @@ int add_table_to_environment(char *table, const char *csc2,
     int rc;
     struct dbtable *newdb;
 
+    s->newdb = newdb = NULL;
     if (!csc2) {
         logmsg(LOGMSG_ERROR, "%s: no filename or csc2!\n", __func__);
         return -1;
@@ -163,29 +162,10 @@ int add_table_to_environment(char *table, const char *csc2,
 
     if ((rc = get_db_handle(newdb, trans))) goto err;
 
-    gbl_sc_commit_count++;
-    if (s && s->fastinit && s->db) {
-        replace_db_idx(newdb, s->db->dbs_idx);
-        free(s->db->handle);
-        freedb(s->db);
-    } else {
-        thedb->dbs =
-            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct dbtable *));
-        newdb->dbs_idx = thedb->num_dbs;
-        thedb->dbs[thedb->num_dbs++] = newdb;
-
-        /* Add table to the hash. */
-        hash_add(thedb->db_hash, newdb);
-    }
-
-    rc = adjust_master_tables(newdb, csc2, iq, trans, s && s->fastinit);
+    rc = adjust_master_tables(newdb, csc2, iq, trans);
     if (rc) {
-        gbl_sc_commit_count--;
-        --thedb->num_dbs;
-        /* Remove table from the hash. */
-        hash_del(thedb->db_hash, thedb->dbs[thedb->num_dbs]);
-        thedb->dbs[thedb->num_dbs] = NULL;
-        if (rc == SC_CSC2_ERROR) sc_errf(s, "New indexes syntax error\n");
+        if (rc == SC_CSC2_ERROR)
+            sc_errf(s, "New indexes syntax error\n");
         goto err;
     }
     newdb->ix_blob = newdb->schema->ix_blob;
@@ -199,6 +179,8 @@ int add_table_to_environment(char *table, const char *csc2,
 
     newdb->iq = NULL;
     init_bthashsize_tran(newdb, trans);
+
+    s->newdb = newdb;
 
     return SC_OK;
 
@@ -241,9 +223,7 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-    if (!(db = get_dbtable_by_name(s->table))) return SC_INTERNAL_ERROR;
-
-    iq->usedb = db->sc_to = s->db = db;
+    iq->usedb = db->sc_to = s->db = db = s->newdb;
     db->odh = s->headers;
     db->inplace_updates = s->ip_updates;
     db->version = 1;
@@ -296,7 +276,21 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         add_tag_schema(db->tablename, ver_one);
     }
 
+    gbl_sc_commit_count++;
+    rc = add_db(db);
+    if (rc)
+        return rc;
+    s->addonly = SC_DONE_ADD;
+
     fix_lrl_ixlen_tran(tran);
+
+    if (s->finalize) {
+        if (create_sqlmaster_records(tran)) {
+            sc_errf(s, "create_sqlmaster_records failed\n");
+            return -1;
+        }
+        create_sqlite_master();
+    }
 
     db->sc_to = NULL;
     update_dbstore(db);
