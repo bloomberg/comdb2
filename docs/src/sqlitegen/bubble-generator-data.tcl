@@ -455,9 +455,11 @@ set all_graphs {
       loop
       {stack
           {line
-              {opt dup}
+              {or
+                  {opt dup}
+                  {opt uniqnulls}
+              }
               {opt datacopy}
-              {opt uniqnulls}
               {line /string-literal = }
           }
           {stack
