@@ -748,16 +748,6 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 }
             }
 
-            /* Ignore records with null columns if nullfkey is set */
-            if (should_skip_constraint_for_index(iq, bct->dixnum, nullck)) {
-                if (iq->debug) {
-                    reqprintf(iq, "VERBKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
-                                  "REF %s INDEX %d.",
-                              bct->dstdb->tablename, bct->dixnum);
-                }
-                continue;
-            }
-
             iq->usedb = bct->dstdb;
             rc = ix_find_by_key_tran(iq, dkey, keylen, bct->dixnum, key,
                                      &fndrrn, &fndgenid, NULL, NULL, 0, trans);
