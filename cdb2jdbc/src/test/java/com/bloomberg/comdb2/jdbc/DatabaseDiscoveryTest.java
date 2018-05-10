@@ -71,8 +71,10 @@ public class DatabaseDiscoveryTest {
         try {
             LogManager.getLogManager().reset();
             String fname = "/tmp/comdb2db.jdbc.mvn.test.cfg." + System.currentTimeMillis();
+            String cluster = System.getProperty("cdb2jdbc.test.cluster");
             BufferedWriter writer = new BufferedWriter(new FileWriter(fname));
-            writer.write("does_not_exist 0 localhost\n");
+            writer.write("does_not_exist 0 ");
+            writer.write(cluster);
             writer.close();
             System.setProperty("comdb2db.cfg", fname);
             Connection conn = DriverManager.getConnection("jdbc:comdb2://dev/db?comdb2dbname=does_not_exist");
