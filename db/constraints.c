@@ -485,7 +485,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
             if (should_skip_constraint_for_index(iq, rixnum, nulls)) {
                 if (iq->debug)
                     reqprintf(iq, "RTNKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
-                              "REF %s INDEX %d (%s). SKIPPING RULE CHECK.",
+                                  "REF %s INDEX %d (%s). SKIPPING RULE CHECK.",
                               cnstrt->lcltable->tablename, rixnum,
                               cnstrt->lclkeyname);
                 continue; /* just move on, there should be nothing to check */
