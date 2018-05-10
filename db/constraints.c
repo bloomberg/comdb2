@@ -315,6 +315,11 @@ int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb, struct dbtable
     return 0;
 }
 
+static int should_skip_constraint_for_index(struct ireq *iq, int ixnum, int nulls)
+{
+    return (nulls && (gbl_nullfkey || iq->usedb->ix_nullsallowed[ixnum]));
+}
+
 /* rec_dta is in .ONDISK format..we have it from 'delete' operation in block
  * loop */
 
@@ -477,10 +482,10 @@ int check_update_constraints(struct ireq *iq, void *trans,
                 continue; /* just move on, there should be nothing to check */
             }
 
-            if (gbl_nullfkey && nulls) {
+            if (should_skip_constraint_for_index(iq, rixnum, nulls)) {
                 if (iq->debug)
                     reqprintf(iq, "RTNKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
-                                  "REF %s INDEX %d (%s). SKIPPING RULE CHECK.",
+                              "REF %s INDEX %d (%s). SKIPPING RULE CHECK.",
                               cnstrt->lcltable->tablename, rixnum,
                               cnstrt->lclkeyname);
                 continue; /* just move on, there should be nothing to check */
@@ -726,7 +731,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
             }
 
             /* Ignore records with null columns if nullfkey is set */
-            if (gbl_nullfkey && nullck) {
+            if (should_skip_constraint_for_index(iq, bct->sixnum, nullck)) {
                 if (iq->debug) {
                     reqprintf(iq, "VERBKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
                                   "REF %s INDEX %d.",
@@ -744,11 +749,11 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
             }
 
             /* Ignore records with null columns if nullfkey is set */
-            if (gbl_nullfkey && nullck) {
+            if (should_skip_constraint_for_index(iq, bct->dixnum, nullck)) {
                 if (iq->debug) {
                     reqprintf(iq, "VERBKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
                                   "REF %s INDEX %d.",
-                              bct->srcdb->tablename, bct->sixnum);
+                              bct->dstdb->tablename, bct->dixnum);
                 }
                 continue;
             }
@@ -1554,7 +1559,7 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                     currdb = iq->usedb;
                     iq->usedb = ftable;
 
-                    if (gbl_nullfkey && nulls)
+                    if (should_skip_constraint_for_index(iq, fixnum, nulls))
                         rc = IX_FND;
                     else
                         rc = ix_find_by_key_tran(iq, fkey, fixlen, fixnum, key,
