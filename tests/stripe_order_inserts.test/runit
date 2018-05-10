@@ -88,11 +88,17 @@ assertres $res 1
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create table t1 (i int)"
 
+echo begin > ins.in
+for i in `seq 1 $N` ; do
+    echo "insert into t1 values($i)"
+done >> ins.in
+echo commit >> ins.in
+cdb2sql --tabs ${CDB2_OPTIONS} -f ins.in $dbnm default
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create procedure addrecs version 'sptest' {$(cat addrecs.lua)}"
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "put default procedure addrecs 'sptest'"
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs('t1', $N)"
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create procedure addrecs version 'sptest' {$(cat addrecs.lua)}"
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "put default procedure addrecs 'sptest'"
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs('t1', $N)"
 
 assertcnt t1 8
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb dblist')" > dblist.out
@@ -125,9 +131,16 @@ res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
 assertres $res 1
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create table t2 (i int)"
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create procedure addrecs version 'sptest' {$(cat addrecs.lua)}"
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "put default procedure addrecs 'sptest'"
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs('t2', $N)"
+echo begin > ins.in
+for i in `seq 1 $N` ; do
+    echo "insert into t2 values($i)"
+done >> ins.in
+echo commit >> ins.in
+cdb2sql --tabs ${CDB2_OPTIONS} -f ins.in $dbnm default
+
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create procedure addrecs version 'sptest' {$(cat addrecs.lua)}"
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "put default procedure addrecs 'sptest'"
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs('t2', $N)"
 
 assertcnt t2 8
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb dblist')" > dblist2.out
