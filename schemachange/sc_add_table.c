@@ -108,7 +108,8 @@ int add_table_to_environment(char *table, const char *csc2,
     int rc;
     struct dbtable *newdb;
 
-    s->newdb = newdb = NULL;
+    if (s)
+        s->newdb = newdb = NULL;
     if (!csc2) {
         logmsg(LOGMSG_ERROR, "%s: no filename or csc2!\n", __func__);
         return -1;
@@ -162,6 +163,11 @@ int add_table_to_environment(char *table, const char *csc2,
 
     if ((rc = get_db_handle(newdb, trans))) goto err;
 
+    if (newdb->dbenv->master != gbl_mynode) {
+        /* This is a replicant calling scdone_callback */
+        add_db(newdb);
+    }
+
     rc = adjust_master_tables(newdb, csc2, iq, trans);
     if (rc) {
         if (rc == SC_CSC2_ERROR)
@@ -180,7 +186,8 @@ int add_table_to_environment(char *table, const char *csc2,
     newdb->iq = NULL;
     init_bthashsize_tran(newdb, trans);
 
-    s->newdb = newdb;
+    if (s)
+        s->newdb = newdb;
 
     return SC_OK;
 
@@ -252,6 +259,13 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     /* Set instant schema-change */
     db->instant_schema_change = db->odh && s->instant_sc;
 
+    rc = add_db(db);
+    if (rc) {
+        sc_errf(s, "Failed to add db to thedb->dbs, rc %d\n", rc);
+        return rc;
+    }
+    s->addonly = SC_DONE_ADD; /* done adding to thedb->dbs */
+
     if ((rc = set_header_and_properties(tran, db, s, 0, gbl_init_with_bthash)))
         return rc;
 
@@ -277,10 +291,6 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     gbl_sc_commit_count++;
-    rc = add_db(db);
-    if (rc)
-        return rc;
-    s->addonly = SC_DONE_ADD;
 
     fix_lrl_ixlen_tran(tran);
 
