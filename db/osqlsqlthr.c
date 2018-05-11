@@ -243,10 +243,6 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK)
         return rc;
 
-    rc = osql_qblobs(pCur, thd, NULL, blobs, maxblobs, 0);
-    if (rc != SQLITE_OK)
-        return rc;
-
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_insrec(pCur, thd, pData, nData);
         if (rc) {
@@ -255,10 +251,16 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                     __FILE__, __LINE__, __func__, rc);
         }
 
-        return osql_send_insrec_logic(pCur, thd, pData, nData,
+        rc = osql_send_insrec_logic(pCur, thd, pData, nData,
                                       NET_OSQL_SOCK_RPL);
     } else
-        return osql_save_insrec(pCur, thd, pData, nData);
+        rc = osql_save_insrec(pCur, thd, pData, nData);
+
+    if (rc != SQLITE_OK)
+        return rc;
+
+    rc = osql_qblobs(pCur, thd, NULL, blobs, maxblobs, 0);
+    return rc;
 }
 
 /**
@@ -289,10 +291,6 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK)
         return rc;
 
-    rc = osql_qblobs(pCur, thd, updCols, blobs, maxblobs, 1);
-    if (rc != SQLITE_OK)
-        return rc;
-
     if (updCols) {
         rc = osql_updcols(pCur, thd, updCols);
         if (rc != SQLITE_OK)
@@ -307,10 +305,16 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                     __FILE__, __LINE__, __func__, rc);
         }
 
-        return osql_send_updrec_logic(pCur, thd, pData, nData,
+        rc = osql_send_updrec_logic(pCur, thd, pData, nData,
                                       NET_OSQL_SOCK_RPL);
     } else
-        return osql_save_updrec(pCur, thd, pData, nData);
+        rc = osql_save_updrec(pCur, thd, pData, nData);
+
+    if (rc != SQLITE_OK)
+        return rc;
+
+    rc = osql_qblobs(pCur, thd, updCols, blobs, maxblobs, 1);
+    return rc;
 }
 
 /**

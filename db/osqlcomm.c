@@ -3832,6 +3832,8 @@ int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         upd_uuid_rpl.hd.type = send_dk ? OSQL_UPDATE : OSQL_UPDREC;
         comdb2uuidcpy(upd_uuid_rpl.hd.uuid, uuid);
         upd_uuid_rpl.dt.genid = genid;
+        int stripe = get_dtafile_from_genid(genid);
+        printf("AZ: Sending genid 0x%llx, stripe=%d\n", genid, stripe);
         upd_uuid_rpl.dt.ins_keys = ins_keys;
         upd_uuid_rpl.dt.del_keys = del_keys;
         upd_uuid_rpl.dt.nData = nData;
@@ -4045,6 +4047,7 @@ int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
     return rc;
 }
 
+
 /**
  * Send INSREC op
  * It handles remote/local connectivity
@@ -4077,6 +4080,8 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         ins_uuid_rpl.hd.type = send_dk ? OSQL_INSERT : OSQL_INSREC;
         comdb2uuidcpy(ins_uuid_rpl.hd.uuid, uuid);
         ins_uuid_rpl.dt.seq = genid;
+        int stripe = get_dtafile_from_genid(genid);
+        printf("AZ: Sending genid 0x%llx, stripe=%d\n", genid, stripe);
         ins_uuid_rpl.dt.dk = dirty_keys;
         ins_uuid_rpl.dt.nData = nData;
 
