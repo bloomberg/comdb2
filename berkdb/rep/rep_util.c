@@ -640,8 +640,6 @@ __rep_send_gen_vote(dbenv, lsnp, nsites, pri, tiebreaker, egen, committed_gen,
 	(void)__rep_send_message(dbenv, eid, vtype, lsnp, &vote_dbt, 0, NULL);
 }
 
-extern pthread_mutex_t rep_queue_lock;
-
 /*
  * __rep_elect_done
  *	Clear all election information for this site.  Assumes the
@@ -661,9 +659,7 @@ __rep_elect_done(dbenv, rep)
 #endif
 
 	inelect = IN_ELECTION_TALLY(rep);
-    pthread_mutex_lock(&rep_queue_lock);
 	F_CLR(rep, REP_F_EPHASE1 | REP_F_EPHASE2 | REP_F_TALLY);
-    pthread_mutex_unlock(&rep_queue_lock);
 	rep->sites = 0;
 	rep->votes = 0;
 	if (inelect)
