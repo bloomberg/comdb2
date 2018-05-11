@@ -3748,7 +3748,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
        locks.
        Grab the bdb_writelock here rather than inside of berkdb so that we avoid
        racing against a rep_start. */
-    if (rectype == REP_VERIFY && bdb_is_open(bdb_state) &&
+    if (rectype == REP_VERIFY &&
         bdb_state->dbenv->rep_verify_will_recover(bdb_state->dbenv, control,
                                                   rec)) {
         BDB_WRITELOCK_REP("bdb_rep_verify");
