@@ -1229,12 +1229,12 @@ REGISTER_TUNABLE("verbose_send_cohlease",
 REGISTER_TUNABLE("reset_on_unelectable_cluster", "Reset master if unelectable.",
                  TUNABLE_BOOLEAN, &gbl_reset_on_unelectable_cluster,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("decoupled_logputs", "Perform logputs out-of-band. (Default: "
-                                      "on)",
+REGISTER_TUNABLE("decoupled_logputs", 
+                 "Perform logputs out-of-band. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_decoupled_logputs,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("decoupled_fills", "Handle log-fills out-of-band. (Default: "
-                                    "on)",
+REGISTER_TUNABLE("decoupled_fills", 
+                 "Handle log-fills out-of-band. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_decoupled_fills, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("apply_pollms",
@@ -1285,23 +1285,23 @@ REGISTER_TUNABLE(
     "Max number of client stats stored in comdb2_clientstats. (Default: 10000)",
     TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
     NULL);
-REGISTER_TUNABLE("max_logput_queue", "Maximum queued log-records. "
-                                     "(Default: 100000)",
+REGISTER_TUNABLE("max_logput_queue", 
+                 "Maximum queued log-records.  (Default: 100000)",
                  TUNABLE_INTEGER, &gbl_max_logput_queue,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("master_req_waitms", "Request master once per this interval. "
-                                      "(Default: 200ms)",
-                 TUNABLE_INTEGER, &gbl_master_req_waitms,
+REGISTER_TUNABLE("master_req_waitms", 
+                 "Request master once per this interval.  "
+                 "(Default: 200ms)", TUNABLE_INTEGER, &gbl_master_req_waitms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("req_all_threshold",
                  "Use req_all if a replicant is behind by "
                  "this amount or more.  (Default: 10000000)",
                  TUNABLE_INTEGER, &gbl_req_all_threshold,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("fill_throttle", "Throttle fill-reqs to once per fill-throttle"
-                                  " ms.  (Default: 500ms)",
-                 TUNABLE_INTEGER, &gbl_fills_waitms, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fill_throttle", 
+                 "Throttle fill-reqs to once per fill-throttle ms.  "
+                 "(Default: 500ms)", TUNABLE_INTEGER, &gbl_fills_waitms, 
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("verbose_fills", "Print fill trace.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_verbose_fills, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
@@ -1309,16 +1309,17 @@ REGISTER_TUNABLE("verbose_repdups", "Print trace on duplicate replication.  "
                                     "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_verbose_repdups, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("warn_queue_latency", "Trace for log queues processed that "
-                                       "are older than this.  (Default: 500ms)",
-                 TUNABLE_INTEGER, &gbl_warn_queue_latency_threshold,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("print_net_queue_size", "Trace for net queue size.  (Default: "
-                                         "off)",
+REGISTER_TUNABLE("warn_queue_latency", 
+                 "Trace for log queues processed that are older than this.  "
+                 "(Default: 500ms)", TUNABLE_INTEGER, 
+                 &gbl_warn_queue_latency_threshold, EXPERIMENTAL | INTERNAL, 
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("print_net_queue_size", 
+                 "Trace for net queue size.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_print_net_queue_size,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("verbose_repmore_trace", "Verbose trace for rep-more requests."
-                                          "  (Default: off)",
+REGISTER_TUNABLE("verbose_repmore_trace", 
+                 "Verbose trace for rep-more requests.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_trace_repmore_reqs,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("throttle_logput_trace",
@@ -1326,12 +1327,12 @@ REGISTER_TUNABLE("throttle_logput_trace",
                  "to incoherent nodes.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_throttle_logput_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("catchup_window_trace", "Print master catchup window trace.  "
-                                         "(Default: off)",
+REGISTER_TUNABLE("catchup_window_trace", 
+                 "Print master catchup window trace.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_catchup_window_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("early_ack_trace", "Print trace when sending an early ack.  "
-                                    "(Default: off)",
+REGISTER_TUNABLE("early_ack_trace", 
+                 "Print trace when sending an early ack.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_early_ack_trace, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("commit_delay_trace", "Verbose commit-delays.  (Default: off)",
@@ -1341,8 +1342,8 @@ REGISTER_TUNABLE("set_coherent_state_trace", "Verbose coherency trace.  "
                                              "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_set_coherent_state_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("finish_fill_threshold", "Fill to end if end is less than "
-                                          "this.  (Default: 60000000)",
+REGISTER_TUNABLE("finish_fill_threshold", 
+                 "Fill to end if end is less than this.  (Default: 60000000)",
                  TUNABLE_INTEGER, &gbl_finish_fill_threshold,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("req_delay_count_threshold",
@@ -1355,16 +1356,16 @@ REGISTER_TUNABLE("max_apply_dequeue",
                  "loop.  this many times.  (Default: 100000)",
                  TUNABLE_INTEGER, &gbl_max_apply_dequeue,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("last_locked_seqnum", "Broadcast last-locked variable as "
-                                       "seqnum.  (Default: on)",
+REGISTER_TUNABLE("last_locked_seqnum", 
+                 "Broadcast last-locked variable as seqnum.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_last_locked_seqnum,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("rep_getlock_latency", "Sleep on replicant before getting "
-                                        "locks.  (Default: 0)",
+REGISTER_TUNABLE("rep_getlock_latency", 
+                 "Sleep on replicant before getting locks.  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_getlock_latencyms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("net_writer_poll_ms", "Poll time for net writer thread.  "
-                                       "(Default: 1000)",
+REGISTER_TUNABLE("net_writer_poll_ms", 
+                 "Poll time for net writer thread.  (Default: 1000)",
                  TUNABLE_INTEGER, &gbl_net_writer_thread_poll_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("inmem_repdb", "Repdb becomes an in-memory list.  "
@@ -1376,12 +1377,12 @@ REGISTER_TUNABLE("inmem_repdb_maxlog",
                  "(Default: 10000)",
                  TUNABLE_INTEGER, &gbl_inmem_repdb_maxlog,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("durable_set_trace", "Trace setting durable lsn.  "
-                                      "(Default: off)",
+REGISTER_TUNABLE("durable_set_trace", 
+                 "Trace setting durable lsn.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_durable_set_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("set_seqnum_trace", "Trace setting setting seqnum.  "
-                                     "(Default: off)",
+REGISTER_TUNABLE("set_seqnum_trace", 
+                 "Trace setting setting seqnum.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_set_seqnum_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
