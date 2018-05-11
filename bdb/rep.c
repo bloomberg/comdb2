@@ -4909,8 +4909,8 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
 
         bdb_state->attr->commitdelay = 0;
         send_context_to_all(bdb_state);
-        logmsg(gbl_commit_delay_trace ? LOGMSG_USER : LOGMSG_WARN, 
-                "-- setting commitdelay to 0 on COMMITDELAYNONE\n");
+        logmsg(gbl_commit_delay_trace ? LOGMSG_USER : LOGMSG_WARN,
+               "-- setting commitdelay to 0 on COMMITDELAYNONE\n");
         break;
 
     case USER_TYPE_GETCONTEXT:
