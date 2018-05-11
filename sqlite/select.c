@@ -5634,6 +5634,7 @@ int sqlite3Select(
     sNC.pParse = pParse;
     sNC.pSrcList = pTabList;
     sNC.uNC.pAggInfo = &sAggInfo;
+    VVA_ONLY( sNC.ncFlags = NC_UAggInfo; )
     sAggInfo.mnReg = pParse->nMem+1;
     sAggInfo.nSortingColumn = pGroupBy ? pGroupBy->nExpr : 0;
     sAggInfo.pGroupBy = pGroupBy;

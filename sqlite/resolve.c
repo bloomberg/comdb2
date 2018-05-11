@@ -236,7 +236,7 @@ static int lookupName(
 
   /* Start at the inner-most context and move outward until a match is found */
   while( pNC && cnt==0 ){
-    ExprList *pEList;
+    ExprList *pEList = 0;
     SrcList *pSrcList = pNC->pSrcList;
 
     if( pSrcList ){
@@ -445,6 +445,8 @@ static int lookupName(
      && cnt==0
      && zTab==0
     ){
+      pEList = pNC->uNC.pEList;
+      assert( pEList!=0 );
       for(j=0; j<pEList->nExpr; j++){
         char *zAs = pEList->a[j].zName;
         if( zAs!=0 && sqlite3StrICmp(zAs, zCol)==0 ){
