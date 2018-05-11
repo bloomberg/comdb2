@@ -161,7 +161,9 @@ function runtestwithoptions
     createtables
     insertforever 1000 6
     pauseandrestart 1 60
-    pauseandrestart 2 60
+#   BTDA testing is on a 3-node cluster- that only
+#   allows us to pause & restart 1 node 
+#    pauseandrestart 2 60
     killpidlist
 }
 
