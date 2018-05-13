@@ -26,8 +26,8 @@ failexit()
 
 assertcnt ()
 {
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+    local target=$1
+    local cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
     if [ $? -ne 0 ] ; then
         echo "assertcnt: select error"
     fi

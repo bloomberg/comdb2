@@ -124,11 +124,11 @@ fi
 
 echo "logmsg level info" >> ${LRL}
 
-if [[ -f ${TESTSROOTDIR}/${TESTCASE}.test/lrl ]]; then
-    cat ${TESTSROOTDIR}/${TESTCASE}.test/lrl >> ${LRL}
+if [[ -f ${TESTDIR}/${TESTCASE}.test/lrl ]]; then
+    cat ${TESTDIR}/${TESTCASE}.test/lrl >> ${LRL}
 fi
-if [[ -f "${TESTSROOTDIR}/${TESTCASE}.test/lrl.options" ]]; then
-    cat ${TESTSROOTDIR}/${TESTCASE}.test/lrl.options >> ${LRL}
+if [[ -f "${TESTDIR}/${TESTCASE}.test/lrl.options" ]]; then
+    cat ${TESTDIR}/${TESTCASE}.test/lrl.options >> ${LRL}
 fi
 
 cat >> ${LRL} <<EOPTIONS
