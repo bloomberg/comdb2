@@ -52,7 +52,7 @@ assertcnt()
 }
 
 call_unsetup() {
-    $TESTSROOTDIR/unsetup
+    $TESTSROOTDIR/unsetup > $DBNAME.unsetup
 }
 
 
@@ -78,7 +78,7 @@ CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
 
 unset COMDB2_UNITTEST
 echo round_robin_stripes > lrl.options
-$TESTSROOTDIR/setup
+$TESTSROOTDIR/setup > $DBNAME.setup
 
 # Trap to call_unsetup if the test exits
 trap "call_unsetup \"Cancelling test\"" INT EXIT
@@ -101,6 +101,13 @@ cdb2sql --tabs ${CDB2_OPTIONS} -f ins.in $dbnm default
 #cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs('t1', $N)"
 
 assertcnt t1 8
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select printf("%llx",comdb2_rowid%16) as genid from t1' > stripes.out
+for i in `seq 1 $N` ; do
+    cnt=`grep $((i-1)) stripes.out | wc -l`
+    assertres "$cnt" "1"
+done
+
+# verify via pgdump command -- same thing as above but checks the actual btrees
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb dblist')" > dblist.out
 for i in `seq 1 $N` ; do
     fileid=`cat dblist.out | grep "XXX.t1_" | grep datas$((i-1)) | awk '{print $1}'`
@@ -108,7 +115,7 @@ for i in `seq 1 $N` ; do
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb pgdump $fileid 1')" | grep "entries:2" || failexit "page does not contain 1 row"
 done
 
-$TESTSROOTDIR/unsetup
+$TESTSROOTDIR/unsetup > $DBNAME.unsetup
 trap - INT EXIT
 
 
@@ -122,7 +129,7 @@ CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
 
 unset COMDB2_UNITTEST
 rm lrl.options
-$TESTSROOTDIR/setup
+$TESTSROOTDIR/setup > $DBNAME.setup
 
 # Trap to call_unsetup if the test exits
 trap "call_unsetup \"Cancelling test\"" INT EXIT
@@ -151,7 +158,7 @@ for i in `seq 1 $N` ; do
 done > entry_counts.out
 
 
-$TESTSROOTDIR/unsetup
+$TESTSROOTDIR/unsetup > $DBNAME.unsetup
 trap - INT EXIT
 
 zeros=`grep "entries:0" entry_counts.out | wc -l`

@@ -596,8 +596,11 @@ unsigned long long get_next_sc_seed(bdb_state_type *bdb_state)
     if (gbl_llmeta_open == 0)
         return 0ULL;
 
-    /* Always use time based genids for sc seeds */
-    return get_genid_timebased(bdb_state, 0, NULL, 0);
+    /* Before we would always use time based genids for sc seeds
+     * by calling get_genid_timebased(bdb_state, 0, NULL, 0);
+     * but that updates global contex, so getting current time 
+     * for the seed should suffice */
+    return comdb2_time_epochus();
 }
 
 unsigned long long bdb_get_a_genid(bdb_state_type *bdb_state)

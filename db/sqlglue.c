@@ -8518,6 +8518,7 @@ int sqlite3BtreeRecordID(BtCursor *pCur, void *memp)
     return SQLITE_OK;
 }
 
+/* print comdb2_rowid */
 int sqlite3BtreeRecordIDString(BtCursor *pCur, unsigned long long rowid,
                                char **memp, size_t maxsz)
 {
@@ -8538,7 +8539,7 @@ int sqlite3BtreeRecordIDString(BtCursor *pCur, unsigned long long rowid,
         rc = enque_pfault_olddata_oldkeys(pCur->db, rowid, 0, -1, 0, 1, 1, 1);
     }
     prgenid = flibc_htonll(rowid);
-    snprintf(*memp, maxsz, "2:%llu", prgenid);
+    snprintf(*memp, maxsz, "%llu", prgenid);
     return SQLITE_OK;
 }
 
