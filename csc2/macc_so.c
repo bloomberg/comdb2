@@ -2486,8 +2486,8 @@ int dyns_form_key(int index, char *record, int recsz, char *key, int keysize)
     return 0;
 }
 
-/* is key duplicate? */
-int dyns_is_idx_dup(int index)
+/* does key have the specified flags? */
+static int dyns_is_idx_flagged(int index, int flags)
 {
     int lastix = 0, i = 0;
     if (index < 0 || index >= numix()) {
@@ -2499,71 +2499,35 @@ int dyns_is_idx_dup(int index)
         lastix = keyixnum[i];
         if (keyixnum[i] != index)
             continue;
-        if (ixflags[keyixnum[i]] & DUPKEY)
+        if (ixflags[keyixnum[i]] & flags)
             return 1;
         break;
     }
     return 0;
+}
+
+/* is key duplicate? */
+int dyns_is_idx_dup(int index)
+{
+    return dyns_is_idx_flagged(index, DUPKEY);
 }
 
 /* is key copy-data key? */
 int dyns_is_idx_datacopy(int index)
 {
-    int lastix = 0, i = 0;
-    if (index < 0 || index >= numix()) {
-        return -1;
-    }
-    for (lastix = -1, i = 0; i < numkeys(); i++) {
-        if (lastix == keyixnum[i])
-            continue;
-        lastix = keyixnum[i];
-        if (keyixnum[i] != index)
-            continue;
-        if (ixflags[keyixnum[i]] & DATAKEY)
-            return 1;
-        break;
-    }
-    return 0;
+    return dyns_is_idx_flagged(index, DATAKEY);
 }
 
 /* is key duplicate? */
 int dyns_is_idx_primary(int index)
 {
-    int lastix = 0, i = 0;
-    if (index < 0 || index >= numix()) {
-        return -1;
-    }
-    for (lastix = -1, i = 0; i < numkeys(); i++) {
-        if (lastix == keyixnum[i])
-            continue;
-        lastix = keyixnum[i];
-        if (keyixnum[i] != index)
-            continue;
-        if (ixflags[keyixnum[i]] & PRIMARY)
-            return 1;
-        break;
-    }
-    return 0;
+    return dyns_is_idx_flagged(index, PRIMARY);
 }
 
 /* does this index have recnums? */
 int dyns_is_idx_recnum(int index)
 {
-    int lastix = 0, i = 0;
-    if (index < 0 || index >= numix()) {
-        return -1;
-    }
-    for (lastix = -1, i = 0; i < numkeys(); i++) {
-        if (lastix == keyixnum[i])
-            continue;
-        lastix = keyixnum[i];
-        if (keyixnum[i] != index)
-            continue;
-        if (ixflags[keyixnum[i]] & RECNUMS)
-            return 1;
-        break;
-    }
-    return 0;
+    return dyns_is_idx_flagged(index, RECNUMS);
 }
 
 int dyns_get_idx_tag(int index, char *tag, int tlen, char **where)

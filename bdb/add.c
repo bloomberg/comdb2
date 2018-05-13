@@ -91,7 +91,8 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
         abort();
     }
 
-    rrn = 2;
+    /* JJM 2018-05-02: This value is not actually used by this function. */
+    /* rrn = 2; */
 
     /* for fixed format (rrn+genid, or genid) we dont malloc */
     mallocedkeydata = NULL;
