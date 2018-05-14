@@ -29,7 +29,7 @@ static int delete_table(struct dbtable *db, tran_type *tran)
     remove_constraint_pointers(db);
 
     int rc, bdberr;
-    if ((rc = bdb_close_only(db->handle, &bdberr))) {
+    if ((rc = bdb_close_only_sc(db->handle, tran, &bdberr))) {
         fprintf(stderr, "bdb_close_only rc %d bdberr %d\n", rc, bdberr);
         return -1;
     }
