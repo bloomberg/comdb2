@@ -514,7 +514,7 @@ int do_schema_change_tran(sc_arg_t *arg)
                 bdb_close_only(s->newdb->handle, &bdberr);
                 backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
             } else {
-                bdb_close_only(s->newdb->handle, &bdberr);
+                bdb_close_only_sc(s->newdb->handle, trans, &bdberr);
             }
         }
     }

@@ -845,7 +845,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
 
         /* the master doesn't tell the replicants to close the db
          * ahead of time */
-        rc = bdb_close_only(old_bdb_handle, &bdberr);
+        rc = bdb_close_only_sc(old_bdb_handle, tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
             return 1;
@@ -901,7 +901,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         free(new_bdb_handle);
     } else {
         old_bdb_handle = db->handle;
-        rc = bdb_close_only(old_bdb_handle, &bdberr);
+        rc = bdb_close_only_sc(old_bdb_handle, tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
             return 1;

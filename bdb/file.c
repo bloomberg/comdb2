@@ -1450,6 +1450,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     int i;
     int bdberr;
     int last;
+    DB_TXN *tid = NULL;
     netinfo_type *netinfo_ptr = bdb_state->repinfo->netinfo;
 
     BDB_READLOCK("bdb_close_int");
@@ -1479,6 +1480,8 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
     sleep(1);
 
+    bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
+
     Pthread_mutex_lock(&(bdb_state->children_lock));
     for (i = 0; i < bdb_state->numchildren; i++) {
         child = bdb_state->children[i];
@@ -1501,7 +1504,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
     /* close all database files.   doesn't fail. */
     if (!envonly) {
-        rc = close_dbs(bdb_state, NULL);
+        rc = close_dbs(bdb_state, tid);
     }
 
     /* now do it for all of our children */
@@ -1511,11 +1514,14 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
         /* close all of our databases.  doesn't fail. */
         if (child) {
-            rc = close_dbs(child, NULL);
+            rc = close_dbs(child, tid);
             bdb_access_destroy(child);
         }
     }
     Pthread_mutex_unlock(&(bdb_state->children_lock));
+
+    /* Commit */
+    tid->commit(tid, 0);
 
     /* close our transactional environment.  note that according to berkdb
      * docs the handle is invalid after this is called regardless of the
