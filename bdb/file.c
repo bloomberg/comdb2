@@ -6803,7 +6803,7 @@ static int bdb_free_int(bdb_state_type *bdb_state, bdb_state_type *replace,
             /* find ourselves and swap it. */
             for (int i = 0; i < bdb_state->numchildren; i++)
                 if (bdb_state->children[i] == replace) {
-                    logmsg(LOGMSG_DEBUG, "%s swapping %p with %p\n", i, replace,
+                    logmsg(LOGMSG_DEBUG, "%d swapping %p with %p\n", i, replace,
                            child);
                     bdb_state->children[i] = child;
                     break;
