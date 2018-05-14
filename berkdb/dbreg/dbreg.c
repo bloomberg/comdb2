@@ -227,8 +227,9 @@ __dbreg_new_id(dbp, txn)
 	return (ret);
 }
 
-int gbl_dbreg_stack_on_null_txn = 0;
-int gbl_dbreg_abort_on_null_txn = 0;
+/* See if we can run with these set to 1 */
+int gbl_dbreg_stack_on_null_txn = 1;
+int gbl_dbreg_abort_on_null_txn = 1;
 
 /*
  * __dbreg_get_id --
