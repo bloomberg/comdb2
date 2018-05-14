@@ -62,20 +62,23 @@ core_all_nodes() {
     done
 }
 
-deregister_db_port="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )"
-
 cleanup_cluster() {    
-    local node
-    echo deregistering $DBNAME from $HOSTNAME pmux:$pmux_port
-    eval $deregister_db_port
+    local deregister_db_port="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )"
+    local dbport
+    if [[ -z "$CLUSTER" ]] || [[ `echo $CLUSTER | grep $HOSTNAME ` ]]; then
+        dbport=`${TESTSROOTDIR}/tools/send_msg_port.sh -h $HOSTNAME "get comdb2/replication/${DBNAME}" ${pmux_port}`
+        echo "deregistering $DBNAME (port $dbport) from $HOSTNAME pmux:$pmux_port"
+        eval $deregister_db_port
 
-    if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
-        rm -rf ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.*
+        if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
+            rm -rf ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.*
+        fi
     fi
 
+    local node
     for node in ${CLUSTER/$HOSTNAME/}; do
-        ${TESTSROOTDIR}/tools/send_msg_port.sh -h $node "get comdb2/replication/${DBNAME}" ${pmux_port}
-        echo deregistering $DBNAME from $node pmux:$pmux_port
+        dbport=`${TESTSROOTDIR}/tools/send_msg_port.sh -h $node "get comdb2/replication/${DBNAME}" ${pmux_port}`
+        echo "deregistering $DBNAME (port $dbport) from $node pmux:$pmux_port"
         ssh -o StrictHostKeyChecking=no $node "${deregister_db_port}" < /dev/null
         if [ "x$DBDIR" == "x" ] ; then 
             continue

@@ -221,7 +221,7 @@ check_db_port_running_node() {
         netstat -na | grep $dbport
         opid=`fuser -n tcp $dbport`
         echo "pid running on dbport: $opid"
-    [ -n "$opid" ] && ps -p $opid -o comm,args
+        [ -n "$opid" ] && ps -p $opid -o comm,args
     else
         ssh $SSH_OPT $node "netstat -na | grep $dbport" </dev/null
         opid=`ssh $SSH_OPT $node "fuser -n tcp $dbport" </dev/null`
@@ -282,8 +282,7 @@ else
     for node in ${CLUSTER/$HOSTNAME/}; do
         wait ${pids[$i]}
         if [[ $? -ne 0 ]]; then
-            echo "FAILED: $COPYCOMDB2_EXE ${LRL} ${node}: "
-            echo "see $TESTDIR/logs/${DBNAME}.${node}.copy "
+            echo "FAILED: copying ${LRL} ${node}: see $TESTDIR/logs/${DBNAME}.${node}.copy"
             exit 1
         fi
         let i=i+1
@@ -314,15 +313,24 @@ else
         fi
     done
 
+    #check for failure in starting any of the nodes
+    sleep 1
+    for node in $CLUSTER; do
+        if [ kill -0 `cat $TESTDIR/logs/${DBNAME}.${node}.db` ] ; then
+            echo "pid $TESTDIR/logs/${DBNAME}.${node}.db: `cat $TESTDIR/logs/${DBNAME}.${node}.db` is not alive"
+            check_db_port_running_node $node # this error is immediate so we should be able to catch it early
+        fi
+    done
+
     echo "!$TESTCASE: waiting until ready"
     for node in $CLUSTER; do
         set +e
+        echo "If we can't talk to any of the nodes the test will timeout"
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
         while  [[ "$out" != "1" ]]; do
             sleep 2
             out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
             $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $TESTDIR/logs/${DBNAME}.${node}.conn
-            [[ "$out" != "1" ]] && check_db_port_running_node $node
         done
         $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &>> $TESTDIR/logs/${DBNAME}.${node}.conn
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' 2>&1)
