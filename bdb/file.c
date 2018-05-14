@@ -120,7 +120,8 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
 static int bdb_free_int(bdb_state_type *bdb_state, bdb_state_type *replace,
                         int *bdberr);
 
-static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr);
+static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
+                              int *bdberr);
 
 int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
                     char *newfile, int *bdberr);
@@ -6698,7 +6699,8 @@ int get_dbnum_by_name(bdb_state_type *bdb_state, const char *name)
     return found;
 }
 
-static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
+static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
+                              int *bdberr)
 {
     int i;
     bdb_state_type *parent;
@@ -6736,7 +6738,6 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdber
 int bdb_close_only_sc(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
     int rc;
-    //DB_TXN *tid = (DB_TXN *)intid;
 
     if (bdb_state->envonly) return 0;
 
