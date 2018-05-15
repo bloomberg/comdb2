@@ -6742,7 +6742,8 @@ int bdb_close_only_sc(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
     int rc;
 
-    if (bdb_state->envonly) return 0;
+    if (bdb_state->envonly)
+        return 0;
 
     BDB_READLOCK("bdb_close_only_sc");
 
