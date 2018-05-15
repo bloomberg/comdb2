@@ -35,7 +35,6 @@
 #include "sc_stripes.h"
 #include "sc_drop_table.h"
 #include "sc_rename_table.h"
-#include "analyze.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 
@@ -220,45 +219,6 @@ static int set_original_tablename(struct schema_change_type *s)
         return 0;
     }
     return 1;
-}
-
-/*********** Outer Business logic for schemachanges ************************/
-
-static void check_for_idx_rename(struct dbtable *newdb, struct dbtable *olddb)
-{
-    if (!newdb || !newdb->plan) return;
-
-    for (int ixnum = 0; ixnum < newdb->nix; ixnum++) {
-        struct schema *newixs = newdb->ixschema[ixnum];
-
-        int oldixnum = newdb->plan->ix_plan[ixnum];
-        if (oldixnum < 0 || oldixnum >= olddb->nix) continue;
-
-        struct schema *oldixs = olddb->ixschema[oldixnum];
-        if (!oldixs) continue;
-
-        int offset = get_offset_of_keyname(newixs->csctag);
-        if (get_offset_of_keyname(oldixs->csctag) > 0) {
-            logmsg(LOGMSG_USER, "WARN: Oldix has .NEW. in idx name: %s\n",
-                   oldixs->csctag);
-            return;
-        }
-        if (newdb->plan->ix_plan[ixnum] >= 0 &&
-            strcmp(newixs->csctag + offset, oldixs->csctag) != 0) {
-            char namebuf1[128];
-            char namebuf2[128];
-            form_new_style_name(namebuf1, sizeof(namebuf1), newixs,
-                                newixs->csctag + offset, newdb->tablename);
-            form_new_style_name(namebuf2, sizeof(namebuf2), oldixs,
-                                oldixs->csctag, olddb->tablename);
-            logmsg(LOGMSG_INFO,
-                   "ix %d changing name so INSERTING into sqlite_stat* "
-                   "idx='%s' where tbl='%s' and idx='%s' \n",
-                   ixnum, newixs->csctag + offset, newdb->tablename,
-                   oldixs->csctag);
-            add_idx_stats(newdb->tablename, namebuf2, namebuf1);
-        }
-    }
 }
 
 int do_upgrade_table(struct schema_change_type *s)
@@ -576,12 +536,6 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
     pthread_mutex_lock(&s->mtx);
     enum thrtype oldtype = prepare_sc_thread(s);
     int rc = SC_OK;
-
-    if (s->type == DBTYPE_TAGGED_TABLE) {
-        /* check for rename outside of taking schema lock */
-        /* handle renaming sqlite_stat1 entries for idx */
-        check_for_idx_rename(s->newdb, s->db);
-    }
 
     if (gbl_test_scindex_deadlock) {
         logmsg(LOGMSG_INFO, "%s: sleeping for 30s\n", __func__);
