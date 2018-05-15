@@ -125,7 +125,7 @@ done:
     end = gettimeofday_ms();
     tot = end - start;
     printf("cdb2_close took %d ms\n", tot);
-    if (tot >= 3)
+    if (tot >= 4)
         exit(1);
     return 0;
 }
