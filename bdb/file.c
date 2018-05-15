@@ -96,6 +96,7 @@
 
 #include "dbinc/log.h"
 #include "dbinc/txn.h"
+#include <rep_qstat.h>
 
 #include <bdb_queuedb.h>
 
@@ -138,6 +139,7 @@ const char *get_sc_to_name(const char *name);
 LISTC_T(struct checkpoint_list) ckp_lst;
 pthread_mutex_t ckp_lst_mtx;
 int ckp_lst_ready = 0;
+extern int gbl_set_seqnum_trace;
 
 int bdb_checkpoint_list_init()
 {
@@ -2123,6 +2125,8 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
     return net_is_single_sanctioned_node(bdb_state->repinfo->netinfo);
 }
 
+extern int gbl_commit_delay_trace;
+
 static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 {
     DB_ENV *dbenv;
@@ -2522,6 +2526,9 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     net_register_getlsn(bdb_state->repinfo->netinfo, net_getlsn_rtn);
 
+    /* Register qstat if its enabled */
+    net_rep_qstat_init(bdb_state->repinfo->netinfo);
+
     /* set the callback data so we get our bdb_state pointer from these
      * calls. */
     net_set_callback_data(bdb_state->repinfo->netinfo, bdb_state);
@@ -2813,8 +2820,8 @@ waitformaster:
 /* berkdb 4.2 doesnt support startup done message, so skip this phase */
 #if defined(BERKDB_4_3) || defined(BERKDB_4_5) || defined(BERKDB_46)
 
+again1:
     if (bdb_state->repinfo->master_host != myhost) {
-    again1:
         master_host = bdb_state->repinfo->master_host;
         if (master_host == myhost)
             goto done1;
@@ -2904,9 +2911,9 @@ done1:
        the lsn of the master
        */
 
+again2:
     if (bdb_state->repinfo->master_host != myhost) {
     /* now loop till we are close */
-    again2:
         master_host = bdb_state->repinfo->master_host;
         if (master_host == myhost)
             goto done2;
@@ -3139,6 +3146,10 @@ again:
         rc = net_send(bdb_state->repinfo->netinfo,
                       bdb_state->repinfo->master_host,
                       USER_TYPE_COMMITDELAYNONE, NULL, 0, 1);
+        if (gbl_commit_delay_trace) {
+            logmsg(LOGMSG_USER, "%s line %d sending COMMITDELAYNONE\n",
+                   __func__, __LINE__);
+        }
     }
 
     /*
@@ -4983,6 +4994,10 @@ int bdb_upgrade(bdb_state_type *bdb_state, int *done)
         return 0;
 
     logmsg(LOGMSG_DEBUG, "%s:%d %s set file = 0\n", __FILE__, __LINE__, __func__);
+    if (gbl_set_seqnum_trace) {
+        logmsg(LOGMSG_USER, "%s line %d setting all seqnums to 0\n", __func__,
+               __LINE__);
+    }
     for (i = 0; i < MAXNODES; i++) {
         bdb_state->seqnum_info->seqnums[i].lsn.file = 0;
     }

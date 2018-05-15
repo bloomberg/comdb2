@@ -955,8 +955,6 @@ struct bdb_state_tag {
     signed char need_to_downgrade_and_lose;
 
     signed char rep_trace;
-    signed char check_for_isperm;
-    signed char got_isperm;
     signed char berkdb_rep_startupdone;
 
     signed char rep_started;
@@ -1862,5 +1860,7 @@ int has_low_headroom(const char *path, int threshold, int debug);
 
 const char *deadlock_policy_str(u_int32_t policy);
 int deadlock_policy_max();
+
+char *coherent_state_to_str(int state);
 
 #endif /* __bdb_int_h__ */

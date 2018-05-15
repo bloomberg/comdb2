@@ -63,6 +63,7 @@ function mail_status
 function cleanup
 {
     [[ "$debug" == "1" ]] && set -x
+    ( cd ~/comdb2/tests && make clean )
     find ~/comdb2/tests/test_* -type d -mmin +$test_linger -exec rm -Rf {} \;
     find ~/comdb2/tests/tools/linearizable/jepsen/store -mtime 1 -exec rm -Rf {} \;
     find ~/comdb2/tests/test_* -mtime 1 -exec rm -Rf {} \;
@@ -91,7 +92,9 @@ function pull_and_recompile
 while :; do 
     let i=i+1 
     print_status
-    pull_and_recompile
+    if [[ ! -z $TESTLOOPCOMPILE ]]; then
+        pull_and_recompile
+    fi 
     echo "$(date) ITERATION $i" 
     for x in $tests 
     do print_status

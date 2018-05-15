@@ -133,6 +133,7 @@ struct __db_ilock;	typedef struct __db_ilock DB_LOCK_ILOCK;
 struct __db_lock_stat;	typedef struct __db_lock_stat DB_LOCK_STAT;
 struct __db_lock_u;	typedef struct __db_lock_u DB_LOCK;
 struct __db_lockreq;	typedef struct __db_lockreq DB_LOCKREQ;
+struct __db_log_cursor_stat; typedef struct __db_log_cursor_stat DB_LOGC_STAT;
 struct __db_log_cursor;	typedef struct __db_log_cursor DB_LOGC;
 struct __db_log_stat;	typedef struct __db_log_stat DB_LOG_STAT;
 struct __db_lsn;	typedef struct __db_lsn DB_LSN;
@@ -383,6 +384,11 @@ struct __db_dbt {
 #define  DB_REP_LOGPROGRESS      0x0000004   /* marks a new log record, not a commit though */
 #define DB_REP_FLUSH            0x0000008
 
+/* Don't allow these to overlap with log_put flags */
+#define DB_REP_NODROP           0x0001000
+#define DB_REP_TRACE           0x0002000 /* Trace this through the net layer */
+#define DB_REP_SENDACK          0x0004000
+
 /*******************************************************
  * Locking.
  *******************************************************/
@@ -624,6 +630,17 @@ struct __db_ltran {
 #define	DB_user_BEGIN		10000
 #define	DB_debug_FLAG		0x80000000
 
+struct __db_log_cursor_stat {
+    int incursor_count;
+    int ondisk_count;
+    int inregion_count;
+    unsigned long long incursorus;
+    unsigned long long ondiskus;
+    unsigned long long inregionus;
+    unsigned long long totalus;
+    unsigned long long lockwaitus;
+};
+
 /*
  * DB_LOGC --
  *	Log cursor.
@@ -649,11 +666,24 @@ struct __db_log_cursor {
 					/* Methods. */
 	int (*close) __P((DB_LOGC *, u_int32_t));
 	int (*get) __P((DB_LOGC *, DB_LSN *, DBT *, u_int32_t));
+    int (*stat) __P((DB_LOGC *, DB_LOGC_STAT **));
+
+    /* Instrumentation for log stats */
+    int incursor_count;
+    int ondisk_count;
+    int inregion_count;
+
+    u_int64_t incursorus;
+    u_int64_t ondiskus;
+    u_int64_t inregionus;
+    u_int64_t totalus;
+    u_int64_t lockwaitus;
 
 #define	DB_LOG_DISK		0x01	/* Log record came from disk. */
 #define	DB_LOG_LOCKED		0x02	/* Log region already locked */
 #define	DB_LOG_SILENT_ERR	0x04	/* Turn-off error messages. */
 #define DB_LOG_NO_PANIC		0x08    /* Don't panic on error. */
+#define DB_LOG_CUSTOM_SIZE  0x10    /* This cursor has a custom size */
 	u_int32_t flags;
     struct __db_log_cursor *next;
     struct __db_log_cursor *prev;
@@ -2083,6 +2113,8 @@ struct __db_env {
 	int     (*txn_logical_commit)
 		    __P((DB_ENV *, void *state, u_int64_t ltranid,
 		    DB_LSN *lsn));
+    DB_LSN last_locked_lsn;
+    pthread_mutex_t locked_lsn_lk;
 
 	/* Transactions. */
 	u_int32_t	 tx_max;	/* Maximum number of transactions. */
@@ -2302,6 +2334,7 @@ struct __db_env {
 	int  (*get_rep_limit) __P((DB_ENV *, u_int32_t *, u_int32_t *));
 	int  (*set_rep_limit) __P((DB_ENV *, u_int32_t, u_int32_t));
 	void  (*get_rep_gen) __P((DB_ENV *, u_int32_t *));
+    int  (*get_last_locked) __P((DB_ENV *, DB_LSN *));
 	int  (*set_rep_request) __P((DB_ENV *, u_int32_t, u_int32_t));
 	int  (*set_rep_transport) __P((DB_ENV *, char*,
 		int (*) (DB_ENV *, const DBT *, const DBT *, const DB_LSN *,

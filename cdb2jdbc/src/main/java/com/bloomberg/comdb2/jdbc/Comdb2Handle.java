@@ -13,10 +13,12 @@
    limitations under the License. */
 package com.bloomberg.comdb2.jdbc;
 
+import java.nio.ByteBuffer;
 import java.io.*;
 import java.util.*;
 import java.util.logging.*;
 import javax.net.ssl.*;
+import java.text.MessageFormat;
 
 import com.google.protobuf.*;
 
@@ -359,45 +361,31 @@ public class Comdb2Handle extends AbstractConnection {
     // Add td info to the beginning of the string
     private void tdlog(Level level, String str, Object... params) {
         /* Fast return if the level is not loggable. */
-        if (!logger.isLoggable(level))
+        if (!logger.isLoggable(level) && !debug)
             return;
 
+        Level curlevel = logger.getLevel();
         String mach = "(not-connected)";
         if (dbHostConnected >= 0) {
             mach = myDbHosts.get(dbHostConnected);
         }
 
-        if (debug) {
-            // Either getStackTrace or getMethodName is leaking memory: we blow up
-            // in the read-test .. don't call them for now
-            /*
-            String methodName = Thread.currentThread().getStackTrace()[2].getMethodName();
-            int methodLine = Thread.currentThread().getStackTrace()[2].getLineNumber();
-            String callingMethodName = Thread.currentThread().getStackTrace()[3].getMethodName();
-            int callingMethodLine = Thread.currentThread().getStackTrace()[3].getLineNumber();
-            System.out.println("td=" + Thread.currentThread().getId() + " " + callingMethodName + ":" +
-                    callingMethodLine + "->" + methodName + ":" + methodLine + " mach=" + mach +
-                    " snapshotFile=" + snapshotFile + " snapshotOffset=" + snapshotOffset + " cnonce="
-                    + stringCnonce + ": " + str);
-                    */
-            System.out.println("td=" + Thread.currentThread().getId() + " mach=" + mach + 
-                    " snapshotFile=" + snapshotFile + " snapshotOffset=" + snapshotOffset + 
-                    " cnonce=" + stringCnonce + ": " + str);
-
-
-        } else {
-            String message = String.format(str, params);
-            Object[] messageParams = new Object[] {
-                Thread.currentThread().getId(),
+        String message = String.format(str, params);
+        Object[] messageParams = new Object[] {
+            Thread.currentThread().getId(),
                 mach,
                 snapshotFile,
                 snapshotOffset,
                 stringCnonce,
                 message
-            };
-            logger.log(level,
-                       "td={0} mach={1} snapshotFile={2} snapshotOffset={3} cnonce={4}: {5}",
-                       messageParams);
+        };
+        logger.log(level,
+                "td={0} mach={1} snapshotFile={2} snapshotOffset={3} cnonce={4}: {5}",
+                messageParams);
+
+        if (debug) {
+            MessageFormat form = new MessageFormat("td={0} mach={1} snapshotFile={2} snapshotOffset={3} cnonce={4}: {5}");
+            System.err.println(form.format(messageParams));
         }
     }
 

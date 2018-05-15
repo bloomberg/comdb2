@@ -33,6 +33,7 @@ static const char revid[] = "$Id: rep_method.c,v 1.134 2003/11/13 15:41:51 sue E
 #include "dbinc_auto/rpc_client_ext.h"
 #endif
 
+#include <epochlib.h>
 #include "logmsg.h"
 
 int gbl_rep_method_max_sleep_cnt = 0;
@@ -106,6 +107,7 @@ __rep_dbenv_create(dbenv)
 		dbenv->rep_start = __rep_start;
 		dbenv->rep_stat = __rep_stat;
 		dbenv->get_rep_gen = __rep_get_gen;
+		dbenv->get_last_locked = __rep_get_last_locked;
 		dbenv->get_rep_limit = __rep_get_limit;
 		dbenv->set_rep_limit = __rep_set_limit;
 		dbenv->set_rep_request = __rep_set_request;
@@ -865,6 +867,9 @@ __rep_set_rep_transport(dbenv, eid, f_send)
 	return (0);
 }
 
+extern pthread_mutex_t rep_queue_lock;
+extern void send_master_req(DB_ENV *dbenv, const char *func, int line);
+
 /*
  * __rep_elect --
  *	Called after master failure to hold/participate in an election for
@@ -936,8 +941,7 @@ __rep_elect(dbenv, nsites, priority, timeout, eidp)
 	fprintf(stderr, "%s:%d broadcasting REP_MASTER_REQ\n",
 	    __FILE__, __LINE__);
 #endif
-	(void)__rep_send_message(dbenv,
-	    db_eid_broadcast, REP_MASTER_REQ, NULL, NULL, 0, NULL);
+    send_master_req(dbenv, __func__, __LINE__);
 	ret = __rep_wait(dbenv, timeout / 4, eidp, REP_F_EPHASE1);
 	switch (ret) {
 	case 0:
@@ -971,8 +975,10 @@ restart:
 	tiebreaker = pid ^ sec ^ usec ^ (u_int) rand() ^ P_TO_UINT32(&pid);
 
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+    pthread_mutex_lock(&rep_queue_lock);
 	F_SET(rep, REP_F_EPHASE1 | REP_F_NOARCHIVE);
 	F_CLR(rep, REP_F_TALLY);
+    pthread_mutex_unlock(&rep_queue_lock);
 
 	/* Tally our own vote */
 	if (__rep_tally(dbenv, rep, rep->eid, &rep->sites, rep->egen,
@@ -1061,8 +1067,10 @@ restart:
 				    "Counted my vote %d", rep->votes);
 #endif
 		}
+        pthread_mutex_lock(&rep_queue_lock);
 		F_SET(rep, REP_F_EPHASE2);
 		F_CLR(rep, REP_F_EPHASE1);
+        pthread_mutex_unlock(&rep_queue_lock);
 	}
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	if (send_vote == db_eid_invalid) {
