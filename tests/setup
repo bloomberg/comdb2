@@ -12,7 +12,7 @@ while [[ $# -gt 0 && $1 = -* ]]; do
     shift
 done
 
-vars="HOSTNAME TESTID SRCHOME TESTCASE DBNAME DBDIR BUILDDIR TESTSBUILDDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE pmux_port"
+vars="HOSTNAME TESTID SRCHOME TESTCASE DBNAME DBDIR BUILDDIR TESTSBUILDDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port"
 for required in $vars; do
     q=${!required}
     if [[ -z "$q" ]]; then
@@ -124,11 +124,11 @@ fi
 
 echo "logmsg level info" >> ${LRL}
 
-if [[ -f ${TESTDIR}/${TESTCASE}.test/lrl ]]; then
-    cat ${TESTDIR}/${TESTCASE}.test/lrl >> ${LRL}
+if [[ -f ${TESTSROOTDIR}/${TESTCASE}.test/lrl ]]; then
+    cat ${TESTSROOTDIR}/${TESTCASE}.test/lrl >> ${LRL}
 fi
-if [[ -f "${TESTDIR}/${TESTCASE}.test/lrl.options" ]]; then
-    cat ${TESTDIR}/${TESTCASE}.test/lrl.options >> ${LRL}
+if [[ -f "${TESTSROOTDIR}/${TESTCASE}.test/lrl.options" ]]; then
+    cat ${TESTSROOTDIR}/${TESTCASE}.test/lrl.options >> ${LRL}
 fi
 
 cat >> ${LRL} <<EOPTIONS
