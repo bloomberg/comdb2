@@ -1951,7 +1951,6 @@ void lock_info_lockers(FILE *out, bdb_state_type *bdb_state);
 
 const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host);
 
-unsigned long long get_next_sc_seed(bdb_state_type *bdb_state);
 unsigned long long bdb_get_a_genid(bdb_state_type *bdb_state);
 
 /* Return the timestamp of the replicants coherency lease */

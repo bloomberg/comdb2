@@ -249,9 +249,8 @@ void sc_status(struct dbenv *dbenv)
     if (sc_tables)
         sctbl = hash_first(sc_tables, &ent, &bkt);
     while (gbl_schema_change_in_progress && sctbl) {
-        const char *mach;
-        time_t timet;
-        getMachineAndTimeFromFstSeed(sctbl->seed, sctbl->host, &mach, &timet);
+        const char *mach = get_hostname_with_crc32(thedb->bdb_env, sctbl->host);
+        time_t timet = sctbl->time;
         struct tm tm;
         localtime_r(&timet, &tm);
 

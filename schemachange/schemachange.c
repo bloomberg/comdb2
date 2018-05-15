@@ -193,7 +193,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             return SC_MASTER_DOWNGRADE;
         }
     } else {
-        seed = get_next_sc_seed(thedb->bdb_env);
+        seed = bdb_get_a_genid(thedb->bdb_env);
         logmsg(LOGMSG_INFO, "Starting schema change: new seed 0x%llx\n", seed);
     }
 
@@ -222,7 +222,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 free_schema_change_type(s);
                 return SC_CANT_SET_RUNNING;
             } else if (sc_set_running(s->table, 1,
-                                      get_next_sc_seed(thedb->bdb_env),
+                                      bdb_get_a_genid(thedb->bdb_env),
                                       gbl_mynode, time(NULL)) != 0) {
                 free_schema_change_type(s);
                 return SC_CANT_SET_RUNNING;
@@ -1064,8 +1064,8 @@ int sc_timepart_add_table(const char *existingTableName,
         goto error;
     }
 
-    if (sc_set_running(sc.table, 1, get_next_sc_seed(thedb->bdb_env),
-                       gbl_mynode, time(NULL)) != 0) {
+    if (sc_set_running(sc.table, 1, bdb_get_a_genid(thedb->bdb_env), gbl_mynode,
+                       time(NULL)) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;
@@ -1132,8 +1132,8 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
         goto error;
     }
 
-    if (sc_set_running(sc.table, 1, get_next_sc_seed(thedb->bdb_env),
-                       gbl_mynode, time(NULL)) != 0) {
+    if (sc_set_running(sc.table, 1, bdb_get_a_genid(thedb->bdb_env), gbl_mynode,
+                       time(NULL)) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;

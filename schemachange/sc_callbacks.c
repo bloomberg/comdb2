@@ -829,17 +829,3 @@ done:
     sc_set_running((char *)table, 0 /*running*/, 0 /*seed*/, NULL, 0);
     return rc; /* success */
 }
-
-void getMachineAndTimeFromFstSeed(uint64_t seed, uint32_t host,
-                                  const char **mach, time_t *timet)
-{
-    /* fastseeds are formed from an epoch time, machine number and
-     * duplication factor, so we can decode the fastseed to get the
-     * master machine that started the schema change and the time at which
-     * it was done. */
-    unsigned int *iptr = (unsigned int *)&seed;
-
-    *mach = get_hostname_with_crc32(thedb->bdb_env, host);
-    *timet = ntohl(iptr[0]);
-    return;
-}
