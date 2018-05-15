@@ -1028,6 +1028,11 @@ int delete_temp_table(struct ireq *iq, struct dbtable *newdb)
                 iq->usedb = usedb_sav;
                 return -1;
             }
+            rc = bdb_close_only_sc(newdb->handle, tran, &bdberr);
+            if (rc) {
+                sc_errf(s, "bdb_close_only rc %d bdberr %d\n", rc, bdberr);
+                return -1;
+            }
         } else
             break;
     }

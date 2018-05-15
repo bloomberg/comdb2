@@ -6307,7 +6307,6 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
     if ((rc = access(pname, F_OK)) == 0) {
         int rc;
 
-        bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
         if ((rc = db_create(&dbp, dbenv, 0)) == 0 &&
             (rc = dbp->open(dbp, tid, pname, NULL, DB_BTREE, 0, 0666)) == 0) {
             bdb_remove_fileid_pglogs(bdb_state, dbp->fileid);
@@ -6323,10 +6322,8 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
             else
                 *bdberr = BDBERR_MISC;
             rc = -1;
-            tid->abort(tid);
         } else {
             print(bdb_state, "bdb_del_file: removed %s\n", filename);
-            tid->commit(tid, 0);
         }
 
     } else {
