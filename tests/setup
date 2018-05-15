@@ -316,8 +316,9 @@ else
     #check for failure in starting any of the nodes
     sleep 1
     for node in $CLUSTER; do
-        if [ kill -0 `cat $TESTDIR/logs/${DBNAME}.${node}.db` ] ; then
-            echo "pid $TESTDIR/logs/${DBNAME}.${node}.db: `cat $TESTDIR/logs/${DBNAME}.${node}.db` is not alive"
+        kill -0 `cat ${TMPDIR}/${DBNAME}.${node}.pid` > /dev/null
+        if [ $? -eq 1 ] ; then
+            echo "pid ${TMPDIR}/${DBNAME}.${node}.pid: `cat ${TMPDIR}/${DBNAME}.${node}.pid` is not alive"
             check_db_port_running_node $node # this error is immediate so we should be able to catch it early
         fi
     done

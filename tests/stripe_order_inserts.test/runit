@@ -7,13 +7,6 @@ set -x
 # Debug variable
 debug=0
 
-dbnm=$1
-
-if [ "x$dbnm" == "x" ] ; then
-    echo "need a DB name"
-    exit 1
-fi
-
 # Number of insert_records function calls
 nins=0
 
@@ -68,7 +61,7 @@ call_unsetup() {
 
 N=8   # number of stripes
 
-echo "Rounnd robin"
+echo "Round robin"
 
 dbnm=rrdb$TESTID
 DBNAME=$dbnm
@@ -76,7 +69,7 @@ DBDIR=$TESTDIR/$DBNAME
 CDB2_CONFIG=$DBDIR/comdb2db.cfg
 CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
 
-unset COMDB2_UNITTEST
+unset COMDB2_UNITTEST   # needed to run setup script
 echo round_robin_stripes > lrl.options
 $TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
