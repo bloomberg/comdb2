@@ -988,18 +988,18 @@ int delete_temp_table(struct ireq *iq, struct dbtable *newdb)
     int i, rc, bdberr;
     struct dbtable *usedb_sav;
 
-    rc = bdb_close_only(newdb->handle, &bdberr);
-    if (rc) {
-        sc_errf(s, "bdb_close_only rc %d bdberr %d\n", rc, bdberr);
-        return -1;
-    }
-
     usedb_sav = iq->usedb;
     iq->usedb = newdb;
     rc = trans_start(iq, NULL, &tran);
     if (rc) {
         sc_errf(s, "%d: trans_start rc %d\n", __LINE__, rc);
         iq->usedb = usedb_sav;
+        return -1;
+    }
+
+    rc = bdb_close_only_sc(newdb->handle, tran, &bdberr);
+    if (rc) {
+        sc_errf(s, "bdb_close_only rc %d bdberr %d\n", rc, bdberr);
         return -1;
     }
 

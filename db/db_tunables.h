@@ -1270,11 +1270,11 @@ REGISTER_TUNABLE(
     TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
     NULL);
 REGISTER_TUNABLE("dbreg_stack_on_null_txn", "Cheap-stack on dbreg with a null "
-                                            "txn. (Default: on)",
+                                            "txn. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_dbreg_stack_on_null_txn,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dbreg_abort_on_null_txn", "Abort on dbreg with a null txn. "
-                                            "(Default: on)",
+                                            "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_dbreg_abort_on_null_txn,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 

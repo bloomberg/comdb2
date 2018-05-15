@@ -1451,7 +1451,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     int i;
     int bdberr;
     int last;
-    DB_TXN *tid = NULL;
+    DB_TXN *tid;
     netinfo_type *netinfo_ptr = bdb_state->repinfo->netinfo;
 
     BDB_READLOCK("bdb_close_int");
@@ -1481,8 +1481,6 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
     sleep(1);
 
-    bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
-
     Pthread_mutex_lock(&(bdb_state->children_lock));
     for (i = 0; i < bdb_state->numchildren; i++) {
         child = bdb_state->children[i];
@@ -1502,6 +1500,8 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
         logmsg(LOGMSG_WARN, "%s: Election in progress.\n", __func__);
         sleep(1);
     }
+
+    bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
 
     /* close all database files.   doesn't fail. */
     if (!envonly) {
@@ -1595,7 +1595,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans)
 {
     DB_TXN *tid = trans ? trans->tid : NULL;
-    int rc = close_dbs(bdb_state, trans->tid);
+    int rc = close_dbs(bdb_state, tid);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
@@ -6304,10 +6304,10 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
     else
         dbenv = bdb_state->dbenv;
 
-    bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
     if ((rc = access(pname, F_OK)) == 0) {
         int rc;
 
+        bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
         if ((rc = db_create(&dbp, dbenv, 0)) == 0 &&
             (rc = dbp->open(dbp, tid, pname, NULL, DB_BTREE, 0, 0666)) == 0) {
             bdb_remove_fileid_pglogs(bdb_state, dbp->fileid);
@@ -6323,8 +6323,10 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
             else
                 *bdberr = BDBERR_MISC;
             rc = -1;
+            tid->abort(tid);
         } else {
             print(bdb_state, "bdb_del_file: removed %s\n", filename);
+            tid->commit(tid, 0);
         }
 
     } else {
@@ -8309,6 +8311,8 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
         return -1;
     }
 
+    bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
+
     while ((error = bb_readdir(dirp, buf, &ent)) == 0 && ent != NULL) {
         if (strlen(ent->d_name) > 5 &&
             (strstr(ent->d_name, blob_ext) || strstr(ent->d_name, data_ext) ||
@@ -8322,18 +8326,18 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
                 logmsg(LOGMSG_ERROR, "%s: filename too long to munge: %s\n",
                        __func__, ent->d_name);
                 closedir(dirp);
+                tid->abort(tid);
                 free(buf);
                 return -1;
             }
             pname = bdb_trans(munged_name, transname);
-
-            bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
 
             if (db_create(&dbp, dbenv, 0) == 0 &&
                 dbp->open(dbp, tid, pname, NULL, DB_BTREE, 0, 0666) == 0) {
                 fileid = malloc(DB_FILE_ID_LEN);
                 if (fileid == NULL) {
                     closedir(dirp);
+                    tid->abort(tid);
                     free(buf);
                     return -1;
                 }
@@ -8347,10 +8351,10 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
 #endif
                 dbp->close(dbp, tid, DB_NOSYNC);
             }
-            tid->commit(tid, 0);
         }
     }
 
+    tid->commit(tid, 0);
     closedir(dirp);
     free(buf);
 }
