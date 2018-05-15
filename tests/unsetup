@@ -69,10 +69,11 @@ cleanup_cluster() {
         dbport=`${TESTSROOTDIR}/tools/send_msg_port.sh -h $HOSTNAME "get comdb2/replication/${DBNAME}" ${pmux_port}`
         echo "deregistering $DBNAME (port $dbport) from $HOSTNAME pmux:$pmux_port"
         eval $deregister_db_port
+    fi
 
-        if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
-            rm -rf ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.*
-        fi
+    # the local node always has a copy of DBDIR even if not part of cluster
+    if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
+        rm -rf ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.*
     fi
 
     local node
@@ -87,7 +88,7 @@ cleanup_cluster() {
         if [ "$successful" != "1" ] ; then 
             echo copy $node:${TESTDIR} content locally to $TESTDIR/$node for investigation
             scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node < /dev/null &
-        elif [ "$CLEANUPDBDIR" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
+        elif [ "$CLEANUPDBDIR" == "1" ] ; then 
             ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.*" < /dev/null &
         fi
     done

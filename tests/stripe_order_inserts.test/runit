@@ -45,7 +45,8 @@ assertcnt()
 }
 
 call_unsetup() {
-    $TESTSROOTDIR/unsetup &> $TESTDIR/logs/$DBNAME.unsetup
+    local successful=$1
+    $TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
 }
 
 
@@ -74,7 +75,7 @@ echo round_robin_stripes > lrl.options
 $TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 # Trap to call_unsetup if the test exits
-trap "call_unsetup \"Cancelling test\"" INT EXIT
+trap "call_unsetup \"0\"" INT EXIT
 
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
 assertres $res 1
@@ -108,7 +109,7 @@ for i in `seq 1 $N` ; do
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb pgdump $fileid 1')" | grep "entries:2" || failexit "page does not contain 1 row"
 done
 
-$TESTSROOTDIR/unsetup &> $TESTDIR/logs/$DBNAME.unsetup
+call_unsetup 1
 trap - INT EXIT
 
 
@@ -151,7 +152,7 @@ for i in `seq 1 $N` ; do
 done > entry_counts.out
 
 
-$TESTSROOTDIR/unsetup &> $TESTDIR/logs/$DBNAME.unsetup
+call_unsetup 1
 trap - INT EXIT
 
 zeros=`grep "entries:0" entry_counts.out | wc -l`
