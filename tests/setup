@@ -313,6 +313,7 @@ else
         fi
     done
 
+    set +e
     #check for failure in starting any of the nodes
     sleep 1
     for node in $CLUSTER; do
@@ -325,7 +326,6 @@ else
 
     echo "!$TESTCASE: waiting until ready"
     for node in $CLUSTER; do
-        set +e
         echo "If we can't talk to any of the nodes the test will timeout"
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
         while  [[ "$out" != "1" ]]; do
