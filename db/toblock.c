@@ -5462,6 +5462,8 @@ add_blkseq:
             bskey = iq->seq;
             bskeylen = iq->seqlen;
         }
+        int t = comdb2_time_epoch();
+        memcpy(p_buf_fstblk, &t, sizeof(int));
 
         if (!rowlocks) {
             extern int gbl_always_send_cnonce;
@@ -5470,8 +5472,6 @@ add_blkseq:
                 (iq->have_snap_info && iq->snap_info.replicant_can_retry)) {
                 /* do nothing */
             } else {
-                int t = comdb2_time_epoch();
-                memcpy(p_buf_fstblk, &t, sizeof(int));
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,
                                        bskeylen, buf_fstblk,
                                        p_buf_fstblk - buf_fstblk + sizeof(int),
@@ -5599,8 +5599,8 @@ add_blkseq:
 
                 /* TODO: private blkseq with rowlocks? */
                 rc = trans_commit_logical(iq, trans, gbl_mynode, 0, 1,
-                                          buf_fstblk, p_buf_fstblk - buf_fstblk,
-                                          iq->seq, iq->seqlen);
+                                          buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
+                                          bskey, bskeylen);
 
                 if (hascommitlock) {
                     irc = pthread_rwlock_unlock(&commit_lock);
@@ -5627,8 +5627,8 @@ add_blkseq:
                     hascommitlock = 0;
                 }
                 rc = trans_abort_logical(iq, trans, buf_fstblk,
-                                         p_buf_fstblk - buf_fstblk, iq->seq,
-                                         iq->seqlen);
+                                         p_buf_fstblk - buf_fstblk + sizeof(int), bskey,
+                                         bskeylen);
 
                 if (rc == BDBERR_NOT_DURABLE)
                     rc = ERR_NOT_DURABLE;

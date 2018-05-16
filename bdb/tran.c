@@ -1673,15 +1673,9 @@ static int bdb_tran_commit_with_seqnum_int_int(
             int blkseq_rc;
 
             *bdberr = 0;
-            /* If this is an abort, we've already gotten a new physical txn */
-            char *blkcpy = alloca(blklen + sizeof(int)), *p;
-            int t = comdb2_time_epoch();
-            memcpy(blkcpy, blkseq, blklen);
-            p = ((char *)blkcpy) + blklen;
-            memcpy(p, &t, sizeof(int));
             rc = bdb_blkseq_insert(bdb_state, physical_tran, blkkey,
-                                   sizeof(int) * 3, blkcpy,
-                                   blklen + sizeof(int), NULL, NULL);
+                                   blkkeylen, blkseq,
+                                   blklen, NULL, NULL);
             *bdberr = (rc == IX_DUP) ? BDBERR_ADD_DUPE : rc;
 
             /*
