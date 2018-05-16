@@ -169,6 +169,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     printf("%s: %d\n", __func__, running);
     comdb2_linux_cheap_stack_trace();
 #endif
+    pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (sc_tables == NULL) {
         sc_tables =
             hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
@@ -176,7 +177,6 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     }
     assert(sc_tables);
 
-    pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (thedb->master == gbl_mynode) {
         if (running && table &&
             (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&

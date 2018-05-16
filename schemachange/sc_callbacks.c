@@ -558,7 +558,7 @@ static int delete_table_rep(char *table, void *tran)
 
     remove_constraint_pointers(db);
 
-    if ((rc = bdb_close_only(db->handle, &bdberr))) {
+    if ((rc = bdb_close_only_sc(db->handle, tran, &bdberr))) {
         logmsg(LOGMSG_ERROR, "bdb_close_only rc %d bdberr %d\n", rc, bdberr);
         return -1;
     }
