@@ -243,6 +243,12 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK)
         return rc;
 
+    if (gbl_reorder_blkseq_no_deadlock == 0 || gbl_reorder_blkseq_no_deadlock == 1) {
+        rc = osql_qblobs(pCur, thd, NULL, blobs, maxblobs, 0);
+        if (rc != SQLITE_OK)
+            return rc;
+    }
+
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_insrec(pCur, thd, pData, nData);
         if (rc) {
@@ -259,7 +265,9 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK)
         return rc;
 
-    rc = osql_qblobs(pCur, thd, NULL, blobs, maxblobs, 0);
+    if (gbl_reorder_blkseq_no_deadlock == 1 || gbl_reorder_blkseq_no_deadlock == 2) {
+        rc = osql_qblobs(pCur, thd, NULL, blobs, maxblobs, 0);
+    }
     return rc;
 }
 
@@ -291,6 +299,12 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK)
         return rc;
 
+    if (gbl_reorder_blkseq_no_deadlock == 0 || gbl_reorder_blkseq_no_deadlock == 1) {
+        rc = osql_qblobs(pCur, thd, updCols, blobs, maxblobs, 1);
+        if (rc != SQLITE_OK)
+            return rc;
+    }
+
     if (updCols) {
         rc = osql_updcols(pCur, thd, updCols);
         if (rc != SQLITE_OK)
@@ -313,7 +327,9 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK)
         return rc;
 
-    rc = osql_qblobs(pCur, thd, updCols, blobs, maxblobs, 1);
+    if (gbl_reorder_blkseq_no_deadlock == 1 || gbl_reorder_blkseq_no_deadlock == 2) {
+        rc = osql_qblobs(pCur, thd, updCols, blobs, maxblobs, 1);
+    }
     return rc;
 }
 
@@ -1202,55 +1218,52 @@ static int osql_send_updcols_logic(struct BtCursor *pCur,
 
 static int osql_send_qblobs_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int *updCols, blob_buffer_t *blobs,
-                                  int maxblobs, int nettype)
+                                  int nettype)
 {
-
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int i;
     int idx;
     int ncols;
-    int actualblobs;
 
-    /* override maxblobs to the max # blobs we'll actually need to send */
-    actualblobs = pCur->db->schema->numblobs;
+    int actualblobs = pCur->db->schema->numblobs;
 
     for (i = 0; i < actualblobs; i++) {
-
-        if (blobs[i].exists) {
-
-            /* Send length of -2 if this isn't being used in this update. */
-            if (updCols && gbl_osql_blob_optimization && blobs[i].length > 0) {
-                idx = get_schema_blob_field_idx(pCur->db->tablename, ".ONDISK",
-                                                i);
-                ncols = updCols[0];
-                if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
-
-                    /* Put a token on the network if this isn't going to be
-                     * used. */
-                    rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i,
-                                         pCur->genid, nettype, NULL, -2,
-                                         osql->logsb);
-                    RESTART_SOCKSQL;
-                    continue;
-                }
-            }
-
-            rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i,
-                                 pCur->genid, nettype, blobs[i].data,
-                                 blobs[i].length, osql->logsb);
-            RESTART_SOCKSQL;
-            if (rc)
-                break;
-        }
-        /* note: the blobs are NOT clustered:
+        /* NOTE: the blobs are NOT clustered:
            create table t1(id int not null, b1 blob, b2 blob);
            insert into t1 (id, b2) values(0, x'11')
            so we need to run through all the defined blobs.
            we only need to send the non-null blobs, and the master
            will fix up those we missed.
          */
+
+        if (!blobs[i].exists) 
+            continue;
+
+        /* Send length of -2 if this isn't being used in this update. */
+        if (updCols && gbl_osql_blob_optimization && blobs[i].length > 0) {
+            idx = get_schema_blob_field_idx(pCur->db->tablename, ".ONDISK", i);
+            /* AZ is pCur->db->schema not set to ondisk so we can instead call 
+             * get_schema_blob_field_idx_sc(pCur->db->schema,i); */
+            ncols = updCols[0];
+            if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
+
+                /* Put a token on the network if this isn't going to be used */
+                rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i,
+                                     pCur->genid, nettype, NULL, -2,
+                                     osql->logsb);
+                RESTART_SOCKSQL;
+                continue;
+            }
+        }
+
+        rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i,
+                             pCur->genid, nettype, blobs[i].data,
+                             blobs[i].length, osql->logsb);
+        RESTART_SOCKSQL;
+        if (rc)
+            break;
     }
 
     return rc;
@@ -1286,7 +1299,7 @@ static int osql_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
                     __FILE__, __LINE__, __func__, rc);
         }
 
-        return osql_send_qblobs_logic(pCur, thd, updCols, blobs, maxblobs,
+        return osql_send_qblobs_logic(pCur, thd, updCols, blobs,
                                       NET_OSQL_SOCK_RPL);
     } else
         return osql_save_qblobs(pCur, thd, blobs, maxblobs, is_update);

@@ -6315,7 +6315,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,
                               struct block_err *err, int *receivedrows,
-                              SBUF2 *logsb)
+                              SBUF2 *logsb, unsigned long long newgenid)
 {
     const uint8_t *p_buf;
     const uint8_t *p_buf_end;
@@ -6478,7 +6478,8 @@ const char *get_tablename_from_rpl(const char *rpl)
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         void *trans, char *msg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                        struct block_err *err, int *receivedrows, SBUF2 *logsb)
+                        struct block_err *err, int *receivedrows, SBUF2 *logsb,
+                        unsigned long long newgenid)
 {
     const uint8_t *p_buf;
     const uint8_t *p_buf_end;
@@ -6731,7 +6732,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         osql_ins_t dt;
         unsigned char *pData = NULL;
         int rrn = 0;
-        unsigned long long genid = 0;
         int recv_dk = (type == OSQL_INSERT);
 
         const uint8_t *p_buf_end;
@@ -6773,7 +6773,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         NULL,            /*nulls, no need as no
                                            ctag2stag is called */
                         blobs, MAXBLOBS, /*blobs*/
-                        &err->errcode, &err->ixnum, &rrn, &genid, /*new id*/
+                        &err->errcode, &err->ixnum, &rrn, &newgenid, /*new id*/
                         dt.dk, BLOCK2_ADDKL, step,
                         addflags); /* do I need this?*/
         free_blob_buffers(blobs, MAXBLOBS);
@@ -6786,7 +6786,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         if (logsb) {
-            unsigned long long lclgenid = bdb_genid_to_host_order(genid);
+            unsigned long long lclgenid = bdb_genid_to_host_order(newgenid);
             sbuf2printf(logsb, " %llx (%d:%lld)\n", lclgenid, rrn, lclgenid);
             sbuf2flush(logsb);
         }
@@ -6806,15 +6806,17 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
             if (logsb)
                 sbuf2printf(logsb,
-                            "Added new record failed, rrn = %d, genid=%llx\n",
-                            rrn, bdb_genid_to_host_order(genid));
+                            "Added new record failed, rrn = %d, newgenid=%llx\n",
+                            rrn, bdb_genid_to_host_order(newgenid));
 
             return rc; /*this is blkproc rc */
         } else {
             if (logsb)
-                sbuf2printf(logsb, "Added new record rrn = %d, genid=%llx\n",
-                            rrn, bdb_genid_to_host_order(genid));
+                sbuf2printf(logsb, "Added new record rrn = %d, newgenid=%llx\n",
+                            rrn, bdb_genid_to_host_order(newgenid));
         }
+        printf("AZ: Added new record rrn = %d, newgenid=%llx\n",
+                rrn, bdb_genid_to_host_order(newgenid));
 
         (*receivedrows)++;
     } break;
@@ -7742,7 +7744,8 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
 int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     void *trans, char *msg, int msglen, int *flags,
                     int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                    struct block_err *err, int *receivedrows, SBUF2 *logsb)
+                    struct block_err *err, int *receivedrows, SBUF2 *logsb,
+                    unsigned long long newgenid)
 {
     uint8_t *p_buf = (uint8_t *)msg;
     uint8_t *p_buf_end =

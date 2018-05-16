@@ -1010,8 +1010,7 @@ int bdb_get_active_stripe(bdb_state_type *bdb_state)
 
 /* get a unique genid that can be used in comdb2 prefault to reference next
  * block to allocate by database for new data records. */
-static unsigned long long bdb_get_next_genid(bdb_state_type *bdb_state,
-                                             unsigned long long *ngenid)
+unsigned long long bdb_get_next_genid(bdb_state_type *bdb_state)
 {
     bdb_state_type *parent = NULL;
 
@@ -1020,9 +1019,7 @@ static unsigned long long bdb_get_next_genid(bdb_state_type *bdb_state,
     else
         parent = bdb_state;
 
-    *ngenid = get_genid(bdb_state, bdb_get_active_stripe_int(bdb_state));
-
-    return *ngenid;
+    return get_genid(bdb_state, bdb_get_active_stripe_int(bdb_state));
 }
 
 /* this is called by writers on the master */

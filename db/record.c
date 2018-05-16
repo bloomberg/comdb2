@@ -409,7 +409,7 @@ printf("AZ: add_record_int() err 4 rc=%d -- seems like failing to check blobs\n"
      * Add the data record
      */
     if (!gbl_use_plan || !iq->usedb->plan || iq->usedb->plan->dta_plan == -1) {
-        if (flags & RECFLAGS_KEEP_GENID)
+        if (flags & RECFLAGS_KEEP_GENID || *genid != 0)
             rc = dat_set(iq, trans, od_dta, od_len, *rrn, *genid);
         else
             rc = dat_add(iq, trans, od_dta, od_len, genid, rrn);

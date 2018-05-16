@@ -91,6 +91,7 @@ struct osql_sess {
     int retries;      /* how many times this session was retried */
 
     int queryid;
+    unsigned long long last_genid; // rememberg updrec and insrec genid for qblobs
 };
 
 enum {

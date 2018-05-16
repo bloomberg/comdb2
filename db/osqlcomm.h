@@ -220,7 +220,8 @@ void *osql_create_request(const char *sql, int sqlen, int type,
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         void *trans, char *msg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                        struct block_err *err, int *receivedrows, SBUF2 *logsb);
+                        struct block_err *err, int *receivedrows, SBUF2 *logsb,
+                        unsigned long long newgenid);
 
 /**
  * Handles each packet and start schema change
@@ -231,7 +232,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,
                               struct block_err *err, int *receivedrows,
-                              SBUF2 *logsb);
+                              SBUF2 *logsb, unsigned long long newgenid);
 /**
  * Sends a user command to offload net (used by "osqlnet")
  *
@@ -334,7 +335,8 @@ int osql_send_dbglog(char *tohost, unsigned long long rqid, uuid_t uuid,
 int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     void *trans, char *msg, int msglen, int *flags,
                     int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                    struct block_err *err, int *receivedrows, SBUF2 *logsb);
+                    struct block_err *err, int *receivedrows, SBUF2 *logsb,
+                    unsigned long long newgenid);
 
 /* Append a tail to an osql request */
 int osql_add_to_request(osql_req_t **req, int type, void *buf, int len);

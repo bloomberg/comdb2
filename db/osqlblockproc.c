@@ -121,7 +121,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                          int (*func)(struct ireq *, unsigned long long, uuid_t,
                                      void *, char *, int, int *, int **,
                                      blob_buffer_t blobs[MAXBLOBS], int,
-                                     struct block_err *, int *, SBUF2 *));
+                                     struct block_err *, int *, SBUF2 *,
+                                     unsigned long long));
 static int osql_bplog_wait(blocksql_tran_t *tran);
 static int req2blockop(int reqtype);
 static int osql_bplog_loginfo(struct ireq *iq, osql_sess_t *sess);
@@ -761,6 +762,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     key.stripe = 0;
     key.genid = 0; //usedb genid and stripe will always be 0
     key.real_seq = seq;
+    key.seq = 0;
 
     extern int gbl_reorder_blkseq_no_deadlock;
     static __thread long long int last_ins_genid = 0;
@@ -773,7 +775,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
         if (type == OSQL_UPDATE || type == OSQL_DELETE ||
             type == OSQL_UPDREC || type == OSQL_DELREC) {
-            long long int genid;
 
             enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
             const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN; 
@@ -782,27 +783,31 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             enum { OSQLCOMM_UPD_TYPE_LEN = 8 + 8 + 8 + 4 + 4 };
             //const char *p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
             const char *p_buf_end = (uint8_t *)p_buf + OSQLCOMM_UPD_TYPE_LEN;
+            long long int genid;
             buf_no_net_get(&genid, sizeof(genid), p_buf, p_buf_end);
-            int stripe = get_dtafile_from_genid(genid);
-            if (stripe >= 0) 
-                key.stripe = stripe;
-            printf("AZ: Receiving genid 0x%llx, stripe=%d\n", genid, stripe);
-            key.seq = 1;
+            key.seq = 1; //updrec/insrec will come after qblob when processing
+            key.genid = genid;
+            key.stripe = get_dtafile_from_genid(key.genid);
+            sess->last_genid = key.genid;
+            assert (key.stripe >= 0);
+            printf("AZ: Receiving genid 0x%llx, stripe=%d\n", genid, key.stripe);
         } else if (type == OSQL_INSERT || type == OSQL_INSREC) {
-            //pthread_getspecific(cur->tbl->curkey, last_ins_genid);
-
+            unsigned long long genid = bdb_get_next_genid(thedb->bdb_env);
+            /*
             if (last_ins_genid == 0)
                 last_ins_genid = 0x00000FFFFFFFFFFFFFFULL; //a very large genid to sort at the end of the table
             last_ins_genid++;
-            /* will start at FFFFFF and work backwards, need inserts to be inserted in order after the blobs */
             last_ins_stripe = bdb_get_active_stripe(thedb->bdb_env);
-            key.stripe = last_ins_stripe;
-            key.genid = last_ins_genid;
-            key.seq = 1;
+            */
+            key.seq = 1; //updrec/insrec will come after qblob when processing
+            key.genid = genid;
+            key.stripe = get_dtafile_from_genid(key.genid);
+            sess->last_genid = key.genid;
+            assert (key.stripe >= 0);
+            printf("AZ: Creating genid 0x%llx, stripe=%d\n", genid, key.stripe);
         } else if (type == OSQL_QBLOB) {
-            key.genid = last_ins_genid;
-            key.stripe = last_ins_stripe;
-            key.seq = 0;
+            key.genid = sess->last_genid;
+            key.stripe = get_dtafile_from_genid(key.genid);
         }
     }
 
@@ -851,8 +856,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
     char mus[37];
     comdb2uuidstr(key.uuid, mus);
-    printf("AZ:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, real_seq=%d\n", 
-            __func__, key.rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.real_seq);
+    printf("%lx:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, wseq=%d, real_seq=%d\n", 
+            pthread_self(), __func__, key.rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.seq, key.real_seq);
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
@@ -1223,7 +1228,7 @@ static int process_this_session(
     struct block_err *err, SBUF2 *logsb, struct temp_cursor *dbc,
     int (*func)(struct ireq *, unsigned long long, uuid_t, void *, char *, int,
                 int *, int **, blob_buffer_t blobs[MAXBLOBS], int,
-                struct block_err *, int *, SBUF2 *))
+                struct block_err *, int *, SBUF2 *, unsigned long long))
 {
 
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
@@ -1267,9 +1272,10 @@ static int process_this_session(
         reqlog_set_rqid(iq->reqlogger, uuid, sizeof(uuid));
     reqlog_set_event(iq->reqlogger, "txn");
 
-    //AZ: bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
+    bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
     /* go through each record */
-    rc = bdb_temp_table_find(thedb->bdb_env, dbc, key, sizeof(key->rqid) + sizeof(key->uuid), NULL, bdberr);
+    rc = bdb_temp_table_first(thedb->bdb_env, dbc, bdberr);
+    //rc = bdb_temp_table_find(thedb->bdb_env, dbc, key, sizeof(*key), NULL, bdberr);
 printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
 /* orig was:
     rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
@@ -1290,7 +1296,6 @@ printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
     }
 
     while (!rc && !rc_out) {
-
         char *realkey = bdb_temp_table_key(dbc);
         int realkeylen = bdb_temp_table_keysize(dbc);
         char mus[37];
@@ -1318,7 +1323,7 @@ printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, wseq
         iq->debug = 1;
         /* this locks pages */
         rc_out = func(iq, rqid, uuid, iq_tran, data, datalen, &flags, &updCols,
-                      blobs, step, err, &receivedrows, logsb);
+                      blobs, step, err, &receivedrows, logsb, opkey->genid);
 
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
             /* error processing, can be a verify error or deadlock */
@@ -1347,17 +1352,6 @@ printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, wseq
                     break;
                 }
             }
-
-            /* check correct sequence; this is an attempt to
-               catch dropped packets - not that we would do that purposely 
-            if (key_next.seq != key_crt.seq + 1) {
-                uuidstr_t us;
-                comdb2uuidstr(uuid, us);
-                logmsg(LOGMSG_ERROR, "%s: session %llu %s has missing packets [jump "
-                                "%llu to %llu], aborting\n",
-                        __func__, rqid, us, key_crt.seq, key_next.seq);
-                rc = OSQL_SKIPSEQ;
-            }*/
         }
         step++;
     }
@@ -1409,7 +1403,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                          int (*func)(struct ireq *, unsigned long long, uuid_t,
                                      void *, char *, int, int *, int **,
                                      blob_buffer_t blobs[MAXBLOBS], int,
-                                     struct block_err *, int *, SBUF2 *))
+                                     struct block_err *, int *, SBUF2 *,
+                                     unsigned long long))
 {
 
     blocksql_info_t *info = NULL;

@@ -61,30 +61,30 @@ done
 
 master=`getmaster`
 
-echo turn off ordering
-cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('reorder_blkseq_no_deadlock off')"
+#echo turn off ordering
+#cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('reorder_blkseq_no_deadlock off')"
+#
+#echo run two transactions that will get in a deadlock
+#echo will see DEADLOCK-CYCLE: in db log
+#f1 &
+#f2 &
+#
+#wait
+#
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't1',* from t1 where i < 10 order by i" > content.out
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't2',* from t2 order by i" >> content.out
+#
+#echo "t1	1	x'abcd'" > content.expected
+#echo "t1	2	x'dcba'" >> content.expected
+#echo "t2	1	x'abcd'" >> content.expected
+#echo "t2	2	x'dcba'" >> content.expected
+#
+#if ! diff content.expected content.out ; then 
+#    failexit "content not what it is supposed to be"
+#fi
 
-echo run two transactions that will get in a deadlock
-echo will see DEADLOCK-CYCLE: in db log
-f1 &
-f2 &
-
-wait
-
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't1',* from t1 where i < 10 order by i" > content.out
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't2',* from t2 order by i" >> content.out
-
-echo "t1	1	x'abcd'" > content.expected
-echo "t1	2	x'dcba'" >> content.expected
-echo "t2	1	x'abcd'" >> content.expected
-echo "t2	2	x'dcba'" >> content.expected
-
-if ! diff content.expected content.out ; then 
-    failexit "content not what it is supposed to be"
-fi
-
-echo turn on ordering
-cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('reorder_blkseq_no_deadlock on')"
+#echo turn on ordering
+#cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('reorder_blkseq_no_deadlock on')"
 
 echo there should be NO dedlocks now
 f1 &
@@ -96,13 +96,13 @@ cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't1',* from t1 where i < 10
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't2',* from t2 order by i" >> content.out
 
 echo "t1	1	x'abcd'" > content.expected
-echo "t1	1	x'abcd'" >> content.expected
+#echo "t1	1	x'abcd'" >> content.expected
 echo "t1	2	x'dcba'" >> content.expected
-echo "t1	2	x'dcba'" >> content.expected
+#echo "t1	2	x'dcba'" >> content.expected
 echo "t2	1	x'abcd'" >> content.expected
-echo "t2	1	x'abcd'" >> content.expected
+#echo "t2	1	x'abcd'" >> content.expected
 echo "t2	2	x'dcba'" >> content.expected
-echo "t2	2	x'dcba'" >> content.expected
+#echo "t2	2	x'dcba'" >> content.expected
 
 if ! diff content.expected content.out ; then 
     failexit "content not what it is supposed to be"
@@ -127,13 +127,13 @@ logflunziped=${logfl}.unzipped
 zcat $logfl > $logflunziped
 
 ddlk_cnt=`grep -c deadlock_cycle $logflunziped `
-if [ $ddlk_cnt != 1 ]; then
-    failexit 'expected only one deadlock in eventslog (from first trans)'
+if [ $ddlk_cnt != 0 ]; then
+    failexit 'expected no deadlock in eventslog (from first trans)'
 fi
 
 cnonce_cnt=`grep deadlock_cycle $logflunziped | head -1 | sed 's/}/}\n/' | grep -c cnonce`
-if [ $cnonce_cnt != 2 ]; then
-    failexit 'expected two cnonces reported part of deadlock_cycle in eventslog'
+if [ $cnonce_cnt != 0 ]; then
+    failexit 'expected no cnonces reported part of deadlock_cycle in eventslog'
 fi
 
 echo "Testcase passed."
