@@ -54,6 +54,8 @@ extern char **sfuncs;
 extern char **afuncs;
 static int gbl_nogbllrl; /* don't load /bb/bin/comdb2*.lrl */
 
+static int read_lrl_option(struct dbenv *, char *, struct read_lrl_option_type *, int);
+
 static struct option long_options[] = {
     {"lrl", required_argument, NULL, 0},
     {"repopnewlrl", required_argument, NULL, 0},
@@ -66,11 +68,13 @@ static struct option long_options[] = {
     {"fullrecovery", no_argument, &gbl_fullrecovery, 1},
     {"no-global-lrl", no_argument, &gbl_nogbllrl, 1},
     {"dir", required_argument, NULL, 0},
+    {"tunable", required_argument, NULL, 0},
     {NULL, 0, NULL, 0}};
 
 static const char *help_text = {
     "Usage: comdb2 [--lrl LRLFILE] [--recovertotime EPOCH]\n"
     "              [--recovertolsn FILE:OFFSET]\n"
+    "              [--tunable STRING]\n"
     "              [--fullrecovery] NAME\n"
     "\n"
     "       comdb2 --create [--lrl LRLFILE] [--dir PATH] NAME\n"
@@ -81,6 +85,7 @@ static const char *help_text = {
     "        --recovertotime            recovers database to epochtime\n"
     "        --create                   creates a new database\n"
     "        --dir                      specify path to database directory\n"
+    "        --tunable                  override tunable\n"
     "\n"
     "        NAME                       database name\n"
     "        LRLFILE                    lrl configuration file\n"
@@ -129,6 +134,47 @@ static void set_dbdir(char *dir)
     free(wd);
 }
 
+#include <sys/queue.h>
+struct CmdLineTunable;
+struct CmdLineTunable {
+    char *arg;
+    STAILQ_ENTRY(CmdLineTunable) entry;
+};
+STAILQ_HEAD(CmdLineTunables, CmdLineTunable) *cmd_line_tunables;
+
+static void add_cmd_line_tunable(char *arg)
+{
+    if (cmd_line_tunables == NULL) {
+        cmd_line_tunables = malloc(sizeof(*cmd_line_tunables));
+        STAILQ_INIT(cmd_line_tunables);
+    }
+    struct CmdLineTunable *t = malloc(sizeof(*t));
+    t->arg = arg;
+    STAILQ_INSERT_TAIL(cmd_line_tunables, t, entry);
+}
+
+void add_cmd_line_tunables_to_file(FILE *f)
+{
+    if (cmd_line_tunables == NULL)
+        return;
+    struct CmdLineTunable *t;
+    STAILQ_FOREACH(t, cmd_line_tunables, entry) {
+        fprintf(f, "%s\n", t->arg);
+    }
+}
+
+static void read_cmd_line_tunables(struct dbenv *dbenv)
+{
+    if (cmd_line_tunables == NULL)
+        return;
+    struct read_lrl_option_type options = {
+        .lineno = 0, .lrlname = "cmd_line_args", .dbname = dbenv->envname};
+    struct CmdLineTunable *t;
+    STAILQ_FOREACH(t, cmd_line_tunables, entry) {
+        read_lrl_option(dbenv, t->arg, &options, strlen(t->arg));
+    }
+}
+
 int handle_cmdline_options(int argc, char **argv, char **lrlname)
 {
     char *p;
@@ -169,6 +215,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
         case 4: /* recovery_lsn */ gbl_recovery_options = optarg; break;
         case 5: /* pidfile */ write_pidfile(optarg); break;
         case 10: /* dir */ set_dbdir(optarg); break;
+        case 11: /* tunable */ add_cmd_line_tunable(optarg); break;
         }
     }
     return 0;
@@ -380,8 +427,6 @@ static void pre_read_lrl_file(struct dbenv *dbenv, const char *lrlname)
 
     fclose(ff); /* lets get one fd back */
 }
-
-static lrl_reader read_lrl_option;
 
 struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
                                 int required)
@@ -1462,5 +1507,10 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
             /* (NC) TODO: Should this be freed here? */
             free((char *)lrlname);
     }
+
+    if (!gbl_create_mode) {
+        read_cmd_line_tunables(dbenv);
+    }
+
     return 0;
 }
