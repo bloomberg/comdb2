@@ -33,6 +33,7 @@
 #include "ssl_bend.h"
 #include "translistener.h"
 #include "rtcpu.h"
+#include "config.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -196,7 +197,8 @@ static int defer_option(struct dbenv *dbenv, enum deferred_option_level lvl,
     return 0;
 }
 
-int deferred_do_commands(struct dbenv *env, char *option, void *p, int len)
+int deferred_do_commands(struct dbenv *env, char *option,
+                         struct read_lrl_option_type *p, int len)
 {
     char *tok;
     int st = 0, tlen = 0;
@@ -236,10 +238,9 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
     return 1; /* there was no "if" statement or it was true */
 }
 
-int process_deferred_options(struct dbenv *dbenv,
-                             enum deferred_option_level lvl, void *usrdata,
-                             int (*callback)(struct dbenv *env, char *option,
-                                             void *p, int len))
+void process_deferred_options(struct dbenv *dbenv,
+                              enum deferred_option_level lvl, void *usrdata,
+                              lrl_reader *callback)
 {
     struct deferred_option *opt;
     int rc;
@@ -250,7 +251,7 @@ int process_deferred_options(struct dbenv *dbenv,
     }
 }
 
-int clear_deferred_options(struct dbenv *dbenv, enum deferred_option_level lvl)
+void clear_deferred_options(struct dbenv *dbenv, enum deferred_option_level lvl)
 {
     struct deferred_option *opt;
     opt = listc_rtl(&dbenv->deferred_options[lvl]);
@@ -353,8 +354,8 @@ static int pre_read_option(struct dbenv *dbenv, char *line, int llen)
     return 0;
 }
 
-static int pre_read_deferred_callback(struct dbenv *env, char *option, void *p,
-                                      int len)
+static int pre_read_deferred_callback(struct dbenv *env, char *option,
+                                      struct read_lrl_option_type *p, int len)
 {
     return pre_read_option(env, option, len);
 }
@@ -380,7 +381,7 @@ static void pre_read_lrl_file(struct dbenv *dbenv, const char *lrlname)
     fclose(ff); /* lets get one fd back */
 }
 
-static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len);
+static lrl_reader read_lrl_option;
 
 struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
                                 int required)
@@ -419,16 +420,7 @@ struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
         read_lrl_option(dbenv, line, &options, strlen(line));
     }
     options.lineno = 0;
-    rc = process_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS, &options,
-                                  read_lrl_option);
-    if (rc) {
-        logmsg(LOGMSG_WARN, "process_deferred_options rc %d\n", rc);
-        fclose(ff);
-    }
-    if (rc) {
-        fclose(ff);
-        return NULL;
-    }
+    process_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS, &options, read_lrl_option);
     clear_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS);
 
     /* process legacy options (we deferred them) */
@@ -508,7 +500,8 @@ static int lrltokignore(char *tok, int ltok)
         pfx##funcs[i] = NULL;                                                  \
     } while (0)
 
-static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
+static int read_lrl_option(struct dbenv *dbenv, char *line,
+                           struct read_lrl_option_type *options, int len)
 {
     char *tok;
     int st = 0;
@@ -516,7 +509,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
     int ii, kk;
     int num;
     int rc;
-    struct read_lrl_option_type *options = (struct read_lrl_option_type *)p;
 
     tok = segtok(line, len, &st, &ltok);
     if (ltok == 0 || tok[0] == '#') return 0;
