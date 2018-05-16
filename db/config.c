@@ -134,7 +134,7 @@ static void set_dbdir(char *dir)
     free(wd);
 }
 
-#include <sys/queue.h>
+#include <berkdb/dbinc/queue.h>
 struct CmdLineTunable;
 struct CmdLineTunable {
     char *arg;
@@ -157,10 +157,13 @@ void add_cmd_line_tunables_to_file(FILE *f)
 {
     if (cmd_line_tunables == NULL)
         return;
-    struct CmdLineTunable *t;
-    STAILQ_FOREACH(t, cmd_line_tunables, entry) {
+    struct CmdLineTunable *t, *tmp;
+    STAILQ_FOREACH_SAFE(t, cmd_line_tunables, entry, tmp) {
         fprintf(f, "%s\n", t->arg);
+        free(t);
     }
+    free(cmd_line_tunables);
+    cmd_line_tunables = NULL;
 }
 
 static void read_cmd_line_tunables(struct dbenv *dbenv)
@@ -169,10 +172,13 @@ static void read_cmd_line_tunables(struct dbenv *dbenv)
         return;
     struct read_lrl_option_type options = {
         .lineno = 0, .lrlname = "cmd_line_args", .dbname = dbenv->envname};
-    struct CmdLineTunable *t;
-    STAILQ_FOREACH(t, cmd_line_tunables, entry) {
+    struct CmdLineTunable *t, *tmp;
+    STAILQ_FOREACH_SAFE(t, cmd_line_tunables, entry, tmp) {
         read_lrl_option(dbenv, t->arg, &options, strlen(t->arg));
+        free(t);
     }
+    free(cmd_line_tunables);
+    cmd_line_tunables = NULL;
 }
 
 int handle_cmdline_options(int argc, char **argv, char **lrlname)
