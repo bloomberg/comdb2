@@ -2762,7 +2762,8 @@ void no_new_requests(struct dbenv *dbenv);
 int get_next_seqno(void *tran, long long *seqno);
 int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
                     int logsz);
-int local_replicant_write_clear(struct dbtable *db);
+int local_replicant_write_clear(struct ireq *in_iq, void *in_trans,
+                                struct dbtable *db);
 long long get_record_unique_id(struct dbtable *db, void *rec);
 void cancel_sql_statement(int id);
 void cancel_sql_statement_with_cnonce(const char *cnonce);

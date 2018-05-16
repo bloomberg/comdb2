@@ -1715,6 +1715,13 @@ int osql_schemachange_logic(struct schema_change_type *sc,
             }
 
             if (usedb) {
+                if (osql->tablename) {
+                    /* free the cached tablename so that we send a new usedb for
+                     * the next op */
+                    free(osql->tablename);
+                    osql->tablename = NULL;
+                    osql->tablenamelen = 0;
+                }
                 rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid,
                                      sc->table, NET_OSQL_SOCK_RPL, osql->logsb,
                                      version);

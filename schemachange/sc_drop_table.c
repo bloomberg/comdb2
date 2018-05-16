@@ -112,7 +112,8 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
                db->version);
     }
 
-    if (gbl_replicate_local) local_replicant_write_clear(db);
+    if (gbl_replicate_local)
+        local_replicant_write_clear(iq, tran, db);
 
 #if 0
     /* handle in osql_scdone_commit_callback and osql_scdone_abort_callback */

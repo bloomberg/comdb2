@@ -153,11 +153,19 @@ keys {
 '
 
 # finally run the replication step
-${TESTSBUILDDIR}/localrep $dbname $destdb
+${TESTSBUILDDIR}/localrep $dbname $destdb 2>&1
 src=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select * from t1" | sort | md5sum)
 dest=$(cdb2sql ${CDB2_OPTIONS} $destdb local "select * from t1" | sort | md5sum)
-
 echo "src $src dest $dest"
+
+echo "Testing truncate table"
+cdb2sql ${CDB2_OPTIONS} $dbname default "truncate t1"
+# run the replication step
+${TESTSBUILDDIR}/localrep $dbname $destdb 2>&1
+src2=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select * from t1" | sort | md5sum)
+dest2=$(cdb2sql ${CDB2_OPTIONS} $destdb local "select * from t1" | sort | md5sum)
+echo "src2 $src2 dest2 $dest2"
+
 kill -9 $(cat $DBDIR/${destdb}.pid)
 
 echo deregister from pmux ${destdb}
@@ -165,6 +173,11 @@ ${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${destdb} " ${pmu
 
 if [[ "$src" != "$dest" ]]; then
     exit 1
-else
-    exit 0
 fi
+
+if [[ "$src2" != "$dest2" ]]; then
+    echo "truncate failed"
+    exit 1
+fi
+
+exit 0

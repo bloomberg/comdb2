@@ -132,9 +132,6 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
 
     live_sc_off(db);
 
-    if (gbl_replicate_local)
-        local_replicant_write_clear(db);
-
     if (oldname)
         free(oldname);
 

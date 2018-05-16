@@ -138,8 +138,8 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 int finalize_fastinit_table(struct ireq *iq, struct schema_change_type *s,
                             tran_type *tran)
 {
-#if 0
     int rc = 0;
+#if 0
     extern int gbl_broken_max_rec_sz;
     int saved_broken_max_rec_sz = gbl_broken_max_rec_sz;
 
@@ -155,6 +155,9 @@ int finalize_fastinit_table(struct ireq *iq, struct schema_change_type *s,
 
     return rc;
 #else
-    return finalize_alter_table(iq, s, tran);
+    rc = finalize_alter_table(iq, s, tran);
+    if (gbl_replicate_local)
+        local_replicant_write_clear(iq, tran, s->db);
+    return rc;
 #endif
 }
