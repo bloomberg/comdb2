@@ -2872,7 +2872,8 @@ static char *create_default_lrl_file(char *dbname, char *dir) {
     }
 
     fprintf(lrlfile, "name    %s\n", dbname);
-    fprintf(lrlfile, "dir     %s\n\n", dir);
+    fprintf(lrlfile, "dir     %s\n", dir);
+    add_cmd_line_tunables_to_file(lrlfile);
     fclose(lrlfile);
 
     return lrlfile_name;

@@ -27,5 +27,6 @@ typedef int(lrl_reader)(struct dbenv *, char *, struct read_lrl_option_type *, i
 int deferred_do_commands(struct dbenv *, char *, struct read_lrl_option_type *, int);
 void process_deferred_options(struct dbenv *, enum deferred_option_level, void *, lrl_reader *);
 void clear_deferred_options(struct dbenv *, enum deferred_option_level);
+void add_cmd_line_tunables_to_file(FILE *);
 
 #endif /* CONFIG_H */
