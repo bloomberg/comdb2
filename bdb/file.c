@@ -7767,7 +7767,7 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
         }
 
         /* try to find the file version amongst the active indices */
-        for (i = 0; i < bdb_state->numix; ++i) {
+        for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
             if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
                 break;
             rc = bdb_get_file_version_index(bdb_state, tran, i /*dtanum*/,
