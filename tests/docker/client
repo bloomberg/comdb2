@@ -18,8 +18,6 @@ for node in $CLUSTER; do
 done
 echo numnodes $numnodes
 
-sleep 60
-
 declare -A ready
 while :; do 
     for node in $CLUSTER; do

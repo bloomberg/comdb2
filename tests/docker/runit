@@ -20,9 +20,10 @@ dir=$(pwd)
 cd $src
 prefix=$(git rev-parse --short HEAD)
 export COMPOSE_PROJECT_NAME=$prefix
-docker build -t comdb2test:$prefix -f tests/docker/Dockerfile.dev .
+docker build -t comdb2test:$prefix -f $src/tests/docker/Dockerfile.dev .
 cd $dir
 
+cp -r $src/tests/docker/* .
 sed -i.bak "s/@image@/comdb2test:$prefix/" Dockerfile.db
 echo $cluster >common/cluster
 ssh-keygen -N "" -f common/id_rsa
