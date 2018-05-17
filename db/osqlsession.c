@@ -796,7 +796,7 @@ osql_req_t *osql_sess_getreq(osql_sess_t *sess) { return sess->req; }
 osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int type, unsigned long long rqid,
                                    uuid_t uuid, char *fromhost, struct ireq *iq,
-                                   int *replaced)
+                                   int *replaced, uint32_t flags)
 {
 
     osql_sess_t *sess = NULL;
@@ -848,6 +848,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     sess->type = type;
     sess->offhost = fromhost;
     sess->start = sess->initstart = time(NULL);
+    sess->is_reorder_on = btst(&flags, OSQL_FLAGS_REORDER_ON);
 
     if (tzname)
         strncpy(sess->tzname, tzname, sizeof(sess->tzname));

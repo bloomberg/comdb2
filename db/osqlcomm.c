@@ -278,23 +278,6 @@ static const uint8_t *osqlcomm_echo_type_get(osql_echo_t *p_echo_type,
     return p_buf;
 }
 
-/* messages */
-struct osql_req {
-    enum OSQL_REQ_TYPE type;
-    int rqlen;
-    int sqlqlen;
-    int padding;
-    unsigned long long rqid; /* fastseed */
-    char tzname[DB_MAX_TZNAMEDB];
-    unsigned char ntails;
-    unsigned char flags;
-    char pad[1];
-    char sqlq[1];
-};
-enum { OSQLCOMM_REQ_TYPE_LEN = 8 + 4 + 4 + 8 + DB_MAX_TZNAMEDB + 3 + 1 };
-BB_COMPILE_TIME_ASSERT(osqlcomm_req_type_len,
-                       sizeof(struct osql_req) == OSQLCOMM_REQ_TYPE_LEN);
-
 struct osql_req_tail {
     int type;
     int len;
@@ -372,8 +355,8 @@ struct osql_uuid_req {
     int padding;
     uuid_t uuid;
     char tzname[DB_MAX_TZNAMEDB];
+    uint32_t flags;
     unsigned char ntails;
-    unsigned char flags;
     char pad[1];
     char sqlq[1];
 };
@@ -4839,6 +4822,7 @@ void *osql_create_request(const char *sql, int sqlen, int type,
 
         req_uuid.type = type;
         req_uuid.flags = flags;
+        printf("AZ: setting req_uuid.flags %x\n", flags);
         req_uuid.padding = 0;
         req_uuid.ntails = 0;
         comdb2uuidcpy(req_uuid.uuid, uuid);
@@ -7285,6 +7269,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
 
     osql_sess_t *sess = NULL;
     osql_req_t req;
+    osql_uuid_req_t uuid_req;
     uint8_t *p_req_buf = dtap;
     const uint8_t *p_req_buf_end = p_req_buf + dtalen;
     int rc = 0;
@@ -7303,7 +7288,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     /* grab the request */
     if (nettype >= NET_OSQL_UUID_REQUEST_MIN &&
         nettype < NET_OSQL_UUID_REQUEST_MAX) {
-        osql_uuid_req_t uuid_req;
         sql = (char *)osqlcomm_req_uuid_type_get(&uuid_req, p_req_buf,
                                                  p_req_buf_end);
 
@@ -7313,6 +7297,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         req.rqid = OSQL_RQID_USE_UUID;
         req.ntails = uuid_req.ntails;
         req.flags = uuid_req.flags;
+        printf("AZ:  uuid_req.flags=%x\n",  uuid_req.flags);
         memcpy(req.tzname, uuid_req.tzname, sizeof(uuid_req.tzname));
         comdb2uuidcpy(uuid, uuid_req.uuid);
         comdb2uuidcpy(sorese_info.uuid, uuid_req.uuid);
@@ -7379,7 +7364,8 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
        added session have sess->iq set
        to avoid racing against signal_rtoff code */
     sess = osql_sess_create_sock(sqlret, sqllenret, req.tzname, type, req.rqid,
-                                 uuid, fromhost, iq, &replaced);
+                                 uuid, fromhost, iq, &replaced, uuid_req.flags);
+    printf("AZ: created sess %p, with req.flags %x, sess->is_reorder_on %d\n", sess, uuid_req.flags, sess->is_reorder_on);
     if (replaced) {
         assert(sess == NULL);
         destroy_ireq(thedb, iq);

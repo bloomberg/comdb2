@@ -27,6 +27,27 @@ typedef struct osql_req osql_req_t;
 typedef struct blocksql_tran blocksql_tran_t;
 typedef struct osql_uuid_req osql_uuid_req_t;
 
+
+/* messages */
+struct osql_req {
+    enum OSQL_REQ_TYPE type;
+    int rqlen;
+    int sqlqlen;
+    int padding;
+    unsigned long long rqid; /* fastseed */
+    char tzname[DB_MAX_TZNAMEDB];
+    unsigned char ntails;
+    unsigned char flags;
+    char pad[1];
+    char sqlq[1];
+};
+
+enum { OSQLCOMM_REQ_TYPE_LEN = 8 + 4 + 4 + 8 + DB_MAX_TZNAMEDB + 3 + 1 };
+BB_COMPILE_TIME_ASSERT(osqlcomm_req_type_len,
+                       sizeof(struct osql_req) == OSQLCOMM_REQ_TYPE_LEN);
+
+
+
 /* Magic rqid value that means "please use uuid instead" */
 #define OSQL_RQID_USE_UUID 1
 
@@ -91,6 +112,7 @@ struct osql_sess {
     int retries;      /* how many times this session was retried */
 
     int queryid;
+    bool is_reorder_on;
     unsigned long long last_genid; // rememberg updrec and insrec genid for qblobs
 };
 
@@ -248,10 +270,11 @@ int osql_session_testterminate(void *obj, void *arg);
  * Returns created object if success, NULL otherwise
  *
  */
+
 osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int type, unsigned long long rqid,
                                    uuid_t uuid, char *fromhost, struct ireq *iq,
-                                   int *replaced);
+                                   int *replaced, uint32_t flags);
 
 char *osql_sess_tag(osql_sess_t *sess);
 void *osql_sess_tagbuf(osql_sess_t *sess);

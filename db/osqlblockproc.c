@@ -109,11 +109,11 @@ struct blocksql_tran {
 typedef struct oplog_key {
     unsigned long long rqid;
     uuid_t uuid;
-    unsigned int tbl_idx;
-    unsigned int stripe;
+    uint16_t tbl_idx;
+    uint8_t stripe;
     unsigned long long genid;
-    unsigned long long seq;
-    unsigned long long real_seq;
+    uint8_t blborder;
+    uint32_t real_seq;
 } oplog_key_t;
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
@@ -187,11 +187,11 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
         return 1;
     }
 
-    if (k1->seq < k2->seq) {
+    if (k1->blborder < k2->blborder) {
         return -1;
     }
 
-    if (k1->seq > k2->seq) {
+    if (k1->blborder > k2->blborder) {
         return 1;
     }
 
@@ -708,6 +708,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long rqid, uuid_t uuid,
                       unsigned long long seq, const char *host)
 {
+    printf("AZ: saving for sess %p\n", sess);
     blocksql_tran_t *tran = (blocksql_tran_t *)osql_sess_getbptran(sess);
     if (!tran || !tran->db) {
         /* something has gone wrong dispatching the socksql request, ignoring
@@ -719,7 +720,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     struct ireq *iq = osql_session_get_ireq(sess);
     int rc = 0, rc_op = 0;
-    oplog_key_t key;
+    oplog_key_t key = {0};
     int rpl_len = 0;
     struct errstat *xerr;
     int bdberr;
@@ -758,18 +759,14 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
-    key.tbl_idx = INT_MAX;
-    key.stripe = 0;
-    key.genid = 0; //usedb genid and stripe will always be 0
-    key.real_seq = seq;
-    key.seq = 0;
+    if (sess->is_reorder_on) {
+        //usedb genid and stripe will always be 0
+        key.tbl_idx = USHRT_MAX;
+        key.real_seq = seq;
+        key.blborder = 0;
 
-    extern int gbl_reorder_blkseq_no_deadlock;
-    static __thread long long int last_ins_genid = 0;
-    static __thread int last_ins_stripe = 0;
-    if (gbl_reorder_blkseq_no_deadlock) {
         if (type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS)
-            key.tbl_idx = INT_MAX;
+            key.tbl_idx = USHRT_MAX;
         else if (iq->usedb)
             key.tbl_idx = iq->usedb->dbs_idx;
 
@@ -785,7 +782,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             const char *p_buf_end = (uint8_t *)p_buf + OSQLCOMM_UPD_TYPE_LEN;
             long long int genid;
             buf_no_net_get(&genid, sizeof(genid), p_buf, p_buf_end);
-            key.seq = 1; //updrec/insrec will come after qblob when processing
+            key.blborder = 1; //updrec/insrec will come after qblob when processing
             key.genid = genid;
             key.stripe = get_dtafile_from_genid(key.genid);
             sess->last_genid = key.genid;
@@ -793,13 +790,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             printf("AZ: Receiving genid 0x%llx, stripe=%d\n", genid, key.stripe);
         } else if (type == OSQL_INSERT || type == OSQL_INSREC) {
             unsigned long long genid = bdb_get_next_genid(thedb->bdb_env);
-            /*
-            if (last_ins_genid == 0)
-                last_ins_genid = 0x00000FFFFFFFFFFFFFFULL; //a very large genid to sort at the end of the table
-            last_ins_genid++;
-            last_ins_stripe = bdb_get_active_stripe(thedb->bdb_env);
-            */
-            key.seq = 1; //updrec/insrec will come after qblob when processing
+            key.blborder = 1; //updrec/insrec will come after qblob when processing
             key.genid = genid;
             key.stripe = get_dtafile_from_genid(key.genid);
             sess->last_genid = key.genid;
@@ -809,6 +800,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             key.genid = sess->last_genid;
             key.stripe = get_dtafile_from_genid(key.genid);
         }
+    }
+    else {
+        key.real_seq = seq;
     }
 
     key.rqid = rqid;
@@ -856,15 +850,15 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
     char mus[37];
     comdb2uuidstr(key.uuid, mus);
-    printf("%lx:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, wseq=%d, real_seq=%d\n", 
-            pthread_self(), __func__, key.rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.seq, key.real_seq);
+    printf("%lx:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, blborder=%d, real_seq=%d\n", 
+            pthread_self(), __func__, key.rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.blborder, key.real_seq);
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
     if (rc_op) {
         logmsg(LOGMSG_ERROR, 
-            "%s: fail to put oplog rqid=%llx (%lld) seq=%llu rc=%d bdberr=%d\n",
-            __func__, key.rqid, key.rqid, key.seq, rc, bdberr);
+            "%s: fail to put oplog rqid=%llx (%lld) blborder=%d rc=%d bdberr=%d\n",
+            __func__, key.rqid, key.rqid, key.blborder, rc, bdberr);
     } else if (gbl_osqlpfault_threads) {
         osql_page_prefault(rpl, rplen, &(tran->last_db),
                            &(osql_session_get_ireq(sess)->osql_step_ix), rqid,
@@ -1261,7 +1255,7 @@ static int process_this_session(
     key->rqid = rqid;
     key->tbl_idx = 0;
     key->stripe = 0;
-    key->seq = 0;
+    key->blborder = 0;
     osql_sess_getuuid(sess, key->uuid);
     osql_sess_getuuid(sess, uuid);
     key_next = key_crt = *key;
@@ -1301,7 +1295,7 @@ printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
         char mus[37];
         comdb2uuidstr(((oplog_key_t*)realkey)->uuid, mus);
         oplog_key_t* opkey = (oplog_key_t *)realkey;
-printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, wseq=%d, real_seq=%d\n", opkey->rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->seq, opkey->real_seq);
+printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, wseq=%d, real_seq=%d\n", opkey->rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->blborder, opkey->real_seq);
 
         char *data = bdb_temp_table_data(dbc);
         int datalen = bdb_temp_table_datasize(dbc);
@@ -1316,7 +1310,7 @@ printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, wseq
         }
 
         if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step = key_next.seq << 7;
+            gbl_osqlpf_step[*(iq->osql_step_ix)].step = key_next.real_seq << 7;
 
         lastrcv = receivedrows;
 

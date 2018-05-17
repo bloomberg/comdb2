@@ -61,7 +61,10 @@ enum {
     OSQL_FLAGS_USE_BLKSEQ = 4,
     OSQL_FLAGS_ROWLOCKS = 5,
     OSQL_FLAGS_GENID48 = 6,
-    OSQL_FLAGS_SCDONE = 7
+    OSQL_FLAGS_SCDONE = 7,
+    /* indicates if blkseq reordering is turned on */
+    OSQL_FLAGS_REORDER_ON = 8,
+    OSQL_FLAGS_MAX = 32 /* new flags less than MAX please :) */
 };
 
 int osql_open(struct dbenv *dbenv);

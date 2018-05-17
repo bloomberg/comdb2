@@ -620,6 +620,7 @@ int gbl_check_wrong_db = 1;
 int gbl_broken_max_rec_sz = 0;
 int gbl_private_blkseq = 1;
 int gbl_use_blkseq = 1;
+int gbl_reorder_blkseq_no_deadlock = 0;
 
 char *gbl_recovery_options = NULL;
 
@@ -701,7 +702,6 @@ int gbl_stable_rootpages_test = 0;
 
 /* Only allows the ability to enable: must be enabled on a session via 'set' */
 int gbl_allow_incoherent_sql = 1;
-int gbl_reorder_blkseq_no_deadlock = 1;
 
 char *gbl_dbdir = NULL;
 static int gbl_backend_opened = 0;

@@ -57,6 +57,7 @@
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
+extern int gbl_reorder_blkseq_no_deadlock;
 
 int gbl_survive_n_master_swings = 600;
 int gbl_master_retry_poll_ms = 100;
@@ -243,7 +244,7 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK)
         return rc;
 
-    if (gbl_reorder_blkseq_no_deadlock == 0 || gbl_reorder_blkseq_no_deadlock == 1) {
+    if (!gbl_reorder_blkseq_no_deadlock) {
         rc = osql_qblobs(pCur, thd, NULL, blobs, maxblobs, 0);
         if (rc != SQLITE_OK)
             return rc;
@@ -265,7 +266,7 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK)
         return rc;
 
-    if (gbl_reorder_blkseq_no_deadlock == 1 || gbl_reorder_blkseq_no_deadlock == 2) {
+    if (gbl_reorder_blkseq_no_deadlock) {
         rc = osql_qblobs(pCur, thd, NULL, blobs, maxblobs, 0);
     }
     return rc;
@@ -299,7 +300,7 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK)
         return rc;
 
-    if (gbl_reorder_blkseq_no_deadlock == 0 || gbl_reorder_blkseq_no_deadlock == 1) {
+    if (!gbl_reorder_blkseq_no_deadlock) {
         rc = osql_qblobs(pCur, thd, updCols, blobs, maxblobs, 1);
         if (rc != SQLITE_OK)
             return rc;
@@ -327,7 +328,7 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK)
         return rc;
 
-    if (gbl_reorder_blkseq_no_deadlock == 1 || gbl_reorder_blkseq_no_deadlock == 2) {
+    if (gbl_reorder_blkseq_no_deadlock) {
         rc = osql_qblobs(pCur, thd, updCols, blobs, maxblobs, 1);
     }
     return rc;
@@ -522,6 +523,9 @@ retry:
         bset(&flags, OSQL_FLAGS_CHECK_SELFLOCK);
     else
         flags = 0;
+
+    if (gbl_reorder_blkseq_no_deadlock) 
+        bset(&flags, OSQL_FLAGS_REORDER_ON);
 
     /* send request to blockprocessor */
     rc = osql_comm_send_socksqlreq(osql->host, clnt->sql, strlen(clnt->sql) + 1,
