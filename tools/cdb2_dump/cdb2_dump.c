@@ -233,7 +233,7 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 		if ((ret = __db_util_cache(dbenv, dbp, &cache, &resize)) != 0)
 			goto err;
 		if (resize) {
-			(void)dbp->close(dbp, NULL, 0);
+			(void)dbp->close(dbp, 0);
 			dbp = NULL;
 
 			(void)dbenv->close(dbenv, 0);
@@ -276,7 +276,7 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 	if (0) {
 err:		exitval = 1;
 	}
-done:	if (dbp != NULL && (ret = dbp->close(dbp, NULL, 0)) != 0) {
+done:	if (dbp != NULL && (ret = dbp->close(dbp, 0)) != 0) {
 		exitval = 1;
 		dbenv->err(dbenv, ret, "close");
 	}
@@ -443,7 +443,7 @@ dump_sub(dbenv, parent_dbp, parent_name, pflag, keyflag)
 		    __db_pr_callback, NULL, 0) ||
 		    dump(dbp, pflag, keyflag)))
 			ret = 1;
-		(void)dbp->close(dbp, NULL, 0);
+		(void)dbp->close(dbp, 0);
 		free(subdb);
 		if (ret != 0)
 			return (1);

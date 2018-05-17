@@ -281,7 +281,7 @@ retry:	if ((ret = db_env_create(&dbenv, env_flags)) != 0) {
 			    __db_util_cache(dbenv, dbp, &cache, &resize)) != 0)
 				goto shutdown;
 			if (resize) {
-				(void)dbp->close(dbp, NULL, DB_NOSYNC);
+				(void)dbp->close(dbp, DB_NOSYNC);
 				dbp = NULL;
 
 				(void)dbenv->close(dbenv, 0);
@@ -315,11 +315,11 @@ retry:	if ((ret = db_env_create(&dbenv, env_flags)) != 0) {
 			    db, subdb, DB_UNKNOWN, DB_RDONLY, 0)) != 0) {
 				dbenv->err(dbenv,
 				   ret, "DB->open: %s:%s", db, subdb);
-				(void)alt_dbp->close(alt_dbp, NULL, DB_NOSYNC);
+				(void)alt_dbp->close(alt_dbp, DB_NOSYNC);
 				goto shutdown;
 			}
 
-			(void)dbp->close(dbp, NULL, DB_NOSYNC);
+			(void)dbp->close(dbp, DB_NOSYNC);
 			dbp = alt_dbp;
 
 			/* Need to run again to update counts */
@@ -378,7 +378,7 @@ retry:	if ((ret = db_env_create(&dbenv, env_flags)) != 0) {
 	if (0) {
 shutdown:	exitval = 1;
 	}
-	if (dbp != NULL && (ret = dbp->close(dbp, NULL, DB_NOSYNC)) != 0) {
+	if (dbp != NULL && (ret = dbp->close(dbp, DB_NOSYNC)) != 0) {
 		exitval = 1;
 		dbenv->err(dbenv, ret, "close");
 	}
