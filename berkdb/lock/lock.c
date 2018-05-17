@@ -778,6 +778,15 @@ is_pagelock(lockobj)
 	return (ilock->type == DB_PAGE_LOCK);
 }
 
+static inline int
+is_tablelock(lockobj)
+	DB_LOCKOBJ *lockobj;
+{
+	if (lockobj->lockobj.size == 32)
+        return 1;
+    return 0;
+}
+
 int
 use_page_latches(dbenv)
 	DB_ENV *dbenv;
@@ -1529,16 +1538,21 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 					 * unlink the lock, so we'll have to
 					 * update counts here.
 					 */
+                    int unlock = 1;
 					if (is_pagelock(sh_obj))
 						sh_locker->npagelocks--;
 					sh_locker->nlocks--;
 					if (IS_WRITELOCK(lp->mode)) {
 						sh_locker->nwrites--;
 						nwrites--;
-					}
-					ret = __lock_put_internal(lt, lp,
-					    NULL, lndx, &run_dd,
-					    DB_LOCK_FREE | DB_LOCK_DOALL);
+					} else if (is_tablelock(sh_obj)) {
+                        ret = unlock = 0;
+                    }
+                    if (unlock) {
+                        ret = __lock_put_internal(lt, lp,
+                                NULL, lndx, &run_dd,
+                                DB_LOCK_FREE | DB_LOCK_DOALL);
+                    }
 					unlock_obj_partition(region, partition);
 					if (ret != 0)
 						break;
