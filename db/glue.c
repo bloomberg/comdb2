@@ -615,7 +615,8 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
         sync = REP_SYNC_FULL;
         adaptive = 0;
         timeoutms = -1;
-        /* Schema change has been committed Safe to release schema lk early */
+        /* Schema change committed/aborted.
+         * Safe to release schema lk early */
         if (iq->sc_locked) {
             unlock_schema_lk();
             iq->sc_locked = 0;

@@ -6557,8 +6557,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 return -1;
             }
             if (!iq->sc_locked) {
-                /* unlock in osql_scdone_commit_callback /
-                 * osql_scdone_abort_callback */
+                /* Lock schema from now on before we finalize any schema changes
+                 * and hold on to the lock until the transaction commits/aborts.
+                 */
                 wrlock_schema_lk();
                 iq->sc_locked = 1;
             }
