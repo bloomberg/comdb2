@@ -1673,9 +1673,8 @@ static int bdb_tran_commit_with_seqnum_int_int(
             int blkseq_rc;
 
             *bdberr = 0;
-            rc = bdb_blkseq_insert(bdb_state, physical_tran, blkkey,
-                                   blkkeylen, blkseq,
-                                   blklen, NULL, NULL);
+            rc = bdb_blkseq_insert(bdb_state, physical_tran, blkkey, blkkeylen,
+                                   blkseq, blklen, NULL, NULL);
             *bdberr = (rc == IX_DUP) ? BDBERR_ADD_DUPE : rc;
 
             /*

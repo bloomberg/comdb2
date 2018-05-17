@@ -5598,9 +5598,9 @@ add_blkseq:
                 /*fprintf(stderr, "trans_commit_logical\n");*/
 
                 /* TODO: private blkseq with rowlocks? */
-                rc = trans_commit_logical(iq, trans, gbl_mynode, 0, 1,
-                                          buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
-                                          bskey, bskeylen);
+                rc = trans_commit_logical(
+                    iq, trans, gbl_mynode, 0, 1, buf_fstblk,
+                    p_buf_fstblk - buf_fstblk + sizeof(int), bskey, bskeylen);
 
                 if (hascommitlock) {
                     irc = pthread_rwlock_unlock(&commit_lock);
@@ -5626,9 +5626,9 @@ add_blkseq:
                     }
                     hascommitlock = 0;
                 }
-                rc = trans_abort_logical(iq, trans, buf_fstblk,
-                                         p_buf_fstblk - buf_fstblk + sizeof(int), bskey,
-                                         bskeylen);
+                rc = trans_abort_logical(
+                    iq, trans, buf_fstblk,
+                    p_buf_fstblk - buf_fstblk + sizeof(int), bskey, bskeylen);
 
                 if (rc == BDBERR_NOT_DURABLE)
                     rc = ERR_NOT_DURABLE;
