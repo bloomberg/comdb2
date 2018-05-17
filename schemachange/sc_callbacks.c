@@ -503,7 +503,7 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
         if (bdb_list_unused_files_tran(db->handle, tran, &bdberr,
                                        "schemachange") ||
             bdberr != BDBERR_NOERROR)
-            logmsg(LOGMSG_WARN, "errors listing old files\n");
+            logmsg(LOGMSG_WARN, "%s: errors listing old files\n", __func__);
     } else {
         if (bdb_del_unused_files_tran(db->handle, tran, &bdberr) ||
             bdberr != BDBERR_NOERROR)
@@ -548,9 +548,8 @@ void sc_del_unused_files_check_progress(void)
 
 static int delete_table_rep(char *table, void *tran)
 {
-    struct dbtable *db;
     int rc, bdberr;
-    db = get_dbtable_by_name(table);
+    struct dbtable *db = get_dbtable_by_name(table);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "delete_table_rep : invalid table %s\n", table);
         return -1;
@@ -691,6 +690,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         add_new_db = (db == NULL);
     }
 
+    assert(type != add || add_new_db == 1);
+
     if (type == setcompr) {
         logmsg(LOGMSG_INFO,
                "Replicant setting compression flags for table:%s\n", table);
@@ -710,20 +711,12 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                    __func__, table);
             exit(1);
         }
-        if (create_sqlmaster_records(tran)) {
-            logmsg(LOGMSG_FATAL,
-                   "create_sqlmaster_records: error creating sqlite "
-                   "master records for %s.\n",
-                   table);
-            exit(1);
-        }
-        create_sqlite_master();
-        ++gbl_dbopen_gen;
-        goto done;
     } else if (type == bulkimport) {
         logmsg(LOGMSG_INFO, "Replicant bulkimporting table:%s\n", table);
         reload_after_bulkimport(db, tran);
     } else {
+        assert(type == alter || type == fastinit);
+
         logmsg(LOGMSG_INFO, "Replicant %s table:%s\n",
                type == alter ? "altering" : "fastinit-ing", table);
         extern int gbl_broken_max_rec_sz;
@@ -737,15 +730,6 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         }
         gbl_broken_max_rec_sz = saved_broken_max_rec_sz;
 
-        if (create_sqlmaster_records(tran)) {
-            logmsg(LOGMSG_FATAL,
-                   "create_sqlmaster_records: error creating sqlite "
-                   "master records for %s.\n",
-                   table);
-            exit(1);
-        }
-        create_sqlite_master(); /* create sql statements */
-
         /* update the delayed deleted files */
         assert(db && !add_new_db);
         rc = bdb_list_unused_files_tran(db->handle, tran, &bdberr,
@@ -754,6 +738,20 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
             logmsg(LOGMSG_ERROR, "bdb_list_unused_files rc %d bdberr %d\n", rc,
                    bdberr);
         }
+    }
+
+    if (type == add || type == drop || type == alter || type == fastinit) {
+        if (create_sqlmaster_records(tran)) {
+            logmsg(LOGMSG_FATAL,
+                   "create_sqlmaster_records: error creating sqlite "
+                   "master records for %s.\n",
+                   table);
+            exit(1);
+        }
+        create_sqlite_master(); /* create sql statements */
+        ++gbl_dbopen_gen;
+        if (type == drop)
+            goto done;
     }
 
     free(table_copy);
@@ -795,7 +793,6 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         add_tag_schema(db->tablename, ver_one);
     }
 
-    ++gbl_dbopen_gen;
     llmeta_dump_mapping_tran(tran, thedb);
     llmeta_dump_mapping_table_tran(tran, thedb, table, 1);
 

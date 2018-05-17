@@ -27,6 +27,7 @@
 #include "sc_util.h"
 #include "sc_logic.h"
 #include "sc_records.h"
+#include "analyze.h"
 #include "comdb2_atomic.h"
 
 static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
@@ -308,6 +309,48 @@ int gbl_test_scindex_deadlock = 0;
 int gbl_test_sc_resume_race = 0;
 int gbl_readonly_sc = 0;
 
+/*********** Outer Business logic for schemachanges ************************/
+
+static void check_for_idx_rename(struct dbtable *newdb, struct dbtable *olddb)
+{
+    if (!newdb || !newdb->plan)
+        return;
+
+    for (int ixnum = 0; ixnum < newdb->nix; ixnum++) {
+        struct schema *newixs = newdb->ixschema[ixnum];
+
+        int oldixnum = newdb->plan->ix_plan[ixnum];
+        if (oldixnum < 0 || oldixnum >= olddb->nix)
+            continue;
+
+        struct schema *oldixs = olddb->ixschema[oldixnum];
+        if (!oldixs)
+            continue;
+
+        int offset = get_offset_of_keyname(newixs->csctag);
+        if (get_offset_of_keyname(oldixs->csctag) > 0) {
+            logmsg(LOGMSG_USER, "WARN: Oldix has .NEW. in idx name: %s\n",
+                   oldixs->csctag);
+            return;
+        }
+        if (newdb->plan->ix_plan[ixnum] >= 0 &&
+            strcmp(newixs->csctag + offset, oldixs->csctag) != 0) {
+            char namebuf1[128];
+            char namebuf2[128];
+            form_new_style_name(namebuf1, sizeof(namebuf1), newixs,
+                                newixs->csctag + offset, newdb->tablename);
+            form_new_style_name(namebuf2, sizeof(namebuf2), oldixs,
+                                oldixs->csctag, olddb->tablename);
+            logmsg(LOGMSG_INFO,
+                   "ix %d changing name so INSERTING into sqlite_stat* "
+                   "idx='%s' where tbl='%s' and idx='%s' \n",
+                   ixnum, newixs->csctag + offset, newdb->tablename,
+                   oldixs->csctag);
+            add_idx_stats(newdb->tablename, namebuf2, namebuf1);
+        }
+    }
+}
+
 int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                    tran_type *tran)
 {
@@ -548,6 +591,11 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
     newdb->iq = NULL;
+
+    /* check for rename outside of taking schema lock */
+    /* handle renaming sqlite_stat1 entries for idx */
+    check_for_idx_rename(s->newdb, s->db);
+
     return SC_OK;
 }
 
@@ -668,11 +716,13 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     /* kludge: fix lrls */
     fix_lrl_ixlen_tran(transac);
 
-    if (create_sqlmaster_records(transac)) {
-        sc_errf(s, "create_sqlmaster_records failed\n");
-        goto failed;
+    if (s->finalize) {
+        if (create_sqlmaster_records(transac)) {
+            sc_errf(s, "create_sqlmaster_records failed\n");
+            goto backout;
+        }
+        create_sqlite_master();
     }
-    create_sqlite_master(); /* create sql statements */
 
     live_sc_off(db);
 

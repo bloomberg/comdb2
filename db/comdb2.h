@@ -2308,6 +2308,7 @@ void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
 void replace_db_idx(struct dbtable *p_db, int idx);
 int reload_schema(char *table, const char *csc2, tran_type *tran);
+int add_db(struct dbtable *db);
 void delete_db(char *db_name);
 int rename_db(struct dbtable *db, const char *newname);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
@@ -2470,7 +2471,7 @@ int get_copy_rootpages(struct sql_thread *thd);
 master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
                                           int *nents);
 void cleanup_sqlite_master();
-int create_sqlite_master();
+void create_sqlite_master();
 int destroy_sqlite_master(master_entry_t *, int);
 int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db);
 void handle_isql(struct dbtable *db, SBUF2 *sb);

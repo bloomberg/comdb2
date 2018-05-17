@@ -35,7 +35,6 @@
 #include "sc_stripes.h"
 #include "sc_drop_table.h"
 #include "sc_rename_table.h"
-#include "analyze.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 
@@ -222,45 +221,6 @@ static int set_original_tablename(struct schema_change_type *s)
     return 1;
 }
 
-/*********** Outer Business logic for schemachanges ************************/
-
-static void check_for_idx_rename(struct dbtable *newdb, struct dbtable *olddb)
-{
-    if (!newdb || !newdb->plan) return;
-
-    for (int ixnum = 0; ixnum < newdb->nix; ixnum++) {
-        struct schema *newixs = newdb->ixschema[ixnum];
-
-        int oldixnum = newdb->plan->ix_plan[ixnum];
-        if (oldixnum < 0 || oldixnum >= olddb->nix) continue;
-
-        struct schema *oldixs = olddb->ixschema[oldixnum];
-        if (!oldixs) continue;
-
-        int offset = get_offset_of_keyname(newixs->csctag);
-        if (get_offset_of_keyname(oldixs->csctag) > 0) {
-            logmsg(LOGMSG_USER, "WARN: Oldix has .NEW. in idx name: %s\n",
-                   oldixs->csctag);
-            return;
-        }
-        if (newdb->plan->ix_plan[ixnum] >= 0 &&
-            strcmp(newixs->csctag + offset, oldixs->csctag) != 0) {
-            char namebuf1[128];
-            char namebuf2[128];
-            form_new_style_name(namebuf1, sizeof(namebuf1), newixs,
-                                newixs->csctag + offset, newdb->tablename);
-            form_new_style_name(namebuf2, sizeof(namebuf2), oldixs,
-                                oldixs->csctag, olddb->tablename);
-            logmsg(LOGMSG_INFO,
-                   "ix %d changing name so INSERTING into sqlite_stat* "
-                   "idx='%s' where tbl='%s' and idx='%s' \n",
-                   ixnum, newixs->csctag + offset, newdb->tablename,
-                   oldixs->csctag);
-            add_idx_stats(newdb->tablename, namebuf2, namebuf1);
-        }
-    }
-}
-
 int do_upgrade_table(struct schema_change_type *s)
 {
     int rc;
@@ -311,6 +271,8 @@ static int do_finalize(ddl_t func, struct ireq *iq,
     if (rc) {
         if (input_tran == NULL) {
             trans_abort(iq, tran);
+            mark_schemachange_over(s->table);
+            sc_del_unused_files(s->db);
         }
         return rc;
     }
@@ -330,6 +292,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
         }
+        sc_del_unused_files(s->db);
     } else if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN)) {
         int bdberr = 0;
         rc = bdb_llog_scdone_tran(s->db->handle, type, input_tran, s->table,
@@ -373,8 +336,6 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
     if (s->finalize_only) {
         return s->sc_rc;
     }
-    if (type != alter)
-        wrlock_schema_lk();
     set_original_tablename(s);
     if ((rc = check_table_version(iq, s)) != 0) { // non-tran ??
         goto end;
@@ -397,15 +358,15 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         mark_schemachange_over_tran(s->table, NULL); // non-tran ??
         broadcast_sc_end(s->table, iq->sc_seed);
     } else if (s->finalize) {
+        wrlock_schema_lk();
         rc = do_finalize(post, iq, s, tran, type);
+        unlock_schema_lk();
         broadcast_sc_end(s->table, iq->sc_seed);
     } else {
         rc = SC_COMMIT_PENDING;
     }
 end:
     s->sc_rc = rc;
-    if (type != alter)
-        unlock_schema_lk();
     return rc;
 }
 
@@ -578,18 +539,6 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
     pthread_mutex_lock(&s->mtx);
     enum thrtype oldtype = prepare_sc_thread(s);
     int rc = SC_OK;
-    int keep_sc_locked = iq->sc_locked;
-
-    if (s->type == DBTYPE_TAGGED_TABLE) {
-        /* check for rename outside of taking schema lock */
-        /* handle renaming sqlite_stat1 entries for idx */
-        check_for_idx_rename(s->newdb, s->db);
-    }
-
-    if (!iq->sc_locked) {
-        wrlock_schema_lk();
-        iq->sc_locked = 1;
-    }
 
     if (gbl_test_scindex_deadlock) {
         logmsg(LOGMSG_INFO, "%s: sleeping for 30s\n", __func__);
@@ -614,10 +563,6 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         rc = do_finalize(finalize_alter_table, iq, s, trans, alter);
     else if (s->fulluprecs || s->partialuprecs)
         rc = finalize_upgrade_table(s);
-    if (!keep_sc_locked) {
-        unlock_schema_lk();
-        iq->sc_locked = 0;
-    }
 
     reset_sc_thread(oldtype, s);
     pthread_mutex_unlock(&s->mtx);
@@ -1189,9 +1134,8 @@ int backout_schema_change(struct ireq *iq)
     sc_set_running(s->table, 0, iq->sc_seed, gbl_mynode, time(NULL));
     if (s->addonly) {
         delete_temp_table(iq, s->db);
-        delete_db(s->table);
-        create_sqlmaster_records(NULL);
-        create_sqlite_master();
+        if (s->addonly == SC_DONE_ADD)
+            delete_db(s->table);
     } else if (s->db) {
         reload_db_tran(s->db, NULL);
         sc_del_unused_files(s->db);

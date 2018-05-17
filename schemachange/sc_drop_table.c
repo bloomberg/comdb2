@@ -61,6 +61,7 @@ int do_drop_table(struct ireq *iq, struct schema_change_type *s,
     return SC_OK;
 }
 
+// NB: this gets called from drop table and from fastinit
 int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
                         tran_type *tran)
 {
@@ -74,7 +75,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     /* at this point if a backup is going on, it will be bad */
     gbl_sc_commit_count++;
 
-    if ((rc = mark_schemachange_over_tran(db->tablename, tran)))
+    if (rc = mark_schemachange_over_tran(db->tablename, tran))
         return rc;
 
     delete_table(db, tran);
@@ -89,7 +90,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-    if (s->drop_table && (rc = table_version_upsert(db, tran, &bdberr)) != 0) {
+    if ((rc = table_version_upsert(db, tran, &bdberr)) != 0) {
         sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
         return rc;
     }
@@ -99,17 +100,19 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-    if ((rc = create_sqlmaster_records(tran)) != 0) {
-        sc_errf(s, "create_sqlmaster_records failed\n");
-        return rc;
+    if (s->finalize) {
+        if (create_sqlmaster_records(tran)) {
+            sc_errf(s, "create_sqlmaster_records failed\n");
+            return -1;
+        }
+        create_sqlite_master();
     }
-    create_sqlite_master(); /* create sql statements */
 
     live_sc_off(db);
 
     if (!gbl_create_mode) {
         logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", db->tablename,
-               db->version);
+               db->tableversion);
     }
 
     if (gbl_replicate_local)

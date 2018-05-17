@@ -6556,6 +6556,13 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             if (strcmp(iq->sc->original_master_node, gbl_mynode) != 0) {
                 return -1;
             }
+            if (!iq->sc_locked) {
+                /* Lock schema from now on before we finalize any schema changes
+                 * and hold on to the lock until the transaction commits/aborts.
+                 */
+                wrlock_schema_lk();
+                iq->sc_locked = 1;
+            }
             if (iq->sc->db) iq->usedb = iq->sc->db;
             rc = finalize_schema_change(iq, ptran);
             iq->usedb = NULL;
@@ -6563,6 +6570,12 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 return rc; // Change to failed schema change error;
             }
             iq->sc = iq->sc->sc_next;
+        }
+
+        if (iq->tranddl) {
+            void *ptran = bdb_get_physical_tran(trans);
+            create_sqlmaster_records(ptran);
+            create_sqlite_master();
         }
 
         // TODO Notify all bpfunc of success

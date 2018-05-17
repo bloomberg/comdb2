@@ -1795,12 +1795,10 @@ int create_sqlmaster_records(void *tran)
     int table;
     int rc = 0;
     sql_mem_init(NULL);
-    for (table = 0; table < thedb->num_dbs; table++) {
+    for (table = 0; table < thedb->num_dbs && rc == 0; table++) {
         rc = create_sqlmaster_record(thedb->dbs[table], tran);
-        if (rc)
-            goto done;
     }
-done:
+
     sql_mem_shutdown(NULL);
     return rc;
 }
