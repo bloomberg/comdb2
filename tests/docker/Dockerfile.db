@@ -3,6 +3,7 @@ FROM @image@
 RUN mkdir /var/run/sshd && \
     echo 'root:bigsecret' | chpasswd && \
     sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    echo "StrictHostKeyChecking no" > /etc/ssh/ssh_config && \
     sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd && \
     echo "export VISIBLE=now" >> /etc/profile
 

@@ -5,26 +5,43 @@ set -x
 # create and distribute ssh key
 mkdir ~/.ssh
 chmod 700 ~/.ssh
-ssh-keygen -N "" -f ~/.ssh/id_rsa
+cp /common/id_rsa* ~/.ssh/
+chmod 700 ~/.ssh/id_rsa
 cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
-cp ~/.ssh/* /common
 export CLUSTER="$(cat common/cluster)"
 echo "CLUSTER is $CLUSTER"
-for node in $CLUSTER; do
-    echo $node
-done
 
 # wait for all the nodes to signal that they're ready
+numnodes=0
 for node in $CLUSTER; do
-    if [[ -f /common/${node}.ready ]]; then
-        continue
-    fi
-    echo "waiting for $node"
-    sleep 1
+    numnodes=$(($numnodes+1))
+done
+echo numnodes $numnodes
+
+sleep 60
+
+declare -A ready
+while :; do 
+    for node in $CLUSTER; do
+        host=$(ssh -o StrictHostKeyChecking=no $node hostname)
+        if [[ $? -eq 0 && "$host" == $node ]]; then
+            ready[$node]=1
+        fi
+    done
+
+    ready=0
+    for node in $CLUSTER; do
+        [[ ${ready[$node]} = 1 ]] && ready=$(($ready+1))
+    done
+    [[ $ready -eq $numnodes ]] && break
 done
 
 ssh-keyscan $CLUSTER >> ~/.ssh/known_hosts
 
 # run tests
-cd comdb2/tests
-make yast 2>&1 | tee common/log
+#cd comdb2/tests
+#make yast
+#cp -r /comdb2/tests/test_* /common
+while :; do
+    sleep 3600
+done

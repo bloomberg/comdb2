@@ -3,22 +3,10 @@
 # wait for keys
 mkdir ~/.ssh
 chmod 700 ~/.ssh
-
-function waitforsshfile {
-    file=$1
-    while :; do
-        if [[ -f /common/$file ]]; then
-            cp /common/$file ~/.ssh
-            break
-        else
-            echo "waiting for $file"
-            sleep 1
-        fi
-    done
-}
-
-waitforsshfile id_rsa
-waitforsshfile id_rsa.pub
-waitforsshfile authorized_keys
+cp /common/id_rsa ~/.ssh/
+chmod 700 ~/.ssh/id_rsa
+cp /common/id_rsa.pub ~/.ssh/
+cat /common/id_rsa.pub >> ~/.ssh/authorized_keys
 touch /common/$(hostname).ready
+echo READY
 exec /usr/sbin/sshd -D

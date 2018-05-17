@@ -7,6 +7,8 @@ if [[ $# -ne 2 ]]; then
     exit 1
 fi
 
+rm -fr common 
+mkdir common
 src=$1
 numnodes=$2
 for node in $(seq 1 $numnodes); do
@@ -23,10 +25,11 @@ cd $dir
 
 sed -i.bak "s/@image@/comdb2test:$prefix/" Dockerfile.db
 echo $cluster >common/cluster
+ssh-keygen -N "" -f common/id_rsa
 
 compose=docker-compose.yml
 cat > $compose <<EOF
-version: '3'
+version: '2'
 
 services:
     client:
@@ -37,6 +40,8 @@ services:
         volumes:
             - ./common:/common
         command: /client
+        cap_add:
+            - SYS_PTRACE
 EOF
 
 for node in $cluster; do
@@ -49,16 +54,12 @@ cat >> $compose <<EOF
         volumes:
             - ./common:/common
         command: /database
+        cap_add:
+            - SYS_PTRACE
 EOF
 done
 
 docker-compose build
 docker-compose up --abort-on-container-exit
-
-for node in $CLUSTER; do
-    docker rm ${prefix}_client_1
-    docker rm ${prefix}_${node}_1
-    docker rmi ${prefix}_client:latest
-    docker rmi ${prefix}_${node}:latest
-    docker rmi comdb2test:$prefix
-done
+docker-compose down --rmi all
+docker-compose rm
