@@ -1525,17 +1525,19 @@ int ll_checkpoint(bdb_state_type *bdb_state, int force)
 
 void get_new_genid_on_update(bdb_state_type *bdb_state, unsigned long long *genid)
 {
-    if (!ip_updates_enabled(bdb_state) || 
-            (1 + get_updateid_from_genid(bdb_state, *genid)) > max_updateid(bdb_state)) {
-        int newstripe;
-        if (bdb_state->attr->disable_update_stripe_change) {
-            /* old style that prevents update missing rows */
-            newstripe = get_dtafile_from_genid(*genid);
-        } else {
-            newstripe = bdb_get_active_stripe_int(bdb_state);
-        }
-        *genid = get_genid(bdb_state, newstripe);
-        printf("AZ: But for update Creating genid 0x%llx in stripe=%d\n", *genid, newstripe);
+    printf("AZ: ipu=%d, updid=%d\n", ip_updates_enabled(bdb_state), get_updateid_from_genid(bdb_state, *genid));
+    if (ip_updates_enabled(bdb_state) && 
+            (1 + get_updateid_from_genid(bdb_state, *genid)) <= max_updateid(bdb_state))
+        return; //no need to generate new genid
+
+    int newstripe;
+    if (bdb_state->attr->disable_update_stripe_change) {
+        /* old style that prevents update missing rows */
+        newstripe = get_dtafile_from_genid(*genid);
+    } else {
+        newstripe = bdb_get_active_stripe_int(bdb_state);
     }
+    *genid = get_genid(bdb_state, newstripe);
+    printf("AZ: But for update Creating genid 0x%llx in stripe=%d\n", *genid, newstripe);
 }
 

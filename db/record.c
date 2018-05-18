@@ -1299,20 +1299,20 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         /* pass in the genid for striping purposes - need to figure out
            which dta file to use from the genid, but force dta verification
            as verifying the genid is bogus - we just found it right here! */
-        rc = dat_upv(iq, trans,
+        rc = dat_upv_auxdb(AUXDB_NONE, iq, trans,
                      0, /*offset to verify from, only zero is supported*/
                      odv_dta, od_len, vgenid, od_dta, od_len, rrn, genid, 1,
-                     iq->blkstate->modnum); /* verifydta */
+                     iq->blkstate->modnum, genid != 0); /* verifydta */
     } else {
         if (flags == RECFLAGS_UPGRADE_RECORD) {
             rc = dat_upgrade(iq, trans, od_dta, od_len, vgenid);
             *genid = vgenid;
         } else {
-            rc = dat_upv(iq, trans, 0, /*vptr*/
+            rc = dat_upv_auxdb(AUXDB_NONE, iq, trans, 0, /*vptr*/
                          NULL,         /*vdta*/
                          0,            /*vlen*/
                          vgenid, od_dta, od_len, rrn, genid, 0,
-                         iq->blkstate->modnum);
+                         iq->blkstate->modnum, genid != 0);
         }
     }
 

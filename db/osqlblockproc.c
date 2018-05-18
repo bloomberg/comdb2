@@ -787,7 +787,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             /* check if we need a new genid, like in ll_dta_upd_int() */
             
             extern void get_new_genid_on_update(bdb_state_type *bdb_state, unsigned long long *genid);
-            get_new_genid_on_update(thedb->bdb_env, &genid);
+            get_new_genid_on_update(iq->usedb->handle, &genid);
             key.genid = genid;
             key.stripe = get_dtafile_from_genid(key.genid);
             sess->last_genid = key.genid;
