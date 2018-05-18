@@ -884,7 +884,6 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
 {
     int rc;
     int inplace = 0;
-    int newupdateid = 0;
     int updateid = 0;
     DBC *dbcp = NULL;
     DBT dbt_key;
@@ -961,10 +960,9 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
             inplace = 1;
         } else if (0 == *newgenid) {
             if (ip_updates_enabled(bdb_state)) {
-                newupdateid =
-                    (1 + get_updateid_from_genid(bdb_state, oldgenid));
-                if (newupdateid <= max_updateid(bdb_state)) {
-                    *newgenid = set_updateid(bdb_state, newupdateid, oldgenid);
+                int newupd = (1 + get_updateid_from_genid(bdb_state, oldgenid));
+                if (newupd <= max_updateid(bdb_state)) {
+                    *newgenid = set_updateid(bdb_state, newupd, oldgenid);
                     inplace = 1;
                 }
             }
@@ -1519,3 +1517,25 @@ int ll_checkpoint(bdb_state_type *bdb_state, int force)
 
     return rc;
 }
+
+
+/* get a new genid on an update if ipu is off or if 
+ * we run out of update ids
+ */
+
+void get_new_genid_on_update(bdb_state_type *bdb_state, unsigned long long *genid)
+{
+    if (!ip_updates_enabled(bdb_state) || 
+            (1 + get_updateid_from_genid(bdb_state, *genid)) > max_updateid(bdb_state)) {
+        int newstripe;
+        if (bdb_state->attr->disable_update_stripe_change) {
+            /* old style that prevents update missing rows */
+            newstripe = get_dtafile_from_genid(*genid);
+        } else {
+            newstripe = bdb_get_active_stripe_int(bdb_state);
+        }
+        *genid = get_genid(bdb_state, newstripe);
+        printf("AZ: But for update Creating genid 0x%llx in stripe=%d\n", *genid, newstripe);
+    }
+}
+

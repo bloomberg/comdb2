@@ -4822,7 +4822,6 @@ void *osql_create_request(const char *sql, int sqlen, int type,
 
         req_uuid.type = type;
         req_uuid.flags = flags;
-        printf("AZ: setting req_uuid.flags %x\n", flags);
         req_uuid.padding = 0;
         req_uuid.ntails = 0;
         comdb2uuidcpy(req_uuid.uuid, uuid);
@@ -6884,7 +6883,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             NULL, NULL,                            /* vrec */
             NULL,                                  /*nulls, no need as no
                                                      ctag2stag is called */
-            *updCols, blobs, MAXBLOBS, &genid, dt.ins_keys, dt.del_keys,
+            *updCols, blobs, MAXBLOBS, &newgenid, dt.ins_keys, dt.del_keys,
             &err->errcode, &err->ixnum, BLOCK2_UPDKL, step,
             RECFLAGS_DYNSCHEMA_NULLS_ONLY |
                 RECFLAGS_DONT_SKIP_BLOBS /* because we only receive info about
@@ -6895,6 +6894,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                             it erase any blobs that haven't been
                                             collected. */
             );
+
+        genid = newgenid;
 
         free_blob_buffers(blobs, MAXBLOBS);
         if (iq->idxInsert || iq->idxDelete) {
@@ -7297,7 +7298,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         req.rqid = OSQL_RQID_USE_UUID;
         req.ntails = uuid_req.ntails;
         req.flags = uuid_req.flags;
-        printf("AZ:  uuid_req.flags=%x\n",  uuid_req.flags);
         memcpy(req.tzname, uuid_req.tzname, sizeof(uuid_req.tzname));
         comdb2uuidcpy(uuid, uuid_req.uuid);
         comdb2uuidcpy(sorese_info.uuid, uuid_req.uuid);

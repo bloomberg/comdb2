@@ -783,11 +783,15 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             long long int genid;
             buf_no_net_get(&genid, sizeof(genid), p_buf, p_buf_end);
             key.blborder = 1; //updrec/insrec will come after qblob when processing
+            printf("AZ: Receiving genid 0x%llx\n", genid);
+            /* check if we need a new genid, like in ll_dta_upd_int() */
+            
+            extern void get_new_genid_on_update(bdb_state_type *bdb_state, unsigned long long *genid);
+            get_new_genid_on_update(thedb->bdb_env, &genid);
             key.genid = genid;
             key.stripe = get_dtafile_from_genid(key.genid);
             sess->last_genid = key.genid;
             assert (key.stripe >= 0);
-            printf("AZ: Receiving genid 0x%llx, stripe=%d\n", genid, key.stripe);
         } else if (type == OSQL_INSERT || type == OSQL_INSREC) {
             unsigned long long genid = bdb_get_next_genid(thedb->bdb_env);
             key.blborder = 1; //updrec/insrec will come after qblob when processing
@@ -797,6 +801,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             assert (key.stripe >= 0);
             printf("AZ: Creating genid 0x%llx, stripe=%d\n", genid, key.stripe);
         } else if (type == OSQL_QBLOB) {
+            /* blob needs to get the genid of the previous insrec */
             key.genid = sess->last_genid;
             key.stripe = get_dtafile_from_genid(key.genid);
         }

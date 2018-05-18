@@ -1,5 +1,6 @@
 schema
 {
    int  i
+   int  j
    blob b
 }
