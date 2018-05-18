@@ -1,7 +1,5 @@
 #!/bin/bash
 
-set -x
-
 # create and distribute ssh key
 mkdir ~/.ssh
 chmod 700 ~/.ssh
@@ -36,10 +34,10 @@ done
 
 ssh-keyscan $CLUSTER >> ~/.ssh/known_hosts
 
-# run tests
-#cd comdb2/tests
-#make yast
-#cp -r /comdb2/tests/test_* /common
-while :; do
-    sleep 3600
-done
+if [[ $# -ne 0 ]]; then
+    eval $*
+fi
+
+if [[ -f /comdb2/user_script ]]; then
+    /comdb2/user_script
+fi

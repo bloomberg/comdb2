@@ -39,6 +39,7 @@ RUN apt-get update && \
 COPY . /comdb2
 
 RUN cd /comdb2 &&  \
+    rm -rf build && \
     mkdir build && \
     cd build && \
     cmake .. && \
@@ -47,7 +48,7 @@ RUN cd /comdb2 &&  \
     make install &&  \
     cd /comdb2 &&  \
     cp /comdb2/tests/docker/client / && \
-    cp /comdb2/tests/docker/database / && \
+    cp /comdb2/tests/docker/server / && \
     apt-get clean
 
 ENV PATH      $PATH:/opt/bb/bin

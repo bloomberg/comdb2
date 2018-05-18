@@ -1,4 +1,5 @@
-FROM @image@
+ARG REVISION=HEAD
+FROM comdb2test:${REVISION}
 
 RUN mkdir /var/run/sshd && \
     echo 'root:bigsecret' | chpasswd && \
