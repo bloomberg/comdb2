@@ -39,8 +39,8 @@ fi
 export COMPOSE_PROJECT_NAME=$prefix
 
 if [[ "$script" != "" ]]; then
-    cp $script $src/user_script
-    chmod +x $src/user_script
+    cp $script common/user_script
+    chmod +x common/user_script
 fi
 docker build -t comdb2test:$prefix -f $src/tests/docker/Dockerfile.install $src
 

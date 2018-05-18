@@ -39,5 +39,5 @@ if [[ $# -ne 0 ]]; then
 fi
 
 if [[ -f /comdb2/user_script ]]; then
-    /comdb2/user_script
+    /common/user_script
 fi
