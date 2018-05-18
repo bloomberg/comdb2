@@ -227,6 +227,8 @@ __dbreg_new_id(dbp, txn)
 	return (ret);
 }
 
+pthread_mutex_t gbl_dbreg_log_lock = PTHREAD_MUTEX_INITIALIZER;
+
 /*
  * __dbreg_get_id --
  *	Assign an unused dbreg id to this database handle.
@@ -511,10 +513,13 @@ __dbreg_close_id(dbp, txn)
 	__ufid_sanity_check(dbenv, fnp);
 	fid_dbt.size = DB_FILE_ID_LEN;
 
-	if ((ret = __dbreg_register_log(dbenv, txn, &r_unused,
+    pthread_mutex_lock(&gbl_dbreg_log_lock);
+	ret = __dbreg_register_log(dbenv, txn, &r_unused,
 		F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
 		DBREG_CLOSE, dbtp, &fid_dbt, fnp->id,
-		fnp->s_type, fnp->meta_pgno, TXN_INVALID)) != 0)
+		fnp->s_type, fnp->meta_pgno, TXN_INVALID);
+    pthread_mutex_unlock(&gbl_dbreg_log_lock);
+    if (ret != 0)
 		goto err;
 
 	ret = __dbreg_revoke_id(dbp, 1, DB_LOGFILEID_INVALID);
