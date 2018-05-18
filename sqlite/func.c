@@ -766,6 +766,29 @@ static void tableVersionFunc(
   sqlite3_result_int64(context, version);
 }
 
+
+/* COMDB2 MODIFICATIONS */
+extern void comdb2_genidinfo(uint64_t genid, char *info, int len);
+/*
+** Implementation of the genidinfo function
+*/
+static void comdb2GenidInfoFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  assert(argc==1);
+  if(sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+    return;
+  }
+
+  uint64_t genid = atoll(sqlite3_value_text(argv[0]));
+  const char info[100] = {0};
+
+  comdb2_genidinfo(genid, info, sizeof(info));
+  sqlite3_result_text(context, strdup(info), -1, free);
+}
+
 /* COMDB2 MODIFICATIONS */
 extern char* comdb2_partition_info(const char *partition, const char *option);
 /*
@@ -2204,6 +2227,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_port,       0, 0, 0, comdb2PortFunc),
     FUNCTION(comdb2_dbname,     0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost,0,0,0, comdb2PrevquerycostFunc),
+    FUNCTION(comdb2_genidinfo,  1, 0, 0, comdb2GenidInfoFunc),
 #endif
 #ifdef SQLITE_ENABLE_UNKNOWN_SQL_FUNCTION
     FUNCTION(unknown,           -1, 0, 0, unknownFunc      ),

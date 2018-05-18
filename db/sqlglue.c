@@ -11483,6 +11483,24 @@ int stat_bt_hash_table_reset(char *table)
 
     return 0;
 }
+
+
+void comdb2_genidinfo(uint64_t genid, char *info, int len)
+{
+    extern int get_updateid_from_genid(bdb_state_type *bdb_state, unsigned long long genid);
+    //if (thedb->bdb_env->genid_format == LLMETA_GENID_48BIT)
+        snprintf(info, len - 1, "counter=0x%llx, updateid=%d, stripe=%d", 
+            genid >> 16,
+            get_updateid_from_genid(thedb->bdb_env, genid), 
+            get_dtafile_from_genid(genid));
+        /*
+    else
+        sprintf(info, "epoch=%d, updateid=%d, stripe=%d", 
+            get_updateid_from_genid(thedb->dbenv, genid), 
+            get_dtafile from_genid(genid));
+            */
+}
+
 /**
  * Retrieve the schema version for table
  *
