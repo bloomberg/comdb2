@@ -5049,7 +5049,7 @@ static int internal_param_value(struct sqlclntstate *a, struct param_data *b, in
 }
 static int internal_override_count(struct sqlclntstate *a)
 {
-    return -1;
+    return 0;
 }
 static int internal_clr_cnonce(struct sqlclntstate *a)
 {
