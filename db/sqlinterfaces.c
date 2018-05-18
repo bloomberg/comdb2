@@ -199,8 +199,6 @@ int disable_server_sql_timeouts(void)
             gbl_sql_no_timeouts_on_release_locks);
 }
 
-#define WRITE_RESPONSE(R, D) write_response(clnt, R, (void *)D, 0)
-
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
     return clnt->plugin.write_response(clnt, R, D, I);
@@ -279,7 +277,7 @@ static int log_context(struct sqlclntstate *clnt, struct reqlogger *logger)
 void handle_failed_dispatch(struct sqlclntstate *clnt, char *errstr)
 {
     pthread_mutex_lock(&clnt->wait_mutex);
-    WRITE_RESPONSE(RESPONSE_ERROR_REJECT, errstr);
+    write_response(clnt, RESPONSE_ERROR_REJECT, errstr, 0);
     pthread_mutex_unlock(&clnt->wait_mutex);
 }
 
@@ -811,7 +809,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         goto done;
 
     if (sendresponse) {
-        WRITE_RESPONSE(RESPONSE_ROW_LAST_DUMMY, NULL);
+        write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
     }
 
 done:
@@ -839,8 +837,8 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
                 "\"%s\" wrong transaction command receive\n",
                 (clnt->sql) ? clnt->sql : "(???.)");
 
-    WRITE_RESPONSE(RESPONSE_ERROR_BAD_STATE,
-                   "sqlinterfaces: wrong sql handle state\n");
+    write_response(clnt, RESPONSE_ERROR_BAD_STATE,
+                   "sqlinterfaces: wrong sql handle state\n", 0);
 
     if (srs_tran_destroy(clnt))
         logmsg(LOGMSG_ERROR, "Fail to destroy transaction replay session\n");
@@ -1235,11 +1233,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     if (rc == SQLITE_OK) {
         /* send return code */
 
-        WRITE_RESPONSE(RESPONSE_EFFECTS, 0);
-        /*
-         * TODO Move want query effects check and reset to fastsql
-         * reset_query_effects(clnt);
-         */
+        write_response(clnt, RESPONSE_EFFECTS, 0, 0);
 
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
@@ -1248,7 +1242,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             /* This is a commit, so we'll have something to send here even on a
              * retry.  Don't trigger code in fsql_write_response that's there
              * to catch bugs when we send back responses on a retry. */
-            WRITE_RESPONSE(RESPONSE_ROW_LAST_DUMMY, NULL);
+            write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
         }
 
         outrc = SQLITE_OK; /* the happy case */
@@ -1993,7 +1987,7 @@ error: /* pretend that a real prepare error occured */
     strcpy(buf, "near \"");
     strncat(buf + len, sql, len);
     strcat(buf, "\": syntax error");
-    WRITE_RESPONSE(RESPONSE_ERROR_PREPARE, buf);
+    write_response(clnt, RESPONSE_ERROR_PREPARE, buf, 0);
     return SQLITE_ERROR;
 }
 
@@ -2023,7 +2017,7 @@ static inline int check_user_password(struct sqlclntstate *clnt)
     }
 
     if (!clnt->have_user || !clnt->have_password || password_rc != 0) {
-        WRITE_RESPONSE(RESPONSE_ERROR_ACCESS, "access denied");
+        write_response(clnt, RESPONSE_ERROR_ACCESS, "access denied", 0);
         return 1;
     }
     return 0;
@@ -2330,7 +2324,7 @@ static int handle_bad_transaction_mode(struct sqlthdstate *thd,
                                        struct sqlclntstate *clnt)
 {
     logmsg(LOGMSG_ERROR, "unable to set_transaction_mode\n");
-    WRITE_RESPONSE(RESPONSE_ERROR_PREPARE, "Failed to set transaction mode");
+    write_response(clnt, RESPONSE_ERROR_PREPARE, "Failed to set transaction mode", 0);
     reqlog_logf(thd->logger, REQL_TRACE, "Failed to set transaction mode\n");
     if (put_curtran(thedb->bdb_env, clnt)) {
         logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
@@ -2593,15 +2587,15 @@ static void handle_expert_query(struct sqlthdstate *thd,
             sqlite3_expert_report(p, 0, EXPERT_REPORT_CANDIDATES);
         fprintf(stdout, "-- Candidates -------------------------------\n");
         fprintf(stdout, "%s\n", zCand);
-        WRITE_RESPONSE(RESPONSE_TRACE, "---------- Recommended Indexes --------------\n");
-        WRITE_RESPONSE(RESPONSE_TRACE, zCand);
-        WRITE_RESPONSE(RESPONSE_TRACE, "---------------------------------------------\n");
+        write_response(clnt, RESPONSE_TRACE, "---------- Recommended Indexes --------------\n", 0);
+        write_response(clnt, RESPONSE_TRACE, (void *)zCand, 0);
+        write_response(clnt, RESPONSE_TRACE, "---------------------------------------------\n", 0);
     } else {
         fprintf(stderr, "Error: %s\n", zErr ? zErr : "?");
-        WRITE_RESPONSE(RESPONSE_TRACE, zErr);
+        write_response(clnt, RESPONSE_TRACE, zErr, 0);
     }
-    WRITE_RESPONSE(RESPONSE_ROW_LAST_DUMMY, NULL);
-    WRITE_RESPONSE(RESPONSE_FLUSH, NULL);
+    write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
+    write_response(clnt, RESPONSE_FLUSH, NULL, 0);
     sqlite3_expert_destroy(p);
     sqlite3_free(zErr);
     clnt->no_transaction = 0;
@@ -2684,7 +2678,7 @@ static int send_columns(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt)
     if (clnt->osql.sent_column_data || skip_response(clnt))
         return 0;
     clnt->osql.sent_column_data = 1;
-    return WRITE_RESPONSE(RESPONSE_COLUMNS, stmt);
+    return write_response(clnt, RESPONSE_COLUMNS, stmt, 0);
 }
 
 static int send_row(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt,
@@ -2780,7 +2774,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
     test_no_btcursors(thd);
     if (clnt->client_understands_query_stats) {
         record_query_cost(thd->sqlthd, clnt);
-        WRITE_RESPONSE(RESPONSE_COST, 0);
+        write_response(clnt, RESPONSE_COST, 0, 0);
     } else if (clnt->get_cost) {
         if (clnt->prev_cost_string) {
             free(clnt->prev_cost_string);
@@ -2801,8 +2795,8 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
             if (postponed_write) {
                 send_row(clnt, NULL, row_id, 0, NULL);
             }
-            WRITE_RESPONSE(RESPONSE_EFFECTS, 0);
-            WRITE_RESPONSE(RESPONSE_ROW_LAST, 0);
+            write_response(clnt, RESPONSE_EFFECTS, 0, 0);
+            write_response(clnt, RESPONSE_ROW_LAST, 0, 0);
         }
     }
     return 0;
@@ -3004,9 +2998,9 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
             int irc = errstat_get_rc(&err);
             /* certain errors are saved, in that case we don't send anything */
             if (irc == ERR_PREPARE)
-                WRITE_RESPONSE(RESPONSE_ERROR_PREPARE, err.errstr);
+                write_response(clnt, RESPONSE_ERROR_PREPARE, err.errstr, 0);
             else if (irc == ERR_PREPARE_RETRY)
-                WRITE_RESPONSE(RESPONSE_ERROR_PREPARE_RETRY, err.errstr);
+                write_response(clnt, RESPONSE_ERROR_PREPARE_RETRY, err.errstr, 0);
             goto errors;
         }
 
@@ -3425,7 +3419,7 @@ static int send_heartbeat(struct sqlclntstate *clnt)
         return 0;
     }
 
-    WRITE_RESPONSE(RESPONSE_HEARTBEAT, 0);
+    write_response(clnt, RESPONSE_HEARTBEAT, 0, 0);
 
     return 0;
 }
