@@ -218,10 +218,10 @@ res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_dbname()"`
 assertres $res $dbnm
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 
+# this tests connecting to 'local'
 if [[ ! -n "$CLUSTER" ]]; then
-    lclhst=`hostname`
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm local "select comdb2_host()"`
-    assertres $res $lclhst
+    assertres $res $HOSTNAME
 fi
 
 for node in $cluster ; do

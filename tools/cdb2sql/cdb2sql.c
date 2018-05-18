@@ -538,6 +538,17 @@ static int process_escape(const char *cmdstr)
             fprintf(stderr, "unknown @ls sub-command %s\n", tok);
             return -1;
         }
+    } else if (strcasecmp(tok, "send") == 0) {
+        tok = strtok_r(NULL, "", &lasts); // get remainder of string
+        if (tok) {
+            int start_time_ms, run_time_ms;
+            char sql[1024];
+            snprintf(sql, sizeof(sql) - 1, "EXEC PROCEDURE sys.cmd.send('%s')", tok);
+            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+        } else {
+            fprintf(stderr, "need command to @send\n");
+            return -1;
+        }
     } else if ((strcasecmp(tok, "desc") == 0) || (strcasecmp(tok, "describe") == 0)) {
         tok = strtok_r(NULL, delims, &lasts);
         if (!tok) {
