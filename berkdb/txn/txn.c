@@ -853,7 +853,7 @@ int __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid, u_int32_t 
 
 /* This prevents dbreg logs from being logged between the LOCK_PUT_READ and
  * the commit record */
-extern pthread_mutex_t gbl_dbreg_log_lock;
+extern pthread_rwlock_t gbl_dbreg_log_lock;
 
 /*
  * __txn_commit --
@@ -998,7 +998,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			memset(&request, 0, sizeof(request));
 			memset(&list_dbt_rl, 0, sizeof(list_dbt_rl));
 
-            pthread_mutex_lock(&gbl_dbreg_log_lock);
+            pthread_rwlock_rdlock(&gbl_dbreg_log_lock);
 
 			if (LOCKING_ON(dbenv)) {
 				request.op = DB_LOCK_PUT_READ;
@@ -1041,7 +1041,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							     ltranid,
 							     begin_lsn,
 							     &lt)) != 0) {
-                            pthread_mutex_unlock(&gbl_dbreg_log_lock);
+                            pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 							goto err;
 						}
 					}
@@ -1051,7 +1051,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						    ltranid, &lt)) != 0) {
 						logmsg(LOGMSG_FATAL, "Couldn't find ltrans?");
 						abort();
-                        pthread_mutex_unlock(&gbl_dbreg_log_lock);
+                        pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 						goto err;
 					}
 
@@ -1139,7 +1139,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						    txnp->last_lsn.offset;
 					}
 				}
-                pthread_mutex_unlock(&gbl_dbreg_log_lock);
+                pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 
 				if (gbl_new_snapisol) {
 					if (!txnp->pglogs_hashtbl) {
