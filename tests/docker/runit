@@ -31,6 +31,19 @@ for node in $(seq 1 $numnodes); do
     cluster="$cluster m${node}"
 done
 
+if [[ -f /proc/sys/kernel/core_pattern ]]; then
+    # If core pattern is an absolute path, prepare to mount
+    abs=$(grep -c '^/' /proc/sys/kernel/core_pattern) || true
+    if [[ $abs -eq 0 ]]; then
+        coredir=$(cat /proc/sys/kernel/core_pattern)
+        mkdir -p common/cores/client
+        for node in $(seq 1 $numnodes); do
+            cluster="$cluster m${node}"
+            mkdir -p common/cores/m${node}
+        done
+    fi
+fi
+
 prefix="$(git --git-dir "$src/.git" rev-parse --short HEAD)"
 if [[ "$prefix" = "" ]]; then
     echo 'Could not get the revision.' >&2
@@ -62,6 +75,14 @@ services:
                 - REVISION=$prefix
         volumes:
             - ./common:/common
+EOF
+
+[[ "$coredir" != "" ]] || { cat > $compose <<EOF
+            - ./common/cores/client:$coredir
+EOF
+}
+
+cat > $compose <<EOF
         command: /client "$commands"
         cap_add:
             - SYS_PTRACE
@@ -78,6 +99,14 @@ cat >> $compose <<EOF
                 - REVISION=$prefix
         volumes:
             - ./common:/common
+EOF
+
+[[ "$coredir" != "" ]] || { cat > $compose <<EOF
+            - ./common/cores/$node:$coredir
+EOF
+
+}
+cat > $compose <<EOF
         command: /server
         cap_add:
             - SYS_PTRACE

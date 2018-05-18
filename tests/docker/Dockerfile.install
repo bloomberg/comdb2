@@ -46,7 +46,6 @@ RUN cd /comdb2 &&  \
     make -j4 && \
     make -j4 test-tools && \
     make install &&  \
-    cd /comdb2 &&  \
     cp /comdb2/tests/docker/client / && \
     cp /comdb2/tests/docker/server / && \
     apt-get clean
