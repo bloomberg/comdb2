@@ -8281,7 +8281,6 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
     const char blob_ext[] = ".blob";
     const char data_ext[] = ".data";
     const char index_ext[] = ".index";
-    DB_TXN *tid;
 
     DB_ENV *dbenv;
     DB *dbp;
@@ -8309,8 +8308,6 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
         return -1;
     }
 
-    bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
-
     while ((error = bb_readdir(dirp, buf, &ent)) == 0 && ent != NULL) {
         if (strlen(ent->d_name) > 5 &&
             (strstr(ent->d_name, blob_ext) || strstr(ent->d_name, data_ext) ||
@@ -8324,18 +8321,16 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
                 logmsg(LOGMSG_ERROR, "%s: filename too long to munge: %s\n",
                        __func__, ent->d_name);
                 closedir(dirp);
-                tid->abort(tid);
                 free(buf);
                 return -1;
             }
             pname = bdb_trans(munged_name, transname);
 
             if (db_create(&dbp, dbenv, 0) == 0 &&
-                dbp->open(dbp, tid, pname, NULL, DB_BTREE, 0, 0666) == 0) {
+                dbp->open(dbp, NULL, pname, NULL, DB_BTREE, 0, 0666) == 0) {
                 fileid = malloc(DB_FILE_ID_LEN);
                 if (fileid == NULL) {
                     closedir(dirp);
-                    tid->abort(tid);
                     free(buf);
                     return -1;
                 }
@@ -8352,7 +8347,6 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
         }
     }
 
-    tid->commit(tid, 0);
     closedir(dirp);
     free(buf);
 }
