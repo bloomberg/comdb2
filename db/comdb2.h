@@ -1331,6 +1331,8 @@ struct ireq {
     /* osql prefault step index */
     int *osql_step_ix;
 
+    tran_type *sc_logical_tran;
+    tran_type *sc_tran;
     struct schema_change_type *sc_pending;
     double cost;
     uint64_t sc_seed;

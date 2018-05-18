@@ -6552,7 +6552,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
-            void *ptran = bdb_get_physical_tran(trans);
             if (strcmp(iq->sc->original_master_node, gbl_mynode) != 0) {
                 return -1;
             }
@@ -6564,7 +6563,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 iq->sc_locked = 1;
             }
             if (iq->sc->db) iq->usedb = iq->sc->db;
-            rc = finalize_schema_change(iq, ptran);
+            rc = finalize_schema_change(iq, iq->sc_tran);
             iq->usedb = NULL;
             if (rc != SC_OK) {
                 return rc; // Change to failed schema change error;
@@ -6573,8 +6572,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         if (iq->tranddl) {
-            void *ptran = bdb_get_physical_tran(trans);
-            create_sqlmaster_records(ptran);
+            create_sqlmaster_records(iq->sc_tran);
             create_sqlite_master();
         }
 
@@ -6607,9 +6605,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         char *tablename;
 
         tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
-        bdb_lock_tablename_read(thedb->bdb_env, tablename,
-                                iq->tranddl ? bdb_get_physical_tran(trans)
-                                            : trans);
+        bdb_lock_tablename_read(thedb->bdb_env, tablename, trans);
 
         if (logsb) {
             sbuf2printf(logsb, "[%llu %s] OSQL_USEDB %*.s\n", rqid,
