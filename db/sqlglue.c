@@ -11584,26 +11584,19 @@ int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
 static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
                                      Mem *mout, int *exist)
 {
-    struct sqlclntstate clnt;
     struct schema_mem sm;
-    int rc;
-
     sm.sc = sc;
     sm.min = min;
     sm.mout = mout;
 
-    reset_clnt(&clnt, NULL, 1);
-    pthread_mutex_init(&clnt.wait_mutex, NULL);
-    pthread_cond_init(&clnt.wait_cond, NULL);
-    pthread_mutex_init(&clnt.write_lock, NULL);
-    pthread_mutex_init(&clnt.dtran_mtx, NULL);
+    struct sqlclntstate clnt;
+    start_internal_sql_clnt(&clnt);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
-    clr_high_availability(&clnt);
     clnt.sql = sql;
     clnt.verify_indexes = 1;
     clnt.schema_mems = &sm;
 
-    rc = dispatch_sql_query(&clnt);
+    int rc = dispatch_sql_query(&clnt);
 
     if (clnt.has_sqliterow)
         *exist = 1;
