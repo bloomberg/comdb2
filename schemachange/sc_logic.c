@@ -361,6 +361,8 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         wrlock_schema_lk();
         rc = do_finalize(post, iq, s, tran, type);
         unlock_schema_lk();
+        if (type == fastinit && gbl_replicate_local)
+            local_replicant_write_clear(iq, tran, s->db);
         broadcast_sc_end(s->table, iq->sc_seed);
     } else {
         rc = SC_COMMIT_PENDING;

@@ -799,7 +799,7 @@ int local_replicant_write_clear(struct ireq *in_iq, void *in_trans,
 
     table[31] = 0;
 
-    if (in_iq && in_trans) {
+    if (in_iq && !in_iq->is_fake && in_trans) {
         return add_oplog_entry(in_iq, in_trans, LCL_OP_CLEAR, table,
                                sizeof(table));
     }

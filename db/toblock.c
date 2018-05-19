@@ -4656,6 +4656,20 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
         }
 
+        if (iq->tranddl) {
+            if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog") &&
+                !gbl_replicate_local_concurrent) {
+                rc = get_next_seqno(trans, &seqno);
+                if (rc) {
+                    if (rc != RC_INTERNAL_RETRY)
+                        logmsg(LOGMSG_ERROR,
+                               "get_next_seqno unexpected rc %d\n", rc);
+                    BACKOUT;
+                }
+                p_blkstate->seqno = seqno;
+            }
+        }
+
         if (needbackout) {
             BACKOUT;
         }
@@ -5595,9 +5609,8 @@ add_blkseq:
                 if (hascommitlock) {
                     irc = pthread_rwlock_unlock(&commit_lock);
                     if (irc != 0) {
-                        logmsg(LOGMSG_FATAL, 
-                                "pthread_rwlock_unlock(&commit_lock) %d\n",
-                                irc);
+                        logmsg(LOGMSG_FATAL,
+                               "pthread_rwlock_unlock(&commit_lock) %d\n", irc);
                         exit(1);
                     }
                     hascommitlock = 0;
@@ -5663,7 +5676,8 @@ add_blkseq:
                 }
                 trans_abort_logical(iq, trans, NULL, 0, NULL, 0);
                 rc = RC_INTERNAL_RETRY;
-                if (block_state_restore(iq, p_blkstate)) return ERR_INTERNAL;
+                if (block_state_restore(iq, p_blkstate))
+                    return ERR_INTERNAL;
                 outrc = RC_INTERNAL_RETRY;
                 fromline = __LINE__;
                 goto cleanup;

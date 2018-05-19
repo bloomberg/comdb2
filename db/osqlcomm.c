@@ -6562,12 +6562,15 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 wrlock_schema_lk();
                 iq->sc_locked = 1;
             }
-            if (iq->sc->db) iq->usedb = iq->sc->db;
+            if (iq->sc->db)
+                iq->usedb = iq->sc->db;
             rc = finalize_schema_change(iq, iq->sc_tran);
             iq->usedb = NULL;
             if (rc != SC_OK) {
                 return rc; // Change to failed schema change error;
             }
+            if (iq->sc->fastinit && gbl_replicate_local)
+                local_replicant_write_clear(iq, trans, iq->sc->db);
             iq->sc = iq->sc->sc_next;
         }
 
