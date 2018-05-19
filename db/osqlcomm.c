@@ -6571,7 +6571,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             iq->sc = iq->sc->sc_next;
         }
 
-        if (iq->tranddl) {
+        if (iq->sc_pending) {
             create_sqlmaster_records(iq->sc_tran);
             create_sqlite_master();
         }

@@ -5080,8 +5080,9 @@ backout:
         if (osql_needtransaction != OSQL_BPLOG_NOTRANS) {
             int priority = 0;
 
+            int backout_schema_changes(struct ireq * iq, tran_type * tran);
             if (iq->tranddl) {
-                irc = trans_abort_priority(iq, iq->sc_tran, &priority);
+                irc = trans_abort(iq, iq->sc_tran);
                 if (irc != 0) {
                     fprintf(stderr, "TRANS_ABORT FAILED RC %d", rc);
                     comdb2_die(1);
@@ -5089,14 +5090,25 @@ backout:
                 iq->sc_tran = NULL;
 
                 /* Backout Schema Change */
+                if (!parent_trans)
+                    backout_schema_changes(iq, trans);
+                else {
+                    irc = trans_abort_priority(iq, trans, &priority);
+                    if (irc != 0) {
+                        fprintf(stderr, "TRANS_ABORT FAILED RC %d", rc);
+                        comdb2_die(1);
+                    }
+                    trans = NULL;
+                    backout_schema_changes(iq, parent_trans);
+                }
+            } else {
+                irc = trans_abort_priority(iq, trans, &priority);
+                if (irc != 0) {
+                    fprintf(stderr, "TRANS_ABORT FAILED RC %d", rc);
+                    comdb2_die(1);
+                }
+                trans = NULL;
             }
-
-            irc = trans_abort_priority(iq, trans, &priority);
-            if (irc != 0) {
-                fprintf(stderr, "TRANS_ABORT FAILED RC %d", rc);
-                comdb2_die(1);
-            }
-            trans = NULL;
 
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
