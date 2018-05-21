@@ -14540,6 +14540,7 @@ int get_type(struct param_data *param, void *p, int len, int type,
     if (!little)
 #   endif
         flip = 1;
+    param->null = 0;
     switch (type) {
     case CLIENT_INT:
     case CLIENT_UINT:
