@@ -6876,8 +6876,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             }
         }
 
-        if (genid != newgenid)
-            printf("AZ: updating record with genid=0x%llx\n", newgenid);
         rc = upd_record(
             iq, trans, NULL, rrn, genid, tag_name_ondisk,
             tag_name_ondisk + tag_name_ondisk_len, /*tag*/
@@ -6896,9 +6894,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                             it erase any blobs that haven't been
                                             collected. */
             );
-
-        printf("AZ: after upd_record genid=0x%llx\n", newgenid);
-        genid = newgenid;
 
         free_blob_buffers(blobs, MAXBLOBS);
         if (iq->idxInsert || iq->idxDelete) {

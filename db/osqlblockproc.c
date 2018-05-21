@@ -784,10 +784,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             buf_no_net_get(&genid, sizeof(genid), p_buf, p_buf_end);
             key.blborder = 1; //updrec/insrec will come after qblob when processing
             printf("AZ: Receiving genid 0x%llx\n", genid);
-            /* check if we need a new genid, like in ll_dta_upd_int() */
-            
-            extern void get_new_genid_on_update(bdb_state_type *bdb_state, unsigned long long *genid);
-            get_new_genid_on_update(iq->usedb->handle, &genid);
             key.genid = genid;
             key.stripe = get_dtafile_from_genid(key.genid);
             sess->last_genid = key.genid;
