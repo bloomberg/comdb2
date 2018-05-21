@@ -568,7 +568,7 @@ static int process_escape(const char *cmdstr)
             char sql[200];
             FILE *out = stdout;
 
-            if (printmode & STDERR)
+            if (printmode & DISP_STDERR)
                 out = stderr;
 
             fprintf(out, "Columns:\n");
