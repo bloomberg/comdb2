@@ -800,6 +800,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             /* blob needs to get the genid of the previous insrec */
             key.genid = sess->last_genid;
             key.stripe = get_dtafile_from_genid(key.genid);
+        } else if (type == OSQL_DELIDX || type == OSQL_INSIDX || type == OSQL_UPDCOLS) {
+            /* part idx and updcol needs to get the genid of the previous insrec */
+            key.genid = sess->last_genid;
         }
     }
     else {

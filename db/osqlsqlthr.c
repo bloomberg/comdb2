@@ -66,11 +66,11 @@ static int osql_send_usedb_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                  int nettype);
 static int osql_send_delrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype);
-static int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
+int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype);
 static int osql_send_insrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   char *pData, int nData, int nettype);
-static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
+int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype);
 static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   char *pData, int nData, int nettype);
@@ -105,21 +105,21 @@ int g_osql_max_trans = 50000;
  * Set maximum osql transaction size
  *
  */
-void set_osql_maxtransfer(int limit) { g_osql_max_trans = limit; }
+inline void set_osql_maxtransfer(int limit) { g_osql_max_trans = limit; }
 
 /**
  * Get maximum osql transaction size
  *
  */
-int get_osql_maxtransfer(void) { return g_osql_max_trans; }
+inline int get_osql_maxtransfer(void) { return g_osql_max_trans; }
 
 /**
  * Set the maximum time throttling offload-sql requests
  *
  */
-void set_osql_maxthrottle_sec(int limit) { gbl_osql_max_throttle_sec = limit; }
+inline void set_osql_maxthrottle_sec(int limit) { gbl_osql_max_throttle_sec = limit; }
 
-int get_osql_maxthrottle_sec(void) { return gbl_osql_max_throttle_sec; }
+inline int get_osql_maxthrottle_sec(void) { return gbl_osql_max_throttle_sec; }
 
 /**
  * Process a sqlite index delete request
@@ -127,7 +127,7 @@ int get_osql_maxthrottle_sec(void) { return gbl_osql_max_throttle_sec; }
  * Returns SQLITE_OK if successful.
  *
  */
-int osql_delidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
+inline int osql_delidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
 {
     int rc = 0;
 
@@ -146,6 +146,10 @@ int osql_delidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
         return osql_save_index(pCur, thd, is_update, 1);
 }
 
+#define RETURN_IF_RC_NOT_OK \
+        if (rc != SQLITE_OK) \
+            return rc;
+
 /**
  * Process a sqlite delete row request
  * BtCursor points to the record to be deleted.
@@ -160,13 +164,13 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
         return rc;
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
-        if (rc != SQLITE_OK) 
-            return rc;
+        RETURN_IF_RC_NOT_OK
     }
 
-    rc = osql_delidx(pCur, thd, 0);
-    if (rc != SQLITE_OK)
-        return rc;
+    if (!gbl_reorder_blkseq_no_deadlock) {
+        rc = osql_delidx(pCur, thd, 0);
+        RETURN_IF_RC_NOT_OK
+    }
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_delrec(pCur, thd);
@@ -176,9 +180,18 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
                     __FILE__, __LINE__, __func__, rc);
         }
 
-        return osql_send_delrec_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+        rc = osql_send_delrec_logic(pCur, thd, NET_OSQL_SOCK_RPL);
     } else
-        return osql_save_delrec(pCur, thd);
+        rc = osql_save_delrec(pCur, thd);
+
+    RETURN_IF_RC_NOT_OK
+
+    if (gbl_reorder_blkseq_no_deadlock) {
+        rc = osql_delidx(pCur, thd, 0);
+        RETURN_IF_RC_NOT_OK
+    }
+
+    return rc;
 }
 
 /**
@@ -188,7 +201,7 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
  *
  */
 
-int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
+inline int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                  int nData, int nStat)
 {
     return osql_send_updstat_logic(pCur, thd, pData, nData, nStat,
@@ -201,7 +214,7 @@ int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
  * Returns SQLITE_OK if successful.
  *
  */
-int osql_insidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
+inline int osql_insidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
 {
     int rc = 0;
 
@@ -236,18 +249,15 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
-        if (rc != SQLITE_OK) 
-            return rc;
+        RETURN_IF_RC_NOT_OK
     }
 
-    rc = osql_insidx(pCur, thd, 0);
-    if (rc != SQLITE_OK)
-        return rc;
-
     if (!gbl_reorder_blkseq_no_deadlock) {
+        rc = osql_insidx(pCur, thd, 0);
+        RETURN_IF_RC_NOT_OK
+
         rc = osql_qblobs(pCur, thd, NULL, blobs, maxblobs, 0);
-        if (rc != SQLITE_OK)
-            return rc;
+        RETURN_IF_RC_NOT_OK
     }
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
@@ -263,11 +273,14 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     } else
         rc = osql_save_insrec(pCur, thd, pData, nData);
 
-    if (rc != SQLITE_OK)
-        return rc;
+    RETURN_IF_RC_NOT_OK
 
     if (gbl_reorder_blkseq_no_deadlock) {
+        rc = osql_insidx(pCur, thd, 0);
+        RETURN_IF_RC_NOT_OK
+
         rc = osql_qblobs(pCur, thd, NULL, blobs, maxblobs, 0);
+        RETURN_IF_RC_NOT_OK
     }
     return rc;
 }
@@ -288,29 +301,25 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         return rc;
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
-        if (rc != SQLITE_OK) 
-            return rc;
+        RETURN_IF_RC_NOT_OK
     }
-
-    rc = osql_delidx(pCur, thd, 1);
-    if (rc != SQLITE_OK)
-        return rc;
-
-    rc = osql_insidx(pCur, thd, 1);
-    if (rc != SQLITE_OK)
-        return rc;
 
     if (!gbl_reorder_blkseq_no_deadlock) {
+        rc = osql_delidx(pCur, thd, 1);
+        RETURN_IF_RC_NOT_OK
+
+        rc = osql_insidx(pCur, thd, 1);
+        RETURN_IF_RC_NOT_OK
+
         rc = osql_qblobs(pCur, thd, updCols, blobs, maxblobs, 1);
-        if (rc != SQLITE_OK)
-            return rc;
+        RETURN_IF_RC_NOT_OK
+
+        if (updCols) {
+            rc = osql_updcols(pCur, thd, updCols);
+            RETURN_IF_RC_NOT_OK
+        }
     }
 
-    if (updCols) {
-        rc = osql_updcols(pCur, thd, updCols);
-        if (rc != SQLITE_OK)
-            return rc;
-    }
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_updrec(pCur, thd, pData, nData);
@@ -325,11 +334,22 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     } else
         rc = osql_save_updrec(pCur, thd, pData, nData);
 
-    if (rc != SQLITE_OK)
-        return rc;
+    RETURN_IF_RC_NOT_OK
 
     if (gbl_reorder_blkseq_no_deadlock) {
+        rc = osql_delidx(pCur, thd, 1);
+        RETURN_IF_RC_NOT_OK
+
+        rc = osql_insidx(pCur, thd, 1);
+        RETURN_IF_RC_NOT_OK
+
         rc = osql_qblobs(pCur, thd, updCols, blobs, maxblobs, 1);
+        RETURN_IF_RC_NOT_OK
+
+        if (updCols) {
+            rc = osql_updcols(pCur, thd, updCols);
+            RETURN_IF_RC_NOT_OK
+        }
     }
     return rc;
 }
@@ -1114,7 +1134,7 @@ static int osql_send_delrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
     return rc;
 }
 
-static int osql_send_updstat_logic(struct BtCursor *pCur,
+inline int osql_send_updstat_logic(struct BtCursor *pCur,
                                    struct sql_thread *thd, char *pData,
                                    int nData, int nStat, int nettype)
 {
@@ -1129,7 +1149,7 @@ static int osql_send_updstat_logic(struct BtCursor *pCur,
     return rc;
 }
 
-static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
+inline int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype)
 {
     struct sqlclntstate *clnt = thd->clnt;
@@ -1156,7 +1176,7 @@ static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
     return rc;
 }
 
-static int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
+int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype)
 {
     struct sqlclntstate *clnt = thd->clnt;
