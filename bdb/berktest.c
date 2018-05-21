@@ -94,7 +94,7 @@ static void close_tables(berktable_t *tables, int tablecount)
     for (i = 0; i < tablecount; i++) {
         table = &tables[i];
         if (table->dbp) {
-            if ((rc = table->dbp->close(table->dbp, NULL, 0)) != 0) {
+            if ((rc = table->dbp->close(table->dbp, 0)) != 0) {
                 logmsg(LOGMSG_ERROR, "%s close error: %d\n", __func__, rc);
                 continue;
             }
