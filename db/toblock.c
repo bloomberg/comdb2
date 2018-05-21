@@ -4859,8 +4859,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                       &(iq->selectv_arr->offset), 1))) {
             irc = pthread_rwlock_unlock(&commit_lock);
             if (irc != 0) {
-                fprintf(stderr, "pthread_rwlock_unlock(&commit_lock) %d\n",
-                        irc);
+                logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&commit_lock) %d\n",
+                       irc);
                 exit(1);
             }
             hascommitlock = 0;
@@ -4891,8 +4891,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             } else {
                 irc = pthread_rwlock_wrlock(&commit_lock);
                 if (irc != 0) {
-                    fprintf(stderr, "pthread_rwlock_wrlock(&commit_lock) %d\n",
-                            irc);
+                    logmsg(LOGMSG_FATAL,
+                           "pthread_rwlock_wrlock(&commit_lock) %d\n", irc);
                     exit(1);
                 }
                 hascommitlock = 1;
@@ -4928,7 +4928,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         /*fprintf(stderr, "commit child\n");*/
         irc = trans_commit(iq, trans, source_host);
         if (irc != 0) { /* this shouldnt happen */
-            fprintf(stderr, "TRANS_COMMIT FAILED RC %d", rc);
+            logmsg(LOGMSG_FATAL, "%s:%d TRANS_COMMIT FAILED RC %d", __func__,
+                   __LINE__, irc);
             comdb2_die(0);
         }
         trans = NULL;
@@ -4936,7 +4937,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (iq->tranddl) {
             irc = trans_commit(iq, iq->sc_tran, source_host);
             if (irc != 0) { /* this shouldnt happen */
-                fprintf(stderr, "TRANS_COMMIT FAILED RC %d", rc);
+                logmsg(LOGMSG_FATAL, "%s:%d TRANS_COMMIT FAILED RC %d",
+                       __func__, __LINE__, irc);
                 comdb2_die(0);
             }
             iq->sc_tran = NULL;
@@ -5050,8 +5052,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
 backout:
     if (gbl_verbose_toblock_backouts)
-        fprintf(stderr, "Backing out, rc=%d outrc=%d from line %d\n", rc, outrc,
-                fromline);
+        logmsg(LOGMSG_ERROR, "Backing out, rc=%d outrc=%d from line %d\n", rc,
+               outrc, fromline);
 
     backed_out = 1;
 
@@ -5098,7 +5100,8 @@ backout:
             if (iq->tranddl) {
                 irc = trans_abort(iq, iq->sc_tran);
                 if (irc != 0) {
-                    fprintf(stderr, "TRANS_ABORT FAILED RC %d", rc);
+                    logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
+                           __func__, __LINE__, irc);
                     comdb2_die(1);
                 }
                 iq->sc_tran = NULL;
@@ -5109,7 +5112,8 @@ backout:
                 else {
                     irc = trans_abort_priority(iq, trans, &priority);
                     if (irc != 0) {
-                        fprintf(stderr, "TRANS_ABORT FAILED RC %d", rc);
+                        logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
+                               __func__, __LINE__, irc);
                         comdb2_die(1);
                     }
                     trans = NULL;
@@ -5118,7 +5122,8 @@ backout:
             } else {
                 irc = trans_abort_priority(iq, trans, &priority);
                 if (irc != 0) {
-                    fprintf(stderr, "TRANS_ABORT FAILED RC %d", rc);
+                    logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
+                           __func__, __LINE__, irc);
                     comdb2_die(1);
                 }
                 trans = NULL;
@@ -5127,10 +5132,10 @@ backout:
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
                 if (verbose_deadlocks)
-                    fprintf(stderr,
-                            "%x %s:%d Setting iq %p priority from %d to %d\n",
-                            (int)pthread_self(), __FILE__, __LINE__, iq,
-                            iq->priority, priority);
+                    logmsg(LOGMSG_ERROR,
+                           "%x %s:%d Setting iq %p priority from %d to %d\n",
+                           (int)pthread_self(), __FILE__, __LINE__, iq,
+                           iq->priority, priority);
 
                 if (((unsigned)priority) == UINT_MAX) {
                     /*
@@ -5152,8 +5157,8 @@ backout:
             assert(trans == NULL);
 
         if (rc == ERR_UNCOMMITABLE_TXN /*&& is_block2sqlmode_blocksql*/) {
-            fprintf(
-                stderr,
+            logmsg(
+                LOGMSG_ERROR,
                 "Forced VERIFY-FAIL for uncommitable blocksql transaction\n");
             if (is_block2sqlmode_blocksql) {
                 err.errcode = OP_FAILED_VERIFY;
@@ -5167,13 +5172,13 @@ backout:
             iq->sorese.verify_retries++;
 
             if (iq->sorese.verify_retries > gbl_osql_verify_retries_max) {
-                fprintf(stderr,
-                        "Blocksql request repeated too many times (%d)\n",
-                        iq->sorese.verify_retries);
+                logmsg(LOGMSG_ERROR,
+                       "Blocksql request repeated too many times (%d)\n",
+                       iq->sorese.verify_retries);
             } else {
-                fprintf(stderr,
-                        "Repeating VERIFY for blocksql transaction %d\n",
-                        iq->sorese.verify_retries);
+                logmsg(LOGMSG_ERROR,
+                       "Repeating VERIFY for blocksql transaction %d\n",
+                       iq->sorese.verify_retries);
                 /* We want to repeat offloading the session */
                 iq->sorese.osql_retry =
                     0; /* this will let us repeat offloading */
