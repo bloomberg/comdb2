@@ -3499,7 +3499,7 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
     }
 
     if (rc)
-        logmsg(LOGMSG_ERROR, "%s:%s offload_net_send returns rc=%d\n",
+        logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n",
                __func__, rc);
 
     return rc;
