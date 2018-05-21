@@ -197,8 +197,10 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     }
     if (running) {
         /* this is an osql replay of a resuming schema change */
-        if (sctbl)
+        if (sctbl) {
+            pthread_mutex_unlock(&schema_change_in_progress_mutex);
             return 0;
+        }
         if (table) {
             sctbl = calloc(1, offsetof(sc_table_t, mem) + strlen(table) + 1);
             assert(sctbl);
