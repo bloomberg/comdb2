@@ -6177,6 +6177,7 @@ void *exec_trigger(trigger_reg_t *reg)
     clnt.sql = sql;
     clnt.trans_has_sp = 1;
 
+    thread_memcreate(128 * 1024);
     struct sqlthdstate thd;
     sqlengine_thd_start(NULL, &thd, THRTYPE_TRIGGER);
     thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
@@ -6247,7 +6248,9 @@ void *exec_trigger(trigger_reg_t *reg)
     }
     close_sp(&clnt);
     cleanup_clnt(&clnt);
+    thd.sqlthd->clnt = NULL;
     sqlengine_thd_end(NULL, &thd);
+    thread_memdestroy();
     return NULL;
 }
 
