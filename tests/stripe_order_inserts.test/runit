@@ -110,14 +110,16 @@ for i in `seq 1 $N` ; do
 done
 
 
+counter="0x11"
+[ -n "$CLUSTER" ] && counter="0x16"
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_genidinfo(comdb2_rowid) from t1 where i=1'`
-assertres "$res"  "counter=0x11, updateid=0, stripe=1"
+assertres "$res"  "counter=$counter, updateid=0, stripe=1"
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'update t1 set i=i where i=1'
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_genidinfo(comdb2_rowid) from t1 where i=1'`
-assertres "$res"  "counter=0x11, updateid=1, stripe=1"
+assertres "$res"  "counter=$counter, updateid=1, stripe=1"
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'update t1 set i=i where i=1'
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_genidinfo(comdb2_rowid) from t1 where i=1'`
-assertres "$res"  "counter=0x11, updateid=2, stripe=1"
+assertres "$res"  "counter=$counter, updateid=2, stripe=1"
 
 
 call_unsetup 1
