@@ -247,17 +247,24 @@ if [[ -z "$CLUSTER" ]]; then
     fi
 
     echo "!$TESTCASE: starting single node"
-    ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/$DBNAME.pid &> $TESTDIR/logs/${DBNAME}.db &
+    ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
     dbpid=$!
 
     set +e
+
+    kill -0 `cat ${TMPDIR}/${DBNAME}.pid` > /dev/null
+    if [ $? -eq 1 ] ; then
+        echo "pid ${TMPDIR}/${DBNAME}.pid: `cat ${TMPDIR}/${DBNAME}.pid` is not alive"
+        check_db_port_running_local # this error is immediate so we should be able to catch it early
+    fi
+
     out=
     # wait until we can query it
     echo "!$TESTCASE: waiting until ready"
     while [[ "$out" != "1" ]]; do
         sleep 1
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2> /dev/null)
-        [[ "$out" != "1" ]] && check_db_port_running_local
+        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME 'select 1' &> $TESTDIR/logs/${DBNAME}.conn
     done
 else
     echo "!$TESTCASE: copying to cluster"
