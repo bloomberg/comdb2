@@ -7,7 +7,7 @@ if [[ -z $dbname ]] ; then
     exit 1
 fi
 
-for testreq in `find . -name 't[0-9][0-9].sql'` ; do
+for testreq in `find . -name 't[0-9][0-9].sql' -exec basename {} \;` ; do
     testname=`echo $testreq | cut -d "." -f 1`
     cmd="cdb2sql -s -f $testreq ${CDB2_OPTIONS} $dbname default "
     echo $cmd "> $testname.output"
@@ -27,13 +27,13 @@ for testreq in `find . -name 't[0-9][0-9].sql'` ; do
     fi
 done
 
-for testreq in `find . -name 't[0-9][0-9].tab.sql'` ; do
+for testreq in `find . -name 't[0-9][0-9].tab.sql' -exec basename {} \;` ; do
     testname=`echo $testreq | cut -d "." -f 1`
     cmd="cdb2sql -s -f $testreq ${CDB2_OPTIONS} -tabular $dbname default "
     echo $cmd "> $testname.output"
     $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/; s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;" > $testname.output
 
-    cmd="diff $testname.expected $testname.output"
+    cmd="diff $testname.tab.expected $testname.output"
     $cmd > /dev/null
 
     if [[  $? -eq 0 ]]; then
