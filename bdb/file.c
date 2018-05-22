@@ -7745,7 +7745,7 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
             file_version = p_file_version_num_type.version_num;
         }
 
-        if (file_version)
+        if (!file_version)
             continue;
 
         /* brute force scan to find any files on disk that we aren't
@@ -7778,9 +7778,11 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                 rc = bdb_get_file_version_data(bdb_state, tran, i, &version_num,
                                                bdberr);
             }
-            if (rc == 0 && version_num == file_version) {
-                found_in_llmeta = 1;
-                break;
+            if (rc == 0) {
+                if (version_num == file_version) {
+                    found_in_llmeta = 1;
+                    break;
+                }
             } else if (rc == 1) {
                 /* table doesnt exist in llmeta, not an error */
                 *bdberr = BDBERR_NOERROR;
@@ -7796,8 +7798,10 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
             rc = bdb_get_file_version_index(bdb_state, tran, i /*dtanum*/,
                                             &version_num, bdberr);
             if (rc == 0) {
-                if (version_num == file_version)
+                if (version_num == file_version) {
                     found_in_llmeta = 1;
+                    break;
+                }
             } else if (rc == 1) {
                 /* table doesnt exist in llmeta, not an error */
                 *bdberr = BDBERR_NOERROR;
