@@ -296,9 +296,6 @@ DEF_ATTR(
 DEF_ATTR(MIN_KEEP_LOGS_AGE_HWM, min_keep_logs_age_hwm, QUANTITY, 0, NULL)
 DEF_ATTR(LOG_DEBUG_CTRACE_THRESHOLD, log_debug_ctrace_threshold, QUANTITY, 20,
          "Limit trace about log file deletion to this many events.")
-DEF_ATTR(GOOSE_REPLICATION_FOR_INCOHERENT_NODES,
-         goose_replication_for_incoherent_nodes, BOOLEAN, 0,
-         "Call for election for nodes affected by COMMITDELAYBEHINDTHRESH.")
 DEF_ATTR(DISABLE_UPDATE_STRIPE_CHANGE, disable_update_stripe_change, BOOLEAN, 1,
          "Enable to move records between stripes on an update.")
 DEF_ATTR(REP_SKIP_PHASE_3, rep_skip_phase_3, BOOLEAN, 0, NULL)

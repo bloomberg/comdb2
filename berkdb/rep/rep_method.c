@@ -41,7 +41,7 @@ int gbl_rep_method_max_sleep_cnt = 0;
 static int __rep_abort_prepared __P((DB_ENV *));
 static int __rep_bt_cmp __P((DB *, const DBT *, const DBT *));
 static int __rep_client_dbinit __P((DB_ENV *, int));
-static int __rep_elect __P((DB_ENV *, int, int, u_int32_t, char **));
+static int __rep_elect __P((DB_ENV *, int, int, u_int32_t, u_int32_t *, char **));
 static int __rep_elect_init
 __P((DB_ENV *, DB_LSN *, int, int, int *, u_int32_t *));
 static int __rep_flush __P((DB_ENV *));
@@ -55,7 +55,7 @@ static int __rep_set_rep_transport __P((DB_ENV *, char *,
 static int __rep_set_check_standalone __P((DB_ENV *, int (*)(DB_ENV *)));
 static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
-static int __rep_start __P((DB_ENV *, DBT *, u_int32_t));
+static int __rep_start __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 static int __rep_stat __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
 static int __rep_wait __P((DB_ENV *, u_int32_t, char **, u_int32_t));
 
@@ -168,9 +168,10 @@ __rep_open(dbenv)
  * during a synchronizing recovery.
  */
 static int
-__rep_start(dbenv, dbt, flags)
+__rep_start(dbenv, dbt, gen, flags)
 	DB_ENV *dbenv;
 	DBT *dbt;
+    u_int32_t gen;
 	u_int32_t flags;
 {
 	DB_LOG *dblp;
@@ -319,8 +320,11 @@ __rep_start(dbenv, dbt, flags)
 				 * There could have been any number of failed
 				 * elections, so jump the gen if we need to now.
 				 */
-				if (rep->egen > rep->gen)
-					rep->gen = rep->egen;
+                if (gen != 0)
+                    rep->gen = gen;
+                else if (rep->egen > rep->gen)
+                    rep->gen = rep->egen;
+
 				redo_prepared = 1;
 			} else if (rep->gen == 0)
 				rep->gen = rep->recover_gen + 1;
@@ -876,10 +880,11 @@ extern void send_master_req(DB_ENV *dbenv, const char *func, int line);
  *	a new master.
  */
 static int
-__rep_elect(dbenv, nsites, priority, timeout, eidp)
+__rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 	DB_ENV *dbenv;
 	int nsites, priority;
 	u_int32_t timeout;
+    u_int32_t *newgen;
 	char **eidp;
 {
 	DB_LOG *dblp;
@@ -892,6 +897,8 @@ __rep_elect(dbenv, nsites, priority, timeout, eidp)
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv, dbenv->rep_handle, "rep_elect", DB_INIT_REP);
+
+    *newgen = 0;
 
 	/* Error checking. */
 	if (nsites <= 0) {
@@ -1049,6 +1056,9 @@ restart:
 #endif
 		goto restart;
 	}
+
+    *newgen = egen;
+
 	if (rep->sites > rep->nsites / 2) {
 
 		/* We think we've seen enough to cast a vote. */
@@ -1354,9 +1364,10 @@ __rep_get_eid(dbenv, eid_out)
  *	Fetch replication statistics.
  */
 int
-__rep_get_master(dbenv, master_out, egen)
+__rep_get_master(dbenv, master_out, gen, egen)
 	DB_ENV *dbenv;
 	char **master_out;
+	u_int32_t *gen;
 	u_int32_t *egen;
 {
 	char *master = db_eid_invalid;
@@ -1394,6 +1405,10 @@ __rep_get_master(dbenv, master_out, egen)
 #endif
 
 	master = rep->master_id;
+
+    if (gen)
+        *gen = rep->gen;
+
 	if (egen)
 		*egen = rep->egen;
 

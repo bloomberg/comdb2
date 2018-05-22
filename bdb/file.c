@@ -1885,7 +1885,7 @@ static int print_catchup_message(bdb_state_type *bdb_state, int phase,
                     logmsg(LOGMSG_WARN, "I AM NOT MAKING ANY PROGRESS.\n");
             } else {
                 rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
-                                                 DB_REP_CLIENT);
+                                                 0, DB_REP_CLIENT);
 
                 logmsg(LOGMSG_WARN, "I AM FALLING FURTHER BEHIND THE MASTER NODE.\n"); 
             }
@@ -2734,7 +2734,7 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
     start_udp_reader(bdb_state);
 
     if (startasmaster) {
-        rc = dbenv->rep_start(dbenv, NULL, DB_REP_MASTER);
+        rc = dbenv->rep_start(dbenv, NULL, 0, DB_REP_MASTER);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "dbenv_open: rep_start as master failed %d %s\n",
                     rc, db_strerror(rc));
@@ -2744,7 +2744,7 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
     } else /* we start as a client */
     {
         /*fprintf(stderr, "dbenv_open: starting rep as client\n");*/
-        rc = dbenv->rep_start(dbenv, NULL, DB_REP_CLIENT);
+        rc = dbenv->rep_start(dbenv, NULL, 0, DB_REP_CLIENT);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "dbenv_open: rep_start as client failed %d %s\n",
                     rc, db_strerror(rc));
@@ -4650,7 +4650,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
     }
 
     /* now become a client of the replication group */
-    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, DB_REP_CLIENT);
+    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_CLIENT);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "rep_start as client failed\n");
         outrc = 1;
@@ -4718,7 +4718,7 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
 
     /* now become a client of the replication group */
     logmsg(LOGMSG_INFO, "downgrade: starting rep as client\n");
-    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, DB_REP_CLIENT);
+    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_CLIENT);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "rep_start as client failed\n");
         outrc = 1;
@@ -4741,7 +4741,7 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
 void defer_commits_for_upgrade(bdb_state_type *bdb_state, const char *host,
                                const char *func);
 
-static int bdb_upgrade_int(bdb_state_type *bdb_state, int *upgraded)
+static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen, int *upgraded)
 {
     int rc;
     int outrc;
@@ -4769,7 +4769,7 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, int *upgraded)
            set the master ! which unlocks the bdb_open_env or open_bdb_env,
            and db comes up finally.
         */
-        rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, DB_REP_MASTER);
+        rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, newgen, DB_REP_MASTER);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "rep_start failed rc %d\n", rc);
             return -1;
@@ -4819,7 +4819,7 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, int *upgraded)
     }
     Pthread_mutex_unlock(&(bdb_state->children_lock));
 
-    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, DB_REP_MASTER);
+    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, newgen, DB_REP_MASTER);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "rep_start failed rc %d\n", rc);
         return 1;
@@ -4872,7 +4872,7 @@ void *dummy_add_thread(void *arg);
 void bdb_all_incoherent(bdb_state_type *bdb_state);
 
 static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
-                                             int timeout, int *done)
+                                             int timeout, uint32_t newgen, int *done)
 {
     int rc;
     char *lock_str;
@@ -4961,7 +4961,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
 
     case UPGRADE:
         logmsg(LOGMSG_DEBUG, "calling bdb_upgrade_int\n");
-        rc = bdb_upgrade_int(bdb_state, done);
+        rc = bdb_upgrade_int(bdb_state, newgen, done);
         logmsg(LOGMSG_DEBUG, "back from bdb_upgrade_int\n");
 
         {
@@ -4988,7 +4988,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
     return rc;
 }
 
-int bdb_upgrade(bdb_state_type *bdb_state, int *done)
+int bdb_upgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done)
 {
     int i;
 
@@ -5007,24 +5007,24 @@ int bdb_upgrade(bdb_state_type *bdb_state, int *done)
         bdb_state->seqnum_info->seqnums[i].lsn.file = 0;
     }
 
-    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, UPGRADE, 30, done);
+    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, UPGRADE, 30, newgen, done);
 }
 
 int bdb_downgrade(bdb_state_type *bdb_state, int *done)
 {
-    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, DOWNGRADE, 5, done);
+    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, DOWNGRADE, 5, 0, done);
 }
 
 int bdb_downgrade_noelect(bdb_state_type *bdb_state)
 {
     return bdb_upgrade_downgrade_reopen_wrap(bdb_state, DOWNGRADE_NOELECT, 5,
-                                             NULL);
+                                             0, NULL);
 }
 
 /* not intended to be called by anyone but elect thread */
 int bdb_reopen_inline(bdb_state_type *bdb_state)
 {
-    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, REOPEN, 5, NULL);
+    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, REOPEN, 5, 0, NULL);
 }
 
 extern pthread_key_t lockmgr_key;
@@ -5685,15 +5685,18 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
          */
         BDB_WRITELOCK("bdb_open_int");
 
-        if (net_get_mynode(bdb_state->repinfo->netinfo) ==
-            bdb_state->repinfo->master_host) {
+        char *master;
+        int gen, egen;
+
+        if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) == 0 && 
+                net_get_mynode(bdb_state->repinfo->netinfo) == master) {
             logmsg(LOGMSG_INFO, "%s:%d read_write = 1\n", __FILE__, __LINE__);
             iammaster = 1;
         } else
             iammaster = 0;
 
         if (is_real_netinfo(bdb_state->repinfo->netinfo) && iammaster) {
-            rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
+            rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, gen,
                                              DB_REP_MASTER);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "rep_start as master failed %d %s\n", rc,

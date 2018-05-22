@@ -1173,7 +1173,7 @@ void *myrealloc(void *ptr, size_t size);
 
 void bdb_get_txn_stats(bdb_state_type *bdb_state, int *txn_commits);
 
-int bdb_upgrade(bdb_state_type *bdb_state, int *done);
+int bdb_upgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done);
 int bdb_downgrade(bdb_state_type *bdb_state, int *done);
 int bdb_downgrade_noelect(bdb_state_type *bdb_state);
 int get_seqnum(bdb_state_type *bdb_state, const char *host);

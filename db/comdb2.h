@@ -822,7 +822,7 @@ struct dbenv {
     void *bdb_callback; /*engine callbacks */
 
     char *master; /*current master node, from callback*/
-    int egen;     /*election generation for current master node*/
+    int gen;      /*election generation for current master node*/
 
     int cacheszkb;
     int cacheszkbmin;
