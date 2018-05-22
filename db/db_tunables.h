@@ -32,6 +32,11 @@ REGISTER_TUNABLE("allow_lua_print", "Enable to allow stored "
                                     "DB's stdout. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_lua_print, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_lua_dynamic_libs",
+                 "Enable to allow use of dynamic "
+                 "libraries (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_allow_lua_dynamic_libs, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_portmux_route", NULL, TUNABLE_BOOLEAN,
                  &gbl_pmux_route_enabled, READONLY | NOARG | READEARLY, NULL,
                  NULL, NULL, NULL);
