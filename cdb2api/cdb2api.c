@@ -5318,6 +5318,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
 
     if (log_calls) {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
         fprintf(stderr, "%p> cdb2_open(dbname: \"%s\", type: \"%s\", flags: "
                         "%x) = %d => %p\n",
                 (void *)pthread_self(), dbname, type, hndl->flags, rc, *handle);
