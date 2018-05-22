@@ -2906,7 +2906,7 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
             return ERR_SC;
         } else if (packed_sc_key[1] >= 0) {
             rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, sc->table,
-                                 NET_OSQL_BLOCK_RPL_UUID, osql->logsb,
+                                 NET_OSQL_SOCK_RPL, osql->logsb,
                                  packed_sc_key[1]);
             if (rc) {
                 logmsg(LOGMSG_ERROR,
@@ -2917,7 +2917,7 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
         }
 
         rc = osql_send_schemachange(osql->host, osql->rqid, osql->uuid, sc,
-                                    NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+                                    NET_OSQL_SOCK_RPL, osql->logsb);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: error writting record to master in offload mode!\n",

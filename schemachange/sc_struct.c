@@ -336,8 +336,6 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
 
     if (p_buf >= p_buf_end) return NULL;
 
-    bzero(s, sizeof(struct schema_change_type));
-
     p_buf = (uint8_t *)buf_get(&s->rqid, sizeof(s->rqid), p_buf, p_buf_end);
 
     p_buf =
@@ -566,8 +564,6 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
     /* get the beginning */
     uint8_t *p_buf = (uint8_t *)packed, *p_buf_end = p_buf + packed_len;
 
-    bzero(s, sizeof(struct schema_change_type));
-
     /* unpack all the data */
     p_buf = buf_get_schemachange(s, p_buf, p_buf_end);
 
@@ -785,6 +781,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     int bdberr;
     int foundix = -1;
     int bthashsz;
+    void *old_bdb_handle, *new_bdb_handle;
 
     /* regardless of success, the fact that we are getting asked to do this is
      * enough to indicate that any backup taken during this period may be
@@ -841,12 +838,14 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             return 1;
         }
 
+        old_bdb_handle = db->handle;
+
         logmsg(LOGMSG_DEBUG, "%s isopen %d\n", db->tablename,
                bdb_isopen(db->handle));
 
         /* the master doesn't tell the replicants to close the db
          * ahead of time */
-        rc = bdb_close_only(db->handle, &bdberr);
+        rc = bdb_close_only_sc(old_bdb_handle, tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
             return 1;
@@ -861,6 +860,8 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n",
                newdb->handle, bdberr);
         if (bdberr != 0 || newdb->handle == NULL) return 1;
+
+        new_bdb_handle = newdb->handle;
 
         rc = bdb_get_csc2_highest(tran, table, &newdb->version, &bdberr);
         if (rc) {
@@ -881,15 +882,15 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             return -1;
         }
 
-        rc = bdb_free_and_replace(db->handle, newdb->handle, &bdberr);
+        free_db_and_replace(db, newdb);
+        fix_constraint_pointers(db, newdb);
+
+        rc = bdb_free_and_replace(old_bdb_handle, new_bdb_handle, &bdberr);
         if (rc)
             logmsg(LOGMSG_ERROR, "%s:%d bdb_free rc %d %d\n", __FILE__,
                    __LINE__, rc, bdberr);
+        db->handle = old_bdb_handle;
 
-        bdb_state_type *oldhandle = db->handle;
-
-        free_db_and_replace(db, newdb);
-        fix_constraint_pointers(db, newdb);
         memset(newdb, 0xff, sizeof(struct dbtable));
         free(newdb);
 
@@ -897,9 +898,10 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         fix_lrl_ixlen_tran(tran);
         update_dbstore(db);
 
-        free(oldhandle);
+        free(new_bdb_handle);
     } else {
-        rc = bdb_close_only(db->handle, &bdberr);
+        old_bdb_handle = db->handle;
+        rc = bdb_close_only_sc(old_bdb_handle, tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
             return 1;
@@ -909,7 +911,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         /* fastinit.  reopen table handle (should be fast), no faffing with
          * schemas */
         /* faffing with schema required. schema can change in fastinit */
-        db->handle = bdb_open_more_tran(
+        new_bdb_handle = bdb_open_more_tran(
             table, thedb->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
             db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran,
@@ -917,9 +919,18 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         logmsg(LOGMSG_DEBUG,
                "reload_schema (fastinit case) handle %p bdberr %d\n",
                db->handle, bdberr);
-        if (!db->handle || bdberr != 0) return 1;
+        if (new_bdb_handle || bdberr != 0)
+            return 1;
 
+        rc = bdb_free_and_replace(old_bdb_handle, new_bdb_handle, &bdberr);
+        if (rc || bdberr != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d rc %d bdberr %d\n", __FILE__, __LINE__,
+                   rc, bdberr);
+            return 1;
+        }
+        db->handle = old_bdb_handle;
         set_odh_options_tran(db, tran);
+        free(new_bdb_handle);
     }
 
     if (get_db_bthash_tran(db, &bthashsz, tran) != 0) bthashsz = 0;

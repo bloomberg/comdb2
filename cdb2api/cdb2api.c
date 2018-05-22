@@ -56,6 +56,7 @@ static int CDB2_PORTMUXPORT = 5105;
 static int MAX_RETRIES = 21; /* We are looping each node twice. */
 static int MIN_RETRIES = 3;
 static int CDB2_CONNECT_TIMEOUT = 100;
+static int CDB2_AUTO_CONSUME_TIMEOUT_MS = 2;
 static int COMDB2DB_TIMEOUT = 500;
 static int cdb2_tcpbufsz = 0;
 
@@ -840,8 +841,8 @@ static inline int get_char(FILE *fp, const char *buf, int *chrno)
     return ch;
 }
 
-static int read_line(char *line, int *len, int maxlen, FILE *fp,
-                     const char *buf, int *chrno)
+static int read_line(char *line, int maxlen, FILE *fp, const char *buf,
+                     int *chrno)
 {
     int ch = get_char(fp, buf, chrno);
     while (ch == ' ' || ch == '\n')
@@ -893,17 +894,13 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                               int *comdb2db_found, int *stack_at_open)
 {
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
-    int len = 0;
     int line_no = 0;
 
     if (hndl && hndl->debug_trace) {
         fprintf(stderr, "td %u %s:%d \n", (uint32_t)pthread_self(), __func__,
                 __LINE__);
     }
-    while (read_line((char *)&line, &len, sizeof(line), fp, buf, &line_no) != -1) {
-        if (len >= sizeof(line))
-            return;
-
+    while (read_line((char *)&line, sizeof(line), fp, buf, &line_no) != -1) {
         char *last = NULL;
         char *tok = NULL;
         tok = strtok_r(line, " :", &last);
@@ -958,6 +955,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     CDB2_CONNECT_TIMEOUT = atoi(tok);
+            } else if (strcasecmp("auto_consume_timeout", tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok)
+                    CDB2_AUTO_CONSUME_TIMEOUT_MS = atoi(tok);
             } else if (strcasecmp("comdb2db_timeout", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
@@ -2659,6 +2660,33 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 
     if (hndl->ack)
         ack(hndl);
+
+    if (hndl->sb && !hndl->in_trans && hndl->firstresponse &&
+        (!hndl->lastresponse ||
+         (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) {
+        struct timeval tv;
+        int nrec = 0;
+        uint64_t starttime;
+        sbuf2settimeout(hndl->sb, CDB2_AUTO_CONSUME_TIMEOUT_MS,
+                        CDB2_AUTO_CONSUME_TIMEOUT_MS);
+        gettimeofday(&tv, NULL);
+        starttime = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000; // in ms
+        while (cdb2_next_record_int(hndl, 0) == CDB2_OK) {
+            nrec++;
+            gettimeofday(&tv, NULL);
+            /* auto consume for up to CDB2_AUTO_CONSUME_TIMEOUT_MS */
+            if (((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000 - starttime >=
+                CDB2_AUTO_CONSUME_TIMEOUT_MS)
+                break;
+        }
+        if (hndl->debug_trace) {
+            gettimeofday(&tv, NULL);
+            fprintf(stderr, "%s: auto consume %d records took %lu ms\n",
+                    __func__, nrec,
+                    ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000 -
+                        starttime);
+        }
+    }
 
     if (hndl->sb)
         newsql_disconnect(hndl, hndl->sb, __LINE__);

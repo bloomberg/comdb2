@@ -2308,6 +2308,7 @@ void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
 void replace_db_idx(struct dbtable *p_db, int idx);
 int reload_schema(char *table, const char *csc2, tran_type *tran);
+int add_db(struct dbtable *db);
 void delete_db(char *db_name);
 int rename_db(struct dbtable *db, const char *newname);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
@@ -2462,13 +2463,17 @@ int create_sqlmaster_records(void *tran);
 void form_new_style_name(char *namebuf, int len, struct schema *schema,
                          const char *csctag, const char *dbname);
 
+typedef struct master_entry master_entry_t;
+int get_copy_rootpages_custom(struct sql_thread *thd, master_entry_t *ents,
+                              int nents);
 int get_copy_rootpages_nolock(struct sql_thread *thd);
 int get_copy_rootpages(struct sql_thread *thd);
+master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
+                                          int *nents);
 void cleanup_sqlite_master();
-int create_sqlite_master();
-typedef struct master_entry master_entry_t;
+void create_sqlite_master();
 int destroy_sqlite_master(master_entry_t *, int);
-int new_indexes_syntax_check(struct ireq *iq);
+int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db);
 void handle_isql(struct dbtable *db, SBUF2 *sb);
 void handle_timesql(SBUF2 *sb, struct dbtable *db);
 int handle_sql(SBUF2 *sb);
@@ -2577,6 +2582,7 @@ char *getdbrelpath(const char *relpath);
 void addresource(const char *name, const char *filepath);
 const char *getresourcepath(const char *name);
 void dumpresources(void);
+void cleanresources(void);
 
 /* for the hackery that gets findnext passing "lastgenid" */
 void split_genid(unsigned long long genid, unsigned int *rrn1,
@@ -2757,7 +2763,8 @@ void no_new_requests(struct dbenv *dbenv);
 int get_next_seqno(void *tran, long long *seqno);
 int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
                     int logsz);
-int local_replicant_write_clear(struct dbtable *db);
+int local_replicant_write_clear(struct ireq *in_iq, void *in_trans,
+                                struct dbtable *db);
 long long get_record_unique_id(struct dbtable *db, void *rec);
 void cancel_sql_statement(int id);
 void cancel_sql_statement_with_cnonce(const char *cnonce);

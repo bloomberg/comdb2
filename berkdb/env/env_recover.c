@@ -1846,9 +1846,6 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 		   ret = lock_list_parse_pglogs(dbenv, &txn_gen_args->locks, &lsn, 
                &keylist, &keycnt);
 			if (ret) {
-				logmsg(LOGMSG_ERROR, 
-                "%s line %d: couldn't parse pagelogs for regop at lsn %d:%d\n",
-				    __func__, __LINE__, lsn.file, lsn.offset);
 				not_newsi_log_format = 1;
 				break;
 			}
@@ -1878,9 +1875,6 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 		   ret = lock_list_parse_pglogs(dbenv,
 				    &txn_args->locks, &lsn, &keylist, &keycnt);
 			if (ret) {
-				logmsg(LOGMSG_ERROR, 
-                "%s line %d: couldn't parse pagelogs for regop at lsn %d:%d\n",
-				    __func__, __LINE__, lsn.file, lsn.offset);
 				not_newsi_log_format = 1;
 				break;
 			}

@@ -887,6 +887,7 @@ static int bdb_verify_ll(
                     unpack_index_odh(bdb_state, &dbt_data, &genid_right,
                                      datacopy_buffer, sizeof(datacopy_buffer),
                                      &odhlen, &ver);
+                    expected_size = odhlen;
                     vtag_callback(callback_parm, datacopy_buffer,
                                   &expected_size, ver);
                     expected_data = datacopy_buffer;

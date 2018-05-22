@@ -26,14 +26,14 @@
   * If MSPACES is defined, declarations for mspace versions are included.
 */
 
-#include <dlmalloc_config.h>
-
 #ifndef MALLOC_280_H
 #define MALLOC_280_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#include "dlmalloc_config.h"
 
 #include <stddef.h>   /* for size_t */
 

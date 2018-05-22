@@ -125,7 +125,6 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                      unsigned long long));
 static int osql_bplog_wait(blocksql_tran_t *tran);
 static int req2blockop(int reqtype);
-static int osql_bplog_loginfo(struct ireq *iq, osql_sess_t *sess);
 
 /**
  * The bplog key-compare function - required because memcmp changes
@@ -279,10 +278,8 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     return 0;
 }
 
-/**
- *
- *
- */
+/* Wait for pending sessions to finish;
+   If any request has failed because of deadlock, repeat */
 int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
@@ -292,9 +289,6 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
     int rc = 0, irc = 0;
     int stop_time = 0;
 
-    /* wait for pending sessions to finish;
-       if any request has failed because of deadlock, repeat
-     */
     while (tran->pending.top && !error) {
 
         /* go through the list of pending requests and if there are any
@@ -329,16 +323,6 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
                 break;
 
             case SESS_DONE_ERROR:
-
-                /* TOOBIG magic */
-                if ((xerr->errval == ERR_TRAN_TOO_BIG || xerr->errval == 4)) {
-                    irc = osql_bplog_loginfo(iq, info->sess);
-                    if (irc) {
-                        logmsg(LOGMSG_ERROR, "%s: failed to log the bplog rc=%d\n",
-                                __func__, irc);
-                    }
-                }
-
                 error = 1;
                 break;
 
@@ -1617,71 +1601,6 @@ void osql_bplog_time_done(struct ireq *iq)
         }
     }
     logmsg(LOGMSG_USER, "%s]\n", msg);
-}
-
-static int osql_bplog_loginfo(struct ireq *iq, osql_sess_t *sess)
-{
-    blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-    struct temp_cursor *dbc = NULL;
-    blob_buffer_t blobs[MAXBLOBS];
-    SBUF2 *logsb = NULL;
-    int bdberr = 0;
-    int nops = 0;
-    struct block_err err;
-    int rc = 0, outrc = 0;
-    char filename[PATH_MAX];
-    int counter = 0;
-    int fd = 0;
-    pthread_mutex_t bplog_ctr_mtx = PTHREAD_MUTEX_INITIALIZER;
-    static int bplog_ctr = 0; /* 256 files only */
-    unsigned long long rqid;
-    uuid_t uuid;
-
-    rqid = osql_sess_getrqid(sess);
-    osql_sess_getuuid(sess, uuid);
-
-    pthread_mutex_lock(&bplog_ctr_mtx);
-    counter = (bplog_ctr++) % 256;
-    pthread_mutex_unlock(&bplog_ctr_mtx);
-
-    /* open the sbuf2 */
-    snprintf(filename, sizeof(filename), "%s/%s_toobig.log.%d", thedb->basedir,
-             thedb->envname, counter);
-
-    fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (fd < 0) {
-        logmsg(LOGMSG_ERROR, "%s: failed to open %s\n", __func__, filename);
-        return -1;
-    }
-
-    logsb = sbuf2open(fd, 0);
-    if (!logsb) {
-        logmsg(LOGMSG_ERROR, "%s sbuf2open failed\n", __func__);
-        close(fd);
-        return -1;
-    }
-
-    /* create a cursor */
-    dbc = bdb_temp_table_cursor(thedb->bdb_env, tran->db, NULL, &bdberr);
-    if (!dbc || bdberr) {
-        logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr = %d\n", __func__,
-                bdberr);
-        return ERR_INTERNAL;
-    }
-
-    outrc = process_this_session(iq, NULL, sess, &bdberr, &nops, &err, logsb,
-                                 dbc, osql_log_packet);
-
-    /* close the cursor */
-    rc = bdb_temp_table_close_cursor(thedb->bdb_env, dbc, &bdberr);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: failed close cursor rc=%d bdberr=%d\n", __func__,
-                rc, bdberr);
-    }
-
-    sbuf2close(logsb);
-
-    return outrc;
 }
 
 void osql_set_delayed(struct ireq *iq)

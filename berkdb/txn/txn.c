@@ -851,6 +851,10 @@ int bdb_transfer_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
     unsigned long long context);
 int __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid, u_int32_t lockid);
 
+/* This prevents dbreg logs from being logged between the LOCK_PUT_READ and
+ * the commit record */
+extern pthread_rwlock_t gbl_dbreg_log_lock;
+
 /*
  * __txn_commit --
  *	Commit a transaction.
@@ -907,7 +911,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		"DB_TXN->commit", flags,
 		DB_TXN_LOGICAL_BEGIN | DB_TXN_LOGICAL_COMMIT | DB_TXN_NOSYNC |
 		DB_TXN_SYNC | DB_TXN_REP_ACK | DB_TXN_DONT_GET_REPO_MTX |
-		DB_TXN_SCHEMA_LOCK) != 0)
+		DB_TXN_SCHEMA_LOCK | DB_TXN_LOGICAL_GEN) != 0)
 		flags = DB_TXN_SYNC;
 	if (__db_fcchk(dbenv,
 		"DB_TXN->commit", flags, DB_TXN_NOSYNC, DB_TXN_SYNC) != 0)
@@ -994,6 +998,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			memset(&request, 0, sizeof(request));
 			memset(&list_dbt_rl, 0, sizeof(list_dbt_rl));
 
+			pthread_rwlock_rdlock(&gbl_dbreg_log_lock);
+
 			if (LOCKING_ON(dbenv)) {
 				request.op = DB_LOCK_PUT_READ;
 				if (IS_REP_MASTER(dbenv) &&
@@ -1035,6 +1041,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							     ltranid,
 							     begin_lsn,
 							     &lt)) != 0) {
+							pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 							goto err;
 						}
 					}
@@ -1044,6 +1051,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						    ltranid, &lt)) != 0) {
 						logmsg(LOGMSG_FATAL, "Couldn't find ltrans?");
 						abort();
+						pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 						goto err;
 					}
 
@@ -1057,6 +1065,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						gen = rep->gen;
 						MUTEX_UNLOCK(dbenv,
 						    db_rep->rep_mutexp);
+						ltranflags |= DB_TXN_LOGICAL_GEN;
 					} else
 						gen = 0;
 
@@ -1130,6 +1139,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						    txnp->last_lsn.offset;
 					}
 				}
+				pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 
 				if (gbl_new_snapisol) {
 					if (!txnp->pglogs_hashtbl) {

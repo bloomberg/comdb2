@@ -507,7 +507,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
 
         /* close */
-        rc = bdb_close_only(db->handle, &bdberr);
+        rc = bdb_close_only_sc(db->handle, tran, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
                    __func__, rc, bdberr);

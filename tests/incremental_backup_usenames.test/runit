@@ -16,7 +16,7 @@ fi
 function getmaster {
     r=1
     while [[ $r != 0 ]]; do 
-        x=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+        x=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
         r=$?
     done
     echo $x
@@ -33,6 +33,7 @@ fi
 function failexit
 {
     [[ $debug == 1 ]] && set -x
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${dbname}_restore " ${pmux_port}
     echo "Failed $1"
     exit -1
 }
@@ -150,15 +151,10 @@ function test_restoredb {
   rc=$?
   echo shutting down ${dbname}_restore
   kill -9 $(cat ${TMPDIR}/${dbname}_restore.pid)
-  echo deregister from pmux ${dbname}_restore
-  ${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${dbname}_restore " ${pmux_port}
 
   if [[ $rc -ne 0 ]] ; then
     echo "  ^^^^^^^^^^^^"
-    echo "The above testcase (${testname}) has failed!!!"
-    echo " "
-    echo " "
-    exit 1
+    failexit "${testname} has failed!!!"
   fi
 
   echo "${testname} passed"
@@ -221,5 +217,6 @@ if [ "$CLEANUPDBDIR" == "1" ] ; then
     rm -rf ${LOCTMPDIR}/backups ${LOCTMPDIR}/restore ${LOCTMPDIR}/increment
 fi
 
+${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${dbname}_restore " ${pmux_port}
 echo "Test Successful"
 exit 0

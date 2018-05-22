@@ -40,11 +40,13 @@ static void machine_mark_down_default(char *host);
 static int machine_status_init(void);
 static int machine_class_default(const char *host);
 static int machine_dc_default(const char *host);
+static int machine_num_default(const char *host);
 
 static int (*machine_is_up_cb)(const char *host) = machine_is_up_default;
 static int (*machine_status_init_cb)(void) = machine_status_init;
 static int (*machine_class_cb)(const char *host) = machine_class_default;
 static int (*machine_dc_cb)(const char *host) = machine_dc_default;
+static int (*machine_num_cb)(const char *host) = machine_num_default;
 
 static int inited = 0;
 static pthread_once_t once = PTHREAD_ONCE_INIT;
@@ -60,7 +62,8 @@ static void init_once(void)
 }
 
 void register_rtcpu_callbacks(int (*a)(const char *), int (*b)(void),
-                              int (*c)(const char *), int (*d)(const char *))
+                              int (*c)(const char *), int (*d)(const char *),
+                              int (*e)(const char *))
 {
 
     if (inited) {
@@ -72,6 +75,7 @@ void register_rtcpu_callbacks(int (*a)(const char *), int (*b)(void),
     machine_status_init_cb = b;
     machine_class_cb = c;
     machine_dc_cb = d;
+    machine_num_cb = e;
 }
 
 int machine_is_up(const char *host)
@@ -92,6 +96,11 @@ int machine_class(const char *host)
 int machine_dc(const char *host)
 {
     return machine_dc_cb(host);
+}
+
+int machine_num(const char *host)
+{
+    return machine_num_cb(host);
 }
 
 static int machine_is_up_default(const char *host)
@@ -262,4 +271,9 @@ static int machine_dc_default(const char *host)
     if (machine_dcs[ix] == 0)
         machine_dcs[ix] = resolve_dc(host);
     return machine_dcs[ix];
+}
+
+static int machine_num_default(const char *host)
+{
+    return nodeix(host);
 }

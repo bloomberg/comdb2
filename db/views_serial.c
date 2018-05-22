@@ -563,6 +563,12 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
                  first_shard);
         goto error;
     }
+    if (db->n_rev_constraints > 0) {
+        err->errval = VIEW_ERR_PARAM;
+        snprintf(err->errstr, sizeof(err->errstr), "Table %s has constraints",
+                 first_shard);
+        goto error;
+    }
 
     check_columns_null_and_dbstore(view->name, db);
 

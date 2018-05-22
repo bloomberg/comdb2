@@ -364,6 +364,7 @@ void net_disable_test(netinfo_type *netinfo_ptr);
 int net_add_nondedicated_subnet(void *, void *);
 int net_add_to_subnets(const char *suffix, const char *lrlname);
 void net_cleanup_subnets();
+void net_cleanup_netinfo(netinfo_type *netinfo_ptr);
 
 /* Maximum time accept will wait for a identifying byte from a socket.
    This defaults to 100ms */

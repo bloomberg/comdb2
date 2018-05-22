@@ -2795,7 +2795,6 @@ void timepart_systable_next_shard(int *piTimepartId, int *piRowid)
     timepart_views_t *views = thedb->timepart_views;
     timepart_view_t *view;
 
-nextTimepart:
     if (*piTimepartId >= views->nviews)
         return;
     view = views->views[*piTimepartId];
@@ -2803,7 +2802,6 @@ nextTimepart:
     if (*piRowid >= view->nshards) {
         *piRowid = 0;
         (*piTimepartId)++;
-        goto nextTimepart;
     }
 }
 

@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+#set -e
+set -x
+
+# Debug variable
+debug=0
+
+# Number of insert_records function calls
+nins=0
+
+
+failexit()
+{
+    echo "Failed $1"
+    exit -1
+}
+
+assertres ()
+{
+    if [ $# != 2 ] ; then 
+        failexit "res is $res, target is $target, one or more is blank"
+    fi
+    res=$1
+    target=$2
+    if [ "$res" != "$target" ] ; then
+        failexit "res is $res but should be $target"
+    fi
+}
+
+assertcnt()
+{
+    local tbl=$1
+    local target=$2
+    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "count of $tbl is now $cnt but should be $target"
+    fi
+}
+
+call_unsetup() {
+    local successful=$1
+    $TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
+}
+
+
+#stripe order round robin
+#insert N rows into t1
+#dump pages for t1 -- make sure all stripes have 1 record
+
+#set stripe order NO round robin
+#insert N rows into t2
+#dump pages for t2 -- make sure all stripes have 0 rows except one stripe with N rows
+
+
+
+N=8   # number of stripes
+
+echo "Round robin"
+
+dbnm=rrdb$TESTID
+DBNAME=$dbnm
+DBDIR=$TESTDIR/$DBNAME
+CDB2_CONFIG=$DBDIR/comdb2db.cfg
+CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
+
+unset COMDB2_UNITTEST   # needed to run setup script
+echo round_robin_stripes > ${TESTSROOTDIR}/${TESTCASE}.test/lrl.options
+$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
+
+# Trap to call_unsetup if the test exits
+trap "call_unsetup \"0\"" INT EXIT
+
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
+assertres $res 1
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create table t1 (i int)"
+
+echo begin > ins.in
+for i in `seq 1 $N` ; do
+    echo "insert into t1 values($i)"
+done >> ins.in
+echo commit >> ins.in
+cdb2sql --tabs ${CDB2_OPTIONS} -f ins.in $dbnm default
+
+
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create procedure addrecs version 'sptest' {$(cat addrecs.lua)}"
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "put default procedure addrecs 'sptest'"
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs('t1', $N)"
+
+assertcnt t1 8
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select printf("%llx",comdb2_rowid%16) as genid from t1' > stripes.out
+for i in `seq 1 $N` ; do
+    cnt=`grep $((i-1)) stripes.out | wc -l`
+    assertres "$cnt" "1"
+done
+
+# verify via pgdump command -- same thing as above but checks the actual btrees
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb dblist')" > dblist.out
+for i in `seq 1 $N` ; do
+    fileid=`cat dblist.out | grep "XXX.t1_" | grep datas$((i-1)) | awk '{print $1}'`
+    [ "x$fileid" == "x" ] && failexit "dblist does not contain info about t1"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb pgdump $fileid 1')" | grep "entries:2" || failexit "page does not contain 1 row"
+done
+
+call_unsetup 1
+trap - INT EXIT
+
+
+echo "NO round robin"
+
+dbnm=norrdb$TESTID
+DBNAME=$dbnm
+DBDIR=$TESTDIR/$DBNAME
+CDB2_CONFIG=$DBDIR/comdb2db.cfg
+CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
+
+unset COMDB2_UNITTEST
+rm ${TESTSROOTDIR}/${TESTCASE}.test/lrl.options
+$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
+
+# Trap to call_unsetup if the test exits
+trap "call_unsetup \"Cancelling test\"" INT EXIT
+
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
+assertres $res 1
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create table t2 (i int)"
+echo begin > ins.in
+for i in `seq 1 $N` ; do
+    echo "insert into t2 values($i)"
+done >> ins.in
+echo commit >> ins.in
+cdb2sql --tabs ${CDB2_OPTIONS} -f ins.in $dbnm default
+
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create procedure addrecs version 'sptest' {$(cat addrecs.lua)}"
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "put default procedure addrecs 'sptest'"
+#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs('t2', $N)"
+
+assertcnt t2 8
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb dblist')" > dblist2.out
+for i in `seq 1 $N` ; do
+    fileid=`cat dblist2.out | grep "XXX.t2_" | grep datas$((i-1)) | awk '{print $1}'`
+    [ "x$fileid" == "x" ] && failexit "dblist does not contain info about t2"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb pgdump $fileid 1')" | grep "entries:"
+done > entry_counts.out
+
+
+call_unsetup 1
+trap - INT EXIT
+
+zeros=`grep "entries:0" entry_counts.out | wc -l`
+assertres "$zeros" "$((N-1))"
+other=`grep "entries:16" entry_counts.out | wc -l`
+assertres "$other" "1"
+
+echo "Success"

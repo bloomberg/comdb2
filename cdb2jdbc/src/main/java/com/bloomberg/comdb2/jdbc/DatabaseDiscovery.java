@@ -24,13 +24,13 @@ import com.bloomberg.comdb2.jdbc.Cdb2Query.Cdb2DbInfo;
 import com.bloomberg.comdb2.jdbc.Cdb2Query.Cdb2SqlQuery;
 
 /**
- * BBSysUtils provides functions that deal with Bloomberg environment stuff.
+ * DatabaseDiscovery discovers database location from comdb2db or config files.
  * 
  * @author Rivers Zhang
  * @author Mohit Khullar
  */
-public class BBSysUtils {
-    private static Logger logger = Logger.getLogger(BBSysUtils.class.getName());
+public class DatabaseDiscovery {
+    private static Logger logger = Logger.getLogger(DatabaseDiscovery.class.getName());
     static boolean debug = false;
 
     /**
@@ -90,8 +90,9 @@ public class BBSysUtils {
                     else if (tokens[1].equalsIgnoreCase("room")
                             && hndl.machineRoom == null)
                         hndl.machineRoom = tokens[2];
-                    else if (tokens[1].equalsIgnoreCase("portmuxport")
-                            && !hndl.hasUserPort)
+                    else if ((tokens[1].equalsIgnoreCase("portmuxport") ||
+                              tokens[1].equalsIgnoreCase("pmuxport")) &&
+                             !hndl.hasUserPort)
                         hndl.portMuxPort = Integer.parseInt(tokens[2]);
                     else if (tokens[1].equalsIgnoreCase("comdb2dbname")
                             && hndl.comdb2dbName == null)
@@ -106,6 +107,22 @@ public class BBSysUtils {
                     else if (tokens[1].equalsIgnoreCase("dnssufix")
                             && hndl.dnssuffix == null)
                         hndl.dnssuffix = tokens[2];
+                    else if (tokens[1].equalsIgnoreCase("connect_timeout")
+                            && !hndl.hasConnectTimeout) {
+                        try {
+                            hndl.connectTimeout = Integer.parseInt(tokens[2]);
+                        } catch (NumberFormatException e) {
+                            logger.log(Level.WARNING, "Invalid connect timeout.", e);
+                        }
+                    }
+                    else if (tokens[1].equalsIgnoreCase("comdb2db_timeout")
+                            && !hndl.hasComdb2dbTimeout) {
+                        try {
+                            hndl.comdb2dbTimeout = Integer.parseInt(tokens[2]);
+                        } catch (NumberFormatException e) {
+                            logger.log(Level.WARNING, "Invalid comdb2db timeout.", e);
+                        }
+                    }
                 } else if (tokens[0].equalsIgnoreCase(hndl.comdb2dbName)) {
                     /**
                      * Gets dbnumber and hosts of comdb2db.
@@ -131,17 +148,11 @@ public class BBSysUtils {
     }
 
     private final static String COMDB2DB = "comdb2db";
-    private final static int COMDB2DB_NUM = 32432;
-    private final static String COMDB2DB_DEV = "comdb3db";
-    private final static int COMDB2DB_DEV_NUM = 192779;
 
-    /**
-     * Returns true if successfully get comdb2dbhosts.
-     * 
-     * @param hndl
-     * @return
-     */
-    private static boolean getComdb2dbHosts(Comdb2Handle hndl, boolean just_defaults) {
+    /* Get comdb2db hosts from config file or DNS.
+       Throws an IOException on error. */
+    private static void getComdb2dbHosts(Comdb2Handle hndl,
+            boolean just_defaults) throws IOException {
         /*
          * Load conf from path specified in system property
          * CDB2DBCONFIG_PROP (comdb2db.cfg), defaulting to
@@ -155,88 +166,51 @@ public class BBSysUtils {
         readComdb2dbCfg(CDB2DBCONFIG_NOBBENV_PATH + hndl.myDbName + ".cfg", hndl);
 
         if (just_defaults)
-            return true;
+            return;
 
         if (hndl.comdb2dbHosts.size() > 0 || hndl.myDbHosts.size() > 0)
-            return true;
+            return;
 
-        String comdb2db_bdns = null;
-        try {
-            comdb2db_bdns = String.format("%s-%s.%s",
-                    (hndl.defaultType == null) ? hndl.defaultType : hndl.myDbCluster,
-                    hndl.comdb2dbName, hndl.dnssuffix);
-
-            InetAddress inetAddress[] = InetAddress.getAllByName(comdb2db_bdns);
-            for (int i = 0; i < inetAddress.length; i++) {
-                hndl.comdb2dbHosts.add(inetAddress[i].getHostAddress());
-                rc = true;
-            }
-        } catch (UnknownHostException e) {
-            logger.log(Level.SEVERE, "ERROR in getting address " + comdb2db_bdns, e);
-        }
-        return rc;
+        String comdb2db_bdns = String.format("%s-%s.%s",
+                (hndl.defaultType != null) ? hndl.defaultType : hndl.myDbCluster,
+                hndl.comdb2dbName, hndl.dnssuffix);
+        InetAddress inetAddress[] = InetAddress.getAllByName(comdb2db_bdns);
+        for (int i = 0; i < inetAddress.length; i++)
+            hndl.comdb2dbHosts.add(inetAddress[i].getHostAddress());
     }
 
-    /**
-     * Returns port number.
-     * 
-     * @param host
-     * @param port
-     * @param app
-     * @param service
-     * @param instance
-     * @return
-     */
-    private static int getPortMux(String host, int port, String app, String service, String instance) {
+    /* Returns port number. Throws an IOException on error. */
+    private static int getPortMux(String host, int port,
+            int soTimeout, int connectTimeout,
+            String app, String service, String instance) throws IOException {
         SockIO io = null;
         try {
             String name = String.format("get %s/%s/%s\n", app, service, instance);
 
-            io = new SockIO(host, port, null);
+            io = new SockIO(host, port, null, soTimeout, connectTimeout);
 
             io.write(name.getBytes());
             io.flush();
 
             String line = io.readLine(32);
             return Integer.parseInt(line);
-        } catch (SocketTimeoutException e) {
-            return -1;
-        } catch (IOException e) {
-            return -1;
         } finally {
             try {
                 if (io != null)
                     io.close();
             } catch (IOException e) {
-                logger.log(Level.WARNING, "Unable to close portmux connection (" + host + ":" + port + ")", e);
+                /* ignore */
             }
         }
     }
 
-    /**
-     * Gets database node information. Returns no-negative value to indicate the
-     * master node in @validHosts, and -1 to indicate no master node found.
-     * 
-     * @param dbName
-     *            who I want to know about
-     * @param dbNum
-     *            its db number
-     * @param host
-     *            ask who
-     * @param port
-     *            hndlect to which port
-     * @param validHosts
-     *            where I want the hosts of @dbName be stored.
-     * @param validPorts
-     *            where I want the ports of @dbName be stored.
-     * @return
-     * @throws NoComdb2dbHostFoundException
-     */
+    /* Get dbinfo. Return the index of the master node in validHosts.
+       Return -1 if no master. Throw an IOException on error. */
     static int dbInfoQuery(Comdb2Handle hndl,
             Cdb2DbInfoResponse dbInfoResp,
             String dbName, int dbNum, String host, int port,
             List<String> validHosts, List<Integer> validPorts)
-        throws NoDbHostFoundException {
+        throws IOException {
 
         SockIO io = null;
 
@@ -245,11 +219,8 @@ public class BBSysUtils {
 
         try {
             if (dbInfoResp == null) {
-                io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null);
-
-                /*********************************
-                 * Sending data...
-                 *********************************/
+                io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null,
+                                hndl.dbinfoTimeout, hndl.connectTimeout);
 
                 io.write("newsql\n");
                 io.flush();
@@ -268,23 +239,19 @@ public class BBSysUtils {
                 protobuf.write(io.getOut());
                 io.flush();
 
-                /*********************************
-                 * Parsing response...
-                 *********************************/
-
                 byte[] res = new byte[nsh.capacity()];
                 if (io.read(res) != nsh.capacity())
-                    throw new NoDbHostFoundException(dbName);
+                    throw new IOException("Received fewer bytes than expected");
                 nsh.reconstructFromBytes(res);
 
                 res = null;
                 res = new byte[nsh.length];
                 if (io.read(res) != nsh.length)
-                    throw new NoDbHostFoundException(dbName);
+                    throw new IOException("Received fewer bytes than expected");
 
                 dbInfoResp = protobuf.unpackDbInfoResp(res);
                 if (dbInfoResp == null)
-                    throw new NoDbHostFoundException(dbName);
+                    throw new IOException("Received malformed data");
             }
 
             int master = -1;
@@ -336,7 +303,7 @@ public class BBSysUtils {
             }
 
             if (validHosts.size() <= 0)
-                throw new NoDbHostFoundException(dbName);
+                throw new IOException("Received incomplete dbinfo response");
 
             if (hndl != null) {
                 hndl.masterIndexInMyDbHosts = master;
@@ -346,31 +313,20 @@ public class BBSysUtils {
 
             return master;
 
-        } catch (IOException e) {
-            throw new NoDbHostFoundException(dbName);
         } finally {
             try {
                 if (io != null)
                     io.close();
             } catch (IOException e) {
-                logger.log(Level.WARNING,
-                        "Unable to close dbinfo_query connection ("
-                        + host + ":" + port + ")", e);
+                /* Ignore */
             }
         }
     }
 
-    /**
-     * Gets database's name, number and room by querying a comdb2db server.
-     * 
-     * @param hndl
-     * @param host
-     *            host of the comdb2db server.
-     * @param port
-     *            port of that server.
-     * @return
-     */
-    private static boolean queryDbHosts(Comdb2Handle hndl, String host, int port) {
+    /* Gets database's name, number and room by querying a comdb2db server. 
+       Throws an IOException on error. */
+    private static void queryDbHosts(Comdb2Handle hndl,
+            String host, int port) throws IOException {
 
         String sqlquery = String.format("select M.name, D.dbnum, M.room from machines M join databases D where M.cluster IN "
                 + "(select cluster_machs from clusters where name = '%s' and cluster_name = '%s') and D.name = '%s' order by (room = '%s') desc",
@@ -379,11 +335,8 @@ public class BBSysUtils {
         SockIO io = null;
 
         try {
-            io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null);
-
-            /*********************************
-             * Sending data...
-             *********************************/
+            io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null,
+                            hndl.comdb2dbTimeout, hndl.connectTimeout);
 
             io.write("newsql\n");
             io.flush();
@@ -400,20 +353,13 @@ public class BBSysUtils {
             protobuf.write(io.getOut());
             io.flush();
 
-            /*********************************
-             * Parsing response...
-             *********************************/
-
             byte[] res = new byte[nsh.capacity()];
 
             do {
-                if (io.read(res) != NewSqlHeader.BYTES_NEEDED) // unexpected
-                                                                // response from
-                                                                // server
-                    return false;
+                if (io.read(res) != NewSqlHeader.BYTES_NEEDED)
+                    throw new IOException("Received fewer bytes than expected");
                 nsh = NewSqlHeader.fromBytes(res);
-            } while (nsh == null || nsh.length == 0); // if heartbeat packet,
-                                                        // try again
+            } while (nsh == null || nsh.length == 0); /* if heartbeat packet, try again */
 
             nsh.reconstructFromBytes(res);
 
@@ -421,12 +367,13 @@ public class BBSysUtils {
             res = new byte[nsh.length];
 
             if (io.read(res) != nsh.length)
-                return false;
+                throw new IOException("Received fewer bytes than expected");
 
             Cdb2SqlResponse sqlResp = protobuf.unpackSqlResp(res);
             if (sqlResp == null || sqlResp.errCode != 0
-                    || (sqlResp.respType != 1 && sqlResp.value.size() != 1 && (sqlResp.value.get(0).type == -1 || sqlResp.value.get(0).type != 3)))
-                return false;
+                    || (sqlResp.respType != 1 && sqlResp.value.size() != 1 &&
+                        (sqlResp.value.get(0).type == -1 || sqlResp.value.get(0).type != 3)))
+                throw new IOException("Received malformed data");
 
             hndl.myDbHosts.clear();
 
@@ -434,13 +381,13 @@ public class BBSysUtils {
                 res = null;
                 res = new byte[nsh.capacity()];
                 if (io.read(res) != nsh.capacity())
-                    return false;
+                    throw new IOException("Received fewer bytes than expected");
                 nsh.reconstructFromBytes(res);
 
                 res = null;
                 res = new byte[nsh.length];
                 if (io.read(res) != nsh.length)
-                    return false;
+                    throw new IOException("Received fewer bytes than expected");
 
                 sqlResp = protobuf.unpackSqlResp(res);
                 if (sqlResp.errCode != 0)
@@ -469,18 +416,12 @@ public class BBSysUtils {
                     comdb2lcldb.put(hndl.myDbName + "/" + hndl.myDbCluster, record);
                 }
             }
-
-            return true;
-        } catch (SocketTimeoutException e) {
-            return false;
-        } catch (IOException e) {
-            return false;
         } finally {
             try {
                 if (io != null)
                     io.close();
             } catch (IOException e) {
-                logger.log(Level.WARNING, "Unable to close get_dbhosts connection (" + host + ":" + port + ")", e);
+                /* Ignore. */
             }
         }
     }
@@ -500,6 +441,8 @@ public class BBSysUtils {
             hndl.comdb2dbHosts.clear();
             hndl.myDbHosts.clear();
             hndl.myDbPorts.clear();
+            /* Invalidate db host cache as well. */
+            comdb2lcldb.remove(hndl.myDbName + "/" + hndl.myDbCluster);
         }
 
         if (hndl.myDbCluster.equalsIgnoreCase("local")) {
@@ -536,28 +479,33 @@ public class BBSysUtils {
             }
 
             if (hndl.myDbHosts.size() == 0) {
-                /* get default conf without DNS lookup */
-                getComdb2dbHosts(hndl, true);
-
-                /* start with "comdb2db" */
-                String comdb2db_name = COMDB2DB;
+                try {
+                    /* get default conf without DNS lookup */
+                    getComdb2dbHosts(hndl, true);
+                } catch (IOException ioe) {
+                    /* Ignore. */
+                }
 
                 /* revise comdb2db_name */
                 if (hndl.comdb2dbName == null)
-                    hndl.comdb2dbName = comdb2db_name;
+                    hndl.comdb2dbName = COMDB2DB;
 
                 /* set cluster type if default */
-                if (hndl.myDbCluster.equalsIgnoreCase("default")) {
+                if (hndl.myDbHosts.size() == 0 &&
+                    hndl.myDbCluster.equalsIgnoreCase("default")) {
                     if (hndl.defaultType == null)
-                        throw new NoDbHostFoundException(hndl.myDbName +
-                                "@default. No default type configured?");
+                        throw new NoDbHostFoundException(hndl.myDbName,
+                                "No default type configured.");
                     hndl.myDbCluster = hndl.defaultType;
                 }
 
-                if (!getComdb2dbHosts(hndl, false))
-                    throw new NoDbHostFoundException(hndl.myDbName +
-                            ". Wrong configuration for cluster '" +
-                            hndl.myDbCluster + "'.");
+                try {
+                    getComdb2dbHosts(hndl, false);
+                } catch (IOException ioe) {
+                    throw new NoDbHostFoundException(hndl.comdb2dbName,
+                            "Could not find database hosts from DNS and config files.",
+                            ioe);
+                }
             }
         } else if (hndl.myDbHosts.size() == 0) {
             hndl.isDirectCpu = true;
@@ -565,79 +513,85 @@ public class BBSysUtils {
             hndl.myDbPorts.add(hndl.overriddenPort);
         }
 
+        Throwable error_during_discovery = null;
         if (hndl.isDirectCpu) {
             boolean atLeastOneValid = false;
             for (int i = 0; i != hndl.myDbPorts.size(); ++i) {
                 if (hndl.myDbPorts.get(i) != -1)
                     atLeastOneValid = true;
                 else {
-                    int dbport = getPortMux(hndl.myDbHosts.get(i),
-                            hndl.portMuxPort, "comdb2", "replication", hndl.myDbName);
-                    if (dbport != -1) {
-                        atLeastOneValid = true;
-                        hndl.myDbPorts.set(i, dbport);
+                    try {
+                        int dbport = getPortMux(hndl.myDbHosts.get(i),
+                                hndl.portMuxPort, hndl.soTimeout, hndl.connectTimeout,
+                                "comdb2", "replication", hndl.myDbName);
+                        if (dbport != -1) {
+                            atLeastOneValid = true;
+                            hndl.myDbPorts.set(i, dbport);
+                        }
+                    } catch (IOException ioe) {
+                        error_during_discovery = ioe;
                     }
                 }
             }
             if (!atLeastOneValid)
-                throw new NoDbHostFoundException(hndl.myDbName);
+                throw new NoDbHostFoundException(hndl.myDbName,
+                        "Could not get database port from user supplied hosts.",
+                        error_during_discovery);
             return;
         }
 
-        /******************************************
-         * If no hosts defined, we have to query comdb2db to get necessary
-         * information.
-         ******************************************/
-        // System.out.printf("Still Looking for Db hosts");
+        /* If !DIRECT_CPU or no hosts in config file, query comdb2db. */
 
         ArrayList<String> validHosts = new ArrayList<String>();
         ArrayList<Integer> validPorts = new ArrayList<Integer>();
 
         boolean found = false;
+        error_during_discovery = null;
+        int hndlRetries = hndl.maxRetries();
 
         int retries = 0;
 
-        while (hndl.myDbHosts.size() == 0 && retries < 5) {
+        while (hndl.myDbHosts.size() == 0 && retries < hndlRetries) {
             retries++;
             if (debug) {
                 System.out.println("Querying for dbhosts, retries=" + retries);
             }
 
-            /*****************************************
-             * First, get a list of available comdb2db servers.
-             *****************************************/
-
+            /* Get comdb2db dbinfo. */
             int master = -1;
 			int comdb2dbPort = -1;
 			String connerr = "";
             for (String comdb2dbHost : hndl.comdb2dbHosts) {
-                comdb2dbPort = BBSysUtils.getPortMux(comdb2dbHost, hndl.portMuxPort, "comdb2", "replication", hndl.comdb2dbName);
-                if (comdb2dbPort < 0)
-					connerr = "port error";
-                else {
-                    try {
+                try {
+                    comdb2dbPort = getPortMux(comdb2dbHost, hndl.portMuxPort,
+                            hndl.soTimeout, hndl.connectTimeout,
+                            "comdb2", "replication", hndl.comdb2dbName);
 
-                        master = dbInfoQuery(hndl,
-                                null, hndl.comdb2dbName, hndl.comdb2dbDbNum,
-                                comdb2dbHost, comdb2dbPort, validHosts, validPorts);
-                        found = true;
-                        break;
-                    } catch (NoDbHostFoundException e) {
-                        /**
-                         * Ignore single exception.
-                         */
-						connerr = "dbinfo error";
+                    if (comdb2dbPort < 0) {
+                        connerr = "Received invalid port from pmux.";
+                        continue;
                     }
+
+                    master = dbInfoQuery(hndl,
+                            null, hndl.comdb2dbName, hndl.comdb2dbDbNum,
+                            comdb2dbHost, comdb2dbPort, validHosts, validPorts);
+                    found = true;
+                    break;
+                } catch (IOException ioe) {
+                    /* Record last error during database discovery. */
+                    error_during_discovery = ioe;
+                    connerr = "A network I/O error occurred.";
                 }
             }
 
-            /**
-             * However, if all dbinfoquery calls failed, then an exception has
-             * to be thrown...
-             */
             if (!found) {
+                /* Could not get comdb2db dbinfo. Retry. */
+                if (retries < hndlRetries)
+                    continue;
+
                 if (hndl.comdb2dbHosts.size() == 0)
-                    throw new NoDbHostFoundException(hndl.comdb2dbName);
+                    throw new NoDbHostFoundException(hndl.comdb2dbName,
+                            "Could not find database hosts.", error_during_discovery);
                 else {
                     /* prepare diagnosis info */
                     String diagnosis = String.format("[pmux=%d][%s=%s@%d] %s",
@@ -646,45 +600,61 @@ public class BBSysUtils {
                             hndl.comdb2dbHosts.get(hndl.comdb2dbHosts.size() - 1),
                             comdb2dbPort,
                             connerr);
-                    throw new NoDbHostFoundException(diagnosis);
+                    throw new NoDbHostFoundException(hndl.comdb2dbName,
+                            diagnosis, error_during_discovery);
                 }
 			}
 
-            /************************************************
-             * We have a list of available hosts now. Query the slave nodes
-             * one-by-one to get hosts of the database that we want hndlect to.
-             ************************************************/
+            /* Query comdb2db to get a list of machines where the database runs on. */
+            found = false;
+            error_during_discovery = null;
 
             for (int i = 0; i != validHosts.size(); ++i) {
-                if (master == i && validHosts.size() > 1)
+                if (master == i && validHosts.size() > 1 || validPorts.get(i) < 0)
                     continue;
-
-                found = queryDbHosts(hndl, validHosts.get(i), validPorts.get(i));
-                if (found)
+                try {
+                    queryDbHosts(hndl, validHosts.get(i), validPorts.get(i));
+                    found = true;
                     break;
+                } catch (IOException ioe) {
+                    /* Record last error during database discovery. */
+                    error_during_discovery = ioe;
+                    connerr = "A network I/O error occurred.";
+                }
             }
 
-            /**********************************************
-             * None of slave nodes works. Now try master.
-             **********************************************/
-            if (!found)
-                found = queryDbHosts(hndl, validHosts.get(master), validPorts.get(master));
+            if (!found && master >= 0) {
+                if (validPorts.get(master) < 0)
+                    continue;
+                try {
+                    queryDbHosts(hndl, validHosts.get(master), validPorts.get(master));
+                    found = true;
+                } catch (IOException ioe) {
+                    /* Record last error during database discovery. */
+                    error_during_discovery = ioe;
+                    connerr = "A network I/O error occurred.";
+                }
+            }
 
-            if (!found)
-                throw new NoDbHostFoundException(hndl.myDbName);
+            if (!found) {
+                /* Could not get machines of the database. Retry. */
+                if (retries < hndlRetries)
+                    continue;
+                throw new NoDbHostFoundException(hndl.myDbName,
+                        "Could not query database hosts from " + hndl.comdb2dbName + ": " + connerr,
+                        error_during_discovery);
+            }
 
             hndl.comdb2dbHosts.clear();
             hndl.comdb2dbHosts.addAll(validHosts);
         }
 
-        /**********************************************
-         * At this stage, we should have a list of hosts stored in @myDbHosts.
-         * 
-         * Ask them one-by-one to get the host(s) and port(s) of the database we
-         * want to hndlect to.
-         **********************************************/
+        if (hndl.myDbHosts.size() == 0)
+            throw new NoDbHostFoundException(hndl.myDbName,
+                    String.format("No entries of %s found in %s and config files",
+                        hndl.myDbName, hndl.comdb2dbName));
 
-        /* If pmux route is enabled, use pmux port. */
+        /* If pmux route is enabled, use pmux port. Otherwise do dbinfo query. */
         if (hndl.pmuxrte) {
             hndl.myDbPorts.clear();
             for (int i = 0; i != hndl.myDbHosts.size(); ++i)
@@ -692,11 +662,12 @@ public class BBSysUtils {
             return;
         }
 
-
+        /* We have a list of machines where the database runs.
+           Now get dbinfo from them. */
         found = false;
+        error_during_discovery = null;
 
         int port = -1;
-        int hndlRetries = hndl.maxRetries();
         int increment = hndl.myDbHosts.size();
 
         if (increment == 0)
@@ -706,18 +677,19 @@ public class BBSysUtils {
 
         for (int retry = 0; (retry < hndlRetries) && (found == false); retry += increment) {
             for (int i = 0; i != hndl.myDbHosts.size(); ++i) {
-                String host = hndl.myDbHosts.get(i);
-                if (hndl.myDbPorts.get(i) >= 0)
-                    port = hndl.myDbPorts.get(i);
-                else
-                    port = getPortMux(host, hndl.portMuxPort, "comdb2", "replication", hndl.myDbName);
-
-                if (port < 0) {
-                    connerr = "port error";
-                    continue;
-                }
-
                 try {
+                    String host = hndl.myDbHosts.get(i);
+                    port = hndl.myDbPorts.get(i);
+                    if (port < 0)
+                        port = getPortMux(host, hndl.portMuxPort,
+                                hndl.soTimeout, hndl.connectTimeout,
+                                "comdb2", "replication", hndl.myDbName);
+
+                    if (port < 0) {
+                        connerr = "Received invalid port from pmux.";
+                        continue;
+                    }
+
                     dbInfoQuery(hndl,
                             null, hndl.myDbName, hndl.myDbNum,
                             host, port, validHosts, validPorts);
@@ -727,11 +699,9 @@ public class BBSysUtils {
                     }
                     found = true;
                     break;
-                } catch (NoDbHostFoundException e) {
-                    /**
-                     * Ignore single exception.
-                     */
-                    connerr = "dbinfo error";
+                } catch (IOException ioe) {
+                    error_during_discovery = ioe;
+                    connerr = "A network I/O error occurred.";
                 }
             }
 
@@ -752,18 +722,13 @@ public class BBSysUtils {
         }
 
         if (!found) {
-            if (hndl.myDbHosts.size() == 0)
-                throw new NoDbHostFoundException(hndl.myDbName);
-            else {
-                // diagnosis
-                String diagnosis = String.format("[pmux=%d][%s=%s@%d] %s",
-                        hndl.portMuxPort,
-                        hndl.myDbName,
-                        hndl.myDbHosts.get(hndl.myDbHosts.size() - 1),
-                        port,
-                        connerr);
-                throw new NoDbHostFoundException(diagnosis);
-            }
+            String diagnosis = String.format("[pmux=%d][%s=%s@%d] %s",
+                    hndl.portMuxPort,
+                    hndl.myDbName,
+                    hndl.myDbHosts.get(hndl.myDbHosts.size() - 1),
+                    port,
+                    connerr);
+            throw new NoDbHostFoundException(hndl.myDbName, diagnosis, error_during_discovery);
         }
 
         hndl.myDbHosts.clear();

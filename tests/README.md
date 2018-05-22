@@ -1,26 +1,31 @@
 ## Overview
 
-This is the comdb2 test suite.  To run the full suite, build and install the
-database with `make && sudo user=$USER make install`, make sure `pmux` is running
-(`pmux -l`), then run `make` in the tests directory.  Any failure will stop the
-run.  `make -k` will allow other tests to run.  `make -j5` will let 5 tests to
-run in parallel.  `make -kj5` is a good setting, experiment with the number
-depending on your available hardware.
+This is the comdb2 test suite. To run the test suite you need to:
+
+1) build comdb2 by doing the following from the top level dir:
+  mkdir build
+  cmake ..
+  make -j$(nproc) && make -j$(nproc) test-tools
+
+2) go to the tests/ directory where each test is a directory with a `.test`
+ending.  To run a specific test, run `make testname`. For example `make
+cdb2api` will run the cdb2api test, which is stored in `cdb2api.test`.
+
+To run all tests in the tests/ directory just rn `make` -- any failure will
+stop the run, instead `make -k` will allow other tests to run.  `make -j5` will
+let 5 tests to run in parallel. `make -kj5` is a good setting, experiment with
+the number depending on your available hardware.
+
+By default, tests run on the current machine and the databases are brought up
+locally.  To test against a clustered database, export variable `CLUSTER` with
+the list of machines to use, eg: `CLUSTER="m1 m2 m3"` make cdb2api will
+build a cluster on m1/m2/m3 and run the test there. Make can take argumests so
+the same can be achieved via `make cdb2api CLUSTER="m1 m2 m3"`. The databases
+are torn down after the test is over.
 
 `testrunner` in the tests directory is a wrapper script that shows you status
 of running tests. It requires python 2.7 and the `blessings` module. It implies
 `-k` and takes an optional `-j` setting and a list of tests to run.
-
-Each test is a directory with a `.test` ending.  To run a specific test, run
-`make testname`.  For example `make cdb2api` will run the cdb2api test, which
-is stored in `cdb2api.test`.
-
-Tests run on the current machine.  Databases are brought up locally by default.
-To test against a clustered database, export a CLUSTER variable to contain a
-list of machines to use, eg: `CLUSTER="m1 m2 m3"` make cdb2api will build a
-cluster on m1/m2/m3 and run the test there. Make can take argumests so
-the same can be achieved via `make cdb2api CLUSTER="m1 m2 m3"`. The databases
-are torn down after the test is over.
 
 ## Adding new tests
 
@@ -73,16 +78,16 @@ endif
       make setup
    ```
    
-   if you want to have test directories in a particular location, set TESTDIR:
+   If you want to have test directories in a particular location, set TESTDIR:
    ```sh
       make setup TESTDIR=/tmp/somedirfortest
    ```
 
-
-If you already have the test directory properly populated, and
-you can run `make` to run the test case. 
-If you want to run the commands manually, you can type `make setup`,
-then follow the instructions printed by the above command.
+   If your build directory is in a different location, ex. /tmp/mybuilddir 
+   then you can specify it with the BUILDDIR parameter:
+   ```sh
+      make basic TESTDIR=/tmp/somedirfortest BUILDDIR=/tmp/mybuilddir
+   ``` 
 
 
 ## Details
@@ -150,6 +155,10 @@ There's a timeout (default 5 minutes) on a runtime of each testcase, and 1
 minute for setup.  If a test needs more time, `export TEST_TIMEOUT` and
 `SETUP_TIMEOUT` in the test `Makefile`.
 
+The test scripts will cleanup the DB directory on a successful test. If you 
+want to keep the test directory, specify as a parameter `make CLEANUPDBDIR=0` 
+and the DB and will remain intact after test exit. 
+
 ## Good ideas/practices
 
 Show what commands you're running to make the output easier to debug, if
@@ -177,12 +186,17 @@ failure--we have allowed for timeout to be a reasonable amount of time for
 a test to complete. 
 
 You can use the same test machine to run multiple tests simultaneously--running 
-any two tests in parallel is easy by doing:
+any two tests in series is easy by doing:
 ```sh
   make test1; make test2
 ```
 
-To run all the tests in the directory simply do:
+Same two tests can run in parallel via:
+```sh
+  make -j 2 test1 test2
+```
+
+To run all the tests [in parallel] in the directory simply do:
 ```sh
   make -k -j 16
 ```

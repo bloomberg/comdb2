@@ -293,7 +293,7 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     return type;
 }
 
-static struct newsql_appdata *newsql_appdata(struct sqlclntstate *clnt,
+static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt,
                                                  int ncols)
 {
     struct newsql_appdata *appdata = clnt->appdata;
@@ -343,7 +343,7 @@ extern int gbl_return_long_column_names;
 static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     int ncols = sqlite3_column_count(stmt);
-    struct newsql_appdata *appdata = newsql_appdata(clnt, ncols);
+    struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
     for (int i = 0; i < ncols; ++i) {
@@ -376,7 +376,7 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
     if (stmt && sqlite3_column_count(stmt) != ncols) {
         return -1;
     }
-    struct newsql_appdata *appdata = newsql_appdata(clnt, ncols);
+    struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
     size_t n_types = appdata->query ? appdata->query->n_types : 0;
     if (n_types && n_types != ncols) {
         return -2;
@@ -406,7 +406,7 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
 static int newsql_columns_str(struct sqlclntstate *clnt, char **names,
                               int ncols)
 {
-    struct newsql_appdata *appdata = newsql_appdata(clnt, ncols);
+    struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
     for (int i = 0; i < ncols; ++i) {
@@ -574,7 +574,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
         return newsql_send_postponed_row(clnt);
     }
     int ncols = sqlite3_column_count(stmt);
-    struct newsql_appdata *appdata = newsql_appdata(clnt, ncols);
+    struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
     assert(ncols == appdata->count);
     int flip = 0;
 #   if BYTE_ORDER == BIG_ENDIAN
@@ -1646,7 +1646,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         goto done;
     }
     assert(query->sqlquery);
-    newsql_appdata(&clnt, 32);
+    get_newsql_appdata(&clnt, 32);
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
     clnt.query = query;

@@ -462,7 +462,7 @@ function randomwrites
 
 function do_verify
 {
-    typeset $tbl=$1
+    typeset tbl=$1
     typeset cnt=0
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
@@ -494,17 +494,6 @@ function do_verify
         let cnt=cnt+1
 
     done
-}
-
-function assert_vers 
-{
-    tbl=$1
-    target=$2
-    newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$tbl')")
-    if [[ $newver != $target ]] ; then
-        errquit "newver is now $newver but should be $target"
-    fi
-    tblver=$newver
 }
 
 function get_schemachange_status
@@ -665,30 +654,33 @@ while [[ $ii -lt $nwrts ]]; do
 
 done
 
-assert_vers t1 0
-assert_vers t2 0
-assert_vers t3 0
-
 force_delay_master
 
 echo "Starting schemachange"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1" > rebuild_t1.log 2>&1 &
-cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t2" > rebuild_t2.log 2>&1 &
-cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t3" > rebuild_t3.log 2>&1 &
+(cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1" > rebuild_t1.log 2>&1 || touch rebuild_t1.failed) &
+(cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t2" > rebuild_t2.log 2>&1 || touch rebuild_t2.failed) &
+(cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t3" > rebuild_t3.log 2>&1 || touch rebuild_t3.failed) &
 
 echo "wait for sc to finish"
 wait_for_sc
 
 echo "rebuild t1 log"
 cat rebuild_t1.log
+if [ -f rebuild_t1.failed ] ; then
+    errquit "rebuild t1 failed"
+fi
+
 echo "rebuild t2 log"
 cat rebuild_t2.log
+if [ -f rebuild_t2.failed ] ; then
+    errquit "rebuild t2 failed"
+fi
+
 echo "rebuild t3 log"
 cat rebuild_t3.log
-
-assert_vers t1 1
-assert_vers t2 1
-assert_vers t3 1
+if [ -f rebuild_t3.failed ] ; then
+    errquit "rebuild t3 failed"
+fi
 
 do_verify t1
 do_verify t2

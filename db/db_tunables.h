@@ -32,6 +32,11 @@ REGISTER_TUNABLE("allow_lua_print", "Enable to allow stored "
                                     "DB's stdout. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_lua_print, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_lua_dynamic_libs",
+                 "Enable to allow use of dynamic "
+                 "libraries (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_allow_lua_dynamic_libs, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_portmux_route", NULL, TUNABLE_BOOLEAN,
                  &gbl_pmux_route_enabled, READONLY | NOARG | READEARLY, NULL,
                  NULL, NULL, NULL);
@@ -653,7 +658,8 @@ REGISTER_TUNABLE("move_deadlock_max_attempt", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &name, DEPRECATED | READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("natural_types", "Same as 'nosurprise'", TUNABLE_BOOLEAN,
-                 &gbl_surprise, READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 &gbl_surprise, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("netbufsz", "Size of the network buffer (per "
                              "node) for the replication network. "
                              "(Default: 1MB)",
@@ -951,10 +957,6 @@ REGISTER_TUNABLE("reqltruncate", NULL, TUNABLE_INTEGER, &reqltruncate, READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("retry", NULL, TUNABLE_INTEGER, &db->retry, READONLY, NULL,
                  NULL, retry_update, NULL);
-REGISTER_TUNABLE("return_long_column_names",
-                 "Enables returning of long column names. (Default: off)",
-                 TUNABLE_INTEGER, &gbl_return_long_column_names,
-                 READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("round_robin_stripes",
                  "Alternate to which table stripe new records are written. The "
                  "default is to keep stripe affinity by writer. (Default: off)",
@@ -1068,8 +1070,7 @@ REGISTER_TUNABLE("track_berk_locks", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("udp", NULL, TUNABLE_BOOLEAN, &gbl_udp, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("unnatural_types", "Same as 'surprise'", TUNABLE_BOOLEAN,
-                 &gbl_surprise, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
-                 NULL, NULL);
+                 &gbl_surprise, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("update_delete_limit", NULL, TUNABLE_BOOLEAN,
                  &gbl_update_delete_limit, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);

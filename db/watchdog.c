@@ -384,6 +384,8 @@ void watchdog_enable(void)
     gbl_nowatch = 0;
 }
 
+void lock_info_lockers(FILE *out, bdb_state_type *bdb_state);
+
 void comdb2_die(int aborat)
 {
     pid_t pid;
@@ -395,6 +397,8 @@ void comdb2_die(int aborat)
     alarm(60);
 
     logmsg(LOGMSG_FATAL, "Getting ready to die, printing useful debug info.\n");
+
+    lock_info_lockers(stderr, thedb->bdb_env);
 
     /* print some useful stuff */
 

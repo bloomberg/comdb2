@@ -32,6 +32,8 @@
 #include "sqllog.h"
 #include "ssl_bend.h"
 #include "translistener.h"
+#include "rtcpu.h"
+#include "config.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -52,6 +54,8 @@ extern char **sfuncs;
 extern char **afuncs;
 static int gbl_nogbllrl; /* don't load /bb/bin/comdb2*.lrl */
 
+static int read_lrl_option(struct dbenv *, char *, struct read_lrl_option_type *, int);
+
 static struct option long_options[] = {
     {"lrl", required_argument, NULL, 0},
     {"repopnewlrl", required_argument, NULL, 0},
@@ -64,11 +68,13 @@ static struct option long_options[] = {
     {"fullrecovery", no_argument, &gbl_fullrecovery, 1},
     {"no-global-lrl", no_argument, &gbl_nogbllrl, 1},
     {"dir", required_argument, NULL, 0},
+    {"tunable", required_argument, NULL, 0},
     {NULL, 0, NULL, 0}};
 
 static const char *help_text = {
     "Usage: comdb2 [--lrl LRLFILE] [--recovertotime EPOCH]\n"
     "              [--recovertolsn FILE:OFFSET]\n"
+    "              [--tunable STRING]\n"
     "              [--fullrecovery] NAME\n"
     "\n"
     "       comdb2 --create [--lrl LRLFILE] [--dir PATH] NAME\n"
@@ -79,6 +85,7 @@ static const char *help_text = {
     "        --recovertotime            recovers database to epochtime\n"
     "        --create                   creates a new database\n"
     "        --dir                      specify path to database directory\n"
+    "        --tunable                  override tunable\n"
     "\n"
     "        NAME                       database name\n"
     "        LRLFILE                    lrl configuration file\n"
@@ -127,6 +134,53 @@ static void set_dbdir(char *dir)
     free(wd);
 }
 
+#include <berkdb/dbinc/queue.h>
+struct CmdLineTunable;
+struct CmdLineTunable {
+    char *arg;
+    STAILQ_ENTRY(CmdLineTunable) entry;
+};
+STAILQ_HEAD(CmdLineTunables, CmdLineTunable) *cmd_line_tunables;
+
+static void add_cmd_line_tunable(char *arg)
+{
+    if (cmd_line_tunables == NULL) {
+        cmd_line_tunables = malloc(sizeof(*cmd_line_tunables));
+        STAILQ_INIT(cmd_line_tunables);
+    }
+    struct CmdLineTunable *t = malloc(sizeof(*t));
+    t->arg = arg;
+    STAILQ_INSERT_TAIL(cmd_line_tunables, t, entry);
+}
+
+void add_cmd_line_tunables_to_file(FILE *f)
+{
+    if (cmd_line_tunables == NULL)
+        return;
+    struct CmdLineTunable *t, *tmp;
+    STAILQ_FOREACH_SAFE(t, cmd_line_tunables, entry, tmp) {
+        fprintf(f, "%s\n", t->arg);
+        free(t);
+    }
+    free(cmd_line_tunables);
+    cmd_line_tunables = NULL;
+}
+
+static void read_cmd_line_tunables(struct dbenv *dbenv)
+{
+    if (cmd_line_tunables == NULL)
+        return;
+    struct read_lrl_option_type options = {
+        .lineno = 0, .lrlname = "cmd_line_args", .dbname = dbenv->envname};
+    struct CmdLineTunable *t, *tmp;
+    STAILQ_FOREACH_SAFE(t, cmd_line_tunables, entry, tmp) {
+        read_lrl_option(dbenv, t->arg, &options, strlen(t->arg));
+        free(t);
+    }
+    free(cmd_line_tunables);
+    cmd_line_tunables = NULL;
+}
+
 int handle_cmdline_options(int argc, char **argv, char **lrlname)
 {
     char *p;
@@ -167,6 +221,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
         case 4: /* recovery_lsn */ gbl_recovery_options = optarg; break;
         case 5: /* pidfile */ write_pidfile(optarg); break;
         case 10: /* dir */ set_dbdir(optarg); break;
+        case 11: /* tunable */ add_cmd_line_tunable(optarg); break;
         }
     }
     return 0;
@@ -195,17 +250,19 @@ static int defer_option(struct dbenv *dbenv, enum deferred_option_level lvl,
     return 0;
 }
 
-int deferred_do_commands(struct dbenv *env, char *option, void *p, int len)
+int deferred_do_commands(struct dbenv *env, char *option,
+                         struct read_lrl_option_type *p, int len)
 {
     char *tok;
     int st = 0, tlen = 0;
+    int rc = 0;
 
     tok = segtok(option, len, &st, &tlen);
     if (tokcmp(tok, tlen, "sqllogger") == 0)
         sqllogger_process_message(option + st, len - st);
     else if (tokcmp(tok, tlen, "do") == 0)
-        process_command(env, option + st, len - st, 0);
-    return 0;
+        rc = process_command(env, option + st, len - st, 0);
+    return rc;
 }
 
 /* handles "if"'s, returns 1 if this isn't an "if" statement or if the statement
@@ -234,24 +291,28 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
     return 1; /* there was no "if" statement or it was true */
 }
 
-int process_deferred_options(struct dbenv *dbenv,
-                             enum deferred_option_level lvl, void *usrdata,
-                             int (*callback)(struct dbenv *env, char *option,
-                                             void *p, int len))
+void process_deferred_options(struct dbenv *dbenv,
+                              enum deferred_option_level lvl, void *usrdata,
+                              lrl_reader *callback)
 {
     struct deferred_option *opt;
     int rc;
 
+    LISTC_FOR_EACH(&dbenv->deferred_options[lvl], opt, lnk)
+    {
+        callback(dbenv, opt->option, usrdata, opt->len);
+    }
+}
+
+void clear_deferred_options(struct dbenv *dbenv, enum deferred_option_level lvl)
+{
+    struct deferred_option *opt;
     opt = listc_rtl(&dbenv->deferred_options[lvl]);
     while (opt) {
-        rc = callback(dbenv, opt->option, usrdata, opt->len);
-
-        if (rc) return rc;
         free(opt->option);
         free(opt);
         opt = listc_rtl(&dbenv->deferred_options[lvl]);
     }
-    return 0;
 }
 
 static void init_deferred_options(struct dbenv *dbenv)
@@ -290,7 +351,17 @@ static void add_legacy_default_options(struct dbenv *dbenv)
         "norcache",
         "usenames",
         "dont_return_long_column_names",
-        "setattr DIRECTIO 0"};
+        "setattr DIRECTIO 0",
+        "berkattr elect_highest_committed_gen 0",
+        "unnatural_types 1",
+        "enable_sql_stmt_caching none",
+        "on accept_on_child_nets",
+        "env_messages",
+        "off return_long_column_names",
+        "setattr NET_SEND_GBLCONTEXT 1",
+        "setattr ENABLE_SEQNUM_GENERATIONS 0",
+        "setattr MASTER_LEASE 0",
+        "setattr SC_DONE_SAME_TRAN 0"};
     for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++)
         defer_option(dbenv, DEFERRED_LEGACY_DEFAULTS, legacy_options[i], -1, 0);
 }
@@ -336,11 +407,10 @@ static int pre_read_option(struct dbenv *dbenv, char *line, int llen)
     return 0;
 }
 
-static int pre_read_deferred_callback(struct dbenv *env, char *option, void *p,
-                                      int len)
+static int pre_read_deferred_callback(struct dbenv *env, char *option,
+                                      struct read_lrl_option_type *p, int len)
 {
-    pre_read_option(env, option, len);
-    return 0;
+    return pre_read_option(env, option, len);
 }
 
 static void pre_read_lrl_file(struct dbenv *dbenv, const char *lrlname)
@@ -363,8 +433,6 @@ static void pre_read_lrl_file(struct dbenv *dbenv, const char *lrlname)
 
     fclose(ff); /* lets get one fd back */
 }
-
-static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len);
 
 struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
                                 int required)
@@ -403,16 +471,8 @@ struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
         read_lrl_option(dbenv, line, &options, strlen(line));
     }
     options.lineno = 0;
-    rc = process_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS, &options,
-                                  read_lrl_option);
-    if (rc) {
-        logmsg(LOGMSG_WARN, "process_deferred_options rc %d\n", rc);
-        fclose(ff);
-    }
-    if (rc) {
-        fclose(ff);
-        return NULL;
-    }
+    process_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS, &options, read_lrl_option);
+    clear_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS);
 
     /* process legacy options (we deferred them) */
 
@@ -491,7 +551,8 @@ static int lrltokignore(char *tok, int ltok)
         pfx##funcs[i] = NULL;                                                  \
     } while (0)
 
-static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
+static int read_lrl_option(struct dbenv *dbenv, char *line,
+                           struct read_lrl_option_type *options, int len)
 {
     char *tok;
     int st = 0;
@@ -499,7 +560,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
     int ii, kk;
     int num;
     int rc;
-    struct read_lrl_option_type *options = (struct read_lrl_option_type *)p;
 
     tok = segtok(line, len, &st, &ltok);
     if (ltok == 0 || tok[0] == '#') return 0;
@@ -641,6 +701,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                     memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length) == 0) {
                     /* Assume I am better known by this name. */
                     gbl_mynode = intern(nodename);
+                    gbl_mynodeid = machine_num(gbl_mynode);
                 }
                 if (strcmp(gbl_mynode, nodename) == 0 &&
                     gbl_rep_node_pri == 0) {
@@ -1452,5 +1513,10 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
             /* (NC) TODO: Should this be freed here? */
             free((char *)lrlname);
     }
+
+    if (!gbl_create_mode) {
+        read_cmd_line_tunables(dbenv);
+    }
+
     return 0;
 }

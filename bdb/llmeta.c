@@ -3338,7 +3338,10 @@ bdb_commit_temp_file_version(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     if (file_type == LLMETA_FVER_FILE_TYPE_IX) {
-        logmsg(LOGMSG_DEBUG, "%s: pointing ix %d at  %016llx\n", __func__,
+        logmsg(LOGMSG_INFO, "%s: pointing ix %d at  %016llx\n", __func__,
+               file_num, version_num);
+    } else if (file_type == LLMETA_FVER_FILE_TYPE_DTA) {
+        logmsg(LOGMSG_INFO, "%s: pointing data %d at  %016llx\n", __func__,
                file_num, version_num);
     }
 
