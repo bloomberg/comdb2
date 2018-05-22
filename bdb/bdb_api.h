@@ -982,7 +982,7 @@ int bdb_amimaster(bdb_state_type *bdb_handle);
 char *bdb_whoismaster(bdb_state_type *bdb_handle);
 
 int bdb_get_rep_master(bdb_state_type *bdb_state, char **master_out,
-                       uint32_t *egen);
+                       uint32_t *gen, uint32_t *egen);
 
 /* get current sanc list.  pass in size of array.  returns number of sanc
  * nodes (may be > passed in list length). */
