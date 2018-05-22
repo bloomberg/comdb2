@@ -57,7 +57,7 @@ enum {
     DISP_BINARY  = 1 << 2, /* output binary */
     DISP_GENSQL  = 1 << 3, /* generate insert statements */
     DISP_TABULAR = 1 << 4, /* display result in tabular format */
-    DISP_STDERR  = 1 << 5,  /* print to stderr */
+    DISP_STDERR  = 1 << 5, /* print to stderr */
 };
 
 static int show_ports = 0;
@@ -137,6 +137,7 @@ static const char *usage_text =
     "     --showeffects   Show the effects of query at the end\n"
     "     --strblobs      Display blobs as strings\n"
     "     --tabs          Set column separator to tabs rather than commas\n"
+    "     --tabular       Display result in tabular format\n"
     " -t, --type TYPE     Type of database or tier ('dev' or 'prod',"
     " default 'local')\n"
     " -v, --verbose       Verbose debug output, implies --debugtrace"
@@ -240,13 +241,13 @@ char *db_generator (int state, const char *sql)
         while ((rc = cdb2_next_record(cdb2h_2)) == CDB2_OK) {
             if ( sz < count + 1 ) {
                 sz = (sz == 0) ? 32 : sz * 2;
-                void * m = (char**) realloc(db_words, sz * sizeof(char *));
+                char **m = (char**) realloc(db_words, sz * sizeof(char *));
                 if (!m) {
                     fprintf(stderr, "error with malloc/realloc\n");
                     abort();
                     break;
                 }
-                db_words = (char **) m;
+                db_words = m;
             }
             void *val = cdb2_column_value(cdb2h_2, 0);
             assert(count < sz);
@@ -343,7 +344,7 @@ static char *read_line()
             free(line);
             line = NULL;
         }
-        if ((line = readline(prompt)) != NULL && line[1] != 0)
+        if ((line = readline(prompt)) != NULL && line[0] != 0)
             add_history(line);
         return line;
     }
@@ -626,16 +627,14 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
 {
     void *val;
 
-    assert(printmode != DISP_TABULAR);
+    assert((printmode & DISP_TABULAR) == 0);
 
     val = cdb2_column_value(cdb2h, col);
 
     if (val == NULL) {
-        switch (printmode) {
-        case DISP_CLASSIC:
+        if (printmode & DISP_CLASSIC) {
             fprintf(f, "%s=NULL", cdb2_column_name(cdb2h, col));
-            break;
-        default:
+        } else {
             fprintf(f, "NULL");
         }
         return;
@@ -643,19 +642,19 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
 
     switch (cdb2_column_type(cdb2h, col)) {
     case CDB2_INTEGER:
-        if (printmode == DISP_CLASSIC)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=%lld", cdb2_column_name(cdb2h, col),
                     *(long long *)val);
         else
             fprintf(f, "%lld", *(long long *)val);
         break;
     case CDB2_REAL:
-        if (printmode == DISP_CLASSIC)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         fprintf(f, doublefmt, *(double *)val);
         break;
     case CDB2_CSTRING:
-        if (printmode == DISP_CLASSIC) {
+        if (printmode & DISP_CLASSIC) {
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
             dumpstring(f, (char *)val, 1, 0);
         } else if (printmode & DISP_TABS)
@@ -664,7 +663,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
             dumpstring(f, (char *)val, 1, 1);
         break;
     case CDB2_BLOB:
-        if (printmode == DISP_CLASSIC)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         if (string_blobs) {
             char *c = (char *) val;
@@ -681,7 +680,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
             }
             fputc('\'', stdout);
         } else {
-            if (printmode == DISP_BINARY) {
+            if (printmode & DISP_BINARY) {
                 write(1, val, cdb2_column_size(cdb2h, col));
                 exit(0);
             } else {
@@ -693,7 +692,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
         break;
     case CDB2_DATETIME: {
         cdb2_client_datetime_t *cdt = (cdb2_client_datetime_t *)val;
-        if (printmode == DISP_CLASSIC)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s\"",
                 cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
@@ -703,7 +702,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     }
     case CDB2_DATETIMEUS: {
         cdb2_client_datetimeus_t *cdt = (cdb2_client_datetimeus_t *)val;
-        if (printmode == DISP_CLASSIC)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s\"",
                 cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
@@ -713,7 +712,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     }
     case CDB2_INTERVALYM: {
         cdb2_client_intv_ym_t *ym = (cdb2_client_intv_ym_t *)val;
-        if (printmode == DISP_CLASSIC)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         fprintf(f, "\"%s%u-%u\"", (ym->sign < 0) ? "- " : "", ym->years,
                 ym->months);
@@ -721,7 +720,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     }
     case CDB2_INTERVALDS: {
         cdb2_client_intv_ds_t *ds = (cdb2_client_intv_ds_t *)val;
-        if (printmode == DISP_CLASSIC)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%3.3u\"",
                 (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
@@ -730,7 +729,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     }
     case CDB2_INTERVALDSUS: {
         cdb2_client_intv_dsus_t *ds = (cdb2_client_intv_dsus_t *)val;
-        if (printmode == DISP_CLASSIC)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%6.6u\"",
                 (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
@@ -1120,11 +1119,9 @@ static int run_statement(const char *sql, int ntypes, int *types,
 
     /* Print rows */
     while ((rc = cdb2_next_record(cdb2h)) == CDB2_OK) {
-        switch (printmode) {
-        case DISP_CLASSIC:
+        if (printmode & DISP_CLASSIC) {
             fprintf(out, "(");
-            break;
-        case DISP_GENSQL:
+        } else if (printmode & DISP_GENSQL) {
             printf("insert into %s (", gensql_tbl);
             for (col = 0; col < ncols; col++) {
                 printf("%s", cdb2_column_name(cdb2h, col));
@@ -1132,10 +1129,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
                     printf(", ");
             }
             printf(") values (");
-            break;
-        case DISP_TABULAR:
+        } else if (printmode & DISP_TABULAR) {
             res.append_row(cdb2h);
-            break;
         }
 
         for (col = 0; col < ncols; col++) {
@@ -1148,34 +1143,24 @@ static int run_statement(const char *sql, int ntypes, int *types,
 
             /* Print column separator */
             if (col != ncols - 1) {
-                switch(printmode) {
-                case DISP_TABS:
+                if (printmode & DISP_TABS) {
                     fprintf(out, "\t");
-                    break;
-                case DISP_TABULAR:
+                } else if (printmode & DISP_TABULAR) {
                     /* Noop */
-                    break;
-                case DISP_CLASSIC:
-                    /* fallthrough */
-                default:
+                } else {
                     fprintf(out, ", ");
                 }
             }
         }
 
-        switch (printmode) {
-        case DISP_CLASSIC:
+        if (printmode & DISP_CLASSIC) {
             fprintf(out, ")\n");
-            break;
-        case DISP_TABS:
+        } else if (printmode & DISP_TABS) {
             fprintf(out, "\n");
-            break;
-        case DISP_GENSQL:
+        } else if (printmode & DISP_GENSQL) {
             fprintf(out, ");\n");
-            break;
-        case DISP_TABULAR:
+        } else if (printmode & DISP_TABULAR) {
             /* Noop */
-            break;
         }
 
         fflush(out);
