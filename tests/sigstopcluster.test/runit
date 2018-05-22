@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Makes sure we behave correctly if entire cluster is SIGSTOPPED
 # debug_trace="-D"

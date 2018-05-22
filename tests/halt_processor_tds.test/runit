@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 #export debug=1
 [[ "$debug" == 1 ]] && set -x
