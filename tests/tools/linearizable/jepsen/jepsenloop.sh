@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Unlike the other linearizable tests, this must be run by itself on a machine
 

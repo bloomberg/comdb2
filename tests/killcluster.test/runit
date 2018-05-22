@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Make sure we behave correctly if entire cluster goes down
 debug=1

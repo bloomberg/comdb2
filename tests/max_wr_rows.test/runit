@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Tests max_wr_rows_per_txn tunable
 debug=1

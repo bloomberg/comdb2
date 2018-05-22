@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 db=$1
 n=$2
