@@ -33,6 +33,7 @@
 extern int g_osql_max_trans;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
+extern int gbl_reorder_blkseq_no_deadlock;
 
 typedef struct blob_key {
     unsigned long long seq; /* tbl->seq identifying the owning row */
@@ -1611,12 +1612,14 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                 return SQLITE_TOOBIG;
             }
 
-            rc = process_local_shadtbl_index(clnt, tbl, bdberr, genid, 1);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: error writting index record to master in "
-                                "offload mode %d!\n",
-                        __func__, rc);
-                return SQLITE_INTERNAL;
+            if (!gbl_reorder_blkseq_no_deadlock) {
+                rc = process_local_shadtbl_index(clnt, tbl, bdberr, genid, 1);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR, "%s: error writting index record to master in "
+                            "offload mode %d!\n",
+                            __func__, rc);
+                    return SQLITE_INTERNAL;
+                }
             }
 
             rc = osql_send_delrec(osql->host, osql->rqid, osql->uuid, genid,
@@ -1629,6 +1632,17 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                     __func__, rc);
                 return SQLITE_INTERNAL;
             }
+
+            if (gbl_reorder_blkseq_no_deadlock) {
+                rc = process_local_shadtbl_index(clnt, tbl, bdberr, genid, 1);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR, "%s: error writting index record to master in "
+                            "offload mode %d!\n",
+                            __func__, rc);
+                    return SQLITE_INTERNAL;
+                }
+            }
+
         }
 
         rc = bdb_tran_deltbl_next(tbl->env->bdb_env, clnt->dbtran.shadow_tran,
@@ -1886,26 +1900,28 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
         if (rc != IX_FND) {
 
-            rc = process_local_shadtbl_index(clnt, tbl, bdberr, *seq, 0);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: error writting index record to master in "
-                                "offload mode!\n",
-                        __func__);
-                free(seq);
-                break;
-            }
+            if (!gbl_reorder_blkseq_no_deadlock) {
+                rc = process_local_shadtbl_index(clnt, tbl, bdberr, *seq, 0);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR, "%s: error writting index record to master in "
+                            "offload mode!\n",
+                            __func__);
+                    free(seq);
+                    break;
+                }
 
-            rc = process_local_shadtbl_qblob(clnt, tbl, NULL, bdberr, *seq,
-                                             data);
-            if (rc) {
-                free(seq);
-                break;
+                rc = process_local_shadtbl_qblob(clnt, tbl, NULL, bdberr, *seq,
+                        data);
+                if (rc) {
+                    free(seq);
+                    break;
+                }
             }
 
             tbl->nops++;
 
             if (clnt->osql_max_trans &&
-                ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
+                    ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
                 free(seq);
                 return SQLITE_TOOBIG;
             }
@@ -1923,6 +1939,25 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                 free(seq);
                 return SQLITE_INTERNAL;
             }
+
+            if (gbl_reorder_blkseq_no_deadlock) {
+                rc = process_local_shadtbl_index(clnt, tbl, bdberr, *seq, 0);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR, "%s: error writting index record to master in "
+                            "offload mode!\n",
+                            __func__);
+                    free(seq);
+                    break;
+                }
+
+                rc = process_local_shadtbl_qblob(clnt, tbl, NULL, bdberr, *seq,
+                        data);
+                if (rc) {
+                    free(seq);
+                    break;
+                }
+            }
+
             free(seq);
         }
 
@@ -1946,7 +1981,6 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
     osqlstate_t *osql = &clnt->osql;
     unsigned long long *seq = NULL;
-    int *updCols = NULL;
     int rc = 0;
     unsigned long long genid = 0;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
@@ -1990,27 +2024,29 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             return SQLITE_TOOBIG;
         }
 
-        rc = process_local_shadtbl_updcols(clnt, tbl, &updCols, bdberr, *seq);
-        if (rc)
-            return SQLITE_INTERNAL;
+        if (!gbl_reorder_blkseq_no_deadlock) {
+            int *updCols = NULL;
+            rc = process_local_shadtbl_updcols(clnt, tbl, &updCols, bdberr, *seq);
+            if (rc)
+                return SQLITE_INTERNAL;
 
-        /* indexes to delete */
-        rc = process_local_shadtbl_index(clnt, tbl, bdberr, genid, 1);
-        if (rc)
-            return SQLITE_INTERNAL;
-        /* indexes to add */
-        rc = process_local_shadtbl_index(clnt, tbl, bdberr, *seq, 0);
-        if (rc)
-            return SQLITE_INTERNAL;
+            /* indexes to delete */
+            rc = process_local_shadtbl_index(clnt, tbl, bdberr, genid, 1);
+            if (rc)
+                return SQLITE_INTERNAL;
+            /* indexes to add */
+            rc = process_local_shadtbl_index(clnt, tbl, bdberr, *seq, 0);
+            if (rc)
+                return SQLITE_INTERNAL;
 
-        rc =
-            process_local_shadtbl_qblob(clnt, tbl, updCols, bdberr, *seq, data);
-        if (rc)
-            return SQLITE_INTERNAL;
+            rc =
+                process_local_shadtbl_qblob(clnt, tbl, updCols, bdberr, *seq, data);
+            if (rc)
+                return SQLITE_INTERNAL;
 
-        if (updCols) {
-            free(updCols);
-            updCols = NULL;
+            if (updCols) {
+                free(updCols);
+            }
         }
 
         rc = osql_send_updrec(osql->host, osql->rqid, osql->uuid, genid,
@@ -2029,6 +2065,30 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             break;
         }
 
+        if (gbl_reorder_blkseq_no_deadlock) {
+            int *updCols = NULL;
+            rc = process_local_shadtbl_updcols(clnt, tbl, &updCols, bdberr, *seq);
+            if (rc)
+                return SQLITE_INTERNAL;
+
+            /* indexes to delete */
+            rc = process_local_shadtbl_index(clnt, tbl, bdberr, genid, 1);
+            if (rc)
+                return SQLITE_INTERNAL;
+            /* indexes to add */
+            rc = process_local_shadtbl_index(clnt, tbl, bdberr, *seq, 0);
+            if (rc)
+                return SQLITE_INTERNAL;
+
+            rc =
+                process_local_shadtbl_qblob(clnt, tbl, updCols, bdberr, *seq, data);
+            if (rc)
+                return SQLITE_INTERNAL;
+
+            if (updCols) {
+                free(updCols);
+            }
+        }
         rc = bdb_temp_table_next(tbl->env->bdb_env, tbl->upd_cur, bdberr);
     }
     if (rc == IX_PASTEOF || rc == IX_EMPTY) {
