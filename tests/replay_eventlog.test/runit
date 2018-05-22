@@ -304,7 +304,7 @@ done
 set -e
 
 #setup remode db
-$TESTSROOTDIR/setup
+$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 echo running $CDB2_SQLREPLAY_EXE $alterdbname $logflunziped
 $CDB2_SQLREPLAY_EXE $alterdbname $logflunziped > sqlreplay.out
@@ -318,7 +318,7 @@ if ! diff orig.txt replayed.txt ; then
 fi
 
 set -e
-$TESTSROOTDIR/unsetup $success
+$TESTSROOTDIR/unsetup $success &> $TESTDIR/logs/$DBNAME.unsetup
 set +e
 
 if [ $success != 1 ] ; then

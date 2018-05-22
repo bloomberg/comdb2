@@ -866,6 +866,10 @@ __log_dbenv_refresh(dbenv)
 	if (dblp->dbentry != NULL)
 		__os_free(dbenv, dblp->dbentry);
 
+    LOG *region = dblp->reginfo.primary;
+	void *p = R_ADDR(&dblp->reginfo, region->buffer_off);
+	__os_free(dbenv, p);
+
 	__os_free(dbenv, dblp);
 
 	dbenv->lg_handle = NULL;

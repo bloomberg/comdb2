@@ -1,3 +1,5 @@
+[create table intvds(id int, a intervalds)] rc 0
+[create table intvdsus(id int, a intervaldsus)] rc 0
 (rows inserted=1)
 [insert into intvds(id, a) values(1, "0 00:00:00")] rc 0
 (rows inserted=1)

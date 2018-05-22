@@ -56,7 +56,4 @@ void sc_del_unused_files(struct dbtable *);
 void sc_del_unused_files_tran(struct dbtable *, tran_type *);
 void sc_del_unused_files_check_progress(void);
 
-void getMachineAndTimeFromFstSeed(uint64_t seed, uint32_t host,
-                                  const char **mach, time_t *timet);
-
 #endif

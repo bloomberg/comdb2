@@ -18,9 +18,9 @@ export DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | 
 export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
     $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh)))
 
-TOTAL=$(words $(MAKECMDGOALS))  # targets passed to make
-ifeq ($(TOTAL),0)
-TOTAL=$(words $(ALL_TESTS))     # if no targets passed, will do ALL_TESTS
+TOTAL=$(words $(MAKECMDGOALS) )  # targets passed to make
+ifeq ($(MAKECMDGOALS),)
+TOTAL=$(words $(ALL_TESTS) )     # if no targets passed, will do ALL_TESTS
 endif
 
 all: init basicops all_tests
@@ -40,12 +40,13 @@ basicops_nokey: init
 	$(shell echo "TESTSROOTDIR=${TESTSROOTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "DISABLED= $(sort ${DISABLED_TESTS}) " >> ${TESTDIR}/test.log)
+	$(shell echo "MAKECMDGOALS=${MAKECMDGOALS}" >> ${TESTDIR}/test.log)
 	$(shell echo "" >> ${TESTDIR}/test.log)
-	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
 
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" $(TESTSROOTDIR)/tools/keygen.sh)
 	$(shell TOTAL="${TOTAL}" $(TESTSROOTDIR)/tools/smalldelay.sh)
+	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" TESTSROOTDIR="${TESTSROOTDIR}" COMDB2_EXE=${COMDB2_EXE} CDB2SQL_EXE=${CDB2SQL_EXE} COMDB2AR_EXE=${COMDB2AR_EXE} PMUX_EXE=${PMUX_EXE} PMUXPORT=${PMUXPORT} ${TESTSROOTDIR}/tools/copy_files_to_cluster.sh > ${TESTDIR}/copy_files_to_cluster.log 2>&1 || echo "exit 1 copy_files_to_cluster failed" )
 
 showparams: 
 	@echo TESTSROOTDIR=${TESTSROOTDIR}
@@ -94,4 +95,4 @@ clean: testclean
 
 testclean:
 	@rm -rf test_[0-9]* $(TESTDIR)/
-	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf *.trap; rm -rf $(TESTSROOTDIR)/test_[0-9]* $(TESTDIR)/' < /dev/null;)
+	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf $(TESTSROOTDIR)/test_[0-9]* $(TESTDIR)/' < /dev/null;)

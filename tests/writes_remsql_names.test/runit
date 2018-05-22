@@ -32,7 +32,7 @@ CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
 
 
 #setup remote db
-$TESTSROOTDIR/setup
+$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 
 #run tests
@@ -41,7 +41,7 @@ echo ./writes_remsql_names.sh $dbname $cdb2config $srcdbname $dbdir $testdir
 ./writes_remsql_names.sh $dbname $cdb2config $srcdbname $dbdir $testdir
 result=$?
 
-$TESTSROOTDIR/unsetup
+$TESTSROOTDIR/unsetup &> $TESTDIR/logs/$DBNAME.unsetup
 
 
 if (( $result != 0 )) ; then

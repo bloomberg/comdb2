@@ -189,11 +189,11 @@ static int timepartShardsConnect(
 
 }
 
-#define PARTID(s) (((s) & 0x0FF00)>>16)
-#define SHARDID(s) ((s) & 0x0FF)
+#define PARTID(s) (((s) & 0x0FFFF0000)>>16)
+#define SHARDID(s) ((s) & 0x0FFFF)
 
 /* cursor next */
-static int timepartShardsNext(sqlite3_vtab_cursor *cur){
+static int timepartShardsNext(sqlite3_vtab_cursor *cur) {
   timepart_cursor *pCur = (timepart_cursor*)cur;
   int tpid = PARTID(pCur->iRowid);
   int shardid = SHARDID(pCur->iRowid);
@@ -202,9 +202,9 @@ static int timepartShardsNext(sqlite3_vtab_cursor *cur){
       timepart_systable_next_shard(&tpid, &shardid);
 
       pCur->eof = tpid >= pCur->maxTimepartitions;
-  }
 
-  pCur->iRowid = tpid<<16 | shardid;
+      pCur->iRowid = tpid<<16 | shardid;
+  }
 
   return SQLITE_OK;
 }

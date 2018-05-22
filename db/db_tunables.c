@@ -141,6 +141,8 @@ extern int gbl_time_rep_apply;
 extern int gbl_incoherent_logput_window;
 extern int gbl_dump_full_net_queue;
 extern int gbl_max_clientstats_cache;
+extern int gbl_dbreg_stack_on_null_txn;
+extern int gbl_dbreg_abort_on_null_txn;
 
 extern long long sampling_threshold;
 

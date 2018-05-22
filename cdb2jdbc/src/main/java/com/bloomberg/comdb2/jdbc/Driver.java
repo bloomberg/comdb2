@@ -67,6 +67,11 @@ public class Driver implements java.sql.Driver {
     public static Driver getInstance() throws SQLException {
         try {
             __instance.options.put("maxquerytime", new IntegerOption("maxquerytime", "QueryTimeout"));
+            __instance.options.put("timeout", new IntegerOption("timeout", "Timeout"));
+            __instance.options.put("sotimeout", new IntegerOption("sotimeout", "SoTimeout"));
+            __instance.options.put("connect_timeout", new IntegerOption("connect_timeout", "ConnectTimeout"));
+            __instance.options.put("comdb2db_timeout", new IntegerOption("comdb2db_timeout", "Comdb2dbTimeout"));
+            __instance.options.put("dbinfo_timeout", new IntegerOption("dbinfo_timeout", "DbinfoTimeout"));
             __instance.options.put("user", new StringOption("user", "User"));
             __instance.options.put("password", new StringOption("password", "Password"));
             __instance.options.put("default_type", new StringOption("default_type", "DefaultType"));

@@ -857,6 +857,11 @@ __dbenv_close(dbenv, rep_check)
 
         pthread_mutex_destroy(&dbenv->durable_lsn_lk);
 
+	if (dbenv->ltrans_hash != NULL) {
+        hash_clear(dbenv->ltrans_hash);
+        hash_free(dbenv->ltrans_hash);
+    }
+
 	/* Release DB list */
 	__os_free(dbenv, dbenv->dbs);
 

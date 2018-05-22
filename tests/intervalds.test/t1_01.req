@@ -1,0 +1,25 @@
+########## DAYS
+#adding negative days
+select cast((now() - (now() + cast('-1' as days))) as int) as res
+
+# adding positive days
+select cast(((now() + cast('1' as days)) -now()) as int) as res
+
+#subtractive negative days
+select cast(((now() - cast('-1' as days))- now()) as int) as res
+
+#subtracting positive days
+select cast(now() - (now() - cast('1' as days)) as int) as res
+
+########## SECONDS
+#adding negative days
+select cast((now() - (now() + cast('-60' as sec))) as int) as res
+
+# adding positive days
+select cast(((now() + cast('60' as sec)) -now()) as int) as res
+
+#subtractive negative days
+select cast(((now() - cast('-60' as sec))- now()) as int) as res
+
+#subtracting positive days
+select cast(now() - (now() - cast('60' as sec)) as int) as res

@@ -563,8 +563,25 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
         rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
 
         if (rc != 0) {
+            if (rc < 0)
+                return SQLITE_BUSY;
+            else
+                return rc;
+        }
+
+        logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
+
+        clnt->deadlock_recovered++;
+    } else if (gbl_sql_random_release_interval &&
+               !(rand() % gbl_sql_random_release_interval)) {
+
+        rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+        if (rc != 0) {
             logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
-            return (rc == SQLITE_CLIENT_CHANGENODE) ? rc : SQLITE_BUSY;
+            if (rc < 0)
+                return SQLITE_BUSY;
+            else
+                return rc;
         }
 
         logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
@@ -1651,10 +1668,9 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
     for (int ixnum = 0; ixnum < tbl->nix; ixnum++) {
         strbuf_clear(sql);
 
-        snprintf(namebuf, sizeof(namebuf), ".ONDISK_ix_%d", ixnum);
-        schema = find_tag_schema(tbl->tablename, namebuf);
+        schema = tbl->schema->ix[ixnum];
         if (schema == NULL) {
-            logmsg(LOGMSG_ERROR, "No %s tag for table %s\n", namebuf,
+            logmsg(LOGMSG_ERROR, "No index %d schema for table %s\n", ixnum,
                    tbl->tablename);
             strbuf_free(sql);
             return -1;
@@ -1779,12 +1795,10 @@ int create_sqlmaster_records(void *tran)
     int table;
     int rc = 0;
     sql_mem_init(NULL);
-    for (table = 0; table < thedb->num_dbs; table++) {
+    for (table = 0; table < thedb->num_dbs && rc == 0; table++) {
         rc = create_sqlmaster_record(thedb->dbs[table], tran);
-        if (rc)
-            goto done;
     }
-done:
+
     sql_mem_shutdown(NULL);
     return rc;
 }
@@ -1946,16 +1960,25 @@ int schema_var_size(struct schema *sc)
     return sz;
 }
 
+struct schema_mem {
+    struct schema *sc;
+    Mem *min;
+    Mem *mout;
+};
+
 static int indexes_thread_memory = 1048576;
 /* force an update on sqlite_master to test partial indexes syntax*/
-int new_indexes_syntax_check(struct ireq *iq)
+int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
 {
     int rc = 0;
     sqlite3 *hndl = NULL;
-    struct sqlclntstate client;
+    struct sqlclntstate client = {0};
+    struct schema_mem sm = {0};
     const char *temp = "select 1 from sqlite_master limit 1";
     char *err = NULL;
     int got_curtran = 0;
+    master_entry_t *ents = NULL;
+    int nents = 0;
 
     if (!gbl_partial_indexes)
         return -1;
@@ -1963,18 +1986,40 @@ int new_indexes_syntax_check(struct ireq *iq)
     sql_mem_init(NULL);
     thread_memcreate(indexes_thread_memory);
 
+    rc = create_sqlmaster_record(db, NULL);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to create sqlmaster record\n",
+               __func__);
+        sql_mem_shutdown(NULL);
+        return -1;
+    }
+    ents = create_master_entry_array(&db, 1, &nents);
+    if (!ents) {
+        logmsg(LOGMSG_ERROR, "%s: failed to create master entries\n", __func__);
+        sql_mem_shutdown(NULL);
+        return -1;
+    }
+
     reset_clnt(&client, NULL, 1);
     client.sb = NULL;
     client.sql = (char *)temp;
     sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     client.dbtran.mode = TRANLEVEL_SOSQL;
 
+    /* schema_mems is used to pass db->schema to is_comdb2_index_blob so we can
+     * mark db->schema->ix_blob if the index expression has blob fields */
+    sm.sc = db->schema;
+    client.verify_indexes = 1;
+    client.schema_mems = &sm;
+
     struct sql_thread *sqlthd = start_sql_thread();
     sql_get_query_id(sqlthd);
     client.debug_sqlclntstate = pthread_self();
     sqlthd->clnt = &client;
 
-    get_copy_rootpages_nolock(sqlthd);
+    get_copy_rootpages_custom(sqlthd, ents, nents);
+
+    destroy_sqlite_master(ents, nents);
 
     rc = sqlite3_open_serial("db", &hndl, NULL);
     if (rc) {
@@ -6235,10 +6280,12 @@ again:
             nretries++;
             if ((rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0)) != 0) {
                 if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %zu failed dd recovery\n",
-                           __func__, pthread_self());
-
-                return (rc == SQLITE_CLIENT_CHANGENODE) ? rc : SQLITE_DEADLOCK;
+                    logmsg(LOGMSG_ERROR, "%s: %zu failed dd recovery, rc %d\n",
+                           __func__, pthread_self(), rc);
+                if (rc < 0)
+                    return SQLITE_BUSY;
+                else
+                    return rc;
             }
             if (nretries >= gbl_maxretries) {
                 logmsg(LOGMSG_ERROR, "too much contention fetching "
@@ -6808,6 +6855,7 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     bdb_temp_table_set_cmp_func(cur->sampled_idx->tbl, (tmptbl_cmp)xCmp);
 
     cur->db = db;
+    cur->tableversion = cur->db->tableversion;
     cur->sc = cur->db->ixschema[cur->ixnum];
     cur->rootpage = iTable;
     cur->bt = pBt;
@@ -7070,6 +7118,7 @@ static int sqlite3BtreeCursor_master(
 
     cur->tblpos = 0;
     cur->db = NULL;
+    cur->tableversion = 0;
 
     /* buffer just contains rrn */
     m.flags = MEM_Int;
@@ -7194,6 +7243,13 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         db = get_sqlite_db(thd, iTable, NULL);
 
         if (!db) {
+            if (after_recovery && !fdb_table_exists(iTable)) {
+                logmsg(LOGMSG_ERROR, "%s: no such table: %s\n", __func__,
+                       tab->zName);
+                sqlite3VdbeError(p, "table \"%s\" was schema changed",
+                                 tab->zName);
+                return SQLITE_SCHEMA;
+            }
             nRemoteTables++;
             continue;
         }
@@ -7255,7 +7311,7 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
                                  db->tablename);
                 sqlite3VdbeTransferError(p);
 
-                return SQLITE_ABORT;
+                return SQLITE_SCHEMA;
             }
         }
 
@@ -7575,8 +7631,8 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     /* INVALID: assert(iTable < thd->rootpage_nentries + RTPAGE_START); */
 
     cur->db = get_sqlite_db(thd, iTable, &cur->ixnum);
-
     assert(cur->db);
+    cur->tableversion = cur->db->tableversion;
 
     /* initialize the shadow, if any  */
     cur->shadtbl = osql_get_shadow_bydb(thd->clnt, cur->db);
@@ -8460,6 +8516,7 @@ int sqlite3BtreeRecordID(BtCursor *pCur, void *memp)
     return SQLITE_OK;
 }
 
+/* print comdb2_rowid */
 int sqlite3BtreeRecordIDString(BtCursor *pCur, unsigned long long rowid,
                                char **memp, size_t maxsz)
 {
@@ -8480,7 +8537,7 @@ int sqlite3BtreeRecordIDString(BtCursor *pCur, unsigned long long rowid,
         rc = enque_pfault_olddata_oldkeys(pCur->db, rowid, 0, -1, 0, 1, 1, 1);
     }
     prgenid = flibc_htonll(rowid);
-    snprintf(*memp, maxsz, "2:%llu", prgenid);
+    snprintf(*memp, maxsz, "%llu", prgenid);
     return SQLITE_OK;
 }
 
@@ -8795,13 +8852,9 @@ retry:
             /* NOTE: we need to make sure the versions are the same */
 
         } else {
-            if (rc == SQLITE_SCHEMA) {
-                /* btrees have changed under my feet */
-                return rc;
-            }
-
-            logmsg(LOGMSG_ERROR, "%s: failed to lock back tables!\n", __func__);
-            /* KEEP GOING, THIS MIGHT NOT BE THAT BAD */
+            logmsg(LOGMSG_ERROR, "%s: failed to lock back tables!, rc %d\n",
+                   __func__, rc);
+            rcode = rc;
         }
     }
 
@@ -8908,6 +8961,25 @@ int pause_pagelock_cursors(void *arg)
     return 0;
 }
 
+/* set every pCur->db and pCur->sc to NULL because they might
+ * not be valid anymore after a schema change
+ */
+static void recover_deadlock_sc_cleanup(struct sql_thread *thd)
+{
+    BtCursor *cur = NULL;
+    pthread_mutex_lock(&thd->lk);
+    if (thd->bt) {
+        LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+        {
+            if (!cur->bt->is_remote && cur->db) {
+                cur->db = NULL;
+                cur->sc = NULL;
+            }
+        }
+    }
+    pthread_mutex_unlock(&thd->lk);
+}
+
 /**
  * This open a new curtran and walk the list of BtCursors,
  * repositioning any cursor that has a bdbcursor (by closing, reopening
@@ -8993,6 +9065,7 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
             logmsg(LOGMSG_ERROR, 
                     "%s: fail to put curtran, rc=%d, return changenode\n",
                     __func__, rc);
+            recover_deadlock_sc_cleanup(thd);
             return SQLITE_CLIENT_CHANGENODE;
         } else {
             logmsg(LOGMSG_ERROR, "%s: fail to close curtran, rc=%d\n", __func__, rc);
@@ -9004,11 +9077,11 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
    bdb_bdblock_print(thedb->bdb_env, buf);
 #endif
 
-    /*
-     * fprintf(stderr, "sleeping\n");
-     * sleep(5);
-     * fprintf(stderr, "done sleeping\n");
-     */
+    if (unlikely(gbl_sql_random_release_interval)) {
+        logmsg(LOGMSG_INFO, "%s: sleeping 10s\n", __func__);
+        sleep(10);
+        logmsg(LOGMSG_INFO, "%s: done sleeping\n", __func__);
+    }
 
     /* NOTE: as empirically proven, bdb lock starvation does occur in the wild
        one of the issues is that sleeping tasks are jumping back into the fray
@@ -9046,8 +9119,8 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
     /* get a new curtran */
     rc = get_curtran(thedb->bdb_env, clnt);
     if (rc) {
-        if (rc == SQLITE_SCHEMA)
-            return SQLITE_SCHEMA;
+        if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA)
+            return SQLITE_COMDB2SCHEMA;
 
         if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
             logmsg(LOGMSG_ERROR, 
@@ -9087,6 +9160,23 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
                             bdberr);
                     return -700;
                 }
+            }
+            if (!cur->bt->is_remote &&
+                cur->tableversion != cur->db->tableversion) {
+                pthread_mutex_unlock(&thd->lk);
+                logmsg(LOGMSG_ERROR,
+                       "%s: table version for %s changed from %d to %lld\n",
+                       __func__, cur->db->tablename, cur->tableversion,
+                       cur->db->tableversion);
+                sqlite3VdbeError(cur->vdbe, "table \"%s\" was schema changed",
+                                 cur->db->tablename);
+                recover_deadlock_sc_cleanup(thd);
+                return SQLITE_COMDB2SCHEMA;
+            } else if (!cur->bt->is_remote && cur->db) {
+                if (cur->ixnum == -1)
+                    cur->sc = cur->db->schema;
+                else
+                    cur->sc = cur->db->ixschema[cur->ixnum];
             }
         }
     }
@@ -9621,8 +9711,16 @@ static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
     if (*bdberr == 0) {
         int rc2 = cursor_move_postop(pCur);
         if (rc2) {
-            rc = SQLITE_CLIENT_CHANGENODE;
-            *bdberr = BDBERR_NOT_DURABLE;
+            logmsg(LOGMSG_ERROR, "cursor_move_postop returned %d\n", rc2);
+            *bdberr = BDBERR_DEADLOCK;
+            if (rc2 < 0) {
+                rc = SQLITE_BUSY;
+            } else if (rc2 == SQLITE_CLIENT_CHANGENODE) {
+                rc = SQLITE_CLIENT_CHANGENODE;
+                *bdberr = BDBERR_NOT_DURABLE;
+            } else {
+                rc = rc2;
+            }
         }
     }
 
@@ -10609,24 +10707,35 @@ int is_comdb2_index_expression(const char *dbname)
 
 int is_comdb2_index_blob(const char *dbname, int icol)
 {
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->clnt;
+    struct schema_mem *sm = clnt ? clnt->schema_mems : NULL;
+
     struct dbtable *db = get_dbtable_by_name(dbname);
-    if (db) {
+    struct schema *schema = NULL;
+
+    if (sm && sm->sc)
+        schema = sm->sc; /* use the given schema for new_indexes_syntax_check */
+    else if (db)
+        schema = db->schema;
+
+    if (schema) {
         struct field *f;
-        if (icol < 0 || icol >= db->schema->nmembers)
+        if (icol < 0 || icol >= schema->nmembers)
             return -1;
-        switch (db->schema->member[icol].type) {
+        switch (schema->member[icol].type) {
         case CLIENT_BLOB:
         case SERVER_BLOB:
         case CLIENT_BLOB2:
         case SERVER_BLOB2:
         case CLIENT_VUTF8:
         case SERVER_VUTF8:
-            db->ix_blob = 1;
+            /* mark ix_blob 1 in schema */
+            schema->ix_blob = 1;
             return 1;
         default:
             return 0;
         }
-        return db->ix_expr;
     }
     return 0;
 }
@@ -11825,12 +11934,6 @@ done:
 
     return rc;
 }
-
-struct schema_mem {
-    struct schema *sc;
-    Mem *min;
-    Mem *mout;
-};
 
 static int bind_stmt_mem(struct schema *sc, sqlite3_stmt *stmt, Mem *m)
 {
