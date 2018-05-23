@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=877)
+(TUNABLES_COUNT=878)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -136,6 +136,7 @@
 (name='cursor_deadlock', description='cursor_deadlock', type='BOOLEAN', value='OFF', read_only='N')
 (name='db_lock_lsn_step', description='Stepup for preallocated db_lock_lsns', type='INTEGER', value='1024', read_only='N')
 (name='dbreg_errors_fatal', description='dbreg errors fatal', type='BOOLEAN', value='OFF', read_only='N')
+(name='ddl_cascade_drop', description='On DROP, also drop the dependent keys/constraints. (Default: 1)', type='BOOLEAN', value='ON', read_only='Y')
 (name='deadlk_priority_bump_on_fstblk', description='', type='INTEGER', value='5', read_only='N')
 (name='deadlkoff', description='Disables 'report_deadlock_verbose'', type='BOOLEAN', value='OFF', read_only='N')
 (name='deadlkon', description='Same as 'report_deadlock_verbose'', type='BOOLEAN', value='ON', read_only='N')

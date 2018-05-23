@@ -138,6 +138,10 @@ REGISTER_TUNABLE("ctrace_dbdir",
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("ctrace_gzip", NULL, TUNABLE_INTEGER, &ctrace_gzip,
                  DEPRECATED | READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "ddl_cascade_drop",
+    "On DROP, also drop the dependent keys/constraints. (Default: 1)",
+    TUNABLE_BOOLEAN, &gbl_ddl_cascade_drop, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_policy_override", NULL, TUNABLE_INTEGER,
                  &gbl_deadlock_policy_override, READONLY, NULL, NULL,
                  deadlock_policy_override_update, NULL);
