@@ -2470,6 +2470,35 @@ void handle_postabort_bpfunc(struct ireq *iq)
     }
 }
 
+int backout_schema_changes(struct ireq *iq, tran_type *tran);
+static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent)
+{
+    int rc = 0;
+    assert(iq->tranddl && iq->sc_logical_tran);
+    if (iq->sc_tran) {
+        assert(parent);
+        rc = trans_abort(iq, iq->sc_tran);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
+                   __LINE__, rc);
+            comdb2_die(1);
+        }
+        iq->sc_tran = NULL;
+        backout_schema_changes(iq, parent);
+    }
+    if (iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
+    }
+    rc = trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL, 0);
+    if (rc != 0) {
+        logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
+               __LINE__, rc);
+        comdb2_die(1);
+    }
+    iq->sc_logical_tran = NULL;
+}
+
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
 {
@@ -4933,16 +4962,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             comdb2_die(0);
         }
         trans = NULL;
-
-        if (iq->tranddl) {
-            irc = trans_commit(iq, iq->sc_tran, source_host);
-            if (irc != 0) { /* this shouldnt happen */
-                logmsg(LOGMSG_FATAL, "%s:%d TRANS_COMMIT FAILED RC %d",
-                       __func__, __LINE__, irc);
-                comdb2_die(0);
-            }
-            iq->sc_tran = NULL;
-        }
     }
 
     if (iq->debug) {
@@ -5096,7 +5115,6 @@ backout:
         if (osql_needtransaction != OSQL_BPLOG_NOTRANS) {
             int priority = 0;
 
-            int backout_schema_changes(struct ireq * iq, tran_type * tran);
             if (iq->tranddl) {
                 irc = trans_abort(iq, iq->sc_tran);
                 if (irc != 0) {
@@ -5119,7 +5137,8 @@ backout:
                     trans = NULL;
                     backout_schema_changes(iq, parent_trans);
                 }
-            } else {
+            }
+            if (trans) {
                 irc = trans_abort_priority(iq, trans, &priority);
                 if (irc != 0) {
                     logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
@@ -5193,11 +5212,9 @@ backout:
             /* abandon our parent if we have one, we're gonna redo it all */
             if (osql_needtransaction != OSQL_BPLOG_NOTRANS && parent_trans) {
                 if (iq->tranddl)
-                    trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL,
-                                        0);
+                    backout_and_abort_tranddl(iq, parent_trans);
                 else
                     trans_abort(iq, parent_trans);
-                iq->sc_logical_tran = NULL;
                 parent_trans = NULL;
             }
 
@@ -5364,10 +5381,9 @@ backout:
             irc = trans ? trans_abort_logical(iq, trans, NULL, 0, NULL, 0) : 0;
         } else {
             if (iq->tranddl)
-                trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL, 0);
+                backout_and_abort_tranddl(iq, parent_trans);
             else
                 trans_abort(iq, parent_trans);
-            iq->sc_logical_tran = NULL;
             parent_trans = NULL;
         }
         fromline = __LINE__;
@@ -5573,6 +5589,19 @@ add_blkseq:
                 if (iq->tranddl) {
                     if (backed_out) {
                         bdb_ltran_put_schema_lock(iq->sc_logical_tran);
+                    } else if (iq->sc_tran) {
+                        irc = trans_commit(iq, iq->sc_tran, source_host);
+                        if (irc != 0) { /* this shouldnt happen */
+                            logmsg(LOGMSG_FATAL,
+                                   "%s:%d TRANS_COMMIT FAILED RC %d", __func__,
+                                   __LINE__, irc);
+                            comdb2_die(0);
+                        }
+                        iq->sc_tran = NULL;
+                    }
+                    if (iq->sc_locked) {
+                        unlock_schema_lk();
+                        iq->sc_locked = 0;
                     }
                     irc = trans_commit_logical(iq, iq->sc_logical_tran,
                                                gbl_mynode, 0, 1, NULL, 0, NULL,
@@ -5621,9 +5650,7 @@ add_blkseq:
                     hascommitlock = 0;
                 }
                 if (iq->tranddl) {
-                    trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL,
-                                        0);
-                    iq->sc_logical_tran = NULL;
+                    backout_and_abort_tranddl(iq, parent_trans);
                 } else {
                     trans_abort(iq, parent_trans);
                 }

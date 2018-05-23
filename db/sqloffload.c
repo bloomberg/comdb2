@@ -746,10 +746,6 @@ static void osql_scdone_commit_callback(struct ireq *iq)
     int write_scdone =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN) ? 0 : 1;
     gbl_readonly_sc = 0;
-    if (iq->sc_locked) {
-        unlock_schema_lk();
-        iq->sc_locked = 0;
-    }
     if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
         struct schema_change_type *sc_next;
         iq->sc = iq->sc_pending;
@@ -809,10 +805,6 @@ static void osql_scdone_commit_callback(struct ireq *iq)
 static void osql_scdone_abort_callback(struct ireq *iq)
 {
     gbl_readonly_sc = 0;
-    if (iq->sc_locked) {
-        unlock_schema_lk();
-        iq->sc_locked = 0;
-    }
     if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
