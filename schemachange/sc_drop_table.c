@@ -78,6 +78,8 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     if (rc = mark_schemachange_over_tran(db->tablename, tran))
         return rc;
 
+    s->already_finalized = 1;
+
     delete_table(db, tran);
     /*Now that we don't have any data, please clear unwanted schemas.*/
     bdberr = bdb_reset_csc2_version(tran, db->tablename, db->version);

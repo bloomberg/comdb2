@@ -1149,8 +1149,17 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
         if (s->addonly) {
             if (s->addonly == SC_DONE_ADD)
                 delete_db(s->table);
+            if (s->newdb) {
+                backout_schemas(s->newdb->tablename);
+                cleanup_newdb(s->newdb);
+            }
         } else if (s->db) {
-            reload_db_tran(s->db, tran);
+            if (s->already_finalized)
+                reload_db_tran(s->db, tran);
+            else if (s->newdb) {
+                backout_constraint_pointers(s->newdb, s->db);
+            }
+            change_schemas_recover(s->db->tablename);
         }
         sc_del_unused_files_tran(s->db, tran);
         s = iq->sc = s->sc_next;

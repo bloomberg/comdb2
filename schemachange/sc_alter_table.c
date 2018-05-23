@@ -711,6 +711,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         goto backout;
     }
 
+    s->already_finalized = 1;
+
     /* remove the new.NUM. prefix */
     bdb_remove_prefix(newdb->handle);
 
