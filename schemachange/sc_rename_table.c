@@ -68,6 +68,8 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     bdb_lock_table_write(db->handle, tran);
     bdb_lock_tablename_write(db->handle, newname, tran);
 
+    s->already_finalized = 1;
+
     /* renamed table schema gets bumped */
     rc = table_version_upsert(db, tran, &bdberr);
     if (rc) {

@@ -136,7 +136,5 @@ int finalize_fastinit_table(struct ireq *iq, struct schema_change_type *s,
 {
     int rc = 0;
     rc = finalize_alter_table(iq, s, tran);
-    if (gbl_replicate_local)
-        local_replicant_write_clear(iq, tran, s->db);
     return rc;
 }

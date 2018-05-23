@@ -746,10 +746,6 @@ static void osql_scdone_commit_callback(struct ireq *iq)
     int write_scdone =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN) ? 0 : 1;
     gbl_readonly_sc = 0;
-    if (iq->sc_locked) {
-        unlock_schema_lk();
-        iq->sc_locked = 0;
-    }
     if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
         struct schema_change_type *sc_next;
         iq->sc = iq->sc_pending;
@@ -812,9 +808,9 @@ static void osql_scdone_abort_callback(struct ireq *iq)
     if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
-            int backout_schema_change(struct ireq * iq);
+            int scdone_abort_cleanup(struct ireq * iq);
             struct schema_change_type *sc_next;
-            backout_schema_change(iq);
+            scdone_abort_cleanup(iq);
             sc_next = iq->sc->sc_next;
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
@@ -822,14 +818,6 @@ static void osql_scdone_abort_callback(struct ireq *iq)
         iq->sc_pending = NULL;
         iq->sc_seed = 0;
         iq->sc_should_abort = 0;
-
-        // createmastertbls only once
-        create_sqlmaster_records(NULL);
-        create_sqlite_master();
-    }
-    if (iq->sc_locked) {
-        unlock_schema_lk();
-        iq->sc_locked = 0;
     }
 }
 

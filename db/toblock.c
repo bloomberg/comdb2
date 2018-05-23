@@ -2049,6 +2049,30 @@ enum {
     OSQL_BPLOG_RECREATEDTRANS = 2
 };
 
+static int create_child_transaction(struct ireq *iq, tran_type *parent_trans,
+                                    tran_type **trans)
+{
+    int irc = 0;
+    if (gbl_enable_berkdb_retry_deadlock_bias) {
+        irc = trans_start_set_retries(iq, parent_trans, trans, iq->retries);
+    } else if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DEADLOCK_YOUNGEST_EVER) ||
+               bdb_attr_get(thedb->bdb_attr,
+                            BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
+        if (iq->priority == 0) {
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DEADLOCK_YOUNGEST_EVER))
+                iq->priority = comdb2_time_epochms();
+        }
+
+        if (verbose_deadlocks)
+            logmsg(LOGMSG_DEBUG, "%x %s:%d Using iq %p priority %d\n",
+                   (int)pthread_self(), __FILE__, __LINE__, iq, iq->priority);
+        irc = trans_start_set_retries(iq, parent_trans, trans, iq->priority);
+    } else {
+        irc = trans_start_set_retries(iq, parent_trans, trans, 0);
+    }
+    return irc;
+}
+
 static int
 osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
                         struct ireq *iq, tran_type **trans,
@@ -2058,9 +2082,27 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
     int irc = 0;
 
     if (iq->tranddl) {
-        irc = trans_start_logical_sc(iq, trans);
-        if (parent_trans)
-            *parent_trans = NULL;
+        irc = trans_start_logical_sc(iq, &(iq->sc_logical_tran));
+        if (gbl_rowlocks && irc == 0) { // rowlock
+            if (parent_trans)
+                *parent_trans = NULL;
+            *trans = iq->sc_logical_tran;
+            iq->sc_tran = bdb_get_physical_tran(iq->sc_logical_tran);
+        } else if (irc == 0) { // pagelock
+            if (parent_trans) {
+                *parent_trans = bdb_get_physical_tran(iq->sc_logical_tran);
+                /* start child tran */
+                irc = create_child_transaction(iq, *parent_trans, trans);
+                if (irc == 0) {
+                    /* start another child tran for schema changes */
+                    irc = create_child_transaction(iq, *parent_trans,
+                                                   &(iq->sc_tran));
+                }
+            } else {
+                *trans = bdb_get_physical_tran(iq->sc_logical_tran);
+                irc = create_child_transaction(iq, *trans, &(iq->sc_tran));
+            }
+        }
     } else if (!gbl_rowlocks) {
         /* start parent transaction */
         if (parent_trans) {
@@ -2071,29 +2113,8 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
         }
 
         /* START child TRANSACTION */
-        if (gbl_enable_berkdb_retry_deadlock_bias) {
-            irc = trans_start_set_retries(
-                iq, parent_trans ? *parent_trans : NULL, trans, iq->retries);
-        } else if (bdb_attr_get(thedb->bdb_attr,
-                                BDB_ATTR_DEADLOCK_YOUNGEST_EVER) ||
-                   bdb_attr_get(thedb->bdb_attr,
-                                BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
-            if (iq->priority == 0) {
-                if (bdb_attr_get(thedb->bdb_attr,
-                                 BDB_ATTR_DEADLOCK_YOUNGEST_EVER))
-                    iq->priority = comdb2_time_epochms();
-            }
-
-            if (verbose_deadlocks)
-                fprintf(stderr, "%x %s:%d Using iq %p priority %d\n",
-                        (int)pthread_self(), __FILE__, __LINE__, iq,
-                        iq->priority);
-            irc = trans_start_set_retries(
-                iq, parent_trans ? *parent_trans : NULL, trans, iq->priority);
-        } else {
-            irc = trans_start_set_retries(
-                iq, parent_trans ? *parent_trans : NULL, trans, 0);
-        }
+        irc = create_child_transaction(iq, parent_trans ? *parent_trans : NULL,
+                                       trans);
     } else {
         irc = trans_start_logical(iq, trans);
         if (parent_trans)
@@ -2449,6 +2470,35 @@ void handle_postabort_bpfunc(struct ireq *iq)
     }
 }
 
+int backout_schema_changes(struct ireq *iq, tran_type *tran);
+static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent)
+{
+    int rc = 0;
+    assert(iq->tranddl && iq->sc_logical_tran);
+    if (iq->sc_tran) {
+        assert(parent);
+        rc = trans_abort(iq, iq->sc_tran);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
+                   __LINE__, rc);
+            comdb2_die(1);
+        }
+        iq->sc_tran = NULL;
+        backout_schema_changes(iq, parent);
+    }
+    if (iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
+    }
+    rc = trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL, 0);
+    if (rc != 0) {
+        logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
+               __LINE__, rc);
+        comdb2_die(1);
+    }
+    iq->sc_logical_tran = NULL;
+}
+
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
 {
@@ -2501,8 +2551,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int delayed = 0;
 
     int hascommitlock = 0;
-    if (iq->tranddl)
-        rowlocks = 1;
 
     /* zero this out very high up or we can crash if we get to backout: without
      * having initialised this. */
@@ -2755,10 +2803,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     } else {
         /* we dont have nested transaction support here.  we play games with
            writing the blkseq record differently in rowlocks mode */
-        if (iq->tranddl)
-            irc = trans_start_logical_sc(iq, &trans);
-        else
-            irc = trans_start_logical(iq, &trans);
+        irc = trans_start_logical(iq, &trans);
         parent_trans = NULL;
 
         if (irc != 0) {
@@ -4640,6 +4685,20 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
         }
 
+        if (iq->tranddl) {
+            if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog") &&
+                !gbl_replicate_local_concurrent) {
+                rc = get_next_seqno(trans, &seqno);
+                if (rc) {
+                    if (rc != RC_INTERNAL_RETRY)
+                        logmsg(LOGMSG_ERROR,
+                               "get_next_seqno unexpected rc %d\n", rc);
+                    BACKOUT;
+                }
+                p_blkstate->seqno = seqno;
+            }
+        }
+
         if (needbackout) {
             BACKOUT;
         }
@@ -4829,8 +4888,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                       &(iq->selectv_arr->offset), 1))) {
             irc = pthread_rwlock_unlock(&commit_lock);
             if (irc != 0) {
-                fprintf(stderr, "pthread_rwlock_unlock(&commit_lock) %d\n",
-                        irc);
+                logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&commit_lock) %d\n",
+                       irc);
                 exit(1);
             }
             hascommitlock = 0;
@@ -4861,8 +4920,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             } else {
                 irc = pthread_rwlock_wrlock(&commit_lock);
                 if (irc != 0) {
-                    fprintf(stderr, "pthread_rwlock_wrlock(&commit_lock) %d\n",
-                            irc);
+                    logmsg(LOGMSG_FATAL,
+                           "pthread_rwlock_wrlock(&commit_lock) %d\n", irc);
                     exit(1);
                 }
                 hascommitlock = 1;
@@ -4898,7 +4957,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         /*fprintf(stderr, "commit child\n");*/
         irc = trans_commit(iq, trans, source_host);
         if (irc != 0) { /* this shouldnt happen */
-            fprintf(stderr, "TRANS_COMMIT FAILED RC %d", rc);
+            logmsg(LOGMSG_FATAL, "%s:%d TRANS_COMMIT FAILED RC %d", __func__,
+                   __LINE__, irc);
             comdb2_die(0);
         }
         trans = NULL;
@@ -5011,8 +5071,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
 backout:
     if (gbl_verbose_toblock_backouts)
-        fprintf(stderr, "Backing out, rc=%d outrc=%d from line %d\n", rc, outrc,
-                fromline);
+        logmsg(LOGMSG_ERROR, "Backing out, rc=%d outrc=%d from line %d\n", rc,
+               outrc, fromline);
 
     backed_out = 1;
 
@@ -5054,20 +5114,47 @@ backout:
     if (!rowlocks || rc == RC_INTERNAL_RETRY) {
         if (osql_needtransaction != OSQL_BPLOG_NOTRANS) {
             int priority = 0;
-            irc = trans_abort_priority(iq, trans, &priority);
-            if (irc != 0) {
-                fprintf(stderr, "TRANS_ABORT FAILED RC %d", rc);
-                comdb2_die(1);
+
+            if (iq->tranddl) {
+                irc = trans_abort(iq, iq->sc_tran);
+                if (irc != 0) {
+                    logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
+                           __func__, __LINE__, irc);
+                    comdb2_die(1);
+                }
+                iq->sc_tran = NULL;
+
+                /* Backout Schema Change */
+                if (!parent_trans)
+                    backout_schema_changes(iq, trans);
+                else {
+                    irc = trans_abort_priority(iq, trans, &priority);
+                    if (irc != 0) {
+                        logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
+                               __func__, __LINE__, irc);
+                        comdb2_die(1);
+                    }
+                    trans = NULL;
+                    backout_schema_changes(iq, parent_trans);
+                }
             }
-            trans = NULL;
+            if (trans) {
+                irc = trans_abort_priority(iq, trans, &priority);
+                if (irc != 0) {
+                    logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
+                           __func__, __LINE__, irc);
+                    comdb2_die(1);
+                }
+                trans = NULL;
+            }
 
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
                 if (verbose_deadlocks)
-                    fprintf(stderr,
-                            "%x %s:%d Setting iq %p priority from %d to %d\n",
-                            (int)pthread_self(), __FILE__, __LINE__, iq,
-                            iq->priority, priority);
+                    logmsg(LOGMSG_ERROR,
+                           "%x %s:%d Setting iq %p priority from %d to %d\n",
+                           (int)pthread_self(), __FILE__, __LINE__, iq,
+                           iq->priority, priority);
 
                 if (((unsigned)priority) == UINT_MAX) {
                     /*
@@ -5089,8 +5176,8 @@ backout:
             assert(trans == NULL);
 
         if (rc == ERR_UNCOMMITABLE_TXN /*&& is_block2sqlmode_blocksql*/) {
-            fprintf(
-                stderr,
+            logmsg(
+                LOGMSG_ERROR,
                 "Forced VERIFY-FAIL for uncommitable blocksql transaction\n");
             if (is_block2sqlmode_blocksql) {
                 err.errcode = OP_FAILED_VERIFY;
@@ -5104,13 +5191,13 @@ backout:
             iq->sorese.verify_retries++;
 
             if (iq->sorese.verify_retries > gbl_osql_verify_retries_max) {
-                fprintf(stderr,
-                        "Blocksql request repeated too many times (%d)\n",
-                        iq->sorese.verify_retries);
+                logmsg(LOGMSG_ERROR,
+                       "Blocksql request repeated too many times (%d)\n",
+                       iq->sorese.verify_retries);
             } else {
-                fprintf(stderr,
-                        "Repeating VERIFY for blocksql transaction %d\n",
-                        iq->sorese.verify_retries);
+                logmsg(LOGMSG_ERROR,
+                       "Repeating VERIFY for blocksql transaction %d\n",
+                       iq->sorese.verify_retries);
                 /* We want to repeat offloading the session */
                 iq->sorese.osql_retry =
                     0; /* this will let us repeat offloading */
@@ -5123,8 +5210,13 @@ backout:
 
         if (rc == RC_INTERNAL_RETRY) {
             /* abandon our parent if we have one, we're gonna redo it all */
-            if (osql_needtransaction != OSQL_BPLOG_NOTRANS && parent_trans)
-                trans_abort(iq, parent_trans);
+            if (osql_needtransaction != OSQL_BPLOG_NOTRANS && parent_trans) {
+                if (iq->tranddl)
+                    backout_and_abort_tranddl(iq, parent_trans);
+                else
+                    trans_abort(iq, parent_trans);
+                parent_trans = NULL;
+            }
 
             /* restore any part of the req we have saved */
             if (block_state_restore(iq, p_blkstate))
@@ -5288,7 +5380,10 @@ backout:
         if (rowlocks) {
             irc = trans ? trans_abort_logical(iq, trans, NULL, 0, NULL, 0) : 0;
         } else {
-            trans_abort(iq, parent_trans);
+            if (iq->tranddl)
+                backout_and_abort_tranddl(iq, parent_trans);
+            else
+                trans_abort(iq, parent_trans);
             parent_trans = NULL;
         }
         fromline = __LINE__;
@@ -5491,7 +5586,30 @@ add_blkseq:
             }
 
             if (rc == 0 && have_blkseq) {
-                irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                if (iq->tranddl) {
+                    if (backed_out) {
+                        bdb_ltran_put_schema_lock(iq->sc_logical_tran);
+                    } else if (iq->sc_tran) {
+                        irc = trans_commit(iq, iq->sc_tran, source_host);
+                        if (irc != 0) { /* this shouldnt happen */
+                            logmsg(LOGMSG_FATAL,
+                                   "%s:%d TRANS_COMMIT FAILED RC %d", __func__,
+                                   __LINE__, irc);
+                            comdb2_die(0);
+                        }
+                        iq->sc_tran = NULL;
+                    }
+                    if (iq->sc_locked) {
+                        unlock_schema_lk();
+                        iq->sc_locked = 0;
+                    }
+                    irc = trans_commit_logical(iq, iq->sc_logical_tran,
+                                               gbl_mynode, 0, 1, NULL, 0, NULL,
+                                               0);
+                    iq->sc_logical_tran = NULL;
+                } else {
+                    irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                }
                 if (irc) {
                     /* We've committed to the btree, but we are not replicated:
                      * ask the the client to retry */
@@ -5525,14 +5643,17 @@ add_blkseq:
                 if (hascommitlock) {
                     irc = pthread_rwlock_unlock(&commit_lock);
                     if (irc != 0) {
-                        logmsg(LOGMSG_FATAL, 
-                                "pthread_rwlock_unlock(&commit_lock) %d\n",
-                                irc);
+                        logmsg(LOGMSG_FATAL,
+                               "pthread_rwlock_unlock(&commit_lock) %d\n", irc);
                         exit(1);
                     }
                     hascommitlock = 0;
                 }
-                trans_abort(iq, parent_trans);
+                if (iq->tranddl) {
+                    backout_and_abort_tranddl(iq, parent_trans);
+                } else {
+                    trans_abort(iq, parent_trans);
+                }
                 parent_trans = NULL;
                 if (rc == IX_DUP) {
                     logmsg(LOGMSG_WARN, "%x %s:%d replay detected!\n",
@@ -5587,7 +5708,8 @@ add_blkseq:
                 }
                 trans_abort_logical(iq, trans, NULL, 0, NULL, 0);
                 rc = RC_INTERNAL_RETRY;
-                if (block_state_restore(iq, p_blkstate)) return ERR_INTERNAL;
+                if (block_state_restore(iq, p_blkstate))
+                    return ERR_INTERNAL;
                 outrc = RC_INTERNAL_RETRY;
                 fromline = __LINE__;
                 goto cleanup;

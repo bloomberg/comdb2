@@ -292,17 +292,28 @@ static void backout(struct dbtable *db)
     live_sc_off(db);
 }
 
-static inline void wait_to_resume(struct schema_change_type *s)
+static inline int wait_to_resume(struct schema_change_type *s)
 {
+    int rc = 0;
     if (s->resume) {
         int stm = BDB_ATTR_GET(thedb->bdb_attr, SC_RESTART_SEC);
-        if (stm == 0) return;
+        if (stm <= 0)
+            return 0;
 
         logmsg(LOGMSG_WARN, "%s: Schema change will resume in %d seconds\n",
                __func__, stm);
-        sleep(stm);
+        while (stm) {
+            sleep(1);
+            stm--;
+            /* give a chance for sc to stop */
+            if (stopsc) {
+                sc_errf(s, "master downgrading\n");
+                return SC_MASTER_DOWNGRADE;
+            }
+        }
         logmsg(LOGMSG_WARN, "%s: Schema change resuming.\n", __func__);
     }
+    return rc;
 }
 
 int gbl_test_scindex_deadlock = 0;
@@ -525,7 +536,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->sc_abort = 0;
     pthread_rwlock_unlock(&sc_live_rwlock);
     if (s->resume && s->alteronly && !s->finalize_only) {
-        if (gbl_test_sc_resume_race) {
+        if (gbl_test_sc_resume_race && !stopsc) {
             logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
                    __func__, __LINE__);
             sleep(5);
@@ -534,8 +545,18 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
     MEMORY_SYNC;
 
+    /* give a chance for sc to stop */
+    if (stopsc) {
+        sc_errf(s, "master downgrading\n");
+        change_schemas_recover(s->table);
+        return SC_MASTER_DOWNGRADE;
+    }
     reset_sc_stat();
-    wait_to_resume(s);
+    rc = wait_to_resume(s);
+    if (rc) {
+        change_schemas_recover(s->table);
+        return rc;
+    }
 
     /* skip converting records for fastinit and planned schema change
      * that doesn't require rebuilding anything. */
@@ -689,6 +710,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     if ((rc = mark_schemachange_over_tran(db->tablename, transac))) {
         goto backout;
     }
+
+    s->already_finalized = 1;
 
     /* remove the new.NUM. prefix */
     bdb_remove_prefix(newdb->handle);
