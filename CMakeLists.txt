@@ -90,7 +90,7 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   add_definitions(-D_DARWIN_C_SOURCE -D_XOPEN_SOURCE=600)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL AIX)
-    add_definitions(-D_IBM_SOURCE)
+  add_definitions(-D_IBM_SOURCE)
   #-qxflag=dircache:71,256 ??  #-bmaxdata:0xb0000000/dsa ??
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -qlanglvl=extc99 -qcpluscmt -qtls -qdfp")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
