@@ -713,31 +713,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     int type = 0;
     buf_get(&type, sizeof(type), rpl, rpl + rplen);
-    if (type == OSQL_SCHEMACHANGE) 
-        iq->tranddl = 1;
-    if (type == OSQL_USEDB) {
-        const char *get_tablename_from_rpl(const char *rpl);
-        const char *tablename = get_tablename_from_rpl(rpl);
-        assert(tablename); //table or queue name
-        if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
-            struct dbtable *tbl = get_dbtable_by_name(tablename);
-            if(tbl) {
-                iq->usedb = tbl;
-            } else if (!iq->usedb) {
-                no_such_tbl_error(tablename, rqid, host);
-                return -1;
-            }
-            printf("AZ: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:0));
-        }
-    }
-    if (!iq->usedb) { 
-        printf("AZ: usedb not set for type=%d\n", type);
-        if (type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE || 
-            type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS) {
-            no_such_tbl_error("invalid_table", rqid, host);
-            return -1;
-        }
-    }
+    if (type == OSQL_SCHEMACHANGE) iq->tranddl = 1;
 
 #if 0
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
@@ -746,12 +722,40 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (sess->is_reorder_on) {
         //usedb genid and stripe will always be 0
         key.tbl_idx = USHRT_MAX;
-        key.real_seq = seq;
         key.blborder = 0;
 
-        if (type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS)
-            key.tbl_idx = USHRT_MAX;
-        else if (iq->usedb)
+        if (type == OSQL_USEDB) {
+            const char *get_tablename_from_rpl(const char *rpl);
+            const char *tablename = get_tablename_from_rpl(rpl);
+            assert(tablename); //table or queue name
+            if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
+                struct dbtable *tbl = get_dbtable_by_name(tablename);
+                if(tbl) {
+                    iq->usedb = tbl;
+                    key.tbl_idx = iq->usedb->dbs_idx;
+                } else if (!iq->usedb) {
+                    no_such_tbl_error(tablename, rqid, host);
+                    return -1;
+                }
+                printf("AZ: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:0));
+
+            }
+        }
+        if (!iq->usedb) { 
+            printf("AZ: usedb not set for type=%d\n", type);
+            if (type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE || 
+                type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS) {
+                no_such_tbl_error("invalid_table", rqid, host);
+                return -1;
+            }
+        }
+
+
+        if (iq->usedb && 
+            (type == OSQL_INSREC || type == OSQL_UPDREC || type == OSQL_DELREC ||
+            type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
+            type == OSQL_INSIDX || type == OSQL_DELIDX ||
+            type == OSQL_QBLOB || type == OSQL_UPDCOLS) )
             key.tbl_idx = iq->usedb->dbs_idx;
 
         if (type == OSQL_UPDATE || type == OSQL_DELETE ||
@@ -789,10 +793,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             key.genid = sess->last_genid;
         }
     }
-    else {
-        key.real_seq = seq;
-    }
 
+    key.real_seq = seq;
     key.rqid = rqid;
     comdb2uuidcpy(key.uuid, uuid);
 

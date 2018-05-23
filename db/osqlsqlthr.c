@@ -127,7 +127,7 @@ inline int get_osql_maxthrottle_sec(void) { return gbl_osql_max_throttle_sec; }
  * Returns SQLITE_OK if successful.
  *
  */
-inline int osql_delidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
+int osql_delidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
 {
     int rc = 0;
 
@@ -214,7 +214,7 @@ inline int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd, char *pDa
  * Returns SQLITE_OK if successful.
  *
  */
-inline int osql_insidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
+int osql_insidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
 {
     int rc = 0;
 

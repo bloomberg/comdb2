@@ -7396,7 +7396,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
        to avoid racing against signal_rtoff code */
     sess = osql_sess_create_sock(sqlret, sqllenret, req.tzname, type, req.rqid,
                                  uuid, fromhost, iq, &replaced, uuid_req.flags);
-    printf("AZ: created sess %p, with req.flags %x, sess->is_reorder_on %d\n", sess, uuid_req.flags, sess->is_reorder_on);
     if (replaced) {
         assert(sess == NULL);
         destroy_ireq(thedb, iq);
@@ -7410,6 +7409,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         free(malcd);
         goto done;
     }
+    printf("AZ: created sess %p, with req.flags %x, sess->is_reorder_on %d\n", sess, uuid_req.flags, sess->is_reorder_on);
 
 #if 0
    printf( "Starting block processor %llu\n", osql_log_time());
