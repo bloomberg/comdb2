@@ -1197,6 +1197,8 @@ static void abort_election_on_exit(bdb_state_type *bdb_state)
     pthread_exit(NULL);
 }
 
+int gbl_elect_priority_bias = 0;
+
 static void *elect_thread(void *args)
 {
     int rc, count, i;
@@ -1204,6 +1206,7 @@ static void *elect_thread(void *args)
     char *master_host, *old_master;
     int num;
     int num_connected;
+    int node_not_up = 0;
     uint32_t newgen;
     elect_thread_args_type *elect_thread_args;
     int elect_time;
@@ -1311,13 +1314,13 @@ elect_again:
         if (!(bdb_state->callback->nodeup_rtn(bdb_state,
                                               bdb_state->repinfo->myhost))) {
             rep_pri = rep_pri - 1;
+            node_not_up = 1;
         }
     }
 
-    if ((op == LOSE) || (op == REOPEN_AND_LOSE))
-        rep_pri = 1;
-
-    if (gbl_use_node_pri &&
+    if (gbl_elect_priority_bias && !node_not_up) {
+        rep_pri = REP_PRI + gbl_elect_priority_bias;
+    } else if (gbl_use_node_pri &&
         rep_pri == REP_PRI) { /* if the node is up, then apply priorities. */
         rep_pri = REP_PRI + gbl_rep_node_pri; /* priority should be > priority
                                                  of nodes which are down.*/

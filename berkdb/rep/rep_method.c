@@ -141,6 +141,8 @@ __rep_open(dbenv)
 	return (ret);
 }
 
+int gbl_allow_election_race = 0;
+
 /*
  * __rep_start --
  *	Become a master or client, and start sending messages to participate
@@ -320,7 +322,7 @@ __rep_start(dbenv, dbt, gen, flags)
 				 * There could have been any number of failed
 				 * elections, so jump the gen if we need to now.
 				 */
-                if (gen != 0)
+                if (!gbl_allow_election_race && gen != 0)
                     rep->gen = gen;
                 else if (rep->egen > rep->gen)
                     rep->gen = rep->egen;

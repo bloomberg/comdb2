@@ -184,6 +184,9 @@ extern int gbl_blocking_enque;
 extern int gbl_master_req_waitms;
 extern int gbl_print_net_queue_size;
 extern int gbl_commit_delay_trace;
+extern int gbl_elect_priority_bias;
+extern int gbl_defer_upgrade_time;
+extern int gbl_allow_election_race;
 
 extern long long sampling_threshold;
 

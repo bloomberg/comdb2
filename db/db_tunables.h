@@ -1385,5 +1385,17 @@ REGISTER_TUNABLE("set_seqnum_trace",
                  "Trace setting setting seqnum.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_set_seqnum_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("elect_priority_bias",
+                 "Bias this node's election priority by this amount.  "
+                 "(Default: 0)", TUNABLE_INTEGER, &gbl_elect_priority_bias,
+                 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("defer_upgrade_time",
+                 "Defer an upgrade until this absolute time.  (Default: "
+                 "0)", TUNABLE_INTEGER, &gbl_defer_upgrade_time,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_election_race",
+                 "Permit arbitrary upgrades at rep-start.  (Default: false)",
+                 TUNABLE_BOOLEAN, &gbl_allow_election_race,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
