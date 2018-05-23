@@ -341,12 +341,12 @@ enum BLOCK_OPS {
    type will identify if there is a new record and type the new record is *
 */
 enum OSQL_RPL_TYPE {
-    OSQL_RPLINV = 0,
+    OSQL_RPLINV = 0, /* not used */
     OSQL_DONE = 1,
     OSQL_USEDB = 2,
     OSQL_DELREC = 3,
     OSQL_INSREC = 4,
-    OSQL_CLRTBL = 5,
+    OSQL_CLRTBL = 5, /* not used in R7 */
     OSQL_QBLOB = 6,
     OSQL_UPDREC = 7,
     OSQL_XERR = 8,

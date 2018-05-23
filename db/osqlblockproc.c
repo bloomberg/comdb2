@@ -733,7 +733,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 if(tbl) {
                     iq->usedb = tbl;
                     key.tbl_idx = iq->usedb->dbs_idx;
-                } else if (!iq->usedb) {
+                } else {
+                    key.tbl_idx = OSQL_USEDB;
                     no_such_tbl_error(tablename, rqid, host);
                     return -1;
                 }
@@ -754,8 +755,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         if (iq->usedb && 
             (type == OSQL_INSREC || type == OSQL_UPDREC || type == OSQL_DELREC ||
             type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
-            type == OSQL_INSIDX || type == OSQL_DELIDX ||
-            type == OSQL_QBLOB || type == OSQL_UPDCOLS) )
+            type == OSQL_INSIDX || type == OSQL_DELIDX || type == OSQL_RECGENID ||
+            type == OSQL_QBLOB || type == OSQL_UPDCOLS) || type == OSQL_SCHEMACHANGE)
             key.tbl_idx = iq->usedb->dbs_idx;
 
         if (type == OSQL_UPDATE || type == OSQL_DELETE ||
