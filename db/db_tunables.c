@@ -143,6 +143,9 @@ extern int gbl_dump_full_net_queue;
 extern int gbl_max_clientstats_cache;
 extern int gbl_dbreg_stack_on_null_txn;
 extern int gbl_dbreg_abort_on_null_txn;
+extern int gbl_elect_priority_bias;
+extern int gbl_defer_upgrade_time;
+extern int gbl_allow_election_race;
 
 extern long long sampling_threshold;
 
