@@ -11484,28 +11484,31 @@ int stat_bt_hash_table_reset(char *table)
     return 0;
 }
 
-
 void comdb2_genidinfo(uint64_t genid, char *info, int len)
 {
-    //genid = get_genid_timebased(thedb->bdb_env, 0, NULL, 0);
-    uint64_t ngenid = flibc_htonll(genid);
-    extern int get_updateid_from_genid(bdb_state_type *bdb_state, unsigned long long genid);
-    extern int is_bde_env_genid48(bdb_state_type *bdb_state);
-    if (is_bde_env_genid48(thedb->bdb_env))
-        snprintf(info, len - 1,
-            "counter=0x%llx, updateid=%d, stripe=%d",
-            genid >> 16,
-            get_updateid_from_genid(thedb->bdb_env, ngenid), 
-            get_dtafile_from_genid(ngenid));
+    // genid = get_genid_timebased(thedb->bdb_env, 0, NULL, 0);
+    
+    // we assume we are passed a genid which was read in from a string
+    unsigned long long bdb_genid_to_net_order(unsigned long long genid);
+    uint64_t ngenid = bdb_genid_to_net_order(genid);
+    extern int get_updateid_from_genid(bdb_state_type * bdb_state,
+                                       unsigned long long genid);
+    extern int is_bde_env_genid48(bdb_state_type * bdb_state);
+    if (is_bde_env_genid48(thedb->bdb_env)) {
+        snprintf(info, len - 1, "counter=0x%llx, updateid=%d, stripe=%d",
+                 genid >> 16, get_updateid_from_genid(thedb->bdb_env, ngenid),
+                 get_dtafile_from_genid(ngenid));
+    }
     else {
         struct tm tm;
         time_t timet = ((int *)(&ngenid))[1];
         localtime_r(&timet, &tm);
         snprintf(info, len - 1,
-            "epoch=%04d-%02d-%02d %02d:%02d:%02d, updateid=%d, stripe=%d", 
-            tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec,
-            get_updateid_from_genid(thedb->bdb_env, ngenid), 
-            get_dtafile_from_genid(ngenid));
+                 "epoch=%04d-%02d-%02d %02d:%02d:%02d, updateid=%d, stripe=%d",
+                 tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
+                 tm.tm_min, tm.tm_sec,
+                 get_updateid_from_genid(thedb->bdb_env, ngenid),
+                 get_dtafile_from_genid(ngenid));
     }
 }
 
