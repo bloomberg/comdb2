@@ -63,9 +63,9 @@ if [[ "$testcase_output" != "$expected_output" ]]; then
    echo "The above testcase (${testcase}) has failed!!!" 
    echo " "
    echo "Use 'diff <expected-output> <my-output>' to see why:"
-   echo "> diff ${PWD}/{output.log,$output}"
+   echo "> diff ${PWD}/{output.log.actual,$output}"
    echo " "
-   diff output.log $output
+   diff output.log.actual $output
    echo " "
 
    # quit
