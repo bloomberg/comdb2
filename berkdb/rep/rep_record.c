@@ -2182,9 +2182,9 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			vi_nsites = vi->nsites;
 			vi_priority = vi->priority;
 			vi_tiebreaker = vi->tiebreaker;
-			logmsg(LOGMSG_USER, "%s line %d processed REP_VOTE1 from %s "
+			logmsg(LOGMSG_USER, "%s line %d processing REP_VOTE1 from %s gen %d egen %d my-egen is %d "
 					"(Setting write-gen to 0)\n", 
-					__func__, __LINE__, *eidp);
+					__func__, __LINE__, *eidp, rp->gen, vi_egen, rep->egen);
 		} else {
 			vig = (REP_GEN_VOTE_INFO *) rec->data;
 			if (LOG_SWAPPED())
@@ -2194,9 +2194,9 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			vi_nsites = vig->nsites;
 			vi_priority = vig->priority;
 			vi_tiebreaker = vig->tiebreaker;
-			logmsg(LOGMSG_USER, "%s line %d processed REP_GEN_VOTE1 from %s "
+			logmsg(LOGMSG_USER, "%s line %d processed REP_GEN_VOTE1 from %s gen %d egen %d my-egen is %d "
 					"(Setting write-gen to %d)\n",
-					__func__, __LINE__, *eidp, vig->last_write_gen);
+					__func__, __LINE__, *eidp, rp->gen, vi_egen, rep->egen, vig->last_write_gen);
 		}
 
 
@@ -2208,21 +2208,13 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		 * start over by tallying it.
 		 */
 		if (vi_egen < rep->egen) {
-#ifdef DIAGNOSTIC
-			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
-				__db_err(dbenv,
-					"Received old vote %lu, egen %lu, ignoring vote1",
-					(u_long) vi_egen, (u_long) rep->egen);
-#endif
+			logmsg(LOGMSG_USER, "%s line %d ignoring REP_VOTE1 from %s: it's egen is %d my-egen is %d\n",
+					__func__, __LINE__, *eidp, vi_egen, rep->egen);
 			goto errunlock;
 		}
 		if (vi_egen > rep->egen) {
-#ifdef DIAGNOSTIC
-			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
-				__db_err(dbenv,
-					"Received VOTE1 from egen %lu, my egen %lu; reset",
-					(u_long) vi_egen, (u_long) rep->egen);
-#endif
+			logmsg(LOGMSG_USER, "%s line %d reseting election for REP_VOTE1 from %s: it's egen is %d my-egen is %d\n",
+					__func__, __LINE__, *eidp, vi_egen, rep->egen);
 			__rep_elect_done(dbenv, rep);
 			rep->egen = vi_egen;
 		}
@@ -2403,6 +2395,8 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			vi_nsites = vi->nsites;
 			vi_priority = vi->priority;
 			vi_tiebreaker = vi->tiebreaker;
+			logmsg(LOGMSG_USER, "%s line %d processing REP_VOTE2 from %s gen %d egen %d my-egen is %d\n", 
+					__func__, __LINE__, *eidp, rp->gen, vi_egen, rep->egen);
 		} else {
 			vig = (REP_GEN_VOTE_INFO *) rec->data;
 			if (LOG_SWAPPED())
@@ -2412,15 +2406,14 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			vi_nsites = vig->nsites;
 			vi_priority = vig->priority;
 			vi_tiebreaker = vig->tiebreaker;
+			logmsg(LOGMSG_USER, "%s line %d processing REP_GEN_VOTE2 from %s gen %d egen %d my-egen is %d\n", 
+					__func__, __LINE__, *eidp, rp->gen, vi_egen, rep->egen);
 		}
 
 		if (!IN_ELECTION_TALLY(rep) && vi_egen >= rep->egen) {
-#ifdef DIAGNOSTIC
-			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
-				__db_err(dbenv,
-				    "Not in election gen %lu, at %lu, got vote",
-				    (u_long) vi_egen, (u_long) rep->egen);
-#endif
+			logmsg(LOGMSG_USER, "%s line %d not in election and vote2-egen %d"
+                    "> rep->egen (%d): returning HOLDELECTION\n", __func__, 
+                    __LINE__, vi_egen, rep->egen);
 			ret = DB_REP_HOLDELECTION;
 			goto errunlock;
 		}

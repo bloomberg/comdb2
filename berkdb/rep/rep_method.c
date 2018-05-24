@@ -57,7 +57,7 @@ static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
 static int __rep_start __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 static int __rep_stat __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
-static int __rep_wait __P((DB_ENV *, u_int32_t, char **, u_int32_t));
+static int __rep_wait __P((DB_ENV *, u_int32_t, char **, u_int32_t *, u_int32_t));
 
 #ifndef TESTSUITE
 void bdb_get_writelock(void *bdb_state,
@@ -336,11 +336,9 @@ __rep_start(dbenv, dbt, gen, flags)
 			}
 			if (rep->egen <= rep->gen)
 				rep->egen = rep->gen + 1;
-#ifdef DIAGNOSTIC
-			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
-				__db_err(dbenv, "New master gen %lu, egen %lu",
-				    (u_long)rep->gen, (u_long)rep->egen);
-#endif
+
+            logmsg(LOGMSG_USER, "%s line %d upgrading to gen %d egen %d\n",
+                    __func__, __LINE__, rep->gen, rep->egen);
 		}
 		rep->master_id = rep->eid;
 		/*
@@ -944,6 +942,8 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 	 */
 	if (in_progress) {
 		*eidp = dbenv->rep_eid;
+        logmsg(LOGMSG_USER, "%s line %d returning %d master %s egen is %d\n",
+                __func__, __LINE__, ret, *eidp, *newgen);
 		return (0);
 	}
 #if 0
@@ -951,7 +951,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 	    __FILE__, __LINE__);
 #endif
     send_master_req(dbenv, __func__, __LINE__);
-	ret = __rep_wait(dbenv, timeout / 4, eidp, REP_F_EPHASE1);
+	ret = __rep_wait(dbenv, timeout / 4, eidp, newgen, REP_F_EPHASE1);
 	switch (ret) {
 	case 0:
 		/* Check if we found a master. */
@@ -960,6 +960,8 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 				__db_err(dbenv, "Found master %d", *eidp);
 #endif
+            logmsg(LOGMSG_USER, "%s line %d returning %d master %s egen is %d\n",
+                    __func__, __LINE__, ret, *eidp, *newgen);
 			return (0);
 		}
 		/*
@@ -1019,7 +1021,7 @@ restart:
 			db_eid_broadcast, REP_VOTE1);
 	}
 
-	ret = __rep_wait(dbenv, timeout, eidp, REP_F_EPHASE1);
+	ret = __rep_wait(dbenv, timeout, eidp, newgen, REP_F_EPHASE1);
 	switch (ret) {
 		case 0:
 			/* Check if election complete or phase complete. */
@@ -1030,6 +1032,8 @@ restart:
 					__db_err(dbenv,
 					    "Ended election phase 1 %d", ret);
 #endif
+                logmsg(LOGMSG_USER, "%s line %d returning %d master %s egen is %d\n",
+                        __func__, __LINE__, ret, *eidp, *newgen);
 				return (0);
 			}
 			goto phase2;
@@ -1121,7 +1125,7 @@ restart:
 			}
 		}
 phase2:
-		ret = __rep_wait(dbenv, timeout, eidp, REP_F_EPHASE2);
+		ret = __rep_wait(dbenv, timeout, eidp, newgen, REP_F_EPHASE2);
 #ifdef DIAGNOSTIC
 				if (FLD_ISSET(dbenv->verbose,
 				    DB_VERB_REPLICATION))
@@ -1130,6 +1134,8 @@ phase2:
 #endif
 		switch (ret) {
 			case 0:
+                logmsg(LOGMSG_USER, "%s line %d returning %d master %s egen is %d\n",
+                        __func__, __LINE__, ret, *eidp, *newgen);
 				return (0);
 			case DB_TIMEOUT:
 				ret = DB_REP_UNAVAIL;
@@ -1166,13 +1172,9 @@ lockdone:
 	else if (orig_tally)
 		F_SET(rep, orig_tally);
 
-#ifdef DIAGNOSTIC
-	if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
-		__db_err(dbenv,
-		    "Ended election with %d, sites %d, egen %lu, flags 0x%lx",
-		    ret, rep->sites, (u_long)rep->egen, (u_long)rep->flags);
-#endif
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+    logmsg(LOGMSG_USER, "%s line %d returning %d master %s egen is %d\n",
+            __func__, __LINE__, ret, *eidp, *newgen);
 	return (ret);
 }
 
@@ -1264,10 +1266,11 @@ __rep_elect_master(dbenv, rep, eidp)
 }
 
 static int
-__rep_wait(dbenv, timeout, eidp, flags)
+__rep_wait(dbenv, timeout, eidp, egen, flags)
 	DB_ENV *dbenv;
 	u_int32_t timeout;
 	char **eidp;
+    u_int32_t *egen;
 	u_int32_t flags;
 {
 	DB_REP *db_rep;
@@ -1293,6 +1296,7 @@ __rep_wait(dbenv, timeout, eidp, flags)
 		done = !F_ISSET(rep, flags) && rep->master_id != db_eid_invalid;
 
 		*eidp = rep->master_id;
+        *egen = rep->egen;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 		if (done)
