@@ -488,16 +488,14 @@ int peer_dropped_connection(struct sqlclntstate *clnt)
     struct pollfd fd = {0};
     fd.fd = sbuf2fileno(clnt->sb);
     fd.events = POLLIN;
-    if ((rc = poll(&fd, 1, 0)) == 0)
+    if ((rc = poll(&fd, 1, 0)) >= 0) {
+        if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            return 1;
+        }
         return 0;
-    if (rc < 0) {
-        if (errno == EINTR || errno == EAGAIN)
-            return 0;
-        logmsg(LOGMSG_ERROR, "%s poll rc:%d errno:%d errstr:%s\n", __func__, rc,
-                errno, strerror(errno));
-        return 1;
+    } else if (errno == EINTR || errno == EAGAIN) {
+        return 0;
     }
-    // shouldn't have any events
     return 1;
 }
 
@@ -589,7 +587,7 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
     if (gbl_epoch_time && (gbl_epoch_time - clnt->last_check_time > 5)) {
         clnt->last_check_time = gbl_epoch_time;
         if (!gbl_notimeouts && peer_dropped_connection(clnt)) {
-            logmsg(LOGMSG_INFO, "Peer dropped connection \n");
+            logmsg(LOGMSG_INFO, "Peer dropped connection\n");
             return SQLITE_BUSY;
         }
     }
