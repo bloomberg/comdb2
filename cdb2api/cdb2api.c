@@ -4354,7 +4354,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     int is_sockfd = 1;
 
     if (num_same_room)
-        *num_same_room = 1;
+        *num_same_room = 0;
 
     int rc = snprintf(newsql_typestr, sizeof(newsql_typestr),
                       "comdb2/%s/%s/newsql/%s", comdb2db_name, cluster,
