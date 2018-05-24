@@ -334,4 +334,9 @@ typedef struct ack_state_struct {
 void host_node_printf(loglvl lvl, host_node_type *host_node_ptr, const char *fmt, ...);
 void host_node_errf(loglvl lvl, host_node_type *host_node_ptr, const char *fmt, ...);
 
+#if WITH_SSL
+/* To verify replicant database name. */
+extern char gbl_dbname[MAX_DBNAME_LENGTH];
+extern int gbl_nid_dbname;
+#endif
 #endif /* INCLUDED__NET_INT_H */

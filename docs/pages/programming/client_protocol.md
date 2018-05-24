@@ -76,6 +76,11 @@ client_socket =  portmux_getsocket(machine, dbname)
 client_socket.send("newsql\n")
 ```
 
+Establishing SSL connection
+------
+
+A client can request the server to establish an SSL connection by sending _CDB2RequestType_ _SSLCONN_ in the header. The server writes back 'Y' or 'N' to indicate whether the client is able to begin SSL handshake.
+
 SQL Header
 ------
 The header is 16 byte message that is sent before every request/response after the connection is established.
@@ -186,6 +191,7 @@ message CDB2_DBINFORESPONSE {
     }
     required nodeinfo master = 1;
     repeated nodeinfo nodes  = 2;     // These are replicant nodes, we need to parse through these only.
+    optional bool require_ssl = 3;
 }
 
 ```
@@ -196,7 +202,8 @@ The SQL header is sent to server with the type and size of the request and then 
 
 The server returns a _dbinfo_ reply along with the header.  
 SQL header is read from server and the header type in this case is _DBINFO_RESPONSE_ (1005).  
-The response from database contains information about the master nodes and all the nodes (including master).  
+The response from database contains information about the master nodes, all the nodes (including master),
+and whether SSL connections are required.
 The information that it contains about each node is in the table below.
 
 
@@ -355,6 +362,7 @@ message CDB2_DBINFORESPONSE {
     }
     required nodeinfo master = 1;
     repeated nodeinfo nodes  = 2;     // These are replicant nodes, we need to parse through these only.
+    optional bool require_ssl = 3;
 }
 
 message CDB2_EFFECTS {

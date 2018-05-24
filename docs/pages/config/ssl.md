@@ -74,23 +74,26 @@ modify and relay messages between the client and server and make them think that
 talking to each other securely. Such attacks are called Man-in-the-middle (MITM) attacks
 (also known as replay attacks or active eavesdropping). To prevent MITM, the client needs
 to verify server identity. To do it, you would have a file which contains certificates of
-the certificate authorities (CA) you trust, and add the following to `comdb2db.cfg` or
-the database configuration file:
+the certificate authorities (CA) you trust, and a certificate revocation list (CRL) if available,
+and add them to `comdb2db.cfg` or the database configuration file:
 
 ```
 ssl_ca /path/to/ca/certificate
+ssl_crl /path/to/crl
 ```
 
-The client will disconnect if the server certificate is not signed by any CA in the trusted CA certificate file.
+The client will disconnect if the server certificate is not signed by any CA in the trusted CA certificate file,
+or has been revoked.
 
 #### Authenticating the Client to the Server
 
 The server can also be configured to verify client identities. By default, the server
-searches `root.crt` under the data directory for the server CA certificate file. Alternatively
-you could specify the path to the CA certificate by adding the following in the LRL:
+searches `root.crt` and `root.crl` under the data directory for the server CA certificate file and CRL, respectively.
+Alternatively you could specify the paths to the CA certificate and CRL in the LRL:
 
 ```
 ssl_ca /path/to/ca/certificates
+ssl_crl /path/to/crl
 ```
 
 On the client side, you would specify the paths to the client key pair by adding
@@ -112,14 +115,35 @@ ssl_client_mode VERIFY_CA
 
 Now if a client certificate is not present, the connection will be rejected as well.
 
-For maximum security, you could request host name validation by changing SSL mode in the LRL:
+#### Host Name Verification
+
+If the certificates are issued by a public certificate authority,
+you might also want to enable host name validation by changing SSL mode in the LRL:
 
 ```shell
 ssl_client_mode VERIFY_HOSTNAME
 ```
 
-If the client host name mismatches the DNS records embedded in the client certificate,
+If the client host name mismatches the Subject Alternative Names (SAN),
+or the Common Name (CN) if no SAN is present in the client certificate,
 the connection will be rejected by the server as well.
+
+
+#### Database Name Verification
+
+In addition to host name verification, Comdb2 offers database name verification
+where the client certificate must match the database name in order to proceed.
+This is particularly useful in a multi-user system where a single host is shared among users.
+To enable it, you would change the SSL mode and specify what field is used to verify the database name.
+For instance,
+
+```shell
+ssl_client_mode VERIFY_DBNAME
+ssl_dbname_field host
+```
+
+If the `host` field in the client certificate does not match the database name,
+the connection will be rejected by the server.
 
 
 ### Protecting Intra-Cluster Communication
@@ -142,22 +166,23 @@ ssl_replicant_mode VERIFY_CA
 
 The nodes will verify each other's certificate against their own trusted CA file. Nodes that fail the certificate verification are refused to join the cluster.
 
-For maximum security, you could request host name validation by changing
-the replicant SSL mode to `VERIFY_HOSTNAME` and bounce on all nodes.
-Nodes whose host names mismatch the DNS records embedded in their certificates
+If the certificates are issued by a public certificate authority,
+you might want to enable host name validation by changing
+the replicant SSL mode to `VERIFY_HOSTNAME`.
+Nodes whose host names mismatch SANs or CN embedded in their certificates
 are refused to join the cluster.
-
 
 ## Server SSL Configuration Summary
 
 | LRL Directive | Description | Default Value |
 |---------------|-------------|---------------|
-| `ssl_client_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA` and `VERIFY_HOSTNAME` | `ALLOW` |
-| `ssl_replicant_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA` and `VERIFY_HOSTNAME` | `ALLOW` |
-| `ssl_cert_path path` | Directory containing the server certificate files. Comdb2 searches `server.crt`, `server.key` and `root.crt` for the server certificate, key and trusted CAs respectively | The data directory |
+| `ssl_client_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA`, `VERIFY_HOSTNAME` and `VERIFY_DBNAME` | `ALLOW` |
+| `ssl_replicant_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA`, `VERIFY_HOSTNAME` and `VERIFY_DBNAME` | `ALLOW` |
+| `ssl_cert_path path` | Directory containing the server certificate files. Comdb2 searches `server.crt`, `server.key`, `root.crt` and `root.crl` for the server certificate, key, trusted CAs and CRL respectively | The data directory |
 | `ssl_cert file`| Path to the certificate | `<ssl_cert_path>/server.crt` |
 | `ssl_key file` | Path to the key | `<ssl_cert_path>/server.key` |
 | `ssl_ca file` | Path to the trusted CA certificates | `<ssl_cert_path>/root.crt` |
+| `ssl_crl file` | Path to the CRL | `<ssl_cert_path>/root.crl` |
 | `ssl_cipher_suites string` | list of accepted ciphers | `HIGH:!aNULL:!eNULL` |
 
 
@@ -165,11 +190,12 @@ are refused to join the cluster.
 
 | Option | Description | Default Value |
 |---------------|-------------|--------|
-| `ssl_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA` and `VERIFY_HOSTNAME` | `ALLOW` |
-| `ssl_cert_path path` | Directory containing client certificate files. libcdb2api searches `client.crt`, `client.key` and `root.crt` for the client certificate, key and trusted CAs respectively | `N/A` |
+| `ssl_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA`, `VERIFY_HOSTNAME` and `VERIFY_DBNAME` | `ALLOW` |
+| `ssl_cert_path path` | Directory containing client certificate files. libcdb2api searches `client.crt`, `client.key`, `root.crt` and `root.crl` for the client certificate, key, trusted CAs and CRL respectively | `N/A` |
 | `ssl_cert file` | Path to the client certificate | `<ssl_cert_path>/client.crt` |
 | `ssl_key file` | Path to the client key | `<ssl_cert_path>/client.key` |
 | `ssl_ca file` | Path to the trusted CA certificates. | `<ssl_cert_path>/root.crt` |
+| `ssl_crl file` | Path to the CRL | `<ssl_cert_path>/root.crl` |
 | `ssl_session_cache 1/0` | Enable SSL client-side session cache. | `0` |
 
 
@@ -181,5 +207,6 @@ are refused to join the cluster.
 |  `REQUIRE` | Yes  | Yes  |  SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead |
 | `VERIFY_CA` | Yes | Maybe if signed by 3rd party CA. No if self-signed or signed by a local CA. | SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead + certificate verification |
 | `VERIFY_HOSTNAME` | Yes | No | SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead + certificate verification + host name validation |
+| `VERIFY_DBNAME` | Yes | No | SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead + certificate verification + host name validation + database name validation |
 
 <a name="sslfootnote">[1]</a>: In order to establish an SSL connection to server, the client needs to negotiate with the server over the plaintext connection before upgrading to SSL. This happens only once for each connection establishment.
