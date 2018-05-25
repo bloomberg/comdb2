@@ -196,6 +196,8 @@ extern bool gbl_rcache;
 static char *name = NULL;
 static int ctrace_gzip;
 
+int gbl_ddl_cascade_drop = 1;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need

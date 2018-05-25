@@ -27,10 +27,14 @@
 #define INCLUDE_KEYWORDHASH_H
 #define INCLUDE_FINALKEYWORD_H
 #include <keywordhash.h>
+
 extern pthread_key_t query_info_key;
 extern int gbl_commit_sleep;
 extern int gbl_convert_sleep;
 extern int gbl_check_access_controls;
+extern int gbl_allow_user_schema;
+extern int gbl_ddl_cascade_drop;
+
 /******************* Utility ****************************/
 
 static inline int setError(Parse *pParse, int rc, const char *msg)
@@ -93,8 +97,6 @@ static inline int isRemote(Parse *pParse, Token **t1, Token **t2)
     return setError(pParse, SQLITE_MISUSE,
                     "DDL commands operate on local schema only.");
 }
-
-extern int gbl_allow_user_schema;
 
 static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
                                   size_t max_length, int mustexist)
@@ -4477,28 +4479,38 @@ cleanup:
 }
 
 /*
-  Iterate through the list of constraints and drop ones associated with
-  this key.
-*/
-static void drop_dependent_cons(struct comdb2_ddl_context *ctx,
-                                struct comdb2_key *key)
+ * Check whether the specified key has any existing associated
+ * constraint(s) and drop if asked.
+ */
+static int check_dependent_cons(struct comdb2_ddl_context *ctx,
+                                struct comdb2_key *key, int drop)
 {
     struct comdb2_constraint *constraint;
 
     LISTC_FOR_EACH(&ctx->schema->constraint_list, constraint, lnk)
     {
+        /* Skip if the constraint has already been dropped. */
+        if (constraint->flags & CONS_DELETED) {
+            continue;
+        }
+
         if (constraint->child == key) {
-            constraint->flags |= CONS_DELETED;
+            if (drop) {
+                constraint->flags |= CONS_DELETED;
+            } else {
+                return 1;
+            }
         }
     }
-    return;
+    return 0;
 }
 
 /*
-  Remove the specified column from the current keys.
-*/
-static void drop_dependent_keys(struct comdb2_ddl_context *ctx,
-                                const char *column)
+ * Check whether the specified column has any existing associated
+ * key(s) and drop if asked.
+ */
+static int check_dependent_keys(struct comdb2_ddl_context *ctx,
+                                const char *column, int drop)
 {
     struct comdb2_key *key;
     struct comdb2_index_column *idx_col;
@@ -4513,15 +4525,19 @@ static void drop_dependent_keys(struct comdb2_ddl_context *ctx,
         LISTC_FOR_EACH(&key->idx_col_list, idx_col, lnk)
         {
             if (strcasecmp(idx_col->name, column) == 0) {
-                /* Also drop the dependent constraints */
-                drop_dependent_cons(ctx, key);
+                if (drop) {
+                    /* Drop the dependent constraints. */
+                    check_dependent_cons(ctx, key, 1);
 
-                /* Mark the key as deleted. */
-                key->flags |= KEY_DELETED;
+                    /* Mark the key as deleted. */
+                    key->flags |= KEY_DELETED;
+                } else {
+                    return 1;
+                }
             }
         }
     }
-    return;
+    return 0;
 }
 
 /*
@@ -4552,8 +4568,15 @@ void comdb2DropColumn(Parse *pParse, /* Parser context */
     LISTC_FOR_EACH(&ctx->schema->column_list, column, lnk)
     {
         if ((strcasecmp(name, column->name)) == 0) {
-            /* Drop the index referring to this column. */
-            drop_dependent_keys(ctx, name);
+            /* Check whether an index is referring to this column. */
+            if (check_dependent_keys(ctx, name, gbl_ddl_cascade_drop)) {
+                pParse->rc = SQLITE_ERROR;
+                sqlite3ErrorMsg(pParse,
+                                "Column '%s' cannot be dropped as it is part "
+                                "of an existing key.",
+                                name);
+                goto cleanup;
+            }
 
             /* Mark the column as deleted. */
             column->flags |= COLUMN_DELETED;
@@ -4596,8 +4619,15 @@ void comdb2DropIndexInt(Parse *pParse, char *idx_name)
         sqlite3ErrorMsg(pParse, "Key '%s' not found.", idx_name);
         goto cleanup;
     } else {
-        /* First, drop the constraints associated with this key.  */
-        drop_dependent_cons(ctx, key);
+        /* First, check whether a constraint is associated with this key. */
+        if (check_dependent_cons(ctx, key, gbl_ddl_cascade_drop)) {
+            pParse->rc = SQLITE_ERROR;
+            sqlite3ErrorMsg(pParse,
+                            "Key '%s' cannot be dropped as it is being used "
+                            "in a foreign key constraint.",
+                            idx_name);
+            goto cleanup;
+        }
 
         /* Mark the key as deleted. */
         key->flags |= KEY_DELETED;
