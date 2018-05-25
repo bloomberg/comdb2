@@ -326,12 +326,12 @@ int ssl_bend_init(const char *default_certdir)
 
     if (gbl_client_ssl_mode >= SSL_UNKNOWN ||
         gbl_rep_ssl_mode >= SSL_UNKNOWN) {
-        rc = ssl_new_ctx(&gbl_ssl_ctx, gbl_client_ssl_mode > gbl_rep_ssl_mode
-                                           ? gbl_client_ssl_mode
-                                           : gbl_rep_ssl_mode,
-                         ks, &gbl_cert_file, &gbl_key_file, &gbl_ca_file,
-                         &gbl_crl_file, gbl_sess_cache_sz, gbl_ciphers, errmsg,
-                         sizeof(errmsg));
+        rc = ssl_new_ctx(
+            &gbl_ssl_ctx,
+            gbl_client_ssl_mode > gbl_rep_ssl_mode ? gbl_client_ssl_mode
+                                                   : gbl_rep_ssl_mode,
+            ks, &gbl_cert_file, &gbl_key_file, &gbl_ca_file, &gbl_crl_file,
+            gbl_sess_cache_sz, gbl_ciphers, errmsg, sizeof(errmsg));
         if (rc == 0) {
             if (gbl_client_ssl_mode == SSL_UNKNOWN)
                 gbl_client_ssl_mode = SSL_ALLOW;
