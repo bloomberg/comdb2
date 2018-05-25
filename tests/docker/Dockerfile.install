@@ -30,6 +30,7 @@ RUN apt-get update && \
     tzdata \
     iputils-ping \
     net-tools \
+    netcat-openbsd \
     iproute2 \
     socat \
     time \

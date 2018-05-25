@@ -19,7 +19,7 @@ echo numnodes $numnodes
 declare -A ready
 while :; do 
     for node in $CLUSTER; do
-        host=$(ssh -o StrictHostKeyChecking=no $node hostname)
+        host=$(ssh -o StrictHostKeyChecking=no $node hostname 2>/dev/null)
         if [[ $? -eq 0 && "$host" == $node ]]; then
             ready[$node]=1
         fi
@@ -32,12 +32,14 @@ while :; do
     [[ $ready -eq $numnodes ]] && break
 done
 
-ssh-keyscan $CLUSTER >> ~/.ssh/known_hosts
+ssh-keyscan $CLUSTER >> ~/.ssh/known_hosts 2>/dev/null
 
 if [[ $# -ne 0 ]]; then
     eval $*
 fi
 
-if [[ -f /comdb2/user_script ]]; then
+echo READY
+
+if [[ -f /common/user_script ]]; then
     /common/user_script
 fi

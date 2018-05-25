@@ -38,7 +38,6 @@ if [[ -f /proc/sys/kernel/core_pattern ]]; then
         coredir=$abs
         mkdir -p common/cores/client
         for node in $(seq 1 $numnodes); do
-            cluster="$cluster m${node}"
             mkdir -p common/cores/m${node}
         done
     fi
@@ -57,7 +56,6 @@ if [[ "$script" != "" ]]; then
 fi
 docker build -t comdb2test:$prefix -f $src/tests/docker/Dockerfile.install $src
 
-cp -r $src/tests/docker/* .
 echo $cluster >common/cluster
 ssh-keygen -N "" -f common/id_rsa
 
@@ -68,9 +66,11 @@ version: '2'
 services:
     client:
         hostname: c1
+        labels:
+            what: "testclient"
         build:
             context: .
-            dockerfile: Dockerfile.db
+            dockerfile: $src/tests/docker/Dockerfile.db
             args:
                 - REVISION=$prefix
         volumes:
@@ -92,9 +92,11 @@ for node in $cluster; do
 cat >> $compose <<EOF
     $node:
         hostname: $node
+        labels:
+            what: "testserver"
         build:
             context: .
-            dockerfile: Dockerfile.db
+            dockerfile: $src/tests/docker/Dockerfile.db
             args:
                 - REVISION=$prefix
         volumes:
