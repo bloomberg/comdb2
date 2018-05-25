@@ -79,7 +79,30 @@ client_socket.send("newsql\n")
 Establishing SSL connection
 ------
 
-A client can request the server to establish an SSL connection by sending _CDB2RequestType_ _SSLCONN_ in the header. The server writes back 'Y' or 'N' to indicate whether the client is able to begin SSL handshake.
+A client can request the server to establish an SSL connection by sending _CDB2RequestType_ _SSLCONN_ in the header.
+The server then writes back a single character which is either 'Y' or 'N' to indicate whether the client can begin the SSL handshake.
+The flowchart below demonstrates the process.
+
+```
+Client                   Server
+
+connect ---------------> accept
+   |                          |
+send SSLCONN ----------> recv SSLCONN
+   |                          |
+   |                     SSL configured? ---------+
+   |                          |              No   |
+   |                          | Yes               |
+   |<------- Send 'Y' --------+                   |
+   |                          |                   |
+   |<------- Send 'N' --------(-------------------+
+   |                          |                   |
+recv 1 char -------> X        |                   X
+   |          'N'             |
+   | 'Y'                      |
+   |                          |
+ssl connect -----------> ssl accept
+```
 
 SQL Header
 ------
