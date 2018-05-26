@@ -1357,7 +1357,9 @@ fprintf(stderr, "************  done with rep_elect\n");
 
             /* give up our read lock, we will need a write lock here  */
 
-            /* we need to upgrade */
+           /* XXX Do not upgrade here: upgrade only from the reader thread */
+
+/*
             rc = bdb_upgrade(bdb_state, newgen, &done);
             print(bdb_state, "back from bdb_upgrade%s\n",
                   (!done) ? " (nop)" : "");
@@ -1366,6 +1368,7 @@ fprintf(stderr, "************  done with rep_elect\n");
                 logmsg(LOGMSG_FATAL, "bdb_upgrade returned bad rcode %d\n", rc);
                 exit(1);
             }
+*/
 
             /* bdb_upgrade calls whoismaster_rtn. */
             Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
