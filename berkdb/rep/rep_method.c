@@ -57,7 +57,7 @@ static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
 static int __rep_start __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 static int __rep_stat __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
-static int __rep_wait __P((DB_ENV *, u_int32_t, char **, u_int32_t *, u_int32_t));
+static int __rep_wait __P((DB_ENV *, u_int32_t, char **, u_int32_t *, u_int32_t, u_int32_t));
 
 #ifndef TESTSUITE
 void bdb_get_writelock(void *bdb_state,
@@ -951,7 +951,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 	    __FILE__, __LINE__);
 #endif
     send_master_req(dbenv, __func__, __LINE__);
-	ret = __rep_wait(dbenv, timeout / 4, eidp, newgen, REP_F_EPHASE1);
+	ret = __rep_wait(dbenv, timeout / 4, eidp, newgen, 0, REP_F_EPHASE1);
 	switch (ret) {
 	case 0:
 		/* Check if we found a master. */
@@ -1021,7 +1021,7 @@ restart:
 			db_eid_broadcast, REP_VOTE1);
 	}
 
-	ret = __rep_wait(dbenv, timeout, eidp, newgen, REP_F_EPHASE1);
+	ret = __rep_wait(dbenv, timeout, eidp, newgen, egen, REP_F_EPHASE1);
 	switch (ret) {
 		case 0:
 			/* Check if election complete or phase complete. */
@@ -1125,7 +1125,7 @@ restart:
 			}
 		}
 phase2:
-		ret = __rep_wait(dbenv, timeout, eidp, newgen, REP_F_EPHASE2);
+		ret = __rep_wait(dbenv, timeout, eidp, newgen, 0, REP_F_EPHASE2);
 #ifdef DIAGNOSTIC
 				if (FLD_ISSET(dbenv->verbose,
 				    DB_VERB_REPLICATION))
@@ -1269,11 +1269,12 @@ __rep_elect_master(dbenv, rep, eidp)
 }
 
 static int
-__rep_wait(dbenv, timeout, eidp, egen, flags)
+__rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
 	DB_ENV *dbenv;
 	u_int32_t timeout;
 	char **eidp;
-    u_int32_t *egen;
+    u_int32_t *outegen;
+    u_int32_t inegen;
 	u_int32_t flags;
 {
 	DB_REP *db_rep;
@@ -1288,9 +1289,9 @@ __rep_wait(dbenv, timeout, eidp, egen, flags)
 	/*
 	 * The user specifies an overall timeout function, but checking
 	 * is cheap and the timeout may be a generous upper bound.
-	 * Sleep repeatedly for the smaller of .5s and timeout/10.
+	 * Sleep repeatedly for the smaller of .1s and timeout/10.
 	 */
-	sleeptime = (timeout > 5000000) ? 500000 : timeout / 10;
+	sleeptime = (timeout > 1000000) ? 100000 : timeout / 10;
 	if (sleeptime == 0)
 		sleeptime++;
 	while (timeout > 0) {
@@ -1299,7 +1300,9 @@ __rep_wait(dbenv, timeout, eidp, egen, flags)
 		done = !F_ISSET(rep, flags) && rep->master_id != db_eid_invalid;
 
 		*eidp = rep->master_id;
-        *egen = rep->egen;
+        *outegen = rep->egen;
+        if (inegen && *outegen != inegen)
+            done = 1;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 		if (done)
