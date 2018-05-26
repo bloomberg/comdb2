@@ -3869,9 +3869,15 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
             /* I'm upgrading and this thread could be holding logical locks:
              * abort sql threads waiting on logical locks */
             BDB_WRITELOCK_REP("upgrade");
+            char *master;
+            int gen, egen;
+
+            if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
+                abort();
+            }
 
             /* we need to upgrade */
-            rc = bdb_upgrade(bdb_state, generation, &done);
+            rc = bdb_upgrade(bdb_state, egen, &done);
 
             BDB_RELLOCK();
 
