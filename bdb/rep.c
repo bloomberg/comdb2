@@ -1373,18 +1373,18 @@ elect_again:
         else
             logmsg(LOGMSG_ERROR, "got %d from rep_elect\n", rc);
 
-        restart++;
-        if (restart == 5) {
-            /*try to reinit the process*/
-            logmsg(LOGMSG_DEBUG, "elect_thread: call rep_start\n");
-            called_rep_start++;
-            rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
-                                             0, DB_REP_CLIENT);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "elect_thread: rep_start returned error code %d\n", rc);
-            }
-            restart = 0;
-        }
+//        restart++;
+//        if (restart == 5) {
+//            /*try to reinit the process*/
+//            logmsg(LOGMSG_DEBUG, "elect_thread: call rep_start\n");
+//            called_rep_start++;
+//            rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
+//                                             0, DB_REP_CLIENT);
+//            if (rc) {
+//                logmsg(LOGMSG_ERROR, "elect_thread: rep_start returned error code %d\n", rc);
+//            }
+//            restart = 0;
+//        }
 
         elect_time *= 2;
         elect_again++;
@@ -1432,21 +1432,27 @@ fprintf(stderr, "************  done with rep_elect\n");
         }
 
         else if (old_master == master_host) {
+            /*
             set_repinfo_master_host(bdb_state, master_host, __func__, __LINE__);
             logmsg(LOGMSG_INFO, "elect_thread: master didn't change\n");
+            */
         }
 
         else if (old_master == bdb_state->repinfo->myhost) {
+            /*
             logmsg(LOGMSG_INFO, "elect_thread: we lost the election as master: "
                             "new_master is %s\n",
                     master_host);
             bdb_downgrade(bdb_state, &done);
             if (done)
                 bdb_setmaster(bdb_state, master_host);
+                */
         } else {
+            /*
             logmsg(LOGMSG_WARN, "elect_thread: we lost the election: new_master is %s\n",
                     master_host);
             bdb_setmaster(bdb_state, master_host);
+            */
         }
     }
 #endif
