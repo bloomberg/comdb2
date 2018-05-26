@@ -350,7 +350,6 @@ static void add_legacy_default_options(struct dbenv *dbenv)
         "nokeycompr",
         "norcache",
         "usenames",
-        "dont_return_long_column_names",
         "setattr DIRECTIO 0",
         "berkattr elect_highest_committed_gen 0",
         "unnatural_types 1",
@@ -565,15 +564,33 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     tok = segtok(line, len, &st, &ltok);
     if (ltok == 0 || tok[0] == '#') return 0;
 
-    /* Handle global tunables. */
-    rc = handle_lrl_tunable(tok, ltok, line + st, len - st, 0);
-    if (rc != TUNABLE_ERR_INVALID_TUNABLE) {
-        /* Follow through, if the tunable is not found. */
-        return rc;
-    }
-
-    /* if this is an "if" statement that evaluates to false, skip */
-    if (!lrl_if(&tok, line, len, &st, &ltok)) {
+    if (tokcmp(tok, ltok, "on") == 0) {
+        change_switch(1, line, len, st);
+    } else if (tokcmp(tok, ltok, "off") == 0) {
+        change_switch(0, line, len, st);
+    } else if (tokcmp(tok, ltok, "setattr") == 0) {
+        char name[48] = {0}; // oh valgrind
+        int value;
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d: expected attribute name\n",
+                   options->lrlname, options->lineno);
+            return -1;
+        }
+        tokcpy0(tok, ltok, name, sizeof(name));
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d: expected attribute value\n",
+                   options->lrlname, options->lineno);
+            return -1;
+        }
+        value = toknum(tok, ltok);
+        if (bdb_attr_set_by_name(NULL, dbenv->bdb_attr, name, value) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d: bad attribute name %s\n",
+                   options->lrlname, options->lineno, name);
+        }
+    } else if (!lrl_if(&tok, line, len, &st, &ltok)) {
+        /* If this is an "if" statement that evaluates to false, skip */
         return 1;
     } else if (tokcmp(tok, ltok, "sqlsortermaxmmapsize") == 0) {
         tok = segtok(line, len, &st, &ltok);
@@ -1141,31 +1158,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
         gbl_selectv_rangechk = 1;
-    } else if (tokcmp(tok, ltok, "on") == 0) {
-        change_switch(1, line, len, st);
-    } else if (tokcmp(tok, ltok, "off") == 0) {
-        change_switch(0, line, len, st);
-    } else if (tokcmp(tok, ltok, "setattr") == 0) {
-        char name[48] = {0}; // oh valgrind
-        int value;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d: expected attribute name\n",
-                   options->lrlname, options->lineno);
-            return -1;
-        }
-        tokcpy0(tok, ltok, name, sizeof(name));
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d: expected attribute value\n",
-                   options->lrlname, options->lineno);
-            return -1;
-        }
-        value = toknum(tok, ltok);
-        if (bdb_attr_set_by_name(NULL, dbenv->bdb_attr, name, value) != 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d: bad attribute name %s\n",
-                   options->lrlname, options->lineno, name);
-        }
     } else if (tokcmp(tok, ltok, "mallocregions") == 0) {
         if ((strcmp(COMDB2_VERSION, "2") == 0) ||
             (strcmp(COMDB2_VERSION, "old") == 0)) {
@@ -1334,11 +1326,25 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         if (rc != 0)
             return -1;
 #endif
+    } else if (tokcmp(tok, ltok, "legacy_defaults") == 0) {
+        /* NOOP: Already handled in pre_read_option(); check added here to keep
+         * handle_lrl_tunable() from throwing a warning as legacy_defaults has
+         * not been registered into the new tunables sub-system yet.
+         */
     } else {
-        logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok, tok,
-               options->lrlname);
-        if (gbl_bad_lrl_fatal)
-            return -1;
+        /* Handle tunables registered under tunables sub-system. */
+        rc = handle_lrl_tunable(tok, ltok, line + st, len - st, 0);
+        if (rc != TUNABLE_ERR_OK) {
+
+            if (gbl_bad_lrl_fatal) {
+                logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok,
+                       tok, options->lrlname);
+                return -1;
+            } else {
+                logmsg(LOGMSG_WARN, "unknown opcode '%.*s' in lrl %s\n", ltok,
+                       tok, options->lrlname);
+            }
+        }
     }
 
     if (gbl_disable_new_snapshot) {
