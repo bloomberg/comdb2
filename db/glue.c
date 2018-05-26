@@ -2940,7 +2940,7 @@ static int new_master_callback(void *bdb_handle, char *host)
     bdb_get_rep_master(bdb_handle, &newmaster, &gen, &egen);
     if (gbl_master_swing_osql_verbose)
         logmsg(LOGMSG_INFO,
-               "%s:%d new master node %s, rep_master %s, rep_gen %u\n",
+               "%s:%d new master node %s, rep_master %s, rep_egen %u\n",
                __func__, __LINE__, host ? host : "NULL",
                newmaster ? newmaster : "NULL", egen);
     dbenv->gen = gen;

@@ -1422,7 +1422,6 @@ fprintf(stderr, "************  done with rep_elect\n");
                 exit(1);
             }
 */
-
             /* bdb_upgrade calls whoismaster_rtn. */
             Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
             bdb_state->repinfo->in_election = 0;
