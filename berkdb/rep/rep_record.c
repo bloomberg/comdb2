@@ -2455,7 +2455,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 #endif
 		if (done) {
             logmsg(LOGMSG_USER, "%s line %d elected master %s for egen %d\n",
-                    __func__, __LINE__, vi_egen);
+                    __func__, __LINE__, rep->eid, vi_egen);
 			__rep_elect_master(dbenv, rep, eidp);
 			ret = DB_REP_NEWMASTER;
 			goto errunlock;
