@@ -1268,6 +1268,9 @@ __rep_elect_master(dbenv, rep, eidp)
 #endif
 }
 
+extern pthread_mutex_t gbl_rep_egen_lk;
+extern pthread_cond_t gbl_rep_egen_cd;
+
 static int
 __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
 	DB_ENV *dbenv;
@@ -1280,7 +1283,9 @@ __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
 	DB_REP *db_rep;
 	REP *rep;
 	int done;
+    int rc;
 	u_int32_t sleeptime;
+    struct timespec tm;
 
 	done = 0;
 	db_rep = dbenv->rep_handle;
@@ -1289,18 +1294,26 @@ __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
 	/*
 	 * The user specifies an overall timeout function, but checking
 	 * is cheap and the timeout may be a generous upper bound.
-	 * Sleep repeatedly for the smaller of .1s and timeout/10.
+	 * Sleep repeatedly for the smaller of .5s and timeout/10.
 	 */
-	sleeptime = (timeout > 1000000) ? 100000 : timeout / 10;
+	sleeptime = (timeout > 5000000) ? (500000 * 1000) : (timeout * 1000) / 10;
 	if (sleeptime == 0)
-		sleeptime++;
+        sleeptime = 1000;
 	while (timeout > 0) {
-		(void)__os_sleep(dbenv, 0, sleeptime);
+        clock_gettime(CLOCK_REALTIME, &tm);
+        tm.tv_nsec += sleeptime;
+        while (tm.tv_nsec >= 1000000000) {
+            tm.tv_nsec -= 1000000000;
+            tm.tv_sec += 1;
+        }
+        pthread_mutex_lock(&gbl_rep_egen_lk);
+        rc = pthread_cond_timedwait(&gbl_rep_egen_cd, &gbl_rep_egen_lk, &tm);
+        *outegen = rep->egen;
+        pthread_mutex_unlock(&gbl_rep_egen_lk);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		done = !F_ISSET(rep, flags) && rep->master_id != db_eid_invalid;
 
 		*eidp = rep->master_id;
-        *outegen = rep->egen;
         if (inegen && *outegen != inegen)
             done = 1;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);

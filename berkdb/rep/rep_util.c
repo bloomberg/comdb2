@@ -640,6 +640,9 @@ __rep_send_gen_vote(dbenv, lsnp, nsites, pri, tiebreaker, egen, committed_gen,
 	(void)__rep_send_message(dbenv, eid, vtype, lsnp, &vote_dbt, 0, NULL);
 }
 
+pthread_mutex_t gbl_rep_egen_lk = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t gbl_rep_egen_cd = PTHREAD_COND_INITIALIZER;
+
 /*
  * __rep_elect_done
  *	Clear all election information for this site.  Assumes the
@@ -662,8 +665,12 @@ __rep_elect_done(dbenv, rep)
 	F_CLR(rep, REP_F_EPHASE1 | REP_F_EPHASE2 | REP_F_TALLY);
 	rep->sites = 0;
 	rep->votes = 0;
-	if (inelect)
+	if (inelect) {
+        pthread_mutex_lock(&gbl_rep_egen_lk);
 		rep->egen++;
+        pthread_cond_broadcast(&gbl_rep_egen_cd);
+        pthread_mutex_unlock(&gbl_rep_egen_lk);
+    }
 #ifdef DIAGNOSTIC
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 		__db_err(dbenv, "Election done; egen %lu", (u_long)rep->egen);
