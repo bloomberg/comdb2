@@ -1010,13 +1010,13 @@ restart:
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 	if (use_committed_gen) {
-		logmsg(LOGMSG_USER, "%s line %d sending REP_GEN_VOTE1 from %s with committed-gen=%d\n",
-			__func__, __LINE__, *eidp, committed_gen);
+		logmsg(LOGMSG_USER, "%s line %d broadcasting REP_GEN_VOTE1 to all with committed-gen=%d egen=%d\n",
+			__func__, __LINE__, committed_gen, egen);
 		__rep_send_gen_vote(dbenv, &lsn, nsites, priority, tiebreaker,
 			egen, committed_gen, db_eid_broadcast, REP_GEN_VOTE1);
 	} else {
-		logmsg(LOGMSG_USER, "%s line %d sending REP_VOTE1 from %s (committed-gen=0)\n",
-			__func__, __LINE__, *eidp);
+		logmsg(LOGMSG_USER, "%s line %d broadcasting REP_VOTE1 to all (committed-gen=0) egen=%d\n",
+			__func__, __LINE__, egen);
 		__rep_send_vote(dbenv, &lsn, nsites, priority, tiebreaker, egen,
 			db_eid_broadcast, REP_VOTE1);
 	}
@@ -1112,14 +1112,15 @@ restart:
 				__db_err(dbenv, "Sending vote");
 #endif
 			if (use_committed_gen) {
-				logmsg(LOGMSG_USER, "%s line %d sending REP_GEN_VOTE2 from %s "
-						"with committed-gen=%d\n", __func__, __LINE__, *eidp,
-						committed_gen);
+				logmsg(LOGMSG_USER, "%s line %d sending REP_GEN_VOTE2 to %s "
+						"with committed-gen=%d egen=%d\n", __func__, __LINE__,
+                        send_vote, committed_gen, egen);
 				__rep_send_gen_vote(dbenv, NULL, 0, 0, 0, egen,
 					committed_gen, send_vote, REP_GEN_VOTE2);
 			} else {
-				logmsg(LOGMSG_USER, "%s line %d sending REP_VOTE2 from %s "
-						"(committed-gen=0)\n", __func__, __LINE__, *eidp);
+				logmsg(LOGMSG_USER, "%s line %d sending REP_VOTE2 to %s "
+						"(committed-gen=0) egen=%d\n", __func__, __LINE__,
+                        send_vote, egen);
 				__rep_send_vote(dbenv, NULL, 0, 0, 0, egen,
 					send_vote, REP_VOTE2);
 			}

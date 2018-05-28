@@ -2334,15 +2334,15 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 
 			/* Vote for someone else. */
 			if (dbenv->attr.elect_highest_committed_gen) {
-				logmsg(LOGMSG_USER, "%s line %d sending REP_GEN_VOTE2 from %s "
-						"with committed-gen=%d\n",
-						__func__, __LINE__, *eidp, committed_gen);
+				logmsg(LOGMSG_USER, "%s line %d sending REP_GEN_VOTE2 to %s "
+						"with committed-gen=%d egen=%d\n",
+						__func__, __LINE__, master, committed_gen, egen);
 				__rep_send_gen_vote(dbenv, NULL, 0, 0, 0, egen,
 					committed_gen, master, REP_VOTE2);
 			} else {
-				logmsg(LOGMSG_USER, "%s line %d sending REP_VOTE2 from %s "
-						"(committed-gen=0)\n",
-						__func__, __LINE__, *eidp);
+				logmsg(LOGMSG_USER, "%s line %d sending REP_VOTE2 to %s "
+						"(committed-gen=0) egen=%d\n",
+						__func__, __LINE__, master, egen);
 				__rep_send_vote(dbenv, NULL, 0, 0, 0, egen,
 					master, REP_VOTE2);
 			}
