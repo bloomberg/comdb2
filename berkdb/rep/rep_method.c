@@ -1319,8 +1319,11 @@ __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
             done = 1;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
-		if (done)
+		if (done) {
+            if (inegen && *outegen != inegen)
+                return (DB_TIMEOUT);
 			return (0);
+        }
 
 		if (timeout > sleeptime)
 			timeout -= sleeptime;
