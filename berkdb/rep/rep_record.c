@@ -2215,7 +2215,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		if (vi_egen > rep->egen) {
 			logmsg(LOGMSG_USER, "%s line %d reseting election for REP_VOTE1 from %s: it's egen is %d my-egen is %d\n",
 					__func__, __LINE__, *eidp, vi_egen, rep->egen);
-			__rep_elect_done(dbenv, rep);
+			__rep_elect_done(dbenv, rep, vi_egen);
 			rep->egen = vi_egen;
 		}
 		if (!IN_ELECTION(rep))

@@ -338,7 +338,7 @@ __rep_new_master(dbenv, cntrl, eid)
 	rep = db_rep->region;
 	ret = 0;
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	__rep_elect_done(dbenv, rep);
+	__rep_elect_done(dbenv, rep, 0);
 
         /* This should never happen: we are calling new-master against a
            network message with a lower generation.  I believe this is the
@@ -648,12 +648,13 @@ pthread_cond_t gbl_rep_egen_cd = PTHREAD_COND_INITIALIZER;
  *	Clear all election information for this site.  Assumes the
  *	caller hold rep_mutex.
  *
- * PUBLIC: void __rep_elect_done __P((DB_ENV *, REP *));
+ * PUBLIC: void __rep_elect_done __P((DB_ENV *, REP *, int egen));
  */
 void
-__rep_elect_done(dbenv, rep)
+__rep_elect_done(dbenv, rep, egen)
 	DB_ENV *dbenv;
 	REP *rep;
+    int egen;
 {
 	int inelect;
 
@@ -667,7 +668,10 @@ __rep_elect_done(dbenv, rep)
 	rep->votes = 0;
 	if (inelect) {
         pthread_mutex_lock(&gbl_rep_egen_lk);
-		rep->egen++;
+        if (egen)
+            rep->egen = egen;
+        else
+            rep->egen++;
         pthread_cond_broadcast(&gbl_rep_egen_cd);
         pthread_mutex_unlock(&gbl_rep_egen_lk);
     }

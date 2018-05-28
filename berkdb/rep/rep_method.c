@@ -331,7 +331,7 @@ __rep_start(dbenv, dbt, gen, flags)
 			} else if (rep->gen == 0)
 				rep->gen = rep->recover_gen + 1;
 			if (F_ISSET(rep, REP_F_MASTERELECT)) {
-				__rep_elect_done(dbenv, rep);
+				__rep_elect_done(dbenv, rep, 0);
 				F_CLR(rep, REP_F_MASTERELECT);
 			}
 			if (rep->egen <= rep->gen)
@@ -1172,7 +1172,7 @@ lockdone:
 	 * that case we do not want to discard all known election info.
 	 */
 	if (ret == 0 || ret == DB_REP_UNAVAIL)
-		__rep_elect_done(dbenv, rep);
+		__rep_elect_done(dbenv, rep, 0);
 	else if (orig_tally)
 		F_SET(rep, orig_tally);
 
@@ -1320,8 +1320,10 @@ __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 		if (done) {
-            if (inegen && *outegen != inegen)
+            if (inegen && *outegen != inegen) {
+                //__os_sleep(dbenv, 0, rand() % 500000);
                 return (DB_TIMEOUT);
+            }
 			return (0);
         }
 
