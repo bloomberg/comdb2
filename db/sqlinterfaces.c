@@ -2785,7 +2785,9 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
     char *errstr = NULL;
     int rc = rc_sqlite_to_client(thd, clnt, rec, &errstr);
     if (rc != 0) {
-        send_run_error(clnt, errstr, rc);
+        if (!skip_response(clnt)) {
+            send_run_error(clnt, errstr, rc);
+        }
         clnt->had_errors = 1;
     } else {
         pthread_mutex_lock(&clnt->wait_mutex);
