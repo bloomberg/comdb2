@@ -1302,6 +1302,7 @@ typedef enum {
 #define	DB_VERIFY_FATAL		(-30891)/* DB->verify cannot proceed. */
 #define DB_FIRST_MISS		(-30890)/* Return on first-miss in memp_fget. */
 #define DB_SEARCH_PGCACHE	(-30889)/* Search the recovery pagecache. */
+#define DB_ELECTION_GENCHG  (-30888)
 
 /* genid-pgno hashtable - some code stolen from plhash.c */
 #define GENID_SIZE 8

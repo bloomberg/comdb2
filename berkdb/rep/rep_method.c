@@ -1037,6 +1037,7 @@ restart:
 				return (0);
 			}
 			goto phase2;
+        case DB_ELECTION_GENCHG:
 		case DB_TIMEOUT:
 			break;
 		default:
@@ -1284,11 +1285,13 @@ __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
 	DB_REP *db_rep;
 	REP *rep;
 	int done;
+    int genchange;
     int rc;
 	u_int32_t sleeptime;
     struct timespec tm;
 
 	done = 0;
+    genchange = 0;
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
@@ -1297,10 +1300,11 @@ __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
 	 * is cheap and the timeout may be a generous upper bound.
 	 * Sleep repeatedly for the smaller of .5s and timeout/10.
 	 */
-	sleeptime = (timeout > 5000000) ? (500000 * 1000) : (timeout * 1000) / 10;
-	if (sleeptime == 0)
-        sleeptime = 1000;
 	while (timeout > 0) {
+        sleeptime = (timeout > 5000000) ? (500000 * 1000) : (timeout * 1000) / 10;
+        if (sleeptime == 0)
+            sleeptime = 1000;
+
         clock_gettime(CLOCK_REALTIME, &tm);
         tm.tv_nsec += sleeptime;
         while (tm.tv_nsec >= 1000000000) {
@@ -1317,12 +1321,15 @@ __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
 		*eidp = rep->master_id;
         /* Not sure if this is right */
         if (inegen && *outegen != inegen)
-            done = 1;
+            genchange = 1;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 		if (done) {
 			return (0);
         }
+
+        if (genchange)
+            return (DB_ELECTION_GENCHG);
 
 		if (timeout > sleeptime)
 			timeout -= sleeptime;

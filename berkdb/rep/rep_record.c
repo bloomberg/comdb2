@@ -6187,12 +6187,12 @@ __rep_cmp_vote2(dbenv, rep, eid, egen)
 		vtp = &tally[i];
 		if (vtp->eid == eid && vtp->egen == egen) {
             logmsg(LOGMSG_USER,
-                    "%s egen=%u found matching vote1 from %s\n", __func__, 
+                    "%s egen=%u found matching vote2 from %s\n", __func__, 
                     egen, eid);
 #ifdef DIAGNOSTIC
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 				__db_err(dbenv,
-				    "Found matching vote1 (%d, %lu), at %d of %d",
+				    "Found matching vote2 (%d, %lu), at %d of %d",
 				    eid, (u_long)egen, i, rep->sites);
 #endif
 			return (0);
