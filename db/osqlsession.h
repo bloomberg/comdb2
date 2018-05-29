@@ -112,8 +112,8 @@ struct osql_sess {
     int retries;      /* how many times this session was retried */
 
     int queryid;
-    bool is_reorder_on;
     unsigned long long last_genid; // rememberg updrec and insrec genid for qblobs
+    bool is_reorder_on;
 };
 
 enum {
@@ -270,7 +270,6 @@ int osql_session_testterminate(void *obj, void *arg);
  * Returns created object if success, NULL otherwise
  *
  */
-
 osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int type, unsigned long long rqid,
                                    uuid_t uuid, char *fromhost, struct ireq *iq,

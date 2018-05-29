@@ -1755,7 +1755,6 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
 
         rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->blb_cur, key,
                                        sizeof(*key), bdberr);
-printf("AZ: blbtbl findexact rc=%d, seq=%d, i=%d\n", rc, seq, i);
         if (rc == IX_EMPTY || rc == IX_NOTFND) {
             /* null blob */
             data = NULL;
@@ -1934,7 +1933,6 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                 free(seq);
                 return SQLITE_INTERNAL;
             }
-
             free(seq);
         }
 
