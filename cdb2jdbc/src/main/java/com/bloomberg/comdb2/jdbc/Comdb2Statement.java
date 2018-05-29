@@ -54,7 +54,7 @@ public class Comdb2Statement implements Statement {
         this.hndl = hndl;
         this.conn = conn;
         this.timeout = timeout;
-        this.querytimeout = querytimeout;
+        this.querytimeout = querytime;
     }
 
     @Override
