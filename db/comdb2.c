@@ -3236,6 +3236,10 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "failed to initialise sql module\n");
         return -1;
     }
+    if (clnt_stats_init()) {
+        logmsg(LOGMSG_FATAL, "failed to initialise connection tracking module\n");
+        return -1;
+    }
     if (udppfault_thdpool_init()) {
         logmsg(LOGMSG_FATAL, "failed to initialise udp prefault module\n");
         return -1;

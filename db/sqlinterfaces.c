@@ -615,6 +615,10 @@ void sqlite_init_end(void) { in_init = 0; }
 
 #endif // DEBUG_SQLITE_MEMORY
 
+static pthread_mutex_t clnt_lk = PTHREAD_MUTEX_INITIALIZER;
+static LISTC_T(struct sqlclntstate) clntlist;
+static int64_t connid = 0;
+
 static __thread comdb2ma sql_mspace = NULL;
 int sql_mem_init(void *arg)
 {
@@ -4401,6 +4405,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     thr_set_user("appsock", clnt->appsock_id);
 
     clnt->added_to_hist = clnt->isselect = 0;
+    clnt_change_state(clnt, CONNECTION_RUNNING);
     clnt->osql.timings.query_dispatched = osql_log_time();
     clnt->deque_timeus = comdb2_time_epochus();
 
@@ -4427,6 +4432,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
         Pthread_mutex_unlock(&clnt->wait_mutex);
         clnt->osql.timings.query_finished = osql_log_time();
         osql_log_time_done(clnt);
+        clnt_change_state(clnt, CONNECTION_IDLE);
         return;
     }
 
@@ -4482,6 +4488,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     }
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
+    clnt_change_state(clnt, CONNECTION_IDLE);
     clean_queries_not_cached_in_srs(clnt);
     debug_close_sb(clnt);
     thrman_setid(thrman_self(), "[done]");
@@ -4568,6 +4575,8 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     clnt->deadlock_recovered = 0;
     clnt->done = 0;
     clnt->statement_timedout = 0;
+    clnt->total_sql++;
+    clnt->sql_since_reset++;
 
     /* keep track so we can display it in stat thr */
     clnt->appsock_id = getarchtid();
@@ -4860,6 +4869,13 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     if (initial) {
         bzero(clnt, sizeof(*clnt));
     }
+    else {
+       clnt->sql_since_reset = 0;
+       clnt->num_resets++;
+       clnt->last_reset_time = comdb2_time_epoch();
+       clnt_change_state(clnt, CONNECTION_RESET);
+    }
+
     if (clnt->rawnodestats) {
         release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
         clnt->rawnodestats = NULL;
@@ -4921,7 +4937,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     osql_clean_sqlclntstate(clnt);
     /* clear dbtran after aborting unfinished shadow transactions. */
     bzero(&clnt->dbtran, sizeof(dbtran_type));
-    clnt->origin = intern(get_origin_mach_by_buf(sb));
+
+    if (initial)
+        clnt->origin = intern(get_origin_mach_by_buf(sb));
 
     clnt->in_client_trans = 0;
     clnt->had_errors = 0;
@@ -5700,10 +5718,27 @@ int sqlpool_init(void)
     thdpool_set_maxqueueagems(gbl_sqlengine_thdpool, 5 * 60 * 1000);
     thdpool_set_dque_fn(gbl_sqlengine_thdpool, thdpool_sqlengine_dque);
     thdpool_set_dump_on_full(gbl_sqlengine_thdpool, 1);
+    thdpool_set_queued_callback(gbl_sqlengine_thdpool, clnt_queued_event);
 
     return 0;
 }
 
+int clnt_stats_init(void) {
+    listc_init(&clntlist, offsetof(struct sqlclntstate, lnk));
+    return 0;
+}
+
+void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state) {
+    clnt->state_start_time = comdb2_time_epochms();
+    pthread_mutex_lock(&clnt->state_lk);
+    clnt->state = state;
+    pthread_mutex_unlock(&clnt->state_lk);
+}
+
+/* we have to clear
+      - sqlclntstate (key, pointers in Bt, thd)
+      - thd->tran and mode (this is actually done in Commit/Rollback)
+ */
 void sql_reset_sqlthread(struct sql_thread *thd)
 {
     if (thd) {
@@ -6166,6 +6201,57 @@ void run_internal_sql(char *sql)
     Pthread_mutex_destroy(&clnt.write_lock);
     Pthread_cond_destroy(&clnt.write_cond);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
+}
+
+void clnt_register(struct sqlclntstate *clnt) {
+    clnt->state = CONNECTION_NEW;
+    clnt->connect_time = comdb2_time_epoch();
+    pthread_mutex_lock(&clnt_lk);
+    clnt->connid = connid++;
+    listc_abl(&clntlist, clnt);
+    pthread_mutex_unlock(&clnt_lk);
+}
+
+void clnt_unregister(struct sqlclntstate *clnt) {
+    pthread_mutex_lock(&clnt_lk);
+    listc_rfl(&clntlist, clnt);
+    pthread_mutex_unlock(&clnt_lk);
+}
+
+int gather_connection_info(struct connection_info **info, int *num_connections) {
+   struct connection_info *c;
+   int connid = 0;
+
+   pthread_mutex_lock(&clnt_lk);
+   *num_connections = listc_size(&clntlist);
+   c = malloc(*num_connections * sizeof(struct connection_info));
+   struct sqlclntstate *clnt;
+   LISTC_FOR_EACH(&clntlist, clnt, lnk) {
+      c[connid].connection_id = clnt->connid;
+      c[connid].pid = clnt->last_pid;
+      c[connid].total_sql = clnt->total_sql;
+      c[connid].sql_since_reset = clnt->sql_since_reset;
+      c[connid].num_resets = clnt->num_resets;
+      c[connid].connect_time_int = clnt->connect_time;
+      c[connid].last_reset_time_int = clnt->last_reset_time;
+      c[connid].num_resets = clnt->num_resets;
+      c[connid].host = clnt->origin;
+      c[connid].state_int = clnt->state;
+      c[connid].time_in_state_int = clnt->state_start_time;
+      pthread_mutex_lock(&clnt->state_lk);
+      if (clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) {
+         c[connid].sql = strdup(clnt->sql);
+      }
+      else
+         c[connid].sql = NULL;
+
+      pthread_mutex_unlock(&clnt->state_lk);
+      connid++;
+   }
+   pthread_mutex_unlock(&clnt_lk);
+   *info = c;
+   return 0;
+>>>>>>> connections table
 }
 
 static int internal_write_response(struct sqlclntstate *a, int b, void *c, int d)

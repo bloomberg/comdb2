@@ -17,6 +17,7 @@
 #ifndef _SQL_H_
 #define _SQL_H_
 
+#include "cdb2api.h"
 #include "comdb2.h"
 
 #include <bdb_api.h>
@@ -288,6 +289,15 @@ enum early_verify_error {
     EARLY_ERR_VERIFY = 1,
     EARLY_ERR_SELECTV = 2,
     EARLY_ERR_GENCHANGE = 3
+};
+
+enum connection_state
+{
+    CONNECTION_NEW,
+    CONNECTION_IDLE,
+    CONNECTION_RESET,
+    CONNECTION_QUEUED,
+    CONNECTION_RUNNING
 };
 
 enum {
@@ -734,6 +744,21 @@ struct sqlclntstate {
 #endif
     struct sqlthdstate *thd;
     int had_lease_at_begin;
+
+    int64_t connid;
+    int64_t total_sql;
+    int64_t sql_since_reset;
+    int64_t num_resets;
+    time_t connect_time;
+    time_t last_reset_time;
+    int state_start_time;
+    enum connection_state state;
+    pthread_mutex_t state_lk;
+    /* The node doesn't change.  The pid does as connections get donated.  We
+     * latch both values here since conninfo is lost when connections are reset. */
+    int last_pid;
+    char* origin_host;
+    LINKC_T(struct sqlclntstate) lnk;
 };
 
 /* Query stats. */
@@ -969,6 +994,28 @@ struct sql_thread {
     int crtshard;
 };
 
+struct connection_info {
+    char *host;
+    int64_t connection_id;
+    int64_t pid;
+    int64_t total_sql;
+    int64_t sql_since_reset;
+    int64_t num_resets;
+    int64_t steps;
+    cdb2_client_intv_ds_t time_in_state; 
+    cdb2_client_datetime_t connect_time;
+    cdb2_client_datetime_t last_reset_time;
+    char *state;
+    char *sql;
+
+    /* latched in sqlinterfaces, not returned */ 
+    time_t connect_time_int;
+    time_t last_reset_time_int;
+    int node_int;
+    int time_in_state_int;
+    enum connection_state state_int;
+};
+
 /* makes master swing verbose */
 extern int gbl_master_swing_osql_verbose;
 /* for testing: sleep in osql_sock_restart when master swings */
@@ -1139,5 +1186,11 @@ void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
                                 struct errstat *err);
+
+/* Connection tracking */
+int gather_connection_info(struct connection_info **info, int *num_connections);
+void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state);
+void clnt_register(struct sqlclntstate *clnt);
+void clnt_unregister(struct sqlclntstate *clnt);
 
 #endif

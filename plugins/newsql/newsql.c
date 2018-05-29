@@ -2098,6 +2098,7 @@ retry_read:
 }
 
 extern int gbl_allow_incoherent_sql;
+extern pthread_mutex_t clnt_lk;
 
 int64_t gbl_denied_appsock_connection_count = 0;
 
@@ -2116,6 +2117,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     dbenv = arg->dbenv;
     tab = arg->tab;
     sb = arg->sb;
+
+    clnt_register(&clnt);
 
     if (tab->dbtype != DBTYPE_TAGGED_TABLE) {
         /*
@@ -2190,6 +2193,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                    gbl_denied_appsock_connection_count);
             pr = now;
         }
+
         newsql_error(&clnt, "Exhausted appsock connections.",
                      CDB2__ERROR_CODE__APPSOCK_LIMIT);
         goto done;
@@ -2263,6 +2267,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;
         clnt.sql = sql_query->sql_query;
+        clnt.query = query;
+        clnt.added_to_hist = 0;
+        logmsg(LOGMSG_DEBUG, "Query '%s':'%s'\n", sql_query->sql_query, clnt.sql);
+
         if (!clnt.in_client_trans) {
             bzero(&clnt.effects, sizeof(clnt.effects));
             bzero(&clnt.log_effects, sizeof(clnt.log_effects));
@@ -2371,6 +2379,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             comdb2bma_pass_priority_back(blobmem);
             rc = dispatch_sql_query(&clnt);
         }
+        clnt_change_state(&clnt, CONNECTION_IDLE);
 
         if (clnt.osql.replay == OSQL_RETRY_DO) {
             if (clnt.trans_has_sp) {
@@ -2397,11 +2406,13 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             cdb2__query__free_unpacked(APPDATA->query, &pb_alloc);
             APPDATA->query = NULL;
         }
+        pthread_mutex_unlock(&clnt.wait_mutex);
         query = read_newsql_query(dbenv, &clnt, sb);
     }
 
 done:
     sbuf2setclnt(sb, NULL);
+    clnt_unregister(&clnt);
 
     if (clnt.ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         handle_sql_intrans_unrecoverable_error(&clnt);
