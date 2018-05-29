@@ -359,7 +359,7 @@ __rep_start(dbenv, dbt, gen, flags)
 		 * We need to perform all actions below no master what
 		 * regarding errors.
 		 */
-        logmsg(LOGMSG_DEBUG, "%s line %d sending REP_NEWMASTER\n", 
+        logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
                 __func__, __LINE__);
 		(void)__rep_send_message(dbenv,
 		    db_eid_broadcast, REP_NEWMASTER, &lsn, NULL, 0, NULL);

@@ -128,11 +128,11 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 	if (gbl_verbose_master_req) {
 		switch (rtype) {
 			case REP_MASTER_REQ:
-				logmsg(LOGMSG_ERROR, "%s sending REP_MASTER_REQ to %s\n",
+				logmsg(LOGMSG_USER, "%s sending REP_MASTER_REQ to %s\n",
 					__func__, eid);
 				break;
 			case REP_NEWMASTER:
-				logmsg(LOGMSG_ERROR, "%s sending REP_NEWMASTER to %s\n",
+				logmsg(LOGMSG_USER, "%s sending REP_NEWMASTER to %s\n",
 					__func__, eid);
 				break;
 			default: 
