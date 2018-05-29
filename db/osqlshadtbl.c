@@ -1613,7 +1613,7 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             }
             if (gbl_reorder_blkseq_no_deadlock) {
                 rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, genid,
-                        osql_nettype, osql->logsb);
+                        osql_nettype, osql->logsb, OSQL_GENID);
             }
         
             rc = process_local_shadtbl_index(clnt, tbl, bdberr, genid, 1);
@@ -1894,7 +1894,7 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
             if (gbl_reorder_blkseq_no_deadlock) {
                 rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, 0,
-                                     osql_nettype, osql->logsb);
+                        osql_nettype, osql->logsb, OSQL_GENID);
             }
 
             rc = process_local_shadtbl_index(clnt, tbl, bdberr, *seq, 0);
@@ -2003,7 +2003,7 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
         if (gbl_reorder_blkseq_no_deadlock) {
             rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, genid,
-                    osql_nettype, osql->logsb);
+                        osql_nettype, osql->logsb, OSQL_GENID);
         }
 
         int *updCols = NULL;

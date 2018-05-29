@@ -146,7 +146,8 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
 
 /* send genid op */
 int osql_send_genid(char *tohost, unsigned long long rqid, uuid_t uuid,
-                    unsigned long long genid, int type, SBUF2 *logsb);
+                    unsigned long long genid, int type, SBUF2 *logsb,
+                    int osql_type);
 
 /**
  * Send DELREC op

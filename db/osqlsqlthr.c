@@ -167,7 +167,7 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
     if (gbl_reorder_blkseq_no_deadlock) {
         osqlstate_t *osql = &thd->clnt->osql;
         rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, pCur->genid,
-                NET_OSQL_SOCK_RPL, osql->logsb);
+                NET_OSQL_SOCK_RPL, osql->logsb, OSQL_GENID);
         if (rc != SQLITE_OK) return rc;
     }
 
@@ -250,7 +250,7 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (gbl_reorder_blkseq_no_deadlock) {
         osqlstate_t *osql = &thd->clnt->osql;
         rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, 0,
-                NET_OSQL_SOCK_RPL, osql->logsb);
+                NET_OSQL_SOCK_RPL, osql->logsb, OSQL_GENID);
         if (rc != SQLITE_OK) return rc;
     }
 
@@ -299,7 +299,7 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (gbl_reorder_blkseq_no_deadlock) {
         osqlstate_t *osql = &thd->clnt->osql;
         rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, pCur->genid,
-                NET_OSQL_SOCK_RPL, osql->logsb);
+                NET_OSQL_SOCK_RPL, osql->logsb, OSQL_GENID);
         if (rc != SQLITE_OK) return rc;
     }
 

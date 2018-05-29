@@ -784,23 +784,6 @@ static uint8_t *osqlcomm_del_uuid_rpl_type_put(osql_del_uuid_rpl_t *p_del_rpl,
     return p_buf;
 }
 
-typedef struct osql_genid_uuid_rpl {
-    osql_uuid_rpl_t hd;
-    unsigned long long genid;
-} osql_genid_uuid_rpl_t;
-enum {
-    OSQLCOMM_OSQL_GENID_UUID_RPL_TYPE_LEN =
-        OSQLCOMM_UUID_RPL_TYPE_LEN + sizeof(unsigned long long)
-};
-static uint8_t *osqlcomm_genid_uuid_rpl_type_put(osql_genid_uuid_rpl_t *p_genid_rpl,
-                                               uint8_t *p_buf,
-                                               uint8_t *p_buf_end)
-{
-    p_buf = osqlcomm_uuid_rpl_type_put(&(p_genid_rpl->hd), p_buf, p_buf_end);
-    p_buf = buf_no_net_put(&(p_genid_rpl->genid), sizeof(p_genid_rpl->genid),
-                           p_buf, p_buf_end);
-}
-
 
 enum { OSQLCOMM_SERIAL_TYPE_LEN = 4 + 4 + 4 + 4 };
 
@@ -4218,31 +4201,6 @@ int osql_send_dbq_consume(char *tohost, unsigned long long rqid, uuid_t uuid,
         sz = sizeof(rpl.rqid);
     }
     return offload_net_send(tohost, type, &rpl, sz, 0);
-}
-
-
-int osql_send_genid(char *tohost, unsigned long long rqid, uuid_t uuid,
-                    unsigned long long genid, int type, SBUF2 *logsb)
-{
-    printf("AZ: sending genid\n");
-    osql_genid_uuid_rpl_t genid_uuid_rpl = {0};
-    uint8_t buf[OSQLCOMM_OSQL_GENID_UUID_RPL_TYPE_LEN ];
-    uint8_t * p_buf = buf;
-    uint8_t * p_buf_end = p_buf + OSQLCOMM_OSQL_GENID_UUID_RPL_TYPE_LEN;
-
-    genid_uuid_rpl.hd.type = OSQL_GENID;
-    comdb2uuidcpy(genid_uuid_rpl.hd.uuid, uuid);
-    genid_uuid_rpl.genid = genid;
-    if (!(p_buf = osqlcomm_genid_uuid_rpl_type_put (&genid_uuid_rpl, p_buf, p_buf_end))) {
-        logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                "osqlcomm_genid_rpl_type_put");
-        return -1;
-    }
-
-
-    type = osql_net_type_to_net_uuid_type(type);
-    int rc = offload_net_send(tohost, type, &buf, OSQLCOMM_OSQL_GENID_UUID_RPL_TYPE_LEN, 0);
-    return rc;
 }
 
 
@@ -8123,13 +8081,13 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     return 0;
 }
 
-/**
- * Send RECGENID
- * It handles remote/local connectivity
- *
+
+/* 
+ * send genid
  */
-int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
-                          unsigned long long genid, int type, SBUF2 *logsb)
+int osql_send_genid(char *tohost, unsigned long long rqid, uuid_t uuid,
+                          unsigned long long genid, int type, SBUF2 *logsb,
+                          int osql_type)
 {
     netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
     int rc = 0;
@@ -8144,7 +8102,7 @@ int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
         uint8_t *p_buf = buf;
         uint8_t *p_buf_end = p_buf + OSQLCOMM_RECGENID_UUID_RPL_TYPE_LEN;
 
-        recgenid_rpl.hd.type = OSQL_RECGENID;
+        recgenid_rpl.hd.type = osql_type;
         comdb2uuidcpy(recgenid_rpl.hd.uuid, uuid);
         recgenid_rpl.dt.genid = genid;
 
@@ -8190,6 +8148,17 @@ int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
     }
 
     return rc;
+}
+
+/**
+ * Send RECGENID
+ * It handles remote/local connectivity
+ *
+ */
+int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
+                          unsigned long long genid, int type, SBUF2 *logsb)
+{
+    return osql_send_genid(tohost, rqid, uuid, genid, type, logsb, OSQL_RECGENID);
 }
 
 /**

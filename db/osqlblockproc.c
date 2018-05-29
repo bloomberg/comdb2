@@ -791,9 +791,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             key.genid = sess->last_genid;
             key.stripe = get_dtafile_from_genid(key.genid);
 
-char *blah;
-hexdumpbuf(rpl, rplen, &blah);
-printf("AZ: getting blob rplen=%d, hexdump blob='%s'\n", rplen, blah);
+            char *blah;
+            hexdumpbuf(rpl, rplen, &blah);
+            printf("AZ: getting blob rplen=%d, hexdump blob='%s'\n", rplen, blah);
         } else if (type == OSQL_DELIDX || type == OSQL_INSIDX || type == OSQL_UPDCOLS) {
             /* part idx and updcol needs to get the genid of the previous insrec */
             key.genid = sess->last_genid;
