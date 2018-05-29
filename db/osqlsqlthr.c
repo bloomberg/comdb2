@@ -373,9 +373,6 @@ int osql_block_commit(struct sql_thread *thd)
  * if keep_rqid, this is a retry and we want to
  * keep the same rqid
  *
- * NOTE: if we set "keep_rqid", we are retrying a transaction, so
- *       we will pass the master OSQL_FLAGS_USE_BLKSEQ to keep using
- *       a blkseq in this case
  */
 int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
 {
@@ -383,7 +380,7 @@ int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     int rc = 0;
     int retries = 0;
-    int flags;
+    int flags = 0;
 
     if (!thd) {
         logmsg(LOGMSG_ERROR, "%s:%d Bug, not sql thread !\n", __func__, __LINE__);
@@ -473,10 +470,6 @@ retry:
         /* sets to the same node */
         osql_reuse_sqlthr(clnt, osql->host);
     }
-
-    /* retrying a transaction, don't skip on blkseq */
-    flags = 0;
-    if (keep_rqid) bset(&flags, OSQL_FLAGS_USE_BLKSEQ);
 
     /* socksql: check if this is a verify retry, and if we got enough of those
        to trigger a self-deadlock check on the master */

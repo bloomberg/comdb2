@@ -828,7 +828,6 @@ static osql_callback_t commit_callbacks[] = {
     NULL,                          /* OSQL_FLAGS_AUTH */
     osql_analyze_commit_callback,  /* OSQL_FLAGS_ANALYZE */
     NULL,                          /* OSQL_FLAGS_CHECK_SELFLOCK */
-    NULL,                          /* OSQL_FLAGS_USE_BLKSEQ */
     osql_rowlocks_commit_callback, /* OSQL_FLAGS_ROWLOCKS */
     osql_genid48_commit_callback,  /* OSQL_FLAGS_GENID48 */
     osql_scdone_commit_callback    /* OSQL_FLAGS_SCDONE */
@@ -838,7 +837,6 @@ static osql_callback_t abort_callbacks[] = {
     NULL,                      /* OSQL_FLAGS_AUTH */
     NULL,                      /* OSQL_FLAGS_ANALYZE */
     NULL,                      /* OSQL_FLAGS_CHECK_SELFLOCK */
-    NULL,                      /* OSQL_FLAGS_USE_BLKSEQ */
     NULL,                      /* OSQL_FLAGS_ROWLOCKS */
     NULL,                      /* OSQL_FLAGS_GENID48 */
     osql_scdone_abort_callback /* OSQL_FLAGS_SCDONE */

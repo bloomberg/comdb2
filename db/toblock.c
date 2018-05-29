@@ -2763,9 +2763,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     }
 
     iq->blkstate->pos = 0;
-    /* if client requested blkseq, please don't skip it, probably a retry */
-    if (iq->is_sorese && iq->frommach == 0 && !iq->sorese.use_blkseq)
-        have_blkseq = 0;
 
     if (!rowlocks) {
         /* start parent transaction */
@@ -3708,16 +3705,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         }
         case BLOCK_SEQ: {
             extract_blkseq(iq, p_blkstate, &found_blkseq, &have_blkseq);
-            if (iq->is_sorese && iq->frommach == 0 && !iq->sorese.use_blkseq)
-                have_blkseq = 0;
-
             break;
         }
         case BLOCK2_SEQV2: {
             extract_blkseq2(iq, p_blkstate, &found_blkseq, &have_blkseq);
-            if (iq->is_sorese && iq->frommach == 0 && !iq->sorese.use_blkseq)
-                have_blkseq = 0;
-
             break;
         }
 

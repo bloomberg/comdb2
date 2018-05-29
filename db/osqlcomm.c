@@ -7432,12 +7432,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         iq->sorese.verify_retries += gbl_osql_verify_ext_chk;
     }
 
-    if (btst(&req.flags, OSQL_FLAGS_USE_BLKSEQ)) {
-        iq->sorese.use_blkseq = 1;
-    } else {
-        iq->sorese.use_blkseq = 0;
-    }
-
 done:
 
     if (rc) {
