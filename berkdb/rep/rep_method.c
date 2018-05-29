@@ -1315,15 +1315,12 @@ __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
 		done = !F_ISSET(rep, flags) && rep->master_id != db_eid_invalid;
 
 		*eidp = rep->master_id;
+        /* Not sure if this is right */
         if (inegen && *outegen != inegen)
             done = 1;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 		if (done) {
-            if (inegen && *outegen != inegen) {
-                //__os_sleep(dbenv, 0, rand() % 500000);
-                return (DB_TIMEOUT);
-            }
 			return (0);
         }
 
