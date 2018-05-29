@@ -146,10 +146,6 @@ int osql_delidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
         return osql_save_index(pCur, thd, is_update, 1);
 }
 
-#define RETURN_IF_RC_NOT_OK \
-        if (rc != SQLITE_OK) \
-            return rc;
-
 /**
  * Process a sqlite delete row request
  * BtCursor points to the record to be deleted.
@@ -162,15 +158,21 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
 
     if ((rc = access_control_check_sql_write(pCur, thd)))
         return rc;
+
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
-        RETURN_IF_RC_NOT_OK
+        if (rc != SQLITE_OK) return rc;
     }
 
-    if (!gbl_reorder_blkseq_no_deadlock) {
-        rc = osql_delidx(pCur, thd, 0);
-        RETURN_IF_RC_NOT_OK
+    if (gbl_reorder_blkseq_no_deadlock) {
+        osqlstate_t *osql = &thd->clnt->osql;
+        rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, pCur->genid,
+                NET_OSQL_SOCK_RPL, osql->logsb);
+        if (rc != SQLITE_OK) return rc;
     }
+
+    rc = osql_delidx(pCur, thd, 0);
+    if (rc != SQLITE_OK) return rc;
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_delrec(pCur, thd);
@@ -183,13 +185,6 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
         rc = osql_send_delrec_logic(pCur, thd, NET_OSQL_SOCK_RPL);
     } else
         rc = osql_save_delrec(pCur, thd);
-
-    RETURN_IF_RC_NOT_OK
-
-    if (gbl_reorder_blkseq_no_deadlock) {
-        rc = osql_delidx(pCur, thd, 0);
-        RETURN_IF_RC_NOT_OK
-    }
 
     return rc;
 }
@@ -249,16 +244,21 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
-        RETURN_IF_RC_NOT_OK
+        if (rc != SQLITE_OK) return rc;
     }
 
-    if (!gbl_reorder_blkseq_no_deadlock) {
-        rc = osql_insidx(pCur, thd, 0);
-        RETURN_IF_RC_NOT_OK
-
-        rc = osql_qblobs(pCur, thd, NULL, blobs, maxblobs, 0);
-        RETURN_IF_RC_NOT_OK
+    if (gbl_reorder_blkseq_no_deadlock) {
+        osqlstate_t *osql = &thd->clnt->osql;
+        rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, 0,
+                NET_OSQL_SOCK_RPL, osql->logsb);
+        if (rc != SQLITE_OK) return rc;
     }
+
+    rc = osql_insidx(pCur, thd, 0);
+    if (rc != SQLITE_OK) return rc;
+
+    rc = osql_qblobs(pCur, thd, NULL, blobs, maxblobs, 0);
+    if (rc != SQLITE_OK) return rc;
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_insrec(pCur, thd, pData, nData);
@@ -273,15 +273,6 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     } else
         rc = osql_save_insrec(pCur, thd, pData, nData);
 
-    RETURN_IF_RC_NOT_OK
-
-    if (gbl_reorder_blkseq_no_deadlock) {
-        rc = osql_insidx(pCur, thd, 0);
-        RETURN_IF_RC_NOT_OK
-
-        rc = osql_qblobs(pCur, thd, NULL, blobs, maxblobs, 0);
-        RETURN_IF_RC_NOT_OK
-    }
     return rc;
 }
 
@@ -299,27 +290,32 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if ((rc = access_control_check_sql_write(pCur, thd)))
         return rc;
+
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
-        RETURN_IF_RC_NOT_OK
+        if (rc != SQLITE_OK) return rc;
     }
 
-    if (!gbl_reorder_blkseq_no_deadlock) {
-        rc = osql_delidx(pCur, thd, 1);
-        RETURN_IF_RC_NOT_OK
-
-        rc = osql_insidx(pCur, thd, 1);
-        RETURN_IF_RC_NOT_OK
-
-        rc = osql_qblobs(pCur, thd, updCols, blobs, maxblobs, 1);
-        RETURN_IF_RC_NOT_OK
-
-        if (updCols) {
-            rc = osql_updcols(pCur, thd, updCols);
-            RETURN_IF_RC_NOT_OK
-        }
+    if (gbl_reorder_blkseq_no_deadlock) {
+        osqlstate_t *osql = &thd->clnt->osql;
+        rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, pCur->genid,
+                NET_OSQL_SOCK_RPL, osql->logsb);
+        if (rc != SQLITE_OK) return rc;
     }
 
+    rc = osql_delidx(pCur, thd, 1);
+    if (rc != SQLITE_OK) return rc;
+
+    rc = osql_insidx(pCur, thd, 1);
+    if (rc != SQLITE_OK) return rc;
+
+    rc = osql_qblobs(pCur, thd, updCols, blobs, maxblobs, 1);
+    if (rc != SQLITE_OK) return rc;
+
+    if (updCols) {
+        rc = osql_updcols(pCur, thd, updCols);
+        if (rc != SQLITE_OK) return rc;
+    }
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_updrec(pCur, thd, pData, nData);
@@ -334,23 +330,6 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     } else
         rc = osql_save_updrec(pCur, thd, pData, nData);
 
-    RETURN_IF_RC_NOT_OK
-
-    if (gbl_reorder_blkseq_no_deadlock) {
-        rc = osql_delidx(pCur, thd, 1);
-        RETURN_IF_RC_NOT_OK
-
-        rc = osql_insidx(pCur, thd, 1);
-        RETURN_IF_RC_NOT_OK
-
-        rc = osql_qblobs(pCur, thd, updCols, blobs, maxblobs, 1);
-        RETURN_IF_RC_NOT_OK
-
-        if (updCols) {
-            rc = osql_updcols(pCur, thd, updCols);
-            RETURN_IF_RC_NOT_OK
-        }
-    }
     return rc;
 }
 

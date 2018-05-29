@@ -112,7 +112,6 @@ typedef struct oplog_key {
     uint16_t tbl_idx;
     uint8_t stripe;
     unsigned long long genid;
-    uint8_t blborder;
     uint32_t real_seq;
 } oplog_key_t;
 
@@ -183,14 +182,6 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
     }
 
     if (k1->genid > k2->genid) {
-        return 1;
-    }
-
-    if (k1->blborder < k2->blborder) {
-        return -1;
-    }
-
-    if (k1->blborder > k2->blborder) {
         return 1;
     }
 
@@ -624,6 +615,7 @@ int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, 
 const char *osql_reqtype_str(int type)
 {
     assert(0 < type && type < MAX_OSQL_TYPES);
+    // copied from enum OSQL_RPL_TYPE
     static const char *typestr[] = {
         "RPLINV",
         "DONE",
@@ -652,6 +644,7 @@ const char *osql_reqtype_str(int type)
         "DELIDX",
         "INSIDX",
         "DBQ_CONSUME_UUID",
+        "GENID",
     };
     return typestr[type];
 }
@@ -722,7 +715,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (sess->is_reorder_on) {
         //usedb genid and stripe will always be 0
         key.tbl_idx = USHRT_MAX;
-        key.blborder = 0;
 
         if (type == OSQL_USEDB) {
             const char *get_tablename_from_rpl(const char *rpl);
@@ -759,10 +751,23 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             type == OSQL_QBLOB || type == OSQL_UPDCOLS) || type == OSQL_SCHEMACHANGE)
             key.tbl_idx = iq->usedb->dbs_idx;
 
+        enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
+        if (type == OSQL_GENID) {
+            unsigned long long genid;
+            const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN; 
+            buf_no_net_get(&(genid), sizeof(genid), p_buf, p_buf + sizeof(genid));
+            printf("AZ: Receiving genid 0x%llx\n", genid);
+            if (0 == genid) {
+                genid = bdb_get_next_genid(thedb->bdb_env);
+                printf("AZ: Creating genid 0x%llx\n", genid);
+            }
+            sess->last_genid = genid;
+            return 0; //don't put in temp table
+        }
+
         if (type == OSQL_UPDATE || type == OSQL_DELETE ||
             type == OSQL_UPDREC || type == OSQL_DELREC) {
 
-            enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
             const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN; 
             /* rpl is of type osql_ins_uuid_rpl, so we skip osql_uuid_rpl_t hd 
              * to get to osql_ins_t dt, and genid is ins_uuid_rpl.dt.seq */
@@ -771,24 +776,24 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             const char *p_buf_end = (uint8_t *)p_buf + OSQLCOMM_UPD_TYPE_LEN;
             long long int genid;
             buf_no_net_get(&genid, sizeof(genid), p_buf, p_buf_end);
-            key.blborder = 1; //updrec/insrec will come after qblob when processing
             printf("AZ: Receiving genid 0x%llx\n", genid);
+            assert(genid == sess->last_genid);
             key.genid = genid;
             key.stripe = get_dtafile_from_genid(key.genid);
             sess->last_genid = key.genid;
             assert (key.stripe >= 0);
         } else if (type == OSQL_INSERT || type == OSQL_INSREC) {
-            unsigned long long genid = bdb_get_next_genid(thedb->bdb_env);
-            key.blborder = 1; //updrec/insrec will come after qblob when processing
-            key.genid = genid;
+            key.genid = sess->last_genid;
             key.stripe = get_dtafile_from_genid(key.genid);
-            sess->last_genid = key.genid;
             assert (key.stripe >= 0);
-            printf("AZ: Creating genid 0x%llx, stripe=%d\n", genid, key.stripe);
         } else if (type == OSQL_QBLOB) {
             /* blob needs to get the genid of the previous insrec */
             key.genid = sess->last_genid;
             key.stripe = get_dtafile_from_genid(key.genid);
+
+char *blah;
+hexdumpbuf(rpl, rplen, &blah);
+printf("AZ: getting blob rplen=%d, hexdump blob='%s'\n", rplen, blah);
         } else if (type == OSQL_DELIDX || type == OSQL_INSIDX || type == OSQL_UPDCOLS) {
             /* part idx and updcol needs to get the genid of the previous insrec */
             key.genid = sess->last_genid;
@@ -841,15 +846,15 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
     char mus[37];
     comdb2uuidstr(key.uuid, mus);
-    printf("%lx:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, blborder=%d, real_seq=%d\n", 
-            pthread_self(), __func__, key.rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.blborder, key.real_seq);
+    printf("%lx:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, real_seq=%d\n", 
+            pthread_self(), __func__, key.rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.real_seq);
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
     if (rc_op) {
         logmsg(LOGMSG_ERROR, 
-            "%s: fail to put oplog rqid=%llx (%lld) blborder=%d rc=%d bdberr=%d\n",
-            __func__, key.rqid, key.rqid, key.blborder, rc, bdberr);
+            "%s: fail to put oplog rqid=%llx (%lld) rc=%d bdberr=%d\n",
+            __func__, key.rqid, key.rqid, rc, bdberr);
     } else if (gbl_osqlpfault_threads) {
         osql_page_prefault(rpl, rplen, &(tran->last_db),
                            &(osql_session_get_ireq(sess)->osql_step_ix), rqid,
@@ -1246,7 +1251,6 @@ static int process_this_session(
     key->rqid = rqid;
     key->tbl_idx = 0;
     key->stripe = 0;
-    key->blborder = 0;
     osql_sess_getuuid(sess, key->uuid);
     osql_sess_getuuid(sess, uuid);
     key_next = key_crt = *key;
@@ -1286,7 +1290,7 @@ printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
         char mus[37];
         comdb2uuidstr(((oplog_key_t*)realkey)->uuid, mus);
         oplog_key_t* opkey = (oplog_key_t *)realkey;
-printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, wseq=%d, real_seq=%d\n", opkey->rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->blborder, opkey->real_seq);
+printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, real_seq=%d\n", opkey->rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->real_seq);
 
         char *data = bdb_temp_table_data(dbc);
         int datalen = bdb_temp_table_datasize(dbc);

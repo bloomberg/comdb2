@@ -144,6 +144,10 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long dirty_keys,
                      char *pData, int nData, int type, SBUF2 *logsb);
 
+/* send genid op */
+int osql_send_genid(char *tohost, unsigned long long rqid, uuid_t uuid,
+                    unsigned long long genid, int type, SBUF2 *logsb);
+
 /**
  * Send DELREC op
  * It handles remote/local connectivity
