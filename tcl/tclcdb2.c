@@ -64,11 +64,12 @@
 #if !defined(GET_CDB2_HANDLE_BY_NAME_OR_FAIL)
 #define GET_CDB2_HANDLE_BY_NAME_OR_FAIL(a)                      \
     do {                                                        \
-	name = Tcl_GetString((a));                              \
-	pCdb2 = GetCdb2HandleByName(interp, name);              \
+	const char *handleName = Tcl_GetString((a));            \
+	pCdb2 = GetCdb2HandleByName(interp, handleName);        \
 	if (pCdb2 == NULL) {                                    \
 	    Tcl_AppendResult(interp,                            \
-		"connection \"", name, "\" not found\n", NULL); \
+		"connection \"", handleName, "\" not found\n",  \
+		NULL);                                          \
 	    code = TCL_ERROR;                                   \
 	    goto done;                                          \
 	}                                                       \
