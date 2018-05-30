@@ -107,8 +107,6 @@ struct blocksql_tran {
 };
 
 typedef struct oplog_key {
-    unsigned long long rqid;
-    uuid_t uuid;
     uint16_t tbl_idx;
     uint8_t stripe;
     unsigned long long genid;
@@ -148,18 +146,6 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
     oplog_key_t *k2 = (oplog_key_t *)key2;
 #endif
     int cmp;
-
-    if (k1->rqid < k2->rqid) {
-        return -1;
-    }
-
-    if (k1->rqid > k2->rqid) {
-        return 1;
-    }
-
-    cmp = comdb2uuidcmp(k1->uuid, k2->uuid);
-    if (cmp)
-        return cmp;
 
     if (k1->tbl_idx < k2->tbl_idx) {
         return -1;
@@ -755,10 +741,10 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 //printf("AZ: Creating genid 0x%llx\n", genid);
             }
             sess->last_genid = genid;
-            char mus[37];
-            comdb2uuidstr(key.uuid, mus);
+            //char mus[37];
+            //comdb2uuidstr(uuid, mus);
             //printf("%lx:%s: rqid=%llx uuid=%s NOTSAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
-                    //pthread_self(), __func__, key.rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, genid, seq);
+                    //pthread_self(), __func__, rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, genid, seq);
             return 0; //don't put in temp table
         } else if (type == OSQL_UPDATE || type == OSQL_DELETE || type == OSQL_UPDREC ||
             type == OSQL_DELREC || type == OSQL_INSERT || type == OSQL_INSREC ||
@@ -773,9 +759,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         }
     }
 
-    key.rqid = rqid;
     key.seq = seq;
-    comdb2uuidcpy(key.uuid, uuid);
 
     /* add the op into the temporary table */
     if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
@@ -817,9 +801,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
 #if 0 
     char mus[37];
-    comdb2uuidstr(key.uuid, mus);
+    comdb2uuidstr(uuid, mus);
     printf("%lx:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
-            pthread_self(), __func__, key.rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.seq);
+            pthread_self(), __func__, rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.seq);
 #endif
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
@@ -827,7 +811,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (rc_op) {
         logmsg(LOGMSG_ERROR, 
             "%s: fail to put oplog rqid=%llx (%lld) rc=%d bdberr=%d\n",
-            __func__, key.rqid, key.rqid, rc, bdberr);
+            __func__, rqid, rqid, rc, bdberr);
     } else if (gbl_osqlpfault_threads) {
         osql_page_prefault(rpl, rplen, &(tran->last_db),
                            &(osql_session_get_ireq(sess)->osql_step_ix), rqid,
@@ -1196,7 +1180,6 @@ static int process_this_session(
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     unsigned long long rqid = osql_sess_getrqid(sess);
     oplog_key_t *key = NULL;
-    oplog_key_t key_next, key_crt;
     int countops = 0;
     int lastrcv = 0;
     int rc = 0, rc_out = 0;
@@ -1220,15 +1203,12 @@ static int process_this_session(
         return -1;
     }
 
-    key->rqid = rqid;
     key->tbl_idx = 0;
     key->stripe = 0;
-    osql_sess_getuuid(sess, key->uuid);
     osql_sess_getuuid(sess, uuid);
-    key_next = key_crt = *key;
 
-    if (key->rqid != OSQL_RQID_USE_UUID)
-        reqlog_set_rqid(iq->reqlogger, &key->rqid, sizeof(unsigned long long));
+    if (rqid != OSQL_RQID_USE_UUID)
+        reqlog_set_rqid(iq->reqlogger, &rqid, sizeof(unsigned long long));
     else
         reqlog_set_rqid(iq->reqlogger, uuid, sizeof(uuid));
     reqlog_set_event(iq->reqlogger, "txn");
@@ -1257,12 +1237,9 @@ static int process_this_session(
     }
 
     while (!rc && !rc_out) {
-        char *realkey = bdb_temp_table_key(dbc);
         int realkeylen = bdb_temp_table_keysize(dbc);
-        char mus[37];
-        comdb2uuidstr(((oplog_key_t*)realkey)->uuid, mus);
-        oplog_key_t* opkey = (oplog_key_t *)realkey;
-//printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", opkey->rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->seq);
+        oplog_key_t* opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
+//printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->seq);
 
         char *data = bdb_temp_table_data(dbc);
         int datalen = bdb_temp_table_datasize(dbc);
@@ -1277,7 +1254,7 @@ static int process_this_session(
         }
 
         if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step = key_next.seq << 7;
+            gbl_osqlpf_step[*(iq->osql_step_ix)].step = opkey->seq << 7;
 
         lastrcv = receivedrows;
 
@@ -1296,24 +1273,7 @@ static int process_this_session(
             rowlocks_check_commit_physical(thedb->bdb_env, iq_tran, ++countops);
         }
 
-        key_crt = key_next; /* save previous key */
-
         rc = bdb_temp_table_next(thedb->bdb_env, dbc, bdberr);
-        if (!rc) {
-            /* are we still on the same rqid/uuid */
-            key_next = *(oplog_key_t *)bdb_temp_table_key(dbc);
-            if (key_crt.rqid == OSQL_RQID_USE_UUID) {
-                if (comdb2uuidcmp(key_crt.uuid, key_next.uuid)) {
-                    /* done with the current transaction*/
-                    break;
-                }
-            } else {
-                if (key_next.rqid != key_crt.rqid) {
-                    /* done with the current transaction*/
-                    break;
-                }
-            }
-        }
         step++;
     }
 
