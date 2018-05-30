@@ -1427,7 +1427,6 @@ static int tclcdb2ObjCmd(
     int code = TCL_OK;
     int option;
     cdb2_hndl_tp *pCdb2;
-    int colIndex = 0;
     int rc;
     Tcl_HashTable *hTablePtr;
     Tcl_Obj *listPtr = NULL;
@@ -1750,6 +1749,7 @@ static int tclcdb2ObjCmd(
 	    break;
 	}
 	case OPT_COLNAME: {
+	    int colIndex;
 	    const char *colName;
 
 	    if (objc != 4) {
@@ -1777,7 +1777,7 @@ static int tclcdb2ObjCmd(
 	    break;
 	}
 	case OPT_COLSIZE: {
-	    int colSize;
+	    int colIndex, colSize;
 
 	    if (objc != 4) {
 		Tcl_WrongNumArgs(interp, 2, objv, "connection index");
@@ -1798,7 +1798,7 @@ static int tclcdb2ObjCmd(
 	    break;
 	}
 	case OPT_COLTYPE: {
-	    int colType;
+	    int colIndex, colType;
 	    const char *colTypeName;
 
 	    if (objc != 4) {
@@ -1826,8 +1826,7 @@ static int tclcdb2ObjCmd(
 	    break;
 	}
 	case OPT_COLVALUE: {
-	    int colType;
-	    int colSize;
+	    int colIndex, colType, colSize;
 	    void *pColValue;
 
 	    if (objc != 4) {
