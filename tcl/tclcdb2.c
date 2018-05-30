@@ -161,14 +161,14 @@ static int		GetFlagsFromList(Tcl_Interp *interp, Tcl_Obj *listPtr,
 			    struct NameAndValue pairs[], int *flagsPtr);
 static int		ProcessStructFieldsFromElements(Tcl_Interp *interp,
 			    Tcl_Obj **elemPtrs, int elemCount,
-			    struct NameAndValue fields[], void *valuePtr,
+			    const struct NameAndValue fields[], void *valuePtr,
 			    size_t valueLength);
 static int		GetListFromValueStruct(Tcl_Interp *interp, int type,
 			    size_t valueLength, const void *valuePtr,
 			    size_t stringLength, char *stringPtr);
 static int		GetValueStructFromObj(Tcl_Interp *interp, int type,
-			    size_t stringLength, const char *stringPtr,
-			    size_t valueLength, void *valuePtr);
+			    Tcl_Obj *listObj, size_t valueLength,
+			    void *valuePtr);
 static cdb2_hndl_tp *	GetCdb2HandleByName(Tcl_Interp *interp,
 			    const char *name);
 static const char *	AddCdb2HandleByName(Tcl_Interp *interp,
@@ -447,7 +447,7 @@ static int ProcessStructFieldsFromElements(
     Tcl_Interp *interp,
     Tcl_Obj **elemPtrs,
     int elemCount,
-    struct NameAndValue fields[],
+    const struct NameAndValue fields[],
     void *valuePtr,
     size_t valueLength)
 {
@@ -509,7 +509,7 @@ static int ProcessStructFieldsFromElements(
 	    int length;
 	    const char *stringValue;
 
-	    stringValue = Tcl_GetStringFromObj(interp, elemObj, &length);
+	    stringValue = Tcl_GetStringFromObj(elemObj, &length);
 
 	    assert(stringValue != NULL && length >= 0);
 
@@ -629,7 +629,7 @@ static int GetListFromValueStruct(
 		"sign %d days %u hours %u mins %u secs %u usecs %u",
 		pIntervalDsUsValue->sign, pIntervalDsUsValue->days,
 		pIntervalDsUsValue->hours, pIntervalDsUsValue->mins,
-		pIntervalDsUsValue->sec, pIntervalDsUsValue->msec);
+		pIntervalDsUsValue->sec, pIntervalDsUsValue->usec);
 
 	    return TCL_OK;
 	}
@@ -664,10 +664,11 @@ static int GetListFromValueStruct(
 static int GetValueStructFromObj(
     Tcl_Interp *interp,		/* Current Tcl interpreter. */
     int type,			/* Data type, e.g. CDB2_DATETIME, et al. */
-    Tcl_Obj listObj,		/* List of name/value pairs for given type. */
+    Tcl_Obj *listObj,		/* List of name/value pairs for given type. */
     size_t valueLength,		/* Size of structure buffer in bytes. */
     void *valuePtr)		/* OUT: Pointer to structure of given type. */
 {
+    int code;
     int elemCount = 0;
     Tcl_Obj **elemPtrs = NULL;
     cdb2_client_datetime_t *pDateTimeValue;
@@ -768,19 +769,19 @@ static int GetValueStructFromObj(
 	}
 	case CDB2_INTERVALDS: {
 	    const struct NameAndValue fields[] = {
-		{ "sign", 0},
-		{   "%d", offsetof(cdb2_client_intv_ds_t, sign)},
-		{ "days", 0},
-		{   "%u", offsetof(cdb2_client_intv_ds_t, days)},
-		{"hours", 0},
-		{   "%u", offsetof(cdb2_client_intv_ds_t, hours)},
-		{ "mins", 0},
-		{   "%u", offsetof(cdb2_client_intv_ds_t, mins)},
-		{ "secs", 0},
-		{   "%u", offsetof(cdb2_client_intv_ds_t, secs)},
-		{"msecs", 0},
-		{   "%u", offsetof(cdb2_client_intv_ds_t, msecs)},
-		{   NULL, 0}
+		{  "sign", 0},
+		{    "%d", offsetof(cdb2_client_intv_ds_t, sign)},
+		{  "days", 0},
+		{    "%u", offsetof(cdb2_client_intv_ds_t, days)},
+		{ "hours", 0},
+		{    "%u", offsetof(cdb2_client_intv_ds_t, hours)},
+		{  "mins", 0},
+		{    "%u", offsetof(cdb2_client_intv_ds_t, mins)},
+		{  "secs", 0},
+		{    "%u", offsetof(cdb2_client_intv_ds_t, sec)},
+		{ "msecs", 0},
+		{    "%u", offsetof(cdb2_client_intv_ds_t, msec)},
+		{    NULL, 0}
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_ds_t));
@@ -864,9 +865,9 @@ static int GetValueStructFromObj(
 		{ "mins", 0},
 		{   "%u", offsetof(cdb2_client_intv_dsus_t, mins)},
 		{ "secs", 0},
-		{   "%u", offsetof(cdb2_client_intv_dsus_t, secs)},
+		{   "%u", offsetof(cdb2_client_intv_dsus_t, sec)},
 		{"usecs", 0},
-		{   "%u", offsetof(cdb2_client_intv_dsus_t, usecs)},
+		{   "%u", offsetof(cdb2_client_intv_dsus_t, usec)},
 		{   NULL, 0}
 	    };
 
