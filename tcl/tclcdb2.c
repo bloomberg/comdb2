@@ -49,6 +49,10 @@
 						(TCL_RESULT_SIZE) + 1
 #endif /* FIXED_BUFFER_SIZE */
 
+#if !defined(COUNT_OF)
+  #define COUNT_OF(array) 	(sizeof((array)) / sizeof((array)[0]))
+#endif /* COUNT_OF */
+
 #if !defined(MAYBE_OUT_OF_MEMORY)
 #define MAYBE_OUT_OF_MEMORY(a)                                  \
     do {                                                        \
@@ -713,7 +717,7 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_datetime_t));
 	    pDateTimeValue = (cdb2_client_datetime_t *)valuePtr;
-	    assert(sizeof(fields) == CDB2_DATETIME_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_DATETIME_ELEMENTS);
 
 	    if (elemCount != CDB2_DATETIME_ELEMENTS) {
 		Tcl_AppendResult(interp,
@@ -741,7 +745,7 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_ym_t));
 	    pIntervalYmValue = (cdb2_client_intv_ym_t *)valuePtr;
-	    assert(sizeof(fields) == CDB2_INTERVALYM_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_INTERVALYM_ELEMENTS);
 
 	    if (elemCount != CDB2_INTERVALYM_ELEMENTS) {
 		Tcl_AppendResult(interp,
@@ -775,7 +779,7 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_ds_t));
 	    pIntervalDsValue = (cdb2_client_intv_ds_t *)valuePtr;
-	    assert(sizeof(fields) == CDB2_INTERVALDS_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_INTERVALDS_ELEMENTS);
 
 	    if (elemCount != CDB2_INTERVALDS_ELEMENTS) {
 		Tcl_AppendResult(interp,
@@ -828,7 +832,7 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_datetimeus_t));
 	    pDateTimeUsValue = (cdb2_client_datetimeus_t *)valuePtr;
-	    assert(sizeof(fields) == CDB2_DATETIMEUS_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_DATETIMEUS_ELEMENTS);
 
 	    if (elemCount != CDB2_DATETIMEUS_ELEMENTS) {
 		Tcl_AppendResult(interp,
@@ -862,7 +866,7 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_dsus_t));
 	    pIntervalDsUsValue = (cdb2_client_intv_dsus_t *)valuePtr;
-	    assert(sizeof(fields) == CDB2_INTERVALDSUS_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_INTERVALDSUS_ELEMENTS);
 
 	    if (elemCount != CDB2_INTERVALDSUS_ELEMENTS) {
 		Tcl_AppendResult(interp,
@@ -2008,9 +2012,9 @@ static int tclcdb2ObjCmd(
 	    MAYBE_OUT_OF_MEMORY(listPtr);
 	    Tcl_IncrRefCount(listPtr);
 
-	    assert(sizeof(effectNames) == sizeof(effectIntPtrs));
+	    assert(COUNT_OF(effectNames) == COUNT_OF(effectIntPtrs));
 
-	    for (index = 0; index < sizeof(effectNames); index++) {
+	    for (index = 0; index < COUNT_OF(effectNames); index++) {
 		valuePtr = Tcl_NewStringObj(effectNames[index], -1);
 		MAYBE_OUT_OF_MEMORY(valuePtr);
 		Tcl_IncrRefCount(valuePtr);
