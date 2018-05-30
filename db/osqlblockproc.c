@@ -684,7 +684,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long rqid, uuid_t uuid,
                       unsigned long long seq, const char *host)
 {
-    printf("AZ: saving for sess %p\n", sess);
+    //printf("AZ: saving for sess %p\n", sess);
     blocksql_tran_t *tran = (blocksql_tran_t *)osql_sess_getbptran(sess);
     if (!tran || !tran->db) {
         /* something has gone wrong dispatching the socksql request, ignoring
@@ -729,11 +729,11 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                     key.tbl_idx = sess->tbl_idx;
                     no_such_tbl_error(tablename, rqid, host);
                 }
-                printf("AZ: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:-1));
+                //printf("AZ: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:-1));
             }
         }
         else if (!iq->usedb) { 
-            printf("AZ: usedb not set for type=%d(%s)\n", type,  osql_reqtype_str(type));
+            //printf("AZ: usedb not set for type=%d(%s)\n", type,  osql_reqtype_str(type));
             if (type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS ||
                 type == OSQL_INSREC || type == OSQL_UPDREC || type == OSQL_DELREC ||
                 type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
@@ -749,16 +749,16 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             unsigned long long genid;
             const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN; 
             buf_no_net_get(&(genid), sizeof(genid), p_buf, p_buf + sizeof(genid));
-            printf("AZ: Receiving genid 0x%llx\n", genid);
+            //printf("AZ: Receiving genid 0x%llx\n", genid);
             if (0 == genid) {
                 genid = bdb_get_next_genid(iq->usedb->handle);
-                printf("AZ: Creating genid 0x%llx\n", genid);
+                //printf("AZ: Creating genid 0x%llx\n", genid);
             }
             sess->last_genid = genid;
             char mus[37];
             comdb2uuidstr(key.uuid, mus);
-            printf("%lx:%s: rqid=%llx uuid=%s NOTSAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
-                    pthread_self(), __func__, key.rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, genid, seq);
+            //printf("%lx:%s: rqid=%llx uuid=%s NOTSAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
+                    //pthread_self(), __func__, key.rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, genid, seq);
             return 0; //don't put in temp table
         } else if (type == OSQL_UPDATE || type == OSQL_DELETE || type == OSQL_UPDREC ||
             type == OSQL_DELREC || type == OSQL_INSERT || type == OSQL_INSREC ||
@@ -816,11 +816,11 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     }
 
 #if 0 
-#endif
     char mus[37];
     comdb2uuidstr(key.uuid, mus);
     printf("%lx:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
             pthread_self(), __func__, key.rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.seq);
+#endif
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
@@ -1237,7 +1237,7 @@ static int process_this_session(
     /* go through each record */
     rc = bdb_temp_table_first(thedb->bdb_env, dbc, bdberr);
     //rc = bdb_temp_table_find(thedb->bdb_env, dbc, key, sizeof(*key), NULL, bdberr);
-printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
+//printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
 /* orig was:
     rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
                                    bdberr);
@@ -1262,7 +1262,7 @@ printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
         char mus[37];
         comdb2uuidstr(((oplog_key_t*)realkey)->uuid, mus);
         oplog_key_t* opkey = (oplog_key_t *)realkey;
-printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", opkey->rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->seq);
+//printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", opkey->rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->seq);
 
         char *data = bdb_temp_table_data(dbc);
         int datalen = bdb_temp_table_datasize(dbc);

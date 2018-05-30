@@ -38,7 +38,7 @@ assertcnt ()
 }
 
 echo $CDB2_CONFIG
-CNT=10000
+CNT=1000
 
 
 echo 'part of a transaction'

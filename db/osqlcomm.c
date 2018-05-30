@@ -3782,13 +3782,15 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
         sbuf2flush(logsb);
     }
 
+#if 0
 printf("AZ: putting blob id=%d, seq=%d, bloblen(datalen)=%d, sent=%d\n", blobid, seq, datalen, sent);
 if (datalen > 0) {
-char *blah;
-hexdumpbuf(data, datalen, &blah);
-printf("AZ: hexdump datalen=%d blob='%s'\n", datalen, blah);
-
+    char *blah;
+    hexdumpbuf(data, datalen, &blah);
+    printf("AZ: hexdump datalen=%d blob='%s'\n", datalen, blah);
 }
+#endif
+
     if (datalen > sent)
         rc = offload_net_send_tail(tohost, type, buf, msgsz, 0, data + sent,
                                    datalen - sent);
@@ -3842,7 +3844,7 @@ int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         comdb2uuidcpy(upd_uuid_rpl.hd.uuid, uuid);
         upd_uuid_rpl.dt.genid = genid;
         int stripe = get_dtafile_from_genid(genid);
-        printf("AZ: Upd sending genid 0x%llx, stripe=%d\n", genid, stripe);
+        //printf("AZ: Upd sending genid 0x%llx, stripe=%d\n", genid, stripe);
         upd_uuid_rpl.dt.ins_keys = ins_keys;
         upd_uuid_rpl.dt.del_keys = del_keys;
         upd_uuid_rpl.dt.nData = nData;
@@ -4090,7 +4092,7 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         comdb2uuidcpy(ins_uuid_rpl.hd.uuid, uuid);
         ins_uuid_rpl.dt.seq = genid;
         int stripe = get_dtafile_from_genid(genid);
-        printf("AZ: Ins sending genid 0x%llx, stripe=%d\n", genid, stripe);
+        //printf("AZ: Ins sending genid 0x%llx, stripe=%d\n", genid, stripe);
         ins_uuid_rpl.dt.dk = dirty_keys;
         ins_uuid_rpl.dt.nData = nData;
 
@@ -6843,8 +6845,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 sbuf2printf(logsb, "Added new record rrn = %d, newgenid=%llx\n",
                             rrn, bdb_genid_to_host_order(newgenid));
         }
-        printf("AZ: Added new record rrn = %d, newgenid=%llx\n",
-                rrn, bdb_genid_to_host_order(newgenid));
+        //printf("AZ: Added new record rrn = %d, newgenid=%llx\n", rrn, bdb_genid_to_host_order(newgenid));
 
         (*receivedrows)++;
     } break;
