@@ -1724,6 +1724,11 @@ static int tclcdb2ObjCmd(
 		goto done;
 	    }
 
+	    code = RemoveCdb2HandleByName(interp, name);
+
+	    if (code != TCL_OK)
+		goto done;
+
 	    Tcl_ResetResult(interp);
 	    break;
 	}
