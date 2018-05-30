@@ -4717,7 +4717,7 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
     Pthread_mutex_unlock(&(bdb_state->children_lock));
 
     /* now become a client of the replication group */
-    logmsg(LOGMSG_INFO, "downgrade: starting rep as client\n");
+    logmsg(LOGMSG_USER, "downgrade: starting rep as client\n");
     rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_CLIENT);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "rep_start as client failed\n");
@@ -4732,7 +4732,7 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
         *downgraded = 1;
 
     if (!noelect)
-        call_for_election_and_lose(bdb_state);
+        call_for_election_and_lose(bdb_state, __func__, __LINE__);
 
     logmsg(LOGMSG_ERROR, "%s returning\n", __func__);
     return outrc;

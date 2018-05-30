@@ -1526,7 +1526,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
 
     else if (tokcmp(tok, ltok, "elect") == 0) {
         logmsg(LOGMSG_USER, "forcing an election\n");
-        call_for_election(bdb_state);
+        call_for_election(bdb_state, __func__, __LINE__);
     }
 
     else if (tokcmp(tok, ltok, "repdbgy") == 0)

@@ -569,7 +569,7 @@ again:
     /* he didnt ack the message?  kick off an election */
     if (rc != 0) {
         bdb_state->repinfo->dont_elect_untill_time = comdb2_time_epoch();
-        call_for_election(bdb_state);
+        call_for_election(bdb_state, __func__, __LINE__);
     }
 }
 
@@ -1504,13 +1504,15 @@ static void call_for_election_int(bdb_state_type *bdb_state, int op)
                 rc);
 }
 
-void call_for_election(bdb_state_type *bdb_state)
+void call_for_election(bdb_state_type *bdb_state, const char *func, int line)
 {
+    logmsg(LOGMSG_USER, "%s line %d called for election\n", func, line);
     call_for_election_int(bdb_state, DONT_LOSE);
 }
 
-void call_for_election_and_lose(bdb_state_type *bdb_state)
+void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func, int line)
 {
+    logmsg(LOGMSG_USER, "%s line %d called for election\n", func, line);
     call_for_election_int(bdb_state, LOSE);
 }
 
@@ -1520,10 +1522,10 @@ void call_for_election_and_lose(bdb_state_type *bdb_state)
    replication rollback.
    (bdb_state->rep_handle_dead = 1)
 */
-static void bdb_reopen(bdb_state_type *bdb_state)
+static void bdb_reopen(bdb_state_type *bdb_state, const char *func, int line)
 {
     logmsg(LOGMSG_DEBUG, "bdb_reopen called by tid 0x%lx\n", pthread_self());
-
+    logmsg(LOGMSG_USER, "%s line %d called for election (bdb_reopen)\n", func, line);
     call_for_election_int(bdb_state, REOPEN_AND_LOSE);
 }
 
@@ -1958,7 +1960,7 @@ void *hostdown_thread(void *arg)
             logmsg(LOGMSG_WARN, "net_hostdown_rtn: HOSTDOWN was the master, "
                             "calling for election\n");
 
-            call_for_election(bdb_state);
+            call_for_election(bdb_state, __func__, __LINE__);
         }
     }
 
@@ -2019,7 +2021,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
 
         /* this is replicant, we are running election followed by recovery */
 
-        call_for_election(bdb_state);
+        call_for_election(bdb_state, __func__, __LINE__);
     }
 
     if (bdb_state->exiting)
@@ -2397,7 +2399,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         if (seqnum->generation > mygen) {
             if (bdb_state->attr->downgrade_on_seqnum_gen_mismatch &&
                 bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
-                call_for_election(bdb_state);
+                call_for_election(bdb_state, __func__, __LINE__);
             return;
         }
 
@@ -3853,7 +3855,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
             !master_confused)
             break;
 
-        call_for_election(bdb_state);
+        call_for_election(bdb_state, __func__, __LINE__);
 
         /*
            send a hello msg to the node who called for an election.  the
@@ -4008,7 +4010,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
                 logmsg(LOGMSG_ERROR,
                        "Call for election on strange msgtype %d on replicant\n",
                        r);
-                call_for_election(bdb_state);
+                call_for_election(bdb_state, __func__, __LINE__);
             } else
                 abort();
         }
@@ -5447,7 +5449,7 @@ void *watcher_thread(void *arg)
                 logmsg(LOGMSG_DEBUG, "0x%lx %s:%d %s: calling for election\n",
                        pthread_self(), __FILE__, __LINE__, __func__);
 
-                call_for_election(bdb_state);
+                call_for_election(bdb_state, __func__, __LINE__);
             }
         }
 
@@ -5455,13 +5457,13 @@ void *watcher_thread(void *arg)
             logmsg(LOGMSG_WARN, "watcher found rep_handle_dead");
 
             bdb_state->rep_handle_dead = 0;
-            bdb_reopen(bdb_state);
+            bdb_reopen(bdb_state, __func__, __LINE__);
         }
 
         /* check if the master is db_eid_invalid and call election is so */
         if (!bdb_state->repinfo->in_election) {
             if (rep_master == db_eid_invalid)
-                call_for_election(bdb_state);
+                call_for_election(bdb_state, __func__, __LINE__);
         }
 
         /* check if some thread has called close_hostnode
