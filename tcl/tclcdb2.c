@@ -30,24 +30,24 @@
 
 #if !defined(TCL_UNLOAD_DETACH_FROM_INTERPRETER)
   #define TCL_UNLOAD_DETACH_FROM_INTERPRETER	(1<<0)
-#endif
+#endif /* TCL_UNLOAD_DETACH_FROM_INTERPRETER */
 
 #if !defined(TCL_UNLOAD_DETACH_FROM_PROCESS)
   #define TCL_UNLOAD_DETACH_FROM_PROCESS	(1<<1)
-#endif
+#endif /* TCL_UNLOAD_DETACH_FROM_PROCESS */
 
 #if !defined(TCL_UNLOAD_FROM_INIT)
   #define TCL_UNLOAD_FROM_INIT			(1<<2)
-#endif
+#endif /* TCL_UNLOAD_FROM_INIT */
 
 #if !defined(TCL_UNLOAD_FROM_CMD_DELETE)
   #define TCL_UNLOAD_FROM_CMD_DELETE		(1<<3)
-#endif
+#endif /* TCL_UNLOAD_FROM_CMD_DELETE */
 
 #if !defined(FIXED_BUFFER_SIZE)
   #define FIXED_BUFFER_SIZE			(CDB2_MAX_TZNAME) + \
 						(TCL_RESULT_SIZE) + 1
-#endif
+#endif /* FIXED_BUFFER_SIZE */
 
 #if !defined(Tcl_SetHashKey)
 #define Tcl_SetHashKey(tablePtr, h, k) \
@@ -59,7 +59,7 @@
 	    (h)->key.string = (k);                              \
 	}                                                       \
     } while (0);
-#endif
+#endif /* Tcl_SetHashKey */
 
 #if !defined(MAYBE_OUT_OF_MEMORY)
 #define MAYBE_OUT_OF_MEMORY(a)                                  \
@@ -71,7 +71,7 @@
 	    goto done;                                          \
 	}                                                       \
     } while (0);
-#endif
+#endif /* MAYBE_OUT_OF_MEMORY */
 
 #if !defined(GET_CDB2_HANDLE_BY_NAME_OR_FAIL)
 #define GET_CDB2_HANDLE_BY_NAME_OR_FAIL(a)                      \
@@ -85,7 +85,7 @@
 	    goto done;                                          \
 	}                                                       \
     } while (0);
-#endif
+#endif /* GET_CDB2_HANDLE_BY_NAME_OR_FAIL */
 
 #if !defined(GET_CDB2_COLUMN_INDEX_OR_FAIL)
 #define GET_CDB2_COLUMN_INDEX_OR_FAIL(a)                        \
@@ -117,20 +117,20 @@
 	    goto done;                                          \
 	}                                                       \
     } while (0);
-#endif
+#endif /* GET_CDB2_COLUMN_INDEX_OR_FAIL */
 
 #if !defined(GET_AUXILIARY_DATA)
 #define GET_AUXILIARY_DATA(a) Tcl_GetAssocData(interp, (a), NULL)
-#endif
+#endif /* GET_AUXILIARY_DATA */
 
 #if !defined(SET_AUXILIARY_DATA)
 #define SET_AUXILIARY_DATA(a,b) Tcl_SetAssocData(interp, (a), NULL, (b));
-#endif
+#endif /* SET_AUXILIARY_DATA */
 
 struct NameAndValue {
     char *name;
     int value;
-}
+};
 
 struct BoundValue {
     int type;
@@ -148,7 +148,7 @@ struct BoundValue {
 	cdb2_client_intv_ds_t intervalDsValue;
 	cdb2_client_intv_dsus_t intervalDsUsValue;
     } value;
-}
+};
 
 static int		IsValidInterp(Tcl_Interp *interp);
 static int		GetValueFromName(Tcl_Interp *interp,
