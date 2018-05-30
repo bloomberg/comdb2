@@ -54,7 +54,7 @@
     do {                                                        \
 	if ((tablePtr)->keyType == TCL_ONE_WORD_KEYS ||         \
 		(tablePtr)->keyType == TCL_CUSTOM_PTR_KEYS) {   \
-	    (h)->key.oneWordValue = (k);                        \
+	    (h)->key.oneWordValue = NULL;                       \
 	} else if ((h)->key.string != NULL) {                   \
             size_t keyLength = strlen((h)->key.string);         \
 	    memset((h)->key.string, 0, keyLength);              \
@@ -1281,7 +1281,7 @@ int tclcdb2_Init(
 
     SET_AUXILIARY_DATA("tclcdb2cmd", command);
 
-    hTablePtr = attemptckalloc(sizeof(Tcl_HashTable));
+    hTablePtr = (Tcl_HashTable *)attemptckalloc(sizeof(Tcl_HashTable));
     MAYBE_OUT_OF_MEMORY(hTablePtr);
 
     memset(hTablePtr, 0, sizeof(Tcl_HashTable));
@@ -1326,8 +1326,8 @@ int tclcdb2_Unload(
     int flags)				/* Unload behavior flags. */
 {
     int code = TCL_OK;
-    BOOL bShutdown = (flags & TCL_UNLOAD_DETACH_FROM_PROCESS);
-    BOOL bFromCmdDelete = (flags & TCL_UNLOAD_FROM_CMD_DELETE);
+    int bShutdown = (flags & TCL_UNLOAD_DETACH_FROM_PROCESS);
+    int bFromCmdDelete = (flags & TCL_UNLOAD_FROM_CMD_DELETE);
 
     if (bHaveTclStubs == 0) { /* NON-PORTABLE */
 	fprintf(stderr, "tclcdb2_Unload: Tcl stubs are not initialized\n");
