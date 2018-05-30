@@ -5184,7 +5184,6 @@ void *watcher_thread(void *arg)
                     bdb_state->attr->skipdelaybase) {
                     bdb_state->attr->commitdelay =
                         bdb_state->attr->skipdelaybase;
-
                     if (gbl_commit_delay_trace) {
                         logmsg(LOGMSG_USER, "%s line %d setting commitdelay to"
                                             " skipdelaybase %d\n",
