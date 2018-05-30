@@ -993,6 +993,11 @@ restart:
 	F_SET(rep, REP_F_EPHASE1 | REP_F_NOARCHIVE);
 	F_CLR(rep, REP_F_TALLY);
 
+    static uint32_t last_egen = 0;
+    if(last_egen && last_egen >= rep->egen)
+        abort();
+    last_egen = rep->egen;
+
 	/* Tally our own vote */
 	if (__rep_tally(dbenv, rep, rep->eid, &rep->sites, rep->egen,
 	    rep->tally_off) != 0)

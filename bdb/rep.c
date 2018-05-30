@@ -476,7 +476,7 @@ void bdb_transfermaster(bdb_state_type *bdb_state)
         return;
     }
 
-    rc = bdb_downgrade(bdb_state, NULL);
+    rc = bdb_downgrade(bdb_state, 0, NULL);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d bdb_downgrade failed rc=%d ?\n", __FILE__,
                 __LINE__, rc);
@@ -560,7 +560,7 @@ again:
         numsleeps++;
         if (numsleeps > 2) {
             logmsg(LOGMSG_ERROR, "transfer master falling back to election\n");
-            bdb_downgrade(bdb_state, NULL);
+            bdb_downgrade(bdb_state, 0, NULL);
             return;
         }
 
@@ -1342,6 +1342,8 @@ elect_again:
 
         goto elect_again;
     }
+    /* replace now: if i was already master, rep-start wont be called */
+    set_repinfo_master_host(bdb_state, master_host, __func__, __LINE__);
 
 /*
 fprintf(stderr, "************  done with rep_elect\n");
@@ -3788,8 +3790,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         }
 
         logmsg(LOGMSG_WARN,
-               "process_berkdb: DB_REP_NEWMASTER %s time=%ld old-gen=%u new(egen)=%d\n",
-               host, time(NULL), generation, egen);
+               "process_berkdb: DB_REP_NEWMASTER %s time=%ld upgraded to gen=%u egen=%d\n",
+               host, time(NULL), gen, egen);
 
         /* Check if it's us. */
         if (host == bdb_state->repinfo->myhost) {
@@ -3813,7 +3815,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         } else {
             /* it's not us, but we were master - we need to downgrade */
             if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
-                rc = bdb_downgrade(bdb_state, &done);
+                rc = bdb_downgrade(bdb_state, egen, &done);
             } else
                 done = 1;
         }
@@ -3836,7 +3838,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         logmsg(LOGMSG_WARN, "rep_process_message: got DUPMASTER from %s, "
                 "I think master is %s.  dowgrading and calling for election\n",
                 host, oldmaster);
-        rc = bdb_downgrade(bdb_state, NULL);
+        rc = bdb_downgrade(bdb_state, 0, NULL);
         break;
 
     case DB_REP_ISPERM: {
@@ -5205,7 +5207,7 @@ void *watcher_thread(void *arg)
                 }
             } else {
                 /* mismatch between master_host and rep_master*/
-                bdb_downgrade(bdb_state, NULL);
+                bdb_downgrade(bdb_state, 0, NULL);
             }
         }
 
@@ -5295,7 +5297,7 @@ void *watcher_thread(void *arg)
         /* downgrade ourselves if we are in a dupmaster situation */
         if (master_host == bdb_master_dupe) {
             print(bdb_state, "calling bdb_downgrade\n");
-            bdb_downgrade(bdb_state, NULL);
+            bdb_downgrade(bdb_state, 0, NULL);
             print(bdb_state, "back from bdb_downgrade\n");
         }
 
@@ -5327,6 +5329,7 @@ void *watcher_thread(void *arg)
                 i = 0;
             }
 
+            /*
             if (!bdb_state->repinfo->in_election) {
                 print(bdb_state, "watcher_thread: calling for election\n");
                 logmsg(LOGMSG_DEBUG, "0x%lx %s:%d %s: calling for election\n",
@@ -5334,6 +5337,7 @@ void *watcher_thread(void *arg)
 
                 call_for_election(bdb_state);
             }
+            */
         }
 
         if (bdb_state->rep_handle_dead) {
