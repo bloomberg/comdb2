@@ -389,11 +389,11 @@ static int GetNameFromValue(
 
 static int GetFlagsFromList(
     Tcl_Interp *interp,			/* Current Tcl interpreter. */
-    Tcl_Obj listPtr,			/* List of flag strings. */
+    Tcl_Obj *listPtr,			/* List of flag strings. */
     struct NameAndValue pairs[],	/* Possible flag names and values. */
     int *flagsPtr)			/* OUT: OR'd flags value. */
 {
-    int objc;
+    int index, objc;
     Tcl_Obj *objv;
     int flags = 0;
 
@@ -476,7 +476,7 @@ static int ProcessStructFieldsFromElements(
 
     for (;; index++) {
 	Tcl_Obj *elemObj;
-	const char format;
+	const char *format;
 	size_t offset;
 
 	assert(index < elemCount);
