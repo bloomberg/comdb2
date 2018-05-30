@@ -2804,13 +2804,13 @@ static void *osql_heartbeat_thread(void *arg);
 static void signal_rtoff(void);
 
 static int check_master(char *tohost);
-static int offload_net_send(char *tohost, int usertype, void *data, int datalen,
+static int offload_net_send(const char *tohost, int usertype, void *data, int datalen,
                             int nodelay);
-static int offload_net_send_tail(char *tohost, int usertype, void *data,
+static int offload_net_send_tail(const char *tohost, int usertype, void *data,
                                  int datalen, int nodelay, void *tail,
                                  int tailen);
 static int osql_check_version(int type);
-static int offload_net_send_tails(char *host, int usertype, void *data,
+static int offload_net_send_tails(const char *host, int usertype, void *data,
                                   int datalen, int nodelay, int ntails,
                                   void **tails, int *tailens);
 static int get_blkout(time_t now, char *nodes[REPMAX], int *nds);
@@ -3059,7 +3059,7 @@ void osql_comm_destroy(void)
  * It is used mainly with blocksql
  *
  */
-int osql_comm_blkout_node(char *host)
+int osql_comm_blkout_node(const char *host)
 {
 
     osql_blknds_t *blk = NULL;
@@ -3531,6 +3531,10 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
     } else {
         rc = offload_net_send(tohost, type, &buf, msglen, 0);
     }
+
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n",
+               __func__, rc);
 
     return rc;
 }
@@ -5736,7 +5740,7 @@ int osql_comm_check_bdb_lock(void)
 /* this wrapper tries to provide a reliable net_send that will prevent loosing
    packets
    due to queue being full */
-static int offload_net_send(char *host, int usertype, void *data, int datalen,
+static int offload_net_send(const char *host, int usertype, void *data, int datalen,
                             int nodelay)
 {
     netinfo_type *netinfo_ptr = comm->handle_sibling;
@@ -5746,7 +5750,7 @@ static int offload_net_send(char *host, int usertype, void *data, int datalen,
     int rc = -1;
 
     if (debug_switch_osql_simulate_send_error()) {
-        if (rand() % 4 == 0) /*25 chance of failure*/
+        if (rand() % 4 == 0) /*25% chance of failure*/
         {
             logmsg(LOGMSG_ERROR, "Punting offload_net_send with error -1\n");
             return -1;
@@ -5808,14 +5812,11 @@ static int offload_net_send(char *host, int usertype, void *data, int datalen,
     return rc;
 }
 
-static int offload_net_send_tails(char *tohost, int usertype, void *data,
-                                  int datalen, int nodelay, int ntails,
-                                  void **tails, int *tailens);
 
 /* this wrapper tries to provide a reliable net_send_tail that will prevent
    loosing packets
    due to queue being full */
-static int offload_net_send_tail(char *host, int usertype, void *data,
+static int offload_net_send_tail(const char *host, int usertype, void *data,
                                  int datalen, int nodelay, void *tail,
                                  int tailen)
 {
@@ -5823,7 +5824,7 @@ static int offload_net_send_tail(char *host, int usertype, void *data,
                                   &tail, &tailen);
 }
 
-static int offload_net_send_tails(char *host, int usertype, void *data,
+static int offload_net_send_tails(const char *host, int usertype, void *data,
                                   int datalen, int nodelay, int ntails,
                                   void **tails, int *tailens)
 {
