@@ -723,13 +723,12 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 struct dbtable *tbl = get_dbtable_by_name(tablename);
                 if(tbl) {
                     iq->usedb = tbl;
-                    key.tbl_idx = iq->usedb->dbs_idx;
+                    key.tbl_idx = iq->usedb->dbs_idx + 1;
                 } else {
-                    key.tbl_idx = OSQL_USEDB;
+                    key.tbl_idx = 0;
                     no_such_tbl_error(tablename, rqid, host);
-                    return -1;
                 }
-                printf("AZ: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:0));
+                printf("AZ: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:-1));
 
             }
         }
@@ -748,7 +747,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
             type == OSQL_INSIDX || type == OSQL_DELIDX || type == OSQL_RECGENID ||
             type == OSQL_QBLOB || type == OSQL_UPDCOLS) || type == OSQL_SCHEMACHANGE)
-            key.tbl_idx = iq->usedb->dbs_idx;
+            key.tbl_idx = iq->usedb->dbs_idx + 1;
 
         enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
         if (type == OSQL_GENID) {
@@ -768,38 +767,13 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             return 0; //don't put in temp table
         }
 
-        if (type == OSQL_UPDATE || type == OSQL_DELETE ||
-            type == OSQL_UPDREC || type == OSQL_DELREC) {
-
-            const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN; 
-            /* rpl is of type osql_ins_uuid_rpl, so we skip osql_uuid_rpl_t hd 
-             * to get to osql_ins_t dt, and genid is ins_uuid_rpl.dt.seq */
-            enum { OSQLCOMM_UPD_TYPE_LEN = 8 + 8 + 8 + 4 + 4 };
-            //const char *p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
-            const char *p_buf_end = (uint8_t *)p_buf + OSQLCOMM_UPD_TYPE_LEN;
-            long long int genid;
-            buf_no_net_get(&genid, sizeof(genid), p_buf, p_buf_end);
-            printf("AZ: Receiving genid 0x%llx\n", genid);
-            assert(genid == sess->last_genid);
+        if (type == OSQL_UPDATE || type == OSQL_DELETE || type == OSQL_UPDREC ||
+            type == OSQL_DELREC || type == OSQL_INSERT || type == OSQL_INSREC ||
+            type == OSQL_QBLOB  || type == OSQL_DELIDX || type == OSQL_INSIDX ||
+            type == OSQL_UPDCOLS) {
             key.genid = sess->last_genid;
             key.stripe = get_dtafile_from_genid(key.genid);
             assert (key.stripe >= 0);
-        } else if (type == OSQL_INSERT || type == OSQL_INSREC) {
-            key.genid = sess->last_genid;
-            key.stripe = get_dtafile_from_genid(key.genid);
-            assert (key.stripe >= 0);
-        } else if (type == OSQL_QBLOB) {
-            /* blob needs to get the genid of the previous insrec */
-            key.genid = sess->last_genid;
-            key.stripe = get_dtafile_from_genid(key.genid);
-
-            char *blah;
-            hexdumpbuf(rpl, rplen, &blah);
-            printf("AZ: getting blob rplen=%d, hexdump blob='%s'\n", rplen, blah);
-        } else if (type == OSQL_DELIDX || type == OSQL_INSIDX || type == OSQL_UPDCOLS) {
-            /* part idx and updcol needs to get the genid of the previous insrec */
-            key.genid = sess->last_genid;
-            key.stripe = get_dtafile_from_genid(key.genid);
         }
     }
 
