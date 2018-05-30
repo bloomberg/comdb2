@@ -25,7 +25,7 @@
 #define PACKAGE_EXTERN
 #endif
 
-PACKAGE_EXTERN int	tclcdb2_Init(Tcl_Interp *interp);
-PACKAGE_EXTERN int	tclcdb2_Unload(Tcl_Interp *interp, int flags);
+PACKAGE_EXTERN int	Tclcdb2_Init(Tcl_Interp *interp);
+PACKAGE_EXTERN int	Tclcdb2_Unload(Tcl_Interp *interp, int flags);
 
 #endif /* _tclcdb2_H_ */

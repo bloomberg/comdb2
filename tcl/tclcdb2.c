@@ -1214,7 +1214,7 @@ static void FreeParameterValues(
 /*
  *----------------------------------------------------------------------
  *
- * tclcdb2_Init --
+ * Tclcdb2_Init --
  *
  *	This function initializes the package for the specified Tcl
  *	interpreter.
@@ -1228,7 +1228,7 @@ static void FreeParameterValues(
  *----------------------------------------------------------------------
  */
 
-int tclcdb2_Init(
+int Tclcdb2_Init(
     Tcl_Interp *interp)			/* Current Tcl interpreter. */
 {
     int code = TCL_OK;
@@ -1295,9 +1295,9 @@ done:
     Tcl_MutexUnlock(&packageMutex);
 
     if (code != TCL_OK) {
-	if (tclcdb2_Unload(interp, TCL_UNLOAD_FROM_INIT |
+	if (Tclcdb2_Unload(interp, TCL_UNLOAD_FROM_INIT |
 		TCL_UNLOAD_DETACH_FROM_INTERPRETER) != TCL_OK) {
-	    fprintf(stderr, "tclcdb2_Unload: failed via tclcdb2_Init\n");
+	    fprintf(stderr, "Tclcdb2_Unload: failed via Tclcdb2_Init\n");
 	}
     }
 
@@ -1307,7 +1307,7 @@ done:
 /*
  *----------------------------------------------------------------------
  *
- * tclcdb2_Unload --
+ * Tclcdb2_Unload --
  *
  *	This function unloads the package from the specified Tcl
  *	interpreter -OR- from the entire process.
@@ -1321,7 +1321,7 @@ done:
  *----------------------------------------------------------------------
  */
 
-int tclcdb2_Unload(
+int Tclcdb2_Unload(
     Tcl_Interp *interp,			/* Current Tcl interpreter. */
     int flags)				/* Unload behavior flags. */
 {
@@ -1330,7 +1330,7 @@ int tclcdb2_Unload(
     int bFromCmdDelete = (flags & TCL_UNLOAD_FROM_CMD_DELETE);
 
     if (bHaveTclStubs == 0) { /* NON-PORTABLE */
-	fprintf(stderr, "tclcdb2_Unload: Tcl stubs are not initialized\n");
+	fprintf(stderr, "Tclcdb2_Unload: Tcl stubs are not initialized\n");
 	return TCL_ERROR;
     }
 
@@ -1422,9 +1422,9 @@ done:
 static void tclcdb2ExitProc(
     ClientData clientData)		/* Not used. */
 {
-    if (tclcdb2_Unload(NULL,
+    if (Tclcdb2_Unload(NULL,
 	    TCL_UNLOAD_DETACH_FROM_PROCESS) != TCL_OK) {
-	fprintf(stderr, "tclcdb2_Unload: failed via tclcdb2ExitProc\n");
+	fprintf(stderr, "Tclcdb2_Unload: failed via tclcdb2ExitProc\n");
     }
 }
 
@@ -2316,9 +2316,9 @@ static void tclcdb2ObjCmdDeleteProc(
 	return;
     }
 
-    if (tclcdb2_Unload(interp, TCL_UNLOAD_FROM_CMD_DELETE |
+    if (Tclcdb2_Unload(interp, TCL_UNLOAD_FROM_CMD_DELETE |
 	    TCL_UNLOAD_DETACH_FROM_INTERPRETER) != TCL_OK) {
 	fprintf(stderr,
-	    "tclcdb2_Unload: failed via tclcdb2ObjCmdDeleteProc\n");
+	    "Tclcdb2_Unload: failed via tclcdb2ObjCmdDeleteProc\n");
     }
 }
