@@ -712,7 +712,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
     if (sess->is_reorder_on) {
-        //usedb genid and stripe will always be 0
         key.tbl_idx = USHRT_MAX;
 
         if (type == OSQL_USEDB) {
@@ -725,32 +724,26 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                     iq->usedb = tbl;
                     key.tbl_idx = iq->usedb->dbs_idx + 1;
                 } else {
+                    iq->usedb = NULL;
                     key.tbl_idx = 0;
                     no_such_tbl_error(tablename, rqid, host);
                 }
                 printf("AZ: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:-1));
-
             }
         }
-        if (!iq->usedb) { 
+        else if (!iq->usedb) { 
             printf("AZ: usedb not set for type=%d\n", type);
-            if (type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE || 
-                type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS) {
-                no_such_tbl_error("invalid_table", rqid, host);
+            if (type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS ||
+                type == OSQL_INSREC || type == OSQL_UPDREC || type == OSQL_DELREC ||
+                type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
+                type == OSQL_INSIDX || type == OSQL_DELIDX || type == OSQL_RECGENID ||
+                type == OSQL_QBLOB || type == OSQL_UPDCOLS || type == OSQL_SCHEMACHANGE ) {
                 return -1;
             }
         }
 
-
-        if (iq->usedb && 
-            (type == OSQL_INSREC || type == OSQL_UPDREC || type == OSQL_DELREC ||
-            type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
-            type == OSQL_INSIDX || type == OSQL_DELIDX || type == OSQL_RECGENID ||
-            type == OSQL_QBLOB || type == OSQL_UPDCOLS) || type == OSQL_SCHEMACHANGE)
-            key.tbl_idx = iq->usedb->dbs_idx + 1;
-
-        enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
         if (type == OSQL_GENID) {
+            enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
             unsigned long long genid;
             const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN; 
             buf_no_net_get(&(genid), sizeof(genid), p_buf, p_buf + sizeof(genid));
@@ -765,15 +758,16 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             printf("%lx:%s: rqid=%llx uuid=%s NOTSAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
                     pthread_self(), __func__, key.rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, genid, seq);
             return 0; //don't put in temp table
-        }
-
-        if (type == OSQL_UPDATE || type == OSQL_DELETE || type == OSQL_UPDREC ||
+        } else if (type == OSQL_UPDATE || type == OSQL_DELETE || type == OSQL_UPDREC ||
             type == OSQL_DELREC || type == OSQL_INSERT || type == OSQL_INSREC ||
             type == OSQL_QBLOB  || type == OSQL_DELIDX || type == OSQL_INSIDX ||
             type == OSQL_UPDCOLS) {
+            key.tbl_idx = iq->usedb->dbs_idx + 1;
             key.genid = sess->last_genid;
             key.stripe = get_dtafile_from_genid(key.genid);
             assert (key.stripe >= 0);
+        } else if (type == OSQL_RECGENID || type == OSQL_SCHEMACHANGE) {
+            key.tbl_idx = iq->usedb->dbs_idx + 1;
         }
     }
 
