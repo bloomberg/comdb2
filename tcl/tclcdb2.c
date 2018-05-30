@@ -2172,11 +2172,11 @@ static int tclcdb2ObjCmd(
 	    GET_CDB2_HANDLE_BY_NAME_OR_FAIL(objv[2]);
 	    sql = Tcl_GetString(objv[3]);
 
-	    if (objc == 4) {
+	    if (objc == 5) {
 		int index, listObjc;
 		Tcl_Obj **listObjv; /* NOTE: Do not free. */
 
-		code = Tcl_ListObjGetElements(interp, objv[3],
+		code = Tcl_ListObjGetElements(interp, objv[4],
 		    &listObjc, &listObjv);
 
 		if (code != TCL_OK)
