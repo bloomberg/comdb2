@@ -1438,15 +1438,15 @@ static int tclcdb2ObjCmd(
     static const char *cmdOptions[] = {
 	"bind", "close", "cnonce", "colcount", "colname", "colsize",
 	"coltype", "colvalue", "configure", "debug", "effects",
-	"encrypted", "error", "hint", "open", "run", "ssl", "unbind",
-	(char *) NULL
+	"encrypted", "error", "hint", "next", "open", "run", "ssl",
+	"unbind", (char *) NULL
     };
 
     enum options {
 	OPT_BIND, OPT_CLOSE, OPT_CNONCE, OPT_COLCOUNT, OPT_COLNAME,
 	OPT_COLSIZE, OPT_COLTYPE, OPT_COLVALUE, OPT_CONFIGURE,
 	OPT_DEBUG, OPT_EFFECTS, OPT_ENCRYPTED, OPT_ERROR, OPT_HINT,
-	OPT_OPEN, OPT_RUN, OPT_SSL, OPT_UNBIND
+	OPT_NEXT, OPT_OPEN, OPT_RUN, OPT_SSL, OPT_UNBIND
     };
 
     if (!IsValidInterp(interp)) {
@@ -2092,6 +2092,33 @@ static int tclcdb2ObjCmd(
 	    GET_CDB2_HANDLE_BY_NAME_OR_FAIL(objv[2]);
 	    cdb2_use_hint(pCdb2);
 	    Tcl_ResetResult(interp);
+	    break;
+	}
+	case OPT_NEXT: {
+	    if (objc != 3) {
+		Tcl_WrongNumArgs(interp, 2, objv, "connection");
+		code = TCL_ERROR;
+		goto done;
+	    }
+
+	    GET_CDB2_HANDLE_BY_NAME_OR_FAIL(objv[2]);
+	    rc = cdb2_next_record(pCdb2);
+
+	    switch (rc) {
+		case CDB2_OK: {
+		    Tcl_SetObjResult(interp, Tcl_NewBooleanObj(1));
+		    break;
+		}
+		case CDB2_OK_DONE: {
+		    Tcl_SetObjResult(interp, Tcl_NewBooleanObj(0));
+		    break;
+		}
+		default: {
+		    AppendCdb2ErrorMessage(interp, rc, pCdb2);
+		    code = TCL_ERROR;
+		    break;
+		}
+	    }
 	    break;
 	}
 	case OPT_OPEN: {
