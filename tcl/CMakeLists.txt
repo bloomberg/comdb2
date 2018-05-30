@@ -14,4 +14,10 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${PROJECT_SOURCE_DIR}/cdb2api
 )
-add_dependencies(tclcdb2 mem)
+add_dependencies(tclcdb2 mem cdb2api)
+target_link_libraries(tclcdb2
+  ${PROJECT_SOURCE_DIR}/build/cdb2api/libcdb2api.a
+  ${OPENSSL_LIBRARIES}
+  ${PROTOBUF_C_LIBRARY}
+  ${UNWIND_LIBRARY}
+)
