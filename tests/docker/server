@@ -7,7 +7,6 @@ cp /common/id_rsa ~/.ssh/
 chmod 700 ~/.ssh/id_rsa
 cp /common/id_rsa.pub ~/.ssh/
 cat /common/id_rsa.pub >> ~/.ssh/authorized_keys
-touch /common/$(hostname).ready
 echo "hostname $(hostname)" > /opt/bb/etc/cdb2/config/comdb2.d/hostname.lrl
 echo READY
 exec /usr/sbin/sshd -D

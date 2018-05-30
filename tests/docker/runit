@@ -115,6 +115,9 @@ cat >> $compose <<EOF
 EOF
 done
 
+# Make sure that root can access common/ under SELinux
+chmod 777 -R common
+
 docker-compose build
 docker-compose up --abort-on-container-exit
 docker-compose down --rmi all --volumes
