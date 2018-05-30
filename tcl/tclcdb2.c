@@ -184,7 +184,7 @@ static int		tclcdb2ObjCmd(ClientData clientData, Tcl_Interp *interp,
 			    int objc, Tcl_Obj *CONST objv[]);
 static void		tclcdb2ObjCmdDeleteProc(ClientData clientData);
 
-static NameAndValue aOpenFlags[] = {
+static struct NameAndValue aOpenFlags[] = {
     { "cache_ssl_sessions",   CDB2_CACHE_SSL_SESSIONS   },
     { "direct_cpu",           CDB2_DIRECT_CPU           },
     { "random",               CDB2_RANDOM               },
@@ -194,7 +194,7 @@ static NameAndValue aOpenFlags[] = {
     { NULL,                   0                         }
 };
 
-static NameAndValue aColumnTypes[] = {
+static struct NameAndValue aColumnTypes[] = {
     { "blob",                 CDB2_BLOB                 },
     { "cstring",              CDB2_CSTRING              },
     { "datetime",             CDB2_DATETIME             },
