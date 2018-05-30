@@ -113,6 +113,7 @@ struct osql_sess {
 
     int queryid;
     unsigned long long last_genid; // rememberg updrec and insrec genid for qblobs
+    int tbl_idx;
     bool is_reorder_on;
 };
 

@@ -722,22 +722,24 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 struct dbtable *tbl = get_dbtable_by_name(tablename);
                 if(tbl) {
                     iq->usedb = tbl;
-                    key.tbl_idx = iq->usedb->dbs_idx + 1;
+                    sess->tbl_idx = iq->usedb->dbs_idx + 1;
+                    key.tbl_idx = sess->tbl_idx;
                 } else {
-                    iq->usedb = NULL;
                     key.tbl_idx = 0;
+                    key.tbl_idx = sess->tbl_idx;
                     no_such_tbl_error(tablename, rqid, host);
                 }
                 printf("AZ: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:-1));
             }
         }
         else if (!iq->usedb) { 
-            printf("AZ: usedb not set for type=%d\n", type);
+            printf("AZ: usedb not set for type=%d(%s)\n", type,  osql_reqtype_str(type));
             if (type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS ||
                 type == OSQL_INSREC || type == OSQL_UPDREC || type == OSQL_DELREC ||
                 type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
                 type == OSQL_INSIDX || type == OSQL_DELIDX || type == OSQL_RECGENID ||
-                type == OSQL_QBLOB || type == OSQL_UPDCOLS || type == OSQL_SCHEMACHANGE ) {
+                type == OSQL_QBLOB || type == OSQL_UPDCOLS || type == OSQL_SCHEMACHANGE ||
+                type == OSQL_GENID) {
                 return -1;
             }
         }
@@ -762,12 +764,12 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             type == OSQL_DELREC || type == OSQL_INSERT || type == OSQL_INSREC ||
             type == OSQL_QBLOB  || type == OSQL_DELIDX || type == OSQL_INSIDX ||
             type == OSQL_UPDCOLS) {
-            key.tbl_idx = iq->usedb->dbs_idx + 1;
+            key.tbl_idx = sess->tbl_idx;
             key.genid = sess->last_genid;
             key.stripe = get_dtafile_from_genid(key.genid);
             assert (key.stripe >= 0);
         } else if (type == OSQL_RECGENID || type == OSQL_SCHEMACHANGE) {
-            key.tbl_idx = iq->usedb->dbs_idx + 1;
+            key.tbl_idx = sess->tbl_idx;
         }
     }
 
