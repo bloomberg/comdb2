@@ -3866,24 +3866,25 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     case DB_REP_NEWMASTER:
         bdb_state->repinfo->repstats.rep_newmaster++;
+
+        char *master;
+        int gen, egen;
+
+        if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
+            abort();
+        }
+
         logmsg(LOGMSG_WARN,
-               "process_berkdb: DB_REP_NEWMASTER %s time=%ld generation=%u\n",
-               host, time(NULL), generation);
+               "process_berkdb: DB_REP_NEWMASTER %s time=%ld old-gen=%u new(egen)=%d\n",
+               host, time(NULL), generation, egen);
 
         /* Check if it's us. */
         if (host == bdb_state->repinfo->myhost) {
-            logmsg(LOGMSG_WARN, "NEWMASTER is ME\n");
+            logmsg(LOGMSG_WARN, "NEWMASTER is ME for GENERATION %d\n", egen);
 
             /* I'm upgrading and this thread could be holding logical locks:
              * abort sql threads waiting on logical locks */
             BDB_WRITELOCK_REP("upgrade");
-            char *master;
-            int gen, egen;
-
-            if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
-                abort();
-            }
-
             /* we need to upgrade */
             rc = bdb_upgrade(bdb_state, egen, &done);
 

@@ -322,14 +322,22 @@ __rep_start(dbenv, dbt, gen, flags)
 				 * There could have been any number of failed
 				 * elections, so jump the gen if we need to now.
 				 */
-                if (!gbl_allow_election_race && gen != 0)
+                if (!gbl_allow_election_race && gen != 0) {
+                    logmsg(LOGMSG_USER, "%s line %d setting gen to arg %d\n",
+                            __func__, __LINE__, gen);
                     rep->gen = gen;
-                else if (rep->egen > rep->gen)
+                } else if (rep->egen > rep->gen) {
+                    logmsg(LOGMSG_USER, "%s line %d setting gen to rep->egen "
+                            "%d\n", __func__, __LINE__, rep->egen);
                     rep->gen = rep->egen;
+                }
 
 				redo_prepared = 1;
-			} else if (rep->gen == 0)
+			} else if (rep->gen == 0) {
+                logmsg(LOGMSG_USER, "%s line %d setting gen to recover_gen + 1 "
+                        "%d\n", __func__, __LINE__, rep->recover_gen + 1);
 				rep->gen = rep->recover_gen + 1;
+            }
 			if (F_ISSET(rep, REP_F_MASTERELECT)) {
 				__rep_elect_done(dbenv, rep, 0);
 				F_CLR(rep, REP_F_MASTERELECT);
