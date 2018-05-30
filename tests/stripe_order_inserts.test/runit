@@ -95,6 +95,7 @@ cdb2sql --tabs ${CDB2_OPTIONS} -f ins.in $dbnm default
 #cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs('t1', $N)"
 
 assertcnt t1 8
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select printf("%llx",comdb2_rowid) as genid, i from t1' > all_stripes.out
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select printf("%llx",comdb2_rowid%16) as genid from t1' > stripes.out
 for i in `seq 1 $N` ; do
     cnt=`grep $((i-1)) stripes.out | wc -l`
@@ -108,6 +109,19 @@ for i in `seq 1 $N` ; do
     [ "x$fileid" == "x" ] && failexit "dblist does not contain info about t1"
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb pgdump $fileid 1')" | grep "entries:2" || failexit "page does not contain 1 row"
 done
+
+
+counter="0x11"
+[ -n "$CLUSTER" ] && counter="0x16"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_genidinfo(comdb2_rowid) from t1 where i=1'`
+assertres "$res"  "counter=$counter, updateid=0, stripe=1"
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'update t1 set i=i where i=1'
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_genidinfo(comdb2_rowid) from t1 where i=1'`
+assertres "$res"  "counter=$counter, updateid=1, stripe=1"
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'update t1 set i=i where i=1'
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_genidinfo(comdb2_rowid) from t1 where i=1'`
+assertres "$res"  "counter=$counter, updateid=2, stripe=1"
+
 
 call_unsetup 1
 trap - INT EXIT

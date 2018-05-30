@@ -274,6 +274,11 @@ int bdb_genid_is_recno(bdb_state_type *bdb_state, unsigned long long genid)
     }
 }
 
+int is_bde_env_genid48(bdb_state_type *bdb_state)
+{
+    return (bdb_state->genid_format == LLMETA_GENID_48BIT);
+}
+
 /* this is for sqlite3BtreeNewRowid- I don't have to bother endianizing recno */
 unsigned long long bdb_recno_to_genid(int recno)
 {
@@ -465,9 +470,9 @@ void seed_genid48(bdb_state_type *bdb_state, uint64_t seed)
     get_genid_48bit(bdb_state, 0, NULL, 0, seed);
 }
 
-static unsigned long long get_genid_timebased(bdb_state_type *bdb_state,
-                                      unsigned int dtafile, DB_LSN *lsn,
-                                      uint32_t generation)
+unsigned long long get_genid_timebased(bdb_state_type *bdb_state,
+                                       unsigned int dtafile, DB_LSN *lsn,
+                                       uint32_t generation)
 {
     /* keep a stable copy of the gblcontext */
     unsigned int *iptr;
