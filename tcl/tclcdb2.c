@@ -49,17 +49,18 @@
 						(TCL_RESULT_SIZE) + 1
 #endif /* FIXED_BUFFER_SIZE */
 
-#if !defined(Tcl_SetHashKey)
-#define Tcl_SetHashKey(tablePtr, h, k) \
+#if !defined(Tcl_ResetHashKey)
+#define Tcl_ResetHashKey(tablePtr, h) \
     do {                                                        \
 	if ((tablePtr)->keyType == TCL_ONE_WORD_KEYS ||         \
 		(tablePtr)->keyType == TCL_CUSTOM_PTR_KEYS) {   \
 	    (h)->key.oneWordValue = (k);                        \
-	} else {                                                \
-	    (h)->key.string = (k);                              \
+	} else if ((h)->key.string != NULL) {                   \
+            size_t keyLength = strlen((h)->key.string);         \
+	    memset((h)->key.string, 0, keyLength);              \
 	}                                                       \
     } while (0);
-#endif /* Tcl_SetHashKey */
+#endif /* Tcl_ResetHashKey */
 
 #if !defined(MAYBE_OUT_OF_MEMORY)
 #define MAYBE_OUT_OF_MEMORY(a)                                  \
@@ -1071,7 +1072,7 @@ static int RemoveCdb2HandleByName(
 
     if (key != NULL) {
 	free(key); key = NULL;
-	Tcl_SetHashKey(hTablePtr, hPtr, key);
+	Tcl_ResetHashKey(hTablePtr, hPtr);
     }
 
     Tcl_DeleteHashEntry(hPtr);
@@ -1377,7 +1378,7 @@ int tclcdb2_Unload(
 
 		if (name != NULL) {
 		    free(name); name = NULL;
-		    Tcl_SetHashKey(hTablePtr, hPtr, name);
+		    Tcl_ResetHashKey(hTablePtr, hPtr);
 		}
 	    }
 
@@ -1875,7 +1876,7 @@ static int tclcdb2ObjCmd(
 		    break;
 		}
 		case CDB2_REAL: {
-		    double *doubleValue = *(double *)pColValue;
+		    double doubleValue = *(double *)pColValue;
 		    valuePtr = Tcl_NewDoubleObj(doubleValue);
 		    break;
 		}
@@ -2165,7 +2166,7 @@ static int tclcdb2ObjCmd(
 	    sql = Tcl_GetString(objv[3]);
 
 	    if (objc == 4) {
-		int listObjc;
+		int index, listObjc;
 		Tcl_Obj **listObjv; /* NOTE: Do not free. */
 
 		code = Tcl_ListObjGetElements(interp, objv[3],
@@ -2174,7 +2175,7 @@ static int tclcdb2ObjCmd(
 		if (code != TCL_OK)
 		    goto done;
 
-		types = attemptckalloc(listObjc * sizeof(int));
+		types = (int *)attemptckalloc(listObjc * sizeof(int));
 		MAYBE_OUT_OF_MEMORY(types);
 		memset(types, 0, listObjc * sizeof(int));
 
