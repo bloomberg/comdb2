@@ -741,7 +741,7 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_ym_t));
 	    pIntervalYmValue = (cdb2_client_intv_ym_t *)valuePtr;
-	    assert(sizeof(formats) == CDB2_INTERVALYM_ELEMENTS);
+	    assert(sizeof(fields) == CDB2_INTERVALYM_ELEMENTS);
 
 	    if (elemCount != CDB2_INTERVALYM_ELEMENTS) {
 		Tcl_AppendResult(interp,
@@ -775,7 +775,7 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_ds_t));
 	    pIntervalDsValue = (cdb2_client_intv_ds_t *)valuePtr;
-	    assert(sizeof(formats) == CDB2_INTERVALDS_ELEMENTS);
+	    assert(sizeof(fields) == CDB2_INTERVALDS_ELEMENTS);
 
 	    if (elemCount != CDB2_INTERVALDS_ELEMENTS) {
 		Tcl_AppendResult(interp,
@@ -828,7 +828,7 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_datetimeus_t));
 	    pDateTimeUsValue = (cdb2_client_datetimeus_t *)valuePtr;
-	    assert(sizeof(formats) == CDB2_DATETIMEUS_ELEMENTS);
+	    assert(sizeof(fields) == CDB2_DATETIMEUS_ELEMENTS);
 
 	    if (elemCount != CDB2_DATETIMEUS_ELEMENTS) {
 		Tcl_AppendResult(interp,
@@ -862,7 +862,7 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_dsus_t));
 	    pIntervalDsUsValue = (cdb2_client_intv_dsus_t *)valuePtr;
-	    assert(sizeof(formats) == CDB2_INTERVALDSUS_ELEMENTS);
+	    assert(sizeof(fields) == CDB2_INTERVALDSUS_ELEMENTS);
 
 	    if (elemCount != CDB2_INTERVALDSUS_ELEMENTS) {
 		Tcl_AppendResult(interp,
