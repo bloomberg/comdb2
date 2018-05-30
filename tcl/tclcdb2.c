@@ -889,8 +889,13 @@ static int GetValueStructFromObj(
 	    goto done;
 	}
 	default: {
-	    snprintf(stringPtr, stringLength,
-		"unsupported value type %d\n", type);
+	    char buffer[FIXED_BUFFER_SIZE + 1];
+
+	    memset(buffer, 0, sizeof(buffer));
+	    snprintf(buffer, sizeof(buffer), "%d", type);
+
+	    Tcl_AppendResult(interp, "unsupported value type ", buffer,
+		"\n", NULL);
 
 	    code = TCL_ERROR;
 	    goto done;
@@ -1139,11 +1144,19 @@ static void FreeBoundValue(
     if (pBoundValue == NULL)
 	return;
 
-    if ((pBoundValue->value != NULL) &&
-	    ((pBoundValue->type == CDB2_BLOB) ||
-	     (pBoundValue->type == CDB2_CSTRING))) {
-	free(pBoundValue->value);
-	pBoundValue->value = NULL;
+    switch (pBoundValue->type) {
+	case CDB2_BLOB: {
+	    if (pBoundValue->value.blobValue != NULL) {
+		free(pBoundValue->value.blobValue);
+		pBoundValue->value.blobValue = NULL;
+	    }
+	}
+	case CDB2_CSTRING: {
+	    if (pBoundValue->value.cstringValue != NULL) {
+		free(pBoundValue->value.cstringValue);
+		pBoundValue->value.cstringValue = NULL;
+	    }
+	}
     }
 
     if (pBoundValue->name != NULL) {
@@ -1483,6 +1496,7 @@ static int tclcdb2ObjCmd(
     switch ((enum options)option) {
 	case OPT_BIND: {
 	    const char *bindName = NULL;
+	    void *valuePtr;
 	    int wasNew = 0;
 
 	    if (objc != 6) {
@@ -1548,6 +1562,7 @@ static int tclcdb2ObjCmd(
 		    if (code != TCL_OK)
 			goto done;
 
+		    valuePtr = &pBoundValue->value.wideValue;
 		    pBoundValue->length = sizeof(Tcl_WideInt);
 		    break;
 		}
@@ -1558,6 +1573,7 @@ static int tclcdb2ObjCmd(
 		    if (code != TCL_OK)
 			goto done;
 
+		    valuePtr = &pBoundValue->value.doubleValue;
 		    pBoundValue->length = sizeof(double);
 		    break;
 		}
@@ -1580,6 +1596,7 @@ static int tclcdb2ObjCmd(
 			pBoundValue->value.cstringValue = NULL;
 		    }
 
+		    valuePtr = pBoundValue->value.cstringValue;
 		    pBoundValue->length = length;
 		    break;
 		}
@@ -1604,42 +1621,58 @@ static int tclcdb2ObjCmd(
 			pBoundValue->value.blobValue = NULL;
 		    }
 
+		    valuePtr = pBoundValue->value.blobValue;
 		    pBoundValue->length = length;
 		    break;
 		}
 		case CDB2_DATETIME: {
-		    code = GetValueStructFromObj(interp, pBoundValue->type,
-			objv[5], sizeof(cdb2_client_datetime_t),
-			&pBoundValue->value.dateTimeValue);
+		    size_t size = sizeof(cdb2_client_datetime_t);
 
+		    code = GetValueStructFromObj(interp, pBoundValue->type,
+			objv[5], size, &pBoundValue->value.dateTimeValue);
+
+		    valuePtr = &pBoundValue->value.dateTimeValue;
+		    pBoundValue->length = size;
 		    break;
 		}
 		case CDB2_INTERVALYM: {
-		    code = GetValueStructFromObj(interp, pBoundValue->type,
-			objv[5], sizeof(cdb2_client_intv_ym_t),
-			&pBoundValue->value.intervalYmValue);
+		    size_t size = sizeof(cdb2_client_intv_ym_t);
 
+		    code = GetValueStructFromObj(interp, pBoundValue->type,
+			objv[5], size, &pBoundValue->value.intervalYmValue);
+
+		    valuePtr = &pBoundValue->value.intervalYmValue;
+		    pBoundValue->length = size;
 		    break;
 		}
 		case CDB2_INTERVALDS: {
-		    code = GetValueStructFromObj(interp, pBoundValue->type,
-			objv[5], sizeof(cdb2_client_intv_ds_t),
-			&pBoundValue->value.intervalDsValue);
+		    size_t size = sizeof(cdb2_client_intv_ds_t);
 
+		    code = GetValueStructFromObj(interp, pBoundValue->type,
+			objv[5], size, &pBoundValue->value.intervalDsValue);
+
+		    valuePtr = &pBoundValue->value.intervalDsValue;
+		    pBoundValue->length = size;
 		    break;
 		}
 		case CDB2_DATETIMEUS: {
-		    code = GetValueStructFromObj(interp, pBoundValue->type,
-			objv[5], sizeof(cdb2_client_datetimeus_t),
-			&pBoundValue->value.dateTimeUsValue);
+		    size_t size = sizeof(cdb2_client_datetimeus_t);
 
+		    code = GetValueStructFromObj(interp, pBoundValue->type,
+			objv[5], size, &pBoundValue->value.dateTimeUsValue);
+
+		    valuePtr = &pBoundValue->value.dateTimeUsValue;
+		    pBoundValue->length = size;
 		    break;
 		}
 		case CDB2_INTERVALDSUS: {
-		    code = GetValueStructFromObj(interp, pBoundValue->type,
-			objv[5], sizeof(cdb2_client_intv_dsus_t),
-			&pBoundValue->value.intervalDsUsValue);
+		    size_t size = sizeof(cdb2_client_intv_dsus_t);
 
+		    code = GetValueStructFromObj(interp, pBoundValue->type,
+			objv[5], size, &pBoundValue->value.intervalDsUsValue);
+
+		    valuePtr = &pBoundValue->value.intervalDsUsValue;
+		    pBoundValue->length = size;
 		    break;
 		}
 		default: {
@@ -1656,12 +1689,10 @@ static int tclcdb2ObjCmd(
 
 	    if (pBoundValue->name != NULL) {
 		rc = cdb2_bind_param(pCdb2, pBoundValue->name,
-		    pBoundValue->type, pBoundValue->value,
-		    pBoundValue->length);
+		    pBoundValue->type, valuePtr, pBoundValue->length);
 	    } else {
 		rc = cdb2_bind_index(pCdb2, pBoundValue->index,
-		    pBoundValue->type, pBoundValue->value,
-		    pBoundValue->length);
+		    pBoundValue->type, valuePtr, pBoundValue->length);
 	    }
 
 	    if (rc != CDB2_OK) {
@@ -2118,7 +2149,7 @@ static int tclcdb2ObjCmd(
 		goto done;
 	    }
 
-	    Tcl_SetResult(interp, name, TCL_VOLATILE);
+	    Tcl_SetResult(interp, (char *)name, TCL_VOLATILE);
 	    break;
 	}
 	case OPT_RUN: {
@@ -2177,26 +2208,23 @@ static int tclcdb2ObjCmd(
 	case OPT_SSL: {
 	    int initSsl = 0, initCrypto = 0;
 
-	    if (objc != 5) {
-		Tcl_WrongNumArgs(interp, 2, objv,
-		    "connection initSsl initCrypto");
-
+	    if (objc != 4) {
+		Tcl_WrongNumArgs(interp, 2, objv, "initSsl initCrypto");
 		code = TCL_ERROR;
 		goto done;
 	    }
 
-	    code = Tcl_GetIntFromObj(interp, objv[3], &initSsl);
+	    code = Tcl_GetIntFromObj(interp, objv[2], &initSsl);
 
 	    if (code != TCL_OK)
 		goto done;
 
-	    code = Tcl_GetIntFromObj(interp, objv[4], &initCrypto);
+	    code = Tcl_GetIntFromObj(interp, objv[3], &initCrypto);
 
 	    if (code != TCL_OK)
 		goto done;
 
-	    GET_CDB2_HANDLE_BY_NAME_OR_FAIL(objv[2]);
-	    cdb2_init_ssl(pCdb2, initSsl, initCrypto);
+	    cdb2_init_ssl(initSsl, initCrypto);
 	    Tcl_ResetResult(interp);
 	    break;
 	}
