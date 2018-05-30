@@ -208,7 +208,7 @@ void set_repinfo_master_host(bdb_state_type *bdb_state, char *master,
         bdb_state = bdb_state->parent;
 
     if (bdb_state->attr->set_repinfo_master_trace) {
-        logmsg(LOGMSG_INFO, "Setting repinfo master to %s from %s line %u\n",
+        logmsg(LOGMSG_USER, "Setting repinfo master to %s from %s line %u\n",
                 master, func, line);
     }
     bdb_state->repinfo->master_host = master;
@@ -5019,9 +5019,9 @@ int bdb_upgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done)
     return bdb_upgrade_downgrade_reopen_wrap(bdb_state, UPGRADE, 30, newgen, done);
 }
 
-int bdb_downgrade(bdb_state_type *bdb_state, int *done)
+int bdb_downgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done)
 {
-    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, DOWNGRADE, 5, 0, done);
+    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, DOWNGRADE, 5, newgen, done);
 }
 
 int bdb_downgrade_noelect(bdb_state_type *bdb_state)
