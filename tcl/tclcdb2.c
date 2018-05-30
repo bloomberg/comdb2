@@ -1498,6 +1498,7 @@ static int tclcdb2ObjCmd(
 	case OPT_BIND: {
 	    const char *bindName = NULL;
 	    void *valuePtr;
+	    Tcl_HashEntry *hPtr;
 	    int wasNew = 0;
 
 	    if (objc != 6) {
@@ -1512,7 +1513,9 @@ static int tclcdb2ObjCmd(
 	    hTablePtr = GET_AUXILIARY_DATA("tclcdb2_params");
 
 	    if (hTablePtr == NULL) {
-		hTablePtr = attemptckalloc(sizeof(Tcl_HashTable));
+		hTablePtr = (Tcl_HashTable *)attemptckalloc(
+		    sizeof(Tcl_HashTable));
+
 		MAYBE_OUT_OF_MEMORY(hTablePtr);
 
 		memset(hTablePtr, 0, sizeof(Tcl_HashTable));
@@ -2000,11 +2003,15 @@ static int tclcdb2ObjCmd(
 		"inserted"
 	    };
 
-	    static const int *effectIntPtrs[] = {
-		&effects.num_affected, &effects.num_selected,
-		&effects.num_updated, &effects.num_deleted,
-		&effects.num_inserted
+	    static int *effectIntPtrs[] = {
+		NULL, NULL, NULL, NULL, NULL
 	    }
+
+	    effectIntPtrs[0] = &effects.num_affected;
+	    effectIntPtrs[1] = &effects.num_selected;
+	    effectIntPtrs[2] = &effects.num_updated;
+	    effectIntPtrs[3] = &effects.num_deleted;
+	    effectIntPtrs[4] = &effects.num_inserted;
 
 	    if (objc != 3) {
 		Tcl_WrongNumArgs(interp, 2, objv, "connection");
