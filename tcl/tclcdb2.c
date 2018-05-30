@@ -481,7 +481,7 @@ static int ProcessStructFieldsFromElements(
 	    continue;
 
 	offset = (size_t)fields[index].value;
-	assert(offset <= sizeof(cdb2_client_datetime));
+	assert(offset <= sizeof(cdb2_client_datetime_t)); /* SANITY */
 
 	if ((strcmp(format, "%d") == 0) || (strcmp(format, "%u") == 0)) {
 	    int intValue;
@@ -713,7 +713,7 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_datetime_t));
 	    pDateTimeValue = (cdb2_client_datetime_t *)valuePtr;
-	    assert(sizeof(formats) == CDB2_DATETIME_ELEMENTS);
+	    assert(sizeof(fields) == CDB2_DATETIME_ELEMENTS);
 
 	    if (elemCount != CDB2_DATETIME_ELEMENTS) {
 		Tcl_AppendResult(interp,
@@ -1995,6 +1995,7 @@ static int tclcdb2ObjCmd(
 	    }
 
 	    GET_CDB2_HANDLE_BY_NAME_OR_FAIL(objv[2]);
+	    memset(&effects, 0, sizeof(cdb2_effects_tp));
 	    rc = cdb2_get_effects(pCdb2, &effects);
 
 	    if (rc != CDB2_OK) {
@@ -2008,6 +2009,7 @@ static int tclcdb2ObjCmd(
 	    Tcl_IncrRefCount(listPtr);
 
 	    assert(sizeof(effectNames) == sizeof(effectIntPtrs));
+
 	    for (index = 0; index < sizeof(effectNames); index++) {
 		valuePtr = Tcl_NewStringObj(effectNames[index], -1);
 		MAYBE_OUT_OF_MEMORY(valuePtr);
@@ -2107,27 +2109,23 @@ static int tclcdb2ObjCmd(
 		case CDB2_OK: {
 		    valuePtr = Tcl_NewBooleanObj(1);
 		    MAYBE_OUT_OF_MEMORY(valuePtr);
-
-		    Tcl_IncrRefCount(valuePtr);
-		    Tcl_SetObjResult(interp, valuePtr);
-		    Tcl_DecrRefCount(valuePtr);
 		    break;
 		}
 		case CDB2_OK_DONE: {
 		    valuePtr = Tcl_NewBooleanObj(0);
 		    MAYBE_OUT_OF_MEMORY(valuePtr);
-
-		    Tcl_IncrRefCount(valuePtr);
-		    Tcl_SetObjResult(interp, valuePtr);
-		    Tcl_DecrRefCount(valuePtr);
 		    break;
 		}
 		default: {
 		    AppendCdb2ErrorMessage(interp, rc, pCdb2);
 		    code = TCL_ERROR;
-		    break;
+		    goto done;
 		}
 	    }
+
+	    Tcl_IncrRefCount(valuePtr);
+	    Tcl_SetObjResult(interp, valuePtr);
+	    Tcl_DecrRefCount(valuePtr);
 	    break;
 	}
 	case OPT_OPEN: {
