@@ -2005,7 +2005,7 @@ static int tclcdb2ObjCmd(
 
 	    static int *effectIntPtrs[] = {
 		NULL, NULL, NULL, NULL, NULL
-	    }
+	    };
 
 	    effectIntPtrs[0] = &effects.num_affected;
 	    effectIntPtrs[1] = &effects.num_selected;
