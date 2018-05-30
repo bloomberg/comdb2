@@ -2105,11 +2105,21 @@ static int tclcdb2ObjCmd(
 
 	    switch (rc) {
 		case CDB2_OK: {
-		    Tcl_SetObjResult(interp, Tcl_NewBooleanObj(1));
+		    valuePtr = Tcl_NewBooleanObj(1);
+		    MAYBE_OUT_OF_MEMORY(valuePtr);
+
+		    Tcl_IncrRefCount(valuePtr);
+		    Tcl_SetObjResult(interp, valuePtr);
+		    Tcl_DecrRefCount(valuePtr);
 		    break;
 		}
 		case CDB2_OK_DONE: {
-		    Tcl_SetObjResult(interp, Tcl_NewBooleanObj(0));
+		    valuePtr = Tcl_NewBooleanObj(0);
+		    MAYBE_OUT_OF_MEMORY(valuePtr);
+
+		    Tcl_IncrRefCount(valuePtr);
+		    Tcl_SetObjResult(interp, valuePtr);
+		    Tcl_DecrRefCount(valuePtr);
 		    break;
 		}
 		default: {
@@ -2265,23 +2275,25 @@ static int tclcdb2ObjCmd(
 
 done:
     if (code != TCL_OK) {
-	FreeBoundValue(pBoundValue);
-	pBoundValue = NULL;
+	if (pBoundValue != NULL) {
+	    FreeBoundValue(pBoundValue);
+	    pBoundValue = NULL;
+	}
+
+	if (valuePtr != NULL) {
+	    Tcl_DecrRefCount(valuePtr);
+	    valuePtr = NULL;
+	}
+
+	if (listPtr != NULL) {
+	    Tcl_DecrRefCount(listPtr);
+	    listPtr = NULL;
+	}
     }
 
     if (types != NULL) {
 	ckfree((char *) types);
 	types = NULL;
-    }
-
-    if (valuePtr != NULL) {
-	Tcl_DecrRefCount(valuePtr);
-	valuePtr = NULL;
-    }
-
-    if (listPtr != NULL) {
-	Tcl_DecrRefCount(listPtr);
-	listPtr = NULL;
     }
 
     Tcl_MutexUnlock(&packageMutex);
