@@ -4151,6 +4151,7 @@ SrcList *sqlite3SrcListAppend(
   }
   pItem->zName = sqlite3NameFromToken(db, pTable);
   pItem->zDatabase = sqlite3NameFromToken(db, pDatabase);
+
   return pList;
 }
 

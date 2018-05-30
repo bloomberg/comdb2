@@ -5264,6 +5264,7 @@ int sqlite3Select(
   }
 #endif
 
+
   /* Try to flatten subqueries in the FROM clause up into the main query
   */
 #if !defined(SQLITE_OMIT_SUBQUERY) || !defined(SQLITE_OMIT_VIEW)
@@ -5303,6 +5304,12 @@ int sqlite3Select(
   ** does not already exist */
   v = sqlite3GetVdbe(pParse);
   if( v==0 ) goto select_end;
+
+  extern char *sqlite_struct_to_string(Vdbe*,Select*);
+
+  char *sql = sqlite_struct_to_string(v, p);
+  fprintf(stderr, "RECONSTRUCTED: \"%s\"\n", (sql)?sql:"NULL");
+  sqlite3DbFree(db, sql);
 
 #ifndef SQLITE_OMIT_COMPOUND_SELECT
   /* Handle compound SELECT statements using the separate multiSelect()
