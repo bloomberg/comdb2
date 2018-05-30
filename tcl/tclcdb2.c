@@ -49,19 +49,6 @@
 						(TCL_RESULT_SIZE) + 1
 #endif /* FIXED_BUFFER_SIZE */
 
-#if !defined(Tcl_ResetHashKey)
-#define Tcl_ResetHashKey(tablePtr, h) \
-    do {                                                        \
-	if ((tablePtr)->keyType == TCL_ONE_WORD_KEYS ||         \
-		(tablePtr)->keyType == TCL_CUSTOM_PTR_KEYS) {   \
-	    (h)->key.oneWordValue = NULL;                       \
-	} else if ((h)->key.string != NULL) {                   \
-            size_t keyLength = strlen((h)->key.string);         \
-	    memset((h)->key.string, 0, keyLength);              \
-	}                                                       \
-    } while (0);
-#endif /* Tcl_ResetHashKey */
-
 #if !defined(MAYBE_OUT_OF_MEMORY)
 #define MAYBE_OUT_OF_MEMORY(a)                                  \
     do {                                                        \
@@ -172,8 +159,8 @@ static int		GetValueStructFromObj(Tcl_Interp *interp, int type,
 			    void *valuePtr);
 static cdb2_hndl_tp *	GetCdb2HandleByName(Tcl_Interp *interp,
 			    const char *name);
-static const char *	AddCdb2HandleByName(Tcl_Interp *interp,
-			    cdb2_hndl_tp *pCdb2);
+static int		AddCdb2HandleByName(Tcl_Interp *interp,
+			    cdb2_hndl_tp *pCdb2, char *name);
 static int		RemoveCdb2HandleByName(Tcl_Interp *interp,
 			    const char *name);
 static void		AppendCdb2ErrorMessage(Tcl_Interp *interp, int rc,
@@ -954,70 +941,67 @@ static cdb2_hndl_tp *GetCdb2HandleByName(
  * AddCdb2HandleByName --
  *
  *	This function creates an assocation between a CDB2 connection
- *	handle and the specified Tcl interpreter.
+ *	handle and the specified Tcl interpreter.  The output buffer,
+ *	when specified, must be at least (FIXED_BUFFER_SIZE + 1) bytes
+ *	in size.
  *
  * Results:
- *	The name used to identify the CDB2 connection handle within the
- *	Tcl interpreter -OR- NULL if it cannot be added for any reason.
+ *	A standard Tcl result.
  *
  * Side effects:
- *	Upon failure, the Tcl inerpreter result may be modified to add
- *	an error message.
+ *	The name used to identify the CDB2 connection handle within
+ *	the Tcl interpreter is written into the buffer specified by
+ *	the associated parameter, if applicable.
  *
  *----------------------------------------------------------------------
  */
 
-static const char *AddCdb2HandleByName(
+static int AddCdb2HandleByName(
     Tcl_Interp *interp,
-    cdb2_hndl_tp *pCdb2)
+    cdb2_hndl_tp *pCdb2,
+    char *name)
 {
-    char buffer[FIXED_BUFFER_SIZE + 1];
-    char *name;
     Tcl_HashTable *hTablePtr;
     Tcl_HashEntry *hPtr;
     int wasNew;
+    char buffer[FIXED_BUFFER_SIZE + 1];
 
     if (!IsValidInterp(interp))
-	return NULL;
+	return TCL_ERROR;
 
     if (pCdb2 == NULL) {
 	Tcl_AppendResult(interp, "can't add: invalid connection", NULL);
-	return NULL;
+	return TCL_ERROR;
     }
 
     hTablePtr = GET_AUXILIARY_DATA("tclcdb2_handles");
 
     if (hTablePtr == NULL) {
 	Tcl_AppendResult(interp, "can't add: missing table", NULL);
-	return NULL;
+	return TCL_ERROR;
     }
 
     memset(buffer, 0, sizeof(buffer));
     snprintf(buffer, sizeof(buffer), "cdb2_%p", pCdb2);
 
-    name = strdup(buffer);
-
-    if (name == NULL) {
-	Tcl_AppendResult(interp, "can't add: out of memory", NULL);
-	return NULL;
-    }
-
-    hPtr = Tcl_CreateHashEntry(hTablePtr, name, &wasNew);
+    hPtr = Tcl_CreateHashEntry(hTablePtr, buffer, &wasNew);
 
     if (hPtr == NULL) {
 	Tcl_AppendResult(interp, "can't add: entry not created", NULL);
-	free(name);
-	return NULL;
+	return TCL_ERROR;
     }
 
     if (!wasNew) {
 	Tcl_AppendResult(interp, "can't add: expected new entry", NULL);
-	free(name);
-	return NULL;
+	return TCL_ERROR;
     }
 
     Tcl_SetHashValue(hPtr, pCdb2);
-    return name;
+
+    if (name != NULL)
+	memcpy(name, buffer, sizeof(buffer));
+
+    return TCL_OK;
 }
 
 /*
@@ -1044,7 +1028,6 @@ static int RemoveCdb2HandleByName(
 {
     Tcl_HashTable *hTablePtr;
     Tcl_HashEntry *hPtr;
-    char *key;
 
     if (!IsValidInterp(interp))
 	return TCL_ERROR;
@@ -1066,13 +1049,6 @@ static int RemoveCdb2HandleByName(
     if (hPtr == NULL) {
 	Tcl_AppendResult(interp, "can't remove: entry not found", NULL);
 	return TCL_ERROR;
-    }
-
-    key = Tcl_GetHashKey(hTablePtr, hPtr);
-
-    if (key != NULL) {
-	free(key); key = NULL;
-	Tcl_ResetHashKey(hTablePtr, hPtr);
     }
 
     Tcl_DeleteHashEntry(hPtr);
@@ -1375,11 +1351,6 @@ int Tclcdb2_Unload(
 		    pCdb2 = NULL;
 		    Tcl_SetHashValue(hPtr, pCdb2);
 		}
-
-		if (name != NULL) {
-		    free(name); name = NULL;
-		    Tcl_ResetHashKey(hTablePtr, hPtr);
-		}
 	    }
 
 	    Tcl_DeleteHashTable(hTablePtr);
@@ -1454,7 +1425,6 @@ static int tclcdb2ObjCmd(
     char buffer[FIXED_BUFFER_SIZE + 1];
     int code = TCL_OK;
     int option;
-    const char *name;
     cdb2_hndl_tp *pCdb2;
     int colIndex = 0;
     int rc;
@@ -1724,7 +1694,7 @@ static int tclcdb2ObjCmd(
 		goto done;
 	    }
 
-	    code = RemoveCdb2HandleByName(interp, name);
+	    code = RemoveCdb2HandleByName(interp, Tcl_GetString(objv[2]));
 
 	    if (code != TCL_OK)
 		goto done;
@@ -2155,14 +2125,12 @@ static int tclcdb2ObjCmd(
 		goto done;
 	    }
 
-	    name = AddCdb2HandleByName(interp, pCdb2);
+	    code = AddCdb2HandleByName(interp, pCdb2, buffer);
 
-	    if (name == NULL) {
-		code = TCL_ERROR;
+	    if (code != TCL_OK)
 		goto done;
-	    }
 
-	    Tcl_SetResult(interp, (char *)name, TCL_VOLATILE);
+	    Tcl_SetResult(interp, (char *)buffer, TCL_VOLATILE);
 	    break;
 	}
 	case OPT_RUN: {
