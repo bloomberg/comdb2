@@ -761,6 +761,10 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 printf("AZ: Creating genid 0x%llx\n", genid);
             }
             sess->last_genid = genid;
+            char mus[37];
+            comdb2uuidstr(key.uuid, mus);
+            printf("%lx:%s: rqid=%llx uuid=%s NOTSAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
+                    pthread_self(), __func__, key.rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, genid, seq);
             return 0; //don't put in temp table
         }
 
@@ -777,9 +781,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             buf_no_net_get(&genid, sizeof(genid), p_buf, p_buf_end);
             printf("AZ: Receiving genid 0x%llx\n", genid);
             assert(genid == sess->last_genid);
-            key.genid = genid;
+            key.genid = sess->last_genid;
             key.stripe = get_dtafile_from_genid(key.genid);
-            sess->last_genid = key.genid;
             assert (key.stripe >= 0);
         } else if (type == OSQL_INSERT || type == OSQL_INSREC) {
             key.genid = sess->last_genid;
@@ -796,6 +799,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         } else if (type == OSQL_DELIDX || type == OSQL_INSIDX || type == OSQL_UPDCOLS) {
             /* part idx and updcol needs to get the genid of the previous insrec */
             key.genid = sess->last_genid;
+            key.stripe = get_dtafile_from_genid(key.genid);
         }
     }
 
