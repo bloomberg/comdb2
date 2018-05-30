@@ -157,7 +157,7 @@ static int		GetValueFromName(Tcl_Interp *interp,
 static int		GetNameFromValue(Tcl_Interp *interp,
 			    int value, struct NameAndValue pairs[],
 			    const char **namePtr);
-static int		GetFlagsFromList(Tcl_Interp *interp, Tcl_Obj listPtr,
+static int		GetFlagsFromList(Tcl_Interp *interp, Tcl_Obj *listPtr,
 			    struct NameAndValue pairs[], int *flagsPtr);
 static int		ProcessStructFieldsFromElements(Tcl_Interp *interp,
 			    Tcl_Obj **elemPtrs, int elemCount,
@@ -394,7 +394,7 @@ static int GetFlagsFromList(
     int *flagsPtr)			/* OUT: OR'd flags value. */
 {
     int index, objc;
-    Tcl_Obj *objv;
+    Tcl_Obj **objv;
     int flags = 0;
 
     if (Tcl_ListObjGetElements(interp, listPtr, &objc, &objv) != TCL_OK) {
@@ -2134,7 +2134,7 @@ static int tclcdb2ObjCmd(
 
 	    if (objc == 4) {
 		int listObjc;
-		Tcl_Obj *listObjv; /* NOTE: Do not free. */
+		Tcl_Obj **listObjv; /* NOTE: Do not free. */
 
 		code = Tcl_ListObjGetElements(interp, objv[3],
 		    &listObjc, &listObjv);
