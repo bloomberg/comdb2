@@ -50,15 +50,14 @@
 
 static int bdb_prim_delkey_int(bdb_state_type *bdb_state, tran_type *tran,
                                void *ixdta, int ixnum, int rrn, long long genid,
-                               int *bdberr)
+                               int isnull, int *bdberr)
 {
     int rc;
+    DBT dbt_key;
     DBC *dbcp;
     unsigned int keydata[3];
     unsigned int *iptr;
-    unsigned char keymax[BDB_KEY_MAX + sizeof(unsigned long long)];
-    unsigned long long masked_genid;
-    int klen;
+    void *pKeyMaxBuf = 0;
 
     if (bdb_write_preamble(bdb_state, bdberr))
         return -1;
@@ -72,18 +71,12 @@ static int bdb_prim_delkey_int(bdb_state_type *bdb_state, tran_type *tran,
         abort();
     }
 
-    memcpy(keymax, ixdta, bdb_state->ixlen[ixnum]);
+    bdb_maybe_use_genid_for_key(bdb_state, &dbt_key, ixdta, ixnum, genid, isnull, &pKeyMaxBuf);
 
-    klen = bdb_state->ixlen[ixnum];
+    rc = ll_key_del(bdb_state, tran, ixnum, dbt_key.data, dbt_key.size, rrn, genid, NULL);
 
-    if (bdb_keycontainsgenid(bdb_state, ixnum)) {
-        masked_genid = get_search_genid(bdb_state, genid);
-        memcpy(keymax + bdb_state->ixlen[ixnum], &masked_genid,
-               sizeof(unsigned long long));
-        klen += sizeof(unsigned long long);
-    }
-
-    rc = ll_key_del(bdb_state, tran, ixnum, keymax, klen, rrn, genid, NULL);
+    if (pKeyMaxBuf)
+        free(pKeyMaxBuf);
 
     if (rc != 0) {
         switch (rc) {
@@ -106,23 +99,23 @@ static int bdb_prim_delkey_int(bdb_state_type *bdb_state, tran_type *tran,
 }
 
 int bdb_prim_delkey(bdb_state_type *bdb_state, tran_type *tran, void *ixdta,
-                    int ixnum, int rrn, int *bdberr)
+                    int ixnum, int rrn, int isnull, int *bdberr)
 {
     int rc;
 
     rc = bdb_prim_delkey_int(bdb_state, tran, ixdta, ixnum, rrn, 0, /* genid */
-                             bdberr);
+                             isnull, bdberr);
 
     return rc;
 }
 
 int bdb_prim_delkey_genid(bdb_state_type *bdb_state, tran_type *tran,
                           void *ixdta, int ixnum, int rrn,
-                          unsigned long long genid, int *bdberr)
+                          unsigned long long genid, int isnull, int *bdberr)
 {
     int rc;
 
-    rc = bdb_prim_delkey_int(bdb_state, tran, ixdta, ixnum, rrn, genid, bdberr);
+    rc = bdb_prim_delkey_int(bdb_state, tran, ixdta, ixnum, rrn, genid, isnull, bdberr);
 
     return rc;
 }

@@ -884,9 +884,16 @@ void showdbenv(struct dbenv *dbenv)
         logmsg(LOGMSG_ERROR, "   data reclen %-3d bytes\n", usedb->lrl);
 
         for (ii = 0; ii < usedb->nix; ii++) {
-            logmsg(LOGMSG_USER, "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c\n",
-                   ii, usedb->ix_keylen[ii], (usedb->ix_dupes[ii] ? 'y' : 'n'),
-                   (usedb->ix_recnums[ii] ? 'y' : 'n'));
+            logmsg(LOGMSG_USER,
+                   "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c"
+                   " datacopy? %c collattr? %c uniqnulls %c disabled %c\n",
+                   ii, usedb->ix_keylen[ii],
+                   (usedb->ix_dupes[ii] ? 'y' : 'n'),
+                   (usedb->ix_recnums[ii] ? 'y' : 'n'),
+                   (usedb->ix_datacopy[ii] ? 'y' : 'n'),
+                   (usedb->ix_collattr[ii] ? 'y' : 'n'),
+                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'),
+                   (usedb->ix_disabled[ii] ? 'y' : 'n'));
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
@@ -1610,18 +1617,13 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             tbl->has_datacopy_ix = 1;
         }
 
-        tbl->ix_nullsallowed[ii] = 0;
-        /*
-          XXX todo
-          tbl->ix_nullsallowed[ii]=dyns_is_idx_nullsallowed(ii);
-          if (tbl->ix_nullallowed[ii]<0)
-          {
-          fprintf(stderr,"cant find index %d datacopy in csc schema %s\n",
-          ii,tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-          }
-        */
+        tbl->ix_nullsallowed[ii] = dyns_is_idx_uniqnulls(ii);
+        if (tbl->ix_nullsallowed[ii] < 0) {
+          logmsg(LOGMSG_ERROR, "cant find index %d uniqnulls in csc schema %s\n",
+                  ii, tblname);
+          cleanup_newdb(tbl);
+          return NULL;
+        }
     }
     tbl->n_rev_constraints =
         0; /* this will be initialized at verification time */
@@ -3770,7 +3772,9 @@ static int init(int argc, char **argv)
 
     /* some dbs have lots of tables and spew on startup.  this just wastes
      * peoples time shunting spew */
-    /*showdbenv(thedb);*/
+    if (getenv("CDB2_SHOW_DBENV")) {
+        showdbenv(thedb);
+    }
 
     if (gbl_net_max_queue) {
         net_set_max_queue(thedb->handle_sibling, gbl_net_max_queue);

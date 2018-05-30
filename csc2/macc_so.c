@@ -801,6 +801,8 @@ void key_setprimary(void) { workkeyflag |= PRIMARY; }
 
 void key_setdatakey(void) { workkeyflag |= DATAKEY; }
 
+void key_setuniqnulls(void) { workkeyflag |= UNIQNULLS; }
+
 void key_piece_clear() /* used by parser, clears work key */
 {
     workkey = 0;          /* clear work key */
@@ -854,6 +856,11 @@ static void key_add_comn(int ix, char *tag, char *exprname,
 #if 1
     if ((workkeyflag & DUPKEY) && (workkeyflag & PRIMARY)) {
         csc2_error("ERROR: DUPLICATES NOT ALLOWED ON PRIMARY KEY\n");
+        any_errors++;
+        return;
+    }
+    if ((workkeyflag & DUPKEY) && (workkeyflag & UNIQNULLS)) {
+        csc2_error("ERROR: DUPLICATES NOT ALLOWED ON UNIQUE NULLS\n");
         any_errors++;
         return;
     }
@@ -2486,8 +2493,8 @@ int dyns_form_key(int index, char *record, int recsz, char *key, int keysize)
     return 0;
 }
 
-/* is key duplicate? */
-int dyns_is_idx_dup(int index)
+/* does key have the specified flags? */
+static int dyns_is_idx_flagged(int index, int flags)
 {
     int lastix = 0, i = 0;
     if (index < 0 || index >= numix()) {
@@ -2499,71 +2506,41 @@ int dyns_is_idx_dup(int index)
         lastix = keyixnum[i];
         if (keyixnum[i] != index)
             continue;
-        if (ixflags[keyixnum[i]] & DUPKEY)
+        if (ixflags[keyixnum[i]] & flags)
             return 1;
         break;
     }
     return 0;
+}
+
+/* is key duplicate? */
+int dyns_is_idx_dup(int index)
+{
+    return dyns_is_idx_flagged(index, DUPKEY);
 }
 
 /* is key copy-data key? */
 int dyns_is_idx_datacopy(int index)
 {
-    int lastix = 0, i = 0;
-    if (index < 0 || index >= numix()) {
-        return -1;
-    }
-    for (lastix = -1, i = 0; i < numkeys(); i++) {
-        if (lastix == keyixnum[i])
-            continue;
-        lastix = keyixnum[i];
-        if (keyixnum[i] != index)
-            continue;
-        if (ixflags[keyixnum[i]] & DATAKEY)
-            return 1;
-        break;
-    }
-    return 0;
+    return dyns_is_idx_flagged(index, DATAKEY);
 }
 
 /* is key duplicate? */
 int dyns_is_idx_primary(int index)
 {
-    int lastix = 0, i = 0;
-    if (index < 0 || index >= numix()) {
-        return -1;
-    }
-    for (lastix = -1, i = 0; i < numkeys(); i++) {
-        if (lastix == keyixnum[i])
-            continue;
-        lastix = keyixnum[i];
-        if (keyixnum[i] != index)
-            continue;
-        if (ixflags[keyixnum[i]] & PRIMARY)
-            return 1;
-        break;
-    }
-    return 0;
+    return dyns_is_idx_flagged(index, PRIMARY);
 }
 
 /* does this index have recnums? */
 int dyns_is_idx_recnum(int index)
 {
-    int lastix = 0, i = 0;
-    if (index < 0 || index >= numix()) {
-        return -1;
-    }
-    for (lastix = -1, i = 0; i < numkeys(); i++) {
-        if (lastix == keyixnum[i])
-            continue;
-        lastix = keyixnum[i];
-        if (keyixnum[i] != index)
-            continue;
-        if (ixflags[keyixnum[i]] & RECNUMS)
-            return 1;
-        break;
-    }
-    return 0;
+    return dyns_is_idx_flagged(index, RECNUMS);
+}
+
+/* does this index treat all NULL values are UNIQUE? */
+int dyns_is_idx_uniqnulls(int index)
+{
+    return dyns_is_idx_flagged(index, UNIQNULLS);
 }
 
 int dyns_get_idx_tag(int index, char *tag, int tlen, char **where)

@@ -36,6 +36,7 @@
 
 #include "fwd_types.h"
 #include "bdb_net.h"
+
 #include <assert.h>
 /*#include "protobuf/sqlresponse.pb-c.h"*/
 
@@ -733,11 +734,11 @@ int bdb_prim_addkey_genid(bdb_state_type *bdb_handle, tran_type *tran,
                           int isnull, int *bdberr);
 int bdb_prim_delkey_genid(bdb_state_type *bdb_handle, tran_type *tran,
                           void *ixdta, int ixnum, int rrn,
-                          unsigned long long genid, int *bdberr);
+                          unsigned long long genid, int isnull, int *bdberr);
 int bdb_prim_updkey_genid(bdb_state_type *bdb_state, tran_type *tran, void *key,
                           int keylen, int ixnum, unsigned long long oldgenid,
                           unsigned long long genid, void *dta, int dtalen,
-                          int *bdberr);
+                          int isnull, int *bdberr);
 
 int bdb_prim_upgrade(bdb_state_type *bdb_state, tran_type *tran, void *newdta,
                      int newdtaln, unsigned long long oldgenid, int *bdberr);
@@ -1625,7 +1626,7 @@ int bdb_user_password_delete(tran_type *tran, char *user);
 int bdb_user_get_all(char ***users, int *num);
 
 int bdb_verify(
-    SBUF2 *sb, bdb_state_type *bdb_state,
+    SBUF2 *sb, bdb_state_type *bdb_state, void *db_table,
     int (*formkey_callback)(void *parm, void *dta, void *blob_parm, int ix,
                             void *keyout, int *keysz),
     int (*get_blob_sizes_callback)(void *parm, void *dta, int blobs[16],
