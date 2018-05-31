@@ -1189,6 +1189,7 @@ static void FreeParameterValues(
 	Tcl_DeleteHashTable(hTablePtr);
 	ckfree((char *) hTablePtr);
 	hTablePtr = NULL;
+	SET_AUXILIARY_DATA("tclcdb2_params", hTablePtr);
     }
 }
 
