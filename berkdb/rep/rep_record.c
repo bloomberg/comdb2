@@ -607,7 +607,6 @@ static void *apply_thread(void *arg)
         log_more_count = queue_log_more_count;
         log_fill_count = queue_log_fill_count;
         pthread_mutex_unlock(&rep_queue_lock);
-        bdb_get_the_readlock("apply_thread", __func__, __LINE__);
         get_master_lsn(dbenv->app_private, &master_lsn);
 
         MUTEX_LOCK(dbenv, db_rep->db_mutexp);
