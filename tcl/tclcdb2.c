@@ -1089,22 +1089,30 @@ static void AppendCdb2ErrorMessage(
     int rc,			/* The CDB2 return code. */
     cdb2_hndl_tp *pCdb2)	/* Connection handle, may be NULL. */
 {
-    char intBuf[TCL_INTEGER_SPACE + 1];
+    int fullErrors = 0;
 
     if (!IsValidInterp(interp))
 	return;
 
-    memset(intBuf, 0, sizeof(intBuf));
-    snprintf(intBuf, sizeof(intBuf), "%d", rc);
+    if (Tcl_GetVar2(interp, "cdb2", "fullErrors", TCL_GLOBAL_ONLY) != NULL)
+	fullErrors = 1;
 
-    Tcl_AppendResult(interp, " cdb2 ",
-	(rc == CDB2_OK) ? "success" : "failure", " (rc=", intBuf, ")",
-	NULL);
+    if (fullErrors) {
+	char intBuf[TCL_INTEGER_SPACE + 1];
+
+	memset(intBuf, 0, sizeof(intBuf));
+	snprintf(intBuf, sizeof(intBuf), "%d", rc);
+
+	Tcl_AppendResult(interp, " cdb2 ",
+	    (rc == CDB2_OK) ? "success" : "failure", " (rc=", intBuf, ")",
+	    NULL);
+    }
 
     if (pCdb2 != NULL)
 	Tcl_AppendResult(interp, cdb2_errstr(pCdb2), NULL);
 
-    Tcl_AppendResult(interp, "\n", NULL);
+    if (fullErrors)
+        Tcl_AppendResult(interp, "\n", NULL);
 }
 
 /*
