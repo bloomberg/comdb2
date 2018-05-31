@@ -247,6 +247,14 @@ retry_add:
                 do {
                     ret = cdb2_next_record(sqlh);
                 } while (ret == CDB2_OK);
+
+                if (ret != CDB2_OK_DONE) {
+                    cdb2_run_statement(sqlh, "rollback");
+                    do {
+                        ret = cdb2_next_record(sqlh);
+                    } while (ret == CDB2_OK);
+                    goto retry_add;
+                }
             }
             snprintf(sql, sizeof(sql), "commit");
             ret = cdb2_run_statement(sqlh, sql);
