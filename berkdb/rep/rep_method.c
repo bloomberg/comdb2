@@ -879,6 +879,7 @@ __rep_set_rep_transport(dbenv, eid, f_send)
 	return (0);
 }
 
+extern pthread_mutex_t rep_candidate_lock;
 extern pthread_mutex_t rep_queue_lock;
 extern void send_master_req(DB_ENV *dbenv, const char *func, int line);
 
@@ -994,10 +995,19 @@ restart:
 	tiebreaker = pid ^ sec ^ usec ^ (u_int) rand() ^ P_TO_UINT32(&pid);
 
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-    pthread_mutex_lock(&rep_queue_lock);
+    pthread_mutex_lock(&rep_candidate_lock);
+
 	F_SET(rep, REP_F_EPHASE1 | REP_F_NOARCHIVE);
 	F_CLR(rep, REP_F_TALLY);
-    pthread_mutex_unlock(&rep_queue_lock);
+
+    /* Grab lsn again now that we are a candidate.  The candidate-lock prevents
+     * Our log from being applied until we have resolved this election.  Just
+     * use 'current' lsn for the non-committed-gen case as it's broken anyway.*/
+
+	if (use_committed_gen)
+		lsn = rep->committed_lsn;
+
+    pthread_mutex_unlock(&rep_candidate_lock);
 
     static uint32_t last_egen = 0;
     if(last_egen && last_egen >= rep->egen)
@@ -1097,10 +1107,10 @@ restart:
 				    "Counted my vote %d", rep->votes);
 #endif
 		}
-        pthread_mutex_lock(&rep_queue_lock);
+        pthread_mutex_lock(&rep_candidate_lock);
 		F_SET(rep, REP_F_EPHASE2);
 		F_CLR(rep, REP_F_EPHASE1);
-        pthread_mutex_unlock(&rep_queue_lock);
+        pthread_mutex_unlock(&rep_candidate_lock);
 	}
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	if (send_vote == db_eid_invalid) {

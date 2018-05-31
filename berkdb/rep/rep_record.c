@@ -410,6 +410,7 @@ struct repdb_rec {
     int size;
 };
 
+pthread_mutex_t rep_candidate_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t rep_queue_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
 static pthread_cond_t release_cond = PTHREAD_COND_INITIALIZER;
@@ -440,7 +441,6 @@ static void *apply_thread(void *arg)
 {
     int ret, rc, log_more_count, log_fill_count, now;
     int i_am_replicant;
-    u_int32_t log_max;
     uint32_t more_behind_count = 0;
 	LOG *lp;
 	DB_LOG *dblp;
@@ -468,12 +468,18 @@ static void *apply_thread(void *arg)
             gbl_max_apply_dequeue : 100000;
         DBT rec = {0};
         DB_LSN ret_lsnp;
-        dbenv->get_lg_max(dbenv, &log_max);
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_nsec += (pollms * 1000000);
         ts.tv_sec += (ts.tv_nsec / 1000000000);
         ts.tv_nsec %= 1000000000;
         ret = pthread_cond_timedwait(&queue_cond, &rep_queue_lock, &ts);
+
+        /* Lock order dance */
+        pthread_mutex_unlock(&rep_queue_lock);
+        bdb_get_the_readlock("apply_thread", __func__, __LINE__);
+        pthread_mutex_lock(&rep_queue_lock);
+        pthread_mutex_lock(&rep_candidate_lock);
+
         while (!IN_ELECTION_TALLY(rep) && (max_dequeue-- > 0) &&
                 (q = listc_rtl(&log_queue))) {
             pthread_cond_broadcast(&release_cond);
@@ -514,12 +520,13 @@ static void *apply_thread(void *arg)
             rec.data = q->data;
             rec.size = q->size;
 
-            bdb_get_the_readlock("apply_thread", __func__, __LINE__);
             if (rep->gen == q->gen) {
                 static int last_print = 0;
                 static unsigned long long count = 0;
                 int now;
+
                 ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
+                pthread_mutex_unlock(&rep_candidate_lock);
                 if (ret == 0 || ret == DB_REP_ISPERM) {
                     void bdb_set_seqnum(void *);
                     bdb_set_seqnum(dbenv->app_private);
@@ -572,6 +579,7 @@ static void *apply_thread(void *arg)
                     }
                 }
             } else {
+                pthread_mutex_unlock(&rep_candidate_lock);
                 ret = 0;
             }
             bdb_relthelock(__func__, __LINE__);
@@ -584,16 +592,22 @@ static void *apply_thread(void *arg)
                 free(q->rp);
             }
             free(q);
+
+            bdb_get_the_readlock("apply_thread", __func__, __LINE__);
             pthread_mutex_lock(&rep_queue_lock);
+            pthread_mutex_lock(&rep_candidate_lock);
         }
 
-        if (IN_ELECTION_TALLY(rep))
+        int in_election = IN_ELECTION_TALLY(rep);
+        pthread_mutex_unlock(&rep_candidate_lock);
+
+        if (in_election)
             continue;
 
-        bdb_get_the_readlock("apply_thread", __func__, __LINE__);
         log_more_count = queue_log_more_count;
         log_fill_count = queue_log_fill_count;
         pthread_mutex_unlock(&rep_queue_lock);
+        bdb_get_the_readlock("apply_thread", __func__, __LINE__);
         get_master_lsn(dbenv->app_private, &master_lsn);
 
         MUTEX_LOCK(dbenv, db_rep->db_mutexp);
@@ -2218,8 +2232,11 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			__rep_elect_done(dbenv, rep, vi_egen);
 			//rep->egen = vi_egen;
 		}
-		if (!IN_ELECTION(rep))
+		if (!IN_ELECTION(rep)) {
+            pthread_mutex_lock(&rep_candidate_lock);
 			F_SET(rep, REP_F_TALLY);
+            pthread_mutex_unlock(&rep_candidate_lock);
+        }
 
 		/* Check if this site knows about more sites than we do. */
 		if (vi_nsites > rep->nsites)
@@ -2321,10 +2338,10 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 #endif
 			egen = rep->egen;
 			committed_gen = rep->committed_gen;
-            pthread_mutex_lock(&rep_queue_lock);
+            pthread_mutex_lock(&rep_candidate_lock);
 			F_SET(rep, REP_F_EPHASE2);
 			F_CLR(rep, REP_F_EPHASE1);
-            pthread_mutex_unlock(&rep_queue_lock);
+            pthread_mutex_unlock(&rep_candidate_lock);
 			if (master == rep->eid) {
 				(void)__rep_tally(dbenv, rep, rep->eid,
 					&rep->votes, egen, rep->v2tally_off);

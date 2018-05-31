@@ -663,7 +663,9 @@ __rep_elect_done(dbenv, rep, egen)
 #endif
 
 	inelect = IN_ELECTION_TALLY(rep);
+    pthread_mutex_lock(&rep_candidate_lock);
 	F_CLR(rep, REP_F_EPHASE1 | REP_F_EPHASE2 | REP_F_TALLY);
+    pthread_mutex_unlock(&rep_candidate_lock);
 	rep->sites = 0;
 	rep->votes = 0;
 	if (inelect) {
