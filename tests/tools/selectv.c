@@ -276,9 +276,6 @@ retry_add:
         } else if (ret == 210 /*NOT_DURABLE*/ || ret == -1) {
             fprintf(f, "FAILED TO UPDATE: RET %d, ERR %s\n", ret,
                     cdb2_errstr(sqlh));
-        } else if (ret == CDB2ERR_VERIFY_ERROR /* VERIFY */) {
-            fprintf(f, "FAILED TO UPDATE: RET %d, ERR %s\n", ret,
-                    cdb2_errstr(sqlh));
         } else {
 			fprintf(f, "BUG: FAILED TO UPDATE: RET %d, ERR %s\n", ret,
                     cdb2_errstr(sqlh));
