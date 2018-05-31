@@ -268,7 +268,7 @@ static int GetValueFromName(
 
     if (name == NULL) {
 	if (interp != NULL) {
-	    Tcl_AppendResult(interp, "invalid name", NULL);
+	    Tcl_AppendResult(interp, "invalid name\n", NULL);
 	}
 
 	return TCL_ERROR;
@@ -300,7 +300,7 @@ static int GetValueFromName(
 
     if (interp != NULL) {
 	Tcl_AppendResult(interp,
-	    "value for name \"", name, "\" not found", NULL);
+	    "value for name \"", name, "\" not found\n", NULL);
     }
 
     return TCL_ERROR;
@@ -354,7 +354,7 @@ static int GetNameFromValue(
 	snprintf(intBuf, sizeof(intBuf), "%d", value);
 
 	Tcl_AppendResult(interp,
-	    "name for value \"", intBuf, "\" not found", NULL);
+	    "name for value \"", intBuf, "\" not found\n", NULL);
     }
 
     return TCL_ERROR;
@@ -565,7 +565,7 @@ static int GetListFromValueStruct(
 	    pDateTimeValue = (cdb2_client_datetime_t *)valuePtr;
 
 	    snprintf(stringPtr, stringLength,
-		"sec %d min %d hour %d mday %d mon %d year %d\n"
+		"sec %d min %d hour %d mday %d mon %d year %d "
 		"wday %d yday %d isdst %d msec %u tzname {%s}",
 		pDateTimeValue->tm.tm_sec, pDateTimeValue->tm.tm_min,
 		pDateTimeValue->tm.tm_hour, pDateTimeValue->tm.tm_mday,
@@ -603,7 +603,7 @@ static int GetListFromValueStruct(
 	    pDateTimeUsValue = (cdb2_client_datetimeus_t *)valuePtr;
 
 	    snprintf(stringPtr, stringLength,
-		"sec %d min %d hour %d mday %d mon %d year %d\n"
+		"sec %d min %d hour %d mday %d mon %d year %d "
 		"wday %d yday %d isdst %d usec %u tzname {%s}",
 		pDateTimeUsValue->tm.tm_sec, pDateTimeUsValue->tm.tm_min,
 		pDateTimeUsValue->tm.tm_hour, pDateTimeUsValue->tm.tm_mday,
@@ -721,7 +721,7 @@ static int GetValueStructFromObj(
 
 	    if (elemCount != CDB2_DATETIME_ELEMENTS) {
 		Tcl_AppendResult(interp,
-		    "wrong number of elements for datetime", NULL);
+		    "wrong number of elements for datetime\n", NULL);
 
 		code = TCL_ERROR;
 		goto done;
@@ -749,7 +749,7 @@ static int GetValueStructFromObj(
 
 	    if (elemCount != CDB2_INTERVALYM_ELEMENTS) {
 		Tcl_AppendResult(interp,
-		    "wrong number of elements for intervalym", NULL);
+		    "wrong number of elements for intervalym\n", NULL);
 
 		code = TCL_ERROR;
 		goto done;
@@ -783,7 +783,7 @@ static int GetValueStructFromObj(
 
 	    if (elemCount != CDB2_INTERVALDS_ELEMENTS) {
 		Tcl_AppendResult(interp,
-		    "wrong number of elements for intervalds", NULL);
+		    "wrong number of elements for intervalds\n", NULL);
 
 		code = TCL_ERROR;
 		goto done;
@@ -836,7 +836,7 @@ static int GetValueStructFromObj(
 
 	    if (elemCount != CDB2_DATETIMEUS_ELEMENTS) {
 		Tcl_AppendResult(interp,
-		    "wrong number of elements for datetimeus", NULL);
+		    "wrong number of elements for datetimeus\n", NULL);
 
 		code = TCL_ERROR;
 		goto done;
@@ -870,7 +870,7 @@ static int GetValueStructFromObj(
 
 	    if (elemCount != CDB2_INTERVALDSUS_ELEMENTS) {
 		Tcl_AppendResult(interp,
-		    "wrong number of elements for intervaldsus", NULL);
+		    "wrong number of elements for intervaldsus\n", NULL);
 
 		code = TCL_ERROR;
 		goto done;
@@ -975,14 +975,14 @@ static int AddCdb2HandleByName(
 	return TCL_ERROR;
 
     if (pCdb2 == NULL) {
-	Tcl_AppendResult(interp, "can't add: invalid connection", NULL);
+	Tcl_AppendResult(interp, "can't add: invalid connection\n", NULL);
 	return TCL_ERROR;
     }
 
     hTablePtr = GET_AUXILIARY_DATA("tclcdb2_handles");
 
     if (hTablePtr == NULL) {
-	Tcl_AppendResult(interp, "can't add: missing table", NULL);
+	Tcl_AppendResult(interp, "can't add: missing table\n", NULL);
 	return TCL_ERROR;
     }
 
@@ -992,12 +992,12 @@ static int AddCdb2HandleByName(
     hPtr = Tcl_CreateHashEntry(hTablePtr, buffer, &wasNew);
 
     if (hPtr == NULL) {
-	Tcl_AppendResult(interp, "can't add: entry not created", NULL);
+	Tcl_AppendResult(interp, "can't add: entry not created\n", NULL);
 	return TCL_ERROR;
     }
 
     if (!wasNew) {
-	Tcl_AppendResult(interp, "can't add: expected new entry", NULL);
+	Tcl_AppendResult(interp, "can't add: expected new entry\n", NULL);
 	return TCL_ERROR;
     }
 
@@ -1038,21 +1038,21 @@ static int RemoveCdb2HandleByName(
 	return TCL_ERROR;
 
     if (name == NULL) {
-	Tcl_AppendResult(interp, "can't remove: invalid name", NULL);
+	Tcl_AppendResult(interp, "can't remove: invalid name\n", NULL);
 	return TCL_ERROR;
     }
 
     hTablePtr = GET_AUXILIARY_DATA("tclcdb2_handles");
 
     if (hTablePtr == NULL) {
-	Tcl_AppendResult(interp, "can't remove: missing table", NULL);
+	Tcl_AppendResult(interp, "can't remove: missing table\n", NULL);
 	return TCL_ERROR;
     }
 
     hPtr = Tcl_FindHashEntry(hTablePtr, name);
 
     if (hPtr == NULL) {
-	Tcl_AppendResult(interp, "can't remove: entry not found", NULL);
+	Tcl_AppendResult(interp, "can't remove: entry not found\n", NULL);
 	return TCL_ERROR;
     }
 
@@ -1520,7 +1520,7 @@ static int tclcdb2ObjCmd(
 
 	    if (!wasNew) {
 		Tcl_AppendResult(interp, "parameter \"", buffer,
-		    "\" was already bound", NULL);
+		    "\" was already bound\n", NULL);
 
 		code = TCL_ERROR;
 		goto done;
@@ -1844,7 +1844,7 @@ static int tclcdb2ObjCmd(
 	    pColValue = cdb2_column_value(pCdb2, colIndex);
 
 	    if (pColValue == NULL) {
-		Tcl_AppendResult(interp, "invalid column value", NULL);
+		Tcl_AppendResult(interp, "invalid column value\n", NULL);
 		code = TCL_ERROR;
 		goto done;
 	    }
