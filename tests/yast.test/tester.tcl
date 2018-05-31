@@ -85,67 +85,97 @@ set tcl_precision 15
 set test_name [string map {".test" ""} $argv0]
 set comdb2_name [lindex $argv 0]
 set file_path [lindex $argv 1]
-set cdb2sql [lindex $argv 2]
+set cdb2sql [lindex $argv 2]; # NO LONGER USED
 set cdb2_config [lindex $argv 3]
+set cdb2_debug [string is true -strict [lindex $argv 4]]
+set cdb2_trace [string is true -strict [lindex $argv 5]]
 set current_test_name ""
 set cluster ""
 set gbl_scan -99
 set gbl_sort -99
 set gbl_count -99
 set gbl_find -99
-variable sqlpipe
-set pipe_closed 1
-set pipe_counter 0
 set gbl_schemachange_delay 10
 
-proc open_sqlpipe {} {
-  global sqlpipe
-  global comdb2_name
-  global cdb2sql
-  global cdb2_config
-  global pipe_closed
-
-  if {$pipe_closed == 1} {
-    set sqlpipe [open "| $cdb2sql --tabs --cdb2cfg $cdb2_config $comdb2_name default -" r+]
-  }
-  set pipe_closed 0
+proc try_for_tclcdb2_package {} {
+    if {![info exists ::env(BUILDDIR)]} {
+        error "missing BUILDDIR environment variable, which is required for this test"
+    }
+    set directory [file join $::env(BUILDDIR) tcl]
+    if {![info exists ::auto_path] || [lsearch -exact $::auto_path $directory] == -1} {
+        lappend ::auto_path $directory
+    }
+    package require tclcdb2
 }
 
-proc close_sqlpipe {} {
-  global sqlpipe
-  global pipe_closed
+try_for_tclcdb2_package
 
-  if {$pipe_closed == 0} {
-    flush $sqlpipe
-    close $sqlpipe
-  }
-  set pipe_closed 1
+proc maybe_quote_value { db index } {
+    if {[catch {cdb2 colvalue $db $index} value] == 0} {
+        set null false
+    } elseif {$value eq "invalid column value"} {
+        set null true
+    } else {
+        error $value; # FAIL: Unknown error.
+    }
+
+    switch -exact [cdb2 coltype $db $index] {
+        datetime -
+        datetimeus -
+        intervalds -
+        intervaldsus -
+        intervalym {
+            #
+            # NOTE: Apparently, these types require the value be wrapped
+            #       in quotes.
+            #
+            return [expr {$null ? "NULL" : "\"[string map [list \" \\\"] $value]\""}]
+        }
+        default {
+            return [expr {$null ? "NULL" : $value}]
+        }
+    }
 }
 
-proc write_sqlpipe {query} {
-  global sqlpipe
-  global pipe_closed
-  global pipe_counter
-
-  if {$pipe_counter > 1000} {
-    close_sqlpipe
-    set pipe_counter 0 
-  }
-  set pipe_counter [expr $pipe_counter+1]
-
-  if {$pipe_closed == 1} {
-    open_sqlpipe
-  }
-  puts $sqlpipe $query
+proc do_cdb2_defquery { sql {tabs false} {costVarName ""} } {
+    return [uplevel 1 [list do_cdb2_query $::comdb2_name $sql default $tabs $costVarName]]
 }
 
-proc flush_sqlpipe {} {
-  global sqlpipe
-  global pipe_closed
+proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
+    set result ""
 
-  if {$pipe_closed == 0} {
-    flush $sqlpipe
-  }
+    cdb2 configure $::cdb2_config true
+    set db [cdb2 open $dbName $tier]
+    if {$::cdb2_debug} {cdb2 debug $db}
+
+    cdb2 run $db $sql
+
+    while {[cdb2 next $db]} {
+        if {[string length $result] > 0} {append result \n}
+        if {!$tabs} {append result \(}
+        for {set index 0} {$index < [cdb2 colcount $db]} {incr index} {
+            if {$index > 0} {append result [expr {$tabs ? "\t" : ", "}]}
+            if {$tabs} {
+                append result [maybe_quote_value $db $index]
+            } else {
+                append result [cdb2 colname $db $index]=[maybe_quote_value $db $index]
+            }
+        }
+        if {!$tabs} {append result \)}
+    }
+
+    cdb2 close $db
+
+    if {[string length $costVarName] > 0} {
+        upvar 1 $costVarName cost
+        set cost [do_cdb2_query $db "SELECT comdb2_prevquerycost() AS Cost" $tier true]; # RECURSIVE
+    }
+
+    if {$::cdb2_trace} {
+        puts stdout "\[TCL_CDB2_TRACE\]: \{[info level [info level]]\} returning \{$result\}..."
+    }
+
+    return $result
 }
 
 # If the pager codec is available, create a wrapper for the [sqlite3] 
@@ -239,17 +269,8 @@ proc get_csc2_file_name {name} {
 # "sort" or "nosort" keyword (as in the cksort procedure above) then
 # it appends the ::sqlite_query_plan variable.
 proc queryplan {sql} {
-  global comdb2_name
-  global cdb2sql
-  global cdb2_config
-
   set data [execsql $sql cksort]
-  set plan_name [get_file_name "plan"]
-  set _ [catch {exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default "explain query plan $sql" > $plan_name} _]
-
-  set f [open $plan_name r]
-  set plans [read $f]
-  close $f
+  set plans [do_cdb2_defquery "explain query plan $sql"]
   set plans [split $plans "\n"]
 
   foreach plan $plans {
@@ -469,18 +490,12 @@ if {[info exists cmdlinearg]==0} {
 
 
 
-proc comdb2dumpcsctcl {dbname tbl} {
-  global cdb2sql
-  global cdb2_config
-  #puts "'$dbname' '$tbl'"
-
-	if {$tbl == 0} {
-    #puts "$cdb2sql --tabs --cdb2cfg $cdb2_config $dbname default select name from sqlite_master where type='table' and name not like '%sqlite_stat%'"
-    exec $cdb2sql --tabs --cdb2cfg $cdb2_config $dbname default "select name from sqlite_master where type='table' and name not like '%sqlite_stat%'"
-  } else {
-    #puts "$cdb2sql -tabs --cdb2cfg $cdb2_config $dbname default select csc2 from sqlite_master where type='table' and name='$tbl'"
-    exec $cdb2sql --tabs --cdb2cfg $cdb2_config $dbname default "select csc2 from sqlite_master where type='table' and name='$tbl'"
-  }
+proc comdb2dumpcsctcl {tbl} {
+    if {$tbl == 0} {
+        return [do_cdb2_defquery "select name from sqlite_master where type='table' and name not like '%sqlite_stat%'" true]
+    } else {
+        return [do_cdb2_defquery "select csc2 from sqlite_master where type='table' and name='$tbl'" true]
+    }
 }
 
 
@@ -503,29 +518,26 @@ proc reset_db {} {
   #  db eval $::SETUP_SQL
   #}
 
-  global comdb2_name
   global file_path
   global test_name
-  global cdb2sql
-  global cdb2_config
   global cluster
 
 
-  set tables [comdb2dumpcsctcl $comdb2_name 0]
+  set tables [comdb2dumpcsctcl 0]
   puts tables
   foreach table $tables {
-    set output ""
+      set output ""
       set query "DROP TABLE $table"
-      set rc [catch {exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default  $query} output]
+      set rc [catch {do_cdb2_defquery $query} output]
       if {$rc != 0} {
         puts "failed to drop table: $table \[$output\]"
       }
   }
   set fastinit_stat1 "\"TRUNCATE sqlite_stat1\""
   set fastinit_stat2 "\"TRUNCATE sqlite_stat2\""
-  catch {exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default $fastinit_stat1 }
+  catch {do_cdb2_defquery $fastinit_stat1}
 
-  catch {exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default $fastinit_stat2 }
+  catch {do_cdb2_defquery $fastinit_stat2}
   exec mkdir -p $file_path/$test_name
 }
 reset_db
@@ -704,7 +716,6 @@ proc finish_test {} {
   #catch {db3 close}
   #if {0==[info exists ::SLAVE]} { finalize_testing }
 
-  close_sqlpipe
   finalize_testing 
 }
 proc finalize_testing {} {
@@ -832,16 +843,13 @@ proc show_memstats {} {
 }
 
 proc create_table_as {origquery} {
-  global comdb2_name
-  global cdb2sql
-  global cdb2_config
   global cluster
-	global gbl_schemachange_delay
+  global gbl_schemachange_delay
 
   regexp -nocase {^CREATE TABLE ([[:alnum:]]+) AS (.*)$} $origquery _ dest srcquery
   regexp -nocase {^.* FROM ([[:alnum:]]+).*$} $srcquery _ src
 
-  set schema [comdb2dumpcsctcl $comdb2_name $src]
+  set schema [comdb2dumpcsctcl $src]
   set schema [split $schema "\n"]
   
   set csc2schema ""
@@ -863,24 +871,20 @@ proc create_table_as {origquery} {
   }
   close $csc2
 
-
-  set rc [catch {exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default "CREATE TABLE $dest \{$csc2schema \}" } output]
+  set rc [catch {do_cdb2_defquery "CREATE TABLE $dest \{$csc2schema \}"} output]
   if {$rc != 0} {
     puts "add table failed for $table rc: $rc $output"
   }
 
-	after $gbl_schemachange_delay
+  after $gbl_schemachange_delay
 
-  set rc [catch {exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default "insert into $dest $srcquery"} output]
+  set rc [catch {do_cdb2_defquery "insert into $dest $srcquery"} output]
   if {$rc != 0} {
     puts "failed to populate $dest from $srcquery rc: $rc $output"
   }
 }
 
 proc create_table {origquery} {
-  global comdb2_name
-  global cdb2sql
-  global cdb2_config
   global cluster 
 
   if {[string match -nocase "CREATE TABLE * AS *" $origquery]} {
@@ -1016,16 +1020,13 @@ proc create_table {origquery} {
   puts $csc2 $csc2schema
   close $csc2
 
-  set rc [catch {exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default "CREATE TABLE $table \{$csc2schema \}" } output]
+  set rc [catch {do_cdb2_defquery "CREATE TABLE $table \{$csc2schema \}" } output]
   if {$rc != 0} {
     puts "add table failed for $table rc: $rc $output"
   } 
 }
 
 proc create_index {origquery} {
-  global comdb2_name
-  global cdb2sql
-  global cdb2_config
   global cluster
   set index ""
   set table ""
@@ -1064,7 +1065,7 @@ proc create_index {origquery} {
       append key "}"
   }
 
-  set schema [comdb2dumpcsctcl $comdb2_name $table]
+  set schema [comdb2dumpcsctcl $table]
   set schema [split $schema "\n"]
   set in_keys 0
   set done 0
@@ -1098,17 +1099,14 @@ proc create_index {origquery} {
   puts $csc2 $csc2schema
   close $csc2
 
-  return [exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default "ALTER TABLE  $table \{$csc2schema\}"]
-  # set rc [catch {exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default "ALTER TABLE  $table \{$csc2schema\}" } output]
+  return [do_cdb2_defquery "ALTER TABLE  $table \{$csc2schema\}"]
+  # set rc [catch {do_cdb2_defquery "ALTER TABLE  $table \{$csc2schema\}"} output]
   # if {$rc != 0} {
   #   puts "failed to add index $index to $table rc:$rc $output"
   # }
 }
 
 proc drop_index {origquery} {
-  global comdb2_name
-  global cdb2sql
-  global cdb2_config
   global cluster
   set index ""
   set table ""
@@ -1118,7 +1116,8 @@ proc drop_index {origquery} {
   # find which table has this index
   set found [regexp -nocase {^DROP INDEX(?: IF EXISTS)?? ([[:alnum:]]+)$} $origquery _ index]
   set find_index [string toupper $index]
-  set _ [catch {exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default "select tbl_name from sqlite_master where type='index' and name like '\$$find_index%'"} output]
+
+  set _ [catch {do_cdb2_defquery "select tbl_name from sqlite_master where type='index' and name like '\$$find_index%'"} output]
   set found [regexp -nocase {^\(tbl_name='([[:alnum:]]+)'\)$} $output _ table]
   if {$found == 0} {
     #index does not exist
@@ -1126,7 +1125,7 @@ proc drop_index {origquery} {
     return
   }
 
-  set schemaorig [comdb2dumpcsctcl $comdb2_name $table]
+  set schemaorig [comdb2dumpcsctcl $table]
   set schema [split $schemaorig "\n"]
   set in_keys 0
   set done 0
@@ -1187,7 +1186,7 @@ proc drop_index {origquery} {
     puts "DROPPING no keys so schema should be same as $k and is $csc2schema , but is not $schemaorig"
     close $csc2
   }
-  set rc [catch {exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default  "ALTER TABLE  $table \{$csc2schema\}" } output]
+  set rc [catch {do_cdb2_defquery "ALTER TABLE $table \{$csc2schema\}"} output]
   if {$rc != 0} {
     puts "failed to drop index $index from $table rc:$rc $output. Schema:\n$schemaorig\n$csc2schema"
   }
@@ -1206,9 +1205,6 @@ proc is_sqlite_stat {table} {
 # A procedure to execute SQL
 #
 proc execsql {sql {option ""}} {
-  global comdb2_name
-  global cdb2sql
-  global cdb2_config
   global cluster
   global gbl_schemachange_delay
 
@@ -1227,14 +1223,12 @@ proc execsql {sql {option ""}} {
     }
 
     if {[string match -nocase "CREATE TABLE*" $query]} {
-      close_sqlpipe
       create_table $query
       after $gbl_schemachange_delay
       continue
     }
 
     if {[regexp -nocase {^CREATE(?: UNIQUE)?? INDEX.*$} $query]} {
-      close_sqlpipe
       set rc [catch {create_index $query} err]
       if {$rc != 0} {
         lappend r $rc
@@ -1252,28 +1246,23 @@ proc execsql {sql {option ""}} {
     }
 
     if {[regexp -nocase {^DROP TABLE(?: IF EXISTS)?? ([[:alnum:]]+)$} $query _ table]} {
-      close_sqlpipe
-      set rc [catch {exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default "DROP TABLE $table"} err]
+      set rc [catch {do_cdb2_defquery "DROP TABLE $table"} err]
       after $gbl_schemachange_delay
       continue
     }
 
     if {[regexp -nocase {^DELETE FROM ([[:alnum:]]+)$} $query _ table]} {
-      close_sqlpipe
-      exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default "TRUNCATE $table"
+      do_cdb2_defquery "TRUNCATE $table"
       after $gbl_schemachange_delay
       continue
     }
 
     if {[regexp -nocase {^DROP INDEX(?: IF EXISTS)?? ([[:alnum:]]+)$} $query]} {
-      close_sqlpipe
       drop_index $query
       after $gbl_schemachange_delay
       continue
     }
 
-    # writes happen in tight loops
-    # keep a pipe open to the database "$cdb2sql dbname -"
     if {[string equal $option "nopipe"] == 0} {
       set found [regexp -nocase "^(DELETE|UPDATE|INSERT|BEGIN|COMMIT|ROLLBACK).*" $query _ first]
       if {$begun || $found} {
@@ -1282,42 +1271,33 @@ proc execsql {sql {option ""}} {
         } elseif {[string equal $first "COMMIT"] || [string equal $first "ROLLBACK"]} {
           set begun 0
         }
-        write_sqlpipe $query
+        do_cdb2_defquery $query
         continue
       }
     }
 
-    # flush the pipe and execute the read stmts
-    close_sqlpipe
-    set output [list]
     set rc 0
-    set costname [get_file_name "cost"]
-    set outputname [get_file_name "output"]
 
     if {[string equal $option "count"]
      || [string equal $option "cksort"]
      || [string equal $option "count_steps"]} {
-      catch {exec $cdb2sql --tabs --cost --cdb2cfg $cdb2_config $comdb2_name default $query 2> $costname > $outputname}
+      catch {do_cdb2_defquery $query true cost} outputs
     } else {
-      set rc [catch {exec $cdb2sql --tabs --cdb2cfg $cdb2_config $comdb2_name default $query > $outputname } err]
+      set rc [catch {do_cdb2_defquery $query true} outputs]
     }
 
     if {$rc != 0} {
       lappend r $rc
       # IBM: failed with rc -3 ORDER BY without LIMIT on DELETE
       # Linux: failed with rc -3 ORDER BY without LIMIT on DELETE
-      set found [regexp {failed with rc (?:-)??[[:digit:]]+ (?:OP \#.*\)\: )*(.*)$} $err _ errmsg]
+      set found [regexp {failed with rc (?:-)??[[:digit:]]+ (?:OP \#.*\)\: )*(.*)$} $outputs _ errmsg]
       if {$found} {
         lappend r $errmsg
       } else {
-        lappend r $err
+        lappend r $outputs
       }
       continue
     }
-
-    set f [open $outputname r]
-    set outputs [read $f]
-    close $f
 
     # Debug a specific test case
     #
@@ -1333,7 +1313,6 @@ proc execsql {sql {option ""}} {
     if {$found == 0} {
       set i 0
       foreach output $outputs {
-
         incr i
         if {$i >= [llength $outputs]} {
           break
@@ -1353,6 +1332,9 @@ proc execsql {sql {option ""}} {
           if {[string equal $o "NULL"]} {
             set o ""
           }
+
+            puts stdout "appending output \{$o\}"
+
           lappend r $o
         }
       }
@@ -1361,9 +1343,6 @@ proc execsql {sql {option ""}} {
     if {[string equal $option "count"]
      || [string equal $option "cksort"]
      || [string equal $option "count_steps"]} {
-      set f [open $costname r]
-      set cost [read $f]
-      close $f
       set cost [split $cost "\n"]
     } else {
       continue
@@ -1469,10 +1448,7 @@ proc explain {sql {db db}} {
 # that different SQL statements generate exactly the same VDBE code.
 #
 proc explain_no_trace {sql} {
-  global comdb2_name
-  global cdb2sql
-  global cdb2_config
-  catch {exec $cdb2sql --cdb2cfg $cdb2_config $comdb2_name default "EXPLAIN $sql"} tr
+  catch {do_cdb2_defquery "EXPLAIN $sql"} tr
   return [lrange $tr 7 end]
 }
 
