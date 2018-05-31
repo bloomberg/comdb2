@@ -251,7 +251,12 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         osqlstate_t *osql = &thd->clnt->osql;
         rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, 0,
                 NET_OSQL_SOCK_RPL, osql->logsb, OSQL_GENID);
-        if (rc != SQLITE_OK) return rc;
+        if (rc != SQLITE_OK) {
+            logmsg(LOGMSG_USER, 
+                   "%s:%d %s - failed to send OSQL_GENID rc=%d\n",
+                   __FILE__, __LINE__, __func__, rc);
+            return rc;
+        }
     }
 
     rc = osql_insidx(pCur, thd, 0);

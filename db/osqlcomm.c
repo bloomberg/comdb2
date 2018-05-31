@@ -8094,7 +8094,7 @@ int osql_send_genid(char *tohost, unsigned long long rqid, uuid_t uuid,
     int rc = 0;
     uuidstr_t us;
 
-    if (check_master(tohost))
+    if (osql_type == OSQL_RECGENID && check_master(tohost))
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
