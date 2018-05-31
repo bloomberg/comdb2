@@ -1434,6 +1434,7 @@ static int tclcdb2ObjCmd(
     cdb2_hndl_tp *pCdb2;
     int rc;
     Tcl_HashTable *hTablePtr;
+    Tcl_HashEntry *hPtr = NULL;
     Tcl_Obj *listPtr = NULL;
     Tcl_Obj *valuePtr = NULL;
     struct BoundValue *pBoundValue = NULL;
@@ -1473,7 +1474,6 @@ static int tclcdb2ObjCmd(
 	case OPT_BIND: {
 	    const char *bindName = NULL;
 	    void *valuePtr;
-	    Tcl_HashEntry *hPtr;
 	    int wasNew = 0;
 
 	    if (objc != 6) {
@@ -2282,6 +2282,11 @@ static int tclcdb2ObjCmd(
 
 done:
     if (code != TCL_OK) {
+	if (hPtr != NULL) {
+	    Tcl_DeleteHashEntry(hPtr);
+	    hPtr = NULL;
+	}
+
 	if (pBoundValue != NULL) {
 	    FreeBoundValue(pBoundValue);
 	    pBoundValue = NULL;
