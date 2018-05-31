@@ -33,9 +33,9 @@ done
 
 if [[ -f /proc/sys/kernel/core_pattern ]]; then
     # If core pattern is an absolute path, prepare to mount
-    abs=$(grep '^/' /proc/sys/kernel/core_pattern) || true
-    if [[ "$abs" != "" ]]; then
-        coredir=$abs
+    abspath=$(grep '^/' /proc/sys/kernel/core_pattern) || true
+    if [[ "$abspath" != "" ]]; then
+        coredir=$(dirname $abspath)
         mkdir -p common/c1/cores
         for node in $(seq 1 $numnodes); do
             mkdir -p common/m${node}/cores
