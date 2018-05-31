@@ -1511,6 +1511,8 @@ static int tclcdb2ObjCmd(
 		snprintf(buffer, sizeof(buffer), "index_%d",
 		    pBoundValue->index);
 	    } else {
+		Tcl_ResetResult(interp); /* INTL: Expected error. */
+
 		bindName = Tcl_GetString(objv[3]);
 
 		snprintf(buffer, sizeof(buffer), "name_%s", bindName);
@@ -1526,8 +1528,10 @@ static int tclcdb2ObjCmd(
 		goto done;
 	    }
 
-	    pBoundValue->name = strdup(bindName);
-	    MAYBE_OUT_OF_MEMORY(pBoundValue->name);
+	    if (bindName != NULL) {
+		pBoundValue->name = strdup(bindName);
+		MAYBE_OUT_OF_MEMORY(pBoundValue->name);
+	    }
 
 	    code = GetValueFromName(interp, Tcl_GetString(objv[4]),
 		aColumnTypes, &pBoundValue->type);
