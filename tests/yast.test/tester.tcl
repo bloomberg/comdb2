@@ -134,6 +134,10 @@ proc maybe_quote_value { db index } {
     }
 }
 
+proc delay_for_schema_change {} {
+  after $::gbl_schemachange_delay
+}
+
 proc do_cdb2_defquery { sql {tabs false} {costVarName ""} } {
     return [uplevel 1 [list do_cdb2_query $::comdb2_name $sql default $tabs $costVarName]]
 }
@@ -145,7 +149,7 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
     set db [cdb2 open $dbName $tier]
     if {$::cdb2_debug} {cdb2 debug $db}
 
-    set sql [string map [list \r\n \n] $sql]
+    set sql [string map [list \r\n \n] [string trim $sql]]
     cdb2 run $db $sql
 
     while {[cdb2 next $db]} {
@@ -842,7 +846,6 @@ proc show_memstats {} {
 
 proc create_table_as {origquery} {
   global cluster
-  global gbl_schemachange_delay
 
   regexp -nocase {^CREATE TABLE ([[:alnum:]]+) AS (.*)$} $origquery _ dest srcquery
   regexp -nocase {^.* FROM ([[:alnum:]]+).*$} $srcquery _ src
@@ -860,7 +863,7 @@ proc create_table_as {origquery} {
     if {[string equal $k "keys"]} {
       while {[string equal $k "\}"] == 0} {
         incr i
-        set k [lindex $schema $i]
+        set k [string index $schema $i]
       }
     } else {
       set csc2schema "$csc2schema $k"
@@ -869,12 +872,12 @@ proc create_table_as {origquery} {
   }
   close $csc2
 
-  set rc [catch {do_cdb2_defquery "CREATE TABLE $dest \{$csc2schema \}"} output]
+  set rc [catch {do_cdb2_defquery "CREATE TABLE $dest \{$csc2schema\}"} output]
   if {$rc != 0} {
     puts "add table failed for $table rc: $rc $output"
   }
 
-  after $gbl_schemachange_delay
+  delay_for_schema_change
 
   set rc [catch {do_cdb2_defquery "insert into $dest $srcquery"} output]
   if {$rc != 0} {
@@ -1222,7 +1225,7 @@ proc execsql {sql {option ""}} {
 
     if {[string match -nocase "CREATE TABLE*" $query]} {
       create_table $query
-      after $gbl_schemachange_delay
+      delay_for_schema_change
       continue
     }
 
@@ -1239,25 +1242,25 @@ proc execsql {sql {option ""}} {
           lappend r $err
         }
       }
-      after $gbl_schemachange_delay
+      delay_for_schema_change
       continue
     }
 
     if {[regexp -nocase {^DROP TABLE(?: IF EXISTS)?? ([[:alnum:]]+)$} $query _ table]} {
       set rc [catch {do_cdb2_defquery "DROP TABLE $table"} err]
-      after $gbl_schemachange_delay
+      delay_for_schema_change
       continue
     }
 
     if {[regexp -nocase {^DELETE FROM ([[:alnum:]]+)$} $query _ table]} {
       do_cdb2_defquery "TRUNCATE $table"
-      after $gbl_schemachange_delay
+      delay_for_schema_change
       continue
     }
 
     if {[regexp -nocase {^DROP INDEX(?: IF EXISTS)?? ([[:alnum:]]+)$} $query]} {
       drop_index $query
-      after $gbl_schemachange_delay
+      delay_for_schema_change
       continue
     }
 
@@ -1309,12 +1312,7 @@ proc execsql {sql {option ""}} {
 
     set found [regexp -nocase "^.*(DELETE|BEGIN|COMMIT|ROLLBACK).*" $query _ first]
     if {$found == 0} {
-      set i 0
       foreach output $outputs {
-        incr i
-        if {$i > [llength $outputs]} {
-          break
-        }
         regexp {^\((.*)\)$} $output _ output
         set output [split $output "\t"]
         if {[string equal $output ""]} {
