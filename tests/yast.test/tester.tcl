@@ -861,8 +861,8 @@ proc create_table_as {origquery} {
     set k [lindex $schema $i]
     if {[string equal $k "keys"]} {
       while {[string equal $k "\}"] == 0} {
-        incr i
-        set k [string index $schema $i]
+        incr i; if {$i >= [llength $schema]} break
+        set k [lindex $schema $i]
       }
     } else {
       set csc2schema "$csc2schema $k"
