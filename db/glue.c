@@ -1055,7 +1055,7 @@ int ix_delk(struct ireq *iq, void *trans, void *key, int ixnum, int rrn,
     return ix_delk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, rrn, genid, isnull);
 }
 
-inline int dat_upv(struct ireq *iq, void *trans, int vptr, void *vdta, int vlen,
+int dat_upv(struct ireq *iq, void *trans, int vptr, void *vdta, int vlen,
             unsigned long long vgenid, void *newdta, int newlen, int rrn,
             unsigned long long *genid, int verifydta, int modnum)
 {

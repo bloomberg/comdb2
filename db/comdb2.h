@@ -1031,7 +1031,7 @@ typedef struct {
 typedef struct sorese_info {
     unsigned long long rqid; /* not null means active */
     uuid_t uuid;
-    const char *host; /* sql machine, 0 is local */
+    char *host; /* sql machine, 0 is local */
     SBUF2 *osqllog; /* used to track sorese requests */
     int type;   /* type, socksql or recom */
     int nops;   /* if no error, how many updated rows were performed */

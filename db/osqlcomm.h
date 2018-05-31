@@ -49,7 +49,7 @@ void osql_comm_destroy(void);
  * It is used mainly with blocksql
  *
  */
-int osql_comm_blkout_node(const char *host);
+int osql_comm_blkout_node(char *host);
 
 /* Offload upgrade record request. */
 int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid);

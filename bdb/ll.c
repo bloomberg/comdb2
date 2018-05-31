@@ -884,6 +884,7 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
 {
     int rc;
     int inplace = 0;
+    int newupdateid = 0;
     int updateid = 0;
     DBC *dbcp = NULL;
     DBT dbt_key;
@@ -960,9 +961,10 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
             inplace = 1;
         } else if (0 == *newgenid) {
             if (ip_updates_enabled(bdb_state)) {
-                int newupd = (1 + get_updateid_from_genid(bdb_state, oldgenid));
-                if (newupd <= max_updateid(bdb_state)) {
-                    *newgenid = set_updateid(bdb_state, newupd, oldgenid);
+                newupdateid =
+                    (1 + get_updateid_from_genid(bdb_state, oldgenid));
+                if (newupdateid <= max_updateid(bdb_state)) {
+                    *newgenid = set_updateid(bdb_state, newupdateid, oldgenid);
                     inplace = 1;
                 }
             }

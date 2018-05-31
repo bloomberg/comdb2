@@ -311,8 +311,6 @@ function run_second_test
     EXTRA=10000
 	echo "adding $EXTRA records to one stripe"
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs($EXTRA)"  #add large numbers at offset > 0.1M
-    assertcnt $EXTRA
-    do_verify
 
     #SC_FORCE_DELAY is needed because "verify constraints" is very-very fast
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"

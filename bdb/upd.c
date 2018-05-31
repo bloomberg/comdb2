@@ -337,7 +337,7 @@ int bdb_prim_add_upd_genid(bdb_state_type *bdb_state, tran_type *tran,
     return rc;
 }
 
-inline int bdb_prim_updvrfy_genid(bdb_state_type *bdb_state, tran_type *tran,
+int bdb_prim_updvrfy_genid(bdb_state_type *bdb_state, tran_type *tran,
                            void *olddta, int oldlen, void *newdta, int newdtaln,
                            int rrn, unsigned long long oldgenid,
                            unsigned long long *newgenid, int verifydta,

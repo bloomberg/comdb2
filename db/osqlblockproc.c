@@ -637,7 +637,7 @@ const char *osql_reqtype_str(int type)
 }
 
 
-void no_such_tbl_error(const char * tablename, unsigned long long rqid, const char * host) {
+void no_such_tbl_error(const char * tablename, unsigned long long rqid, char * host) {
     sorese_info_t sorese_info = {0};
     struct errstat generr = {0};
 
@@ -669,7 +669,7 @@ void no_such_tbl_error(const char * tablename, unsigned long long rqid, const ch
  */
 int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long rqid, uuid_t uuid,
-                      unsigned long long seq, const char *host)
+                      unsigned long long seq, char *host)
 {
     //printf("AZ: saving for sess %p\n", sess);
     blocksql_tran_t *tran = (blocksql_tran_t *)osql_sess_getbptran(sess);

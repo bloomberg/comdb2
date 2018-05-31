@@ -1553,7 +1553,7 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
     struct schema *s;
 
     /* keys not reqd for ver temp table; just ondisk tag */
-    if (strncasecmp(dbname, gbl_ver_temp_table, sizeof(gbl_ver_temp_table) - 1) ==
+    if (strncasecmp(dbname, gbl_ver_temp_table, strlen(gbl_ver_temp_table)) ==
         0)
         return 0;
 
@@ -5249,6 +5249,7 @@ static int add_cmacc_stmt_int(struct dbtable *db, int alt, int side_effects)
     int itag;
     char *tag = NULL;
     int isnull;
+    int is_disk_schema = 0;
     char tmptagname[MAXTAGLEN] = {0};
     char *rtag = NULL;
     int have_comdb2_seqno_field;
@@ -5293,7 +5294,12 @@ static int add_cmacc_stmt_int(struct dbtable *db, int alt, int side_effects)
         schema->ix = NULL;
         schema->nix = 0;
         offset = 0;
-        int is_disk_schema = (strncasecmp(rtag, ".ONDISK", 7) == 0);
+        is_disk_schema = 0;
+        if (strncasecmp(rtag, ".ONDISK", 7) == 0) {
+            is_disk_schema = 1;
+        } else {
+            is_disk_schema = 0;
+        }
 
         for (field = 0; field < schema->nmembers; field++) {
             int outdtsz = 0;
@@ -5306,7 +5312,7 @@ static int add_cmacc_stmt_int(struct dbtable *db, int alt, int side_effects)
                 (int *)&schema->member[field].type,
                 (int *)&schema->member[field].offset, NULL,
                 (int *)&schema->member[field].len, /* want fullsize, not size */
-                NULL, is_disk_schema);
+                NULL, strncasecmp(rtag, ".ONDISK", 7) == 0);
             schema->member[field].idx = -1;
             schema->member[field].name = strdup(buf);
             schema->member[field].in_default = NULL;
@@ -5319,7 +5325,7 @@ static int add_cmacc_stmt_int(struct dbtable *db, int alt, int side_effects)
                 schema->member[field].type == CLIENT_UINT &&
                 schema->member[field].len == sizeof(unsigned long long) &&
                 strncasecmp(db->tablename, gbl_ver_temp_table,
-                            sizeof(gbl_ver_temp_table) - 1) != 0) {
+                            strlen(gbl_ver_temp_table)) != 0) {
                 logmsg(LOGMSG_ERROR,
                        "Error in table %s: u_longlong is unsupported\n",
                        db->tablename);
@@ -6408,7 +6414,7 @@ void commit_schemas(const char *tblname)
                 }
             }
         } else if (strncasecmp(sc->tag, gbl_ondisk_ver,
-                               sizeof(gbl_ondisk_ver) - 1)) {
+                               strlen(gbl_ondisk_ver))) {
             /* not .NEW. and not .ONDISK_VER. delete */
             listc_rfl(&dbt->taglist, sc);
             listc_abl(&to_be_freed, sc);
