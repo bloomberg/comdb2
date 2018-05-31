@@ -791,9 +791,11 @@ bdb_osql_updix_lk_rec(llog_undo_upd_ix_lk_args *upd_ix_lk, DB_LSN *lsn,
     bdb_osql_log_rec_t *rec = (bdb_osql_log_rec_t *)calloc(1, sizeof(*rec));
     unsigned long long genid = upd_ix_lk->oldgenid;
 
-    if (flibc_ntohll(upd_ix_lk->oldgenid) >= flibc_ntohll(upd_ix_lk->newgenid)) {
+    if (flibc_ntohll(upd_ix_lk->oldgenid) >=
+        flibc_ntohll(upd_ix_lk->newgenid)) {
         logmsg(LOGMSG_FATAL, "Oldgenid %llx >= negenid %llx\n",
-               flibc_ntohll(upd_ix_lk->oldgenid), flibc_ntohll(upd_ix_lk->newgenid));
+               flibc_ntohll(upd_ix_lk->oldgenid),
+               flibc_ntohll(upd_ix_lk->newgenid));
         abort();
     }
 

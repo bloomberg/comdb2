@@ -1013,8 +1013,8 @@ int ix_delk(struct ireq *iq, void *trans, void *key, int ixnum, int rrn,
 }
 
 inline int dat_upv(struct ireq *iq, void *trans, int vptr, void *vdta, int vlen,
-            unsigned long long vgenid, void *newdta, int newlen, int rrn,
-            unsigned long long *genid, int verifydta, int modnum)
+                   unsigned long long vgenid, void *newdta, int newlen, int rrn,
+                   unsigned long long *genid, int verifydta, int modnum)
 {
     return dat_upv_auxdb(AUXDB_NONE, iq, trans, vptr, vdta, vlen, vgenid,
                          newdta, newlen, rrn, genid, verifydta, modnum, 0);

@@ -343,11 +343,12 @@ int bdb_prim_add_upd_genid(bdb_state_type *bdb_state, tran_type *tran,
 }
 
 inline int bdb_prim_updvrfy_genid(bdb_state_type *bdb_state, tran_type *tran,
-                           void *olddta, int oldlen, void *newdta, int newdtaln,
-                           int rrn, unsigned long long oldgenid,
-                           unsigned long long *newgenid, int verifydta,
-                           int participantstripeid, int use_new_genid,
-                           int *bdberr)
+                                  void *olddta, int oldlen, void *newdta,
+                                  int newdtaln, int rrn,
+                                  unsigned long long oldgenid,
+                                  unsigned long long *newgenid, int verifydta,
+                                  int participantstripeid, int use_new_genid,
+                                  int *bdberr)
 {
     int rc;
 

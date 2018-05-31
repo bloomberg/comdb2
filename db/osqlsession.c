@@ -951,7 +951,10 @@ inline int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq)
     return 0;
 }
 
-inline struct ireq *osql_session_get_ireq(osql_sess_t *sess) { return sess->iq; }
+inline struct ireq *osql_session_get_ireq(osql_sess_t *sess)
+{
+    return sess->iq;
+}
 
 /**
  * Force a session to end

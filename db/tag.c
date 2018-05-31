@@ -1553,8 +1553,8 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
     struct schema *s;
 
     /* keys not reqd for ver temp table; just ondisk tag */
-    if (strncasecmp(dbname, gbl_ver_temp_table, sizeof(gbl_ver_temp_table) - 1) ==
-        0)
+    if (strncasecmp(dbname, gbl_ver_temp_table,
+                    sizeof(gbl_ver_temp_table) - 1) == 0)
         return 0;
 
     schema->nix = dyns_get_idx_count();

@@ -2804,8 +2804,8 @@ static void *osql_heartbeat_thread(void *arg);
 static void signal_rtoff(void);
 
 static int check_master(char *tohost);
-static int offload_net_send(const char *tohost, int usertype, void *data, int datalen,
-                            int nodelay);
+static int offload_net_send(const char *tohost, int usertype, void *data,
+                            int datalen, int nodelay);
 static int offload_net_send_tail(const char *tohost, int usertype, void *data,
                                  int datalen, int nodelay, void *tail,
                                  int tailen);
@@ -3533,8 +3533,8 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
     }
 
     if (rc)
-        logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n",
-               __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n", __func__,
+               rc);
 
     return rc;
 }
@@ -5740,8 +5740,8 @@ int osql_comm_check_bdb_lock(void)
 /* this wrapper tries to provide a reliable net_send that will prevent loosing
    packets
    due to queue being full */
-static int offload_net_send(const char *host, int usertype, void *data, int datalen,
-                            int nodelay)
+static int offload_net_send(const char *host, int usertype, void *data,
+                            int datalen, int nodelay)
 {
     netinfo_type *netinfo_ptr = comm->handle_sibling;
     int backoff = gbl_osql_bkoff_netsend;
