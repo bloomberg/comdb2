@@ -7,4 +7,5 @@ master_swing_sock_restart_sleep 2
 on block_set_commit_genid_trace
 logmsg level info
 set_repinfo_master_trace on
+extended_sql_debug_trace on
 nowatch

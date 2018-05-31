@@ -95,6 +95,8 @@ void *schedule_thd(void *arg)
         exit(1);
     }
 
+    cdb2_set_debug_trace(sqlh);
+
     if (c->recom) {
         snprintf(sql, sizeof(sql), "set transaction read committed");
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0) {
@@ -369,6 +371,9 @@ int main(int argc, char *argv[])
         fprintf(stderr, "error opening sql handle for '%s'.\n", c->dbname);
         err++;
     }
+
+    cdb2_set_debug_trace(sqlh);
+
     /* Punt if there were errors. */
     if (err) {
         usage(stderr);
