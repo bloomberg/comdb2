@@ -526,7 +526,6 @@ proc reset_db {} {
 
 
   set tables [comdb2dumpcsctcl 0]
-  puts tables
   foreach table $tables {
       set output ""
       set query "DROP TABLE $table"
@@ -1121,8 +1120,6 @@ proc drop_index {origquery} {
   set _ [catch {do_cdb2_defquery "select tbl_name from sqlite_master where type='index' and name like '\$$find_index%'"} output]
   set found [regexp -nocase {^\(tbl_name='([[:alnum:]]+)'\)$} $output _ table]
   if {$found == 0} {
-    #index does not exist
-    puts "index does not exist"
     return
   }
 
