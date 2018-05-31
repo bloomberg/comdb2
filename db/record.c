@@ -544,7 +544,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
             /* add the key */
             rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
-                         od_len_tail);
+                         od_len_tail, ix_isnullk(iq->usedb, key, ixnum));
             if (iq->debug) {
                 reqprintf(iq, "ix_addk IX %d LEN %u KEY ", ixnum, ixkeylen);
                 reqdumphex(iq, key, ixkeylen);
@@ -706,7 +706,7 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
         }
 
         rc = ix_addk(iq, trans, newkey, ixnum, genid, rrn, od_dta_tail,
-                     od_tail_len);
+                     od_tail_len, ix_isnullk(iq->usedb, newkey, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_addk IX %d RRN %d KEY ", ixnum, rrn);
             reqdumphex(iq, newkey, getkeysize(iq->usedb, ixnum));
@@ -1449,7 +1449,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             gbl_upd_key++;
 
             rc = ix_upd_key(iq, trans, newkey, iq->usedb->ix_keylen[ixnum],
-                            ixnum, vgenid, *genid, od_dta_tail, od_tail_len);
+                            ixnum, vgenid, *genid, od_dta_tail, od_tail_len,
+                            ix_isnullk(iq->usedb, newkey, ixnum));
             if (iq->debug)
                 reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d", ixnum,
                           *genid, rc);
@@ -1477,7 +1478,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             /* only delete keys when told */
             if (!gbl_partial_indexes || !iq->usedb->ix_partial ||
                 (del_keys & (1ULL << ixnum))) {
-                rc = ix_delk(iq, trans, oldkey, ixnum, rrn, vgenid);
+                rc = ix_delk(iq, trans, oldkey, ixnum, rrn, vgenid, ix_isnullk(iq->usedb, oldkey, ixnum));
 
                 if (iq->debug)
                     reqprintf(iq, "ix_delk IX %d RRN %d RC %d", ixnum, rrn, rc);
@@ -2056,7 +2057,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
 
         /* delete the key */
-        rc = ix_delk(iq, trans, key, ixnum, rrn, genid);
+        rc = ix_delk(iq, trans, key, ixnum, rrn, genid, ix_isnullk(iq->usedb, key, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
             reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
@@ -2178,7 +2179,7 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
         }
 
         rc = ix_addk(iq, trans, key, ixnum, newgenid, 2, (void *)od_dta_tail,
-                     od_tail_len);
+                     od_tail_len, ix_isnullk(iq->usedb, key, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_addk IX %d KEY ", ixnum);
             reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
@@ -2556,7 +2557,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
             goto err;
         }
 
-        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, oldgenid);
+        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, oldgenid, ix_isnullk(iq->usedb, key, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
             reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
@@ -2786,7 +2787,7 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
             goto err;
         }
 
-        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, ngenid);
+        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, ngenid, ix_isnullk(iq->usedb, key, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
             reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));

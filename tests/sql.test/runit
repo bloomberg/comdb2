@@ -184,4 +184,115 @@ for testcase in $files ; do
 
 done
 
+### Tests for CREATE UNIQUE INDEX with multiple NULL values
+
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+function assertbadexitcode
+{
+    rc=$1
+    if [ $rc -eq 0 ] ; then
+        failexit "exit code is now $rc but should not be 0"
+    fi
+}
+
+function assertres
+{
+    if [ $# != 2 ] ; then
+        failexit "res is $res, target is $target, one or more is blank"
+    fi
+    res=$1
+    target=$2
+    if [ "$res" != "$target" ] ; then
+        failexit "res is $res but should be $target"
+    fi
+}
+
+set -- +o errexit
+echo "create and use UNIQUE INDEX with multiple NULL values"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table t3(x INTEGER)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "create unique index t3_x on t3(x)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t3 values(1)"
+set -- -o errexit
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t3 values(1)"
+exitCode=$?
+set -- +o errexit
+assertbadexitcode $exitCode
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t3 values(2)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t3')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t3 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t3')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t3 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t3')"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select x from t3 order by x"`
+assertres "${res}" $'NULL\nNULL\n1\n2'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "delete from t3 where x is null"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select x from t3 order by x"`
+assertres "${res}" $'1\n2'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t3')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t3 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t3')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t3 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t3')"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select x from t3 order by x"`
+assertres "${res}" $'NULL\nNULL\n1\n2'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "update t3 set x = NULL where x = 1"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select x from t3 order by x"`
+assertres "${res}" $'NULL\nNULL\nNULL\n2'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t3')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "update t3 set x = NULL"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select x from t3 order by x"`
+assertres "${res}" $'NULL\nNULL\nNULL\nNULL'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t3')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "drop index t3_x"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t3')"
+
+echo "alter and use a UNIQUE INDEX with and without multiple NULL values"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table t4(x INTEGER)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "alter table t4 options rebuild { schema { int x null=yes } keys { \"t4_x\" = x } }"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t4')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t4 values(1)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t4')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t4 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t4')"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select x from t4 order by x"`
+assertres "${res}" $'NULL\n1'
+set -- -o errexit
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t4 values(NULL)"
+exitCode=$?
+set -- +o errexit
+assertbadexitcode $exitCode
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select x from t4 order by x"`
+assertres "${res}" $'NULL\n1'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t4')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "alter table t4 options rebuild { schema { int x null=yes } keys { uniqnulls \"t4_x\" = x } }"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t4')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t4 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t4')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t4 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t4')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t4 values(2)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t4')"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select x from t4 order by x"`
+assertres "${res}" $'NULL\nNULL\nNULL\n1\n2'
+set -- -o errexit
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t4 values(1)"
+exitCode=$?
+set -- +o errexit
+assertbadexitcode $exitCode
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t4')"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select x from t4 order by x"`
+assertres "${res}" $'NULL\nNULL\nNULL\n1\n2'
+set -- -o errexit
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "alter table t4 options rebuild { schema { int x null=yes } keys { \"t4_x\" = x } }"
+exitCode=$?
+set -- +o errexit
+assertbadexitcode $exitCode
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "rebuild t4"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t4')"
+
 echo "Testcase passed."

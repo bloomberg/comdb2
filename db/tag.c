@@ -1579,6 +1579,9 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
         if (dyns_is_idx_datacopy(ix))
             s->flags |= SCHEMA_DATACOPY;
 
+        if (dyns_is_idx_uniqnulls(ix))
+            s->flags |= SCHEMA_UNIQNULLS;
+
         s->nix = 0;
         s->ix = NULL;
         s->ixnum = ix;
@@ -4895,8 +4898,8 @@ int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
     int oldattr, newattr;
 
     /* First compare attributes */
-    oldattr = oldix->flags & (SCHEMA_DUP | SCHEMA_RECNUM | SCHEMA_DATACOPY);
-    newattr = newix->flags & (SCHEMA_DUP | SCHEMA_RECNUM | SCHEMA_DATACOPY);
+    oldattr = oldix->flags & (SCHEMA_DUP | SCHEMA_RECNUM | SCHEMA_DATACOPY | SCHEMA_UNIQNULLS);
+    newattr = newix->flags & (SCHEMA_DUP | SCHEMA_RECNUM | SCHEMA_DATACOPY | SCHEMA_UNIQNULLS);
     if (oldattr != newattr) {
         if (descr)
             snprintf(descr, descrlen, "properties have changed");

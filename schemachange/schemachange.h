@@ -184,6 +184,8 @@ struct schema_change_type {
      * ************************/
     unsigned long long start_genid;
 
+    int already_finalized;
+
     /*********************** temporary fields for sbuf packing
      * ************************/
     /*********************** not needed for anything else

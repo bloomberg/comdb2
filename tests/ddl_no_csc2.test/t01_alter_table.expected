@@ -85,8 +85,8 @@
 (tablename='t2', columnname='v', type='cstring', size=11, sqltype='char(10)', varinlinesize=NULL, defaultvalue=''foo'', dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='d', type='datetime', size=11, sqltype='datetime', varinlinesize=NULL, defaultvalue='CURRENT_TIMESTAMP', dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue='10', dbload=NULL, isnullable='Y')
-(tablename='t1', keyname='IDX', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='IDX', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='IDX', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='IDX', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("v" char(10) DEFAULT 'foo', "d" datetime DEFAULT CURRENT_TIMESTAMP, "i" int DEFAULT 10);', csc2='schema
 	{
 		cstring v[11] dbstore = "foo" null = yes 
@@ -141,12 +141,12 @@ keys
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t1', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='IDX2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='IDX3', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='IDX4', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='COMDB2_PK', keynumber=4, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX3', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX4', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='COMDB2_PK', keynumber=4, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (name='$CONSTRAINT_95177019', tablename='t2', keyname='IDX1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "k" int);', csc2='schema
 	{
@@ -194,9 +194,9 @@ constraints
 (tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t3', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t3', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
-(tablename='t1', keyname='IDX', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='IDX', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t3', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='IDX', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='IDX', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t3', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (name='$CONSTRAINT_95177019', tablename='t2', keyname='IDX', foreigntablename='t1', foreignkeyname='IDX', iscascadingdelete='N', iscascadingupdate='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int);', csc2='schema
 	{
@@ -271,10 +271,10 @@ keys
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t2', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
-(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='IDX', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='$KEY_E8BDFAE1', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='IDX', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='$KEY_E8BDFAE1', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (name='$CONSTRAINT_6C9CE8ED', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "k" int);', csc2='schema
 	{
@@ -315,7 +315,7 @@ constraints
 (tablename='t1', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
-(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "k" int);', csc2='schema
 	{
 		int i 
@@ -379,10 +379,10 @@ constraints
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t1', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='IDX2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='$KEY_E8BDFAE1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='$KEY_2BFFFCF4', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='$KEY_E8BDFAE1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='$KEY_2BFFFCF4', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (name='$CONSTRAINT_6C9CE8ED', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "k" int);', csc2='schema
 	{

@@ -273,6 +273,11 @@ void bdb_ltran_get_schema_lock(tran_type *ltran)
     ltran->single_physical_transaction = 1;
 }
 
+void bdb_ltran_put_schema_lock(tran_type *ltran)
+{
+    ltran->get_schema_lock = 0;
+}
+
 /* Create a txn and add to the txn list.  Called directly from the replication
  * stream.  */
 tran_type *bdb_start_ltran(bdb_state_type *bdb_state,

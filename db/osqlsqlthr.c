@@ -414,9 +414,6 @@ int osql_block_commit(struct sql_thread *thd)
  * if keep_rqid, this is a retry and we want to
  * keep the same rqid
  *
- * NOTE: if we set "keep_rqid", we are retrying a transaction, so
- *       we will pass the master OSQL_FLAGS_USE_BLKSEQ to keep using
- *       a blkseq in this case
  */
 int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
 {
@@ -424,7 +421,7 @@ int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     int rc = 0;
     int retries = 0;
-    int flags;
+    int flags = 0;
 
     if (!thd) {
         logmsg(LOGMSG_ERROR, "%s:%d Bug, not sql thread !\n", __func__, __LINE__);
@@ -514,10 +511,6 @@ retry:
         /* sets to the same node */
         osql_reuse_sqlthr(clnt, osql->host);
     }
-
-    /* retrying a transaction, don't skip on blkseq */
-    flags = 0;
-    if (keep_rqid) bset(&flags, OSQL_FLAGS_USE_BLKSEQ);
 
     /* socksql: check if this is a verify retry, and if we got enough of those
        to trigger a self-deadlock check on the master */
@@ -796,18 +789,17 @@ retry:
                     osql->xerr.errval == 999) {
                     if (bdb_attr_get(thedb->bdb_attr,
                                      BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
-                        !clnt->in_client_trans && clnt->ddl_tables) {
-                        int num_ddl = 0;
-                        hash_info(clnt->ddl_tables, NULL, NULL, NULL, NULL,
-                                  &num_ddl, NULL, NULL);
-                        if (num_ddl == 1) {
-                            clnt->osql.xerr.errval = ERR_SC;
-                            errstat_cat_str(&(clnt->osql.xerr),
-                                            "Master node downgrading - new "
-                                            "master will resume schemachange");
-                            rcout = SQLITE_ABORT;
-                            goto err;
-                        }
+                        !clnt->in_client_trans && osql->running_ddl) {
+                        clnt->osql.xerr.errval = ERR_SC;
+                        errstat_cat_str(&(clnt->osql.xerr),
+                                        "Master node downgrading - new "
+                                        "master will resume schemachange");
+                        logmsg(LOGMSG_INFO,
+                               "%s: Master node downgrading - new master "
+                               "will resume schemachange\n",
+                               __func__);
+                        rcout = SQLITE_ABORT;
+                        goto err;
                     }
                     if (retries++ < gbl_survive_n_master_swings) {
                         if (gbl_master_swing_osql_verbose ||

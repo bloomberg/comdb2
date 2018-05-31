@@ -363,6 +363,8 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
     return 0;
 }
 
+int sc_set_running(char *table, int running, uint64_t seed, const char *host,
+                   time_t time);
 /**
  * Apply all schema changes and wait for them to finish
  */
@@ -395,13 +397,12 @@ int osql_bplog_schemachange(struct ireq *iq)
             sc->sc_next = iq->sc_pending;
             iq->sc_pending = sc;
         } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
+            sc_set_running(sc->table, 0, iq->sc_seed, NULL, 0);
             free_schema_change_type(sc);
             rc = ERR_NOMASTER;
         } else {
-            free_schema_change_type(sc);
-            int sc_set_running(char *table, int running, uint64_t seed,
-                               const char *host, time_t time);
             sc_set_running(sc->table, 0, iq->sc_seed, NULL, 0);
+            free_schema_change_type(sc);
             if (sc->sc_rc)
                 rc = ERR_SC;
         }

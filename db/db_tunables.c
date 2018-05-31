@@ -197,6 +197,8 @@ static char *name = NULL;
 static int ctrace_gzip;
 extern int gbl_reorder_blkseq_no_deadlock;
 
+int gbl_ddl_cascade_drop = 1;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need
@@ -341,7 +343,7 @@ static void *checkctags_value(void *context)
 
 static void *next_genid_value(void *context)
 {
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    /*comdb2_tunable *tunable = (comdb2_tunable *)context;*/
     static char genid_str[64];
     unsigned long long flipgenid, genid = get_genid(thedb->bdb_env, 0);
 
@@ -358,7 +360,7 @@ static void *next_genid_value(void *context)
 
 static int genid_seed_update(void *context, void *value)
 {
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    /*comdb2_tunable *tunable = (comdb2_tunable *)context;*/
     char *seedstr = (char *)value;
     unsigned long long seed;
     seed = strtoll(seedstr, 0, 16);
@@ -1281,11 +1283,15 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
     tok = &buf[0];
 
     if (!(t = hash_find_readonly(gbl_tunables->hash, &tok))) {
-        logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", tok);
+        /* Do not warn in READEARLY phase. */
+        if ((flags & READEARLY == 0)) {
+            logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", tok);
+        }
         return TUNABLE_ERR_INVALID_TUNABLE;
     }
 
-    /* Only proceed if we were asked to process READEARLY tunables. */
+    /* Bail out if we were asked to process READEARLY tunables only
+     * but the matched tunable is non-READEARLY. */
     if ((flags & READEARLY) && ((t->flags & READEARLY) == 0)) {
         return TUNABLE_ERR_OK;
     }

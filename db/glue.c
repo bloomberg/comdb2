@@ -615,12 +615,6 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
         sync = REP_SYNC_FULL;
         adaptive = 0;
         timeoutms = -1;
-        /* Schema change committed/aborted.
-         * Safe to release schema lk early */
-        if (iq->sc_locked) {
-            unlock_schema_lk();
-            iq->sc_locked = 0;
-        }
     } else {
         sync = dbenv->rep_sync;
     }
@@ -876,8 +870,51 @@ int cmp_context(struct ireq *iq, unsigned long long genid,
 /*        TRANSACTIONAL INDEX ROUTINES        */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
+int ix_isnullk(void *db_table, void *key, int ixnum)
+{
+    struct dbtable *db = db_table;
+    struct schema *dbixschema;
+    int ifld;
+    if (!db || !key || ixnum < 0 || ixnum >= db->nix) {
+        logmsg(LOGMSG_ERROR,
+            "ix_isnullk: bad args, db = %p, key = %p, ixnum = %d\n",
+            db, key, ixnum);
+        return 0;
+    }
+    if (db->ix_dupes[ixnum]) {
+        return 0;
+    }
+    if (!db->ix_nullsallowed[ixnum]) {
+        return 0;
+    }
+    dbixschema = db->ixschema[ixnum];
+    if (!dbixschema) {
+        logmsg(LOGMSG_ERROR,
+            "ix_isnullk: missing schema, db = %p, key = %p, ixnum = %d\n",
+            db, key, ixnum);
+        return 0;
+    }
+    for (ifld = 0; ifld < dbixschema->nmembers; ifld++) {
+        struct field *dbixfield = &dbixschema->member[ifld];
+        if (dbixfield) {
+            const char *bkey = (const char *)key;
+            int offset = dbixfield->offset;
+            if (offset >= 0 && stype_is_null((bkey + offset))) {
+                /* fprintf(stderr,
+                    "ix_isnullk: found NULL, db = %p, key = %p, ixnum = %d, ifld = %d\n",
+                    db, key, ixnum, ifld); */
+                return 1;
+            }
+        }
+    }
+    /* fprintf(stderr,
+        "ix_isnullk: no NULL, db = %p, key = %p, ixnum = %d\n",
+        db, key, ixnum); */
+    return 0;
+}
+
 int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
-                  unsigned long long genid, int rrn, void *dta, int dtalen)
+                  unsigned long long genid, int rrn, void *dta, int dtalen, int isnull)
 {
     struct dbtable *db = iq->usedb;
     int rc, bdberr;
@@ -900,7 +937,7 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 
     iq->gluewhere = "bdb_prim_addkey";
     rc = bdb_prim_addkey_genid(bdb_handle, trans, key, ixnum, rrn, genid, dta,
-                               dtalen, 0 /* XXX TODO, are there null values? */,
+                               dtalen, isnull,
                                &bdberr);
     iq->gluewhere = "bdb_prim_addkey done";
     if (rc == 0)
@@ -923,15 +960,15 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 
 /*index routines */
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
-            unsigned long long genid, int rrn, void *dta, int dtalen)
+            unsigned long long genid, int rrn, void *dta, int dtalen, int isnull)
 {
     return ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, genid, rrn, dta,
-                         dtalen);
+                         dtalen, isnull);
 }
 
 int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
                unsigned long long oldgenid, unsigned long long genid, void *dta,
-               int dtalen)
+               int dtalen, int isnull)
 {
     struct dbtable *db = iq->usedb;
     int rc, bdberr;
@@ -949,7 +986,7 @@ int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
 
     iq->gluewhere = "bdb_prim_updkey";
     rc = bdb_prim_updkey_genid(bdb_handle, trans, key, keylen, ixnum, genid,
-                               oldgenid, dta, dtalen, &bdberr);
+                               oldgenid, dta, dtalen, isnull, &bdberr);
     iq->gluewhere = "bdb_prim_updkey done";
 
     if (rc == 0)
@@ -971,7 +1008,7 @@ int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
 }
 
 int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
-                  int rrn, unsigned long long genid)
+                  int rrn, unsigned long long genid, int isnull)
 {
     struct dbtable *db = iq->usedb;
     int rc, bdberr;
@@ -986,7 +1023,7 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_delkey";
     rc = bdb_prim_delkey_genid(bdb_handle, trans, key, ixnum, rrn, genid,
-                               &bdberr);
+                               isnull, &bdberr);
     iq->gluewhere = "bdb_prim_delkey done";
     if (rc == 0)
         return 0;
@@ -1013,9 +1050,9 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 }
 
 int ix_delk(struct ireq *iq, void *trans, void *key, int ixnum, int rrn,
-            unsigned long long genid)
+            unsigned long long genid, int isnull)
 {
-    return ix_delk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, rrn, genid);
+    return ix_delk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, rrn, genid, isnull);
 }
 
 inline int dat_upv(struct ireq *iq, void *trans, int vptr, void *vdta, int vlen,
@@ -4529,7 +4566,7 @@ retry:
             goto backout;
         }
 
-        rc = ix_addk(&iq, trans, key, i, genid, rrn, buf, db->lrl);
+        rc = ix_addk(&iq, trans, key, i, genid, rrn, buf, db->lrl, ix_isnullk(iq.usedb, key, i));
         if (rc) {
             if (rc == RC_INTERNAL_RETRY)
                 need_to_retry = 1;
@@ -4903,7 +4940,7 @@ retry:
             if (iq.debug)
                 logmsg(LOGMSG_USER, "meta_put:update genid 0x%llx rrn %d\n", genid, rrn);
             /* delete old key */
-            rc = ix_delk_auxdb(AUXDB_META, &iq, trans, hdr, 0, rrn, genid);
+            rc = ix_delk_auxdb(AUXDB_META, &iq, trans, hdr, 0, rrn, genid, ix_isnullk(iq.usedb, hdr, 0));
             if (iq.debug)
                 logmsg(LOGMSG_USER, "meta_put:ix_delk_auxdb RC %d\n", rc);
             if (rc)
@@ -4925,7 +4962,7 @@ retry:
             if (rc)
                 goto backout;
         }
-        rc = ix_addk_auxdb(AUXDB_META, &iq, trans, hdr, 0, genid, rrn, NULL, 0);
+        rc = ix_addk_auxdb(AUXDB_META, &iq, trans, hdr, 0, genid, rrn, NULL, 0, ix_isnullk(iq.usedb, hdr, 0));
         if (iq.debug)
             logmsg(LOGMSG_USER, "meta_put:ix_addk_auxdb RC %d\n", rc);
         if (rc)

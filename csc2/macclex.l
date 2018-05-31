@@ -228,6 +228,7 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
 <INITIAL>recnums                { return T_RECNUMS; }
 <INITIAL>datacopy               { return T_DATAKEY; }
 <INITIAL>primary                { return T_PRIMARY; }
+<INITIAL>uniqnulls              { return T_UNIQNULLS; }
 
 
 <RECTYPE>dbpad                  { return T_FLD_PADDING; }

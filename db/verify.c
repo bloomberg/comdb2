@@ -316,7 +316,7 @@ static int verify_table_int(const char *table, SBUF2 *sb,
         assert(db && "db is null but should not be");
         blob_buffer_t blob_buf[MAXBLOBS] = {0};
         rc = bdb_verify(
-            sb, db->handle, verify_formkey_callback, verify_blobsizes_callback,
+            sb, db->handle, db, verify_formkey_callback, verify_blobsizes_callback,
             (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
             verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
             verify_indexes_callback, db, lua_callback, lua_params, blob_buf,

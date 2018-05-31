@@ -361,6 +361,8 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         wrlock_schema_lk();
         rc = do_finalize(post, iq, s, tran, type);
         unlock_schema_lk();
+        if (type == fastinit && gbl_replicate_local)
+            local_replicant_write_clear(iq, tran, s->db);
         broadcast_sc_end(s->table, iq->sc_seed);
     } else {
         rc = SC_COMMIT_PENDING;
@@ -573,7 +575,6 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
 
 void *sc_resuming_watchdog(void *p)
 {
-    int backout_schema_change(struct ireq * iq);
     struct ireq iq;
     struct schema_change_type *stored_sc = NULL;
     int time = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_WATCHDOG_TIMER);
@@ -586,11 +587,19 @@ void *sc_resuming_watchdog(void *p)
     stored_sc = sc_resuming;
     while (stored_sc) {
         iq.sc = stored_sc;
+        if (iq.sc->db)
+            iq.sc->db->sc_abort = 1;
         pthread_mutex_lock(&(iq.sc->mtx));
         stored_sc = stored_sc->sc_next;
         logmsg(LOGMSG_INFO, "%s: aborting schema change of table '%s'\n",
                __func__, iq.sc->table);
-        backout_schema_change(&iq);
+        mark_schemachange_over(iq.sc->table);
+        if (iq.sc->addonly) {
+            delete_temp_table(&iq, iq.sc->db);
+            if (iq.sc->addonly == SC_DONE_ADD)
+                delete_db(iq.sc->table);
+        }
+        sc_del_unused_files(iq.sc->db);
         pthread_mutex_unlock(&(iq.sc->mtx));
         free_schema_change_type(iq.sc);
         iq.sc = NULL;
@@ -1127,17 +1136,50 @@ out:
     return 0;
 }
 
-int backout_schema_change(struct ireq *iq)
+int backout_schema_changes(struct ireq *iq, tran_type *tran)
+{
+    struct schema_change_type *s = NULL;
+
+    if (iq->sc_pending && !iq->sc_locked) {
+        wrlock_schema_lk();
+        iq->sc_locked = 1;
+    }
+    s = iq->sc = iq->sc_pending;
+    while (s != NULL) {
+        if (s->addonly) {
+            if (s->addonly == SC_DONE_ADD)
+                delete_db(s->table);
+            if (s->newdb) {
+                backout_schemas(s->newdb->tablename);
+                cleanup_newdb(s->newdb);
+            }
+        } else if (s->db) {
+            if (s->already_finalized)
+                reload_db_tran(s->db, tran);
+            else if (s->newdb) {
+                backout_constraint_pointers(s->newdb, s->db);
+            }
+            change_schemas_recover(s->db->tablename);
+        }
+        sc_del_unused_files_tran(s->db, tran);
+        s = iq->sc = s->sc_next;
+    }
+    if (iq->sc_pending) {
+        // createmastertbls only once
+        create_sqlmaster_records(NULL);
+        create_sqlite_master();
+    }
+    return 0;
+}
+
+int scdone_abort_cleanup(struct ireq *iq)
 {
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->table);
     sc_set_running(s->table, 0, iq->sc_seed, gbl_mynode, time(NULL));
     if (s->addonly) {
         delete_temp_table(iq, s->db);
-        if (s->addonly == SC_DONE_ADD)
-            delete_db(s->table);
     } else if (s->db) {
-        reload_db_tran(s->db, NULL);
         sc_del_unused_files(s->db);
     }
     broadcast_sc_end(s->table, iq->sc_seed);

@@ -746,10 +746,6 @@ static void osql_scdone_commit_callback(struct ireq *iq)
     int write_scdone =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN) ? 0 : 1;
     gbl_readonly_sc = 0;
-    if (iq->sc_locked) {
-        unlock_schema_lk();
-        iq->sc_locked = 0;
-    }
     if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
         struct schema_change_type *sc_next;
         iq->sc = iq->sc_pending;
@@ -812,9 +808,9 @@ static void osql_scdone_abort_callback(struct ireq *iq)
     if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
-            int backout_schema_change(struct ireq * iq);
+            int scdone_abort_cleanup(struct ireq * iq);
             struct schema_change_type *sc_next;
-            backout_schema_change(iq);
+            scdone_abort_cleanup(iq);
             sc_next = iq->sc->sc_next;
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
@@ -822,14 +818,6 @@ static void osql_scdone_abort_callback(struct ireq *iq)
         iq->sc_pending = NULL;
         iq->sc_seed = 0;
         iq->sc_should_abort = 0;
-
-        // createmastertbls only once
-        create_sqlmaster_records(NULL);
-        create_sqlite_master();
-    }
-    if (iq->sc_locked) {
-        unlock_schema_lk();
-        iq->sc_locked = 0;
     }
 }
 
@@ -840,7 +828,6 @@ static osql_callback_t commit_callbacks[] = {
     NULL,                          /* OSQL_FLAGS_AUTH */
     osql_analyze_commit_callback,  /* OSQL_FLAGS_ANALYZE */
     NULL,                          /* OSQL_FLAGS_CHECK_SELFLOCK */
-    NULL,                          /* OSQL_FLAGS_USE_BLKSEQ */
     osql_rowlocks_commit_callback, /* OSQL_FLAGS_ROWLOCKS */
     osql_genid48_commit_callback,  /* OSQL_FLAGS_GENID48 */
     osql_scdone_commit_callback    /* OSQL_FLAGS_SCDONE */
@@ -850,7 +837,6 @@ static osql_callback_t abort_callbacks[] = {
     NULL,                      /* OSQL_FLAGS_AUTH */
     NULL,                      /* OSQL_FLAGS_ANALYZE */
     NULL,                      /* OSQL_FLAGS_CHECK_SELFLOCK */
-    NULL,                      /* OSQL_FLAGS_USE_BLKSEQ */
     NULL,                      /* OSQL_FLAGS_ROWLOCKS */
     NULL,                      /* OSQL_FLAGS_GENID48 */
     osql_scdone_abort_callback /* OSQL_FLAGS_SCDONE */
