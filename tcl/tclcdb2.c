@@ -1961,13 +1961,30 @@ static int tclcdb2ObjCmd(
 	    break;
 	}
 	case OPT_CONFIGURE: {
-	    if (objc != 3) {
-		Tcl_WrongNumArgs(interp, 2, objv, "string");
+	    const char *config;
+	    int useFile = 0;
+
+	    if ((objc != 3) || (objc != 4)) {
+		Tcl_WrongNumArgs(interp, 2, objv, "string ?useFile?");
 		code = TCL_ERROR;
 		goto done;
 	    }
 
-	    cdb2_set_comdb2db_info(Tcl_GetString(objv[2]));
+	    if (objc == 4) {
+		code = Tcl_GetBooleanFromObj(interp, objv[3], &useFile);
+
+		if (code != TCL_OK)
+		    goto done;
+	    }
+
+	    config = Tcl_GetString(objv[2]);
+
+	    if (useFile) {
+		cdb2_set_comdb2db_config(config);
+	    } else {
+		cdb2_set_comdb2db_info(config);
+	    }
+
 	    Tcl_ResetResult(interp);
 	    break;
 	}
