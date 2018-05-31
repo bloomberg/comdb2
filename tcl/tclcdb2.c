@@ -120,6 +120,10 @@
 #define SET_AUXILIARY_DATA(a,b) Tcl_SetAssocData(interp, (a), NULL, (b));
 #endif /* SET_AUXILIARY_DATA */
 
+#if !defined(DELETE_AUXILIARY_DATA)
+#define DELETE_AUXILIARY_DATA(a) Tcl_DeleteAssocData(interp, (a));
+#endif /* DELETE_AUXILIARY_DATA */
+
 struct NameAndValue {
     char *name;
     int value;
@@ -1189,7 +1193,8 @@ static void FreeParameterValues(
 	Tcl_DeleteHashTable(hTablePtr);
 	ckfree((char *) hTablePtr);
 	hTablePtr = NULL;
-	SET_AUXILIARY_DATA("tclcdb2_params", hTablePtr);
+
+	DELETE_AUXILIARY_DATA("tclcdb2_params");
     }
 }
 
@@ -1311,7 +1316,7 @@ int Tclcdb2_Unload(
     int bShutdown = (flags & TCL_UNLOAD_DETACH_FROM_PROCESS);
     int bFromCmdDelete = (flags & TCL_UNLOAD_FROM_CMD_DELETE);
 
-    if (bHaveTclStubs == 0) { /* NON-PORTABLE */
+    if (bHaveTclStubs == 0) {
 	fprintf(stderr, "Tclcdb2_Unload: Tcl stubs are not initialized\n");
 	return TCL_ERROR;
     }
@@ -1333,7 +1338,7 @@ int Tclcdb2_Unload(
 	    }
 	}
 
-	Tcl_DeleteAssocData(interp, "tclcdb2cmd");
+	DELETE_AUXILIARY_DATA("tclcdb2cmd");
 	hTablePtr = GET_AUXILIARY_DATA("tclcdb2_handles");
 
 	if (hTablePtr != NULL) {
@@ -1364,7 +1369,7 @@ int Tclcdb2_Unload(
 	    hTablePtr = NULL;
 	}
 
-	Tcl_DeleteAssocData(interp, "tclcdb2_handles");
+	DELETE_AUXILIARY_DATA("tclcdb2_handles");
 	FreeParameterValues(interp);
     }
 
