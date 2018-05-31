@@ -323,8 +323,9 @@ __rep_start(dbenv, dbt, gen, flags)
 				 * elections, so jump the gen if we need to now.
 				 */
                 if (!gbl_allow_election_race && gen != 0) {
-                    logmsg(LOGMSG_USER, "%s line %d setting gen to arg %d\n",
-                            __func__, __LINE__, gen);
+                    logmsg(LOGMSG_USER, "%s line %d setting gen to arg %d "
+                            "current egen is %d\n", __func__, __LINE__, gen, 
+                            rep->egen);
                     rep->gen = gen;
                 } else if (rep->egen > rep->gen) {
                     logmsg(LOGMSG_USER, "%s line %d setting gen to rep->egen "

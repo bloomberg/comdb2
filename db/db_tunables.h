@@ -1389,10 +1389,6 @@ REGISTER_TUNABLE("elect_priority_bias",
                  "Bias this node's election priority by this amount.  "
                  "(Default: 0)", TUNABLE_INTEGER, &gbl_elect_priority_bias,
                  0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("defer_upgrade_time",
-                 "Defer an upgrade until this absolute time.  (Default: "
-                 "0)", TUNABLE_INTEGER, &gbl_defer_upgrade_time,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_election_race",
                  "Permit arbitrary upgrades at rep-start.  (Default: false)",
                  TUNABLE_BOOLEAN, &gbl_allow_election_race,

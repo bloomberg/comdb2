@@ -4871,8 +4871,6 @@ enum { UPGRADE = 1, DOWNGRADE = 2, DOWNGRADE_NOELECT = 3, REOPEN = 4 };
 void *dummy_add_thread(void *arg);
 void bdb_all_incoherent(bdb_state_type *bdb_state);
 
-unsigned long long gbl_defer_upgrade_time;
-
 static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
                                              int timeout, uint32_t newgen, int *done)
 {
@@ -4910,13 +4908,6 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
             more important (and hard to get right)
             SO, back to WRITELOCK here
         */
-        /* Defer before we get the bdb writelock */
-        if (gbl_defer_upgrade_time) {
-            int64_t upgrade_time64 = ((int64_t)gbl_defer_upgrade_time * 1000);
-            int64_t deferms = upgrade_time64 - (comdb2_time_epochus() / 1000);
-            if (deferms > 0)
-                poll(0, 0, deferms);
-        }
         lock_str = "upgrade";
         BDB_WRITELOCK(lock_str);
         bdb_all_incoherent(bdb_state);
