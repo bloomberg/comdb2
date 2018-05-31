@@ -110,7 +110,7 @@ try_for_tclcdb2_package
 proc maybe_quote_value { db index } {
     if {[catch {cdb2 colvalue $db $index} value] == 0} {
         set null false
-    } elseif {$value eq "invalid column value"} {
+    } elseif {[string trim $value] eq "invalid column value"} {
         set null true
     } else {
         error $value; # FAIL: Unknown error.
