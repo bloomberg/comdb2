@@ -1964,7 +1964,7 @@ static int tclcdb2ObjCmd(
 	    const char *config;
 	    int useFile = 0;
 
-	    if ((objc != 3) || (objc != 4)) {
+	    if ((objc != 3) && (objc != 4)) {
 		Tcl_WrongNumArgs(interp, 2, objv, "string ?useFile?");
 		code = TCL_ERROR;
 		goto done;
