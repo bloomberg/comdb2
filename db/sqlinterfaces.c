@@ -2662,15 +2662,28 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     return 0;
 }
 
-static int skip_response(struct sqlclntstate *clnt)
+static int skip_response_int(struct sqlclntstate *clnt, int from_error)
 {
     if (clnt->osql.replay == OSQL_RETRY_DO)
         return 1;
-    if (is_with_statement(clnt->sql) || clnt->isselect)
+    if (clnt->isselect || is_with_statement(clnt->sql))
         return 0;
-    if (clnt->in_client_trans)
+    if (clnt->in_client_trans) {
+        if (from_error && !clnt->had_errors) /* send on first error */
+            return 0;
         return 1;
+    }
     return 0; /* single stmt by itself (read or write) */
+}
+
+static int skip_response(struct sqlclntstate *clnt)
+{
+    return skip_response_int(clnt, 0);
+}
+
+static int skip_response_error(struct sqlclntstate *clnt)
+{
+    return skip_response_int(clnt, 1);
 }
 
 static int send_columns(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt)
@@ -2785,7 +2798,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
     char *errstr = NULL;
     int rc = rc_sqlite_to_client(thd, clnt, rec, &errstr);
     if (rc != 0) {
-        if (!skip_response(clnt)) {
+        if (!skip_response_error(clnt)) {
             send_run_error(clnt, errstr, rc);
         }
         clnt->had_errors = 1;
