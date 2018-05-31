@@ -85,7 +85,7 @@ set tcl_precision 15
 set test_name [string map {".test" ""} $argv0]
 set comdb2_name [lindex $argv 0]
 set file_path [lindex $argv 1]
-set cdb2sql [lindex $argv 2]; # NO LONGER USED
+set cdb2_tcl [lindex $argv 2]
 set cdb2_config [lindex $argv 3]
 set cdb2_debug [string is true -strict [lindex $argv 4]]
 set cdb2_trace [string is true -strict [lindex $argv 5]]
@@ -98,10 +98,7 @@ set gbl_find -99
 set gbl_schemachange_delay 10
 
 proc try_for_tclcdb2_package {} {
-    if {![info exists ::env(BUILDDIR)]} {
-        error "missing BUILDDIR environment variable, which is required for this test"
-    }
-    set directory [file join $::env(BUILDDIR) tcl]
+    set directory $::cdb2_tcl
     if {![info exists ::auto_path] || [lsearch -exact $::auto_path $directory] == -1} {
         lappend ::auto_path $directory
     }
@@ -148,6 +145,7 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
     set db [cdb2 open $dbName $tier]
     if {$::cdb2_debug} {cdb2 debug $db}
 
+    set sql [string map [list \r\n \n] $sql]
     cdb2 run $db $sql
 
     while {[cdb2 next $db]} {
@@ -1099,8 +1097,8 @@ proc create_index {origquery} {
   puts $csc2 $csc2schema
   close $csc2
 
-  return [do_cdb2_defquery "ALTER TABLE  $table \{$csc2schema\}"]
-  # set rc [catch {do_cdb2_defquery "ALTER TABLE  $table \{$csc2schema\}"} output]
+  return [do_cdb2_defquery "ALTER TABLE $table \{$csc2schema\}"]
+  # set rc [catch {do_cdb2_defquery "ALTER TABLE $table \{$csc2schema\}"} output]
   # if {$rc != 0} {
   #   puts "failed to add index $index to $table rc:$rc $output"
   # }
@@ -1314,7 +1312,7 @@ proc execsql {sql {option ""}} {
       set i 0
       foreach output $outputs {
         incr i
-        if {$i >= [llength $outputs]} {
+        if {$i > [llength $outputs]} {
           break
         }
         regexp {^\((.*)\)$} $output _ output
@@ -1332,9 +1330,6 @@ proc execsql {sql {option ""}} {
           if {[string equal $o "NULL"]} {
             set o ""
           }
-
-            puts stdout "appending output \{$o\}"
-
           lappend r $o
         }
       }
