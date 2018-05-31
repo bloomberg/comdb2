@@ -19,6 +19,8 @@ void usage(FILE *f)
     fprintf(
         f, "     -o                  -   for occ selectv test (skip rcode).\n");
     fprintf(f, "     -r                  -   read committed mode.\n");
+    fprintf(f, "     -m <retries>        -   set max-retries.\n");
+    fprintf(f, "     -D                  -   enable debug trace.\n");
     fprintf(f, "     -t <num>            -   set num of threads.\n");
     fprintf(f, "     -h                  -   this menu.\n");
     exit(1);
@@ -190,6 +192,12 @@ void *schedule_thd(void *arg)
                     ret = cdb2_next_record(sqlh);
                 } while (ret == CDB2_OK);
             }
+        } else {
+            cdb2_run_statement(sqlh, "rollback");
+            do {
+                ret = cdb2_next_record(sqlh);
+            } while (ret == CDB2_OK);
+            continue;
         }
 
         snprintf(sql, sizeof(sql), "commit");
@@ -314,13 +322,13 @@ int main(int argc, char *argv[])
 {
     cdb2_hndl_tp *sqlh;
     config_t *c;
-    int err = 0, opt;
+    int err = 0, opt, maxretries = 32, debug = 0;
 
     argv0 = argv[0];
     c = default_config();
 
     /* char *optarg=argument, int optind = argv index  */
-    while ((opt = getopt(argc, argv, "d:hort:")) != EOF) {
+    while ((opt = getopt(argc, argv, "d:hort:m:D")) != EOF) {
         switch (opt) {
         case 'd':
             c->dbname = optarg;
@@ -338,8 +346,16 @@ int main(int argc, char *argv[])
             c->threads = atoi(optarg);
             break;
 
+        case 'D':
+            debug = 1;
+            break;
+
         case 'h':
             usage(stdout);
+            break;
+
+        case 'm':
+            maxretries = atoi(optarg);
             break;
 
         default:
@@ -348,6 +364,7 @@ int main(int argc, char *argv[])
             break;
         }
     }
+
 
     /* Make sure dbname is set. */
     if (NULL == c->dbname) {
@@ -366,13 +383,17 @@ int main(int argc, char *argv[])
     char *conf = getenv("CDB2_CONFIG");
     if (conf)
         cdb2_set_comdb2db_config(conf);
+
+    cdb2_set_max_retries(maxretries);
+
     /* Allocate an sql handle. */
     if (0 == err && cdb2_open(&sqlh, c->dbname, "default", 0)) {
         fprintf(stderr, "error opening sql handle for '%s'.\n", c->dbname);
         err++;
     }
 
-    cdb2_set_debug_trace(sqlh);
+    if (debug)
+        cdb2_set_debug_trace(sqlh);
 
     /* Punt if there were errors. */
     if (err) {
