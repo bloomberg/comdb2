@@ -2867,8 +2867,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     if (clnt->intrans == 0) {
-        bzero(&clnt->effects, sizeof(clnt->effects));
-        bzero(&clnt->log_effects, sizeof(clnt->log_effects));
+        reset_query_effects(clnt);
     }
 
     /* no rows actually ? */
@@ -3774,8 +3773,8 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->limits.tablescans_warn = gbl_querylimits_tablescans_warn;
     clnt->limits.temptables_warn = gbl_querylimits_temptables_warn;
 
-    bzero(&clnt->effects, sizeof(clnt->effects));
-    bzero(&clnt->log_effects, sizeof(clnt->log_effects));
+
+    reset_query_effects(clnt);
 
     /* reset the user */
     clnt->have_user = 0;

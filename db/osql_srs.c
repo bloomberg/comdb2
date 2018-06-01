@@ -301,7 +301,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
                     if (osql->history) {
                         LISTC_FOR_EACH(&osql->history->lst, item, lnk)
                         {
-                            logmsg(LOGMSG_DEBUG, "\"%s\"\n", print_stmt(clnt, item->stmt));
+                            logmsg(LOGMSG_DEBUG, "\"%s\"\n", print_stmt(clnt, item));
                         }
                     }
                 }
