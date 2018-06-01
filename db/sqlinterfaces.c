@@ -5525,12 +5525,17 @@ void sql_dump_hints(void)
  * Required by stat4 which need datetime conversions during prepare
  *
  */
-void comdb2_set_sqlite_vdbe_tzname(Vdbe *p)
+void comdb2_set_sqlite_vdbe_time_info(Vdbe *p)
 {
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
     if (!sqlthd)
         return;
+    /* set the default timezone */
     comdb2_set_sqlite_vdbe_tzname_int(p, sqlthd->clnt);
+    /* set the default datetime precision */
+    p->dtprec = sqlthd->clnt->dtprec;
+    /* set the now() value */
+    clock_gettime(CLOCK_REALTIME, &p->tspec);
 }
 
 void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
