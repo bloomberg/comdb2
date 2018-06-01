@@ -2697,7 +2697,7 @@ static int send_columns(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt)
 static int send_row(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt,
                     uint64_t row_id, int postpone, struct errstat *err)
 {
-    if (skip_row(clnt, row_id) || skip_response(clnt))
+    if (skip_row(clnt, row_id))
         return 0;
     struct response_data arg = {0};
     arg.err = err;
