@@ -1570,6 +1570,9 @@ static int process_local_shadtbl_usedb(struct sqlclntstate *clnt,
 
     rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tablename,
                          osql_nettype, osql->logsb, tableversion);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: osql_send_usedb rc=%d\n", __func__, rc);
+    }
 
     return rc;
 }

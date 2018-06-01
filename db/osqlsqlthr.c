@@ -65,12 +65,12 @@ static int osql_send_usedb_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                  int nettype);
 static int osql_send_delrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype);
-static int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
-                                  int nettype);
+int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
+                           int nettype);
 static int osql_send_insrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   char *pData, int nData, int nettype);
-static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
-                                  int nettype);
+int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
+                           int nettype);
 static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   char *pData, int nData, int nettype);
 static int osql_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
@@ -104,21 +104,33 @@ int g_osql_max_trans = 50000;
  * Set maximum osql transaction size
  *
  */
-void set_osql_maxtransfer(int limit) { g_osql_max_trans = limit; }
+inline void set_osql_maxtransfer(int limit)
+{
+    g_osql_max_trans = limit;
+}
 
 /**
  * Get maximum osql transaction size
  *
  */
-int get_osql_maxtransfer(void) { return g_osql_max_trans; }
+inline int get_osql_maxtransfer(void)
+{
+    return g_osql_max_trans;
+}
 
 /**
  * Set the maximum time throttling offload-sql requests
  *
  */
-void set_osql_maxthrottle_sec(int limit) { gbl_osql_max_throttle_sec = limit; }
+inline void set_osql_maxthrottle_sec(int limit)
+{
+    gbl_osql_max_throttle_sec = limit;
+}
 
-int get_osql_maxthrottle_sec(void) { return gbl_osql_max_throttle_sec; }
+inline int get_osql_maxthrottle_sec(void)
+{
+    return gbl_osql_max_throttle_sec;
+}
 
 /**
  * Process a sqlite index delete request
@@ -182,8 +194,8 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
  *
  */
 
-int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-                 int nData, int nStat)
+inline int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd,
+                        char *pData, int nData, int nStat)
 {
     return osql_send_updstat_logic(pCur, thd, pData, nData, nStat,
                                    NET_OSQL_SOCK_RPL);
@@ -1000,7 +1012,6 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
                                      int nettype)
 {
     osqlstate_t *osql = &clnt->osql;
-    int tablenamelen = strlen(tablename) + 1; /*including trailing 0*/
     int rc = 0;
 
     if (clnt->ddl_tables && hash_find_readonly(clnt->ddl_tables, tablename)) {
@@ -1009,8 +1020,9 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
     if (clnt->dml_tables && !hash_find_readonly(clnt->dml_tables, tablename))
         hash_add(clnt->dml_tables, strdup(tablename));
 
+    int tablenamelen = strlen(tablename) + 1; /*including trailing 0*/
     if (osql->tablename) {
-        if (osql->tablenamelen == (strlen(tablename) + 1) &&
+        if (osql->tablenamelen == tablenamelen &&
             !strncmp(tablename, osql->tablename, osql->tablenamelen))
             /* we've already sent this, skip */
             return SQLITE_OK;
@@ -1085,7 +1097,7 @@ static int osql_send_updstat_logic(struct BtCursor *pCur,
     return rc;
 }
 
-static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
+inline int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype)
 {
     struct sqlclntstate *clnt = thd->clnt;
@@ -1112,8 +1124,8 @@ static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
     return rc;
 }
 
-static int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
-                                  int nettype)
+int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
+                           int nettype)
 {
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
@@ -1182,55 +1194,52 @@ static int osql_send_updcols_logic(struct BtCursor *pCur,
 
 static int osql_send_qblobs_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int *updCols, blob_buffer_t *blobs,
-                                  int maxblobs, int nettype)
+                                  int nettype)
 {
-
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int i;
     int idx;
     int ncols;
-    int actualblobs;
 
-    /* override maxblobs to the max # blobs we'll actually need to send */
-    actualblobs = pCur->db->schema->numblobs;
+    int actualblobs = pCur->db->schema->numblobs;
 
     for (i = 0; i < actualblobs; i++) {
-
-        if (blobs[i].exists) {
-
-            /* Send length of -2 if this isn't being used in this update. */
-            if (updCols && gbl_osql_blob_optimization && blobs[i].length > 0) {
-                idx = get_schema_blob_field_idx(pCur->db->tablename, ".ONDISK",
-                                                i);
-                ncols = updCols[0];
-                if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
-
-                    /* Put a token on the network if this isn't going to be
-                     * used. */
-                    rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i,
-                                         pCur->genid, nettype, NULL, -2,
-                                         osql->logsb);
-                    RESTART_SOCKSQL;
-                    continue;
-                }
-            }
-
-            rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i,
-                                 pCur->genid, nettype, blobs[i].data,
-                                 blobs[i].length, osql->logsb);
-            RESTART_SOCKSQL;
-            if (rc)
-                break;
-        }
-        /* note: the blobs are NOT clustered:
+        /* NOTE: the blobs are NOT clustered:
            create table t1(id int not null, b1 blob, b2 blob);
            insert into t1 (id, b2) values(0, x'11')
            so we need to run through all the defined blobs.
            we only need to send the non-null blobs, and the master
            will fix up those we missed.
          */
+
+        if (!blobs[i].exists)
+            continue;
+
+        /* Send length of -2 if this isn't being used in this update. */
+        if (updCols && gbl_osql_blob_optimization && blobs[i].length > 0) {
+            idx = get_schema_blob_field_idx(pCur->db->tablename, ".ONDISK", i);
+            /* AZ is pCur->db->schema not set to ondisk so we can instead call
+             * get_schema_blob_field_idx_sc(pCur->db->schema,i); */
+            ncols = updCols[0];
+            if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
+
+                /* Put a token on the network if this isn't going to be used */
+                rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i,
+                                     pCur->genid, nettype, NULL, -2,
+                                     osql->logsb);
+                RESTART_SOCKSQL;
+                continue;
+            }
+        }
+
+        rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i, pCur->genid,
+                             nettype, blobs[i].data, blobs[i].length,
+                             osql->logsb);
+        RESTART_SOCKSQL;
+        if (rc)
+            break;
     }
 
     return rc;
@@ -1266,7 +1275,7 @@ static int osql_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
                     __FILE__, __LINE__, __func__, rc);
         }
 
-        return osql_send_qblobs_logic(pCur, thd, updCols, blobs, maxblobs,
+        return osql_send_qblobs_logic(pCur, thd, updCols, blobs,
                                       NET_OSQL_SOCK_RPL);
     } else
         return osql_save_qblobs(pCur, thd, blobs, maxblobs, is_update);
