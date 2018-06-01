@@ -1285,19 +1285,6 @@ proc execsql {sql {option ""}} {
       continue
     }
 
-    if {[string equal $option "nopipe"] == 0} {
-      set found [regexp -nocase "^(DELETE|UPDATE|INSERT|BEGIN|COMMIT|ROLLBACK).*" $query _ first]
-      if {$begun || $found} {
-        if {[string equal $first "BEGIN"]} {
-          set begun 1
-        } elseif {[string equal $first "COMMIT"] || [string equal $first "ROLLBACK"]} {
-          set begun 0
-        }
-        do_cdb2_defquery $query
-        continue
-      }
-    }
-
     set rc 0
 
     if {[string equal $option "count"]
@@ -1442,7 +1429,7 @@ proc execsql {sql {option ""}} {
 # Execute SQL and catch exceptions.
 #
 proc catchsql {sql} {
-  return [execsql $sql nopipe]
+  return [execsql $sql]
 }
 
 # Do an VDBE code dump on the SQL given
