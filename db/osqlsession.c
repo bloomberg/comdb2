@@ -186,7 +186,7 @@ osql_req_t *osql_session_getreq(osql_sess_t *sess)
  * Get the request id, aka rqid
  *
  */
-unsigned long long osql_sess_getrqid(osql_sess_t *sess) { return sess->rqid; }
+inline unsigned long long osql_sess_getrqid(osql_sess_t *sess) { return sess->rqid; }
 
 /**
  * Register client
