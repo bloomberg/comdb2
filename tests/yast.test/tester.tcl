@@ -1305,6 +1305,7 @@ proc execsql {sql {option ""}} {
       catch {do_cdb2_defquery $query true cost} outputs
     } else {
       set rc [catch {do_cdb2_defquery $query true} outputs]
+      if {$rc == 0} {set cost ""}
     }
 
     if {$rc != 0} {
