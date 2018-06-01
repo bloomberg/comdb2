@@ -108,7 +108,7 @@ proc try_for_tclcdb2_package {} {
 
 try_for_tclcdb2_package
 
-proc maybe_quote_value { db index } {
+proc maybe_quote_value { db index tabs } {
     if {[catch {cdb2 colvalue $db $index} value] == 0} {
         set null false
     } elseif {[string trim $value] eq "invalid column value"} {
@@ -130,7 +130,8 @@ proc maybe_quote_value { db index } {
             return [expr {$null ? "NULL" : "\"[string map [list \" \\\"] $value]\""}]
         }
         default {
-            return [expr {$null ? "NULL" : $value}]
+            if {$tabs} {set wrap ""} else {set wrap '}
+            return [expr {$null ? "NULL" : "$wrap$value$wrap"}]
         }
     }
 }
@@ -182,9 +183,9 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
         for {set index 0} {$index < [cdb2 colcount $db]} {incr index} {
             if {$index > 0} {append result [expr {$tabs ? "\t" : ", "}]}
             if {$tabs} {
-                append result [maybe_quote_value $db $index]
+                append result [maybe_quote_value $db $index $tabs]
             } else {
-                append result [cdb2 colname $db $index]=[maybe_quote_value $db $index]
+                append result [cdb2 colname $db $index]=[maybe_quote_value $db $index $tabs]
             }
         }
         if {!$tabs} {append result \)}
@@ -1286,7 +1287,8 @@ proc execsql {sql {option ""}} {
     }
 
     if {[regexp -nocase "^(?:DELETE|UPDATE|INSERT|BEGIN|COMMIT|ROLLBACK).*" $query]} {
-      do_cdb2_defquery $query
+      set rc [catch {do_cdb2_defquery $query} outputs]
+      if {$rc != 0} {lappend r $rc $outputs}
       continue
     }
 
