@@ -144,11 +144,11 @@ proc maybe_append_to_log_file { sql dbName tier } {
     if {[string length $fileName] > 0} {
         set formatted "SQL \{$sql\}"
 
-        if {$dbName ne $::comdb2_name} then {
+        if {$dbName ne $::comdb2_name} {
             append formatted " against NON-DEFAULT database \"$::comdb2_name\""
         }
 
-        if {$tier ne "default"} then {
+        if {$tier ne "default"} {
             append formatted " on NON-DEFAULT tier \"$tier\""
         }
 
@@ -164,6 +164,7 @@ proc do_cdb2_defquery { sql {tabs false} {costVarName ""} } {
 }
 
 proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
+    if {[string index $sql 0] eq "#"} {return}
     maybe_append_to_log_file $sql $dbName $tier
 
     set result ""
