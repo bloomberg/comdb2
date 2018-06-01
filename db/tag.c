@@ -924,37 +924,33 @@ const char *strtype(int type)
 int get_size_of_schema(const struct schema *sc)
 {
     int sz;
-    int idx;
-    int maxalign = 0;
-
     struct field *last_field = &sc->member[sc->nmembers - 1];
     sz = last_field->offset + last_field->len;
+    if (!(sc->flags & SCHEMA_TABLE))
+        return sz;
+
     /* if it's a table, fiddle with size so alignment rules match cmacc */
-    if (sc->flags & SCHEMA_TABLE) {
-        /* actually, we might have this information from csc2lib, in which case
-         * just believe him. -- Sam J */
-        if (sc->recsize > 0) {
-            sz = sc->recsize;
-        } else {
-            /* we wind up in here for dynamic schemas */
-            for (idx = 0; idx < sc->nmembers; idx++) {
-                if ((sc->member[idx].type < SERVER_MINTYPE ||
-                     sc->member[idx].type > SERVER_MAXTYPE) &&
-                    sc->member[idx].type != CLIENT_CSTR &&
-                    sc->member[idx].type != CLIENT_PSTR &&
-                    sc->member[idx].type != CLIENT_PSTR2 &&
-                    sc->member[idx].type != CLIENT_BYTEARRAY &&
-                    sc->member[idx].len > maxalign) {
-                    maxalign = sc->member[idx].len;
-                }
-            }
+    /* actually, we might have this information from csc2lib, in which case
+     * just believe him. -- Sam J */
+    if (sc->recsize > 0)
+        return sc->recsize;
+
+    /* we wind up in here for dynamic schemas */
+    int maxalign = 0;
+    for (int idx = 0; idx < sc->nmembers; idx++) {
+        if ((sc->member[idx].type < SERVER_MINTYPE ||
+             sc->member[idx].type > SERVER_MAXTYPE) &&
+            sc->member[idx].type != CLIENT_CSTR &&
+            sc->member[idx].type != CLIENT_PSTR &&
+            sc->member[idx].type != CLIENT_PSTR2 &&
+            sc->member[idx].type != CLIENT_BYTEARRAY &&
+            sc->member[idx].len > maxalign) {
+            maxalign = sc->member[idx].len;
         }
     }
 
-    if (maxalign) {
-        if (sz % maxalign)
-            sz += (maxalign - sz % maxalign);
-    }
+    if (maxalign && (sz % maxalign) )
+        sz += (maxalign - sz % maxalign);
 
     return sz;
 }

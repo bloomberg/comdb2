@@ -102,8 +102,7 @@ void free_cached_idx(uint8_t * *cached_idx);
 
 int gbl_max_wr_rows_per_txn = 0;
 
-static inline int
-add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
+int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                const uint8_t *p_buf_tag_name_end, uint8_t *p_buf_rec,
                const uint8_t *p_buf_rec_end, const unsigned char fldnullmap[32],
                blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
@@ -647,19 +646,6 @@ err:
         iq->last_genid = *genid;
     }
     return retrc;
-}
-
-int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
-               const uint8_t *p_buf_tag_name_end, uint8_t *p_buf_rec,
-               const uint8_t *p_buf_rec_end, const unsigned char fldnullmap[32],
-               blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
-               int *ixfailnum, int *rrn, unsigned long long *genid,
-               unsigned long long ins_keys, int opcode, int blkpos, int flags)
-{
-    return add_record_int(iq, trans, p_buf_tag_name, p_buf_tag_name_end,
-                          p_buf_rec, p_buf_rec_end, fldnullmap, blobs, maxblobs,
-                          opfailcode, ixfailnum, rrn, genid, ins_keys, opcode,
-                          blkpos, flags);
 }
 
 /*
