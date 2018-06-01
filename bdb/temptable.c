@@ -464,7 +464,7 @@ done:
     return tbl;
 }
 
-int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg)
+inline int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg)
 {
     int bdberr = 0;
     *tblp =
@@ -557,7 +557,7 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
     return table;
 }
 
-struct temp_table *bdb_temp_table_create_flags(bdb_state_type *bdb_state,
+inline struct temp_table *bdb_temp_table_create_flags(bdb_state_type *bdb_state,
                                                int flags, int *bdberr)
 {
     int temptype;
@@ -567,17 +567,17 @@ struct temp_table *bdb_temp_table_create_flags(bdb_state_type *bdb_state,
     return bdb_temp_table_create_type(bdb_state, temptype, bdberr);
 }
 
-struct temp_table *bdb_temp_table_create(bdb_state_type *bdb_state, int *bdberr)
+inline struct temp_table *bdb_temp_table_create(bdb_state_type *bdb_state, int *bdberr)
 {
     return bdb_temp_table_create_type(bdb_state, TEMP_TABLE_TYPE_BTREE, bdberr);
 }
 
-struct temp_table *bdb_temp_list_create(bdb_state_type *bdb_state, int *bdberr)
+inline struct temp_table *bdb_temp_list_create(bdb_state_type *bdb_state, int *bdberr)
 {
     return bdb_temp_table_create_type(bdb_state, TEMP_TABLE_TYPE_LIST, bdberr);
 }
 
-struct temp_table *bdb_temp_hashtable_create(bdb_state_type *bdb_state,
+inline struct temp_table *bdb_temp_hashtable_create(bdb_state_type *bdb_state,
                                              int *bdberr)
 {
     return bdb_temp_table_create_type(bdb_state, TEMP_TABLE_TYPE_HASH, bdberr);
@@ -934,7 +934,7 @@ static int bdb_temp_table_next_prev_norewind(bdb_state_type *bdb_state,
     return IX_FND;
 }
 
-static int bdb_temp_table_next_prev(bdb_state_type *bdb_state,
+inline static int bdb_temp_table_next_prev(bdb_state_type *bdb_state,
                                     struct temp_cursor *cur, int *bdberr,
                                     int how)
 {
@@ -950,7 +950,7 @@ static int bdb_temp_table_next_prev(bdb_state_type *bdb_state,
     return bdb_temp_table_next_prev_norewind(bdb_state, cur, bdberr, how);
 }
 
-int bdb_temp_table_first(bdb_state_type *bdb_state, struct temp_cursor *cur,
+inline int bdb_temp_table_first(bdb_state_type *bdb_state, struct temp_cursor *cur,
                          int *bdberr)
 {
     int rc;
@@ -959,7 +959,7 @@ int bdb_temp_table_first(bdb_state_type *bdb_state, struct temp_cursor *cur,
     return rc;
 }
 
-int bdb_temp_table_last(bdb_state_type *bdb_state, struct temp_cursor *cur,
+inline int bdb_temp_table_last(bdb_state_type *bdb_state, struct temp_cursor *cur,
                         int *bdberr)
 {
     int rc;
@@ -968,7 +968,7 @@ int bdb_temp_table_last(bdb_state_type *bdb_state, struct temp_cursor *cur,
     return rc;
 }
 
-int bdb_temp_table_next(bdb_state_type *bdb_state, struct temp_cursor *cur,
+inline int bdb_temp_table_next(bdb_state_type *bdb_state, struct temp_cursor *cur,
                         int *bdberr)
 {
     int rc;
@@ -977,7 +977,7 @@ int bdb_temp_table_next(bdb_state_type *bdb_state, struct temp_cursor *cur,
     return rc;
 }
 
-int bdb_temp_table_prev(bdb_state_type *bdb_state, struct temp_cursor *cur,
+inline int bdb_temp_table_prev(bdb_state_type *bdb_state, struct temp_cursor *cur,
                         int *bdberr)
 {
     int rc;
@@ -986,7 +986,7 @@ int bdb_temp_table_prev(bdb_state_type *bdb_state, struct temp_cursor *cur,
     return rc;
 }
 
-int bdb_temp_table_next_norewind(bdb_state_type *bdb_state,
+inline int bdb_temp_table_next_norewind(bdb_state_type *bdb_state,
                                  struct temp_cursor *cur, int *bdberr)
 {
     int rc;
@@ -995,7 +995,7 @@ int bdb_temp_table_next_norewind(bdb_state_type *bdb_state,
     return rc;
 }
 
-int bdb_temp_table_prev_norewind(bdb_state_type *bdb_state,
+inline int bdb_temp_table_prev_norewind(bdb_state_type *bdb_state,
                                  struct temp_cursor *cur, int *bdberr)
 {
     int rc;
@@ -1004,7 +1004,7 @@ int bdb_temp_table_prev_norewind(bdb_state_type *bdb_state,
     return rc;
 }
 
-int bdb_temp_table_keysize(struct temp_cursor *cur)
+inline int bdb_temp_table_keysize(struct temp_cursor *cur)
 {
     int rc;
     if (!cur->valid) {
@@ -1017,7 +1017,7 @@ done:
     return rc;
 }
 
-int bdb_temp_table_datasize(struct temp_cursor *cur)
+inline int bdb_temp_table_datasize(struct temp_cursor *cur)
 {
     int rc;
     if (!cur->valid) {
@@ -1059,7 +1059,7 @@ done:
     return rc;
 }
 
-void *bdb_temp_table_data(struct temp_cursor *cur)
+inline void *bdb_temp_table_data(struct temp_cursor *cur)
 {
     void *rc;
     if (!cur->valid) {
@@ -1399,7 +1399,7 @@ done:
     return rc;
 }
 
-int bdb_temp_table_destroy_pool_wrapper(void *tbl, void *bdb_state_arg)
+inline int bdb_temp_table_destroy_pool_wrapper(void *tbl, void *bdb_state_arg)
 {
     int last, bdberr;
     return bdb_temp_table_destroy_lru(tbl, bdb_state_arg, &last, &bdberr);
@@ -1439,7 +1439,7 @@ done:
     return rc;
 }
 
-void bdb_temp_table_set_cmp_func(struct temp_table *tbl, tmptbl_cmp cmpfunc)
+inline void bdb_temp_table_set_cmp_func(struct temp_table *tbl, tmptbl_cmp cmpfunc)
 {
     tbl->cmpfunc = cmpfunc;
     /* default to memcmp semantics (for keys) */
@@ -1469,20 +1469,9 @@ static int temp_table_compare(DB *db, const DBT *dbt1, const DBT *dbt2)
                         dbt2->data);
 }
 
-int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
-                        const void *key, int keylen, void *unpacked,
-                        int *bdberr)
+
+static int bdb_temp_table_find_hash(struct temp_cursor *cur, const void *key, int keylen)
 {
-    int rc;
-    DBT dkey, ddata;
-
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
-        logmsg(LOGMSG_ERROR, 
-                "bdb_temp_table_find operation not supported for temp list.\n");
-        return -1;
-    }
-
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         char *data = NULL;
         cur->valid = 0;
         if (!cur->tbl->temp_hash_tbl) {
@@ -1521,6 +1510,23 @@ int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
             return IX_EMPTY;
         }
         return 0;
+    }
+
+
+int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
+                        const void *key, int keylen, void *unpacked,
+                        int *bdberr)
+{
+    int rc;
+    DBT dkey, ddata;
+
+    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
+        logmsg(LOGMSG_ERROR, 
+                "bdb_temp_table_find operation not supported for temp list.\n");
+        return -1;
+    }
+    else if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
+        return bdb_temp_table_find_hash(cur, key, keylen);
     }
 
     assert(cur->cur != NULL);
@@ -1580,6 +1586,43 @@ done:
     return rc;
 }
 
+
+static int bdb_temp_table_find_exact_hash(struct temp_cursor *cur, 
+                                             void *key, int keylen)
+{
+    struct hashobj *o;
+    int should_free = 0;
+
+    if (keylen < 64*1024)
+        o = alloca(keylen + sizeof(int));
+    else {
+        o = malloc(keylen + sizeof(int));
+        should_free = 1;
+    }
+
+    cur->valid = 0;
+    o->len = keylen;
+    memcpy(o->data, key, keylen);
+    char *data = hash_find(cur->tbl->temp_hash_tbl, o);
+    if (should_free)
+        free(o);
+
+    if (data) {
+        cur->keylen = *(int *)data;
+        cur->key = data + sizeof(int);
+        cur->datalen = *(int *)(data + cur->keylen + sizeof(int));
+        ;
+        cur->data = data + cur->keylen + 2 * sizeof(int);
+        cur->valid = 1;
+    } else {
+        return IX_NOTFND;
+    }
+    return 0;
+
+
+}
+
+
 int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
                               struct temp_cursor *cur, void *key, int keylen,
                               int *bdberr)
@@ -1593,36 +1636,8 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
                         "temp list.\n");
         return -1;
     }
-
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
-        struct hashobj *o;
-        int should_free = 0;
-
-        if (keylen < 64*1024)
-            o = alloca(keylen + sizeof(int));
-        else {
-            o = malloc(keylen + sizeof(int));
-            should_free = 1;
-        }
-
-        cur->valid = 0;
-        o->len = keylen;
-        memcpy(o->data, key, keylen);
-        char *data = hash_find(cur->tbl->temp_hash_tbl, o);
-        if (should_free)
-            free(o);
-
-        if (data) {
-            cur->keylen = *(int *)data;
-            cur->key = data + sizeof(int);
-            cur->datalen = *(int *)(data + cur->keylen + sizeof(int));
-            ;
-            cur->data = data + cur->keylen + 2 * sizeof(int);
-            cur->valid = 1;
-        } else {
-            return IX_NOTFND;
-        }
-        return 0;
+    else if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
+        return bdb_temp_table_find_exact_hash(cur, key, keylen);
     }
 
     /*pthread_setspecific(cur->tbl->curkey, cur);*/
@@ -1742,9 +1757,8 @@ int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
 /* Run this carefully, it basically leave the task of freeing the
    data pointer to the caller that should have called bdb_temp_table_data by now
  */
-void bdb_temp_table_reset_datapointers(struct temp_cursor *cur)
+inline void bdb_temp_table_reset_datapointers(struct temp_cursor *cur)
 {
-
     if (cur) {
         cur->datalen = 0;
         cur->data = NULL;
@@ -1752,7 +1766,7 @@ void bdb_temp_table_reset_datapointers(struct temp_cursor *cur)
 }
 
 /* the only move routine you should have */
-int bdb_temp_table_move(bdb_state_type *bdb_state, struct temp_cursor *cursor,
+inline int bdb_temp_table_move(bdb_state_type *bdb_state, struct temp_cursor *cursor,
                         int how, int *bdberr)
 {
     switch (how) {
@@ -1817,7 +1831,7 @@ void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
     }
 }
 
-int bdb_is_hashtable(struct temp_table *tt)
+inline int bdb_is_hashtable(struct temp_table *tt)
 {
     return (tt->temp_table_type == TEMP_TABLE_TYPE_HASH);
 }
@@ -1868,21 +1882,20 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
         return 0;
     }
 
-    if (tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE) {
-        tbl->num_mem_entries++;
-    }
+    assert (tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE);
+    tbl->num_mem_entries++;
 
     return 1;
 }
 
-const char *bdb_temp_table_filename(struct temp_table *tbl)
+inline const char *bdb_temp_table_filename(struct temp_table *tbl)
 {
     if (tbl)
         return tbl->filename;
     return NULL;
 }
 
-void bdb_temp_table_flush(struct temp_table *tbl)
+inline void bdb_temp_table_flush(struct temp_table *tbl)
 {
     DB *db = tbl->tmpdb;
     db->sync(db, 0);
