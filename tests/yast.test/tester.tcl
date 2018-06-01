@@ -89,6 +89,7 @@ set cdb2_tcl [lindex $argv 2]
 set cdb2_config [lindex $argv 3]
 set cdb2_debug [string is true -strict [lindex $argv 4]]
 set cdb2_trace [string is true -strict [lindex $argv 5]]
+set cdb2_log_file [lindex $argv 6]
 set current_test_name ""
 set cluster ""
 set gbl_scan -99
@@ -135,7 +136,27 @@ proc maybe_quote_value { db index } {
 }
 
 proc delay_for_schema_change {} {
-  after $::gbl_schemachange_delay
+    after $::gbl_schemachange_delay
+}
+
+proc maybe_append_to_log_file { sql dbName tier } {
+    set fileName $::cdb2_log_file
+    if {[string length $fileName] > 0} {
+        set formatted "SQL \{$sql\}"
+
+        if {$dbName ne $::comdb2_name} then {
+            append formatted " against NON-DEFAULT database \"$::comdb2_name\""
+        }
+
+        if {$tier ne "default"} then {
+            append formatted " on NON-DEFAULT tier \"$tier\""
+        }
+
+        set channel [open $fileName {WRONLY APPEND CREAT}]
+        fconfigure $channel -encoding binary -translation binary
+        puts $channel $formatted
+        close $channel
+    }
 }
 
 proc do_cdb2_defquery { sql {tabs false} {costVarName ""} } {
@@ -143,6 +164,8 @@ proc do_cdb2_defquery { sql {tabs false} {costVarName ""} } {
 }
 
 proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
+    maybe_append_to_log_file $sql $dbName $tier
+
     set result ""
 
     cdb2 configure $::cdb2_config true
