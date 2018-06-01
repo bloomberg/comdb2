@@ -3711,9 +3711,8 @@ void bdb_set_seqnum(void *in_bdb_state)
                    lastlsn.offset, mygen);
             lastpr = now;
         }
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
     }
-
-    Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 }
 
 static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
