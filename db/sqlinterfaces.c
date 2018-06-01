@@ -1272,7 +1272,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
                     if (irc) {
                         logmsg(LOGMSG_ERROR, 
-                                "%s: failed to abort sorese transactin irc=%d\n",
+                                "%s: failed to abort sorese transaction irc=%d\n",
                                 __func__, irc);
                     }
                     if (clnt->early_retry == EARLY_ERR_VERIFY) {

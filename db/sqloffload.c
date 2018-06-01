@@ -280,6 +280,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int rc2 = 0;
     int usedb_only = 0;
 
+    /* !!! */
     if (clnt->early_retry == EARLY_ERR_VERIFY) {
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
         errstat_cat_str(&(clnt->osql.xerr), "unable to update record rc = 4");
@@ -360,7 +361,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     /* start the block processor session */
     rc = osql_sock_start(clnt, osqlreq_type, is_distrib_tran);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to start sorese transactin rc=%d\n",
+        logmsg(LOGMSG_ERROR, "%s: failed to start sorese transaction rc=%d\n",
                 __func__, rc);
         if (rc != SQLITE_ABORT) /* if abort, clnt->osql has the error */
             rc = SQLITE_CLIENT_CHANGENODE;
