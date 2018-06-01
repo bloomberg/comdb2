@@ -557,8 +557,8 @@ proc reset_db {} {
         puts "failed to drop table: $table \[$output\]"
       }
   }
-  set fastinit_stat1 "\"TRUNCATE sqlite_stat1\""
-  set fastinit_stat2 "\"TRUNCATE sqlite_stat2\""
+  set fastinit_stat1 "TRUNCATE sqlite_stat1"
+  set fastinit_stat2 "TRUNCATE sqlite_stat2"
   catch {do_cdb2_defquery $fastinit_stat1}
 
   catch {do_cdb2_defquery $fastinit_stat2}
