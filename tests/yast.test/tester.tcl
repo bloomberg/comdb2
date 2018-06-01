@@ -1285,6 +1285,11 @@ proc execsql {sql {option ""}} {
       continue
     }
 
+    if {[regexp -nocase "^(?:DELETE|UPDATE|INSERT|BEGIN|COMMIT|ROLLBACK).*" $query]} {
+      do_cdb2_defquery $query
+      continue
+    }
+
     set rc 0
 
     if {[string equal $option "count"]
