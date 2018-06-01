@@ -118,6 +118,10 @@ proc maybe_quote_value { db index tabs } {
     }
 
     switch -exact [cdb2 coltype $db $index] {
+        integer -
+        real {
+            return [expr {$null ? "NULL" : $value}]
+        }
         datetime -
         datetimeus -
         intervalds -
