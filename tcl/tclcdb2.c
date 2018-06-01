@@ -1883,7 +1883,8 @@ static int tclcdb2ObjCmd(
 		case CDB2_CSTRING: {
 		    const char *cstringValue = (const char *)pColValue;
 		    colSize = cdb2_column_size(pCdb2, colIndex);
-		    valuePtr = Tcl_NewStringObj(cstringValue, colSize);
+		    assert(colSize > 0);
+		    valuePtr = Tcl_NewStringObj(cstringValue, colSize - 1);
 		    break;
 		}
 		case CDB2_BLOB: {
