@@ -1559,7 +1559,7 @@ proc ifcapable {expr code {else ""} {elsecode ""}} {
       set c [catch {uplevel 1 $elsecode} r]
     }
     default {
-      puts "unknown capability $expr"
+      #puts "unknown capability $expr"
       set c [catch {uplevel 1 $elsecode} r]
     }
   }
