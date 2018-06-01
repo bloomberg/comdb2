@@ -26,6 +26,11 @@
 
 extern int gbl_partial_indexes;
 
+static int should_skip_constraint_for_index(struct dbtable *db, int ixnum, int nulls)
+{
+    return (nulls && (gbl_nullfkey || db->ix_nullsallowed[ixnum]));
+}
+
 int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
                              void *old_dta, unsigned long long ins_keys,
                              blob_buffer_t *blobs, int maxblobs,
@@ -123,7 +128,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
                 }
             }
 
-            if (gbl_nullfkey && nulls) {
+            if (should_skip_constraint_for_index(ruledb, ridx, nulls)) {
                 rc = IX_FND;
             } else {
                 ruleiq.usedb = ruledb;
@@ -239,7 +244,7 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
                        __func__);
                 continue;
             }
-            if (gbl_nullfkey && nulls) continue;
+            if (should_skip_constraint_for_index(cnstrt->lcltable, rixnum, nulls)) continue;
 
             if (cnstrt->lcltable->ix_collattr[rixnum]) {
                 rc = extract_decimal_quantum(cnstrt->lcltable, rixnum, rkey,

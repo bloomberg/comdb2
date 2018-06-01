@@ -68,6 +68,8 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     bdb_lock_table_write(db->handle, tran);
     bdb_lock_tablename_write(db->handle, newname, tran);
 
+    s->already_finalized = 1;
+
     /* renamed table schema gets bumped */
     rc = table_version_upsert(db, tran, &bdberr);
     if (rc) {
@@ -121,19 +123,17 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
         goto tran_error;
     }
 
-    rc = create_sqlmaster_records(tran);
-    if (rc) {
-        sc_errf(s, "create_sqlmaster_records failed\n");
-        goto recover_memory;
+    if (s->finalize) {
+        if (create_sqlmaster_records(tran)) {
+            sc_errf(s, "create_sqlmaster_records failed\n");
+            goto recover_memory;
+        }
+        create_sqlite_master();
     }
-    create_sqlite_master(); /* create sql statements */
 
     gbl_sc_commit_count++;
 
     live_sc_off(db);
-
-    if (gbl_replicate_local)
-        local_replicant_write_clear(db);
 
     if (oldname)
         free(oldname);

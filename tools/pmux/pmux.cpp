@@ -672,7 +672,8 @@ again:
         conn_printf(c, "del service             : forget port assignment for service\n");
         conn_printf(c, "use service port        : set specific port registration for service\n");
         conn_printf(c, "stat                    : dump some stats\n");
-        conn_printf(c, "used                    : dump active port assignments\n");
+        conn_printf(c,
+                    "used (or list)          : dump active port assignments\n");
         conn_printf(c, "rte                     : get route to instance service/port\n");
         conn_printf(c, "hello service           : keep active connection\n");
         conn_printf(c, "active                  : list active connections\n");

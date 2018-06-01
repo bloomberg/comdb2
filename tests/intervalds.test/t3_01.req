@@ -1,4 +1,5 @@
-# intervalds
+create table intvds(id int, a intervalds) $$
+create table intvdsus(id int, a intervaldsus) $$
 insert into intvds(id, a) values(1, "0 00:00:00")
 insert into intvds(id, a) values(2, "0 00:00:00.000")
 insert into intvds(id, a) values(3, "0 00:00:00.001")

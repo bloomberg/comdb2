@@ -39,6 +39,7 @@ Cost: 0.00 NRows: 10
     table DBNAME.sqlite_stat1 finds 1
     table DBNAME.sqlite_stat4 finds 1
     index 0 on table DBNAME.t finds 1 next/prev 9
+
 Table "sqlite_stat1" Rootp 1073741828 Remrootp 4 Version=0
 Table "sqlite_stat4" Rootp 1073741829 Remrootp 5 Version=0
 Index "$ID_52596C31" for table "t" Rootp 1073741831 Remrootp 3 Version=1

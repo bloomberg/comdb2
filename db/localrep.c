@@ -768,7 +768,8 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     return rc;
 }
 
-int local_replicant_write_clear(struct dbtable *db)
+int local_replicant_write_clear(struct ireq *in_iq, void *in_trans,
+                                struct dbtable *db)
 {
     struct schema *s;
     int rc;
@@ -797,6 +798,11 @@ int local_replicant_write_clear(struct dbtable *db)
     strncpy(table, db->tablename, sizeof(table));
 
     table[31] = 0;
+
+    if (in_iq && !in_iq->is_fake && in_trans) {
+        return add_oplog_entry(in_iq, in_trans, LCL_OP_CLEAR, table,
+                               sizeof(table));
+    }
 
     init_fake_ireq(thedb, &iq);
     iq.use_handle = thedb->bdb_env;

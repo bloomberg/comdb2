@@ -4362,7 +4362,9 @@ static int create_sp_int(SP sp, char **err)
         }
     }
 
-    disable_global_variables(lua);
+    extern int gbl_allow_lua_dynamic_libs;
+    if(!gbl_allow_lua_dynamic_libs)
+        disable_global_variables(lua);
 
     /* To be given as lrl value. */
     lua_sethook(lua, InstructionCountHook, LUA_MASKCOUNT, 1);

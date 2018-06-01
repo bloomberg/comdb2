@@ -30,7 +30,7 @@ import java.util.*;
  * @author Tzvetan Mikov
  */
 public class Comdb2Statement implements Statement {
-    private static Logger logger = Logger.getLogger(BBSysUtils.class.getName());
+    private static Logger logger = Logger.getLogger(Comdb2Statement.class.getName());
 
     /**
      * `hndl` is a reference to the handle of its connection. So it should be
@@ -54,7 +54,7 @@ public class Comdb2Statement implements Statement {
         this.hndl = hndl;
         this.conn = conn;
         this.timeout = timeout;
-        this.querytimeout = querytimeout;
+        this.querytimeout = querytime;
     }
 
     @Override

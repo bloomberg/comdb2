@@ -479,6 +479,8 @@ DEF_ATTR(SC_ASYNC, sc_async, BOOLEAN, 1,
          "Run transactional schema changes asynchronously.")
 DEF_ATTR(SC_ASYNC_MAXTHREADS, sc_async_maxthreads, QUANTITY, 5,
          "Max number of threads for asynchronous schema changes.")
+DEF_ATTR(SC_DONE_SAME_TRAN, sc_done_same_tran, BOOLEAN, 1,
+         "Write scdone record in the same logical transaction as DDLs.")
 DEF_ATTR(USE_VTAG_ONDISK_VERMAP, use_vtag_ondisk_vermap, BOOLEAN, 1,
          "Use vtag_to_ondisk_vermap conversion function from vtag_to_ondisk.")
 DEF_ATTR(UDP_DROP_DELTA_THRESHOLD, udp_drop_delta_threshold, QUANTITY, 10,
@@ -643,6 +645,8 @@ DEF_ATTR(DEBUG_TIMEPART_SQLITE, dbg_timepart_SQLITE, BOOLEAN, 0, NULL)
 DEF_ATTR(DELAY_FILE_OPEN, delay_file_open, MSECS, 0, NULL)
 DEF_ATTR(DELAY_LOCK_TABLE_RECORD_C, delay_lock_table_record_c, MSECS, 0, NULL)
 
+DEF_ATTR(NET_SEND_GBLCONTEXT, net_send_gblcontext, BOOLEAN, 0,
+         "Enable net_send for USER_TYPE_GBLCONTEXT.")
 /*
   BDB_ATTR_REPTIMEOUT
      amount of time to wait for acks.  when the time is exceeded,

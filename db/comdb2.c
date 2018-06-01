@@ -142,6 +142,7 @@ int gbl_rep_node_pri = 0;
 int gbl_handoff_node = 0;
 int gbl_use_node_pri = 0;
 int gbl_allow_lua_print = 0;
+int gbl_allow_lua_dynamic_libs = 0;
 int gbl_master_changed_oldfiles = 0;
 int gbl_recovery_timestamp = 0;
 int gbl_recovery_lsn_file = 0;
@@ -883,9 +884,16 @@ void showdbenv(struct dbenv *dbenv)
         logmsg(LOGMSG_ERROR, "   data reclen %-3d bytes\n", usedb->lrl);
 
         for (ii = 0; ii < usedb->nix; ii++) {
-            logmsg(LOGMSG_USER, "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c\n",
-                   ii, usedb->ix_keylen[ii], (usedb->ix_dupes[ii] ? 'y' : 'n'),
-                   (usedb->ix_recnums[ii] ? 'y' : 'n'));
+            logmsg(LOGMSG_USER,
+                   "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c"
+                   " datacopy? %c collattr? %c uniqnulls %c disabled %c\n",
+                   ii, usedb->ix_keylen[ii],
+                   (usedb->ix_dupes[ii] ? 'y' : 'n'),
+                   (usedb->ix_recnums[ii] ? 'y' : 'n'),
+                   (usedb->ix_datacopy[ii] ? 'y' : 'n'),
+                   (usedb->ix_collattr[ii] ? 'y' : 'n'),
+                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'),
+                   (usedb->ix_disabled[ii] ? 'y' : 'n'));
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
@@ -1330,7 +1338,7 @@ void clean_exit_sigwrap(int signum) {
 }
 
 static void free_sqlite_table(struct dbenv *dbenv)
-{    
+{
     for (int i = dbenv->num_dbs - 1; i >= 0; i--) {
         struct dbtable *tbl = dbenv->dbs[i];
         delete_schema(tbl->tablename); // tags hash
@@ -1399,7 +1407,7 @@ void clean_exit(void)
     free(gbl_dbdir);
     free(gbl_myhostname);
 
-    cleanresources(); //list of lrls
+    cleanresources(); // list of lrls
     clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
@@ -1609,18 +1617,13 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             tbl->has_datacopy_ix = 1;
         }
 
-        tbl->ix_nullsallowed[ii] = 0;
-        /*
-          XXX todo
-          tbl->ix_nullsallowed[ii]=dyns_is_idx_nullsallowed(ii);
-          if (tbl->ix_nullallowed[ii]<0)
-          {
-          fprintf(stderr,"cant find index %d datacopy in csc schema %s\n",
-          ii,tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-          }
-        */
+        tbl->ix_nullsallowed[ii] = dyns_is_idx_uniqnulls(ii);
+        if (tbl->ix_nullsallowed[ii] < 0) {
+          logmsg(LOGMSG_ERROR, "cant find index %d uniqnulls in csc schema %s\n",
+                  ii, tblname);
+          cleanup_newdb(tbl);
+          return NULL;
+        }
     }
     tbl->n_rev_constraints =
         0; /* this will be initialized at verification time */
@@ -2872,7 +2875,8 @@ static char *create_default_lrl_file(char *dbname, char *dir) {
     }
 
     fprintf(lrlfile, "name    %s\n", dbname);
-    fprintf(lrlfile, "dir     %s\n\n", dir);
+    fprintf(lrlfile, "dir     %s\n", dir);
+    add_cmd_line_tunables_to_file(lrlfile);
     fclose(lrlfile);
 
     return lrlfile_name;
@@ -2990,8 +2994,6 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     }
     return 0;
 }
-
-
 
 static void load_dbstore_tableversion(struct dbenv *dbenv)
 {
@@ -3144,6 +3146,8 @@ static int init(int argc, char **argv)
     if (optind < argc && isdigit((int)argv[optind][0])) {
         cacheszkb = atoi(argv[optind]);
     }
+
+    gbl_mynodeid = machine_num(gbl_mynode);
 
     pthread_attr_init(&gbl_pthread_attr);
     pthread_attr_setstacksize(&gbl_pthread_attr, DEFAULT_THD_STACKSZ);
@@ -3328,7 +3332,8 @@ static int init(int argc, char **argv)
         if (nlogfiles == 0) {
             logmsg(LOGMSG_FATAL, "ZERO log files found in %s!\n", txndir);
             logmsg(LOGMSG_FATAL, "Cannot start without logfiles.\n");
-            logmsg(LOGMSG_FATAL, "If this is a clustered database then you should copycomdb2 from the master.\n");
+            logmsg(LOGMSG_FATAL, "If this is a clustered database then you "
+                                 "should copycomdb2 from the master.\n");
             if (!noabort)
                 exit(1);
         }
@@ -3767,7 +3772,9 @@ static int init(int argc, char **argv)
 
     /* some dbs have lots of tables and spew on startup.  this just wastes
      * peoples time shunting spew */
-    /*showdbenv(thedb);*/
+    if (getenv("CDB2_SHOW_DBENV")) {
+        showdbenv(thedb);
+    }
 
     if (gbl_net_max_queue) {
         net_set_max_queue(thedb->handle_sibling, gbl_net_max_queue);
@@ -4835,6 +4842,9 @@ static void register_all_int_switches()
     register_int_switch("mifid2_datetime_range",
                         "Extend datetime range to meet mifid2 requirements",
                         &gbl_mifid2_datetime_range);
+    register_int_switch("return_long_column_names",
+                        "Enables returning of long column names. (Default: ON)",
+                        &gbl_return_long_column_names);
 }
 
 static void getmyid(void)
@@ -5093,11 +5103,9 @@ int main(int argc, char **argv)
     if (comdb2ma_stats_cron() != 0)
         abort();
 
-    if (process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
-                                 deferred_do_commands)) {
-        logmsg(LOGMSG_FATAL, "failed to process deferred options\n");
-        exit(1);
-    }
+    process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
+                             deferred_do_commands);
+    clear_deferred_options(thedb, DEFERRED_SEND_COMMAND);
 
     // db started - disable recsize kludge so
     // new schemachanges won't allow broken size.
@@ -5127,6 +5135,27 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    return 0;
+}
+
+int add_db(struct dbtable *db)
+{
+    pthread_rwlock_wrlock(&thedb_lock);
+
+    if (hash_find_readonly(thedb->db_hash, db) != 0) {
+        pthread_rwlock_unlock(&thedb_lock);
+        return -1;
+    }
+
+    thedb->dbs =
+        realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct dbtable *));
+    db->dbs_idx = thedb->num_dbs;
+    thedb->dbs[thedb->num_dbs++] = db;
+
+    /* Add table to the hash. */
+    hash_add(thedb->db_hash, db);
+
+    pthread_rwlock_unlock(&thedb_lock);
     return 0;
 }
 

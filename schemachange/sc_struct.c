@@ -336,8 +336,6 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
 
     if (p_buf >= p_buf_end) return NULL;
 
-    bzero(s, sizeof(struct schema_change_type));
-
     p_buf = (uint8_t *)buf_get(&s->rqid, sizeof(s->rqid), p_buf, p_buf_end);
 
     p_buf =
@@ -565,8 +563,6 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
 {
     /* get the beginning */
     uint8_t *p_buf = (uint8_t *)packed, *p_buf_end = p_buf + packed_len;
-
-    bzero(s, sizeof(struct schema_change_type));
 
     /* unpack all the data */
     p_buf = buf_get_schemachange(s, p_buf, p_buf_end);
@@ -849,7 +845,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
 
         /* the master doesn't tell the replicants to close the db
          * ahead of time */
-        rc = bdb_close_only(old_bdb_handle, &bdberr);
+        rc = bdb_close_only_sc(old_bdb_handle, tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
             return 1;
@@ -905,7 +901,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         free(new_bdb_handle);
     } else {
         old_bdb_handle = db->handle;
-        rc = bdb_close_only(old_bdb_handle, &bdberr);
+        rc = bdb_close_only_sc(old_bdb_handle, tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
             return 1;

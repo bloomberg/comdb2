@@ -273,6 +273,11 @@ void bdb_ltran_get_schema_lock(tran_type *ltran)
     ltran->single_physical_transaction = 1;
 }
 
+void bdb_ltran_put_schema_lock(tran_type *ltran)
+{
+    ltran->get_schema_lock = 0;
+}
+
 /* Create a txn and add to the txn list.  Called directly from the replication
  * stream.  */
 tran_type *bdb_start_ltran(bdb_state_type *bdb_state,
@@ -1673,15 +1678,8 @@ static int bdb_tran_commit_with_seqnum_int_int(
             int blkseq_rc;
 
             *bdberr = 0;
-            /* If this is an abort, we've already gotten a new physical txn */
-            char *blkcpy = alloca(blklen + sizeof(int)), *p;
-            int t = comdb2_time_epoch();
-            memcpy(blkcpy, blkseq, blklen);
-            p = ((char *)blkcpy) + blklen;
-            memcpy(p, &t, sizeof(int));
-            rc = bdb_blkseq_insert(bdb_state, physical_tran, blkkey,
-                                   sizeof(int) * 3, blkcpy,
-                                   blklen + sizeof(int), NULL, NULL);
+            rc = bdb_blkseq_insert(bdb_state, physical_tran, blkkey, blkkeylen,
+                                   blkseq, blklen, NULL, NULL);
             *bdberr = (rc == IX_DUP) ? BDBERR_ADD_DUPE : rc;
 
             /*

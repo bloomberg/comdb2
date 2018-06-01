@@ -119,7 +119,9 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
                         int *bdberr);
 static int bdb_free_int(bdb_state_type *bdb_state, bdb_state_type *replace,
                         int *bdberr);
-static int bdb_close_only_int(bdb_state_type *bdb_state, int *bdberr);
+
+static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
+                              int *bdberr);
 
 int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
                     char *newfile, int *bdberr);
@@ -343,7 +345,7 @@ int bdb_get_new_prefix(char *buf, size_t buflen, int *bdberr)
         return -1;
     }
 
-    if (strlen(NEW_PREFIX) >= buflen) {
+    if (sizeof(NEW_PREFIX) - 1 >= buflen) {
         *bdberr = BDBERR_BUFSMALL;
         return -1;
     }
@@ -363,14 +365,14 @@ const char *bdb_unprepend_new_prefix(const char *tablename, int *bdberr)
 {
     /* if the input didn't start with new. report it by setting bdberr, note
      * that this may not be an error */
-    if (strncmp(tablename, NEW_PREFIX, strlen(NEW_PREFIX))) {
+    if (strncmp(tablename, NEW_PREFIX, sizeof(NEW_PREFIX) - 1)) {
         *bdberr = BDBERR_BADARGS;
         return tablename;
     }
 
     *bdberr = BDBERR_NOERROR;
     /* we want to remove the new. prefix from the tablename */
-    return tablename + strlen(NEW_PREFIX);
+    return tablename + sizeof(NEW_PREFIX) - 1;
 }
 
 /* this removes a new.SOMETHING. prefix from a tables name (if it exists)
@@ -1312,7 +1314,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
         for (strnum = 0; strnum < MAXSTRIPE; strnum++) {
             if (bdb_state->dbp_data[dtanum][strnum]) {
                 rc = bdb_state->dbp_data[dtanum][strnum]->close(
-                    bdb_state->dbp_data[dtanum][strnum], NULL, flags);
+                    bdb_state->dbp_data[dtanum][strnum], flags);
                 if (0 != rc) {
                     logmsg(LOGMSG_ERROR,
                            "%s: error closing %s[%d][%d]: %d %s\n", __func__,
@@ -1326,7 +1328,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
     if (bdb_state->bdbtype == BDBTYPE_TABLE) {
         for (i = 0; i < bdb_state->numix; i++) {
             /*fprintf(stderr, "closing ix %d\n", i);*/
-            rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], NULL, flags);
+            rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], flags);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s: error closing %s->dbp_ix[%d] %d %s\n",
                        __func__, bdb_state->name, i, rc, db_strerror(rc));
@@ -1449,6 +1451,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     int i;
     int bdberr;
     int last;
+    DB_TXN *tid;
     netinfo_type *netinfo_ptr = bdb_state->repinfo->netinfo;
 
     BDB_READLOCK("bdb_close_int");
@@ -1487,9 +1490,22 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     }
     Pthread_mutex_unlock(&(bdb_state->children_lock));
 
+    /* Wait for ongoing election to abort. */
+    while (1) {
+        Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
+        int in_election = bdb_state->repinfo->in_election;
+        Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
+        if (!in_election)
+            break;
+        logmsg(LOGMSG_WARN, "%s: Election in progress.\n", __func__);
+        sleep(1);
+    }
+
+    bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
+
     /* close all database files.   doesn't fail. */
     if (!envonly) {
-        rc = close_dbs(bdb_state, NULL);
+        rc = close_dbs(bdb_state, tid);
     }
 
     /* now do it for all of our children */
@@ -1499,11 +1515,14 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
         /* close all of our databases.  doesn't fail. */
         if (child) {
-            rc = close_dbs(child, NULL);
+            rc = close_dbs(child, tid);
             bdb_access_destroy(child);
         }
     }
     Pthread_mutex_unlock(&(bdb_state->children_lock));
+
+    /* Commit */
+    tid->commit(tid, 0);
 
     /* close our transactional environment.  note that according to berkdb
      * docs the handle is invalid after this is called regardless of the
@@ -1576,7 +1595,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans)
 {
     DB_TXN *tid = trans ? trans->tid : NULL;
-    int rc = close_dbs(bdb_state, NULL);
+    int rc = close_dbs(bdb_state, tid);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
@@ -4026,7 +4045,7 @@ static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
 
                     print(bdb_state, "open_dbs: cannot open %s: %d %s\n",
                           tmpname, rc, db_strerror(rc));
-                    rc = dbp->close(dbp, NULL, 0);
+                    rc = dbp->close(dbp, 0);
                     if (0 != rc)
                         logmsg(LOGMSG_ERROR, "DB->close(%s) failed: rc=%d %s\n",
                                 tmpname, rc, db_strerror(rc));
@@ -4131,7 +4150,7 @@ static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
 
             print(bdb_state, "open_dbs: cannot open %s: %d %s\n", tmpname, rc,
                   db_strerror(rc));
-            rc = dbp->close(dbp, NULL, 0);
+            rc = dbp->close(dbp, 0);
             if (rc != 0)
                 logmsg(LOGMSG_ERROR, "bdp_dta->close(%s) failed: rc=%d %s\n",
                         tmpname, rc, db_strerror(rc));
@@ -4265,7 +4284,7 @@ static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
 
                 bdb_state->dbp_ix[i]->err(bdb_state->dbp_ix[i], rc, "%s",
                                           tmpname);
-                rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], NULL, 0);
+                rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], 0);
                 logmsg(LOGMSG_ERROR, "close ix=%d name=%s failed rc=%d\n", i,
                         tmpname, rc);
                 logmsg(LOGMSG_ERROR, "couldnt open ix db\n");
@@ -4469,7 +4488,7 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
 
                 logmsg(LOGMSG_ERROR, "bdb_create_stripes_int: cannot open %s: %d %s\n",
                         tmpname, rc, db_strerror(rc));
-                rc = dbp->close(dbp, NULL, 0);
+                rc = dbp->close(dbp, 0);
                 if (0 != rc)
                     logmsg(LOGMSG_ERROR, "DB->close(%s) failed: rc=%d %s\n", tmpname,
                             rc, db_strerror(rc));
@@ -4494,7 +4513,7 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
 
     /* Now go and close all the tables. */
     for (ii = 0; ii < dbp_count; ii++) {
-        rc = dbp_array[ii]->close(dbp_array[ii], NULL, 0);
+        rc = dbp_array[ii]->close(dbp_array[ii], 0);
         if (0 != rc)
             logmsg(LOGMSG_ERROR,
                     "bdb_create_stripes_int: DB->close #%d failed: rc=%d %s\n",
@@ -5162,6 +5181,18 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
     bdb_state = mymalloc(sizeof(bdb_state_type));
     bzero(bdb_state, sizeof(bdb_state_type));
     bdb_state->name = strdup(name);
+
+    /* This is a bit of a kludge.  We use the first 32 bytes of the table name
+     * as a key into llmeta. This has always been a bug - this is a quick patch
+     * for it for allow currently valid tablenames to be changed.  What changed?
+     * get_sc_to_name used to return a full (non-truncated) table name. Now it
+     * returns a truncated one.  That's because the bdb_state->name is not
+     * derivable by the name string passed to this routine (get_sc_to_name used
+     * to look at a global, which no longer exists.)  So this routine caps the
+     * limit instead of the caller capping the limit. */
+    if (strlen(name) >= 32 && bdbtype == BDBTYPE_TABLE)
+        bdb_state->name[31] = 0;
+
     bdb_state->dir = strdup(dir);
     bdb_state->bdbtype = bdbtype;
     tmp = get_sc_to_name(name);
@@ -5350,10 +5381,9 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         bdb_state->children_lock = bdb_state->parent->children_lock;
     }
 
-    bdb_state->txndir =
-        mymalloc(strlen(bdb_state->name) + strlen(bdb_state->dir) + 100);
-    bdb_state->tmpdir =
-        mymalloc(strlen(bdb_state->name) + strlen(bdb_state->dir) + 100);
+    int nlen = strlen(bdb_state->name) + strlen(bdb_state->dir) + 100;
+    bdb_state->txndir = mymalloc(nlen);
+    bdb_state->tmpdir = mymalloc(nlen);
 
     bdb_state->numdtafiles = numdtafiles;
     bdb_state->numix = numix;
@@ -6280,7 +6310,7 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
         if ((rc = db_create(&dbp, dbenv, 0)) == 0 &&
             (rc = dbp->open(dbp, NULL, pname, NULL, DB_BTREE, 0, 0666)) == 0) {
             bdb_remove_fileid_pglogs(bdb_state, dbp->fileid);
-            dbp->close(dbp, NULL, DB_NOSYNC);
+            dbp->close(dbp, DB_NOSYNC);
         }
 
         rc = dbenv->dbremove(dbenv, tid, filename, NULL, 0);
@@ -6652,22 +6682,25 @@ int get_dbnum_by_handle(bdb_state_type *bdb_state)
 int get_dbnum_by_name(bdb_state_type *bdb_state, const char *name)
 {
     int i;
+    int nlen = strlen(name);
+    int found = -1;
 
     Pthread_mutex_lock(&(bdb_state->children_lock));
 
-    for (i = 0; i < bdb_state->parent->numchildren; i++)
-        if (strncasecmp(bdb_state->parent->children[i]->name, name,
-                        strlen(name)) == 0) {
-            Pthread_mutex_unlock(&(bdb_state->children_lock));
-            return i;
+    for (i = 0; i < bdb_state->parent->numchildren; i++) {
+        if (strncasecmp(bdb_state->parent->children[i]->name, name, nlen) ==
+            0) {
+            found = i;
+            break;
         }
+    }
 
     Pthread_mutex_unlock(&(bdb_state->children_lock));
-
-    return -1;
+    return found;
 }
 
-static int bdb_close_only_int(bdb_state_type *bdb_state, int *bdberr)
+static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
+                              int *bdberr)
 {
     int i;
     bdb_state_type *parent;
@@ -6683,7 +6716,7 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, int *bdberr)
         return 0;
 
     /* close doesn't fail */
-    close_dbs(bdb_state, NULL);
+    close_dbs(bdb_state, tid);
 
     /* now remove myself from my parents list of children */
 
@@ -6702,6 +6735,22 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, int *bdberr)
     return 0;
 }
 
+int bdb_close_only_sc(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
+{
+    int rc;
+
+    if (bdb_state->envonly)
+        return 0;
+
+    BDB_READLOCK("bdb_close_only_sc");
+
+    rc = bdb_close_only_int(bdb_state, tran->tid, bdberr);
+
+    BDB_RELLOCK();
+
+    return rc;
+}
+
 int bdb_close_only(bdb_state_type *bdb_state, int *bdberr)
 {
     int rc;
@@ -6710,7 +6759,7 @@ int bdb_close_only(bdb_state_type *bdb_state, int *bdberr)
 
     BDB_READLOCK("bdb_close_only");
 
-    rc = bdb_close_only_int(bdb_state, bdberr);
+    rc = bdb_close_only_int(bdb_state, NULL, bdberr);
 
     BDB_RELLOCK();
 
@@ -6756,7 +6805,7 @@ static int bdb_free_int(bdb_state_type *bdb_state, bdb_state_type *replace,
             /* find ourselves and swap it. */
             for (int i = 0; i < bdb_state->numchildren; i++)
                 if (bdb_state->children[i] == replace) {
-                    logmsg(LOGMSG_DEBUG, "%s swapping %p with %p\n", i, replace,
+                    logmsg(LOGMSG_DEBUG, "%d swapping %p with %p\n", i, replace,
                            child);
                     bdb_state->children[i] = child;
                     break;
@@ -7384,9 +7433,9 @@ static inline int bdb_is_new_sc_file(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                             int *bdberr)
 {
-    const char *data_ext = ".data";
-    const char *index_ext = ".index";
-    const char *blob_ext = ".blob";
+    const char data_ext[] = ".data";
+    const char index_ext[] = ".index";
+    const char blob_ext[] = ".blob";
     int rc = 0;
     char table_prefix[80];
     unsigned long long file_version;
@@ -7433,8 +7482,8 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     }
 
     /* */
-    if (snprintf(table_prefix, sizeof(table_prefix), "%s_", tblname) >=
-        sizeof(table_prefix)) {
+    int tp_len = snprintf(table_prefix, sizeof(table_prefix), "%s_", tblname);
+    if (tp_len >= sizeof(table_prefix)) {
         logmsg(LOGMSG_ERROR, "%s: tablename too long\n", __func__);
         *bdberr = BDBERR_MISC;
         free(buf);
@@ -7446,119 +7495,119 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     while ((error = readdir_r(dirp, buf, &ent)) == 0 && ent != NULL) {
         /* if the file's name is longer then the prefix and it belongs to our
          * table */
-        if ((strlen(ent->d_name) > strlen(table_prefix)) &&
-            strncmp(ent->d_name, table_prefix, strlen(table_prefix)) == 0) {
-            const char *file_name_post_prefix;
-            unsigned long long invers;
-            char *endp;
+        if (!(strlen(ent->d_name) > tp_len &&
+              strncmp(ent->d_name, table_prefix, tp_len) == 0))
+            continue;
 
-            /* file version should start right after the prefix */
-            file_name_post_prefix = ent->d_name + strlen(table_prefix);
+        const char *file_name_post_prefix;
+        unsigned long long invers;
+        char *endp;
 
-            /* try to parse a file version */
-            invers = strtoull(file_name_post_prefix, &endp, 16 /*base*/);
+        /* file version should start right after the prefix */
+        file_name_post_prefix = ent->d_name + tp_len;
 
-            /* if no file_version was found after the prefix or the next thing
-             * after the file version isn't .blob or .data or .index */
-            if (endp == file_name_post_prefix ||
-                (strncmp(endp, data_ext, strlen(data_ext)) != 0 &&
-                 strncmp(endp, index_ext, strlen(index_ext)) != 0 &&
-                 strncmp(endp, blob_ext, strlen(blob_ext)) != 0)) {
-                file_version = 0;
-            } else {
-                uint8_t *p_buf = (uint8_t *)&invers,
-                        *p_buf_end = p_buf + sizeof(invers);
-                struct bdb_file_version_num_type p_file_version_num_type;
+        /* try to parse a file version */
+        invers = strtoull(file_name_post_prefix, &endp, 16 /*base*/);
 
-                bdb_file_version_num_get(&p_file_version_num_type, p_buf,
-                                         p_buf_end);
+        /* if no file_version was found after the prefix or the next thing
+         * after the file version isn't .blob or .data or .index */
+        if (endp == file_name_post_prefix ||
+            (strncmp(endp, data_ext, sizeof(data_ext) - 1) != 0 &&
+             strncmp(endp, index_ext, sizeof(index_ext) - 1) != 0 &&
+             strncmp(endp, blob_ext, sizeof(blob_ext) - 1) != 0)) {
+            file_version = 0;
+        } else {
+            uint8_t *p_buf = (uint8_t *)&invers,
+                    *p_buf_end = p_buf + sizeof(invers);
+            struct bdb_file_version_num_type p_file_version_num_type;
 
-                file_version = p_file_version_num_type.version_num;
+            bdb_file_version_num_get(&p_file_version_num_type, p_buf,
+                                     p_buf_end);
+
+            file_version = p_file_version_num_type.version_num;
+        }
+
+        /*fprintf(stderr, "found version %s %016llx on disk\n",*/
+        /*ent->d_name, file_version); */
+
+        if (!file_version)
+            continue;
+
+        /* brute force scan to find any files on disk that we aren't
+         * actually using */
+        int found_in_llmeta = 0;
+        int i;
+
+        /* We have to check new. prefix for schemachange first.
+         * See NOTE in bdb_is_new_sc_file()
+         */
+        rc = bdb_is_new_sc_file(bdb_state, NULL, tblname, file_version, bdberr);
+        if (rc == 1) {
+            found_in_llmeta = 1;
+            rc = 0;
+        } else if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d failed to check llmeta for %s, rc %d, bdberr "
+                   "%d\n",
+                   __func__, __LINE__, ent->d_name, rc, *bdberr);
+            continue;
+        }
+
+        if (!found_in_llmeta) {
+            rc = bdb_process_each_table_dta_entry(bdb_state, NULL, tblname,
+                                                  file_version, bdberr);
+            if (rc == 1) {
+                found_in_llmeta = 1;
+                rc = 0;
+            } else if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to check llmeta for %s, rc %d, "
+                       "bdberr %d\n",
+                       __func__, __LINE__, ent->d_name, rc, *bdberr);
+                continue;
             }
+        }
 
-            /*fprintf(stderr, "found version %s %016llx on disk\n",*/
-            /*ent->d_name, file_version); */
-
-            /* brute force scan to find any files on disk that we aren't
-             * actually using */
-            if (file_version) {
-                int found_in_llmeta = 0;
-                int i;
-
-                /* We have to check new. prefix for schemachange first.
-                 * See NOTE in bdb_is_new_sc_file()
-                 */
-                rc = bdb_is_new_sc_file(bdb_state, NULL, tblname, file_version,
-                                        bdberr);
-                if (rc == 1) {
-                    found_in_llmeta = 1;
-                    rc = 0;
-                } else if (rc) {
-                    logmsg(LOGMSG_ERROR,
-                           "%s:%d failed to check llmeta for %s, rc %d, bdberr "
-                           "%d\n",
-                           __func__, __LINE__, ent->d_name, rc, *bdberr);
-                    continue;
-                }
-
-                if (!found_in_llmeta) {
-                    rc = bdb_process_each_table_dta_entry(
-                        bdb_state, NULL, tblname, file_version, bdberr);
-                    if (rc == 1) {
-                        found_in_llmeta = 1;
-                        rc = 0;
-                    } else if (rc) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s:%d failed to check llmeta for %s, rc %d, "
-                               "bdberr %d\n",
-                               __func__, __LINE__, ent->d_name, rc, *bdberr);
-                        continue;
-                    }
-                }
-
-                if (!found_in_llmeta) {
-                    rc = bdb_process_each_table_idx_entry(
-                        bdb_state, NULL, tblname, file_version, bdberr);
-                    if (rc == 1) {
-                        found_in_llmeta = 1;
-                        rc = 0;
-                    } else if (rc) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s:%d failed to check llmeta for %s, rc %d, "
-                               "bdberr %d\n",
-                               __func__, __LINE__, ent->d_name, rc, *bdberr);
-                        continue;
-                    }
-                }
-
-                /* if the file's version wasn't found in llmeta, delete it */
-                if (rc == 0 && !found_in_llmeta) {
-                    char munged_name[FILENAMELEN];
-
-                    if (snprintf(munged_name, sizeof(munged_name), "XXX.%s",
-                                 ent->d_name) >= sizeof(munged_name)) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s: filename too long to munge: %s\n", __func__,
-                               ent->d_name);
-                        continue;
-                    }
-
-                    /* dont add filename more than once in the list */
-                    if (oldfile_list_contains(munged_name))
-                        continue;
-
-                    if (oldfile_list_add(strdup(munged_name), lognum)) {
-                        print(bdb_state,
-                              "failed to collect old file (list full) %s\n",
-                              ent->d_name);
-                        goto done;
-                    } else {
-                        logmsg(LOGMSG_INFO, "%s: requeued file %s\n", __func__,
-                               ent->d_name);
-                        print(bdb_state, "requeued old file %s\n", ent->d_name);
-                    }
-                }
+        if (!found_in_llmeta) {
+            rc = bdb_process_each_table_idx_entry(bdb_state, NULL, tblname,
+                                                  file_version, bdberr);
+            if (rc == 1) {
+                found_in_llmeta = 1;
+                rc = 0;
+            } else if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to check llmeta for %s, rc %d, "
+                       "bdberr %d\n",
+                       __func__, __LINE__, ent->d_name, rc, *bdberr);
+                continue;
             }
+        }
+
+        if (found_in_llmeta)
+            continue;
+
+        /* if the file's version wasn't found in llmeta, delete it */
+        char munged_name[FILENAMELEN];
+
+        if (snprintf(munged_name, sizeof(munged_name), "XXX.%s", ent->d_name) >=
+            sizeof(munged_name)) {
+            logmsg(LOGMSG_ERROR, "%s: filename too long to munge: %s\n",
+                   __func__, ent->d_name);
+            continue;
+        }
+
+        /* dont add filename more than once in the list */
+        if (oldfile_list_contains(munged_name))
+            continue;
+
+        if (oldfile_list_add(strdup(munged_name), lognum)) {
+            print(bdb_state, "failed to collect old file (list full) %s\n",
+                  ent->d_name);
+            goto done;
+        } else {
+            logmsg(LOGMSG_INFO, "%s: requeued file %s\n", __func__,
+                   ent->d_name);
+            print(bdb_state, "requeued old file %s\n", ent->d_name);
         }
     }
 
@@ -7584,10 +7633,10 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 {
     static char *owner = NULL;
     static pthread_mutex_t owner_mtx = PTHREAD_MUTEX_INITIALIZER;
-    const char *blob_ext = ".blob";
-    const char *data_ext = ".data";
-    const char *index_ext = ".index";
-    const char *qdb_ext = ".queuedb";
+    const char blob_ext[] = ".blob";
+    const char data_ext[] = ".data";
+    const char index_ext[] = ".index";
+    const char qdb_ext[] = ".queuedb";
     int rc = 0;
     char table_prefix[80];
     unsigned long long file_version;
@@ -7649,8 +7698,9 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
         return -1;
     }
 
-    if (snprintf(table_prefix, sizeof(table_prefix), "%s_", bdb_state->name) >=
-        sizeof(table_prefix)) {
+    int tp_len =
+        snprintf(table_prefix, sizeof(table_prefix), "%s_", bdb_state->name);
+    if (tp_len >= sizeof(table_prefix)) {
         logmsg(LOGMSG_ERROR, "%s: tablename too long\n", __func__);
         *bdberr = BDBERR_MISC;
         free(buf);
@@ -7662,159 +7712,160 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     while ((error = bb_readdir(dirp, buf, &ent)) == 0 && ent != NULL) {
         /* if the file's name is longer then the prefix and it belongs to our
          * table */
-        if ((strlen(ent->d_name) > strlen(table_prefix)) &&
-            strncmp(ent->d_name, table_prefix, strlen(table_prefix)) == 0) {
-            const char *file_name_post_prefix;
-            unsigned long long invers;
-            char *endp;
+        if (!(strlen(ent->d_name) > tp_len &&
+              strncmp(ent->d_name, table_prefix, tp_len) == 0))
+            continue;
 
-            /* file version should start right after the prefix */
-            file_name_post_prefix = ent->d_name + strlen(table_prefix);
+        const char *file_name_post_prefix;
+        unsigned long long invers;
+        char *endp;
 
-            /* try to parse a file version */
-            invers = strtoull(file_name_post_prefix, &endp, 16 /*base*/);
+        /* file version should start right after the prefix */
+        file_name_post_prefix = ent->d_name + tp_len;
 
-            /* if no file_version was found after the prefix or the next thing
-             * after the file version isn't .blob or .data or .index */
-            if (endp == file_name_post_prefix ||
-                (strncmp(endp, blob_ext, strlen(blob_ext)) != 0 &&
-                 strncmp(endp, data_ext, strlen(data_ext)) != 0 &&
-                 strncmp(endp, qdb_ext, strlen(qdb_ext)) != 0 &&
-                 strncmp(endp, index_ext, strlen(index_ext)) != 0)) {
-                file_version = 0;
+        /* try to parse a file version */
+        invers = strtoull(file_name_post_prefix, &endp, 16 /*base*/);
+
+        /* if no file_version was found after the prefix or the next thing
+         * after the file version isn't .blob or .data or .index */
+        if (endp == file_name_post_prefix ||
+            (strncmp(endp, blob_ext, sizeof(blob_ext) - 1) != 0 &&
+             strncmp(endp, data_ext, sizeof(data_ext) - 1) != 0 &&
+             strncmp(endp, qdb_ext, sizeof(qdb_ext) - 1) != 0 &&
+             strncmp(endp, index_ext, sizeof(index_ext) - 1) != 0)) {
+            file_version = 0;
+        } else {
+            uint8_t *p_buf = (uint8_t *)&invers,
+                    *p_buf_end = p_buf + sizeof(invers);
+            struct bdb_file_version_num_type p_file_version_num_type;
+
+            bdb_file_version_num_get(&p_file_version_num_type, p_buf,
+                                     p_buf_end);
+
+            file_version = p_file_version_num_type.version_num;
+        }
+
+        if (!file_version)
+            continue;
+
+        /* brute force scan to find any files on disk that we aren't
+         * actually using */
+        int found_in_llmeta = 0;
+        int i;
+
+        /* We have to check new. prefix for schemachange first.
+         * See NOTE in bdb_is_new_sc_file()
+         */
+        rc = bdb_is_new_sc_file(bdb_state, tran, bdb_state->name, file_version,
+                                bdberr);
+        if (rc == 1) {
+            found_in_llmeta = 1;
+            rc = 0;
+        } else if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d failed to check llmeta for %s, rc %d, bdberr "
+                   "%d\n",
+                   __func__, __LINE__, ent->d_name, rc, *bdberr);
+            continue;
+        }
+
+        /* try to find the file version amongst the active data files */
+        for (i = 0; i < bdb_state->numdtafiles; ++i) {
+            if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
+                rc = bdb_get_file_version_qdb(bdb_state, tran, &version_num,
+                                              bdberr);
             } else {
-                uint8_t *p_buf = (uint8_t *)&invers,
-                        *p_buf_end = p_buf + sizeof(invers);
-                struct bdb_file_version_num_type p_file_version_num_type;
-
-                bdb_file_version_num_get(&p_file_version_num_type, p_buf,
-                                         p_buf_end);
-
-                file_version = p_file_version_num_type.version_num;
+                rc = bdb_get_file_version_data(bdb_state, tran, i, &version_num,
+                                               bdberr);
             }
-
-            /* brute force scan to find any files on disk that we aren't
-             * actually using */
-            if (file_version) {
-                int found_in_llmeta = 0;
-                int i;
-
-                /* We have to check new. prefix for schemachange first.
-                 * See NOTE in bdb_is_new_sc_file()
-                 */
-                rc = bdb_is_new_sc_file(bdb_state, tran, bdb_state->name,
-                                        file_version, bdberr);
-                if (rc == 1) {
+            if (rc == 0) {
+                if (version_num == file_version) {
                     found_in_llmeta = 1;
-                    rc = 0;
-                } else if (rc) {
-                    logmsg(LOGMSG_ERROR,
-                           "%s:%d failed to check llmeta for %s, rc %d, bdberr "
-                           "%d\n",
-                           __func__, __LINE__, ent->d_name, rc, *bdberr);
-                    continue;
+                    break;
                 }
+            } else if (rc == 1) {
+                /* table doesnt exist in llmeta, not an error */
+                *bdberr = BDBERR_NOERROR;
+                rc = 0;
+            } else
+                break;
+        }
 
-                /* try to find the file version amongst the active data files */
-                for (i = 0; i < bdb_state->numdtafiles; ++i) {
-                    if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
-                        rc = bdb_get_file_version_qdb(bdb_state, tran,
-                                                      &version_num, bdberr);
-                    } else {
-                        rc = bdb_get_file_version_data(bdb_state, tran, i,
-                                                       &version_num, bdberr);
-                    }
-                    if (rc == 0) {
-                        if (version_num == file_version) {
-                            found_in_llmeta = 1;
-                            break;
-                        }
-                    } else if (rc == 1) {
-                        /* table doesnt exist in llmeta, not an error */
-                        *bdberr = BDBERR_NOERROR;
-                        rc = 0;
-                    } else
-                        break;
+        /* try to find the file version amongst the active indices */
+        for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
+            if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
+                break;
+            rc = bdb_get_file_version_index(bdb_state, tran, i /*dtanum*/,
+                                            &version_num, bdberr);
+            if (rc == 0) {
+                if (version_num == file_version) {
+                    found_in_llmeta = 1;
+                    break;
                 }
+            } else if (rc == 1) {
+                /* table doesnt exist in llmeta, not an error */
+                *bdberr = BDBERR_NOERROR;
+                rc = 0;
+            } else
+                break;
+        }
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d failed to check llmeta for %s, rc %d, bdberr "
+                   "%d\n",
+                   __func__, __LINE__, ent->d_name, rc, *bdberr);
+            continue;
+        }
 
-                /* try to find the file version amongst the active indices */
-                for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
-                    if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
-                        break;
-                    rc = bdb_get_file_version_index(
-                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
-                    if (rc == 0) {
-                        if (version_num == file_version)
-                            found_in_llmeta = 1;
-                    } else if (rc == 1) {
-                        /* table doesnt exist in llmeta, not an error */
-                        *bdberr = BDBERR_NOERROR;
-                        rc = 0;
-                    } else
-                        break;
-                }
-                if (rc) {
-                    logmsg(LOGMSG_ERROR,
-                           "%s:%d failed to check llmeta for %s, rc %d, bdberr "
-                           "%d\n",
-                           __func__, __LINE__, ent->d_name, rc, *bdberr);
-                    continue;
-                }
+        if (found_in_llmeta)
+            continue;
 
-                /* if the file's version wasn't found in llmeta, delete it */
-                if (!found_in_llmeta) {
-                    char munged_name[FILENAMELEN];
+        /* if the file's version wasn't found in llmeta, delete it */
+        char munged_name[FILENAMELEN];
 
-                    if (snprintf(munged_name, sizeof(munged_name), "XXX.%s",
-                                 ent->d_name) >= sizeof(munged_name)) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s: filename too long to munge: %s\n", __func__,
-                               ent->d_name);
-                        continue;
-                    }
+        if (snprintf(munged_name, sizeof(munged_name), "XXX.%s", ent->d_name) >=
+            sizeof(munged_name)) {
+            logmsg(LOGMSG_ERROR, "%s: filename too long to munge: %s\n",
+                   __func__, ent->d_name);
+            continue;
+        }
 
-                    if (delay) {
-                        /* dont add filename more than once in the list */
-                        if (oldfile_list_contains(munged_name))
-                            continue;
+        if (delay) {
+            /* dont add filename more than once in the list */
+            if (oldfile_list_contains(munged_name))
+                continue;
 
-                        if (oldfile_list_add(strdup(munged_name), lognum)) {
-                            print(bdb_state,
-                                  "failed to collect old file (list full) %s\n",
-                                  ent->d_name);
-                        } else {
-                            logmsg(LOGMSG_INFO, "%s: collected file %s\n",
-                                   __func__, ent->d_name);
-                            print(bdb_state, "collected old file %s\n",
-                                  ent->d_name);
-                        }
-                    } else {
-                        logmsg(LOGMSG_INFO, "%s: deleting file %s\n", __func__,
-                               ent->d_name);
-                        print(bdb_state, "deleting file %s\n", ent->d_name);
-                        DB_TXN *tid;
-                        if (bdb_state->dbenv->txn_begin(bdb_state->dbenv,
-                                                        tran ? tran->tid : NULL,
-                                                        &tid, 0 /*flags*/)) {
-                            logmsg(LOGMSG_ERROR,
-                                   "%s: failed to begin trans for "
-                                   "deleteing file: %s\n",
-                                   __func__, ent->d_name);
-                            continue;
-                        }
-                        if (bdb_del_file(bdb_state, tid, munged_name, bdberr)) {
-                            logmsg(LOGMSG_ERROR,
-                                   "%s: failed to delete file: %s\n", __func__,
-                                   ent->d_name);
-                            tid->abort(tid);
-                        } else if (tid->commit(tid, 0)) {
-                            logmsg(LOGMSG_ERROR,
-                                   "%s: failed to commit trans for "
-                                   "deleteing file: %s\n",
-                                   __func__, ent->d_name);
-                        }
-                    }
-                }
+            if (oldfile_list_add(strdup(munged_name), lognum)) {
+                print(bdb_state, "failed to collect old file (list full) %s\n",
+                      ent->d_name);
+            } else {
+                logmsg(LOGMSG_INFO, "%s: collected file %s\n", __func__,
+                       ent->d_name);
+                print(bdb_state, "collected old file %s\n", ent->d_name);
+            }
+        } else {
+            logmsg(LOGMSG_INFO, "%s: deleting file %s\n", __func__,
+                   ent->d_name);
+            print(bdb_state, "deleting file %s\n", ent->d_name);
+            DB_TXN *tid;
+            if (bdb_state->dbenv->txn_begin(bdb_state->dbenv,
+                                            tran ? tran->tid : NULL, &tid,
+                                            0 /*flags*/)) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to begin trans for "
+                       "deleteing file: %s\n",
+                       __func__, ent->d_name);
+                continue;
+            }
+            if (bdb_del_file(bdb_state, tid, munged_name, bdberr)) {
+                logmsg(LOGMSG_ERROR, "%s: failed to delete file: %s\n",
+                       __func__, ent->d_name);
+                tid->abort(tid);
+            } else if (tid->commit(tid, 0)) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to commit trans for "
+                       "deleteing file: %s\n",
+                       __func__, ent->d_name);
             }
         }
     }
@@ -7989,9 +8040,7 @@ int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,
             }
         }
 
-        if (bdb_state->children[i]) {
-            tran->table_version_cache[i] = bdb_state->children[i]->version_num;
-        }
+        tran->table_version_cache[i] = bdb_state->children[i]->version_num;
     }
 done:
     /*printf("Done caching\n");*/
@@ -8125,18 +8174,19 @@ static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir)
     int rc = 0;
     const int bufsz = 4096;
     const int align = 4096;
+    const char wdog[] = "watchdog";
 
     /* We can supposedly allocate memory - that check is done before this one.
      * If memory allocation broke between then and now, we'll flag a wrong
      * failure.
      * But it'll trip the watchdog timer anyway. */
-    pathlen = strlen(dir) + strlen("/watchdog") + 1;
+    pathlen = strlen(dir) + sizeof(wdog) + 1;
     path = malloc(pathlen);
     if (path == NULL) {
         logmsg(LOGMSG_ERROR, "Can't allocate filename buffer\n");
         ERRDONE;
     }
-    sprintf(path, "%s/watchdog", dir);
+    sprintf(path, "%s/%s", dir, wdog);
 
     rc = posix_memalign(&buf, align, bufsz);
     if (rc) {
@@ -8222,362 +8272,6 @@ int bdb_watchdog_test_io(bdb_state_type *bdb_state)
      * break the database. */
 }
 
-typedef struct file_set {
-    hash_t *fnames;
-    DB_LSN debug;
-    DB_LSN ckp;
-} file_set_t;
-
-static void free_file_set(file_set_t *fs)
-{
-    hash_free(fs->fnames);
-    free(fs);
-}
-
-static inline int log_get_record(DB_LOGC *logc, DBT *logrec, DB_LSN *lsn,
-                                 int pos)
-{
-    int rc;
-
-    bzero(logrec, sizeof(*logrec));
-    logrec->flags = DB_DBT_MALLOC;
-
-    if (pos != DB_SET) {
-        /* reposition the cursor if this is relative */
-        rc = logc->get(logc, lsn, logrec, DB_SET);
-        if (rc) {
-            if (rc != DB_NOTFOUND)
-                logmsg(LOGMSG_ERROR,
-                       "%s: failed reading repo log record rc=%d\n", __func__,
-                       rc);
-            return rc;
-        }
-    }
-
-    rc = logc->get(logc, lsn, logrec, pos);
-    if (rc) {
-        if (rc != DB_NOTFOUND)
-            logmsg(LOGMSG_ERROR, "%s: failed reading log record rc=%d\n",
-                   __func__, rc);
-    }
-    return rc;
-}
-
-static int check_proper_debug_log(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn)
-{
-    __db_debug_args *argp = NULL;
-    DBT logrec;
-    int type;
-    int rc;
-
-    rc = log_get_record(logc, &logrec, lsn, DB_SET);
-    if (rc) goto error;
-
-    LOGCOPY_32(&type, logrec.data);
-    if (type != DB___db_debug) {
-        logmsg(LOGMSG_ERROR, "%s: unable to find proper debug rec\n", __func__);
-        rc = -1;
-        goto error;
-    }
-    rc = __db_debug_read(dbenv, logrec.data, &argp);
-    if (rc) goto error;
-    LOGCOPY_32(&type, argp->op.data);
-    if (type != 2) {
-        logmsg(LOGMSG_ERROR, "%s: wrong type for debug rec %d\n", __func__,
-               type);
-        rc = -1;
-        goto error;
-    }
-
-error:
-    if (argp) __os_free(dbenv, argp);
-
-    return rc;
-}
-
-static int get_file_name(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn, int *done,
-                         char **pname)
-{
-    __dbreg_register_args *argp = NULL;
-    DBT logrec;
-    int type;
-    int rc;
-
-    *pname = NULL;
-    *done = 0;
-
-    rc = log_get_record(logc, &logrec, lsn, DB_NEXT);
-    if (rc) goto done;
-
-    LOGCOPY_32(&type, logrec.data);
-    if (type == DB___txn_ckp) {
-        *done = 1;
-        goto done;
-    }
-    if (type != DB___dbreg_register) {
-        logmsg(LOGMSG_ERROR, "%s: unable to find proper debug rec\n", __func__);
-        goto done;
-    }
-
-    rc = __dbreg_register_read(dbenv, logrec.data, &argp);
-    if (rc) goto done;
-
-    *pname = strdup(argp->name.data);
-
-done:
-    if (argp) __os_free(dbenv, argp);
-
-    return rc;
-}
-
-static int get_prev_checkpoint(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn,
-                               DB_LSN *retlsn)
-{
-    __txn_ckp_args *argp = NULL;
-    DBT logrec;
-    int type;
-    int rc;
-
-    rc = log_get_record(logc, &logrec, lsn, DB_SET);
-    if (rc) goto done;
-
-    LOGCOPY_32(&type, logrec.data);
-    if (type != DB___txn_ckp) {
-        logmsg(LOGMSG_ERROR, "%s: unable to find txn_ckp rec\n", __func__);
-        goto done;
-    }
-
-    rc = __txn_ckp_read(dbenv, logrec.data, &argp);
-    if (rc) goto done;
-
-    if (unlikely(argp->last_ckp.file == 0)) {
-        /* fresh created dbs can have this */
-        rc = -1;
-        goto done;
-    }
-
-    *retlsn = argp->last_ckp;
-
-done:
-    if (argp) __os_free(dbenv, argp);
-
-    return rc;
-}
-
-static int get_fileset_start(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn,
-                             DB_LSN *prev_lsn)
-{
-    __db_debug_args *argp = NULL;
-    DBT logrec;
-    int type;
-    int rc;
-    int empty = 1;
-    DB_LSN saved_lsn;
-
-skip_empties:
-    /* get lsn of previous txn_ckp record in prev_lsn */
-    rc = get_prev_checkpoint(dbenv, logc, lsn, prev_lsn);
-    if (rc) return rc;
-
-    saved_lsn = *prev_lsn;
-
-    do {
-        if (argp) {
-            __os_free(dbenv, argp);
-            argp = NULL;
-        }
-
-        /* walk backwards and locate debug */
-        rc = log_get_record(logc, &logrec, prev_lsn, DB_PREV);
-        if (rc) goto done;
-
-        LOGCOPY_32(&type, logrec.data);
-        if (type == DB___dbreg_register) empty = 0;
-        if (type != DB___db_debug) continue;
-
-        rc = __db_debug_read(dbenv, logrec.data, &argp);
-        if (rc) goto done;
-        LOGCOPY_32(&type, argp->op.data);
-        if (type == 2) break;
-    } while (1);
-
-    if (empty) {
-        *lsn = saved_lsn; /* skip empty checkpoint */
-        goto skip_empties;
-    }
-done:
-    if (argp) __os_free(dbenv, argp);
-
-    return rc;
-}
-
-static void print_fnames_hash(file_set_t *fs, const char *prefix);
-
-file_set_t *construct_file_set(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn)
-{
-    file_set_t *fs = NULL;
-    char *fname;
-    int done;
-    int rc;
-
-    fs = (file_set_t *)calloc(1, sizeof(*fs));
-    if (!fs) return NULL;
-    fs->fnames = hash_init_str(0);
-
-    rc = check_proper_debug_log(dbenv, logc, lsn);
-    if (rc) return NULL;
-
-    fs->debug = *lsn;
-    do {
-        rc = get_file_name(dbenv, logc, lsn, &done, &fname);
-        if (rc) {
-            break;
-        }
-
-        if (fname) {
-            logmsg(LOGMSG_INFO, "ADD %s to %p\n", fname, fs->fnames);
-            hash_add(fs->fnames, fname);
-        }
-    } while (!done);
-
-    fs->ckp = *lsn;
-
-    return fs;
-
-error:
-    if (fs) free_file_set(fs);
-    return NULL;
-}
-
-static int fnames_print(void *obj, void *arg)
-{
-    logmsg(LOGMSG_INFO, "%s\n", (char *)obj);
-    return 0;
-}
-
-static void print_fnames_hash(file_set_t *fs, const char *prefix)
-{
-    logmsg(LOGMSG_INFO, "%s: START\n", prefix);
-    hash_for(fs->fnames, fnames_print, NULL);
-    logmsg(LOGMSG_INFO, "%s: END\n", prefix);
-}
-
-static int fnames_search(void *obj, void *arg)
-{
-    char *src = obj;
-    file_set_t *fs = arg;
-
-    if (hash_find_readonly(fs->fnames, src) == NULL) {
-        struct stat sb;
-
-        if (stat(src, &sb) == 0) {
-            logmsg(LOGMSG_WARN, "MISSING %s from %d:%d-%d:%d\n", src,
-                   fs->debug.file, fs->debug.offset, fs->ckp.file,
-                   fs->ckp.offset);
-
-            if (!oldfile_list_contains(src)) {
-                oldfile_list_add(src, fs->debug.file);
-            }
-        }
-    }
-
-    return 0;
-}
-
-static int compare_filesets(bdb_state_type *bdb_state, file_set_t *fs,
-                            DB_LSN *lsn, file_set_t *prev_fs, DB_LSN *prev_lsn)
-{
-    int rc = 0;
-
-    logmsg(LOGMSG_INFO, "COMPARING fs %d:%d vs older %d:%d\n", lsn->file,
-           lsn->offset, prev_lsn->file, prev_lsn->offset);
-
-    print_fnames_hash(fs, "Current");
-    print_fnames_hash(prev_fs, "Older");
-
-    /* there is apparently a possibility for debug to come in
-       after dbreg entries???? Ignore those */
-    if (hash_get_num_entries(fs->fnames) == 0) return -1;
-
-    hash_for(prev_fs->fnames, fnames_search, fs);
-
-    return rc;
-}
-
-void populate_deleted_files(bdb_state_type *bdb_state)
-{
-    DB_ENV *dbenv = bdb_state->dbenv;
-    DB_LOGC *logc;
-    DB_LSN lsn;
-    DB_LSN prev_lsn;
-    file_set_t *fs;
-    file_set_t *prev_fs = NULL;
-    int rc;
-
-    logmsg(LOGMSG_INFO, "Checking for removed files\n");
-
-    /* get a debug */
-    rc = dbenv->get_recovery_lsn(dbenv, &lsn);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: no recover lsn?rc=%d!\n", __func__, rc);
-        return;
-    }
-
-    rc = dbenv->log_cursor(dbenv, &logc, 0);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to open log cursor rc=%d!\n", __func__,
-               rc);
-    }
-
-    /* get the txn_ckp */
-    fs = construct_file_set(dbenv, logc, &lsn);
-    if (!fs) {
-        logmsg(LOGMSG_ERROR, "%s: unable to construct a file set!\n", __func__);
-        return;
-    }
-    print_fnames_hash(fs, "LLLL");
-
-    /* skip empty checkpoints */
-    if (hash_get_num_entries(fs->fnames) == 0) {
-        free_file_set(fs);
-        fs = NULL;
-    }
-
-    do {
-        /* the search stopped at txn_ckp; we can retrieve previous
-           checkpoint's fileset*/
-        rc = get_fileset_start(dbenv, logc, &lsn, &prev_lsn);
-        if (rc) {
-            break; /* this breaks also at beginning of oldest log */
-        }
-
-        prev_fs = construct_file_set(dbenv, logc, &prev_lsn);
-
-        /* compare old vs new, and queue what's missing */
-        if (fs) {
-            rc = compare_filesets(bdb_state, fs, &lsn, prev_fs, &prev_lsn);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: failed comparing file sets\n",
-                       __func__);
-            }
-        }
-
-        lsn = prev_lsn;
-
-        if (fs) free_file_set(fs);
-        fs = prev_fs;
-        prev_fs = NULL;
-
-    } while (1); /* breaking out: oldest checkpoint will fail to read */
-
-done:
-    logmsg(LOGMSG_INFO, "Done checking for removed files\n");
-    if (fs) free_file_set(fs);
-    if (prev_fs) free_file_set(prev_fs);
-
-    logc->close(logc, 0);
-}
-
 void rename_bdb_state(bdb_state_type *bdb_state, const char *newname)
 {
     if (bdb_state->name)
@@ -8588,9 +8282,9 @@ void rename_bdb_state(bdb_state_type *bdb_state, const char *newname)
 int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
                                    hash_t *fileid_tbl)
 {
-    const char *blob_ext = ".blob";
-    const char *data_ext = ".data";
-    const char *index_ext = ".index";
+    const char blob_ext[] = ".blob";
+    const char data_ext[] = ".data";
+    const char index_ext[] = ".index";
 
     DB_ENV *dbenv;
     DB *dbp;
@@ -8652,7 +8346,7 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
                 logmsg(LOGMSG_DEBUG, "%s: hash_add fileid %s\n", __func__, txt);
                 free(txt);
 #endif
-                dbp->close(dbp, NULL, DB_NOSYNC);
+                dbp->close(dbp, DB_NOSYNC);
             }
         }
     }

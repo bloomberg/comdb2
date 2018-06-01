@@ -87,7 +87,7 @@ void bdb_cleanup_private_blkseq(bdb_state_type *bdb_state)
             pthread_mutex_destroy(&bdb_state->blkseq_lk[stripe]);
             for (int i = 0; i < 2; i++) {
                 DB *to_be_deleted = bdb_state->blkseq[i][stripe];
-                to_be_deleted->close(to_be_deleted, NULL, DB_NOSYNC);
+                to_be_deleted->close(to_be_deleted, DB_NOSYNC);
             }
 
             env->close(env, 0);
@@ -496,7 +496,7 @@ int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
     } else
         oldname = strdup(oldname);
 
-    to_be_deleted->close(to_be_deleted, NULL, DB_NOSYNC);
+    to_be_deleted->close(to_be_deleted, DB_NOSYNC);
 
     if (oldname) {
         DB *db;

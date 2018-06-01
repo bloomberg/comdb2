@@ -62,6 +62,7 @@ tests/tools/register
 tests/tools/verify_atomics_work
 tests/tools/cdb2_open
 tests/tools/cdb2api_unit
+tests/tools/cdb2_close_early
 
 
 tests/test_*

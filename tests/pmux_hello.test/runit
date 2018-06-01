@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 debug=1
 [[ "$debug" == 1 ]] && set -x
@@ -145,7 +145,7 @@ reg service             : obtain/discover port for new service
 del service             : forget port assignment for service
 use service port        : set specific port registration for service
 stat                    : dump some stats
-used                    : dump active port assignments
+used (or list)          : dump active port assignments
 rte                     : get route to instance service/port
 hello service           : keep active connection
 active                  : list active connections

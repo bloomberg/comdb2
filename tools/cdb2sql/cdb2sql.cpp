@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -38,6 +38,11 @@
 #include "cdb2_constants.h"
 #include <inttypes.h>
 
+#include <iostream>
+#include <list>
+#include <string>
+#include <vector>
+
 static char *dbname = NULL;
 static char *dbtype = NULL;
 static char *dbhostname = NULL;
@@ -45,20 +50,20 @@ static char main_prompt[MAX_DBNAME_LENGTH + 2];
 static unsigned char gbl_in_stmt = 0;
 static unsigned char gbl_sent_cancel_cnonce = 0;
 
-/* display mode */
+/* display modes */
 enum {
-    DEFAULT = 0x0000, /* default output */
-    TABS    = 0x0001, /* separate columns by tabs */
-    BINARY  = 0x0002,  /* output binary */
-    GENSQL  = 0x0004,  /* generate insert statements */
-    /* flags */
-    STDERR  = 0x1000
+    DISP_CLASSIC = 1 << 0, /* default output */
+    DISP_TABS    = 1 << 1, /* separate columns by tabs */
+    DISP_BINARY  = 1 << 2, /* output binary */
+    DISP_GENSQL  = 1 << 3, /* generate insert statements */
+    DISP_TABULAR = 1 << 4, /* display result in tabular format */
+    DISP_STDERR  = 1 << 5, /* print to stderr */
 };
 
 static int show_ports = 0;
 static int debug_trace = 0;
 static int pausemode = 0;
-static int printmode = DEFAULT;
+static int printmode = DISP_CLASSIC;
 static int verbose = 0;
 static int scriptmode = 0;
 static int error = 0;
@@ -132,6 +137,7 @@ static const char *usage_text =
     "     --showeffects   Show the effects of query at the end\n"
     "     --strblobs      Display blobs as strings\n"
     "     --tabs          Set column separator to tabs rather than commas\n"
+    "     --tabular       Display result in tabular format\n"
     " -t, --type TYPE     Type of database or tier ('dev' or 'prod',"
     " default 'local')\n"
     " -v, --verbose       Verbose debug output, implies --debugtrace"
@@ -154,13 +160,13 @@ void cdb2sql_usage(int exit_val)
 
 
 const char *words[] = {
-  "ALTER", "ANALYZE", 
-  "BEGIN", 
+  "ALTER", "ANALYZE",
+  "BEGIN",
   "COMMIT",
-  "CREATE", 
+  "CREATE",
   "DELETE", "DROP", "DRYRUN",
   "EXEC", "EXPLAIN",
-  "INSERT", 
+  "INSERT",
   "PUT",
   "REBUILD",
   "ROLLBACK",
@@ -227,7 +233,7 @@ char *db_generator (int state, const char *sql)
                 fprintf(stderr, "failed to run sql '%s'\n", sql);
             return ((char *) NULL);
         }
-        
+
         int ncols = cdb2_numcolumns(cdb2h_2);
         assert(ncols == 1);
         int count = 0;
@@ -235,13 +241,13 @@ char *db_generator (int state, const char *sql)
         while ((rc = cdb2_next_record(cdb2h_2)) == CDB2_OK) {
             if ( sz < count + 1 ) {
                 sz = (sz == 0) ? 32 : sz * 2;
-                void * m = (char**) realloc(db_words, sz * sizeof(char *));
-                if (!m) { 
+                char **m = (char**) realloc(db_words, sz * sizeof(char *));
+                if (!m) {
                     fprintf(stderr, "error with malloc/realloc\n");
                     abort();
-                    break; 
+                    break;
                 }
-                db_words = m; 
+                db_words = m;
             }
             void *val = cdb2_column_value(cdb2h_2, 0);
             assert(count < sz);
@@ -417,13 +423,13 @@ void *get_val(const char **sqlstr, int type, int *vallen)
     }
     if (type == CDB2_INTEGER) {
         int64_t i = atol(*sqlstr);
-        int64_t *val = malloc(sizeof(int64_t));
+        int64_t *val = (int64_t *) malloc(sizeof(int64_t));
         *val = i;
         *vallen = sizeof(*val);
         return val;
     } else if (type == CDB2_REAL) {
         double d = atof(*sqlstr);
-        double *val = malloc(sizeof(double));
+        double *val = (double *) malloc(sizeof(double));
         *val = d;
         *vallen = sizeof(*val);
         return val;
@@ -432,7 +438,9 @@ void *get_val(const char **sqlstr, int type, int *vallen)
         *vallen = len;
         return val;
     } else if (type == CDB2_DATETIME) {
-        cdb2_client_datetime_t *dt = calloc(sizeof(cdb2_client_datetime_t), 1);
+        cdb2_client_datetime_t *dt =
+            (cdb2_client_datetime_t *) calloc(sizeof(cdb2_client_datetime_t),
+                                              1);
         int rc = sscanf(*sqlstr, "%04d-%02d-%02dT%02d:%02d:%02d",
                         &dt->tm.tm_year, &dt->tm.tm_mon, &dt->tm.tm_mday,
                         &dt->tm.tm_hour, &dt->tm.tm_min, &dt->tm.tm_sec);
@@ -455,6 +463,9 @@ void *get_val(const char **sqlstr, int type, int *vallen)
     return NULL;
 }
 
+static int run_statement(const char *sql, int ntypes, int *types,
+                         int *start_time, int *run_time);
+
 static int process_escape(const char *cmdstr)
 {
     char copy[256];
@@ -473,10 +484,10 @@ static int process_escape(const char *cmdstr)
     if (!tok)
         return 0;
 
-    if (strcmp(tok, "cdb2_close") == 0) {
+    if (strcasecmp(tok, "cdb2_close") == 0) {
         cdb2_close(cdb2h);
         cdb2h = NULL;
-    } else if (strcmp(tok, "redirect") == 0) {
+    } else if (strcasecmp(tok, "redirect") == 0) {
         tok = strtok_r(NULL, delims, &lasts);
 
         /* Close the redirect file. */
@@ -508,22 +519,103 @@ static int process_escape(const char *cmdstr)
             }
             dup2(fileno(redirect), 1);
         }
-    } else if (strcmp(tok, "row_sleep") == 0) {
+    } else if (strcasecmp(tok, "row_sleep") == 0) {
         tok = strtok_r(NULL, delims, &lasts);
         if (!tok) {
             fprintf(stderr, "expected row sleep in seconds\n");
             return -1;
         }
         rowsleep = atoi(tok);
-    } else if (strcmp(tok, "strblobs") == 0) {
+    } else if (strcasecmp(tok, "strblobs") == 0) {
         string_blobs = 1;
         printf("Blobs will be displayed as strings\n");
-    } else if (strcmp(tok, "hexblobs") == 0) {
+    } else if (strcasecmp(tok, "hexblobs") == 0) {
         string_blobs = 0;
         printf("Blobs will be displayed as hex\n");
-    } else if (strcmp(tok, "time") == 0) {
+    } else if (strcasecmp(tok, "time") == 0) {
         time_mode = time_mode ? 0 : 1;
         printf("Timing mode %s\n", time_mode ? "ON" : "OFF");
+    } else if ((strcasecmp(tok, "ls") == 0) || (strcasecmp(tok, "list") == 0)) {
+        tok = strtok_r(NULL, delims, &lasts);
+        if (!tok || strcasecmp(tok, "tables") == 0) {
+            int start_time_ms, run_time_ms;
+            const char *sql = "SELECT tablename FROM comdb2_tables";
+
+            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+        } else {
+            fprintf(stderr, "unknown @ls sub-command %s\n", tok);
+            return -1;
+        }
+    } else if (strcasecmp(tok, "send") == 0) {
+        tok = strtok_r(NULL, "", &lasts); // get remainder of string
+        if (tok) {
+            int start_time_ms, run_time_ms;
+            char sql[1024];
+            snprintf(sql, sizeof(sql) - 1, "EXEC PROCEDURE sys.cmd.send('%s')", tok);
+            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+        } else {
+            fprintf(stderr, "need command to @send\n");
+            return -1;
+        }
+    } else if ((strcasecmp(tok, "desc") == 0) || (strcasecmp(tok, "describe") == 0)) {
+        tok = strtok_r(NULL, delims, &lasts);
+        if (!tok) {
+            fprintf(stderr, "table name required\n");
+            return -1;
+        } else {
+            int start_time_ms;
+            int run_time_ms;
+            int rc;
+            char sql[200];
+            FILE *out = stdout;
+
+            if (printmode & DISP_STDERR)
+                out = stderr;
+
+            fprintf(out, "Columns:\n");
+            snprintf(sql, sizeof(sql),
+                     "SELECT columnname AS column, type, size, sqltype, "
+                     "varinlinesize, defaultvalue, dbload, isnullable FROM "
+                     "comdb2_columns WHERE tablename = '%s'",
+                     tok);
+            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            if (rc != 0) {
+                return rc;
+            }
+            fprintf(out, "\n");
+
+            fprintf(out, "Keys:\n");
+            snprintf(sql, sizeof(sql),
+                     "select keyname, isunique, isdatacopy, isrecnum, "
+                     "condition from comdb2_keys where tablename = '%s'",
+                     tok);
+            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            if (rc != 0) {
+                return rc;
+            }
+            fprintf(out, "\n");
+
+            fprintf(out, "Constraints:\n");
+            snprintf(sql, sizeof(sql),
+                     "select * from comdb2_constraints where tablename = '%s' "
+                     "OR foreigntablename = '%s'",
+                     tok, tok);
+            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            if (rc != 0) {
+                return rc;
+            }
+            fprintf(out, "\n");
+
+            fprintf(out, "CSC2:\n");
+            snprintf(sql, sizeof(sql),
+                     "SELECT csc2 FROM sqlite_master WHERE "
+                     "name = '%s' and type = 'table'",
+                     tok);
+            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            if (rc != 0) {
+                return rc;
+            }
+        }
     } else {
         fprintf(stderr, "unknown command %s\n", tok);
         return -1;
@@ -531,35 +623,50 @@ static int process_escape(const char *cmdstr)
     return 0;
 }
 
-void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
+static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
 {
+    void *val;
+
+    assert((printmode & DISP_TABULAR) == 0);
+
+    val = cdb2_column_value(cdb2h, col);
+
+    if (val == NULL) {
+        if (printmode & DISP_CLASSIC) {
+            fprintf(f, "%s=NULL", cdb2_column_name(cdb2h, col));
+        } else {
+            fprintf(f, "NULL");
+        }
+        return;
+    }
+
     switch (cdb2_column_type(cdb2h, col)) {
     case CDB2_INTEGER:
-        if (printmode == DEFAULT)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=%lld", cdb2_column_name(cdb2h, col),
                     *(long long *)val);
         else
             fprintf(f, "%lld", *(long long *)val);
         break;
     case CDB2_REAL:
-        if (printmode == DEFAULT)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         fprintf(f, doublefmt, *(double *)val);
         break;
     case CDB2_CSTRING:
-        if (printmode == DEFAULT) {
+        if (printmode & DISP_CLASSIC) {
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
             dumpstring(f, (char *)val, 1, 0);
-        } else if (printmode & TABS)
+        } else if (printmode & DISP_TABS)
             dumpstring(f, (char *)val, 0, 0);
         else
             dumpstring(f, (char *)val, 1, 1);
         break;
     case CDB2_BLOB:
-        if (printmode == DEFAULT)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         if (string_blobs) {
-            char *c = val;
+            char *c = (char *) val;
             int len = cdb2_column_size(cdb2h, col);
             fputc('\'', stdout);
             while (len > 0) {
@@ -573,7 +680,7 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
             }
             fputc('\'', stdout);
         } else {
-            if (printmode == BINARY) {
+            if (printmode & DISP_BINARY) {
                 write(1, val, cdb2_column_size(cdb2h, col));
                 exit(0);
             } else {
@@ -585,7 +692,7 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
         break;
     case CDB2_DATETIME: {
         cdb2_client_datetime_t *cdt = (cdb2_client_datetime_t *)val;
-        if (printmode == DEFAULT)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s\"",
                 cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
@@ -595,7 +702,7 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
     }
     case CDB2_DATETIMEUS: {
         cdb2_client_datetimeus_t *cdt = (cdb2_client_datetimeus_t *)val;
-        if (printmode == DEFAULT)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s\"",
                 cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
@@ -605,7 +712,7 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
     }
     case CDB2_INTERVALYM: {
         cdb2_client_intv_ym_t *ym = (cdb2_client_intv_ym_t *)val;
-        if (printmode == DEFAULT)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         fprintf(f, "\"%s%u-%u\"", (ym->sign < 0) ? "- " : "", ym->years,
                 ym->months);
@@ -613,7 +720,7 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
     }
     case CDB2_INTERVALDS: {
         cdb2_client_intv_ds_t *ds = (cdb2_client_intv_ds_t *)val;
-        if (printmode == DEFAULT)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%3.3u\"",
                 (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
@@ -622,7 +729,7 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
     }
     case CDB2_INTERVALDSUS: {
         cdb2_client_intv_dsus_t *ds = (cdb2_client_intv_dsus_t *)val;
-        if (printmode == DEFAULT)
+        if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%6.6u\"",
                 (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
@@ -630,6 +737,229 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
         break;
     }
     }
+}
+
+class Result_buffer {
+private:
+    std::vector<int> width; /* Max display size per column */
+    std::list<std::list<std::string>> result;
+    std::string errmsg;
+    int print_separator();
+
+public:
+    int append_header(cdb2_hndl_tp *hndl);
+    int append_row(cdb2_hndl_tp *hndl);
+    int append_column(cdb2_hndl_tp *hndl, int col);
+    int print_result();
+};
+
+int Result_buffer::append_header(cdb2_hndl_tp *hndl) {
+    std::list<std::string> header;
+    int ncols;
+    char *col;
+
+    ncols = cdb2_numcolumns(cdb2h);
+    if (ncols == 0) {
+        return 0;
+    }
+
+    for (int i = 0; i < ncols; i ++) {
+        col = (char *) cdb2_column_name(cdb2h, i);
+        header.push_back(std::string(col));
+        width.push_back(strlen(col));
+    }
+    result.push_back(header);
+    return 0;
+}
+
+int Result_buffer::append_row(cdb2_hndl_tp *hndl) {
+    std::list<std::string> row;
+    result.push_back(row);
+    return 0;
+}
+
+int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
+    std::string column;
+    char buffer[512];
+    void *val;
+    int len;
+
+    val = cdb2_column_value(hndl, col);
+
+    if (val == NULL) {
+        column = "NULL";
+    } else {
+        switch (cdb2_column_type(hndl, col)) {
+        case CDB2_INTEGER:
+            column = std::to_string(*(long long *)val);
+            break;
+        case CDB2_REAL:
+            len = snprintf(buffer, sizeof(buffer), doublefmt, *(double *)val);
+            assert(len < sizeof(buffer));
+            column = buffer;
+            break;
+        case CDB2_CSTRING: {
+            char *c = (char *) val;
+            column += "'";
+
+            while (*c) {
+                if (*c == '\'')
+                    column += "''";
+                else
+                    column += *c;
+                c++;
+            }
+            column += "'";
+            break;
+        }
+        case CDB2_BLOB: {
+            int len = cdb2_column_size(cdb2h, col);
+
+            if (string_blobs) {
+                char *c = (char *) val;
+                column += '\'';
+                while (len > 0) {
+                    if (isprint(*c) || *c == '\n' || *c == '\t') {
+                        column += *c;
+                    } else {
+                        snprintf(buffer, sizeof(buffer), "\\x%02x", (int)*c);
+                        column += buffer;
+                    }
+                    len--;
+                    c++;
+                }
+                column += '\'';
+            } else {
+                column += "x'";
+                for (int i = 0; i < len; i ++) {
+                    snprintf(buffer, sizeof(buffer), "%02x",
+                             (unsigned int)((char *)val)[i]);
+                    column += buffer;
+                }
+                column += "'";
+            }
+            break;
+        }
+        case CDB2_DATETIME: {
+            cdb2_client_datetime_t *cdt = (cdb2_client_datetime_t *)val;
+            snprintf(buffer, sizeof(buffer),
+                     "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s\"",
+                     cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1,
+                     cdt->tm.tm_mday, cdt->tm.tm_hour, cdt->tm.tm_min,
+                     cdt->tm.tm_sec, cdt->msec, cdt->tzname);
+            assert(len < sizeof(buffer));
+            column = buffer;
+            break;
+        }
+        case CDB2_DATETIMEUS: {
+            cdb2_client_datetimeus_t *cdt = (cdb2_client_datetimeus_t *)val;
+            snprintf(buffer, sizeof(buffer),
+                     "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s\"",
+                     cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1,
+                     cdt->tm.tm_mday, cdt->tm.tm_hour, cdt->tm.tm_min,
+                     cdt->tm.tm_sec, cdt->usec, cdt->tzname);
+            assert(len < sizeof(buffer));
+            column = buffer;
+            break;
+        }
+        case CDB2_INTERVALYM: {
+            cdb2_client_intv_ym_t *ym = (cdb2_client_intv_ym_t *)val;
+            len = snprintf(buffer, sizeof(buffer), "\"%s%u-%u\"",
+                           (ym->sign < 0) ? "- " : "", ym->years, ym->months);
+            assert(len < sizeof(buffer));
+            column = buffer;
+            break;
+        }
+        case CDB2_INTERVALDS: {
+            cdb2_client_intv_ds_t *ds = (cdb2_client_intv_ds_t *)val;
+            len = snprintf(buffer, sizeof(buffer),
+                           "\"%s%u %2.2u:%2.2u:%2.2u.%3.3u\"",
+                           (ds->sign < 0) ? "- " : "", ds->days, ds->hours,
+                           ds->mins, ds->sec, ds->msec);
+            assert(len < sizeof(buffer));
+            column = buffer;
+            break;
+        }
+        case CDB2_INTERVALDSUS: {
+            cdb2_client_intv_dsus_t *ds = (cdb2_client_intv_dsus_t *)val;
+            len = snprintf(buffer, sizeof(buffer),
+                           "\"%s%u %2.2u:%2.2u:%2.2u.%6.6u\"",
+                           (ds->sign < 0) ? "- " : "", ds->days, ds->hours,
+                           ds->mins, ds->sec, ds->usec);
+            assert(len < sizeof(buffer));
+            column = buffer;
+            break;
+        }
+        }
+    }
+
+    /* Append the column to the last row. */
+    result.back().push_back(column);
+
+    /* Update the max display size. */
+    if (column.length() > width[col]) {
+        width[col] = column.length();
+    }
+
+    return 0;
+}
+
+int Result_buffer::print_separator() {
+    std::ostream &out = (printmode & DISP_STDERR) ? std::cerr : std::cout;
+
+    out << "+";
+    for (int i = 0; i < width.size(); i ++) {
+        for (int j = 0; j < width[i] + 2; j ++) {
+            out << "-";
+        }
+
+        if (i < (width.size() - 1)) {
+            out << "+";
+        }
+    }
+    out << "+" << std::endl;
+
+    return 0;
+}
+
+int Result_buffer::print_result() {
+    int col;
+    int spaces;
+    bool is_header = true;
+    std::ostream &out = (printmode & DISP_STDERR) ? std::cerr : std::cout;
+
+    if (width.size() == 0) {
+        return 0;
+    }
+
+    print_separator();
+
+    while (!result.empty()) {
+        std::list<std::string> row = result.front();
+        out << "|";
+        col = 0;
+        while (!row.empty()) {
+            std::string column = row.front();
+            out << " " << column;
+            /* Fill spaces */
+            spaces = width[col] - column.length();
+            for (int i = 0; i < spaces; i ++) {
+                out << " ";
+            }
+            out << " |";
+            row.pop_front();
+            col ++;
+        }
+        out << std::endl;
+
+        result.pop_front();
+
+        if (is_header || result.empty()) {
+            print_separator();
+            is_header = false;
+        }
+    }
+    return 0;
 }
 
 static int run_statement(const char *sql, int ntypes, int *types,
@@ -643,7 +973,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
     char cmd[60];
     int startms = now_ms();
 
-    if (printmode & STDERR)
+    if (printmode & DISP_STDERR)
         out = stderr;
 
     *start_time = 0;
@@ -781,10 +1111,17 @@ static int run_statement(const char *sql, int ntypes, int *types,
 
     ncols = cdb2_numcolumns(cdb2h);
 
+    Result_buffer res;
+
+    if (printmode & DISP_TABULAR) {
+        res.append_header(cdb2h);
+    }
+
+    /* Print rows */
     while ((rc = cdb2_next_record(cdb2h)) == CDB2_OK) {
-        if (printmode == DEFAULT)
+        if (printmode & DISP_CLASSIC) {
             fprintf(out, "(");
-        else if (printmode == GENSQL) {
+        } else if (printmode & DISP_GENSQL) {
             printf("insert into %s (", gensql_tbl);
             for (col = 0; col < ncols; col++) {
                 printf("%s", cdb2_column_name(cdb2h, col));
@@ -792,38 +1129,42 @@ static int run_statement(const char *sql, int ntypes, int *types,
                     printf(", ");
             }
             printf(") values (");
+        } else if (printmode & DISP_TABULAR) {
+            res.append_row(cdb2h);
         }
+
         for (col = 0; col < ncols; col++) {
-            void *val = cdb2_column_value(cdb2h, col);
-            if (val == NULL) {
-                if (printmode == DEFAULT)
-                    fprintf(out, "%s=NULL", cdb2_column_name(cdb2h, col));
-                else
-                    fprintf(out, "NULL");
+            /* Print column value */
+            if (printmode & DISP_TABULAR) {
+                res.append_column(cdb2h, col);
             } else {
-                printCol(out, cdb2h, val, col, printmode);
+                print_column(out, cdb2h, col);
             }
+
+            /* Print column separator */
             if (col != ncols - 1) {
-                if (printmode == DEFAULT)
-                    fprintf(out, ", ");
-                else if (printmode & TABS)
+                if (printmode & DISP_TABS) {
                     fprintf(out, "\t");
-                else
+                } else if (printmode & DISP_TABULAR) {
+                    /* Noop */
+                } else {
                     fprintf(out, ", ");
+                }
             }
         }
-        switch (printmode) {
-        case DEFAULT:
+
+        if (printmode & DISP_CLASSIC) {
             fprintf(out, ")\n");
-            break;
-        case TABS:
+        } else if (printmode & DISP_TABS) {
             fprintf(out, "\n");
-            break;
-        case GENSQL:
+        } else if (printmode & DISP_GENSQL) {
             fprintf(out, ");\n");
-            break;
+        } else if (printmode & DISP_TABULAR) {
+            /* Noop */
         }
+
         fflush(out);
+
         if (rowsleep)
             sleep(rowsleep);
         if (pausemode) {
@@ -837,6 +1178,11 @@ static int run_statement(const char *sql, int ntypes, int *types,
                     pausemode = 0;
             }
         }
+    }
+
+    if (printmode & DISP_TABULAR) {
+        res.print_result();
+        fflush(out);
     }
 
     *run_time = now_ms() - startms;
@@ -903,7 +1249,7 @@ static void process_line(char *sql, int ntypes, int *types)
 
     if (docost && !rc) {
         int saved_printmode = printmode;
-        printmode = TABS | STDERR;
+        printmode = DISP_TABS | DISP_STDERR;
         const char *costSql = "SELECT comdb2_prevquerycost() as Cost";
         run_statement(costSql, ntypes, types, &start_time_ms, &run_time_ms);
         printmode = saved_printmode;
@@ -916,7 +1262,8 @@ void load_readline_history()
     if ((home = getenv("HOME")) == NULL)
         return;
     char histfile[] = "/.cdb2sql_history";
-    if ((history_file = malloc(strlen(home) + sizeof(histfile))) == NULL)
+    if ((history_file = (char *) malloc(strlen(home) + sizeof(histfile)))
+        == NULL)
         return;
     sprintf(history_file, "%s%s", home, histfile);
     read_history(history_file);
@@ -936,7 +1283,7 @@ static int *process_typed_statement_args(int ntypes, char **args)
     int *types = NULL;
 
     if (ntypes > 0)
-        types = malloc(ntypes * sizeof(int));
+        types = (int *) malloc(ntypes * sizeof(int));
 
     for (int i = 0; i < ntypes; i++) {
         if (strcmp(args[i], "integer") == 0)
@@ -987,7 +1334,7 @@ static char *get_multi_line_statement(char *line)
 {
     char *stmt = NULL;
     int slen = 0;
-    char *nl = ""; // new-line
+    char *nl = (char *) ""; // new-line
     int n = 0;     // len of nl
 
     char tmp_prompt[sizeof(main_prompt)];
@@ -1003,14 +1350,14 @@ static char *get_multi_line_statement(char *line)
     do {
         int len = strlen(line);
         int newlen = slen + len + n;
-        stmt = realloc(stmt, newlen + 1);
+        stmt = (char *) realloc(stmt, newlen + 1);
         sprintf(&stmt[slen], "%s%s", nl, line);
         slen = newlen;
         if (stmt[slen - 2] == '$' && stmt[slen - 1] == '$') {
             stmt[slen - 2] = '\0';
             break;
         }
-        nl = "\n";
+        nl = (char *) "\n";
         n = 1;
     } while ((line = read_line()) != NULL);
     prompt = main_prompt;
@@ -1099,8 +1446,9 @@ int main(int argc, char *argv[])
 
     static struct option long_options[] = {
         {"pause",      no_argument,       &pausemode,         1},
-        {"binary",     no_argument,       &printmode,         BINARY},
-        {"tabs",       no_argument,       &printmode,         TABS},
+        {"binary",     no_argument,       &printmode,         DISP_BINARY},
+        {"tabs",       no_argument,       &printmode,         DISP_TABS},
+        {"tabular",    no_argument,       &printmode,         DISP_TABULAR},
         {"verbose",    no_argument,       &verbose,           1},
         {"strblobs",   no_argument,       &string_blobs,      1},
         {"debugtrace", no_argument,       &debug_trace,       1},
@@ -1123,8 +1471,8 @@ int main(int argc, char *argv[])
         {0, 0, 0, 0}
     };
 
-    while ((c = bb_getopt_long(argc, argv, "hsvr:p:c:f:g:t:n:R:", long_options,
-                               &opt_indx)) != -1) {
+    while ((c = bb_getopt_long(argc, argv, (char *) "hsvr:p:c:f:g:t:n:R:",
+                               long_options, &opt_indx)) != -1) {
         switch (c) {
         case 0:
             break;
@@ -1155,7 +1503,7 @@ int main(int argc, char *argv[])
             filename = optarg;
             break;
         case 'g':
-            printmode = GENSQL;
+            printmode = DISP_GENSQL;
             gensql_tbl = optarg;
             break;
         case 't':
@@ -1207,10 +1555,10 @@ int main(int argc, char *argv[])
         dbtype = argv[optind];
         optind++;
     } else {
-        dbtype = "local"; /* might want "default" here */
+        dbtype = (char *) "local"; /* might want "default" here */
     }
 
-    sql = (optind < argc ? argv[optind] : "-");
+    sql = const_cast<char *>(optind < argc ? argv[optind] : "-");
     sprintf(main_prompt, "%s> ", dbname);
     optind++;
 

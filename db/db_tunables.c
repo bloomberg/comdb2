@@ -36,6 +36,7 @@
 #define COMPOSITE_TUNABLE_SEP '.'
 
 extern int gbl_allow_lua_print;
+extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_berkdb_epochms_repts;
 extern int gbl_pmux_route_enabled;
 extern int gbl_allow_user_schema;
@@ -140,6 +141,8 @@ extern int gbl_time_rep_apply;
 extern int gbl_incoherent_logput_window;
 extern int gbl_dump_full_net_queue;
 extern int gbl_max_clientstats_cache;
+extern int gbl_dbreg_stack_on_null_txn;
+extern int gbl_dbreg_abort_on_null_txn;
 
 extern long long sampling_threshold;
 
@@ -192,6 +195,8 @@ extern bool gbl_rcache;
 
 static char *name = NULL;
 static int ctrace_gzip;
+
+int gbl_ddl_cascade_drop = 1;
 
 /*
   =========================================================
@@ -337,7 +342,7 @@ static void *checkctags_value(void *context)
 
 static void *next_genid_value(void *context)
 {
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    /*comdb2_tunable *tunable = (comdb2_tunable *)context;*/
     static char genid_str[64];
     unsigned long long flipgenid, genid = get_genid(thedb->bdb_env, 0);
 
@@ -354,7 +359,7 @@ static void *next_genid_value(void *context)
 
 static int genid_seed_update(void *context, void *value)
 {
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    /*comdb2_tunable *tunable = (comdb2_tunable *)context;*/
     char *seedstr = (char *)value;
     unsigned long long seed;
     seed = strtoll(seedstr, 0, 16);
@@ -1179,7 +1184,6 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
         PARSE_TOKEN;
         DO_VERIFY(t, buf);
 
-
         if (t->update) {
             DO_UPDATE(t, buf);
         } else {
@@ -1278,11 +1282,15 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
     tok = &buf[0];
 
     if (!(t = hash_find_readonly(gbl_tunables->hash, &tok))) {
-        logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", tok);
+        /* Do not warn in READEARLY phase. */
+        if ((flags & READEARLY == 0)) {
+            logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", tok);
+        }
         return TUNABLE_ERR_INVALID_TUNABLE;
     }
 
-    /* Only proceed if we were asked to process READEARLY tunables. */
+    /* Bail out if we were asked to process READEARLY tunables only
+     * but the matched tunable is non-READEARLY. */
     if ((flags & READEARLY) && ((t->flags & READEARLY) == 0)) {
         return TUNABLE_ERR_OK;
     }

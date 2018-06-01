@@ -119,7 +119,8 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
         machine_info = (comdb2_machine_info_t *)new_plugin->data;
         register_rtcpu_callbacks(
             machine_info->machine_is_up, machine_info->machine_status_init,
-            machine_info->machine_class, machine_info->machine_dc);
+            machine_info->machine_class, machine_info->machine_dc,
+            machine_info->machine_num);
         break;
     }
     case COMDB2_PLUGIN_INITIALIZER:

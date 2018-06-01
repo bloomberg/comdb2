@@ -12,7 +12,7 @@ while [[ $# -gt 0 && $1 = -* ]]; do
     shift
 done
 
-vars="HOSTNAME TESTID SRCHOME TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port"
+vars="HOSTNAME TESTID SRCHOME TESTCASE DBNAME DBDIR BUILDDIR TESTSBUILDDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port"
 for required in $vars; do
     q=${!required}
     if [[ -z "$q" ]]; then
@@ -164,22 +164,15 @@ echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
 
 set +e
 
-#pmux_port is assigned in runtestcase
-pmux_cmd="$PMUX_EXE -l"
-
 # If PMUXPORT is defined we will overwrite the default pmux port with that
-if [ -n "$PMUXPORT" ] ; then
-    pmux_socket=/tmp/pmux.socket.$PMUXPORT
-    pmux_port_range="-r $((pmux_port+1)):$((pmux_port+200))"
-    pmux_cmd="$PMUX_EXE -l -p $PMUXPORT -b $pmux_socket $pmux_port_range"
-    echo "comdb2_config:portmuxport=$PMUXPORT" >> $CDB2_CONFIG
-    echo "portmux_port $PMUXPORT" >> ${LRL}
+if [ -n "${PMUXPORT}" ] ; then
+    pmux_socket=/tmp/pmux.socket.${PMUXPORT}
+    echo "comdb2_config:portmuxport=${PMUXPORT}" >> $CDB2_CONFIG
+    echo "portmux_port ${PMUXPORT}" >> ${LRL}
     echo "portmux_bind_path $pmux_socket" >> ${LRL}
 fi
-stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} && echo exit >&3 ) || echo PMUX DOWN"
 
-export COMDB2AR_EXOPTS="-x $COMDB2_EXE"
-
+SSH_OPT="-o StrictHostKeyChecking=no "
 
 for csc2 in $(ls *.csc2 2>/dev/null); do
     table=${csc2%%.csc2}
@@ -204,33 +197,34 @@ echo "${DBNAME} created successfully"
 set -e
 
 check_db_port_running_local() {
-    dbport=`grep "\[ERROR\] net_listen: FAILED TO BIND to port" $TESTDIR/logs/${DBNAME}.db | grep -Po "port [0-9]*" | cut -f2 -d" " `
+    local dbport=`grep "\[ERROR\] net_listen: FAILED TO BIND to port" $TESTDIR/logs/${DBNAME}.db | grep -Po "port [0-9]*" | cut -f2 -d" " `
     if [ "x$dbport" == "x" ] ; then
         return
     fi
     echo "checking what is running on localhost:$dbport"
     netstat -na | grep $dbport
-    opid=`fuser -n tcp $dbport`
+    local opid=`fuser -n tcp $dbport`
     echo "pid running on dbport: $opid"
     [ -n "$opid" ] && ps -p $opid -o comm,args
     $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host localhost:$dbport $DBNAME 'select comdb2_dbname()' 2>&1
 }
 
 check_db_port_running_node() {
-    node=$1
-    dbport=`grep "\[ERROR\] net_listen: FAILED TO BIND to port" $TESTDIR/logs/${DBNAME}.${node}.db | grep -Po "port [0-9]*" | cut -f2 -d" " `
+    local node=$1
+    local dbport=`grep "\[ERROR\] net_listen: FAILED TO BIND to port" $TESTDIR/logs/${DBNAME}.${node}.db | grep -Po "port [0-9]*" | cut -f2 -d" " `
     if [ "x$dbport" == "x" ] ; then
         return;
     fi
+    local opid
     echo "checking what is running on ${node}:$dbport"
     if [ "$node" == "$HOSTNAME" ] ; then 
         netstat -na | grep $dbport
         opid=`fuser -n tcp $dbport`
         echo "pid running on dbport: $opid"
-    [ -n "$opid" ] && ps -p $opid -o comm,args
+        [ -n "$opid" ] && ps -p $opid -o comm,args
     else
-        ssh -o StrictHostKeyChecking=no $node "netstat -na | grep $dbport" </dev/null
-        opid=`ssh -o StrictHostKeyChecking=no $node "fuser -n tcp $dbport" </dev/null`
+        ssh $SSH_OPT $node "netstat -na | grep $dbport" </dev/null
+        opid=`ssh $SSH_OPT $node "fuser -n tcp $dbport" </dev/null`
         echo "pid running on dbport: $opid"
     fi
     $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node:$dbport $DBNAME 'select comdb2_dbname()' 2>&1
@@ -253,33 +247,52 @@ if [[ -z "$CLUSTER" ]]; then
     fi
 
     echo "!$TESTCASE: starting single node"
-    ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/$DBNAME.pid &> $TESTDIR/logs/${DBNAME}.db &
+    ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
     dbpid=$!
 
     set +e
+
+    kill -0 `cat ${TMPDIR}/${DBNAME}.pid` > /dev/null
+    if [ $? -eq 1 ] ; then
+        echo "pid ${TMPDIR}/${DBNAME}.pid: `cat ${TMPDIR}/${DBNAME}.pid` is not alive"
+        check_db_port_running_local # this error is immediate so we should be able to catch it early
+    fi
+
     out=
     # wait until we can query it
     echo "!$TESTCASE: waiting until ready"
     while [[ "$out" != "1" ]]; do
         sleep 1
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2> /dev/null)
-        [[ "$out" != "1" ]] && check_db_port_running_local
+        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME 'select 1' &> $TESTDIR/logs/${DBNAME}.conn
     done
 else
     echo "!$TESTCASE: copying to cluster"
     if [[ -n "$NUMNODESTOUSE" ]]; then
         echo "$TESTCASE: cluster is $CLUSTER"
     fi
+    COMDB2AR_AROPTS="-C preserve"
+    COMDB2AR_EXOPTS="-x $COMDB2_EXE"
+
+    ARFILE=$DBDIR/${DBNAME}.ar
+    $COMDB2AR_EXE $COMDB2AR_AROPTS c ${LRL} 2> $TESTDIR/logs/${DBNAME}.arstatus > $ARFILE
+    [ ! -f $ARFILE ] && echo "failed to create $ARFILE" && exit 1
+
+    i=0
+    declare -a pids
     for node in ${CLUSTER/$HOSTNAME/}; do
-        if [ $node == $HOSTNAME ] ; then
-            continue        # no copying to self
-        fi
-        comdb2ar="$COMDB2AR_EXE" $COPYCOMDB2_EXE ${LRL} ${node}: &> $TESTDIR/logs/${DBNAME}.${node}.copy
+        cat $ARFILE | ssh $SSH_OPT $node "$COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $TESTDIR/logs/${DBNAME}.${node}.copy &
+        pids[$i]=$!
+        let i=i+1
+    done
+    i=0
+    for node in ${CLUSTER/$HOSTNAME/}; do
+        wait ${pids[$i]}
         if [[ $? -ne 0 ]]; then
-            echo "FAILED: $COPYCOMDB2_EXE ${LRL} ${node}: "
-            echo "see $TESTDIR/logs/${DBNAME}.${node}.copy "
+            echo "FAILED: copying ${LRL} ${node}: see $TESTDIR/logs/${DBNAME}.${node}.copy"
             exit 1
         fi
+        let i=i+1
     done
 
     echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
@@ -298,23 +311,34 @@ else
         if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
             echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${CMD}${NOCOLOR}"
         else
-            scp -o StrictHostKeyChecking=no ${TESTDIR}/replicant_vars $node:${TESTDIR}/replicant_vars
+            scp $SSH_OPT ${TESTDIR}/replicant_vars $node:${TESTDIR}/replicant_vars
             # redirect output from CMD to a subshell which runs awk to prepend time
-            ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &>$TESTDIR/logs/${DBNAME}.${node}.db &
+            # could also use connection sharing and close master ssh session in unsetup
+            ssh -n $SSH_OPT -tt $node ${CMD} &>$TESTDIR/logs/${DBNAME}.${node}.db &
             # $! will be pid of ssh (if we had used pipe, $! would be pid of awk)
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         fi
     done
 
+    set +e
+    #check for failure in starting any of the nodes
+    sleep 1
+    for node in $CLUSTER; do
+        kill -0 `cat ${TMPDIR}/${DBNAME}.${node}.pid` > /dev/null
+        if [ $? -eq 1 ] ; then
+            echo "pid ${TMPDIR}/${DBNAME}.${node}.pid: `cat ${TMPDIR}/${DBNAME}.${node}.pid` is not alive"
+            check_db_port_running_node $node # this error is immediate so we should be able to catch it early
+        fi
+    done
+
     echo "!$TESTCASE: waiting until ready"
     for node in $CLUSTER; do
-        set +e
+        echo "If we can't talk to any of the nodes the test will timeout"
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
         while  [[ "$out" != "1" ]]; do
             sleep 2
             out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
             $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $TESTDIR/logs/${DBNAME}.${node}.conn
-            [[ "$out" != "1" ]] && check_db_port_running_node $node
         done
         $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &>> $TESTDIR/logs/${DBNAME}.${node}.conn
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' 2>&1)
@@ -325,8 +349,8 @@ else
         fi
     done
     for node in $CLUSTER; do
-        $CDB2SQL_EXE ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp stat all")'
-        $CDB2SQL_EXE ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp ping all")'
+        $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp stat all")'
+        $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp ping all")'
     done
 fi
 

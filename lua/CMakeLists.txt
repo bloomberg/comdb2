@@ -42,6 +42,7 @@ include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(
   -DLUASP
   -DLUA_USE_POSIX
+  -DLUA_USE_DLOPEN
   ${SQLITE_FLAGS}
 )
 

@@ -188,7 +188,7 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
         version = db->sc_to->version;
     } else {
         version = get_csc2_version_tran(table, tran);
-        if (version < 0 || db == NULL) {
+        if (version < 0) {
             logmsg(LOGMSG_ERROR, "%s: error getting schema\n", __func__);
             return -1;
         }
@@ -199,7 +199,7 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
          *
          * If we are creating tables, then there
          * is no llmeta version record. */
-        if (gbl_create_mode || !db->instant_schema_change) {
+        if (gbl_create_mode || (db && !db->instant_schema_change)) {
             ++version;
         }
     }

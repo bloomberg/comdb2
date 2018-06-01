@@ -1,9 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 #debug=1
 [[ "$debug" == "1" ]] && set -x
 
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
+export DUMPLOCK_ON_TIMEOUT=1
 export CORE_ON_TIMEOUT=1
 email="mhannum72@gmail.com"
 tests=${TESTLOOPTESTS:-jepsen_atomic_writes jepsen_a6_nemesis jepsen_a6 jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_g2 jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets cinsert_linearizable register_linearizable}
@@ -91,7 +92,7 @@ function pull_and_recompile
 while :; do 
     let i=i+1 
     print_status
-    pull_and_recompile
+    #pull_and_recompile
     echo "$(date) ITERATION $i" 
     for x in $tests 
     do print_status

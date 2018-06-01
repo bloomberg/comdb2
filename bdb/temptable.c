@@ -244,7 +244,7 @@ static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
     int rc;
 
     if (tbl->tmpdb) {
-        rc = tbl->tmpdb->close(tbl->tmpdb, NULL, 0);
+        rc = tbl->tmpdb->close(tbl->tmpdb, 0);
         if (rc) {
             *bdberr = rc;
             rc = -1;
@@ -300,7 +300,7 @@ static int bdb_temp_table_env_close(bdb_state_type *bdb_state,
     int rc;
 
     if (tbl->tmpdb) {
-        rc = tbl->tmpdb->close(tbl->tmpdb, NULL, 0);
+        rc = tbl->tmpdb->close(tbl->tmpdb, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s:%d close rc %d\n", __FILE__, __LINE__, rc);
             *bdberr = rc;

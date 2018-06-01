@@ -124,6 +124,7 @@ const char *get_sc_to_name(const char *name)
 void wait_for_sc_to_stop(void)
 {
     stopsc = 1;
+    logmsg(LOGMSG_INFO, "%s: set stopsc\n", __func__);
     if (gbl_schema_change_in_progress) {
         logmsg(LOGMSG_INFO, "giving schemachange time to stop\n");
         int retry = 10;
@@ -138,6 +139,7 @@ void wait_for_sc_to_stop(void)
 void allow_sc_to_run(void)
 {
     stopsc = 0;
+    logmsg(LOGMSG_INFO, "%s: allow sc to run\n", __func__);
 }
 
 typedef struct {
@@ -169,6 +171,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     printf("%s: %d\n", __func__, running);
     comdb2_linux_cheap_stack_trace();
 #endif
+    pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (sc_tables == NULL) {
         sc_tables =
             hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
@@ -176,7 +179,6 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     }
     assert(sc_tables);
 
-    pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (thedb->master == gbl_mynode) {
         if (running && table &&
             (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&
@@ -197,8 +199,10 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     }
     if (running) {
         /* this is an osql replay of a resuming schema change */
-        if (sctbl)
+        if (sctbl) {
+            pthread_mutex_unlock(&schema_change_in_progress_mutex);
             return 0;
+        }
         if (table) {
             sctbl = calloc(1, offsetof(sc_table_t, mem) + strlen(table) + 1);
             assert(sctbl);
@@ -249,9 +253,8 @@ void sc_status(struct dbenv *dbenv)
     if (sc_tables)
         sctbl = hash_first(sc_tables, &ent, &bkt);
     while (gbl_schema_change_in_progress && sctbl) {
-        const char *mach;
-        time_t timet;
-        getMachineAndTimeFromFstSeed(sctbl->seed, sctbl->host, &mach, &timet);
+        const char *mach = get_hostname_with_crc32(thedb->bdb_env, sctbl->host);
+        time_t timet = sctbl->time;
         struct tm tm;
         localtime_r(&timet, &tm);
 

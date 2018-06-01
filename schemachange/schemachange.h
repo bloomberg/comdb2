@@ -59,6 +59,9 @@ struct dest {
     LINKC_T(struct dest) lnk;
 };
 
+/* status for schema_change_type->addonly */
+enum { SC_NOT_ADD = 0, SC_TO_ADD = 1, SC_DONE_ADD = 2 };
+
 struct schema_change_type {
     /*  ==========    persistent members ========== */
     unsigned long long rqid;
@@ -180,6 +183,8 @@ struct schema_change_type {
     /*********************** temporary fields for table upgrade
      * ************************/
     unsigned long long start_genid;
+
+    int already_finalized;
 
     /*********************** temporary fields for sbuf packing
      * ************************/
@@ -318,7 +323,7 @@ int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
 int add_schema_change_tables();
 
 extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);
-extern unsigned long long get_next_sc_seed(bdb_state_type *);
+extern unsigned long long bdb_get_a_genid(bdb_state_type *bdb_state);
 
 void handle_setcompr(SBUF2 *sb);
 

@@ -6,10 +6,9 @@ bash -n "$0" | exit 1
 # debug=1
 
 # args
-a_dbn=$1
-a_dbdir=.
+dbname=$1
 
-TMPDIR=${TMPDIR:-/tmp}
+export TMPDIR=${TMPDIR:-/tmp}
 
 # find input files
 files=$( find . -type f -name \*.req | sort )
@@ -53,26 +52,6 @@ function fastinit
     return 0
 }
 
-# archcode function
-function myarch
-{
-    # print debug trace
-    [[ "$debug" == "1" ]] && set -x
-
-    u=$(uname)
-    a="<unknown>"
-    [[ "$u" == "SunOS" ]]   && a="sundev1"
-    [[ "$u" == "AIX" ]]     && a="ibm"
-    [[ "$u" == "HP-UX" ]]   && a="hp"
-    [[ "$u" == "Linux" ]]   && a="linux"
-
-    echo $a
-    return 0
-}
-
-# run tool
-
-# Set the TZ
 TZ="US/Eastern"
 
 # Iterate through input files
@@ -93,14 +72,14 @@ for testcase in $files ; do
     # fastinit if requested
     if [[ $new_batch != $last_batch ]] ; then
 
-        fastinit $a_dbn $new_batch
+        fastinit $dbname $new_batch
         last_batch=$new_batch
 
     fi
 
     # Check for run-stepper
 
-    cmd="cdb2sql -s ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
+    cmd="cdb2sql -s ${CDB2_OPTIONS} $dbname default - < $testcase > $output 2>&1"
     # Be verbose
     echo $cmd
     # run command
@@ -126,8 +105,9 @@ for testcase in $files ; do
     testcase_output=$(cat $output)
 
     # get expected output
-    expected_output=$(cat $testcase.out)
-    [[ -f $testcase.out.1 ]] && expected_output2=$(cat $testcase.out.1)
+    expected_output=$(cat $testcase.expected)
+    expected_output2=""
+    [[ -f $testcase.expected.1 ]] && expected_output2=$(cat $testcase.expected.1)
 
     # verify 
     if [[ "$testcase_output" != "$expected_output" && "$testcase_output" != "$expected_output2" ]]; then
@@ -136,9 +116,9 @@ for testcase in $files ; do
         echo "The above testcase (${testcase}) has failed!!!"
         echo " "
         echo "Use 'diff <expected-output> <my-output>' to see why:"
-        echo "> diff ${PWD}/{$testcase.out,$output}"
+        echo "> diff ${PWD}/{$testcase.expected,$output}"
         echo " "
-        diff $testcase.out $output
+        diff $testcase.expected $output
         echo " "
         exit 1
 

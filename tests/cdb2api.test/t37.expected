@@ -1,3 +1,2 @@
-[begin asof 232308293] failed with rc -8 sqlinterfaces: wrong sql handle state
-
-(1=1)
+(version='def')
+[exec procedure dyn_lib()] failed with rc -3 [require 'torch'...]:2: dynamic libraries not enabled; check comdb2 documentation

@@ -3149,7 +3149,7 @@ int fdb_send_rc(fdb_msg_t *msg, char *tid, int retrc, int errstrlen,
         msg->hd.type |= FD_MSG_FLAGS_ISUUID;
         comdb2uuidcpy((unsigned char *)msg->rc.tid, (unsigned char *)tid);
     } else {
-        memcpy(msg->co.tid, tid, sizeof(unsigned long long));
+        memcpy(msg->rc.tid, tid, sizeof(unsigned long long));
     }
 
     msg->rc.rc = retrc;

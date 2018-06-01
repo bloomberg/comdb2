@@ -447,7 +447,10 @@ set all_graphs {
                   {line /column-name {opt [ size ] }}
               }
           }
-          {line {opt DBSTORE = /literal-value}}
+          {line
+              {opt dbstore = /literal-value}
+              {opt null = {or yes no}}
+          }
       }
   }
 
@@ -455,7 +458,10 @@ set all_graphs {
       loop
       {stack
           {line
-              {opt dup}
+              {or
+                  {opt dup}
+                  {opt uniqnulls}
+              }
               {opt datacopy}
               {line /string-literal = }
           }

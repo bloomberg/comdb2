@@ -79,6 +79,7 @@ static int db_cluster(Lua L)
  * dupes     int
  * recnums   int
  * primary   int
+ * uniqnulls int
  *
  */
 static int db_comdbg_tables(Lua L) {
@@ -124,6 +125,10 @@ static int db_comdbg_tables(Lua L) {
 
                 lua_pushstring(L, "primary");
                 lua_pushinteger(L, 0);
+                lua_settable(L, -3);
+
+                lua_pushstring(L, "uniqnulls");
+                lua_pushinteger(L, db->ix_nullsallowed[ix]);
                 lua_settable(L, -3);
 
                 lua_rawseti(L, -2, rownum++);

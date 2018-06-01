@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 #set -x
 pathbase=${COMDB2_PATHBASE:-/home/ubuntu/comdb2}
