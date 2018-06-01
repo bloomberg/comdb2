@@ -179,7 +179,9 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
     if {$::cdb2_debug} {cdb2 debug $db}
 
     set sql [string map [list \r\n \n] [string trim $sql]]
+
     cdb2 run $db $sql
+    set effects [cdb2 effects $db]
 
     while {[cdb2 next $db]} {
         if {[string length $result] > 0} {append result \n}
@@ -203,7 +205,7 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
     }
 
     if {$::cdb2_trace} {
-        puts stdout "\[TCL_CDB2_TRACE\]: \{[info level [info level]]\} returning \{$result\}..."
+        puts stdout "\[TCL_CDB2_TRACE\]: \{[info level [info level]]\} had effects \{$effects\}, returning \{$result\}..."
     }
 
     return $result
