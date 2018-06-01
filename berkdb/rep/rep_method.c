@@ -142,6 +142,7 @@ __rep_open(dbenv)
 }
 
 int gbl_allow_election_race = 0;
+extern pthread_mutex_t rep_candidate_lock;
 
 /*
  * __rep_start --
@@ -230,6 +231,7 @@ __rep_start(dbenv, dbt, gen, flags)
 		return (ret);
 	}
 
+    pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	/*
 	 * We only need one thread to start-up replication, so if
@@ -282,7 +284,9 @@ __rep_start(dbenv, dbt, gen, flags)
 				abort();
 			}
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+            pthread_mutex_unlock(&rep_candidate_lock);
 			(void)__os_sleep(dbenv, 1, 0);
+            pthread_mutex_lock(&rep_candidate_lock);
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		}
 	}
@@ -349,6 +353,7 @@ __rep_start(dbenv, dbt, gen, flags)
             logmsg(LOGMSG_USER, "%s line %d upgrading to gen %d egen %d\n",
                     __func__, __LINE__, rep->gen, rep->egen);
 		}
+        pthread_mutex_unlock(&rep_candidate_lock);
 		rep->master_id = rep->eid;
 		/*
 		 * Note, setting flags below implicitly clears out
@@ -412,6 +417,7 @@ __rep_start(dbenv, dbt, gen, flags)
 
 		rep->flags = repflags;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+        pthread_mutex_unlock(&rep_candidate_lock);
 
 		/*
 		 * Abort any prepared transactions that were restored
@@ -880,7 +886,6 @@ __rep_set_rep_transport(dbenv, eid, f_send)
 	return (0);
 }
 
-extern pthread_mutex_t rep_candidate_lock;
 extern pthread_mutex_t rep_queue_lock;
 extern void send_master_req(DB_ENV *dbenv, const char *func, int line);
 
@@ -995,8 +1000,8 @@ restart:
 		return (ret);
 	tiebreaker = pid ^ sec ^ usec ^ (u_int) rand() ^ P_TO_UINT32(&pid);
 
-	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
     pthread_mutex_lock(&rep_candidate_lock);
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 
 	F_SET(rep, REP_F_EPHASE1 | REP_F_NOARCHIVE);
 	F_CLR(rep, REP_F_TALLY);
@@ -1007,8 +1012,6 @@ restart:
 
 	if (use_committed_gen)
 		lsn = rep->committed_lsn;
-
-    pthread_mutex_unlock(&rep_candidate_lock);
 
     static uint32_t last_egen = 0;
     if(last_egen && last_egen >= rep->egen)
@@ -1032,6 +1035,7 @@ restart:
 	egen = rep->egen;
 	committed_gen = rep->committed_gen;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+    pthread_mutex_unlock(&rep_candidate_lock);
 
 	if (use_committed_gen) {
 		logmsg(LOGMSG_USER, "%s line %d broadcasting REP_GEN_VOTE1 to all with committed-gen=%d egen=%d\n",
@@ -1073,6 +1077,7 @@ restart:
 	 * votes to pick a winner and if so, to send out a vote to
 	 * the winner.
 	 */
+    pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	/*
 	 * If our egen changed while we were waiting.  We need to
@@ -1080,6 +1085,7 @@ restart:
 	 */
 	if (egen != rep->egen) {
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+        pthread_mutex_unlock(&rep_candidate_lock);
 #ifdef DIAGNOSTIC
 		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 			__db_err(dbenv, "Egen changed from %lu to %lu",
@@ -1108,12 +1114,11 @@ restart:
 				    "Counted my vote %d", rep->votes);
 #endif
 		}
-        pthread_mutex_lock(&rep_candidate_lock);
 		F_SET(rep, REP_F_EPHASE2);
 		F_CLR(rep, REP_F_EPHASE1);
-        pthread_mutex_unlock(&rep_candidate_lock);
 	}
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+    pthread_mutex_unlock(&rep_candidate_lock);
 	if (send_vote == db_eid_invalid) {
 		/* We do not have enough votes to elect. */
 #ifdef DIAGNOSTIC
@@ -1188,7 +1193,9 @@ phase2:
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	}
 
-err:	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+err:	
+    pthread_mutex_lock(&rep_candidate_lock);
+    MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 lockdone:
 	/*
 	 * If we get here because of a non-election error, then we
@@ -1201,6 +1208,7 @@ lockdone:
 	else if (orig_tally)
 		F_SET(rep, orig_tally);
 
+    pthread_mutex_unlock(&rep_candidate_lock);
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
     logmsg(LOGMSG_USER, "%s line %d returning %d master %s egen is %d\n",
             __func__, __LINE__, ret, *eidp, *newgen);

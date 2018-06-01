@@ -338,8 +338,10 @@ __rep_new_master(dbenv, cntrl, eid)
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 	ret = 0;
+    pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	__rep_elect_done(dbenv, rep, 0);
+    pthread_mutex_unlock(&rep_candidate_lock);
 
         /* This should never happen: we are calling new-master against a
            network message with a lower generation.  I believe this is the
@@ -664,9 +666,7 @@ __rep_elect_done(dbenv, rep, egen)
 #endif
 
 	inelect = IN_ELECTION_TALLY(rep);
-    pthread_mutex_lock(&rep_candidate_lock);
 	F_CLR(rep, REP_F_EPHASE1 | REP_F_EPHASE2 | REP_F_TALLY);
-    pthread_mutex_unlock(&rep_candidate_lock);
 	rep->sites = 0;
 	rep->votes = 0;
 	if (inelect) {

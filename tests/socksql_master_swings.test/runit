@@ -80,7 +80,7 @@ while [[ $selecterror -lt $maxselectfail ]]; do
         let noprogress=0
     fi
 
-    if [[ $prevnum != 0 ]]; then
+    if [[ $prevnum == 0 ]]; then
         let prevnum=num
     fi
     lastminute=$(( lastminute + ( prevnum - num ) ))

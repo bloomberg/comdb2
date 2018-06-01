@@ -480,8 +480,8 @@ static void *apply_thread(void *arg)
         pthread_mutex_lock(&rep_queue_lock);
         pthread_mutex_lock(&rep_candidate_lock);
 
-        while (!IN_ELECTION_TALLY(rep) && (max_dequeue-- > 0) &&
-                (q = listc_rtl(&log_queue))) {
+        while (!IN_ELECTION_TALLY(rep) && !bdb_the_lock_desired() && 
+                (max_dequeue-- > 0) && (q = listc_rtl(&log_queue))) {
             pthread_cond_broadcast(&release_cond);
             if (q->rp->rectype == REP_LOG_MORE) {
                 queue_log_more_count--;
@@ -601,8 +601,10 @@ static void *apply_thread(void *arg)
         int in_election = IN_ELECTION_TALLY(rep);
         pthread_mutex_unlock(&rep_candidate_lock);
 
-        if (in_election)
+        if (in_election) {
+            bdb_relthelock(__func__, __LINE__);
             continue;
+        }
 
         log_more_count = queue_log_more_count;
         log_fill_count = queue_log_fill_count;
@@ -2212,7 +2214,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 					__func__, __LINE__, *eidp, rp->gen, vi_egen, rep->egen, vig->last_write_gen);
 		}
 
-
+        pthread_mutex_lock(&rep_candidate_lock);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 
 		/*
@@ -2232,9 +2234,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			//rep->egen = vi_egen;
 		}
 		if (!IN_ELECTION(rep)) {
-            pthread_mutex_lock(&rep_candidate_lock);
 			F_SET(rep, REP_F_TALLY);
-            pthread_mutex_unlock(&rep_candidate_lock);
         }
 
 		/* Check if this site knows about more sites than we do. */
@@ -2337,16 +2337,15 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 #endif
 			egen = rep->egen;
 			committed_gen = rep->committed_gen;
-            pthread_mutex_lock(&rep_candidate_lock);
 			F_SET(rep, REP_F_EPHASE2);
 			F_CLR(rep, REP_F_EPHASE1);
-            pthread_mutex_unlock(&rep_candidate_lock);
 			if (master == rep->eid) {
 				(void)__rep_tally(dbenv, rep, rep->eid,
 					&rep->votes, egen, rep->v2tally_off);
 				goto errunlock;
 			}
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+            pthread_mutex_unlock(&rep_candidate_lock);
 
 			/* Vote for someone else. */
 			if (dbenv->attr.elect_highest_committed_gen) {
@@ -2362,8 +2361,10 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 				__rep_send_vote(dbenv, NULL, 0, 0, 0, egen,
 					master, REP_VOTE2);
 			}
-		} else
+		} else {
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+            pthread_mutex_unlock(&rep_candidate_lock);
+        }
 
 		/* Election is still going on. */
 		break;
@@ -2389,6 +2390,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			goto errlock;
 		}
 
+        pthread_mutex_lock(&rep_candidate_lock);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 
 		/* If we have priority 0, we should never get a vote. */
@@ -2475,8 +2477,10 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			__rep_elect_master(dbenv, rep, eidp);
 			ret = DB_REP_NEWMASTER;
 			goto errunlock;
-		} else
+		} else {
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+            pthread_mutex_unlock(&rep_candidate_lock);
+        }
 		break;
 
 	case REP_PGDUMP_REQ:{
@@ -2501,9 +2505,11 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 	 * decrement our message thread count.
 	 */
 errlock:
+    pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 errunlock:
 	rep->msg_th--;
+    pthread_mutex_unlock(&rep_candidate_lock);
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	PRINT_RETURN(ret, fromline);
 }
