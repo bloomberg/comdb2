@@ -280,7 +280,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int rc2 = 0;
     int usedb_only = 0;
 
-    /* !!! */
     if (clnt->early_retry == EARLY_ERR_VERIFY) {
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
         errstat_cat_str(&(clnt->osql.xerr), "unable to update record rc = 4");

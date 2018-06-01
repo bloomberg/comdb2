@@ -5840,23 +5840,14 @@ done:
     if (verify && !pCur->bt->is_temporary &&
         pCur->rootpage != RTPAGE_SQLITE_MASTER && *pRes != 0 &&
         pCur->vdbe->readOnly == 0 && pCur->ixnum == -1) {
-//      Don't bother doing lookup if this is set
-//        && clnt->early_retry != EARLY_ERR_SELECTV) {
         int irc = is_genid_recorded(thd, pCur, genid);
         if (irc < 0)
             logmsg(LOGMSG_ERROR, "%s: failed to check early verify genid\n",
                    __func__);
-        else if (irc == 1) {
-            logmsg(LOGMSG_ERROR, "%s line %d setting early_retry to SELECTV\n",
-                    __func__, __LINE__);
+        else if (irc == 1)
             clnt->early_retry = EARLY_ERR_SELECTV;
-        } else {
-            if (clnt->early_retry == EARLY_ERR_SELECTV) {
-                logmsg(LOGMSG_ERROR, "%s line %d changing early_retry from SELECTV to VERIFY\n",
-                        __func__, __LINE__);
-            }
+        else
             clnt->early_retry = EARLY_ERR_VERIFY;
-        }
     }
 
     reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,

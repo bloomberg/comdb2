@@ -169,6 +169,14 @@ void *schedule_thd(void *arg)
                 ret = cdb2_next_record(sqlh);
             } while (ret == CDB2_OK);
 
+            if (ret != CDB2_OK_DONE) {
+                cdb2_run_statement(sqlh, "rollback");
+                do {
+                    ret = cdb2_next_record(sqlh);
+                } while (ret == CDB2_OK);
+                continue;
+            }
+
             int i = 0;
             for (i = 0; i < n; i++) {
                 snprintf(sql, sizeof(sql),
@@ -191,6 +199,14 @@ void *schedule_thd(void *arg)
                 do {
                     ret = cdb2_next_record(sqlh);
                 } while (ret == CDB2_OK);
+
+                if (ret != CDB2_OK_DONE) {
+                    cdb2_run_statement(sqlh, "rollback");
+                    do {
+                        ret = cdb2_next_record(sqlh);
+                    } while (ret == CDB2_OK);
+                    continue;
+                }
             }
         } else {
             cdb2_run_statement(sqlh, "rollback");
@@ -273,7 +289,7 @@ retry_add:
             fprintf(f, "LOST TO ANOTHER THREAD\n");
         } else if (c->occ) {
             fprintf(f, "LOST TO ANOTHER THREAD, rc %d\n", ret);
-        } else if (ret == 210 /*NOT_DURABLE*/ || ret == -1) {
+        } else if (ret == 210 /*NOT_DURABLE*/ || ret == -1 || ret == CDB2ERR_VERIFY_ERROR) {
             fprintf(f, "FAILED TO UPDATE: RET %d, ERR %s\n", ret,
                     cdb2_errstr(sqlh));
         } else {
