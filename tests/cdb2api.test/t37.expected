@@ -1,2 +1,3 @@
 (version='def')
-[exec procedure dyn_lib()] failed with rc -3 [require 'torch'...]:2: dynamic libraries not enabled; check comdb2 documentation
+[exec procedure dyn_lib()] failed with rc -3 error loading module 'libpaths' from file '/home/mohitkhullar/torch/install/lib/lua/5.1/libpaths.so':
+	dynamic libraries not enabled; check your Lua installation
