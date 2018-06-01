@@ -65,6 +65,7 @@
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
+extern int gbl_reorder_idx_writes;
 
 static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs,
                               size_t maxblobs, const char *tblname,
@@ -99,6 +100,13 @@ void free_cached_idx(uint8_t * *cached_idx);
         retrc = ERR_VERIFY;                                                    \
         ERR;                                                                   \
     }
+
+inline static bool is_event_from_sc(int flags)
+{
+    return flags & RECFLAGS_NEW_SCHEMA;
+}
+
+
 
 int gbl_max_wr_rows_per_txn = 0;
 
@@ -140,7 +148,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         using_myblobs = 1;
     }
 
-    if (flags & RECFLAGS_NEW_SCHEMA)
+    if (is_event_from_sc(flags))
         ondisktag = ".NEW..ONDISK";
     else
         ondisktag = ".ONDISK";
@@ -162,7 +170,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         prefixes++;
     }
 
-    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+    if (!is_event_from_sc(flags)) {
         if (gbl_max_wr_rows_per_txn &&
             ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
@@ -172,7 +180,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
-    if ((flags & RECFLAGS_NEW_SCHEMA) &&
+    if (is_event_from_sc(flags) &&
         ((gbl_partial_indexes && iq->usedb->ix_partial) ||
          (gbl_expressions_indexes && iq->usedb->ix_expr))) {
         int ixnum;
@@ -200,7 +208,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
 
-    if (!(flags & RECFLAGS_NEW_SCHEMA)) { // dont lock if adding from SC
+    if (!is_event_from_sc(flags)) { // dont lock if adding from SC
 
         int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
         if (d_ms) {
@@ -456,9 +464,9 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
      * Form and add all the keys.
      * If there are constraints, do the add to indices defered.
      */
-    if (!(flags & RECFLAGS_NO_CONSTRAINTS)) /* if NOT no constraints */
+    if (!(flags & RECFLAGS_NO_CONSTRAINTS) || gbl_reorder_idx_writes) /* if NOT no constraints */
     {
-        if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+        if (!is_event_from_sc(flags)) {
             /* enqueue the add of the key for constaint checking purposes */
             rc = insert_add_op(iq, iq->blkstate, iq->usedb, NULL, NULL, opcode,
                                *rrn, -1, *genid, ins_keys, blkpos);
@@ -599,13 +607,13 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         (strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
          (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
          strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
-        !(flags & RECFLAGS_NEW_SCHEMA)) {
+        !is_event_from_sc(flags)) {
         retrc = local_replicant_log_add(iq, trans, od_dta, blobs, opfailcode);
         if (retrc)
             ERR;
     }
 
-    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+    if (!is_event_from_sc(flags)) {
         iq->usedb->write_count[RECORD_WRITE_INS]++;
         gbl_sc_last_writer_time = comdb2_time_epoch();
 
@@ -804,7 +812,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     *ixfailnum = -1;
 
-    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+    if (!is_event_from_sc(flags)) {
         if (gbl_max_wr_rows_per_txn &&
             ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
@@ -1252,7 +1260,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         (strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
          (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
          strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
-        !(flags & RECFLAGS_NEW_SCHEMA)) {
+        !is_event_from_sc(flags)) {
 
         rc = local_replicant_log_delete_for_update(iq, trans, rrn, vgenid,
                                                    opfailcode);
@@ -1662,7 +1670,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         (strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
          (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
          strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
-        !(flags & RECFLAGS_NEW_SCHEMA)) {
+        !is_event_from_sc(flags)) {
         rc = local_replicant_log_add_for_update(iq, trans, rrn, *genid,
                                                 opfailcode);
         if (rc) {
@@ -1795,7 +1803,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+    if (!is_event_from_sc(flags)) {
         if (gbl_max_wr_rows_per_txn &&
             ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
@@ -1945,7 +1953,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         (strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
          (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
          strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
-        !(flags & RECFLAGS_NEW_SCHEMA)) {
+        !is_event_from_sc(flags)) {
         rc = local_replicant_log_delete(iq, trans, od_dta, opfailcode);
         if (rc) {
             retrc = rc;
@@ -1996,7 +2004,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (iq->idxDelete)
             memcpy(key, iq->idxDelete[ixnum], iq->usedb->ix_keylen[ixnum]);
         else {
-            if (flags & RECFLAGS_NEW_SCHEMA) {
+            if (is_event_from_sc(flags)) {
                 snprintf(keytag, sizeof(keytag), ".NEW..ONDISK_IX_%d", ixnum);
                 rc = stag_to_stag_buf_blobs(
                     iq->usedb->tablename, ".NEW..ONDISK", od_dta, keytag, key,
@@ -2998,7 +3006,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         using_myblobs = 1;
     }
 
-    if (flags & RECFLAGS_NEW_SCHEMA)
+    if (is_event_from_sc(flags))
         ondisktag = ".NEW..ONDISK";
     else
         ondisktag = ".ONDISK";
