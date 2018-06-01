@@ -87,8 +87,11 @@ if [ -n "$RESTARTPMUX" ] ; then
     echo stop pmux on localhost
     eval $stop_pmux
 fi
-echo start pmux on local host if not running
-COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" $pmux_cmd 2>&1
+
+if [[ -z "$CLUSTER" ]] || [[ `echo $CLUSTER | grep $HOSTNAME ` ]]; then
+    echo start pmux on local host if not running
+    COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" $pmux_cmd 2>&1
+fi
 
 # if CLUSTER is length is nonzero copy to cluster
 if [[ -n "$CLUSTER" ]] ; then 
