@@ -65,7 +65,7 @@ find_cores() {
     local COREAGE=60
 
     local CPAT=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
-    local COREDIR=`dirname $CPAT`; 
+    local COREDIR=$(dirname $CPAT 2>/dev/null)
     if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then 
         COREDIR=$DBDIR
     else
