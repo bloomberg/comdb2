@@ -441,6 +441,8 @@ retry:
             logmsg(LOGMSG_USER, "%s recovered deadlock\n", __func__);
         clnt->deadlock_recovered++;
         if (clnt->deadlock_recovered > 100) {
+            sql_debug_logf(clnt, __func__, __LINE__, "deadlock_recovered is %d,"
+                    " returning SQLITE_BUSY\n", clnt->deadlock_recovered);
             return SQLITE_BUSY;
         }
     }
@@ -470,8 +472,11 @@ retry:
     if (!keep_rqid) {
         /* register this new member */
         rc = osql_register_sqlthr(clnt, type);
-        if (rc)
+        if (rc) {
+            sql_debug_logf(clnt, __func__, __LINE__, "osql_register_sqlthr "
+                    " returns %d\n", rc);
             return rc;
+        }
     } else {
         /* this is a replay with same rqid, already registered */
         /* sets to the same node */
@@ -499,8 +504,12 @@ retry:
         goto retry;
     }
 
-    if (rc && osql->host)
-        logmsg(LOGMSG_ERROR, "Tried to talk to %s and got rc=%d\n", osql->host, rc);
+    if (rc && osql->host) {
+        sql_debug_logf(clnt, __func__, __LINE__, "Tried to talk to %s and got "
+                "%d\n", osql->host, rc);
+        logmsg(LOGMSG_ERROR, "Tried to talk to %s and got rc=%d\n", osql->host,
+                rc);
+    }
 
     if (!keep_rqid && rc != 0) {
         osql_unregister_sqlthr(clnt);
@@ -600,8 +609,11 @@ again:
                                    ? OSQL_SOCK_REQ
                                    : OSQL_RECOM_REQ,
                          keep_session);
-    if (rc)
+    if (rc) {
+        sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns "
+                "%d\n", rc);
         goto error;
+    }
 
     /* process messages from cache */
     rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 1);
@@ -640,6 +652,8 @@ again:
             goto again;
         }
 
+        sql_debug_logf(clnt, __func__, __LINE__, "failed %d times to restart "
+                "socksql session\n", retries);
         logmsg(LOGMSG_ERROR,
                "%s:%d %s failed %d times to restart socksql session\n",
                __FILE__, __LINE__, __func__, retries);
