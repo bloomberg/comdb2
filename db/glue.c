@@ -739,6 +739,8 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
 {
     int rc, rc2;
     db_seqnum_type ss;
+    char *cnonce = NULL;
+    int cn_len; 
     void *bdb_handle = bdb_handle_from_ireq(iq);
     struct dbenv *dbenv = dbenv_from_ireq(iq);
 
@@ -746,11 +748,29 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
 
     rc = trans_commit_seqnum_int(bdb_handle, dbenv, iq, trans, &ss, logical,
                                  blkseq, blklen, blkkey, blkkeylen);
-    if (rc != 0)
+
+    if (gbl_extended_sql_debug_trace && iq->have_snap_info) {
+        cn_len = iq->snap_info.keylen;
+        cnonce = alloca(cn_len + 1);
+        memcpy(cnonce, iq->snap_info.key, cn_len);
+        cnonce[cn_len] ='\0';
+        logmsg(LOGMSG_USER, "%s %s line %d: trans_commit returns %d\n", cnonce,
+                __func__, __LINE__, rc);
+    }
+
+    if (rc != 0) {
         return rc;
+    }
 
     rc = trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host,
                                    timeoutms, adaptive, &ss);
+
+    if (cnonce) {
+        DB_LSN *lsn = (DB_LSN *)&ss;
+        logmsg(LOGMSG_USER, "%s %s line %d: wait_for_seqnum [%d][%d] returns "
+                "%d\n", cnonce, __func__, __LINE__, lsn->file, lsn->offset, rc);
+    }
+
     return rc;
 }
 

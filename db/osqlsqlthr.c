@@ -506,9 +506,10 @@ retry:
 
     if (rc && osql->host) {
         sql_debug_logf(clnt, __func__, __LINE__, "Tried to talk to %s and got "
-                "%d\n", osql->host, rc);
-        logmsg(LOGMSG_ERROR, "Tried to talk to %s and got rc=%d\n", osql->host,
-                rc);
+                "%d returning SQLITE_BUSY\n", osql->host, rc);
+        logmsg(LOGMSG_ERROR, "Tried to talk to %s and got rc=%d - returning "
+                "SQLITE_BUSY\n", osql->host, rc);
+        rc = SQLITE_BUSY;
     }
 
     if (!keep_rqid && rc != 0) {

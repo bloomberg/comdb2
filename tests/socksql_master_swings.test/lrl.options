@@ -8,4 +8,5 @@ on block_set_commit_genid_trace
 logmsg level info
 set_repinfo_master_trace on
 extended_sql_debug_trace on
+dump_blkseq on
 nowatch
