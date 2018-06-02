@@ -699,11 +699,8 @@ retry:
                                     &bdberr);
         if (rc) {
             rcout = rc;
-            if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_USER,
-                       "td=%lu %s line %d got %d and setting rcout to %d\n",
-                       pthread_self(), __func__, __LINE__, rc, rcout);
-            }
+            sql_debug_logf(clnt, __func__, __LINE__, "got %d and setting rcout"
+                    " to %d\n", rc, rcout);
             goto err;
         }
     }
@@ -773,13 +770,9 @@ retry:
                         goto err;
                     }
                     if (retries++ < gbl_survive_n_master_swings) {
-                        if (gbl_master_swing_osql_verbose ||
-                            gbl_extended_sql_debug_trace)
-                            logmsg(LOGMSG_ERROR,
-                                   "%s:%d lost connection to master, "
-                                   "retrying %d in %d msec\n",
-                                   __FILE__, __LINE__, retries,
-                                   gbl_master_retry_poll_ms);
+                        sql_debug_logf(clnt, __func__, __LINE__, "lost "
+                                "connection to master, retrying %d in %d "
+                                "msec\n", retries, gbl_master_retry_poll_ms);
 
                         poll(NULL, 0, gbl_master_retry_poll_ms);
 
@@ -797,57 +790,34 @@ retry:
                 /* transaction failed on the master, abort here as well */
                 if (rc != SQLITE_TOOBIG) {
                     if (osql->xerr.errval == -109 /* SQLHERR_MASTER_TIMEOUT */) {
-
-                        if (gbl_extended_sql_debug_trace) {
-                            logmsg(LOGMSG_USER, "td=%lu %s line %d got %d and "
-                                                "setting rcout to "
-                                                "MASTER_TIMEOUT, "
-                                                " errval is %d\n",
-                                   pthread_self(), __func__, __LINE__, rc,
-                                   osql->xerr.errval);
-                        }
-
+                        sql_debug_logf(clnt, __func__, __LINE__, "got %d and "
+                                "setting rcout to MASTER_TIMEOUT, errval is "
+                                "%d setting rcout to -109\n", rc, 
+                                osql->xerr.errval);
                         rcout = -109;
                     } else if (osql->xerr.errval == ERR_NOT_DURABLE) {
                         /* Ask the client to change nodes */
-                        if (gbl_extended_sql_debug_trace) {
-                            logmsg(
-                                LOGMSG_USER,
-                                "td=%lu %s line %d got %d and setting rcout to "
-                                "SQLITE_CLIENT_CHANGENODE,  errval is %d\n",
-                                pthread_self(), __func__, __LINE__, rc,
-                                osql->xerr.errval);
-                        }
+                        sql_debug_logf(clnt, __func__, __LINE__, "got %d and "
+                                "setting rcout to CHANGENODE, errval is %d\n",
+                                rc, osql->xerr.errval);
                         rcout = SQLITE_CLIENT_CHANGENODE;
                     } else {
-                        if (gbl_extended_sql_debug_trace) {
-                            logmsg(LOGMSG_USER, "td=%lu %s line %d got %d and "
-                                                "setting rcout to "
-                                                "SQLITE_ABORT, "
-                                                " errval is %d\n",
-                                   pthread_self(), __func__, __LINE__, rc,
-                                   osql->xerr.errval);
-                        }
+                        sql_debug_logf(clnt, __func__, __LINE__, "got %d and "
+                                "setting rcout to SQLITE_ABORT, errval is "
+                                "%d\n", rc, osql->xerr.errval);
                         // SQLITE_ABORT comes out as a "4" in the client,
                         // which is translated to 4 'null key constraint'.
                         rcout = SQLITE_ABORT;
                     }
                 } else {
-                    if (gbl_extended_sql_debug_trace) {
-                        logmsg(LOGMSG_USER,
-                               "td=%lu %s line %d got %d and setting "
-                               "rcout to SQLITE_TOOBIG, "
-                               " errval is %d\n",
-                               pthread_self(), __func__, __LINE__, rc,
-                               osql->xerr.errval);
-                    }
+                    sql_debug_logf(clnt, __func__, __LINE__, "got %d and "
+                            "setting rcout to SQLITE_TOOBIG, errval is %d\n",
+                            rc, osql->xerr.errval);
                     rcout = SQLITE_TOOBIG;
                 }
             } else {
-                if (gbl_extended_sql_debug_trace) {
-                    logmsg(LOGMSG_USER, "td=%lu %s line %d got %d from %s\n",
-                           pthread_self(), __func__, __LINE__, rc, osql->host);
-                }
+                sql_debug_logf(clnt, __func__, __LINE__, "got %d from %s\n", 
+                        rc, osql->host);
             }
         }
         if (clnt->client_understands_query_stats && clnt->dbglog)

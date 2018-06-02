@@ -90,43 +90,29 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     CDB2SQLQUERY *sql_query = appdata->sqlquery;
     char cnonce[256];
     int rcode = 0;
-    if (gbl_extended_sql_debug_trace && sql_query) {
-        snprintf(cnonce, 256, "%s", sql_query->cnonce.data);
-    }
-    if (sql_query && sql_query->snapshot_info &&
-        sql_query->snapshot_info->file > 0) {
-        *file = sql_query->snapshot_info->file;
-        *offset = sql_query->snapshot_info->offset;
+    if (clnt->sql_query && clnt->sql_query->snapshot_info &&
+        clnt->sql_query->snapshot_info->file > 0) {
+        *file = clnt->sql_query->snapshot_info->file;
+        *offset = clnt->sql_query->snapshot_info->offset;
 
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER,
-                    "%s line %d cnonce '%s' sql_query->snapinfo is [%d][%d], "
-                    "clnt->snapinfo is [%d][%d]: use client snapinfo!\n",
-                    __func__, __LINE__, cnonce,
-                    sql_query->snapshot_info->file,
-                    sql_query->snapshot_info->offset, clnt->snapshot_file,
-                    clnt->snapshot_offset);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "fill-snapinfo "
+                "sql_query->snapinfo is [%d][%d], clnt->snapinfo is [%d][%d]: "
+                "use client snapinfo!\n", clnt->sql_query->snapshot_info->file,
+                clnt->sql_query->snapshot_info->offset, clnt->snapshot_file,
+                clnt->snapshot_offset);
         return 0;
     }
 
     if (*file == 0 && sql_query &&
         (clnt->in_client_trans || clnt->is_hasql_retry) &&
         clnt->snapshot_file) {
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER,
-                    "%s line %d cnonce '%s' sql_query->snapinfo is [%d][%d], "
-                    "clnt->snapinfo is [%d][%d]\n",
-                    __func__, __LINE__, cnonce,
-                    (sql_query && sql_query->snapshot_info)
-                        ? sql_query->snapshot_info->file
-                        : -1,
-                    (sql_query && sql_query->snapshot_info)
-                        ? sql_query->snapshot_info->offset
-                        : -1,
+        sql_debug_logf(clnt, __func__, __LINE__, "fill-snapinfo "
+                "sql_query->snapinfo is [%d][%d] clnt->snapinfo is [%d][%d]\n",
+                    (clnt->sql_query && clnt->sql_query->snapshot_info)
+                    ? clnt->sql_query->snapshot_info->file : -1,
+                    (clnt->sql_query && clnt->sql_query->snapshot_info)
+                    ? clnt->sql_query->snapshot_info->offset : -1,
                     clnt->snapshot_file, clnt->snapshot_offset);
-        }
-
         *file = clnt->snapshot_file;
         *offset = clnt->snapshot_offset;
         logmsg(LOGMSG_USER,
@@ -147,33 +133,23 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
             rc = request_durable_lsn_from_master(
                 thedb->bdb_env, &snapinfo_file, &snapinfo_offset, &durable_gen);
             if (rc == 0) {
-                if (gbl_extended_sql_debug_trace) {
-                    logmsg(LOGMSG_USER,
-                           "%s line %d cnonce='%s' master "
-                           "returned durable-lsn "
-                           "[%d][%d], clnt->is_hasql_retry=%d\n",
-                           __func__, __LINE__, cnonce, *file, *offset,
-                           clnt->is_hasql_retry);
-                }
+                sql_debug_logf(clnt, __func__, __LINE__, "master returned "
+                        "durable-lsn [%d][%d], clnt->is_hasql_retry=%d\n",
+                        *file, *offset, clnt->is_hasql_retry);
             } else {
-                if (gbl_extended_sql_debug_trace) {
-                    logmsg(LOGMSG_USER,
-                           "%s line %d cnonce='%s' durable-lsn request "
-                           "returns %d "
-                           "clnt->snapshot_file=%d clnt->snapshot_offset=%d "
-                           "clnt->is_hasql_retry=%d\n",
-                           __func__, __LINE__, cnonce, rc, clnt->snapshot_file,
-                           clnt->snapshot_offset, clnt->is_hasql_retry);
-                }
+                sql_debug_logf(clnt, __func__, __LINE__, "durable-lsn request "
+                        "returns %d snapshot_file=%d snapshot_offset=%d "
+                        "is_hasql_retry=%d\n", clnt->snapshot_file,
+                        clnt->snapshot_offset, clnt->is_hasql_retry);
+                rcode = -1;
             }
         } else {
             (void)bdb_get_current_lsn(thedb->bdb_env, &snapinfo_file,
                                       &snapinfo_offset);
             rc = 0;
-            logmsg(LOGMSG_USER,
-                   "%s line %d cnonce='%s' durable-lsn is disabled. Use my LSN "
-                   "[%d][%d], clnt->is_hasql_retry=%d\n",
-                   __func__, __LINE__, cnonce, *file, *offset,
+            sql_debug_logf(clnt, __func__, __LINE__,
+                   "durable-lsn is disabled. Use my LSN [%d][%d], "
+                   "clnt->is_hasql_retry=%d\n", *file, *offset,
                    clnt->is_hasql_retry);
         }
 
@@ -189,11 +165,9 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     if (*file == 0) {
         bdb_tran_get_start_file_offset(thedb->bdb_env, clnt->dbtran.shadow_tran,
                                        file, offset);
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "%s line %d start_file_offset snapinfo is "
-                                "[%d][%d], sqlengine-state is %d\n",
-                   __func__, __LINE__, *file, *offset, clnt->ctrl_sqlengine);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "start_file_offset snapinfo "
+                "is [%d][%d], sqlengine-state is %d\n", *file, *offset, 
+                clnt->ctrl_sqlengine);
     }
     return rcode;
 }
@@ -1349,11 +1323,8 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
         if (strncasecmp(sqlstr, "set", 3) == 0) {
             char err[256];
             err[0] = '\0';
-            if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_ERROR,
-                       "td %lu %s line %d processing set command '%s'\n",
-                       pthread_self(), __func__, __LINE__, sqlstr);
-            }
+            sql_debug_logf(clnt, __func__, __LINE__, "processing set command "
+                    "'%s'\n", sqlstr);
             sqlstr += 3;
             sqlstr = skipws(sqlstr);
             if (strncasecmp(sqlstr, "transaction", 11) == 0) {
@@ -1540,21 +1511,14 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     if (clnt->dbtran.mode == TRANLEVEL_SERIAL ||
                         clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
                         newsql_set_high_availability(clnt);
-                        if (gbl_extended_sql_debug_trace) {
-                            logmsg(
-                                LOGMSG_USER,
-                                "td %lu %s line %d setting high_availability\n",
-                                pthread_self(), __func__, __LINE__);
-                        }
+                        sql_debug_logf(clnt, __func__, __LINE__, "setting "
+                                "high_availability\n");
                     }
                 } else {
                     clnt->hasql_on = 0;
                     newsql_clr_high_availability(clnt);
-                    if (gbl_extended_sql_debug_trace) {
-                        logmsg(LOGMSG_USER,
-                               "td %lu %s line %d clearing high_availability\n",
-                               pthread_self(), __func__, __LINE__);
-                    }
+                    sql_debug_logf(clnt, __func__, __LINE__, "clearning "
+                            "high_availability\n");
                 }
             } else if (strncasecmp(sqlstr, "verifyretry", 11) == 0) {
                 sqlstr += 11;

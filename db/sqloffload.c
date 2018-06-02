@@ -295,20 +295,14 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     /* optimization (will catch all transactions with no internal updates */
     if (osql_shadtbl_empty(clnt)) {
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%lu %s line %d empty-shadtbl, returning\n",
-                   pthread_self(), __func__, __LINE__);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "empty-shadtbl, returning\n");
         return 0;
     }
 
     usedb_only = osql_shadtbl_usedb_only(clnt);
 
     if (usedb_only && !clnt->selectv_arr && gbl_selectv_rangechk) {
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%lu %s line %d empty-sv_arr, returning\n",
-                   pthread_self(), __func__, __LINE__);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "empty-sv_arr, returning\n");
         return 0;
     }
 
@@ -319,10 +313,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
                               &(clnt->selectv_arr->file),
                               &(clnt->selectv_arr->offset), 0)) {
         rc = SQLITE_ABORT;
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%lu %s line %d returning SQLITE_ABORT\n",
-                   pthread_self(), __func__, __LINE__);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "returning SQLITE_ABORT\n");
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
         goto goback;
@@ -372,27 +363,18 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     if (sentops && clnt->arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
-        if (gbl_extended_sql_debug_trace && rc) {
-            logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning rc=%d\n",
-                   pthread_self(), __func__, __LINE__, rc);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
     }
 
     if (clnt->selectv_arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
-        if (gbl_extended_sql_debug_trace && rc) {
-            logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning rc=%d\n",
-                   pthread_self(), __func__, __LINE__, rc);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
     }
 
     if (rc && rc != -2) {
         int irc = 0;
 
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%lu %s line %d aborting\n", pthread_self(),
-                   __func__, __LINE__);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "aborting\n");
 
         irc = osql_sock_abort(clnt, osqlreq_type);
         if (irc) {
@@ -409,10 +391,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     } else {
 
         /* close the block processor session and retrieve the result */
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%lu %s line %d committing\n",
-                   pthread_self(), __func__, __LINE__);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "committing\n");
         rc = osql_sock_commit(clnt, osqlreq_type);
         if (rc && rc != SQLITE_ABORT && rc != SQLITE_DEADLOCK &&
             rc != SQLITE_BUSY && rc != SQLITE_CLIENT_CHANGENODE) {
@@ -422,10 +401,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
             rc = SQLITE_CLIENT_CHANGENODE;
             //rc = SQLITE_ERROR;
         }
-        if (gbl_extended_sql_debug_trace && rc) {
-            logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning %d\n",
-                   pthread_self(), __func__, __LINE__, rc);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "returning %d\n", rc);
     }
 
 goback:
