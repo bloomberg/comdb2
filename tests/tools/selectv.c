@@ -124,6 +124,10 @@ void *schedule_thd(void *arg)
             do {
                 ret = cdb2_next_record(sqlh);
             } while (ret == CDB2_OK);
+            cdb2_run_statement(sqlh, "rollback");
+            do {
+                ret = cdb2_next_record(sqlh);
+            } while (ret == CDB2_OK);
             continue;
         }
         fprintf(f, "sql: %s, ret = %d.\n", sql, ret);
@@ -234,6 +238,11 @@ retry_add:
                 do {
                     ret = cdb2_next_record(sqlh);
                 } while (ret == CDB2_OK);
+                cdb2_run_statement(sqlh, "rollback");
+                do {
+                    ret = cdb2_next_record(sqlh);
+                } while (ret == CDB2_OK);
+                continue;
                 goto retry_add;
             }
             fprintf(f, "sql: %s, ret = %d.\n", sql, ret);
