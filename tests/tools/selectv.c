@@ -284,7 +284,8 @@ retry_add:
             snprintf(sql, sizeof(sql), "commit");
             ret = cdb2_run_statement(sqlh, sql);
             fprintf(f, "sql: %s, ret = %d.\n", sql, ret);
-            if (ret == 210 /*NOT_DURABLE*/ || ret == -1) {
+            if (ret == 210 /*NOT_DURABLE*/ || ret == -1 ||
+                    ret == -109 || ret == -5) {
                 fprintf(f, "FAILED TO INSERT: RET %d, ERR %s\n", ret,
                         cdb2_errstr(sqlh));
             } else if (ret) {
