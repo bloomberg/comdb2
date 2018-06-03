@@ -4132,8 +4132,9 @@ read_record:
         }
     }
 
-    if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__MASTER_TIMEOUT ||
-        hndl->firstresponse->error_code == CDB2ERR_CHANGENODE) {
+    if ((hndl->firstresponse->error_code == CDB2__ERROR_CODE__MASTER_TIMEOUT ||
+        hndl->firstresponse->error_code == CDB2ERR_CHANGENODE) && 
+            (hndl->snapshot_file || (!hndl->in_trans && !is_commit))) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->sb = NULL;
         hndl->retry_all = 1;
