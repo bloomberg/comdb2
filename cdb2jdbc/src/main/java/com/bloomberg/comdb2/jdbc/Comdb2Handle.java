@@ -1137,7 +1137,8 @@ public class Comdb2Handle extends AbstractConnection {
                         tdlog(Level.FINER, "returning 0 for null readNsh / readRaw on rollback errVal=%d", errVal);
                         return 0;
                     }
-                    else if (is_retryable(errVal)) {
+                    else if (is_retryable(errVal) && (snapshotFile > 0 ||
+                                (!inTxn && !is_commit))) {
                         tdlog(Level.FINER, "continuing on retryable error %d for null readNsh", errVal);
                         errorInTxn = 0;
                         closeNoException();
@@ -1263,7 +1264,8 @@ public class Comdb2Handle extends AbstractConnection {
                         tdlog(Level.FINER, "Returning 0 on rollback for errval %d for null firstResp", errVal);
                         return 0;
                     }
-                    else if (is_retryable(errVal)) {
+                    else if (is_retryable(errVal) && (snapshotFile > 0 ||
+                                (!inTxn && !is_commit))) {
                         errorInTxn = 0;
                         closeNoException();
                         retryAll = true;
@@ -1340,7 +1342,8 @@ public class Comdb2Handle extends AbstractConnection {
             if (firstResp.respType == 1) {
                 /* Handle rejects from server. */
                 tdlog(Level.FINEST, "firstResp.respType==1");
-                if (is_retryable(firstResp.errCode)) {
+                if (is_retryable(firstResp.errCode) && (snapshotFile > 0 ||
+                            (!inTxn && !is_commit))) {
                     closeNoException();
                     retryAll = true;
                     if (commitSnapshotFile > 0) {
