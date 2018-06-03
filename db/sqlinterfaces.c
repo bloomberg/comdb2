@@ -1360,7 +1360,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                                 clnt->osql.replay);
                 } else if (rc == 0) {
                     sql_debug_logf(clnt, __func__, __LINE__, 
-                            "'%s' socksql failed commit rc=%d replay=%d\n", 
+                            "'%s' socksql commit rc=%d replay=%d\n", 
                             clnt->sql ? clnt->sql:"(?)", rc, clnt->osql.replay);
                     reqlog_logf(thd->logger, REQL_QUERY,
                                 "\"%s\" SOCKSL commit rc=%d replay=%d\n",
