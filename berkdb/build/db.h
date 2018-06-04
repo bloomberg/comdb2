@@ -2082,8 +2082,8 @@ struct __db_env {
 	int     (*txn_logical_commit)
 		    __P((DB_ENV *, void *state, u_int64_t ltranid,
 		    DB_LSN *lsn));
-    DB_LSN last_locked_lsn;
-    pthread_mutex_t locked_lsn_lk;
+	DB_LSN last_locked_lsn;
+	pthread_mutex_t locked_lsn_lk;
 
 	/* Transactions. */
 	u_int32_t	 tx_max;	/* Maximum number of transactions. */
@@ -2303,7 +2303,7 @@ struct __db_env {
 	int  (*get_rep_limit) __P((DB_ENV *, u_int32_t *, u_int32_t *));
 	int  (*set_rep_limit) __P((DB_ENV *, u_int32_t, u_int32_t));
 	void  (*get_rep_gen) __P((DB_ENV *, u_int32_t *));
-    int  (*get_last_locked) __P((DB_ENV *, DB_LSN *));
+	int  (*get_last_locked) __P((DB_ENV *, DB_LSN *));
 	int  (*set_rep_request) __P((DB_ENV *, u_int32_t, u_int32_t));
 	int  (*set_rep_transport) __P((DB_ENV *, char*,
 		int (*) (DB_ENV *, const DBT *, const DBT *, const DB_LSN *,

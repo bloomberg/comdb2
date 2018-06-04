@@ -158,7 +158,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	u_int8_t *key;
 	unsigned long long ctx;
 	int rectype = 0;
-    int delay;
+	int delay;
 
 	dblp = dbenv->lg_handle;
 	lp = dblp->reginfo.primary;
@@ -250,7 +250,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 
 	if (IS_REP_MASTER(dbenv)) {
 
-	    /*
+		/*
 		 * Replication masters need to drop the lock to send
 		 * messages, but we want to drop and reacquire it a minimal
 		 * number of times.
@@ -363,23 +363,23 @@ err:
     int bdb_commitdelay(void *arg);
 
 	if (IS_REP_MASTER(dbenv) && is_commit_record(rectype) && 
-            (delay = bdb_commitdelay(dbenv->app_private))) {
-        static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
-        static unsigned long long count=0;
-        static int lastpr = 0;
-        int now;
+			(delay = bdb_commitdelay(dbenv->app_private))) {
+		static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+		static unsigned long long count=0;
+		static int lastpr = 0;
+		int now;
 
-        /* Don't lock out anything else */
-        pthread_mutex_lock(&lk);
-        poll(NULL, 0, delay);
-        pthread_mutex_unlock(&lk);
-        count++;
-        if (gbl_commit_delay_trace && (now = time(NULL))-lastpr) {
-            logmsg(LOGMSG_USER, "%s line %d commit-delayed for %d ms, %llu "
-                    "total-delays\n", __func__, __LINE__, delay, count);
-            lastpr = now;
-        }
-    }
+		/* Don't lock out anything else */
+		pthread_mutex_lock(&lk);
+		poll(NULL, 0, delay);
+		pthread_mutex_unlock(&lk);
+		count++;
+		if (gbl_commit_delay_trace && (now = time(NULL))-lastpr) {
+			logmsg(LOGMSG_USER, "%s line %d commit-delayed for %d ms, %llu "
+					"total-delays\n", __func__, __LINE__, delay, count);
+			lastpr = now;
+		}
+	}
 
 
 	/*

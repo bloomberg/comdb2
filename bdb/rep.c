@@ -1396,52 +1396,6 @@ fprintf(stderr, "************  done with rep_elect\n");
 
         if (master_host == bdb_state->repinfo->myhost) {
             logmsg(LOGMSG_INFO, "elect_thread: we won the election\n");
-
-            /* give up our read lock, we will need a write lock here  */
-
-           /* XXX Do not upgrade here: upgrade only from the reader thread */
-
-/*
-            rc = bdb_upgrade(bdb_state, newgen, &done);
-            print(bdb_state, "back from bdb_upgrade%s\n",
-                  (!done) ? " (nop)" : "");
-
-            if (rc != 0) {
-                logmsg(LOGMSG_FATAL, "bdb_upgrade returned bad rcode %d\n", rc);
-                exit(1);
-            }
-*/
-            /* bdb_upgrade calls whoismaster_rtn. */
-            Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
-            bdb_state->repinfo->in_election = 0;
-            Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
-
-            bdb_thread_event(bdb_state, 0);
-            return NULL;
-        }
-
-        else if (old_master == master_host) {
-            /*
-            set_repinfo_master_host(bdb_state, master_host, __func__, __LINE__);
-            logmsg(LOGMSG_INFO, "elect_thread: master didn't change\n");
-            */
-        }
-
-        else if (old_master == bdb_state->repinfo->myhost) {
-            /*
-            logmsg(LOGMSG_INFO, "elect_thread: we lost the election as master: "
-                            "new_master is %s\n",
-                    master_host);
-            bdb_downgrade(bdb_state, &done);
-            if (done)
-                bdb_setmaster(bdb_state, master_host);
-                */
-        } else {
-            /*
-            logmsg(LOGMSG_WARN, "elect_thread: we lost the election: new_master is %s\n",
-                    master_host);
-            bdb_setmaster(bdb_state, master_host);
-            */
         }
     }
 #endif
@@ -5431,16 +5385,6 @@ void *watcher_thread(void *arg)
                 connect_to_all(bdb_state->repinfo->netinfo);
                 i = 0;
             }
-
-            /*
-            if (!bdb_state->repinfo->in_election) {
-                print(bdb_state, "watcher_thread: calling for election\n");
-                logmsg(LOGMSG_DEBUG, "0x%lx %s:%d %s: calling for election\n",
-                       pthread_self(), __FILE__, __LINE__, __func__);
-
-                call_for_election(bdb_state, __func__, __LINE__);
-            }
-            */
         }
 
         if (bdb_state->rep_handle_dead) {

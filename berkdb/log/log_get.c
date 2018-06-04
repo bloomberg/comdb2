@@ -113,8 +113,8 @@ int
 __log_cursor_complete(dbenv, logcp, bpsize, maxrec)
 	DB_ENV *dbenv;
 	DB_LOGC **logcp;
-    int bpsize;
-    int maxrec;
+	int bpsize;
+	int maxrec;
 {
 	DB_LOGC *logc;
 	int ret;
@@ -262,8 +262,8 @@ __log_c_stat_pp(logc, stats)
 	DB_LOGC_STAT **stats;
 {
 	DB_ENV *dbenv;
-    DB_LOGC_STAT *st;
-    int ret;
+	DB_LOGC_STAT *st;
+	int ret;
 
 	dbenv = logc->dbenv;
 	PANIC_CHECK(dbenv);
@@ -271,17 +271,17 @@ __log_c_stat_pp(logc, stats)
 	if ((ret = __os_umalloc(dbenv, sizeof(DB_LOGC_STAT), &st)) != 0)
 		return (ret);
 
-    st->incursor_count = logc->incursor_count;
-    st->inregion_count = logc->inregion_count;
-    st->ondisk_count = logc->ondisk_count;
-    st->incursorus = logc->incursorus;
-    st->inregionus = logc->inregionus;
-    st->ondiskus = logc->ondiskus;
-    st->totalus = logc->totalus;
-    st->lockwaitus = logc->lockwaitus;
-    *stats = st;
+	st->incursor_count = logc->incursor_count;
+	st->inregion_count = logc->inregion_count;
+	st->ondisk_count = logc->ondisk_count;
+	st->incursorus = logc->incursorus;
+	st->inregionus = logc->inregionus;
+	st->ondiskus = logc->ondiskus;
+	st->totalus = logc->totalus;
+	st->lockwaitus = logc->lockwaitus;
+	*stats = st;
 
-    return 0;
+	return 0;
 }
 
 /*
@@ -548,10 +548,10 @@ __log_c_get_int(logc, alsn, dbt, flags)
 	case DB_LAST:				/* Last log record. */
 		if (rlock == L_NONE) {
 			rlock = L_ACQUIRED;
-            st = comdb2_time_epochus();
+			st = comdb2_time_epochus();
 			R_LOCK(dbenv, &dblp->reginfo);
-            tot = (comdb2_time_epochus() - st);
-            logc->lockwaitus += (tot > 0 ? tot : 0);
+			tot = (comdb2_time_epochus() - st);
+			logc->lockwaitus += (tot > 0 ? tot : 0);
 		}
 		nlsn.file = lp->lsn.file;
 		nlsn.offset = lp->lsn.offset - lp->len;
@@ -869,16 +869,16 @@ __log_c_incursor(logc, lsn, hdr, pp)
 	HDR *hdr;
 	u_int8_t **pp;
 {
-    int rc;
-    int64_t start;
-    start = comdb2_time_epochus();
-    rc = __log_c_incursor_int(logc, lsn, hdr, pp);
-    logc->incursorus += (comdb2_time_epochus() - start);
+	int rc;
+	int64_t start;
+	start = comdb2_time_epochus();
+	rc = __log_c_incursor_int(logc, lsn, hdr, pp);
+	logc->incursorus += (comdb2_time_epochus() - start);
 
-    if (rc == 0 && pp != NULL) 
-        logc->incursor_count++;
+	if (rc == 0 && pp != NULL) 
+		logc->incursor_count++;
 
-    return rc;
+	return rc;
 }
 
 
@@ -971,10 +971,10 @@ __log_c_inregion_int(logc, lsn, rlockp, last_lsn, hdr, pp)
 	/* If we haven't yet acquired the log region lock, do so. */
 	if (*rlockp == L_NONE) {
 		*rlockp = L_ACQUIRED;
-        st = comdb2_time_epochus();
+		st = comdb2_time_epochus();
 		R_LOCK(dbenv, &dblp->reginfo);
-        tot = comdb2_time_epochus() - st;
-        logc->lockwaitus += (tot > 0 ? tot : 0);
+		tot = comdb2_time_epochus() - st;
+		logc->lockwaitus += (tot > 0 ? tot : 0);
 	}
 
 	/*
@@ -1340,15 +1340,15 @@ __log_c_inregion(logc, lsn, rlockp, last_lsn, hdr, pp)
 	HDR *hdr;
 	u_int8_t **pp;
 {
-    int rc;
-    int64_t start;
-    start = comdb2_time_epochus();
-    rc = __log_c_inregion_int(logc, lsn, rlockp, last_lsn, hdr, pp);
-    logc->inregionus += (comdb2_time_epochus() - start);
-    if (rc == 0 && pp != NULL) {
-        logc->inregion_count++;
-    }
-    return rc;
+	int rc;
+	int64_t start;
+	start = comdb2_time_epochus();
+	rc = __log_c_inregion_int(logc, lsn, rlockp, last_lsn, hdr, pp);
+	logc->inregionus += (comdb2_time_epochus() - start);
+	if (rc == 0 && pp != NULL) {
+		logc->inregion_count++;
+	}
+	return rc;
 }
 
 
@@ -1497,15 +1497,15 @@ __log_c_ondisk(logc, lsn, last_lsn, flags, hdr, pp, eofp)
 	HDR *hdr;
 	u_int8_t **pp;
 {
-    int rc;
-    int64_t start;
-    start = comdb2_time_epochus();
-    rc = __log_c_ondisk_int(logc, lsn, last_lsn, flags, hdr, pp, eofp);
-    logc->ondiskus += (comdb2_time_epochus() - start);
-    if (rc == 0 && pp != NULL) {
-        logc->ondisk_count++;
-    }
-    return rc;
+	int rc;
+	int64_t start;
+	start = comdb2_time_epochus();
+	rc = __log_c_ondisk_int(logc, lsn, last_lsn, flags, hdr, pp, eofp);
+	logc->ondiskus += (comdb2_time_epochus() - start);
+	if (rc == 0 && pp != NULL) {
+		logc->ondisk_count++;
+	}
+	return rc;
 }
 
 

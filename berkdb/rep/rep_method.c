@@ -1440,26 +1440,14 @@ __rep_get_master(dbenv, master_out, gen, egen)
 	DB_REP *db_rep;
 	REP *rep;
 
-#if 0
 	u_int32_t repflags;
 	int dolock;
-#endif
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv, dbenv->rep_handle, "rep_stat", DB_INIT_REP);
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
-
-	/*
-	 * no lock single threaded 
-	 */
-#if 0
-	/*
-	 * We will try this lockless, so if rep_mutex is kept for more
-	 * than 60 seconds by the replication thread, we don't kill
-	 * ourselves.
-	 */
 
 	repflags = rep->flags;
 	if (FLD_ISSET(repflags, REP_F_RECOVER))
@@ -1468,7 +1456,6 @@ __rep_get_master(dbenv, master_out, gen, egen)
 		dolock = 1;
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	}
-#endif
 
 	master = rep->master_id;
 
@@ -1478,11 +1465,9 @@ __rep_get_master(dbenv, master_out, gen, egen)
 	if (egen)
 		*egen = rep->egen;
 
-#if 0
 	if (dolock) {
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	}
-#endif
 
 	*master_out = master;
 	return 0;
