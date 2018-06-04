@@ -91,6 +91,7 @@ set cdb2_debug [string is true -strict [lindex $argv 4]]
 set cdb2_trace [string is true -strict [lindex $argv 5]]
 set cdb2_log_file [lindex $argv 6]
 set cdb2_trace_to_log [string is true -strict [lindex $argv 7]]
+set cdb2_trace_raw_values 0
 set current_test_name ""
 set cluster ""
 set gbl_scan -99
@@ -126,8 +127,11 @@ proc maybe_quote_value { db index format } {
     } else {
         error $value; # FAIL: Unknown error.
     }
-
-    switch -exact [cdb2 coltype $db $index] {
+    set type [cdb2 coltype $db $index]
+    if {$::cdb2_trace_raw_values} {
+        maybe_trace "\{[info level [info level]]\} has type \{$type\} and [expr {$null ? {NULL } : {}}]value \{$value\}..."
+    }
+    switch -exact $type {
         integer -
         real {
             return [expr {$null ? "NULL" : $value}]
@@ -215,11 +219,23 @@ proc maybe_append_query_to_log_file { sql dbName tier } {
     return [maybe_append_to_log_file $formatted]
 }
 
+proc maybe_trace { message } {
+    if {$::cdb2_trace} {
+        set formatted "\[TCL_CDB2_TRACE\]: $message\n"
+        if {$::cdb2_trace_to_log} {
+            maybe_append_to_log_file $formatted
+        } else {
+            puts -nonewline stdout $formatted
+        }
+    }
+}
+
 proc grab_cdb2_results { db varName {format csv} } {
     set list [expr {$format eq "list"}]
     set csv [expr {$format eq "csv"}]
     set tabs [expr {$format eq "tabs"}]
     if {[string length $varName] > 0} {upvar 1 $varName result}
+    set once false
     while {[cdb2 next $db]} {
         if {$list} {
             set row [list]
@@ -228,7 +244,7 @@ proc grab_cdb2_results { db varName {format csv} } {
             }
             lappend result $row
         } else {
-            if {[string length $result] > 0} {append result \n}
+            if {$once || [string length $result] > 0} {append result \n}
             if {$csv} {append result \(}
             for {set index 0} {$index < [cdb2 colcount $db]} {incr index} {
                 if {$index > 0} {append result [expr {$csv ? ", " : "\t"}]}
@@ -247,6 +263,7 @@ proc grab_cdb2_results { db varName {format csv} } {
             }
             if {$csv} {append result \)}
         }
+        set once true
     }
 }
 
@@ -277,12 +294,7 @@ proc do_cdb2_query { dbName sql {tier default} {format csv} {costVarName ""} } {
 
     if {$::cdb2_trace} {
         if {[isBinary $result]} {set trace_result <binary>} else {set trace_result $result}
-        set message "\[TCL_CDB2_TRACE\]: \{[info level [info level]]\} had effects \{$effects\}, returning \{$trace_result\}...\n"
-        if {$::cdb2_trace_to_log} {
-            maybe_append_to_log_file $message
-        } else {
-            puts -nonewline stdout $message
-        }
+        maybe_trace "\{[info level [info level]]\} had effects \{$effects\}, returning \{$trace_result\}..."
     }
 
     cdb2 close $db
@@ -1293,7 +1305,7 @@ proc drop_index {origquery} {
       append csc2schema $k
     }
     puts $csc2 $csc2schema 
-    puts "DROPPING no keys so schema should be same as $k and is $csc2schema , but is not $schemaorig"
+    #puts "DROPPING no keys so schema should be same as $k and is $csc2schema , but is not $schemaorig"
     close $csc2
   }
   set rc [catch {do_cdb2_defquery "ALTER TABLE $table \{$csc2schema\}"} output]
@@ -1383,6 +1395,12 @@ proc execsql {sql {options ""}} {
     set format tabs
     if {[lsearch -exact $options list_results] != -1} then {set format list}
 
+    #
+    # NOTE: Uncomment this to enable tracing of raw column values coming back
+    #     from the Tcl bindings.
+    #
+    # if {[string equal $::current_test_name "7.2"]} {set ::cdb2_trace_raw_values 1}
+
     set rc 0
 
     if {[lsearch -exact $options count] != -1
@@ -1411,7 +1429,7 @@ proc execsql {sql {options ""}} {
     # Debug a specific test case
     #
     #global current_test_name
-    #if {[string equal $current_test_name "where9-2.3"]} {
+    #if {[string equal $::current_test_name "where9-2.3"]} {
     #  puts $query
     #  puts $outputs
     #}
