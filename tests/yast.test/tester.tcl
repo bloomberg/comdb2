@@ -209,11 +209,11 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
     }
 
     if {$::cdb2_trace} {
-        set trace_message "\[TCL_CDB2_TRACE\]: \{[info level [info level]]\} had effects \{$effects\}, returning \{$result\}...\n"
+        set message "\[TCL_CDB2_TRACE\]: \{[info level [info level]]\} had effects \{$effects\}, returning \{$result\}...\n"
         if {$::cdb2_trace_to_log} {
-            maybe_append_to_log_file $trace_message
+            maybe_append_to_log_file $message
         } else {
-            puts -nonewline stdout $trace_message
+            puts -nonewline stdout $message
         }
     }
 
