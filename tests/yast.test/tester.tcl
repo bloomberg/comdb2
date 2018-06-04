@@ -90,6 +90,7 @@ set cdb2_config [lindex $argv 3]
 set cdb2_debug [string is true -strict [lindex $argv 4]]
 set cdb2_trace [string is true -strict [lindex $argv 5]]
 set cdb2_log_file [lindex $argv 6]
+set cdb2_trace_to_log [string is true -strict [lindex $argv 7]]
 set current_test_name ""
 set cluster ""
 set gbl_scan -99
@@ -144,24 +145,26 @@ proc delay_for_schema_change {} {
     after $::gbl_schemachange_delay
 }
 
-proc maybe_append_to_log_file { sql dbName tier } {
+proc maybe_append_to_log_file { message } {
     set fileName $::cdb2_log_file
     if {[string length $fileName] > 0} {
-        set formatted "SQL \{$sql\}"
-
-        if {$dbName ne $::comdb2_name} {
-            append formatted " against NON-DEFAULT database \"$::comdb2_name\""
-        }
-
-        if {$tier ne "default"} {
-            append formatted " on NON-DEFAULT tier \"$tier\""
-        }
-
         set channel [open $fileName {WRONLY APPEND CREAT}]
         fconfigure $channel -encoding binary -translation binary
-        puts $channel $formatted
+        puts $channel $message
         close $channel
     }
+    return ""
+}
+
+proc maybe_append_query_to_log_file { sql dbName tier } {
+    set formatted "SQL \{$sql\}"
+    if {$dbName ne $::comdb2_name} {
+        append formatted " against NON-DEFAULT database \"$::comdb2_name\""
+    }
+    if {$tier ne "default"} {
+        append formatted " on NON-DEFAULT tier \"$tier\""
+    }
+    return [maybe_append_to_log_file $formatted]
 }
 
 proc do_cdb2_defquery { sql {tabs false} {costVarName ""} } {
@@ -170,7 +173,7 @@ proc do_cdb2_defquery { sql {tabs false} {costVarName ""} } {
 
 proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
     if {[string index $sql 0] eq "#"} {return}
-    maybe_append_to_log_file $sql $dbName $tier
+    maybe_append_query_to_log_file $sql $dbName $tier
 
     set result ""
 
@@ -181,7 +184,6 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
     set sql [string map [list \r\n \n] [string trim $sql]]
 
     cdb2 run $db $sql
-    set effects [cdb2 effects $db]
 
     while {[cdb2 next $db]} {
         if {[string length $result] > 0} {append result \n}
@@ -197,6 +199,7 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
         if {!$tabs} {append result \)}
     }
 
+    set effects [cdb2 effects $db]
     cdb2 close $db
 
     if {[string length $costVarName] > 0} {
@@ -205,7 +208,12 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
     }
 
     if {$::cdb2_trace} {
-        puts stdout "\[TCL_CDB2_TRACE\]: \{[info level [info level]]\} had effects \{$effects\}, returning \{$result\}..."
+        set trace_message "\[TCL_CDB2_TRACE\]: \{[info level [info level]]\} had effects \{$effects\}, returning \{$result\}...\n"
+        if {$::cdb2_trace_to_log} {
+            maybe_append_to_log_file $trace_message
+        } else {
+            puts -nonewline stdout $trace_message
+        }
     }
 
     return $result
