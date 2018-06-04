@@ -208,7 +208,7 @@ proc maybe_append_to_log_file { message } {
     if {[string length $fileName] > 0} {
         set channel [open $fileName {WRONLY APPEND CREAT}]
         fconfigure $channel -encoding binary -translation binary
-        puts $channel $message
+        puts -nonewline $channel $message
         close $channel
     }
     return ""
@@ -222,6 +222,7 @@ proc maybe_append_query_to_log_file { sql dbName tier } {
     if {$tier ne "default"} {
         append formatted " on NON-DEFAULT tier \"$tier\""
     }
+    append formatted \n
     return [maybe_append_to_log_file $formatted]
 }
 
