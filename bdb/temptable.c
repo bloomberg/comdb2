@@ -1970,6 +1970,10 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
         return -1;
     }
     
+
+    //read one random string into key, note that reading from urandom is
+    //slow so we get one full record from urandom, then override the first 
+    //4 byte from random()
     int rc;
     FILE *urandom;
     if ((urandom = fopen("/dev/urandom", "r")) == NULL) {
@@ -1977,18 +1981,19 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
         return -2;
     }
 
+    if (recsz < 8) recsz = 8; //force it to be min 8 bytes
     uint8_t rkey[recsz];
     if ((rc = fread(rkey, sizeof(rkey), 1, urandom)) != 1 && ferror(urandom)) {
         logmsgperror("fread");
     }
     fclose(urandom);
 
-    //insert
+    //insert: replace first 4 bytes with a new random value, payload is same val
     for (int cnt = 0; cnt < maxins; cnt++) {
-        rkey[0] = rand();
-        unsigned long long *genid = (unsigned long long*) urandom;
+        int x = rand();
+        *((int*)rkey) = x;
         rc = bdb_temp_table_put(parent, db, &rkey, sizeof(rkey),
-                              genid, sizeof(*genid), NULL, &bdberr);
+                              &x, sizeof(x), NULL, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s: fail to put into temp tbl rc=%d bdberr=%d\n",
