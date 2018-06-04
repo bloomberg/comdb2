@@ -192,8 +192,6 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
     if {[string index $sql 0] eq "#"} {return}
     maybe_append_query_to_log_file $sql $dbName $tier
 
-    set result ""
-
     cdb2 configure $::cdb2_config true
     set db [cdb2 open $dbName $tier]
     if {$::cdb2_debug} {cdb2 debug $db}
@@ -201,12 +199,12 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
 
     set sql [string map [list \r\n \n] [string trim $sql]]
 
-    cdb2 run $db $sql; grab_cdb2_results $db result $tabs
+    set result ""; cdb2 run $db $sql; grab_cdb2_results $db result $tabs
     set effects [cdb2 effects $db]
 
     if {[string length $costVarName] > 0} {
-        upvar 1 $costVarName cost; set cost ""
-        cdb2 run $db "SELECT comdb2_prevquerycost() AS Cost"
+        upvar 1 $costVarName cost
+        set cost ""; cdb2 run $db "SELECT comdb2_prevquerycost() AS Cost"
         grab_cdb2_results $db cost true
     }
 
