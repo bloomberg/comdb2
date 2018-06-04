@@ -204,7 +204,7 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
 
     if {[string length $costVarName] > 0} {
         upvar 1 $costVarName cost
-        set cost [do_cdb2_query $db "SELECT comdb2_prevquerycost() AS Cost" $tier true]; # RECURSIVE
+        set cost [do_cdb2_query $dbName "SELECT comdb2_prevquerycost() AS Cost" $tier true]; # RECURSIVE
     }
 
     if {$::cdb2_trace} {
@@ -1314,6 +1314,7 @@ proc execsql {sql {option ""}} {
     if {[string equal $option "count"]
      || [string equal $option "cksort"]
      || [string equal $option "count_steps"]} {
+      set cost ""
       catch {do_cdb2_defquery $query true cost} outputs
     } else {
       set rc [catch {do_cdb2_defquery $query true} outputs]
