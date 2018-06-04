@@ -167,24 +167,8 @@ proc maybe_append_query_to_log_file { sql dbName tier } {
     return [maybe_append_to_log_file $formatted]
 }
 
-proc do_cdb2_defquery { sql {tabs false} {costVarName ""} } {
-    return [uplevel 1 [list do_cdb2_query $::comdb2_name $sql default $tabs $costVarName]]
-}
-
-proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
-    if {[string index $sql 0] eq "#"} {return}
-    maybe_append_query_to_log_file $sql $dbName $tier
-
-    set result ""
-
-    cdb2 configure $::cdb2_config true
-    set db [cdb2 open $dbName $tier]
-    if {$::cdb2_debug} {cdb2 debug $db}
-
-    set sql [string map [list \r\n \n] [string trim $sql]]
-
-    cdb2 run $db $sql
-
+proc grab_cdb2_results { db varName {tabs false} } {
+    if {[string length $varName] > 0} {upvar 1 $varName result}
     while {[cdb2 next $db]} {
         if {[string length $result] > 0} {append result \n}
         if {!$tabs} {append result \(}
@@ -198,13 +182,32 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
         }
         if {!$tabs} {append result \)}
     }
+}
 
+proc do_cdb2_defquery { sql {tabs false} {costVarName ""} } {
+    return [uplevel 1 [list do_cdb2_query $::comdb2_name $sql default $tabs $costVarName]]
+}
+
+proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
+    if {[string index $sql 0] eq "#"} {return}
+    maybe_append_query_to_log_file $sql $dbName $tier
+
+    set result ""
+
+    cdb2 configure $::cdb2_config true
+    set db [cdb2 open $dbName $tier]
+    if {$::cdb2_debug} {cdb2 debug $db}
+    if {[string length $costVarName] > 0} {cdb2 run $db "SET GETCOST ON"}
+
+    set sql [string map [list \r\n \n] [string trim $sql]]
+
+    cdb2 run $db $sql; grab_cdb2_results $db result $tabs
     set effects [cdb2 effects $db]
-    cdb2 close $db
 
     if {[string length $costVarName] > 0} {
-        upvar 1 $costVarName cost
-        set cost [do_cdb2_query $dbName "SELECT comdb2_prevquerycost() AS Cost" $tier true]; # RECURSIVE
+        upvar 1 $costVarName cost; set cost ""
+        cdb2 run $db "SELECT comdb2_prevquerycost() AS Cost"
+        grab_cdb2_results $db cost true
     }
 
     if {$::cdb2_trace} {
@@ -216,6 +219,7 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
         }
     }
 
+    cdb2 close $db
     return $result
 }
 
