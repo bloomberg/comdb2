@@ -109,6 +109,15 @@ proc try_for_tclcdb2_package {} {
 
 try_for_tclcdb2_package
 
+proc maybe_null_value { value null } {
+    #
+    # WARNING: Please do not "simplify" this to use the
+    #          [expr] command with the ternary operator
+    #          as that may cause bogus type conversions.
+    #
+    if {$null} {return NULL} else {return $value}
+}
+
 proc maybe_quote_value { db index format } {
     if {[catch {cdb2 colvalue $db $index} value] == 0} {
         set null false
@@ -147,9 +156,9 @@ proc maybe_quote_value { db index format } {
                 }
             }
             if {$format eq "list"} {
-                return [expr {$null ? "NULL" : $value}]
+                return [maybe_null_value $value $null]
             } else {
-                return [expr {$null ? "NULL" : "$wrap$value$wrap"}]
+                return [maybe_null_value $wrap$value$wrap $null]
             }
         }
         default {
@@ -168,9 +177,9 @@ proc maybe_quote_value { db index format } {
                 }
             }
             if {$format eq "list"} {
-                return [expr {$null ? "NULL" : $value}]
+                return [maybe_null_value $value $null]
             } else {
-                return [expr {$null ? "NULL" : "$wrap$value$wrap"}]
+                return [maybe_null_value $wrap$value$wrap $null]
             }
         }
     }
@@ -181,7 +190,7 @@ proc delay_for_schema_change {} {
 }
 
 proc isBinary { value } {
-    return [regexp -- {[^[:print:]]} $value]
+    return [regexp -- {[^\t\n\v\f\r[:print:]]} $value]
 }
 
 proc maybe_append_to_log_file { message } {
