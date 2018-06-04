@@ -1373,19 +1373,6 @@ elect_again:
         else
             logmsg(LOGMSG_ERROR, "got %d from rep_elect\n", rc);
 
-//        restart++;
-//        if (restart == 5) {
-//            /*try to reinit the process*/
-//            logmsg(LOGMSG_DEBUG, "elect_thread: call rep_start\n");
-//            called_rep_start++;
-//            rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
-//                                             0, DB_REP_CLIENT);
-//            if (rc) {
-//                logmsg(LOGMSG_ERROR, "elect_thread: rep_start returned error code %d\n", rc);
-//            }
-//            restart = 0;
-//        }
-
         elect_time *= 2;
         elect_again++;
         if (elect_again > 30) {

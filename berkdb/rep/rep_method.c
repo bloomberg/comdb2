@@ -1186,7 +1186,6 @@ phase2:
             // I think this is wrong ..
             logmsg(LOGMSG_USER, "%s line %d elected master %s current-egen "
                     "%d\n", __func__, __LINE__, rep->eid, rep->egen);
-			__rep_elect_master(dbenv, rep, eidp);
 			ret = 0;
 			goto lockdone;
 		}
