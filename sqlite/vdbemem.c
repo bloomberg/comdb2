@@ -330,58 +330,26 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
 #ifdef SQLITE_BUILDING_FOR_COMDB2
   if( fg & MEM_Interval ){
     char tmp[64];
-    char *z;
-
-    if (pMem->du.tv.type == INTV_YM_TYPE)
-    {
-       snprintf(tmp, sizeof(tmp), "%s%u-%2.2u",
-             (pMem->du.tv.sign==-1)?"- ":"",
-             pMem->du.tv.u.ym.years, pMem->du.tv.u.ym.months);
-       tmp[sizeof(tmp)-1] = 0;
+    int n = 0;
+    if (pMem->du.tv.type == INTV_DECIMAL_TYPE) {
+        rc = sqlite3DecimalToString(&pMem->du.tv.u.dec, tmp, sizeof(tmp));
+        tmp[sizeof(tmp) - 1] = 0;
+        n = strlen(tmp);
+    } else {
+        rc = intv_to_str(&pMem->du.tv, tmp, sizeof(tmp), &n);
     }
-    else if (pMem->du.tv.type == INTV_DS_TYPE)
-    {
-       snprintf(tmp, sizeof(tmp), "%s%u %2.2u:%2.2u:%2.2u.%3.3u",
-             (pMem->du.tv.sign==-1)?"- ":"",
-             pMem->du.tv.u.ds.days,
-             pMem->du.tv.u.ds.hours, pMem->du.tv.u.ds.mins,
-             pMem->du.tv.u.ds.sec, pMem->du.tv.u.ds.frac);
-       tmp[sizeof(tmp)-1] = 0;
-    }
-    else if (pMem->du.tv.type == INTV_DSUS_TYPE)
-    {
-       snprintf(tmp, sizeof(tmp), "%s%u %2.2u:%2.2u:%2.2u.%6.6u",
-             (pMem->du.tv.sign==-1)?"- ":"",
-             pMem->du.tv.u.ds.days,
-             pMem->du.tv.u.ds.hours, pMem->du.tv.u.ds.mins,
-             pMem->du.tv.u.ds.sec, pMem->du.tv.u.ds.frac);
-       tmp[sizeof(tmp)-1] = 0;
-    }
-    else if (pMem->du.tv.type == INTV_DECIMAL_TYPE)
-    {
-       /* max string is like 43 letters */
-       if(sqlite3DecimalToString( &pMem->du.tv.u.dec, tmp, sizeof(tmp)))
-       {
-          logmsg(LOGMSG_ERROR, "%s:%d failed to convert decimal to string\n", 
-                __FILE__, __LINE__);
-          return SQLITE_INTERNAL;
-       }
-    }
-    else
-    {
-       logmsg(LOGMSG_ERROR, "BUG %s:%d type=%d\n", __FILE__, __LINE__, pMem->du.tv.type);
+    if( rc!=0 ){
+       logmsg(LOGMSG_ERROR, "interval_to_str failed type:%d need:%d\n", pMem->du.tv.type, n);
        return SQLITE_INTERNAL;
     }
-
     if( pMem->zMalloc ){
         sqlite3DbFree(pMem->db, pMem->zMalloc);
         pMem->zMalloc = NULL;
         pMem->szMalloc = 0;
         pMem->z = NULL;
     }
-
-    pMem->n = strlen(tmp);
-    z = sqlite3GlobalConfig.m.xMalloc(pMem->n+2);
+    pMem->n = n;
+    char *z = sqlite3GlobalConfig.m.xMalloc(pMem->n+2);
     if( !z ) return SQLITE_NOMEM;
     memcpy(z, tmp, pMem->n);
     z[pMem->n] = 0;

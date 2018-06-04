@@ -39,8 +39,8 @@ XMACRO_DBTYPES(DBTYPES_INTEGER,    "int",        integer,    l_int_tostring)\
 XMACRO_DBTYPES(DBTYPES_REAL,       "real",       real,       l_real_tostring)\
 XMACRO_DBTYPES(DBTYPES_DECIMAL,    "decimal",    decimal,    l_decimal_tostring)\
 XMACRO_DBTYPES(DBTYPES_DATETIME,   "datetime",   datetime,   l_datetime_tostring)\
-XMACRO_DBTYPES(DBTYPES_INTERVALYM, "intervalym", intervalym, l_intervalym_tostring)\
-XMACRO_DBTYPES(DBTYPES_INTERVALDS, "intervalds", intervalds, l_intervalds_tostring)\
+XMACRO_DBTYPES(DBTYPES_INTERVALYM, "intervalym", intervalym, l_interval_tostring)\
+XMACRO_DBTYPES(DBTYPES_INTERVALDS, "intervalds", intervalds, l_interval_tostring)\
 XMACRO_DBTYPES(DBTYPES_CSTRING,    "cstring",    cstring,    l_cstring_tostring)\
 XMACRO_DBTYPES(DBTYPES_BLOB,       "blob",       blob,       l_blob_tostring)\
 XMACRO_DBTYPES(DBTYPES_DBTABLE,    "dbtable",    dbtable,    NULL)\

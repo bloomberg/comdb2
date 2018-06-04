@@ -2060,4 +2060,5 @@ struct param_data;
 int get_type(struct param_data *out, void *in, int inlen, int intype,
              const char *tzname, int little);
 
+int intv_to_str(const intv_t *, char *, int, int *);
 #endif

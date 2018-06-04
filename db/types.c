@@ -14582,3 +14582,31 @@ int get_type(struct param_data *param, void *p, int len, int type,
     }
     return -1;
 }
+
+#include <str0.h>
+int intv_to_str(const intv_t *tv, char *out, int len, int *used)
+{
+    switch (tv->type) {
+    case INTV_YM_TYPE:
+        *used = snprintf0(out, len, "%s%u-%2.2u", tv->sign == -1 ? "- " : "",
+                          tv->u.ym.years, tv->u.ym.months);
+        break;
+    case INTV_DS_TYPE:
+        *used =
+            snprintf0(out, len, "%s%u %2.2u:%2.2u:%2.2u.%3.3u",
+                      tv->sign == -1 ? "- " : "", tv->u.ds.days, tv->u.ds.hours,
+                      tv->u.ds.mins, tv->u.ds.sec, tv->u.ds.frac);
+        break;
+    case INTV_DSUS_TYPE:
+        *used =
+            snprintf0(out, len, "%s%u %2.2u:%2.2u:%2.2u.%6.6u",
+                      tv->sign == -1 ? "- " : "", tv->u.ds.days, tv->u.ds.hours,
+                      tv->u.ds.mins, tv->u.ds.sec, tv->u.ds.frac);
+        break;
+    default:
+        return -1;
+    }
+    if (*used < len)
+        return 0;
+    return -1;
+}
