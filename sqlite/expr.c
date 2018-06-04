@@ -5687,26 +5687,40 @@ static char* sqlite3ExprDescribe_inner(
       /* dh: not all the functions can be blindely passed remotely! */
       if(strncasecmp(pExpr->u.zToken, "now", 3) == 0)
       { 
-        dttz_t dt;
-        int prec;
+        if(atRuntime)
+        {
+          dttz_t dt;
+          int prec;
         
-        prec = v->dtprec;
-        if(pExpr->x.pList && pExpr->x.pList->nExpr == 1) {
-          if(pExpr->x.pList->a[0].pExpr->op == TK_STRING) {
-            DTTZ_TEXT_TO_PREC(pExpr->x.pList->a[0].pExpr->u.zToken,
-                              prec, 0, goto default_prec);
-          } else if( pExpr->x.pList->a[0].pExpr->op == TK_INTEGER
-                  && (pExpr->x.pList->a[0].pExpr->u.iValue == DTTZ_PREC_MSEC 
-                     ||
-                     pExpr->x.pList->a[0].pExpr->u.iValue == DTTZ_PREC_USEC)) {
-            prec = pExpr->x.pList->a[0].pExpr->u.iValue;
+          prec = v->dtprec;
+          if(pExpr->x.pList && pExpr->x.pList->nExpr == 1) {
+            if(pExpr->x.pList->a[0].pExpr->op == TK_STRING) {
+              DTTZ_TEXT_TO_PREC(pExpr->x.pList->a[0].pExpr->u.zToken,
+                                prec, 0, goto default_prec);
+            } else if( pExpr->x.pList->a[0].pExpr->op == TK_INTEGER
+                    && (pExpr->x.pList->a[0].pExpr->u.iValue == DTTZ_PREC_MSEC 
+                       ||
+                       pExpr->x.pList->a[0].pExpr->u.iValue == DTTZ_PREC_USEC)) {
+              prec = pExpr->x.pList->a[0].pExpr->u.iValue;
+            }
           }
-        }
 default_prec:
-        timespec_to_dttz(&v->tspec, &dt, prec);
+          timespec_to_dttz(&v->tspec, &dt, prec);
 
-        return sqlite3_mprintf("cast(%lld.%*.*u as datetime)",  
-                               dt.dttz_sec, prec, prec, dt.dttz_frac);
+          return sqlite3_mprintf("cast(%lld.%*.*u as datetime)",  
+                                 dt.dttz_sec, prec, prec, dt.dttz_frac);
+        }
+        else
+        {   
+            if(pExpr->x.pList) 
+            {
+                assert(pExpr->x.pList->nExpr == 1);
+                return sqlite3_mprintf("now(\'%s\')", 
+                                       pExpr->x.pList->a[0].pExpr->u.zToken);
+            }
+            else
+                return sqlite3_mprintf("now()");
+        }
       }
       /* default, pass the function remotely */
       if( pExpr->x.pList->nExpr <= 0 )

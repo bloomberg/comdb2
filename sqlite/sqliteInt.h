@@ -20,6 +20,10 @@
 #include "tunables.h"
 #include "fwd_types.h"
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#include "dhrite.h"
+#endif
+
 #undef debug_raw
 /* Special Comments:
 **
@@ -3112,6 +3116,9 @@ struct Parse {
   With *pWithToFree;        /* Free this WITH object at the end of the parse */
   u8 write;                 /* Flag to indicate write transaction during sqlite3FinishCoding */
   Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ast_t *ast;
+#endif
 };
 
 /* COMDB2 MODIFICATION */

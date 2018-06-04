@@ -5305,11 +5305,16 @@ int sqlite3Select(
   v = sqlite3GetVdbe(pParse);
   if( v==0 ) goto select_end;
 
-  extern char *sqlite_struct_to_string(Vdbe*,Select*);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 
+  if(!pParse->ast) pParse->ast = ast_init();
+  ast_push(pParse->ast, AST_TYPE_SELECT, p);
+
+  extern char *sqlite_struct_to_string(Vdbe*,Select*);
   char *sql = sqlite_struct_to_string(v, p);
   fprintf(stderr, "RECONSTRUCTED: \"%s\"\n", (sql)?sql:"NULL");
   sqlite3DbFree(db, sql);
+#endif
 
 #ifndef SQLITE_OMIT_COMPOUND_SELECT
   /* Handle compound SELECT statements using the separate multiSelect()

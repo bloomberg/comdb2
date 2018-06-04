@@ -702,6 +702,12 @@ void sqlite3Insert(
     int addrTop;        /* Top of the co-routine */
     int rc;             /* Result code */
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+
+    if(!pParse->ast) pParse->ast = ast_init();
+    ast_push(pParse->ast, AST_TYPE_INSERT, NULL);
+#endif
+
     regYield = ++pParse->nMem;
     addrTop = sqlite3VdbeCurrentAddr(v) + 1;
     sqlite3VdbeAddOp3(v, OP_InitCoroutine, regYield, 0, addrTop);
