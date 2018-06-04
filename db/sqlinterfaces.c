@@ -2806,7 +2806,12 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
         pthread_mutex_unlock(&clnt->wait_mutex);
-        if (!skip_response(clnt)) {
+        if (skip_response(clnt)) {
+            if (clnt->send_one_row) {
+                clnt->send_one_row = 0;
+                write_response(clnt, RESPONSE_ROW_LAST_DUMMY, 0, 0);
+            }
+        } else {
             if (postponed_write) {
                 send_row(clnt, NULL, row_id, 0, NULL);
             }
