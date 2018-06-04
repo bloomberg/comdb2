@@ -1247,7 +1247,7 @@ proc is_sqlite_stat {table} {
 
 # A procedure to execute SQL
 #
-proc execsql {sql {option ""}} {
+proc execsql {sql {options ""}} {
   global cluster
   global gbl_schemachange_delay
 
@@ -1306,17 +1306,19 @@ proc execsql {sql {option ""}} {
       continue
     }
 
-    if {[regexp -nocase "^(?:DELETE|UPDATE|INSERT|BEGIN|COMMIT|ROLLBACK).*" $query]} {
-      set rc [catch {do_cdb2_defquery $query} outputs]
-      if {$rc != 0} {lappend r $rc $outputs}
-      continue
+    if {[lsearch -exact $options want_results] == -1} {
+      if {[regexp -nocase "^(?:DELETE|UPDATE|INSERT|BEGIN|COMMIT|ROLLBACK).*" $query]} {
+        set rc [catch {do_cdb2_defquery $query} outputs]
+        if {$rc != 0} {lappend r $rc $outputs}
+        continue
+      }
     }
 
     set rc 0
 
-    if {[string equal $option "count"]
-     || [string equal $option "cksort"]
-     || [string equal $option "count_steps"]} {
+    if {[lsearch -exact $options count] != -1
+     || [lsearch -exact $options cksort] != -1
+     || [lsearch -exact $options count_steps] != -1} {
       set cost ""
       catch {do_cdb2_defquery $query true cost} outputs
     } else {
@@ -1370,9 +1372,9 @@ proc execsql {sql {option ""}} {
       }
     }
 
-    if {[string equal $option "count"]
-     || [string equal $option "cksort"]
-     || [string equal $option "count_steps"]} {
+    if {[lsearch -exact $options count] != -1
+     || [lsearch -exact $options cksort] != -1
+     || [lsearch -exact $options count_steps] != -1} {
       set cost [split $cost "\n"]
     } else {
       continue
@@ -1427,7 +1429,7 @@ proc execsql {sql {option ""}} {
       }
     }
 
-    if {[string equal $option "cksort"]} {
+    if {[lsearch -exact $options cksort] != -1} {
       if {$sort} {
         lappend r "sort"
       } else {
@@ -1435,7 +1437,7 @@ proc execsql {sql {option ""}} {
       }
     }
 
-    if {[string equal $option "count_steps"]} {
+    if {[lsearch -exact $options count_steps] != -1} {
       global gbl_scan
       global gbl_sort
       set gbl_scan $tbl_move
@@ -1444,7 +1446,7 @@ proc execsql {sql {option ""}} {
 
     global gbl_count
     set gbl_count [expr $tbl_find + $tbl_move + $idx_find + $idx_move]
-    if {[string equal $option "count"]} {
+    if {[lsearch -exact $options count] != -1} {
       lappend r $gbl_count
     }
 
@@ -1457,7 +1459,7 @@ proc execsql {sql {option ""}} {
 # Execute SQL and catch exceptions.
 #
 proc catchsql {sql} {
-  return [execsql $sql]
+  return [execsql $sql want_results]
 }
 
 # Do an VDBE code dump on the SQL given
