@@ -109,7 +109,7 @@ proc try_for_tclcdb2_package {} {
 
 try_for_tclcdb2_package
 
-proc maybe_quote_value { db index tabs } {
+proc maybe_quote_value { db index format } {
     if {[catch {cdb2 colvalue $db $index} value] == 0} {
         set null false
     } elseif {[string trim $value] eq "invalid column value"} {
@@ -128,15 +128,50 @@ proc maybe_quote_value { db index tabs } {
         intervalds -
         intervaldsus -
         intervalym {
-            #
-            # NOTE: Apparently, these types require the value be wrapped
-            #       in quotes.
-            #
-            return [expr {$null ? "NULL" : "\"[string map [list \" \\\"] $value]\""}]
+            set wrap ""
+            switch -exact $format {
+                csv -
+                tabs {
+                    #
+                    # NOTE: Apparently, these types require the
+                    #       value be wrapped in quotes.
+                    #
+                    set value [string map [list \" \\\"] $value]
+                    set wrap \"
+                }
+                list {
+                    # do nothing, handled below.
+                }
+                default {
+                    error "unknown struct value format \"$format\""
+                }
+            }
+            if {$format eq "list"} {
+                return [expr {$null ? "NULL" : $value}]
+            } else {
+                return [expr {$null ? "NULL" : "$wrap$value$wrap"}]
+            }
         }
         default {
-            if {$tabs} {set wrap ""} else {set wrap '}
-            return [expr {$null ? "NULL" : "$wrap$value$wrap"}]
+            set wrap ""
+            switch -exact $format {
+                csv {
+                    set value [string map [list ' ''] $value]
+                    set wrap '
+                }
+                tabs -
+                list {
+                    # do nothing, handled below.
+                }
+                default {
+                    error "unknown string/blob value format \"$format\""
+                }
+            }
+            if {$format eq "list"} {
+                return [expr {$null ? "NULL" : $value}]
+            } else {
+                return [expr {$null ? "NULL" : "$wrap$value$wrap"}]
+            }
         }
     }
 }
@@ -146,32 +181,7 @@ proc delay_for_schema_change {} {
 }
 
 proc isBinary { value } {
-    set length [string length $value]
-    for {set index 0} {$index < $length} {incr index} {
-        set character [string index $value $index]
-        scan $character %c ordinal
-        if {$ordinal in [list \t \n \v \r \f \r]} {continue}
-        if {$ordinal < 0x20 || $ordinal > 0x7F} {return true}
-    }
-    return false
-}
-
-proc hexDumpValue { value } {
-    set result ""
-    set length [string length $value]
-    for {set index 0} {$index < $length} {incr index} {
-        if {$index > 0} {
-            if {[string length $result] % 32 == 0} {
-                append result \n
-            } else {
-                append result " "
-            }
-        }
-        set character [string index $value $index]
-        scan $character %c ordinal
-        append result [format %02X $ordinal]
-    }
-    return $result
+    return [regexp -- {[^[:print:]]} $value]
 }
 
 proc maybe_append_to_log_file { message } {
@@ -196,28 +206,46 @@ proc maybe_append_query_to_log_file { sql dbName tier } {
     return [maybe_append_to_log_file $formatted]
 }
 
-proc grab_cdb2_results { db varName {tabs false} } {
+proc grab_cdb2_results { db varName {format csv} } {
+    set list [expr {$format eq "list"}]
+    set csv [expr {$format eq "csv"}]
+    set tabs [expr {$format eq "tabs"}]
     if {[string length $varName] > 0} {upvar 1 $varName result}
     while {[cdb2 next $db]} {
-        if {[string length $result] > 0} {append result \n}
-        if {!$tabs} {append result \(}
-        for {set index 0} {$index < [cdb2 colcount $db]} {incr index} {
-            if {$index > 0} {append result [expr {$tabs ? "\t" : ", "}]}
-            if {$tabs} {
-                append result [maybe_quote_value $db $index $tabs]
-            } else {
-                append result [cdb2 colname $db $index]=[maybe_quote_value $db $index $tabs]
+        if {$list} {
+            set row [list]
+            for {set index 0} {$index < [cdb2 colcount $db]} {incr index} {
+                lappend row [maybe_quote_value $db $index $format]
             }
+            lappend result $row
+        } else {
+            if {[string length $result] > 0} {append result \n}
+            if {$csv} {append result \(}
+            for {set index 0} {$index < [cdb2 colcount $db]} {incr index} {
+                if {$index > 0} {append result [expr {$csv ? ", " : "\t"}]}
+                set value [maybe_quote_value $db $index $format]
+                if {$csv} {
+                    #
+                    # WARNING: String append here, not list element append.
+                    #
+                    append result [cdb2 colname $db $index]=$value
+                } else {
+                    #
+                    # WARNING: String append here, not list element append.
+                    #
+                    append result $value
+                }
+            }
+            if {$csv} {append result \)}
         }
-        if {!$tabs} {append result \)}
     }
 }
 
-proc do_cdb2_defquery { sql {tabs false} {costVarName ""} } {
-    return [uplevel 1 [list do_cdb2_query $::comdb2_name $sql default $tabs $costVarName]]
+proc do_cdb2_defquery { sql {format csv} {costVarName ""} } {
+    return [uplevel 1 [list do_cdb2_query $::comdb2_name $sql default $format $costVarName]]
 }
 
-proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
+proc do_cdb2_query { dbName sql {tier default} {format csv} {costVarName ""} } {
     if {[string index $sql 0] eq "#"} {return}
     maybe_append_query_to_log_file $sql $dbName $tier
     set doCost [expr {[string length $costVarName] > 0}]
@@ -229,17 +257,17 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
 
     set sql [string map [list \r\n \n] [string trim $sql]]
 
-    set result ""; cdb2 run $db $sql; grab_cdb2_results $db result $tabs
+    set result ""; cdb2 run $db $sql; grab_cdb2_results $db result $format
     set effects [cdb2 effects $db]
 
     if {$doCost} {
         upvar 1 $costVarName cost
         set cost ""; cdb2 run $db "SELECT comdb2_prevquerycost() AS Cost"
-        grab_cdb2_results $db cost true
+        grab_cdb2_results $db cost tabs
     }
 
     if {$::cdb2_trace} {
-        if {[isBinary $result]} {set trace_result [hexDumpValue $result]} else {set trace_result $result}
+        if {[isBinary $result]} {set trace_result <binary>} else {set trace_result $result}
         set message "\[TCL_CDB2_TRACE\]: \{[info level [info level]]\} had effects \{$effects\}, returning \{$trace_result\}...\n"
         if {$::cdb2_trace_to_log} {
             maybe_append_to_log_file $message
@@ -459,7 +487,7 @@ proc execsql_status2 {sql} {
 }
 
 proc db {e sql} {
-  execsql $sql
+  execsql $sql list_results
 }
 proc execpresql {handle args} {
   trace remove execution $handle enter [list execpresql $handle]
@@ -566,9 +594,9 @@ if {[info exists cmdlinearg]==0} {
 
 proc comdb2dumpcsctcl {tbl} {
     if {$tbl == 0} {
-        return [do_cdb2_defquery "select name from sqlite_master where type='table' and name not like '%sqlite_stat%'" true]
+        return [do_cdb2_defquery "select name from sqlite_master where type='table' and name not like '%sqlite_stat%'" tabs]
     } else {
-        return [do_cdb2_defquery "select csc2 from sqlite_master where type='table' and name='$tbl'" true]
+        return [do_cdb2_defquery "select csc2 from sqlite_master where type='table' and name='$tbl'" tabs]
     }
 }
 
@@ -1343,15 +1371,18 @@ proc execsql {sql {options ""}} {
       }
     }
 
+    set format tabs
+    if {[lsearch -exact $options list_results] != -1} then {set format list}
+
     set rc 0
 
     if {[lsearch -exact $options count] != -1
      || [lsearch -exact $options cksort] != -1
      || [lsearch -exact $options count_steps] != -1} {
       set cost ""
-      catch {do_cdb2_defquery $query true cost} outputs
+      catch {do_cdb2_defquery $query $format cost} outputs
     } else {
-      set rc [catch {do_cdb2_defquery $query true} outputs]
+      set rc [catch {do_cdb2_defquery $query $format} outputs]
       if {$rc == 0} {set cost ""}
     }
 
@@ -1375,28 +1406,41 @@ proc execsql {sql {options ""}} {
     #  puts $query
     #  puts $outputs
     #}
-      
-    set outputs [split $outputs "\n"]
 
-    set found [regexp -nocase "^.*(DELETE|BEGIN|COMMIT|ROLLBACK).*" $query _ first]
-    if {$found == 0} {
+    if {[lsearch -exact $options list_results] != -1} {
+      #
+      # NOTE: The list format is being used.  Treat the resulting output as
+      #       a list of rows, where each row is a list of column values.
+      #
       foreach output $outputs {
-        regexp {^\((.*)\)$} $output _ output
-        set output [split $output \t]
-        if {[string equal $output ""]} {
-          lappend r $output
-          continue
-        }
         foreach o $output {
-          if {[string equal $o ""]} {
-            lappend r $o
+          if {[string equal $o NULL]} {set o ""}
+          lappend r $o
+        }
+      }
+    } else {
+      set outputs [split $outputs \n]
+
+      set found [regexp -nocase "^.*(DELETE|BEGIN|COMMIT|ROLLBACK).*" $query _ first]
+      if {$found == 0} {
+        foreach output $outputs {
+          regexp {^\((.*)\)$} $output _ output
+          set output [split $output \t]
+          if {[string equal $output ""]} {
+            lappend r $output
             continue
           }
-          regexp {^'(.*)'$} $o _ o
-          if {[string equal $o "NULL"]} {
-            set o ""
+          foreach o $output {
+            if {[string equal $o ""]} {
+              lappend r $o
+              continue
+            }
+            regexp {^'(.*)'$} $o _ o
+            if {[string equal $o NULL]} {
+              set o ""
+            }
+            lappend r $o
           }
-          lappend r $o
         }
       }
     }
