@@ -145,6 +145,35 @@ proc delay_for_schema_change {} {
     after $::gbl_schemachange_delay
 }
 
+proc isBinary { value } {
+    set length [string length $value]
+    for {set index 0} {$index < $length} {incr index} {
+        set character [string index $value $index]
+        scan $character %c ordinal
+        if {$ordinal in [list \t \n \v \r \f \r]} {continue}
+        if {$ordinal < 0x20 || $ordinal > 0x7F} {return true}
+    }
+    return false
+}
+
+proc hexDumpValue { value } {
+    set result ""
+    set length [string length $value]
+    for {set index 0} {$index < $length} {incr index} {
+        if {$index > 0} {
+            if {[string length $result] % 32 == 0} {
+                append result \n
+            } else {
+                append result " "
+            }
+        }
+        set character [string index $value $index]
+        scan $character %c ordinal
+        append result [format %02X $ordinal]
+    }
+    return $result
+}
+
 proc maybe_append_to_log_file { message } {
     set fileName $::cdb2_log_file
     if {[string length $fileName] > 0} {
@@ -210,7 +239,8 @@ proc do_cdb2_query { dbName sql {tier default} {tabs false} {costVarName ""} } {
     }
 
     if {$::cdb2_trace} {
-        set message "\[TCL_CDB2_TRACE\]: \{[info level [info level]]\} had effects \{$effects\}, returning \{$result\}...\n"
+        if {[isBinary $result]} {set trace_result [hexDumpValue $result]} else {set trace_result $result}
+        set message "\[TCL_CDB2_TRACE\]: \{[info level [info level]]\} had effects \{$effects\}, returning \{$trace_result\}...\n"
         if {$::cdb2_trace_to_log} {
             maybe_append_to_log_file $message
         } else {
@@ -1251,13 +1281,12 @@ proc execsql {sql {options ""}} {
   global cluster
   global gbl_schemachange_delay
 
-  set sql [string map {"\n" ""} $sql]
-  set queries [split $sql ";"]
+  set sql [string map [list \n ""] $sql]
+  set queries [split $sql \;]
   set r [list]
   variable rc
   variable err
   variable cost
-  set begun 0
 
   foreach query $queries {
     set query [string trim $query]
@@ -1346,14 +1375,14 @@ proc execsql {sql {options ""}} {
     #  puts $query
     #  puts $outputs
     #}
-
+      
     set outputs [split $outputs "\n"]
 
     set found [regexp -nocase "^.*(DELETE|BEGIN|COMMIT|ROLLBACK).*" $query _ first]
     if {$found == 0} {
       foreach output $outputs {
         regexp {^\((.*)\)$} $output _ output
-        set output [split $output "\t"]
+        set output [split $output \t]
         if {[string equal $output ""]} {
           lappend r $output
           continue
@@ -1375,7 +1404,7 @@ proc execsql {sql {options ""}} {
     if {[lsearch -exact $options count] != -1
      || [lsearch -exact $options cksort] != -1
      || [lsearch -exact $options count_steps] != -1} {
-      set cost [split $cost "\n"]
+      set cost [split $cost \n]
     } else {
       continue
     }
@@ -1431,9 +1460,9 @@ proc execsql {sql {options ""}} {
 
     if {[lsearch -exact $options cksort] != -1} {
       if {$sort} {
-        lappend r "sort"
+        lappend r sort
       } else {
-        lappend r "nosort"
+        lappend r nosort
       }
     }
 
