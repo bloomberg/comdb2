@@ -1169,7 +1169,7 @@ static void FreeBoundValue(
  *	This function frees any memory values that were allocated for
  *	use with bound parameters.  It should only be called if all
  *	bindings have been cleared -OR- it will be impossible to use
- *	them again (i.e. the associated database connection are being
+ *	them again (i.e. the associated database connection is being
  *	closed).
  *
  * Results:
