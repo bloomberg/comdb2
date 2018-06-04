@@ -1948,3 +1948,56 @@ int bdb_temp_table_stat(bdb_state_type *bdb_state, DB_MPOOL_STAT **gspp)
 
     return 0;
 }
+
+
+
+int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
+{
+    bdb_state_type *parent;
+    if (bdb_state->parent)
+        parent = bdb_state->parent;
+    else
+        parent = bdb_state;
+
+
+
+    //create
+    int bdberr;
+    struct temp_table *db = bdb_temp_table_create(parent, &bdberr);
+    if (!db || bdberr) {
+        logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
+               __func__, bdberr);
+        return -1;
+    }
+    
+    int rc;
+    FILE *urandom;
+    if ((urandom = fopen("/dev/urandom", "r")) == NULL) {
+        logmsgperror("fopen");
+        return -2;
+    }
+
+    uint8_t rkey[recsz];
+    if ((rc = fread(rkey, sizeof(rkey), 1, urandom)) != 1 && ferror(urandom)) {
+        logmsgperror("fread");
+    }
+    fclose(urandom);
+
+    //insert
+    for (int cnt = 0; cnt < maxins; cnt++) {
+        rkey[0] = rand();
+        unsigned long long *genid = (unsigned long long*) urandom;
+        rc = bdb_temp_table_put(parent, db, &rkey, sizeof(rkey),
+                              genid, sizeof(*genid), NULL, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, 
+                    "%s: fail to put into temp tbl rc=%d bdberr=%d\n",
+                    __func__, rc, bdberr);
+            break; 
+        }
+    }
+
+    //cleanup
+    rc = bdb_temp_table_close(parent, db, &bdberr);
+    return rc;
+}

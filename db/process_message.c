@@ -2089,6 +2089,24 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             logmsg(LOGMSG_ERROR, "bad stat command\n");
             print_help_page(HELP_STAT);
         }
+    } else if (tokcmp(tok, ltok, "temptbltest") == 0) {
+        logmsg(LOGMSG_USER, "Testing temp tables\n");
+        extern int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins);
+        int recsz = 20;
+        int maxins = 10000;
+
+        tok = segtok(line, lline, &st, &ltok);
+        int y = toknum(tok, ltok);
+        if (y > 0) { 
+            recsz = y;
+            tok = segtok(line, lline, &st, &ltok);
+            int z = toknum(tok, ltok);
+            if (z > 0) { 
+                maxins = z;
+            }
+        }
+
+        bdb_temp_table_insert_test(thedb->bdb_env, recsz, maxins);
     } else if (tokcmp(tok, ltok, "on") == 0) {
         change_switch(1, line, lline, st);
     } else if (tokcmp(tok, ltok, "off") == 0) {

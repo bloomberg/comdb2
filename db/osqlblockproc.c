@@ -719,7 +719,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (rc_op) {
         logmsg(LOGMSG_ERROR, 
             "%s: fail to put oplog rqid=%llx (%lld) seq=%llu rc=%d bdberr=%d\n",
-            __func__, key.rqid, key.rqid, key.seq, rc, bdberr);
+            __func__, key.rqid, key.rqid, key.seq, rc_op, bdberr);
     } else if (gbl_osqlpfault_threads) {
         osql_page_prefault(rpl, rplen, &(tran->last_db),
                            &(osql_session_get_ireq(sess)->osql_step_ix), rqid,
