@@ -132,9 +132,15 @@ proc maybe_quote_value { db index format } {
         maybe_trace "\{[info level [info level]]\} has type \{$type\} and [expr {$null ? {NULL } : {}}]value \{$value\}..."
     }
     switch -exact $type {
-        integer -
-        real {
+        integer {
             return [expr {$null ? "NULL" : $value}]
+        }
+        real {
+            if {$null} {
+                return NULL
+            } else {
+                return [format %f $value]
+            }
         }
         datetime -
         datetimeus -
@@ -1399,7 +1405,7 @@ proc execsql {sql {options ""}} {
     # NOTE: Uncomment this to enable tracing of raw column values coming back
     #     from the Tcl bindings.
     #
-    # if {[string equal $::current_test_name "7.2"]} {set ::cdb2_trace_raw_values 1}
+    # if {[string equal $::current_test_name "where-17.4"]} {set ::cdb2_trace_raw_values 1}
 
     set rc 0
 
