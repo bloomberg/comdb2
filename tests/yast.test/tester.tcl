@@ -663,6 +663,9 @@ proc do_test {name cmd expected} {
   }
 
   incr_ntest
+
+  maybe_append_to_log_file "\n==================================== [file tail [info script]] / $name ====================================\n"
+
   #puts -nonewline $name...
   #flush stdout
   puts $name...
