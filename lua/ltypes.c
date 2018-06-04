@@ -51,8 +51,7 @@ static int l_real_tostring(Lua);
 static int l_datetime_tostring(Lua);
 static int l_decimal_tostring(Lua);
 static int l_blob_tostring(Lua);
-static int l_intervalym_tostring(Lua);
-static int l_intervalds_tostring(Lua);
+static int l_interval_tostring(Lua);
 
 #define XMACRO_DBTYPES(type, name, structname, tostring) tostring,
 const tostringfunc dbtypes_tostring[] = { DBTYPES };
@@ -425,10 +424,12 @@ void luabb_tointervalds(Lua lua, int idx, intv_t *ret)
         c = luabb_tostring(lua, idx);
         rc = str_to_interval(c, strlen(c), &type, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->u.ds,
           &ret->sign);
-        if (type == 1) // days hr:mn:sec.msec
+        if (type == 1) { // days hr:mn:sec.msec
+            ret->type = ret->u.ds.prec == DTTZ_PREC_MSEC ? INTV_DS_TYPE : INTV_DSUS_TYPE;
             return;
-        else if (type == 2) // number
+        } else if (type == 2) { // number
             break;
+        }
         // else fall through - couldn't parse intervalds
     err:
     default:
@@ -1420,32 +1421,24 @@ static int l_datetime_tostring(Lua L)
     return l_datetime_tostring_int(L, -1);
 }
 
-static int l_intervalym_tostring(Lua lua)
+static int l_interval_tostring(Lua L)
 {
-    luaL_checkudata(lua, -1, dbtypes.intervalym);
-    const lua_intervalym_t *d = lua_topointer(lua, -1);
-    if (d->is_null)
-      lua_pushstring(lua, null_str);
-    else
-      luabb_pushfstring(lua, "%s%u-%2.2u",
-                           (d->val.sign==-1) ? "- " : "",
-                           d->val.u.ym.years, d->val.u.ym.months);
-    return 1;
-}
-
-static int l_intervalds_tostring(Lua lua)
-{
-    luaL_checkudata(lua, -1, dbtypes.intervalds);
-    const lua_intervalds_t *d = lua_topointer(lua, -1);
-    if (d->is_null)
-      lua_pushstring(lua, null_str);
-    else
-      luabb_pushfstring(lua, "%s%u %2.2u:%2.2u:%2.2u.%*.*u",
-                           (d->val.sign==-1) ? "- " : "",
-                           d->val.u.ds.days, d->val.u.ds.hours,
-                           d->val.u.ds.mins, d->val.u.ds.sec, 
-                           d->val.u.ds.prec, d->val.u.ds.prec, d->val.u.ds.frac);
-    return 1;
+    if (luabb_isnull(L, -1)) {
+        lua_pushstring(L, null_str);
+        return 1;
+    }
+    const lua_dbtypes_t *n = lua_topointer(L, -1);
+    if (n->dbtype == DBTYPES_INTERVALYM || n->dbtype == DBTYPES_INTERVALDS) {
+        /* lua-ym and lua-ds have same layout (intv_t) */
+        const lua_intervalym_t *d = (const lua_intervalym_t *)n;
+        char tmp[256];
+        int n;
+        if (intv_to_str(&d->val, tmp, sizeof(tmp), &n) == 0) {
+            lua_pushlstring(L, tmp, n);
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static int l_datetime_year(Lua L)
@@ -1661,7 +1654,7 @@ static int l_intervalym_months(Lua L)
 }
 
 static const struct luaL_Reg intervalym_funcs[] = {
-    { "__tostring", l_intervalym_tostring },
+    { "__tostring", l_interval_tostring },
     { "years", l_intervalym_years },
     { "months", l_intervalym_months },
     { NULL, NULL}
@@ -1733,7 +1726,7 @@ static int l_intervalds_usecs(Lua L)
 }
 
 static const struct luaL_Reg intervalds_funcs[] = {
-    { "__tostring", l_intervalds_tostring },
+    { "__tostring", l_interval_tostring },
     { "days", l_intervalds_days},
     { "hours", l_intervalds_hours },
     { "mins", l_intervalds_mins },
