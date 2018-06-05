@@ -140,133 +140,128 @@ cson_array *get_bind_array(struct reqlogger *logger, int nfields)
     return arr;
 }
 
-void add_to_bind_array(cson_array *arr, char *name, int type, void *val,
-                       int dlen)
+inline static cson_object *
+eventlog_append_name(cson_array *arr, const char *name, const char *type)
 {
     if (!arr)
-        return;
-
+        return NULL;
     cson_value *binding = cson_value_new_object();
-    cson_object *bobj = cson_value_get_object(binding);
-
-    /* name of bound parameter */
-    cson_object_set(bobj, "name", cson_value_new_string(name, strlen(name)));
-
-    /* bind binding to array of bindings */
     cson_array_append(arr, binding);
-    const char *strtype = "__NO_TYPE_ASSIGNED__";
+    cson_object *bobj = cson_value_get_object(binding);
+    cson_object_set(bobj, "name", cson_value_new_string(name, strlen(name)));
+    cson_object_set(bobj, "type", cson_value_new_string(type, strlen(type)));
+    return bobj;
+}
 
-    if (val == NULL) {
-        strtype = "int"; /* log null values as int for simplicity */
-        cson_object_set(bobj, "value", cson_value_null());
-        cson_object_set(bobj, "type",
-                        cson_value_new_string(strtype, strlen(strtype)));
+void eventlog_bind_null(cson_array *arr, const char *name)
+{
+    /* log null values as int for simplicity */
+    cson_object *bobj = eventlog_append_name(arr, name, "int");
+    if (!bobj)
         return;
-    }
+    cson_object_set(bobj, "value", cson_value_null());
+    return;
+}
 
-    switch (type) {
-    case CLIENT_UINT:
-    case CLIENT_INT:
-        switch (dlen) {
-        case 2: strtype = "smallint"; break;
-        case 4: strtype = "int"; break;
-        case 8: strtype = "largeint"; break;
-        }
+void eventlog_bind_int64(cson_array *arr, const char *name, int64_t val,
+                         int dlen)
+{
+    const char *type;
+    switch (dlen) {
+    case 2: type = "smallint"; break;
+    case 4: type = "int"; break;
+    case 8: type = "largeint"; break;
+    default: return;
+    }
+    cson_object *bobj = eventlog_append_name(arr, name, type);
+    if (!bobj)
+        return;
+    cson_object_set(bobj, "value", cson_value_new_integer(val));
+}
 
-        cson_object_set(bobj, "value",
-                        cson_value_new_integer(*(uint64_t *)val));
-        break;
-    case CLIENT_REAL: {
-        switch (dlen) {
-        case 4: strtype = "float"; break;
-        case 8: strtype = "doublefloat"; break;
-        }
+void eventlog_bind_text(cson_array *arr, const char *name, const char *val,
+                        int dlen)
+{
+    cson_object *bobj = eventlog_append_name(arr, name, "char");
+    if (!bobj)
+        return;
+    cson_object_set(bobj, "value", cson_value_new_string(val, dlen));
+}
 
-        cson_object_set(bobj, "value", cson_value_new_double(*(double *)val));
-        break;
+void eventlog_bind_double(cson_array *arr, const char *name, double val,
+                          int dlen)
+{
+    const char *type;
+    switch (dlen) {
+    case 4: type = "float"; break;
+    case 8: type = "doublefloat"; break;
+    default: return;
     }
-    case CLIENT_CSTR:
-    case CLIENT_PSTR:
-    case CLIENT_PSTR2: {
-        strtype = "char";
+    cson_object *bobj = eventlog_append_name(arr, name, type);
+    if (!bobj)
+        return;
+    cson_object_set(bobj, "value", cson_value_new_double(val));
+}
 
-        cson_object_set(bobj, "value",
-                        cson_value_new_string((char *)val, dlen));
-        break;
-    }
-    case CLIENT_BYTEARRAY:
-    case CLIENT_BLOB:
-    case CLIENT_VUTF8: {
-        strtype = "blob";
-        if (type == CLIENT_VUTF8)
-            strtype = "varchar";
+static void eventlog_bind_blob_int(cson_array *arr, const char *name,
+                                   const char *type, const void *val, int dlen)
+{
+    cson_object *bobj = eventlog_append_name(arr, name, type);
+    if (!bobj)
+        return;
+    int datalen = min(dlen, 1024);         /* cap the datalen logged */
+    const int exp_len = (2 * datalen) + 4; /* x' ... '/0  */
+    char *expanded_buf = malloc(exp_len);
+    expanded_buf[0] = 'x';
+    expanded_buf[1] = '\'';
+    util_tohex(&expanded_buf[2], val, datalen);
+    expanded_buf[2 + datalen * 2] = '\'';
+    expanded_buf[3 + datalen * 2] = '\0';
+    cson_object_set(bobj, "value",
+                    cson_value_new_string(expanded_buf, exp_len));
+    free(expanded_buf);
+}
 
-        int datalen = min(dlen, 1024);         /* cap the datalen logged */
-        const int exp_len = (2 * datalen) + 4; /* x' ... '/0  */
-        char *expanded_buf = malloc(exp_len);
-        expanded_buf[0] = 'x';
-        expanded_buf[1] = '\'';
-        util_tohex(&expanded_buf[2], val, datalen);
-        expanded_buf[2 + datalen * 2] = '\'';
-        expanded_buf[3 + datalen * 2] = '\0';
-        cson_object_set(bobj, "value",
-                        cson_value_new_string(expanded_buf, exp_len));
-        free(expanded_buf);
-        break;
-    }
-    case CLIENT_DATETIME: {
-        char strtime[62];
-        strtype = "datetime";
+void eventlog_bind_blob(cson_array *a, const char *n, const void *v, int l)
+{
+    eventlog_bind_blob_int(a, n, "blob", v, l);
+}
 
-        if (structdatetime2string_ISO(val, strtime, sizeof(strtime)) == 0)
-            cson_object_set(bobj, "value", 
-                            cson_value_new_string(strtime, sizeof(strtime)));
-        break;
-    }
-    case CLIENT_DATETIMEUS: {
-        char strtime[65];
-        strtype = "datetimeus";
+void eventlog_bind_varchar(cson_array *a, const char *n, const void *v, int l)
+{
+    eventlog_bind_blob_int(a, n, "varchar", v, l);
+}
 
-        if (structdatetime2string_ISO(val, strtime, sizeof(strtime)) == 0)
-            cson_object_set(bobj, "value", 
-                            cson_value_new_string(strtime, sizeof(strtime)));
-        break;
-    }
-    case CLIENT_INTVYM: {
-        strtype = "interval month";
-        cdb2_client_intv_ym_t *ci = val;
-        char strintv[65];
-        sprintf(strintv, "%s%u-%u", ci->sign < 0 ? "- " : "", 
-                ci->years, ci->months);
-        cson_object_set(bobj, "value", 
-                        cson_value_new_string(strintv, sizeof(strintv)));
-        break;
-    }
-    case CLIENT_INTVDS: {
-        strtype = "interval sec";
-        cdb2_client_intv_ds_t *ci = val;
-        char strintvds[265];
-        sprintf(strintvds, "%s%u %2.2u:%2.2u:%2.2u.%3.3u", 
-                ci->sign < 0 ? "- " : "",
-                ci->days, ci->hours, ci->mins, ci->sec, ci->msec);
-        cson_object_set(bobj, "value", 
-                        cson_value_new_string(strintvds, sizeof(strintvds)));
-        break;
-    }
-    case CLIENT_INTVDSUS:
-        strtype = "interval usec";
-        cdb2_client_intv_dsus_t *ci = val;
-        char strintvds[265];
-        sprintf(strintvds, "%s%d %d:%d:%d.%d", ci->sign ? " " : "- ", 
-                ci->days, ci->hours, ci->mins, ci->sec, ci->usec);
-        cson_object_set(bobj, "value", 
-                        cson_value_new_string(strintvds, sizeof(strintvds)));
-        break;
-    default: assert(false && "Unknown type being bound");
-    }
+void eventlog_bind_datetime(cson_array *arr, const char *name, dttz_t *dt,
+                            const char *tz)
+{
+    const char *type =
+        dt->dttz_prec == DTTZ_PREC_MSEC ? "datetime" : "datetimeus";
+    cson_object *bobj = eventlog_append_name(arr, name, type);
+    if (!bobj)
+        return;
+    char str[256];
+    int used;
+    dttz_to_str(dt, str, sizeof(str), &used, tz);
+    cson_object_set(bobj, "value", cson_value_new_string(str, used));
+}
 
-    cson_object_set(bobj, "type",
-                    cson_value_new_string(strtype, strlen(strtype)));
+void eventlog_bind_interval(cson_array *arr, const char *name, intv_t *tv)
+{
+    const char *type;
+    switch (tv->type) {
+    case INTV_YM_TYPE: type = "interval month"; break;
+    case INTV_DS_TYPE: type = "interval sec"; break;
+    case INTV_DSUS_TYPE: type = "interval usec"; break;
+    default: return;
+    }
+    cson_object *bobj = eventlog_append_name(arr, name, type);
+    if (!bobj)
+        return;
+    char str[256];
+    int n;
+    intv_to_str(tv, str, sizeof(str), &n);
+    cson_object_set(bobj, "value", cson_value_new_string(str, n));
 }
 
 void eventlog_tables(cson_object *obj, const struct reqlogger *logger)
