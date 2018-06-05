@@ -2468,35 +2468,44 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         }
         if (p.null || p.type == COMDB2_NULL_TYPE) {
             rc = sqlite3_bind_null(stmt, p.pos);
-            add_to_bind_array(arr, p.name, p.type, NULL, p.len);
+            eventlog_bind_null(arr, p.name);
             continue;
         }
         switch (p.type) {
         case CLIENT_INT:
         case CLIENT_UINT:
             rc = sqlite3_bind_int64(stmt, p.pos, p.u.i);
+            eventlog_bind_int64(arr, p.name, p.u.i, p.len);
             break;
         case CLIENT_REAL:
             rc = sqlite3_bind_double(stmt, p.pos, p.u.r);
+            eventlog_bind_double(arr, p.name, p.u.r, p.len);
             break;
         case CLIENT_CSTR:
         case CLIENT_PSTR:
         case CLIENT_PSTR2:
+            rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
+            eventlog_bind_text(arr, p.name, p.u.p, p.len);
+            break;
         case CLIENT_VUTF8:
             rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
+            eventlog_bind_varchar(arr, p.name, p.u.p, p.len);
             break;
         case CLIENT_BLOB:
         case CLIENT_BYTEARRAY:
             rc = sqlite3_bind_blob(stmt, p.pos, p.u.p, p.len, NULL);
+            eventlog_bind_blob(arr, p.name, p.u.p, p.len);
             break;
         case CLIENT_DATETIME:
         case CLIENT_DATETIMEUS:
             rc = sqlite3_bind_datetime(stmt, p.pos, &p.u.dt, clnt->tzname);
+            eventlog_bind_datetime(arr, p.name, &p.u.dt, clnt->tzname);
             break;
         case CLIENT_INTVYM:
         case CLIENT_INTVDS:
         case CLIENT_INTVDSUS:
             rc = sqlite3_bind_interval(stmt, p.pos, &p.u.tv);
+            eventlog_bind_interval(arr, p.name, &p.u.tv);
             break;
         default:
             rc = SQLITE_ERROR;
@@ -2505,7 +2514,6 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         if (rc) {
             goto out;
         }
-        add_to_bind_array(arr, p.name, p.type, &p.u, p.len);
     }
 out:if (rc) {
         *err = sqlite3_mprintf("Bad parameter:%s type:%d\n", p.name, p.type);
