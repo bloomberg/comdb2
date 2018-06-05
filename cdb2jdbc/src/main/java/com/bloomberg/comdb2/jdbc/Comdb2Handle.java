@@ -1138,11 +1138,23 @@ public class Comdb2Handle extends AbstractConnection {
                         return 0;
                     }
                     else if (is_retryable(errVal) && (snapshotFile > 0 ||
-                                (!inTxn && !is_commit))) {
+                                (!inTxn && !is_commit) || commitSnapshotFile > 0)) {
                         tdlog(Level.FINER, "continuing on retryable error %d for null readNsh", errVal);
                         errorInTxn = 0;
                         closeNoException();
                         retryAll = true;
+                        if (commitSnapshotFile > 0) {
+                            tdlog(Level.FINER,
+                                    "Resetting txn state info on commit, isHASql=%b lsn=[%d][%d]",
+                                    isHASql, commitSnapshotFile, commitSnapshotOffset);
+                            inTxn = true;
+                            snapshotFile = commitSnapshotFile;
+                            snapshotOffset = commitSnapshotOffset;
+                            isRetry = commitIsRetry;
+                            queryList = commitQueryList;
+                            commitQueryList = null;
+                            commitSnapshotFile = 0;
+                        }
                         continue;
                     }
                     else {
@@ -1265,10 +1277,22 @@ public class Comdb2Handle extends AbstractConnection {
                         return 0;
                     }
                     else if (is_retryable(errVal) && (snapshotFile > 0 ||
-                                (!inTxn && !is_commit))) {
+                                (!inTxn && !is_commit) || commitSnapshotFile > 0)) {
                         errorInTxn = 0;
                         closeNoException();
                         retryAll = true;
+                        if (commitSnapshotFile > 0) {
+                            tdlog(Level.FINER,
+                                    "Resetting txn state info on commit, isHASql=%b lsn=[%d][%d]",
+                                    isHASql, commitSnapshotFile, commitSnapshotOffset);
+                            inTxn = true;
+                            snapshotFile = commitSnapshotFile;
+                            snapshotOffset = commitSnapshotOffset;
+                            isRetry = commitIsRetry;
+                            queryList = commitQueryList;
+                            commitQueryList = null;
+                            commitSnapshotFile = 0;
+                        }
                         tdlog(Level.FINER, "Retrying for failed protocol unpack errval=%d", errVal);
                         continue;
                     }
@@ -1303,9 +1327,9 @@ public class Comdb2Handle extends AbstractConnection {
 
             // no hints ..
 
-            if (firstResp.errCode == Sqlresponse.CDB2_ErrorCode.MASTER_TIMEOUT_VALUE ||
-                    firstResp.errCode == Errors.CDB2ERR_CHANGENODE) {
-
+            if ((firstResp.errCode == Sqlresponse.CDB2_ErrorCode.MASTER_TIMEOUT_VALUE ||
+                firstResp.errCode == Errors.CDB2ERR_CHANGENODE) && (snapshotFile > 0 ||
+                (!inTxn && !is_commit) || commitSnapshotFile > 0)) {
                 closeNoException();
                 retryAll = true;
                 if(commitSnapshotFile > 0) {
@@ -1343,7 +1367,7 @@ public class Comdb2Handle extends AbstractConnection {
                 /* Handle rejects from server. */
                 tdlog(Level.FINEST, "firstResp.respType==1");
                 if (is_retryable(firstResp.errCode) && (snapshotFile > 0 ||
-                            (!inTxn && !is_commit))) {
+                            (!inTxn && !is_commit) || commitSnapshotFile > 0)) {
                     closeNoException();
                     retryAll = true;
                     if (commitSnapshotFile > 0) {
