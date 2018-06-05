@@ -3950,7 +3950,9 @@ read_record:
         }
 
         if (hndl->firstresponse->error_code) {
-            if (hndl->in_trans) {
+            if (is_begin) {
+                hndl->in_trans = 0;
+            } else if (hndl->in_trans) {
                 /* Give the same error for every query until commit/rollback */
                 hndl->error_in_trans =
                     cdb2_convert_error_code(hndl->firstresponse->error_code);
