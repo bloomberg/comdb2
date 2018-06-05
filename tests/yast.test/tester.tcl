@@ -87,11 +87,11 @@ set comdb2_name [lindex $argv 0]
 set file_path [lindex $argv 1]
 set cdb2_tcl [lindex $argv 2]
 set cdb2_config [lindex $argv 3]
-set cdb2_debug [string is true -strict [lindex $argv 4]]
-set cdb2_trace [string is true -strict [lindex $argv 5]]
-set cdb2_log_file [lindex $argv 6]
+set cdb2_log_file [lindex $argv 4]
+set cdb2_debug [string is true -strict [lindex $argv 5]]
+set cdb2_trace [string is true -strict [lindex $argv 6]]
 set cdb2_trace_to_log [string is true -strict [lindex $argv 7]]
-set cdb2_trace_raw_values 0
+set cdb2_trace_raw_values [string is true -strict [lindex $argv 8]]
 set current_test_name ""
 set cluster ""
 set gbl_scan -99
@@ -1400,7 +1400,7 @@ proc execsql {sql {options ""}} {
     }
 
     set format tabs
-    if {[lsearch -exact $options list_results] != -1} then {set format list}
+    if {[lsearch -exact $options list_results] != -1} {set format list}
 
     #
     # NOTE: Uncomment this to enable tracing of raw column values coming back
