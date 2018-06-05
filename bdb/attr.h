@@ -564,7 +564,7 @@ DEF_ATTR(DOWNGRADE_PENALTY, downgrade_penalty, MSECS, 10000,
 DEF_ATTR(CATCHUP_WINDOW, catchup_window, BYTES, 40000000,
          "Start waiting in waitforseqnum if replicant is within this many "
          "bytes of master.")
-DEF_ATTR(CATCHUP_ON_COMMIT, catchup_on_commit, BOOLEAN, 1,
+DEF_ATTR(CATCHUP_ON_COMMIT, catchup_on_commit, BOOLEAN, 0,
          "Replicant to INCOHERENT_WAIT rather than INCOHERENT on commit if "
          "within CATCHUP_WINDOW.")
 DEF_ATTR(

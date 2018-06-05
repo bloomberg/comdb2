@@ -81,6 +81,7 @@ typedef struct __rep {
 #define	REP_F_RECOVER		0x080		/* In recovery. */
 #define	REP_F_TALLY		0x100		/* Tallied vote before elect. */
 #define	REP_F_UPGRADE		0x200		/* Upgradeable replica. */
+#define REP_F_WAITSTART     0x400       /* No logputs until start */
 #define	REP_ISCLIENT	(REP_F_UPGRADE | REP_F_LOGSONLY)
 	u_int32_t	flags;
 } REP;
@@ -88,6 +89,8 @@ typedef struct __rep {
 #define	IN_ELECTION(R)		F_ISSET((R), REP_F_EPHASE1 | REP_F_EPHASE2)
 #define	IN_ELECTION_TALLY(R) \
 	F_ISSET((R), REP_F_EPHASE1 | REP_F_EPHASE2 | REP_F_TALLY)
+#define	IN_ELECTION_TALLY_WAITSTART(R) \
+	F_ISSET((R), REP_F_EPHASE1 | REP_F_EPHASE2 | REP_F_TALLY | REP_F_WAITSTART)
 #define	IS_REP_MASTER(dbenv)						\
 	(REP_ON(dbenv) && ((DB_REP *)(dbenv)->rep_handle)->region &&	\
 	    F_ISSET(((REP *)((DB_REP *)(dbenv)->rep_handle)->region),	\

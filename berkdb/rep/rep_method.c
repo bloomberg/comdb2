@@ -316,12 +316,15 @@ __rep_start(dbenv, dbt, gen, flags)
 		if (!F_ISSET(rep, REP_F_MASTER)) {
 			/* Master is not yet set. */
 			if (role_chg) {
-				if (rep->w_gen > rep->recover_gen)
-					rep->gen = ++rep->w_gen;
-				else if (rep->gen > rep->recover_gen)
-					rep->gen++;
-				else
-					rep->gen = rep->recover_gen + 1;
+				if (rep->w_gen > rep->recover_gen) {
+					++rep->w_gen;
+                    __rep_set_gen(dbenv, __func__, __LINE__, rep->w_gen);
+                } else if (rep->gen > rep->recover_gen) {
+					__rep_set_gen(dbenv, __func__, __LINE__, rep->gen + 1);
+                } else {
+                    __rep_set_gen(dbenv, __func__, __LINE__, 
+                            rep->recover_gen + 1);
+                }
 				/*
 				 * There could have been any number of failed
 				 * elections, so jump the gen if we need to now.
@@ -330,18 +333,18 @@ __rep_start(dbenv, dbt, gen, flags)
                     logmsg(LOGMSG_USER, "%s line %d setting gen to arg %d "
                             "current egen is %d\n", __func__, __LINE__, gen, 
                             rep->egen);
-                    rep->gen = gen;
+                    __rep_set_gen(dbenv, __func__, __LINE__, gen);
                 } else if (rep->egen > rep->gen) {
                     logmsg(LOGMSG_USER, "%s line %d setting gen to rep->egen "
                             "%d\n", __func__, __LINE__, rep->egen);
-                    rep->gen = rep->egen;
+                    __rep_set_gen(dbenv, __func__, __LINE__, rep->egen);
                 }
 
 				redo_prepared = 1;
 			} else if (rep->gen == 0) {
                 logmsg(LOGMSG_USER, "%s line %d setting gen to recover_gen + 1 "
                         "%d\n", __func__, __LINE__, rep->recover_gen + 1);
-				rep->gen = rep->recover_gen + 1;
+                __rep_set_gen(dbenv, __func__, __LINE__, rep->recover_gen + 1);
             }
 			if (F_ISSET(rep, REP_F_MASTERELECT)) {
 				__rep_elect_done(dbenv, rep, 0);
@@ -353,6 +356,7 @@ __rep_start(dbenv, dbt, gen, flags)
             logmsg(LOGMSG_USER, "%s line %d upgrading to gen %d egen %d\n",
                     __func__, __LINE__, rep->gen, rep->egen);
 		}
+        F_CLR(rep, REP_F_WAITSTART);
         pthread_mutex_unlock(&rep_candidate_lock);
 		rep->master_id = rep->eid;
 		/*
@@ -1003,7 +1007,8 @@ restart:
     pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 
-	F_SET(rep, REP_F_EPHASE1 | REP_F_NOARCHIVE);
+    /* WAITSTART pushes us past point of no-return */
+	F_SET(rep, REP_F_EPHASE1 | REP_F_WAITSTART | REP_F_NOARCHIVE);
 	F_CLR(rep, REP_F_TALLY);
 
     /* Grab lsn again now that we are a candidate.  The candidate-lock prevents
@@ -1034,17 +1039,18 @@ restart:
 	send_vote = db_eid_invalid;
 	egen = rep->egen;
 	committed_gen = rep->committed_gen;
+
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
     pthread_mutex_unlock(&rep_candidate_lock);
 
 	if (use_committed_gen) {
-		logmsg(LOGMSG_USER, "%s line %d broadcasting REP_GEN_VOTE1 to all with committed-gen=%d egen=%d\n",
-			__func__, __LINE__, committed_gen, egen);
+		logmsg(LOGMSG_USER, "%s line %d broadcasting REP_GEN_VOTE1 to all with committed-gen=%d gen=%d egen=%d\n",
+			__func__, __LINE__, committed_gen, rep->gen, egen);
 		__rep_send_gen_vote(dbenv, &lsn, nsites, priority, tiebreaker,
 			egen, committed_gen, db_eid_broadcast, REP_GEN_VOTE1);
 	} else {
-		logmsg(LOGMSG_USER, "%s line %d broadcasting REP_VOTE1 to all (committed-gen=0) egen=%d\n",
-			__func__, __LINE__, egen);
+		logmsg(LOGMSG_USER, "%s line %d broadcasting REP_VOTE1 to all (committed-gen=0) gen=%d egen=%d\n",
+			__func__, __LINE__, rep->gen, egen);
 		__rep_send_vote(dbenv, &lsn, nsites, priority, tiebreaker, egen,
 			db_eid_broadcast, REP_VOTE1);
 	}
@@ -1143,14 +1149,14 @@ restart:
 #endif
 			if (use_committed_gen) {
 				logmsg(LOGMSG_USER, "%s line %d sending REP_GEN_VOTE2 to %s "
-						"with committed-gen=%d egen=%d\n", __func__, __LINE__,
-                        send_vote, committed_gen, egen);
+						"with committed-gen=%d gen=%d egen=%d\n", __func__, __LINE__,
+                        send_vote, committed_gen, rep->gen, egen);
 				__rep_send_gen_vote(dbenv, NULL, 0, 0, 0, egen,
 					committed_gen, send_vote, REP_GEN_VOTE2);
 			} else {
 				logmsg(LOGMSG_USER, "%s line %d sending REP_VOTE2 to %s "
-						"(committed-gen=0) egen=%d\n", __func__, __LINE__,
-                        send_vote, egen);
+						"(committed-gen=0) gen=%d egen=%d\n", __func__, __LINE__,
+                        send_vote, rep->gen, egen);
 				__rep_send_vote(dbenv, NULL, 0, 0, 0, egen,
 					send_vote, REP_VOTE2);
 			}
@@ -1183,7 +1189,6 @@ phase2:
 			    done, rep->votes, rep->nsites);
 #endif
 		if (send_vote == rep->eid && done) {
-            // I think this is wrong ..
             logmsg(LOGMSG_USER, "%s line %d elected master %s current-egen "
                     "%d\n", __func__, __LINE__, rep->eid, rep->egen);
 			ret = 0;

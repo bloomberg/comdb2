@@ -480,7 +480,7 @@ static void *apply_thread(void *arg)
         pthread_mutex_lock(&rep_queue_lock);
         pthread_mutex_lock(&rep_candidate_lock);
 
-        while (!IN_ELECTION_TALLY(rep) && !bdb_the_lock_desired() && 
+        while (!IN_ELECTION_TALLY_WAITSTART(rep) && !bdb_the_lock_desired() && 
                 (max_dequeue-- > 0) && (q = listc_rtl(&log_queue))) {
             pthread_cond_broadcast(&release_cond);
             if (q->rp->rectype == REP_LOG_MORE) {
@@ -598,7 +598,7 @@ static void *apply_thread(void *arg)
             pthread_mutex_lock(&rep_candidate_lock);
         }
 
-        int in_election = IN_ELECTION_TALLY(rep);
+        int in_election = IN_ELECTION_TALLY_WAITSTART(rep);
         pthread_mutex_unlock(&rep_candidate_lock);
 
         if (in_election) {
@@ -791,7 +791,7 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
         static int lastpr = 0;
         struct timespec ts;
 
-        if (IN_ELECTION_TALLY(rep)) {
+        if (IN_ELECTION_TALLY_WAITSTART(rep)) {
             pthread_mutex_unlock(&rep_queue_lock);
             if (gbl_verbose_fills) {
                 logmsg(LOGMSG_USER, "%s line %d: dropping logput on election\n",
@@ -1155,7 +1155,10 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 				__db_err(dbenv, "Updating gen from %lu to %lu",
 				    (u_long)gen, (u_long)rp->gen);
 #endif
-			gen = rep->gen = rp->gen;
+            logmsg(LOGMSG_USER, "%s line %d setting rep->gen to %d for rectype "
+                    "%d\n", __func__, __LINE__, rp->gen, rp->rectype);
+            __rep_set_gen(dbenv, __func__, __LINE__, rp->gen);
+			gen = rp->gen;
 			if (rep->egen <= gen)
 				rep->egen = rep->gen + 1;
 #ifdef DIAGNOSTIC
@@ -2170,24 +2173,6 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		goto errlock;
 	case REP_VOTE1:
 	case REP_GEN_VOTE1:
-		if (F_ISSET(rep, REP_F_MASTER)) {
-#ifdef DIAGNOSTIC
-			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
-				__db_err(dbenv, "Master received vote");
-#endif
-			R_LOCK(dbenv, &dblp->reginfo);
-			lsn = lp->lsn;
-			R_UNLOCK(dbenv, &dblp->reginfo);
-            if (gbl_verbose_master_req) {
-                logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
-                        __func__, __LINE__);
-            }
-			(void)__rep_send_message(dbenv,
-			    *eidp, REP_NEWMASTER, &lsn, NULL, 0, NULL);
-			fromline = __LINE__;
-			goto errlock;
-		}
-
 		if (rp->rectype == REP_VOTE1) {
 			vi = (REP_VOTE_INFO *) rec->data;
 			if (LOG_SWAPPED())
@@ -2350,14 +2335,15 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			/* Vote for someone else. */
 			if (dbenv->attr.elect_highest_committed_gen) {
 				logmsg(LOGMSG_USER, "%s line %d sending REP_GEN_VOTE2 to %s "
-						"with committed-gen=%d egen=%d\n",
-						__func__, __LINE__, master, committed_gen, egen);
+						"with committed-gen=%d gen=%d egen=%d\n",
+						__func__, __LINE__, master, committed_gen, rep->gen,
+                        egen);
 				__rep_send_gen_vote(dbenv, NULL, 0, 0, 0, egen,
 					committed_gen, master, REP_VOTE2);
 			} else {
 				logmsg(LOGMSG_USER, "%s line %d sending REP_VOTE2 to %s "
-						"(committed-gen=0) egen=%d\n",
-						__func__, __LINE__, master, egen);
+						"(committed-gen=0) gen=%d egen=%d\n",
+						__func__, __LINE__, master, rep->gen, egen);
 				__rep_send_vote(dbenv, NULL, 0, 0, 0, egen,
 					master, REP_VOTE2);
 			}
@@ -2370,26 +2356,6 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		break;
 	case REP_VOTE2:
 	case REP_GEN_VOTE2:
-#ifdef DIAGNOSTIC
-		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
-			__db_err(dbenv, "We received a vote%s",
-			F_ISSET(rep, REP_F_MASTER) ? " (master)" : "");
-#endif
-		if (F_ISSET(rep, REP_F_MASTER)) {
-			R_LOCK(dbenv, &dblp->reginfo);
-			lsn = lp->lsn;
-			R_UNLOCK(dbenv, &dblp->reginfo);
-			rep->stat.st_elections_won++;
-            if (gbl_verbose_master_req) {
-                logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
-                        __func__, __LINE__);
-            }
-			(void)__rep_send_message(dbenv,
-				*eidp, REP_NEWMASTER, &lsn, NULL, 0, NULL);
-			fromline = __LINE__;
-			goto errlock;
-		}
-
         pthread_mutex_lock(&rep_candidate_lock);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 

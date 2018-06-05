@@ -303,6 +303,28 @@ __rep_print_logmsg(dbenv, logdbt, lsnp)
 
 #endif
 /*
+ * __rep_set_gen --
+ *  Called as a utility function to see places where an instance's 
+ * replication generation can be changed.
+ *
+ * PUBLIC: void __rep_set_gen __P((DB_ENV *, const char *func, int line, int gen));
+ */
+void
+__rep_set_gen(dbenv, func, line, gen)
+    DB_ENV *dbenv;
+    const char *func;
+    int line;
+    int gen;
+{
+	DB_REP *db_rep;
+	REP *rep;
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+    logmsg(LOGMSG_USER, "%s line %d setting rep->gen to %d\n", func, line, gen);
+    rep->gen = gen;
+}
+
+/*
  * __rep_new_master --
  *	Called after a master election to sync back up with a new master.
  * It's possible that we already know of this new master in which case
@@ -341,7 +363,6 @@ __rep_new_master(dbenv, cntrl, eid)
     pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	__rep_elect_done(dbenv, rep, 0);
-    pthread_mutex_unlock(&rep_candidate_lock);
 
         /* This should never happen: we are calling new-master against a
            network message with a lower generation.  I believe this is the
@@ -350,7 +371,7 @@ __rep_new_master(dbenv, cntrl, eid)
            process_message. */
         logmsg(LOGMSG_USER, "%s: my-gen=%u ctl-gen=%u rep-master=%s new=%s\n",
                __func__, rep->gen, cntrl->gen, rep->master_id, eid);
-        if (rep->gen > cntrl->gen) {
+        if (rep->gen >= cntrl->gen) {
             logmsg(LOGMSG_USER,
                    "%s: rep-gen (%u) > cntrl->gen (%u): ignoring upgrade\n",
                    __func__, rep->gen, cntrl->gen);
@@ -358,9 +379,13 @@ __rep_new_master(dbenv, cntrl, eid)
             if (gbl_abort_on_incorrect_upgrade) abort();
 
             MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+            pthread_mutex_unlock(&rep_candidate_lock);
             rep->stat.st_msgs_badgen++;
             return 0;
         }
+
+        if (cntrl->gen <= rep->gen)
+            abort();
 
         change = rep->gen < cntrl->gen || rep->master_id != eid;
         if (change) {
@@ -369,7 +394,7 @@ __rep_new_master(dbenv, cntrl, eid)
                 __db_err(dbenv, "Updating gen from %lu to %lu from master %d",
                          (u_long)rep->gen, (u_long)cntrl->gen, eid);
 #endif
-		rep->gen = cntrl->gen;
+        __rep_set_gen(dbenv, __func__, __LINE__, cntrl->gen);
 		if (rep->egen <= rep->gen)
 			rep->egen = rep->gen + 1;
 #ifdef DIAGNOSTIC
@@ -381,6 +406,8 @@ __rep_new_master(dbenv, cntrl, eid)
 		rep->stat.st_master_changes++;
 		F_SET(rep, REP_F_NOARCHIVE | REP_F_RECOVER);
 	}
+	F_CLR(rep, REP_F_WAITSTART);
+	pthread_mutex_unlock(&rep_candidate_lock);
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 	dblp = dbenv->lg_handle;

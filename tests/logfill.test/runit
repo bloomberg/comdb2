@@ -159,7 +159,7 @@ function runtestwithoptions
     [[ "$debug" == 1 ]] && set -x
     findstopmachs
     createtables
-    insertforever 1000 6
+    insertforever 1000 2
     pauseandrestart 1 60
 #   BTDA testing is on a 3-node cluster- that only
 #   allows us to pause & restart 1 node 
