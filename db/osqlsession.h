@@ -28,25 +28,6 @@ typedef struct blocksql_tran blocksql_tran_t;
 typedef struct osql_uuid_req osql_uuid_req_t;
 
 
-/* messages */
-struct osql_req {
-    enum OSQL_REQ_TYPE type;
-    int rqlen;
-    int sqlqlen;
-    int padding;
-    unsigned long long rqid; /* fastseed */
-    char tzname[DB_MAX_TZNAMEDB];
-    unsigned char ntails;
-    unsigned char flags;
-    char pad[1];
-    char sqlq[1];
-};
-
-enum { OSQLCOMM_REQ_TYPE_LEN = 8 + 4 + 4 + 8 + DB_MAX_TZNAMEDB + 3 + 1 };
-BB_COMPILE_TIME_ASSERT(osqlcomm_req_type_len,
-                       sizeof(struct osql_req) == OSQLCOMM_REQ_TYPE_LEN);
-
-
 
 /* Magic rqid value that means "please use uuid instead" */
 #define OSQL_RQID_USE_UUID 1

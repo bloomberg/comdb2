@@ -278,6 +278,25 @@ static const uint8_t *osqlcomm_echo_type_get(osql_echo_t *p_echo_type,
     return p_buf;
 }
 
+/* messages */
+struct osql_req {
+    enum OSQL_REQ_TYPE type;
+    int rqlen;
+    int sqlqlen;
+    int padding;
+    unsigned long long rqid; /* fastseed */
+    char tzname[DB_MAX_TZNAMEDB];
+    unsigned char ntails;
+    unsigned char flags;
+    char pad[1];
+    char sqlq[1];
+};
+
+enum { OSQLCOMM_REQ_TYPE_LEN = 8 + 4 + 4 + 8 + DB_MAX_TZNAMEDB + 3 + 1 };
+BB_COMPILE_TIME_ASSERT(osqlcomm_req_type_len,
+                       sizeof(struct osql_req) == OSQLCOMM_REQ_TYPE_LEN);
+
+
 struct osql_req_tail {
     int type;
     int len;
@@ -4054,7 +4073,6 @@ int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
     return rc;
 }
 
-
 /**
  * Send INSREC op
  * It handles remote/local connectivity
@@ -4200,8 +4218,6 @@ int osql_send_dbq_consume(char *tohost, unsigned long long rqid, uuid_t uuid,
     }
     return offload_net_send(tohost, type, &rpl, sz, 0);
 }
-
-
 
 
 /**
