@@ -66,7 +66,6 @@ policy = policy_match
 
 subj="/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$CN/host=ssldbname*/UID=roborivers"
 
-set -x
 # Create server key
 openssl genrsa -out $CADIR/server.key 4096
 # Create signing request
