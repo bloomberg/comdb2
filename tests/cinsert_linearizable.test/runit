@@ -57,10 +57,10 @@ function checkforerrors
         exit 1
     fi
 
-    cnonce=$(egrep cnonce $outfile | egrep cdb2_ | awk '{print $8,$9}' | egrep -v "\[0]\[0\]" | sort -u | awk '{print $1}' | uniq -c | egrep -v "^      1" | egrep -v '2 -s' | wc -l)
+    cnonce=$(egrep cnonce $outfile | egrep "cdb2_run_statement_typed_int|cdb2_next_record_int" | egrep -v "XXX" | awk '{print $6,$7}' | egrep -v "\[0]\[0\]" | sort -u | awk '{print $1}' | uniq -c | egrep -v "^      1" | egrep -v '2 -s' | wc -l)
     if [[ "$cnonce" != 0 ]]; then
         echo "!!! CNONCE HAS MORE THAN ONE LSN !!!"
-        egrep cnonce $outfile | egrep cdb2_ | awk '{print $8,$9}' | egrep -v "\[0]\[0\]" | sort -u | awk '{print $1}' | uniq -c | egrep -v "^      1"  | egrep -v '2 -s'
+        egrep cnonce $outfile | egrep "cdb2_run_statement_typed_int|cdb2_next_record_int" | egrep -v "XXX" | awk '{print $6,$7}' | egrep -v "\[0]\[0\]" | sort -u | awk '{print $1}' | uniq -c | egrep -v "^      1"  | egrep -v '2 -s'
         exit 1
     fi
 
