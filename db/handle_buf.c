@@ -828,10 +828,11 @@ int handled_queue;
 
 int q_reqs_len(void) { return q_reqs.count; }
 
-int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
-              const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
-              char *fromtask, int qtype, void *data_hndl, int luxref,
-              unsigned long long rqid, void *p_sinfo, intptr_t curswap)
+static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
+                     uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
+                     char *frommach, int frompid, char *fromtask, int qtype,
+                     void *data_hndl, int luxref, unsigned long long rqid,
+                     void *p_sinfo, intptr_t curswap)
 {
     struct req_hdr hdr;
     uint64_t nowus;

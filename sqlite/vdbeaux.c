@@ -46,11 +46,11 @@ Vdbe *sqlite3VdbeCreate(Parse *pParse){
   p->updCols = 0;
   p->tbls = NULL;
   p->numTables = 0;
-  /* due to stat4, we also need tzname during prepare
+  /* due to stat4, we also need tzname, dtprec & now during prepare
      set this here before starting to build anything */
-  extern void  comdb2_set_sqlite_vdbe_tzname( Vdbe *p);
-  comdb2_set_sqlite_vdbe_tzname(p);  
-
+  extern void  comdb2_set_sqlite_vdbe_time_info( Vdbe *p);
+  comdb2_set_sqlite_vdbe_time_info(p);  
+  
   db->pVdbe = p;
   p->magic = VDBE_MAGIC_INIT;
   p->pParse = pParse;

@@ -1030,14 +1030,13 @@ typedef struct {
 typedef struct sorese_info {
     unsigned long long rqid; /* not null means active */
     uuid_t uuid;
-    char *host; /* sql machine, 0 is local */
+    const char *host; /* sql machine, 0 is local */
     SBUF2 *osqllog; /* used to track sorese requests */
     int type;   /* type, socksql or recom */
     int nops;   /* if no error, how many updated rows were performed */
     int rcout;  /* store here the block proc main error */
 
     int verify_retries; /* how many times we verify retried this one */
-    bool use_blkseq;    /* used to force a blkseq, for locally retried txn */
     bool osql_retry;    /* if this is osql transaction, once sql part
                           finished successful, we set this to one
                           to avoid repeating it if the transaction is reexecuted
@@ -1993,18 +1992,19 @@ int load_record(struct dbtable *db, void *buf);
 void load_data_done(struct dbtable *db);
 
 /*index routines*/
+int ix_isnullk(void *db_table, void *key, int ixnum);
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
-            unsigned long long genid, int rrn, void *dta, int dtalen);
+            unsigned long long genid, int rrn, void *dta, int dtalen, int isnull);
 int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
-                  unsigned long long genid, int rrn, void *dta, int dtalen);
+                  unsigned long long genid, int rrn, void *dta, int dtalen, int isnull);
 int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
                unsigned long long genid, unsigned long long oldgenid, void *dta,
-               int dtalen);
+               int dtalen, int isnull);
 
 int ix_delk(struct ireq *iq, void *trans, void *key, int ixnum, int rrn,
-            unsigned long long genid);
+            unsigned long long genid, int isnull);
 int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
-                  int rrn, unsigned long long genid);
+                  int rrn, unsigned long long genid, int isnull);
 
 enum {
     IX_FIND_IGNORE_INCOHERENT = 1

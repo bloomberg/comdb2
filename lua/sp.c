@@ -3263,7 +3263,7 @@ int db_csvcopy(Lua lua)
           b_val[pos-1] = strdup(csv.z);
           rc = sqlite3_bind_text(stmt, pos, b_val[pos-1], strlen(b_val[pos-1]), NULL);
           if (rc) {
-              rc = luaL_error(lua, sqlite3_errmsg(stmt));
+              rc = luaL_error(lua, sqlite3_errmsg(getdb(sp)));
               goto done;
           }
           pos++;
@@ -3283,7 +3283,7 @@ int db_csvcopy(Lua lua)
         line = NULL;
 
         if (rc != SQLITE_DONE)  {
-            rc = luaL_error(lua, sqlite3_errmsg(stmt));
+            rc = luaL_error(lua, sqlite3_errmsg(getdb(sp)));
             goto done;
         }
         read = getline(&line, &len, fp);

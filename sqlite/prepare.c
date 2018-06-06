@@ -749,11 +749,6 @@ static int sqlite3Prepare(
     assert(!(*ppStmt));
   }else{
     *ppStmt = (sqlite3_stmt*)sParse.pVdbe;
-
-    /* COMDB2 MODIFICATION */
-    /* set time when the request is prepared, see now() function */
-    if( sParse.pVdbe )
-      clock_gettime(CLOCK_REALTIME, &sParse.pVdbe->tspec);
   }
 
   if( zErrMsg ){

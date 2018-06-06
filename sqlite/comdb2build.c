@@ -1860,6 +1860,7 @@ enum {
     KEY_DUP = 1 << 0,
     KEY_DATACOPY = 1 << 1,
     KEY_DELETED = 1 << 2,
+    KEY_UNIQNULLS = 1 << 3
 };
 
 struct comdb2_key {
@@ -2388,6 +2389,10 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
             strbuf_append(csc2, "datacopy ");
         }
 
+        if ((key->flags & KEY_UNIQNULLS) != 0) {
+            strbuf_append(csc2, "uniqnulls ");
+        }
+
         strbuf_appendf(csc2, "\"%s\" = ", key->name);
 
         int added = 0;
@@ -2500,6 +2505,10 @@ static int gen_key_name(struct comdb2_key *key, const char *table, char *out,
     /* DUP */
     if (key->flags & KEY_DUP)
         SNPRINTF(buf, sizeof(buf), pos, "%s", "DUP")
+
+    /* UNIQNULLS */
+    if (key->flags & KEY_UNIQNULLS)
+        SNPRINTF(buf, sizeof(buf), pos, "%s", "UNIQNULLS")
 
     LISTC_FOR_EACH(&key->idx_col_list, idx_column, lnk)
     {
@@ -3022,6 +3031,9 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
         }
         if (schema->ix[i]->flags & SCHEMA_DATACOPY) {
             key->flags |= KEY_DATACOPY;
+        }
+        if (schema->ix[i]->flags & SCHEMA_UNIQNULLS) {
+            key->flags |= KEY_UNIQNULLS;
         }
 
         listc_init(&key->idx_col_list,
@@ -3809,6 +3821,8 @@ static void comdb2AddIndexInt(
         /* For CREATE INDEX, we need to check onError */
         if (onError != OE_Abort) {
             key->flags |= KEY_DUP;
+        } else {
+            key->flags |= KEY_UNIQNULLS;
         }
     }
 
