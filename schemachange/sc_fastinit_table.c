@@ -131,10 +131,21 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     return SC_OK;
 }
 
+void autoanalyze_after_fastinit(char *table);
+
 int finalize_fastinit_table(struct ireq *iq, struct schema_change_type *s,
                             tran_type *tran)
 {
     int rc = 0;
+    int is_sqlite =  strncmp((s->table), "sqlite_stat", sizeof("sqlite_stat") - 1) == 0;
+
     rc = finalize_alter_table(iq, s, tran);
+
+    if(!s->drop_table && !is_sqlite) {
+        //triger analyze of table -- when fastinit
+        char * tblname = strdup((char*) s->table); //will be freed in auto_analyze_table()
+        autoanalyze_after_fastinit(tblname);
+    }
+
     return rc;
 }
