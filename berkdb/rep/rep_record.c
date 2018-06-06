@@ -1145,8 +1145,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 		 * elections and communication. Otherwise, I need to hear about
 		 * a new master and sync up.
 		 */
-		if (rp->rectype == REP_ALIVE ||
-		    rp->rectype == REP_VOTE1 || rp->rectype == REP_VOTE2 ||
+		if (rp->rectype == REP_VOTE1 || rp->rectype == REP_VOTE2 ||
 		    rp->rectype == REP_GEN_VOTE1 ||
 		    rp->rectype == REP_GEN_VOTE2) {
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);

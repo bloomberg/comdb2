@@ -4781,7 +4781,7 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen, int *upgr
         */
         logmsg(LOGMSG_USER, "%s line %d calling rep_start as master with egen 0\n",
                 __func__, __LINE__);
-        rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_MASTER);
+        rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, newgen, DB_REP_MASTER);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "rep_start failed rc %d\n", rc);
             return -1;

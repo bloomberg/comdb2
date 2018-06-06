@@ -362,7 +362,6 @@ __rep_new_master(dbenv, cntrl, eid)
 	ret = 0;
     pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	__rep_elect_done(dbenv, rep, 0);
 
         /* This should never happen: we are calling new-master against a
            network message with a lower generation.  I believe this is the
@@ -387,6 +386,7 @@ __rep_new_master(dbenv, cntrl, eid)
         if (cntrl->gen <= rep->gen)
             abort();
 
+        __rep_elect_done(dbenv, rep, 0);
         change = rep->gen < cntrl->gen || rep->master_id != eid;
         if (change) {
 #ifdef DIAGNOSTIC
