@@ -2172,6 +2172,22 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		goto errlock;
 	case REP_VOTE1:
 	case REP_GEN_VOTE1:
+		if (F_ISSET(rep, REP_F_MASTER)) {
+#ifdef DIAGNOSTIC
+			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
+				__db_err(dbenv, "Master received vote");
+#endif
+			R_LOCK(dbenv, &dblp->reginfo);
+			lsn = lp->lsn;
+			R_UNLOCK(dbenv, &dblp->reginfo);
+            logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
+                    __func__, __LINE__);
+			(void)__rep_send_message(dbenv,
+			    *eidp, REP_NEWMASTER, &lsn, NULL, 0, NULL);
+			fromline = __LINE__;
+			goto errlock;
+		}
+
 		if (rp->rectype == REP_VOTE1) {
 			vi = (REP_VOTE_INFO *) rec->data;
 			if (LOG_SWAPPED())

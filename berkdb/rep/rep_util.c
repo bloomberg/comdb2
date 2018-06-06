@@ -370,7 +370,7 @@ __rep_new_master(dbenv, cntrl, eid)
            process_message. */
         logmsg(LOGMSG_USER, "%s: my-gen=%u ctl-gen=%u rep-master=%s new=%s\n",
                __func__, rep->gen, cntrl->gen, rep->master_id, eid);
-        if (rep->gen >= cntrl->gen) {
+        if (rep->gen > cntrl->gen) {
             logmsg(LOGMSG_USER,
                    "%s: rep-gen (%u) > cntrl->gen (%u): ignoring upgrade\n",
                    __func__, rep->gen, cntrl->gen);
@@ -383,7 +383,7 @@ __rep_new_master(dbenv, cntrl, eid)
             return 0;
         }
 
-        if (cntrl->gen <= rep->gen)
+        if (cntrl->gen < rep->gen)
             abort();
 
         __rep_elect_done(dbenv, rep, 0);
