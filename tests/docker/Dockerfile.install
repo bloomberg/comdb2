@@ -19,6 +19,7 @@ RUN apt-get update && \
     ncurses-dev \
     protobuf-c-compiler \
     tcl \
+    tcl-dev \
     uuid-dev \
     libz1 \
     liblz4-tool \
