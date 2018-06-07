@@ -92,6 +92,7 @@ static LISTC_T(struct thd) busy; /*busy thread.*/
 static int write_thd_count = 0;
 
 static int is_req_write(int opcode);
+extern __thread void *defered_index_tbl;
 
 int handle_buf_main(
     struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, const uint8_t *p_buf,
@@ -463,9 +464,6 @@ static void *thd_req(void *vthd)
     }
     thdinfo->uniquetag = 0;
     thdinfo->ct_id_key = 0LL;
-    thdinfo->ct_add_table = NULL;
-    thdinfo->ct_del_table = NULL;
-    thdinfo->ct_add_index = NULL;
 
     thdinfo->ct_add_table =
         (void *)create_constraint_table(&thdinfo->ct_id_key);
@@ -485,8 +483,7 @@ static void *thd_req(void *vthd)
                pthread_self());
         abort();
     }
-    thdinfo->ct_add_index =
-        (void *)create_constraint_index_table(&thdinfo->ct_id_key);
+    thdinfo->ct_add_index = (void *)create_constraint_index_table(NULL);
     if (thdinfo->ct_add_index == NULL) {
         logmsg(LOGMSG_FATAL,
                "**aborting: cannot allocate constraint add index table "
@@ -495,6 +492,9 @@ static void *thd_req(void *vthd)
         abort();
     }
     pthread_setspecific(unique_tag_key, thdinfo);
+
+    defered_index_tbl = (void *)create_defered_index_table(NULL);
+    assert(defered_index_tbl);
 
     /*printf("started handler %ld thd %p thd->id %ld\n", pthread_self(), thd,
      * thd->tid);*/
@@ -658,6 +658,7 @@ static void *thd_req(void *vthd)
                     delete_constraint_table(thdinfo->ct_add_table);
                     delete_constraint_table(thdinfo->ct_del_table);
                     delete_constraint_table(thdinfo->ct_add_index);
+                    delete_constraint_table(defered_index_tbl);
                     backend_thread_event(dbenv, COMDB2_THR_EVENT_DONE_RDWR);
                     return 0;
                 }
@@ -670,6 +671,7 @@ static void *thd_req(void *vthd)
         truncate_constraint_table(thdinfo->ct_add_table);
         truncate_constraint_table(thdinfo->ct_del_table);
         truncate_constraint_table(thdinfo->ct_add_index);
+        truncate_constraint_table(defered_index_tbl);
     } while (1);
 }
 

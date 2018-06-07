@@ -33,6 +33,8 @@
 #include "logmsg.h"
 #include "views.h"
 
+__thread void *defered_index_tbl = NULL;
+
 static void *get_constraint_table_cursor(void *table);
 
 static int close_constraint_table_cursor(void *cursor);
@@ -68,6 +70,182 @@ int has_cascading_reverse_constraints(struct dbtable *db)
 
     return 0;
 }
+typedef struct {
+    struct dbtable *usedb;
+    short idx;
+    char ixkey[MAXKEYLEN];
+    uint8_t type; //del needs to sort before adds, del: 0, add: 1
+    unsigned long long genid;
+} ctkey;
+
+
+//type: DEL = 0, ADD = 1
+int insert_defered_tbl(struct ireq *iq, void *od_dta, size_t od_len,
+                  const char *ondisktag, struct schema *ondisktagsc,
+                  unsigned long long genid, int type)
+{
+    void *cur = get_constraint_table_cursor(defered_index_tbl);
+    if (cur == NULL) {
+        logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
+        return -1;
+    }
+    //insert record by tbl,idx,ixkey, payload genid
+    ctkey ctk = {0};
+    ctk.usedb = iq->usedb;
+    ctk.type = type;
+    ctk.genid = genid;
+    
+    for(int i = 0; i < iq->usedb->nix; i++) {
+printf("AZ: inserting for index %d\n", i);
+        ctk.idx = i;
+        char *key = ctk.ixkey;
+        char *od_dta_tail = NULL;
+        int od_len_tail;
+        int rc;
+        char mangled_key[MAXKEYLEN];
+        int err = 0;
+        memset(key, 0, MAXKEYLEN); 
+
+        if (iq->idxInsert)
+                rc = create_key_from_ireq(iq, i, 0, &od_dta_tail,
+                                          &od_len_tail, mangled_key, od_dta,
+                                          od_len, key);
+        else {
+            char ixtag[MAXTAGLEN];
+            snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, i);
+            rc = create_key_from_ondisk_sch_blobs(
+                iq->usedb, ondisktagsc, i, &od_dta_tail, &od_len_tail,
+                mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL,
+                NULL, 0, iq->tzname);
+        }
+
+        //if not datacopy, no need to save od_dta_tail
+        rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ctk, sizeof(ctk),
+            od_dta_tail, od_len_tail, &err);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
+                    rc);
+            return rc;
+        }
+    }
+    return 0;
+}
+
+int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
+                     int *blkpos, int *ixout, int *errout)
+{
+    void *cur = get_constraint_table_cursor(defered_index_tbl);
+    if (cur == NULL) {
+        if (iq->debug)
+            reqprintf(iq, "%p:VERKYCNSTRT CANNOT GET ADD LIST CURSOR", trans);
+        reqerrstr(iq, COMDB2_CSTRT_RC_INVL_CURSOR,
+                  "verify key constraint cannot get add list cursor");
+        *errout = OP_FAILED_INTERNAL;
+        return ERR_INTERNAL;
+    }
+
+    int err;
+    int rc = bdb_temp_table_first(thedb->bdb_env, cur, &err);
+    if (rc != 0) {
+        close_constraint_table_cursor(cur);
+        //free_cached_delayed_indexes(iq);
+        if (rc == IX_EMPTY) {
+            if (iq->debug)
+                reqprintf(iq, "%p:VERKYCNSTRT FOUND NO KEYS TO ADD", trans);
+            return 0;
+        }
+        if (iq->debug)
+            reqprintf(iq, "%p:VERKYCNSTRT CANNOT GET ADD LIST RECORD", trans);
+        reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC,
+                  "verify key constraint: cannot get add list record");
+        *errout = OP_FAILED_INTERNAL;
+        return ERR_INTERNAL;
+    }
+    while (rc == 0) {
+        ctkey *ctk = (ctkey *)bdb_temp_table_key(cur);
+printf("AZ: working with index %d\n", ctk->idx);
+        void *od_dta_tail = bdb_temp_table_data(cur);
+        int od_tail_len = bdb_temp_table_datasize(cur);
+        int addrrn = 2;
+
+
+        if (ctk->type == 1) {
+            /* add the key */
+            rc = ix_addk(iq, trans, ctk->ixkey, ctk->idx, ctk->genid, addrrn, od_dta_tail,
+                    od_tail_len, ix_isnullk(iq->usedb, ctk->ixkey, ctk->idx));
+
+            if (iq->debug) {
+                reqprintf(iq, "%p:ADDKYCNSTRT  TBL %s IX %d RRN %d KEY ", trans,
+                        iq->usedb->tablename, ctk->idx, addrrn);
+                int ixkeylen = getkeysize(iq->usedb, ctk->idx);
+                reqdumphex(iq, ctk->ixkey, ixkeylen);
+                reqmoref(iq, " RC %d", rc);
+            }
+
+            if (rc == IX_DUP) {
+                reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint "
+                        "duplicate key '%s' on "
+                        "table '%s' index %d",
+                        get_keynm_from_db_idx(iq->usedb, ctk->idx),
+                        iq->usedb->tablename, ctk->idx);
+
+                //*blkpos = curop->blkpos;
+                *errout = OP_FAILED_UNIQ;
+                *ixout = ctk->idx;
+                close_constraint_table_cursor(cur);
+                //free_cached_delayed_indexes(iq);
+
+                return rc;
+            } else if (rc != 0) {
+                reqerrstr(iq, COMDB2_CSTRT_RC_INTL_ERR,
+                        "add key berkley error for key '%s' on index %d",
+                        get_keynm_from_db_idx(iq->usedb, ctk->idx), ctk->idx);
+
+                //*blkpos = curop->blkpos;
+
+                *errout = OP_FAILED_INTERNAL;
+                *ixout = ctk->idx;
+                close_constraint_table_cursor(cur);
+                //free_cached_delayed_indexes(iq);
+
+                if (ERR_INTERNAL == rc) {
+                    /* Exit & have the cluster elect another master */
+                    if (gbl_exit_on_internal_error) {
+                        exit(1);
+                    }
+
+                    rc = ERR_NOMASTER;
+                }
+                return rc;
+            }
+        }
+        else {
+            rc = ix_delk(iq, trans, ctk->ixkey, ctk->idx, addrrn, ctk->genid, ix_isnullk(iq->usedb, ctk->ixkey, ctk->idx));
+            if (iq->debug) {
+                reqprintf(iq, "ix_delk IX %d KEY ", ctk->idx);
+                reqdumphex(iq, ctk->ixkey, getkeysize(iq->usedb, ctk->idx));
+                reqmoref(iq, " RC %d", rc);
+            }
+            if (rc != 0) {
+                if (rc == IX_NOTFND) {
+                    reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+                    reqerrstr(iq, COMDB2_DEL_RC_INVL_KEY,
+                            "key not found on index %d", ctk->idx);
+                }
+                rc = OP_FAILED_INTERNAL + ERR_DEL_KEY;
+                return rc;
+            }
+
+        }
+
+        /* get next record from table */
+        rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
+    }
+
+    close_constraint_table_cursor(cur);
+    return 0;
+}
+
 
 static int insert_add_index(struct ireq *iq, unsigned long long genid)
 {
@@ -204,11 +382,11 @@ static inline void free_cached_delayed_indexes(struct ireq *iq)
     }
 }
 
-int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *usedb,
-                  const uint8_t *p_buf_req_start, const uint8_t *p_buf_req_end,
+int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start, const uint8_t *p_buf_req_end,
                   int optype, int rrn, int ixnum, unsigned long long genid,
                   unsigned long long ins_keys, int blkpos)
 {
+    block_state_t *blkstate = iq->blkstate;
     void *cur = NULL;
     int type = CTE_ADD, rc = 0;
     char key[MAXKEYLEN];
@@ -237,7 +415,7 @@ int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *used
     cte_record.ctop.fwdct.ins_keys = ins_keys;
     cte_record.ctop.fwdct.p_buf_req_start = p_buf_req_start;
     cte_record.ctop.fwdct.p_buf_req_end = p_buf_req_end;
-    cte_record.ctop.fwdct.usedb = usedb;
+    cte_record.ctop.fwdct.usedb = iq->usedb;
     cte_record.ctop.fwdct.blkpos = blkpos;
     cte_record.ctop.fwdct.ixnum = ixnum;
     cte_record.ctop.fwdct.rrn = rrn;
@@ -246,6 +424,7 @@ int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *used
     rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
                                sizeof(int) + sizeof(long long), &cte_record,
                                sizeof(cte), &err);
+//printf("AZ: adding once here rc=%d\n", rc);
     close_constraint_table_cursor(cur);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "insert_add_op: bdb_temp_table_insert rc = %d\n", rc);
@@ -1029,7 +1208,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
     assert(iq->idxInsert == NULL);
     do {
         cte *ctrq = (cte *)bdb_temp_table_data(cur);
-
         /* do something */
         if (ctrq == NULL) {
             if (iq->debug)
@@ -1061,6 +1239,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
         genid = curop->genid;
         ins_keys = curop->ins_keys;
 
+//printf("AZ: usedb=%d, ixnum=%d, genid=%llx\n",curop->usedb, curop->ixnum, curop->genid);
         if (addrrn == -1) {
             if (iq->debug)
                 reqprintf(iq, "%p:ADDKYCNSTRT (AFPRI) FAILED, NO RRN\n", trans);
@@ -1244,7 +1423,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                 logmsg(LOGMSG_ERROR, "%s failed to cache delayed indexes\n",
                         __func__);
                 *errout = OP_FAILED_INTERNAL;
-                close_constraint_table_cursor(cur);
+                close_constraint_table_cursor(cur); //AZ: this is wrong!?
                 return ERR_INTERNAL;
             }
             cached_index_genid = genid;
@@ -1707,6 +1886,7 @@ int clear_constraints_tables(void)
     truncate_constraint_table(thdinfo->ct_add_table);
     truncate_constraint_table(thdinfo->ct_del_table);
     truncate_constraint_table(thdinfo->ct_add_index);
+    truncate_constraint_table(defered_index_tbl);
 
     return 0;
 }
@@ -1814,9 +1994,7 @@ static void *get_constraint_table_cursor(void *table)
     int err = 0;
     cur = (struct temp_cursor *)bdb_temp_table_cursor(thedb->bdb_env, table,
                                                       NULL, &err);
-    if (cur == NULL)
-        return NULL;
-    return (void *)cur;
+    return cur;
 }
 
 static int close_constraint_table_cursor(void *cursor)
@@ -1839,14 +2017,14 @@ static char *get_temp_ct_dbname(long long *ctid)
     return s;
 }
 
-static int is_delete_op(int op)
+static inline int is_delete_op(int op)
 {
     if (op == BLOCK2_DELKL || op == BLOCK2_DELDTA || op == BLOCK_DELSC)
         return 1;
     return 0;
 }
 
-static int is_update_op(int op)
+static inline int is_update_op(int op)
 {
     if (op == BLOCK2_UPDKL || op == BLOCK2_UPDKL_POS || op == BLOCK2_UPDATE ||
         op == BLOCK_UPVRRN)
@@ -1910,7 +2088,7 @@ static inline int constraint_key_check(struct schema *fky, struct schema *bky)
     return 0;
 }
 
-static struct dbtable *get_newer_db(struct dbtable *db, struct dbtable *new_db)
+static inline struct dbtable *get_newer_db(struct dbtable *db, struct dbtable *new_db)
 {
     if (new_db && strcasecmp(db->tablename, new_db->tablename) == 0) {
         return new_db;
@@ -2105,3 +2283,19 @@ int populate_reverse_constraints(struct dbtable *db)
 
     return n_errors;
 }
+
+
+void *create_defered_index_table(long long *ctid)
+{
+    struct temp_table *newtbl = NULL;
+    int bdberr = 0;
+    newtbl =
+        (struct temp_table *)bdb_temp_table_create(thedb->bdb_env, &bdberr);
+    if (newtbl == NULL || bdberr != 0) {
+        logmsg(LOGMSG_ERROR, "failed to create temp table err %d\n", bdberr);
+        return NULL;
+    }
+    //bdb_temp_table_set_cmp_func(newtbl, constraint_index_key_cmp);
+    return newtbl;
+}
+

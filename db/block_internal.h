@@ -791,8 +791,7 @@ struct lockset_req {
 
 int has_cascading_reverse_constraints(struct dbtable *tbl);
 
-int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *usedb,
-                  const uint8_t *p_buf_req_start, const uint8_t *p_buf_req_end,
+int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start, const uint8_t *p_buf_req_end,
                   int optype, int rrn, int ixnum, unsigned long long genid,
                   unsigned long long ins_keys, int blkpos);
 
@@ -800,6 +799,8 @@ int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb, struct dbtable
                   int optype, int blkpos, void *inkey, void *innewkey,
                   int keylen, int sixnum, int dixnum, int nonewrefs, int flags);
 
+int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
+                     int *blkpos, int *ixout, int *errout);
 int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                      int *blkpos, int *ixout, int *errout);
 void *create_constraint_table(long long *ctid);
@@ -807,6 +808,7 @@ void *create_constraint_index_table(long long *ctid);
 int delete_constraint_table(void *table);
 int clear_constraints_tables(void);
 int truncate_constraint_table(void *table);
+void *create_defered_index_table(long long *ctid);
 
 int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                            struct ireq *iq, block_state_t *blkstate,

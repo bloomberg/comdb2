@@ -93,6 +93,7 @@ extern int n_commit_time;
 extern pthread_mutex_t commit_stat_lk;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
+extern int gbl_reorder_idx_writes;
 
 #if 0
 #define BACKOUT                                                                \
@@ -4755,9 +4756,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     ixout = -1;
     errout = 0;
 
-    if (delayed || gbl_goslow) {
+    if (delayed || gbl_goslow || gbl_reorder_idx_writes) {
         int verror = 0;
-        rc = delayed_key_adds(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
+        if (gbl_reorder_idx_writes)
+            rc = process_defered_table(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
+        else
+            rc = delayed_key_adds(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
         if (rc != 0) {
             constraint_violation = 1;
             opnum = blkpos; /* so we report the failed blockop accurately */
