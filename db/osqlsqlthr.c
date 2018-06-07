@@ -976,11 +976,17 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
 /********************** INTERNALS
  * ***********************************************/
 
+int gbl_osql_random_restart = 0;
+
 static int should_restart(struct sqlclntstate *clnt, int rc)
 {
     if (rc == OSQL_SEND_ERROR_WRONGMASTER &&
         (clnt->dbtran.mode == TRANLEVEL_SOSQL ||
          clnt->dbtran.mode == TRANLEVEL_RECOM)) {
+        return 1;
+    }
+
+    if (gbl_osql_random_restart && (rand() % 100) == 0) {
         return 1;
     }
 
