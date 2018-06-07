@@ -2817,6 +2817,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         if (skip_response(clnt)) {
             if (clnt->send_one_row) {
                 clnt->send_one_row = 0;
+                clnt->skip_feature = 1;
                 write_response(clnt, RESPONSE_ROW_LAST_DUMMY, 0, 0);
             }
         } else {
