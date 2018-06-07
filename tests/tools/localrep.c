@@ -322,7 +322,7 @@ int bind_value(cdb2_hndl_tp *db, void *opsp, int opsz, comdb2_field_type *fld, v
             case COMDB2_CSTR:
             case COMDB2_PSTR:
                 addr = ops + fld->off;
-                len = fld->len;
+                len = strlen(addr); //fld->len;
                 type = CDB2_CSTRING;
                 break;
 
