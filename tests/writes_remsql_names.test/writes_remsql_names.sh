@@ -1,4 +1,4 @@
-#!/bin/ksh93
+#!/usr/bin/env bash
 
 # Remote cursor moves testcase for comdb2
 ################################################################################
@@ -122,7 +122,6 @@ if [[ -z $opt || "$opt" == "5" ]]; then
    run_test deletes.req output.5.log $output t1 id
 fi
 
-print "Testcase passed."
+echo "Testcase passed."
 
-return $result
-
+exit $result
