@@ -1796,6 +1796,7 @@ static int cdb2portmux_get(const char *remote_host, const char *app,
             fprintf(stderr, "sbuf2open returned 0\n");
         return -1;
     }
+    cdb2buf_settimeout(ss, CDB2_CONNECT_TIMEOUT, CDB2_CONNECT_TIMEOUT);
     sbuf2printf(ss, "get %s\n", name);
     sbuf2flush(ss);
     res[0] = '\0';
