@@ -765,6 +765,7 @@ retry:
                 /* lets check to see if a master swing happened and we need to
                  * retry */
                 if (osql->xerr.errval == ERR_NOMASTER ||
+                    osql->xerr.errval == ERR_NOT_DURABLE ||
                     osql->xerr.errval == 999) {
                     if (bdb_attr_get(thedb->bdb_attr,
                                      BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
