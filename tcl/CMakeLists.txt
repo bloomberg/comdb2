@@ -20,4 +20,7 @@ add_dependencies(tclcdb2 mem cdb2api)
 target_link_libraries(tclcdb2
   ${PROJECT_SOURCE_DIR}/build/cdb2api/libcdb2api.a
   ${TCL_LIBRARY_FILE}
+  ${OPENSSL_LIBRARIES}
+  ${PROTOBUF_C_LIBRARY}
+  ${UNWIND_LIBRARY}
 )
