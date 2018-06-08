@@ -205,11 +205,14 @@ static struct NameAndValue aColumnTypes[] = {
 };
 
 enum tcl_cdb2_element_counts {
-    CDB2_DATETIME_ELEMENTS     = 22,
-    CDB2_INTERVALYM_ELEMENTS   =  6,
-    CDB2_INTERVALDS_ELEMENTS   = 12,
-    CDB2_DATETIMEUS_ELEMENTS   = 22,
-    CDB2_INTERVALDSUS_ELEMENTS = 12
+    CDB2_DATETIME_MIN_ELEMENTS   = 20,
+    CDB2_DATETIME_MAX_ELEMENTS   = 22,
+    CDB2_INTERVALYM_ELEMENTS     =  6,
+    CDB2_INTERVALDS_ELEMENTS     = 12,
+    CDB2_DATETIMEUS_MIN_ELEMENTS = 20,
+    CDB2_DATETIMEUS_MAX_ELEMENTS = 22,
+    CDB2_DATETIMEUS_ELEMENTS     = 22,
+    CDB2_INTERVALDSUS_ELEMENTS   = 12
 };
 
 TCL_DECLARE_MUTEX(packageMutex);
@@ -476,6 +479,9 @@ static int ProcessStructFieldsFromElements(
 	const char *format;
 	size_t offset;
 
+	if (index >= elemCount)
+	    break;
+
 	assert(index < elemCount);
 	elemObj = elemPtrs[index];
 	assert(elemObj != NULL);
@@ -721,9 +727,10 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_datetime_t));
 	    pDateTimeValue = (cdb2_client_datetime_t *)valuePtr;
-	    assert(COUNT_OF(fields) == CDB2_DATETIME_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_DATETIME_MAX_ELEMENTS);
 
-	    if (elemCount != CDB2_DATETIME_ELEMENTS) {
+	    if ((elemCount < CDB2_DATETIME_MIN_ELEMENTS) ||
+		    (elemCount > CDB2_DATETIME_MAX_ELEMENTS)) {
 		Tcl_AppendResult(interp,
 		    "wrong number of elements for datetime\n", NULL);
 
@@ -836,9 +843,10 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_datetimeus_t));
 	    pDateTimeUsValue = (cdb2_client_datetimeus_t *)valuePtr;
-	    assert(COUNT_OF(fields) == CDB2_DATETIMEUS_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_DATETIMEUS_MAX_ELEMENTS);
 
-	    if (elemCount != CDB2_DATETIMEUS_ELEMENTS) {
+	    if ((elemCount < CDB2_DATETIMEUS_MIN_ELEMENTS) ||
+		    (elemCount > CDB2_DATETIMEUS_MAX_ELEMENTS)) {
 		Tcl_AppendResult(interp,
 		    "wrong number of elements for datetimeus\n", NULL);
 
