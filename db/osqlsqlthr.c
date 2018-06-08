@@ -533,6 +533,7 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
     int retries = 0;
     int sentops = 0;
     int bdberr = 0;
+    osqlstate_t *osql = &clnt->osql;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
 
     retries = 0;
@@ -578,6 +579,12 @@ again:
 
             return SQLITE_BUSY;
         }
+    }
+
+    if (osql->tablename) {
+        free(osql->tablename);
+        osql->tablename = NULL;
+        osql->tablenamelen = 0;
     }
 
     if (!keep_session) {

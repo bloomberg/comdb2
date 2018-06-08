@@ -3771,15 +3771,26 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
     bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
                                       &durable_gen);
 
-    if (latest_gen < durable_gen)
+    if (latest_gen < durable_gen) {
+        logmsg(LOGMSG_INFO, "%s line %d returning 0 because latest_gen %d < "
+                "durable_gen %d\n", __func__, __LINE__, latest_gen, durable_gen);
         return 0;
+    }
 
     if ((latest_gen == durable_gen) &&
-        log_compare(&durable_lsn, &latest_lsn) < 0)
+        log_compare(&durable_lsn, &latest_lsn) < 0) {
+        logmsg(LOGMSG_INFO, "%s line %d returning 0 because durable_lsn "
+                "[%d][%d] < latest_lsn [%d][%d]\n", __func__, __LINE__, 
+                durable_lsn.file, durable_lsn.offset, latest_lsn.file,
+                latest_lsn.offset);
         return 0;
+    }
 
-    if (gbl_durable_replay_test && (0 == (rand() % 20)))
+    if (gbl_durable_replay_test && (0 == (rand() % 20))) {
+        logmsg(LOGMSG_INFO, "%s line %d returning 0 for durable_replay_test\n",
+                __func__, __LINE__);
         return 0;
+    }
 
     return 1;
 }
