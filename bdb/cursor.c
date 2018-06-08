@@ -3761,11 +3761,22 @@ done:
 int bdb_latest_commit_is_durable(void *in_bdb_state)
 {
     extern int gbl_durable_replay_test;
+    const char *connlist[REPMAX];
     bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    int cnt;
     uint32_t durable_gen;
     uint32_t latest_gen;
     DB_LSN durable_lsn;
     DB_LSN latest_lsn;
+
+    /* Single-node is always durable- not sure if/why we need this yet */
+    /*
+    if ((cnt = net_get_sanctioned_replicants(bdb_state->repinfo->netinfo, 
+        REPMAX, connlist)) == 0) {
+        logmsg(LOGMSG_INFO, "%s line %d returning 1: single node durable\n",
+                __func__, __LINE__);
+    }
+    */
 
     bdb_latest_commit(bdb_state, &latest_lsn, &latest_gen);
     bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
@@ -3791,6 +3802,9 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
                 __func__, __LINE__);
         return 0;
     }
+
+    logmsg(LOGMSG_INFO, "%s line %d returning 1 (is-durable)\n", __func__,
+            __LINE__);
 
     return 1;
 }
@@ -4529,8 +4543,9 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
             return rc;
 
 #ifdef MERGE_DEBUG
-        logmsg(LOGMSG_DEBUG, "%d %s:%d reordering rc=%d %llx\n", pthread_self(),
-               __FILE__, __LINE__, rc, *(unsigned long long *)key);
+        logmsg(LOGMSG_DEBUG, "%d %s:%d reordering rc=%d %llx\n", 
+                (int)pthread_self(), __FILE__, __LINE__, rc,
+                *(unsigned long long *)key);
 #endif
 
         /* if we have failed to reposition the cursor and this is a relative

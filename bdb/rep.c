@@ -3351,8 +3351,7 @@ done_wait:
             }
         }
 
-        // TODO : put trace on switch
-        if (bdb_state->attr->wait_for_seqnum_trace && ((now = time(NULL)) > lastpr)) {
+        if (bdb_state->attr->wait_for_seqnum_trace) {
             DB_LSN calc_lsn;
             uint32_t calc_gen;
             calculate_durable_lsn(bdb_state, &calc_lsn, &calc_gen, 1);
@@ -3360,7 +3359,7 @@ done_wait:
              * seqnums can race against each other.  If we got a majority of 
              * these during the commit we are okay */
             if (was_durable && log_compare(&calc_lsn, &seqnum->lsn) < 0) {
-                logmsg(LOGMSG_ERROR,
+                logmsg(LOGMSG_USER,
                        "ERROR: calculate_durable_lsn trails seqnum, "
                        "but this is durable (%d:%d vs %d:%d)?\n",
                        calc_lsn.file, calc_lsn.offset, seqnum->lsn.file,

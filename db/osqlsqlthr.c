@@ -153,9 +153,8 @@ int osql_delidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
                     __FILE__, __LINE__, __func__, rc);
             return rc;
         }
-        return osql_save_index(pCur, thd, is_update, 1);
-    } else
-        return osql_save_index(pCur, thd, is_update, 1);
+    } 
+    return osql_save_index(pCur, thd, is_update, 1);
 }
 
 /**
@@ -183,9 +182,8 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
                     __FILE__, __LINE__, __func__, rc);
             return rc;
         }
-        return osql_save_delrec(pCur, thd);
-    } else
-        return osql_save_delrec(pCur, thd);
+    }
+    return osql_save_delrec(pCur, thd);
 }
 
 /**
@@ -219,13 +217,12 @@ int osql_insidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
         rc = osql_send_insidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
-                    "%s:%d %s - failed to cache socksql row rc=%d\n",
+                    "%s:%d %s - failed to send socksql row rc=%d\n",
                     __FILE__, __LINE__, __func__, rc);
             return rc;
         }
-        return osql_save_index(pCur, thd, is_update, 0);
-    } else
-        return osql_save_index(pCur, thd, is_update, 0);
+    } 
+    return osql_save_index(pCur, thd, is_update, 0);
 }
 
 /**
@@ -259,9 +256,8 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                     __FILE__, __LINE__, __func__, rc);
             return rc;
         }
-        return osql_save_insrec(pCur, thd, pData, nData);
-    } else
-        return osql_save_insrec(pCur, thd, pData, nData);
+    }
+    return osql_save_insrec(pCur, thd, pData, nData);
 }
 
 /**
@@ -307,10 +303,8 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
             return rc;
         }
 
-        return osql_save_updrec(pCur, thd, pData, nData);
-
-    } else
-        return osql_save_updrec(pCur, thd, pData, nData);
+    }
+    return osql_save_updrec(pCur, thd, pData, nData);
 }
 
 /**
@@ -1304,16 +1298,16 @@ static int osql_updcols(struct BtCursor *pCur, struct sql_thread *thd,
     int rc = 0;
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_save_updcols(pCur, thd, updCols);
+        rc = osql_send_updcols_logic(pCur, thd, updCols, NET_OSQL_SOCK_RPL);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
-                    "%s:%d %s - failed to cache socksql row rc=%d\n",
+                    "%s:%d %s - failed to send socksql row rc=%d\n",
                     __FILE__, __LINE__, __func__, rc);
+            return rc;
         }
 
-        return osql_send_updcols_logic(pCur, thd, updCols, NET_OSQL_SOCK_RPL);
-    } else
-        return osql_save_updcols(pCur, thd, updCols);
+    } 
+    return osql_save_updcols(pCur, thd, updCols);
 }
 
 static int osql_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
@@ -1327,11 +1321,11 @@ static int osql_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
             logmsg(LOGMSG_ERROR, 
                     "%s:%d %s - failed to cache socksql row rc=%d\n",
                     __FILE__, __LINE__, __func__, rc);
+            return rc;
         }
-        return osql_save_qblobs(pCur, thd, blobs, maxblobs, is_update);
 
-    } else
-        return osql_save_qblobs(pCur, thd, blobs, maxblobs, is_update);
+    }
+    return osql_save_qblobs(pCur, thd, blobs, maxblobs, is_update);
 }
 
 static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
@@ -1556,16 +1550,15 @@ int osql_record_genid(struct BtCursor *pCur, struct sql_thread *thd,
     }
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        int rc = osql_save_recordgenid(pCur, thd, genid);
+        int rc = osql_send_recordgenid_logic(pCur, thd, genid, NET_OSQL_SOCK_RPL);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
-                    "%s:%d %s - failed to cache socksql row rc=%d\n",
+                    "%s:%d %s - failed to send socksql row rc=%d\n",
                     __FILE__, __LINE__, __func__, rc);
+            return rc;
         }
-
-        return osql_send_recordgenid_logic(pCur, thd, genid, NET_OSQL_SOCK_RPL);
-    } else
-        return osql_save_recordgenid(pCur, thd, genid);
+    }
+    return osql_save_recordgenid(pCur, thd, genid);
 }
 
 static int osql_send_recordgenid_logic(struct BtCursor *pCur,
