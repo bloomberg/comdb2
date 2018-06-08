@@ -14,7 +14,7 @@
 
 static loglvl level = LOGMSG_WARN;
 static int do_syslog = 0;
-static int do_time = 1;
+static int do_time = 0;
 static int ended_with_newline = 1;
 
 /* from io_override.c */
