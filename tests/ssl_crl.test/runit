@@ -20,8 +20,8 @@ fi
 # Client should reject as the server certificate has been revoked.
 cp $DBDIR/comdb2db.cfg $DBDIR/query2.cfg
 echo "comdb2_config:ssl_crl=${TESTDIR}/client.crl" >>$DBDIR/query2.cfg
-cdb2sql --cdb2cfg $DBDIR/query2.cfg $dbnm default 'SELECT "REVOKED CERT"' 2>&1
-if [ $? = 0 ]; then
+cdb2sql --cdb2cfg $DBDIR/query2.cfg $dbnm default 'SELECT "REVOKED CERT"' 2>&1 | grep 'certificate verify failed'
+if [ $? != 0 ]; then
   echo "Client failed to invalidate a revoked cert." >&2
   exit 1
 fi

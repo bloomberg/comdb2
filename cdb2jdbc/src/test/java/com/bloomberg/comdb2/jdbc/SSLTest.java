@@ -116,6 +116,7 @@ public class SSLTest {
                         "key_store_password=%s",
                         cluster, db, certpath, certpass, certpath, certpass));
             conn.createStatement().executeQuery("SELECT 1");
+            Assert.assertTrue("Should not reach here", false);
         } catch (SQLException sqle) {
             Assert.assertTrue("Certificate does not match host name",
                     sqle.getCause().getMessage()

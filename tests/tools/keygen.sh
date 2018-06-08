@@ -64,13 +64,22 @@ preserve = no
 policy = policy_match
 ' > $CADIR/ca.cnf
 
-subj="/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$CN/host=ssldbname*/UID=roborivers"
+if [ "$SCN" = "" ]; then
+	SCN=$CN
+fi
+
+if [ "$CCN" = "" ]; then
+	CCN=$CN
+fi
+
+ssubj="/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$SCN/host=ssldbname*/UID=roborivers"
+csubj="/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$CCN/host=ssldbname*/UID=roborivers"
 
 # Create server key
 openssl genrsa -out $CADIR/server.key 4096
 # Create signing request
 openssl req -new -key $CADIR/server.key -out $CADIR/server.key.csr \
-            -subj "$subj"
+            -subj "$ssubj"
 # Sign server key
 openssl x509 -req -in $CADIR/server.key.csr -CA $CADIR/root.crt -CAkey $CADIR/root.key \
              -CAcreateserial -out $CADIR/server.crt -days 10
@@ -79,9 +88,9 @@ chmod 400 $CADIR/server.key
 
 # Create client key
 openssl genrsa -out $CADIR/client.key 4096
-# Create signing request
+# Create signing request. The STREET attribute is for jdbc testing.
 openssl req -new -key $CADIR/client.key -out $CADIR/client.key.csr \
-            -subj "/street=jdbc*$subj"
+            -subj "/street=jdbc*$csubj"
 # Sign client key
 openssl x509 -req -in $CADIR/client.key.csr -CA $CADIR/root.crt -CAkey $CADIR/root.key \
              -CAserial $CADIR/root.srl -out $CADIR/client.crt -days 10
@@ -92,7 +101,7 @@ chmod 400 $CADIR/client.key
 openssl genrsa -out $CADIR/revoked.key 4096
 # Create signing request
 openssl req -new -key $CADIR/revoked.key -out $CADIR/revoked.key.csr \
-            -subj "$subj"
+            -subj "$csubj"
 # Sign revoked key
 openssl x509 -req -in $CADIR/revoked.key.csr -CA $CADIR/root.crt -CAkey $CADIR/root.key \
              -CAserial $CADIR/root.srl -out $CADIR/revoked.crt -days 10
@@ -134,4 +143,4 @@ for crt in `find ${CADIR} -name 'server*.crt'`; do
   openssl ca -config ${CADIR}/ca.cnf -revoke $crt \
              -keyfile ${CADIR}/root.key -cert ${CADIR}/root.crt
 done
-openssl ca -config ${CADIR}/ca.cnf -gencrl -out ${CADIR}/sslcrl.crl
+openssl ca -config ${CADIR}/ca.cnf -gencrl -out ${CADIR}/client.crl

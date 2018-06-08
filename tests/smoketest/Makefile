@@ -17,16 +17,14 @@ build-rpm:
 	-docker rm rpmtest
 
 build-inst-pre:
+	-docker rm -f insttest
 	-docker rm -f cinsttest
 	-docker rm -f jinsttest
 	docker build -t smoketest-inst -f Dockerfile.inst.build ../../
 	docker run -d --name cinsttest smoketest-inst /comdb2/tests/smoketest/docker-dev-entrypoint.sh db1 db2 db3 db4 db5
 	-rm -rf /tmp/smoketestca
-	CN=$(shell docker network \
-			inspect bridge -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}' | \
-			nslookup | \
-			grep 'name =' | \
-			awk '{print substr($$4, 1, length($$4) - 1)}') \
+	CN="*.$(shell hostname -d)" \
+	SCN='*.wrongcn' \
 	CADIR=/tmp/smoketestca ../tools/keygen.sh
 	docker run -v /tmp/smoketestca:/ca -d --name jinsttest smoketest-inst \
 	       /comdb2/tests/smoketest/docker-jdbctest-entrypoint.sh /ca jdbctdb jdbcssltdb
@@ -48,6 +46,8 @@ build-inst-java: build-inst-pre
 	-docker rm jinsttest
 
 build-inst: build-inst-c build-inst-java
+	docker kill insttest
+	-docker rm insttest
 
 build-nossl:
 	-docker rm -f nossltest

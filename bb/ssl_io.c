@@ -298,6 +298,11 @@ static int ssl_verify_ca(SBUF2 *sb, char *err, size_t n)
     if (!found_addr)
         return 1;
 
+    /* Trust localhost */
+    if (strcasecmp(peerhost, "localhost") == 0 ||
+            strcasecmp(peerhost, "localhost.localdomain") == 0)
+        return 0;
+
     /* Per RFC 6125, If SANs are presented, they must be used and
        the Comman Name must be ignored. */
     rc = ssl_verify_san(peerhost, sb->cert);
