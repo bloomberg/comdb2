@@ -17,7 +17,6 @@ build-rpm:
 	-docker rm rpmtest
 
 build-inst-pre:
-	-docker rm -f insttest
 	-docker rm -f cinsttest
 	-docker rm -f jinsttest
 	docker build -t smoketest-inst -f Dockerfile.inst.build ../../
@@ -46,8 +45,6 @@ build-inst-java: build-inst-pre
 	-docker rm jinsttest
 
 build-inst: build-inst-c build-inst-java
-	docker kill insttest
-	-docker rm insttest
 
 build-nossl:
 	-docker rm -f nossltest
