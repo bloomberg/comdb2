@@ -65,7 +65,6 @@
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
-extern int gbl_reorder_idx_writes;
 
 extern int insert_defered_tbl(struct ireq *iq, void *od_dta, size_t od_len,
                   const char *ondisktag, struct schema *ondisktagsc,
@@ -464,22 +463,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     /* Form and add all the keys. */
-    if (gbl_reorder_idx_writes) {
-        if (!is_event_from_sc(flags)) {
-
-            rc = insert_defered_tbl(iq, od_dta, od_len, ondisktag, ondisktagsc,
-                                    *genid, 1 /*1 = add */);
-            if (rc != 0) {
-                if (iq->debug)
-                    reqprintf(iq, "FAILED TO PUSH KEYOP");
-                *opfailcode = OP_FAILED_INTERNAL;
-                retrc = ERR_INTERNAL;
-                ERR;
-            }
-        }
-        //else do nothing
-    }
-    else if (!(flags & RECFLAGS_NO_CONSTRAINTS)) { /* if NOT no constraints */
+    if (!(flags & RECFLAGS_NO_CONSTRAINTS)) { /* if NOT no constraints */
     /* If there are constraints, do the add to indices defered.*/
 //printf("AZ: delaying key adds\n");
         if (!is_event_from_sc(flags)) {
@@ -2016,86 +2000,70 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         ondisktag = ".ONDISK";
 
 
-    /* AZ: We would have to defer the delete */
-    if (gbl_reorder_idx_writes) {
-        struct schema *ondisktagsc; // schema for .ONDISK
-        ondisktagsc = find_tag_schema(iq->usedb->tablename, ondisktag);
-        rc = insert_defered_tbl(iq, NULL, 0, ondisktag, ondisktagsc,
-                                    genid, 0 /*0 = del */);
-        if (rc != 0) {
-            if (iq->debug)
-                reqprintf(iq, "FAILED TO PUSH KEYOP");
-            *opfailcode = OP_FAILED_INTERNAL;
-            retrc = ERR_INTERNAL;
-            ERR;
-        }
-    }
-    else {
-        /* Form and delete all keys. */
-        for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-            char keytag[MAXTAGLEN];
-            char key[MAXKEYLEN];
+    /* Form and delete all keys. */
+    for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
+        char keytag[MAXTAGLEN];
+        char key[MAXKEYLEN];
 
-            /* only delete keys when told */
-            if (gbl_partial_indexes && iq->usedb->ix_partial &&
-                    !(del_keys & (1ULL << ixnum)))
-                continue;
+        /* only delete keys when told */
+        if (gbl_partial_indexes && iq->usedb->ix_partial &&
+                !(del_keys & (1ULL << ixnum)))
+            continue;
 
-            if (iq->idxDelete)
-                memcpy(key, iq->idxDelete[ixnum], iq->usedb->ix_keylen[ixnum]);
-            else {
-                snprintf(keytag, sizeof(keytag), "%s_IX_%d", ondisktag, ixnum);
-                rc = stag_to_stag_buf_blobs(
-                        iq->usedb->tablename, ondisktag, od_dta, keytag, key,
-                        NULL, del_idx_blobs, del_idx_blobs ? MAXBLOBS : 0, 0);
-                if (rc == -1) {
-                    if (iq->debug)
-                        reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
-                    reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
-                    reqerrstr(iq, COMDB2_DEL_RC_INVL_IDX, "cannot form index %d",
-                            ixnum);
-                    *ixfailnum = ixnum;
-                    *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
-                    retrc = rc;
-                    goto err;
-                }
-            }
-
-            /* handle the key special datacopy options */
-            if (iq->usedb->ix_collattr[ixnum]) {
-                /* handle key tails */
-                rc = extract_decimal_quantum(iq->usedb, ixnum, key, NULL, 0, NULL);
-                if (rc) {
-                    *ixfailnum = ixnum;
-                    *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
-                    retrc = rc;
-                    goto err;
-                }
-            }
-
-            /* light the prefault kill bit for this subop - oldkeys */
-            prefault_kill_bits(iq, ixnum, PFRQ_OLDKEY);
-            if (iq->osql_step_ix)
-                gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
-
-            /* delete the key */
-            rc = ix_delk(iq, trans, key, ixnum, rrn, genid, ix_isnullk(iq->usedb, key, ixnum));
-            if (iq->debug) {
-                reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
-                reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
-                reqmoref(iq, " RC %d", rc);
-            }
-            if (rc != 0) {
-                if (rc == IX_NOTFND) {
-                    reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
-                    reqerrstr(iq, COMDB2_DEL_RC_INVL_KEY,
-                            "key not found on index %d", ixnum);
-                }
+        if (iq->idxDelete)
+            memcpy(key, iq->idxDelete[ixnum], iq->usedb->ix_keylen[ixnum]);
+        else {
+            snprintf(keytag, sizeof(keytag), "%s_IX_%d", ondisktag, ixnum);
+            rc = stag_to_stag_buf_blobs(
+                    iq->usedb->tablename, ondisktag, od_dta, keytag, key,
+                    NULL, del_idx_blobs, del_idx_blobs ? MAXBLOBS : 0, 0);
+            if (rc == -1) {
+                if (iq->debug)
+                    reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
+                reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+                reqerrstr(iq, COMDB2_DEL_RC_INVL_IDX, "cannot form index %d",
+                        ixnum);
                 *ixfailnum = ixnum;
-                *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
+                *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
                 retrc = rc;
                 goto err;
             }
+        }
+
+        /* handle the key special datacopy options */
+        if (iq->usedb->ix_collattr[ixnum]) {
+            /* handle key tails */
+            rc = extract_decimal_quantum(iq->usedb, ixnum, key, NULL, 0, NULL);
+            if (rc) {
+                *ixfailnum = ixnum;
+                *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
+                retrc = rc;
+                goto err;
+            }
+        }
+
+        /* light the prefault kill bit for this subop - oldkeys */
+        prefault_kill_bits(iq, ixnum, PFRQ_OLDKEY);
+        if (iq->osql_step_ix)
+            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
+
+        /* delete the key */
+        rc = ix_delk(iq, trans, key, ixnum, rrn, genid, ix_isnullk(iq->usedb, key, ixnum));
+        if (iq->debug) {
+            reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
+            reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
+            reqmoref(iq, " RC %d", rc);
+        }
+        if (rc != 0) {
+            if (rc == IX_NOTFND) {
+                reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+                reqerrstr(iq, COMDB2_DEL_RC_INVL_KEY,
+                        "key not found on index %d", ixnum);
+            }
+            *ixfailnum = ixnum;
+            *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
+            retrc = rc;
+            goto err;
         }
     }
 
