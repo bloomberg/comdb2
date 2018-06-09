@@ -3763,21 +3763,17 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
     extern int gbl_durable_replay_test;
     const char *connlist[REPMAX];
     bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
-    int cnt;
+    seqnum_type ss = {0};
+    int timeoutms;
+    int generation;
+    int needwait = 0;
+    int rc = 0;
     uint32_t durable_gen;
     uint32_t latest_gen;
     DB_LSN durable_lsn;
     DB_LSN latest_lsn;
 
-    /* Single-node is always durable- not sure if/why we need this yet */
-    /*
-    if ((cnt = net_get_sanctioned_replicants(bdb_state->repinfo->netinfo, 
-        REPMAX, connlist)) == 0) {
-        logmsg(LOGMSG_INFO, "%s line %d returning 1: single node durable\n",
-                __func__, __LINE__);
-    }
-    */
-
+    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &generation);
     bdb_latest_commit(bdb_state, &latest_lsn, &latest_gen);
     bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
                                       &durable_gen);
@@ -3785,7 +3781,7 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
     if (latest_gen < durable_gen) {
         logmsg(LOGMSG_INFO, "%s line %d returning 0 because latest_gen %d < "
                 "durable_gen %d\n", __func__, __LINE__, latest_gen, durable_gen);
-        return 0;
+        needwait = 1;
     }
 
     if ((latest_gen == durable_gen) &&
@@ -3794,7 +3790,7 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
                 "[%d][%d] < latest_lsn [%d][%d]\n", __func__, __LINE__, 
                 durable_lsn.file, durable_lsn.offset, latest_lsn.file,
                 latest_lsn.offset);
-        return 0;
+        needwait = 1;
     }
 
     if (gbl_durable_replay_test && (0 == (rand() % 20))) {
@@ -3803,8 +3799,17 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
         return 0;
     }
 
-    logmsg(LOGMSG_INFO, "%s line %d returning 1 (is-durable)\n", __func__,
-            __LINE__);
+    if (needwait) {
+        ss.lsn = latest_lsn;
+        ss.generation = generation;
+        rc = (bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state, &ss, 0,
+                &timeoutms) == 0) ? 1 : 0;
+        logmsg(LOGMSG_INFO, "%s line %d returning %d after waiting\n", __func__,
+                __LINE__, rc);
+        return rc;
+    }
+
+    logmsg(LOGMSG_INFO, "%s line %d returning 1\n", __func__, __LINE__);
 
     return 1;
 }
