@@ -2299,3 +2299,5 @@ void *create_defered_index_table(long long *ctid)
     return newtbl;
 }
 
+
+
