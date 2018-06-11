@@ -167,7 +167,7 @@ static int		GetNameFromValue(Tcl_Interp *interp,
 			    int value, const NameAndValue pairs[],
 			    const char **namePtr);
 static int		GetFlagsFromList(Tcl_Interp *interp, Tcl_Obj *listPtr,
-			    NameAndValue pairs[], int *flagsPtr);
+			    const NameAndValue pairs[], int *flagsPtr);
 static int		ProcessStructFieldsFromElements(Tcl_Interp *interp,
 			    Tcl_Obj **elemPtrs, int elemCount,
 			    const NameAndValue fields[], void *valuePtr,
@@ -419,7 +419,7 @@ static int IsValidTime(
 static int GetPairFromName(
     Tcl_Interp *interp,			/* Current Tcl interpreter. */
     const char *name,			/* Name for value to be found. */
-    NameAndValue pairs[],		/* Possible names and values. */
+    const NameAndValue pairs[],		/* Possible names and values. */
     NameAndValue **pairPtr)		/* OUT: Name/value pointer. */
 {
     if (pairs != NULL) {
@@ -468,7 +468,7 @@ static int GetPairFromName(
 static int GetPairFromValue(
     Tcl_Interp *interp,			/* Current Tcl interpreter. */
     int value,				/* Value for name to be found. */
-    NameAndValue pairs[],		/* Possible names and values. */
+    const NameAndValue pairs[],		/* Possible names and values. */
     NameAndValue **pairPtr)		/* OUT: Name/value pointer. */
 {
     if (pairs != NULL) {
@@ -522,7 +522,7 @@ static int GetPairFromValue(
 static int GetValueFromName(
     Tcl_Interp *interp,			/* Current Tcl interpreter. */
     const char *name,			/* Name for value to be found. */
-    NameAndValue pairs[],		/* Possible names and values. */
+    const NameAndValue pairs[],		/* Possible names and values. */
     int *valuePtr)			/* OUT: Integer value. */
 {
     int value;
@@ -581,7 +581,7 @@ static int GetValueFromName(
 static int GetNameFromValue(
     Tcl_Interp *interp,			/* Current Tcl interpreter. */
     int value,				/* Value for name to be found. */
-    NameAndValue pairs[],		/* Possible names and values. */
+    const NameAndValue pairs[],		/* Possible names and values. */
     const char **namePtr)		/* OUT: String name. */
 {
     NameAndValue *pair = NULL;
@@ -629,7 +629,7 @@ static int GetNameFromValue(
 static int GetFlagsFromList(
     Tcl_Interp *interp,			/* Current Tcl interpreter. */
     Tcl_Obj *listPtr,			/* List of flag strings. */
-    NameAndValue pairs[],		/* Possible flag names and values. */
+    const NameAndValue pairs[],		/* Possible flag names and values. */
     int *flagsPtr)			/* OUT: OR'd flags value. */
 {
     int index, objc;
