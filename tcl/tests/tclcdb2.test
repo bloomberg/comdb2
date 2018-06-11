@@ -415,7 +415,7 @@ test cdb2-7.1 {run sub-command errors} -setup {
 {wrong # args: should be "cdb2 run connection sql ?types?"} 1 {wrong # args:\
 should be "cdb2 run connection sql ?types?"} 1 {near "1": syntax error} 1 {no\
 such column: bad} 1 {near "1": syntax error} 1 {name "bad" not found<lf>value\
-for name "bad" not found} 1 {name "bad" not\ found<lf>value for name "bad" not\
+for name "bad" not found} 1 {name "bad" not found<lf>value for name "bad" not\
 found} 1 {wrong # args: should be "cdb2 run connection sql ?types?"}}
 
 ###############################################################################
@@ -429,8 +429,8 @@ test cdb2-7.2 {simple run sub-command} -setup {
   closeConnection $db
 
   unset -nocomplain errMsg db
-} -result {0 {index 1 columns {{ubdex 9 type integer size 8 name 1 null false\
-value 1}} effects {affected 0 selected 1 updated 0 deleted 0 inserted 0}}}
+} -result {0 {} {index 1 columns {{ubdex 9 type integer size 8 name 1 null\
+false value 1}} effects {affected 0 selected 1 updated 0 deleted 0 inserted 0}}}
 
 ###############################################################################
 
@@ -452,8 +452,8 @@ test cdb2-7.3 {run sub-command with results} -setup {
   closeConnection $db
 
   unset -nocomplain errMsg db
-} -result {0 {index 1 columns {{ubdex 9 type integer size 8 name 1 null false\
-value 1}} effects {affected 0 selected 1 updated 0 deleted 0 inserted 0}}}
+} -result {0 {} {index 1 columns {{ubdex 9 type integer size 8 name x null\
+false value 1}} effects {affected 0 selected 1 updated 0 deleted 0 inserted 0}}}
 
 ###############################################################################
 
