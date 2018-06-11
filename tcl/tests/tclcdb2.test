@@ -568,10 +568,10 @@ test cdb2-98.1 {configure sub-command errors} -body {
 ###############################################################################
 
 test cdb2-98.2 {configure sub-command w/string} -body {
-  list [cdb2 configure [getConfigInfo true] 0] \
+  list [cdb2 configure [getConfigInfo false]] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
-      [cdb2 configure [getConfigInfo false]] \
+      [cdb2 configure [getConfigInfo true] 0] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
 } -cleanup {
