@@ -155,16 +155,16 @@ static int		IsValidInterp(Tcl_Interp *interp);
 static int		IsValidTime(Tcl_Interp *interp,
 			    cdb2_tm_t *pTimeValue);
 static int		GetPairFromName(Tcl_Interp *interp,
-			    const char *name, NameAndValue pairs[],
+			    const char *name, const NameAndValue pairs[],
 			    NameAndValue **pairPtr);
 static int		GetPairFromValue(Tcl_Interp *interp,
-			    int value, NameAndValue pairs[],
+			    int value, const NameAndValue pairs[],
 			    NameAndValue **pairPtr);
 static int		GetValueFromName(Tcl_Interp *interp,
-			    const char *name, NameAndValue pairs[],
+			    const char *name, const NameAndValue pairs[],
 			    int *valuePtr);
 static int		GetNameFromValue(Tcl_Interp *interp,
-			    int value, NameAndValue pairs[],
+			    int value, const NameAndValue pairs[],
 			    const char **namePtr);
 static int		GetFlagsFromList(Tcl_Interp *interp, Tcl_Obj *listPtr,
 			    NameAndValue pairs[], int *flagsPtr);
@@ -587,7 +587,7 @@ static int GetNameFromValue(
     NameAndValue *pair = NULL;
 
     if (GetPairFromValue(interp, value, pairs, &pair) == TCL_OK) {
-	if ((valuePtr != NULL) && (pair != NULL))
+	if ((namePtr != NULL) && (pair != NULL))
 	    *namePtr = pair->name;
 
 	return TCL_OK;
@@ -735,7 +735,7 @@ static int ProcessStructFieldsFromElements(
 	if (pair == NULL)
 	    break;
 
-	format = pair.name;
+	format = pair->name;
 
 	if (format == NULL)
 	    break;
@@ -743,7 +743,7 @@ static int ProcessStructFieldsFromElements(
 	if (*format == 0)
 	    continue;
 
-	offset = (size_t)pair.value;
+	offset = (size_t)pair->value;
 	assert(offset <= sizeof(cdb2_client_datetime_t)); /* SANITY */
 
 	if ((strcmp(format, "%d") == 0) || (strcmp(format, "%u") == 0)) {
