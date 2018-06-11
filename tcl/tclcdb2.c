@@ -152,8 +152,6 @@ typedef struct BoundValue {
 } BoundValue;
 
 static int		IsValidInterp(Tcl_Interp *interp);
-static int		IsValidTime(Tcl_Interp *interp,
-			    cdb2_tm_t *pTimeValue);
 static int		GetPairFromName(Tcl_Interp *interp,
 			    const char *name, const NameAndValue pairs[],
 			    const NameAndValue **pairPtr);
@@ -256,146 +254,6 @@ static int IsValidInterp(
     Tcl_Interp *interp)			/* Current Tcl interpreter. */
 {
     return (interp != NULL) && !Tcl_InterpDeleted(interp);
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * IsValidTime --
- *
- *	This function checks if the specified time value looks valid.
- *
- * Results:
- *	Non-zero if the specified date/time appears to be valid.
- *
- * Side effects:
- *	None.
- *
- *----------------------------------------------------------------------
- */
-
-static int IsValidTime(
-    Tcl_Interp *interp,
-    cdb2_tm_t *pTimeValue)
-{
-    char intBuf[TCL_INTEGER_SPACE + 1];
-
-    if (pTimeValue == NULL) {
-	if (interp != NULL) {
-	    Tcl_AppendResult(interp, "invalid time value\n", NULL);
-	}
-
-	return TCL_ERROR;
-    }
-
-    if ((pTimeValue->tm_sec < 0) || (pTimeValue->tm_sec > 59)) {
-	memset(intBuf, 0, sizeof(intBuf));
-	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_sec);
-
-	Tcl_AppendResult(interp,
-	    "second value \"", intBuf, "\" out of range\n", NULL);
-
-	return TCL_ERROR;
-    }
-
-    if ((pTimeValue->tm_min < 0) || (pTimeValue->tm_min > 59)) {
-	memset(intBuf, 0, sizeof(intBuf));
-	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_min);
-
-	Tcl_AppendResult(interp,
-	    "minute value \"", intBuf, "\" out of range\n", NULL);
-
-	return TCL_ERROR;
-    }
-
-    if ((pTimeValue->tm_hour < 0) || (pTimeValue->tm_hour > 23)) {
-	memset(intBuf, 0, sizeof(intBuf));
-	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_hour);
-
-	Tcl_AppendResult(interp,
-	    "hour value \"", intBuf, "\" out of range\n", NULL);
-
-	return TCL_ERROR;
-    }
-
-    /*
-    ** NOTE: This check is "correct" according to the ANSI C standard
-    **       library documentation for the "tm" structure, which seems
-    **       to (always) permit up to 31 days (i.e. even for February,
-    **       April, etc); however, it might be better to have a more
-    **       complete (and complex) check here.
-    */
-
-    if ((pTimeValue->tm_mday < 1) || (pTimeValue->tm_mday > 31)) {
-	memset(intBuf, 0, sizeof(intBuf));
-	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_mday);
-
-	Tcl_AppendResult(interp,
-	    "day-of-month value \"", intBuf, "\" out of range\n", NULL);
-
-	return TCL_ERROR;
-    }
-
-    if ((pTimeValue->tm_mon < 0) || (pTimeValue->tm_mon > 11)) {
-	memset(intBuf, 0, sizeof(intBuf));
-	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_mon);
-
-	Tcl_AppendResult(interp,
-	    "month value \"", intBuf, "\" out of range\n", NULL);
-
-	return TCL_ERROR;
-    }
-
-    /*
-    ** NOTE: According to the ANSI C standard library documentation
-    **       the epoch year is 1900.  The database itself supports
-    **       years in the range of -9999 to 9999 (i.e. years cannot
-    **       exceed four digits).  This means the valid range for
-    **       the "tm_year" structure member should be from -11899
-    **       to 8099.
-    */
-
-    if ((pTimeValue->tm_year < -11899) || (pTimeValue->tm_year > 8099)) {
-	memset(intBuf, 0, sizeof(intBuf));
-	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_year);
-
-	Tcl_AppendResult(interp,
-	    "year value \"", intBuf, "\" out of range\n", NULL);
-
-	return TCL_ERROR;
-    }
-
-    if ((pTimeValue->tm_wday < 0) || (pTimeValue->tm_wday > 6)) {
-	memset(intBuf, 0, sizeof(intBuf));
-	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_wday);
-
-	Tcl_AppendResult(interp,
-	    "day-of-week value \"", intBuf, "\" out of range\n", NULL);
-
-	return TCL_ERROR;
-    }
-
-    if ((pTimeValue->tm_yday < 0) || (pTimeValue->tm_yday > 365)) {
-	memset(intBuf, 0, sizeof(intBuf));
-	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_yday);
-
-	Tcl_AppendResult(interp,
-	    "day-of-year value \"", intBuf, "\" out of range\n", NULL);
-
-	return TCL_ERROR;
-    }
-
-    if ((pTimeValue->tm_isdst < 0) || (pTimeValue->tm_isdst > 1)) {
-	memset(intBuf, 0, sizeof(intBuf));
-	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_isdst);
-
-	Tcl_AppendResult(interp,
-	    "DST flag value \"", intBuf, "\" out of range\n", NULL);
-
-	return TCL_ERROR;
-    }
-
-    return TCL_OK;
 }
 
 /*
@@ -1007,7 +865,6 @@ static int GetValueStructFromObj(
 	    if (code != TCL_OK)
 		goto done;
 
-	    code = IsValidTime(interp, &pDateTimeValue->tm);
 	    break;
 	}
 	case CDB2_INTERVALYM: {
@@ -1127,7 +984,6 @@ static int GetValueStructFromObj(
 	    if (code != TCL_OK)
 		goto done;
 
-	    code = IsValidTime(interp, &pDateTimeUsValue->tm);
 	    break;
 	}
 	case CDB2_INTERVALDSUS: {
