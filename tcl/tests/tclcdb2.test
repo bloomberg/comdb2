@@ -580,8 +580,9 @@ test cdb2-89.2 {configure sub-command w/string} -body {
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
 } -cleanup {
   unset -nocomplain result
-} -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo query on <dbName> hosts.} 1\
-<connection_not_found> {} 0 <connection_open> 0 {} 0 <connection_open> 0 {}}
+} -constraints {knownBug} -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo\
+query on <dbName> hosts.} 1 <connection_not_found> {} 0 <connection_open> 0 {}\
+{} 0 <connection_open> 0 {}}
 
 ###############################################################################
 
@@ -606,8 +607,9 @@ test cdb2-89.3 {configure sub-command w/file} -setup {
   catch {file delete $fileName(bad)}
 
   unset -nocomplain result fileName
-} -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo query on <dbName> hosts.} 1\
-<connection_not_found> {} 0 <connection_open> 0 {} 0 <connection_open> 0 {}}
+} -constraints {knownBug} -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo\
+query on <dbName> hosts.} 1 <connection_not_found> {} 0 <connection_open> 0 {}\
+{} 0 <connection_open> 0 {}}
 
 ###############################################################################
 
