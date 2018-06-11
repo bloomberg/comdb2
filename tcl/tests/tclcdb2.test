@@ -34,6 +34,51 @@ if {[llength [info commands isBinary]] == 0} then {
 
 ###############################################################################
 
+if {[llength [info commands getTempPath]] == 0} then {
+  proc getTempPath {} {
+    global tcl_platform
+
+    set names [list]
+
+    foreach name [list TMPDIR TEMP TMP] {
+      lappend names \
+          [string toupper $name] \
+          [string tolower $name] \
+          [string totitle $name]
+    }
+
+    foreach name $names {
+      set value [getEnvVar $name]
+
+      if {[string length $value] > 0} then {
+        return [file normalize $value]
+      }
+    }
+
+    if {[info exists tcl_platform(platform)]} then {
+      if {$tcl_platform(platform) ne "windows"} then {
+        return /tmp; # TODO: Good default on Unix?
+      }
+    }
+
+    error "no temporary path is available"
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands writeFile]] == 0} then {
+  proc writeFile { fileName data } {
+    set channel [open $fileName {WRONLY CREAT TRUNC}]
+    fconfigure $channel -encoding binary -translation binary
+    puts -nonewline $channel $data
+    close $channel
+    return ""
+  }
+}
+
+###############################################################################
+
 if {[llength [info commands hexList]] == 0} then {
   proc hexList { value } {
     set result ""
@@ -163,6 +208,18 @@ if {[llength [info commands getDbName]] == 0} then {
     }
 
     return $name
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getConfigInfo]] == 0} then {
+  proc getConfigInfo { good {name ""} } {
+    if {$good} then {
+      return "[getDbName $name] local"
+    } else {
+      return "[getDbName $name] nowhere"
+    }
   }
 }
 
@@ -476,9 +533,49 @@ false value 1}} effects {affected 0 selected 1 updated 0 deleted 0 inserted 0}}}
 
 ###############################################################################
 
+test cdb2-8.4 {run sub-command with NULL results} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_84]
 
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table (x INTEGER)
+  }]]
 
+  cdb2 run $db [string trim [subst {
+    INSERT INTO $table (x) VALUES (NULL)
+  }]]
+} -body {
+  list [catch {cdb2 run $db "SELECT x FROM $table"} errMsg] $errMsg \
+      [getRowsOfColumns $db]
+} -cleanup {
+  closeConnection $db
 
+  unset -nocomplain errMsg table db
+} -result {0 {} {index 1 columns {{index 0 type integer size 8 name x null\
+true value {}}} effects {affected 0 selected 1 updated 0 deleted 0 inserted 0}}}
+
+###############################################################################
+
+test cdb2-98.1 {configure sub-command errors} -body {
+  list [catch {cdb2 configure} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 configure 1 1 1} errMsg] [normalizeResult $errMsg]
+} -cleanup {
+  unset -nocomplain errMsg
+} -result {1 {wrong # args: should be "cdb2 configure string ?useFile?"} 1\
+{wrong # args: should be "cdb2 configure string ?useFile?"}}
+
+###############################################################################
+
+test cdb2-98.2 {configure sub-command w/string} -body {
+  list [cdb2 configure [getConfigInfo true] 0] \
+      [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
+      [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
+      [cdb2 configure [getConfigInfo false]] \
+      [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
+      [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
+} -cleanup {
+  unset -nocomplain result db
+} -result {}
 
 ###############################################################################
 
@@ -506,8 +603,6 @@ if {0} then {
   #
   cdb2 bind
   cdb2 unbind
-
-  cdb2 configure
 }
 
 ###############################################################################
