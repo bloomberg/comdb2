@@ -124,12 +124,16 @@
 #define DELETE_AUXILIARY_DATA(a) Tcl_DeleteAssocData(interp, (a));
 #endif /* DELETE_AUXILIARY_DATA */
 
-struct NameAndValue {
+#if !defined(GET_STR_OR_NULL)
+#define GET_STR_OR_NULL(a) ((a) != NULL ? (a) : "(null)")
+#endif /* GET_STR_OR_NULL */
+
+typedef struct NameAndValue {
     char *name;
     int value;
-};
+} NameAndValue;
 
-struct BoundValue {
+typedef struct BoundValue {
     int type;
     int length;
     int index;
@@ -145,20 +149,28 @@ struct BoundValue {
 	cdb2_client_intv_ds_t intervalDsValue;
 	cdb2_client_intv_dsus_t intervalDsUsValue;
     } value;
-};
+} BoundValue;
 
 static int		IsValidInterp(Tcl_Interp *interp);
+static int		IsValidTime(Tcl_Interp *interp,
+			    cdb2_tm_t *pTimeValue);
+static int		GetPairFromName(Tcl_Interp *interp,
+			    const char *name, NameAndValue pairs[],
+			    NameAndValue **pairPtr);
+static int		GetPairFromValue(Tcl_Interp *interp,
+			    int value, NameAndValue pairs[],
+			    NameAndValue **pairPtr);
 static int		GetValueFromName(Tcl_Interp *interp,
-			    const char *name, struct NameAndValue pairs[],
+			    const char *name, NameAndValue pairs[],
 			    int *valuePtr);
 static int		GetNameFromValue(Tcl_Interp *interp,
-			    int value, struct NameAndValue pairs[],
+			    int value, NameAndValue pairs[],
 			    const char **namePtr);
 static int		GetFlagsFromList(Tcl_Interp *interp, Tcl_Obj *listPtr,
-			    struct NameAndValue pairs[], int *flagsPtr);
+			    NameAndValue pairs[], int *flagsPtr);
 static int		ProcessStructFieldsFromElements(Tcl_Interp *interp,
 			    Tcl_Obj **elemPtrs, int elemCount,
-			    const struct NameAndValue fields[], void *valuePtr,
+			    const NameAndValue fields[], void *valuePtr,
 			    size_t valueLength);
 static int		GetListFromValueStruct(Tcl_Interp *interp, int type,
 			    size_t valueLength, const void *valuePtr,
@@ -174,14 +186,14 @@ static int		RemoveCdb2HandleByName(Tcl_Interp *interp,
 			    const char *name);
 static void		AppendCdb2ErrorMessage(Tcl_Interp *interp, int rc,
 			    cdb2_hndl_tp *pCdb2);
-static void		FreeBoundValue(struct BoundValue *pBoundValue);
+static void		FreeBoundValue(BoundValue *pBoundValue);
 static void		FreeParameterValues(Tcl_Interp *interp);
 static void		tclcdb2ExitProc(ClientData clientData);
 static int		tclcdb2ObjCmd(ClientData clientData, Tcl_Interp *interp,
 			    int objc, Tcl_Obj *CONST objv[]);
 static void		tclcdb2ObjCmdDeleteProc(ClientData clientData);
 
-static struct NameAndValue aOpenFlags[] = {
+static NameAndValue aOpenFlags[] = {
     { "cache_ssl_sessions",   CDB2_CACHE_SSL_SESSIONS   },
     { "direct_cpu",           CDB2_DIRECT_CPU           },
     { "random",               CDB2_RANDOM               },
@@ -191,7 +203,7 @@ static struct NameAndValue aOpenFlags[] = {
     { NULL,                   0                         }
 };
 
-static struct NameAndValue aColumnTypes[] = {
+static NameAndValue aColumnTypes[] = {
     { "blob",                 CDB2_BLOB                 },
     { "cstring",              CDB2_CSTRING              },
     { "datetime",             CDB2_DATETIME             },
@@ -205,11 +217,11 @@ static struct NameAndValue aColumnTypes[] = {
 };
 
 enum tcl_cdb2_element_counts {
-    CDB2_DATETIME_MIN_ELEMENTS   = 20,
+    CDB2_DATETIME_MIN_ELEMENTS   =  6,
     CDB2_DATETIME_MAX_ELEMENTS   = 22,
     CDB2_INTERVALYM_ELEMENTS     =  6,
     CDB2_INTERVALDS_ELEMENTS     = 12,
-    CDB2_DATETIMEUS_MIN_ELEMENTS = 20,
+    CDB2_DATETIMEUS_MIN_ELEMENTS =  6,
     CDB2_DATETIMEUS_MAX_ELEMENTS = 22,
     CDB2_DATETIMEUS_ELEMENTS     = 22,
     CDB2_INTERVALDSUS_ELEMENTS   = 12
@@ -249,6 +261,248 @@ static int IsValidInterp(
 /*
  *----------------------------------------------------------------------
  *
+ * IsValidTime --
+ *
+ *	This function checks if the specified time value looks valid.
+ *
+ * Results:
+ *	Non-zero if the specified date/time appears to be valid.
+ *
+ * Side effects:
+ *	None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int IsValidTime(
+    Tcl_Interp *interp,
+    cdb2_tm_t *pTimeValue)
+{
+    char intBuf[TCL_INTEGER_SPACE + 1];
+
+    if (pTimeValue == NULL) {
+	if (interp != NULL) {
+	    Tcl_AppendResult(interp, "invalid time value\n", NULL);
+	}
+
+	return TCL_ERROR;
+    }
+
+    if ((pTimeValue->tm_sec < 0) || (pTimeValue->tm_sec > 59)) {
+	memset(intBuf, 0, sizeof(intBuf));
+	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_sec);
+
+	Tcl_AppendResult(interp,
+	    "second value \"", intBuf, "\" out of range\n", NULL);
+
+	return TCL_ERROR;
+    }
+
+    if ((pTimeValue->tm_min < 0) || (pTimeValue->tm_min > 59)) {
+	memset(intBuf, 0, sizeof(intBuf));
+	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_min);
+
+	Tcl_AppendResult(interp,
+	    "minute value \"", intBuf, "\" out of range\n", NULL);
+
+	return TCL_ERROR;
+    }
+
+    if ((pTimeValue->tm_hour < 0) || (pTimeValue->tm_hour > 23)) {
+	memset(intBuf, 0, sizeof(intBuf));
+	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_hour);
+
+	Tcl_AppendResult(interp,
+	    "hour value \"", intBuf, "\" out of range\n", NULL);
+
+	return TCL_ERROR;
+    }
+
+    /*
+    ** NOTE: This check is "correct" according to the ANSI C standard
+    **       library documentation for the "tm" structure, which seems
+    **       to (always) permit up to 31 days (i.e. even for February,
+    **       April, etc); however, it might be better to have a more
+    **       complete (and complex) check here.
+    */
+
+    if ((pTimeValue->tm_mday < 1) || (pTimeValue->tm_mday > 31)) {
+	memset(intBuf, 0, sizeof(intBuf));
+	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_mday);
+
+	Tcl_AppendResult(interp,
+	    "day-of-month value \"", intBuf, "\" out of range\n", NULL);
+
+	return TCL_ERROR;
+    }
+
+    if ((pTimeValue->tm_mon < 0) || (pTimeValue->tm_mon > 11)) {
+	memset(intBuf, 0, sizeof(intBuf));
+	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_mon);
+
+	Tcl_AppendResult(interp,
+	    "month value \"", intBuf, "\" out of range\n", NULL);
+
+	return TCL_ERROR;
+    }
+
+    /*
+    ** NOTE: According to the ANSI C standard library documentation
+    **       the epoch year is 1900.  The database itself supports
+    **       years in the range of -9999 to 9999 (i.e. years cannot
+    **       exceed four digits).  This means the valid range for
+    **       the "tm_year" structure member should be from -11899
+    **       to 8099.
+    */
+
+    if ((pTimeValue->tm_year < -11899) || (pTimeValue->tm_year > 8099)) {
+	memset(intBuf, 0, sizeof(intBuf));
+	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_year);
+
+	Tcl_AppendResult(interp,
+	    "year value \"", intBuf, "\" out of range\n", NULL);
+
+	return TCL_ERROR;
+    }
+
+    if ((pTimeValue->tm_wday < 0) || (pTimeValue->tm_wday > 6)) {
+	memset(intBuf, 0, sizeof(intBuf));
+	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_wday);
+
+	Tcl_AppendResult(interp,
+	    "day-of-week value \"", intBuf, "\" out of range\n", NULL);
+
+	return TCL_ERROR;
+    }
+
+    if ((pTimeValue->tm_yday < 0) || (pTimeValue->tm_yday > 365)) {
+	memset(intBuf, 0, sizeof(intBuf));
+	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_yday);
+
+	Tcl_AppendResult(interp,
+	    "day-of-year value \"", intBuf, "\" out of range\n", NULL);
+
+	return TCL_ERROR;
+    }
+
+    if ((pTimeValue->tm_isdst < 0) || (pTimeValue->tm_isdst > 1)) {
+	memset(intBuf, 0, sizeof(intBuf));
+	snprintf(intBuf, sizeof(intBuf), "%d", pTimeValue->tm_isdst);
+
+	Tcl_AppendResult(interp,
+	    "DST flag value \"", intBuf, "\" out of range\n", NULL);
+
+	return TCL_ERROR;
+    }
+
+    return TCL_OK;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * GetPairFromName --
+ *
+ *	This function attempts to find the name/value pair based on its
+ *	name.  Upon success, the name/value pair pointer pointed to by
+ *	pairPtr is set to the appropriate value.
+ *
+ * Results:
+ *	A standard Tcl result.
+ *
+ * Side effects:
+ *	None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int GetPairFromName(
+    Tcl_Interp *interp,			/* Current Tcl interpreter. */
+    const char *name,			/* Name for value to be found. */
+    NameAndValue pairs[],		/* Possible names and values. */
+    NameAndValue **pairPtr)		/* OUT: Name/value pointer. */
+{
+    if (pairs != NULL) {
+	size_t count = strlen(name);
+	int index = 0;
+
+	for (;; index++) {
+	    if (pairs[index].name == NULL)
+		break;
+
+	    if (strncmp(pairs[index].name, name, count) == 0) {
+		if (pairPtr != NULL)
+		    *pairPtr = &pairs[index];
+
+		return TCL_OK;
+	    }
+	}
+    }
+
+    if (interp != NULL) {
+	Tcl_AppendResult(interp,
+	    "name \"", GET_STR_OR_NULL(name), "\" not found\n", NULL);
+    }
+
+    return TCL_ERROR;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * GetPairFromValue --
+ *
+ *	This function attempts to find the name/value pair based on its
+ *	name.  Upon success, the name/value pair pointer pointed to by
+ *	pairPtr is set to the appropriate value.
+ *
+ * Results:
+ *	A standard Tcl result.
+ *
+ * Side effects:
+ *	None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int GetPairFromValue(
+    Tcl_Interp *interp,			/* Current Tcl interpreter. */
+    int value,				/* Value for name to be found. */
+    NameAndValue pairs[],		/* Possible names and values. */
+    NameAndValue **pairPtr)		/* OUT: Name/value pointer. */
+{
+    if (pairs != NULL) {
+	int index = 0;
+
+	for (;; index++) {
+	    if (pairs[index].name == NULL)
+		break;
+
+	    if (pairs[index].value == value) {
+		if (pairPtr != NULL)
+		    *pairPtr = &pairs[index];
+
+		return TCL_OK;
+	    }
+	}
+    }
+
+    if (interp != NULL) {
+	char intBuf[TCL_INTEGER_SPACE + 1];
+
+	memset(intBuf, 0, sizeof(intBuf));
+	snprintf(intBuf, sizeof(intBuf), "%d", value);
+
+	Tcl_AppendResult(interp,
+	    "value \"", intBuf, "\" not found\n", NULL);
+    }
+
+    return TCL_ERROR;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
  * GetValueFromName --
  *
  *	This function attempts to convert a string into an integer
@@ -268,10 +522,11 @@ static int IsValidInterp(
 static int GetValueFromName(
     Tcl_Interp *interp,			/* Current Tcl interpreter. */
     const char *name,			/* Name for value to be found. */
-    struct NameAndValue pairs[],	/* Possible names and values. */
+    NameAndValue pairs[],		/* Possible names and values. */
     int *valuePtr)			/* OUT: Integer value. */
 {
     int value;
+    NameAndValue *pair = NULL;
 
     if (name == NULL) {
 	if (interp != NULL) {
@@ -288,26 +543,17 @@ static int GetValueFromName(
 	return TCL_OK;
     }
 
-    if (pairs != NULL) {
-	size_t count = strlen(name);
-	int index = 0;
+    if (GetPairFromName(interp, name, pairs, &pair) == TCL_OK) {
+	if ((valuePtr != NULL) && (pair != NULL))
+	    *valuePtr = pair->value;
 
-	for (;; index++) {
-	    if (pairs[index].name == NULL)
-		break;
-
-	    if (strncmp(pairs[index].name, name, count) == 0) {
-		if (valuePtr != NULL)
-		    *valuePtr = pairs[index].value;
-
-		return TCL_OK;
-	    }
-	}
+	return TCL_OK;
     }
 
     if (interp != NULL) {
 	Tcl_AppendResult(interp,
-	    "value for name \"", name, "\" not found\n", NULL);
+	    "value for name \"", GET_STR_OR_NULL(name), "\" not found\n",
+	    NULL);
     }
 
     return TCL_ERROR;
@@ -335,23 +581,16 @@ static int GetValueFromName(
 static int GetNameFromValue(
     Tcl_Interp *interp,			/* Current Tcl interpreter. */
     int value,				/* Value for name to be found. */
-    struct NameAndValue pairs[],	/* Possible names and values. */
+    NameAndValue pairs[],		/* Possible names and values. */
     const char **namePtr)		/* OUT: String name. */
 {
-    if (pairs != NULL) {
-	int index = 0;
+    NameAndValue *pair = NULL;
 
-	for (;; index++) {
-	    if (pairs[index].name == NULL)
-		break;
+    if (GetPairFromValue(interp, value, pairs, &pair) == TCL_OK) {
+	if ((valuePtr != NULL) && (pair != NULL))
+	    *namePtr = pair->name;
 
-	    if (pairs[index].value == value) {
-		if (namePtr != NULL)
-		    *namePtr = pairs[index].name;
-
-		return TCL_OK;
-	    }
-	}
+	return TCL_OK;
     }
 
     if (interp != NULL) {
@@ -390,7 +629,7 @@ static int GetNameFromValue(
 static int GetFlagsFromList(
     Tcl_Interp *interp,			/* Current Tcl interpreter. */
     Tcl_Obj *listPtr,			/* List of flag strings. */
-    struct NameAndValue pairs[],	/* Possible flag names and values. */
+    NameAndValue pairs[],		/* Possible flag names and values. */
     int *flagsPtr)			/* OUT: OR'd flags value. */
 {
     int index, objc;
@@ -447,7 +686,7 @@ static int ProcessStructFieldsFromElements(
     Tcl_Interp *interp,
     Tcl_Obj **elemPtrs,
     int elemCount,
-    const struct NameAndValue fields[],
+    const NameAndValue fields[],
     void *valuePtr,
     size_t valueLength)
 {
@@ -462,6 +701,11 @@ static int ProcessStructFieldsFromElements(
 
     assert(elemCount > 0);
 
+    if (elemCount & 1) {
+	Tcl_AppendResult(interp, "malformed value dictionary\n", NULL);
+	return TCL_ERROR;
+    }
+
     if (fields == NULL) {
 	Tcl_AppendResult(interp, "invalid field list\n", NULL);
 	return TCL_ERROR;
@@ -474,19 +718,24 @@ static int ProcessStructFieldsFromElements(
 
     assert(valueLength > 0);
 
-    for (;; index++) {
+    for (index = 0; index < elemCount; index += 2) {
 	Tcl_Obj *elemObj;
+	NameAndValue *pair;
 	const char *format;
 	size_t offset;
 
-	if (index >= elemCount)
-	    break;
-
-	assert(index < elemCount);
 	elemObj = elemPtrs[index];
 	assert(elemObj != NULL);
 
-	format = fields[index].name;
+	if (GetPairFromName(interp, Tcl_GetString(elemObj), fields,
+		&pair) != TCL_OK) {
+	    return TCL_ERROR;
+	}
+
+	if (pair == NULL)
+	    break;
+
+	format = pair.name;
 
 	if (format == NULL)
 	    break;
@@ -494,7 +743,7 @@ static int ProcessStructFieldsFromElements(
 	if (*format == 0)
 	    continue;
 
-	offset = (size_t)fields[index].value;
+	offset = (size_t)pair.value;
 	assert(offset <= sizeof(cdb2_client_datetime_t)); /* SANITY */
 
 	if ((strcmp(format, "%d") == 0) || (strcmp(format, "%u") == 0)) {
@@ -674,11 +923,6 @@ static int GetValueStructFromObj(
     int code;
     int elemCount = 0;
     Tcl_Obj **elemPtrs = NULL;
-    cdb2_client_datetime_t *pDateTimeValue;
-    cdb2_client_datetimeus_t *pDateTimeUsValue;
-    cdb2_client_intv_ym_t *pIntervalYmValue;
-    cdb2_client_intv_ds_t *pIntervalDsValue;
-    cdb2_client_intv_dsus_t *pIntervalDsUsValue;
 
     assert(interp != NULL);
     memset(valuePtr, 0, valueLength);
@@ -690,7 +934,7 @@ static int GetValueStructFromObj(
 
     switch (type) {
 	case CDB2_DATETIME: {
-	    const struct NameAndValue fields[] = {
+	    const NameAndValue fields[] = {
 		{   "sec", 0},
 		{    "%d", offsetof(cdb2_client_datetime_t, tm) +
 			   offsetof(cdb2_tm_t, tm_sec)},
@@ -725,8 +969,10 @@ static int GetValueStructFromObj(
 		{    NULL, 0}
 	    };
 
+	    cdb2_client_datetime_t *pDateTimeValue =
+		(cdb2_client_datetime_t *)valuePtr;
+
 	    assert(valueLength >= sizeof(cdb2_client_datetime_t));
-	    pDateTimeValue = (cdb2_client_datetime_t *)valuePtr;
 	    assert(COUNT_OF(fields) == CDB2_DATETIME_MAX_ELEMENTS);
 
 	    if ((elemCount < CDB2_DATETIME_MIN_ELEMENTS) ||
@@ -741,10 +987,14 @@ static int GetValueStructFromObj(
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
 
-	    goto done;
+	    if (code != TCL_OK)
+		goto done;
+
+	    code = IsValidTime(interp, &pDateTimeValue->tm);
+	    break;
 	}
 	case CDB2_INTERVALYM: {
-	    const struct NameAndValue fields[] = {
+	    const NameAndValue fields[] = {
 		{  "sign", 0},
 		{    "%d", offsetof(cdb2_client_intv_ym_t, sign)},
 		{ "years", 0},
@@ -755,7 +1005,6 @@ static int GetValueStructFromObj(
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_ym_t));
-	    pIntervalYmValue = (cdb2_client_intv_ym_t *)valuePtr;
 	    assert(COUNT_OF(fields) == CDB2_INTERVALYM_ELEMENTS);
 
 	    if (elemCount != CDB2_INTERVALYM_ELEMENTS) {
@@ -769,10 +1018,10 @@ static int GetValueStructFromObj(
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
 
-	    goto done;
+	    break;
 	}
 	case CDB2_INTERVALDS: {
-	    const struct NameAndValue fields[] = {
+	    const NameAndValue fields[] = {
 		{  "sign", 0},
 		{    "%d", offsetof(cdb2_client_intv_ds_t, sign)},
 		{  "days", 0},
@@ -789,7 +1038,6 @@ static int GetValueStructFromObj(
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_ds_t));
-	    pIntervalDsValue = (cdb2_client_intv_ds_t *)valuePtr;
 	    assert(COUNT_OF(fields) == CDB2_INTERVALDS_ELEMENTS);
 
 	    if (elemCount != CDB2_INTERVALDS_ELEMENTS) {
@@ -803,10 +1051,10 @@ static int GetValueStructFromObj(
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
 
-	    goto done;
+	    break;
 	}
 	case CDB2_DATETIMEUS: {
-	    const struct NameAndValue fields[] = {
+	    const NameAndValue fields[] = {
 		{   "sec", 0},
 		{    "%d", offsetof(cdb2_client_datetimeus_t, tm) +
 			   offsetof(cdb2_tm_t, tm_sec)},
@@ -841,8 +1089,10 @@ static int GetValueStructFromObj(
 		{    NULL, 0}
 	    };
 
+	    cdb2_client_datetimeus_t *pDateTimeUsValue =
+		(cdb2_client_datetimeus_t *)valuePtr;
+
 	    assert(valueLength >= sizeof(cdb2_client_datetimeus_t));
-	    pDateTimeUsValue = (cdb2_client_datetimeus_t *)valuePtr;
 	    assert(COUNT_OF(fields) == CDB2_DATETIMEUS_MAX_ELEMENTS);
 
 	    if ((elemCount < CDB2_DATETIMEUS_MIN_ELEMENTS) ||
@@ -857,10 +1107,14 @@ static int GetValueStructFromObj(
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
 
-	    goto done;
+	    if (code != TCL_OK)
+		goto done;
+
+	    code = IsValidTime(interp, &pDateTimeUsValue->tm);
+	    break;
 	}
 	case CDB2_INTERVALDSUS: {
-	    const struct NameAndValue fields[] = {
+	    const NameAndValue fields[] = {
 		{ "sign", 0},
 		{   "%d", offsetof(cdb2_client_intv_dsus_t, sign)},
 		{ "days", 0},
@@ -891,7 +1145,7 @@ static int GetValueStructFromObj(
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
 
-	    goto done;
+	    break;
 	}
 	default: {
 	    char buffer[FIXED_BUFFER_SIZE + 1];
@@ -1141,7 +1395,7 @@ static void AppendCdb2ErrorMessage(
  */
 
 static void FreeBoundValue(
-    struct BoundValue *pBoundValue)		/* Bound value to free. */
+    BoundValue *pBoundValue)		/* Bound value to free. */
 {
     if (pBoundValue == NULL)
 	return;
@@ -1200,7 +1454,7 @@ static void FreeParameterValues(
 
 	for (hPtr = Tcl_FirstHashEntry(hTablePtr, &hSearch);
 		hPtr != NULL; hPtr = Tcl_NextHashEntry(&hSearch)) {
-	    struct BoundValue *pBoundValue = Tcl_GetHashValue(hPtr);
+	    BoundValue *pBoundValue = Tcl_GetHashValue(hPtr);
 
 	    FreeBoundValue(pBoundValue);
 	    Tcl_SetHashValue(hPtr, NULL);
@@ -1458,7 +1712,7 @@ static int tclcdb2ObjCmd(
     Tcl_HashEntry *hPtr = NULL;
     Tcl_Obj *listPtr = NULL;
     Tcl_Obj *valuePtr = NULL;
-    struct BoundValue *pBoundValue = NULL;
+    BoundValue *pBoundValue = NULL;
     int *types = NULL;
 
     static const char *cmdOptions[] = {
@@ -1520,9 +1774,9 @@ static int tclcdb2ObjCmd(
 		SET_AUXILIARY_DATA("tclcdb2_params", hTablePtr);
 	    }
 
-	    pBoundValue = malloc(sizeof(struct BoundValue));
+	    pBoundValue = malloc(sizeof(BoundValue));
 	    MAYBE_OUT_OF_MEMORY(pBoundValue);
-	    memset(pBoundValue, 0, sizeof(struct BoundValue));
+	    memset(pBoundValue, 0, sizeof(BoundValue));
 
 	    code = Tcl_GetIntFromObj(interp, objv[3], &pBoundValue->index);
 	    memset(buffer, 0, sizeof(buffer));
