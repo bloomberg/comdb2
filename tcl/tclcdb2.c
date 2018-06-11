@@ -724,6 +724,12 @@ static int ProcessStructFieldsFromElements(
 	const char *format;
 	size_t offset;
 
+	/*
+	 * NOTE: Grab the name part of this name/value pair from the
+	 *       Tcl dictionary.  It must be found in the field list
+	 *       provided by the caller.
+	 */
+
 	elemObj = elemPtrs[index];
 	assert(elemObj != NULL);
 
@@ -735,6 +741,7 @@ static int ProcessStructFieldsFromElements(
 	if (pair == NULL)
 	    break;
 
+	pair++; /* NOTE: Advance to the value descriptor. */
 	format = pair->name;
 
 	if (format == NULL)
@@ -745,6 +752,16 @@ static int ProcessStructFieldsFromElements(
 
 	offset = (size_t)pair->value;
 	assert(offset <= sizeof(cdb2_client_datetime_t)); /* SANITY */
+
+	/*
+	 * NOTE: Grab the value part of this name/value pair from the
+	 *       Tcl dictionary.  Accessing this array element is safe
+	 *       based on the invariant for the containing loop -AND-
+	 *       the fact this array has an even number of elements.
+	 */
+
+	elemObj = elemPtrs[index + 1];
+	assert(elemObj != NULL);
 
 	if ((strcmp(format, "%d") == 0) || (strcmp(format, "%u") == 0)) {
 	    int intValue;
