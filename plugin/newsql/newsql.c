@@ -90,15 +90,15 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     CDB2SQLQUERY *sql_query = appdata->sqlquery;
     char cnonce[256];
     int rcode = 0;
-    if (clnt->sql_query && clnt->sql_query->snapshot_info &&
-        clnt->sql_query->snapshot_info->file > 0) {
-        *file = clnt->sql_query->snapshot_info->file;
-        *offset = clnt->sql_query->snapshot_info->offset;
+    if (sql_query && sql_query->snapshot_info &&
+        sql_query->snapshot_info->file > 0) {
+        *file = sql_query->snapshot_info->file;
+        *offset = sql_query->snapshot_info->offset;
 
         sql_debug_logf(clnt, __func__, __LINE__, "fill-snapinfo "
                 "sql_query->snapinfo is [%d][%d], clnt->snapinfo is [%d][%d]: "
-                "use client snapinfo!\n", clnt->sql_query->snapshot_info->file,
-                clnt->sql_query->snapshot_info->offset, clnt->snapshot_file,
+                "use client snapinfo!\n", sql_query->snapshot_info->file,
+                sql_query->snapshot_info->offset, clnt->snapshot_file,
                 clnt->snapshot_offset);
         return 0;
     }
@@ -108,10 +108,10 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
         clnt->snapshot_file) {
         sql_debug_logf(clnt, __func__, __LINE__, "fill-snapinfo "
                 "sql_query->snapinfo is [%d][%d] clnt->snapinfo is [%d][%d]\n",
-                    (clnt->sql_query && clnt->sql_query->snapshot_info)
-                    ? clnt->sql_query->snapshot_info->file : -1,
-                    (clnt->sql_query && clnt->sql_query->snapshot_info)
-                    ? clnt->sql_query->snapshot_info->offset : -1,
+                    (sql_query && sql_query->snapshot_info)
+                    ? sql_query->snapshot_info->file : -1,
+                    (sql_query && sql_query->snapshot_info)
+                    ? sql_query->snapshot_info->offset : -1,
                     clnt->snapshot_file, clnt->snapshot_offset);
         *file = clnt->snapshot_file;
         *offset = clnt->snapshot_offset;
@@ -1517,7 +1517,7 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 } else {
                     clnt->hasql_on = 0;
                     newsql_clr_high_availability(clnt);
-                    sql_debug_logf(clnt, __func__, __LINE__, "clearning "
+                    sql_debug_logf(clnt, __func__, __LINE__, "clearing "
                             "high_availability\n");
                 }
             } else if (strncasecmp(sqlstr, "verifyretry", 11) == 0) {

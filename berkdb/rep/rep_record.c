@@ -1370,12 +1370,24 @@ skip:				/*
                 st = comdb2_time_epochus();
 				if ((rc = __rep_send_message(dbenv,
 				    *eidp, REP_NEWFILE, &oldfilelsn, NULL,
-				    sendflags, NULL)) != 0 && gbl_verbose_fills) {
+				    sendflags, NULL)) != 0) {
 
-                    if (gbl_verbose_fills) {
-                        logmsg(LOGMSG_USER, "%s line %d failed to send newfile "
-                                "to %s for LSN %d:%d %d\n", __func__, __LINE__,
-                                *eidp, oldfilelsn.file, oldfilelsn.offset, rc);
+					type = REP_LOG_MORE;
+                    sendflags |= (DB_REP_NODROP|DB_REP_NOBUFFER);
+
+                    if (gbl_verbose_fills){
+                        logmsg(LOGMSG_USER, "%s line %d toggled to LOG_MORE to "
+                                "%s for NEWFILE %d:%d\n", __func__, __LINE__,
+                                *eidp, lsn.file, lsn.offset);
+                    }
+
+                    if ((rc = __rep_send_message(dbenv,
+                        *eidp, REP_NEWFILE, &oldfilelsn, NULL,
+                        sendflags, NULL)) != 0 && gbl_verbose_fills) {
+                        logmsg(LOGMSG_USER, "%s line %d failed to send "
+                                "newfile to %s for LSN %d:%d %d\n",
+                                __func__, __LINE__, *eidp, oldfilelsn.file,
+                                oldfilelsn.offset, rc);
                     }
                 }
                 sendtime += (comdb2_time_epochus() - st);

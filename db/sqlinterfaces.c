@@ -182,16 +182,17 @@ static int sql_debug_logf_int(struct sqlclntstate *clnt, const char *func,
         int line, const char *fmt, va_list args)
 {
     char *s;
-    int cn_len; 
+    int cn_len;
+    snap_uid_t snap = {0};
     char *cnonce;
     int len;
     int nchars;
     va_list args_c;
 
-    if (clnt && clnt->sql_query) {
-        cn_len = clnt->sql_query->cnonce.len;
+    if (clnt && get_cnonce(clnt, &snap) == 0) {
+        cn_len = snap.keylen;
         cnonce = alloca(cn_len + 1);
-        memcpy(cnonce, clnt->sql_query->cnonce.data, cn_len);
+        memcpy(cnonce, snap.key, cn_len);
         cnonce[cn_len] = '\0';
     } else {
         cnonce = "(no-cnonce)";
