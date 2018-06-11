@@ -249,6 +249,24 @@ encrypted connection"\} (0|1)$}
 
 ###############################################################################
 
+test cdb2-6.1 {hint sub-command} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {cdb2 hint} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 hint 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 hint $db}  errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 hint 1 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 hint $db 1}  errMsg] [normalizeResult $errMsg]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {1 {wrong # args: should be "cdb2 hint connection"} 1\
+<connection_not_found> 0 {} 1 {wrong # args: should be "cdb2 hint connection"}\
+1 {wrong # args: should be "cdb2 hint connection"}}
+
+###############################################################################
+
 test cdb2-99.1 {debug sub-command} -setup {
   set db [openConnection]
 } -body {
@@ -286,7 +304,6 @@ if {0} then {
 
   cdb2 configure
   cdb2 error
-  cdb2 hint
 }
 
 ###############################################################################
