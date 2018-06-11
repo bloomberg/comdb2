@@ -1742,7 +1742,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
         char expanded_fp[2 * FINGERPRINTSZ + 1];
         util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
         reqlog_logf(logger, REQL_INFO, "fingerprint=%.*s",
-                        FINGERPRINTSZ * 1, expanded_fp);
+                        FINGERPRINTSZ * 2, expanded_fp);
     }
 
     logger->in_request = 0;
