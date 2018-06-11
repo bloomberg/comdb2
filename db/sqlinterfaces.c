@@ -264,6 +264,11 @@ static void setup_client_info(struct sqlclntstate *clnt, struct sqlthdstate *thd
     clnt->plugin.setup_client_info(clnt, thd, replay);
 }
 
+uint64_t get_client_starttime(struct sqlclntstate *clnt)
+{
+    return clnt->plugin.get_client_starttime(clnt);
+}
+
 static int skip_row(struct sqlclntstate *clnt, uint64_t rowid)
 {
     return clnt->plugin.skip_row(clnt, rowid);
@@ -611,7 +616,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     else
         h->sql = strdup("unknown");
     h->cost = query_cost(thd);
-    int timems = h->time = comdb2_time_epochms() - thd->startms;
+    h->time = comdb2_time_epochms() - thd->startms;
     h->when = thd->stime;
     h->txnid = rqid;
 
@@ -5137,7 +5142,10 @@ static int internal_log_context(struct sqlclntstate *a, struct reqlogger *b)
 {
     return 0;
 }
-
+static uint64_t internal_get_client_starttime(struct sqlclntstate *a)
+{
+    return -1;
+}
 void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {
     reset_clnt(clnt, NULL, 1);

@@ -1739,10 +1739,10 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     /* If fingerprinting is enabled and the logger has a fingerprint,
        log the fingerprint as well. */
     if (gbl_fingerprint_queries && logger->have_fingerprint) {
-        char hexfp[FINGERPRINTSZ << 1];
-        if (reqlog_fingerprint_to_hex(logger, hexfp, FINGERPRINTSZ << 1) > 0)
-            reqlog_logf(logger, REQL_INFO, "fingerprint=%.*s",
-                        FINGERPRINTSZ << 1, hexfp);
+        char expanded_fp[2 * FINGERPRINTSZ + 1];
+        util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
+        reqlog_logf(logger, REQL_INFO, "fingerprint=%.*s",
+                        FINGERPRINTSZ * 1, expanded_fp);
     }
 
     logger->in_request = 0;
@@ -2721,27 +2721,4 @@ void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context)
 void reqlog_set_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
 {
     logger->clnt = clnt;
-}
-
-int reqlog_fingerprint_to_hex(struct reqlogger *logger, char *hexstr, size_t n)
-{
-    static const char hex[] = "0123456789abcdef";
-    size_t i, len;
-
-    if (!gbl_fingerprint_queries)
-        return 0;
-
-    if (n & 1)
-        return 0;
-
-    if (logger == NULL)
-        return 0;
-
-    for (i = 0, len = ((n >> 1) < FINGERPRINTSZ) ? (n >> 1) : FINGERPRINTSZ;
-         i != len; ++i) {
-        hexstr[i << 1] = hex[(logger->fingerprint[i] & 0xf0) >> 4];
-        hexstr[(i << 1) + 1] = hex[logger->fingerprint[i] & 0x0f];
-    }
-
-    return (i << 1);
 }

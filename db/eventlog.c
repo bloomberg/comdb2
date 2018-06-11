@@ -469,6 +469,11 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
     if (logger->queuetimeus)
         cson_object_set(obj, "qtime", cson_new_int(logger->queuetimeus));
+    if (logger->clnt) {
+        uint64_t clientstarttime = get_client_starttime(logger->clnt);
+        if (clientstarttime)
+            cson_object_set(obj, "clientstart", cson_new_int(clientstarttime));
+    }
 
     eventlog_context(obj, logger);
     eventlog_perfdata(obj, logger);

@@ -2343,6 +2343,11 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
         hndl->context_msgs.has_changed = 0;
     }
 
+    sqlquery.has_timestampus = 1;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    sqlquery.timestampus = ((uint64_t)tv.tv_sec) * 1000000 + tv.tv_usec;
+
     int len = cdb2__query__get_packed_size(&query);
     unsigned char *buf = malloc(len + 1);
 
@@ -2354,6 +2359,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
     hdr.compression = ntohl(0);
     hdr.length = ntohl(len);
 
+    // finally send header and query
     sbuf2write((char *)&hdr, sizeof(hdr), sb);
     sbuf2write((char *)buf, len, sb);
 
@@ -2665,27 +2671,24 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     if (hndl->sb && !hndl->in_trans && hndl->firstresponse &&
         (!hndl->lastresponse ||
          (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) {
-        struct timeval tv;
         int nrec = 0;
-        uint64_t starttime;
         sbuf2settimeout(hndl->sb, CDB2_AUTO_CONSUME_TIMEOUT_MS,
                         CDB2_AUTO_CONSUME_TIMEOUT_MS);
+        struct timeval tv;
         gettimeofday(&tv, NULL);
-        starttime = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000; // in ms
+        uint64_t starttimems = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000;
         while (cdb2_next_record_int(hndl, 0) == CDB2_OK) {
             nrec++;
             gettimeofday(&tv, NULL);
+            uint64_t curr = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000;
             /* auto consume for up to CDB2_AUTO_CONSUME_TIMEOUT_MS */
-            if (((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000 - starttime >=
-                CDB2_AUTO_CONSUME_TIMEOUT_MS)
+            if (curr - starttimems >= CDB2_AUTO_CONSUME_TIMEOUT_MS)
                 break;
         }
         if (hndl->debug_trace) {
-            gettimeofday(&tv, NULL);
+            uint64_t curr = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000;
             fprintf(stderr, "%s: auto consume %d records took %lu ms\n",
-                    __func__, nrec,
-                    ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000 -
-                        starttime);
+                    __func__, nrec, curr - starttimems);
         }
     }
 
@@ -2749,7 +2752,7 @@ static void make_random_str(char *str, size_t max_len, int *len)
     static __thread char cached_portion[23] = {0}; // 2*10 digits + 2 '-' + '\n'
     static __thread size_t cached_portion_len = 0;
     if (cached_portion_len == 0) {
-        cached_portion_len = snprintf(cached_portion, sizeof(cached_portion),
+        cached_portion_len = snprintf(cached_portion, sizeof(cached_portion)-1,
                                       "%d-%d-", cdb2_hostid(), _PID);
     }
     struct timeval tv;
@@ -3349,8 +3352,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
     /* sniff out 'set hasql on' here */
     if (strncasecmp(sql, "set", 3) == 0) {
-        rc = process_set_command(hndl, sql);
-        return rc;
+        return process_set_command(hndl, sql);
     }
 
     if (strncasecmp(sql, "begin", 5) == 0) {
@@ -3374,10 +3376,11 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
         is_commit = 1;
         is_rollback = 1;
     }
-    if (hndl->client_side_error == 1 && hndl->in_trans && !is_commit) {
-        return hndl->error_in_trans;
-    } else if (hndl->client_side_error == 1 && hndl->in_trans && is_commit) {
-        sql = "rollback";
+    if (hndl->client_side_error == 1 && hndl->in_trans) {
+        if (!is_commit)
+            return hndl->error_in_trans;
+        else
+            sql = "rollback";
     }
 
     if ((is_begin && hndl->in_trans) || (is_commit && !hndl->in_trans)) {
@@ -3421,7 +3424,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
                 hndl->hint = NULL;
             }
 
-            int len = strlen(sql);
+            int len = strnlen(sql, 101);
             if (len > 100) {
                 hndl->query = malloc(len + 1);
                 strcpy(hndl->query, sql);
@@ -5318,8 +5321,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
 
     if (log_calls) {
-        struct timeval tv;
-        gettimeofday(&tv, NULL);
         fprintf(stderr, "%p> cdb2_open(dbname: \"%s\", type: \"%s\", flags: "
                         "%x) = %d => %p\n",
                 (void *)pthread_self(), dbname, type, hndl->flags, rc, *handle);
