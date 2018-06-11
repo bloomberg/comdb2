@@ -3425,7 +3425,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
                 hndl->hint = NULL;
             }
 
-            int len = strnlen(sql, 101);
+            int len = strlen(sql);
             if (len > 100) {
                 hndl->query = malloc(len + 1);
                 strcpy(hndl->query, sql);
