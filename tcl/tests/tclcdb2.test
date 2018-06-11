@@ -552,7 +552,7 @@ test cdb2-8.4 {run sub-command with NULL results} -setup {
   closeConnection $db
 
   unset -nocomplain errMsg table db
-} -result {0 {} {index 1 columns {{index 0 type integer size 8 name x null\
+} -result {0 {} {index 1 columns {{index 0 type integer size 0 name x null\
 true value <null>}} effects {affected 0 selected 1 updated 0 deleted 0 inserted\
 0}}}
 
