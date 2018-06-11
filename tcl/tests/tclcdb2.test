@@ -26,6 +26,31 @@ package require tclcdb2
 
 ###############################################################################
 
+if {[llength [info commands isBinary]] == 0} then {
+  proc isBinary { value } {
+    return [regexp -- {[^\t\n\v\f\r[:print:]]} $value]
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands hexList]] == 0} then {
+  proc hexList { value } {
+    set result ""
+    set length [string length $value]
+
+    for {set index 0} {$index < $length} {incr index} {
+      if {$index > 0} then {append result " "}
+      scan [string index $value $index] %c ordinal
+      append result 0x [format %02X $ordinal]
+    }
+
+    return $result
+  }
+}
+
+###############################################################################
+
 if {[llength [info commands getEnvVar]] == 0} then {
   proc getEnvVar { name {default ""} } {
     if {![info exists ::env($name)]} then {
@@ -76,7 +101,56 @@ if {[llength [info commands normalizeResult]] == 0} then {
     return [string map [list \
         $wrongNumArgs(open) <wrong_open> \
         $wrongNumArgs(close) <wrong_close>] \
+        \r\n <crLf> \r <cr> \n <lf> \
         [string trim $result]]
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getColumns]] == 0} then {
+  proc getColumns { connection } {
+    set result [list]
+
+    for {set index 0} {$index < [cdb2 colcount $connection]} {incr index} {
+      if {[catch {cdb2 colvalue $connection $index} value] == 0} {
+        set null false
+      } elseif {[string trim $value] eq "invalid column value"} {
+        set null true
+      } else {
+        error $value; # FAIL: Unknown error.
+      }
+
+      if {[isBinary $value]} then {
+        set value [hexList $value]
+      }
+
+      lappend result [list index $index \
+          type [cdb2 coltype $connection $index] \
+          size [cdb2 colsize $connection $index] \
+          name [cdb2 colname $connection $index] \
+          null $null value $value]
+    }
+
+    return $result
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getRowsOfColumns]] == 0} then {
+  proc getRowsOfColumns { connection } {
+    set result [list]
+    set index 0
+
+    while {[cdb2 next $connection]} {
+      lappend result index [incr index] \
+          columns [getColumns $connection]
+    }
+
+    lappend result effects [cdb2 effects $connection]
+
+    return $result
   }
 }
 
@@ -103,6 +177,60 @@ if {[llength [info commands openConnection]] == 0} then {
     }
 
     return [eval $command]
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getTableName]] == 0} then {
+  proc getTableName { name } {
+    if {![regexp -nocase -- {[A-Z][0-9A-Z]*} $name]} then {
+      error "table name must be alphanumeric and start with a letter"
+    }
+
+    return tcl_cdb2_test_[pid]_$name
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands cleanupDatabase]] == 0} then {
+  proc cleanupDatabase {} {
+    set connection [openConnection]
+
+    set sql [string trim [subst {
+      SELECT name FROM sqlite_master WHERE name LIKE 'tcl_cdb2_test_[pid]_%'
+    }]]
+
+    if {[catch {cdb2 run $connection $sql} error] == 0} then {
+      set names [list]
+
+      if {[catch {
+        while {[cdb2 next $connection]} {
+          lappend names [cdb2 colvalue $connection 0]
+        }
+      } error]} then {
+        tcltest::Warn [appendArgs \
+            "could not grab table names using connection \"" \
+            $connection "\": " $error]
+      }
+
+      foreach name $names {
+        set sql [subst {DROP TABLE $name}]
+
+        if {[catch {cdb2 run $connection $sql} error]} then {
+          tcltest::Warn [appendArgs \
+              "could not DROP table \"$name\" using connection \"" \
+              $connection "\": " $error]
+        }
+      }
+    } else {
+      tcltest::Warn [appendArgs \
+          "could not query table names using connection \"" \
+          $connection "\": " $error]
+    }
+
+    closeConnection $connection
   }
 }
 
@@ -204,12 +332,12 @@ test cdb2-3.1 {open & close sub-commands} -body {
       } result(2)] [normalizeResult $result(2)]
 } -cleanup {
   unset -nocomplain result
-} -result "1 <wrong_open> 1 <connection_not_found> 1 {cdb2_get_dbhosts: can't\
+} -result {1 <wrong_open> 1 <connection_not_found> 1 {cdb2_get_dbhosts: can't\
 do dbinfo query on <bad_db> hosts.} 1 <connection_not_found> 0\
 <connection_open> 1 <wrong_close> 1 <wrong_close> 0 {} 1 <connection_not_found>\
 1 <wrong_close> 0 <connection_open> 0 {} 0 <connection_open> 0 {} 0\
-<connection_open> 0 {} 0 <connection_open> 0 {} 1 {name \"bad\" not\
-found\nvalue for name \"bad\" not found} 1 <connection_not_found>"
+<connection_open> 0 {} 0 <connection_open> 0 {} 1 {name "bad" not\
+found<newLine>value for name "bad" not found} 1 <connection_not_found>}
 
 ###############################################################################
 
@@ -267,6 +395,66 @@ test cdb2-6.1 {hint sub-command} -setup {
 
 ###############################################################################
 
+test cdb2-7.1 {run sub-command errors} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {cdb2 run} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db}  errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db "SELECT bad"} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db 1 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db 1 bad} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db "SELECT bad" bad} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db 1 1 1} errMsg] [normalizeResult $errMsg]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {1 {wrong # args: should be "cdb2 run connection sql ?types?"} 1\
+{wrong # args: should be "cdb2 run connection sql ?types?"} 1 {wrong # args:\
+should be "cdb2 run connection sql ?types?"} 1 {near "1": syntax error} 1 {no\
+such column: bad} 1 {near "1": syntax error} 1 {name "bad" not\
+found<newLine>value for name "bad" not found} 1 {name "bad" not\
+found<newLine>value for name "bad" not found} 1 {wrong # args: should be "cdb2\
+run connection sql ?types?"}}
+
+###############################################################################
+
+test cdb2-7.2 {simple run sub-command} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {cdb2 run $db "SELECT 1"} errMsg] $errMsg
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {0 1}
+
+###############################################################################
+
+test cdb2-7.3 {run sub-command with results} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_73]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table (x)
+  }]]
+
+  cdb2 run $db [string trim [subst {
+    INSERT INTO $table (x) VALUES (1)
+  }]]
+} -body {
+  list [catch {cdb2 run $db "SELECT x FROM $table"} errMsg] $errMsg \
+      [getRowsOfColumns $db]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {0 1}
+
+###############################################################################
+
 test cdb2-99.1 {debug sub-command} -setup {
   set db [openConnection]
 } -body {
@@ -290,17 +478,7 @@ if {0} then {
   # TODO: Test the following sub-commands, variations, etc.
   #
   cdb2 bind
-  cdb2 run
-  cdb2 next
   cdb2 unbind
-
-  cdb2 colcount
-  cdb2 colname
-  cdb2 colsize
-  cdb2 coltype
-  cdb2 colvalue
-
-  cdb2 effects
 
   cdb2 configure
   cdb2 error
@@ -308,5 +486,6 @@ if {0} then {
 
 ###############################################################################
 
+cleanupDatabase
 unset -nocomplain path
 ::tcltest::cleanupTests
