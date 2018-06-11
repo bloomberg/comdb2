@@ -56,6 +56,13 @@ if {[llength [info commands normalizeResult]] == 0} then {
       return <connection_not_found>
     }
 
+    set percentD {(?:-)?[0-9]{1,10}}
+    set pattern "^${percentD}-${percentD}-${percentD}-${percentD}\$"
+
+    if {[regexp -- $pattern $result]} then {
+      return <cnonce>
+    }
+
     regsub -all -- {( baddb_[0-9]+ )} $result { <bad_db> } result
 
     set wrongNumArgs(open) [string trim {
@@ -122,10 +129,10 @@ test cdb2-1.1 {overall command usage} -body {
 ###############################################################################
 
 test cdb2-2.1 {ssl sub-command} -body {
-  list [catch {cdb2 ssl} errMsg] $errMsg \
-      [catch {cdb2 ssl 1} errMsg] $errMsg \
-      [catch {cdb2 ssl 1 1}  errMsg] $errMsg \
-      [catch {cdb2 ssl 1 1 1} errMsg] $errMsg
+  list [catch {cdb2 ssl} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 ssl 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 ssl 1 1}  errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 ssl 1 1 1} errMsg] [normalizeResult $errMsg]
 } -cleanup {
   unset -nocomplain errMsg
 } -result {1 {wrong # args: should be "cdb2 ssl initSsl initCrypto"} 1 {wrong\
@@ -206,7 +213,26 @@ found\nvalue for name \"bad\" not found} 1 <connection_not_found>"
 
 ###############################################################################
 
-test cdb2-4.1 {debug sub-command} -setup {
+test cdb2-4.1 {cnonce sub-command} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {cdb2 cnonce} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 cnonce 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 cnonce 1 1}  errMsg] [normalizeResult $errMsg] \
+      [normalizeResult [cdb2 cnonce $db]] \
+      [normalizeResult [cdb2 run $db "SELECT 1"]] \
+      [normalizeResult [cdb2 cnonce $db]]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {1 {wrong # args: should be "cdb2 cnonce connection"} 1\
+<connection_not_found> 1 {wrong # args: should be "cdb2 cnonce connection"} 0\
+{} 0 {} 0 <cnonce>}
+
+###############################################################################
+
+test cdb2-99.1 {debug sub-command} -setup {
   set db [openConnection]
 } -body {
   list [catch {cdb2 debug} errMsg] [normalizeResult $errMsg] \
@@ -229,7 +255,6 @@ if {0} then {
   # TODO: Test the following sub-commands, variations, etc.
   #
   cdb2 bind
-  cdb2 cnonce
   cdb2 colcount
   cdb2 colname
   cdb2 colsize
