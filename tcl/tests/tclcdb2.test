@@ -395,7 +395,26 @@ test cdb2-6.1 {hint sub-command} -setup {
 
 ###############################################################################
 
-test cdb2-7.1 {run sub-command errors} -setup {
+test cdb2-7.1 {error sub-command} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {cdb2 error} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 error 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 error $db} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db bad} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 error $db} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 error 1 1} errMsg] [normalizeResult $errMsg]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {1 {wrong # args: should be "cdb2 error connection"} 1\
+<connection_not_found> 0 {} 1 {near "bad": syntax error} 1 {near "bad": syntax\
+error} 1 {wrong # args: should be "cdb2 error connection"}}
+
+###############################################################################
+
+test cdb2-8.1 {run sub-command errors} -setup {
   set db [openConnection]
 } -body {
   list [catch {cdb2 run} errMsg] [normalizeResult $errMsg] \
@@ -420,7 +439,7 @@ found} 1 {wrong # args: should be "cdb2 run connection sql ?types?"}}
 
 ###############################################################################
 
-test cdb2-7.2 {simple run sub-command} -setup {
+test cdb2-8.2 {simple run sub-command} -setup {
   set db [openConnection]
 } -body {
   list [catch {cdb2 run $db "SELECT 1"} errMsg] $errMsg \
@@ -434,9 +453,9 @@ false value 1}} effects {affected 0 selected 1 updated 0 deleted 0 inserted 0}}}
 
 ###############################################################################
 
-test cdb2-7.3 {run sub-command with results} -setup {
+test cdb2-8.3 {run sub-command with results} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_73]
+  set table [getTableName cdb2_83]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table (x INTEGER)
@@ -451,9 +470,15 @@ test cdb2-7.3 {run sub-command with results} -setup {
 } -cleanup {
   closeConnection $db
 
-  unset -nocomplain errMsg db
+  unset -nocomplain errMsg table db
 } -result {0 {} {index 1 columns {{index 0 type integer size 8 name x null\
 false value 1}} effects {affected 0 selected 1 updated 0 deleted 0 inserted 0}}}
+
+###############################################################################
+
+
+
+
 
 ###############################################################################
 
@@ -483,7 +508,6 @@ if {0} then {
   cdb2 unbind
 
   cdb2 configure
-  cdb2 error
 }
 
 ###############################################################################
