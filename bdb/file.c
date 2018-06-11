@@ -62,7 +62,6 @@
 
 #include <build/db.h>
 #include <epochlib.h>
-#include <plink.h>
 
 #include <net.h>
 #include <cheapstack.h>
@@ -1976,7 +1975,6 @@ static void panic_func(DB_ENV *dbenv, int errval)
     char buf[100];
     int len;
     pid_t pid;
-    const char *mkfile;
 
     /* get a pointer back to our bdb_state */
     bdb_state = (bdb_state_type *)dbenv->app_private;
@@ -1992,9 +1990,6 @@ static void panic_func(DB_ENV *dbenv, int errval)
     pid = getpid();
     snprintf(buf, sizeof(buf), "pstack %d", pid);
     int dum = system(buf);
-
-    mkfile = plink_constant(PLINK_MAKEFILE);
-    logmsg(LOGMSG_FATAL, "Version: %s\n", mkfile ? mkfile : "unknown");
 
     /* this code sometimes deadlocks.  install a timer - if it
        fires, we
