@@ -8,19 +8,13 @@ maxloop=10000
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table t1 ( a int primary key )"
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "truncate t1"
 
-for x in $(seq 1 $maxloop) ; do 
-    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "truncate t1"
-    if [[ $? != 0 ]]; then
-        echo "Testcase failed"
-        exit 1
-    fi
-
-    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "insert into t1 values ($x)"
-    if [[ $? != 0 ]]; then
-        echo "Testcase failed"
-        exit 1
-    fi
-done
+# Enable random restarts
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "put tunable osql_random_restart 'on'"
+if [[ -n $CLUSTER ]]; then
+    for x in $CLUSTER ; do
+        cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $x default "put tunable osql_random_restart 'on'"
+    done
+fi
 
 for x in $(seq 1 $maxloop) ; do 
     cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "insert into t1 values ($x)"

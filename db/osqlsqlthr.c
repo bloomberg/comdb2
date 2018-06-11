@@ -1737,6 +1737,13 @@ int osql_schemachange_logic(struct schema_change_type *sc,
         } else
             hash_add(clnt->ddl_tables, strdup(sc->table));
     }
+
+    if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ||
+       clnt->in_client_trans) {
+        sc->rqid = osql->rqid;
+        comdb2uuidcpy(sc->uuid, osql->uuid);
+    }
+
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         if (usedb) {
             if (getdbidxbyname(sc->table) < 0) { // view

@@ -2820,12 +2820,6 @@ int osql_save_schemachange(struct sql_thread *thd,
         return -1;
     }
 
-    if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ||
-        clnt->in_client_trans) {
-        sc->rqid = osql->rqid;
-        comdb2uuidcpy(sc->uuid, osql->uuid);
-    }
-
     if (pack_schema_change_type(sc, &packed_sc_data, &packed_sc_data_len)) {
         logmsg(LOGMSG_ERROR, "%s: error packing sc table for \'%s\'\n",
                __func__, sc->table);
