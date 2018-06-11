@@ -160,8 +160,8 @@ if {[llength [info commands getColumns]] == 0} then {
     for {set index 0} {$index < [cdb2 colcount $connection]} {incr index} {
       if {[catch {cdb2 colvalue $connection $index} value] == 0} {
         set null false
-      } elseif {[string trim $value] eq "invalid column value"} {
-        set null true
+      } elseif {$value eq "invalid column value\n"} {
+        set value <null>; set null true
       } else {
         error $value; # FAIL: Unknown error.
       }
@@ -216,7 +216,7 @@ if {[llength [info commands getDbName]] == 0} then {
 if {[llength [info commands getConfigInfo]] == 0} then {
   proc getConfigInfo { good {name ""} } {
     if {$good} then {
-      return "[getDbName $name] local"
+      return "[getDbName $name] localhost"
     } else {
       return "[getDbName $name] nowhere"
     }
@@ -552,7 +552,8 @@ test cdb2-8.4 {run sub-command with NULL results} -setup {
 
   unset -nocomplain errMsg table db
 } -result {0 {} {index 1 columns {{index 0 type integer size 8 name x null\
-true value {}}} effects {affected 0 selected 1 updated 0 deleted 0 inserted 0}}}
+true value <null>}} effects {affected 0 selected 1 updated 0 deleted 0 inserted\
+0}}}
 
 ###############################################################################
 
