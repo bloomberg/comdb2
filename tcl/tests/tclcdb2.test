@@ -337,7 +337,7 @@ do dbinfo query on <bad_db> hosts.} 1 <connection_not_found> 0\
 <connection_open> 1 <wrong_close> 1 <wrong_close> 0 {} 1 <connection_not_found>\
 1 <wrong_close> 0 <connection_open> 0 {} 0 <connection_open> 0 {} 0\
 <connection_open> 0 {} 0 <connection_open> 0 {} 1 {name "bad" not\
-found<newLine>value for name "bad" not found} 1 <connection_not_found>}
+found<lf>value for name "bad" not found} 1 <connection_not_found>}
 
 ###############################################################################
 
@@ -414,10 +414,9 @@ test cdb2-7.1 {run sub-command errors} -setup {
 } -result {1 {wrong # args: should be "cdb2 run connection sql ?types?"} 1\
 {wrong # args: should be "cdb2 run connection sql ?types?"} 1 {wrong # args:\
 should be "cdb2 run connection sql ?types?"} 1 {near "1": syntax error} 1 {no\
-such column: bad} 1 {near "1": syntax error} 1 {name "bad" not\
-found<newLine>value for name "bad" not found} 1 {name "bad" not\
-found<newLine>value for name "bad" not found} 1 {wrong # args: should be "cdb2\
-run connection sql ?types?"}}
+such column: bad} 1 {near "1": syntax error} 1 {name "bad" not found<lf>value\
+for name "bad" not found} 1 {name "bad" not\ found<lf>value for name "bad" not\
+found} 1 {wrong # args: should be "cdb2 run connection sql ?types?"}}
 
 ###############################################################################
 
@@ -430,7 +429,8 @@ test cdb2-7.2 {simple run sub-command} -setup {
   closeConnection $db
 
   unset -nocomplain errMsg db
-} -result {0 {}}
+} -result {0 {index 1 columns {{ubdex 9 type integer size 8 name 1 null false\
+value 1}} effects {affected 0 selected 1 updated 0 deleted 0 inserted 0}}}
 
 ###############################################################################
 
@@ -443,7 +443,7 @@ test cdb2-7.3 {run sub-command with results} -setup {
   }]]
 
   cdb2 run $db [string trim [subst {
-    INSERT INTO $table (x INTEGER) VALUES (1)
+    INSERT INTO $table (x) VALUES (1)
   }]]
 } -body {
   list [catch {cdb2 run $db "SELECT x FROM $table"} errMsg] $errMsg \
@@ -452,7 +452,8 @@ test cdb2-7.3 {run sub-command with results} -setup {
   closeConnection $db
 
   unset -nocomplain errMsg db
-} -result {0 {}}
+} -result {0 {index 1 columns {{ubdex 9 type integer size 8 name 1 null false\
+value 1}} effects {affected 0 selected 1 updated 0 deleted 0 inserted 0}}}
 
 ###############################################################################
 
