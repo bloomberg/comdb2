@@ -197,12 +197,12 @@ test cdb2-3.1 {open & close sub-commands} -body {
       } result(2)] [normalizeResult $result(2)]
 } -cleanup {
   unset -nocomplain result
-} -result {1 <wrong_open> 1 <connection_not_found> 1 {cdb2_get_dbhosts: can't\
+} -result "1 <wrong_open> 1 <connection_not_found> 1 {cdb2_get_dbhosts: can't\
 do dbinfo query on <bad_db> hosts.} 1 <connection_not_found> 0\
 <connection_open> 1 <wrong_close> 1 <wrong_close> 0 {} 1 <connection_not_found>\
 1 <wrong_close> 0 <connection_open> 0 {} 0 <connection_open> 0 {} 0\
-<connection_open> 0 {} 0 <connection_open> 0 {} 1 "name \"bad\" not\
-found\nvalue for name \"bad\" not found" 1 <connection_not_found>}
+<connection_open> 0 {} 0 <connection_open> 0 {} 1 {name \"bad\" not\
+found\nvalue for name \"bad\" not found} 1 <connection_not_found>"
 
 ###############################################################################
 
