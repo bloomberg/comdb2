@@ -409,7 +409,7 @@ test cdb2-7.1 {error sub-command} -setup {
 
   unset -nocomplain errMsg db
 } -result {1 {wrong # args: should be "cdb2 error connection"} 1\
-<connection_not_found> 0 {} 1 {near "bad": syntax error} 1 {near "bad": syntax\
+<connection_not_found> 0 {} 1 {near "bad": syntax error} 0 {near "bad": syntax\
 error} 1 {wrong # args: should be "cdb2 error connection"}}
 
 ###############################################################################
