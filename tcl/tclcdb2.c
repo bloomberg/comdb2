@@ -156,10 +156,10 @@ static int		IsValidTime(Tcl_Interp *interp,
 			    cdb2_tm_t *pTimeValue);
 static int		GetPairFromName(Tcl_Interp *interp,
 			    const char *name, const NameAndValue pairs[],
-			    NameAndValue **pairPtr);
+			    const NameAndValue **pairPtr);
 static int		GetPairFromValue(Tcl_Interp *interp,
 			    int value, const NameAndValue pairs[],
-			    NameAndValue **pairPtr);
+			    const NameAndValue **pairPtr);
 static int		GetValueFromName(Tcl_Interp *interp,
 			    const char *name, const NameAndValue pairs[],
 			    int *valuePtr);
@@ -420,7 +420,7 @@ static int GetPairFromName(
     Tcl_Interp *interp,			/* Current Tcl interpreter. */
     const char *name,			/* Name for value to be found. */
     const NameAndValue pairs[],		/* Possible names and values. */
-    NameAndValue **pairPtr)		/* OUT: Name/value pointer. */
+    const NameAndValue **pairPtr)	/* OUT: Name/value pointer. */
 {
     if (pairs != NULL) {
 	size_t count = strlen(name);
@@ -469,7 +469,7 @@ static int GetPairFromValue(
     Tcl_Interp *interp,			/* Current Tcl interpreter. */
     int value,				/* Value for name to be found. */
     const NameAndValue pairs[],		/* Possible names and values. */
-    NameAndValue **pairPtr)		/* OUT: Name/value pointer. */
+    const NameAndValue **pairPtr)	/* OUT: Name/value pointer. */
 {
     if (pairs != NULL) {
 	int index = 0;
@@ -526,7 +526,7 @@ static int GetValueFromName(
     int *valuePtr)			/* OUT: Integer value. */
 {
     int value;
-    NameAndValue *pair = NULL;
+    const NameAndValue *pair = NULL;
 
     if (name == NULL) {
 	if (interp != NULL) {
@@ -584,7 +584,7 @@ static int GetNameFromValue(
     const NameAndValue pairs[],		/* Possible names and values. */
     const char **namePtr)		/* OUT: String name. */
 {
-    NameAndValue *pair = NULL;
+    const NameAndValue *pair = NULL;
 
     if (GetPairFromValue(interp, value, pairs, &pair) == TCL_OK) {
 	if ((namePtr != NULL) && (pair != NULL))
@@ -720,7 +720,7 @@ static int ProcessStructFieldsFromElements(
 
     for (index = 0; index < elemCount; index += 2) {
 	Tcl_Obj *elemObj;
-	NameAndValue *pair;
+	const NameAndValue *pair;
 	const char *format;
 	size_t offset;
 
