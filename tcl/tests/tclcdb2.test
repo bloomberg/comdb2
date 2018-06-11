@@ -232,6 +232,23 @@ test cdb2-4.1 {cnonce sub-command} -setup {
 
 ###############################################################################
 
+test cdb2-5.1 {encrypted sub-command} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {cdb2 encrypted} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 encrypted 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 encrypted 1 1} errMsg] [normalizeResult $errMsg] \
+      [normalizeResult [cdb2 encrypted $db]]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -match regexp -result {^1 \{wrong # args: should be "cdb2 encrypted\
+connection"} 1 <connection_not_found> 1 \{wrong # args: should be "cdb2\
+encrypted connection"\} (0|1)$}
+
+###############################################################################
+
 test cdb2-99.1 {debug sub-command} -setup {
   set db [openConnection]
 } -body {
@@ -255,19 +272,21 @@ if {0} then {
   # TODO: Test the following sub-commands, variations, etc.
   #
   cdb2 bind
+  cdb2 run
+  cdb2 next
+  cdb2 unbind
+
   cdb2 colcount
   cdb2 colname
   cdb2 colsize
   cdb2 coltype
   cdb2 colvalue
-  cdb2 configure
+
   cdb2 effects
-  cdb2 encrypted
+
+  cdb2 configure
   cdb2 error
   cdb2 hint
-  cdb2 next
-  cdb2 run
-  cdb2 unbind
 }
 
 ###############################################################################
