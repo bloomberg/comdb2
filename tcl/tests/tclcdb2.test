@@ -227,8 +227,8 @@ test cdb2-4.1 {cnonce sub-command} -setup {
 
   unset -nocomplain errMsg db
 } -result {1 {wrong # args: should be "cdb2 cnonce connection"} 1\
-<connection_not_found> 1 {wrong # args: should be "cdb2 cnonce connection"} 0\
-{} 0 {} 0 <cnonce>}
+<connection_not_found> 1 {wrong # args: should be "cdb2 cnonce connection"} {}\
+{} <cnonce>}
 
 ###############################################################################
 
