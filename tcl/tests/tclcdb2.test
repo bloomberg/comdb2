@@ -117,7 +117,7 @@ if {[llength [info commands getEnvVar]] == 0} then {
 ###############################################################################
 
 if {[llength [info commands normalizeResult]] == 0} then {
-  proc normalizeResult { result } {
+  proc normalizeResult { result {name ""} } {
     if {[regexp -- {^cdb2_(?:0x)?[0-9A-Fa-f]+$} $result]} then {
       return <connection_open>
     }
@@ -144,6 +144,7 @@ if {[llength [info commands normalizeResult]] == 0} then {
     }]
 
     return [string map [list \
+        [getDbName $name] <dbName> \
         $wrongNumArgs(open) <wrong_open> \
         $wrongNumArgs(close) <wrong_close> \
         \r\n <crLf> \r <cr> \n <lf>] \
@@ -557,7 +558,7 @@ true value <null>}} effects {affected 0 selected 1 updated 0 deleted 0 inserted\
 
 ###############################################################################
 
-test cdb2-98.1 {configure sub-command errors} -body {
+test cdb2-97.1 {configure sub-command errors} -body {
   list [catch {cdb2 configure} errMsg] [normalizeResult $errMsg] \
       [catch {cdb2 configure 1 1 1} errMsg] [normalizeResult $errMsg]
 } -cleanup {
@@ -567,7 +568,7 @@ test cdb2-98.1 {configure sub-command errors} -body {
 
 ###############################################################################
 
-test cdb2-98.2 {configure sub-command w/string} -body {
+test cdb2-97.2 {configure sub-command w/string} -body {
   list [cdb2 configure [getConfigInfo false]] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
@@ -576,7 +577,8 @@ test cdb2-98.2 {configure sub-command w/string} -body {
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
 } -cleanup {
   unset -nocomplain result db
-} -result {}
+} -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo query on <dbName> hosts.} 1\
+<connection_not_found> {} 0 <connection_open> 0 {}}
 
 ###############################################################################
 
