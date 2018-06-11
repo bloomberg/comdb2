@@ -4945,7 +4945,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
        have nested logical transactions.  we need to delay the commit until the
        point where we would write the blkseq using the parent transaction,
        and call tran_commit_logical_with_blkseq instead */
-    if (!rowlocks && parent_trans) {
+    if (!rowlocks && parent_trans && !iq->tranddl) {
         /*fprintf(stderr, "commit child\n");*/
         irc = trans_commit(iq, trans, source_host);
         if (irc != 0) { /* this shouldnt happen */
@@ -5372,9 +5372,13 @@ backout:
         if (rowlocks) {
             irc = trans ? trans_abort_logical(iq, trans, NULL, 0, NULL, 0) : 0;
         } else {
-            if (iq->tranddl)
+            if (iq->tranddl) {
+                if (trans) {
+                    trans_abort(iq, trans);
+                    trans = NULL;
+                }
                 backout_and_abort_tranddl(iq, parent_trans);
-            else
+            } else
                 trans_abort(iq, parent_trans);
             parent_trans = NULL;
         }
@@ -5580,8 +5584,13 @@ add_blkseq:
             if (rc == 0 && have_blkseq) {
                 if (iq->tranddl) {
                     if (backed_out) {
+                        assert(trans == NULL);
                         bdb_ltran_put_schema_lock(iq->sc_logical_tran);
-                    } else if (iq->sc_tran) {
+                    } else {
+                        assert(iq->sc_tran);
+                        assert(trans != NULL);
+                        trans_commit(iq, trans, source_host);
+                        trans = NULL;
                         irc = trans_commit(iq, iq->sc_tran, source_host);
                         if (irc != 0) { /* this shouldnt happen */
                             logmsg(LOGMSG_FATAL,
@@ -5642,6 +5651,10 @@ add_blkseq:
                     hascommitlock = 0;
                 }
                 if (iq->tranddl) {
+                    if (trans) {
+                        trans_abort(iq, trans);
+                        trans = NULL;
+                    }
                     backout_and_abort_tranddl(iq, parent_trans);
                 } else {
                     trans_abort(iq, parent_trans);
