@@ -1888,6 +1888,9 @@ static int tclcdb2ObjCmd(
 		    code = GetValueStructFromObj(interp, pBoundValue->type,
 			objv[5], size, &pBoundValue->value.dateTimeValue);
 
+		    if (code != TCL_OK)
+			goto done;
+
 		    valuePtr = &pBoundValue->value.dateTimeValue;
 		    pBoundValue->length = size;
 		    break;
@@ -1897,6 +1900,9 @@ static int tclcdb2ObjCmd(
 
 		    code = GetValueStructFromObj(interp, pBoundValue->type,
 			objv[5], size, &pBoundValue->value.intervalYmValue);
+
+		    if (code != TCL_OK)
+			goto done;
 
 		    valuePtr = &pBoundValue->value.intervalYmValue;
 		    pBoundValue->length = size;
@@ -1908,6 +1914,9 @@ static int tclcdb2ObjCmd(
 		    code = GetValueStructFromObj(interp, pBoundValue->type,
 			objv[5], size, &pBoundValue->value.intervalDsValue);
 
+		    if (code != TCL_OK)
+			goto done;
+
 		    valuePtr = &pBoundValue->value.intervalDsValue;
 		    pBoundValue->length = size;
 		    break;
@@ -1918,6 +1927,9 @@ static int tclcdb2ObjCmd(
 		    code = GetValueStructFromObj(interp, pBoundValue->type,
 			objv[5], size, &pBoundValue->value.dateTimeUsValue);
 
+		    if (code != TCL_OK)
+			goto done;
+
 		    valuePtr = &pBoundValue->value.dateTimeUsValue;
 		    pBoundValue->length = size;
 		    break;
@@ -1927,6 +1939,9 @@ static int tclcdb2ObjCmd(
 
 		    code = GetValueStructFromObj(interp, pBoundValue->type,
 			objv[5], size, &pBoundValue->value.intervalDsUsValue);
+
+		    if (code != TCL_OK)
+			goto done;
 
 		    valuePtr = &pBoundValue->value.intervalDsUsValue;
 		    pBoundValue->length = size;
