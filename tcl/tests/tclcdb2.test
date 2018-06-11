@@ -148,7 +148,7 @@ test cdb2-3.1 {open & close sub-commands} -body {
         cdb2 close $result(1)
       } result(2)] [normalizeResult $result(2)] \
       [catch {
-        cdb2 open [getDbName]
+        cdb2 open [getDbName] local
       } result(1)] [normalizeResult $result(1)] \
       [catch {
         cdb2 close $result(1) 1
@@ -198,11 +198,11 @@ test cdb2-3.1 {open & close sub-commands} -body {
 } -cleanup {
   unset -nocomplain result
 } -result {1 <wrong_open> 1 <connection_not_found> 1 {cdb2_get_dbhosts: can't\
-do dbinfo query on <bad_db> hosts} 1 <connection_not_found> 0 <connection_open>\
-1 <wrong_close> 1 <wrong_close> 0 {} 1 <connection_not_found> 1 <wrong_close> 0\
-<connection_open> 0 {} 0 <connection_open> 0 {} 0 <connection_open> 0 {} 0\
-<connection_open> 0 {} 1 "name \"bad\" not found\nvalue for name \"bad\" not\
-found" 1 <connection_not_found>}
+do dbinfo query on <bad_db> hosts.} 1 <connection_not_found> 0\
+<connection_open> 1 <wrong_close> 1 <wrong_close> 0 {} 1 <connection_not_found>\
+1 <wrong_close> 0 <connection_open> 0 {} 0 <connection_open> 0 {} 0\
+<connection_open> 0 {} 0 <connection_open> 0 {} 1 "name \"bad\" not\
+found\nvalue for name \"bad\" not found" 1 <connection_not_found>}
 
 ###############################################################################
 
@@ -218,9 +218,9 @@ test cdb2-4.1 {debug sub-command} -setup {
   closeConnection $db
 
   unset -nocomplain errMsg db
-} -result {1 {wrong # args: should be "cdb2 debug connection"} 1 {connection\
-"1" not found} 0 {} 1 {wrong # args: should be "cdb2 debug connection"} 1\
-{wrong # args: should be "cdb2 debug connection"}}
+} -result {1 {wrong # args: should be "cdb2 debug connection"} 1\
+<connection_not_found> 0 {} 1 {wrong # args: should be "cdb2 debug connection"}\
+1 {wrong # args: should be "cdb2 debug connection"}}
 
 ###############################################################################
 
