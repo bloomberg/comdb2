@@ -3765,7 +3765,6 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
     bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
     seqnum_type ss = {0};
     int timeoutms;
-    int generation;
     int needwait = 0;
     int rc = 0;
     uint32_t durable_gen;
@@ -3773,7 +3772,6 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
     DB_LSN durable_lsn;
     DB_LSN latest_lsn;
 
-    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &generation);
     bdb_latest_commit(bdb_state, &latest_lsn, &latest_gen);
     bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
                                       &durable_gen);
@@ -3801,7 +3799,7 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
 
     if (needwait) {
         ss.lsn = latest_lsn;
-        ss.generation = generation;
+        ss.generation = latest_gen;
         rc = (bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state, &ss, 0,
                 &timeoutms) == 0) ? 1 : 0;
         logmsg(LOGMSG_INFO, "%s line %d returning %d after waiting\n", __func__,
