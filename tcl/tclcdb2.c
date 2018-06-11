@@ -1131,7 +1131,6 @@ static int GetValueStructFromObj(
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_dsus_t));
-	    pIntervalDsUsValue = (cdb2_client_intv_dsus_t *)valuePtr;
 	    assert(COUNT_OF(fields) == CDB2_INTERVALDSUS_ELEMENTS);
 
 	    if (elemCount != CDB2_INTERVALDSUS_ELEMENTS) {
