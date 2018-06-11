@@ -40,7 +40,6 @@ set(src
   osqlsession.c
   osqlshadtbl.c
   osqlsqlthr.c
-  plink_timestamp.c
   plugin_handler.c
   prefault.c
   prefault_helper.c
@@ -97,6 +96,15 @@ set(src
 if(WITH_SSL)
   list(APPEND src ssl_bend.c)
 endif()
+
+if(WITH_PLINK_TIMESTAMP)
+  list(APPEND src ${CMAKE_CURRENT_BINARY_DIR}/plink_timestamp.c)
+  set_source_files_properties(
+    ${CMAKE_CURRENT_BINARY_DIR}/plink_timestamp.c
+    PROPERTIES GENERATED TRUE
+  )
+endif()
+
 add_executable(comdb2 ${src})
 set(module uncategorized)
 set(MODULE UNCATEGORIZED)
@@ -105,10 +113,7 @@ set_source_files_properties(
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   PROPERTIES GENERATED TRUE
 )
-add_custom_command(
-  OUTPUT plink_timestamp.c
-  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/build_constants > plink_timestamp.c
-)
+
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
