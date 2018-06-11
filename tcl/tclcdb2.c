@@ -2472,7 +2472,7 @@ static int tclcdb2ObjCmd(
 	case OPT_RUN: {
 	    const char *sql;
 
-	    if ((objc != 3) && (objc != 4)) {
+	    if ((objc != 4) && (objc != 5)) {
 		Tcl_WrongNumArgs(interp, 2, objv, "connection sql ?types?");
 		code = TCL_ERROR;
 		goto done;
