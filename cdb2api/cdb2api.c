@@ -39,7 +39,9 @@
 #define COMDB2DB "comdb2db"
 #define COMDB2DB_NUM 32432
 
-static char CDB2DBCONFIG_NOBBENV[512] = "/opt/bb/etc/cdb2/config/comdb2db.cfg";
+#define CDB2DBCONFIG_NOBBENV_DEFAULT "/opt/bb/etc/cdb2/config/comdb2db.cfg"
+static char CDB2DBCONFIG_NOBBENV[512] = CDB2DBCONFIG_NOBBENV_DEFAULT;
+
 /* The real path is COMDB2_ROOT + CDB2DBCONFIG_NOBBENV_PATH  */
 static char CDB2DBCONFIG_NOBBENV_PATH[] = "/etc/cdb2/config.d/";
 
@@ -813,14 +815,23 @@ void cdb2_set_comdb2db_config(const char *cfg_file)
     if (log_calls)
         fprintf(stderr, "%p> %s(\"%s\")\n", (void *)pthread_self(), __func__,
                 cfg_file);
-    strncpy(CDB2DBCONFIG_NOBBENV, cfg_file, 511);
+    memset(CDB2DBCONFIG_NOBBENV, 0, sizeof(CDB2DBCONFIG_NOBBENV) /* 512 */);
+    if (cfg_file != NULL) {
+      strncpy(CDB2DBCONFIG_NOBBENV, cfg_file, 511);
+    } else {
+      strncpy(CDB2DBCONFIG_NOBBENV, CDB2DBCONFIG_NOBBENV_DEFAULT, 511);
+    }
 }
 
 void cdb2_set_comdb2db_info(const char *cfg_info)
 {
-    int len = strlen(cfg_info) + 1;
-    if (CDB2DBCONFIG_BUF != NULL)
+    int len;
+    if (CDB2DBCONFIG_BUF != NULL) {
         free(CDB2DBCONFIG_BUF);
+        CDB2DBCONFIG_BUF = NULL;
+    }
+    if (cfg_info == NULL) return;
+    len = strlen(cfg_info) + 1;
     CDB2DBCONFIG_BUF = malloc(len);
     strncpy(CDB2DBCONFIG_BUF, cfg_info, len);
     pthread_once(&init_once, do_init_once);

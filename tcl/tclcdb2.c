@@ -2120,7 +2120,7 @@ static int tclcdb2ObjCmd(
 	}
 	case OPT_CONFIGURE: {
 	    const char *config;
-	    int useFile = 0;
+	    int useFile = 0, length = 0;
 
 	    if ((objc != 3) && (objc != 4)) {
 		Tcl_WrongNumArgs(interp, 2, objv, "string ?useFile?");
@@ -2135,7 +2135,16 @@ static int tclcdb2ObjCmd(
 		    goto done;
 	    }
 
-	    config = Tcl_GetString(objv[2]);
+	    config = Tcl_GetStringFromObj(objv[2], &length);
+
+	    /*
+	    ** HACK: Turn empty strings into NULL strings because
+	    **       the underlying C API uses that to indicate a
+	    **       reset to its default configuration.
+	    */
+
+	    if (length == 0)
+		config = NULL;
 
 	    if (useFile) {
 		cdb2_set_comdb2db_config(config);

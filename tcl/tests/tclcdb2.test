@@ -558,7 +558,7 @@ true value <null>}} effects {affected 0 selected 1 updated 0 deleted 0 inserted\
 
 ###############################################################################
 
-test cdb2-97.1 {configure sub-command errors} -body {
+test cdb2-89.1 {configure sub-command errors} -body {
   list [catch {cdb2 configure} errMsg] [normalizeResult $errMsg] \
       [catch {cdb2 configure 1 1 1} errMsg] [normalizeResult $errMsg]
 } -cleanup {
@@ -568,17 +568,46 @@ test cdb2-97.1 {configure sub-command errors} -body {
 
 ###############################################################################
 
-test cdb2-97.2 {configure sub-command w/string} -body {
+test cdb2-89.2 {configure sub-command w/string} -body {
   list [cdb2 configure [getConfigInfo false]] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
       [cdb2 configure [getConfigInfo true] 0] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
+      [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
+      [cdb2 configure "" false] \
+      [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
 } -cleanup {
-  unset -nocomplain result db
+  unset -nocomplain result
 } -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo query on <dbName> hosts.} 1\
-<connection_not_found> {} 0 <connection_open> 0 {}}
+<connection_not_found> {} 0 <connection_open> 0 {} 0 <connection_open> 0 {}}
+
+###############################################################################
+
+test cdb2-89.3 {configure sub-command w/file} -setup {
+  set fileName(bad) [file join [getTempPath] tclcdb2_89_3_bad.cfg]
+  writeFile $fileName(bad) [getConfigInfo false]
+
+  set fileName(good) [file join [getTempPath] tclcdb2_89_3_good.cfg]
+  writeFile $fileName(good) [getConfigInfo true]
+} -body {
+  list [cdb2 configure $fileName(bad) 1] \
+      [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
+      [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
+      [cdb2 configure $fileName(good) 1] \
+      [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
+      [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
+      [cdb2 configure "" true] \
+      [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
+      [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
+} -cleanup {
+  catch {file delete $fileName(good)}
+  catch {file delete $fileName(bad)}
+
+  unset -nocomplain result fileName
+} -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo query on <dbName> hosts.} 1\
+<connection_not_found> {} 0 <connection_open> 0 {} 0 <connection_open> 0 {}}
 
 ###############################################################################
 
