@@ -100,8 +100,8 @@ if {[llength [info commands normalizeResult]] == 0} then {
 
     return [string map [list \
         $wrongNumArgs(open) <wrong_open> \
-        $wrongNumArgs(close) <wrong_close>] \
-        \r\n <crLf> \r <cr> \n <lf> \
+        $wrongNumArgs(close) <wrong_close> \
+        \r\n <crLf> \r <cr> \n <lf>] \
         [string trim $result]]
   }
 }
@@ -424,12 +424,13 @@ run connection sql ?types?"}}
 test cdb2-7.2 {simple run sub-command} -setup {
   set db [openConnection]
 } -body {
-  list [catch {cdb2 run $db "SELECT 1"} errMsg] $errMsg
+  list [catch {cdb2 run $db "SELECT 1"} errMsg] $errMsg \
+      [getRowsOfColumns $db]
 } -cleanup {
   closeConnection $db
 
   unset -nocomplain errMsg db
-} -result {0 1}
+} -result {0 {}}
 
 ###############################################################################
 
@@ -438,11 +439,11 @@ test cdb2-7.3 {run sub-command with results} -setup {
   set table [getTableName cdb2_73]
 
   cdb2 run $db [string trim [subst {
-    CREATE TABLE $table (x)
+    CREATE TABLE $table (x INTEGER)
   }]]
 
   cdb2 run $db [string trim [subst {
-    INSERT INTO $table (x) VALUES (1)
+    INSERT INTO $table (x INTEGER) VALUES (1)
   }]]
 } -body {
   list [catch {cdb2 run $db "SELECT x FROM $table"} errMsg] $errMsg \
@@ -451,7 +452,7 @@ test cdb2-7.3 {run sub-command with results} -setup {
   closeConnection $db
 
   unset -nocomplain errMsg db
-} -result {0 1}
+} -result {0 {}}
 
 ###############################################################################
 
