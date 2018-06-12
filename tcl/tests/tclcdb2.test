@@ -570,6 +570,7 @@ true value <null>}} effects {affected 0 selected 1 updated 0 deleted 0 inserted\
 ###############################################################################
 
 cleanupDatabase; # Cleanup test databases before changing the configuration.
+catch {cdb2 sockpool false}; # Disable sockpool for the configuration tests.
 
 ###############################################################################
 
@@ -626,6 +627,10 @@ test cdb2-89.3 {configure sub-command w/file} -setup {
   unset -nocomplain result fileName
 } -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo query on <dbName> hosts.} 1\
 <connection_not_found> {} 0 <connection_open> 0 {} {} 0 <connection_open> 0 {}}
+
+###############################################################################
+
+catch {cdb2 sockpool true}; # Re-enable sockpool for the remaining tests.
 
 ###############################################################################
 

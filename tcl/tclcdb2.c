@@ -1590,15 +1590,16 @@ static int tclcdb2ObjCmd(
     static const char *cmdOptions[] = {
 	"bind", "close", "cnonce", "colcount", "colname", "colsize",
 	"coltype", "colvalue", "configure", "debug", "effects",
-	"encrypted", "error", "hint", "next", "open", "run", "ssl",
-	"unbind", (char *) NULL
+	"encrypted", "error", "hint", "next", "open", "run",
+	"sockpool", "ssl", "unbind", (char *) NULL
     };
 
     enum options {
 	OPT_BIND, OPT_CLOSE, OPT_CNONCE, OPT_COLCOUNT, OPT_COLNAME,
 	OPT_COLSIZE, OPT_COLTYPE, OPT_COLVALUE, OPT_CONFIGURE,
 	OPT_DEBUG, OPT_EFFECTS, OPT_ENCRYPTED, OPT_ERROR, OPT_HINT,
-	OPT_NEXT, OPT_OPEN, OPT_RUN, OPT_SSL, OPT_UNBIND
+	OPT_NEXT, OPT_OPEN, OPT_RUN, OPT_SOCKPOOL, OPT_SSL,
+	OPT_UNBIND
     };
 
     if (!IsValidInterp(interp)) {
@@ -2414,6 +2415,29 @@ static int tclcdb2ObjCmd(
 		AppendCdb2ErrorMessage(interp, rc, pCdb2);
 		code = TCL_ERROR;
 		goto done;
+	    }
+
+	    Tcl_ResetResult(interp);
+	    break;
+	}
+	case OPT_SOCKPOOL: {
+	    int enable = 0;
+
+	    if (objc != 3) {
+		Tcl_WrongNumArgs(interp, 2, objv, "enable");
+		code = TCL_ERROR;
+		goto done;
+	    }
+
+	    code = Tcl_GetBooleanFromObj(interp, objv[2], &enable);
+
+	    if (code != TCL_OK)
+		goto done;
+
+	    if (enable) {
+		cdb2_enable_sockpool();
+	    } else {
+		cdb2_disable_sockpool();
 	    }
 
 	    Tcl_ResetResult(interp);
