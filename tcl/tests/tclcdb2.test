@@ -589,10 +589,10 @@ test cdb2-89.1 {configure sub-command errors} -body {
 ###############################################################################
 
 test cdb2-89.2 {configure sub-command w/string} -body {
-  list [cdb2 configure [getConfigInfo false]] \
+  list [cdb2 configure "" false] [cdb2 configure [getConfigInfo false]] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
-      [cdb2 configure [getConfigInfo true] 0] \
+      [cdb2 configure "" false] [cdb2 configure [getConfigInfo true] 0] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
       [cdb2 configure "" false] \
@@ -603,7 +603,7 @@ test cdb2-89.2 {configure sub-command w/string} -body {
   catch {cdb2 configure "" false}
 
   unset -nocomplain result
-} -result {{} 1 <get_dbhosts_error> 1 <connection_not_found> {} 0\
+} -result {{} {} 1 <get_dbhosts_error> 1 <connection_not_found> {} {} 0\
 <connection_open> 0 {} {} 0 <connection_open> 0 {}}
 
 ###############################################################################
@@ -615,10 +615,10 @@ test cdb2-89.3 {configure sub-command w/file} -setup {
   set fileName(good) [file join [getTempPath] tclcdb2_89_3_good.cfg]
   writeFile $fileName(good) [getConfigInfo true]
 } -body {
-  list [cdb2 configure $fileName(bad) 1] \
+  list [cdb2 configure "" true] [cdb2 configure $fileName(bad) 1] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
-      [cdb2 configure $fileName(good) 1] \
+      [cdb2 configure "" true] [cdb2 configure $fileName(good) 1] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
       [cdb2 configure "" true] \
@@ -632,7 +632,7 @@ test cdb2-89.3 {configure sub-command w/file} -setup {
   catch {cdb2 configure "" true}
 
   unset -nocomplain result fileName
-} -result {{} 1 <get_dbhosts_error> 1 <connection_not_found> {} 0\
+} -result {{} {} 1 <get_dbhosts_error> 1 <connection_not_found> {} {} 0\
 <connection_open> 0 {} {} 0 <connection_open> 0 {}}
 
 ###############################################################################
