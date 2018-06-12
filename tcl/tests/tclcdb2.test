@@ -249,7 +249,8 @@ if {[llength [info commands resetConfig]] == 0} then {
     # NOTE: First, make sure the configuration buffer and file names are
     #       reset -AND- the cached sockpool FD, if any, if closed.
     #
-    cdb2 configure "" false; cdb2 configure "" true
+    cdb2 configure "" false true; # reset buffer to NULL.
+    cdb2 configure "" true false; # reset file to empty string.
 
     #
     # NOTE: Finally, if requested by the caller, enable -OR- disable the
@@ -604,31 +605,31 @@ cleanupDatabase; # Cleanup test databases before changing the configuration.
 
 test cdb2-89.1 {configure sub-command errors} -body {
   list [catch {cdb2 configure} errMsg] [normalizeResult $errMsg] \
-      [catch {cdb2 configure 1 1 1} errMsg] [normalizeResult $errMsg]
+      [catch {cdb2 configure 1 1 1 1} errMsg] [normalizeResult $errMsg]
 } -cleanup {
   unset -nocomplain errMsg
-} -result {1 {wrong # args: should be "cdb2 configure string ?useFile?"} 1\
-{wrong # args: should be "cdb2 configure string ?useFile?"}}
+} -result {1 {wrong # args: should be "cdb2 configure string ?useFile?\
+?reset?"} 1 {wrong # args: should be "cdb2 configure string ?useFile? ?reset?"}}
 
 ###############################################################################
 
-resetConfig false; # Reset configuration and disable sockpool.
+catch {resetConfig false}; # Reset configuration and disable sockpool.
 
 ###############################################################################
 
 test cdb2-89.2 {configure sub-command w/string} -body {
-  list [cdb2 configure "" false] [cdb2 configure [getConfigInfo false]] \
+  list [resetConfig] [cdb2 configure [getConfigInfo false]] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
-      [cdb2 configure "" false] [cdb2 configure [getConfigInfo true] 0] \
+      [resetConfig] [cdb2 configure [getConfigInfo true] 0] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
-      [cdb2 configure "" false] \
+      [resetConfig] \
       [catch {cdb2 open [getDbName] local} result(1)] \
       [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
 } -cleanup {
-  catch {cdb2 configure "" false}
+  catch {resetConfig}
 
   unset -nocomplain result
 } -result {{} {} 1 <get_dbhosts_error> 1 <connection_not_found> {} {} 0\
@@ -636,7 +637,7 @@ test cdb2-89.2 {configure sub-command w/string} -body {
 
 ###############################################################################
 
-resetConfig false; # Reset configuration and disable sockpool.
+catch {resetConfig false}; # Reset configuration and disable sockpool.
 
 ###############################################################################
 
@@ -647,13 +648,13 @@ test cdb2-89.3 {configure sub-command w/file} -setup {
   set fileName(good) [file join [getTempPath] tclcdb2_89_3_good.cfg]
   writeFile $fileName(good) [getConfigInfo true]
 } -body {
-  list [cdb2 configure "" true] [cdb2 configure $fileName(bad) 1] \
+  list [resetConfig] [cdb2 configure $fileName(bad) 1] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
-      [cdb2 configure "" true] [cdb2 configure $fileName(good) 1] \
+      [resetConfig] [cdb2 configure $fileName(good) 1] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
-      [cdb2 configure "" true] \
+      [resetConfig] \
       [catch {cdb2 open [getDbName] local} result(1)] \
       [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
@@ -661,7 +662,7 @@ test cdb2-89.3 {configure sub-command w/file} -setup {
   catch {file delete $fileName(good)}
   catch {file delete $fileName(bad)}
 
-  catch {cdb2 configure "" true}
+  catch {resetConfig}
 
   unset -nocomplain result fileName
 } -result {{} {} 1 <get_dbhosts_error> 1 <connection_not_found> {} {} 0\
@@ -669,7 +670,7 @@ test cdb2-89.3 {configure sub-command w/file} -setup {
 
 ###############################################################################
 
-resetConfig true; # Reset configuration and enable sockpool.
+catch {resetConfig true}; # Reset configuration and enable sockpool.
 
 ###############################################################################
 
