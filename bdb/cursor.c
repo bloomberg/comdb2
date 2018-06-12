@@ -3761,7 +3761,6 @@ done:
 int bdb_latest_commit_is_durable(void *in_bdb_state)
 {
     extern int gbl_durable_replay_test;
-    const char *connlist[REPMAX];
     bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
     seqnum_type ss = {0};
     int timeoutms;
