@@ -1191,14 +1191,16 @@ static int read_available_comdb2db_configs(
         fallback_on_bb_bin = 0;
     }
 
-    FILE *fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
-    if (fp != NULL) {
-        read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
-                          num_hosts, comdb2db_num, dbname, db_hosts,
-                          num_db_hosts, dbnum, dbname_found, comdb2db_found,
-                          send_stack);
-        fclose(fp);
-        fallback_on_bb_bin = 0;
+    if (*CDB2DBCONFIG_NOBBENV != '\0') {
+      FILE *fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
+      if (fp != NULL) {
+          read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
+                            num_hosts, comdb2db_num, dbname, db_hosts,
+                            num_db_hosts, dbnum, dbname_found, comdb2db_found,
+                            send_stack);
+          fclose(fp);
+          fallback_on_bb_bin = 0;
+      }
     }
 
     /* This is a temporary solution.  There's no clear plan for how comdb2db.cfg

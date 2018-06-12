@@ -2121,36 +2121,34 @@ static int tclcdb2ObjCmd(
 	}
 	case OPT_CONFIGURE: {
 	    const char *config;
-	    int useFile = 0, length = 0;
+	    int useFile = 0, reset = 0;
 
-	    if ((objc != 3) && (objc != 4)) {
-		Tcl_WrongNumArgs(interp, 2, objv, "string ?useFile?");
+	    if ((objc < 3) || (objc > 5)) {
+		Tcl_WrongNumArgs(interp, 2, objv, "string ?useFile? ?reset?");
 		code = TCL_ERROR;
 		goto done;
 	    }
 
-	    if (objc == 4) {
+	    if (objc >= 4) {
 		code = Tcl_GetBooleanFromObj(interp, objv[3], &useFile);
 
 		if (code != TCL_OK)
 		    goto done;
 	    }
 
-	    config = Tcl_GetStringFromObj(objv[2], &length);
+	    if (objc >= 5) {
+		code = Tcl_GetBooleanFromObj(interp, objv[4], &reset);
 
-	    /*
-	    ** HACK: Turn empty strings into NULL strings because
-	    **       the underlying C API uses that to indicate a
-	    **       reset to its default configuration.
-	    */
+		if (code != TCL_OK)
+		    goto done;
+	    }
 
-	    if (length == 0)
-		config = NULL;
+	    config = Tcl_GetString(objv[2]);
 
 	    if (useFile) {
-		cdb2_set_comdb2db_config(config);
+		cdb2_set_comdb2db_config(reset ? NULL : config);
 	    } else {
-		cdb2_set_comdb2db_info(config);
+		cdb2_set_comdb2db_info(reset ? NULL : config);
 	    }
 
 	    Tcl_ResetResult(interp);
