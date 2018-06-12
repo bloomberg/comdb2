@@ -1167,6 +1167,7 @@ static int read_available_comdb2db_configs(
     int *num_db_hosts, int *dbnum, int *comdb2db_found, int *dbname_found)
 {
     char filename[PATH_MAX];
+    FILE *fp;
     int fallback_on_bb_bin = 1;
 
     if (hndl && hndl->debug_trace) {
@@ -1192,7 +1193,7 @@ static int read_available_comdb2db_configs(
     }
 
     if (*CDB2DBCONFIG_NOBBENV != '\0') {
-      FILE *fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
+      fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
       if (fp != NULL) {
           read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                             num_hosts, comdb2db_num, dbname, db_hosts,
