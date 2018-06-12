@@ -5385,6 +5385,14 @@ void *watcher_thread(void *arg)
                 connect_to_all(bdb_state->repinfo->netinfo);
                 i = 0;
             }
+
+            if (!bdb_state->repinfo->in_election) {
+                print(bdb_state, "watcher_thread: calling for election\n");
+                logmsg(LOGMSG_DEBUG, "0x%lx %s:%d %s: calling for election\n",
+                       pthread_self(), __FILE__, __LINE__, __func__);
+
+                call_for_election(bdb_state, __func__, __LINE__);
+            }
         }
 
         if (bdb_state->rep_handle_dead) {
