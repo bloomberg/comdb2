@@ -134,7 +134,7 @@ if {[llength [info commands normalizeResult]] == 0} then {
       return <connection_not_found>
     }
 
-    if {[regexp -- {^cdb2_get_dbhosts: .*?\n$} $result]} then {
+    if {[regexp -- {^cdb2_get_dbhosts: .*?$} $result]} then {
       return <get_dbhosts_error>
     }
 
