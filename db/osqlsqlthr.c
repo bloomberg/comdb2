@@ -1319,7 +1319,7 @@ static int osql_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
                                       NET_OSQL_SOCK_RPL);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
-                    "%s:%d %s - failed to cache socksql row rc=%d\n",
+                    "%s:%d %s - failed to send socksql row rc=%d\n",
                     __FILE__, __LINE__, __func__, rc);
             return rc;
         }
