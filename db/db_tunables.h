@@ -1393,5 +1393,14 @@ REGISTER_TUNABLE("allow_election_race",
                  "Permit arbitrary upgrades at rep-start.  (Default: false)",
                  TUNABLE_BOOLEAN, &gbl_allow_election_race,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("apply_queue_memory",
+                 "Current memory usage of apply-queue.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_apply_queue_memory, READONLY, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("inmem_repdb_memory",
+                 "Current memory usage of in-memory repdb.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_inmem_repdb_memory, READONLY, NULL, NULL,
+                 NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */

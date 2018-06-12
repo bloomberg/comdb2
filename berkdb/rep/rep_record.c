@@ -79,6 +79,8 @@ int gbl_fills_waitms = 1000;
 int gbl_warn_queue_latency_threshold = 500;
 int gbl_inmem_repdb = 1;
 int gbl_inmem_repdb_maxlog = 10000;
+int64_t gbl_inmem_repdb_memory = 0;
+int64_t gbl_apply_queue_memory = 0;
 
 /* Finish a fill if we are within 1.5 logfiles */
 int gbl_finish_fill_threshold = 60000000;
@@ -492,14 +494,18 @@ static void *apply_thread(void *arg)
                 log_fill_count = queue_log_fill_count;
             }
 
+            gbl_apply_queue_memory -= (sizeof(REP_CONTROL) + q->size);
+
             if (listc_size(&log_queue) == 0) {
                 memset(&max_queued_lsn, 0, sizeof(max_queued_lsn));
                 assert(queue_log_more_count == 0);
                 assert(queue_log_fill_count == 0);
+                assert(gbl_apply_queue_memory == 0);
             }
 
             assert(listc_size(&log_queue) >= queue_log_more_count);
             assert(listc_size(&log_queue) >= queue_log_fill_count);
+            assert(gbl_apply_queue_memory >= 0);
 
             pthread_mutex_unlock(&rep_queue_lock);
 
@@ -825,7 +831,7 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
         queue_log_fill_count++;
     }
     listc_abl(&log_queue, q);
-
+    gbl_apply_queue_memory += (sizeof(REP_CONTROL) + q->size);
     if (apply_thd_created == 0) {
         if ((rc = pthread_create(&apply_thd, NULL, apply_thread, dbenv)) != 0) {
             abort();
@@ -3048,6 +3054,14 @@ gap_check:		max_lsn_dbtp = NULL;
                 control_dbt.size = sizeof(*r->repctl);
                 rec_dbt.data = r->data;
                 rec_dbt.size = r->size;
+
+                gbl_inmem_repdb_memory -= (sizeof(*r->repctl) + r->size + sizeof(*r));
+
+                if (listc_size(&repdb_queue) == 0)
+                    assert(gbl_inmem_repdb_memory == 0);
+                else
+                    assert(gbl_inmem_repdb_memory > 0);
+
                 rp = (REP_CONTROL *)control_dbt.data;
                 if (IS_ZERO_LSN(rp->lsn))
                     abort();
@@ -3360,7 +3374,7 @@ gap_check:		max_lsn_dbtp = NULL;
                     &(LISTC_BOT(&repdb_queue)->repctl->lsn)) < 0))) {
                 r = malloc(sizeof(*r));
 
-                /* Borrow memory if we can */
+                /* Borrow memory */
                 if (decoupled) {
                     r->repctl = rp;
                     r->data = rec->data;
@@ -3381,15 +3395,18 @@ gap_check:		max_lsn_dbtp = NULL;
 
                 if (p == NULL) {
                     listc_atl(&repdb_queue, r);
+                    gbl_inmem_repdb_memory += (r->size + sizeof(*r->repctl) + sizeof(*r));
                     if (decoupled) rec->data = NULL;
                 } else if (lcmp == 0) {
                     if (!decoupled) {
                         free(r->repctl);
                         free(r->data);
                     }
+                    // The caller will free decoupled case
                     free(r);
                 } else {
                     listc_add_after(&repdb_queue, r, p);
+                    gbl_inmem_repdb_memory += (r->size + sizeof(*r->repctl) + sizeof(*r));
                     if (decoupled) rec->data = NULL;
                 }
             }
@@ -3397,6 +3414,7 @@ gap_check:		max_lsn_dbtp = NULL;
             /* Limit size of list to tunable */
             while (listc_size(&repdb_queue) > repdb_maxlog) {
                 r = listc_rbl(&repdb_queue);
+                gbl_inmem_repdb_memory -= (r->size + sizeof(*r->repctl) + sizeof(*r));
                 free(r->repctl); free(r->data); free(r);
             }
             ret = 0;
@@ -7046,10 +7064,12 @@ __truncate_repdb(dbenv)
     if (gbl_inmem_repdb) {
         struct repdb_rec *r;
         while (r = listc_rtl(&repdb_queue)) {
+            gbl_inmem_repdb_memory -= (r->size + sizeof(r->repctl) + sizeof(*r));
             free(r->repctl);
             free(r->data);
             free(r);
         }
+        assert(gbl_inmem_repdb_memory == 0);
         return 0;
     }
 
