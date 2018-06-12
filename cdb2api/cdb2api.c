@@ -131,6 +131,7 @@ pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0; /* ONE-TIME */
 
+static void do_init_once(void);
 static void reset_sockpool(void);
 
 /*
@@ -142,6 +143,8 @@ static void reset_sockpool(void);
 */
 static void reset_the_configuration(void)
 {
+    pthread_once(&init_once, do_init_once);
+
     if (log_calls)
         fprintf(stderr, "%p> %s()\n", (void *)pthread_self(), __func__);
 
@@ -913,7 +916,7 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
         free(CDB2DBCONFIG_BUF);
         CDB2DBCONFIG_BUF = NULL;
     }
-    if (cfg_info == NULL){
+    if (cfg_info == NULL) {
         reset_the_configuration();
         return;
     }
