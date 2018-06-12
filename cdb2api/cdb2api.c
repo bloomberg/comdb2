@@ -141,8 +141,7 @@ static int log_calls = 0; /* ONE-TIME */
 static void reset_the_configuration(void)
 {
     if (log_calls)
-        fprintf(stderr, "%p> %s(\"%s\")\n", (void *)pthread_self(), __func__,
-                cfg_file);
+        fprintf(stderr, "%p> %s()\n", (void *)pthread_self(), __func__);
 
     memset(CDB2DBCONFIG_NOBBENV, 0, sizeof(CDB2DBCONFIG_NOBBENV));
     strncpy(CDB2DBCONFIG_NOBBENV, CDB2DBCONFIG_NOBBENV_DEFAULT, 511);
