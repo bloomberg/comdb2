@@ -249,8 +249,8 @@ if {[llength [info commands resetConfig]] == 0} then {
     # NOTE: First, make sure the configuration buffer and file names are
     #       reset -AND- the cached sockpool FD, if any, if closed.
     #
-    cdb2 configure "" false true; # reset buffer to NULL.
-    cdb2 configure "" true false; # reset file to empty string.
+    cdb2 configure "" false true; # set buffer to NULL -AND- force reset.
+    cdb2 configure "" true false; # set file to empty string.
 
     #
     # NOTE: Finally, if requested by the caller, enable -OR- disable the
