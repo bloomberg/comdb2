@@ -292,6 +292,7 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
     cson_value *perfval = cson_value_new_object();
     cson_object *perfobj = cson_value_get_object(perfval);
 
+    //runtime is in microseconds
     cson_object_set(perfobj, "runtime", cson_new_int(end - start));
 
     if (thread_stats->n_lock_waits || thread_stats->n_preads ||
@@ -471,8 +472,9 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(obj, "qtime", cson_new_int(logger->queuetimeus));
     if (logger->clnt) {
         uint64_t clientstarttime = get_client_starttime(logger->clnt);
-        if (clientstarttime)
-            cson_object_set(obj, "clientstart", cson_new_int(clientstarttime));
+        if (clientstarttime && logger->startus > clientstarttime)
+            cson_object_set(obj, "startdelay", /* in microseconds */
+                            cson_new_int(logger->startus - clientstarttime));
     }
 
     eventlog_context(obj, logger);
