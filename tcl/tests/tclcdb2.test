@@ -231,9 +231,34 @@ if {[llength [info commands getDbName]] == 0} then {
 if {[llength [info commands getConfigInfo]] == 0} then {
   proc getConfigInfo { good {name ""} } {
     if {$good} then {
-      return [appendArgs [getDbName $name] " " localhost]
+      return [appendArgs \
+          [getDbName $name] " " localhost \n \
+          comdb2_config:default_type=local]
     } else {
-      return [appendArgs [getDbName $name] " " nowhere]
+      return [appendArgs \
+          [getDbName $name] " " nowhere]
+    }
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands resetConfig]] == 0} then {
+  proc resetConfig { {sockPool ""} } {
+    #
+    # NOTE: First, make sure the configuration buffer and file names are
+    #       reset -AND- the cached sockpool FD, if any, if closed.
+    #
+    cdb2 configure "" false; cdb2 configure "" true
+
+    #
+    # NOTE: Finally, if requested by the caller, enable -OR- disable the
+    #       sockpool.
+    #
+    if {[string is true -strict $sockPool]} then {
+      cdb2 sockpool true
+    } elseif {[string is false -strict $sockPool]} then {
+      cdb2 sockpool false
     }
   }
 }
@@ -587,8 +612,7 @@ test cdb2-89.1 {configure sub-command errors} -body {
 
 ###############################################################################
 
-catch {cdb2 configure ""}; # Make sure cached sockpool FD is closed.
-catch {cdb2 sockpool false}; # Disable sockpool for each configuration test.
+resetConfig false; # Reset configuration and disable sockpool.
 
 ###############################################################################
 
@@ -612,8 +636,7 @@ test cdb2-89.2 {configure sub-command w/string} -body {
 
 ###############################################################################
 
-catch {cdb2 configure ""}; # Make sure cached sockpool FD is closed.
-catch {cdb2 sockpool false}; # Disable sockpool for each configuration test.
+resetConfig false; # Reset configuration and disable sockpool.
 
 ###############################################################################
 
@@ -646,7 +669,7 @@ test cdb2-89.3 {configure sub-command w/file} -setup {
 
 ###############################################################################
 
-catch {cdb2 sockpool true}; # Re-enable sockpool for the remaining tests.
+resetConfig true; # Reset configuration and enable sockpool.
 
 ###############################################################################
 
