@@ -588,6 +588,7 @@ test cdb2-89.1 {configure sub-command errors} -body {
 ###############################################################################
 
 catch {cdb2 sockpool false}; # Disable sockpool for each configuration test.
+catch {cdb2 configure ""}; # Also make sure cached sockpool FD is closed.
 
 ###############################################################################
 
@@ -612,6 +613,7 @@ test cdb2-89.2 {configure sub-command w/string} -body {
 ###############################################################################
 
 catch {cdb2 sockpool false}; # Disable sockpool for each configuration test.
+catch {cdb2 configure ""}; # Also make sure cached sockpool FD is closed.
 
 ###############################################################################
 
