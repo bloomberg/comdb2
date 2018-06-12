@@ -130,7 +130,7 @@ DEF_ATTR(CHECKSUMS, checksums, BOOLEAN, 1,
          "Checksum data pages. Turning this off is highly discouraged.")
 DEF_ATTR(LITTLE_ENDIAN_BTREES, little_endian_btrees, BOOLEAN, 1,
          "Enabling this sets byte ordering for pages to little endian.")
-DEF_ATTR(COMMITDELAYMAX, commitdelaymax, QUANTITY, 8,
+DEF_ATTR(COMMITDELAYMAX, commitdelaymax, QUANTITY, 0,
          "Introduce a delay after each transaction before returning control to "
          "the application. Occasionally useful to allow replicants to catch up "
          "on startup with a very busy system.")

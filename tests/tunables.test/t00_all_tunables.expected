@@ -118,7 +118,7 @@
 (name='coherency_lease_udp', description='Use udp to issue leases.', type='BOOLEAN', value='ON', read_only='N')
 (name='commitdelay', description='Add a delay after every commit. This is occasionally useful to throttle the transaction rate.', type='INTEGER', value='0', read_only='N')
 (name='commitdelaybehindthresh', description='Call for election again and ask the master to delay commits if we are further than this far behind on startup.', type='INTEGER', value='1048576', read_only='N')
-(name='commitdelaymax', description='Introduce a delay after each transaction before returning control to the application. Occasionally useful to allow replicants to catch up on startup with a very busy system.', type='INTEGER', value='8', read_only='N')
+(name='commitdelaymax', description='Introduce a delay after each transaction before returning control to the application. Occasionally useful to allow replicants to catch up on startup with a very busy system.', type='INTEGER', value='0', read_only='N')
 (name='compress_page_compact_log', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='comptxn_inherit_locks', description='Compensating transactions inherit pagelocks', type='BOOLEAN', value='ON', read_only='N')
 (name='consolidate_dbreg_ranges', description='Combine adjacent dbreg ranges for same file', type='BOOLEAN', value='ON', read_only='N')
