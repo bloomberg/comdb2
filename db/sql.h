@@ -553,7 +553,6 @@ struct sqlclntstate {
     int snapshot_offset;
     int is_hasql_retry;
     int is_readonly;
-    int send_intransresults;
     int is_expert;
     int added_to_hist;
 
@@ -603,7 +602,7 @@ struct sqlclntstate {
 
     int8_t wrong_db;
     int8_t is_lua_sql_thread;
-    int8_t skip_feature;
+    int8_t send_intrans_results;
     int8_t high_availability_flag;
     int8_t hasql_on;
 

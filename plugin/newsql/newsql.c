@@ -198,8 +198,8 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     CDB2ServerFeatures features[10];                                           \
     int n_features = 0;                                                        \
                                                                                \
-    if (clnt->skip_feature) {                                                  \
-        features[n_features] = CDB2_SERVER_FEATURES__SKIP_ROWS;                \
+    if (!clnt->send_intrans_results) {                                         \
+        features[n_features] = CDB2_SERVER_FEATURES__SKIP_INTRANS_RESULTS;     \
         n_features++;                                                          \
     }                                                                          \
                                                                                \
@@ -1272,18 +1272,18 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
     extern int gbl_disable_skip_rows;
-    /* We need to restore skip_feature, want_query_effects and
+    /* We need to restore send_intrans_results and
        send_one_row on clnt even if the snapshot info has been populated. */
-    if (!clnt->send_intransresults && sqlquery->n_features > 0 && gbl_disable_skip_rows == 0) {
+    if (sqlquery->n_features > 0 && gbl_disable_skip_rows == 0) {
         for (int ii = 0; ii < sqlquery->n_features; ii++) {
-            if (CDB2_CLIENT_FEATURES__SKIP_ROWS != sqlquery->features[ii])
+            if (CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS != sqlquery->features[ii])
                 continue;
-            clnt->skip_feature = 1;
+            clnt->send_intrans_results = 0;
             if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
                  clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
                 newsql_has_high_availability(clnt)) {
                 clnt->send_one_row = 1;
-                clnt->skip_feature = 0;
+                clnt->send_intrans_results = 1;
             }
         }
     }
@@ -1711,14 +1711,6 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     clnt->ignore_coherency = 1;
                 } else {
                     clnt->ignore_coherency = 0;
-                }
-            } else if (strncasecmp(sqlstr, "intransresults", 14) == 0) {
-                sqlstr += 14;
-                sqlstr = skipws(sqlstr);
-                if (strncasecmp(sqlstr, "off", 3) == 0) {
-                    clnt->send_intransresults = 0;
-                } else {
-                    clnt->send_intransresults = 1;
                 }
             } else {
                 rc = ii + 1;

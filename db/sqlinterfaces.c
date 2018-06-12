@@ -2679,6 +2679,8 @@ static int skip_response_int(struct sqlclntstate *clnt, int from_error)
     if (clnt->in_client_trans) {
         if (from_error && !clnt->had_errors) /* send on first error */
             return 0;
+        if (clnt->send_intrans_results)
+            return 0;
         return 1;
     }
     return 0; /* single stmt by itself (read or write) */
@@ -2817,7 +2819,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         if (skip_response(clnt)) {
             if (clnt->send_one_row) {
                 clnt->send_one_row = 0;
-                clnt->skip_feature = 1;
+                clnt->send_intrans_results = 0;
                 write_response(clnt, RESPONSE_ROW_LAST_DUMMY, 0, 0);
             }
         } else {
@@ -3843,7 +3845,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->early_retry = 0;
     clnt_reset_cursor_hints(clnt);
 
-    clnt->skip_feature = 0;
+    clnt->send_intrans_results = 1;
 
     bzero(clnt->dirty, sizeof(clnt->dirty));
 
@@ -3883,7 +3885,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->ncontext = 0;
     clnt->statement_query_effects = 0;
     clnt->wrong_db = 0;
-    clnt->send_intransresults = 0;
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
