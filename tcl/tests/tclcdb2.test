@@ -558,6 +558,10 @@ true value <null>}} effects {affected 0 selected 1 updated 0 deleted 0 inserted\
 
 ###############################################################################
 
+cleanupDatabase; # Cleanup test databases before changing the configuration.
+
+###############################################################################
+
 test cdb2-89.1 {configure sub-command errors} -body {
   list [catch {cdb2 configure} errMsg] [normalizeResult $errMsg] \
       [catch {cdb2 configure 1 1 1} errMsg] [normalizeResult $errMsg]
@@ -579,10 +583,11 @@ test cdb2-89.2 {configure sub-command w/string} -body {
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
 } -cleanup {
+  catch {cdb2 configure "" false}
+
   unset -nocomplain result
-} -constraints {knownBug} -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo\
-query on <dbName> hosts.} 1 <connection_not_found> {} 0 <connection_open> 0 {}\
-{} 0 <connection_open> 0 {}}
+} -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo query on <dbName> hosts.} 1\
+<connection_not_found> {} 0 <connection_open> 0 {} {} 0 <connection_open> 0 {}}
 
 ###############################################################################
 
@@ -605,11 +610,11 @@ test cdb2-89.3 {configure sub-command w/file} -setup {
 } -cleanup {
   catch {file delete $fileName(good)}
   catch {file delete $fileName(bad)}
+  catch {cdb2 configure "" true}
 
   unset -nocomplain result fileName
-} -constraints {knownBug} -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo\
-query on <dbName> hosts.} 1 <connection_not_found> {} 0 <connection_open> 0 {}\
-{} 0 <connection_open> 0 {}}
+} -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo query on <dbName> hosts.} 1\
+<connection_not_found> {} 0 <connection_open> 0 {} {} 0 <connection_open> 0 {}}
 
 ###############################################################################
 
@@ -641,6 +646,5 @@ if {0} then {
 
 ###############################################################################
 
-cleanupDatabase
 unset -nocomplain path
 ::tcltest::cleanupTests
