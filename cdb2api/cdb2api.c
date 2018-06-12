@@ -143,8 +143,6 @@ static void reset_sockpool(void);
 */
 static void reset_the_configuration(void)
 {
-    pthread_once(&init_once, do_init_once);
-
     if (log_calls)
         fprintf(stderr, "%p> %s()\n", (void *)pthread_self(), __func__);
 
@@ -912,6 +910,10 @@ void cdb2_set_comdb2db_config(const char *cfg_file)
 void cdb2_set_comdb2db_info(const char *cfg_info)
 {
     int len;
+    pthread_once(&init_once, do_init_once);
+    if (log_calls)
+        fprintf(stderr, "%p> cdb2_set_comdb2db_info(\"%s\")\n",
+                (void *)pthread_self(), cfg_info);
     if (CDB2DBCONFIG_BUF != NULL) {
         free(CDB2DBCONFIG_BUF);
         CDB2DBCONFIG_BUF = NULL;
@@ -923,10 +925,6 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
     len = strlen(cfg_info) + 1;
     CDB2DBCONFIG_BUF = malloc(len);
     strncpy(CDB2DBCONFIG_BUF, cfg_info, len);
-    pthread_once(&init_once, do_init_once);
-    if (log_calls)
-        fprintf(stderr, "%p> cdb2_set_comdb2db_info(\"%s\")\n",
-                (void *)pthread_self(), cfg_info);
 }
 
 static inline int get_char(FILE *fp, const char *buf, int *chrno)
