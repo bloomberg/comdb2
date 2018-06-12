@@ -1397,13 +1397,15 @@ void cdb2_enable_sockpool()
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
 }
 
-static void cdb2_maybe_disable_sockpool(int enabled)
+static void cdb2_maybe_disable_sockpool(int forceClose, int enabled)
 {
     pthread_mutex_lock(&cdb2_sockpool_mutex);
     /* Close sockpool fd */
-    if ((sockpool_enabled == 1) && (sockpool_fd != -1)) {
-        close(sockpool_fd);
-        sockpool_fd = -1;
+    if (forceClose || (sockpool_enabled == 1)) {
+        if (sockpool_fd != -1) {
+            close(sockpool_fd);
+            sockpool_fd = -1;
+        }
     }
     sockpool_enabled = enabled;
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
@@ -1412,12 +1414,12 @@ static void cdb2_maybe_disable_sockpool(int enabled)
 /* Disable sockpool and close sockpool socket */
 void cdb2_disable_sockpool()
 {
-    cdb2_maybe_disable_sockpool(-1);
+    cdb2_maybe_disable_sockpool(0, -1);
 }
 
 static void reset_sockpool(void)
 {
-    cdb2_maybe_disable_sockpool(SOCKPOOL_ENABLED_DEFAULT);
+    cdb2_maybe_disable_sockpool(1, SOCKPOOL_ENABLED_DEFAULT);
     sockpool_fail_time = SOCKPOOL_FAIL_TIME_DEFAULT;
 }
 

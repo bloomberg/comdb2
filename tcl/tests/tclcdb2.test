@@ -26,6 +26,14 @@ package require tclcdb2
 
 ###############################################################################
 
+if {[llength [info commands appendArgs]] == 0} then {
+  proc appendArgs { args } {
+    set result ""; eval append result $args
+  }
+}
+
+###############################################################################
+
 if {[llength [info commands isBinary]] == 0} then {
   proc isBinary { value } {
     return [regexp -- {[^\t\n\v\f\r[:print:]]} $value]
@@ -127,7 +135,9 @@ if {[llength [info commands normalizeResult]] == 0} then {
     }
 
     set percentD {(?:-)?[0-9]{1,10}}
-    set pattern "^${percentD}-${percentD}-${percentD}-${percentD}\$"
+
+    set pattern [appendArgs \
+        ^ $percentD - $percentD - $percentD - $percentD \$]
 
     if {[regexp -- $pattern $result]} then {
       return <cnonce>
@@ -217,9 +227,9 @@ if {[llength [info commands getDbName]] == 0} then {
 if {[llength [info commands getConfigInfo]] == 0} then {
   proc getConfigInfo { good {name ""} } {
     if {$good} then {
-      return "[getDbName $name] localhost"
+      return [appendArgs [getDbName $name] " " localhost]
     } else {
-      return "[getDbName $name] nowhere"
+      return [appendArgs [getDbName $name] " " nowhere]
     }
   }
 }
@@ -246,7 +256,7 @@ if {[llength [info commands getTableName]] == 0} then {
       error "table name must be alphanumeric and start with a letter"
     }
 
-    return tcl_cdb2_test_[pid]_$name
+    return [appendArgs tcl_cdb2_test_ [pid] _ $name]
   }
 }
 
@@ -255,9 +265,10 @@ if {[llength [info commands getTableName]] == 0} then {
 if {[llength [info commands cleanupDatabase]] == 0} then {
   proc cleanupDatabase {} {
     set connection [openConnection]
+    set glob [appendArgs 'tcl_cdb2_test_ [pid] _%']
 
     set sql [string trim [subst {
-      SELECT name FROM sqlite_master WHERE name LIKE 'tcl_cdb2_test_[pid]_%'
+      SELECT name FROM sqlite_master WHERE name LIKE $glob
     }]]
 
     if {[catch {cdb2 run $connection $sql} error] == 0} then {
