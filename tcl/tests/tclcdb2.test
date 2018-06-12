@@ -618,13 +618,13 @@ catch {resetConfig false}; # Reset configuration and disable sockpool.
 ###############################################################################
 
 test cdb2-89.2 {configure sub-command w/string} -body {
-  list [resetConfig] [cdb2 configure [getConfigInfo false]] \
+  list [resetConfig false] [cdb2 configure [getConfigInfo false]] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
-      [resetConfig] [cdb2 configure [getConfigInfo true] 0] \
+      [resetConfig false] [cdb2 configure [getConfigInfo true] 0] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
-      [resetConfig] \
+      [resetConfig false] \
       [catch {cdb2 open [getDbName] local} result(1)] \
       [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
@@ -648,13 +648,13 @@ test cdb2-89.3 {configure sub-command w/file} -setup {
   set fileName(good) [file join [getTempPath] tclcdb2_89_3_good.cfg]
   writeFile $fileName(good) [getConfigInfo true]
 } -body {
-  list [resetConfig] [cdb2 configure $fileName(bad) 1] \
+  list [resetConfig false] [cdb2 configure $fileName(bad) 1] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
-      [resetConfig] [cdb2 configure $fileName(good) 1] \
+      [resetConfig false] [cdb2 configure $fileName(good) 1] \
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
-      [resetConfig] \
+      [resetConfig false] \
       [catch {cdb2 open [getDbName] local} result(1)] \
       [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
