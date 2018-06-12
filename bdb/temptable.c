@@ -1959,8 +1959,6 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
     else
         parent = bdb_state;
 
-
-
     //create
     int bdberr;
     struct temp_table *db = bdb_temp_table_create(parent, &bdberr);
@@ -1969,7 +1967,9 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
                __func__, bdberr);
         return -1;
     }
-    
+
+    if (recsz < 8) recsz = 8; //force it to be min 8 bytes
+    if (recsz * maxins > 10000000) return -1; //limit the temptbl size
 
     //read one random string into key, note that reading from urandom is
     //slow so we get one full record from urandom, then override the first 
@@ -1981,7 +1981,6 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
         return -2;
     }
 
-    if (recsz < 8) recsz = 8; //force it to be min 8 bytes
     uint8_t rkey[recsz];
     if ((rc = fread(rkey, sizeof(rkey), 1, urandom)) != 1 && ferror(urandom)) {
         logmsgperror("fread");
