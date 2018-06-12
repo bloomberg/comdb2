@@ -131,7 +131,7 @@ pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0; /* ONE-TIME */
 
-static void cdb2_maybe_disable_sockpool(int enabled);
+static void reset_sockpool(void);
 
 /*
 ** NOTE: This function is designed to reset the internal state of this module,
@@ -182,8 +182,7 @@ static void reset_the_configuration(void)
     cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
 #endif
 
-    cdb2_maybe_disable_sockpool(SOCKPOOL_ENABLED_DEFAULT);
-    sockpool_fail_time = SOCKPOOL_FAIL_TIME_DEFAULT;
+    reset_sockpool();
 }
 
 #if defined(__APPLE__)
@@ -1414,6 +1413,12 @@ static void cdb2_maybe_disable_sockpool(int enabled)
 void cdb2_disable_sockpool()
 {
     cdb2_maybe_disable_sockpool(-1);
+}
+
+static void reset_sockpool(void)
+{
+    cdb2_maybe_disable_sockpool(SOCKPOOL_ENABLED_DEFAULT);
+    sockpool_fail_time = SOCKPOOL_FAIL_TIME_DEFAULT;
 }
 
 // cdb2_socket_pool_get_ll: lockless
