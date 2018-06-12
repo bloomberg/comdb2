@@ -134,6 +134,10 @@ if {[llength [info commands normalizeResult]] == 0} then {
       return <connection_not_found>
     }
 
+    if {[regexp -- {^cdb2_get_dbhosts: .*?\n$} $result]} then {
+      return <get_dbhosts_error>
+    }
+
     set percentD {(?:-)?[0-9]{1,10}}
 
     set pattern [appendArgs \
@@ -401,12 +405,12 @@ test cdb2-3.1 {open & close sub-commands} -body {
       } result(2)] [normalizeResult $result(2)]
 } -cleanup {
   unset -nocomplain result
-} -result {1 <wrong_open> 1 <connection_not_found> 1 {cdb2_get_dbhosts: can't\
-do dbinfo query on <bad_db> hosts.} 1 <connection_not_found> 0\
-<connection_open> 1 <wrong_close> 1 <wrong_close> 0 {} 1 <connection_not_found>\
-1 <wrong_close> 0 <connection_open> 0 {} 0 <connection_open> 0 {} 0\
-<connection_open> 0 {} 0 <connection_open> 0 {} 1 {name "bad" not\
-found<lf>value for name "bad" not found} 1 <connection_not_found>}
+} -result {1 <wrong_open> 1 <connection_not_found> 1 <get_dbhosts_error> 1\
+<connection_not_found> 0 <connection_open> 1 <wrong_close> 1 <wrong_close> 0 {}\
+1 <connection_not_found> 1 <wrong_close> 0 <connection_open> 0 {} 0\
+<connection_open> 0 {} 0 <connection_open> 0 {} 0 <connection_open> 0 {} 1\
+{name "bad" not found<lf>value for name "bad" not found} 1\
+<connection_not_found>}
 
 ###############################################################################
 
@@ -592,14 +596,15 @@ test cdb2-89.2 {configure sub-command w/string} -body {
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
       [cdb2 configure "" false] \
-      [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
+      [catch {cdb2 open [getDbName] local} result(1)] \
+      [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
 } -cleanup {
   catch {cdb2 configure "" false}
 
   unset -nocomplain result
-} -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo query on <dbName> hosts.} 1\
-<connection_not_found> {} 0 <connection_open> 0 {} {} 0 <connection_open> 0 {}}
+} -result {{} 1 <get_dbhosts_error> 1 <connection_not_found> {} 0\
+<connection_open> 0 {} {} 0 <connection_open> 0 {}}
 
 ###############################################################################
 
@@ -617,16 +622,18 @@ test cdb2-89.3 {configure sub-command w/file} -setup {
       [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
       [cdb2 configure "" true] \
-      [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
+      [catch {cdb2 open [getDbName] local} result(1)] \
+      [normalizeResult $result(1)] \
       [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
 } -cleanup {
   catch {file delete $fileName(good)}
   catch {file delete $fileName(bad)}
+
   catch {cdb2 configure "" true}
 
   unset -nocomplain result fileName
-} -result {{} 1 {cdb2_get_dbhosts: can't do dbinfo query on <dbName> hosts.} 1\
-<connection_not_found> {} 0 <connection_open> 0 {} {} 0 <connection_open> 0 {}}
+} -result {{} 1 <get_dbhosts_error> 1 <connection_not_found> {} 0\
+<connection_open> 0 {} {} 0 <connection_open> 0 {}}
 
 ###############################################################################
 
