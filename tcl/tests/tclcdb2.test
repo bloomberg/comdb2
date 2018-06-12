@@ -574,7 +574,6 @@ true value <null>}} effects {affected 0 selected 1 updated 0 deleted 0 inserted\
 ###############################################################################
 
 cleanupDatabase; # Cleanup test databases before changing the configuration.
-catch {cdb2 sockpool false}; # Disable sockpool for the configuration tests.
 
 ###############################################################################
 
@@ -585,6 +584,10 @@ test cdb2-89.1 {configure sub-command errors} -body {
   unset -nocomplain errMsg
 } -result {1 {wrong # args: should be "cdb2 configure string ?useFile?"} 1\
 {wrong # args: should be "cdb2 configure string ?useFile?"}}
+
+###############################################################################
+
+catch {cdb2 sockpool false}; # Disable sockpool for each configuration test.
 
 ###############################################################################
 
@@ -605,6 +608,10 @@ test cdb2-89.2 {configure sub-command w/string} -body {
   unset -nocomplain result
 } -result {{} {} 1 <get_dbhosts_error> 1 <connection_not_found> {} {} 0\
 <connection_open> 0 {} {} 0 <connection_open> 0 {}}
+
+###############################################################################
+
+catch {cdb2 sockpool false}; # Disable sockpool for each configuration test.
 
 ###############################################################################
 
