@@ -131,6 +131,8 @@ pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0; /* ONE-TIME */
 
+static void cdb2_maybe_disable_sockpool(int enabled);
+
 /*
 ** NOTE: This function is designed to reset the internal state of this module,
 **       related to the configuration, back to initial defaults.  It should
@@ -179,6 +181,9 @@ static void reset_the_configuration(void)
 
     cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
 #endif
+
+    cdb2_maybe_disable_sockpool(SOCKPOOL_ENABLED_DEFAULT);
+    sockpool_fail_time = SOCKPOOL_FAIL_TIME_DEFAULT;
 }
 
 #if defined(__APPLE__)
@@ -1308,8 +1313,12 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
 
 /* SOCKPOOL CODE START */
 
-static int sockpool_enabled = 1;
-static time_t sockpool_fail_time = 0;
+#define SOCKPOOL_ENABLED_DEFAULT 1
+static int sockpool_enabled = SOCKPOOL_ENABLED_DEFAULT;
+
+#define SOCKPOOL_FAIL_TIME_DEFAULT 0
+static time_t sockpool_fail_time = SOCKPOOL_FAIL_TIME_DEFAULT;
+
 static int sockpool_fd = -1;
 
 struct sockaddr_sun {
@@ -1389,8 +1398,7 @@ void cdb2_enable_sockpool()
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
 }
 
-/* Disable sockpool and close sockpool socket */
-void cdb2_disable_sockpool()
+static void cdb2_maybe_disable_sockpool(int enabled)
 {
     pthread_mutex_lock(&cdb2_sockpool_mutex);
     /* Close sockpool fd */
@@ -1398,8 +1406,14 @@ void cdb2_disable_sockpool()
         close(sockpool_fd);
         sockpool_fd = -1;
     }
-    sockpool_enabled = -1;
+    sockpool_enabled = enabled;
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
+}
+
+/* Disable sockpool and close sockpool socket */
+void cdb2_disable_sockpool()
+{
+    cdb2_maybe_disable_sockpool(-1);
 }
 
 // cdb2_socket_pool_get_ll: lockless
