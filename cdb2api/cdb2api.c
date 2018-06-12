@@ -2348,13 +2348,15 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
     gettimeofday(&tv, NULL);
     sqlquery.timestampus = ((uint64_t)tv.tv_sec) * 1000000 + tv.tv_usec;
 
+    sqlquery.has_num_retries = 1;
+    sqlquery.num_retries = retries_done;
+
     int len = cdb2__query__get_packed_size(&query);
     unsigned char *buf = malloc(len + 1);
 
     cdb2__query__pack(&query, buf);
 
     struct newsqlheader hdr;
-
     hdr.type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY);
     hdr.compression = ntohl(0);
     hdr.length = ntohl(len);
