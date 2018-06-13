@@ -3622,8 +3622,8 @@ retry_queries:
         PRINT_RETURN(err_val);
     }
 
-    if (!hndl->read_intrans_results && !hndl->is_read && 
-         (hndl->in_trans || !hndl->is_hasql)) {
+    if (!hndl->read_intrans_results && !hndl->is_read &&
+        (hndl->in_trans || !hndl->is_hasql)) {
         if (hndl->debug_trace) {
             fprintf(stderr, "td %u %s:%d in_trans=%d is_hasql=%d\n",
                     (uint32_t)pthread_self(), __func__, __LINE__,

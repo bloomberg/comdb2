@@ -1276,7 +1276,8 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
        send_one_row on clnt even if the snapshot info has been populated. */
     if (sqlquery->n_features > 0 && gbl_disable_skip_rows == 0) {
         for (int ii = 0; ii < sqlquery->n_features; ii++) {
-            if (CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS != sqlquery->features[ii])
+            if (CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS !=
+                sqlquery->features[ii])
                 continue;
             clnt->send_intrans_results = 0;
             if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
