@@ -680,9 +680,9 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
             ret = 1;
             throttles++;
             if (pr) {
-                logmsg(LOGMSG_USER, "%s throttling logput to %s, incoherent, "
-                                    "%llu throttles\n",
-                       __func__, host, throttles);
+                logmsg(LOGMSG_USER,
+                       "%s throttling logput to %s, incoherent, %llu "
+                       "throttles\n", __func__, host, throttles);
             }
         } else {
             lsnp = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
@@ -1384,10 +1384,6 @@ elect_again:
     }
     /* replace now: if i was already master, rep-start wont be called */
     set_repinfo_master_host(bdb_state, master_host, __func__, __LINE__);
-
-/*
-fprintf(stderr, "************  done with rep_elect\n");
-*/
 
 #ifndef BERKDB_46
 
@@ -2421,9 +2417,9 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     if (bdb_state->attr->wait_for_seqnum_trace &&
         log_compare(&bdb_state->seqnum_info->seqnums[nodeix(host)].lsn,
                     &seqnum->lsn) > 0) {
-        logmsg(LOGMSG_USER, "%s seqnum from %s moving backwards from [%d][%d]"
-                            " gen %d to [%d][%d] gen %d\n",
-               __func__, host,
+        logmsg(LOGMSG_USER,
+               "%s seqnum from %s moving backwards from [%d][%d] gen %d to "
+               "[%d][%d] gen %d\n", __func__, host,
                bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.file,
                bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.offset,
                bdb_state->seqnum_info->seqnums[nodeix(host)].generation,
@@ -3709,9 +3705,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
        locks.
        Grab the bdb_writelock here rather than inside of berkdb so that we avoid
        racing against a rep_start. */
-    if (rectype == REP_VERIFY &&
-        bdb_state->dbenv->rep_verify_will_recover(bdb_state->dbenv, control,
-                                                  rec)) {
+    if (rectype == REP_VERIFY && bdb_state->dbenv->rep_verify_will_recover(
+        bdb_state->dbenv, control, rec)) {
         BDB_WRITELOCK_REP("bdb_rep_verify");
         got_writelock = 1;
     }
@@ -3830,9 +3825,9 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     case DB_REP_NEWMASTER:
         bdb_state->repinfo->repstats.rep_newmaster++;
 
-        logmsg(LOGMSG_WARN, "process_berkdb: DB_REP_NEWMASTER %s time=%ld "
-                            "upgraded to gen=%u egen=%d\n",
-               host, time(NULL), gen, egen);
+        logmsg(LOGMSG_WARN,
+               "process_berkdb: DB_REP_NEWMASTER %s time=%ld upgraded to "
+               "gen=%u egen=%d\n", host, time(NULL), gen, egen);
 
         /* Check if it's us. */
         if (host == bdb_state->repinfo->myhost) {
@@ -5097,8 +5092,8 @@ void *watcher_thread(void *arg)
                                    "failed to send COMMITDELAYMORE to %s\n",
                                    bdb_state->repinfo->master_host);
                         } else if (gbl_commit_delay_trace) {
-                            logmsg(LOGMSG_USER, "%s line %d requested "
-                                                "COMMITDELAYMORE\n",
+                            logmsg(LOGMSG_USER,
+                                   "%s line %d requested COMMITDELAYMORE\n",
                                    __func__, __LINE__);
                         }
                     }
@@ -5304,9 +5299,9 @@ void *watcher_thread(void *arg)
                 ((bdb_state->callback->nodeup_rtn)(bdb_state, mynode))) {
                 master_is_bad++;
 
-                logmsg(LOGMSG_WARN, "master %s is marked down and i am up "
-                                    "telling him to yield\n",
-                       master_host);
+                logmsg(LOGMSG_WARN,
+                       "master %s is marked down and i am up telling him to "
+                       "yield\n", master_host);
                 send_downgrade_and_lose(bdb_state);
                 /* Don't call for election- the other node will transfer
                  * master. */

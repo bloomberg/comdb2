@@ -4577,9 +4577,8 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
     }
 #endif
     if ((rc = initialize_shadow_trans(clnt, thd)) != 0) {
-        sql_debug_logf(clnt, __func__, __LINE__, "initialize_shadow_tran "
-                                                 "returns %d\n",
-                       rc);
+        sql_debug_logf(clnt, __func__, __LINE__,
+                       "initialize_shadow_tran returns %d\n", rc);
         goto done;
     }
 

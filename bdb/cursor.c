@@ -3692,9 +3692,10 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
         bdb_set_commit_lsn_gen(bdb_state, &commit_lsn, gen);
         master_cnt++;
         if (doprint) {
-            logmsg(LOGMSG_USER, "%s: setting seqnum_info ptr %p on master to "
-                                "[%d][%d] gen [%d] master-count=%llu "
-                                "not-master-count=%llu\n",
+            logmsg(LOGMSG_USER,
+                   "%s: setting seqnum_info ptr %p on master to "
+                   "[%d][%d] gen [%d] master-count=%llu "
+                   "not-master-count=%llu\n",
                    __func__, &bdb_state->seqnum_info->seqnums[nodeix(master)],
                    commit_lsn.file, commit_lsn.offset, gen, master_cnt,
                    notmaster_cnt);

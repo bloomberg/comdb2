@@ -1201,9 +1201,9 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             if (clnt->ctrl_sqlengine == SQLENG_FNSH_STATE) {
                 if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
                     rc = serial_commit(clnt, thd->sqlthd, clnt->tzname);
-                    sql_debug_logf(clnt, __func__, __LINE__, "serial-txn "
-                                                             "returns %d\n",
-                                   pthread_self(), rc);
+                    sql_debug_logf(clnt, __func__, __LINE__,
+                                   "serial-txn returns %d\n", pthread_self(),
+                                   rc);
                 } else {
                     rc = snapisol_commit(clnt, thd->sqlthd, clnt->tzname);
                     sql_debug_logf(clnt, __func__, __LINE__,
@@ -1255,9 +1255,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                                 bdberr);
                     }
                 } else {
-                    sql_debug_logf(clnt, __func__, __LINE__, "no-shadow-tran "
-                                                             "returning %d\n",
-                                   rc);
+                    sql_debug_logf(clnt, __func__, __LINE__,
+                                   "no-shadow-tran returning %d\n", rc);
                     if (rc == SQLITE_ABORT) {
                         rc = blockproc2sql_error(clnt->osql.xerr.errval,
                                                  __func__, __LINE__);

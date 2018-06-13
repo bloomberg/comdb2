@@ -767,9 +767,9 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
 
     if (cnonce) {
         DB_LSN *lsn = (DB_LSN *)&ss;
-        logmsg(LOGMSG_USER, "%s %s line %d: wait_for_seqnum [%d][%d] returns "
-                            "%d\n",
-               cnonce, __func__, __LINE__, lsn->file, lsn->offset, rc);
+        logmsg(LOGMSG_USER,
+               "%s %s line %d: wait_for_seqnum [%d][%d] returns %d\n", cnonce,
+               __func__, __LINE__, lsn->file, lsn->offset, rc);
     }
 
     return rc;

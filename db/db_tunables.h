@@ -1285,8 +1285,8 @@ REGISTER_TUNABLE("max_logput_queue",
                  "Maximum queued log-records.  (Default: 100000)",
                  TUNABLE_INTEGER, &gbl_max_logput_queue,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("master_req_waitms", "Request master once per this interval.  "
-                                      "(Default: 200ms)",
+REGISTER_TUNABLE("master_req_waitms",
+                 "Request master once per this interval.  (Default: 200ms)",
                  TUNABLE_INTEGER, &gbl_master_req_waitms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("req_all_threshold",
@@ -1302,8 +1302,8 @@ REGISTER_TUNABLE("fill_throttle",
 REGISTER_TUNABLE("verbose_fills", "Print fill trace.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_verbose_fills, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("verbose_repdups", "Print trace on duplicate replication.  "
-                                    "(Default: off)",
+REGISTER_TUNABLE("verbose_repdups",
+                 "Print trace on duplicate replication.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_verbose_repdups, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("warn_queue_latency",
@@ -1335,8 +1335,8 @@ REGISTER_TUNABLE("early_ack_trace",
 REGISTER_TUNABLE("commit_delay_trace", "Verbose commit-delays.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_commit_delay_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("set_coherent_state_trace", "Verbose coherency trace.  "
-                                             "(Default: off)",
+REGISTER_TUNABLE("set_coherent_state_trace",
+                 "Verbose coherency trace.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_set_coherent_state_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("finish_fill_threshold",

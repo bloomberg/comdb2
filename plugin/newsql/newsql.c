@@ -1332,9 +1332,8 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
         if (strncasecmp(sqlstr, "set", 3) == 0) {
             char err[256];
             err[0] = '\0';
-            sql_debug_logf(clnt, __func__, __LINE__, "processing set command "
-                                                     "'%s'\n",
-                           sqlstr);
+            sql_debug_logf(clnt, __func__, __LINE__,
+                           "processing set command '%s'\n", sqlstr);
             sqlstr += 3;
             sqlstr = skipws(sqlstr);
             if (strncasecmp(sqlstr, "transaction", 11) == 0) {
