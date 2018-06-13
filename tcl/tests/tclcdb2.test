@@ -173,7 +173,7 @@ if {[llength [info commands getColumns]] == 0} then {
     set result [list]
 
     for {set index 0} {$index < [cdb2 colcount $connection]} {incr index} {
-      tclcdb2::getNullableValue $connection $index value null
+      tclcdb2::getNullableValue $connection $index null value
 
       if {[isBinary $value]} then {
         set value [hexList $value]
@@ -197,7 +197,7 @@ if {[llength [info commands getValues]] == 0} then {
     set result [list]
 
     while {[cdb2 next $connection]} {
-      tclcdb2::getNullableValue $connection $index value null
+      tclcdb2::getNullableValue $connection $index null value
 
       if {$null} then {
         if {!$omitNulls} then {
@@ -641,7 +641,7 @@ test cdb2-9.1 {bind sub-command w/short} -setup {
   set table [getTableName cdb2_91]
 
   cdb2 run $db [string trim [subst {
-    CREATE TABLE $table {short x null=yes}
+    CREATE TABLE $table {schema {short x null=yes}}
   }]]
 } -body {
   foreach value [getIntegers] {

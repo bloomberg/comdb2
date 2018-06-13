@@ -38,7 +38,9 @@ namespace eval ::tclcdb2 {
       upvar 1 $valueVarName value
     }
 
-    if {[catch {cdb2 colvalue $connection $index} localValue] == 0} {
+    if {[catch {
+      cdb2 colvalue $connection $index
+    } localValue] == 0} then {
       set null false; set value $localValue
     } elseif {$value eq "invalid column value\n"} {
       set null true
