@@ -934,7 +934,7 @@ test cdb2-9.6 {bind sub-command w/float} -setup {
     if {$value eq "NULL"} then {
       cdb2 bind $db 1 null
     } else {
-      cdb2 bind $db 1 double $value
+      cdb2 bind $db 1 real $value
     }
 
     if {[catch {
@@ -973,7 +973,7 @@ test cdb2-9.7 {bind sub-command w/double} -setup {
     if {$value eq "NULL"} then {
       cdb2 bind $db 1 null
     } else {
-      cdb2 bind $db 1 double $value
+      cdb2 bind $db 1 real $value
     }
 
     if {[catch {
