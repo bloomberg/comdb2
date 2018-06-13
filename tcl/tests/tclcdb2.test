@@ -668,7 +668,11 @@ test cdb2-9.1 {bind sub-command w/short} -setup {
   }]]
 } -body {
   foreach value [getIntegers] {
-    cdb2 unbind $db; cdb2 bind $db 1 integer $value
+    cdb2 unbind $db
+
+    if {$value ne "NULL"} then {
+      cdb2 bind $db 1 integer $value
+    }
 
     if {[catch {
       cdb2 run $db [string trim [subst {
