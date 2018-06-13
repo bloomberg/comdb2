@@ -1569,7 +1569,26 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         rc = bdb_state->dbenv->set_verbose(bdb_state->dbenv, DB_VERB_WAITSFOR,
                                            num);
     }
+    else if (tokcmp(tok, ltok, "temptbltest") == 0) {
+        //@send bdb temptbltest 200 1000
+        logmsg(LOGMSG_USER, "Testing temp tables\n");
+        extern int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins);
+        int recsz = 20;
+        int maxins = 10000;
 
+        tok = segtok(line, lline, &st, &ltok);
+        int y = toknum(tok, ltok);
+        if (y > 0) { 
+            recsz = y;
+            tok = segtok(line, lline, &st, &ltok);
+            int z = toknum(tok, ltok);
+            if (z > 0) { 
+                maxins = z;
+            }
+        }
+
+        bdb_temp_table_insert_test(bdb_state, recsz, maxins);
+    } 
     else if (tokcmp(tok, ltok, "reptrcy") == 0) {
         logmsg(LOGMSG_USER, "turning on replication trace\n");
         bdb_state->rep_trace = 1;
