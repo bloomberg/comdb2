@@ -18,10 +18,4 @@
 
 if {![package vsatisfies [package provide Tcl] 8.4]} then {return}
 
-if {$::tcl_platform(platform) eq "windows"} then {
-  package ifneeded tclcdb2 1.0 [list \
-      load [file join $dir tclcdb2[info sharedlibextension]] tclcdb2]
-} else {
-  package ifneeded tclcdb2 1.0 [list \
-      load [file join $dir libtclcdb2[info sharedlibextension]] tclcdb2]
-}
+package ifneeded tclcdb2 1.0 [list source [file join $dir helper.tcl]]

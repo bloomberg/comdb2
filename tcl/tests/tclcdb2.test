@@ -173,13 +173,7 @@ if {[llength [info commands getColumns]] == 0} then {
     set result [list]
 
     for {set index 0} {$index < [cdb2 colcount $connection]} {incr index} {
-      if {[catch {cdb2 colvalue $connection $index} value] == 0} {
-        set null false
-      } elseif {$value eq "invalid column value\n"} {
-        set value <null>; set null true
-      } else {
-        error $value; # FAIL: Unknown error.
-      }
+      tclcdb2::getNullableValue $connection $index value null
 
       if {[isBinary $value]} then {
         set value [hexList $value]
@@ -190,6 +184,28 @@ if {[llength [info commands getColumns]] == 0} then {
           size [cdb2 colsize $connection $index] \
           name [cdb2 colname $connection $index] \
           null $null value $value]
+    }
+
+    return $result
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getValues]] == 0} then {
+  proc getValues { connection index {omitNulls false} {nullValue <null>} } {
+    set result [list]
+
+    while {[cdb2 next $connection]} {
+      tclcdb2::getNullableValue $connection $index value null
+
+      if {$null} then {
+        if {!$omitNulls} then {
+          lappend result $nullValue
+        }
+      } else {
+        lappend result $value
+      }
     }
 
     return $result
@@ -342,6 +358,27 @@ if {[llength [info commands closeConnection]] == 0} then {
           "could not close database connection \"" \
           $connection "\": " $error]
     }
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getIntegers]] == 0} then {
+  if {0} then {
+    -3.402823E+38
+    3.402823E+38
+    0.0
+    NaN
+    -Inf
+    +Inf
+    -1.79769313486232E+308
+    1.79769313486232E+308
+  }
+
+  proc getIntegers {} {
+    return [list \
+        -9223372036854775808 -2147483648 -32768 -128 -1 NULL 0 1 127 \
+        255 32767 2147483647 9223372036854775807 18446744073709551615]
   }
 }
 
@@ -596,6 +633,35 @@ test cdb2-8.4 {run sub-command with NULL results} -setup {
 } -result {0 {} {index 1 columns {{index 0 type integer size 0 name x null\
 true value <null>}} effects {affected 0 selected 1 updated 0 deleted 0 inserted\
 0}}}
+
+###############################################################################
+
+test cdb2-9.1 {bind sub-command w/short} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_91]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {short x null=yes}
+  }]]
+} -body {
+  foreach value [getIntegers] {
+    cdb2 unbind $db; cdb2 bind $db 1 short $value
+
+    cdb2 run $db [string trim [subst {
+      INSERT INTO $table (x) VALUES (?)
+    }]]
+  }
+
+  cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg table db
+} -result {}
 
 ###############################################################################
 
