@@ -1428,10 +1428,9 @@ static int newsql_get_client_retries(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
-    if (!sqlquery->has_num_retries) {
-        return 0;
-    }
-    return sqlquery->num_retries;
+    if (sqlquery->has_retry)
+        return sqlquery->retry;
+    return 0;
 }
 
 /* Process sql query if it is a set command. */

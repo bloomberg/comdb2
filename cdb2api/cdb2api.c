@@ -2276,11 +2276,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
     if (sqlquery.n_set_flags)
         sqlquery.set_flags = &set_commands[n_set_commands_sent];
 
-    if (hndl && hndl->is_retry) {
-        sqlquery.has_retry = 1;
-        sqlquery.retry = hndl->is_retry;
-    }
-
     if (hndl && !(hndl->flags & CDB2_READ_INTRANS_RESULTS) && is_begin) {
         features[n_features] = CDB2_CLIENT_FEATURES__SKIP_ROWS;
         n_features++;
@@ -2350,6 +2345,9 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
 
     sqlquery.has_num_retries = 1;
     sqlquery.num_retries = retries_done;
+
+    sqlquery.has_retry = 1;
+    sqlquery.retry = retries_done;
 
     int len = cdb2__query__get_packed_size(&query);
     unsigned char *buf = malloc(len + 1);
