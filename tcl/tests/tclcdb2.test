@@ -388,7 +388,7 @@ if {[llength [info commands getNumbers]] == 0} then {
         } else {
           lappend result \
               -2147483648 -32768 -128 -1 0 1 127 255 32767 \
-              2147483647 4294967295
+              65536 2147483647 4294967295
 
           if {$wide} then {
             lappend result \
@@ -760,6 +760,45 @@ test cdb2-9.1 {bind sub-command w/short} -setup {
 
   unset -nocomplain error value table db
 } -result {<null> -32768 -128 -1 0 1 127 255 32767}
+
+###############################################################################
+
+test cdb2-9.2 {bind sub-command w/u_short} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_92]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {u_short x null=yes}}
+  }]]
+} -body {
+  foreach value [getIntegers] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 integer $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {<null> 0 1 127 255 32767 65536}
 
 ###############################################################################
 
