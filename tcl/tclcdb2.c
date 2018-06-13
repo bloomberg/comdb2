@@ -57,6 +57,22 @@
   #define CDB2_NULL				(0)
 #endif /* CDB2_NULL */
 
+#if !defined(BYTE_SWAP_WIDE_INT)
+#define BYTE_SWAP_WIDE_INT(a)                                   \
+    do {                                                        \
+	unsigned char *bytePtr = &(a);                          \
+	size_t wideSize = sizeof(Tcl_WideInt);                  \
+	int index1, index2;                                     \
+	for (index1 = 0; index1 < wideSize / 2; index1++) {     \
+	    unsigned char byteValue;                            \
+	    index2 = (wideSize - 1) - index1;                   \
+	    byteValue = bytePtr[index1];                        \
+	    bytePtr[index1] = bytePtr[index2];                  \
+	    bytePtr[index2] = byteValue;                        \
+	}                                                       \
+    } while (0);
+#endif /* BYTE_SWAP_WIDE_INT */
+
 #if !defined(MAYBE_OUT_OF_MEMORY)
 #define MAYBE_OUT_OF_MEMORY(a)                                  \
     do {                                                        \
@@ -131,6 +147,10 @@
 #if !defined(GET_STR_OR_NULL)
 #define GET_STR_OR_NULL(a) ((a) != NULL ? (a) : "(null)")
 #endif /* GET_STR_OR_NULL */
+
+#if !defined(IS_LITTLE_ENDIAN)
+#define IS_LITTLE_ENDIAN (*(char *)(&iValueOfOne) == 1)
+#endif /* IS_LITTLE_ENDIAN */
 
 typedef struct NameAndValue {
     char *name;
@@ -232,6 +252,7 @@ enum tcl_cdb2_element_counts {
 
 TCL_DECLARE_MUTEX(packageMutex);
 
+const int iTheValueOfOne = 1;
 static int bHaveTclStubs = 0;
 
 /*
@@ -1729,6 +1750,9 @@ static int tclcdb2ObjCmd(
 		    break;
 		}
 		case CDB2_REAL: {
+		    int length = 0;
+		    const char *doubleString;
+
 		    if (objc != 6) {
 			Tcl_AppendResult(interp,
 			    "must specify a value for type \"",
@@ -1738,11 +1762,38 @@ static int tclcdb2ObjCmd(
 			goto done;
 		    }
 
-		    code = Tcl_GetDoubleFromObj(interp, objv[5],
+		    doubleString = Tcl_GetStringFromObj(objv[5], &length);
+
+		    if ((doubleString != NULL) && (length > 2)) {
+			if (strncmp(doubleString, "0x", 2) == 0) {
+			    Tcl_WideInt wideValue = 0;
+
+			    code = Tcl_GetWideIntFromObj(interp,
+				doubleString, &wideValue);
+
+			    if (code != TCL_OK)
+				goto done;
+
+			    if (IS_LITTLE_ENDIAN) {
+				BYTE_SWAP_WIDE_INT(wideValue);
+			    }
+
+			    assert(sizeof(Tcl_WideInt) == sizeof(double));
+
+			    memcpy(&pBoundValue->value.doubleValue,
+				&wideValue, sizeof(double));
+
+			    goto gotDouble;
+			}
+		    }
+
+		    code = Tcl_GetDoubleFromObj(interp, doubleString,
 			&pBoundValue->value.doubleValue);
 
 		    if (code != TCL_OK)
 			goto done;
+
+		gotDouble:
 
 		    valuePtr = &pBoundValue->value.doubleValue;
 		    pBoundValue->length = sizeof(double);
