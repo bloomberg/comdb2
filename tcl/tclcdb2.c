@@ -1774,7 +1774,7 @@ static int tclcdb2ObjCmd(
 			if (code != TCL_OK)
 			    goto done;
 
-			if (IS_LITTLE_ENDIAN) {
+			if (!IS_LITTLE_ENDIAN) {
 			    BYTE_SWAP_WIDE_INT(wideValue);
 			}
 
