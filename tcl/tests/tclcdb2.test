@@ -685,7 +685,7 @@ test cdb2-9.1 {bind sub-command w/short} -setup {
     }
   }
 
-  cdb2 run $db [string trim [subst {
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
     SELECT x FROM $table ORDER BY x
   }]]
 
