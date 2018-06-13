@@ -3663,7 +3663,7 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
 
     pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
 
-    bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master, NULL);
+    bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master, NULL, NULL);
     bdb_state->dbenv->get_rep_eid(bdb_state->dbenv, &eid);
 
     // We are under the log lock here.  If we are writing logs, there has to

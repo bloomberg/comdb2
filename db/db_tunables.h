@@ -1274,5 +1274,18 @@ REGISTER_TUNABLE(
     "Max number of client stats stored in comdb2_clientstats. (Default 10000)",
     TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
     NULL);
+REGISTER_TUNABLE("elect_priority_bias",
+                 "Bias this node's election priority by this amount.  "
+                 "(Default: 0)", TUNABLE_INTEGER, &gbl_elect_priority_bias,
+                 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("defer_upgrade_time",
+                 "Defer an upgrade until this absolute time.  (Default: "
+                 "0)", TUNABLE_INTEGER, &gbl_defer_upgrade_time,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_election_race",
+                 "Permit arbitrary upgrades at rep-start.  (Default: false)",
+                 TUNABLE_BOOLEAN, &gbl_allow_election_race,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */

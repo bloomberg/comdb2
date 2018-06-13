@@ -1304,6 +1304,7 @@ typedef enum {
 #define	DB_VERIFY_FATAL		(-30891)/* DB->verify cannot proceed. */
 #define DB_FIRST_MISS		(-30890)/* Return on first-miss in memp_fget. */
 #define DB_SEARCH_PGCACHE	(-30889)/* Search the recovery pagecache. */
+#define DB_ELECTION_GENCHG  (-30888)
 
 /* genid-pgno hashtable - some code stolen from plhash.c */
 #define GENID_SIZE 8
@@ -2287,13 +2288,13 @@ struct __db_env {
 	int  (*memp_trickle) __P((DB_ENV *, int, int *, int));
 
 	void *rep_handle;		/* Replication handle and methods. */
-	int  (*rep_elect) __P((DB_ENV *, int, int, u_int32_t, char **));
+	int  (*rep_elect) __P((DB_ENV *, int, int, u_int32_t, u_int32_t *, char **));
 	int  (*rep_flush) __P((DB_ENV *));
 	int  (*rep_process_message) __P((DB_ENV *, DBT *, DBT *,
 	    char **, DB_LSN *, uint32_t *));
 	int  (*rep_verify_will_recover) __P((DB_ENV *, DBT *, DBT *));
 	int  (*rep_truncate_repdb) __P((DB_ENV *));
-	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t));
+	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 	int  (*rep_stat) __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
 	int  (*set_logical_start) __P((DB_ENV *, int (*) (DB_ENV *, void *,
 		u_int64_t, DB_LSN *)));
@@ -2322,7 +2323,7 @@ struct __db_env {
 	int  (*set_timeout) __P((DB_ENV *, db_timeout_t, u_int32_t));
 	int  (*set_bulk_stops_on_page) __P((DB_ENV*, int));
 	int  (*memp_dump_bufferpool_info) __P((DB_ENV *, FILE *));
-	int  (*get_rep_master) __P((DB_ENV *, char **, u_int32_t *));
+	int  (*get_rep_master) __P((DB_ENV *, char **, u_int32_t *, u_int32_t *));
 	int  (*get_rep_eid) __P((DB_ENV *, char **));
 	void (*txn_dump_ltrans) __P((DB_ENV *, FILE *, u_int32_t));
 	int  (*lowest_logical_lsn) __P((DB_ENV *, DB_LSN *));
@@ -2848,7 +2849,7 @@ int berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
 u_int32_t file_id_for_recovery_record(DB_ENV *env, DB_LSN *lsn,
 	int rectype, DBT *dbt);
 
-int __rep_get_master(DB_ENV *dbenv, char **master, u_int32_t *egen);
+int __rep_get_master(DB_ENV *dbenv, char **master, u_int32_t *gen, u_int32_t *egen);
 int __rep_get_eid(DB_ENV *dbenv,char **eid);
 
 unsigned int __berkdb_count_freepages(int fd);

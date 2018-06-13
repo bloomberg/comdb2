@@ -114,11 +114,11 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 	if (gbl_verbose_master_req) {
 		switch (rtype) {
 			case REP_MASTER_REQ:
-				logmsg(LOGMSG_ERROR, "%s sending REP_MASTER_REQ to %s\n",
+				logmsg(LOGMSG_USER, "%s sending REP_MASTER_REQ to %s\n",
 					__func__, eid);
 				break;
 			case REP_NEWMASTER:
-				logmsg(LOGMSG_ERROR, "%s sending REP_NEWMASTER to %s\n",
+				logmsg(LOGMSG_USER, "%s sending REP_NEWMASTER to %s\n",
 					__func__, eid);
 				break;
 			default: 
@@ -313,7 +313,7 @@ __rep_new_master(dbenv, cntrl, eid)
 	rep = db_rep->region;
 	ret = 0;
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	__rep_elect_done(dbenv, rep);
+	__rep_elect_done(dbenv, rep, 0);
 
         /* This should never happen: we are calling new-master against a
            network message with a lower generation.  I believe this is the
@@ -599,18 +599,21 @@ __rep_send_gen_vote(dbenv, lsnp, nsites, pri, tiebreaker, egen, committed_gen,
 	(void)__rep_send_message(dbenv, eid, vtype, lsnp, &vote_dbt, 0, NULL);
 }
 
+pthread_mutex_t gbl_rep_egen_lk = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t gbl_rep_egen_cd = PTHREAD_COND_INITIALIZER;
 
 /*
  * __rep_elect_done
  *	Clear all election information for this site.  Assumes the
  *	caller hold rep_mutex.
  *
- * PUBLIC: void __rep_elect_done __P((DB_ENV *, REP *));
+ * PUBLIC: void __rep_elect_done __P((DB_ENV *, REP *, int egen));
  */
 void
-__rep_elect_done(dbenv, rep)
+__rep_elect_done(dbenv, rep, egen)
 	DB_ENV *dbenv;
 	REP *rep;
+    int egen;
 {
 	int inelect;
 
@@ -622,8 +625,15 @@ __rep_elect_done(dbenv, rep)
 	F_CLR(rep, REP_F_EPHASE1 | REP_F_EPHASE2 | REP_F_TALLY);
 	rep->sites = 0;
 	rep->votes = 0;
-	if (inelect)
-		rep->egen++;
+	if (inelect) {
+        pthread_mutex_lock(&gbl_rep_egen_lk);
+        if (egen)
+            rep->egen = egen;
+        else
+            rep->egen++;
+        pthread_cond_broadcast(&gbl_rep_egen_cd);
+        pthread_mutex_unlock(&gbl_rep_egen_lk);
+    }
 #ifdef DIAGNOSTIC
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 		__db_err(dbenv, "Election done; egen %lu", (u_long)rep->egen);

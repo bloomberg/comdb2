@@ -247,7 +247,8 @@ retry_add:
             } else if (ret) {
                 fprintf(f, "BUG: FAILED TO INSERT: RET %d, ERR %s\n", ret,
                         cdb2_errstr(sqlh));
-                fprintf(stderr, "BUG in thread %ld: FAILED TO INSERT\n", host);
+                fprintf(stderr, "BUG in thread %ld: FAILED TO INSERT: RET %d, ERR %s\n",
+                        host, ret, cdb2_errstr(sqlh));
                 exit(1);
             }
         } else if (ret == CDB2ERR_CONSTRAINTS) {
@@ -257,10 +258,14 @@ retry_add:
         } else if (ret == 210 /*NOT_DURABLE*/ || ret == -1) {
             fprintf(f, "FAILED TO UPDATE: RET %d, ERR %s\n", ret,
                     cdb2_errstr(sqlh));
+        } else if (ret == CDB2ERR_VERIFY_ERROR /* VERIFY */) {
+            fprintf(f, "FAILED TO UPDATE: RET %d, ERR %s\n", ret,
+                    cdb2_errstr(sqlh));
         } else {
 			fprintf(f, "BUG: FAILED TO UPDATE: RET %d, ERR %s\n", ret,
                     cdb2_errstr(sqlh));
-            fprintf(stderr, "BUG in thread %ld: FAILED TO UPDATE\n", host);
+            fprintf(stderr, "BUG in thread %ld: FAILED TO UPDATE: RET %d, ERR %s\n", 
+                    host, ret, cdb2_errstr(sqlh));
             exit(1);
         }
         do {

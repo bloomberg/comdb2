@@ -476,7 +476,7 @@ void bdb_transfermaster(bdb_state_type *bdb_state)
         return;
     }
 
-    rc = bdb_downgrade(bdb_state, NULL);
+    rc = bdb_downgrade(bdb_state, 0, NULL);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d bdb_downgrade failed rc=%d ?\n", __FILE__,
                 __LINE__, rc);
@@ -560,7 +560,7 @@ again:
         numsleeps++;
         if (numsleeps > 2) {
             logmsg(LOGMSG_ERROR, "transfer master falling back to election\n");
-            bdb_downgrade(bdb_state, NULL);
+            bdb_downgrade(bdb_state, 0, NULL);
             return;
         }
 
@@ -1152,6 +1152,8 @@ static void abort_election_on_exit(bdb_state_type *bdb_state)
     pthread_exit(NULL);
 }
 
+int gbl_elect_priority_bias = 0;
+
 static void *elect_thread(void *args)
 {
     int rc, count, i;
@@ -1159,6 +1161,8 @@ static void *elect_thread(void *args)
     char *master_host, *old_master;
     int num;
     int num_connected;
+    int node_not_up = 0;
+    uint32_t newgen;
     elect_thread_args_type *elect_thread_args;
     int elect_time;
     const char *hostlist[REPMAX];
@@ -1261,13 +1265,13 @@ elect_again:
         if (!(bdb_state->callback->nodeup_rtn(bdb_state,
                                               bdb_state->repinfo->myhost))) {
             rep_pri = rep_pri - 1;
+            node_not_up = 1;
         }
     }
 
-    if ((op == LOSE) || (op == REOPEN_AND_LOSE))
-        rep_pri = 1;
-
-    if (gbl_use_node_pri &&
+    if (gbl_elect_priority_bias && !node_not_up) {
+        rep_pri = REP_PRI + gbl_elect_priority_bias;
+    } else if (gbl_use_node_pri &&
         rep_pri == REP_PRI) { /* if the node is up, then apply priorities. */
         rep_pri = REP_PRI + gbl_rep_node_pri; /* priority should be > priority
                                                  of nodes which are down.*/
@@ -1307,7 +1311,7 @@ elect_again:
     set_repinfo_master_host(bdb_state, db_eid_invalid, __func__, __LINE__);
 
     rc = bdb_state->dbenv->rep_elect(bdb_state->dbenv, elect_count, rep_pri,
-                                     elect_time, &master_host);
+                                     elect_time, &newgen, &master_host);
 
     if (rc != 0) {
         if (rc == DB_REP_UNAVAIL)
@@ -1315,19 +1319,6 @@ elect_again:
                 ((double)elect_time) / 1000000.00);
         else
             logmsg(LOGMSG_ERROR, "got %d from rep_elect\n", rc);
-
-        restart++;
-        if (restart == 5) {
-            /*try to reinit the process*/
-            logmsg(LOGMSG_DEBUG, "elect_thread: call rep_start\n");
-            called_rep_start++;
-            rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
-                                             DB_REP_CLIENT);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "elect_thread: rep_start returned error code %d\n", rc);
-            }
-            restart = 0;
-        }
 
         elect_time *= 2;
         elect_again++;
@@ -1338,6 +1329,8 @@ elect_again:
 
         goto elect_again;
     }
+    /* replace now: if i was already master, rep-start wont be called */
+    set_repinfo_master_host(bdb_state, master_host, __func__, __LINE__);
 
 /*
 fprintf(stderr, "************  done with rep_elect\n");
@@ -1352,16 +1345,7 @@ fprintf(stderr, "************  done with rep_elect\n");
             logmsg(LOGMSG_INFO, "elect_thread: we won the election\n");
 
             /* give up our read lock, we will need a write lock here  */
-
-            /* we need to upgrade */
-            rc = bdb_upgrade(bdb_state, &done);
-            print(bdb_state, "back from bdb_upgrade%s\n",
-                  (!done) ? " (nop)" : "");
-
-            if (rc != 0) {
-                logmsg(LOGMSG_FATAL, "bdb_upgrade returned bad rcode %d\n", rc);
-                exit(1);
-            }
+           /* XXX Do not upgrade here: upgrade only from the reader thread */
 
             /* bdb_upgrade calls whoismaster_rtn. */
             Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
@@ -1373,21 +1357,27 @@ fprintf(stderr, "************  done with rep_elect\n");
         }
 
         else if (old_master == master_host) {
+            /*
             set_repinfo_master_host(bdb_state, master_host, __func__, __LINE__);
             logmsg(LOGMSG_INFO, "elect_thread: master didn't change\n");
+            */
         }
 
         else if (old_master == bdb_state->repinfo->myhost) {
+            /*
             logmsg(LOGMSG_INFO, "elect_thread: we lost the election as master: "
                             "new_master is %s\n",
                     master_host);
             bdb_downgrade(bdb_state, &done);
             if (done)
                 bdb_setmaster(bdb_state, master_host);
+                */
         } else {
+            /*
             logmsg(LOGMSG_WARN, "elect_thread: we lost the election: new_master is %s\n",
                     master_host);
             bdb_setmaster(bdb_state, master_host);
+            */
         }
     }
 #endif
@@ -3778,20 +3768,27 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     case DB_REP_NEWMASTER:
         bdb_state->repinfo->repstats.rep_newmaster++;
+
+        char *master;
+        int gen, egen;
+
+        if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
+            abort();
+        }
+
         logmsg(LOGMSG_WARN,
-               "process_berkdb: DB_REP_NEWMASTER %s time=%ld generation=%u\n",
-               host, time(NULL), generation);
+               "process_berkdb: DB_REP_NEWMASTER %s time=%ld upgraded to gen=%u egen=%d\n",
+               host, time(NULL), gen, egen);
 
         /* Check if it's us. */
         if (host == bdb_state->repinfo->myhost) {
-            logmsg(LOGMSG_WARN, "NEWMASTER is ME\n");
+            logmsg(LOGMSG_WARN, "NEWMASTER is ME for GENERATION %d\n", egen);
 
             /* I'm upgrading and this thread could be holding logical locks:
              * abort sql threads waiting on logical locks */
             BDB_WRITELOCK_REP("upgrade");
-
             /* we need to upgrade */
-            rc = bdb_upgrade(bdb_state, &done);
+            rc = bdb_upgrade(bdb_state, egen, &done);
 
             BDB_RELLOCK();
 
@@ -3805,7 +3802,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         } else {
             /* it's not us, but we were master - we need to downgrade */
             if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
-                rc = bdb_downgrade(bdb_state, &done);
+                rc = bdb_downgrade(bdb_state, egen, &done);
             } else
                 done = 1;
         }
@@ -3828,7 +3825,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         logmsg(LOGMSG_WARN, "rep_process_message: got DUPMASTER from %s, "
                 "I think master is %s.  dowgrading and calling for election\n",
                 host, oldmaster);
-        rc = bdb_downgrade(bdb_state, NULL);
+        rc = bdb_downgrade(bdb_state, 0, NULL);
         break;
 
     case DB_REP_ISPERM: {
@@ -4408,7 +4405,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
 
     case USER_TYPE_TRANSFERMASTER_NAME:
         /* Prevent race against watcher thread. */
-        logmsg(LOGMSG_INFO, "transfer master recieved\n");
+        logmsg(LOGMSG_INFO, "transfer master received\n");
         bdb_state->repinfo->dont_elect_untill_time = comdb2_time_epoch() + 5;
         bdb_state->need_to_upgrade = 1;
 
@@ -5010,10 +5007,6 @@ void *watcher_thread(void *arg)
             if (behind > bdb_state->attr->commitdelaybehindthresh) {
                 int rc;
 
-                if (bdb_state->attr->goose_replication_for_incoherent_nodes)
-                    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
-                                                     DB_REP_CLIENT);
-
                 if (behind > last_behind) /* we are falling further behind */
                     num_times_behind++;
                 else
@@ -5021,13 +5014,6 @@ void *watcher_thread(void *arg)
 
                 if (num_times_behind > bdb_state->attr->numtimesbehind) {
                     logmsg(LOGMSG_WARN, "i am incoherent and falling behind\n");
-
-                    /* Alex says this was an attempt to goose the database in
-                     * the
-                     * slow replication case, no real science behind it. */
-                    if (bdb_state->attr->goose_replication_for_incoherent_nodes)
-                        rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
-                                                         DB_REP_CLIENT);
 
                     if (bdb_state->attr->enable_incoherent_delaymore) {
                         rc = net_send(bdb_state->repinfo->netinfo,
@@ -5080,16 +5066,6 @@ void *watcher_thread(void *arg)
                     bdb_state->attr->skipdelaybase)
                     bdb_state->attr->commitdelay =
                         bdb_state->attr->skipdelaybase;
-
-                /* try to jigger replication */
-                if (bdb_state->attr->goose_replication_for_incoherent_nodes) {
-                    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
-                                                     DB_REP_MASTER);
-                    if (rc != 0) {
-                        logmsg(LOGMSG_ERROR, "rep_start failed\n");
-                        return NULL;
-                    }
-                }
             }
 
             if (bdb_state->attr->track_replication_times) {
@@ -5146,7 +5122,7 @@ void *watcher_thread(void *arg)
         }
 
         master_host = bdb_state->repinfo->master_host;
-        bdb_get_rep_master(bdb_state, &rep_master, NULL);
+        bdb_get_rep_master(bdb_state, &rep_master, NULL, NULL);
 
         if (bdb_state->caught_up) {
             /* periodically send info too all nodes about our curresnt LSN and
@@ -5218,7 +5194,7 @@ void *watcher_thread(void *arg)
                 }
             } else {
                 /* mismatch between master_host and rep_master*/
-                bdb_downgrade(bdb_state, NULL);
+                bdb_downgrade(bdb_state, 0, NULL);
             }
         }
 
@@ -5245,33 +5221,18 @@ void *watcher_thread(void *arg)
                 ((bdb_state->callback->nodeup_rtn)(bdb_state, mynode))) {
                 master_is_bad++;
 
-                if (bdb_state->attr->hostile_takeover_retries &&
-                    master_is_bad > bdb_state->attr->hostile_takeover_retries) {
-                    logmsg(LOGMSG_WARN, 
-                            "master %s is marked down and i am up, taking over",
-                            master_host);
-
-                    rc = bdb_upgrade(bdb_state, &done);
-                    if (!done) {
-                        logmsg(LOGMSG_ERROR, "master upgrade failed, too early\n");
-                    } else {
-                        bdb_setmaster(bdb_state, bdb_state->repinfo->myhost);
-                    }
-
-                    master_is_bad = 0;
-                } else {
-                    logmsg(LOGMSG_WARN, "master %s is marked down and i am up "
-                                    "telling him to yield\n",
-                            master_host);
-                    send_downgrade_and_lose(bdb_state);
-                    /* Don't call for election- the other node will transfer
-                     * master. */
-                }
+                logmsg(LOGMSG_WARN, "master %s is marked down and i am up "
+                        "telling him to yield\n",
+                        master_host);
+                send_downgrade_and_lose(bdb_state);
+                /* Don't call for election- the other node will transfer
+                 * master. */
             } else {
                 master_is_bad = 0;
             }
         }
 
+        /* This is for the test-only upgrade codepath */
         if (bdb_state->need_to_upgrade) {
 
             /* if we're already master, like if the election thread promoted us,
@@ -5279,7 +5240,7 @@ void *watcher_thread(void *arg)
             if (master_host != bdb_state->repinfo->myhost) {
                 logmsg(LOGMSG_INFO, "calling bdb_upgrade because we were told to\n");
 
-                rc = bdb_upgrade(bdb_state, &done);
+                rc = bdb_upgrade(bdb_state, 0, &done);
                 if (rc != 0) {
                     logmsg(LOGMSG_ERROR, "got %d from bdb_upgrade%s\n", rc,
                             (!done) ? " (nop)" : "");
@@ -5323,7 +5284,7 @@ void *watcher_thread(void *arg)
         /* downgrade ourselves if we are in a dupmaster situation */
         if (master_host == bdb_master_dupe) {
             print(bdb_state, "calling bdb_downgrade\n");
-            bdb_downgrade(bdb_state, NULL);
+            bdb_downgrade(bdb_state, 0, NULL);
             print(bdb_state, "back from bdb_downgrade\n");
         }
 
@@ -5355,6 +5316,7 @@ void *watcher_thread(void *arg)
                 i = 0;
             }
 
+            /*
             if (!bdb_state->repinfo->in_election) {
                 print(bdb_state, "watcher_thread: calling for election\n");
                 logmsg(LOGMSG_DEBUG, "0x%lx %s:%d %s: calling for election\n",
@@ -5362,6 +5324,7 @@ void *watcher_thread(void *arg)
 
                 call_for_election(bdb_state);
             }
+            */
         }
 
         if (bdb_state->rep_handle_dead) {
