@@ -2823,7 +2823,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
                 write_response(clnt, RESPONSE_ROW_LAST_DUMMY, 0, 0);
             }
         } else {
-            if (postponed_write) {
+            if (postponed_write && !clnt->send_one_row) {
                 send_row(clnt, NULL, row_id, 0, NULL);
             }
             write_response(clnt, RESPONSE_EFFECTS, 0, 0);
