@@ -1272,8 +1272,8 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
     extern int gbl_disable_skip_rows;
-    /* We need to restore send_intrans_results and
-       send_one_row on clnt even if the snapshot info has been populated. */
+    /* We need to restore send_intrans_results and send_one_newsql_resp
+       on clnt even if the snapshot info has been populated. */
     if (sqlquery->n_features > 0 && gbl_disable_skip_rows == 0) {
         for (int ii = 0; ii < sqlquery->n_features; ii++) {
             if (CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS !=
@@ -1283,7 +1283,7 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
             if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
                  clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
                 newsql_has_high_availability(clnt)) {
-                clnt->send_one_row = 1;
+                clnt->send_one_newsql_resp = 1;
                 clnt->send_intrans_results = 1;
             }
         }
