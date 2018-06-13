@@ -4030,8 +4030,8 @@ static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
                         db_flags |= DB_OLCOMPACT;
                     rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags,
                                    db_mode);
-                    logmsg(LOGMSG_DEBUG, "dbp->open %s type=%d rc %d\n", tmpname,
-                            dbp->type, rc);
+                    logmsg(LOGMSG_DEBUG, "dbp->open %s type=%d rc %d\n",
+                           tmpname, dbp->type, rc);
                 } while (tid == NULL && iter++ < 100 && rc == DB_LOCK_DEADLOCK);
 
                 if (rc != 0) {

@@ -1276,9 +1276,8 @@ REGISTER_TUNABLE(
     NULL);
 
 REGISTER_TUNABLE("osql_random_restart", "Restart socksql transmission "
-                 "randomly.  (Default: off)", TUNABLE_BOOLEAN,
-                 &gbl_osql_random_restart, EXPERIMENTAL | INTERNAL, NULL, NULL,
-                 NULL, NULL);
-
+                                        "randomly.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_osql_random_restart,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

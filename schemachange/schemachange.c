@@ -200,8 +200,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     comdb2uuidstr(s->uuid, us);
     rc = sc_set_running(s->table, 1, seed, node, time(NULL));
     if (rc != 0) {
-        logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n",
-                s->rqid, us, rc);
+        logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
+               us, rc);
         if (!doing_upgrade || s->fulluprecs || s->partialuprecs) {
             errstat_set_strf(&iq->errstat, "Schema change already in progress");
             free_schema_change_type(s);

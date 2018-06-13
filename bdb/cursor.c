@@ -3777,22 +3777,23 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
 
     if (latest_gen < durable_gen) {
         logmsg(LOGMSG_INFO, "%s line %d returning 0 because latest_gen %d < "
-                "durable_gen %d\n", __func__, __LINE__, latest_gen, durable_gen);
+                            "durable_gen %d\n",
+               __func__, __LINE__, latest_gen, durable_gen);
         needwait = 1;
     }
 
     if ((latest_gen == durable_gen) &&
         log_compare(&durable_lsn, &latest_lsn) < 0) {
         logmsg(LOGMSG_INFO, "%s line %d returning 0 because durable_lsn "
-                "[%d][%d] < latest_lsn [%d][%d]\n", __func__, __LINE__, 
-                durable_lsn.file, durable_lsn.offset, latest_lsn.file,
-                latest_lsn.offset);
+                            "[%d][%d] < latest_lsn [%d][%d]\n",
+               __func__, __LINE__, durable_lsn.file, durable_lsn.offset,
+               latest_lsn.file, latest_lsn.offset);
         needwait = 1;
     }
 
     if (gbl_durable_replay_test && (0 == (rand() % 20))) {
         logmsg(LOGMSG_INFO, "%s line %d returning 0 for durable_replay_test\n",
-                __func__, __LINE__);
+               __func__, __LINE__);
         return 0;
     }
 
@@ -3800,9 +3801,11 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
         ss.lsn = latest_lsn;
         ss.generation = latest_gen;
         rc = (bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state, &ss, 0,
-                &timeoutms) == 0) ? 1 : 0;
+                                                           &timeoutms) == 0)
+                 ? 1
+                 : 0;
         logmsg(LOGMSG_INFO, "%s line %d returning %d after waiting\n", __func__,
-                __LINE__, rc);
+               __LINE__, rc);
         return rc;
     }
 
@@ -4545,9 +4548,9 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
             return rc;
 
 #ifdef MERGE_DEBUG
-        logmsg(LOGMSG_DEBUG, "%d %s:%d reordering rc=%d %llx\n", 
-                (int)pthread_self(), __FILE__, __LINE__, rc,
-                *(unsigned long long *)key);
+        logmsg(LOGMSG_DEBUG, "%d %s:%d reordering rc=%d %llx\n",
+               (int)pthread_self(), __FILE__, __LINE__, rc,
+               *(unsigned long long *)key);
 #endif
 
         /* if we have failed to reposition the cursor and this is a relative

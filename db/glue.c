@@ -806,7 +806,7 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
     file = (u_int32_t *)&ss;
     if (*file != 0) {
         trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, gbl_mynode,
-                -1 /* timeoutms */, 1 /* adaptive */, &ss);
+                                  -1 /* timeoutms */, 1 /* adaptive */, &ss);
     }
     return rc;
 }
