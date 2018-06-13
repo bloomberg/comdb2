@@ -4,6 +4,7 @@ add_library(tclcdb2 SHARED
 
 set(module tclcdb2)
 set(MODULE TCLCDB2)
+configure_file(${PROJECT_SOURCE_DIR}/tcl/helper.tcl helper.tcl COPYONLY)
 configure_file(${PROJECT_SOURCE_DIR}/tcl/pkgIndex.tcl pkgIndex.tcl COPYONLY)
 
 add_definitions(
