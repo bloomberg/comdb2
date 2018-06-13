@@ -1212,7 +1212,7 @@ test cdb2-9.11 {bind sub-command w/cstring} -setup {
   set table [getTableName cdb2_911]
 
   cdb2 run $db [string trim [subst {
-    CREATE TABLE $table {schema {cstring x[2] null=yes}}
+    CREATE TABLE $table {schema {cstring x\[2\] null=yes}}
   }]]
 } -body {
   foreach value [list NULL "" \x00 \xFF 1 12 123] {
