@@ -797,6 +797,26 @@ if {0} then {
   #
   cdb2 bind
   cdb2 unbind
+
+    CREATE TABLE $table {schema {u_short x null=yes}}
+    CREATE TABLE $table {schema {int x null=yes}}
+    CREATE TABLE $table {schema {u_int x null=yes}}
+    CREATE TABLE $table {schema {longlong x null=yes}}
+    CREATE TABLE $table {schema {float x null=yes}}
+    CREATE TABLE $table {schema {double x null=yes}}
+    CREATE TABLE $table {schema {decimal32 x null=yes}}
+    CREATE TABLE $table {schema {decimal64 x null=yes}}
+    CREATE TABLE $table {schema {decimal128 x null=yes}}
+    CREATE TABLE $table {schema {cstring x[2000] null=yes}}
+    CREATE TABLE $table {schema {blob x null=yes}}
+    CREATE TABLE $table {schema {vutf8 x null=yes}}
+    CREATE TABLE $table {schema {byte x null=yes}}
+    CREATE TABLE $table {schema {datetime x null=yes}}
+    CREATE TABLE $table {schema {datetimeus x null=yes}}
+    CREATE TABLE $table {schema {intervalds x null=yes}}
+    CREATE TABLE $table {schema {intervaldsus x null=yes}}
+    CREATE TABLE $table {schema {intervalym x null=yes}}
+
 }
 
 ###############################################################################
