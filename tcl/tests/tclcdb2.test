@@ -920,6 +920,84 @@ test cdb2-9.5 {bind sub-command w/longlong} -setup {
 
 ###############################################################################
 
+test cdb2-9.6 {bind sub-command w/float} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_96]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {float x null=yes}}
+  }]]
+} -body {
+  foreach value [getReals] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 double $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {}
+
+###############################################################################
+
+test cdb2-9.7 {bind sub-command w/double} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_97]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {double x null=yes}}
+  }]]
+} -body {
+  foreach value [getReals] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 double $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {}
+
+###############################################################################
+
 cleanupDatabase; # Cleanup test databases before changing the configuration.
 
 ###############################################################################
@@ -1020,9 +1098,6 @@ if {0} then {
   cdb2 bind
   cdb2 unbind
 
-    CREATE TABLE $table {schema {int x null=yes}}
-    CREATE TABLE $table {schema {u_int x null=yes}}
-    CREATE TABLE $table {schema {longlong x null=yes}}
     CREATE TABLE $table {schema {float x null=yes}}
     CREATE TABLE $table {schema {double x null=yes}}
     CREATE TABLE $table {schema {decimal32 x null=yes}}
