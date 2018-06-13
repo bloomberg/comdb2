@@ -179,7 +179,7 @@ static int execute_sql_query_offload(struct sqlthdstate *,
 static int record_query_cost(struct sql_thread *, struct sqlclntstate *);
 
 static int sql_debug_logf_int(struct sqlclntstate *clnt, const char *func,
-        int line, const char *fmt, va_list args)
+                              int line, const char *fmt, va_list args)
 {
     char *s;
     int cn_len;
@@ -230,8 +230,8 @@ static int sql_debug_logf_int(struct sqlclntstate *clnt, const char *func,
     return 0;
 }
 
-int sql_debug_logf(struct sqlclntstate *clnt, const char *func, int line, 
-        const char *fmt, ...)
+int sql_debug_logf(struct sqlclntstate *clnt, const char *func, int line,
+                   const char *fmt, ...)
 {
     if (!gbl_extended_sql_debug_trace)
         return 0;
@@ -1202,11 +1202,12 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                 if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
                     rc = serial_commit(clnt, thd->sqlthd, clnt->tzname);
                     sql_debug_logf(clnt, __func__, __LINE__, "serial-txn "
-                            "returns %d\n", pthread_self(), rc);
+                                                             "returns %d\n",
+                                   pthread_self(), rc);
                 } else {
                     rc = snapisol_commit(clnt, thd->sqlthd, clnt->tzname);
                     sql_debug_logf(clnt, __func__, __LINE__,
-                            "snapshot-txn returns %d\n", rc);
+                                   "snapshot-txn returns %d\n", rc);
                 }
                 /* if a transaction exists
                    (it doesn't for empty begin/commit */
@@ -1227,8 +1228,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                             /* convert this to user code */
                             rc = blockproc2sql_error(clnt->osql.xerr.errval,
                                                      __func__, __LINE__);
-                            sql_debug_logf(clnt, __func__, __LINE__, "returning"
-                                    " converted-rc %d\n", rc);
+                            sql_debug_logf(clnt, __func__, __LINE__,
+                                           "returning"
+                                           " converted-rc %d\n",
+                                           rc);
                         } else if (rc == SQLITE_CLIENT_CHANGENODE) {
                             rc = has_high_availability(clnt)
                                      ? CDB2ERR_CHANGENODE
@@ -1253,7 +1256,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     }
                 } else {
                     sql_debug_logf(clnt, __func__, __LINE__, "no-shadow-tran "
-                            "returning %d\n", rc);
+                                                             "returning %d\n",
+                                   rc);
                     if (rc == SQLITE_ABORT) {
                         rc = blockproc2sql_error(clnt->osql.xerr.errval,
                                                  __func__, __LINE__);
@@ -1309,8 +1313,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                 clnt->osql.xerr.errval = SQLITE_INTERNAL;
                 /* this will cancel the bp tran */
 
-                sql_debug_logf(clnt, __func__, __LINE__, 
-                        "setting errval to SQLITE_INTERNAL\n");
+                sql_debug_logf(clnt, __func__, __LINE__,
+                               "setting errval to SQLITE_INTERNAL\n");
 
                 reqlog_logf(
                     thd->logger, REQL_QUERY, "\"%s\" SOCKSL abort replay=%d\n",
@@ -1324,9 +1328,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     int irc = 0;
                     irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
                     if (irc) {
-                        logmsg(LOGMSG_ERROR, 
-                                "%s: failed to abort sorese transaction irc=%d\n",
-                                __func__, irc);
+                        logmsg(
+                            LOGMSG_ERROR,
+                            "%s: failed to abort sorese transaction irc=%d\n",
+                            __func__, irc);
                     }
                     if (clnt->early_retry == EARLY_ERR_VERIFY) {
                         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
@@ -1352,17 +1357,19 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                         osql_set_replay(__FILE__, __LINE__, clnt,
                                         OSQL_RETRY_LAST);
                     }
-                    sql_debug_logf(clnt, __func__, __LINE__, 
-                            "'%s' socksql failed commit rc=%d replay=%d\n", 
-                            clnt->sql ? clnt->sql:"(?)", rc, clnt->osql.replay);
+                    sql_debug_logf(
+                        clnt, __func__, __LINE__,
+                        "'%s' socksql failed commit rc=%d replay=%d\n",
+                        clnt->sql ? clnt->sql : "(?)", rc, clnt->osql.replay);
                     reqlog_logf(thd->logger, REQL_QUERY,
                                 "\"%s\" SOCKSL failed commit rc=%d replay=%d\n",
                                 (clnt->sql) ? clnt->sql : "(???.)", rc,
                                 clnt->osql.replay);
                 } else if (rc == 0) {
-                    sql_debug_logf(clnt, __func__, __LINE__, 
-                            "'%s' socksql commit rc=%d replay=%d\n", 
-                            clnt->sql ? clnt->sql:"(?)", rc, clnt->osql.replay);
+                    sql_debug_logf(clnt, __func__, __LINE__,
+                                   "'%s' socksql commit rc=%d replay=%d\n",
+                                   clnt->sql ? clnt->sql : "(?)", rc,
+                                   clnt->osql.replay);
                     reqlog_logf(thd->logger, REQL_QUERY,
                                 "\"%s\" SOCKSL commit rc=%d replay=%d\n",
                                 (clnt->sql) ? clnt->sql : "(???.)", rc,
@@ -1379,9 +1386,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             } else {
                 reset_query_effects(clnt);
                 rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
-                sql_debug_logf(clnt, __func__, __LINE__, 
-                        "'%s' socksql abort rc=%d replay=%d\n", 
-                        clnt->sql ? clnt->sql:"(?)", rc, clnt->osql.replay);
+                sql_debug_logf(clnt, __func__, __LINE__,
+                               "'%s' socksql abort rc=%d replay=%d\n",
+                               clnt->sql ? clnt->sql : "(?)", rc,
+                               clnt->osql.replay);
                 reqlog_logf(thd->logger, REQL_QUERY,
                             "\"%s\" SOCKSL abort(2) rc=%d replay=%d\n",
                             (clnt->sql) ? clnt->sql : "(???.)", rc,

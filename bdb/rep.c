@@ -1320,7 +1320,8 @@ elect_again:
     if (gbl_elect_priority_bias && !node_not_up) {
         rep_pri = REP_PRI + gbl_elect_priority_bias;
     } else if (gbl_use_node_pri &&
-        rep_pri == REP_PRI) { /* if the node is up, then apply priorities. */
+               rep_pri ==
+                   REP_PRI) { /* if the node is up, then apply priorities. */
         rep_pri = REP_PRI + gbl_rep_node_pri; /* priority should be > priority
                                                  of nodes which are down.*/
     }
@@ -1452,7 +1453,8 @@ void call_for_election(bdb_state_type *bdb_state, const char *func, int line)
     call_for_election_int(bdb_state, DONT_LOSE);
 }
 
-void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func, int line)
+void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func,
+                                int line)
 {
     logmsg(LOGMSG_USER, "%s line %d called for election\n", func, line);
     call_for_election_int(bdb_state, LOSE);
@@ -1467,7 +1469,8 @@ void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func, int
 static void bdb_reopen(bdb_state_type *bdb_state, const char *func, int line)
 {
     logmsg(LOGMSG_DEBUG, "bdb_reopen called by tid 0x%lx\n", pthread_self());
-    logmsg(LOGMSG_USER, "%s line %d called for election (bdb_reopen)\n", func, line);
+    logmsg(LOGMSG_USER, "%s line %d called for election (bdb_reopen)\n", func,
+           line);
     call_for_election_int(bdb_state, REOPEN_AND_LOSE);
 }
 
@@ -3827,8 +3830,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     case DB_REP_NEWMASTER:
         bdb_state->repinfo->repstats.rep_newmaster++;
 
-        logmsg(LOGMSG_WARN,
-               "process_berkdb: DB_REP_NEWMASTER %s time=%ld upgraded to gen=%u egen=%d\n",
+        logmsg(LOGMSG_WARN, "process_berkdb: DB_REP_NEWMASTER %s time=%ld "
+                            "upgraded to gen=%u egen=%d\n",
                host, time(NULL), gen, egen);
 
         /* Check if it's us. */
@@ -5302,8 +5305,8 @@ void *watcher_thread(void *arg)
                 master_is_bad++;
 
                 logmsg(LOGMSG_WARN, "master %s is marked down and i am up "
-                        "telling him to yield\n",
-                        master_host);
+                                    "telling him to yield\n",
+                       master_host);
                 send_downgrade_and_lose(bdb_state);
                 /* Don't call for election- the other node will transfer
                  * master. */

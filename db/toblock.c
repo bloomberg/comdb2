@@ -2717,7 +2717,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             void *replay_data = NULL;
             int replay_len = 0;
             int findout;
-            bdb_get_readlock(thedb->bdb_env, "early_replay", __func__, __LINE__);
+            bdb_get_readlock(thedb->bdb_env, "early_replay", __func__,
+                             __LINE__);
             findout = bdb_blkseq_find(thedb->bdb_env, parent_trans,
                                       iq->snap_info.key, iq->snap_info.keylen,
                                       &replay_data, &replay_len);

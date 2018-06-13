@@ -1612,9 +1612,10 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
             rc = process_local_shadtbl_index(clnt, tbl, bdberr, genid, 1);
             if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: error writing index record to master in "
-                                "offload mode %d!\n",
-                        __func__, rc);
+                logmsg(LOGMSG_ERROR,
+                       "%s: error writing index record to master in "
+                       "offload mode %d!\n",
+                       __func__, rc);
                 return SQLITE_INTERNAL;
             }
 

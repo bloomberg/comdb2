@@ -352,7 +352,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     rc = osql_sock_start(clnt, osqlreq_type, is_distrib_tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to start sorese transaction rc=%d\n",
-                __func__, rc);
+               __func__, rc);
         if (rc != SQLITE_ABORT) /* if abort, clnt->osql has the error */
             rc = SQLITE_CLIENT_CHANGENODE;
         goto goback;

@@ -4446,7 +4446,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
         if (clnt->client_understands_query_stats)
             osql_query_dbglog(thd, clnt->queryid);
         sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns %d\n",
-                rc);
+                       rc);
         break;
 
     }
@@ -4578,7 +4578,8 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
 #endif
     if ((rc = initialize_shadow_trans(clnt, thd)) != 0) {
         sql_debug_logf(clnt, __func__, __LINE__, "initialize_shadow_tran "
-                "returns %d\n", rc);
+                                                 "returns %d\n",
+                       rc);
         goto done;
     }
 
@@ -4733,8 +4734,8 @@ int sqlite3BtreeCommit(Btree *pBt)
             int irc = 0;
             irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
             if (irc) {
-                logmsg(LOGMSG_ERROR, 
-                        "%s: failed to abort sorese transaction irc=%d\n",
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to abort sorese transaction irc=%d\n",
                        __func__, irc);
             }
             if (clnt->early_retry == EARLY_ERR_VERIFY) {

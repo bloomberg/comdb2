@@ -3955,10 +3955,9 @@ read_record:
                suppress any error. */
             if (is_rollback) {
                 PRINT_RETURN(0);
-            }
-            else if (is_retryable(hndl, err_val) &&
-                    (hndl->snapshot_file || (!hndl->in_trans && !is_commit)
-                     || commit_file)) {
+            } else if (is_retryable(hndl, err_val) &&
+                       (hndl->snapshot_file ||
+                        (!hndl->in_trans && !is_commit) || commit_file)) {
                 hndl->error_in_trans = 0;
                 newsql_disconnect(hndl, hndl->sb, __LINE__);
                 hndl->retry_all=1;
@@ -3966,7 +3965,8 @@ read_record:
                     if (hndl->debug_trace) {
                         fprintf(stderr,
                                 "td %u:%d: i am retrying, retries_done %d\n",
-                                (uint32_t)pthread_self(), __LINE__, retries_done);
+                                (uint32_t)pthread_self(), __LINE__,
+                                retries_done);
                         fprintf(stderr, "td %u %s:%d setting in_trans to 1\n",
                                 (uint32_t)pthread_self(), __func__, __LINE__);
                     }
@@ -4078,8 +4078,8 @@ read_record:
             if (is_rollback) {
                 PRINT_RETURN(0);
             } else if (is_retryable(hndl, err_val) &&
-                    (hndl->snapshot_file || (!hndl->in_trans && !is_commit) ||
-                     commit_file)) {
+                       (hndl->snapshot_file ||
+                        (!hndl->in_trans && !is_commit) || commit_file)) {
                 hndl->error_in_trans = 0;
                 newsql_disconnect(hndl, hndl->sb, __LINE__);
                 hndl->retry_all=1;
@@ -4087,7 +4087,8 @@ read_record:
                     if (hndl->debug_trace) {
                         fprintf(stderr,
                                 "td %u:%d: i am retrying, retries_done %d\n",
-                                (uint32_t)pthread_self(), __LINE__, retries_done);
+                                (uint32_t)pthread_self(), __LINE__,
+                                retries_done);
                         fprintf(stderr, "td %u %s:%d setting in_trans to 1\n",
                                 (uint32_t)pthread_self(), __func__, __LINE__);
                     }
@@ -4169,8 +4170,9 @@ read_record:
     }
 
     if ((hndl->firstresponse->error_code == CDB2__ERROR_CODE__MASTER_TIMEOUT ||
-       hndl->firstresponse->error_code == CDB2ERR_CHANGENODE) && 
-       (hndl->snapshot_file || (!hndl->in_trans && !is_commit) || commit_file)) {
+         hndl->firstresponse->error_code == CDB2ERR_CHANGENODE) &&
+        (hndl->snapshot_file || (!hndl->in_trans && !is_commit) ||
+         commit_file)) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->sb = NULL;
         hndl->retry_all = 1;
@@ -4215,8 +4217,8 @@ read_record:
     if (hndl->firstresponse->response_type == RESPONSE_TYPE__COLUMN_NAMES) {
         /* Handle rejects from Server. */
         if (is_retryable(hndl, hndl->firstresponse->error_code) &&
-                (hndl->snapshot_file || (!hndl->in_trans && !is_commit) ||
-                 commit_file)) {
+            (hndl->snapshot_file || (!hndl->in_trans && !is_commit) ||
+             commit_file)) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             hndl->sb = NULL;
             hndl->retry_all = 1;

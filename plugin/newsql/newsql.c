@@ -95,24 +95,30 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
         *file = sql_query->snapshot_info->file;
         *offset = sql_query->snapshot_info->offset;
 
-        sql_debug_logf(clnt, __func__, __LINE__, "fill-snapinfo "
-                "sql_query->snapinfo is [%d][%d], clnt->snapinfo is [%d][%d]: "
-                "use client snapinfo!\n", sql_query->snapshot_info->file,
-                sql_query->snapshot_info->offset, clnt->snapshot_file,
-                clnt->snapshot_offset);
+        sql_debug_logf(
+            clnt, __func__, __LINE__,
+            "fill-snapinfo "
+            "sql_query->snapinfo is [%d][%d], clnt->snapinfo is [%d][%d]: "
+            "use client snapinfo!\n",
+            sql_query->snapshot_info->file, sql_query->snapshot_info->offset,
+            clnt->snapshot_file, clnt->snapshot_offset);
         return 0;
     }
 
     if (*file == 0 && sql_query &&
         (clnt->in_client_trans || clnt->is_hasql_retry) &&
         clnt->snapshot_file) {
-        sql_debug_logf(clnt, __func__, __LINE__, "fill-snapinfo "
-                "sql_query->snapinfo is [%d][%d] clnt->snapinfo is [%d][%d]\n",
-                    (sql_query && sql_query->snapshot_info)
-                    ? sql_query->snapshot_info->file : -1,
-                    (sql_query && sql_query->snapshot_info)
-                    ? sql_query->snapshot_info->offset : -1,
-                    clnt->snapshot_file, clnt->snapshot_offset);
+        sql_debug_logf(
+            clnt, __func__, __LINE__,
+            "fill-snapinfo "
+            "sql_query->snapinfo is [%d][%d] clnt->snapinfo is [%d][%d]\n",
+            (sql_query && sql_query->snapshot_info)
+                ? sql_query->snapshot_info->file
+                : -1,
+            (sql_query && sql_query->snapshot_info)
+                ? sql_query->snapshot_info->offset
+                : -1,
+            clnt->snapshot_file, clnt->snapshot_offset);
         *file = clnt->snapshot_file;
         *offset = clnt->snapshot_offset;
         logmsg(LOGMSG_USER,
@@ -137,10 +143,12 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
                         "durable-lsn [%d][%d], clnt->is_hasql_retry=%d\n",
                         *file, *offset, clnt->is_hasql_retry);
             } else {
-                sql_debug_logf(clnt, __func__, __LINE__, "durable-lsn request "
-                        "returns %d snapshot_file=%d snapshot_offset=%d "
-                        "is_hasql_retry=%d\n", clnt->snapshot_file,
-                        clnt->snapshot_offset, clnt->is_hasql_retry);
+                sql_debug_logf(clnt, __func__, __LINE__,
+                               "durable-lsn request "
+                               "returns %d snapshot_file=%d snapshot_offset=%d "
+                               "is_hasql_retry=%d\n",
+                               clnt->snapshot_file, clnt->snapshot_offset,
+                               clnt->is_hasql_retry);
                 rcode = -1;
             }
         } else {
@@ -165,9 +173,10 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     if (*file == 0) {
         bdb_tran_get_start_file_offset(thedb->bdb_env, clnt->dbtran.shadow_tran,
                                        file, offset);
-        sql_debug_logf(clnt, __func__, __LINE__, "start_file_offset snapinfo "
-                "is [%d][%d], sqlengine-state is %d\n", *file, *offset, 
-                clnt->ctrl_sqlengine);
+        sql_debug_logf(clnt, __func__, __LINE__,
+                       "start_file_offset snapinfo "
+                       "is [%d][%d], sqlengine-state is %d\n",
+                       *file, *offset, clnt->ctrl_sqlengine);
     }
     return rcode;
 }
@@ -1324,7 +1333,8 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
             char err[256];
             err[0] = '\0';
             sql_debug_logf(clnt, __func__, __LINE__, "processing set command "
-                    "'%s'\n", sqlstr);
+                                                     "'%s'\n",
+                           sqlstr);
             sqlstr += 3;
             sqlstr = skipws(sqlstr);
             if (strncasecmp(sqlstr, "transaction", 11) == 0) {
@@ -1511,14 +1521,16 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     if (clnt->dbtran.mode == TRANLEVEL_SERIAL ||
                         clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
                         newsql_set_high_availability(clnt);
-                        sql_debug_logf(clnt, __func__, __LINE__, "setting "
-                                "high_availability\n");
+                        sql_debug_logf(clnt, __func__, __LINE__,
+                                       "setting "
+                                       "high_availability\n");
                     }
                 } else {
                     clnt->hasql_on = 0;
                     newsql_clr_high_availability(clnt);
-                    sql_debug_logf(clnt, __func__, __LINE__, "clearing "
-                            "high_availability\n");
+                    sql_debug_logf(clnt, __func__, __LINE__,
+                                   "clearing "
+                                   "high_availability\n");
                 }
             } else if (strncasecmp(sqlstr, "verifyretry", 11) == 0) {
                 sqlstr += 11;

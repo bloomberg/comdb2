@@ -1746,7 +1746,8 @@ void bdb_setmaster(bdb_state_type *bdb_state, char *host);
 int __db_check_all_btree_cursors(DB *dbp, db_pgno_t pgno);
 void __db_err(const DB_ENV *dbenv, const char *fmt, ...);
 
-void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func, int line);
+void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func,
+                                int line);
 
 extern int gbl_sql_tranlevel_default;
 extern int gbl_sql_tranlevel_preserved;

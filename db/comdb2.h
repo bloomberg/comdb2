@@ -2725,8 +2725,8 @@ struct sqlclntstate;
 int initialize_shadow_trans(struct sqlclntstate *, struct sql_thread *thd);
 void get_current_lsn(struct sqlclntstate *clnt);
 void done_sql_thread(void);
-int sql_debug_logf(struct sqlclntstate *clnt, const char *func, int line, 
-        const char *fmt, ...);
+int sql_debug_logf(struct sqlclntstate *clnt, const char *func, int line,
+                   const char *fmt, ...);
 
 enum { LOG_DEL_ABS_ON, LOG_DEL_ABS_OFF, LOG_DEL_REFRESH };
 void log_delete_counter_change(struct dbenv *dbenv, int action);

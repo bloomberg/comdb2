@@ -442,7 +442,8 @@ retry:
         clnt->deadlock_recovered++;
         if (clnt->deadlock_recovered > 100) {
             sql_debug_logf(clnt, __func__, __LINE__, "deadlock_recovered is %d,"
-                    " returning SQLITE_BUSY\n", clnt->deadlock_recovered);
+                                                     " returning SQLITE_BUSY\n",
+                           clnt->deadlock_recovered);
             return SQLITE_BUSY;
         }
     }
@@ -474,7 +475,8 @@ retry:
         rc = osql_register_sqlthr(clnt, type);
         if (rc) {
             sql_debug_logf(clnt, __func__, __LINE__, "osql_register_sqlthr "
-                    " returns %d\n", rc);
+                                                     " returns %d\n",
+                           rc);
             return rc;
         }
     } else {
@@ -506,9 +508,11 @@ retry:
 
     if (rc && osql->host) {
         sql_debug_logf(clnt, __func__, __LINE__, "Tried to talk to %s and got "
-                "%d returning SQLITE_BUSY\n", osql->host, rc);
+                                                 "%d returning SQLITE_BUSY\n",
+                       osql->host, rc);
         logmsg(LOGMSG_ERROR, "Tried to talk to %s and got rc=%d - returning "
-                "SQLITE_BUSY\n", osql->host, rc);
+                             "SQLITE_BUSY\n",
+               osql->host, rc);
         rc = SQLITE_BUSY;
     }
 
@@ -612,7 +616,8 @@ again:
                          keep_session);
     if (rc) {
         sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns "
-                "%d\n", rc);
+                                                 "%d\n",
+                       rc);
         goto error;
     }
 
@@ -654,7 +659,8 @@ again:
         }
 
         sql_debug_logf(clnt, __func__, __LINE__, "failed %d times to restart "
-                "socksql session\n", retries);
+                                                 "socksql session\n",
+                       retries);
         logmsg(LOGMSG_ERROR,
                "%s:%d %s failed %d times to restart socksql session\n",
                __FILE__, __LINE__, __func__, retries);
@@ -715,7 +721,8 @@ retry:
         if (rc) {
             rcout = rc;
             sql_debug_logf(clnt, __func__, __LINE__, "got %d and setting rcout"
-                    " to %d\n", rc, rcout);
+                                                     " to %d\n",
+                           rc, rcout);
             goto err;
         }
     }
@@ -785,9 +792,12 @@ retry:
                         goto err;
                     }
                     if (retries++ < gbl_survive_n_master_swings) {
-                        sql_debug_logf(clnt, __func__, __LINE__, "lost "
-                                "connection to master, retrying %d in %d "
-                                "msec\n", retries, gbl_master_retry_poll_ms);
+                        sql_debug_logf(
+                            clnt, __func__, __LINE__,
+                            "lost "
+                            "connection to master, retrying %d in %d "
+                            "msec\n",
+                            retries, gbl_master_retry_poll_ms);
 
                         poll(NULL, 0, gbl_master_retry_poll_ms);
 
@@ -805,34 +815,43 @@ retry:
                 /* transaction failed on the master, abort here as well */
                 if (rc != SQLITE_TOOBIG) {
                     if (osql->xerr.errval == -109 /* SQLHERR_MASTER_TIMEOUT */) {
-                        sql_debug_logf(clnt, __func__, __LINE__, "got %d and "
-                                "setting rcout to MASTER_TIMEOUT, errval is "
-                                "%d setting rcout to -109\n", rc, 
-                                osql->xerr.errval);
+                        sql_debug_logf(
+                            clnt, __func__, __LINE__,
+                            "got %d and "
+                            "setting rcout to MASTER_TIMEOUT, errval is "
+                            "%d setting rcout to -109\n",
+                            rc, osql->xerr.errval);
                         rcout = -109;
                     } else if (osql->xerr.errval == ERR_NOT_DURABLE) {
                         /* Ask the client to change nodes */
-                        sql_debug_logf(clnt, __func__, __LINE__, "got %d and "
-                                "setting rcout to CHANGENODE, errval is %d\n",
-                                rc, osql->xerr.errval);
+                        sql_debug_logf(
+                            clnt, __func__, __LINE__,
+                            "got %d and "
+                            "setting rcout to CHANGENODE, errval is %d\n",
+                            rc, osql->xerr.errval);
                         rcout = SQLITE_CLIENT_CHANGENODE;
                     } else {
-                        sql_debug_logf(clnt, __func__, __LINE__, "got %d and "
-                                "setting rcout to SQLITE_ABORT, errval is "
-                                "%d\n", rc, osql->xerr.errval);
+                        sql_debug_logf(
+                            clnt, __func__, __LINE__,
+                            "got %d and "
+                            "setting rcout to SQLITE_ABORT, errval is "
+                            "%d\n",
+                            rc, osql->xerr.errval);
                         // SQLITE_ABORT comes out as a "4" in the client,
                         // which is translated to 4 'null key constraint'.
                         rcout = SQLITE_ABORT;
                     }
                 } else {
-                    sql_debug_logf(clnt, __func__, __LINE__, "got %d and "
-                            "setting rcout to SQLITE_TOOBIG, errval is %d\n",
-                            rc, osql->xerr.errval);
+                    sql_debug_logf(
+                        clnt, __func__, __LINE__,
+                        "got %d and "
+                        "setting rcout to SQLITE_TOOBIG, errval is %d\n",
+                        rc, osql->xerr.errval);
                     rcout = SQLITE_TOOBIG;
                 }
             } else {
-                sql_debug_logf(clnt, __func__, __LINE__, "got %d from %s\n", 
-                        rc, osql->host);
+                sql_debug_logf(clnt, __func__, __LINE__, "got %d from %s\n", rc,
+                               osql->host);
             }
         }
         if (clnt->client_understands_query_stats && clnt->dbglog)
