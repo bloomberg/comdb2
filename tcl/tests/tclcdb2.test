@@ -381,33 +381,35 @@ if {[llength [info commands getNumbers]] == 0} then {
   proc getNumbers { type {wide false} {special false} } {
     switch -exact $type {
       integer {
-        set result [list \
-            -2147483648 -32768 -128 -1 0 1 127 255 32767 \
-            2147483647 4294967295]
-
-        if {$wide} then {
-          lappend result \
-              -9223372036854775808 9223372036854775807 \
-              18446744073709551615
-        }
+        set result [list]
 
         if {$special} then {
           lappend result NULL
+        } else {
+          lappend result \
+              -2147483648 -32768 -128 -1 0 1 127 255 32767 \
+              2147483647 4294967295
+
+          if {$wide} then {
+            lappend result \
+                -9223372036854775808 9223372036854775807 \
+                18446744073709551615
+          }
         }
 
         return $result
       }
       real {
-        set result [getNumbers integer false $special]
-
-        lappend result \
-            -1.7976931348623155e+308 -3.4028234663852886e+38 \
-            -1.0 0.0 1.0 4.9406564584124654e-324 \
-            1.4012984643248171e-45 3.4028234663852886e+38 \
-            1.7976931348623155e+308
+        set result [list]
 
         if {$special} then {
-          lappend result -NaN NaN +NaN -Inf Inf +Inf
+          lappend result NULL -NaN NaN +NaN -Inf Inf +Inf
+        } else {
+          lappend result \
+              -1.7976931348623155e+308 -3.4028234663852886e+38 \
+              -1.0 0.0 1.0 4.9406564584124654e-324 \
+              1.4012984643248171e-45 3.4028234663852886e+38 \
+              1.7976931348623155e+308
         }
 
         return $result
@@ -423,9 +425,9 @@ if {[llength [info commands getNumbers]] == 0} then {
 
 if {[llength [info commands getIntegers]] == 0} then {
   proc getIntegers {} {
-    set result [list]
+    set result [getNumbers integer false true]
 
-    foreach value [getNumbers integer true true] {
+    foreach value [getNumbers integer true] {
       if {[catch {
         expr {wide($value)}
       } wideValue] == 0 && $wideValue eq $value} then {
@@ -441,11 +443,11 @@ if {[llength [info commands getIntegers]] == 0} then {
 
 if {[llength [info commands getReals]] == 0} then {
   proc getReals {} {
-    set result [list]
+    set result [getNumbers real false true]
     set savedPrecision $::tcl_precision
     set ::tcl_precision 17; # max
 
-    foreach value [getNumbers real false true] {
+    foreach value [getNumbers real] {
       if {[catch {
         expr double($value)
       } doubleValue] == 0 && $doubleValue eq $value} then {
@@ -454,6 +456,7 @@ if {[llength [info commands getReals]] == 0} then {
     }
 
     set ::tcl_precision $savedPrecision
+    eval lappend result [getNumbers integer]
     return $result
   }
 }
