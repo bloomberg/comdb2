@@ -31,6 +31,25 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    rc = cdb2_run_statement(hndl, "BEGIN");
+    if (rc != 0) {
+        fprintf(stderr, "Error running query: %d: %s.\n",
+                rc, cdb2_errstr(hndl));
+        return 1;
+    }
+
+    /* Should get error immediately if in READ_INTRANS_RESULTS mode. */
+    rc = cdb2_run_statement(hndl, "qwerty");
+    if (rc != CDB2ERR_PREPARE_ERROR)
+        return 1;
+
+    rc = cdb2_run_statement(hndl, "ROLLBACK");
+    if (rc != 0) {
+        fprintf(stderr, "Error running query: %d: %s.\n",
+                rc, cdb2_errstr(hndl));
+        return 1;
+    }
+
     rc = cdb2_run_statement(hndl, "DROP TABLE IF EXISTS read_intrans_results_test");
     if (rc != 0) {
         fprintf(stderr, "Error running query: %d: %s.\n",

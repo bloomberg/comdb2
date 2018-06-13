@@ -544,10 +544,6 @@ struct sqlclntstate {
     int isselect;   /* track if the query is a select query.*/
     int isUnlocked;
     int writeTransaction;
-    /* True iff >= SNAPSHOT && HA && SKIP_INTRANS_RESULTS,
-       in which case server sends one and only one newsql response
-       with snapshot info (Usually a LAST_ROW) back to client. */
-    int send_only_snapshot_resp;
     int verify_retries; /* how many verify retries we've borne */
     int verifyretry_off;
     int pageordertablescan;

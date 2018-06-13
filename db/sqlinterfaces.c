@@ -2816,16 +2816,9 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
         pthread_mutex_unlock(&clnt->wait_mutex);
-        if (skip_response(clnt)) {
-            if (clnt->send_only_snapshot_resp) {
-                clnt->send_only_snapshot_resp = 0;
-                clnt->send_intrans_results = 0;
-                write_response(clnt, RESPONSE_ROW_LAST_DUMMY, 0, 0);
-            }
-        } else {
-            if (postponed_write && !clnt->send_only_snapshot_resp) {
+        if (!skip_response(clnt)) {
+            if (postponed_write)
                 send_row(clnt, NULL, row_id, 0, NULL);
-            }
             write_response(clnt, RESPONSE_EFFECTS, 0, 0);
             write_response(clnt, RESPONSE_ROW_LAST, 0, 0);
         }
@@ -3828,7 +3821,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->saved_rc = 0;
     clnt->want_stored_procedure_debug = 0;
     clnt->want_stored_procedure_trace = 0;
-    clnt->send_only_snapshot_resp = 0;
     clnt->verifyretry_off = 0;
     clnt->is_expert = 0;
 

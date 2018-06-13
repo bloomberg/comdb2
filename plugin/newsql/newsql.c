@@ -1271,7 +1271,7 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
     extern int gbl_disable_skip_rows;
-    /* We need to restore send_intrans_results and send_only_snapshot_resp
+    /* We need to restore send_intrans_results
        on clnt even if the snapshot info has been populated.
        However, dont't attempt to restore if client overrides
        send_intrans_results by setting INTRANSRESULTS to ON. */
@@ -1282,12 +1282,6 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
                 sqlquery->features[ii])
                 continue;
             clnt->send_intrans_results = 0;
-            if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-                 clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
-                newsql_has_high_availability(clnt)) {
-                clnt->send_only_snapshot_resp = 1;
-                clnt->send_intrans_results = 1;
-            }
         }
     }
 
