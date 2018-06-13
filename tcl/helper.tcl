@@ -54,11 +54,9 @@ namespace eval ::tclcdb2 {
   #
   if {[info exists ::dir]} then {
     if {$::tcl_platform(platform) eq "windows"} then {
-      package ifneeded tclcdb2 1.0 [list \
-          load [file join $::dir tclcdb2[info sharedlibextension]] tclcdb2]
+      load [file join $::dir tclcdb2[info sharedlibextension]] tclcdb2
     } else {
-      package ifneeded tclcdb2 1.0 [list \
-          load [file join $::dir libtclcdb2[info sharedlibextension]] tclcdb2]
+      load [file join $::dir libtclcdb2[info sharedlibextension]] tclcdb2
     }
   }
 }
