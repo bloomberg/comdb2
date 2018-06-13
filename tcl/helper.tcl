@@ -47,16 +47,11 @@ namespace eval ::tclcdb2 {
     }
   }
 
-  #
-  # NOTE: If the "dir" global variable is set then we are most likely being
-  #       evaluated via the package index file.  In that case, attempt load
-  #       of the shared library for the package.
-  #
-  if {[info exists ::dir]} then {
-    if {$::tcl_platform(platform) eq "windows"} then {
-      load [file join $::dir tclcdb2[info sharedlibextension]] tclcdb2
-    } else {
-      load [file join $::dir libtclcdb2[info sharedlibextension]] tclcdb2
-    }
+  if {$::tcl_platform(platform) eq "windows"} then {
+    load [file join [file dirname \
+        [info script]] tclcdb2[info sharedlibextension]] tclcdb2
+  } else {
+    load [file join [file dirname \
+        [info script]] libtclcdb2[info sharedlibextension]] tclcdb2
   }
 }
