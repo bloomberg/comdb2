@@ -169,14 +169,21 @@ if {[llength [info commands normalizeResult]] == 0} then {
 ###############################################################################
 
 if {[llength [info commands getColumns]] == 0} then {
-  proc getColumns { connection } {
+  proc getColumns { connection {nullValue <null>} } {
     set result [list]
 
     for {set index 0} {$index < [cdb2 colcount $connection]} {incr index} {
       tclcdb2::getNullableValue $connection $index null value
 
-      if {[isBinary $value]} then {
-        set value [hexList $value]
+      if {$null} then {
+        set value $nullValue
+      } elseif {[info exists value]} then {
+        if {[isBinary $value]} then {
+          set value [hexList $value]
+        }
+      } else {
+        error [appendArgs \
+            "missing non-NULL value for column " $index]
       }
 
       lappend result [list index $index \
@@ -203,8 +210,15 @@ if {[llength [info commands getValues]] == 0} then {
         if {!$omitNulls} then {
           lappend result $nullValue
         }
+      } elseif {[info exists value]} then {
+        if {[isBinary $value]} then {
+          lappend result [hexList $value]
+        } else {
+          lappend result $value
+        }
       } else {
-        lappend result $value
+        error [appendArgs \
+            "missing non-NULL value for column " $index]
       }
     }
 
@@ -645,7 +659,7 @@ test cdb2-9.1 {bind sub-command w/short} -setup {
   }]]
 } -body {
   foreach value [getIntegers] {
-    cdb2 unbind $db; cdb2 bind $db 1 short $value
+    cdb2 unbind $db; cdb2 bind $db 1 integer $value
 
     cdb2 run $db [string trim [subst {
       INSERT INTO $table (x) VALUES (?)
