@@ -1094,7 +1094,8 @@ test cdb2-9.8 {bind sub-command w/decimal32} -setup {
     CREATE TABLE $table {schema {decimal32 x null=yes}}
   }]]
 } -body {
-  foreach value [getNumbers decimal 32 true] {
+  foreach value [concat \
+      [getNumbers decimal 32 true] [getNumbers decimal 32 false]] {
     cdb2 unbind $db
 
     if {$value eq "NULL"} then {
