@@ -694,7 +694,7 @@ test cdb2-9.1 {bind sub-command w/short} -setup {
   closeConnection $db
 
   unset -nocomplain error value table db
-} -result {}
+} -result {<null> -32768 -128 -1 0 1 127 255 32767}
 
 ###############################################################################
 
