@@ -42,7 +42,7 @@ namespace eval ::tclcdb2 {
       cdb2 colvalue $connection $index
     } localValue] == 0} then {
       set null false; set value $localValue
-    } elseif {$value eq "invalid column value\n"} {
+    } elseif {$localValue eq "invalid column value\n"} {
       set null true
     } else {
       error $localValue; # FAIL: Unknown error.
