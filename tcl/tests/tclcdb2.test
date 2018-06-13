@@ -377,6 +377,54 @@ if {[llength [info commands closeConnection]] == 0} then {
 
 ###############################################################################
 
+if {[llength [info commands moveDecimal]] == 0} then {
+  proc moveDecimal { value direction maxDigits } {
+    set length [string length $value]
+
+    if {$length == 0} then {
+      error "cannot use empty string as decimal"
+    }
+
+    switch -exact $direction {
+      down {
+        set index [string first . $value]
+
+        if {$index != -1 && $index < $length - 1} then {
+          return [string trim [join [linsert [lremove [split \
+              $value ""] $index] [expr {$index + 1}] .] ""] .]
+        } elseif {$length < $maxDigits + ($index != -1)} then {
+          return [appendArgs [string trim $value .] 0]
+        } else {
+          error [appendArgs \
+              "decimal overflow, would exceed " $maxDigits \
+              " digits"]
+        }
+      }
+      up {
+        set index [string first . $value]
+
+        if {$index != -1} then {
+          return [string trim [join [linsert [lremove [split \
+              $value ""] $index] [expr {$index - 1}] .] ""] .]
+        } elseif {$length < $maxDigits} then {
+          return [appendArgs \
+              [string range $value 0 end-1] . [string index $value end]]
+        } else {
+          error [appendArgs \
+              "decimal underflow, would exceed " $maxDigits \
+              " digits"]
+        }
+      }
+      default {
+        error [appendArgs \
+            "unknown decimal direction \"" $direction \"]
+      }
+    }
+  }
+}
+
+###############################################################################
+
 if {[llength [info commands getNumbers]] == 0} then {
   proc getNumbers { type {wide false} {special false} } {
     switch -exact $type {
@@ -421,6 +469,34 @@ if {[llength [info commands getNumbers]] == 0} then {
 
         return $result
       }
+      decimal {
+        switch -exact $wide {
+          32 {
+            set result [list]
+
+            if {$special} then {
+              lappend result NULL -NaN NaN +NaN -Inf Inf +Inf
+            } else {
+              lappend result \
+                  -1.0 0.0 0.000001 0.00001 0.0001 0.001 0.01 \
+                  0.1 1.0 1.000001 1.00001 1.0001 1.001 1.01 1.1 \
+                  1.234567 12.34567 123.4567 1234.567 12345.67 \
+                  123456.7 1234567
+            }
+
+            return $result
+          }
+          64 {
+
+          }
+          128 {
+
+          }
+          default {
+            error [appendArgs "unknown decimal width \"" $wide \"]
+          }
+        }
+      }
       default {
         error [appendArgs "unknown number type \"" $type \"]
       }
@@ -431,10 +507,10 @@ if {[llength [info commands getNumbers]] == 0} then {
 ###############################################################################
 
 if {[llength [info commands getIntegers]] == 0} then {
-  proc getIntegers {} {
-    set result [getNumbers integer false true]
+  proc getIntegers { {wide false} } {
+    set result [getNumbers integer $wide true]
 
-    foreach value [getNumbers integer true] {
+    foreach value [getNumbers integer $wide] {
       if {[catch {
         expr {wide($value)}
       } wideValue] == 0 && $wideValue eq $value} then {
@@ -1018,13 +1094,13 @@ test cdb2-9.8 {bind sub-command w/decimal32} -setup {
     CREATE TABLE $table {schema {decimal32 x null=yes}}
   }]]
 } -body {
-  foreach value [getReals false] {
+  foreach value [getNumbers decimal 32 true] {
     cdb2 unbind $db
 
     if {$value eq "NULL"} then {
       cdb2 bind $db 1 null
     } else {
-      cdb2 bind $db 1 real $value
+      cdb2 bind $db 1 cstring $value
     }
 
     if {[catch {
@@ -1057,13 +1133,13 @@ test cdb2-9.9 {bind sub-command w/decimal64} -setup {
     CREATE TABLE $table {schema {decimal64 x null=yes}}
   }]]
 } -body {
-  foreach value [getReals true] {
+  foreach value [getNumbers decimal 64 true] {
     cdb2 unbind $db
 
     if {$value eq "NULL"} then {
       cdb2 bind $db 1 null
     } else {
-      cdb2 bind $db 1 real $value
+      cdb2 bind $db 1 cstring $value
     }
 
     if {[catch {
@@ -1096,13 +1172,13 @@ test cdb2-9.10 {bind sub-command w/decimal128} -setup {
     CREATE TABLE $table {schema {decimal128 x null=yes}}
   }]]
 } -body {
-  foreach value [getReals true] {
+  foreach value [getNumbers decimal 128 true] {
     cdb2 unbind $db
 
     if {$value eq "NULL"} then {
       cdb2 bind $db 1 null
     } else {
-      cdb2 bind $db 1 real $value
+      cdb2 bind $db 1 cstring $value
     }
 
     if {[catch {
