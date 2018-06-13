@@ -1212,7 +1212,7 @@ test cdb2-9.11 {bind sub-command w/cstring} -setup {
   set table [getTableName cdb2_911]
 
   cdb2 run $db [string trim [subst {
-    CREATE TABLE $table {schema {cstring x\[2\] null=yes}}
+    CREATE TABLE $table {schema {cstring x\[3\] null=yes}}
   }]]
 } -body {
   foreach value [list NULL "" \x00 \xFF 1 12 123] {
@@ -1242,7 +1242,7 @@ test cdb2-9.11 {bind sub-command w/cstring} -setup {
   closeConnection $db
 
   unset -nocomplain error value table db
-} -result {}
+} -result "<null> {} 1 12 0x00 \xFF"
 
 ###############################################################################
 
