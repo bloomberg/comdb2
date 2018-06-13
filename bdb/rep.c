@@ -730,7 +730,6 @@ void rep_reset_send_callcount(void) { callcount = 0; }
 void rep_reset_send_bytecount(void) { bytecount = 0; }
 
 extern int gbl_decoupled_logputs;
-extern int gbl_decoupled_fills;
 
 int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                     const DB_LSN *lsnp, char *host, uint32_t flags,
@@ -3661,6 +3660,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 {
     int rc;
     int r;
+    char *master;
+    int gen, egen;
     DB_LSN permlsn;
     uint32_t generation, commit_generation;
     int outrc;
@@ -3669,6 +3670,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     int force_election = 0;
     int rectype;
     int got_writelock = 0;
+    int got_vote2lock = 0;
     int done = 0;
     int master_confused = 0;
 
@@ -3711,6 +3713,13 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         got_writelock = 1;
     }
 
+    static pthread_mutex_t vote2_lock = PTHREAD_MUTEX_INITIALIZER;
+
+    if (rectype == REP_VOTE2 || rectype == REP_GEN_VOTE2) {
+        pthread_mutex_lock(&vote2_lock);
+        got_vote2lock = 1;
+    }
+
     bdb_state->repinfo->in_rep_process_message = 1;
 
     bdb_state->repinfo->rep_process_message_start_time = comdb2_time_epoch();
@@ -3720,6 +3729,13 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     r = bdb_state->dbenv->rep_process_message(
         bdb_state->dbenv, control, rec, &host, &permlsn, &commit_generation);
+
+    if (got_vote2lock) {
+        if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
+            abort();
+        }
+        pthread_mutex_unlock(&vote2_lock);
+    }
 
     /*
     fprintf(stderr, "%s line %d permlsn = <%d:%d> rectype = %d\n", __FILE__,
@@ -3811,19 +3827,13 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     case DB_REP_NEWMASTER:
         bdb_state->repinfo->repstats.rep_newmaster++;
 
-        char *master;
-        int gen, egen;
-
-        if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
-            abort();
-        }
-
         logmsg(LOGMSG_WARN,
                "process_berkdb: DB_REP_NEWMASTER %s time=%ld upgraded to gen=%u egen=%d\n",
                host, time(NULL), gen, egen);
 
         /* Check if it's us. */
         if (host == bdb_state->repinfo->myhost) {
+            assert(got_vote2lock);
             logmsg(LOGMSG_WARN, "NEWMASTER is ME for GENERATION %d\n", egen);
 
             /* I'm upgrading and this thread could be holding logical locks:

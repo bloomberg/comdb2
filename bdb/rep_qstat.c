@@ -52,14 +52,10 @@ static void net_enque_write_rtn(netinfo_type *netinfo_ptr, void *netstat,
 
     rc = net_get_lsn_rectype(bdb_state, rec, len, &lsn, &rectype);
     pthread_mutex_lock(&n->lock);
-    if (rc == 0) {
-        if (rectype > n->max_type) {
-            n->type_counts =
-                realloc(n->type_counts, sizeof(int) * (rectype + 1));
-            for (int i = n->max_type + 1; i <= rectype; i++) {
-                n->type_counts[i] = 0;
-            }
-            n->max_type = rectype;
+    if (rc == 0 && rectype < REP_MAX_TYPE) {
+        if (n->type_counts == NULL) {
+            n->type_counts = calloc(REP_MAX_TYPE, sizeof(int));
+            n->max_type = REP_MAX_TYPE - 1;
         }
         n->type_counts[rectype]++;
 

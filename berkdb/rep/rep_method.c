@@ -141,7 +141,6 @@ __rep_open(dbenv)
 	return (ret);
 }
 
-int gbl_allow_election_race = 0;
 extern pthread_mutex_t rep_candidate_lock;
 
 /*
@@ -329,7 +328,7 @@ __rep_start(dbenv, dbt, gen, flags)
 				 * There could have been any number of failed
 				 * elections, so jump the gen if we need to now.
 				 */
-                if (!gbl_allow_election_race && gen != 0) {
+                if (gen != 0) {
                     logmsg(LOGMSG_USER, "%s line %d setting gen to arg %d "
                             "current egen is %d\n", __func__, __LINE__, gen, 
                             rep->egen);

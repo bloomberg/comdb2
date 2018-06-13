@@ -1233,10 +1233,6 @@ REGISTER_TUNABLE("decoupled_logputs",
                  "Perform logputs out-of-band. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_decoupled_logputs,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("decoupled_fills", 
-                 "Handle log-fills out-of-band. (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_decoupled_fills, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("apply_pollms",
                  "Apply-thread poll time before checking queue. "
                  "(Default: 100ms)",
@@ -1368,10 +1364,6 @@ REGISTER_TUNABLE("net_writer_poll_ms",
                  "Poll time for net writer thread.  (Default: 1000)",
                  TUNABLE_INTEGER, &gbl_net_writer_thread_poll_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("inmem_repdb", "Repdb becomes an in-memory list.  "
-                                "(Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_inmem_repdb, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("inmem_repdb_maxlog",
                  "Maximum records for in-memory replist.  "
                  "(Default: 10000)",
@@ -1389,10 +1381,6 @@ REGISTER_TUNABLE("elect_priority_bias",
                  "Bias this node's election priority by this amount.  "
                  "(Default: 0)", TUNABLE_INTEGER, &gbl_elect_priority_bias,
                  0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("allow_election_race",
-                 "Permit arbitrary upgrades at rep-start.  (Default: false)",
-                 TUNABLE_BOOLEAN, &gbl_allow_election_race,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("apply_queue_memory",
                  "Current memory usage of apply-queue.  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_apply_queue_memory, READONLY, NULL, NULL,

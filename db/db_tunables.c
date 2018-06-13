@@ -142,9 +142,7 @@ extern int gbl_incoherent_logput_window;
 extern int gbl_dump_full_net_queue;
 extern int gbl_max_clientstats_cache;
 extern int gbl_decoupled_logputs;
-extern int gbl_decoupled_fills;
 extern int gbl_apply_queue_memory;
-extern int gbl_inmem_repdb;
 extern int gbl_inmem_repdb_maxlog;
 extern int gbl_inmem_repdb_memory;
 extern int gbl_net_writer_thread_poll_ms;
@@ -187,7 +185,6 @@ extern int gbl_master_req_waitms;
 extern int gbl_print_net_queue_size;
 extern int gbl_commit_delay_trace;
 extern int gbl_elect_priority_bias;
-extern int gbl_allow_election_race;
 
 extern long long sampling_threshold;
 

@@ -72,12 +72,10 @@ extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
-int gbl_decoupled_fills = 1;
 int gbl_max_apply_dequeue = 100000;
 int gbl_master_req_waitms = 200;
 int gbl_fills_waitms = 1000;
 int gbl_warn_queue_latency_threshold = 500;
-int gbl_inmem_repdb = 1;
 int gbl_inmem_repdb_maxlog = 10000;
 int64_t gbl_inmem_repdb_memory = 0;
 int64_t gbl_apply_queue_memory = 0;
@@ -671,7 +669,7 @@ static void *apply_thread(void *arg)
             continue;
         }
 
-        if (!i_am_replicant || !gbl_decoupled_fills ||
+        if (!i_am_replicant || !gbl_decoupled_logputs ||
                 bdb_the_lock_desired()) {
             bdb_relthelock(__func__, __LINE__);
             pthread_mutex_lock(&rep_queue_lock);
@@ -1349,8 +1347,7 @@ skip:				/*
                     "%d:%d\n", __func__, __LINE__, *eidp, lsn.file, lsn.offset);
         }
 
-        if (gbl_decoupled_logputs && gbl_decoupled_fills &&
-                rep_qstat_has_fills()) {
+        if (gbl_decoupled_logputs && rep_qstat_has_fills()) {
             if (gbl_verbose_fills) {
                 logmsg(LOGMSG_USER, "%s line %d ignoring REP_ALL_REQ from %s "
                         "for %d:%d on queued fills\n", __func__, __LINE__,
@@ -1359,8 +1356,7 @@ skip:				/*
 			goto errlock;
         }
 
-		type = (gbl_decoupled_logputs && gbl_decoupled_fills) ? 
-            REP_LOG_FILL : REP_LOG;
+		type = gbl_decoupled_logputs ?  REP_LOG_FILL : REP_LOG;
 		flags = IS_ZERO_LSN(rp->lsn) ||
 		    IS_INIT_LSN(rp->lsn) ? DB_FIRST : DB_SET;
         sendflags = DB_REP_SENDACK;
@@ -1607,8 +1603,7 @@ more:           if (type == REP_LOG_MORE) {
 		}
 #endif
 
-        if (gbl_decoupled_logputs && gbl_decoupled_fills &&
-                rep_qstat_has_fills()) {
+        if (gbl_decoupled_logputs && rep_qstat_has_fills()) {
             if (gbl_verbose_fills) {
                 logmsg(LOGMSG_USER, "%s line %d ignoring REP_LOG_REQ from %s "
                         "for %d:%d on queued fills\n", __func__, __LINE__,
@@ -1642,8 +1637,7 @@ more:           if (type == REP_LOG_MORE) {
         int resp_rc;
         sendflags = DB_REP_SENDACK;
 
-		type = (gbl_decoupled_logputs && gbl_decoupled_fills) ? 
-            REP_LOG_FILL : REP_LOG;
+		type = gbl_decoupled_logputs ? REP_LOG_FILL : REP_LOG;
         if (gbl_verbose_fills) {
             if (rec && rec->size != 0) {
                 logmsg(LOGMSG_USER, "%s line %d received REP_LOG_REQ from %s %d:%d to "
@@ -2428,7 +2422,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		}
 
 		if (!IN_ELECTION_TALLY(rep) && vi_egen >= rep->egen) {
-			logmsg(LOGMSG_USER, "%s line %d not in election and vote2-egen %d"
+			logmsg(LOGMSG_USER, "%s line %d not in election and vote2-egen %d "
                     "> rep->egen (%d): returning HOLDELECTION\n", __func__, 
                     __LINE__, vi_egen, rep->egen);
 			ret = DB_REP_HOLDELECTION;
@@ -2840,6 +2834,92 @@ static inline int is_commit(int rectype)
     }
 }
 
+static inline void repdb_enqueue(REP_CONTROL *rp, DBT *rec, int decoupled)
+{
+    struct repdb_rec *r, *p;
+    int repdb_maxlog = gbl_inmem_repdb_maxlog; 
+
+    if (repdb_maxlog <= 0)
+        repdb_maxlog = 1000;
+
+    if (listc_size(&repdb_queue) < repdb_maxlog || 
+            (repdb_queue.bot != NULL && (log_compare(&rp->lsn, 
+                                                     &(LISTC_BOT(&repdb_queue)->repctl->lsn)) < 0))) {
+        r = malloc(sizeof(*r));
+
+        /* Borrow memory */
+        if (decoupled) {
+            r->repctl = rp;
+            r->data = rec->data;
+            r->size = rec->size;
+        } else {
+            r->repctl = malloc(sizeof(*rp));
+            memcpy(r->repctl, rp, sizeof(*rp));
+            r->data = malloc(rec->size);
+            memcpy(r->data, rec->data, rec->size);
+            r->size = rec->size;
+        }
+
+        int lcmp;
+        for (p = LISTC_BOT(&repdb_queue) ; (p != NULL) &&
+                ((lcmp = log_compare(&rp->lsn, &p->repctl->lsn)) < 0) ;
+                p = p->lnk.prev)
+            ;
+
+        if (p == NULL) {
+            listc_atl(&repdb_queue, r);
+            gbl_inmem_repdb_memory += (r->size + sizeof(*r->repctl) + sizeof(*r));
+            if (decoupled) rec->data = NULL;
+        } else if (lcmp == 0) {
+            if (!decoupled) {
+                free(r->repctl);
+                free(r->data);
+            }
+            // The caller will free decoupled case
+            free(r);
+        } else {
+            listc_add_after(&repdb_queue, r, p);
+            gbl_inmem_repdb_memory += (r->size + sizeof(*r->repctl) + sizeof(*r));
+            if (decoupled) rec->data = NULL;
+        }
+    }
+
+    /* Limit size of list to tunable */
+    while (listc_size(&repdb_queue) > repdb_maxlog) {
+        r = listc_rbl(&repdb_queue);
+        gbl_inmem_repdb_memory -= (r->size + sizeof(*r->repctl) + sizeof(*r));
+        free(r->repctl); free(r->data); free(r);
+    }
+}
+
+static inline void repdb_dequeue(DBT *control_dbt, DBT *rec_dbt)
+{
+    struct repdb_rec *r = listc_rtl(&repdb_queue);
+
+    if (r == NULL)
+        abort();
+
+    if (control_dbt->data)
+        free(control_dbt->data);
+
+    if (rec_dbt->data)
+        free(rec_dbt->data);
+
+    control_dbt->data = r->repctl;
+    control_dbt->size = sizeof(*r->repctl);
+    rec_dbt->data = r->data;
+    rec_dbt->size = r->size;
+
+    gbl_inmem_repdb_memory -= (sizeof(*r->repctl) + r->size + sizeof(*r));
+
+    if (listc_size(&repdb_queue) == 0)
+        assert(gbl_inmem_repdb_memory == 0);
+    else
+        assert(gbl_inmem_repdb_memory > 0);
+
+    free(r);
+}
+
 /*
  * __rep_apply --
  *
@@ -2876,8 +2956,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	int cmp, do_req, gap, ret, t_ret, rc;
 	int num_retries;
 	int disabled_minwrite_noread = 0;
-    int inmem_repdb = gbl_inmem_repdb;
-    int repdb_maxlog = gbl_inmem_repdb_maxlog; 
+    int inmem_repdb = gbl_decoupled_logputs;
 	char *eid;
 
 	db_rep = dbenv->rep_handle;
@@ -2888,9 +2967,6 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	memset(&rec_dbt, 0, sizeof(rec_dbt));
 	max_lsn_dbtp = NULL;
 	bzero(&max_lsn, sizeof(max_lsn));
-
-    if (repdb_maxlog <= 0)
-        repdb_maxlog = 1000;
 
 	if (gbl_verify_rep_log_records && rec->size >= HDR_NORMAL_SZ)
 		LOGCOPY_32(&rectype, rec->data);
@@ -3039,35 +3115,10 @@ gap_check:		max_lsn_dbtp = NULL;
 
             /* In-memory drop in replacement */
             if (inmem_repdb) {
-                struct repdb_rec *r = listc_rtl(&repdb_queue);
-
-                if (r == NULL)
-                    abort();
-
-                if (control_dbt.data)
-                    free(control_dbt.data);
-
-                if (rec_dbt.data)
-                    free(rec_dbt.data);
-
-                control_dbt.data = r->repctl;
-                control_dbt.size = sizeof(*r->repctl);
-                rec_dbt.data = r->data;
-                rec_dbt.size = r->size;
-
-                gbl_inmem_repdb_memory -= (sizeof(*r->repctl) + r->size + sizeof(*r));
-
-                if (listc_size(&repdb_queue) == 0)
-                    assert(gbl_inmem_repdb_memory == 0);
-                else
-                    assert(gbl_inmem_repdb_memory > 0);
-
+                repdb_dequeue(&control_dbt, &rec_dbt);
                 rp = (REP_CONTROL *)control_dbt.data;
-                if (IS_ZERO_LSN(rp->lsn))
-                    abort();
-                if (log_compare(&lp->ready_lsn, &rp->lsn) != 0)
-                    abort();
-                free(r);
+                assert(!IS_ZERO_LSN(rp->lsn));
+                assert(log_compare(&lp->ready_lsn, &rp->lsn) == 0);
                 ret = 0;
             } else {
                 if (dbc == NULL &&
@@ -3277,7 +3328,7 @@ gap_check:		max_lsn_dbtp = NULL;
 				 * fprintf(stderr, "Requesting file %s line %d lsn %d:%d\n", 
 				 * __FILE__, __LINE__, next_lsn.file, next_lsn.offset);
 				 */
-                if (!gbl_decoupled_fills || !gbl_decoupled_logputs) {
+                if (!gbl_decoupled_logputs) {
                     if (rc = __rep_send_message(dbenv, eid,
                             REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
                             NULL) == 0) {
@@ -3368,55 +3419,7 @@ gap_check:		max_lsn_dbtp = NULL;
 #endif
         /* Only add less than the oldest */
         if (inmem_repdb) {
-            struct repdb_rec *r, *p;
-            if (listc_size(&repdb_queue) < repdb_maxlog || 
-                    (repdb_queue.bot != NULL && (log_compare(&rp->lsn, 
-                    &(LISTC_BOT(&repdb_queue)->repctl->lsn)) < 0))) {
-                r = malloc(sizeof(*r));
-
-                /* Borrow memory */
-                if (decoupled) {
-                    r->repctl = rp;
-                    r->data = rec->data;
-                    r->size = rec->size;
-                } else {
-                    r->repctl = malloc(sizeof(*rp));
-                    memcpy(r->repctl, rp, sizeof(*rp));
-                    r->data = malloc(rec->size);
-                    memcpy(r->data, rec->data, rec->size);
-                    r->size = rec->size;
-                }
-
-                int lcmp;
-                for (p = LISTC_BOT(&repdb_queue) ; (p != NULL) &&
-                        ((lcmp = log_compare(&rp->lsn, &p->repctl->lsn)) < 0) ;
-                        p = p->lnk.prev)
-                    ;
-
-                if (p == NULL) {
-                    listc_atl(&repdb_queue, r);
-                    gbl_inmem_repdb_memory += (r->size + sizeof(*r->repctl) + sizeof(*r));
-                    if (decoupled) rec->data = NULL;
-                } else if (lcmp == 0) {
-                    if (!decoupled) {
-                        free(r->repctl);
-                        free(r->data);
-                    }
-                    // The caller will free decoupled case
-                    free(r);
-                } else {
-                    listc_add_after(&repdb_queue, r, p);
-                    gbl_inmem_repdb_memory += (r->size + sizeof(*r->repctl) + sizeof(*r));
-                    if (decoupled) rec->data = NULL;
-                }
-            }
-
-            /* Limit size of list to tunable */
-            while (listc_size(&repdb_queue) > repdb_maxlog) {
-                r = listc_rbl(&repdb_queue);
-                gbl_inmem_repdb_memory -= (r->size + sizeof(*r->repctl) + sizeof(*r));
-                free(r->repctl); free(r->data); free(r);
-            }
+            repdb_enqueue(rp, rec, decoupled);
             ret = 0;
         } else {
             ret = __db_put(dbp, NULL, &key_dbt, rec, 0);
@@ -3467,7 +3470,7 @@ gap_check:		max_lsn_dbtp = NULL;
 				 * fprintf(stderr, "Requesting file %s line %d lsn %d:%d\n", 
 				 * __FILE__, __LINE__, next_lsn.file, next_lsn.offset);
 				 */
-                if (!gbl_decoupled_fills || !gbl_decoupled_logputs) {
+                if (!gbl_decoupled_logputs) {
                     if (rc = __rep_send_message(dbenv, eid,
                                 REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
                                 NULL) == 0) { 
@@ -7061,7 +7064,7 @@ __truncate_repdb(dbenv)
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
-    if (gbl_inmem_repdb) {
+    if (gbl_decoupled_logputs) {
         struct repdb_rec *r;
         while (r = listc_rtl(&repdb_queue)) {
             gbl_inmem_repdb_memory -= (r->size + sizeof(r->repctl) + sizeof(*r));

@@ -340,7 +340,6 @@ __rep_set_gen(dbenv, func, line, gen)
 int gbl_abort_on_incorrect_upgrade;
 extern int last_fill;
 extern int gbl_decoupled_logputs;
-extern int gbl_decoupled_fills;
 
 int
 __rep_new_master(dbenv, cntrl, eid)
@@ -440,8 +439,7 @@ __rep_new_master(dbenv, cntrl, eid)
 			}
 		} else {
             /* Let the apply-thread make this request */
-			if (log_compare(&lsn, &cntrl->lsn) < 0 && (!gbl_decoupled_logputs ||
-                    !gbl_decoupled_fills)) {
+			if (log_compare(&lsn, &cntrl->lsn) < 0 && !gbl_decoupled_logputs) {
 				if (__rep_send_message(dbenv, eid, REP_ALL_REQ, &lsn, 
                             NULL, DB_REP_NODROP|DB_REP_NOBUFFER, NULL) == 0) {
                     if (gbl_verbose_fills) {

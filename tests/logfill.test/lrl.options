@@ -8,7 +8,6 @@
 # BTW, this breaks if you allow it to grow forever: try to understand
 #max_logput_queue 100000 # this is the default now
 decoupled_logputs on
-decoupled_fills on
 #fillcursor_lookahead 0
 throttle_logput_trace on
 catchup_window_trace on
