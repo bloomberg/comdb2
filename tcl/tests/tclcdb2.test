@@ -388,7 +388,7 @@ if {[llength [info commands getNumbers]] == 0} then {
         } else {
           lappend result \
               -2147483648 -32768 -128 -1 0 1 127 255 32767 \
-              65536 2147483647 4294967295
+              65535 2147483647 4294967295
 
           if {$wide} then {
             lappend result \
@@ -798,7 +798,7 @@ test cdb2-9.2 {bind sub-command w/u_short} -setup {
   closeConnection $db
 
   unset -nocomplain error value table db
-} -result {<null> 0 1 127 255 32767 65536}
+} -result {<null> 0 1 127 255 32767 65535}
 
 ###############################################################################
 
