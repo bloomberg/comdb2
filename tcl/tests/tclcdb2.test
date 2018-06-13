@@ -395,7 +395,9 @@ if {[llength [info commands getIntegers]] == 0} then {
     foreach value [list \
         -9223372036854775808 -2147483648 -32768 -128 -1 NULL 0 1 127 \
         255 32767 2147483647 9223372036854775807 18446744073709551615] {
-      if {[catch {expr {wide($value)}} wide] == 0 && $wide eq $value} then {
+      if {$value eq "NULL" || [catch {
+        expr {wide($value)}
+      } wideValue] == 0 && $wideValue eq $value} then {
         lappend result $value
       }
     }
