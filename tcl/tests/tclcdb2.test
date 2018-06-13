@@ -409,10 +409,14 @@ if {[llength [info commands getNumbers]] == 0} then {
           lappend result NULL $nNaN $pNaN -Inf Inf +Inf
         } else {
           lappend result \
-              -1.7976931348623155e+308 -3.4028234663852886e+38 \
-              -1.0 0.0 1.0 4.9406564584124654e-324 \
-              1.4012984643248171e-45 3.4028234663852886e+38 \
-              1.7976931348623155e+308
+              -3.4028234663852886e+38 -1.0 0.0 1.0 \
+              1.4012984643248171e-45 3.4028234663852886e+38
+
+          if {$wide} then {
+            lappend result \
+                -1.7976931348623155e+308 4.9406564584124654e-324 \
+                1.7976931348623155e+308
+          }
         }
 
         return $result
@@ -445,12 +449,12 @@ if {[llength [info commands getIntegers]] == 0} then {
 ###############################################################################
 
 if {[llength [info commands getReals]] == 0} then {
-  proc getReals {} {
-    set result [getNumbers real false true]
+  proc getReals { {wide false} } {
+    set result [getNumbers real $wide true]
     set savedPrecision $::tcl_precision
     set ::tcl_precision 17; # max
 
-    foreach value [getNumbers real] {
+    foreach value [getNumbers real $wide] {
       if {[catch {
         expr double($value)
       } doubleValue] == 0 && $doubleValue eq $value} then {
@@ -931,7 +935,7 @@ test cdb2-9.6 {bind sub-command w/float} -setup {
     CREATE TABLE $table {schema {float x null=yes}}
   }]]
 } -body {
-  foreach value [getReals] {
+  foreach value [getReals true] {
     cdb2 unbind $db
 
     if {$value eq "NULL"} then {
@@ -972,7 +976,7 @@ test cdb2-9.7 {bind sub-command w/double} -setup {
     CREATE TABLE $table {schema {double x null=yes}}
   }]]
 } -body {
-  foreach value [getReals] {
+  foreach value [getReals true] {
     cdb2 unbind $db
 
     if {$value eq "NULL"} then {
@@ -1014,7 +1018,7 @@ test cdb2-9.8 {bind sub-command w/decimal32} -setup {
     CREATE TABLE $table {schema {decimal32 x null=yes}}
   }]]
 } -body {
-  foreach value [getReals] {
+  foreach value [getReals false] {
     cdb2 unbind $db
 
     if {$value eq "NULL"} then {
@@ -1053,7 +1057,7 @@ test cdb2-9.9 {bind sub-command w/decimal64} -setup {
     CREATE TABLE $table {schema {decimal64 x null=yes}}
   }]]
 } -body {
-  foreach value [getReals] {
+  foreach value [getReals true] {
     cdb2 unbind $db
 
     if {$value eq "NULL"} then {
@@ -1092,7 +1096,7 @@ test cdb2-9.10 {bind sub-command w/decimal128} -setup {
     CREATE TABLE $table {schema {decimal128 x null=yes}}
   }]]
 } -body {
-  foreach value [getReals] {
+  foreach value [getReals true] {
     cdb2 unbind $db
 
     if {$value eq "NULL"} then {
