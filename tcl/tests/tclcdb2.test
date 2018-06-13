@@ -1246,6 +1246,45 @@ test cdb2-9.11 {bind sub-command w/cstring} -setup {
 
 ###############################################################################
 
+test cdb2-9.12 {bind sub-command w/blob} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_912]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {blob x null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL "" \x00 \xFF 1 12 123] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 blob $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result "<null> {} 1 12 123 0x00 \xFF"
+
+###############################################################################
+
 cleanupDatabase; # Cleanup test databases before changing the configuration.
 
 ###############################################################################
@@ -1346,8 +1385,6 @@ if {0} then {
   cdb2 bind
   cdb2 unbind
 
-    CREATE TABLE $table {schema {cstring x[2000] null=yes}}
-    CREATE TABLE $table {schema {blob x null=yes}}
     CREATE TABLE $table {schema {vutf8 x null=yes}}
     CREATE TABLE $table {schema {byte x null=yes}}
     CREATE TABLE $table {schema {datetime x null=yes}}
