@@ -1418,18 +1418,19 @@ static uint64_t newsql_get_client_starttime(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
-    if (!sqlquery->has_timestampus) {
-        return 0;
+    if (sqlquery->req_info) {
+        return sqlquery->req_info->timestampus;
     }
-    return sqlquery->timestampus;
+    return 0;
 }
 
 static int newsql_get_client_retries(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
-    if (sqlquery->has_retry)
-        return sqlquery->retry;
+    if (sqlquery->req_info) {
+        return sqlquery->req_info->num_retries;
+    }
     return 0;
 }
 
