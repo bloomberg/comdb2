@@ -53,6 +53,10 @@
   #define COUNT_OF(array) 	(sizeof((array)) / sizeof((array)[0]))
 #endif /* COUNT_OF */
 
+#if !defined(CDB2_NULL)
+  #define CDB2_NULL				(0)
+#endif /* CDB2_NULL */
+
 #if !defined(MAYBE_OUT_OF_MEMORY)
 #define MAYBE_OUT_OF_MEMORY(a)                                  \
     do {                                                        \
@@ -202,6 +206,7 @@ static NameAndValue aOpenFlags[] = {
 };
 
 static NameAndValue aColumnTypes[] = {
+    { "null",                 CDB2_NULL                 },
     { "blob",                 CDB2_BLOB                 },
     { "cstring",              CDB2_CSTRING              },
     { "datetime",             CDB2_DATETIME             },
@@ -1620,13 +1625,14 @@ static int tclcdb2ObjCmd(
 
     switch ((enum options)option) {
 	case OPT_BIND: {
+	    const char *typeName;
 	    const char *bindName = NULL;
 	    void *valuePtr;
 	    int wasNew = 0;
 
-	    if (objc != 6) {
+	    if ((objc != 5) && (objc != 6)) {
 		Tcl_WrongNumArgs(interp, 2, objv,
-		    "connection nameOrIndex type value");
+		    "connection nameOrIndex type ?value?");
 
 		code = TCL_ERROR;
 		goto done;
@@ -1682,11 +1688,36 @@ static int tclcdb2ObjCmd(
 		MAYBE_OUT_OF_MEMORY(pBoundValue->name);
 	    }
 
-	    code = GetValueFromName(interp, Tcl_GetString(objv[4]),
-		aColumnTypes, &pBoundValue->type);
+	    typeName = Tcl_GetString(objv[4]);
+
+	    code = GetValueFromName(interp, typeName, aColumnTypes,
+		&pBoundValue->type);
 
 	    switch (pBoundValue->type) {
+		case CDB2_NULL: {
+		    if (objc != 5) {
+			Tcl_AppendResult(interp,
+			    "cannot specify a value for type \"",
+			    typeName, "\"\n", NULL);
+
+			code = TCL_ERROR;
+			goto done;
+		    }
+
+		    valuePtr = NULL;
+		    pBoundValue->length = 0;
+		    break;
+		}
 		case CDB2_INTEGER: {
+		    if (objc != 6) {
+			Tcl_AppendResult(interp,
+			    "must specify a value for type \"",
+			    typeName, "\"\n", NULL);
+
+			code = TCL_ERROR;
+			goto done;
+		    }
+
 		    code = Tcl_GetWideIntFromObj(interp, objv[5],
 			&pBoundValue->value.wideValue);
 
@@ -1698,6 +1729,15 @@ static int tclcdb2ObjCmd(
 		    break;
 		}
 		case CDB2_REAL: {
+		    if (objc != 6) {
+			Tcl_AppendResult(interp,
+			    "must specify a value for type \"",
+			    typeName, "\"\n", NULL);
+
+			code = TCL_ERROR;
+			goto done;
+		    }
+
 		    code = Tcl_GetDoubleFromObj(interp, objv[5],
 			&pBoundValue->value.doubleValue);
 
@@ -1711,6 +1751,15 @@ static int tclcdb2ObjCmd(
 		case CDB2_CSTRING: {
 		    const char *cstringValue;
 		    int length;
+
+		    if (objc != 6) {
+			Tcl_AppendResult(interp,
+			    "must specify a value for type \"",
+			    typeName, "\"\n", NULL);
+
+			code = TCL_ERROR;
+			goto done;
+		    }
 
 		    cstringValue = Tcl_GetStringFromObj(objv[5], &length);
 
@@ -1734,6 +1783,15 @@ static int tclcdb2ObjCmd(
 		case CDB2_BLOB: {
 		    const unsigned char *blobValue;
 		    int length;
+
+		    if (objc != 6) {
+			Tcl_AppendResult(interp,
+			    "must specify a value for type \"",
+			    typeName, "\"\n", NULL);
+
+			code = TCL_ERROR;
+			goto done;
+		    }
 
 		    blobValue = Tcl_GetByteArrayFromObj(objv[5], &length);
 
@@ -1759,6 +1817,15 @@ static int tclcdb2ObjCmd(
 		case CDB2_DATETIME: {
 		    size_t size = sizeof(cdb2_client_datetime_t);
 
+		    if (objc != 6) {
+			Tcl_AppendResult(interp,
+			    "must specify a value for type \"",
+			    typeName, "\"\n", NULL);
+
+			code = TCL_ERROR;
+			goto done;
+		    }
+
 		    code = GetValueStructFromObj(interp, pBoundValue->type,
 			objv[5], size, &pBoundValue->value.dateTimeValue);
 
@@ -1771,6 +1838,15 @@ static int tclcdb2ObjCmd(
 		}
 		case CDB2_INTERVALYM: {
 		    size_t size = sizeof(cdb2_client_intv_ym_t);
+
+		    if (objc != 6) {
+			Tcl_AppendResult(interp,
+			    "must specify a value for type \"",
+			    typeName, "\"\n", NULL);
+
+			code = TCL_ERROR;
+			goto done;
+		    }
 
 		    code = GetValueStructFromObj(interp, pBoundValue->type,
 			objv[5], size, &pBoundValue->value.intervalYmValue);
@@ -1785,6 +1861,15 @@ static int tclcdb2ObjCmd(
 		case CDB2_INTERVALDS: {
 		    size_t size = sizeof(cdb2_client_intv_ds_t);
 
+		    if (objc != 6) {
+			Tcl_AppendResult(interp,
+			    "must specify a value for type \"",
+			    typeName, "\"\n", NULL);
+
+			code = TCL_ERROR;
+			goto done;
+		    }
+
 		    code = GetValueStructFromObj(interp, pBoundValue->type,
 			objv[5], size, &pBoundValue->value.intervalDsValue);
 
@@ -1798,6 +1883,15 @@ static int tclcdb2ObjCmd(
 		case CDB2_DATETIMEUS: {
 		    size_t size = sizeof(cdb2_client_datetimeus_t);
 
+		    if (objc != 6) {
+			Tcl_AppendResult(interp,
+			    "must specify a value for type \"",
+			    typeName, "\"\n", NULL);
+
+			code = TCL_ERROR;
+			goto done;
+		    }
+
 		    code = GetValueStructFromObj(interp, pBoundValue->type,
 			objv[5], size, &pBoundValue->value.dateTimeUsValue);
 
@@ -1810,6 +1904,15 @@ static int tclcdb2ObjCmd(
 		}
 		case CDB2_INTERVALDSUS: {
 		    size_t size = sizeof(cdb2_client_intv_dsus_t);
+
+		    if (objc != 6) {
+			Tcl_AppendResult(interp,
+			    "must specify a value for type \"",
+			    typeName, "\"\n", NULL);
+
+			code = TCL_ERROR;
+			goto done;
+		    }
 
 		    code = GetValueStructFromObj(interp, pBoundValue->type,
 			objv[5], size, &pBoundValue->value.intervalDsUsValue);

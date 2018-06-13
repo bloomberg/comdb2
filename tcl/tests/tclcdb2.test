@@ -670,7 +670,9 @@ test cdb2-9.1 {bind sub-command w/short} -setup {
   foreach value [getIntegers] {
     cdb2 unbind $db
 
-    if {$value ne "NULL"} then {
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
       cdb2 bind $db 1 integer $value
     }
 
