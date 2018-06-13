@@ -398,6 +398,15 @@ if {[llength [info commands getIntegers]] == 0} then {
 
 ###############################################################################
 
+if {[llength [info commands isTypeError]] == 0} then {
+  proc isTypeError { error } {
+    return [regexp -- \
+        {^incompatible values from .*? for table '.*?'$} $error]
+  }
+}
+
+###############################################################################
+
 test cdb2-1.1 {overall command usage} -body {
   list [catch {cdb2} errMsg] $errMsg
 } -cleanup {
@@ -661,9 +670,13 @@ test cdb2-9.1 {bind sub-command w/short} -setup {
   foreach value [getIntegers] {
     cdb2 unbind $db; cdb2 bind $db 1 integer $value
 
-    cdb2 run $db [string trim [subst {
-      INSERT INTO $table (x) VALUES (?)
-    }]]
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
   }
 
   cdb2 run $db [string trim [subst {
@@ -674,7 +687,7 @@ test cdb2-9.1 {bind sub-command w/short} -setup {
 } -cleanup {
   closeConnection $db
 
-  unset -nocomplain errMsg table db
+  unset -nocomplain error value table db
 } -result {}
 
 ###############################################################################

@@ -45,7 +45,7 @@ namespace eval ::tclcdb2 {
     } elseif {$localValue eq "invalid column value\n"} {
       set null true
     } else {
-      error $localValue; # FAIL: Unknown error.
+      error $localValue; # FAIL: Unexpected error.
     }
   }
 
