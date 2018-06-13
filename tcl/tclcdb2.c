@@ -60,7 +60,7 @@
 #if !defined(BYTE_SWAP_WIDE_INT)
 #define BYTE_SWAP_WIDE_INT(a)                                   \
     do {                                                        \
-	unsigned char *bytePtr = &(a);                          \
+	unsigned char *bytePtr = (unsigned char *)&(a);         \
 	size_t wideSize = sizeof(Tcl_WideInt);                  \
 	int index1, index2;                                     \
 	for (index1 = 0; index1 < wideSize / 2; index1++) {     \
@@ -149,7 +149,7 @@
 #endif /* GET_STR_OR_NULL */
 
 #if !defined(IS_LITTLE_ENDIAN)
-#define IS_LITTLE_ENDIAN (*(char *)(&iValueOfOne) == 1)
+#define IS_LITTLE_ENDIAN (*(char *)(&iTheValueOfOne) == 1)
 #endif /* IS_LITTLE_ENDIAN */
 
 typedef struct NameAndValue {
@@ -1764,30 +1764,29 @@ static int tclcdb2ObjCmd(
 
 		    doubleString = Tcl_GetStringFromObj(objv[5], &length);
 
-		    if ((doubleString != NULL) && (length > 2)) {
-			if (strncmp(doubleString, "0x", 2) == 0) {
-			    Tcl_WideInt wideValue = 0;
+		    if ((doubleString != NULL) && (length > 2) &&
+			    (strncmp(doubleString, "0x", 2) == 0)) {
+			Tcl_WideInt wideValue = 0;
 
-			    code = Tcl_GetWideIntFromObj(interp,
-				doubleString, &wideValue);
+			code = Tcl_GetWideIntFromObj(interp, objv[5],
+			    &wideValue);
 
-			    if (code != TCL_OK)
-				goto done;
+			if (code != TCL_OK)
+			    goto done;
 
-			    if (IS_LITTLE_ENDIAN) {
-				BYTE_SWAP_WIDE_INT(wideValue);
-			    }
-
-			    assert(sizeof(Tcl_WideInt) == sizeof(double));
-
-			    memcpy(&pBoundValue->value.doubleValue,
-				&wideValue, sizeof(double));
-
-			    goto gotDouble;
+			if (IS_LITTLE_ENDIAN) {
+			    BYTE_SWAP_WIDE_INT(wideValue);
 			}
+
+			assert(sizeof(Tcl_WideInt) == sizeof(double));
+
+			memcpy(&pBoundValue->value.doubleValue,
+			    &wideValue, sizeof(double));
+
+			goto gotDouble;
 		    }
 
-		    code = Tcl_GetDoubleFromObj(interp, doubleString,
+		    code = Tcl_GetDoubleFromObj(interp, objv[5],
 			&pBoundValue->value.doubleValue);
 
 		    if (code != TCL_OK)
