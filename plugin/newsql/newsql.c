@@ -197,8 +197,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
 #define _has_features(clnt, sql_response)                                      \
     CDB2ServerFeatures features[10];                                           \
     int n_features = 0;                                                        \
-                                                                               \
-    if (!clnt->send_intrans_results) {                                         \
+    if (clnt->send_intrans_results != -1) {                                    \
         features[n_features] = CDB2_SERVER_FEATURES__SKIP_INTRANS_RESULTS;     \
         n_features++;                                                          \
     }                                                                          \
@@ -1273,8 +1272,11 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
     extern int gbl_disable_skip_rows;
     /* We need to restore send_intrans_results and send_only_snapshot_resp
-       on clnt even if the snapshot info has been populated. */
-    if (sqlquery->n_features > 0 && gbl_disable_skip_rows == 0) {
+       on clnt even if the snapshot info has been populated.
+       However, dont't attempt to restore if client overrides
+       send_intrans_results by setting INTRANSRESULTS to ON. */
+    if (clnt->send_intrans_results != -1 &&
+        sqlquery->n_features > 0 && gbl_disable_skip_rows == 0) {
         for (int ii = 0; ii < sqlquery->n_features; ii++) {
             if (CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS !=
                 sqlquery->features[ii])
@@ -1712,6 +1714,14 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     clnt->ignore_coherency = 1;
                 } else {
                     clnt->ignore_coherency = 0;
+                }
+            } else if (strncasecmp(sqlstr, "intransresults", 14) == 0) {
+                sqlstr += 14;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->send_intrans_results = 0;
+                } else {
+                    clnt->send_intrans_results = -1;
                 }
             } else {
                 rc = ii + 1;
