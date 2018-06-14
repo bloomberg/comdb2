@@ -52,6 +52,7 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p)
     char *cols = NULL;
     const char *tbl = NULL;
     char *select = NULL;
+    char *selectPrior = NULL;
     char *where = NULL;
     sqlite3 *db = v->db;
 
@@ -62,9 +63,12 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p)
     if (p->pOrderBy) return NULL; /* no order by */
     if (p->pHaving) return NULL; /* no having */
     if (p->pGroupBy) return NULL; /* no group by */
-    /*if (p->pWhere) return NULL;  no predicates */
-    if (p->pPrior || p->pNext) return NULL; /* no union */
     if (p->pSrc->nSrc>1) return NULL; /* no joins */
+    if (p->pPrior &&  p->op != TK_ALL) return NULL; /* only union all */
+
+    if (p->pPrior) {
+        selectPrior = sqlite_struct_to_string(v, p->pPrior);
+    }
 
     if (p->pWhere) {
         where = sqlite3ExprDescribe(v, p->pWhere);
@@ -77,12 +81,14 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p)
         return NULL;
     }
 
-
-    select = sqlite3_mprintf("SeLeCT %s FRoM %s%s%s", cols, tbl,
+    select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s",
+            (selectPrior)?selectPrior:"", (selectPrior)?" uNioN aLL ":"",
+            cols, tbl,
             (where)?" WHeRe ":"", (where)?where:"");
 
     sqlite3DbFree(db, cols);
     if (where) sqlite3DbFree(db, where);
+    if (selectPrior) sqlite3DbFree(db, where);
 
     return select;
 }
