@@ -856,52 +856,162 @@ true value <null>}} effects {affected 0 selected 1 updated 0 deleted 0 inserted\
 test cdb2-9.1 {bind/unbind sub-command errors} -setup {
   set db [openConnection]
 } -body {
-  list [catch {cdb2 bind $db 1 cstring ""} errMsg] $errMsg \
-      [catch {cdb2 bind $db one cstring ""} errMsg] $errMsg \
-      [catch {cdb2 bind $db 2 blob ""} errMsg] $errMsg \
-      [catch {cdb2 bind $db two blob ""} errMsg] $errMsg \
-      [catch {cdb2 bind $db 3 integer 0} errMsg] $errMsg \
-      [catch {cdb2 bind $db three integer 0} errMsg] $errMsg \
-      [catch {cdb2 bind $db 4 real 0} errMsg] $errMsg \
-      [catch {cdb2 bind $db four real 0} errMsg] $errMsg \
-      [catch {cdb2 bind $db 5 datetime ""} errMsg] $errMsg \
-      [catch {cdb2 bind $db five datetime ""} errMsg] $errMsg \
-      [catch {cdb2 bind $db 6 datetimeus ""} errMsg] $errMsg \
-      [catch {cdb2 bind $db six datetimeus ""} errMsg] $errMsg \
-      [catch {cdb2 bind $db 7 intervalds ""} errMsg] $errMsg \
-      [catch {cdb2 bind $db seven intervalds ""} errMsg] $errMsg \
-      [catch {cdb2 bind $db 8 intervaldsus ""} errMsg] $errMsg \
-      [catch {cdb2 bind $db eight intervaldsus ""} errMsg] $errMsg \
-      [catch {cdb2 bind $db 9 intervalym ""} errMsg] $errMsg \
-      [catch {cdb2 bind $db nine intervalym ""} errMsg] $errMsg \
-      [catch {cdb2 unbind $db} errMsg] $errMsg \
-      [catch {cdb2 unbind} errMsg] $errMsg \
-      [catch {cdb2 unbind $db 1} errMsg] $errMsg \
-      [catch {cdb2 unbind $db} errMsg] $errMsg \
-      [catch {cdb2 bind} errMsg] $errMsg \
-      [catch {cdb2 bind $db} errMsg] $errMsg \
-      [catch {cdb2 bind $db -1} errMsg] $errMsg \
-      [catch {cdb2 bind $db 0} errMsg] $errMsg \
-      [catch {cdb2 bind $db 1} errMsg] $errMsg \
-      [catch {cdb2 bind $db 1 bad} errMsg] $errMsg \
-      [catch {cdb2 bind $db 2 cstring} errMsg] $errMsg \
-      [catch {cdb2 bind $db 3 blob} errMsg] $errMsg \
-      [catch {cdb2 bind $db 4 real} errMsg] $errMsg \
-      [catch {cdb2 bind $db 5 integer} errMsg] $errMsg \
-      [catch {cdb2 bind $db 6 real bad} errMsg] $errMsg \
-      [catch {cdb2 bind $db 7 integer bad} errMsg] $errMsg \
-      [catch {cdb2 bind $db 8 null bad} errMsg] $errMsg \
-      [catch {cdb2 bind $db 9 datetime bad} errMsg] $errMsg \
-      [catch {cdb2 bind $db 10 datetime bad value} errMsg] $errMsg \
-      [catch {cdb2 bind $db 11 datetimeus bad} errMsg] $errMsg \
-      [catch {cdb2 bind $db 12 datetimeus bad value} errMsg] $errMsg \
-      [catch {cdb2 bind $db 13 intervalds bad} errMsg] $errMsg \
-      [catch {cdb2 bind $db 14 intervalds bad value} errMsg] $errMsg \
-      [catch {cdb2 bind $db 15 intervaldsus bad} errMsg] $errMsg \
-      [catch {cdb2 bind $db 16 intervaldsus bad value} errMsg] $errMsg \
-      [catch {cdb2 bind $db 17 intervalym bad} errMsg] $errMsg \
-      [catch {cdb2 bind $db 18 intervalym bad value} errMsg] $errMsg \
-      [catch {cdb2 bind $db 2147483647 integer 0} errMsg] $errMsg
+  list [catch {
+        cdb2 bind $db 1 cstring ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db one cstring ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 1 cstring ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db one cstring ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 2 blob ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db two blob ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 3 integer 0
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db three integer 0
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 4 real 0
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db four real 0
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 5 datetime ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db five datetime ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 6 datetimeus ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db six datetimeus ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 7 intervalds ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db seven intervalds ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 8 intervaldsus ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db eight intervaldsus ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 9 intervalym ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db nine intervalym ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 unbind $db
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 unbind
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 unbind $db 1
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 unbind $db
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db -1
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db -1 null
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db -1 cstring
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db -1 cstring value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 0
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 1
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 2 bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 3 bad value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 4 cstring
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 5 blob
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 6 real
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 7 integer
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 8 real bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 9 integer bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 10 null bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 11 datetime bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 12 datetime bad value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 13 datetimeus bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 14 datetimeus bad value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 15 intervalds bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 16 intervalds bad value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 17 intervaldsus bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 18 intervaldsus bad value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 19 intervalym bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 20 intervalym bad value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 2147483647 integer 0
+      } errMsg] [normalizeResult $errMsg]
 } -cleanup {
   closeConnection $db
 
