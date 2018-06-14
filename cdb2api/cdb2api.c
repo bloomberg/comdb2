@@ -4429,9 +4429,16 @@ int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
     bindval->index = index;
     if (varaddr == NULL) {
         bindval->value.len = 0;
+        bindval->has_isnull = 1;
+        bindval->isnull = 1;
     } else if (type == CDB2_CSTRING && length == 0) {
         bindval->value.data = (unsigned char *)"";
         bindval->value.len = 1;
+    } else if (type == CDB2_BLOB && length == 0) {
+        bindval->value.data = (unsigned char *)"";
+        bindval->value.len = 0;
+        bindval->has_isnull = 1;
+        bindval->isnull = 0;
     } else {
         bindval->value.len = length;
     }
