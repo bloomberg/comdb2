@@ -135,37 +135,47 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     if (*file == 0 && sql_query &&
         clnt->ctrl_sqlengine == SQLENG_STRT_STATE) {
 
+        /* We get here when receiving BEGIN. If durable_lsn is enabled,
+           request the durable LSN from master and return it to the client.
+           Otherwise, return my current LSN. */
+
+        int rc;
+        uint32_t snapinfo_file, snapinfo_offset;
+
         if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
-            uint32_t durable_file, durable_offset, durable_gen;
+            uint32_t durable_gen;
 
-            int rc = request_durable_lsn_from_master(
-                thedb->bdb_env, &durable_file, &durable_offset, &durable_gen);
-
-            if (rc == 0) {
-                *file = durable_file;
-                *offset = durable_offset;
-
-                if (gbl_extended_sql_debug_trace) {
-                    logmsg(LOGMSG_USER, "%s line %d cnonce='%s' master "
-                                        "returned durable-lsn "
-                                        "[%d][%d], clnt->is_hasql_retry=%d\n",
-                           __func__, __LINE__, cnonce, *file, *offset,
-                           clnt->is_hasql_retry);
-                }
-            } else {
-                if (gbl_extended_sql_debug_trace) {
-                    logmsg(LOGMSG_USER,
-                           "%s line %d cnonce='%s' durable-lsn request "
-                           "returns %d "
-                           "clnt->snapshot_file=%d clnt->snapshot_offset=%d "
-                           "clnt->is_hasql_retry=%d\n",
-                           __func__, __LINE__, cnonce, rc, clnt->snapshot_file,
-                           clnt->snapshot_offset, clnt->is_hasql_retry);
-                }
-                rcode = -1;
-            }
-            return rcode;
+            rc = request_durable_lsn_from_master(
+                    thedb->bdb_env, &snapinfo_file, &snapinfo_offset, &durable_gen);
+        } else {
+            (void)bdb_get_current_lsn(thedb->bdb_env, &snapinfo_file, &snapinfo_offset);
+            rc = 0;
         }
+
+        if (rc == 0) {
+            *file = snapinfo_file;
+            *offset = snapinfo_offset;
+
+            if (gbl_extended_sql_debug_trace) {
+                logmsg(LOGMSG_USER, "%s line %d cnonce='%s' master "
+                                    "returned durable-lsn "
+                                    "[%d][%d], clnt->is_hasql_retry=%d\n",
+                       __func__, __LINE__, cnonce, *file, *offset,
+                       clnt->is_hasql_retry);
+            }
+        } else {
+            if (gbl_extended_sql_debug_trace) {
+                logmsg(LOGMSG_USER,
+                       "%s line %d cnonce='%s' durable-lsn request "
+                       "returns %d "
+                       "clnt->snapshot_file=%d clnt->snapshot_offset=%d "
+                       "clnt->is_hasql_retry=%d\n",
+                       __func__, __LINE__, cnonce, rc, clnt->snapshot_file,
+                       clnt->snapshot_offset, clnt->is_hasql_retry);
+            }
+            rcode = -1;
+        }
+        return rcode;
     }
 
     if (*file == 0) {
