@@ -223,6 +223,12 @@ typedef struct decom_struct {
     struct decom_struct *next;
 } decom_type;
 
+typedef struct userfunc_info {
+    NETFP *func;
+    const char *name;
+    int count;
+} userfunc_t;
+
 struct netinfo_struct {
     host_node_type *head;
     sanc_node_type *sanctioned_list;
@@ -250,7 +256,7 @@ struct netinfo_struct {
     int ischild;
     int accept_on_child;
 
-    NETFP *userfuncs[MAX_USER_TYPE + 1];
+    userfunc_t userfuncs[MAX_USER_TYPE + 1];
     decom_type *decomhead;
     pthread_mutex_t seqlock;
     pthread_rwlock_t lock;

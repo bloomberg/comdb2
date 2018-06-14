@@ -2505,12 +2505,15 @@ int net_register_hello(netinfo_type *netinfo_ptr, HELLOFP func)
     return 0;
 }
 
-int net_register_handler(netinfo_type *netinfo_ptr, int usertype, NETFP func)
+int net_register_handler(netinfo_type *netinfo_ptr, int usertype,
+        const char *name, NETFP func)
 {
     if (usertype < 0 || usertype > MAX_USER_TYPE)
         return -1;
 
-    netinfo_ptr->userfuncs[usertype] = func;
+    netinfo_ptr->userfuncs[usertype].func = func;
+    netinfo_ptr->userfuncs[usertype].name = name;
+    netinfo_ptr->userfuncs[usertype].count = 0;
 
     return 0;
 }
@@ -3898,7 +3901,7 @@ static int process_user_message(netinfo_type *netinfo_ptr,
 
     if (usertype == TYPE_DECOM_NAME ||
         (usertype >= 0 && usertype <= MAX_USER_TYPE &&
-         netinfo_ptr->userfuncs[usertype] != NULL)) {
+         netinfo_ptr->userfuncs[usertype].func != NULL)) {
         if (needack) {
             ack_state = malloc(sizeof(ack_state_type));
             ack_state->seqnum = seqnum;
@@ -3930,9 +3933,11 @@ static int process_user_message(netinfo_type *netinfo_ptr,
             Pthread_mutex_unlock(&(host_node_ptr->timestamp_lock));
 
             /* run the user's function */
-            netinfo_ptr->userfuncs[usertype](ack_state, netinfo_ptr->usrptr,
+            netinfo_ptr->userfuncs[usertype].func(ack_state, 
+                                             netinfo_ptr->usrptr,
                                              host_node_ptr->host, usertype,
                                              data, datalen, 1);
+            netinfo_ptr->userfuncs[usertype].count++;
 
             /* update timestamp before checking it */
             Pthread_mutex_lock(&(host_node_ptr->timestamp_lock));
