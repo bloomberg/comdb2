@@ -1526,12 +1526,14 @@ test cdb2-9.17 {bind sub-command w/datetime} -setup {
   closeConnection $db
 
   unset -nocomplain error value table db
-} -result {{sec 59 min 59 hour 23 mday 31 mon 11 year -11899 wday 1 yday 364\
-isdst 0 msec 999 tzname {UTC}} {sec 0 min 0 hour 0 mday 1 mon 0 year 0 wday 1\
-yday 0 isdst 0 msec 0 tzname {UTC}} {sec 0 min 0 hour 0 mday 1 mon 0 year 70\
-wday 4 yday 0 isdst 0 msec 0 tzname {UTC}} {sec 0 min 0 hour 0 mday 1 mon 0\
-year 70 wday 4 yday 0 isdst 0 msec 0 tzname {UTC}} {sec 59 min 59 hour 23 mday\
-31 mon 11 year 8099 wday 5 yday 364 isdst 0 msec 999 tzname {UTC}}}
+} -result {<null> {sec 59 min 59 hour 23 mday 31 mon 11 year -11899 wday 1\
+yday 364 isdst 0 msec 999 tzname {UTC}} {sec 0 min 0 hour 0 mday 31 mon 11\
+year -1 wday 0 yday 364 isdst 0 msec 0 tzname {UTC}} {sec 0 min 0 hour 0 mday\
+1 mon 0 year 0 wday 1 yday 0 isdst 0 msec 0 tzname {UTC}} {sec 0 min 0 hour 0\
+mday 1 mon 0 year 70 wday 4 yday 0 isdst 0 msec 0 tzname {UTC}} {sec 0 min 0\
+hour 0 mday 1 mon 0 year 70 wday 4 yday 0 isdst 0 msec 0 tzname {UTC}} {sec 59\
+min 59 hour 23 mday 31 mon 11 year 8099 wday 5 yday 364 isdst 0 msec 999\
+tzname {UTC}}}
 
 ###############################################################################
 
@@ -1574,12 +1576,14 @@ test cdb2-9.18 {bind sub-command w/datetimeus} -setup {
   closeConnection $db
 
   unset -nocomplain error value table db
-} -result {{sec 59 min 59 hour 23 mday 31 mon 11 year -11899 wday 1 yday 364\
-isdst 0 usec 999999 tzname {UTC}} {sec 0 min 0 hour 0 mday 1 mon 0 year 0 wday\
-1 yday 0 isdst 0 usec 0 tzname {UTC}} {sec 0 min 0 hour 0 mday 1 mon 0 year 70\
-wday 4 yday 0 isdst 0 usec 0 tzname {UTC}} {sec 0 min 0 hour 0 mday 1 mon 0\
-year 70 wday 4 yday 0 isdst 0 usec 0 tzname {UTC}} {sec 59 min 59 hour 23 mday\
-31 mon 11 year 8099 wday 5 yday 364 isdst 0 usec 999999 tzname {UTC}}}
+} -result {<null> {sec 59 min 59 hour 23 mday 31 mon 11 year -11899 wday 1\
+yday 364 isdst 0 usec 999999 tzname {UTC}} {sec 0 min 0 hour 0 mday 31 mon 11\
+year -1 wday 0 yday 364 isdst 0 usec 0 tzname {UTC}} {sec 0 min 0 hour 0 mday\
+1 mon 0 year 0 wday 1 yday 0 isdst 0 usec 0 tzname {UTC}} {sec 0 min 0 hour 0\
+mday 1 mon 0 year 70 wday 4 yday 0 isdst 0 usec 0 tzname {UTC}} {sec 0 min 0\
+hour 0 mday 1 mon 0 year 70 wday 4 yday 0 isdst 0 usec 0 tzname {UTC}} {sec 59\
+min 59 hour 23 mday 31 mon 11 year 8099 wday 5 yday 364 isdst 0 usec 999999\
+tzname {UTC}}}
 
 ###############################################################################
 
@@ -1629,7 +1633,11 @@ test cdb2-9.19 {bind sub-command w/intervalym} -setup {
   closeConnection $db
 
   unset -nocomplain error value table db
-} -result {}
+} -result {<null> {sign -1 years 178956970 months 7} {sign -1 years 2 months 1}\
+{sign -1 years 1 months 1} {sign -1 years 0 months 1} {sign 1 years 0 months 0}\
+{sign 1 years 0 months 0} {sign 1 years 0 months 0} {sign 1 years 0 months 0}\
+{sign 1 years 0 months 1} {sign 1 years 1 months 1} {sign 1 years 2 months 1}\
+{sign 1 years 178956970 months 7}}
 
 ###############################################################################
 
