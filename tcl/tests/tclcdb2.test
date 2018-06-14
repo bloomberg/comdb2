@@ -1378,7 +1378,7 @@ test cdb2-9.15 {bind sub-command w/one-byte} -setup {
   set table [getTableName cdb2_915]
 
   cdb2 run $db [string trim [subst {
-    CREATE TABLE $table {schema {byte x[1] null=yes}}
+    CREATE TABLE $table {schema {byte x\[1\] null=yes}}
   }]]
 } -body {
   foreach value [list NULL "" \x00 \xFF 1 12 123] {
@@ -1417,7 +1417,7 @@ test cdb2-9.16 {bind sub-command w/byte} -setup {
   set table [getTableName cdb2_916]
 
   cdb2 run $db [string trim [subst {
-    CREATE TABLE $table {schema {byte x[2] null=yes}}
+    CREATE TABLE $table {schema {byte x\[2\] null=yes}}
   }]]
 } -body {
   foreach value [list NULL "" \x00 \xFF 1 12 123] {
