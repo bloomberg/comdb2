@@ -1132,6 +1132,7 @@ static int process_this_session(
     if(rc != IX_FND)
         free(key);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
+        reqlog_set_error(iq->reqlogger, "bdb_temp_table_first failed", rc);
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_first failed rc=%d bdberr=%d\n",
                 __func__, rc, *bdberr);
         return rc;
@@ -1154,6 +1155,7 @@ static int process_this_session(
             err->blockop_num = 0;
             err->errcode = ERR_NOMASTER;
             err->ixnum = 0;
+            reqlog_set_error(iq->reqlogger, "ERR_NOMASTER", ERR_NOMASTER);
             return ERR_NOMASTER /*OSQL_FAILDISPATCH*/;
         }
 
@@ -1167,6 +1169,7 @@ static int process_this_session(
                       blobs, step, err, &receivedrows, logsb);
 
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
+            reqlog_set_error(iq->reqlogger, "Error processing", rc_out);
             /* error processing, can be a verify error or deadlock */
             break;
         }
@@ -1224,6 +1227,7 @@ static int process_this_session(
         logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
                 __func__, __LINE__, rc, *bdberr);
         rc_out = ERR_INTERNAL;
+        reqlog_set_error(iq->reqlogger, "Internal Error", rc);
         /* fall-through */
     }
 
