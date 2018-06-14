@@ -1281,7 +1281,7 @@ test cdb2-9.12 {bind sub-command w/blob} -setup {
   closeConnection $db
 
   unset -nocomplain error value table db
-} -result "<null> {} 1 12 123 0x00 \xFF"
+} -result "<null> {} 0x00 1 12 123 \xFF"
 
 ###############################################################################
 
