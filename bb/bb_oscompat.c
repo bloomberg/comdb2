@@ -59,13 +59,9 @@
 #include <stdint.h>
 #include <inttypes.h>
 
-#if defined(_SUN_SOURCE)
-#include <procfs.h>
-#elif defined(_IBM_SOURCE)
+#if defined(_IBM_SOURCE)
 #include <sys/procfs.h>
 #include <procinfo.h>
-#elif defined(_HP_SOURCE)
-#include <sys/pstat.h>
 #elif defined(__linux__)
 #include <sys/time.h>
 #include <asm/param.h> /* HZ */

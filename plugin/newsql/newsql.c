@@ -766,6 +766,9 @@ done:
         cols[i].value.data = (uint8_t *)c;                                     \
     } while (0)
 
+#ifdef _SUN_SOURCE
+#include <arpa/nameser_compat.h>
+#endif
 #ifndef BYTE_ORDER
 #   error "Missing BYTE_ORDER"
 #endif

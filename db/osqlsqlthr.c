@@ -194,7 +194,7 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
  *
  */
 
-inline int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd,
+int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd,
                         char *pData, int nData, int nStat)
 {
     return osql_send_updstat_logic(pCur, thd, pData, nData, nStat,
@@ -1097,7 +1097,7 @@ static int osql_send_updstat_logic(struct BtCursor *pCur,
     return rc;
 }
 
-inline int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
+int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype)
 {
     struct sqlclntstate *clnt = thd->clnt;
