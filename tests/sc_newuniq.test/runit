@@ -24,7 +24,7 @@ function do_schema_changes
     schema=t2.csc2
 
     echo "$dbnm alter t1 $schema"
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat $schema ` }"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table t1 { `cat $schema ` }"
     if [[ $? != 0 ]]; then
 
         echo "Error schema-changing on iteration $scnt"
@@ -127,7 +127,6 @@ function assert_vers
 getmaster() {
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default '@send bdb cluster' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
 }
-master=`getmaster`
 
 echo "Test with insert, SC should fail"
 
@@ -140,8 +139,10 @@ insert_records
 
 assertcnt $nrecs
 
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm default "PUT SCHEMACHANGE COMMITSLEEP 10"
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm default "PUT SCHEMACHANGE CONVERTSLEEP 10"
+master=`getmaster`
+echo "Master is $master"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 10"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 10"
 
 echo "Do schema change to add an uniq index"
 do_schema_changes &
@@ -165,8 +166,9 @@ do_verify
 
 echo ""
 echo "Test with updates, SC should fail"
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm default "PUT SCHEMACHANGE COMMITSLEEP 0"
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm default "PUT SCHEMACHANGE CONVERTSLEEP 0"
+
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 0"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 0"
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1.csc2 ` }"
@@ -177,12 +179,12 @@ tblver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('t1'
 insert_records
 assertcnt $nrecs
 
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm default "PUT SCHEMACHANGE COMMITSLEEP 10"
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm default "PUT SCHEMACHANGE CONVERTSLEEP 10"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 10"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 10"
 
 echo "Do schema change to add an uniq index"
 do_schema_changes &
-sleep 3
+sleep 2
 
 echo "update to get dups and schema change should fail"
 update_records
@@ -198,6 +200,9 @@ assert_vers $tblver
 
 echo "NOTE: schemachange above CORRECTLY failed"
 do_verify
+
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 0"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 0"
 
 do_schema_changes
 assertcnt $nrecs
