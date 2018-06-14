@@ -1609,8 +1609,8 @@ static int tclcdb2ObjCmd(
 	case OPT_BIND: {
 	    const char *typeName;
 	    const char *bindName = NULL;
-	    void *valuePtr;
-	    int wasNew = 0;
+	    void *valuePtr = NULL;
+	    int wasNew = 0, index = 0;
 
 	    if ((objc != 5) && (objc != 6)) {
 		Tcl_WrongNumArgs(interp, 2, objv,
@@ -1639,18 +1639,19 @@ static int tclcdb2ObjCmd(
 	    MAYBE_OUT_OF_MEMORY(pBoundValue);
 	    memset(pBoundValue, 0, sizeof(BoundValue));
 
-	    code = Tcl_GetIntFromObj(interp, objv[3], &pBoundValue->index);
+	    code = Tcl_GetIntFromObj(interp, objv[3], &index);
 	    memset(buffer, 0, sizeof(buffer));
 
 	    if (code == TCL_OK) {
 		bindName = NULL;
+		pBoundValue->index = index;
 
-		snprintf(buffer, sizeof(buffer), "index_%d",
-		    pBoundValue->index);
+		snprintf(buffer, sizeof(buffer), "index_%d", index);
 	    } else {
 		Tcl_ResetResult(interp); /* INTL: Expected error. */
 
 		bindName = Tcl_GetString(objv[3]);
+		pBoundValue->index = -1;
 
 		snprintf(buffer, sizeof(buffer), "name_%s", bindName);
 	    }
@@ -1658,6 +1659,14 @@ static int tclcdb2ObjCmd(
 	    hPtr = Tcl_CreateHashEntry(hTablePtr, buffer, &wasNew);
 
 	    if (!wasNew) {
+		if (bindName != NULL) {
+		    memset(buffer, 0, sizeof(buffer));
+		    snprintf(buffer, sizeof(buffer), "%s", bindName);
+		} else if (index != 0) {
+		    memset(buffer, 0, sizeof(buffer));
+		    snprintf(buffer, sizeof(buffer), "%d", index);
+		}
+
 		Tcl_AppendResult(interp, "parameter \"", buffer,
 		    "\" was already bound\n", NULL);
 
@@ -1674,6 +1683,9 @@ static int tclcdb2ObjCmd(
 
 	    code = GetValueFromName(interp, typeName, aColumnTypes,
 		&pBoundValue->type);
+
+	    if (code != TCL_OK)
+		goto done;
 
 	    switch (pBoundValue->type) {
 		case CDB2_NULL: {
