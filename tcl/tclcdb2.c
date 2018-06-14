@@ -876,15 +876,6 @@ static int GetValueStructFromObj(
 	    assert(valueLength >= sizeof(cdb2_client_datetime_t));
 	    assert(COUNT_OF(fields) == CDB2_DATETIME_MAX_ELEMENTS);
 
-	    if ((elemCount < CDB2_DATETIME_MIN_ELEMENTS) ||
-		    (elemCount > CDB2_DATETIME_MAX_ELEMENTS)) {
-		Tcl_AppendResult(interp,
-		    "wrong number of elements for datetime\n", NULL);
-
-		code = TCL_ERROR;
-		goto done;
-	    }
-
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
 
@@ -978,15 +969,6 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_datetimeus_t));
 	    assert(COUNT_OF(fields) == CDB2_DATETIMEUS_MAX_ELEMENTS);
-
-	    if ((elemCount < CDB2_DATETIMEUS_MIN_ELEMENTS) ||
-		    (elemCount > CDB2_DATETIMEUS_MAX_ELEMENTS)) {
-		Tcl_AppendResult(interp,
-		    "wrong number of elements for datetimeus\n", NULL);
-
-		code = TCL_ERROR;
-		goto done;
-	    }
 
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
