@@ -1447,7 +1447,7 @@ test cdb2-9.16 {bind sub-command w/byte} -setup {
   closeConnection $db
 
   unset -nocomplain error value table db
-} -result "<null> 0x00 1 12 \xFF"
+} -result "<null> 12"
 
 ###############################################################################
 
