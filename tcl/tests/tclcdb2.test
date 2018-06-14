@@ -1558,6 +1558,20 @@ if {0} then {
   cdb2 bind
   cdb2 unbind
 
+'-9999-01-01T00:00:00.000 UTC'
+'-9999-12-31T23:59:59.000 UTC'
+ '9999-12-31T23:59:59.999 UTC'
+
+datetime [list sec 0 min 0 hour 0 mday 1 mon 1 year -11899 wday 0 yday 0 isdst 0 msec 0 tzname {UTC}]
+datetime [list sec 0 min 0 hour 0 mday 31 mon 11 year -11899 wday 0 yday 0 isdst 0 msec 0 tzname {UTC}]
+datetime [list sec 0 min 0 hour 0 mday 31 mon 11 year -11899 wday 0 yday 0 isdst 0 msec 0 tzname {}]
+
+datetimeus [list sec 0 min 0 hour 0 mday 1 mon 1 year 8099 wday 0 yday 0 isdst 0 usec 0 tzname {}]
+
+datetime [list sec 59 min 59 hour 23 mday 31 mon 11 year -11899 wday 1 yday 364 isdst 0 msec 999 tzname {UTC}]
+
+
+
     CREATE TABLE $table {schema {datetime x null=yes}}
     CREATE TABLE $table {schema {datetimeus x null=yes}}
     CREATE TABLE $table {schema {intervalds x null=yes}}
