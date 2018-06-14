@@ -907,14 +907,6 @@ static int GetValueStructFromObj(
 	    assert(valueLength >= sizeof(cdb2_client_intv_ym_t));
 	    assert(COUNT_OF(fields) == CDB2_INTERVALYM_ELEMENTS);
 
-	    if (elemCount != CDB2_INTERVALYM_ELEMENTS) {
-		Tcl_AppendResult(interp,
-		    "wrong number of elements for intervalym\n", NULL);
-
-		code = TCL_ERROR;
-		goto done;
-	    }
-
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
 
@@ -939,14 +931,6 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_ds_t));
 	    assert(COUNT_OF(fields) == CDB2_INTERVALDS_ELEMENTS);
-
-	    if (elemCount != CDB2_INTERVALDS_ELEMENTS) {
-		Tcl_AppendResult(interp,
-		    "wrong number of elements for intervalds\n", NULL);
-
-		code = TCL_ERROR;
-		goto done;
-	    }
 
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
@@ -1031,14 +1015,6 @@ static int GetValueStructFromObj(
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_dsus_t));
 	    assert(COUNT_OF(fields) == CDB2_INTERVALDSUS_ELEMENTS);
-
-	    if (elemCount != CDB2_INTERVALDSUS_ELEMENTS) {
-		Tcl_AppendResult(interp,
-		    "wrong number of elements for intervaldsus\n", NULL);
-
-		code = TCL_ERROR;
-		goto done;
-	    }
 
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
