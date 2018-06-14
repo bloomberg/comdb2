@@ -1221,13 +1221,11 @@ static int process_this_session(
     if (updCols)
         free(updCols);
 
-    if (rc == 0 || rc == IX_PASTEOF || rc == IX_EMPTY) {
-        rc = 0;
-    } else {
+    if (rc != 0 && rc != IX_PASTEOF && rc != IX_EMPTY) {
+        reqlog_set_error(iq->reqlogger, "Internal Error", rc);
         logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
                 __func__, __LINE__, rc, *bdberr);
         rc_out = ERR_INTERNAL;
-        reqlog_set_error(iq->reqlogger, "Internal Error", rc);
         /* fall-through */
     }
 
