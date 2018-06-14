@@ -82,99 +82,21 @@ void free_cached_idx(uint8_t * *cached_idx);
 
 int gbl_max_wr_rows_per_txn = 0;
 
-
-int add_record_indices(struct ireq *iq, void *trans, 
+extern int add_record_indices(struct ireq *iq, void *trans, 
         blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
         int *ixfailnum, int *rrn, unsigned long long *genid,
         unsigned long long ins_keys, int opcode, int blkpos, 
         void *od_dta, size_t od_len,
-        const char *ondisktag, struct schema *ondisktagsc)
-{
-    int retrc;
-    char *od_dta_tail = NULL;
-    int od_len_tail;
-    for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-        char key[MAXKEYLEN];
-        char mangled_key[MAXKEYLEN];
+        const char *ondisktag, struct schema *ondisktagsc);
 
-        if (gbl_use_plan && iq->usedb->plan &&
-                iq->usedb->plan->ix_plan[ixnum] != -1)
-            continue;
-
-        /* only add keys when told */
-        if (gbl_partial_indexes && iq->usedb->ix_partial &&
-                !(ins_keys & (1ULL << ixnum)))
-            continue;
-
-        int ixkeylen; ixkeylen = getkeysize(iq->usedb, ixnum);
-        if (ixkeylen < 0) {
-            if (iq->debug)
-                reqprintf(iq, "BAD INDEX %d OR KEYLENGTH %d", ixnum,
-                        ixkeylen);
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
-            reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY,
-                    "bad index %d or keylength %d", ixnum, ixkeylen);
-            *ixfailnum = ixnum;
-            *opfailcode = OP_FAILED_BAD_REQUEST;
-            retrc = ERR_BADREQ;
-            return retrc;
-        }
-
-
-        int rc;
-        if (iq->idxInsert)
-            rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail,
-                    &od_len_tail, mangled_key, od_dta,
-                    od_len, key);
-        else {
-            char ixtag[MAXTAGLEN];
-            snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
-            rc = create_key_from_ondisk_sch_blobs(
-                    iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_len_tail,
-                    mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL,
-                    blobs, maxblobs, iq->tzname);
-        }
-        if (rc == -1) {
-            if (iq->debug)
-                reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
-            reqerrstr(iq, COMDB2_ADD_RC_INVL_IDX, "cannot form index %d",
-                    ixnum);
-            *ixfailnum = ixnum;
-            *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
-            retrc = rc;
-            return retrc;
-        }
-
-        /* light the prefault kill bit for this subop - newkeys */
-        prefault_kill_bits(iq, ixnum, PFRQ_NEWKEY);
-        if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
-
-        /* add the key */
-        rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
-                od_len_tail, ix_isnullk(iq->usedb, key, ixnum));
-        if (iq->debug) {
-            reqprintf(iq, "ix_addk IX %d LEN %u KEY ", ixnum, ixkeylen);
-            reqdumphex(iq, key, ixkeylen);
-            reqmoref(iq, " RC %d", rc);
-        }
-
-        if (rc == RC_INTERNAL_RETRY) {
-            retrc = rc;
-            return retrc;
-        } else if (rc != 0) {
-            retrc = rc;
-            *ixfailnum = ixnum;
-            /* If following changes, update OSQL_INSREC in osqlcomm.c */
-            *opfailcode = OP_FAILED_UNIQ; /* really? */
-
-            return retrc;
-        }
-    }
-    return 0;
-}
-
+extern int upd_record_indices(struct ireq *iq, void *trans, 
+        blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
+        int *ixfailnum, int rrn, unsigned long long *genid,
+        unsigned long long ins_keys, int opcode, int blkpos, 
+        void *od_dta, size_t od_len,
+        void *old_dta, unsigned long long del_keys, int flags, 
+        blob_buffer_t *add_idx_blobs, blob_buffer_t *del_idx_blobs,
+        int same_genid_with_upd, unsigned long long vgenid, int *deferredAdd);
 
 /*
  * Add a record:
@@ -223,7 +145,6 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     struct schema *dynschema = NULL;
     void *od_dta;
     size_t od_len;
-    size_t blobno;
     int prefixes = 0;
     unsigned char lclnulls[64];
     const char *ondisktag;
@@ -303,9 +224,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
-
     if (!is_event_from_sc(flags)) { // dont lock if adding from SC
-
         int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
         if (d_ms) {
             if (iq->debug)
@@ -331,7 +250,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     rc = resolve_tag_name(iq, tagdescr, taglen, &dynschema, tag, sizeof(tag));
-    if (rc != 0) {
+    if (rc) {
         reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TAG,
                   "invalid tag description '%.*s'", taglen, tagdescr);
@@ -478,26 +397,13 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             *opfailcode = OP_FAILED_CONVERSION;
             retrc = ERR_CONVERT_DTA;
             ERR;
-        }
+        } //else if (rc) ??
 
         ondisktagsc = find_tag_schema(iq->usedb->tablename, ondisktag);
     }
 
-    struct convert_failure reason;
-    rc = validate_server_record(od_dta, od_len, ondisktagsc, &reason);
+    rc = validate_server_record(iq, od_dta, od_len, tag, ondisktag, ondisktagsc);
     if (rc == -1) {
-        char str[128];
-        convert_failure_reason_str(&reason, iq->usedb->tablename, tag,
-                                   ondisktag, str, sizeof(str));
-        if (iq->debug) {
-            reqprintf(iq, "ERR VERIFY DTA %s->.ONDISK '%s'", tag, str);
-        }
-        reqerrstrhdr(
-            iq, "Null constraint violation for column '%s' on table '%s'. ",
-            reason.target_schema->member[reason.target_field_idx].name,
-            iq->usedb->tablename);
-        reqerrstr(iq, COMDB2_ADD_RC_CNVT_DTA,
-                  "null constraint error data %s->.ONDISK '%s'", tag, str);
         *opfailcode = ERR_NULL_CONSTRAINT;
         rc = retrc = ERR_NULL_CONSTRAINT;
         ERR;
@@ -508,18 +414,17 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
      */
     if (!gbl_use_plan || !iq->usedb->plan || iq->usedb->plan->dta_plan == -1) {
         if (flags & RECFLAGS_KEEP_GENID)
-            rc = dat_set(iq, trans, od_dta, od_len, *rrn, *genid);
+            retrc = dat_set(iq, trans, od_dta, od_len, *rrn, *genid);
         else
-            rc = dat_add(iq, trans, od_dta, od_len, genid, rrn);
+            retrc = dat_add(iq, trans, od_dta, od_len, genid, rrn);
 
         if (iq->debug) {
             reqprintf(iq, "dat_add RRN %d GENID 0x%llx DTALEN %u RC %d DATA ",
                       *rrn, *genid, od_len, rc);
             reqdumphex(iq, od_dta, od_len);
         }
-        if (rc != 0) {
+        if (retrc) {
             *opfailcode = OP_FAILED_INTERNAL + ERR_ADD_RRN;
-            retrc = rc;
             ERR;
         }
     }
@@ -528,18 +433,17 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
      * Add all the blobs.  ctag_to_stag_blobs reordered the blob array
      * as appropriate for ondisk tag.
      */
-    for (blobno = 0; blobno < maxblobs; blobno++) {
+    for (size_t blobno = 0; blobno < maxblobs; blobno++) {
         blob_buffer_t *blob = &blobs[blobno];
         if (blob->exists && (!gbl_use_plan || !iq->usedb->plan ||
                              iq->usedb->plan->blob_plan[blobno] == -1)) {
-            rc = blob_add(iq, trans, blobno, blob->data, blob->length, *rrn,
+            retrc = blob_add(iq, trans, blobno, blob->data, blob->length, *rrn,
                           *genid);
             if (iq->debug) {
                 reqprintf(iq, "blob_add LEN %u RC %d DATA ", blob->length, rc);
                 reqdumphex(iq, blob->data, blob->length);
             }
-            if (rc != 0) {
-                retrc = rc;
+            if (retrc) {
                 *opfailcode = OP_FAILED_INTERNAL + ERR_ADD_BLOB;
                 ERR;
             }
@@ -579,13 +483,11 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     } else {
         if (iq->osql_step_ix)
             gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
-        rc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode, 
+        retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode, 
                                 ixfailnum, rrn, genid, ins_keys, opcode, blkpos,
                                 od_dta, od_len, ondisktag, ondisktagsc);
-        if (rc != 0) {
-            retrc = rc;
+        if (retrc)
             ERR;
-        }
     }
 
     /*
@@ -604,20 +506,19 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         /* If we have blobs then make the blob information available
          * to the Java record.  Any blobs not specified in the tag must
          * be null, which is the default anyway. */
-        for (blobno = 0; blobno < maxblobs; blobno++) {
+        for (size_t blobno = 0; blobno < maxblobs; blobno++) {
             if (blobs[blobno].exists) {
                 blob_buffer_t *blob = &blobs[blobno];
                 javasp_rec_have_blob(jrec, blobno, blob->data, 0, blob->length);
             }
         }
-        rc =
+        retrc =
             javasp_trans_tagged_trigger(iq->jsph, JAVASP_TRANS_LISTEN_AFTER_ADD,
                                         NULL, jrec, iq->usedb->tablename);
         javasp_dealloc_rec(jrec);
         if (iq->debug)
-            reqprintf(iq, "JAVASP_TRANS_LISTEN_AFTER_ADD RC %d", rc);
-        if (rc != 0) {
-            retrc = rc;
+            reqprintf(iq, "JAVASP_TRANS_LISTEN_AFTER_ADD RC %d", retrc);
+        if (retrc) {
             *opfailcode = ERR_JAVASP_ABORT_OP;
             ERR;
         }
@@ -639,18 +540,17 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         gbl_sc_last_writer_time = comdb2_time_epoch();
 
         /* For live schema change */
-        rc = live_sc_post_add(iq, trans, *genid, od_dta, ins_keys, 
-                blobs, maxblobs, flags, rrn);
-
-        if (rc != 0) {
-            retrc = rc;
+        retrc = live_sc_post_add(iq, trans, *genid, od_dta, ins_keys, 
+                                 blobs, maxblobs, flags, rrn);
+        if (retrc) 
             ERR;
-        }
     }
 
     dbglog_record_db_write(iq, "insert");
-    if (iq->__limits.maxcost && iq->cost > iq->__limits.maxcost)
+    if (iq->__limits.maxcost && iq->cost > iq->__limits.maxcost) {
         retrc = ERR_LIMIT;
+        ERR;
+    }
 
     if (debug_switch_alternate_verify_fail()) {
         static int flipon = 0;
@@ -677,59 +577,6 @@ err:
     return retrc;
 }
 
-/*
- * Add an individual key.  The operation
- * is defered until the end of the block op (we call insert_add_op).
- *
- * Only call this from outside this module for UNTAGGED databases.
- */
-static int add_key(struct ireq *iq, void *trans, int ixnum,
-                   unsigned long long ins_keys, int rrn,
-                   unsigned long long genid, void *od_dta, size_t od_len,
-                   int opcode, int blkpos, int *opfailcode, char *newkey,
-                   char *od_dta_tail, int od_tail_len, int do_inline)
-{
-    int rc;
-
-    if (!do_inline) {
-        if ((iq->usedb->ix_disabled[ixnum] & INDEX_WRITE_DISABLED)) {
-            if (iq->debug)
-                reqprintf(iq, "%s: ix %d write disabled", __func__, ixnum);
-            return 0;
-        }
-        const uint8_t *p_buf_req_start = NULL;
-        const uint8_t *p_buf_req_end = NULL;
-        rc = insert_add_op(iq, p_buf_req_start,
-                           p_buf_req_end, opcode, rrn, ixnum, genid, ins_keys,
-                           blkpos);
-        if (iq->debug)
-            reqprintf(iq, "insert_add_op IX %d RRN %d RC %d", ixnum, rrn, rc);
-        if (rc != 0) {
-            *opfailcode = OP_FAILED_INTERNAL;
-            rc = ERR_INTERNAL;
-        }
-    } else /* cascading update case or dup, dont defer add, do immediately */
-    {
-        if (!od_dta) {
-            logmsg(LOGMSG_ERROR, "%s: no key or ondisk data\n", __func__);
-            return ERR_INTERNAL;
-        }
-
-        rc = ix_addk(iq, trans, newkey, ixnum, genid, rrn, od_dta_tail,
-                     od_tail_len, ix_isnullk(iq->usedb, newkey, ixnum));
-        if (iq->debug) {
-            reqprintf(iq, "ix_addk IX %d RRN %d KEY ", ixnum, rrn);
-            reqdumphex(iq, newkey, getkeysize(iq->usedb, ixnum));
-            reqmoref(iq, " RC %d", rc);
-        }
-        if (rc == IX_DUP)
-            *opfailcode = OP_FAILED_UNIQ;
-        else if (rc != 0)
-            *opfailcode = OP_FAILED_INTERNAL;
-    }
-
-    return rc;
-}
 
 /*
  * Upgrade an existing record to ondisk format
@@ -760,6 +607,10 @@ int upgrade_record(struct ireq *iq, void *trans, unsigned long long vgenid,
    Switch it on to keep the old behavior.
    Switch it off to return null constraint error (4). */
 int gbl_upd_null_cstr_return_conv_err = 0;
+
+
+
+
 
 /*
  * Update an existing record.
@@ -813,10 +664,6 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     void *record = p_buf_rec;
     void *vrecord = p_buf_vrec;
     size_t reclen = p_buf_rec_end - p_buf_rec;
-    char *od_dta_tail = NULL;
-    int od_tail_len;
-    char *od_olddta_tail = NULL;
-    int od_oldtail_len;
     int got_oldblobs = 0;
     blob_buffer_t add_blobs_buf[MAXBLOBS];
     blob_buffer_t del_blobs_buf[MAXBLOBS];
@@ -1080,8 +927,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
 
         // od_dta and old_dta are necessarily identical. so point one to the
-        // other
-        // instead of relatively expensive memcpy()
+        // other instead of relatively expensive memcpy()
         od_dta = old_dta;
     } else {
         rc = ix_find_by_rrn_and_genid_tran(iq, rrn, vgenid, old_dta, &fndlen,
@@ -1341,195 +1187,22 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    od_dta_tail = NULL;
-    od_olddta_tail = NULL;
-
     // if even one ix is done deferred, we want to do the post_update deferred
     int deferredAdd = 0;
     int same_genid_with_upd =
         bdb_inplace_cmp_genids(iq->usedb->handle, *genid, vgenid) == 0;
 
     /* update the indexes as required */
-    for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-        if (flags == RECFLAGS_UPGRADE_RECORD &&
-            iq->usedb->ix_datacopy[ixnum] == 0)
-            // skip non-datacopy indexes if it is a record upgrade
-            continue;
+    retrc = upd_record_indices(iq, trans, 
+        blobs, maxblobs, opfailcode,
+        ixfailnum, rrn, genid,
+        ins_keys, opcode, blkpos, 
+        od_dta, od_len, old_dta,
+        del_keys, flags, add_idx_blobs, 
+        del_idx_blobs, same_genid_with_upd, vgenid, &deferredAdd);
 
-        char keytag[MAXTAGLEN];
-        char oldkey[MAXKEYLEN];
-        char newkey[MAXKEYLEN];
-        char mangled_oldkey[MAXKEYLEN];
-        char mangled_newkey[MAXKEYLEN];
-        int keysize;
-
-        /* index doesnt change */
-        if (gbl_partial_indexes && iq->usedb->ix_partial &&
-            !(ins_keys & (1ULL << ixnum)) && !(del_keys & (1ULL << ixnum)))
-            continue;
-
-        keysize = getkeysize(iq->usedb, ixnum);
-
-        /* light the prefault kill bit for this subop - oldkeys */
-        prefault_kill_bits(iq, ixnum, PFRQ_OLDKEY);
-        if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
-
-        /* form the old key from old_dta into "oldkey" */
-        snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-
-        if (iq->idxDelete) {
-            /* only create key if we need it */
-            if (!gbl_partial_indexes || !iq->usedb->ix_partial ||
-                (del_keys & (1ULL << ixnum)))
-                rc = create_key_from_ireq(iq, ixnum, 1, &od_olddta_tail,
-                                          &od_oldtail_len, mangled_oldkey,
-                                          old_dta, od_len, oldkey);
-        } else
-            rc = create_key_from_ondisk_blobs(
-                iq->usedb, ixnum, &od_olddta_tail, &od_oldtail_len,
-                mangled_oldkey, ".ONDISK", old_dta, od_len, keytag, oldkey,
-                NULL, del_idx_blobs, del_idx_blobs ? MAXBLOBS : 0, NULL);
-        /*
-                rc = stag_to_stag_buf(iq->usedb->tablename, ".ONDISK", old_dta,
-                        keytag, oldkey, NULL);
-                        */
-        if (rc < 0) {
-            if (iq->debug)
-                reqprintf(iq, "CAN'T FORM OLD KEY IX %d", ixnum);
-            reqerrstr(iq, COMDB2_UPD_RC_INVL_KEY,
-                      "cannot form old key index %d", ixnum);
-            *ixfailnum = ixnum;
-            *opfailcode = OP_FAILED_CONVERSION;
-            retrc = ERR_CONVERT_IX;
-            goto err;
-        }
-
-        if (iq->idxInsert) {
-            /* only create key if we need it */
-            if (!gbl_partial_indexes || !iq->usedb->ix_partial ||
-                (ins_keys & (1ULL << ixnum)))
-                rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail,
-                                          &od_tail_len, mangled_newkey, od_dta,
-                                          od_len, newkey);
-        } else /* form the new key from "od_dta" into "newkey" */
-            rc = create_key_from_ondisk_blobs(
-                iq->usedb, ixnum, &od_dta_tail, &od_tail_len, mangled_newkey,
-                ".ONDISK", od_dta, od_len, keytag, newkey, NULL, add_idx_blobs,
-                add_idx_blobs ? MAXBLOBS : 0, NULL);
-        /*
-       rc = stag_to_stag_buf(iq->usedb->tablename, ".ONDISK", od_dta,
-               keytag, newkey, NULL);
-               */
-        if (rc < 0) {
-            if (iq->debug)
-                reqprintf(iq, "CAN'T FORM NEW KEY IX %d", ixnum);
-            reqerrstr(iq, COMDB2_UPD_RC_INVL_KEY,
-                      "cannot form new key index %d", ixnum);
-            *ixfailnum = ixnum;
-            *opfailcode = OP_FAILED_CONVERSION;
-            retrc = ERR_CONVERT_IX;
-            goto err;
-        }
-
-        /*
-          determine if the key to be added is the same as the key to be
-          deleted.  if so, attempt an update, not a delete/add
-          - if the key doesnt allow dups (it doesnt contain a genid) then we
-            can always do an in place key update if the key didnt change,
-            ie, poke in the new genid to the dta portion of the key.
-          - if the key allows dups (has a genid on the right side of the key)
-            then we can only do the in place update if the genid (minus the
-            updateid portion) didnt change, ie if an in place dta update
-            happened here. */
-        if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
-
-        int key_unique = (iq->usedb->ix_dupes[ixnum] == 0);
-        int same_key = (memcmp(newkey, oldkey, keysize) == 0);
-        if (gbl_key_updates && (key_unique || same_genid_with_upd) &&
-            same_key &&
-            (!gbl_partial_indexes || !iq->usedb->ix_partial ||
-             ((ins_keys & (1ULL << ixnum)) &&
-              (del_keys & (1ULL << ixnum))))) { /* in place key update */
-
-            /*fprintf(stderr, "IX %d didnt change, poking genid 0x%016llx\n",
-              ixnum, *genid);*/
-
-            gbl_upd_key++;
-
-            rc = ix_upd_key(iq, trans, newkey, iq->usedb->ix_keylen[ixnum],
-                            ixnum, vgenid, *genid, od_dta_tail, od_tail_len,
-                            ix_isnullk(iq->usedb, newkey, ixnum));
-            if (iq->debug)
-                reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d", ixnum,
-                          *genid, rc);
-
-            if (rc != 0) {
-                *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
-                *ixfailnum = ixnum;
-                retrc = rc;
-                goto err;
-            }
-
-            /* need to do this here as we're not adding the new key so we
-               dont have the luxury of letting the constraint engine catch it
-               later */
-            verify_schema_change_constraint(iq, iq->usedb, trans, od_dta,
-                                            ins_keys);
-        } else /* delete / add the key */
-        {
-            /*
-              fprintf(stderr, "IX %d changed, deleting key at genid 0x%016llx "
-              "adding key at genid 0x%016llx\n",
-              ixnum, vgenid, *genid);
-            */
-
-            /* only delete keys when told */
-            if (!gbl_partial_indexes || !iq->usedb->ix_partial ||
-                (del_keys & (1ULL << ixnum))) {
-                rc = ix_delk(iq, trans, oldkey, ixnum, rrn, vgenid, ix_isnullk(iq->usedb, oldkey, ixnum));
-
-                if (iq->debug)
-                    reqprintf(iq, "ix_delk IX %d RRN %d RC %d", ixnum, rrn, rc);
-
-                if (rc != 0) {
-                    *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
-                    *ixfailnum = ixnum;
-                    retrc = rc;
-                    goto err;
-                }
-            }
-
-            int do_inline;
-            if (!gbl_partial_indexes || !iq->usedb->ix_partial ||
-                ((del_keys & (1ULL << ixnum)) &&
-                 (ins_keys & (1ULL << ixnum)))) {
-                do_inline = (flags & UPDFLAGS_CASCADE) ||
-                            (iq->usedb->ix_dupes[ixnum] &&
-                             iq->usedb->n_constraints == 0);
-            } else {
-                do_inline = 1;
-            }
-            deferredAdd |= (!do_inline);
-
-            if (!gbl_partial_indexes || !iq->usedb->ix_partial ||
-                (ins_keys & (1ULL << ixnum))) {
-                rc = add_key(iq, trans, ixnum, ins_keys, rrn, *genid, od_dta,
-                             od_len, opcode, blkpos, opfailcode, newkey,
-                             od_dta_tail, od_tail_len, do_inline);
-
-                if (iq->debug)
-                    reqprintf(iq, "add_key IX %d RRN %d RC %d", ixnum, rrn, rc);
-
-                if (rc != 0) {
-                    *ixfailnum = ixnum;
-                    retrc = rc;
-                    goto err;
-                }
-            }
-        }
-    }
+    if (retrc) 
+        ERR;
 
     /*
      * Now we need to change the blobs for this tag.  For each blob
@@ -1803,7 +1476,6 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     int od_len_int;
     int fndlen;
     int rc;
-    int ixnum;
     int got_oldblobs = 0;
     blob_buffer_t blobs_buf[MAXBLOBS];
     blob_buffer_t *del_idx_blobs = NULL;
@@ -2018,9 +1690,8 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     else
         ondisktag = ".ONDISK";
 
-
     /* Form and delete all keys. */
-    for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
+    for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char keytag[MAXTAGLEN];
         char key[MAXKEYLEN];
 

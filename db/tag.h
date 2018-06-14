@@ -305,9 +305,9 @@ int resolve_tag_name(struct ireq *iq, const char *tagdescr, size_t taglen,
 void printrecord(char *buf, struct schema *sc, int len);
 
 void *create_blank_record(struct dbtable *db, size_t *length);
-int validate_server_record(const void *record, size_t reclen,
-                           const struct schema *schema,
-                           struct convert_failure *reason);
+int validate_server_record(struct ireq *iq, const void *record, size_t reclen,
+                           const char *tag, const char *ondisktag, 
+                           struct schema *schema);
 void init_convert_failure_reason(struct convert_failure *fail_reason);
 
 /* I'm putting these functions in so that javasp.c code can query schema stuff
