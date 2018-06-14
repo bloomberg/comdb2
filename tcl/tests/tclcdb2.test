@@ -1334,7 +1334,7 @@ test cdb2-9.13 {bind sub-command w/vutf8} -setup {
 
 ###############################################################################
 
-test cdb2-9.14 {bind sub-command w/one byte} -setup {
+test cdb2-9.14 {bind sub-command w/no-size-byte} -setup {
   set db [openConnection]
   set table [getTableName cdb2_914]
 
@@ -1369,7 +1369,85 @@ test cdb2-9.14 {bind sub-command w/one byte} -setup {
   closeConnection $db
 
   unset -nocomplain error value table db
-} -result "<null> {} 0x00 1 12 123 \xFF"
+} -result "<null> 0x00 1 \xFF"
+
+###############################################################################
+
+test cdb2-9.15 {bind sub-command w/one-byte} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_915]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {byte x[1] null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL "" \x00 \xFF 1 12 123] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 blob $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result "<null> 0x00 1 \xFF"
+
+###############################################################################
+
+test cdb2-9.16 {bind sub-command w/byte} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_916]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {byte x[2] null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL "" \x00 \xFF 1 12 123] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 blob $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result "<null> 0x00 1 12 \xFF"
 
 ###############################################################################
 
