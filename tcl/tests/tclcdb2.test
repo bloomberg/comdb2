@@ -1505,7 +1505,8 @@ test cdb2-9.10 {bind sub-command w/decimal64} -setup {
     CREATE TABLE $table {schema {decimal64 x null=yes}}
   }]]
 } -body {
-  foreach value [getNumbers decimal 64 true] {
+  foreach value [concat \
+      [getNumbers decimal 64 true] [getNumbers decimal 64 false]] {
     cdb2 unbind $db
 
     if {$value eq "NULL"} then {
@@ -1544,7 +1545,8 @@ test cdb2-9.11 {bind sub-command w/decimal128} -setup {
     CREATE TABLE $table {schema {decimal128 x null=yes}}
   }]]
 } -body {
-  foreach value [getNumbers decimal 128 true] {
+  foreach value [concat \
+      [getNumbers decimal 128 true] [getNumbers decimal 128 false]] {
     cdb2 unbind $db
 
     if {$value eq "NULL"} then {
