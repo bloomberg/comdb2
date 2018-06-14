@@ -1330,7 +1330,7 @@ test cdb2-9.13 {bind sub-command w/vutf8} -setup {
   closeConnection $db
 
   unset -nocomplain error value table db
-} -result "<null> {} 1 12 123 0x00 \xFF"
+} -result "<null> {} 1 12 123 \xFF"
 
 ###############################################################################
 
