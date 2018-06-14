@@ -1016,7 +1016,30 @@ test cdb2-9.1 {bind/unbind sub-command errors} -setup {
   closeConnection $db
 
   unset -nocomplain errMsg db
-} -result {}
+} -result {0 {} 0 {} 1 {parameter "1" was already bound} 1 {parameter "one" was\
+already bound} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {}\
+0 {} 0 {} 0 {} 0 {} 1 {wrong # args: should be "cdb2 unbind connection"} 1\
+{wrong # args: should be "cdb2 unbind connection"} 0 {} 1 {wrong # args: should\
+be "cdb2 bind connection nameOrIndex type ?value?"} 1 {wrong # args: should be\
+"cdb2 bind connection nameOrIndex type ?value?"} 1 {wrong # args: should be\
+"cdb2 bind connection nameOrIndex type ?value?"} 1 {cdb2_bind_index: bind index\
+starts at value 1} 1 {must specify a value for type "cstring"} 1\
+{cdb2_bind_index: bind index starts at value 1} 1 {wrong # args: should be\
+"cdb2 bind connection nameOrIndex type ?value?"} 1 {wrong # args: should be\
+"cdb2 bind connection nameOrIndex type ?value?"} 1 {name "bad" not\
+found<lf>value for name "bad" not found} 1 {name "bad" not found<lf>value for\
+name "bad" not found} 1 {must specify a value for type "cstring"} 1 {must\
+specify a value for type "blob"} 1 {must specify a value for type "real"} 1\
+{must specify a value for type "integer"} 1 {expected floating-point number but\
+got "bad"} 1 {expected integer but got "bad"} 1 {cannot specify a value for\
+type "null"} 1 {malformed value dictionary} 1 {wrong # args: should be "cdb2\
+bind connection nameOrIndex type ?value?"} 1 {malformed value dictionary} 1\
+{wrong # args: should be "cdb2 bind connection nameOrIndex type ?value?"} 1\
+{malformed value dictionary} 1 {wrong # args: should be "cdb2 bind connection\
+nameOrIndex type ?value?"} 1 {malformed value dictionary} 1 {wrong # args:\
+should be "cdb2 bind connection nameOrIndex type ?value?"} 1 {malformed value\
+dictionary} 1 {wrong # args: should be "cdb2 bind connection nameOrIndex type\
+?value?"} 0 {}}
 
 ###############################################################################
 
