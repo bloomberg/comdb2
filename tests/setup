@@ -97,7 +97,7 @@ if [[ $debug -eq 1 ]]; then
     [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $RUNTEST
     [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $RUNTEST
     echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/" >> $RUNTEST
-    echo "./runit ${DBNAME} " >> $RUNTEST
+    echo "./runit ${DBNAME} \$1 " >> $RUNTEST
     echo "echo; echo; echo;" >> $RUNTEST
     echo "${TESTSROOTDIR}/unsetup" >> $RUNTEST
     echo

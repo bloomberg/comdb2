@@ -7,6 +7,7 @@ find_pkg_for_comdb2(Unwind
   "libunwind.h"
   "${lib}"
   "${UNWIND_ROOT_DIR}"
+  ""
   UNWIND_INCLUDE_DIR
   UNWIND_LIBRARY
 )
