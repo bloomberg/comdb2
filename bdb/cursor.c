@@ -3761,6 +3761,7 @@ done:
 int bdb_latest_commit_is_durable(void *in_bdb_state)
 {
     extern int gbl_durable_replay_test;
+    char *master;
     bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
     seqnum_type ss = {0};
     int timeoutms;
@@ -3771,9 +3772,15 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
     DB_LSN durable_lsn;
     DB_LSN latest_lsn;
 
+    bdb_get_rep_master(bdb_state, &master, NULL);
     bdb_latest_commit(bdb_state, &latest_lsn, &latest_gen);
     bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
                                       &durable_gen);
+
+    logmsg(LOGMSG_INFO, "%s line %d master=%s latest-commit=[%d][%d] gen %d, "
+           "latest-durable=[%d][%d] gen %d\n", __func__, __LINE__, master,
+           latest_lsn.file, latest_lsn.offset, latest_gen,
+           durable_lsn.file, durable_lsn.offset, durable_gen);
 
     if (latest_gen < durable_gen) {
         logmsg(LOGMSG_INFO, "%s line %d returning 0 because latest_gen %d < "
