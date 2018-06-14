@@ -323,9 +323,19 @@ if {[llength [info commands getTableName]] == 0} then {
 ###############################################################################
 
 if {[llength [info commands cleanupDatabase]] == 0} then {
-  proc cleanupDatabase {} {
+  proc cleanupDatabase { global } {
     set connection [openConnection]
-    set glob [appendArgs 'tcl_cdb2_test_ [pid] _%']
+
+    if {$global} then {
+      #
+      # WARNING: This pattern will DROP all tables created by this
+      #          test suite from the test database, regardless of
+      #          which process was responsible for creating them.
+      #
+      set glob 'tcl_cdb2_test_%'
+    } else {
+      set glob [appendArgs 'tcl_cdb2_test_ [pid] _%']
+    }
 
     set sql [string trim [subst {
       SELECT name FROM sqlite_master WHERE name LIKE $glob
@@ -1285,7 +1295,53 @@ test cdb2-9.12 {bind sub-command w/blob} -setup {
 
 ###############################################################################
 
-cleanupDatabase; # Cleanup test databases before changing the configuration.
+test cdb2-9.13 {bind sub-command w/vutf8} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_913]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {vutf8 x null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL "" \x00 \xFF 1 12 123] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 cstring $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result "<null> {} 1 12 123 0x00 \xFF"
+
+###############################################################################
+
+#
+# NOTE: Cleanup test database before changing the configuration.  If the
+#       "TCLCDB2_GLOBAL_CLEANUP" environment variable is set to non-zero,
+#       DROP all test tables, regardless of their parent process.  This
+#       is useful when previous tests stopped before they had a chance to
+#       cleanup.
+#
+cleanupDatabase [string is true -strict [getEnvVar TCLCDB2_GLOBAL_CLEANUP]]
 
 ###############################################################################
 
