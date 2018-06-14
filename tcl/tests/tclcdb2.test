@@ -853,9 +853,66 @@ true value <null>}} effects {affected 0 selected 1 updated 0 deleted 0 inserted\
 
 ###############################################################################
 
-test cdb2-9.1 {bind sub-command w/short} -setup {
+test cdb2-9.1 {bind/unbind sub-command errors} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_91]
+} -body {
+  list [catch {cdb2 bind $db 1 cstring ""} errMsg] $errMsg \
+      [catch {cdb2 bind $db one cstring ""} errMsg] $errMsg \
+      [catch {cdb2 bind $db 2 blob ""} errMsg] $errMsg \
+      [catch {cdb2 bind $db two blob ""} errMsg] $errMsg \
+      [catch {cdb2 bind $db 3 integer 0} errMsg] $errMsg \
+      [catch {cdb2 bind $db three integer 0} errMsg] $errMsg \
+      [catch {cdb2 bind $db 4 real 0} errMsg] $errMsg \
+      [catch {cdb2 bind $db four real 0} errMsg] $errMsg \
+      [catch {cdb2 bind $db 5 datetime ""} errMsg] $errMsg \
+      [catch {cdb2 bind $db five datetime ""} errMsg] $errMsg \
+      [catch {cdb2 bind $db 6 datetimeus ""} errMsg] $errMsg \
+      [catch {cdb2 bind $db six datetimeus ""} errMsg] $errMsg \
+      [catch {cdb2 bind $db 7 intervalds ""} errMsg] $errMsg \
+      [catch {cdb2 bind $db seven intervalds ""} errMsg] $errMsg \
+      [catch {cdb2 bind $db 8 intervaldsus ""} errMsg] $errMsg \
+      [catch {cdb2 bind $db eight intervaldsus ""} errMsg] $errMsg \
+      [catch {cdb2 bind $db 9 intervalym ""} errMsg] $errMsg \
+      [catch {cdb2 bind $db nine intervalym ""} errMsg] $errMsg \
+      [catch {cdb2 unbind $db} errMsg] $errMsg \
+      [catch {cdb2 unbind} errMsg] $errMsg \
+      [catch {cdb2 unbind $db 1} errMsg] $errMsg \
+      [catch {cdb2 unbind $db} errMsg] $errMsg \
+      [catch {cdb2 bind} errMsg] $errMsg \
+      [catch {cdb2 bind $db} errMsg] $errMsg \
+      [catch {cdb2 bind $db -1} errMsg] $errMsg \
+      [catch {cdb2 bind $db 0} errMsg] $errMsg \
+      [catch {cdb2 bind $db 1} errMsg] $errMsg \
+      [catch {cdb2 bind $db 1 bad} errMsg] $errMsg \
+      [catch {cdb2 bind $db 2 cstring} errMsg] $errMsg \
+      [catch {cdb2 bind $db 3 blob} errMsg] $errMsg \
+      [catch {cdb2 bind $db 4 real} errMsg] $errMsg \
+      [catch {cdb2 bind $db 5 integer} errMsg] $errMsg \
+      [catch {cdb2 bind $db 6 real bad} errMsg] $errMsg \
+      [catch {cdb2 bind $db 7 integer bad} errMsg] $errMsg \
+      [catch {cdb2 bind $db 8 null bad} errMsg] $errMsg \
+      [catch {cdb2 bind $db 9 datetime bad} errMsg] $errMsg \
+      [catch {cdb2 bind $db 10 datetime bad value} errMsg] $errMsg \
+      [catch {cdb2 bind $db 11 datetimeus bad} errMsg] $errMsg \
+      [catch {cdb2 bind $db 12 datetimeus bad value} errMsg] $errMsg \
+      [catch {cdb2 bind $db 13 intervalds bad} errMsg] $errMsg \
+      [catch {cdb2 bind $db 14 intervalds bad value} errMsg] $errMsg \
+      [catch {cdb2 bind $db 15 intervaldsus bad} errMsg] $errMsg \
+      [catch {cdb2 bind $db 16 intervaldsus bad value} errMsg] $errMsg \
+      [catch {cdb2 bind $db 17 intervalym bad} errMsg] $errMsg \
+      [catch {cdb2 bind $db 18 intervalym bad value} errMsg] $errMsg \
+      [catch {cdb2 bind $db 2147483647 integer 0} errMsg] $errMsg
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {}
+
+###############################################################################
+
+test cdb2-9.2 {bind sub-command w/short} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_92]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {short x null=yes}}
@@ -892,9 +949,9 @@ test cdb2-9.1 {bind sub-command w/short} -setup {
 
 ###############################################################################
 
-test cdb2-9.2 {bind sub-command w/u_short} -setup {
+test cdb2-9.3 {bind sub-command w/u_short} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_92]
+  set table [getTableName cdb2_93]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {u_short x null=yes}}
@@ -931,9 +988,9 @@ test cdb2-9.2 {bind sub-command w/u_short} -setup {
 
 ###############################################################################
 
-test cdb2-9.3 {bind sub-command w/int} -setup {
+test cdb2-9.4 {bind sub-command w/int} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_93]
+  set table [getTableName cdb2_94]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {int x null=yes}}
@@ -970,9 +1027,9 @@ test cdb2-9.3 {bind sub-command w/int} -setup {
 
 ###############################################################################
 
-test cdb2-9.4 {bind sub-command w/u_int} -setup {
+test cdb2-9.5 {bind sub-command w/u_int} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_94]
+  set table [getTableName cdb2_95]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {u_int x null=yes}}
@@ -1009,9 +1066,9 @@ test cdb2-9.4 {bind sub-command w/u_int} -setup {
 
 ###############################################################################
 
-test cdb2-9.5 {bind sub-command w/longlong} -setup {
+test cdb2-9.6 {bind sub-command w/longlong} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_95]
+  set table [getTableName cdb2_96]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {longlong x null=yes}}
@@ -1049,9 +1106,9 @@ test cdb2-9.5 {bind sub-command w/longlong} -setup {
 
 ###############################################################################
 
-test cdb2-9.6 {bind sub-command w/float} -setup {
+test cdb2-9.7 {bind sub-command w/float} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_96]
+  set table [getTableName cdb2_97]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {float x null=yes}}
@@ -1090,9 +1147,9 @@ test cdb2-9.6 {bind sub-command w/float} -setup {
 
 ###############################################################################
 
-test cdb2-9.7 {bind sub-command w/double} -setup {
+test cdb2-9.8 {bind sub-command w/double} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_97]
+  set table [getTableName cdb2_98]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {double x null=yes}}
@@ -1132,9 +1189,9 @@ test cdb2-9.7 {bind sub-command w/double} -setup {
 
 ###############################################################################
 
-test cdb2-9.8 {bind sub-command w/decimal32} -setup {
+test cdb2-9.9 {bind sub-command w/decimal32} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_98]
+  set table [getTableName cdb2_99]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {decimal32 x null=yes}}
@@ -1175,9 +1232,9 @@ Infinity}
 
 ###############################################################################
 
-test cdb2-9.9 {bind sub-command w/decimal64} -setup {
+test cdb2-9.10 {bind sub-command w/decimal64} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_99]
+  set table [getTableName cdb2_910]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {decimal64 x null=yes}}
@@ -1214,9 +1271,9 @@ test cdb2-9.9 {bind sub-command w/decimal64} -setup {
 
 ###############################################################################
 
-test cdb2-9.10 {bind sub-command w/decimal128} -setup {
+test cdb2-9.11 {bind sub-command w/decimal128} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_910]
+  set table [getTableName cdb2_911]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {decimal128 x null=yes}}
@@ -1253,9 +1310,9 @@ test cdb2-9.10 {bind sub-command w/decimal128} -setup {
 
 ###############################################################################
 
-test cdb2-9.11 {bind sub-command w/cstring} -setup {
+test cdb2-9.12 {bind sub-command w/cstring} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_911]
+  set table [getTableName cdb2_912]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {cstring x\[3\] null=yes}}
@@ -1292,9 +1349,9 @@ test cdb2-9.11 {bind sub-command w/cstring} -setup {
 
 ###############################################################################
 
-test cdb2-9.12 {bind sub-command w/blob} -setup {
+test cdb2-9.13 {bind sub-command w/blob} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_912]
+  set table [getTableName cdb2_913]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {blob x null=yes}}
@@ -1331,9 +1388,9 @@ test cdb2-9.12 {bind sub-command w/blob} -setup {
 
 ###############################################################################
 
-test cdb2-9.13 {bind sub-command w/vutf8} -setup {
+test cdb2-9.14 {bind sub-command w/vutf8} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_913]
+  set table [getTableName cdb2_914]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {vutf8 x null=yes}}
@@ -1370,9 +1427,9 @@ test cdb2-9.13 {bind sub-command w/vutf8} -setup {
 
 ###############################################################################
 
-test cdb2-9.14 {bind sub-command w/no-size-byte} -setup {
+test cdb2-9.15 {bind sub-command w/no-size-byte} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_914]
+  set table [getTableName cdb2_915]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {byte x null=yes}}
@@ -1409,9 +1466,9 @@ test cdb2-9.14 {bind sub-command w/no-size-byte} -setup {
 
 ###############################################################################
 
-test cdb2-9.15 {bind sub-command w/one-byte} -setup {
+test cdb2-9.16 {bind sub-command w/one-byte} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_915]
+  set table [getTableName cdb2_916]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {byte x\[1\] null=yes}}
@@ -1448,9 +1505,9 @@ test cdb2-9.15 {bind sub-command w/one-byte} -setup {
 
 ###############################################################################
 
-test cdb2-9.16 {bind sub-command w/byte} -setup {
+test cdb2-9.17 {bind sub-command w/byte} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_916]
+  set table [getTableName cdb2_917]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {byte x\[2\] null=yes}}
@@ -1487,9 +1544,9 @@ test cdb2-9.16 {bind sub-command w/byte} -setup {
 
 ###############################################################################
 
-test cdb2-9.17 {bind sub-command w/datetime} -setup {
+test cdb2-9.18 {bind sub-command w/datetime} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_917]
+  set table [getTableName cdb2_918]
 
   cdb2 run $db [string trim {
     SET TIMEZONE UTC
@@ -1537,9 +1594,9 @@ tzname {UTC}}}
 
 ###############################################################################
 
-test cdb2-9.18 {bind sub-command w/datetimeus} -setup {
+test cdb2-9.19 {bind sub-command w/datetimeus} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_918]
+  set table [getTableName cdb2_919]
 
   cdb2 run $db [string trim {
     SET TIMEZONE UTC
@@ -1587,9 +1644,9 @@ tzname {UTC}}}
 
 ###############################################################################
 
-test cdb2-9.19 {bind sub-command w/intervalym} -setup {
+test cdb2-9.20 {bind sub-command w/intervalym} -setup {
   set db [openConnection]
-  set table [getTableName cdb2_919]
+  set table [getTableName cdb2_920]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {intervalym x null=yes}}
@@ -1747,6 +1804,11 @@ if {0} then {
   #
   cdb2 bind
   cdb2 unbind
+
+  49710; # days...
+      6; # hours
+     28; # minutes
+     15; # seconds
 
     CREATE TABLE $table {schema {intervalds x null=yes}}
     CREATE TABLE $table {schema {intervaldsus x null=yes}}

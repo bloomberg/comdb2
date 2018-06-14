@@ -1997,6 +1997,7 @@ static int tclcdb2ObjCmd(
 	    if (code != TCL_OK)
 		goto done;
 
+	    FreeParameterValues(interp);
 	    Tcl_ResetResult(interp);
 	    break;
 	}
