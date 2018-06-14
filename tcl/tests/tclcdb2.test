@@ -1334,6 +1334,45 @@ test cdb2-9.13 {bind sub-command w/vutf8} -setup {
 
 ###############################################################################
 
+test cdb2-9.14 {bind sub-command w/one byte} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_914]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {byte x null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL "" \x00 \xFF 1 12 123] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 blob $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result "<null> {} 0x00 1 12 123 \xFF"
+
+###############################################################################
+
 #
 # NOTE: Cleanup test database before changing the configuration.  If the
 #       "TCLCDB2_GLOBAL_CLEANUP" environment variable is set to non-zero,
@@ -1441,8 +1480,6 @@ if {0} then {
   cdb2 bind
   cdb2 unbind
 
-    CREATE TABLE $table {schema {vutf8 x null=yes}}
-    CREATE TABLE $table {schema {byte x null=yes}}
     CREATE TABLE $table {schema {datetime x null=yes}}
     CREATE TABLE $table {schema {datetimeus x null=yes}}
     CREATE TABLE $table {schema {intervalds x null=yes}}
