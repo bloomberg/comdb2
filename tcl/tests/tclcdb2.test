@@ -556,6 +556,42 @@ if {[llength [info commands getReals]] == 0} then {
 
 ###############################################################################
 
+if {[llength [info commands getDateTimes]] == 0} then {
+  proc getDateTimes { us } {
+    set result [list]
+
+    if {$us} then {
+      set subSecName usec; set subSecValue 999999
+    } else {
+      set subSecName msec; set subSecValue 999
+    }
+
+    lappend result \
+        [list sec 59 min 59 hour 23 mday 31 mon 11 year -11899 \
+        $subSecName $subSecValue tzname {UTC}]
+
+    lappend result \
+        [list sec 0 min 0 hour 0 mday 1 mon 0 year 0 \
+        $subSecName 0 tzname {UTC}]
+
+    lappend result \
+        [list sec 0 min 0 hour 19 mday 31 mon 11 year 69 \
+        $subSecName 0 tzname {America/New_York}]
+
+    lappend result \
+        [list sec 0 min 0 hour 0 mday 1 mon 0 year 70 \
+        $subSecName 0 tzname {UTC}]
+
+    lappend result \
+        [list sec 59 min 59 hour 23 mday 31 mon 11 year 8099 \
+        $subSecName $subSecValue tzname {UTC}]
+
+    return $result
+  }
+}
+
+###############################################################################
+
 if {[llength [info commands isTypeError]] == 0} then {
   proc isTypeError { error } {
     return [regexp -- \
@@ -1448,6 +1484,84 @@ test cdb2-9.16 {bind sub-command w/byte} -setup {
 
   unset -nocomplain error value table db
 } -result "<null> 12"
+
+###############################################################################
+
+test cdb2-9.17 {bind sub-command w/datetime} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_917]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {datetime x null=yes}}
+  }]]
+} -body {
+  foreach value [getDateTimes false] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 datetime $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result { }
+
+###############################################################################
+
+test cdb2-9.18 {bind sub-command w/datetimeus} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_918]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {datetimeus x null=yes}}
+  }]]
+} -body {
+  foreach value [getDateTimes true] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 datetimeus $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result { }
 
 ###############################################################################
 
