@@ -387,54 +387,6 @@ if {[llength [info commands closeConnection]] == 0} then {
 
 ###############################################################################
 
-if {[llength [info commands moveDecimal]] == 0} then {
-  proc moveDecimal { value direction maxDigits } {
-    set length [string length $value]
-
-    if {$length == 0} then {
-      error "cannot use empty string as decimal"
-    }
-
-    switch -exact $direction {
-      down {
-        set index [string first . $value]
-
-        if {$index != -1 && $index < $length - 1} then {
-          return [string trim [join [linsert [lremove [split \
-              $value ""] $index] [expr {$index + 1}] .] ""] .]
-        } elseif {$length < $maxDigits + ($index != -1)} then {
-          return [appendArgs [string trim $value .] 0]
-        } else {
-          error [appendArgs \
-              "decimal overflow, would exceed " $maxDigits \
-              " digits"]
-        }
-      }
-      up {
-        set index [string first . $value]
-
-        if {$index != -1} then {
-          return [string trim [join [linsert [lremove [split \
-              $value ""] $index] [expr {$index - 1}] .] ""] .]
-        } elseif {$length < $maxDigits} then {
-          return [appendArgs \
-              [string range $value 0 end-1] . [string index $value end]]
-        } else {
-          error [appendArgs \
-              "decimal underflow, would exceed " $maxDigits \
-              " digits"]
-        }
-      }
-      default {
-        error [appendArgs \
-            "unknown decimal direction \"" $direction \"]
-      }
-    }
-  }
-}
-
-###############################################################################
-
 if {[llength [info commands getNumbers]] == 0} then {
   proc getNumbers { type {wide false} {special false} } {
     switch -exact $type {
