@@ -1881,7 +1881,17 @@ test cdb2-9.21 {bind sub-command w/intervalds} -setup {
   closeConnection $db
 
   unset -nocomplain error value table db
-} -result {}
+} -result {<null> {sign -1 days 49710 hours 23 mins 59 secs 59 msecs 999}\
+{sign -1 days 1 hours 0 mins 0 secs 0 msecs 0} {sign -1 days 0 hours 1 mins 0\
+secs 0 msecs 0} {sign -1 days 0 hours 0 mins 1 secs 0 msecs 0} {sign -1 days 0\
+hours 0 mins 0 secs 1 msecs 0} {sign -1 days 0 hours 0 mins 0 secs 0 msecs 1}\
+{sign 1 days 0 hours 0 mins 0 secs 0 msecs 0} {sign 1 days 0 hours 0 mins 0\
+secs 0 msecs 0} {sign 1 days 0 hours 0 mins 0 secs 0 msecs 0} {sign 1 days 0\
+hours 0 mins 0 secs 0 msecs 0} {sign 1 days 0 hours 0 mins 0 secs 0 msecs 1}\
+{sign 1 days 0 hours 0 mins 0 secs 1 msecs 0} {sign 1 days 0 hours 0 mins 1\
+secs 0 msecs 0} {sign 1 days 0 hours 1 mins 0 secs 0 msecs 0} {sign 1 days 1\
+hours 0 mins 0 secs 0 msecs 0} {sign 1 days 49710 hours 23 mins 59 secs 59\
+msecs 999}}
 
 ###############################################################################
 
@@ -1935,7 +1945,17 @@ test cdb2-9.22 {bind sub-command w/intervaldsus} -setup {
   closeConnection $db
 
   unset -nocomplain error value table db
-} -result {}
+} -result {<null> {sign -1 days 49710 hours 23 mins 59 secs 59 usecs 999999}\
+{sign -1 days 1 hours 0 mins 0 secs 0 usecs 0} {sign -1 days 0 hours 1 mins 0\
+secs 0 usecs 0} {sign -1 days 0 hours 0 mins 1 secs 0 usecs 0} {sign -1 days 0\
+hours 0 mins 0 secs 1 usecs 0} {sign -1 days 0 hours 0 mins 0 secs 0 usecs 1}\
+{sign 1 days 0 hours 0 mins 0 secs 0 usecs 0} {sign 1 days 0 hours 0 mins 0\
+secs 0 usecs 0} {sign 1 days 0 hours 0 mins 0 secs 0 usecs 0} {sign 1 days 0\
+hours 0 mins 0 secs 0 usecs 0} {sign 1 days 0 hours 0 mins 0 secs 0 usecs 1}\
+{sign 1 days 0 hours 0 mins 0 secs 1 usecs 0} {sign 1 days 0 hours 0 mins 1\
+secs 0 usecs 0} {sign 1 days 0 hours 1 mins 0 secs 0 usecs 0} {sign 1 days 1\
+hours 0 mins 0 secs 0 usecs 0} {sign 1 days 49710 hours 23 mins 59 secs 59\
+usecs 999999}}
 
 ###############################################################################
 
