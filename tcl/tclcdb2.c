@@ -833,6 +833,9 @@ static int GetValueStructFromObj(
     if (code != TCL_OK)
 	goto done;
 
+    if (elemCount == 0) /* NOTE: Empty list, do nothing. */
+	goto done;
+
     switch (type) {
 	case CDB2_DATETIME: {
 	    const NameAndValue fields[] = {
