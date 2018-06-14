@@ -1491,6 +1491,10 @@ test cdb2-9.17 {bind sub-command w/datetime} -setup {
   set db [openConnection]
   set table [getTableName cdb2_917]
 
+  cdb2 run $db [string trim {
+    SET TIMEZONE UTC
+  }]
+
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {datetime x null=yes}}
   }]]
@@ -1529,6 +1533,10 @@ test cdb2-9.17 {bind sub-command w/datetime} -setup {
 test cdb2-9.18 {bind sub-command w/datetimeus} -setup {
   set db [openConnection]
   set table [getTableName cdb2_918]
+
+  cdb2 run $db [string trim {
+    SET TIMEZONE UTC
+  }]
 
   cdb2 run $db [string trim [subst {
     CREATE TABLE $table {schema {datetimeus x null=yes}}
