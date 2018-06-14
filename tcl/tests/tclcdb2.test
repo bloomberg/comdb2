@@ -1831,6 +1831,114 @@ test cdb2-9.20 {bind sub-command w/intervalym} -setup {
 
 ###############################################################################
 
+test cdb2-9.21 {bind sub-command w/intervalds} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_921]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {intervalds x null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL [list] \
+      [list sign -1 days 49710 hours 23 mins 59 secs 59 msecs 999] \
+      [list sign -1 days 1 hours 0 mins 0 secs 0 msecs 0] \
+      [list sign -1 days 0 hours 1 mins 0 secs 0 msecs 0] \
+      [list sign -1 days 0 hours 0 mins 1 secs 0 msecs 0] \
+      [list sign -1 days 0 hours 0 mins 0 secs 1 msecs 0] \
+      [list sign -1 days 0 hours 0 mins 0 secs 0 msecs 1] \
+      [list sign -1 days 0 hours 0 mins 0 secs 0 msecs 0] \
+      [list sign 0 days 0 hours 0 mins 0 secs 0 msecs 0] \
+      [list sign 1 days 0 hours 0 mins 0 secs 0 msecs 1] \
+      [list sign 1 days 0 hours 0 mins 0 secs 1 msecs 0] \
+      [list sign 1 days 0 hours 0 mins 1 secs 0 msecs 0] \
+      [list sign 1 days 0 hours 1 mins 0 secs 0 msecs 0] \
+      [list sign 1 days 1 hours 0 mins 0 secs 0 msecs 0] \
+      [list sign 1 days 0 hours 0 mins 0 secs 0 msecs 0] \
+      [list sign 1 days 49710 hours 23 mins 59 secs 59 msecs 999]] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 intervalds $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {}
+
+###############################################################################
+
+test cdb2-9.22 {bind sub-command w/intervaldsus} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_922]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {intervaldsus x null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL [list] \
+      [list sign -1 days 49710 hours 23 mins 59 secs 59 usecs 999999] \
+      [list sign -1 days 1 hours 0 mins 0 secs 0 usecs 0] \
+      [list sign -1 days 0 hours 1 mins 0 secs 0 usecs 0] \
+      [list sign -1 days 0 hours 0 mins 1 secs 0 usecs 0] \
+      [list sign -1 days 0 hours 0 mins 0 secs 1 usecs 0] \
+      [list sign -1 days 0 hours 0 mins 0 secs 0 usecs 1] \
+      [list sign -1 days 0 hours 0 mins 0 secs 0 usecs 0] \
+      [list sign 0 days 0 hours 0 mins 0 secs 0 usecs 0] \
+      [list sign 1 days 0 hours 0 mins 0 secs 0 usecs 1] \
+      [list sign 1 days 0 hours 0 mins 0 secs 1 usecs 0] \
+      [list sign 1 days 0 hours 0 mins 1 secs 0 usecs 0] \
+      [list sign 1 days 0 hours 1 mins 0 secs 0 usecs 0] \
+      [list sign 1 days 1 hours 0 mins 0 secs 0 usecs 0] \
+      [list sign 1 days 0 hours 0 mins 0 secs 0 usecs 0] \
+      [list sign 1 days 49710 hours 23 mins 59 secs 59 usecs 999999]] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 intervaldsus $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {}
+
+###############################################################################
+
 #
 # NOTE: Cleanup test database before changing the configuration.  If the
 #       "TCLCDB2_GLOBAL_CLEANUP" environment variable is set to non-zero,
@@ -1928,26 +2036,6 @@ test cdb2-99.1 {debug sub-command} -setup {
 } -result {1 {wrong # args: should be "cdb2 debug connection"} 1\
 <connection_not_found> 0 {} 1 {wrong # args: should be "cdb2 debug connection"}\
 1 {wrong # args: should be "cdb2 debug connection"}}
-
-###############################################################################
-
-if {0} then {
-  #
-  # TODO: Test the following sub-commands, variations, etc.
-  #
-  cdb2 bind
-  cdb2 unbind
-
-  49710; # days...
-      6; # hours
-     28; # minutes
-     15; # seconds
-
-    CREATE TABLE $table {schema {intervalds x null=yes}}
-    CREATE TABLE $table {schema {intervaldsus x null=yes}}
-    CREATE TABLE $table {schema {intervalym x null=yes}}
-
-}
 
 ###############################################################################
 
