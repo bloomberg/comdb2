@@ -2349,7 +2349,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
     req_info.num_retries = retries_done;
     sqlquery.req_info = &req_info;
 
-
     int len = cdb2__query__get_packed_size(&query);
     unsigned char *buf = malloc(len + 1);
 
@@ -2754,8 +2753,9 @@ static void make_random_str(char *str, size_t max_len, int *len)
     static __thread char cached_portion[23] = {0}; // 2*10 digits + 2 '-' + '\n'
     static __thread size_t cached_portion_len = 0;
     if (cached_portion_len == 0) {
-        cached_portion_len = snprintf(cached_portion, sizeof(cached_portion)-1,
-                                      "%d-%d-", cdb2_hostid(), _PID);
+        cached_portion_len =
+            snprintf(cached_portion, sizeof(cached_portion) - 1, "%d-%d-",
+                     cdb2_hostid(), _PID);
     }
     struct timeval tv;
     gettimeofday(&tv, NULL);

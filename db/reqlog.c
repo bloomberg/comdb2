@@ -1741,8 +1741,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     if (gbl_fingerprint_queries && logger->have_fingerprint) {
         char expanded_fp[2 * FINGERPRINTSZ + 1];
         util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
-        reqlog_logf(logger, REQL_INFO, "fingerprint=%.*s",
-                        FINGERPRINTSZ * 2, expanded_fp);
+        reqlog_logf(logger, REQL_INFO, "fingerprint=%.*s", FINGERPRINTSZ * 2,
+                    expanded_fp);
     }
 
     logger->in_request = 0;

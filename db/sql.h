@@ -383,7 +383,7 @@ struct plugin_callbacks {
     skip_row_func *skip_row; /* newsql_skip_row */
     log_context_func *log_context; /* newsql_log_context */
     ret_uint64_func *get_client_starttime; /* newsql_get_client_starttime */
-    plugin_func *get_client_retries; /* newsql_get_client_retries */
+    plugin_func *get_client_retries;       /* newsql_get_client_retries */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
@@ -430,7 +430,6 @@ int set_high_availability(struct sqlclntstate *);
 int clr_high_availability(struct sqlclntstate *);
 uint64_t get_client_starttime(struct sqlclntstate *);
 int get_client_retries(struct sqlclntstate *);
-
 
 /* Client specific sql state */
 struct sqlclntstate {

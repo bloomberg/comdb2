@@ -290,7 +290,7 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
     cson_value *perfval = cson_value_new_object();
     cson_object *perfobj = cson_value_get_object(perfval);
 
-    //runtime is in microseconds
+    // runtime is in microseconds
     cson_object_set(perfobj, "runtime", cson_new_int(end - start));
 
     if (thread_stats->n_lock_waits || thread_stats->n_preads ||
