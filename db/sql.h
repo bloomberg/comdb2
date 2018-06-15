@@ -345,6 +345,7 @@ typedef void(add_steps_func)(struct sqlclntstate *, double steps);
 typedef void(setup_client_info_func)(struct sqlclntstate *, struct sqlthdstate *, char *);
 typedef int(skip_row_func)(struct sqlclntstate *, uint64_t);
 typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
+typedef uint64_t(ret_uint64_func)(struct sqlclntstate *);
 
 struct plugin_callbacks {
     response_func *write_response; /* newsql_write_response */
@@ -381,6 +382,8 @@ struct plugin_callbacks {
     setup_client_info_func *setup_client_info; /* newsql_setup_client_info */
     skip_row_func *skip_row; /* newsql_skip_row */
     log_context_func *log_context; /* newsql_log_context */
+    ret_uint64_func *get_client_starttime; /* newsql_get_client_starttime */
+    plugin_func *get_client_retries;       /* newsql_get_client_retries */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
@@ -413,6 +416,8 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, setup_client_info);                   \
         make_plugin_callback(clnt, name, skip_row);                            \
         make_plugin_callback(clnt, name, log_context);                         \
+        make_plugin_callback(clnt, name, get_client_starttime);                \
+        make_plugin_callback(clnt, name, get_client_retries);                  \
     } while (0)
 
 int param_count(struct sqlclntstate *);
@@ -423,7 +428,8 @@ int get_cnonce(struct sqlclntstate *, snap_uid_t *);
 int has_high_availability(struct sqlclntstate *);
 int set_high_availability(struct sqlclntstate *);
 int clr_high_availability(struct sqlclntstate *);
-
+uint64_t get_client_starttime(struct sqlclntstate *);
+int get_client_retries(struct sqlclntstate *);
 
 /* Client specific sql state */
 struct sqlclntstate {

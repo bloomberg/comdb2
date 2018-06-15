@@ -1417,6 +1417,25 @@ static int newsql_log_context(struct sqlclntstate *clnt,
     return 0;
 }
 
+static uint64_t newsql_get_client_starttime(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    CDB2SQLQUERY *sqlquery = appdata->sqlquery;
+    if (sqlquery->req_info) {
+        return sqlquery->req_info->timestampus;
+    }
+    return 0;
+}
+
+static int newsql_get_client_retries(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    CDB2SQLQUERY *sqlquery = appdata->sqlquery;
+    if (sqlquery->req_info) {
+        return sqlquery->req_info->num_retries;
+    }
+    return 0;
+}
 
 /* Process sql query if it is a set command. */
 static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,

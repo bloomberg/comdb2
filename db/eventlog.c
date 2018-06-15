@@ -284,14 +284,13 @@ void eventlog_tables(cson_object *obj, const struct reqlogger *logger)
 void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
 {
     const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
-    int64_t start, end;
-
-    start = logger->startus;
-    end = comdb2_time_epochus();
+    int64_t start = logger->startus;
+    int64_t end = comdb2_time_epochus();
 
     cson_value *perfval = cson_value_new_object();
     cson_object *perfobj = cson_value_get_object(perfval);
 
+    // runtime is in microseconds
     cson_object_set(perfobj, "runtime", cson_new_int(end - start));
 
     if (thread_stats->n_lock_waits || thread_stats->n_preads ||
@@ -469,6 +468,14 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
     if (logger->queuetimeus)
         cson_object_set(obj, "qtime", cson_new_int(logger->queuetimeus));
+    if (logger->clnt) {
+        uint64_t clientstarttime = get_client_starttime(logger->clnt);
+        if (clientstarttime && logger->startus > clientstarttime)
+            cson_object_set(obj, "startlag", /* in microseconds */
+                            cson_new_int(logger->startus - clientstarttime));
+        cson_object_set(obj, "clientretries",
+                        cson_new_int(get_client_retries(logger->clnt)));
+    }
 
     eventlog_context(obj, logger);
     eventlog_perfdata(obj, logger);

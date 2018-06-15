@@ -578,9 +578,8 @@ static void *thd_req(void *vthd)
 #endif
             pool_relablk(p_reqs, thd->iq); /* this request is done, so release
                                             * resource. */
-            nxtrq =
-                (struct dbq_entry_t *)listc_rtl(&q_reqs); /* get next item off
-                                                         *  hqueue */
+            /* get next item off hqueue */
+            nxtrq = (struct dbq_entry_t *)listc_rtl(&q_reqs);
             thd->iq = 0;
             if (nxtrq != 0) {
                 thd->iq = nxtrq->obj;
