@@ -2844,7 +2844,7 @@ static inline void repdb_enqueue(REP_CONTROL *rp, DBT *rec, int decoupled)
 
     if (listc_size(&repdb_queue) < repdb_maxlog || 
             (repdb_queue.bot != NULL && (log_compare(&rp->lsn, 
-                                                     &(LISTC_BOT(&repdb_queue)->repctl->lsn)) < 0))) {
+            &(LISTC_BOT(&repdb_queue)->repctl->lsn)) < 0))) {
         r = malloc(sizeof(*r));
 
         /* Borrow memory */
@@ -7065,7 +7065,7 @@ __truncate_repdb(dbenv)
     if (gbl_decoupled_logputs) {
         struct repdb_rec *r;
         while (r = listc_rtl(&repdb_queue)) {
-            gbl_inmem_repdb_memory -= (r->size + sizeof(r->repctl) + sizeof(*r));
+            gbl_inmem_repdb_memory -= (r->size + sizeof(*r->repctl) + sizeof(*r));
             free(r->repctl);
             free(r->data);
             free(r);
