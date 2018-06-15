@@ -13,34 +13,26 @@ if [ "x$dbnm" == "x" ] ; then
 fi
 
 # Number of records I will add.
-nrecs=2000
-
-# Number of schema changes
-nusc=1
+nrecs=200
 
 # Do schema changes
 function do_schema_changes
 {
-    typeset max=$1
     typeset iter=0
     typeset scnt=0
 
     schema=t2.csc2
 
-    while [[ $scnt -lt $max ]]; do 
+    echo "$dbnm alter t1 $schema"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table t1 { `cat $schema ` }"
+    if [[ $? != 0 ]]; then
 
-        echo "$dbnm alter t1 $schema"
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat $schema ` }"
-        if [[ $? != 0 ]]; then
+        echo "Error schema-changing on iteration $scnt"
+        return 1
 
-            echo "Error schema-changing on iteration $scnt"
-            return 1
+    fi
 
-        fi
-
-        let scnt=scnt+1
-
-    done
+    let scnt=scnt+1
 
     return 0
 }
@@ -52,10 +44,15 @@ function update_records
     echo "" > update.out
 
     while [[ $j -lt $nrecs ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set d=d+1 where a = $j" >> update.out 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set d=d+1 where a = $j" >> update.out 2>&1
+        if [ $? -ne 0 ] ; then
+            echo "update failed"
+            return 1
+        fi
         let j=j+1
-        sleep 1
     done
+
+    return 0
 }
 
 function insert_more_records
@@ -67,14 +64,15 @@ function insert_more_records
     while [[ $j -lt $nrecs ]]; do 
         let k=$j+$nrecs
         cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c,d) values ($k,'test1',x'1234',$j)"  >> insert2.out 2>&1
+        if [ $? -ne 0 ] ; then
+            echo "insert failed"
+            return 1
+        fi
         let j=j+1
-
-        sleep 1
     done
+
+    return 0
 }
-
-
-
 
 function insert_records
 {
@@ -85,12 +83,28 @@ function insert_records
     while [[ $j -lt $nrecs ]]; do 
         cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c,d) values ($j,'test1',x'1234',$j)"  >> insert1.out 2>&1
         let j=j+1
-        if [ $1 -gt 0 ] ; then
-            sleep $1
-        fi
     done
 }
 
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+function assertcnt
+{
+    target=$1
+    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "count is now $cnt but should be $target"
+    fi
+}
 
 function do_verify
 {
@@ -101,32 +115,50 @@ function do_verify
     fi
 }
 
+function assert_vers
+{
+    target=$1
+    newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('t1')")
+    if [[ $newver != $target ]] ; then
+        failexit "newver is now $newver but should be $target"
+    fi
+}
+
+getmaster() {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default '@send bdb cluster' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
 
 echo "Test with insert, SC should fail"
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1.csc2 ` }"
 
-insert_records 0
-# Print a count
-cdb2sql ${CDB2_OPTIONS} $dbnm default "select count(*) from t1"
+tblver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('t1')")
 
-# following will fail because of unique constraint violation -- after sc
-insert_more_records &
-ipid=$!
+insert_records
 
-echo "Do schema change after sleeping for a bit, let some inserts go in"
-sleep 5
-do_schema_changes $nusc
+assertcnt $nrecs
 
-ret=$?
-kill -9 $ipid
-cdb2sql ${CDB2_OPTIONS} $dbnm default "select count(*) from t1"
+master=`getmaster`
+echo "Master is $master"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 10"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 10"
 
-if [[ "$ret" == 0 ]]; then
-    echo "Test Failed: Schemachange should not have succeeded"
-    return -1
+echo "Do schema change to add an uniq index"
+do_schema_changes &
+sleep 2
+
+echo "Add more dup records and schema change should fail"
+insert_more_records
+if [ $? -ne 0 ] ; then
+    wait
+    failexit "failed to insert more records"
 fi
+
+wait
+
+assertcnt $(( nrecs * 2 ))
+assert_vers $tblver
 
 echo "NOTE: schemachange above CORRECTLY failed"
 do_verify
@@ -135,35 +167,46 @@ do_verify
 echo ""
 echo "Test with updates, SC should fail"
 
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 0"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 0"
+
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 
-insert_records 0
-# Print a count
-cdb2sql ${CDB2_OPTIONS} $dbnm default "select count(*) from t1"
+tblver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('t1')")
 
+insert_records
+assertcnt $nrecs
 
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 10"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 10"
 
-#Following will fail because of unique constraint violation -- after sc
-update_records &
-upid=$!
+echo "Do schema change to add an uniq index"
+do_schema_changes &
+sleep 2
 
-echo "Do schema change after sleeping for a bit, let some updates go through"
-sleep 5 
-do_schema_changes $nusc
-
-ret=$?
-kill -9 $upid
-cdb2sql ${CDB2_OPTIONS} $dbnm default "select count(*) from t1"
-
-if [[ "$ret" == 0 ]]; then
-    echo "Test Failed: Schemachange should not have succeeded"
-    return -1
+echo "update to get dups and schema change should fail"
+update_records
+if [ $? -ne 0 ] ; then
+    wait
+    failexit "failed to update records"
 fi
+
+wait
+
+assertcnt $nrecs
+assert_vers $tblver
 
 echo "NOTE: schemachange above CORRECTLY failed"
 do_verify
 
-echo "Success!  Performed $nusc schema-changes."
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 0"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 0"
+
+do_schema_changes
+assertcnt $nrecs
+assert_vers $(( tblver + 1 ))
+do_verify
+
 echo "Success"
