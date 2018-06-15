@@ -5728,8 +5728,31 @@ int clnt_stats_init(void) {
     return 0;
 }
 
+static const char* connstate_str(enum connection_state s) {
+    switch (s) {
+        case CONNECTION_NEW:
+            return "CONNECTION_NEW";
+
+        case CONNECTION_IDLE:
+            return "CONNECTION_IDLE";
+
+        case CONNECTION_RESET:
+            return "CONNECTION_RESET";
+
+        case CONNECTION_QUEUED:
+            return "CONNECTION_QUEUED";
+
+        case CONNECTION_RUNNING:
+            return "CONNECTION_RUNNING";
+
+        default:
+            return "???";
+    }
+}
+
 void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state) {
     clnt->state_start_time = comdb2_time_epochms();
+    // printf("%p -> %s\n", clnt, connstate_str(state));
     pthread_mutex_lock(&clnt->state_lk);
     clnt->state = state;
     pthread_mutex_unlock(&clnt->state_lk);
