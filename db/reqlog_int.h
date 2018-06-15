@@ -1,7 +1,6 @@
 #ifndef INCLUDED_REQLOG_INT_H
 #define INCLUDED_REQLOG_INT_H
 
-#include "sqlquery.pb-c.h"
 #include "list.h"
 #include "comdb2.h"
 #include "cdb2_constants.h"
@@ -116,8 +115,6 @@ struct reqlogger {
     int have_id;
     const char *event_type;
 
-    CDB2SQLQUERY *request;
-
     int ntables;
     int alloctables;
     char **sqltables;
@@ -127,6 +124,7 @@ struct reqlogger {
     struct client_query_stats *path;
     int ncontext;
     char **context;
+    struct sqlclntstate *clnt;
 };
 
 /* a rage of values to look for */

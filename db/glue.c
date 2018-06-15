@@ -4181,10 +4181,9 @@ int backend_open(struct dbenv *dbenv)
                     dbenv->basedir, db->tablename, bdberr);
                 /* this is a hack, lets just leak it */
                 if (ii == dbenv->num_dbs - 1) {
-                    dbenv->dbs[ii] == NULL;
+                    dbenv->dbs[ii] = NULL;
                 } else {
-                    memcpy(dbenv->dbs[ii], dbenv->dbs[ii + 1],
-                           sizeof(dbenv->dbs[0]));
+                    *dbenv->dbs[ii] = *dbenv->dbs[ii + 1];
                     dbenv->dbs[dbenv->num_dbs - 1] = NULL;
                 }
                 dbenv->num_dbs--;

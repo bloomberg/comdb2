@@ -24,7 +24,6 @@
 #include "block_internal.h"
 #include "comdb2uuid.h"
 #include "schemachange.h"
-#include "bpfunc.pb-c.h"
 
 #define OSQL_SEND_ERROR_WRONGMASTER (-1234)
 /**

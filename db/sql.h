@@ -65,7 +65,7 @@ typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];
     sqlite3_stmt *stmt;
     char *query;
-    struct schema *params_to_bind;
+    //struct schema *params_to_bind;
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
 
@@ -319,16 +319,123 @@ int sp_column_nil(struct response_data *, int);
 int sp_column_val(struct response_data *, int, int, void *);
 void *sp_column_ptr(struct response_data *, int, int, size_t *);
 
-typedef int(*response_func)(struct sqlclntstate *, int, void *, int);
+struct param_data {
+    char *name;
+    int type;
+    int null;
+    int pos;
+    int len;
+    union {
+        int64_t i;
+        double r;
+        void *p;
+        dttz_t dt;
+        intv_t tv;
+    } u;
+};
+
+typedef int(plugin_func)(struct sqlclntstate *);
+typedef int(response_func)(struct sqlclntstate *, int, void *, int);
+typedef void *(replay_func)(struct sqlclntstate *, void *);
+typedef int(param_index_func)(struct sqlclntstate *, const char *, int64_t *);
+typedef int(param_value_func)(struct sqlclntstate *, struct param_data *, int);
+typedef int(cnonce_value_func)(struct sqlclntstate *, snap_uid_t *);
+typedef int(get_snapshot_func)(struct sqlclntstate *, int *, int *);
+typedef void(add_steps_func)(struct sqlclntstate *, double steps);
+typedef void(setup_client_info_func)(struct sqlclntstate *, struct sqlthdstate *, char *);
+typedef int(skip_row_func)(struct sqlclntstate *, uint64_t);
+typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
+typedef uint64_t(ret_uint64_func)(struct sqlclntstate *);
+
+struct plugin_callbacks {
+    response_func *write_response; /* newsql_write_response */
+    response_func *read_response; /* newsql_read_response */
+
+    replay_func *save_stmt; /* newsql_save_stmt */
+    replay_func *restore_stmt; /* newsql_restore_stmt */
+    replay_func *destroy_stmt; /* newsql_destroy_stmt */
+    replay_func *print_stmt; /* newsql_print_stmt */
+
+    // bound params
+    plugin_func *param_count; /* newsql_param_count */
+    param_index_func *param_index; /* newsql_param_index */
+    param_value_func *param_value; /* newsql_param_value */
+
+    // run_statement_typed
+    plugin_func *override_count; /* newsql_override_count */
+
+    plugin_func *has_cnonce; /* newsql_has_cnonce */
+    plugin_func *set_cnonce; /* newsql_set_cnonce */
+    plugin_func *clr_cnonce; /* newsql_clr_cnonce */
+    cnonce_value_func *get_cnonce; /* newsql_has_cnonce */
+
+    get_snapshot_func *get_snapshot; /* newsql_get_snapshot */
+    plugin_func *upd_snapshot; /* newsql_update_snapshot */
+    plugin_func *clr_snapshot; /* newsql_clear_snapshot */
+
+    plugin_func *has_high_availability; /* newsql_has_high_availability */
+    plugin_func *set_high_availability; /* newsql_set_high_availability */
+    plugin_func *clr_high_availability; /* newsql_clr_high_availability */
+    plugin_func *get_high_availability; /* newsql_get_high_availability*/
+
+    add_steps_func *add_steps; /* newsql_add_steps */
+    setup_client_info_func *setup_client_info; /* newsql_setup_client_info */
+    skip_row_func *skip_row; /* newsql_skip_row */
+    log_context_func *log_context; /* newsql_log_context */
+    ret_uint64_func *get_client_starttime; /* newsql_get_client_starttime */
+    plugin_func *get_client_retries;       /* newsql_get_client_retries */
+};
+
+#define make_plugin_callback(clnt, name, func)                                 \
+    (clnt)->plugin.func = name##_##func
+
+#define plugin_set_callbacks(clnt, name)                                       \
+    do {                                                                       \
+        make_plugin_callback(clnt, name, write_response);                      \
+        make_plugin_callback(clnt, name, read_response);                       \
+        make_plugin_callback(clnt, name, save_stmt);                           \
+        make_plugin_callback(clnt, name, restore_stmt);                        \
+        make_plugin_callback(clnt, name, destroy_stmt);                        \
+        make_plugin_callback(clnt, name, print_stmt);                          \
+        make_plugin_callback(clnt, name, param_count);                         \
+        make_plugin_callback(clnt, name, param_index);                         \
+        make_plugin_callback(clnt, name, param_value);                         \
+        make_plugin_callback(clnt, name, override_count);                      \
+        make_plugin_callback(clnt, name, has_cnonce);                          \
+        make_plugin_callback(clnt, name, set_cnonce);                          \
+        make_plugin_callback(clnt, name, clr_cnonce);                          \
+        make_plugin_callback(clnt, name, get_cnonce);                          \
+        make_plugin_callback(clnt, name, get_snapshot);                        \
+        make_plugin_callback(clnt, name, upd_snapshot);                        \
+        make_plugin_callback(clnt, name, clr_snapshot);                        \
+        make_plugin_callback(clnt, name, has_high_availability);               \
+        make_plugin_callback(clnt, name, set_high_availability);               \
+        make_plugin_callback(clnt, name, clr_high_availability);               \
+        make_plugin_callback(clnt, name, get_high_availability);               \
+        make_plugin_callback(clnt, name, add_steps);                           \
+        make_plugin_callback(clnt, name, setup_client_info);                   \
+        make_plugin_callback(clnt, name, skip_row);                            \
+        make_plugin_callback(clnt, name, log_context);                         \
+        make_plugin_callback(clnt, name, get_client_starttime);                \
+        make_plugin_callback(clnt, name, get_client_retries);                  \
+    } while (0)
+
+int param_count(struct sqlclntstate *);
+int param_index(struct sqlclntstate *, const char *, int64_t *);
+int param_value(struct sqlclntstate *, struct param_data *, int);
+int override_count(struct sqlclntstate *);
+int get_cnonce(struct sqlclntstate *, snap_uid_t *);
+int has_high_availability(struct sqlclntstate *);
+int set_high_availability(struct sqlclntstate *);
+int clr_high_availability(struct sqlclntstate *);
+uint64_t get_client_starttime(struct sqlclntstate *);
+int get_client_retries(struct sqlclntstate *);
 
 /* Client specific sql state */
 struct sqlclntstate {
-    /* newsql_write_response, fastsql_write_response, etc */
-    response_func write_response;
-    /* newsql_read_response */
-    response_func read_response;
     /* appsock plugin specific data */
     void *appdata;
+    struct plugin_callbacks plugin;
 
     dbtran_type dbtran;
     pthread_mutex_t dtran_mtx; /* protect dbtran.dtran, if any,
@@ -340,10 +447,7 @@ struct sqlclntstate {
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
     char *sql;
-    int sqllen;
-    int *type_overrides;
     int recno;
-    struct fsqlreq req;
     int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];
     int dtprec;
@@ -403,23 +507,6 @@ struct sqlclntstate {
     int n_lua_stmt;
     int max_lua_stmt;
 
-    char *tag;
-    void *tagbuf; /* note: this is a pointer into the client appsock thread
-                     buffer, don't free */
-    int tagbufsz;
-    void *nullbits;
-    int numnullbits;
-
-    int numblobs;
-    void **blobs;
-    int *bloblens;
-    void *inline_blobs[MAXBLOBS];
-    int inline_bloblens[MAXBLOBS];
-    void **alloc_blobs;
-    int *alloc_bloblens;
-    int numallocblobs;
-
-
     unsigned int bdb_osql_trak; /* 32 debug bits interpreted by bdb for your
                                    "set debug bdb"*/
     struct client_query_stats *query_stats;
@@ -463,7 +550,6 @@ struct sqlclntstate {
     int isselect;   /* track if the query is a select query.*/
     int isUnlocked;
     int writeTransaction;
-    int want_query_effects;
     int send_one_row;
     int verify_retries; /* how many verify retries we've borne */
     int verifyretry_off;
@@ -475,9 +561,6 @@ struct sqlclntstate {
     int is_readonly;
     int send_intransresults;
     int is_expert;
-    int is_newsql;
-    CDB2SQLQUERY *sql_query; /* Needed to fetch the bind variables. */
-    CDB2QUERY *query;
     int added_to_hist;
 
     struct thr_handle *thr_self;
@@ -539,6 +622,8 @@ struct sqlclntstate {
     uint32_t init_gen;
     int8_t gen_changed;
     uint8_t skip_peer_chk;
+    uint8_t queue_me;
+    uint8_t fail_dispatch;
 
     char fingerprint[FINGERPRINTSZ];
     int ncontext;
@@ -878,7 +963,6 @@ struct sql_state {
     char cache_hint[HINT_LEN];         /* hint copy, if any */
     const char *sql;                   /* the actual string used */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
-    struct schema *parameters_to_bind; /* fast pointer to parameters */
 };
 int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
                                struct sql_state *, struct errstat *,
@@ -893,6 +977,8 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
 
 #define cur_is_remote(pCur) (pCur->cursor_class == CURSORCLASS_REMOTE)
 
+response_func write_response;
+response_func read_response;
 int sql_writer(SBUF2 *, const char *, int);
 int typestr_to_type(const char *ctype);
 

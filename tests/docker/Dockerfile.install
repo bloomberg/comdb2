@@ -19,6 +19,7 @@ RUN apt-get update && \
     ncurses-dev \
     protobuf-c-compiler \
     tcl \
+    tcl-dev \
     uuid-dev \
     libz1 \
     liblz4-tool \
@@ -43,7 +44,7 @@ RUN cd /comdb2 &&  \
     rm -rf build && \
     mkdir build && \
     cd build && \
-    cmake .. && \
+    cmake -DWITH_TCL=1 .. && \
     make -j4 && \
     make -j4 test-tools && \
     make install &&  \

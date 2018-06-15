@@ -27,25 +27,30 @@
 extern int gbl_osql_verify_retries_max;
 
 struct srs_tran_query {
-    char *query; /* asciiz string dup */
-    char *tag;
-
-    int tagbufsz;
-    int numnullbits;
-    int numblobs;
-
-    void *tagbuf;
-    void *nullbits;
-
-    void *inline_blobs[MAXBLOBS];
-    int inline_bloblens[MAXBLOBS];
-    void **blobs;
-    int *bloblens;
-    CDB2QUERY *cdb2_query;
-
-    char tzname[DB_MAX_TZNAMEDB];       /* timezone for this query */
+    int iscommit;
+    void *stmt;
     LINKC_T(struct srs_tran_query) lnk; /* next query */
 };
+
+static void *save_stmt(struct sqlclntstate *clnt)
+{
+    return clnt->plugin.save_stmt(clnt, NULL);
+}
+
+static void restore_stmt(struct sqlclntstate *clnt, srs_tran_query_t *item)
+{
+    clnt->plugin.restore_stmt(clnt, item->stmt);
+}
+
+static void destroy_stmt(struct sqlclntstate *clnt, srs_tran_query_t *item)
+{
+    clnt->plugin.destroy_stmt(clnt, item->stmt);
+}
+
+static char *print_stmt(struct sqlclntstate *clnt, srs_tran_query_t *item)
+{
+    return clnt->plugin.print_stmt(clnt, item->stmt);
+}
 
 struct srs_tran {
     LISTC_T(struct srs_tran_query) lst; /* list of queries up to this point */
@@ -54,16 +59,12 @@ struct srs_tran {
 /**
  * Free a statement entry.
  */
-static void srs_free_tran_entry(srs_tran_query_t *item)
+static void srs_free_tran_entry(struct sqlclntstate *clnt,
+                                srs_tran_query_t *item)
 {
     if (item == NULL)
         return;
-    if (item->cdb2_query)
-        cdb2__query__free_unpacked(item->cdb2_query, &pb_alloc);
-    if (item->blobs != item->inline_blobs)
-        free(item->blobs);
-    if (item->bloblens != item->inline_bloblens)
-        free(item->bloblens);
+    destroy_stmt(clnt, item);
     free(item);
 }
 
@@ -154,7 +155,7 @@ int srs_tran_del_last_query(struct sqlclntstate *clnt)
         return 0;
     srs_tran_query_t *item = NULL;
     item = listc_rbl(&clnt->osql.history->lst);
-    srs_free_tran_entry(item);
+    srs_free_tran_entry(clnt, item);
     return 0;
 }
 
@@ -166,10 +167,9 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
 {
     osqlstate_t *osql = &clnt->osql;
     srs_tran_query_t *item = NULL;
-    int qlen = strlen(clnt->sql) + 1;
-    char *sql = clnt->sql;
 
-    if (clnt->verifyretry_off) {
+    if (clnt->verifyretry_off || clnt->isselect || clnt->trans_has_sp ||
+        clnt->has_recording) {
         return 0;
     }
 
@@ -185,107 +185,20 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
         return 0;
     }
 
-    if (clnt->trans_has_sp) /* Don't have retry logic for SP. */
-        return 0;
-
-    /* select and selectv operations are not retried! */
-    while (*sql != 0 && isspace(*sql))
-        sql++;
-    if ((strncasecmp(sql, "select", 6) == 0) &&
-        (isspace(sql[6]) || toupper(sql[6]) == 'V'))
-        return 0;
-
     if (!osql->history) {
         if (srs_tran_create(clnt))
             return -1;
     }
 
-    if (clnt->query) {
-        item = (srs_tran_query_t *)malloc(sizeof(srs_tran_query_t) + qlen);
-        if (!item) {
-            fprintf(stderr, "malloc %zu\n", sizeof(srs_tran_query_t) + qlen);
-            return -1;
-        }
-        item->tag = NULL;
-        item->query = (char *)(((char *)item) + sizeof(srs_tran_query_t));
-        item->blobs = item->inline_blobs;
-        item->bloblens = item->inline_bloblens;
-        item->cdb2_query = clnt->query;
-        strncpy(item->query, clnt->sql, qlen);
-    } else if (clnt->tag) {
-        int tlen = strlen(clnt->tag) + 1;
-        int blobno, total_blob_length = 0;
-        void *end_buf;
-        for (blobno = 0; blobno < clnt->numblobs; blobno++) {
-            total_blob_length += clnt->bloblens[blobno];
-        }
-
-        item = (srs_tran_query_t *)malloc(
-            sizeof(srs_tran_query_t) + qlen + tlen + clnt->tagbufsz +
-            clnt->numnullbits + total_blob_length);
-
-        if (!item) {
-            fprintf(stderr, "malloc %zu\n", sizeof(srs_tran_query_t) + qlen);
-            return -1;
-        }
-
-        if (clnt->numblobs > MAXBLOBS) {
-            item->blobs = malloc(sizeof(void *) * clnt->numblobs);
-            item->bloblens = malloc(sizeof(int) * clnt->numblobs);
-        } else {
-            item->blobs = item->inline_blobs;
-            item->bloblens = item->inline_bloblens;
-        }
-
-        item->query = (char *)(((char *)item) + sizeof(srs_tran_query_t));
-        strncpy(item->query, clnt->sql, qlen);
-
-        item->tag = item->query + qlen;
-        strncpy(item->tag, clnt->tag, tlen);
-
-        item->tagbufsz = clnt->tagbufsz;
-        item->tagbuf = item->tag + tlen;
-        memcpy(item->tagbuf, clnt->tagbuf, clnt->tagbufsz);
-
-        item->numnullbits = clnt->numnullbits;
-        item->nullbits = (uint8_t *)item->tagbuf + clnt->tagbufsz;
-        memcpy(item->nullbits, clnt->nullbits, clnt->numnullbits);
-        end_buf = (uint8_t *)item->nullbits + clnt->numnullbits;
-
-        item->numblobs = clnt->numblobs;
-        memcpy(item->bloblens, clnt->bloblens, sizeof(int) * clnt->numblobs);
-
-        for (blobno = 0; blobno < clnt->numblobs; blobno++) {
-            item->blobs[blobno] = end_buf;
-            memcpy(item->blobs[blobno], clnt->blobs[blobno],
-                   clnt->bloblens[blobno]);
-            end_buf = (uint8_t *)end_buf + clnt->bloblens[blobno];
-        }
-        item->cdb2_query = NULL;
-
-    } else {
-        item = (srs_tran_query_t *)malloc(sizeof(srs_tran_query_t) + qlen);
-        if (!item) {
-            fprintf(stderr, "malloc %zu\n", sizeof(srs_tran_query_t) + qlen);
-            return -1;
-        }
-        item->tag = NULL;
-        item->cdb2_query = NULL;
-        item->query = (char *)(((char *)item) + sizeof(srs_tran_query_t));
-        item->blobs = item->inline_blobs;
-        item->bloblens = item->inline_bloblens;
-
-        strncpy(item->query, clnt->sql, qlen);
-    }
-    memcpy(item->tzname, clnt->tzname, sizeof(item->tzname));
-
+    item = malloc(sizeof(srs_tran_query_t));
+    item->stmt = save_stmt(clnt);
+    item->iscommit = strcasecmp("commit", clnt->sql) == 0;
     listc_abl(&osql->history->lst, item);
     clnt->added_to_hist = 1;
 
     /* if previous item is a 'commit', abort for debugging */
     item = item->lnk.prev;
-
-    if (item && 0 == strcmp("commit", item->query)) {
+    if (item && item->iscommit) {
         abort();
     }
 
@@ -304,7 +217,7 @@ int srs_tran_empty(struct sqlclntstate *clnt)
     LISTC_FOR_EACH_SAFE(&osql->history->lst, item, tmp, lnk)
     {
         listc_rfl(&osql->history->lst, item);
-        srs_free_tran_entry(item);
+        srs_free_tran_entry(clnt, item);
     }
     return 0;
 }
@@ -367,40 +280,11 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
         nq = 0;
         LISTC_FOR_EACH(&osql->history->lst, item, lnk)
         {
-            /* prep clnt input */
-            clnt->sql = item->query;
-            if (item->cdb2_query) {
-                clnt->query = item->cdb2_query;
-                clnt->sql_query = clnt->query->sqlquery;
-                clnt->is_newsql = 1;
-            } else if (item->tag) {
-                clnt->tag = item->tag;
-                clnt->tagbufsz = item->tagbufsz;
-                clnt->tagbuf = item->tagbuf;
-                clnt->numnullbits = item->numnullbits;
-                clnt->nullbits = item->nullbits;
-                clnt->numblobs = item->numblobs;
-                memcpy(clnt->bloblens, item->bloblens,
-                       sizeof(int) * clnt->numblobs);
-
-                for (int blobno = 0; blobno < clnt->numblobs; blobno++) {
-                    clnt->blobs[blobno] = item->blobs[blobno];
-                }
-            }
-            memcpy(clnt->tzname, item->tzname, sizeof(clnt->tzname));
-
-            rc = dispatch_sql_query(clnt);
-            if (rc)
+            restore_stmt(clnt, item);
+            if ((rc = dispatch_sql_query(clnt)) != 0)
                 break;
-
-            /*
-                     if (clnt->osql.replay == OSQL_RETRY_HALT)
-                        break;
-            */
-
             if (!osql->history)
                 break;
-
             nq++;
         }
         if (rc == 0)
@@ -417,7 +301,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
                     if (osql->history) {
                         LISTC_FOR_EACH(&osql->history->lst, item, lnk)
                         {
-                            printf("\"%s\"\n", item->query);
+                            logmsg(LOGMSG_DEBUG, "\"%s\"\n", print_stmt(clnt, item));
                         }
                     }
                 }

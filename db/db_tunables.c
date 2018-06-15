@@ -118,7 +118,6 @@ extern int reqltruncate;
 extern int analyze_max_comp_threads;
 extern int analyze_max_table_threads;
 extern int gbl_block_set_commit_genid_trace;
-extern int gbl_debug_high_availability_flag;
 extern int gbl_abort_on_unset_ha_flag;
 extern int gbl_write_dummy_trace;
 extern int gbl_abort_on_incorrect_upgrade;
@@ -143,6 +142,7 @@ extern int gbl_dump_full_net_queue;
 extern int gbl_max_clientstats_cache;
 extern int gbl_dbreg_stack_on_null_txn;
 extern int gbl_dbreg_abort_on_null_txn;
+extern int gbl_simulate_dropping_request;
 
 extern long long sampling_threshold;
 
@@ -919,6 +919,7 @@ const char *tunable_type(comdb2_tunable_type type)
     case TUNABLE_COMPOSITE: return "COMPOSITE";
     default: assert(0);
     }
+    return "???";
 }
 
 /* Register all db tunables. */

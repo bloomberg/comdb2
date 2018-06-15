@@ -2034,20 +2034,6 @@ int client_datetimeus_to_dttz(const cdb2_client_datetimeus_t *, const char *tz,
                               dttz_t *, int little_endian);
 int timespec_to_dttz(const struct timespec *, dttz_t *, int);
 
-struct field;
-struct sqlclntstate;
-int get_int_field(struct field *, const uint8_t *buf, int64_t *out);
-int get_uint_field(struct field *, const uint8_t *buf, uint64_t *out);
-int get_real_field(struct field *, const uint8_t *buf, double *out);
-int get_str_field(struct field *, const uint8_t *buf, char **out, int *outlen);
-int get_byte_field(struct field *, const uint8_t *buf, void **out, int *outlen);
-int get_datetime_field(struct field *, const uint8_t *buf, const char *tz,
-                       dttz_t *out, int little_endian);
-int get_datetimeus_field(struct field *, const uint8_t *buf, const char *tz,
-                         dttz_t *out, int little_endian);
-int get_blob_field(int blobno, struct sqlclntstate *clnt, void **out,
-                   int *outlen);
-
 short decimal_quantum_get(char *pdec, int len, int *sign);
 void decimal_quantum_set(char *pdec, int len, short *quantum, int *sign);
 struct dbtable;
@@ -2070,4 +2056,9 @@ void add_dttz_intvds(const dttz_t *, const intv_t *, dttz_t *);
 void sub_dttz_intvds(const dttz_t *, const intv_t *, dttz_t *);
 void sub_dttz_dttz(const dttz_t *, const dttz_t *, intv_t *);
 
+struct param_data;
+int get_type(struct param_data *out, void *in, int inlen, int intype,
+             const char *tzname, int little);
+
+int intv_to_str(const intv_t *, char *, int, int *);
 #endif

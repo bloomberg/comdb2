@@ -37,20 +37,6 @@
 
 enum { IOTIMEOUTMS = 10000 };
 
-enum {
-    SQLF_QUEUE_ME = 1,
-    SQLF_FAILDISPATCH_ON = 2,
-    SQLF_CONVERTED_BLOSQL = 4,
-    SQLREQ_FLAG_WANT_SP_TRACE = 8,
-    SQLREQ_FLAG_WANT_SP_DEBUG = 16,
-    SQLF_WANT_NEW_ROW_DATA = 32,
-    SQLF_WANT_QUERY_EFFECTS = 64,
-    SQLF_WANT_READONLY_ACCESS = 128,
-    SQLF_WANT_VERIFYRETRY_OFF = 256
-};
-
-#define N_BBIPC 2
-
 struct dbtable;
 struct consumer;
 struct thr_handle;
@@ -94,7 +80,6 @@ typedef long long tranid_t;
 #include "tag.h"
 #include "errstat.h"
 #include "comdb2_rcodes.h"
-#include "sqlquery.pb-c.h"
 #include "repl_wait.h"
 #include "types.h"
 #include "thread_util.h"
@@ -1824,8 +1809,6 @@ enum comdb2_queue_types {
     REQ_PQREQUEST
 };
 
-int convert_client_ftype(int type);
-
 int handle_buf(struct dbenv *dbenv, uint8_t *p_buf, const uint8_t *p_buf_end,
                int debug, char *frommach); /* 040307dh: 64bits */
 int handle_buf_offload(struct dbenv *dbenv, uint8_t *p_buf,
@@ -2825,13 +2808,13 @@ void reqlog_set_vreplays(struct reqlogger *logger, int replays);
 void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus);
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fp, size_t n);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
-void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *q);
 void reqlog_set_event(struct reqlogger *logger, const char *evtype);
 void reqlog_add_table(struct reqlogger *logger, const char *table);
 void reqlog_set_error(struct reqlogger *logger, const char *error,
                       int error_code);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
+void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
 /* Convert raw fingerprint to hex string, and write at most `n' characters of
    the result to `hexstr'. Return the number of characters written. */
 int reqlog_fingerprint_to_hex(struct reqlogger *logger, char *hexstr, size_t n);
@@ -3240,11 +3223,6 @@ extern unsigned long long gbl_inplace_blob_cnt;
 extern unsigned long long gbl_delupd_blob_cnt;
 extern unsigned long long gbl_addupd_blob_cnt;
 
-struct field *convert_client_field(CDB2SQLQUERY__Bindvalue *bindvalue,
-                                   struct field *c_fld);
-int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
-                    struct schema *params, struct sqlclntstate *clnt,
-                    char **err);
 void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm);
 int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm);
 
@@ -3547,10 +3525,6 @@ int set_rowlocks(void *trans, int enable);
 /* 0: Return null constraint error for not-null constraint violation on updates
    1: Return conversion error instead */
 extern int gbl_upd_null_cstr_return_conv_err;
-
-/* High availability getter & setter */
-int get_high_availability(struct sqlclntstate *clnt);
-void set_high_availability(struct sqlclntstate *clnt, int val);
 
 /* Update the tunable at runtime. */
 comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value);

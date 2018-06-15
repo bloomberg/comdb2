@@ -1194,7 +1194,7 @@ local function main()
     local y = db:json_to_table(json, {type_annotate = true})
     local r0 = check(x, y)
     local r1 = check(y, x)
-    if r0 ~= 0 and r1 ~= 0 then
+    if (r0 ~= 0) or (r1 ~= 0) then
         return -1, "failed"
     else
         return 0

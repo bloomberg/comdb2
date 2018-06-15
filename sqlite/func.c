@@ -415,10 +415,15 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
   int i;
   for(i = 0; i < n; i++) {
     sleep(1);
-    if( comdb2_sql_tick() )
-      break;  
-    /* We could also return error by doing
-     * sqlite3_result_error(context, "Interrupted", -1); */
+    rc = comdb2_sql_tick();
+    if( rc==SQLITE_LIMIT ){
+      break;
+    }
+    if( rc ){
+      logmsg(LOGMSG_INFO, "Peer dropped connection\n");
+      sqlite3_result_error(context, "Peer dropped connection", -1);
+      return;
+    }
   }
   sqlite3_result_int(context, i);
 }
