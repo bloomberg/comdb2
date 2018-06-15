@@ -135,10 +135,6 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     if (*file == 0 && sql_query &&
         clnt->ctrl_sqlengine == SQLENG_STRT_STATE) {
 
-        /* We get here when receiving BEGIN. If durable_lsn is enabled,
-           request the durable LSN from master and return it to the client.
-           Otherwise, return my current LSN. */
-
         int rc;
         uint32_t snapinfo_file, snapinfo_offset;
 

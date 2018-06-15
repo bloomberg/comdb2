@@ -1214,7 +1214,7 @@ static tran_type *bdb_tran_begin_berk_int(bdb_state_type *bdb_state,
 
 tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
                                      int trak, int *bdberr, int epoch, int file,
-                                     int offset)
+                                     int offset, int is_ha_retry)
 {
     tran_type *tran;
     int rc = 0;
@@ -1276,7 +1276,7 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
 
             /* register transaction so we start receiving log undos */
             tran->osql = bdb_osql_trn_register(bdb_state, tran, trak, bdberr,
-                                               epoch, file, offset);
+                                               epoch, file, offset, is_ha_retry);
             if (!tran->osql) {
                 if (*bdberr != BDBERR_NOT_DURABLE)
                     logmsg(LOGMSG_ERROR, "%s %d\n", __func__, *bdberr);
@@ -1409,28 +1409,30 @@ tran_type *bdb_tran_begin_readcommitted(bdb_state_type *bdb_state, int trak,
                                         int *bdberr)
 {
     return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_READCOMMITTED, trak,
-                                     bdberr, 0, 0, 0);
+                                     bdberr, 0, 0, 0, 0);
 }
 
 tran_type *bdb_tran_begin_socksql(bdb_state_type *bdb_state, int trak,
                                   int *bdberr)
 {
     return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_SOSQL, trak, bdberr,
-                                     0, 0, 0);
+                                     0, 0, 0, 0);
 }
 
 tran_type *bdb_tran_begin_snapisol(bdb_state_type *bdb_state, int trak,
-                                   int *bdberr, int epoch, int file, int offset)
+                                   int *bdberr, int epoch, int file, int offset,
+                                   int is_ha_retry)
 {
     return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_SNAPISOL, trak,
-                                     bdberr, epoch, file, offset);
+                                     bdberr, epoch, file, offset, is_ha_retry);
 }
 
 tran_type *bdb_tran_begin_serializable(bdb_state_type *bdb_state, int trak,
-                                       int *bdberr, int epoch, int file, int offset)
+                                       int *bdberr, int epoch, int file, int offset,
+                                       int is_ha_retry)
 {
     return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_SERIALIZABLE, trak,
-                                     bdberr, epoch, file, offset);
+                                     bdberr, epoch, file, offset, is_ha_retry);
 }
 
 /*
