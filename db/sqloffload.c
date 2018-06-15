@@ -732,7 +732,7 @@ static void osql_genid48_commit_callback(struct ireq *iq)
 
 extern int gbl_readonly_sc;
 
-void autoanalyze_after_fastinit(char *table)
+static void autoanalyze_after_fastinit(char *table)
 {
     pthread_t analyze;
     char *tblname = strdup(table); // will be freed in auto_analyze_table()
@@ -791,6 +791,8 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             broadcast_sc_end(iq->sc->table, iq->sc_seed);
             if (iq->sc->db)
                 sc_del_unused_files(iq->sc->db);
+            if (iq->sc->fastinit && !iq->sc->drop_table)
+                autoanalyze_after_fastinit(iq->sc->table);
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }
