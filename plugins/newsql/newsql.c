@@ -2267,7 +2267,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;
         clnt.sql = sql_query->sql_query;
-        clnt.query = query;
         clnt.added_to_hist = 0;
         logmsg(LOGMSG_DEBUG, "Query '%s':'%s'\n", sql_query->sql_query, clnt.sql);
 
