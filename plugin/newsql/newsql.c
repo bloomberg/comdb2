@@ -142,9 +142,10 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
             uint32_t durable_gen;
 
             rc = request_durable_lsn_from_master(
-                    thedb->bdb_env, &snapinfo_file, &snapinfo_offset, &durable_gen);
+                thedb->bdb_env, &snapinfo_file, &snapinfo_offset, &durable_gen);
         } else {
-            (void)bdb_get_current_lsn(thedb->bdb_env, &snapinfo_file, &snapinfo_offset);
+            (void)bdb_get_current_lsn(thedb->bdb_env, &snapinfo_file,
+                                      &snapinfo_offset);
             rc = 0;
         }
 
@@ -153,9 +154,10 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
             *offset = snapinfo_offset;
 
             if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_USER, "%s line %d cnonce='%s' master "
-                                    "returned durable-lsn "
-                                    "[%d][%d], clnt->is_hasql_retry=%d\n",
+                logmsg(LOGMSG_USER,
+                       "%s line %d cnonce='%s' master "
+                       "returned durable-lsn "
+                       "[%d][%d], clnt->is_hasql_retry=%d\n",
                        __func__, __LINE__, cnonce, *file, *offset,
                        clnt->is_hasql_retry);
             }
@@ -1281,8 +1283,8 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
        on clnt even if the snapshot info has been populated.
        However, dont't attempt to restore if client overrides
        send_intrans_results by setting INTRANSRESULTS to ON. */
-    if (clnt->send_intrans_results != -1 &&
-        sqlquery->n_features > 0 && gbl_disable_skip_rows == 0) {
+    if (clnt->send_intrans_results != -1 && sqlquery->n_features > 0 &&
+        gbl_disable_skip_rows == 0) {
         for (int ii = 0; ii < sqlquery->n_features; ii++) {
             if (CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS !=
                 sqlquery->features[ii])

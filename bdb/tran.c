@@ -1275,8 +1275,9 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
             }
 
             /* register transaction so we start receiving log undos */
-            tran->osql = bdb_osql_trn_register(bdb_state, tran, trak, bdberr,
-                                               epoch, file, offset, is_ha_retry);
+            tran->osql =
+                bdb_osql_trn_register(bdb_state, tran, trak, bdberr, epoch,
+                                      file, offset, is_ha_retry);
             if (!tran->osql) {
                 if (*bdberr != BDBERR_NOT_DURABLE)
                     logmsg(LOGMSG_ERROR, "%s %d\n", __func__, *bdberr);
@@ -1428,8 +1429,8 @@ tran_type *bdb_tran_begin_snapisol(bdb_state_type *bdb_state, int trak,
 }
 
 tran_type *bdb_tran_begin_serializable(bdb_state_type *bdb_state, int trak,
-                                       int *bdberr, int epoch, int file, int offset,
-                                       int is_ha_retry)
+                                       int *bdberr, int epoch, int file,
+                                       int offset, int is_ha_retry)
 {
     return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_SERIALIZABLE, trak,
                                      bdberr, epoch, file, offset, is_ha_retry);

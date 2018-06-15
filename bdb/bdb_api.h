@@ -649,8 +649,8 @@ tran_type *bdb_tran_begin_serializable(bdb_state_type *bdb_state, int trak,
                                        int *bdberr, int epoch, int file,
                                        int offset, int is_ha_retry);
 tran_type *bdb_tran_begin_snapisol(bdb_state_type *bdb_state, int trak,
-                                   int *bdberr, int epoch, int file,
-                                   int offset, int is_ha_retry);
+                                   int *bdberr, int epoch, int file, int offset,
+                                   int is_ha_retry);
 
 /* commit the transaction referenced by the tran handle */
 int bdb_tran_commit(bdb_state_type *bdb_handle, tran_type *tran, int *bdberr);
