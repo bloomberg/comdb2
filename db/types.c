@@ -13574,142 +13574,52 @@ int client_datetimeus_to_dttz(const cdb2_client_datetimeus_t *in,
     client_dt_to_dttz_func_body(datetimeus, DATETIMEUS, 6, usec, unsigned int);
 }
 
-extern int gbl_dump_sql_dispatched; /* for the following get_field()s */
-int get_int_field(struct field *f, const uint8_t *buf, int64_t *out)
+static int get_int_field(int64_t *out, void *in, size_t len, int flip)
 {
-    int rc = 0;
-    switch (f->datalen) {
-    case sizeof(short):
-        *out = (short)htons(*(short *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "short: %ld\n", *out);
+    int16_t i16;
+    int32_t i32;
+    int64_t i64;
+    switch (len) {
+    case sizeof(int16_t):
+        memcpy(&i16, in, len);
+        if (flip) i16 = flibc_shortflip(i16);
+        *out = i16;
         break;
-    case sizeof(int):
-        *out = (int)htonl(*(int *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "int: %ld\n", *out);
+    case sizeof(int32_t):
+        memcpy(&i32, in, len);
+        if (flip) i32 = flibc_intflip(i32);
+        *out = i32;
         break;
-    case sizeof(long long):
-        *out = (long long)flibc_htonll(*(long long *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "long long: %ld\n", *out);
+    case sizeof(int64_t):
+        memcpy(&i64, in, len);
+        if (flip) i64 = flibc_llflip(i64);
+        *out = i64;
         break;
     default:
-        rc = -1;
-        break;
+        return -1;
     }
-    return rc;
+    return 0;
 }
 
-int get_uint_field(struct field *f, const uint8_t *buf, uint64_t *out)
+static int get_real_field(double *out, void *in, size_t len, int flip)
 {
-    int rc = 0;
-    int64_t ival;
-    uint64_t uival;
-    switch (f->datalen) {
-    case sizeof(unsigned short):
-        ival = (long long)(unsigned short)htons(*(short *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "unsigned short: %ld\n", ival);
-        break;
-    case sizeof(unsigned int):
-        ival = (long long)(unsigned int)htonl(*(int *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "unsigned int: %ld\n", ival);
-        break;
-    case sizeof(unsigned long long):
-        uival = (uint64_t)flibc_htonll(*(uint64_t *)(buf + f->offset));
-        if (uival > LLONG_MAX) {
-            rc = -1;
-            break;
-        }
-        ival = uival;
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "unsigned long long: %ld\n", ival);
-        break;
-    default:
-        rc = -1;
-        break;
-    }
-    *out = ival;
-    return rc;
-}
-
-int get_real_field(struct field *f, const uint8_t *buf, double *out)
-{
-    int rc = 0;
-    double dval;
-    switch (f->datalen) {
+    float f;
+    double d;
+    switch (len) {
     case sizeof(float):
-        dval = (double)flibc_htonf(*(float *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "float: %f\n", dval);
+        memcpy(&f, in, len);
+        if (flip) f = flibc_floatflip(f);
+        *out = f;
         break;
     case sizeof(double):
-        dval = (double)flibc_htond(*(double *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched) logmsg(LOGMSG_USER, "double: %f\n", dval);
+        memcpy(&d, in, len);
+        if (flip) d = flibc_dblflip(d);
+        *out = d;
         break;
     default:
-        rc = 1;
+        return -1;
     }
-    *out = dval;
-    return rc;
-}
-
-int get_str_field(struct field *f, const uint8_t *buf, char **out, int *outlen)
-{
-    int rc = 0;
-    *out = (char *)buf + f->offset;
-
-    const char *b = *out;
-    int len = 0;
-    while (*b != '\0' && len < f->datalen) {
-        ++b;
-        ++len;
-    }
-    *outlen = len;
-    return rc;
-}
-
-int get_byte_field(struct field *f, const uint8_t *buf, void **out, int *outlen)
-{
-    int rc = 0;
-    *out = (void *)buf + f->offset;
-    *outlen = f->datalen;
-    if (gbl_dump_sql_dispatched) {
-        logmsg(LOGMSG_USER, "byte:\n");
-        fsnapf(stdout, *out, *outlen);
-    }
-    return rc;
-}
-
-int get_blob_field(int blobno, struct sqlclntstate *clnt, void **out,
-                   int *outlen)
-{
-    int rc = 0;
-    if (blobno >= clnt->numblobs) return -1;
-    *out = clnt->blobs[blobno];
-    *outlen = clnt->bloblens[blobno];
-    if (gbl_dump_sql_dispatched) {
-        logmsg(LOGMSG_USER, "blob:\n");
-        fsnapf(stdout, *out, *outlen);
-    }
-    return rc;
-}
-
-int get_datetime_field(struct field *f, const uint8_t *buf, const char *tz,
-                       dttz_t *out, int little_endian)
-{
-    cdb2_client_datetime_t *cdt = (cdb2_client_datetime_t *)(buf + f->offset);
-    return client_datetime_to_dttz(cdt, tz, out, little_endian);
-}
-
-int get_datetimeus_field(struct field *f, const uint8_t *buf, const char *tz,
-                         dttz_t *out, int little_endian)
-{
-    cdb2_client_datetimeus_t *cdt =
-        (cdb2_client_datetimeus_t *)(buf + f->offset);
-    return client_datetimeus_to_dttz(cdt, tz, out, little_endian);
+    return 0;
 }
 
 /**
@@ -14568,4 +14478,135 @@ void set_null_func(void *to, int sz) { set_null(to, sz); }
 void set_data_func(void *to, const void *from, int sz)
 {
     set_data(to, from, sz);
+}
+
+static void client_intv_ym_to_intv_t(const cdb2_client_intv_ym_t *in,
+                                     intv_t *out, int flip)
+{
+    memset(out, 0, sizeof(intv_t));
+    out->type = INTV_YM_TYPE;
+    intv_ym_t *ym = &out->u.ym;
+    if (flip) {
+        out->sign = flibc_intflip(in->sign);
+        ym->years = flibc_intflip(in->years);
+        ym->months = flibc_intflip(in->months);
+    } else {
+        out->sign = in->sign;
+        ym->years = in->years;
+        ym->months = in->months;
+    }
+}
+
+static void client_intv_ds_to_intv_t(const cdb2_client_intv_ds_t *in,
+                                     intv_t *out, int flip)
+{
+    memset(out, 0, sizeof(intv_t));
+    out->type = INTV_DS_TYPE;
+    intv_ds_t *ds = &out->u.ds;
+    ds->prec = DTTZ_PREC_MSEC;
+    ds->conv = 1;
+    if (flip) {
+        out->sign = flibc_intflip(in->sign);
+        ds->days =  flibc_intflip(in->days);
+        ds->hours = flibc_intflip(in->hours);
+        ds->mins = flibc_intflip(in->mins);
+        ds->sec = flibc_intflip(in->sec);
+        ds->frac = flibc_intflip(in->msec);
+    } else {
+        out->sign = in->sign;
+        ds->days =  in->days;
+        ds->hours = in->hours;
+        ds->mins = in->mins;
+        ds->sec = in->sec;
+        ds->frac = in->msec;
+    }
+}
+
+static void client_intv_dsus_to_intv_t(const cdb2_client_intv_dsus_t *in,
+                                       intv_t *out, int flip)
+{
+    client_intv_ds_to_intv_t((cdb2_client_intv_ds_t *)in, out, flip);
+    out->type = INTV_DSUS_TYPE;
+    out->u.ds.prec = DTTZ_PREC_USEC;
+}
+
+int get_type(struct param_data *param, void *p, int len, int type,
+             const char *tzname, int little)
+{
+    int flip = 0;
+#   if BYTE_ORDER == BIG_ENDIAN
+    if (little)
+#   elif BYTE_ORDER == LITTLE_ENDIAN
+    if (!little)
+#   endif
+        flip = 1;
+    param->null = 0;
+    switch (type) {
+    case CLIENT_INT:
+    case CLIENT_UINT:
+        param->len = sizeof(param->u.i);
+        return get_int_field(&param->u.i, p, len, flip);
+    case CLIENT_REAL:
+        param->len = sizeof(param->u.r);
+        return get_real_field(&param->u.r, p, len, flip);
+    case CLIENT_CSTR:
+    case CLIENT_PSTR:
+    case CLIENT_PSTR2:
+    case CLIENT_VUTF8:
+        param->u.p = p;
+        param->len = len;
+        return 0;
+    case CLIENT_BLOB:
+    case CLIENT_BYTEARRAY:
+        param->u.p = p;
+        param->len = len;
+        return 0;
+    case CLIENT_DATETIME:
+        param->len = sizeof(param->u.dt);
+        return client_datetime_to_dttz(p, tzname, &param->u.dt, little);
+    case CLIENT_DATETIMEUS:
+        param->len = sizeof(param->u.dt);
+        return client_datetimeus_to_dttz(p, tzname, &param->u.dt, little);
+    case CLIENT_INTVYM:
+        param->len = sizeof(param->u.tv);
+        client_intv_ym_to_intv_t(p, &param->u.tv, flip);
+        return 0;
+    case CLIENT_INTVDS:
+        param->len = sizeof(param->u.tv);
+        client_intv_ds_to_intv_t(p, &param->u.tv, flip);
+        return 0;
+    case CLIENT_INTVDSUS:
+        param->len = sizeof(param->u.tv);
+        client_intv_dsus_to_intv_t(p, &param->u.tv, flip);
+        return 0;
+    }
+    return -1;
+}
+
+#include <str0.h>
+int intv_to_str(const intv_t *tv, char *out, int len, int *used)
+{
+    switch (tv->type) {
+    case INTV_YM_TYPE:
+        *used = snprintf0(out, len, "%s%u-%2.2u", tv->sign == -1 ? "- " : "",
+                          tv->u.ym.years, tv->u.ym.months);
+        break;
+    case INTV_DS_TYPE:
+        *used =
+            snprintf0(out, len, "%s%u %2.2u:%2.2u:%2.2u.%3.3u",
+                      tv->sign == -1 ? "- " : "", tv->u.ds.days, tv->u.ds.hours,
+                      tv->u.ds.mins, tv->u.ds.sec, tv->u.ds.frac);
+        break;
+    case INTV_DSUS_TYPE:
+        *used =
+            snprintf0(out, len, "%s%u %2.2u:%2.2u:%2.2u.%6.6u",
+                      tv->sign == -1 ? "- " : "", tv->u.ds.days, tv->u.ds.hours,
+                      tv->u.ds.mins, tv->u.ds.sec, tv->u.ds.frac);
+        break;
+    default:
+        return -1;
+    }
+    if (*used < len)
+        return 0;
+    return -1;
 }

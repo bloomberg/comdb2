@@ -244,6 +244,7 @@ static inline comdb2_tunable_type bdb_to_tunable_type(int type)
     case BDB_ATTRTYPE_BOOLEAN: return TUNABLE_BOOLEAN;
     default: assert(0);
     }
+    return TUNABLE_INVALID;
 }
 
 static inline int bdb_to_tunable_flag(int type)
@@ -260,6 +261,7 @@ static inline int bdb_to_tunable_flag(int type)
     case BDB_ATTRTYPE_BOOLEAN: return NOARG;
     default: assert(0);
     }
+    return TUNABLE_INVALID;
 }
 
 void *bdb_attr_create(void)

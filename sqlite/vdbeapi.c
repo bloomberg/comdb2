@@ -1519,7 +1519,7 @@ static int bindDatetime(
 /* COMDB2 MODIFICATION */
 static int bindInterval(
   sqlite3_stmt *pStmt, 
-  int i, intv_t it
+  int i, intv_t *it
 ){
   Vdbe *p = (Vdbe *) pStmt;
   Mem *pVar;
@@ -1529,7 +1529,7 @@ static int bindInterval(
   pVar = &p->aVar[i-1];
   pVar->flags = MEM_Interval;
   pVar->flags &= ~(MEM_Str|MEM_Static|MEM_Dyn|MEM_Ephem);
-  pVar->du.tv = it;
+  pVar->du.tv = *it;
   pVar->xDel = NULL;
   pVar->enc = 0;
   pVar->tz = NULL;
@@ -1725,8 +1725,10 @@ int sqlite3VdbeParameterIndex(Vdbe *p, const char *zName, int nName){
     return 0;
   }
   if( zName ){
+    int adj = (zName[0] == '@' ? 0 : 1); /* COMDB2 MODIFICATION */
     for(i=0; i<p->nzVar; i++){
       const char *z = p->azVar[i];
+      if( z ) z += adj; /* COMDB2 MODIFICATION */
       if( z && strncmp(z,zName,nName)==0 && z[nName]==0 ){
         return i+1;
       }
@@ -2149,7 +2151,7 @@ int sqlite3_bind_datetime(
 /* COMDB2 MODIFICATION */
 int sqlite3_bind_interval(
   sqlite3_stmt *pStmt,
-  int i, intv_t it
+  int i, intv_t *it
 ){
   return bindInterval(pStmt, i, it);
 }

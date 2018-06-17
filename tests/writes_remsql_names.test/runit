@@ -3,8 +3,6 @@
 # Remote cursor moves testcase for comdb2
 ################################################################################
 
-set -x 
-
 # args
 # <dbname> <dbdir> <testdir> <autodbname> <autodbnum> <cluster>
 echo "main db vars"

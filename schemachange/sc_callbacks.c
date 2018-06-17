@@ -156,6 +156,7 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
                "Aborting schema change due to unexpected error\n");
         usedb->sc_abort = 1;
         MEMORY_SYNC;
+        rc = 0; // should just fail SC
     } else if (rc == 0) {
         (iq->sc_deletes)++;
     }
@@ -280,7 +281,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         MEMORY_SYNC;
         free(new_dta);
         free_blob_status_data(oldblobs);
-        return rc;
+        return 0; // should just fail SC
     }
 
     ins_keys = revalidate_new_indexes(iq, usedb->sc_to, new_dta, add_idx_blobs,
@@ -307,6 +308,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
                "Aborting schema change due to unexpected error\n");
         iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
+        rc = 0; // should just fail SC
     }
     if (iq->debug) {
         reqpopprefixes(iq, 1);
@@ -348,8 +350,8 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
     if (rc) {
         usedb->sc_abort = 1;
         MEMORY_SYNC;
-        free(new_dta);
-        return rc;
+        rc = 0;
+        goto done; // should just fail SC
     }
 
     ins_keys =
@@ -373,8 +375,8 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
 
             usedb->sc_abort = 1;
             MEMORY_SYNC;
-            free(new_dta);
-            return 0;
+            rc = 0;
+            goto done; // should just fail SC
         }
     }
 
@@ -408,8 +410,10 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
                "Aborting schema change due to unexpected error\n");
         iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
+        rc = 0; // should just fail SC
     }
 
+done:
     if (iq->debug) {
         reqpopprefixes(iq, 1);
     }
@@ -459,6 +463,7 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
                "Aborting schema change due to unexpected error\n");
         iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
+        rc = 0; // should just fail SC
     } else if (rc == 0) {
         (iq->sc_updates)++;
     }

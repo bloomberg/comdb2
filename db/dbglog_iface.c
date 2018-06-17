@@ -29,6 +29,7 @@ int grab_dbglog_file(struct sbuf2 *sb, unsigned long long cookie, struct sqlclnt
 {
     if (impl.grab_dbglog_file)
         return impl.grab_dbglog_file(sb, cookie, clnt);
+    return 0;
 }
 
 struct sbuf2 *open_dbglog_file(unsigned long long cookie)

@@ -214,7 +214,7 @@ static int db_comdb_verify(Lua L) {
 
     char *cols[] = {"out"};
     struct sqlclntstate *clnt = sp->clnt;
-    clnt->write_response(clnt, RESPONSE_COLUMNS_STR, &cols, 1);
+    write_response(clnt, RESPONSE_COLUMNS_STR, &cols, 1);
 
     int rc = 0;
 

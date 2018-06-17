@@ -799,6 +799,7 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 ($0=16.000000, $1='number', $2='deadbeef', $3='blob', $4='deadbeef', $5='blob')
 ($0=17.000000, $1='number', $2='2017-04-18T160323.416 America/New_York', $3='datetime', $4='2017-04-18T160323.416 America/New_York', $5='datetime')
 ($0=18.000000, $1='number', $2='0 00:01:00.000', $3='intervalds', $4='0 00:01:00.000', $5='intervalds')
+($0=19.000000, $1='number', $2='0-10', $3='intervalym', $4='0-10', $5='intervalym')
 ($0=1.000000, $1='number', $2='NULL', $3='int', $4='NULL', $5='int')
 ($0=2.000000, $1='number', $2='NULL', $3='real', $4='NULL', $5='real')
 ($0=3.000000, $1='number', $2='NULL', $3='decimal', $4='NULL', $5='decimal')

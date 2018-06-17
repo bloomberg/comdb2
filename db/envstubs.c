@@ -27,7 +27,6 @@
 #include <poll.h>
 #include <unistd.h>
 #include <lockassert.h>
-#include <plink.h>
 
 #include "comdb2.h"
 #include "machclass.h"
@@ -135,12 +134,4 @@ uint64_t comdb2fastseed(void)
 
     memcpy(&out, seed, 8);
     return flibc_ntohll(out);
-}
-
-extern char *___plink_constants[PLINK_____END];
-const char *plink_constant(int which)
-{
-    if (which < 0 || which >= PLINK_____END)
-        return NULL;
-    return ___plink_constants[which];
 }

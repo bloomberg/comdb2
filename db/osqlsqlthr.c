@@ -194,7 +194,7 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
  *
  */
 
-inline int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd,
+int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd,
                         char *pData, int nData, int nStat)
 {
     return osql_send_updstat_logic(pCur, thd, pData, nData, nStat,
@@ -1097,7 +1097,7 @@ static int osql_send_updstat_logic(struct BtCursor *pCur,
     return rc;
 }
 
-inline int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
+int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype)
 {
     struct sqlclntstate *clnt = thd->clnt;
@@ -1326,30 +1326,15 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
     }
     osql->tran_ops = 0; /* reset transaction size counter*/
 
-    if (clnt->sql_query && get_high_availability(clnt))
-    {
-        assert (clnt->sql_query->has_cnonce);
-        assert (clnt->sql_query->cnonce.len > 0 &&
-                clnt->sql_query->cnonce.len <= MAX_SNAP_KEY_LEN);
-    }
-
-    int send_cnonce = get_high_availability(clnt);
     extern int gbl_always_send_cnonce;
-    if (gbl_always_send_cnonce)
-        send_cnonce = true;
-
-    if (osql->rqid == OSQL_RQID_USE_UUID && clnt->sql_query &&
-        clnt->sql_query->has_cnonce && send_cnonce &&
-        (clnt->sql_query->cnonce.len <= MAX_SNAP_KEY_LEN) &&
-        !clnt->trans_has_sp) {
+    int send_cnonce = gbl_always_send_cnonce ? 1 : has_high_availability(clnt);
+    if (osql->rqid == OSQL_RQID_USE_UUID && send_cnonce &&
+        get_cnonce(clnt, &snap_info) == 0 && !clnt->trans_has_sp) {
 
         /* pass to master the state of verify retry.
          * if verify retry is on and error is retryable, don't write to
          * blkseq on master because replicant will retry */
         snap_info.replicant_can_retry = replicant_can_retry(clnt);
-        snap_info.keylen = clnt->sql_query->cnonce.len;
-        memcpy(snap_info.key, clnt->sql_query->cnonce.data,
-               clnt->sql_query->cnonce.len);
         snap_info.effects = clnt->effects;
         comdb2uuidcpy(snap_info.uuid, osql->uuid);
         snap_info_p = &snap_info;

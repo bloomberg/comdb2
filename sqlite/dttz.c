@@ -38,7 +38,6 @@ int SERVER_DATETIME_to_CLIENT_DATETIME ( const void *in, int inlen,
         const struct field_conv_opts *outopts, blob_buffer_t *outblob);
 const uint8_t *client_datetime_get(cdb2_client_datetime_t *p_client_datetime,
         const uint8_t *p_buf, const uint8_t *p_buf_end);
-uint64_t flibc_htonll(uint64_t host_order);
 
 
 static void yearFunc(sqlite3_context *context, int argc, sqlite3_value **argv);

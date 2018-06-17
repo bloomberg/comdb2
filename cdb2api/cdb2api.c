@@ -35,14 +35,26 @@
 #include "sqlquery.pb-c.h"
 #include "sqlresponse.pb-c.h"
 
+/*
+*******************************************************************************
+** WARNING: If you add any internal configuration state to this file, please
+**          update the reset_the_configuration() function as well to include
+**          it.
+*******************************************************************************
+*/
+
 #define SOCKPOOL_SOCKET_NAME "/tmp/sockpool.socket"
 #define COMDB2DB "comdb2db"
 #define COMDB2DB_NUM 32432
 
-static char CDB2DBCONFIG_NOBBENV[512] = "/opt/bb/etc/cdb2/config/comdb2db.cfg";
-/* The real path is COMDB2_ROOT + CDB2DBCONFIG_NOBBENV_PATH  */
-static char CDB2DBCONFIG_NOBBENV_PATH[] = "/etc/cdb2/config.d/";
+#define CDB2DBCONFIG_NOBBENV_DEFAULT "/opt/bb/etc/cdb2/config/comdb2db.cfg"
+static char CDB2DBCONFIG_NOBBENV[512] = CDB2DBCONFIG_NOBBENV_DEFAULT;
 
+/* The real path is COMDB2_ROOT + CDB2DBCONFIG_NOBBENV_PATH  */
+#define CDB2DBCONFIG_NOBBENV_PATH_DEFAULT "/etc/cdb2/config.d/"
+static char CDB2DBCONFIG_NOBBENV_PATH[] = CDB2DBCONFIG_NOBBENV_PATH_DEFAULT; /* READ-ONLY */
+
+#define CDB2DBCONFIG_TEMP_BB_BIN_DEFAULT "/bb/bin/comdb2db.cfg"
 static char CDB2DBCONFIG_TEMP_BB_BIN[512] = "/bb/bin/comdb2db.cfg";
 
 static char *CDB2DBCONFIG_BUF = NULL;
@@ -50,15 +62,28 @@ static char *CDB2DBCONFIG_BUF = NULL;
 static char cdb2_default_cluster[64] = "";
 static char cdb2_comdb2dbname[32] = "";
 static char cdb2_dnssuffix[255] = "";
-
 static char cdb2_machine_room[16] = "";
-static int CDB2_PORTMUXPORT = 5105;
-static int MAX_RETRIES = 21; /* We are looping each node twice. */
-static int MIN_RETRIES = 3;
-static int CDB2_CONNECT_TIMEOUT = 100;
-static int CDB2_AUTO_CONSUME_TIMEOUT_MS = 2;
-static int COMDB2DB_TIMEOUT = 500;
-static int cdb2_tcpbufsz = 0;
+
+#define CDB2_PORTMUXPORT_DEFAULT 5105
+static int CDB2_PORTMUXPORT = CDB2_PORTMUXPORT_DEFAULT;
+
+#define MAX_RETRIES_DEFAULT 21
+static int MAX_RETRIES = MAX_RETRIES_DEFAULT; /* We are looping each node twice. */
+
+#define MIN_RETRIES_DEFAULT 3
+static int MIN_RETRIES = MIN_RETRIES_DEFAULT;
+
+#define CDB2_CONNECT_TIMEOUT_DEFAULT 100
+static int CDB2_CONNECT_TIMEOUT = CDB2_CONNECT_TIMEOUT_DEFAULT;
+
+#define CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT 2
+static int CDB2_AUTO_CONSUME_TIMEOUT_MS = CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT;
+
+#define COMDB2DB_TIMEOUT_DEFAULT 500
+static int COMDB2DB_TIMEOUT = COMDB2DB_TIMEOUT_DEFAULT;
+
+#define CDB2_TCPBUFSZ_DEFAULT 0
+static int cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
 
 #ifndef WITH_SSL
 #  define WITH_SSL 1
@@ -66,18 +91,27 @@ static int cdb2_tcpbufsz = 0;
 
 #if WITH_SSL
 static ssl_mode cdb2_c_ssl_mode = SSL_ALLOW;
+
 static char cdb2_sslcertpath[PATH_MAX];
 static char cdb2_sslcert[PATH_MAX];
 static char cdb2_sslkey[PATH_MAX];
 static char cdb2_sslca[PATH_MAX];
+#if HAVE_CRL
 static char cdb2_sslcrl[PATH_MAX];
-static int cdb2_cache_ssl_sess = 0;
-#ifdef NID_host /* available as of RFC 4524 */
-int cdb2_nid_dbname = NID_host;
-#else
-int cdb2_nid_dbname = NID_commonName;
 #endif
+
+#ifdef NID_host /* available as of RFC 4524 */
+#define CDB2_NID_DBNAME_DEFAULT NID_host
+#else
+#define CDB2_NID_DBNAME_DEFAULT NID_commonName
+#endif
+int cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
+
+#define CDB2_CACHE_SSL_SESS_DEFAULT 0
+static int cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
+
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
+
 typedef struct cdb2_ssl_sess_list cdb2_ssl_sess_list;
 static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *sessions);
 static cdb2_ssl_sess_list *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl);
@@ -85,11 +119,12 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
                                  cdb2_ssl_sess_list *sessions);
 #endif
 
-static int cdb2_allow_pmux_route = 0;
+#define CDB2_ALLOW_PMUX_ROUTE_DEFAULT 0
+static int cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
 
-static int _PID;
-static int _MACHINE_ID;
-static char *_ARGV0;
+static int _PID; /* ONE-TIME */
+static int _MACHINE_ID; /* ONE-TIME */
+static char *_ARGV0; /* ONE-TIME */
 
 #define DB_TZNAME_DEFAULT "America/New_York"
 
@@ -104,7 +139,63 @@ pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 #include <netdb.h>
 
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
-static int log_calls = 0;
+static int log_calls = 0; /* ONE-TIME */
+
+static void reset_sockpool(void);
+
+/*
+** NOTE: This function is designed to reset the internal state of this module,
+**       related to the configuration, back to initial defaults.  It should
+**       allow for the subsequent reconfiguration using different parameters.
+**       Currently, it is surfaced via passing a NULL value to the public APIs
+**       cdb2_set_comdb2db_config() and cdb2_set_comdb2db_info().
+*/
+static void reset_the_configuration(void)
+{
+    if (log_calls)
+        fprintf(stderr, "%p> %s()\n", (void *)pthread_self(), __func__);
+
+    memset(CDB2DBCONFIG_NOBBENV, 0, sizeof(CDB2DBCONFIG_NOBBENV));
+    strncpy(CDB2DBCONFIG_NOBBENV, CDB2DBCONFIG_NOBBENV_DEFAULT, 511);
+
+    memset(CDB2DBCONFIG_TEMP_BB_BIN, 0, sizeof(CDB2DBCONFIG_TEMP_BB_BIN));
+    strncpy(CDB2DBCONFIG_TEMP_BB_BIN, CDB2DBCONFIG_TEMP_BB_BIN_DEFAULT, 511);
+
+    if (CDB2DBCONFIG_BUF != NULL) {
+        free(CDB2DBCONFIG_BUF);
+        CDB2DBCONFIG_BUF = NULL;
+    }
+
+    memset(cdb2_default_cluster, 0, sizeof(cdb2_default_cluster));
+    memset(cdb2_comdb2dbname, 0, sizeof(cdb2_comdb2dbname));
+    memset(cdb2_dnssuffix, 0, sizeof(cdb2_dnssuffix));
+    memset(cdb2_machine_room, 0, sizeof(cdb2_machine_room));
+
+    CDB2_PORTMUXPORT = CDB2_PORTMUXPORT_DEFAULT;
+    MAX_RETRIES = MAX_RETRIES_DEFAULT;
+    MIN_RETRIES = MIN_RETRIES_DEFAULT;
+    CDB2_CONNECT_TIMEOUT = CDB2_CONNECT_TIMEOUT_DEFAULT;
+    CDB2_AUTO_CONSUME_TIMEOUT_MS = CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT;
+    COMDB2DB_TIMEOUT = COMDB2DB_TIMEOUT_DEFAULT;
+    cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
+
+    cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
+
+#if WITH_SSL
+    cdb2_c_ssl_mode = SSL_ALLOW;
+
+    memset(cdb2_sslcertpath, 0, sizeof(cdb2_sslcertpath));
+    memset(cdb2_sslcert, 0, sizeof(cdb2_sslcert));
+    memset(cdb2_sslkey, 0, sizeof(cdb2_sslkey));
+    memset(cdb2_sslca, 0, sizeof(cdb2_sslca));
+    memset(cdb2_sslcrl, 0, sizeof(cdb2_sslcrl));
+
+    cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
+    cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
+#endif
+
+    reset_sockpool();
+}
 
 #if defined(__APPLE__)
 #include <libproc.h>
@@ -715,6 +806,7 @@ struct cdb2_hndl {
     char cluster[64];
     char type[64];
     char hosts[MAX_NODES][64];
+    uint64_t timestampus; // client query timestamp of first try
     int ports[MAX_NODES];
     int hosts_connected[MAX_NODES];
     SBUF2 *sb;
@@ -775,6 +867,7 @@ struct cdb2_hndl {
     char *key;
     char *ca;
     char *crl;
+    int cache_ssl_sess;
     cdb2_ssl_sess_list *sess_list;
     int nid_dbname;
 #endif
@@ -819,20 +912,32 @@ void cdb2_set_comdb2db_config(const char *cfg_file)
     if (log_calls)
         fprintf(stderr, "%p> %s(\"%s\")\n", (void *)pthread_self(), __func__,
                 cfg_file);
-    strncpy(CDB2DBCONFIG_NOBBENV, cfg_file, 511);
+    memset(CDB2DBCONFIG_NOBBENV, 0, sizeof(CDB2DBCONFIG_NOBBENV) /* 512 */);
+    if (cfg_file != NULL) {
+        strncpy(CDB2DBCONFIG_NOBBENV, cfg_file, 511);
+    } else {
+        reset_the_configuration();
+    }
 }
 
 void cdb2_set_comdb2db_info(const char *cfg_info)
 {
-    int len = strlen(cfg_info) + 1;
-    if (CDB2DBCONFIG_BUF != NULL)
-        free(CDB2DBCONFIG_BUF);
-    CDB2DBCONFIG_BUF = malloc(len);
-    strncpy(CDB2DBCONFIG_BUF, cfg_info, len);
+    int len;
     pthread_once(&init_once, do_init_once);
     if (log_calls)
         fprintf(stderr, "%p> cdb2_set_comdb2db_info(\"%s\")\n",
                 (void *)pthread_self(), cfg_info);
+    if (CDB2DBCONFIG_BUF != NULL) {
+        free(CDB2DBCONFIG_BUF);
+        CDB2DBCONFIG_BUF = NULL;
+    }
+    if (cfg_info == NULL) {
+        reset_the_configuration();
+        return;
+    }
+    len = strlen(cfg_info) + 1;
+    CDB2DBCONFIG_BUF = malloc(len);
+    strncpy(CDB2DBCONFIG_BUF, cfg_info, len);
 }
 
 static inline int get_char(FILE *fp, const char *buf, int *chrno)
@@ -1097,6 +1202,7 @@ static int read_available_comdb2db_configs(
     int *num_db_hosts, int *dbnum, int *comdb2db_found, int *dbname_found)
 {
     char filename[PATH_MAX];
+    FILE *fp;
     int fallback_on_bb_bin = 1;
 
     if (hndl && hndl->debug_trace) {
@@ -1121,14 +1227,16 @@ static int read_available_comdb2db_configs(
         fallback_on_bb_bin = 0;
     }
 
-    FILE *fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
-    if (fp != NULL) {
-        read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
-                          num_hosts, comdb2db_num, dbname, db_hosts,
-                          num_db_hosts, dbnum, dbname_found, comdb2db_found,
-                          send_stack);
-        fclose(fp);
-        fallback_on_bb_bin = 0;
+    if (*CDB2DBCONFIG_NOBBENV != '\0') {
+      fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
+      if (fp != NULL) {
+          read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
+                            num_hosts, comdb2db_num, dbname, db_hosts,
+                            num_db_hosts, dbnum, dbname_found, comdb2db_found,
+                            send_stack);
+          fclose(fp);
+          fallback_on_bb_bin = 0;
+      }
     }
 
     /* This is a temporary solution.  There's no clear plan for how comdb2db.cfg
@@ -1243,8 +1351,12 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
 
 /* SOCKPOOL CODE START */
 
-static int sockpool_enabled = 1;
-static time_t sockpool_fail_time = 0;
+#define SOCKPOOL_ENABLED_DEFAULT 1
+static int sockpool_enabled = SOCKPOOL_ENABLED_DEFAULT;
+
+#define SOCKPOOL_FAIL_TIME_DEFAULT 0
+static time_t sockpool_fail_time = SOCKPOOL_FAIL_TIME_DEFAULT;
+
 static int sockpool_fd = -1;
 
 struct sockaddr_sun {
@@ -1324,17 +1436,30 @@ void cdb2_enable_sockpool()
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
 }
 
-/* Disable sockpool and close sockpool socket */
-void cdb2_disable_sockpool()
+static void cdb2_maybe_disable_sockpool(int forceClose, int enabled)
 {
     pthread_mutex_lock(&cdb2_sockpool_mutex);
     /* Close sockpool fd */
-    if ((sockpool_enabled == 1) && (sockpool_fd != -1)) {
-        close(sockpool_fd);
-        sockpool_fd = -1;
+    if (forceClose || (sockpool_enabled == 1)) {
+        if (sockpool_fd != -1) {
+            close(sockpool_fd);
+            sockpool_fd = -1;
+        }
     }
-    sockpool_enabled = -1;
+    sockpool_enabled = enabled;
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
+}
+
+/* Disable sockpool and close sockpool socket */
+void cdb2_disable_sockpool()
+{
+    cdb2_maybe_disable_sockpool(0, -1);
+}
+
+static void reset_sockpool(void)
+{
+    cdb2_maybe_disable_sockpool(1, SOCKPOOL_ENABLED_DEFAULT);
+    sockpool_fail_time = SOCKPOOL_FAIL_TIME_DEFAULT;
 }
 
 // cdb2_socket_pool_get_ll: lockless
@@ -1593,7 +1718,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
         return -1;
     }
 
-    if (cdb2_cache_ssl_sess) {
+    if (hndl->cache_ssl_sess) {
         if (hndl->sess_list == NULL) {
             hndl->sess_list = malloc(sizeof(cdb2_ssl_sess_list));
             if (hndl->sess_list == NULL)
@@ -1615,7 +1740,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
                    we lose the caching ability, and that's it. */
                 free(hndl->sess_list);
                 hndl->sess_list = NULL;
-                cdb2_cache_ssl_sess = 0;
+                hndl->cache_ssl_sess = 0;
                 return 0;
             }
 
@@ -1825,6 +1950,7 @@ static int cdb2portmux_get(const char *remote_host, const char *app,
             fprintf(stderr, "sbuf2open returned 0\n");
         return -1;
     }
+    sbuf2settimeout(ss, CDB2_CONNECT_TIMEOUT, CDB2_CONNECT_TIMEOUT);
     sbuf2printf(ss, "get %s\n", name);
     sbuf2flush(ss);
     res[0] = '\0';
@@ -2371,17 +2497,22 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
         hndl->context_msgs.has_changed = 0;
     }
 
+    CDB2SQLQUERY__Reqinfo req_info = CDB2__SQLQUERY__REQINFO__INIT;
+    req_info.timestampus = (hndl ? hndl->timestampus : 0);
+    req_info.num_retries = retries_done;
+    sqlquery.req_info = &req_info;
+
     int len = cdb2__query__get_packed_size(&query);
     unsigned char *buf = malloc(len + 1);
 
     cdb2__query__pack(&query, buf);
 
     struct newsqlheader hdr;
-
     hdr.type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY);
     hdr.compression = ntohl(0);
     hdr.length = ntohl(len);
 
+    // finally send header and query
     sbuf2write((char *)&hdr, sizeof(hdr), sb);
     sbuf2write((char *)buf, len, sb);
 
@@ -2693,27 +2824,25 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     if (hndl->sb && !hndl->in_trans && hndl->firstresponse &&
         (!hndl->lastresponse ||
          (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) {
-        struct timeval tv;
         int nrec = 0;
-        uint64_t starttime;
         sbuf2settimeout(hndl->sb, CDB2_AUTO_CONSUME_TIMEOUT_MS,
                         CDB2_AUTO_CONSUME_TIMEOUT_MS);
+        struct timeval tv;
         gettimeofday(&tv, NULL);
-        starttime = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000; // in ms
+        uint64_t starttimems = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000;
         while (cdb2_next_record_int(hndl, 0) == CDB2_OK) {
             nrec++;
             gettimeofday(&tv, NULL);
+            uint64_t curr = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000;
             /* auto consume for up to CDB2_AUTO_CONSUME_TIMEOUT_MS */
-            if (((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000 - starttime >=
-                CDB2_AUTO_CONSUME_TIMEOUT_MS)
+            if (curr - starttimems >= CDB2_AUTO_CONSUME_TIMEOUT_MS)
                 break;
         }
         if (hndl->debug_trace) {
             gettimeofday(&tv, NULL);
+            uint64_t curr = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000;
             fprintf(stderr, "%s: auto consume %d records took %lu ms\n",
-                    __func__, nrec,
-                    ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000 -
-                        starttime);
+                    __func__, nrec, curr - starttimems);
         }
     }
 
@@ -2778,8 +2907,9 @@ static void make_random_str(char *str, size_t max_len, int *len)
     static __thread char cached_portion[23] = {0}; // 2*10 digits + 2 '-' + '\n'
     static __thread size_t cached_portion_len = 0;
     if (cached_portion_len == 0) {
-        cached_portion_len = snprintf(cached_portion, sizeof(cached_portion),
-                                      "%d-%d-", cdb2_hostid(), _PID);
+        cached_portion_len =
+            snprintf(cached_portion, sizeof(cached_portion) - 1, "%d-%d-",
+                     cdb2_hostid(), _PID);
     }
     struct timeval tv;
     gettimeofday(&tv, NULL);
@@ -3269,6 +3399,13 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
         if (hndl->crl == NULL)
             rc = ENOMEM;
 #endif /* HAVE_CRL */
+    } else if (strncasecmp(p, "SSL_SESSION_CACHE",
+               sizeof("SSL_SESSION_CACHE") - 1) == 0) {
+        p += sizeof("SSL_SESSION_CACHE");
+        p = cdb2_skipws(p);
+        hndl->cache_ssl_sess = (strncasecmp(p, "ON", 2) == 0);
+        if (hndl->cache_ssl_sess)
+            cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
     } else {
         rc = -1;
     }
@@ -3458,8 +3595,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
     /* sniff out 'set hasql on' here */
     if (strncasecmp(sql, "set", 3) == 0) {
-        rc = process_set_command(hndl, sql);
-        return rc;
+        return process_set_command(hndl, sql);
     }
 
     if (strncasecmp(sql, "begin", 5) == 0) {
@@ -3483,10 +3619,11 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
         is_commit = 1;
         is_rollback = 1;
     }
-    if (hndl->client_side_error == 1 && hndl->in_trans && !is_commit) {
-        return hndl->error_in_trans;
-    } else if (hndl->client_side_error == 1 && hndl->in_trans && is_commit) {
-        sql = "rollback";
+    if (hndl->client_side_error == 1 && hndl->in_trans) {
+        if (!is_commit)
+            return hndl->error_in_trans;
+        else
+            sql = "rollback";
     }
 
     if ((is_begin && hndl->in_trans) || (is_commit && !hndl->in_trans)) {
@@ -3508,6 +3645,9 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
     }
 
     hndl->is_read = is_sql_read(sql);
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    hndl->timestampus = ((uint64_t)tv.tv_sec) * 1000000 + tv.tv_usec;
 
     if (hndl->use_hint) {
         if (hndl->query && (strcmp(hndl->query, sql) == 0)) {
@@ -4422,9 +4562,16 @@ int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
     bindval->index = index;
     if (varaddr == NULL) {
         bindval->value.len = 0;
+        bindval->has_isnull = 1;
+        bindval->isnull = 1;
     } else if (type == CDB2_CSTRING && length == 0) {
         bindval->value.data = (unsigned char *)"";
         bindval->value.len = 1;
+    } else if (type == CDB2_BLOB && length == 0) {
+        bindval->value.data = (unsigned char *)"";
+        bindval->value.len = 0;
+        bindval->has_isnull = 1;
+        bindval->isnull = 0;
     } else {
         bindval->value.len = length;
     }
@@ -5186,8 +5333,11 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
 
     /* Set up SSL sessions. */
     if ((sslenv = getenv("SSL_SESSION_CACHE")) != NULL)
-        cdb2_cache_ssl_sess = !!atoi(sslenv);
-    cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
+        hndl->cache_ssl_sess = !!atoi(sslenv);
+    else
+        hndl->cache_ssl_sess = cdb2_cache_ssl_sess;
+    if (hndl->cache_ssl_sess)
+        cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
 
     /* Reset for next cdb2_open() */
     cdb2_c_ssl_mode = SSL_ALLOW;
@@ -5197,11 +5347,8 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
     cdb2_sslca[0] = '\0';
     cdb2_sslcrl[0] = '\0';
 
-#ifdef NID_host /* available as of RFC 4524 */
-    cdb2_nid_dbname = NID_host;
-#else
-    cdb2_nid_dbname = NID_commonName;
-#endif
+    cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
+    cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
     return 0;
 }
 

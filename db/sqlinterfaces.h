@@ -44,19 +44,9 @@
 
 #include <sqlite3.h>
 #include "comdb2uuid.h"
-#include <sqlresponse.pb-c.h>
-
-struct fsqlreq {
-    int request;   /* enum fsql_request */
-    int flags;     /* request flags */
-    int parm;      /* extra word of into differs per request */
-    int followlen; /* how much data follows header*/
-};
-enum { FSQLREQ_LEN = 4 + 4 + 4 + 4 };
-BB_COMPILE_TIME_ASSERT(fsqlreq_size, sizeof(struct fsqlreq) == FSQLREQ_LEN);
 
 char *tranlevel_tostr(int lvl);
-
+struct sqlclntstate;
 int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
                      sqlite3_stmt *stmt, const char **errstr);
 

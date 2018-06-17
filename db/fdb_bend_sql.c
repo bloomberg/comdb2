@@ -282,16 +282,8 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
 
 static void init_sqlclntstate(struct sqlclntstate *clnt, char *tid, int isuuid)
 {
-    reset_clnt(clnt, NULL, 1);
-
-    pthread_mutex_init(&clnt->wait_mutex, NULL);
-    pthread_cond_init(&clnt->wait_cond, NULL);
-    pthread_mutex_init(&clnt->write_lock, NULL);
-    pthread_mutex_init(&clnt->dtran_mtx, NULL);
-
+    start_internal_sql_clnt(clnt);
     clnt->dbtran.mode = TRANLEVEL_SOSQL;
-    strcpy(clnt->tzname, "America/New_York");
-    clnt->osql.host = NULL;
 
     if (isuuid) {
         clnt->osql.rqid = OSQL_RQID_USE_UUID;
@@ -316,8 +308,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
 
     assert(seq == 0);
 
-    *pclnt = clnt =
-        (struct sqlclntstate *)calloc(1, sizeof(struct sqlclntstate));
+    *pclnt = clnt = malloc(sizeof(struct sqlclntstate));
     if (!clnt) {
         return -1;
     }
