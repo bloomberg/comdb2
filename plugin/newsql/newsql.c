@@ -135,20 +135,20 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     if (*file == 0 && sql_query &&
         clnt->ctrl_sqlengine == SQLENG_STRT_STATE) {
 
+        int rc;
+        uint32_t snapinfo_file, snapinfo_offset;
+
         if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
-            uint32_t durable_file, durable_offset, durable_gen;
+            uint32_t durable_gen;
 
-            int rc = request_durable_lsn_from_master(
-                thedb->bdb_env, &durable_file, &durable_offset, &durable_gen);
-
+            rc = request_durable_lsn_from_master(
+                thedb->bdb_env, &snapinfo_file, &snapinfo_offset, &durable_gen);
             if (rc == 0) {
-                *file = durable_file;
-                *offset = durable_offset;
-
                 if (gbl_extended_sql_debug_trace) {
-                    logmsg(LOGMSG_USER, "%s line %d cnonce='%s' master "
-                                        "returned durable-lsn "
-                                        "[%d][%d], clnt->is_hasql_retry=%d\n",
+                    logmsg(LOGMSG_USER,
+                           "%s line %d cnonce='%s' master "
+                           "returned durable-lsn "
+                           "[%d][%d], clnt->is_hasql_retry=%d\n",
                            __func__, __LINE__, cnonce, *file, *offset,
                            clnt->is_hasql_retry);
                 }
@@ -162,10 +162,25 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
                            __func__, __LINE__, cnonce, rc, clnt->snapshot_file,
                            clnt->snapshot_offset, clnt->is_hasql_retry);
                 }
-                rcode = -1;
             }
-            return rcode;
+        } else {
+            (void)bdb_get_current_lsn(thedb->bdb_env, &snapinfo_file,
+                                      &snapinfo_offset);
+            rc = 0;
+            logmsg(LOGMSG_USER,
+                   "%s line %d cnonce='%s' durable-lsn is disabled. Use my LSN "
+                   "[%d][%d], clnt->is_hasql_retry=%d\n",
+                   __func__, __LINE__, cnonce, *file, *offset,
+                   clnt->is_hasql_retry);
         }
+
+        if (rc == 0) {
+            *file = snapinfo_file;
+            *offset = snapinfo_offset;
+        } else {
+            rcode = -1;
+        }
+        return rcode;
     }
 
     if (*file == 0) {
@@ -197,9 +212,8 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
 #define _has_features(clnt, sql_response)                                      \
     CDB2ServerFeatures features[10];                                           \
     int n_features = 0;                                                        \
-                                                                               \
-    if (clnt->skip_feature) {                                                  \
-        features[n_features] = CDB2_SERVER_FEATURES__SKIP_ROWS;                \
+    if (clnt->send_intrans_results == 0) {                                     \
+        features[n_features] = CDB2_SERVER_FEATURES__SKIP_INTRANS_RESULTS;     \
         n_features++;                                                          \
     }                                                                          \
                                                                                \
@@ -1275,19 +1289,17 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
     extern int gbl_disable_skip_rows;
-    /* We need to restore skip_feature, want_query_effects and
-       send_one_row on clnt even if the snapshot info has been populated. */
-    if (!clnt->send_intransresults && sqlquery->n_features > 0 && gbl_disable_skip_rows == 0) {
+    /* We need to restore send_intrans_results
+       on clnt even if the snapshot info has been populated.
+       However, dont't attempt to restore if client overrides
+       send_intrans_results by setting INTRANSRESULTS to ON. */
+    if (clnt->send_intrans_results != -1 && sqlquery->n_features > 0 &&
+        gbl_disable_skip_rows == 0) {
         for (int ii = 0; ii < sqlquery->n_features; ii++) {
-            if (CDB2_CLIENT_FEATURES__SKIP_ROWS != sqlquery->features[ii])
+            if (CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS !=
+                sqlquery->features[ii])
                 continue;
-            clnt->skip_feature = 1;
-            if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-                 clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
-                newsql_has_high_availability(clnt)) {
-                clnt->send_one_row = 1;
-                clnt->skip_feature = 0;
-            }
+            clnt->send_intrans_results = 0;
         }
     }
 
@@ -1738,9 +1750,9 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 sqlstr += 14;
                 sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
-                    clnt->send_intransresults = 0;
+                    clnt->send_intrans_results = 0;
                 } else {
-                    clnt->send_intransresults = 1;
+                    clnt->send_intrans_results = -1;
                 }
             } else {
                 rc = ii + 1;

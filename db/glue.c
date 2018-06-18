@@ -437,7 +437,7 @@ tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
 }
 
 tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
-                                int offset, int *error)
+                                int offset, int *error, int is_ha_retry)
 {
     void *bdb_handle = bdb_handle_from_ireq(iq);
     tran_type *out_trans = NULL;
@@ -450,8 +450,8 @@ tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
         logmsg(LOGMSG_USER, "td=%x %s called with epoch=%d file=%d offset=%d\n",
                (int)pthread_self(), __func__, epoch, file, offset);
     }
-    out_trans =
-        bdb_tran_begin_snapisol(bdb_handle, trak, error, epoch, file, offset);
+    out_trans = bdb_tran_begin_snapisol(bdb_handle, trak, error, epoch, file,
+                                        offset, is_ha_retry);
     iq->gluewhere = "bdb_tran_begin_snapisol done";
 
     if (out_trans == NULL) {
@@ -462,8 +462,9 @@ tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
     return out_trans;
 }
 
-tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch, int file,
-        int offset, int *error)
+tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch,
+                                    int file, int offset, int *error,
+                                    int is_ha_retry)
 {
     void *bdb_handle = bdb_handle_from_ireq(iq);
     tran_type *out_trans = NULL;
@@ -475,8 +476,8 @@ tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch, int fi
         logmsg(LOGMSG_USER, "td=%x %s called with epoch=%d file=%d offset=%d\n",
                (int)pthread_self(), __func__, epoch, file, offset);
     }
-    out_trans = bdb_tran_begin_serializable(bdb_handle, trak, &bdberr, epoch, 
-            file, offset);
+    out_trans = bdb_tran_begin_serializable(bdb_handle, trak, &bdberr, epoch,
+                                            file, offset, is_ha_retry);
     iq->gluewhere = "bdb_tran_begin done";
 
     if (out_trans == NULL) {

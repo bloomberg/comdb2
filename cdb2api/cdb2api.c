@@ -839,7 +839,7 @@ struct cdb2_hndl {
     int num_set_commands_sent;
     int is_read;
     unsigned long long rows_read;
-    int skip_feature;
+    int read_intrans_results;
     int first_record_read;
     char **commands;
     int ack;
@@ -2400,7 +2400,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
     }
 
     if (hndl && !(hndl->flags & CDB2_READ_INTRANS_RESULTS) && is_begin) {
-        features[n_features] = CDB2_CLIENT_FEATURES__SKIP_ROWS;
+        features[n_features] = CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS;
         n_features++;
     }
 
@@ -2680,9 +2680,9 @@ retry_next_record:
             hndl->num_set_commands_sent = hndl->num_set_commands;
         }
         for (ii = 0; ii < hndl->lastresponse->n_features; ii++) {
-            if (hndl->in_trans && (CDB2_SERVER_FEATURES__SKIP_ROWS ==
+            if (hndl->in_trans && (CDB2_SERVER_FEATURES__SKIP_INTRANS_RESULTS ==
                                    hndl->lastresponse->features[ii]))
-                hndl->skip_feature = 1;
+                hndl->read_intrans_results = 0;
         }
 
         PRINT_RETURN_OK(CDB2_OK_DONE);
@@ -2697,7 +2697,7 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
 
     pthread_once(&init_once, do_init_once);
 
-    if (hndl->in_trans && hndl->skip_feature && !hndl->is_read) {
+    if (hndl->in_trans && !hndl->read_intrans_results && !hndl->is_read) {
         rc = CDB2_OK_DONE;
     } else if (hndl->lastresponse && hndl->first_record_read == 0) {
         hndl->first_record_read = 1;
@@ -3041,7 +3041,7 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
     hndl->is_retry = num_retry;
 
     clear_responses(hndl);
-    hndl->skip_feature = 0;
+    hndl->read_intrans_results = 1;
 
     hndl->in_trans = 0;
     if (hndl->debug_trace) {
@@ -3181,7 +3181,7 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         int len = 0;
         i++;
 
-        if (hndl->skip_feature && !item->is_read) {
+        if (!hndl->read_intrans_results && !item->is_read) {
             item = item->next;
             continue;
         }
@@ -3315,7 +3315,7 @@ static inline void cleanup_query_list(cdb2_hndl_tp *hndl,
     if (hndl->debug_trace && line)
         fprintf(stderr, "%s:%d called from line %d\n", __func__, __LINE__,
                 line);
-    hndl->skip_feature = 0;
+    hndl->read_intrans_results = 1;
     hndl->snapshot_file = 0;
     hndl->snapshot_offset = 0;
     hndl->is_retry = 0;
@@ -3697,7 +3697,7 @@ retry_queries:
     int len;
     int type = 0;
     int err_val = hndl->error_in_trans;
-    int skip_feature = hndl->skip_feature;
+    int read_intrans_results = hndl->read_intrans_results;
 
     if (is_rollback || is_commit) {
         if (is_commit && hndl->snapshot_file) {
@@ -3708,7 +3708,7 @@ retry_queries:
             hndl->query_list = NULL;
             is_hasql_commit = 1;
         }
-        hndl->skip_feature = 0;
+        hndl->read_intrans_results = 1;
         clear_snapshot_info(hndl, __LINE__);
         hndl->error_in_trans = 0;
         if (hndl->debug_trace) {
@@ -3727,7 +3727,7 @@ retry_queries:
         }
         hndl->query_list = NULL;
 
-        if (skip_feature && !hndl->client_side_error) {
+        if (!read_intrans_results && !hndl->client_side_error) {
             if (err_val) {
                 if (is_rollback) {
                     PRINT_RETURN(0);
@@ -3737,7 +3737,7 @@ retry_queries:
             }
         } else if (err_val) {
             hndl->client_side_error = 0;
-            /* With skip_feature off, we need to read the 1st response
+            /* With read_intrans_results on, we need to read the 1st response
                of commit/rollback even if there is an in-trans error. */
             goto read_record;
         }
@@ -3747,8 +3747,7 @@ retry_queries:
         PRINT_RETURN(err_val);
     }
 
-    if (hndl->skip_feature && !hndl->is_read && 
-         (hndl->in_trans || !hndl->is_hasql)) {
+    if (!hndl->read_intrans_results && !hndl->is_read && hndl->in_trans) {
         if (hndl->debug_trace) {
             fprintf(stderr, "td %u %s:%d in_trans=%d is_hasql=%d\n",
                     (uint32_t)pthread_self(), __func__, __LINE__,
@@ -5376,6 +5375,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->dbnum = 1;
     hndl->connected_host = -1;
     hndl->send_stack = 1;
+    hndl->read_intrans_results = 1;
 #if WITH_SSL
     /* We don't do dbinfo if DIRECT_CPU. So we'd default peer SSL mode to
        ALLOW. We will find it out later when we send SSL negotitaion packet
