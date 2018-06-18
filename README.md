@@ -174,5 +174,6 @@ On every machine in the cluster:
 | protobuf/     | API to communicate with the server |
 | schemachange  | Code for table create/alter/truncate/etc |
 | sqlite/       | Sqlite VM SQL engine  |
+| tcl/          | Tcl language bindings |
 | tests/        | Comdb2 test suite |
 | tools/        | Tools that are part of Comdb2 core |
