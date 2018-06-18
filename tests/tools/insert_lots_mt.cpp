@@ -17,7 +17,7 @@ int runsql(cdb2_hndl_tp *h, std::string &sql)
 {
     int rc = cdb2_run_statement(h, sql.c_str());
     if (rc != 0) {
-        fprintf(stderr, "cdb2_run_statement failed: %d %s\n", rc,
+        fprintf(stderr, "Error: cdb2_run_statement failed: %d %s\n", rc,
                 cdb2_errstr(h));
         return rc;
     }
@@ -40,7 +40,7 @@ int runsql(cdb2_hndl_tp *h, std::string &sql)
     if (rc == CDB2_OK_DONE)
         rc = 0;
     else
-        fprintf(stderr, "cdb2_next_record failed: %d %s\n", rc, cdb2_errstr(h));
+        fprintf(stderr, "Error: cdb2_next_record failed: %d %s\n", rc, cdb2_errstr(h));
     return rc;
 }
 
@@ -50,7 +50,7 @@ int runtag(cdb2_hndl_tp *h, std::string &sql, std::vector<int> &types)
     int rc =
         cdb2_run_statement_typed(h, sql.c_str(), types.size(), types.data());
     if (rc != 0) {
-        fprintf(stderr, "cdb2_run_statement_typed failed: %d %s\n", rc,
+        fprintf(stderr, "Error: cdb2_run_statement_typed failed: %d %s\n", rc,
                 cdb2_errstr(h));
         return rc;
     }
@@ -70,7 +70,7 @@ int runtag(cdb2_hndl_tp *h, std::string &sql, std::vector<int> &types)
     if (rc == CDB2_OK_DONE)
         rc = 0;
     else
-        fprintf(stderr, "cdb2_next_record failed: %d %s\n", rc, cdb2_errstr(h));
+        fprintf(stderr, "Error: cdb2_next_record failed: %d %s\n", rc, cdb2_errstr(h));
     return rc;
 }
 
@@ -92,17 +92,11 @@ typedef struct {
 
 void *thr(void *arg)
 {
-    char *conf = getenv("CDB2_CONFIG");
-    if (conf)
-        cdb2_set_comdb2db_config(conf);
-    else
-        fprintf(stderr, "no config was set\n");
-
     cdb2_hndl_tp *db;
     int rc = cdb2_open(&db, dbname, "default", 0);
     if (rc != 0) {
-        fprintf(stderr, "cdb2_open failed: %d\n", rc);
-        return NULL;
+        fprintf(stderr, "Error: cdb2_open failed: %d\n", rc);
+        exit(1);
     }
 
     thr_info_t *tinfo = (thr_info_t *)arg;
@@ -147,6 +141,12 @@ int main(int argc, char *argv[])
     unsigned int numthreads = atoi(argv[2]);
     unsigned int cntperthread = atoi(argv[3]);
     unsigned int iterations = atoi(argv[4]);
+
+    char *conf = getenv("CDB2_CONFIG");
+    if (conf)
+        cdb2_set_comdb2db_config(conf);
+    else
+        fprintf(stderr, "Error: no config was set\n");
 
     pthread_t *t = (pthread_t *) malloc(sizeof(pthread_t) * numthreads);
     thr_info_t *tinfo = (thr_info_t *) malloc(sizeof(thr_info_t) * numthreads);
