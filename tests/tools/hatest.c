@@ -447,7 +447,8 @@ struct dummy_cdb2_hndl {
 void disconnect_cdb2h(cdb2_hndl_tp * cdb2h) {
     struct dummy_cdb2_hndl *dummy_hndl;
     dummy_hndl = (struct dummy_cdb2_hndl *)cdb2h;
-    shutdown(dummy_hndl->sb->fd, 2);
+    if (dummy_hndl->sb)
+        shutdown(dummy_hndl->sb->fd, 2);
 }
 
 static int run_statement(const char *sql, int ntypes, int *types,

@@ -131,7 +131,7 @@ message CDB2_FLAG {
 }
 
 enum CDB2ClientFeatures {
-    SKIP_ROWS            = 1;
+    SKIP_INTRANS_RESULTS = 1;
     ALLOW_MASTER_EXEC    = 2;
     ALLOW_MASTER_DBINFO  = 3;
     ALLOW_QUEUING  = 4;
@@ -372,7 +372,7 @@ enum ResponseType {
 }
 
 enum CDB2ServerFeatures {
-    SKIP_ROWS    = 1;
+    SKIP_INTRANS_RESULTS = 1;
 }
 
 message CDB2_DBINFORESPONSE {
