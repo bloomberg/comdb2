@@ -94,7 +94,7 @@ int add_record_indices(struct ireq *iq, void *trans,
     int retrc;
     char *od_dta_tail = NULL;
     int od_tail_len;
-    void *cur;
+    void *cur = NULL;
     ctkey ctk = {0};
     if (gbl_reorder_idx_writes) {
         cur = get_constraint_table_cursor(defered_index_tbl);
@@ -276,7 +276,7 @@ int upd_record_indices(struct ireq *iq, void *trans,
     char *od_olddta_tail = NULL;
     int od_oldtail_len;
 
-    void *cur;
+    void *cur = NULL;
     ctkey delctk = {0};
     ctkey ctk = {0};
     if (gbl_reorder_idx_writes) {
@@ -287,7 +287,6 @@ int upd_record_indices(struct ireq *iq, void *trans,
         }
         delctk.type = CTK_DEL;
         delctk.usedb = iq->usedb;
-        ctk.type = CTK_ADD;
         ctk.usedb = iq->usedb;
     }
 
@@ -397,19 +396,43 @@ int upd_record_indices(struct ireq *iq, void *trans,
               ixnum, *newgenid);*/
 
             gbl_upd_key++;
+            if (gbl_reorder_idx_writes) {
+                //if not datacopy, no need to save od_dta_tail
+                void *data = NULL;
+                int datalen = 0;
+                if (iq->usedb->ix_datacopy[ixnum] != 0) { //is datacopy
+                    data = od_dta_tail;
+                    datalen = od_tail_len;
+                }
+                ctk.type = CTK_UPD;
+                ctk.genid = vgenid;
+                ctk.newgenid = *newgenid;
+                ctk.ixnum = ixnum;
+                int err = 0;
+printf("AZ: inserttmptbl type %d, index %d, genid %llx\n", ctk.type, ctk.ixnum, ctk.genid);
+                rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ctk, sizeof(ctk),
+                        data, datalen, &err);
+                if (rc != 0) {
+                    logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
+                            rc);
+                    return rc;
+                }
+                memset(ctk.ixkey, 0, keysize);
+            }
+            else {
+                rc = ix_upd_key(iq, trans, newkey, keysize,
+                        ixnum, vgenid, *newgenid, od_dta_tail, od_tail_len,
+                        ix_isnullk(iq->usedb, newkey, ixnum));
+                printf("AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", vgenid, *newgenid, rc);
+                if (iq->debug)
+                    reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d", ixnum,
+                            *newgenid, rc);
 
-            rc = ix_upd_key(iq, trans, newkey, iq->usedb->ix_keylen[ixnum],
-                            ixnum, vgenid, *newgenid, od_dta_tail, od_tail_len,
-                            ix_isnullk(iq->usedb, newkey, ixnum));
-printf("AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", vgenid, *newgenid, rc);
-            if (iq->debug)
-                reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d", ixnum,
-                          *newgenid, rc);
-
-            if (rc != 0) {
-                *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
-                *ixfailnum = ixnum;
-                return rc;
+                if (rc != 0) {
+                    *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
+                    *ixfailnum = ixnum;
+                    return rc;
+                }
             }
 
             /* need to do this here as we're not adding the new key so we
@@ -417,8 +440,7 @@ printf("AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", vgenid, *newge
                later */
             verify_schema_change_constraint(iq, iq->usedb, trans, od_dta,
                                             ins_keys);
-        } else /* delete / add the key */
-        {
+        } else { /* delete / add the key */
             /*
               fprintf(stderr, "IX %d changed, deleting key at genid 0x%016llx "
               "adding key at genid 0x%016llx\n",
@@ -486,6 +508,7 @@ printf("AZ: direct upd ix_delk genid=%llx newwgenid=%llx rc %d\n", vgenid, *newg
                         data = od_dta_tail;
                         datalen = od_tail_len;
                     }
+                    ctk.type = CTK_ADD;
                     ctk.genid = *newgenid;
                     ctk.ixnum = ixnum;
                     int err = 0;
@@ -513,6 +536,111 @@ printf("AZ: direct upd ix_delk genid=%llx newwgenid=%llx rc %d\n", vgenid, *newg
                         return rc;
                     }
                 }
+            }
+        }
+    }
+    return 0;
+}
+
+/* Form and delete all keys. */
+int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
+        int *ixfailnum, int rrn, unsigned long long genid, void *od_dta,
+        unsigned long long del_keys, blob_buffer_t *del_idx_blobs,
+        const char *ondisktag)
+{
+    int rc = 0;
+    void *cur = NULL;
+    ctkey delctk = {0};
+    if (gbl_reorder_idx_writes) {
+        cur = get_constraint_table_cursor(defered_index_tbl);
+        if (cur == NULL) {
+            logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
+            return -1;
+        }
+        delctk.type = CTK_DEL;
+        delctk.usedb = iq->usedb;
+    }
+
+    for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
+        char keytag[MAXTAGLEN];
+        char *key = delctk.ixkey;
+
+        /* only delete keys when told */
+        if (gbl_partial_indexes && iq->usedb->ix_partial &&
+                !(del_keys & (1ULL << ixnum)))
+            continue;
+
+        int keysize = getkeysize(iq->usedb, ixnum);
+
+        if (iq->idxDelete)
+            memcpy(key, iq->idxDelete[ixnum], keysize);
+        else {
+            snprintf(keytag, sizeof(keytag), "%s_IX_%d", ondisktag, ixnum);
+            rc = stag_to_stag_buf_blobs(
+                    iq->usedb->tablename, ondisktag, od_dta, keytag, key,
+                    NULL, del_idx_blobs, del_idx_blobs ? MAXBLOBS : 0, 0);
+            if (rc == -1) {
+                if (iq->debug)
+                    reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
+                reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+                reqerrstr(iq, COMDB2_DEL_RC_INVL_IDX, "cannot form index %d",
+                        ixnum);
+                *ixfailnum = ixnum;
+                *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
+                return rc;
+            }
+        }
+
+        /* handle the key special datacopy options */
+        if (iq->usedb->ix_collattr[ixnum]) {
+            /* handle key tails */
+            rc = extract_decimal_quantum(iq->usedb, ixnum, key, NULL, 0, NULL);
+            if (rc) {
+                *ixfailnum = ixnum;
+                *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
+                return rc;
+            }
+        }
+
+        /* light the prefault kill bit for this subop - oldkeys */
+        prefault_kill_bits(iq, ixnum, PFRQ_OLDKEY);
+        if (iq->osql_step_ix)
+            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
+
+        if (gbl_reorder_idx_writes) {
+            //if not datacopy, no need to save od_dta_tail
+            void *data = NULL;
+            int datalen = 0;
+            delctk.genid = genid;
+            delctk.ixnum = ixnum;
+            int err = 0;
+            printf("AZ: inserttmptbl type %d, index %d, genid %llx\n", delctk.type, delctk.ixnum, delctk.genid);
+            rc = bdb_temp_table_insert(thedb->bdb_env, cur, &delctk, sizeof(delctk),
+                    data, datalen, &err);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
+                        rc);
+                return rc;
+            }
+            memset(delctk.ixkey, 0, keysize);
+        }
+        else {
+            /* delete the key */
+            rc = ix_delk(iq, trans, key, ixnum, rrn, genid, ix_isnullk(iq->usedb, key, ixnum));
+            if (iq->debug) {
+                reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
+                reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
+                reqmoref(iq, " RC %d", rc);
+            }
+            if (rc != 0) {
+                if (rc == IX_NOTFND) {
+                    reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+                    reqerrstr(iq, COMDB2_DEL_RC_INVL_KEY,
+                            "key not found on index %d", ixnum);
+                }
+                *ixfailnum = ixnum;
+                *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
+                return rc;
             }
         }
     }
@@ -679,7 +807,6 @@ printf("AZ: ix_addk genid=%llx rc %d\n", ctk->genid, rc);
 
         }
         else {
-            abort();
             if(ctk->type != CTK_UPD)
                 abort();
 
