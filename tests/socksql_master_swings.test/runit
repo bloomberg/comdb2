@@ -85,9 +85,9 @@ while [[ $selecterror -lt $maxselectfail ]]; do
     fi
     lastminute=$(( lastminute + ( prevnum - num ) ))
 
-    if [[ $iteration == 6 ]]; then
+    if [[ $iteration == 12 ]]; then
         if [[ $lastminute -lt 100 ]]; then
-            errquit "MAKING SLOW PROGRESS: ONLY $lastminute RECORDS IN THE LAST MINUTE"
+            errquit "MAKING SLOW PROGRESS: ONLY $lastminute RECORDS IN THE LAST TWO MINUTES"
         fi
         iteration=0
         lastminute=0
