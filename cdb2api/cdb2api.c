@@ -3400,7 +3400,7 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
             rc = ENOMEM;
 #endif /* HAVE_CRL */
     } else if (strncasecmp(p, "SSL_SESSION_CACHE",
-               sizeof("SSL_SESSION_CACHE") - 1) == 0) {
+                           sizeof("SSL_SESSION_CACHE") - 1) == 0) {
         p += sizeof("SSL_SESSION_CACHE");
         p = cdb2_skipws(p);
         hndl->cache_ssl_sess = (strncasecmp(p, "ON", 2) == 0);
