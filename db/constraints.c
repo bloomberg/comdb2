@@ -264,8 +264,7 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
 }
 
 int upd_record_indices(struct ireq *iq, void *trans,
-        blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
-        int *ixfailnum, int rrn, unsigned long long *newgenid,
+        int *opfailcode, int *ixfailnum, int rrn, unsigned long long *newgenid,
         unsigned long long ins_keys, int opcode, int blkpos,
         void *od_dta, size_t od_len, void *old_dta,
         unsigned long long del_keys, int flags, blob_buffer_t *add_idx_blobs,
