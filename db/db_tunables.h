@@ -1275,4 +1275,11 @@ REGISTER_TUNABLE(
     TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
     NULL);
 
+REGISTER_TUNABLE(
+    "reorder_idx_writes",
+    "reorder_idx_writes (Default off)",
+    TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, DYNAMIC, NULL, NULL, NULL,
+    NULL);
+
+
 #endif /* _DB_TUNABLES_H */

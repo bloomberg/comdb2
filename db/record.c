@@ -1199,7 +1199,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         ins_keys, opcode, blkpos, 
         od_dta, od_len, old_dta,
         del_keys, flags, add_idx_blobs, 
-        del_idx_blobs, same_genid_with_upd, vgenid, &deferredAdd);
+        del_idx_blobs, same_genid_with_upd, 
+        vgenid, &deferredAdd);
 
     if (retrc) 
         ERR;

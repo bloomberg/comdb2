@@ -198,6 +198,8 @@ static int ctrace_gzip;
 
 int gbl_ddl_cascade_drop = 1;
 
+extern int gbl_reorder_idx_writes;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need
