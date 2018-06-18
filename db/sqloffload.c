@@ -732,7 +732,7 @@ static void osql_genid48_commit_callback(struct ireq *iq)
 
 extern int gbl_readonly_sc;
 
-static void autoanalyze_after_fastinit(char *table)
+void autoanalyze_after_fastinit(char *table)
 {
     pthread_t analyze;
     char *tblname = strdup(table); // will be freed in auto_analyze_table()

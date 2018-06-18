@@ -2251,10 +2251,10 @@ static int db_tzset(name) register const char *name;
         }
     }
 
-    db_settzname();
+    lcl_is_set = strlen(name) < sizeof(lcl_TZname);
+    if (lcl_is_set) (void) strcpy(lcl_TZname, name);
 
-    lcl_is_set = strlen(name) < sizeof lcl_TZname;
-    if (lcl_is_set) (void)strcpy(lcl_TZname, name);
+    db_settzname();
 
     return 0;
 }
