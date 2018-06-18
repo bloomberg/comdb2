@@ -5149,11 +5149,11 @@ static int internal_log_context(struct sqlclntstate *a, struct reqlogger *b)
 }
 static uint64_t internal_get_client_starttime(struct sqlclntstate *a)
 {
-    return -1;
+    return 0;
 }
 static int internal_get_client_retries(struct sqlclntstate *a)
 {
-    return -1;
+    return 0;
 }
 void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {
