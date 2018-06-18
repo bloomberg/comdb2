@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <alloca.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -151,7 +152,7 @@ static int ssl_verify_san(const char *hostname, const X509 *cert)
         return -1;
 
     len = sk_GENERAL_NAME_num(peersan);
-    for (ii = 0; ii != len; ++ii) {
+    for (ii = 0, rc = 1; ii != len; ++ii) {
         name = sk_GENERAL_NAME_value(peersan, ii);
         if (name->type != GEN_DNS)
             continue;
@@ -167,43 +168,66 @@ static int ssl_verify_san(const char *hostname, const X509 *cert)
             rc = 0;
             break;
         }
-        rc = 1;
     }
 
     sk_GENERAL_NAME_pop_free(peersan, GENERAL_NAME_free);
     return rc;
 }
 
-static int ssl_verify_cn(const char *hostname, const X509 *cert)
+static int ssl_x509_get_attr(const X509 *cert, int nid, char *out, size_t len)
 {
-    int cnindx;
+    int fldindx;
     X509_NAME  *certname;
-    X509_NAME_ENTRY *cnentry;
-    ASN1_STRING *cnasn1;
-    const char *cnstr;
+    X509_NAME_ENTRY *fld;
+    ASN1_STRING *fldasn1;
+    const char *fldstr;
+
+    /* Fast return if nid is undefined */
+    if (nid == NID_undef)
+        return EINVAL;
 
     certname = X509_get_subject_name((X509 *)cert);
     if (certname == NULL)
-        return 1;
+        return EINVAL;
 
-    cnindx = X509_NAME_get_index_by_NID(certname, NID_commonName, -1);
-    if (cnindx < 0)
-        return 1;
+    fldindx = X509_NAME_get_index_by_NID(certname, nid, -1);
+    if (fldindx < 0)
+        return EINVAL;
 
-    cnentry = X509_NAME_get_entry(certname, cnindx);
-    if (cnentry == NULL)
-        return 1;
+    fld = X509_NAME_get_entry(certname, fldindx);
+    if (fld == NULL)
+        return EINVAL;
 
-    cnasn1 = X509_NAME_ENTRY_get_data(cnentry);
-    if (cnasn1 == NULL)
-        return 1;
+    fldasn1 = X509_NAME_ENTRY_get_data(fld);
+    if (fldasn1 == NULL)
+        return EINVAL;
 
-    cnstr = (const char *)ASN1_STRING_get0_data(cnasn1);
+    fldstr = (const char *)ASN1_STRING_get0_data(fldasn1);
     /* CVE-2009-4034 */
-    if (ASN1_STRING_length(cnasn1) != strlen(cnstr))
-        return 1;
+    if (ASN1_STRING_length(fldasn1) != strlen(fldstr))
+        return EINVAL;
 
-    return hostname_wildcard_match(hostname, cnstr);
+    strncpy(out, fldstr, len);
+    return 0;
+}
+
+int SBUF2_FUNC(sslio_x509_attr)(SBUF2 *sb, int nid, char *out, size_t len)
+{
+    if (sb == NULL || sb->cert == NULL)
+        return EINVAL;
+    return ssl_x509_get_attr(sb->cert, nid, out, len);
+}
+
+static int ssl_verify_cn(const char *hostname, const X509 *cert)
+{
+    int rc;
+    /* RFC 2181 */
+    char cn[256];
+    rc = ssl_x509_get_attr(cert, NID_commonName, cn, sizeof(cn));
+    if (rc != 0)
+        return 1;
+    cn[255] = 0;
+    return hostname_wildcard_match(hostname, cn);
 }
 
 static int ssl_verify_ca(SBUF2 *sb, char *err, size_t n)
@@ -242,6 +266,7 @@ static int ssl_verify_ca(SBUF2 *sb, char *err, size_t n)
     getpeername(sb->fd, (struct sockaddr *)&peeraddr, &len);
 
 /* Forward lookup the IPs */
+
 #if defined(__APPLE__)
     hp = gethostbyname(peerhost);
 #elif defined(_LINUX_SOURCE)
@@ -287,21 +312,72 @@ static int ssl_verify_ca(SBUF2 *sb, char *err, size_t n)
     return rc;
 }
 
-int SBUF2_FUNC(sslio_verify)(SBUF2 *sb, ssl_mode mode, char *err, size_t n)
+static int dbname_wildcard_match(const char *s, const char *p)
+{
+    const char *asterisk = NULL;
+    const char *ts = s;
+    const char *pc = p;
+
+    /* A pattern can't be all wildcard characters */
+    for (; *pc && (*pc == '?' || *pc == '*'); ++pc)
+        ;
+    if (*pc == 0)
+        return 1;
+
+    while (*s) {
+        if ((*p == '?') || (tolower(*p) == tolower(*s))) {
+            ++s;
+            ++p;
+        } else if (*p == '*') {
+            asterisk = p++;
+            ts = s;
+        } else if (asterisk) {
+            p = asterisk + 1;
+            s = ++ts;
+        } else {
+            return 1;
+        }
+    }
+    for (; *p == '*'; ++p)
+        ;
+    return (*p == 0) ? 0 : 1;
+}
+
+static int ssl_verify_dbname(SBUF2 *sb, const char *dbname, int nid)
+{
+    size_t sz = strlen(dbname) + 1;
+    char *dbname_in_cert = alloca(sz);
+    int rc = sslio_x509_attr(sb, nid, dbname_in_cert, sz);
+
+    if (rc != 0)
+        return rc;
+    if (strncasecmp(dbname_in_cert, dbname, sz) == 0)
+        return 0;
+    dbname_in_cert[sz - 1] = 0;
+    return dbname_wildcard_match(dbname, dbname_in_cert);
+}
+
+static int ssl_verify(SBUF2 *sb, ssl_mode mode, const char *dbname, int nid,
+                      char *err, size_t n)
 {
     int rc = 0;
     if (sb->ssl != NULL && mode >= SSL_VERIFY_CA) {
         sb->cert = SSL_get_peer_certificate(sb->ssl);
         if (sb->cert == NULL) {
             ssl_sfeprint(err, n, my_ssl_eprintln,
-                         "Could not get peer certificate");
+                         "Could not get peer certificate.");
             rc = EIO;
-        } else if (mode == SSL_VERIFY_HOSTNAME
-                   && ssl_verify_ca(sb, err, n) != 0) {
+        } else if (mode >= SSL_VERIFY_HOSTNAME &&
+                   ssl_verify_ca(sb, err, n) != 0) {
             /* set rc to error out. */
             rc = EACCES;
             ssl_sfeprint(err, n, my_ssl_eprintln,
                          "Certificate does not match host name.");
+        } else if (mode >= SSL_VERIFY_DBNAME &&
+                   ssl_verify_dbname(sb, dbname, nid) != 0) {
+            rc = EACCES;
+            ssl_sfeprint(err, n, my_ssl_eprintln,
+                         "Certificate does not match database name.");
         }
     }
     return rc;
@@ -341,8 +417,10 @@ static void my_apps_ssl_info_callback(const SSL *s, int where, int ret)
 
 static int sslio_accept_or_connect(SBUF2 *sb, SSL_CTX *ctx,
                                    int (*SSL_func)(SSL *), ssl_mode verify,
-                                   char *err, size_t n, SSL_SESSION *sess,
-                                   int *unrecoverable, const char *f)
+                                   const char *dbname, int nid, char *err,
+                                   size_t n, SSL_SESSION *sess,
+                                   int *unrecoverable,
+                                   int close_on_verify_error)
 {
     int rc, ioerr, fd, flags;
 
@@ -436,7 +514,7 @@ re_accept_or_connect:
                          "SSL error = %d.", ioerr);
             break;
         }
-    } else if (sslio_verify(sb, verify, err, n) != 0) {
+    } else if (ssl_verify(sb, verify, dbname, nid, err, n) != 0) {
         rc = EACCES;
     } else {
         *unrecoverable = 0;
@@ -447,8 +525,8 @@ re_accept_or_connect:
                      "fcntl: (%d) %s", errno, strerror(errno));
         return -1;
     }
-    if (rc != 1) {
-error:
+    if (rc != 1 && close_on_verify_error) {
+    error:
         if (sb->ssl != NULL) {
             SSL_shutdown(sb->ssl);
             SSL_free(sb->ssl);
@@ -463,32 +541,32 @@ error:
     return rc;
 }
 
-int SBUF2_FUNC(sslio_accept)(SBUF2 *sb, SSL_CTX *ctx,
-                           ssl_mode mode, char *err, size_t n)
+int SBUF2_FUNC(sslio_accept)(SBUF2 *sb, SSL_CTX *ctx, ssl_mode mode,
+                             const char *dbname, int nid, char *err, size_t n,
+                             int close_on_verify_error)
 {
     int dummy;
 
-    int rc = sslio_accept_or_connect(sb, ctx, SSL_accept, mode, err, n, NULL,
-                                     &dummy, __func__);
-    return rc;
+    return sslio_accept_or_connect(sb, ctx, SSL_accept, mode, dbname, nid, err,
+                                   n, NULL, &dummy, close_on_verify_error);
 }
 
 #if SBUF2_SERVER
-int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx,
-                            ssl_mode mode, char *err, size_t n)
+int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx, ssl_mode mode,
+                              const char *dbname, int nid, char *err, size_t n,
+                              int close_on_verify_error)
 {
     int dummy;
-    int rc = sslio_accept_or_connect(sb, ctx, SSL_connect, mode, err, n, NULL,
-                                     &dummy, __func__);
-    return rc;
+    return sslio_accept_or_connect(sb, ctx, SSL_connect, mode, dbname, nid, err,
+                                   n, NULL, &dummy, close_on_verify_error);
 }
 #else
-int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx,
-                            ssl_mode mode, char *err, size_t n,
-                            SSL_SESSION *sess, int *unrecoverable)
+int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx, ssl_mode mode,
+                              const char *dbname, int nid, char *err, size_t n,
+                              SSL_SESSION *sess, int *unrecoverable)
 {
-    return sslio_accept_or_connect(sb, ctx, SSL_connect, mode, err, n, sess,
-                                   unrecoverable, __func__);
+    return sslio_accept_or_connect(sb, ctx, SSL_connect, mode, dbname, nid, err,
+                                   n, sess, unrecoverable, 1);
 }
 #endif
 

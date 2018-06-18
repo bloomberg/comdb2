@@ -37,6 +37,9 @@ extern char *gbl_key_file;
 /* Path to the trusted CA (certificate authorities). */
 extern char *gbl_ca_file;
 
+/* Path to the CRL file (certificate revocation list). */
+extern char *gbl_crl_file;
+
 /* SSL session cache size. Special cases are:
    0 -> OpenSSL default;
    negative -> unlimited */
@@ -73,6 +76,16 @@ int ssl_process_lrl(char *line, size_t len);
 
 /* Initialize SSL backend. Return 0 upon success. */
 int ssl_bend_init(const char *);
+
+/* NID to be used as user */
+extern int gbl_nid_user;
+
+/* NID to be used as database name */
+extern int gbl_nid_dbname;
+
+/* Set user to the given nid field in the certificate. */
+struct sqlclntstate;
+void ssl_set_clnt_user(struct sqlclntstate *clnt);
 
 /* Print SSL information. */
 void ssl_stats(void);

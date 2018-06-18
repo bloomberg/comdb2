@@ -120,8 +120,10 @@ public class Comdb2Handle extends AbstractConnection {
 
     /* SSL support */
     private SSL_MODE sslmode = SSL_MODE.ALLOW;
+    private String sslNIDDbName = "OU";
     private String sslcert, sslcertpass, sslcerttype;
     private String sslca, sslcapass, sslcatype;
+    private String sslcrl;
     PEER_SSL_MODE peersslmode = PEER_SSL_MODE.PEER_SSL_ALLOW;
 
     static class QueryItem {
@@ -168,6 +170,7 @@ public class Comdb2Handle extends AbstractConnection {
         ret.dbinfoTimeout = dbinfoTimeout;
 
         ret.sslmode = sslmode;
+        ret.sslNIDDbName = sslNIDDbName;
         ret.sslcert = sslcert;
         ret.sslcertpass = sslcertpass;
         ret.sslcerttype = sslcerttype;
@@ -220,8 +223,21 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     /* attribute setters - bb precious */
-    public void setSSLMode(SSL_MODE mode) {
-        sslmode = mode;
+    public void setSSLMode(String mode) {
+        if ("REQUIRE".equalsIgnoreCase(mode))
+            sslmode = SSL_MODE.REQUIRE;
+        else if ("VERIFY_CA".equalsIgnoreCase(mode))
+            sslmode = SSL_MODE.VERIFY_CA;
+        else if ("VERIFY_HOSTNAME".equalsIgnoreCase(mode))
+            sslmode = SSL_MODE.VERIFY_HOSTNAME;
+        else if (mode.toUpperCase().startsWith("VERIFY_DBNAME")) {
+            sslmode = SSL_MODE.VERIFY_DBNAME;
+            String[] splits = mode.split(",|;");
+            if (splits.length > 1)
+                sslNIDDbName = splits[1].toUpperCase();
+        } else{
+            sslmode = SSL_MODE.ALLOW;
+        }
     }
 
     public void setSSLCrt(String crt) {
@@ -246,6 +262,10 @@ public class Comdb2Handle extends AbstractConnection {
 
     public void setSSLCAType(String catype) {
         sslcatype = catype;
+    }
+
+    public void setSSLCRL(String crl) {
+        sslcrl = crl;
     }
 
     public void setPrefMach(String mach) {
@@ -807,6 +827,9 @@ public class Comdb2Handle extends AbstractConnection {
     private boolean isClientOnlySetCommand(String sql) {
         String tokens[] = sql.split(" ");
 
+        if (tokens.length < 1)
+            return false;
+
         // Debug
         if (tokens[1].equals("debug")) {
             if (tokens.length == 3) {
@@ -827,6 +850,58 @@ public class Comdb2Handle extends AbstractConnection {
                 int max = Integer.parseInt(tokens[2]);
                 setMaxRetries(max);
             }
+            return true;
+        }
+
+        // ssl
+        boolean sslChanged = false;
+        if (tokens[1].equals("ssl_mode")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLMode(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("key_store")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCrt(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("key_store_password")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCrtPass(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("key_store_type")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCrtType(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("trust_store")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCA(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("trust_store_password")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCAPass(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("trust_store_type")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCAType(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("crl")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCRL(tokens[2]);
+            sslChanged = true;
+        }
+
+        /* Refresh connection if SSL config has changed. */
+        if (sslChanged) {
+            sslerr = false;
+            if (opened)
+                closeNoException();
             return true;
         }
 
@@ -1710,9 +1785,11 @@ readloop:
 
         try {
             io = new SSLIO((SockIO)io, sslmode,
+                           myDbName, sslNIDDbName,
                            sslcert, sslcerttype,
                            sslcertpass, sslca,
-                           sslcatype, sslcapass);
+                           sslcatype, sslcapass,
+                           sslcrl);
             return true;
         } catch (SSLHandshakeException she) {
             /* this is NOT retry-able. */

@@ -34,11 +34,14 @@ typedef struct VdbeSorter VdbeSorter;
 struct thr_handle;
 struct sbuf2;
 
+extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern int gbl_sqlwrtimeoutms;
 extern int active_appsock_conns;
 #if WITH_SSL
 extern ssl_mode gbl_client_ssl_mode;
 extern SSL_CTX *gbl_ssl_ctx;
+extern int gbl_nid_dbname;
+void ssl_set_clnt_user(struct sqlclntstate *clnt);
 #endif
 
 int disable_server_sql_timeouts(void);
@@ -1554,6 +1557,7 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                         rc = ii + 1;
                     } else {
                         clnt->have_user = 1;
+                        clnt->is_x509_user = 0;
                         strcpy(clnt->user, sqlstr);
                     }
                 }
@@ -1870,29 +1874,25 @@ retry_read:
            2) Doing SSL_accept() immediately would cause too many
               unnecessary EAGAIN/EWOULDBLOCK's for non-blocking BIO. */
         char ssl_able = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
-        if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0) {
-            logmsg(LOGMSG_DEBUG, "Error in sbuf2putc rc=%d\n", rc);
+        if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0)
             return NULL;
-        }
 
+        /* Don't close the connection if SSL verify fails so that we can
+           send back an error to the client. */
         if (ssl_able == 'Y' &&
-            sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL, 0) != 1) {
-            logmsg(LOGMSG_DEBUG, "Error with sslio_accept\n");
+            sslio_accept(sb, gbl_ssl_ctx, gbl_client_ssl_mode, gbl_dbname,
+                         gbl_nid_dbname, NULL, 0, 0) != 1) {
+            newsql_error(clnt, "Client certificate authentication failed.",
+                         CDB2ERR_CONNECT_ERROR);
             return NULL;
         }
 
-        if (sslio_verify(sb, gbl_client_ssl_mode, NULL, 0) != 0) {
-            newsql_error(clnt, "Client certificate authentication failed.",
-                       CDB2ERR_CONNECT_ERROR);
-            logmsg(LOGMSG_DEBUG, "sslio_verify returned non zero rc\n");
-            return NULL;
-        }
+        /* Extract the user from the certificate. */
+        ssl_set_clnt_user(clnt);
 #else
         /* Not compiled with SSL. Send back `N' to client and retry read. */
-        if ((rc = sbuf2putc(sb, 'N')) < 0 || (rc = sbuf2flush(sb)) < 0) {
-            logmsg(LOGMSG_DEBUG, "Error in sbuf2putc rc=%d\n", rc);
+        if ((rc = sbuf2putc(sb, 'N')) < 0 || (rc = sbuf2flush(sb)) < 0)
             return NULL;
-        }
 #endif
         goto retry_read;
     } else if (hdr.type == CDB2_REQUEST_TYPE__RESET) { /* Reset from sockpool.*/
@@ -2072,7 +2072,6 @@ retry_read:
                        CDB2ERR_CONNECT_ERROR);
         }
         cdb2__query__free_unpacked(query, &pb_alloc);
-        logmsg(LOGMSG_DEBUG, "SSL is required by db, client doesnt support\n");
         return NULL;
     }
 #endif

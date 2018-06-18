@@ -524,6 +524,8 @@ struct sqlclntstate {
 
     int have_user;
     char user[MAX_USERNAME_LEN];
+    int is_x509_user; /* True if the user is retrieved
+                         from a client certificate. */
 
     int have_password;
     char password[MAX_PASSWORD_LEN];

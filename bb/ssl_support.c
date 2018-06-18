@@ -172,12 +172,13 @@ error:
 static unsigned char sid_ctx[8];
 #endif
 
-int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, const char *dir, char **pcert,
-                            char **pkey, char **pca, long sess_sz,
-                            const char *ciphers, char *err, size_t n)
+int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
+                            char **pcert, char **pkey, char **pca, char **pcrl,
+                            long sess_sz, const char *ciphers, char *err,
+                            size_t n)
 {
     SSL_CTX *myctx;
-    char *buffer, *cert, *key, *ca;
+    char *buffer, *cert, *key, *ca, *crl;
     int rc, servermode;
     struct stat buf;
     STACK_OF(X509_NAME) *cert_names;
@@ -191,7 +192,29 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, const char *dir, char **pcert,
     cert = *pcert;
     key = *pkey;
     ca = *pca;
+    crl = *pcrl;
     cert_names = NULL;
+
+    /* If we are told to verify peer, and cacert file is NULL,
+       we explicitly make one with the default name so that
+       ssl_new_ctx() would fail if it could not load the CA. */
+    if (mode >= SSL_VERIFY_CA && *pca == NULL) {
+        if (dir == NULL) {
+            ssl_sfeprint(err, n, my_ssl_eprintln,
+                         "A trusted CA certificate is required "
+                         "to verify server certificates.");
+            goto error;
+        }
+        ca = malloc(strlen(dir) + sizeof("/" DEFAULT_CA));
+        if (ca == NULL) {
+            ssl_sfeprint(err, n, my_ssl_eprintln,
+                         "Failed to allocate memory for cacert: %s.",
+                         strerror(errno));
+            goto error;
+        }
+        /* overflow-safe */
+        sprintf(ca, "%s/%s", dir, DEFAULT_CA);
+    }
 
     /* If we're given a directory, find files under it. */
     if (dir != NULL) {
@@ -249,6 +272,23 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, const char *dir, char **pcert,
                 }
             }
         }
+
+#if HAVE_CRL
+        if (crl == NULL) {
+            buffer = alloca(strlen(dir) + sizeof("/" DEFAULT_CRL));
+            sprintf(buffer, "%s/%s", dir, DEFAULT_CRL);
+
+            if ((rc = access(buffer, R_OK)) == 0) {
+                crl = strdup(buffer);
+                if (crl == NULL) {
+                    ssl_sfeprint(err, n, my_ssl_eprintln,
+                                 "Failed to duplicate string: %s.",
+                                 strerror(errno));
+                    goto error;
+                }
+            }
+        }
+#endif /* HAVE_CRL */
     }
 
     /* Test permissions. */
@@ -307,10 +347,24 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, const char *dir, char **pcert,
         goto error;
     }
 
+#if HAVE_CRL
+    /* Test read permission on crl. */
+    if (crl != NULL && (rc = access(crl, R_OK)) != 0) {
+        /* User has provided us with root CA. */
+        ssl_sfeprint(err, n, my_ssl_eprintln, "Could not read CRL %s: %s.", crl,
+                     strerror(rc));
+        goto error;
+    }
+#endif /* HAVE_CRL */
+
     /* Create SSL context. */
     rc = 1;
     ERR_clear_error();
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+    myctx = SSL_CTX_new(TLS_method());
+#else
     myctx = SSL_CTX_new(SSLv23_method());
+#endif
     if (myctx == NULL) {
         ssl_sfliberrprint(err, n, my_ssl_eprintln,
                           "Failed to create SSL context");
@@ -403,6 +457,25 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, const char *dir, char **pcert,
             SSL_CTX_set_client_CA_list(myctx, cert_names);
     }
 
+#if HAVE_CRL
+    /* Load the certificate revocation list (CRL). */
+    if (crl != NULL) {
+        X509_STORE *cvs = SSL_CTX_get_cert_store(myctx);
+        if (cvs == NULL) { /* Unlikely but just in case */
+            ssl_sfliberrprint(err, n, my_ssl_eprintln,
+                              "Failed to get cert store.");
+            goto error;
+        }
+        rc = X509_STORE_load_locations(cvs, crl, NULL);
+        if (rc != 1) {
+            ssl_sfliberrprint(err, n, my_ssl_eprintln, "Failed to load CRL.");
+            goto error;
+        }
+        rc = X509_STORE_set_flags(cvs, X509_V_FLAG_CRL_CHECK |
+                                           X509_V_FLAG_CRL_CHECK_ALL);
+    }
+#endif /* HAVE_CRL */
+
     /* SSL success is 1. We want to return 0 upon success. */
     if (rc != 1) {
 error:  if (myctx != NULL) {
@@ -417,6 +490,8 @@ error:  if (myctx != NULL) {
             free(key);
         if (ca != *pca)
             free(ca);
+        if (crl != *pcrl)
+            free(crl);
 
         if (rc == 0)
             rc = 1;
@@ -430,6 +505,8 @@ error:  if (myctx != NULL) {
             *pkey = key;
         if (*pca == NULL)
             *pca = ca;
+        if (*pcrl == NULL)
+            *pcrl = crl;
     }
 
     return rc;

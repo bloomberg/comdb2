@@ -96,6 +96,16 @@ static char cdb2_sslcertpath[PATH_MAX];
 static char cdb2_sslcert[PATH_MAX];
 static char cdb2_sslkey[PATH_MAX];
 static char cdb2_sslca[PATH_MAX];
+#if HAVE_CRL
+static char cdb2_sslcrl[PATH_MAX];
+#endif
+
+#ifdef NID_host /* available as of RFC 4524 */
+#define CDB2_NID_DBNAME_DEFAULT NID_host
+#else
+#define CDB2_NID_DBNAME_DEFAULT NID_commonName
+#endif
+int cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
 
 #define CDB2_CACHE_SSL_SESS_DEFAULT 0
 static int cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
@@ -178,7 +188,9 @@ static void reset_the_configuration(void)
     memset(cdb2_sslcert, 0, sizeof(cdb2_sslcert));
     memset(cdb2_sslkey, 0, sizeof(cdb2_sslkey));
     memset(cdb2_sslca, 0, sizeof(cdb2_sslca));
+    memset(cdb2_sslcrl, 0, sizeof(cdb2_sslcrl));
 
+    cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
     cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
 #endif
 
@@ -257,10 +269,8 @@ static char *ibm_getargv0(void)
 
 static inline const char *cdb2_skipws(const char *str)
 {
-    if (str) {
-        while (*str && isspace(*str))
-            str++;
-    }
+    while (*str && isspace(*str))
+        str++;
     return str;
 }
 
@@ -856,7 +866,10 @@ struct cdb2_hndl {
     char *cert;
     char *key;
     char *ca;
+    char *crl;
+    int cache_ssl_sess;
     cdb2_ssl_sess_list *sess_list;
+    int nid_dbname;
 #endif
     struct context_messages context_msgs;
     char *env_tz;
@@ -972,13 +985,21 @@ int is_valid_int(const char *str)
 }
 
 #if WITH_SSL
-static ssl_mode ssl_string_to_mode(const char *s) {
+static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
+{
     if (strcasecmp(SSL_MODE_REQUIRE, s) == 0)
         return SSL_REQUIRE;
     if (strcasecmp(SSL_MODE_VERIFY_CA, s) == 0)
         return SSL_VERIFY_CA;
     if (strcasecmp(SSL_MODE_VERIFY_HOST, s) == 0)
         return SSL_VERIFY_HOSTNAME;
+    if (strcasecmp(SSL_MODE_VERIFY_DBNAME, s) == 0) {
+        s += sizeof(SSL_MODE_VERIFY_DBNAME);
+        if (nid_dbname != NULL) {
+            s = cdb2_skipws(s);
+            *nid_dbname = (*s == '\0') ? OBJ_txt2nid(s) : cdb2_nid_dbname;
+        }
+    }
     return SSL_ALLOW;
 }
 #endif
@@ -1094,6 +1115,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                         cdb2_c_ssl_mode = SSL_VERIFY_CA;
                     else if (strcasecmp(SSL_MODE_VERIFY_HOST, tok) == 0)
                         cdb2_c_ssl_mode = SSL_VERIFY_HOSTNAME;
+                    else if (strcasecmp(SSL_MODE_VERIFY_DBNAME, tok) == 0) {
+                        cdb2_c_ssl_mode = SSL_VERIFY_DBNAME;
+                        tok = strtok_r(NULL, " :,", &last);
+                        if (tok != NULL)
+                            cdb2_nid_dbname = OBJ_txt2nid(tok);
+                    }
                 }
             } else if (strcasecmp(SSL_CERT_PATH_OPT, tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
@@ -1119,10 +1146,19 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                     strncpy(cdb2_sslca, tok, PATH_MAX);
                     cdb2_sslca[PATH_MAX - 1] = '\0';
                 }
+#if HAVE_CRL
+            } else if (strcasecmp(SSL_CRL_OPT, tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok) {
+                    strncpy(cdb2_sslcrl, tok, PATH_MAX);
+                    cdb2_sslcrl[PATH_MAX - 1] = '\0';
+                }
+#endif /* HAVE_CRL */
             } else if (strcasecmp("ssl_session_cache", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     cdb2_cache_ssl_sess = !!atoi(tok);
+#endif /* WITH_SSL */
             } else if (strcasecmp("allow_pmux_route", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
@@ -1132,7 +1168,6 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                         cdb2_allow_pmux_route = 0;
                     }
                 }
-#endif
             }
             pthread_mutex_unlock(&cdb2_sockpool_mutex);
         }
@@ -1661,8 +1696,9 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
         return -1;
     }
 
-    rc = ssl_new_ctx(&ctx, hndl->sslpath, &hndl->cert, &hndl->key, &hndl->ca,
-                     hndl->num_hosts, NULL, hndl->errstr, sizeof(hndl->errstr));
+    rc = ssl_new_ctx(&ctx, hndl->c_sslmode, hndl->sslpath, &hndl->cert,
+                     &hndl->key, &hndl->ca, &hndl->crl, hndl->num_hosts, NULL,
+                     hndl->errstr, sizeof(hndl->errstr));
     if (rc != 0) {
         hndl->sslerr = 1;
         return -1;
@@ -1670,7 +1706,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 
     p = (hndl->sess_list == NULL) ? NULL : &(hndl->sess_list->list[indx]);
 
-    rc = sslio_connect(sb, ctx, hndl->c_sslmode,
+    rc = sslio_connect(sb, ctx, hndl->c_sslmode, hndl->dbname, hndl->nid_dbname,
                        hndl->errstr, sizeof(hndl->errstr),
                        ((p != NULL) ? p->sess : NULL), &hndl->sslerr);
 
@@ -1682,7 +1718,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
         return -1;
     }
 
-    if (cdb2_cache_ssl_sess) {
+    if (hndl->cache_ssl_sess) {
         if (hndl->sess_list == NULL) {
             hndl->sess_list = malloc(sizeof(cdb2_ssl_sess_list));
             if (hndl->sess_list == NULL)
@@ -1704,7 +1740,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
                    we lose the caching ability, and that's it. */
                 free(hndl->sess_list);
                 hndl->sess_list = NULL;
-                cdb2_cache_ssl_sess = 0;
+                hndl->cache_ssl_sess = 0;
                 return 0;
             }
 
@@ -2848,6 +2884,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     free(hndl->cert);
     free(hndl->key);
     free(hndl->ca);
+    free(hndl->crl);
     if (hndl->sess_list) {
         /* This is correct - we don't have to do it under lock. */
         hndl->sess_list->ref = 0;
@@ -3308,6 +3345,85 @@ static int is_hasql(const char *set_command, int *value)
     return 1;
 }
 
+#if WITH_SSL
+/*
+ *  0 - Processed an SSL set
+ * >0 - Failed to process an SSL set
+ * <0 - Not an SSL set
+ */
+static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
+{
+    int rc = 0;
+    const char *p = &cmd[sizeof("SET") - 1];
+    p = cdb2_skipws(p);
+
+    if (strncasecmp(p, "SSL_MODE", sizeof("SSL_MODE") - 1) == 0) {
+        p += sizeof("SSL_MODE");
+        p = cdb2_skipws(p);
+        hndl->c_sslmode = ssl_string_to_mode(p, &hndl->nid_dbname);
+    } else if (strncasecmp(p, SSL_CERT_PATH_OPT,
+                           sizeof(SSL_CERT_PATH_OPT) - 1) == 0) {
+        p += sizeof(SSL_CERT_PATH_OPT);
+        p = cdb2_skipws(p);
+        free(hndl->sslpath);
+        hndl->sslpath = strdup(p);
+        if (hndl->sslpath == NULL)
+            rc = ENOMEM;
+    } else if (strncasecmp(p, SSL_CERT_OPT, sizeof(SSL_CERT_OPT) - 1) == 0) {
+        p += sizeof(SSL_CERT_OPT);
+        p = cdb2_skipws(p);
+        free(hndl->cert);
+        hndl->cert = strdup(p);
+        if (hndl->cert == NULL)
+            rc = ENOMEM;
+    } else if (strncasecmp(p, SSL_KEY_OPT, sizeof(SSL_KEY_OPT) - 1) == 0) {
+        p += sizeof(SSL_KEY_OPT);
+        p = cdb2_skipws(p);
+        free(hndl->key);
+        hndl->key = strdup(p);
+        if (hndl->key == NULL)
+            rc = ENOMEM;
+    } else if (strncasecmp(p, SSL_CA_OPT, sizeof(SSL_CA_OPT) - 1) == 0) {
+        p += sizeof(SSL_CA_OPT);
+        p = cdb2_skipws(p);
+        free(hndl->ca);
+        hndl->ca = strdup(p);
+        if (hndl->ca == NULL)
+            rc = ENOMEM;
+#if HAVE_CRL
+    } else if (strncasecmp(p, SSL_CRL_OPT, sizeof(SSL_CRL_OPT) - 1) == 0) {
+        p += sizeof(SSL_CRL_OPT);
+        p = cdb2_skipws(p);
+        free(hndl->crl);
+        hndl->crl = strdup(p);
+        if (hndl->crl == NULL)
+            rc = ENOMEM;
+#endif /* HAVE_CRL */
+    } else if (strncasecmp(p, "SSL_SESSION_CACHE",
+                           sizeof("SSL_SESSION_CACHE") - 1) == 0) {
+        p += sizeof("SSL_SESSION_CACHE");
+        p = cdb2_skipws(p);
+        hndl->cache_ssl_sess = (strncasecmp(p, "ON", 2) == 0);
+        if (hndl->cache_ssl_sess)
+            cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
+    } else {
+        rc = -1;
+    }
+
+    if (rc == 0) {
+        /* Reset ssl error flag. */
+        hndl->sslerr = 0;
+        /* Refresh connection if SSL config has changed. */
+        if (hndl->sb != NULL) {
+            newsql_disconnect(hndl, hndl->sb, __LINE__);
+            hndl->sb = NULL;
+        }
+    }
+
+    return rc;
+}
+#endif /* WITH_SSL */
+
 static inline void cleanup_query_list(cdb2_hndl_tp *hndl,
                                       cdb2_query_list *commit_query_list,
                                       int line)
@@ -3358,12 +3474,20 @@ static inline void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
 static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 {
     int i, j, k;
+
     if (hndl->in_trans) {
         sprintf(hndl->errstr, "Can't run set query inside transaction.");
         hndl->error_in_trans = CDB2ERR_BADREQ;
         hndl->client_side_error = 1;
         return CDB2ERR_BADREQ;
     }
+
+#if WITH_SSL
+    int rc = process_ssl_set_command(hndl, sql);
+    if (rc >= 0)
+        return rc;
+#endif
+
     i = hndl->num_set_commands;
     if (i > 0) {
         int skip_len = 4;
@@ -5148,9 +5272,11 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
     char *sslenv;
 
     if ((sslenv = getenv("SSL_MODE")) != NULL && sslenv[0] != '\0')
-        hndl->c_sslmode = ssl_string_to_mode(sslenv);
-    else
+        hndl->c_sslmode = ssl_string_to_mode(sslenv, &hndl->nid_dbname);
+    else {
         hndl->c_sslmode = cdb2_c_ssl_mode;
+        hndl->nid_dbname = cdb2_nid_dbname;
+    }
 
     if ((sslenv = getenv("SSL_CERT_PATH")) != NULL && sslenv[0] != '\0') {
         hndl->sslpath = strdup(sslenv);
@@ -5192,27 +5318,25 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
             return ENOMEM;
     }
 
-    /* If we are told to verify server, and cacert file is NULL,
-       we explicitly make one with the default name so that
-       ssl_new_ctx() would fail if it could not load the CA. */
-    if (hndl->c_sslmode >= SSL_VERIFY_CA && hndl->ca == NULL) {
-        if (hndl->sslpath == NULL) {
-            snprintf(hndl->errstr, sizeof(hndl->errstr),
-                     "A trusted CA certificate is required "
-                     "to verify server certificates.");
-            return EINVAL;
-        }
-        hndl->ca = malloc(strlen(hndl->sslpath) + sizeof("/" DEFAULT_CA));
-        if (hndl->ca == NULL)
+#if HAVE_CRL
+    if ((sslenv = getenv("SSL_CRL")) != NULL && sslenv[0] != '\0') {
+        hndl->crl = strdup(sslenv);
+        if (hndl->crl == NULL)
             return ENOMEM;
-        /* overflow-safe */
-        sprintf(hndl->ca, "%s/%s", hndl->sslpath, DEFAULT_CA);
+    } else if (cdb2_sslcrl[0] != '\0') {
+        hndl->crl = strdup(cdb2_sslcrl);
+        if (hndl->crl == NULL)
+            return ENOMEM;
     }
+#endif
 
     /* Set up SSL sessions. */
     if ((sslenv = getenv("SSL_SESSION_CACHE")) != NULL)
-        cdb2_cache_ssl_sess = !!atoi(sslenv);
-    cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
+        hndl->cache_ssl_sess = !!atoi(sslenv);
+    else
+        hndl->cache_ssl_sess = cdb2_cache_ssl_sess;
+    if (hndl->cache_ssl_sess)
+        cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
 
     /* Reset for next cdb2_open() */
     cdb2_c_ssl_mode = SSL_ALLOW;
@@ -5220,7 +5344,10 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
     cdb2_sslcert[0] = '\0';
     cdb2_sslkey[0] = '\0';
     cdb2_sslca[0] = '\0';
+    cdb2_sslcrl[0] = '\0';
 
+    cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
+    cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
     return 0;
 }
 

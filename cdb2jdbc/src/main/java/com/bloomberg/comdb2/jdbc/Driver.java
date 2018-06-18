@@ -93,6 +93,7 @@ public class Driver implements java.sql.Driver {
             __instance.options.put("trust_store", new StringOption("trust_store", "SSLCA"));
             __instance.options.put("trust_store_password", new StringOption("trust_store_password", "SSLCAPass"));
             __instance.options.put("trust_store_type", new StringOption("trust_store_type", "SSLCAType"));
+            __instance.options.put("crl", new StringOption("crl", "SSLCRL"));
             __instance.options.put("allow_pmux_route", new StringOption("allow_pmux_route", "AllowPmuxRoute"));
             __instance.options.put("statement_query_effects",
                     new StringOption("statement_query_effects", "StatementQueryEffects"));

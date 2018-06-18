@@ -2012,21 +2012,20 @@ static inline int check_user_password(struct sqlclntstate *clnt)
     if (!gbl_uses_password)
         return 0;
 
-    if (gbl_uses_password) {
-        if (!clnt->have_user) {
-            clnt->have_user = 1;
-            strcpy(clnt->user, DEFAULT_USER);
-        }
-        if (!clnt->have_password) {
-            clnt->have_password = 1;
-            strcpy(clnt->password, DEFAULT_PASSWORD);
-        }
-    }
-    if (clnt->have_user && clnt->have_password) {
-        password_rc = bdb_user_password_check(clnt->user, clnt->password, &valid_user);
+    if (!clnt->have_user) {
+        clnt->have_user = 1;
+        strcpy(clnt->user, DEFAULT_USER);
     }
 
-    if (!clnt->have_user || !clnt->have_password || password_rc != 0) {
+    if (!clnt->have_password) {
+        clnt->have_password = 1;
+        strcpy(clnt->password, DEFAULT_PASSWORD);
+    }
+
+    password_rc =
+        bdb_user_password_check(clnt->user, clnt->password, &valid_user);
+
+    if (password_rc != 0) {
         write_response(clnt, RESPONSE_ERROR_ACCESS, "access denied", 0);
         return 1;
     }
@@ -3076,11 +3075,20 @@ errors:
 
 static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
+    int rc;
+
     if (gbl_check_access_controls) {
         check_access_controls(thedb);
         gbl_check_access_controls = 0;
     }
-    int rc = check_user_password(clnt);
+
+    /* If 1) this is an SSL connection, 2) and client sends a certificate,
+       3) and client does not override the user, let it through. */
+    if (sslio_has_x509(clnt->sb) && clnt->is_x509_user)
+        rc = 0;
+    else
+        rc = check_user_password(clnt);
+
     if (rc == 0) {
         if (thd->lastuser[0] != '\0' && strcmp(thd->lastuser, clnt->user) != 0)
             delete_prepared_stmts(thd);
@@ -3797,6 +3805,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     /* reset the user */
     clnt->have_user = 0;
+    clnt->is_x509_user = 0;
     bzero(clnt->user, sizeof(clnt->user));
 
     /* reset the password */

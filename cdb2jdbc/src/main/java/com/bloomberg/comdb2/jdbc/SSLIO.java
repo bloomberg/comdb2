@@ -20,6 +20,7 @@ import java.net.*;
 import javax.net.ssl.*;
 import java.util.*;
 import java.util.logging.*;
+import java.util.regex.*;
 import java.sql.*;
 import java.security.*;
 import java.security.cert.*;
@@ -29,6 +30,8 @@ import com.bloomberg.comdb2.jdbc.Sqlquery.*;
 
 public class SSLIO extends SockIO {
     private SSL_MODE sslmode;
+    private String sslNIDDbName;
+    private String sslDbName;
 
     /* Having a global SSLSocketFactory is nice however it can be
        problematic when the client uses different SSL certificates.
@@ -38,7 +41,8 @@ public class SSLIO extends SockIO {
 
     private SSLSocketFactory createFactory(SSL_MODE mode,
             String cert, String certtype, String certpasswd,
-            String ca, String catype, String capasswd)
+            String ca, String catype, String capasswd,
+            String crl)
         throws SSLException {
 
         KeyManagerFactory kf = null;
@@ -62,9 +66,7 @@ public class SSLIO extends SockIO {
                 else
                     kstype = certtype;
                 KeyStore clientks = KeyStore.getInstance(kstype);
-
-                URL clientksurl = new URL(cert);
-                keyis = clientksurl.openStream();
+                keyis = new FileInputStream(cert);
 
                 /* init key with password */
                 char[] passwd;
@@ -92,7 +94,7 @@ public class SSLIO extends SockIO {
 
         /* Load user trusted CA cert. */
         if (ca != null && ca.length() > 0) {
-            InputStream cais = null;
+            InputStream cais = null, crlis = null;
             String kstype = "Unknown"; /* init to make javac happy */
             try {
                 /* If no ca type specified, default to "jks" */
@@ -101,9 +103,7 @@ public class SSLIO extends SockIO {
                 else
                     kstype = catype;
                 KeyStore caks = KeyStore.getInstance(kstype);
-
-                URL caksurl = new URL(ca);
-                cais = caksurl.openStream();
+                cais = new FileInputStream(ca);
 
                 /* init key with password */
                 char[] passwd;
@@ -113,17 +113,46 @@ public class SSLIO extends SockIO {
                     passwd = capasswd.toCharArray();
 
                 caks.load(cais, passwd);
-                tf.init(caks);
+
+                if (crl == null) /* If no CRL, init right away. */
+                    tf.init(caks);
+                else { /* Have CRL. Do it the hard way. */
+                    /* Initialize PKIXBuilder params. */
+                    X509CertSelector selector = new X509CertSelector();
+                    selector.setCertificateValid(new java.util.Date());
+                    selector.setKeyUsage(new boolean[] { true });
+                    PKIXBuilderParameters params = new PKIXBuilderParameters(caks, selector);
+                    params.setRevocationEnabled(true);
+
+                    /* Generate CRL from path. */
+                    crlis = new FileInputStream(crl);
+                    CertificateFactory cf = CertificateFactory.getInstance("X.509");
+                    X509CRL x509crl = (X509CRL)cf.generateCRL(crlis);
+
+                    /* Create ManagerFactoryParams with the CRL. */
+                    CertStoreParameters csparams = new CollectionCertStoreParameters(
+                            Arrays.asList(new X509CRL[] { x509crl }));
+                    CertStore cs = CertStore.getInstance("Collection", csparams);
+                    params.addCertStore(cs);
+                    ManagerFactoryParameters mfparams = new CertPathTrustManagerParameters(params);
+
+                    tf.init(mfparams);
+                }
             } catch (NoSuchAlgorithmException nsae) {
-                throw new SSLException(kstype + " algorithm not found.", nsae);
+                throw new SSLException("Algorithm not found.", nsae);
             } catch (GeneralSecurityException gse) {
                 throw new SSLException("Could not load CA certificate.", gse);
             } catch (IOException ioe) {
-                throw new SSLException("Could not open " + ca, ioe);
+                throw new SSLException("Could not open file.", ioe);
             } finally {
                 if (cais != null) {
                     try {
                         cais.close();
+                    } catch (IOException e) {/* silently ignore */}
+                }
+                if (crlis != null) {
+                    try {
+                        crlis.close();
                     } catch (IOException e) {/* silently ignore */}
                 }
             }
@@ -204,9 +233,30 @@ public class SSLIO extends SockIO {
         return false;
     }
 
-    private boolean verify() {
-        if (sslmode != SSL_MODE.VERIFY_CA
-                && sslmode != SSL_MODE.VERIFY_HOSTNAME)
+    private static boolean matchDbName(String cert, String name) {
+        /* return true if exact match */
+        if (cert.equalsIgnoreCase(name))
+            return true;
+
+        char[] chararr = cert.toCharArray();
+        int pos, len;
+
+        /* Can't be all wildcard characters. */
+        for (pos = 0, len = chararr.length;
+             pos != len && (chararr[pos] == '?' || chararr[pos] == '*');
+             ++pos) ;
+
+        if (pos == len)
+            return false;
+
+        Pattern p = Pattern.compile(cert);
+        return p.matcher(name).matches();
+    }
+
+    private boolean verify(StringBuilder err, String dbname, String nidDbName) {
+        if (sslmode != SSL_MODE.VERIFY_CA &&
+            sslmode != SSL_MODE.VERIFY_HOSTNAME &&
+            sslmode != SSL_MODE.VERIFY_DBNAME)
             return true;
 
         SSLSession sess = ((SSLSocket)sock).getSession();
@@ -218,14 +268,37 @@ public class SSLIO extends SockIO {
             return false;
         }
 
-        if (servCerts == null || servCerts.length == 0)
+        if (servCerts == null || servCerts.length == 0) {
+            if (err != null)
+                err.append("Could not get peer certificate.");
             return false;
+        }
 
         if (sslmode == SSL_MODE.VERIFY_CA)
             return true;
 
+        /* Validate PTR record. */
         X509Certificate servCert = (X509Certificate)servCerts[0];
-        String peerHost = sock.getInetAddress().getCanonicalHostName();
+        InetAddress peerAddr = sock.getInetAddress();
+        String peerHost = peerAddr.getCanonicalHostName();
+        boolean foundAddr = false;
+        try {
+            InetAddress inetAddresses[] = InetAddress.getAllByName(peerHost);
+            for (InetAddress addr : inetAddresses) {
+                if (peerAddr.equals(addr)) {
+                    foundAddr = true;
+                    break;
+                }
+            }
+        } catch (IOException ioe) {
+            /* Ignore. */
+        }
+
+        if (!foundAddr) {
+            if (err != null)
+                err.append("Certificate does not match host name.");
+            return false;
+        }
 
         /* Match SANs */
         try {
@@ -265,17 +338,43 @@ public class SSLIO extends SockIO {
 
         if (CN == null)
             return false;
-        if (matchHost(CN, peerHost))
+        if (!matchHost(CN, peerHost)) {
+            if (err != null)
+                err.append("Certificate does not match host name.");
+            return false;
+        }
+
+        if (sslmode == SSL_MODE.VERIFY_HOSTNAME)
             return true;
-        return false;
+
+        String dbnameInCert = null;
+        for (Rdn rdn : DN.getRdns()) {
+            if (nidDbName.equals(rdn.getType())) {
+                dbnameInCert = (String)rdn.getValue();
+                break;
+            }
+        }
+        if (dbnameInCert == null)
+            return false;
+
+        if (!matchDbName(dbnameInCert, sslDbName)) {
+            if (err != null)
+                err.append("Certificate does not match database name.");
+            return false;
+        }
+        return true;
     }
 
     /* If an IOException is thrown by the constructor, 
        callers should not attempt to retry SSL. */
     public SSLIO(SockIO io, SSL_MODE mode,
+            String dbname, String nidDbName,
             String cert, String certtype, String certpasswd,
-            String ca, String catype, String capasswd) throws SSLException {
-        if ((mode == SSL_MODE.VERIFY_CA || mode == SSL_MODE.VERIFY_HOSTNAME)
+            String ca, String catype, String capasswd,
+            String crl) throws SSLException {
+        if ((mode == SSL_MODE.VERIFY_CA ||
+             mode == SSL_MODE.VERIFY_HOSTNAME ||
+             mode == SSL_MODE.VERIFY_DBNAME)
                 && (ca == null || ca.length() == 0))
             throw new SSLException("Trust store required "
                     + "for server verification.");
@@ -294,11 +393,13 @@ public class SSLIO extends SockIO {
         tcpbufsz = io.tcpbufsz;
         opened = true;
         sslmode = mode;
+        sslNIDDbName = nidDbName;
+        sslDbName = dbname;
 
         /* Negotiate */
         int rc = negotiate();
         if (rc < 0) /* socket broken */
-            throw new SSLException("Broken pipe");
+            throw new SSLException("Could not negotiate SSL with server.");
         if (rc > 0) {
             if (sslmode == SSL_MODE.ALLOW)
                 return;
@@ -307,7 +408,7 @@ public class SSLIO extends SockIO {
 
         /* Context */
         factory = createFactory(mode, cert, certtype, certpasswd,
-                                ca, catype, capasswd);
+                                ca, catype, capasswd, crl);
 
         /* Connect */
         SSLSocket sslsock;
@@ -320,16 +421,19 @@ public class SSLIO extends SockIO {
             throw new SSLException("Could not start SSL handshake.", ioe);
         }
 
+        sock = sslsock;
+
         /* Verify */
-        if (!verify()) {
+        StringBuilder sb = new StringBuilder();
+        if (!verify(sb, dbname, nidDbName)) {
             try {
                 close();
             } catch (IOException e) {/* ignore */}
 
-            throw new SSLException("Could not verify server identity.");
+            /* Throw SSL verify error. */
+            throw new SSLException(sb.toString());
         }
 
-        sock = sslsock;
         try {
             out = new BufferedOutputStream(sock.getOutputStream());
             in = new BufferedInputStream(sock.getInputStream());
@@ -365,8 +469,8 @@ public class SSLIO extends SockIO {
             return false;
         }
 
-        /* Verify */
-        if (!verify()) {
+        /* Verify - we don't need the error message here. */
+        if (!verify(null, sslDbName, sslNIDDbName)) {
             try {
                 close();
             } catch (IOException e) {/* ignore */}
