@@ -601,6 +601,46 @@ struct sqlclntstate {
 
     int8_t wrong_db;
     int8_t is_lua_sql_thread;
+
+    /*              (SERVER)
+      Default --> (val: 1)
+                      |
+                      +--> Client has SKIP feature?
+                                   |    |
+                                NO |    | YES
+                                   |    |
+      SET INTRANSRESULTS OFF ------)--->+--> (val: 0) --+
+                                   |                    |
+                                   |  +-----------------+
+                                   |  |
+                                   |  +---> Send server SKIP feature;
+                                   |        Don't send intrans results
+                                   |
+      SET INTRANSRESULTS ON        +-------> (val: 1) --+
+                |                                       |
+                | (val: -1)           +-----------------+
+                |                     |
+                +---------------------+--> Don't send server SKIP feature;
+                                           Send intrans results
+
+                    (CLIENT)
+      CDB2_READ_INTRANS_RESULTS is ON?
+                     /\
+       NO (default) /  \ YES
+                   /    \
+       Send Client       \
+       SKIP feature       \
+                /          \
+       Server has           \
+            SKIP feature?    \
+             /          \     \
+          Y /            \ N   \
+           /              \     \
+       Don't read         Read intrans results
+       intrans results    for writes
+       for writes
+
+     */
     int8_t send_intrans_results;
     int8_t high_availability_flag;
     int8_t hasql_on;
