@@ -110,7 +110,7 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL SunOS)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lsocket -lnsl -lresolv -lpthread")
 endif()
 
-add_subdirectory(bb)
+add_subdirectory(util)
 add_subdirectory(bdb)
 add_subdirectory(berkdb)
 add_subdirectory(cdb2api)

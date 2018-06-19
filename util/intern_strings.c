@@ -21,7 +21,7 @@
 #include "plhash.h"
 #include "intern_strings.h"
 
-#include "mem_bb.h"
+#include "mem_util.h"
 #include "mem_override.h"
 #include "logmsg.h"
 

@@ -23,7 +23,7 @@
 #include "util.h"
 #include "plhash.h"
 
-#include "mem_bb.h"
+#include "mem_util.h"
 #include "mem_override.h"
 
 char *gbl_config_root = NULL;

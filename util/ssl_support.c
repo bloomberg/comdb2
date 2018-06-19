@@ -37,7 +37,7 @@
 /* bb */
 #if SBUF2_SERVER
 #  include <openssl/rand.h> /* RAND_pseudo_bytes() */
-#  include "mem_bb.h" /* subsystem malloc routines. */
+#  include "mem_util.h" /* subsystem malloc routines. */
 #  include <mem_override.h> /* override malloc routines. */
 #endif
 

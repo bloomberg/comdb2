@@ -30,7 +30,7 @@
 #include <sys/mman.h>
 
 #include "comdb2_pthread_create.h"
-#include "mem_bb.h"
+#include "mem_util.h"
 #include "list.h"
 #include "logmsg.h"
 
