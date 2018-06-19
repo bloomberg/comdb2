@@ -783,7 +783,7 @@ int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host)
 int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
                         void *seqkey, int seqkeylen)
 {
-    int bdberr, rc = 0;
+    int bdberr, rc = 0, *file;
     void *bdb_handle = bdb_handle_from_ireq(iq);
     struct dbenv *dbenv = dbenv_from_ireq(iq);
     db_seqnum_type ss;
@@ -801,11 +801,13 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
         else
             rc = ERR_INTERNAL;
     }
-    /* Not sure why we have this inconsistency where we wait for logical commits
-       but
-       not logical aborts, but it's wrong. */
-    trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, gbl_mynode,
-                              -1 /* timeoutms */, 1 /* adaptive */, &ss);
+
+    /* Single phy-txn logical aborts will set ss to 0: check before waiting */
+    file = (u_int32_t *)&ss;
+    if (*file != 0) {
+        trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, gbl_mynode,
+                                  -1 /* timeoutms */, 1 /* adaptive */, &ss);
+    }
     return rc;
 }
 

@@ -146,15 +146,15 @@ int osql_delidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
         return SQLITE_OK;
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_save_index(pCur, thd, is_update, 1);
+        rc = osql_send_delidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
         if (rc) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s:%d %s - failed to cache socksql row rc=%d\n",
-                    __FILE__, __LINE__, __func__, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
         }
-        return osql_send_delidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
-    } else
-        return osql_save_index(pCur, thd, is_update, 1);
+    }
+    return osql_save_index(pCur, thd, is_update, 1);
 }
 
 /**
@@ -175,16 +175,15 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
         return rc;
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_save_delrec(pCur, thd);
+        rc = osql_send_delrec_logic(pCur, thd, NET_OSQL_SOCK_RPL);
         if (rc) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s:%d %s - failed to cache socksql row rc=%d\n",
-                    __FILE__, __LINE__, __func__, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
         }
-
-        return osql_send_delrec_logic(pCur, thd, NET_OSQL_SOCK_RPL);
-    } else
-        return osql_save_delrec(pCur, thd);
+    }
+    return osql_save_delrec(pCur, thd);
 }
 
 /**
@@ -215,15 +214,15 @@ int osql_insidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
         return SQLITE_OK;
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_save_index(pCur, thd, is_update, 0);
+        rc = osql_send_insidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
         if (rc) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s:%d %s - failed to cache socksql row rc=%d\n",
-                    __FILE__, __LINE__, __func__, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
         }
-        return osql_send_insidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
-    } else
-        return osql_save_index(pCur, thd, is_update, 0);
+    }
+    return osql_save_index(pCur, thd, is_update, 0);
 }
 
 /**
@@ -249,17 +248,15 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         return rc;
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_save_insrec(pCur, thd, pData, nData);
+        rc = osql_send_insrec_logic(pCur, thd, pData, nData, NET_OSQL_SOCK_RPL);
         if (rc) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s:%d %s - failed to cache socksql row rc=%d\n",
-                    __FILE__, __LINE__, __func__, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
         }
-
-        return osql_send_insrec_logic(pCur, thd, pData, nData,
-                                      NET_OSQL_SOCK_RPL);
-    } else
-        return osql_save_insrec(pCur, thd, pData, nData);
+    }
+    return osql_save_insrec(pCur, thd, pData, nData);
 }
 
 /**
@@ -296,17 +293,15 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     }
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_save_updrec(pCur, thd, pData, nData);
+        rc = osql_send_updrec_logic(pCur, thd, pData, nData, NET_OSQL_SOCK_RPL);
         if (rc) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s:%d %s - failed to cache socksql row rc=%d\n",
-                    __FILE__, __LINE__, __func__, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
         }
-
-        return osql_send_updrec_logic(pCur, thd, pData, nData,
-                                      NET_OSQL_SOCK_RPL);
-    } else
-        return osql_save_updrec(pCur, thd, pData, nData);
+    }
+    return osql_save_updrec(pCur, thd, pData, nData);
 }
 
 /**
@@ -529,6 +524,7 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
     int retries = 0;
     int sentops = 0;
     int bdberr = 0;
+    osqlstate_t *osql = &clnt->osql;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
 
     retries = 0;
@@ -574,6 +570,12 @@ again:
 
             return SQLITE_BUSY;
         }
+    }
+
+    if (osql->tablename) {
+        free(osql->tablename);
+        osql->tablename = NULL;
+        osql->tablenamelen = 0;
     }
 
     if (!keep_session) {
@@ -754,6 +756,7 @@ retry:
                 /* lets check to see if a master swing happened and we need to
                  * retry */
                 if (osql->xerr.errval == ERR_NOMASTER ||
+                    osql->xerr.errval == ERR_NOT_DURABLE ||
                     osql->xerr.errval == 999) {
                     if (bdb_attr_get(thedb->bdb_attr,
                                      BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
@@ -976,6 +979,8 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
 /********************** INTERNALS
  * ***********************************************/
 
+int gbl_osql_random_restart = 0;
+
 static int should_restart(struct sqlclntstate *clnt, int rc)
 {
     if (rc == OSQL_SEND_ERROR_WRONGMASTER &&
@@ -984,11 +989,18 @@ static int should_restart(struct sqlclntstate *clnt, int rc)
         return 1;
     }
 
+    if (gbl_osql_random_restart && (rand() % 100) == 0) {
+        logmsg(LOGMSG_USER, "Forcing random-restart\n");
+        return 1;
+    }
+
     return 0;
 }
 
 #define RESTART_SOCKSQL_KEEP_RQID(keep_rqid)                                   \
+    restarted = 0;                                                             \
     if (should_restart(clnt, rc)) {                                            \
+        restarted = 1;                                                         \
         rc = osql_sock_restart(clnt, gbl_survive_n_master_swings, keep_rqid);  \
         if (rc) {                                                              \
             logmsg(LOGMSG_ERROR,                                               \
@@ -1013,6 +1025,7 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
 {
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
+    int restarted;
 
     if (clnt->ddl_tables && hash_find_readonly(clnt->ddl_tables, tablename)) {
         return SQLITE_DDL_MISUSE;
@@ -1033,9 +1046,12 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
         osql->tablenamelen = 0;
     }
 
-    rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tablename, nettype,
-                         osql->logsb, comdb2_table_version(tablename));
-    RESTART_SOCKSQL;
+    do {
+        rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tablename,
+                             nettype, osql->logsb,
+                             comdb2_table_version(tablename));
+        RESTART_SOCKSQL;
+    } while (restarted && rc == 0);
 
     if (rc == SQLITE_OK) {
         /* cache the sent tablename */
@@ -1062,22 +1078,24 @@ static int osql_send_delrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
     osqlstate_t *osql = &clnt->osql;
     char *host = thd->clnt->osql.host;
     unsigned long long rqid = thd->clnt->osql.rqid;
+    int restarted;
     int rc = 0;
 
     /* limit transaction*/
     if ((rc = check_osql_capacity(thd)))
         return rc;
 
-    rc = osql_send_usedb_logic(pCur, thd, nettype);
-    if (rc == SQLITE_OK) {
-
-        rc = osql_send_delrec(osql->host, osql->rqid, osql->uuid, pCur->genid,
-                              (gbl_partial_indexes && pCur->db->ix_partial)
-                                  ? clnt->del_keys
-                                  : -1ULL,
-                              nettype, osql->logsb);
+    do {
+        rc = osql_send_usedb_logic(pCur, thd, nettype);
+        if (rc == SQLITE_OK) {
+            rc = osql_send_delrec(
+                osql->host, osql->rqid, osql->uuid, pCur->genid,
+                (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys
+                                                              : -1ULL,
+                nettype, osql->logsb);
+        }
         RESTART_SOCKSQL;
-    }
+    } while (restarted && rc == 0);
 
     return rc;
 }
@@ -1089,10 +1107,13 @@ static int osql_send_updstat_logic(struct BtCursor *pCur,
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
+    int restarted;
 
-    rc = osql_send_updstat(osql->host, osql->rqid, osql->uuid, pCur->genid,
-                           pData, nData, nStat, nettype, osql->logsb);
-    RESTART_SOCKSQL;
+    do {
+        rc = osql_send_updstat(osql->host, osql->rqid, osql->uuid, pCur->genid,
+                               pData, nData, nStat, nettype, osql->logsb);
+        RESTART_SOCKSQL;
+    } while (restarted && rc == 0);
 
     return rc;
 }
@@ -1102,6 +1123,7 @@ int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
 {
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
+    int restarted;
     int rc = 0;
     int i;
 
@@ -1109,6 +1131,7 @@ int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
     if ((rc = check_osql_capacity(thd)))
         return rc;
 
+restart:
     for (i = 0; i < pCur->db->nix; i++) {
         /* only send add keys when told */
         if (gbl_partial_indexes && pCur->db->ix_partial &&
@@ -1118,6 +1141,8 @@ int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                              i, (char *)thd->clnt->idxInsert[i],
                              getkeysize(pCur->db, i), nettype, osql->logsb);
         RESTART_SOCKSQL;
+        if (restarted && rc == 0)
+            goto restart;
         if (rc)
             break;
     }
@@ -1129,6 +1154,7 @@ int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
 {
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
+    int restarted;
     int rc = 0;
     int i;
 
@@ -1136,15 +1162,19 @@ int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
     if ((rc = check_osql_capacity(thd)))
         return rc;
 
+restart:
     for (i = 0; i < pCur->db->nix; i++) {
         /* only send delete keys when told */
         if (gbl_partial_indexes && pCur->db->ix_partial &&
             !(clnt->del_keys & (1ULL << i)))
             continue;
+
         rc = osql_send_index(osql->host, osql->rqid, osql->uuid, pCur->genid, 1,
                              i, (char *)thd->clnt->idxDelete[i],
                              getkeysize(pCur->db, i), nettype, osql->logsb);
         RESTART_SOCKSQL;
+        if (restarted && rc == 0)
+            goto restart;
         if (rc)
             break;
     }
@@ -1157,22 +1187,24 @@ static int osql_send_insrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
 
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
+    int restarted;
     int rc = 0;
 
     /* limit transaction*/
     if ((rc = check_osql_capacity(thd)))
         return rc;
 
-    rc = osql_send_usedb_logic(pCur, thd, nettype);
-    if (rc == SQLITE_OK) {
-
-        rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, pCur->genid,
-                              (gbl_partial_indexes && pCur->db->ix_partial)
-                                  ? clnt->ins_keys
-                                  : -1ULL,
-                              pData, nData, nettype, osql->logsb);
+    do {
+        rc = osql_send_usedb_logic(pCur, thd, nettype);
+        if (rc == SQLITE_OK) {
+            rc = osql_send_insrec(
+                osql->host, osql->rqid, osql->uuid, pCur->genid,
+                (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->ins_keys
+                                                              : -1ULL,
+                pData, nData, nettype, osql->logsb);
+        }
         RESTART_SOCKSQL;
-    }
+    } while (restarted && rc == 0);
 
     return rc;
 }
@@ -1183,11 +1215,14 @@ static int osql_send_updcols_logic(struct BtCursor *pCur,
 {
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
+    int restarted;
     int rc = 0;
 
-    rc = osql_send_updcols(osql->host, osql->rqid, osql->uuid, pCur->genid,
-                           nettype, &updCols[1], updCols[0], osql->logsb);
-    RESTART_SOCKSQL;
+    do {
+        rc = osql_send_updcols(osql->host, osql->rqid, osql->uuid, pCur->genid,
+                               nettype, &updCols[1], updCols[0], osql->logsb);
+        RESTART_SOCKSQL;
+    } while (restarted && rc == 0);
 
     return rc;
 }
@@ -1199,12 +1234,14 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, struct sql_thread *thd,
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
+    int restarted;
     int i;
     int idx;
     int ncols;
 
     int actualblobs = pCur->db->schema->numblobs;
 
+restart:
     for (i = 0; i < actualblobs; i++) {
         /* NOTE: the blobs are NOT clustered:
            create table t1(id int not null, b1 blob, b2 blob);
@@ -1230,6 +1267,10 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                      pCur->genid, nettype, NULL, -2,
                                      osql->logsb);
                 RESTART_SOCKSQL;
+                if (restarted && rc == 0)
+                    goto restart;
+                if (rc)
+                    break;
                 continue;
             }
         }
@@ -1238,6 +1279,8 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, struct sql_thread *thd,
                              nettype, blobs[i].data, blobs[i].length,
                              osql->logsb);
         RESTART_SOCKSQL;
+        if (restarted && rc == 0)
+            goto restart;
         if (rc)
             break;
     }
@@ -1251,16 +1294,15 @@ static int osql_updcols(struct BtCursor *pCur, struct sql_thread *thd,
     int rc = 0;
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_save_updcols(pCur, thd, updCols);
+        rc = osql_send_updcols_logic(pCur, thd, updCols, NET_OSQL_SOCK_RPL);
         if (rc) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s:%d %s - failed to cache socksql row rc=%d\n",
-                    __FILE__, __LINE__, __func__, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
         }
-
-        return osql_send_updcols_logic(pCur, thd, updCols, NET_OSQL_SOCK_RPL);
-    } else
-        return osql_save_updcols(pCur, thd, updCols);
+    }
+    return osql_save_updcols(pCur, thd, updCols);
 }
 
 static int osql_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
@@ -1268,17 +1310,16 @@ static int osql_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
                        int is_update)
 {
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        int rc = osql_save_qblobs(pCur, thd, blobs, maxblobs, is_update);
+        int rc = osql_send_qblobs_logic(pCur, thd, updCols, blobs,
+                                        NET_OSQL_SOCK_RPL);
         if (rc) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s:%d %s - failed to cache socksql row rc=%d\n",
-                    __FILE__, __LINE__, __func__, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
         }
-
-        return osql_send_qblobs_logic(pCur, thd, updCols, blobs,
-                                      NET_OSQL_SOCK_RPL);
-    } else
-        return osql_save_qblobs(pCur, thd, blobs, maxblobs, is_update);
+    }
+    return osql_save_qblobs(pCur, thd, blobs, maxblobs, is_update);
 }
 
 static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
@@ -1287,23 +1328,26 @@ static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
 
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
+    int restarted;
     int rc = 0;
 
     if ((rc = check_osql_capacity(thd)))
         return rc;
 
-    rc = osql_send_usedb_logic(pCur, thd, nettype);
-    if (rc == SQLITE_OK) {
+    do {
+        rc = osql_send_usedb_logic(pCur, thd, nettype);
+        if (rc == SQLITE_OK) {
 
-        rc = osql_send_updrec(
-            osql->host, osql->rqid, osql->uuid, pCur->genid,
-            (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->ins_keys
-                                                          : -1ULL,
-            (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys
-                                                          : -1ULL,
-            pData, nData, nettype, osql->logsb);
+            rc = osql_send_updrec(
+                osql->host, osql->rqid, osql->uuid, pCur->genid,
+                (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->ins_keys
+                                                              : -1ULL,
+                (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys
+                                                              : -1ULL,
+                pData, nData, nettype, osql->logsb);
+        }
         RESTART_SOCKSQL;
-    }
+    } while (restarted && rc == 0);
 
     return rc;
 }
@@ -1351,7 +1395,6 @@ retry:
                               clnt->query_stats, NULL);
     }
 
-    restarted = should_restart(clnt, rc);
     RESTART_SOCKSQL_KEEP_RQID(is_retry);
 
     if (rc == SQLITE_OK && restarted) {
@@ -1422,6 +1465,7 @@ int osql_query_dbglog(struct sql_thread *thd, int queryid)
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc;
+    int restarted;
     unsigned long long new_cookie;
 
     /* Why a new cookie?  The net send could be local (if no
@@ -1430,10 +1474,12 @@ int osql_query_dbglog(struct sql_thread *thd, int queryid)
     if (thd->clnt->master_dbglog_cookie == 0)
         thd->clnt->master_dbglog_cookie = get_id(thedb->bdb_env);
     new_cookie = thd->clnt->master_dbglog_cookie;
-    rc = osql_send_dbglog(osql->host, osql->rqid, osql->uuid, new_cookie,
-                          queryid, NET_OSQL_SOCK_RPL);
-    /* not sure if we want to restart this */
-    RESTART_SOCKSQL;
+    do {
+        rc = osql_send_dbglog(osql->host, osql->rqid, osql->uuid, new_cookie,
+                              queryid, NET_OSQL_SOCK_RPL);
+        /* not sure if we want to restart this */
+        RESTART_SOCKSQL;
+    } while (restarted && rc == 0);
     return rc;
 }
 
@@ -1498,16 +1544,16 @@ int osql_record_genid(struct BtCursor *pCur, struct sql_thread *thd,
     }
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        int rc = osql_save_recordgenid(pCur, thd, genid);
+        int rc =
+            osql_send_recordgenid_logic(pCur, thd, genid, NET_OSQL_SOCK_RPL);
         if (rc) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s:%d %s - failed to cache socksql row rc=%d\n",
-                    __FILE__, __LINE__, __func__, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
         }
-
-        return osql_send_recordgenid_logic(pCur, thd, genid, NET_OSQL_SOCK_RPL);
-    } else
-        return osql_save_recordgenid(pCur, thd, genid);
+    }
+    return osql_save_recordgenid(pCur, thd, genid);
 }
 
 static int osql_send_recordgenid_logic(struct BtCursor *pCur,
@@ -1516,21 +1562,24 @@ static int osql_send_recordgenid_logic(struct BtCursor *pCur,
 {
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
+    int restarted;
     int rc = 0;
 
-    rc = osql_send_usedb_logic(pCur, thd, nettype);
-    if (rc == SQLITE_OK) {
+    do {
+        rc = osql_send_usedb_logic(pCur, thd, nettype);
+        if (rc == SQLITE_OK) {
 
-        if (osql->rqid == OSQL_RQID_USE_UUID)
-            nettype = NET_OSQL_SOCK_RPL_UUID;
+            if (osql->rqid == OSQL_RQID_USE_UUID)
+                nettype = NET_OSQL_SOCK_RPL_UUID;
 
-        rc = osql_send_recordgenid(osql->host, osql->rqid, osql->uuid, genid,
-                                   nettype, osql->logsb);
-        if (gbl_master_swing_sock_restart_sleep) {
-            usleep(gbl_master_swing_sock_restart_sleep * 1000);
+            rc = osql_send_recordgenid(osql->host, osql->rqid, osql->uuid,
+                                       genid, nettype, osql->logsb);
+            if (gbl_master_swing_sock_restart_sleep) {
+                usleep(gbl_master_swing_sock_restart_sleep * 1000);
+            }
         }
         RESTART_SOCKSQL;
-    }
+    } while (restarted && rc == 0);
 
     return rc;
 }
@@ -1667,7 +1716,10 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     char *host = thd->clnt->osql.host;
+    int restarted;
+    int rc = 0;
     unsigned long long rqid = thd->clnt->osql.rqid;
+    unsigned long long version = 0;
 
     osql->running_ddl = 1;
 
@@ -1680,16 +1732,15 @@ int osql_schemachange_logic(struct schema_change_type *sc,
         } else
             hash_add(clnt->ddl_tables, strdup(sc->table));
     }
-    int rc = osql_save_schemachange(thd, sc, usedb);
-    if (rc) {
-        logmsg(LOGMSG_ERROR,
-               "%s:%d %s - failed to cache socksql schemachange rc=%d\n",
-               __FILE__, __LINE__, __func__, rc);
-        return rc;
+
+    if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ||
+        clnt->in_client_trans) {
+        sc->rqid = osql->rqid;
+        comdb2uuidcpy(sc->uuid, osql->uuid);
     }
+
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         if (usedb) {
-            unsigned long long version = 0;
             if (getdbidxbyname(sc->table) < 0) { // view
                 char *viewname = timepart_newest_shard(sc->table, &version);
                 if (viewname) {
@@ -1699,7 +1750,9 @@ int osql_schemachange_logic(struct schema_change_type *sc,
             } else {
                 version = comdb2_table_version(sc->table);
             }
-
+        }
+        do {
+            rc = 0;
             if (usedb) {
                 if (osql->tablename) {
                     /* free the cached tablename so that we send a new usedb for
@@ -1711,15 +1764,23 @@ int osql_schemachange_logic(struct schema_change_type *sc,
                 rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid,
                                      sc->table, NET_OSQL_SOCK_RPL, osql->logsb,
                                      version);
-                RESTART_SOCKSQL;
             }
-        }
-        if (rc == SQLITE_OK) {
-            rc = osql_send_schemachange(host, rqid, thd->clnt->osql.uuid, sc,
-                                        NET_OSQL_SOCK_RPL, osql->logsb);
+            if (rc == SQLITE_OK) {
+                rc = osql_send_schemachange(host, rqid, thd->clnt->osql.uuid,
+                                            sc, NET_OSQL_SOCK_RPL, osql->logsb);
+            }
             RESTART_SOCKSQL;
-        }
+        } while (restarted && rc == 0);
     }
+
+    rc = osql_save_schemachange(thd, sc, usedb);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d %s - failed to cache socksql schemachange rc=%d\n",
+               __FILE__, __LINE__, __func__, rc);
+        return rc;
+    }
+
     return rc;
 }
 
@@ -1735,7 +1796,22 @@ int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
     osqlstate_t *osql = &clnt->osql;
     char *host = thd->clnt->osql.host;
     unsigned long long rqid = thd->clnt->osql.rqid;
+    int restarted;
     int rc;
+
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
+        do {
+            rc = osql_send_bpfunc(host, rqid, thd->clnt->osql.uuid, arg,
+                                  NET_OSQL_SOCK_RPL, osql->logsb);
+            RESTART_SOCKSQL;
+        } while (restarted && rc == 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql bpfunc rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
+    }
 
     rc = osql_save_bpfunc(thd, arg);
     if (rc) {
@@ -1743,11 +1819,6 @@ int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
                "%s:%d %s - failed to cache socksql bpfunc rc=%d\n", __FILE__,
                __LINE__, __func__, rc);
         return rc;
-    }
-    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_send_bpfunc(host, rqid, thd->clnt->osql.uuid, arg,
-                              NET_OSQL_SOCK_RPL, osql->logsb);
-        RESTART_SOCKSQL;
     }
     return rc;
 }
