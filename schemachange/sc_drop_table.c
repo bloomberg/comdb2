@@ -113,7 +113,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     live_sc_off(db);
 
     if (!gbl_create_mode) {
-        logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", db->tablename,
+        logmsg(LOGMSG_INFO, "Table %s is at version: %lld\n", db->tablename,
                db->tableversion);
     }
 
