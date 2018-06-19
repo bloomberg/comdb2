@@ -3778,21 +3778,22 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
                                       &durable_gen);
 
     logmsg(LOGMSG_INFO, "%s line %d master=%s latest-commit=[%d][%d] gen %d, "
-           "latest-durable=[%d][%d] gen %d\n", __func__, __LINE__, master,
-           latest_lsn.file, latest_lsn.offset, latest_gen,
-           durable_lsn.file, durable_lsn.offset, durable_gen);
+                        "latest-durable=[%d][%d] gen %d\n",
+           __func__, __LINE__, master, latest_lsn.file, latest_lsn.offset,
+           latest_gen, durable_lsn.file, durable_lsn.offset, durable_gen);
 
     if (durable_gen < latest_gen) {
-        logmsg(LOGMSG_INFO, "%s line %d waiting because durable_gen %d < "
-                            "latest_gen %d\n",
+        logmsg(LOGMSG_INFO,
+               "%s line %d waiting because durable_gen %d < latest_gen %d\n",
                __func__, __LINE__, durable_gen, latest_gen);
         needwait = 1;
     }
 
     if ((latest_gen == durable_gen) &&
         log_compare(&durable_lsn, &latest_lsn) < 0) {
-        logmsg(LOGMSG_INFO, "%s line %d waiting because durable_lsn "
-                            "[%d][%d] < latest_lsn [%d][%d]\n",
+        logmsg(LOGMSG_INFO,
+               "%s line %d waiting because durable_lsn [%d][%d] < latest_lsn "
+               "[%d][%d]\n",
                __func__, __LINE__, durable_lsn.file, durable_lsn.offset,
                latest_lsn.file, latest_lsn.offset);
         needwait = 1;
