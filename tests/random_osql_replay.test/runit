@@ -2,8 +2,8 @@
 
 bash -n "$0" | exit 1
 
-set -x
-maxloop=10000
+#set -x
+maxloop=5000
 
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table t1 ( a int primary key )"
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "truncate t1"
