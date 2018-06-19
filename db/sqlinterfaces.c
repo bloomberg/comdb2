@@ -764,6 +764,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                     SQLENG_FNSH_STATE);
             clnt->in_client_trans = 0;
+            clnt->trans_has_sp = 0;
         }
     } else if (!strncasecmp(clnt->sql, "rollback", 8)) {
         clnt->snapshot = 0;
@@ -779,6 +780,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                     SQLENG_FNSH_RBK_STATE);
             clnt->in_client_trans = 0;
+            clnt->trans_has_sp = 0;
         }
     }
 }
@@ -2657,10 +2659,6 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     }
 
     if (stored_proc) {
-        clnt->trans_has_sp = 1;
-    }
-
-    if (stored_proc) {
         handle_stored_proc(thd, clnt);
         *outrc = 0;
         return 1;
@@ -2995,6 +2993,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     struct sql_state rec = {0};
     char *errstr;
     reqlog_set_event(thd->logger, "sp");
+    clnt->trans_has_sp = 1;
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
         clnt->had_errors = 1;
@@ -3005,6 +3004,8 @@ static void handle_stored_proc(struct sqlthdstate *thd,
             free(errstr);
         }
     }
+    if (!clnt->in_client_trans)
+        clnt->trans_has_sp = 0;
     test_no_btcursors(thd);
     sqlite_done(thd, clnt, &rec, 0);
 }
