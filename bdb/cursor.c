@@ -3779,7 +3779,7 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
     DB_LSN durable_lsn;
     DB_LSN latest_lsn;
 
-    bdb_get_rep_master(bdb_state, &master, NULL);
+    bdb_get_rep_master(bdb_state, &master, NULL, NULL);
     bdb_latest_commit(bdb_state, &latest_lsn, &latest_gen);
     bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
                                       &durable_gen);

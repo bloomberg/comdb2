@@ -320,7 +320,7 @@ __rep_set_gen(dbenv, func, line, gen)
 	REP *rep;
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
-    logmsg(LOGMSG_USER, "%s line %d setting rep->gen to %d\n", func, line, gen);
+    logmsg(LOGMSG_DEBUG, "%s line %d setting rep->gen to %d\n", func, line, gen);
     rep->gen = gen;
 }
 
@@ -367,10 +367,10 @@ __rep_new_master(dbenv, cntrl, eid)
            election bug that I've been tracking down: this node's generation
            can change from when we initially checked it at the top of
            process_message. */
-        logmsg(LOGMSG_USER, "%s: my-gen=%u ctl-gen=%u rep-master=%s new=%s\n",
+        logmsg(LOGMSG_DEBUG, "%s: my-gen=%u ctl-gen=%u rep-master=%s new=%s\n",
                __func__, rep->gen, cntrl->gen, rep->master_id, eid);
         if (rep->gen > cntrl->gen) {
-            logmsg(LOGMSG_USER,
+            logmsg(LOGMSG_INFO,
                    "%s: rep-gen (%u) > cntrl->gen (%u): ignoring upgrade\n",
                    __func__, rep->gen, cntrl->gen);
 

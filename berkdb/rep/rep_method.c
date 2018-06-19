@@ -329,19 +329,19 @@ __rep_start(dbenv, dbt, gen, flags)
 				 * elections, so jump the gen if we need to now.
 				 */
                 if (gen != 0) {
-                    logmsg(LOGMSG_USER, "%s line %d setting gen to arg %d "
+                    logmsg(LOGMSG_DEBUG, "%s line %d setting gen to arg %d "
                             "current egen is %d\n", __func__, __LINE__, gen, 
                             rep->egen);
                     __rep_set_gen(dbenv, __func__, __LINE__, gen);
                 } else if (rep->egen > rep->gen) {
-                    logmsg(LOGMSG_USER, "%s line %d setting gen to rep->egen "
+                    logmsg(LOGMSG_DEBUG, "%s line %d setting gen to rep->egen "
                             "%d\n", __func__, __LINE__, rep->egen);
                     __rep_set_gen(dbenv, __func__, __LINE__, rep->egen);
                 }
 
 				redo_prepared = 1;
 			} else if (rep->gen == 0) {
-                logmsg(LOGMSG_USER, "%s line %d setting gen to recover_gen + 1 "
+                logmsg(LOGMSG_DEBUG, "%s line %d setting gen to recover_gen + 1 "
                         "%d\n", __func__, __LINE__, rep->recover_gen + 1);
                 __rep_set_gen(dbenv, __func__, __LINE__, rep->recover_gen + 1);
             }
@@ -352,7 +352,7 @@ __rep_start(dbenv, dbt, gen, flags)
 			if (rep->egen <= rep->gen)
 				rep->egen = rep->gen + 1;
 
-            logmsg(LOGMSG_USER, "%s line %d upgrading to gen %d egen %d\n",
+            logmsg(LOGMSG_DEBUG, "%s line %d upgrading to gen %d egen %d\n",
                     __func__, __LINE__, rep->gen, rep->egen);
 		}
         F_CLR(rep, REP_F_WAITSTART);
@@ -376,7 +376,7 @@ __rep_start(dbenv, dbt, gen, flags)
 		 * We need to perform all actions below no master what
 		 * regarding errors.
 		 */
-        logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
+        logmsg(LOGMSG_DEBUG, "%s line %d sending REP_NEWMASTER\n", 
                 __func__, __LINE__);
 		(void)__rep_send_message(dbenv,
 		    db_eid_broadcast, REP_NEWMASTER, &lsn, NULL, 0, NULL);
@@ -960,7 +960,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 	 */
 	if (in_progress) {
 		*eidp = dbenv->rep_eid;
-        logmsg(LOGMSG_USER, "%s line %d returning %d master %s egen is %d\n",
+        logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
                 __func__, __LINE__, ret, *eidp, *newgen);
 		return (0);
 	}
@@ -978,7 +978,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 				__db_err(dbenv, "Found master %d", *eidp);
 #endif
-            logmsg(LOGMSG_USER, "%s line %d returning %d master %s egen is %d\n",
+            logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
                     __func__, __LINE__, ret, *eidp, *newgen);
 			return (0);
 		}
@@ -1043,12 +1043,12 @@ restart:
     pthread_mutex_unlock(&rep_candidate_lock);
 
 	if (use_committed_gen) {
-		logmsg(LOGMSG_USER, "%s line %d broadcasting REP_GEN_VOTE1 to all with committed-gen=%d gen=%d egen=%d\n",
+		logmsg(LOGMSG_DEBUG, "%s line %d broadcasting REP_GEN_VOTE1 to all with committed-gen=%d gen=%d egen=%d\n",
 			__func__, __LINE__, committed_gen, rep->gen, egen);
 		__rep_send_gen_vote(dbenv, &lsn, nsites, priority, tiebreaker,
 			egen, committed_gen, db_eid_broadcast, REP_GEN_VOTE1);
 	} else {
-		logmsg(LOGMSG_USER, "%s line %d broadcasting REP_VOTE1 to all (committed-gen=0) gen=%d egen=%d\n",
+		logmsg(LOGMSG_DEBUG, "%s line %d broadcasting REP_VOTE1 to all (committed-gen=0) gen=%d egen=%d\n",
 			__func__, __LINE__, rep->gen, egen);
 		__rep_send_vote(dbenv, &lsn, nsites, priority, tiebreaker, egen,
 			db_eid_broadcast, REP_VOTE1);
@@ -1065,7 +1065,7 @@ restart:
 					__db_err(dbenv,
 					    "Ended election phase 1 %d", ret);
 #endif
-                logmsg(LOGMSG_USER, "%s line %d returning %d master %s egen is %d\n",
+                logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
                         __func__, __LINE__, ret, *eidp, *newgen);
 				return (0);
 			}
@@ -1147,13 +1147,13 @@ restart:
 				__db_err(dbenv, "Sending vote");
 #endif
 			if (use_committed_gen) {
-				logmsg(LOGMSG_USER, "%s line %d sending REP_GEN_VOTE2 to %s "
+				logmsg(LOGMSG_DEBUG, "%s line %d sending REP_GEN_VOTE2 to %s "
 						"with committed-gen=%d gen=%d egen=%d\n", __func__, __LINE__,
                         send_vote, committed_gen, rep->gen, egen);
 				__rep_send_gen_vote(dbenv, NULL, 0, 0, 0, egen,
 					committed_gen, send_vote, REP_GEN_VOTE2);
 			} else {
-				logmsg(LOGMSG_USER, "%s line %d sending REP_VOTE2 to %s "
+				logmsg(LOGMSG_DEBUG, "%s line %d sending REP_VOTE2 to %s "
 						"(committed-gen=0) gen=%d egen=%d\n", __func__, __LINE__,
                         send_vote, rep->gen, egen);
 				__rep_send_vote(dbenv, NULL, 0, 0, 0, egen,
@@ -1170,7 +1170,7 @@ phase2:
 #endif
 		switch (ret) {
 			case 0:
-                logmsg(LOGMSG_USER, "%s line %d returning %d master %s egen is %d\n",
+                logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
                         __func__, __LINE__, ret, *eidp, *newgen);
 				return (0);
 			case DB_TIMEOUT:
@@ -1188,7 +1188,7 @@ phase2:
 			    done, rep->votes, rep->nsites);
 #endif
 		if (send_vote == rep->eid && done) {
-            logmsg(LOGMSG_USER, "%s line %d elected master %s current-egen "
+            logmsg(LOGMSG_DEBUG, "%s line %d elected master %s current-egen "
                     "%d\n", __func__, __LINE__, rep->eid, rep->egen);
 			ret = 0;
 			goto lockdone;
@@ -1213,7 +1213,7 @@ lockdone:
 
     pthread_mutex_unlock(&rep_candidate_lock);
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-    logmsg(LOGMSG_USER, "%s line %d returning %d master %s egen is %d\n",
+    logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
             __func__, __LINE__, ret, *eidp, *newgen);
 	return (ret);
 }
@@ -1245,7 +1245,7 @@ __rep_elect_init(dbenv, lsnp, nsites, priority, beginp, otally)
 
 	/* If we are already a master; simply broadcast that fact and return. */
 	if (F_ISSET(rep, REP_F_MASTER)) {
-        logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
+        logmsg(LOGMSG_DEBUG, "%s line %d sending REP_NEWMASTER\n", 
                 __func__, __LINE__);
 		(void)__rep_send_message(dbenv,
 		    db_eid_broadcast, REP_NEWMASTER, lsnp, NULL, 0, NULL);
