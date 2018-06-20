@@ -126,7 +126,6 @@ typedef intptr_t roff_t;
 struct __db;		typedef struct __db DB;
 struct __db_bt_stat;	typedef struct __db_bt_stat DB_BTREE_STAT;
 struct __db_cipher;	typedef struct __db_cipher DB_CIPHER;
-struct __db_dbt;	typedef struct __db_dbt DBT;
 struct __db_env;	typedef struct __db_env DB_ENV;
 struct __db_h_stat;	typedef struct __db_h_stat DB_HASH_STAT;
 struct __db_ilock;	typedef struct __db_ilock DB_LOCK_ILOCK;
@@ -171,38 +170,7 @@ struct __recovery_processor;
 struct __recovery_list;
 struct __db_trigger_subscription;
 
-#define __DB_DBT_INTERNAL                                       \
-	void	 *data;			/* Key/data */                      \
-	u_int32_t size;			/* key/data length */               \
-	u_int32_t ulen;			/* RO: length of user buffer. */    \
-	u_int32_t dlen;			/* RO: get/put record length. */    \
-	u_int32_t doff;			/* RO: get/put record offset. */
-
-struct __db_dbt_internal {
-    __DB_DBT_INTERNAL
-};
-
-/* Key/data structure -- a Data-Base Thang. */
-struct __db_dbt {
-	/*
-	 * data/size must be fields 1 and 2 for DB 1.85 compatibility.
-	 */
-    __DB_DBT_INTERNAL
-
-    void *app_data;
-
-#define	DB_DBT_APPMALLOC	0x001	/* Callback allocated memory. */
-#define	DB_DBT_ISSET		0x002	/* Lower level calls set value. */
-#define	DB_DBT_MALLOC		0x004	/* Return in malloc'd memory. */
-#define	DB_DBT_PARTIAL		0x008	/* Partial put/get. */
-#define	DB_DBT_REALLOC		0x010	/* Return in realloc'd memory. */
-#define	DB_DBT_USERMEM		0x020	/* Return in user's memory. */
-#define	DB_DBT_DUPOK		0x040	/* Insert if duplicate. */
-	u_int32_t flags;
-};
-
-
-
+#include "db_dbt.h"
 
 /*
  * Common flags --

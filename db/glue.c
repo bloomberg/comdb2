@@ -933,11 +933,6 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
     if (!bdb_handle)
         return ERR_NO_AUXDB;
 
-#if 0
-    fprintf(stderr, "ix_addkey(%x)\n", ixnum);
-    hexdump(key, getkeysize(db, ixnum));
-#endif
-
     iq->gluewhere = "bdb_prim_addkey";
     rc = bdb_prim_addkey_genid(bdb_handle, trans, key, ixnum, rrn, genid, dta,
                                dtalen, isnull,

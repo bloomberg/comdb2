@@ -622,7 +622,6 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
 
 #ifdef PREFAULT_TRACE
                 fprintf(stderr, "consumed PFRQ_KEY(%d)\n", req->index);
-/*hexdump(req->key, req->len);*/
 #endif
 
                 if ((req->index < 0) || (req->index > 49)) {
@@ -680,7 +679,6 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
 
 #ifdef PREFAULT_TRACE
                 fprintf(stderr, "consumed PFRQ_KEY(%d)\n", req->index);
-/*hexdump(req->key, req->len);*/
 #endif
 
                 if ((req->index < 0) || (req->index > 49)) {

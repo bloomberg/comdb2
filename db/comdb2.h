@@ -1859,7 +1859,6 @@ void reqdumphex(struct ireq *iq, void *buf,
 void reqprintflush(struct ireq *iq); /* flush current line */
 void reqpushprefixf(struct ireq *iq, const char *format, ...);
 void reqpopprefixes(struct ireq *iq, int num);
-void hexdumpdta(unsigned char *p, int len);
 const char *req2a(int opcode);
 void reqerrstr(struct ireq *iq, int rc, char *format, ...);
 void reqerrstrhdr(struct ireq *iq, char *format,
