@@ -1509,15 +1509,6 @@ static int db_db_debug(Lua lua)
         }
         lua_settop(lua, 0); /* remove eventual returns */
         if (finish_execute) {
-            SP sp = getsp(lua);
-            if (is_cont && (sp->clnt == sp->debug_clnt) &&
-                sp->clnt->want_stored_procedure_debug) {
-                clnt_info *info = malloc(sizeof(clnt_info));
-                info->clnt = sp->clnt;
-                info->thread_id = pthread_self();
-                pthread_t read_client;
-                pthread_create(&read_client, NULL, read_client_socket, info);
-            }
             return 0;
         }
     }
