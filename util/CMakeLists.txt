@@ -1,6 +1,6 @@
-set(module bb)
-set(MODULE BB)
-configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_bb.h @ONLY)
+set(module util)
+set(MODULE UTIL)
+configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_util.h @ONLY)
 set(src
   averager.c
   bb_asprintf.c
@@ -50,7 +50,7 @@ set(src
 if(WITH_SSL)
   list(APPEND src ssl_support.c)
 endif()
-add_library(bb ${src})
+add_library(util ${src})
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
@@ -63,5 +63,5 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${UNWIND_INCLUDE_DIR}
 )
-add_dependencies(bb mem)
+add_dependencies(util mem)
 set_source_files_properties(walkback.c PROPERTIES COMPILE_FLAGS -DUSE_UNWIND)

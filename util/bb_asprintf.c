@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <stdarg.h>
 
-#include "mem_bb.h"
+#include "mem_util.h"
 #include "mem_override.h"
 
 char *comdb2_vasprintf(const char *fmt, va_list args)

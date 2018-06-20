@@ -6,7 +6,7 @@ bdb           bdb                  0                            0
 berkdb        berkdb               0                            0
 net           net                  0                            0
 sqlite        sqlite               0                            0
-bb            bb                   0                            0
+util          util                 0                            0
 csc2          csc2                 0                            0
 datetime      datetime             0                            0
 dfp/decNumber dfp_decNumber        0                            0

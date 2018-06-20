@@ -158,15 +158,15 @@ extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_portmux_unix_socket;
 
-/* bb/ctrace.c */
+/* util/ctrace.c */
 extern int nlogs;
 extern unsigned long long rollat;
 
-/* bb/thread_util.c */
+/* util/thread_util.c */
 extern int thread_debug;
 extern int dump_resources_on_thread_exit;
 
-/* bb/walkback.c */
+/* util/walkback.c */
 extern int gbl_walkback_enabled;
 extern int gbl_warnthresh;
 

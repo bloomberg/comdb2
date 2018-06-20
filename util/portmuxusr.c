@@ -48,7 +48,7 @@
 #include <mem.h>
 
 #ifndef PORTMUXUSR_TESTSUITE
-#include "mem_bb.h"
+#include "mem_util.h"
 #include "mem_override.h"
 #endif
 

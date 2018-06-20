@@ -22,7 +22,7 @@
 #include <string.h>
 
 #ifndef BUILDING_TOOLS
-#include "mem_bb.h"
+#include "mem_util.h"
 #include "mem_override.h"
 #endif
 
