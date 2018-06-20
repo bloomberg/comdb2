@@ -23,6 +23,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
+#include <float.h>
 
 
 #ifndef JSON_PARSER_H
@@ -3991,16 +3992,11 @@ static int cson_output_double( cson_value const * src, cson_data_dest_f f, void 
     else if( !cson_value_is_double(src) ) return cson_rc.TypeError;
     else
     {
-        enum { BufLen = 128 /* this must be relatively large or huge
-                               doubles can cause us to overrun here,
-                               resulting in stack-smashing errors.
-                            */};
+        enum { BufLen = 5 + DBL_MANT_DIG - DBL_MIN_EXP};
         char b[BufLen];
         int rc;
         memset( b, 0, BufLen );
-        rc = sprintf( b, "%"CSON_DOUBLE_T_PFMT, cson_value_get_double(src) )
-            /* Reminder: snprintf() is C99 */
-            ;
+        rc = snprintf( b, BufLen-1,"%"CSON_DOUBLE_T_PFMT, cson_value_get_double(src) ) ;
         if( rc<=0 ) return cson_rc.RangeError;
         else if(1)
         { /* Strip trailing zeroes before passing it on... */
