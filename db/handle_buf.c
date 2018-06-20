@@ -659,6 +659,7 @@ static void *thd_req(void *vthd)
                     delete_constraint_table(thdinfo->ct_del_table);
                     delete_constraint_table(thdinfo->ct_add_index);
                     delete_constraint_table(defered_index_tbl);
+                    defered_index_tbl = NULL;
                     backend_thread_event(dbenv, COMDB2_THR_EVENT_DONE_RDWR);
                     return 0;
                 }

@@ -26,6 +26,7 @@ set(src
   glue.c
   handle_buf.c
   history.c
+  indices.c
   llops.c
   localrep.c
   lrucache.c

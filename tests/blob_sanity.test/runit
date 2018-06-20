@@ -10,10 +10,25 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 # Insert
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" &> /dev/null
 
+failexit()
+{
+    echo "Failed $1"
+    exit -1
+
+}
+
+function do_verify
+{
+    tbl=$1
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
+
+    if ! grep succeeded verify.out > /dev/null ; then
+        failexit "Verify"
+    fi
+}
+
 if [[ $? != 0 ]]; then
-    echo "failed tagged test"
-    echo "$x"
-    exit 1
+    failexit "failed tagged test $x"
 fi
 
 # Fastinit
@@ -28,20 +43,20 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 # Insert
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" &> /dev/null
 
+# Test 0 force ipu
+cdb2sql ${CDB2_OPTIONS} $dbnm default "@send setipu t1 off"
 # Test 1
+for i in $(seq 0 5) ; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set a=1 where a = 1"  &>> update.out
+    do_verify t1
+done 
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "@send setipu t1 on"
+
+# Test 1 update 4096 times
 for i in $(seq 0 4095) ; do
     echo "update t1 set a=1 where a = 1" 
-done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - &> /dev/null
-
-function do_verify
-{
-    tbl=$1
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
+done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - &> update.out
 
 do_verify t1
 

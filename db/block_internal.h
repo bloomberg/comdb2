@@ -809,6 +809,8 @@ int delete_constraint_table(void *table);
 int clear_constraints_tables(void);
 int truncate_constraint_table(void *table);
 void *create_defered_index_table(long long *ctid);
+void *get_constraint_table_cursor(void *table);
+int close_constraint_table_cursor(void *cursor);
 
 int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                            struct ireq *iq, block_state_t *blkstate,
