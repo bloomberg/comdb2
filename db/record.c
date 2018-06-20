@@ -490,8 +490,9 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode, 
                                 ixfailnum, rrn, genid, ins_keys, opcode, blkpos,
                                 od_dta, od_len, ondisktag, ondisktagsc);
-        if (retrc)
+        if (retrc) {
             ERR;
+        }
     }
 
     /*
@@ -1204,9 +1205,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         del_keys, flags, add_idx_blobs, 
         del_idx_blobs, same_genid_with_upd, 
         vgenid, &deferredAdd);
-
-    if (retrc) 
+    if (retrc) {
         ERR;
+    }
 
     /*
      * Now we need to change the blobs for this tag.  For each blob
@@ -1700,8 +1701,9 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     retrc = del_record_indices(iq, trans, opfailcode,
             ixfailnum, rrn, genid, od_dta,
             del_keys, del_idx_blobs, ondisktag);
-    if (retrc)
+    if (retrc) {
         ERR;
+    }
 
     /*
      * Trigger JAVASP_TRANS_LISTEN_AFTER_DEL
