@@ -1744,7 +1744,7 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
                 "variables')\n"
                 "     db.debug('getvariable(num)         -- Get local variable "
                 "of the number displayed in getinfo call.')\n"
-                "     db.debug('setvariable(num)         -- Set local variable "
+                "     db.debug('setvariable(num, value)  -- Set local variable "
                 "of the number displayed in getinfo call.')\n"
                 "     db.debug('print                    -- Display Local "
                 "Variable by name')\n"
