@@ -13600,6 +13600,33 @@ static int get_int_field(int64_t *out, void *in, size_t len, int flip)
     return 0;
 }
 
+static int get_uint_field(uint64_t *out, void *in, size_t len, int flip)
+{
+    uint16_t u16;
+    uint32_t u32;
+    uint64_t u64;
+    switch (len) {
+    case sizeof(uint16_t):
+        memcpy(&u16, in, len);
+        if (flip) u16 = flibc_shortflip(u16);
+        *out = u16;
+        break;
+    case sizeof(uint32_t):
+        memcpy(&u32, in, len);
+        if (flip) u32 = flibc_intflip(u32);
+        *out = u32;
+        break;
+    case sizeof(uint64_t):
+        memcpy(&u64, in, len);
+        if (flip) u64 = flibc_llflip(u64);
+        *out = u64;
+        break;
+    default:
+        return -1;
+    }
+    return *out <= LLONG_MAX ? 0 : -1;
+}
+
 static int get_real_field(double *out, void *in, size_t len, int flip)
 {
     float f;
@@ -14542,9 +14569,11 @@ int get_type(struct param_data *param, void *p, int len, int type,
     param->null = 0;
     switch (type) {
     case CLIENT_INT:
-    case CLIENT_UINT:
         param->len = sizeof(param->u.i);
         return get_int_field(&param->u.i, p, len, flip);
+    case CLIENT_UINT:
+        param->len = sizeof(param->u.i);
+        return get_uint_field(&param->u.i, p, len, flip);
     case CLIENT_REAL:
         param->len = sizeof(param->u.r);
         return get_real_field(&param->u.r, p, len, flip);
