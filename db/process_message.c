@@ -99,7 +99,7 @@ extern int gbl_prefault_latency;
 
 void debug_bulktraverse_data(char *tbl);
 
-int gbl_track_sqlengine_states = 1;
+int gbl_track_sqlengine_states = 0;
 int gbl_break_lua;
 
 extern void reinit_sql_hint_table();
