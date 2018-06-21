@@ -656,17 +656,14 @@ void hexdumpdbt(DBT *dbt)
 
 void hexdumpfp(FILE *fp, unsigned char *key, int keylen)
 {
-	int i = 0;
-	for (i = 0; i < keylen; i++) {
+    int i = 0;
+    for (i = 0; i < keylen; i++) {
         if (fp) {
-            fprintf(fp, "%c%c", 
-		    hex(((unsigned char)key[i]) / 16),
-		    hex(((unsigned char)key[i]) % 16));
+            fprintf(fp, "%c%c", hex(((unsigned char)key[i]) / 16),
+                    hex(((unsigned char)key[i]) % 16));
         } else {
-		logmsg(LOGMSG_USER, "%c%c",
-		    hex(((unsigned char)key[i]) / 16),
-		    hex(((unsigned char)key[i]) % 16));
+            logmsg(LOGMSG_USER, "%c%c", hex(((unsigned char)key[i]) / 16),
+                   hex(((unsigned char)key[i]) % 16));
         }
-	}
+    }
 }
-

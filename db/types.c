@@ -52,7 +52,6 @@
 #include "logmsg.h"
 #include "util.h"
 
-
 struct thr_handle;
 struct reqlogger *thrman_get_reqlogger(struct thr_handle *thr);
 struct thr_handle *thrman_self(void);

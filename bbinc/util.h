@@ -77,7 +77,4 @@ void hexdump(loglvl lvl, unsigned char *key, int keylen);
 void hexdumpdbt(DBT *dbt);
 void hexdumpfp(FILE *fp, unsigned char *key, int keylen);
 
-
-
-
 #endif
