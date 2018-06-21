@@ -72,7 +72,6 @@ extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
 int gbl_rep_badgen_trace;
 
-void hexdump(unsigned char *key, int keylen);
 extern void fsnapf(FILE *, void *, int);
 static int reset_recovery_processor(struct __recovery_processor *rp);
 

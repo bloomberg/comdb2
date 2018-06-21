@@ -6727,7 +6727,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec set quantum IN:\n");
-                hexdump(new_in, f->len);
+                hexdump(LOGMSG_USER, new_in, f->len);
                 logmsg(LOGMSG_USER, "\n");
             }
 
@@ -6759,7 +6759,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec set quantum OUT:\n");
-                hexdump(new_in, f->len);
+                hexdump(LOGMSG_USER, new_in, f->len);
                 logmsg(LOGMSG_USER, "\n");
             }
 

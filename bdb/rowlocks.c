@@ -54,6 +54,7 @@
 #include <endian_core.h>
 #include <printformats.h>
 #include <logmsg.h>
+#include <util.h>
 
 #ifdef NEWSI_STAT
 #include <time.h>

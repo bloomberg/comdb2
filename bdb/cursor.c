@@ -102,19 +102,6 @@ struct datacopy_info {
 };
 
 
-static void hexdump(loglvl lvl, char *key, int keylen)
-{
-    if (key == NULL || keylen == 0) {
-        logmsg(LOGMSG_ERROR, "NULL(%d)\n", keylen);
-        return;
-    }
-    char *mem = alloca((2 * keylen) + 2);
-    char *output = util_tohex(mem, key, keylen);
-
-    logmsg(lvl, "%s\n", output);
-}
-
-
 pthread_mutex_t pr_lk = PTHREAD_MUTEX_INITIALIZER;
 
 int lkprintf(loglvl lvl, const char *fmt, ...)

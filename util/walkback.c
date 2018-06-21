@@ -23,7 +23,6 @@
 #ifdef DUMP_STACK
 #include <errno.h>
 #include <fcntl.h>
-/* #include <hexdump.h> */
 #endif
 
 int gbl_walkback_enabled = 1;

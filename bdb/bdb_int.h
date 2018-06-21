@@ -1547,8 +1547,6 @@ int form_rowlock_keyname(bdb_state_type *bdb_state, int ixnum,
 int form_keylock_keyname(bdb_state_type *bdb_state, int ixnum, void *key,
                          int keylen, char *keynamebuf, DBT *dbt_out);
 
-void hexdumpdbt(DBT *dbt);
-
 void set_gblcontext(bdb_state_type *bdb_state, unsigned long long gblcontext);
 unsigned long long get_gblcontext(bdb_state_type *bdb_state);
 

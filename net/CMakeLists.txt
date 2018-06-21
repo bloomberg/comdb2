@@ -15,6 +15,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/bdb
   ${PROJECT_SOURCE_DIR}/dlmalloc
+  ${PROJECT_SOURCE_DIR}/berkdb
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
   ${OPENSSL_INCLUDE_DIR}

@@ -10,6 +10,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_SOURCE_DIR}/sockpool
+  ${PROJECT_SOURCE_DIR}/berkdb
   ${SQLITE3_INCLUDE_DIR}
 )
 set(libs
