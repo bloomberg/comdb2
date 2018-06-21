@@ -1509,15 +1509,6 @@ static int db_db_debug(Lua lua)
         }
         lua_settop(lua, 0); /* remove eventual returns */
         if (finish_execute) {
-            SP sp = getsp(lua);
-            if (is_cont && (sp->clnt == sp->debug_clnt) &&
-                sp->clnt->want_stored_procedure_debug) {
-                clnt_info *info = malloc(sizeof(clnt_info));
-                info->clnt = sp->clnt;
-                info->thread_id = pthread_self();
-                pthread_t read_client;
-                pthread_create(&read_client, NULL, read_client_socket, info);
-            }
             return 0;
         }
     }
@@ -1744,7 +1735,7 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
                 "variables')\n"
                 "     db.debug('getvariable(num)         -- Get local variable "
                 "of the number displayed in getinfo call.')\n"
-                "     db.debug('setvariable(num)         -- Set local variable "
+                "     db.debug('setvariable(num, value)  -- Set local variable "
                 "of the number displayed in getinfo call.')\n"
                 "     db.debug('print                    -- Display Local "
                 "Variable by name')\n"
