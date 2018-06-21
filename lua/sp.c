@@ -4834,7 +4834,11 @@ static int push_null(Lua L, int param_type)
 static int push_param(Lua L, struct sqlclntstate *clnt, int64_t index)
 {
     struct param_data p;
-    param_value(clnt, &p, index);
+    if (param_value(clnt, &p, index) != 0) {
+        if (p.type > CLIENT_MINTYPE && p.type < CLIENT_MAXTYPE)
+            return p.type;
+        return -1;
+    }
     if (p.null || p.type == COMDB2_NULL_TYPE) {
         return push_null(L, p.type);
     }
@@ -5341,8 +5345,12 @@ static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
     }
     if (rc != arg_end) {
         *err = malloc(64);
-        if (snprintf((char *)*err, 60, "bad argument -> %s", msg) >= 60) {
-            strcat(*err, "...");
+        if (arg.type == arg_param) {
+            snprintf(*err, 60, "Bad parameter:%s type:%d", arg.buf + 1, rc);
+        } else {
+            if (snprintf(*err, 60, "bad argument -> %s", msg) >= 60) {
+                strcat(*err, "...");
+            }
         }
         reset_sp(sp);
         return -1;
