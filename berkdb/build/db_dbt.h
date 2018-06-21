@@ -1,6 +1,19 @@
 #ifndef _DB_DBT_H_
 #define	_DB_DBT_H_
 
+#include <sys/types.h>
+#include <inttypes.h>
+
+#ifndef        __BIT_TYPES_DEFINED__
+#if defined _SUN_SOURCE || defined _HP_SOURCE
+typedef unsigned char u_int8_t;
+typedef unsigned short u_int16_t;
+typedef unsigned int u_int32_t;
+typedef unsigned long long u_int64_t;
+#endif
+#define        __BIT_TYPES_DEFINED__
+#endif
+
 struct __db_dbt;	typedef struct __db_dbt DBT;
 
 #define __DB_DBT_INTERNAL                                       \
