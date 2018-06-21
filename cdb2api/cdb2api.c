@@ -2448,7 +2448,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
         features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
         n_features++;
         if ((hndl->flags & CDB2_DIRECT_CPU) ||
-            (retries_done && hndl->master == hndl->connected_host)) {
+            (retries_done >= (hndl->num_hosts * 2 - 1) && hndl->master ==
+             hndl->connected_host)) {
             features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
             n_features++;
         }

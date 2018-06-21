@@ -666,7 +666,8 @@ public class Comdb2Handle extends AbstractConnection {
         if (nretry >= myDbHosts.size())
             sqlQuery.features.add(CDB2ClientFeatures.ALLOW_QUEUING_VALUE);
 
-        if (nretry > 0 && dbHostConnected == masterIndexInMyDbHosts)
+        if (nretry >= ((myDbHosts.size() * 2) - 1) && dbHostConnected ==
+                masterIndexInMyDbHosts)
             sqlQuery.features.add(CDB2ClientFeatures.ALLOW_MASTER_EXEC_VALUE);
 
         sqlQuery.cnonce = cnonce;
