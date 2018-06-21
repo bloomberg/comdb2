@@ -710,6 +710,133 @@ static inline char *skipws(char *str)
     return str;
 }
 
+static int retrieve_snapshot_info(char *sql, char *tzname)
+{
+    char *str = sql;
+
+    if (str && *str) {
+        str = skipws(str);
+
+        if (str && *str) {
+            /* skip "transaction" if any */
+            if (!strncasecmp(str, "transaction", 11)) {
+                str += 11;
+                str = skipws(str);
+            }
+
+            if (str && *str) {
+                /* handle "as of" */
+                if (!strncasecmp(str, "as", 2)) {
+                    str += 2;
+                    str = skipws(str);
+                    if (str && *str) {
+                        if (!strncasecmp(str, "of", 2)) {
+                            str += 2;
+                            str = skipws(str);
+                        }
+                    } else {
+                        logmsg(LOGMSG_ERROR,
+                               "Incorrect syntax, use begin ... as of ...\n");
+                        return -1;
+                    }
+                } else {
+                    logmsg(LOGMSG_USER,
+                           "Incorrect syntax, use begin ... as of ...\n");
+                    return -1;
+                }
+            } else
+                return 0;
+
+            if (str && *str) {
+                if (!strncasecmp(str, "datetime", 8)) {
+                    str += 8;
+                    str = skipws(str);
+
+                    if (str && *str) {
+                        /* convert this to a decimal and pass it along */
+                        server_datetime_t sdt;
+                        struct field_conv_opts_tz convopts = {0};
+                        int outdtsz;
+                        long long ret = 0;
+                        int isnull = 0;
+
+                        memcpy(convopts.tzname, tzname,
+                               sizeof(convopts.tzname));
+                        convopts.flags = FLD_CONV_TZONE;
+
+                        if (CLIENT_CSTR_to_SERVER_DATETIME(
+                                str, strlen(str) + 1, 0,
+                                (struct field_conv_opts *)&convopts, NULL, &sdt,
+                                sizeof(sdt), &outdtsz, NULL, NULL)) {
+                            logmsg(LOGMSG_ERROR,
+                                   "Failed to parse snapshot datetime value\n");
+                            return -1;
+                        }
+
+                        if (SERVER_DATETIME_to_CLIENT_INT(
+                                &sdt, sizeof(sdt), NULL, NULL, &ret,
+                                sizeof(ret), &isnull, &outdtsz, NULL, NULL)) {
+                            logmsg(LOGMSG_ERROR, "Failed to convert snapshot "
+                                                 "datetime value to epoch\n");
+                            return -1;
+                        } else {
+                            long long lcl_ret = flibc_ntohll(ret);
+                            if (gbl_new_snapisol_asof &&
+                                bdb_is_timestamp_recoverable(thedb->bdb_env,
+                                                             lcl_ret) <= 0) {
+                                logmsg(LOGMSG_ERROR,
+                                       "No log file to maintain "
+                                       "snapshot epoch %lld\n",
+                                       lcl_ret);
+                                return -1;
+                            } else {
+                                logmsg(LOGMSG_DEBUG,
+                                       "Detected snapshot epoch %lld\n",
+                                       lcl_ret);
+                                return lcl_ret;
+                            }
+                        }
+                    } else {
+                        logmsg(LOGMSG_ERROR,
+                               "Missing datetime info for snapshot\n");
+                        return -1;
+                    }
+                } else {
+                    logmsg(LOGMSG_ERROR,
+                           "Missing snapshot information or garbage "
+                           "after \"begin\"\n");
+                    return -1;
+                }
+                /*
+                   else if (!strncasecmp(str, "genid"))
+                   {
+
+                   }
+                 */
+            } else {
+                logmsg(LOGMSG_ERROR, "Missing snapshot info after \"as of\"\n");
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+static void snapshot_as_of(struct sqlclntstate *clnt)
+{
+    int epoch = 0;
+    if (strlen(clnt->sql) > 6)
+        epoch = retrieve_snapshot_info(&clnt->sql[6], clnt->tzname);
+
+    if (epoch < 0) {
+        /* overload this for now */
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_WRONG_STATE);
+    } else {
+        clnt->snapshot = epoch;
+    }
+}
+
 /**
  * Cluster here all pre-sqlite parsing, detecting requests that
  * are not handled by sqlite (transaction commands, pragma, stored proc,
@@ -749,6 +876,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             clnt->dml_tables = hash_init_strcase(0);
 
             upd_snapshot(clnt);
+            snapshot_as_of(clnt);
         }
     } else if (!strncasecmp(clnt->sql, "commit", 6)) {
         clnt->snapshot = 0;
