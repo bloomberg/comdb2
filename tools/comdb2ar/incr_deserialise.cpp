@@ -137,7 +137,8 @@ void unpack_incr_data(
             abort();
         }
         std::cerr << "truncating to " << fi.get_filesize() << " current size " << st.st_size << std::endl;
-        truncate(abs_filepath.c_str(), fi.get_filesize());
+        if(truncate(abs_filepath.c_str(), fi.get_filesize()))
+            perror("truncating");
     }
 }
 

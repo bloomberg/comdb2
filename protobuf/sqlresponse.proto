@@ -94,7 +94,7 @@ enum ResponseType {
 }
 
 enum CDB2ServerFeatures {
-    SKIP_ROWS    = 1;
+    SKIP_INTRANS_RESULTS = 1;
 }
 
 message CDB2_DBINFORESPONSE {

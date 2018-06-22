@@ -264,6 +264,16 @@ static void setup_client_info(struct sqlclntstate *clnt, struct sqlthdstate *thd
     clnt->plugin.setup_client_info(clnt, thd, replay);
 }
 
+uint64_t get_client_starttime(struct sqlclntstate *clnt)
+{
+    return clnt->plugin.get_client_starttime(clnt);
+}
+
+int get_client_retries(struct sqlclntstate *clnt)
+{
+    return clnt->plugin.get_client_retries(clnt);
+}
+
 static int skip_row(struct sqlclntstate *clnt, uint64_t rowid)
 {
     return clnt->plugin.skip_row(clnt, rowid);
@@ -611,7 +621,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     else
         h->sql = strdup("unknown");
     h->cost = query_cost(thd);
-    int timems = h->time = comdb2_time_epochms() - thd->startms;
+    h->time = comdb2_time_epochms() - thd->startms;
     h->when = thd->stime;
     h->txnid = rqid;
 
@@ -700,6 +710,133 @@ static inline char *skipws(char *str)
     return str;
 }
 
+static int retrieve_snapshot_info(char *sql, char *tzname)
+{
+    char *str = sql;
+
+    if (str && *str) {
+        str = skipws(str);
+
+        if (str && *str) {
+            /* skip "transaction" if any */
+            if (!strncasecmp(str, "transaction", 11)) {
+                str += 11;
+                str = skipws(str);
+            }
+
+            if (str && *str) {
+                /* handle "as of" */
+                if (!strncasecmp(str, "as", 2)) {
+                    str += 2;
+                    str = skipws(str);
+                    if (str && *str) {
+                        if (!strncasecmp(str, "of", 2)) {
+                            str += 2;
+                            str = skipws(str);
+                        }
+                    } else {
+                        logmsg(LOGMSG_ERROR,
+                               "Incorrect syntax, use begin ... as of ...\n");
+                        return -1;
+                    }
+                } else {
+                    logmsg(LOGMSG_USER,
+                           "Incorrect syntax, use begin ... as of ...\n");
+                    return -1;
+                }
+            } else
+                return 0;
+
+            if (str && *str) {
+                if (!strncasecmp(str, "datetime", 8)) {
+                    str += 8;
+                    str = skipws(str);
+
+                    if (str && *str) {
+                        /* convert this to a decimal and pass it along */
+                        server_datetime_t sdt;
+                        struct field_conv_opts_tz convopts = {0};
+                        int outdtsz;
+                        long long ret = 0;
+                        int isnull = 0;
+
+                        memcpy(convopts.tzname, tzname,
+                               sizeof(convopts.tzname));
+                        convopts.flags = FLD_CONV_TZONE;
+
+                        if (CLIENT_CSTR_to_SERVER_DATETIME(
+                                str, strlen(str) + 1, 0,
+                                (struct field_conv_opts *)&convopts, NULL, &sdt,
+                                sizeof(sdt), &outdtsz, NULL, NULL)) {
+                            logmsg(LOGMSG_ERROR,
+                                   "Failed to parse snapshot datetime value\n");
+                            return -1;
+                        }
+
+                        if (SERVER_DATETIME_to_CLIENT_INT(
+                                &sdt, sizeof(sdt), NULL, NULL, &ret,
+                                sizeof(ret), &isnull, &outdtsz, NULL, NULL)) {
+                            logmsg(LOGMSG_ERROR, "Failed to convert snapshot "
+                                                 "datetime value to epoch\n");
+                            return -1;
+                        } else {
+                            long long lcl_ret = flibc_ntohll(ret);
+                            if (gbl_new_snapisol_asof &&
+                                bdb_is_timestamp_recoverable(thedb->bdb_env,
+                                                             lcl_ret) <= 0) {
+                                logmsg(LOGMSG_ERROR,
+                                       "No log file to maintain "
+                                       "snapshot epoch %lld\n",
+                                       lcl_ret);
+                                return -1;
+                            } else {
+                                logmsg(LOGMSG_DEBUG,
+                                       "Detected snapshot epoch %lld\n",
+                                       lcl_ret);
+                                return lcl_ret;
+                            }
+                        }
+                    } else {
+                        logmsg(LOGMSG_ERROR,
+                               "Missing datetime info for snapshot\n");
+                        return -1;
+                    }
+                } else {
+                    logmsg(LOGMSG_ERROR,
+                           "Missing snapshot information or garbage "
+                           "after \"begin\"\n");
+                    return -1;
+                }
+                /*
+                   else if (!strncasecmp(str, "genid"))
+                   {
+
+                   }
+                 */
+            } else {
+                logmsg(LOGMSG_ERROR, "Missing snapshot info after \"as of\"\n");
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+static void snapshot_as_of(struct sqlclntstate *clnt)
+{
+    int epoch = 0;
+    if (strlen(clnt->sql) > 6)
+        epoch = retrieve_snapshot_info(&clnt->sql[6], clnt->tzname);
+
+    if (epoch < 0) {
+        /* overload this for now */
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_WRONG_STATE);
+    } else {
+        clnt->snapshot = epoch;
+    }
+}
+
 /**
  * Cluster here all pre-sqlite parsing, detecting requests that
  * are not handled by sqlite (transaction commands, pragma, stored proc,
@@ -739,6 +876,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             clnt->dml_tables = hash_init_strcase(0);
 
             upd_snapshot(clnt);
+            snapshot_as_of(clnt);
         }
     } else if (!strncasecmp(clnt->sql, "commit", 6)) {
         clnt->snapshot = 0;
@@ -754,6 +892,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                     SQLENG_FNSH_STATE);
             clnt->in_client_trans = 0;
+            clnt->trans_has_sp = 0;
         }
     } else if (!strncasecmp(clnt->sql, "rollback", 8)) {
         clnt->snapshot = 0;
@@ -769,6 +908,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                     SQLENG_FNSH_RBK_STATE);
             clnt->in_client_trans = 0;
+            clnt->trans_has_sp = 0;
         }
     }
 }
@@ -2002,21 +2142,20 @@ static inline int check_user_password(struct sqlclntstate *clnt)
     if (!gbl_uses_password)
         return 0;
 
-    if (gbl_uses_password) {
-        if (!clnt->have_user) {
-            clnt->have_user = 1;
-            strcpy(clnt->user, DEFAULT_USER);
-        }
-        if (!clnt->have_password) {
-            clnt->have_password = 1;
-            strcpy(clnt->password, DEFAULT_PASSWORD);
-        }
-    }
-    if (clnt->have_user && clnt->have_password) {
-        password_rc = bdb_user_password_check(clnt->user, clnt->password, &valid_user);
+    if (!clnt->have_user) {
+        clnt->have_user = 1;
+        strcpy(clnt->user, DEFAULT_USER);
     }
 
-    if (!clnt->have_user || !clnt->have_password || password_rc != 0) {
+    if (!clnt->have_password) {
+        clnt->have_password = 1;
+        strcpy(clnt->password, DEFAULT_PASSWORD);
+    }
+
+    password_rc =
+        bdb_user_password_check(clnt->user, clnt->password, &valid_user);
+
+    if (password_rc != 0) {
         write_response(clnt, RESPONSE_ERROR_ACCESS, "access denied", 0);
         return 1;
     }
@@ -2648,10 +2787,6 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     }
 
     if (stored_proc) {
-        clnt->trans_has_sp = 1;
-    }
-
-    if (stored_proc) {
         handle_stored_proc(thd, clnt);
         *outrc = 0;
         return 1;
@@ -2678,6 +2813,8 @@ static int skip_response_int(struct sqlclntstate *clnt, int from_error)
         return 0;
     if (clnt->in_client_trans) {
         if (from_error && !clnt->had_errors) /* send on first error */
+            return 0;
+        if (clnt->send_intrans_results)
             return 0;
         return 1;
     }
@@ -2814,16 +2951,9 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
         pthread_mutex_unlock(&clnt->wait_mutex);
-        if (skip_response(clnt)) {
-            if (clnt->send_one_row) {
-                clnt->send_one_row = 0;
-                clnt->skip_feature = 1;
-                write_response(clnt, RESPONSE_ROW_LAST_DUMMY, 0, 0);
-            }
-        } else {
-            if (postponed_write) {
+        if (!skip_response(clnt)) {
+            if (postponed_write)
                 send_row(clnt, NULL, row_id, 0, NULL);
-            }
             write_response(clnt, RESPONSE_EFFECTS, 0, 0);
             write_response(clnt, RESPONSE_ROW_LAST, 0, 0);
         }
@@ -2991,6 +3121,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     struct sql_state rec = {0};
     char *errstr;
     reqlog_set_event(thd->logger, "sp");
+    clnt->trans_has_sp = 1;
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
         clnt->had_errors = 1;
@@ -3001,6 +3132,8 @@ static void handle_stored_proc(struct sqlthdstate *thd,
             free(errstr);
         }
     }
+    if (!clnt->in_client_trans)
+        clnt->trans_has_sp = 0;
     test_no_btcursors(thd);
     sqlite_done(thd, clnt, &rec, 0);
 }
@@ -3071,11 +3204,20 @@ errors:
 
 static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
+    int rc;
+
     if (gbl_check_access_controls) {
         check_access_controls(thedb);
         gbl_check_access_controls = 0;
     }
-    int rc = check_user_password(clnt);
+
+    /* If 1) this is an SSL connection, 2) and client sends a certificate,
+       3) and client does not override the user, let it through. */
+    if (sslio_has_x509(clnt->sb) && clnt->is_x509_user)
+        rc = 0;
+    else
+        rc = check_user_password(clnt);
+
     if (rc == 0) {
         if (thd->lastuser[0] != '\0' && strcmp(thd->lastuser, clnt->user) != 0)
             delete_prepared_stmts(thd);
@@ -3792,6 +3934,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     /* reset the user */
     clnt->have_user = 0;
+    clnt->is_x509_user = 0;
     bzero(clnt->user, sizeof(clnt->user));
 
     /* reset the password */
@@ -3826,7 +3969,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->saved_rc = 0;
     clnt->want_stored_procedure_debug = 0;
     clnt->want_stored_procedure_trace = 0;
-    clnt->send_one_row = 0;
     clnt->verifyretry_off = 0;
     clnt->is_expert = 0;
 
@@ -3843,7 +3985,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->early_retry = 0;
     clnt_reset_cursor_hints(clnt);
 
-    clnt->skip_feature = 0;
+    clnt->send_intrans_results = 1;
 
     bzero(clnt->dirty, sizeof(clnt->dirty));
 
@@ -3883,7 +4025,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->ncontext = 0;
     clnt->statement_query_effects = 0;
     clnt->wrong_db = 0;
-    clnt->send_intransresults = 0;
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
@@ -5137,7 +5278,14 @@ static int internal_log_context(struct sqlclntstate *a, struct reqlogger *b)
 {
     return 0;
 }
-
+static uint64_t internal_get_client_starttime(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int internal_get_client_retries(struct sqlclntstate *a)
+{
+    return 0;
+}
 void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {
     reset_clnt(clnt, NULL, 1);

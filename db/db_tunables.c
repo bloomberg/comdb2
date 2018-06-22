@@ -113,6 +113,7 @@ extern int portmux_port;
 extern int g_osql_blocksql_parallel_max;
 extern int g_osql_max_trans;
 extern int gbl_osql_max_throttle_sec;
+extern int gbl_osql_random_restart;
 extern int diffstat_thresh;
 extern int reqltruncate;
 extern int analyze_max_comp_threads;
@@ -142,6 +143,7 @@ extern int gbl_dump_full_net_queue;
 extern int gbl_max_clientstats_cache;
 extern int gbl_dbreg_stack_on_null_txn;
 extern int gbl_dbreg_abort_on_null_txn;
+extern int gbl_simulate_dropping_request;
 
 extern long long sampling_threshold;
 
@@ -156,15 +158,15 @@ extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_portmux_unix_socket;
 
-/* bb/ctrace.c */
+/* util/ctrace.c */
 extern int nlogs;
 extern unsigned long long rollat;
 
-/* bb/thread_util.c */
+/* util/thread_util.c */
 extern int thread_debug;
 extern int dump_resources_on_thread_exit;
 
-/* bb/walkback.c */
+/* util/walkback.c */
 extern int gbl_walkback_enabled;
 extern int gbl_warnthresh;
 

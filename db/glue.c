@@ -437,7 +437,7 @@ tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
 }
 
 tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
-                                int offset, int *error)
+                                int offset, int *error, int is_ha_retry)
 {
     void *bdb_handle = bdb_handle_from_ireq(iq);
     tran_type *out_trans = NULL;
@@ -450,8 +450,8 @@ tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
         logmsg(LOGMSG_USER, "td=%x %s called with epoch=%d file=%d offset=%d\n",
                (int)pthread_self(), __func__, epoch, file, offset);
     }
-    out_trans =
-        bdb_tran_begin_snapisol(bdb_handle, trak, error, epoch, file, offset);
+    out_trans = bdb_tran_begin_snapisol(bdb_handle, trak, error, epoch, file,
+                                        offset, is_ha_retry);
     iq->gluewhere = "bdb_tran_begin_snapisol done";
 
     if (out_trans == NULL) {
@@ -462,8 +462,9 @@ tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
     return out_trans;
 }
 
-tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch, int file,
-        int offset, int *error)
+tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch,
+                                    int file, int offset, int *error,
+                                    int is_ha_retry)
 {
     void *bdb_handle = bdb_handle_from_ireq(iq);
     tran_type *out_trans = NULL;
@@ -475,8 +476,8 @@ tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch, int fi
         logmsg(LOGMSG_USER, "td=%x %s called with epoch=%d file=%d offset=%d\n",
                (int)pthread_self(), __func__, epoch, file, offset);
     }
-    out_trans = bdb_tran_begin_serializable(bdb_handle, trak, &bdberr, epoch, 
-            file, offset);
+    out_trans = bdb_tran_begin_serializable(bdb_handle, trak, &bdberr, epoch,
+                                            file, offset, is_ha_retry);
     iq->gluewhere = "bdb_tran_begin done";
 
     if (out_trans == NULL) {
@@ -782,7 +783,7 @@ int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host)
 int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
                         void *seqkey, int seqkeylen)
 {
-    int bdberr, rc = 0;
+    int bdberr, rc = 0, *file;
     void *bdb_handle = bdb_handle_from_ireq(iq);
     struct dbenv *dbenv = dbenv_from_ireq(iq);
     db_seqnum_type ss;
@@ -800,11 +801,13 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
         else
             rc = ERR_INTERNAL;
     }
-    /* Not sure why we have this inconsistency where we wait for logical commits
-       but
-       not logical aborts, but it's wrong. */
-    trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, gbl_mynode,
-                              -1 /* timeoutms */, 1 /* adaptive */, &ss);
+
+    /* Single phy-txn logical aborts will set ss to 0: check before waiting */
+    file = (u_int32_t *)&ss;
+    if (*file != 0) {
+        trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, gbl_mynode,
+                                  -1 /* timeoutms */, 1 /* adaptive */, &ss);
+    }
     return rc;
 }
 
@@ -929,11 +932,6 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
     bdb_handle = get_bdb_handle(db, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
-
-#if 0
-    fprintf(stderr, "ix_addkey(%x)\n", ixnum);
-    hexdump(key, getkeysize(db, ixnum));
-#endif
 
     iq->gluewhere = "bdb_prim_addkey";
     rc = bdb_prim_addkey_genid(bdb_handle, trans, key, ixnum, rrn, genid, dta,

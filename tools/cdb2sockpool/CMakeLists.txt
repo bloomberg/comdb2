@@ -1,20 +1,21 @@
 add_executable(cdb2sockpool
   cdb2sockpool.c
   settings.c
-  ${PROJECT_SOURCE_DIR}/bb/bb_daemon.c
-  ${PROJECT_SOURCE_DIR}/bb/list.c
-  ${PROJECT_SOURCE_DIR}/bb/lockassert.c
-  ${PROJECT_SOURCE_DIR}/bb/logmsg.c
-  ${PROJECT_SOURCE_DIR}/bb/plhash.c
-  ${PROJECT_SOURCE_DIR}/bb/pool.c
-  ${PROJECT_SOURCE_DIR}/bb/safestrerror.c
-  ${PROJECT_SOURCE_DIR}/bb/segstring.c
-  ${PROJECT_SOURCE_DIR}/bb/strbuf.c
+  ${PROJECT_SOURCE_DIR}/util/bb_daemon.c
+  ${PROJECT_SOURCE_DIR}/util/list.c
+  ${PROJECT_SOURCE_DIR}/util/lockassert.c
+  ${PROJECT_SOURCE_DIR}/util/logmsg.c
+  ${PROJECT_SOURCE_DIR}/util/plhash.c
+  ${PROJECT_SOURCE_DIR}/util/pool.c
+  ${PROJECT_SOURCE_DIR}/util/safestrerror.c
+  ${PROJECT_SOURCE_DIR}/util/segstring.c
+  ${PROJECT_SOURCE_DIR}/util/strbuf.c
 )
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
-  ${PROJECT_SOURCE_DIR}/bb
+  ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
+  ${PROJECT_SOURCE_DIR}/berkdb
   ${PROJECT_SOURCE_DIR}/sockpool
 )
 add_definitions(-DBUILDING_TOOLS)

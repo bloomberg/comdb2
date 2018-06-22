@@ -62,7 +62,6 @@ static int __log_put_next __P((DB_ENV *,
 	u_int8_t *key, u_int32_t));
 static int __log_putr __P((DB_LOG *, DB_LSN *, const DBT *, u_int32_t, HDR *));
 static int __log_write __P((DB_LOG *, void *, u_int32_t));
-void hexdump(unsigned char *key, int keylen);
 
 pthread_mutex_t log_write_lk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t log_write_cond = PTHREAD_COND_INITIALIZER;
@@ -219,15 +218,6 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	lock_held = 1;
 
 	ZERO_LSN(old_lsn);
-
-	/*
-	 * if (rectype == DB___txn_regop)
-	 * {
-	 * fprintf(stderr, "Master (size=%d) PRECONTEXT\n", dbt->size);
-	 * hexdump(dbt->data, dbt->size);
-	 * fprintf(stderr, "\n");
-	 * }
-	 */
 
 	if ((ret =
 		__log_put_next(dbenv, lsnp, contextp, dbt, udbt, &hdr, &old_lsn,

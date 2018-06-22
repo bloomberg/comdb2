@@ -24,7 +24,7 @@ configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_schemachange.h @ONLY)
 
 include_directories(
   ${PROJECT_SOURCE_DIR}
-  ${PROJECT_SOURCE_DIR}/bb
+  ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/bdb
   ${PROJECT_SOURCE_DIR}/cdb2api
@@ -41,6 +41,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/net
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/sqlite
+  ${PROJECT_SOURCE_DIR}/berkdb
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}
 )

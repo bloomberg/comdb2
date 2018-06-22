@@ -54,6 +54,7 @@
 #include <endian_core.h>
 #include <printformats.h>
 #include <logmsg.h>
+#include <util.h>
 
 #ifdef NEWSI_STAT
 #include <time.h>
@@ -1844,6 +1845,8 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
 
     if (!outlsn)
         outlsn = &getlsn;
+
+    bzero(outlsn, sizeof(DB_LSN));
 
     /* There's nothing to do if I didn't write anything */
     if (!tran->committed_begin_record)

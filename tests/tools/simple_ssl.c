@@ -10,7 +10,7 @@ int main(int argc, char **argv)
     cdb2_hndl_tp *hndl = NULL;
     int rc, i, len;
     char *conf = getenv("CDB2_CONFIG");
-    unsigned long tm, delta1, delta2;
+    unsigned long tm, delta1, delta2, delta3;
     const char *tier;
 
     if (argc < 2)
@@ -29,29 +29,12 @@ int main(int argc, char **argv)
     if (conf != NULL)
         cdb2_set_comdb2db_config(conf);
 
-    /* Warm up the server. */
-    rc = cdb2_open(&hndl, argv[1], tier, 0);
-    if (rc != 0) {
-        fprintf(stderr, "Error opening a handle: %d: %s.\n",
-                rc, cdb2_errstr(hndl));
-        exit(1);
-    }
-
-    rc = cdb2_run_statement(hndl, "select 1");
-    if (rc != 0) {
-        fprintf(stderr, "Error running query: %d: %s.\n",
-                rc, cdb2_errstr(hndl));
-        exit(1);
-    }
-    while (cdb2_next_record(hndl) != CDB2_OK_DONE);
-    cdb2_close(hndl);
-
     /* The race is on! first let's test no ssl cache. */
     for (i = 0, tm = (unsigned long)time(NULL); i < len; i += 4) {
         if (i > 0 && i % 100 == 0)
             fprintf(stderr, "progress: %d\n", i);
         /* 1st */
-        rc = cdb2_open(&hndl, argv[1], tier, 0);
+        rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
         if (rc != 0) {
             fprintf(stderr, "Error opening a handle: %d: %s.\n",
                     rc, cdb2_errstr(hndl));
@@ -73,7 +56,7 @@ int main(int argc, char **argv)
         cdb2_close(hndl);
 
         /* 2nd */
-        rc = cdb2_open(&hndl, argv[1], tier, 0);
+        rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
         if (rc != 0) {
             fprintf(stderr, "Error opening a handle: %d: %s.\n",
                     rc, cdb2_errstr(hndl));
@@ -95,7 +78,7 @@ int main(int argc, char **argv)
         cdb2_close(hndl);
 
         /* 3rd */
-        rc = cdb2_open(&hndl, argv[1], tier, 0);
+        rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
         if (rc != 0) {
             fprintf(stderr, "Error opening a handle: %d: %s.\n",
                     rc, cdb2_errstr(hndl));
@@ -117,7 +100,7 @@ int main(int argc, char **argv)
         cdb2_close(hndl);
 
         /* 4th */
-        rc = cdb2_open(&hndl, argv[1], tier, 0);
+        rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
         if (rc != 0) {
             fprintf(stderr, "Error opening a handle: %d: %s.\n",
                     rc, cdb2_errstr(hndl));
@@ -148,7 +131,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "progress: %d\n", i);
 
         /* 1st */
-        rc = cdb2_open(&hndl, argv[1], tier, CDB2_CACHE_SSL_SESSIONS);
+        rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
         if (rc != 0) {
             fprintf(stderr, "Error opening a handle: %d: %s.\n",
                     rc, cdb2_errstr(hndl));
@@ -170,7 +153,7 @@ int main(int argc, char **argv)
         cdb2_close(hndl);
 
         /* 2nd */
-        rc = cdb2_open(&hndl, argv[1], tier, CDB2_CACHE_SSL_SESSIONS);
+        rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
         if (rc != 0) {
             fprintf(stderr, "Error opening a handle: %d: %s.\n",
                     rc, cdb2_errstr(hndl));
@@ -192,7 +175,7 @@ int main(int argc, char **argv)
         cdb2_close(hndl);
 
         /* 3rd */
-        rc = cdb2_open(&hndl, argv[1], tier, CDB2_CACHE_SSL_SESSIONS);
+        rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
         if (rc != 0) {
             fprintf(stderr, "Error opening a handle: %d: %s.\n",
                     rc, cdb2_errstr(hndl));
@@ -214,7 +197,7 @@ int main(int argc, char **argv)
         cdb2_close(hndl);
 
         /* 4th */
-        rc = cdb2_open(&hndl, argv[1], tier, CDB2_CACHE_SSL_SESSIONS);
+        rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
         if (rc != 0) {
             fprintf(stderr, "Error opening a handle: %d: %s.\n",
                     rc, cdb2_errstr(hndl));
@@ -243,5 +226,112 @@ int main(int argc, char **argv)
     else
         fprintf(stderr, "delta1/delta2 == %2.2f%%\n", delta1 * 100.0 / delta2);
 
-    return (delta2 > delta1);
+
+    /* Now test "SET SSL_SESSION_CACHE ON" */
+    setenv("SSL_SESSION_CACHE", "0", 1);
+    for (i = 0, tm = (unsigned long)time(NULL); i < len; i += 4) {
+        if (i > 0 && i % 100 == 0)
+            fprintf(stderr, "progress: %d\n", i);
+
+        /* 1st */
+        rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
+        if (rc != 0) {
+            fprintf(stderr, "Error opening a handle: %d: %s.\n",
+                    rc, cdb2_errstr(hndl));
+            exit(1);
+        }
+
+        rc = cdb2_run_statement(hndl, "SET SSL_SESSION_CACHE ON");
+        rc = cdb2_run_statement(hndl, "select 1");
+        if (rc != 0) {
+            fprintf(stderr, "Error running query: %d: %s.\n",
+                    rc, cdb2_errstr(hndl));
+            exit(1);
+        }
+        while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
+        if (rc != CDB2_OK_DONE) {
+            fprintf(stderr, "Error next record: %d: %s.\n",
+                    rc, cdb2_errstr(hndl));
+            exit(1);
+        }
+        cdb2_close(hndl);
+
+        /* 2nd */
+        rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
+        if (rc != 0) {
+            fprintf(stderr, "Error opening a handle: %d: %s.\n",
+                    rc, cdb2_errstr(hndl));
+            exit(1);
+        }
+
+        rc = cdb2_run_statement(hndl, "SET SSL_SESSION_CACHE ON");
+        rc = cdb2_run_statement(hndl, "select 1");
+        if (rc != 0) {
+            fprintf(stderr, "Error running query: %d: %s.\n",
+                    rc, cdb2_errstr(hndl));
+            exit(1);
+        }
+        while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
+        if (rc != CDB2_OK_DONE) {
+            fprintf(stderr, "Error next record: %d: %s.\n",
+                    rc, cdb2_errstr(hndl));
+            exit(1);
+        }
+        cdb2_close(hndl);
+
+        /* 3rd */
+        rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
+        if (rc != 0) {
+            fprintf(stderr, "Error opening a handle: %d: %s.\n",
+                    rc, cdb2_errstr(hndl));
+            exit(1);
+        }
+
+        rc = cdb2_run_statement(hndl, "SET SSL_SESSION_CACHE ON");
+        rc = cdb2_run_statement(hndl, "select 1");
+        if (rc != 0) {
+            fprintf(stderr, "Error running query: %d: %s.\n",
+                    rc, cdb2_errstr(hndl));
+            exit(1);
+        }
+        while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
+        if (rc != CDB2_OK_DONE) {
+            fprintf(stderr, "Error next record: %d: %s.\n",
+                    rc, cdb2_errstr(hndl));
+            exit(1);
+        }
+        cdb2_close(hndl);
+
+        /* 4th */
+        rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
+        if (rc != 0) {
+            fprintf(stderr, "Error opening a handle: %d: %s.\n",
+                    rc, cdb2_errstr(hndl));
+            exit(1);
+        }
+
+        rc = cdb2_run_statement(hndl, "SET SSL_SESSION_CACHE ON");
+        rc = cdb2_run_statement(hndl, "select 1");
+        if (rc != 0) {
+            fprintf(stderr, "Error running query: %d: %s.\n",
+                    rc, cdb2_errstr(hndl));
+            exit(1);
+        }
+        while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
+        if (rc != CDB2_OK_DONE) {
+            fprintf(stderr, "Error next record: %d: %s.\n",
+                    rc, cdb2_errstr(hndl));
+            exit(1);
+        }
+        cdb2_close(hndl);
+    }
+
+    delta3 = ((unsigned long)time(NULL)) - tm;
+    fprintf(stderr, "SET SSL_SESSION_CACHE ON:  %lu.\n", delta3);
+    if (delta3 == 0)
+        fprintf(stderr, "delta1/delta3 == inf\n");
+    else
+        fprintf(stderr, "delta1/delta3 == %2.2f%%\n", delta1 * 100.0 / delta3);
+
+    return (delta2 > delta1) && (delta3 > delta1);
 }

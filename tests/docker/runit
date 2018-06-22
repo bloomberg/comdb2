@@ -25,10 +25,18 @@ if [[ "$src" = "" ]] || [[ "$numnodes" = "" ]]; then
     exit 1
 fi
 
+prefix="$(git --git-dir "$src/.git" rev-parse --short HEAD)"
+if [[ "$prefix" = "" ]]; then
+    echo 'Could not get the revision.' >&2
+    exit 1
+fi
+export COMPOSE_PROJECT_NAME=$prefix
+
 rm -fr common
 mkdir common
 for node in $(seq 1 $numnodes); do
-    cluster="$cluster m${node}"
+    cluster="$cluster m${node}.${prefix}_default"
+    containers="$containers m$node"
 done
 
 if [[ -f /proc/sys/kernel/core_pattern ]]; then
@@ -42,13 +50,6 @@ if [[ -f /proc/sys/kernel/core_pattern ]]; then
         done
     fi
 fi
-
-prefix="$(git --git-dir "$src/.git" rev-parse --short HEAD)"
-if [[ "$prefix" = "" ]]; then
-    echo 'Could not get the revision.' >&2
-    exit 1
-fi
-export COMPOSE_PROJECT_NAME=$prefix
 
 if [[ "$script" != "" ]]; then
     cp $script common/user_script
@@ -65,7 +66,8 @@ version: '2'
 
 services:
     client:
-        hostname: c1
+        container_name: c1
+        hostname: c1.${prefix}_default
         labels:
             what: "testclient"
         build:
@@ -89,10 +91,11 @@ cat >> $compose <<EOF
             - SYS_PTRACE
 EOF
 
-for node in $cluster; do
+for node in $containers; do
 cat >> $compose <<EOF
     $node:
-        hostname: $node
+        container_name: $node
+        hostname: $node.${prefix}_default
         labels:
             what: "testserver"
         build:

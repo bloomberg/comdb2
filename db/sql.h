@@ -345,6 +345,7 @@ typedef void(add_steps_func)(struct sqlclntstate *, double steps);
 typedef void(setup_client_info_func)(struct sqlclntstate *, struct sqlthdstate *, char *);
 typedef int(skip_row_func)(struct sqlclntstate *, uint64_t);
 typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
+typedef uint64_t(ret_uint64_func)(struct sqlclntstate *);
 
 struct plugin_callbacks {
     response_func *write_response; /* newsql_write_response */
@@ -381,6 +382,8 @@ struct plugin_callbacks {
     setup_client_info_func *setup_client_info; /* newsql_setup_client_info */
     skip_row_func *skip_row; /* newsql_skip_row */
     log_context_func *log_context; /* newsql_log_context */
+    ret_uint64_func *get_client_starttime; /* newsql_get_client_starttime */
+    plugin_func *get_client_retries;       /* newsql_get_client_retries */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
@@ -413,6 +416,8 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, setup_client_info);                   \
         make_plugin_callback(clnt, name, skip_row);                            \
         make_plugin_callback(clnt, name, log_context);                         \
+        make_plugin_callback(clnt, name, get_client_starttime);                \
+        make_plugin_callback(clnt, name, get_client_retries);                  \
     } while (0)
 
 int param_count(struct sqlclntstate *);
@@ -423,7 +428,8 @@ int get_cnonce(struct sqlclntstate *, snap_uid_t *);
 int has_high_availability(struct sqlclntstate *);
 int set_high_availability(struct sqlclntstate *);
 int clr_high_availability(struct sqlclntstate *);
-
+uint64_t get_client_starttime(struct sqlclntstate *);
+int get_client_retries(struct sqlclntstate *);
 
 /* Client specific sql state */
 struct sqlclntstate {
@@ -518,6 +524,8 @@ struct sqlclntstate {
 
     int have_user;
     char user[MAX_USERNAME_LEN];
+    int is_x509_user; /* True if the user is retrieved
+                         from a client certificate. */
 
     int have_password;
     char password[MAX_PASSWORD_LEN];
@@ -544,7 +552,6 @@ struct sqlclntstate {
     int isselect;   /* track if the query is a select query.*/
     int isUnlocked;
     int writeTransaction;
-    int send_one_row;
     int verify_retries; /* how many verify retries we've borne */
     int verifyretry_off;
     int pageordertablescan;
@@ -553,7 +560,6 @@ struct sqlclntstate {
     int snapshot_offset;
     int is_hasql_retry;
     int is_readonly;
-    int send_intransresults;
     int is_expert;
     int added_to_hist;
 
@@ -603,7 +609,47 @@ struct sqlclntstate {
 
     int8_t wrong_db;
     int8_t is_lua_sql_thread;
-    int8_t skip_feature;
+
+    /*              (SERVER)
+      Default --> (val: 1)
+                      |
+                      +--> Client has SKIP feature?
+                                   |    |
+                                NO |    | YES
+                                   |    |
+      SET INTRANSRESULTS OFF ------)--->+--> (val: 0) --+
+                                   |                    |
+                                   |  +-----------------+
+                                   |  |
+                                   |  +---> Send server SKIP feature;
+                                   |        Don't send intrans results
+                                   |
+      SET INTRANSRESULTS ON        +-------> (val: 1) --+
+                |                                       |
+                | (val: -1)           +-----------------+
+                |                     |
+                +---------------------+--> Don't send server SKIP feature;
+                                           Send intrans results
+
+                    (CLIENT)
+      CDB2_READ_INTRANS_RESULTS is ON?
+                     /\
+       NO (default) /  \ YES
+                   /    \
+       Send Client       \
+       SKIP feature       \
+                /          \
+       Server has           \
+            SKIP feature?    \
+             /          \     \
+          Y /            \ N   \
+           /              \     \
+       Don't read         Read intrans results
+       intrans results    for writes
+       for writes
+
+     */
+    int8_t send_intrans_results;
     int8_t high_availability_flag;
     int8_t hasql_on;
 

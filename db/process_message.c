@@ -31,11 +31,9 @@ extern int __berkdb_read_alarm_ms;
 #include <sys/statvfs.h>
 
 #include <segstr.h>
-#include <plink.h>
 #include <epochlib.h>
 #include <net.h>
 #include <memory_sync.h>
-#include <plink.h>
 
 #include <bdb_api.h>
 #ifdef _LINUX_SOURCE
@@ -2610,6 +2608,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     } else if (tokcmp(tok, ltok, "scforceabort") == 0) {
         logmsg(LOGMSG_USER, "Forcibly resetting schema change flat\n");
         sc_set_running(NULL, 0, 0, NULL, 0);
+    } else if (tokcmp(tok, ltok, "get_db_dir")==0) {
+        logmsg(LOGMSG_USER, "Database Base Directory: %s\n", thedb->basedir);
     } else if (tokcmp(tok, ltok, "debug") == 0) {
         debug_trap(line + st, lline - st);
     }
@@ -3374,7 +3374,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     } else if (tokcmp(tok, ltok, "help") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-           logmsg(LOGMSG_USER, "%s\n", plink_constant(PLINK_TIME));
             print_help_page(HELP_MAIN);
         } else if (tokcmp(tok, ltok, "java") == 0) {
             print_help_page(HELP_JAVA);

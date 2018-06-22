@@ -1859,7 +1859,6 @@ void reqdumphex(struct ireq *iq, void *buf,
 void reqprintflush(struct ireq *iq); /* flush current line */
 void reqpushprefixf(struct ireq *iq, const char *format, ...);
 void reqpopprefixes(struct ireq *iq, int num);
-void hexdumpdta(unsigned char *p, int len);
 const char *req2a(int opcode);
 void reqerrstr(struct ireq *iq, int rc, char *format, ...);
 void reqerrstrhdr(struct ireq *iq, char *format,
@@ -1947,9 +1946,10 @@ int rowlocks_check_commit_physical(bdb_state_type *, tran_type *,
                                    int blockop_count);
 tran_type *trans_start_readcommitted(struct ireq *, int trak);
 tran_type *trans_start_serializable(struct ireq *, int trak, int epoch,
-                                    int file, int offset, int *error);
+                                    int file, int offset, int *error,
+                                    int is_ha_retry);
 tran_type *trans_start_snapisol(struct ireq *, int trak, int epoch, int file,
-                                int offset, int *error);
+                                int offset, int *error, int is_ha_retry);
 tran_type *trans_start_socksql(struct ireq *, int trak);
 int trans_commit(struct ireq *iq, void *trans, char *source_host);
 int trans_commit_seqnum(struct ireq *iq, void *trans, db_seqnum_type *seqnum);

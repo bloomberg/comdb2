@@ -102,19 +102,6 @@ struct datacopy_info {
 };
 
 
-static void hexdump(loglvl lvl, char *key, int keylen)
-{
-    if (key == NULL || keylen == 0) {
-        logmsg(LOGMSG_ERROR, "NULL(%d)\n", keylen);
-        return;
-    }
-    char *mem = alloca((2 * keylen) + 2);
-    char *output = util_tohex(mem, key, keylen);
-
-    logmsg(lvl, "%s\n", output);
-}
-
-
 pthread_mutex_t pr_lk = PTHREAD_MUTEX_INITIALIZER;
 
 int lkprintf(loglvl lvl, const char *fmt, ...)
@@ -3761,25 +3748,63 @@ done:
 int bdb_latest_commit_is_durable(void *in_bdb_state)
 {
     extern int gbl_durable_replay_test;
+    char *master;
     bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    seqnum_type ss = {0};
+    int timeoutms;
+    int needwait = 0;
+    int rc = 0;
     uint32_t durable_gen;
     uint32_t latest_gen;
     DB_LSN durable_lsn;
     DB_LSN latest_lsn;
 
+    bdb_get_rep_master(bdb_state, &master, NULL);
     bdb_latest_commit(bdb_state, &latest_lsn, &latest_gen);
     bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
                                       &durable_gen);
 
-    if (latest_gen < durable_gen)
-        return 0;
+    logmsg(LOGMSG_INFO, "%s line %d master=%s latest-commit=[%d][%d] gen %d, "
+                        "latest-durable=[%d][%d] gen %d\n",
+           __func__, __LINE__, master, latest_lsn.file, latest_lsn.offset,
+           latest_gen, durable_lsn.file, durable_lsn.offset, durable_gen);
+
+    if (durable_gen < latest_gen) {
+        logmsg(LOGMSG_INFO,
+               "%s line %d waiting because durable_gen %d < latest_gen %d\n",
+               __func__, __LINE__, durable_gen, latest_gen);
+        needwait = 1;
+    }
 
     if ((latest_gen == durable_gen) &&
-        log_compare(&durable_lsn, &latest_lsn) < 0)
-        return 0;
+        log_compare(&durable_lsn, &latest_lsn) < 0) {
+        logmsg(LOGMSG_INFO,
+               "%s line %d waiting because durable_lsn [%d][%d] < latest_lsn "
+               "[%d][%d]\n",
+               __func__, __LINE__, durable_lsn.file, durable_lsn.offset,
+               latest_lsn.file, latest_lsn.offset);
+        needwait = 1;
+    }
 
-    if (gbl_durable_replay_test && (0 == (rand() % 20)))
+    if (gbl_durable_replay_test && (0 == (rand() % 20))) {
+        logmsg(LOGMSG_INFO, "%s line %d returning 0 for durable_replay_test\n",
+               __func__, __LINE__);
         return 0;
+    }
+
+    if (needwait) {
+        ss.lsn = latest_lsn;
+        ss.generation = latest_gen;
+        rc = (bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state, &ss, 0,
+                                                           &timeoutms) == 0)
+                 ? 1
+                 : 0;
+        logmsg(LOGMSG_INFO, "%s line %d returning %d after waiting\n", __func__,
+               __LINE__, rc);
+        return rc;
+    }
+
+    logmsg(LOGMSG_INFO, "%s line %d returning 1\n", __func__, __LINE__);
 
     return 1;
 }
@@ -4518,8 +4543,9 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
             return rc;
 
 #ifdef MERGE_DEBUG
-        logmsg(LOGMSG_DEBUG, "%d %s:%d reordering rc=%d %llx\n", pthread_self(),
-               __FILE__, __LINE__, rc, *(unsigned long long *)key);
+        logmsg(LOGMSG_DEBUG, "%d %s:%d reordering rc=%d %llx\n",
+               (int)pthread_self(), __FILE__, __LINE__, rc,
+               *(unsigned long long *)key);
 #endif
 
         /* if we have failed to reposition the cursor and this is a relative

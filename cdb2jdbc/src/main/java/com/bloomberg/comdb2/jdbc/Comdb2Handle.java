@@ -109,7 +109,7 @@ public class Comdb2Handle extends AbstractConnection {
     private int isRetry;
     private int nSetsSent;
     private int errorInTxn = 0;
-    private boolean skipFeature = false;
+    private boolean readIntransResults = true;
     private boolean firstRecordRead = false;
 
     /* The last Throwable. */
@@ -120,8 +120,10 @@ public class Comdb2Handle extends AbstractConnection {
 
     /* SSL support */
     private SSL_MODE sslmode = SSL_MODE.ALLOW;
+    private String sslNIDDbName = "OU";
     private String sslcert, sslcertpass, sslcerttype;
     private String sslca, sslcapass, sslcatype;
+    private String sslcrl;
     PEER_SSL_MODE peersslmode = PEER_SSL_MODE.PEER_SSL_ALLOW;
 
     static class QueryItem {
@@ -168,6 +170,7 @@ public class Comdb2Handle extends AbstractConnection {
         ret.dbinfoTimeout = dbinfoTimeout;
 
         ret.sslmode = sslmode;
+        ret.sslNIDDbName = sslNIDDbName;
         ret.sslcert = sslcert;
         ret.sslcertpass = sslcertpass;
         ret.sslcerttype = sslcerttype;
@@ -220,8 +223,21 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     /* attribute setters - bb precious */
-    public void setSSLMode(SSL_MODE mode) {
-        sslmode = mode;
+    public void setSSLMode(String mode) {
+        if ("REQUIRE".equalsIgnoreCase(mode))
+            sslmode = SSL_MODE.REQUIRE;
+        else if ("VERIFY_CA".equalsIgnoreCase(mode))
+            sslmode = SSL_MODE.VERIFY_CA;
+        else if ("VERIFY_HOSTNAME".equalsIgnoreCase(mode))
+            sslmode = SSL_MODE.VERIFY_HOSTNAME;
+        else if (mode.toUpperCase().startsWith("VERIFY_DBNAME")) {
+            sslmode = SSL_MODE.VERIFY_DBNAME;
+            String[] splits = mode.split(",|;");
+            if (splits.length > 1)
+                sslNIDDbName = splits[1].toUpperCase();
+        } else{
+            sslmode = SSL_MODE.ALLOW;
+        }
     }
 
     public void setSSLCrt(String crt) {
@@ -246,6 +262,10 @@ public class Comdb2Handle extends AbstractConnection {
 
     public void setSSLCAType(String catype) {
         sslcatype = catype;
+    }
+
+    public void setSSLCRL(String crl) {
+        sslcrl = crl;
     }
 
     public void setPrefMach(String mach) {
@@ -465,7 +485,7 @@ public class Comdb2Handle extends AbstractConnection {
 
         clearResp();
         isRetry = nretry;
-        skipFeature = false;
+        readIntransResults = true;
         inTxn = false;
 
         // Either we have a snapshot or the querylist is 0: send a begin
@@ -554,10 +574,10 @@ public class Comdb2Handle extends AbstractConnection {
 
             clearResp();
 
-            if (skipFeature && !item.isRead) {
+            if (!readIntransResults && !item.isRead) {
                 tdlog(Level.FINEST,
-                      "retryQueries continuing because skipFeature is %b and item.isRead is %b",
-                      skipFeature, item.isRead);
+                      "retryQueries continuing because readIntransResults is %b and item.isRead is %b",
+                      readIntransResults, item.isRead);
                 continue;
             }
 
@@ -634,11 +654,11 @@ public class Comdb2Handle extends AbstractConnection {
               "sendQuery sql='%s' isBegin=%b skipNRows=%d nretry=%d doAppend=%b",
               sql, isBegin, skipNRows, nretry, doAppend);
 
-        /* SKIP_ROWS optimization is disabled temporarily
+        /* SKIP_INTRANS_RESULTS optimization is disabled temporarily
            in cdb2jdbc to make executeUpdate() work. */
         /*
         if (isBegin)
-            sqlQuery.features.add(CDB2ClientFeatures.SKIP_ROWS_VALUE);
+            sqlQuery.features.add(CDB2ClientFeatures.SKIP_INTRANS_RESULTS_VALUE);
         */
 
         sqlQuery.features.add(CDB2ClientFeatures.ALLOW_MASTER_DBINFO_VALUE);
@@ -646,7 +666,8 @@ public class Comdb2Handle extends AbstractConnection {
         if (nretry >= myDbHosts.size())
             sqlQuery.features.add(CDB2ClientFeatures.ALLOW_QUEUING_VALUE);
 
-        if (nretry > 0 && dbHostConnected == masterIndexInMyDbHosts)
+        if (nretry >= ((myDbHosts.size() * 2) - 1) && dbHostConnected ==
+                masterIndexInMyDbHosts)
             sqlQuery.features.add(CDB2ClientFeatures.ALLOW_MASTER_EXEC_VALUE);
 
         sqlQuery.cnonce = cnonce;
@@ -789,7 +810,7 @@ public class Comdb2Handle extends AbstractConnection {
 
     private void cleanup_query_list() {
         tdlog(Level.FINEST, "In cleanup_query_list");
-        skipFeature = false;
+        readIntransResults = true;
         snapshotFile = 0;
         snapshotOffset = 0;
         isRetry = 0;
@@ -806,6 +827,9 @@ public class Comdb2Handle extends AbstractConnection {
     /* Sql interface to these */
     private boolean isClientOnlySetCommand(String sql) {
         String tokens[] = sql.split(" ");
+
+        if (tokens.length < 1)
+            return false;
 
         // Debug
         if (tokens[1].equals("debug")) {
@@ -827,6 +851,58 @@ public class Comdb2Handle extends AbstractConnection {
                 int max = Integer.parseInt(tokens[2]);
                 setMaxRetries(max);
             }
+            return true;
+        }
+
+        // ssl
+        boolean sslChanged = false;
+        if (tokens[1].equals("ssl_mode")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLMode(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("key_store")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCrt(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("key_store_password")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCrtPass(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("key_store_type")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCrtType(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("trust_store")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCA(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("trust_store_password")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCAPass(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("trust_store_type")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCAType(tokens[2]);
+            sslChanged = true;
+        } else if (tokens[1].equals("crl")) {
+            if (tokens.length < 3)
+                return false;
+            setSSLCRL(tokens[2]);
+            sslChanged = true;
+        }
+
+        /* Refresh connection if SSL config has changed. */
+        if (sslChanged) {
+            sslerr = false;
+            if (opened)
+                closeNoException();
             return true;
         }
 
@@ -949,7 +1025,7 @@ public class Comdb2Handle extends AbstractConnection {
 
             if (dbHostConnected < 0) { /* connect to a node */
                 if (is_rollback) {
-                    skipFeature = false;
+                    readIntransResults = true;
                     snapshotFile = 0;
                     snapshotOffset = 0;
                     isRetry = 0;
@@ -1006,7 +1082,7 @@ public class Comdb2Handle extends AbstractConnection {
             runLast = false;
 
             int errVal = errorInTxn;
-            boolean _skipFeature = skipFeature;
+            boolean _readIntransResults = readIntransResults;
 
             do { /* poor man's goto in java */
                 if (is_commit || is_rollback) {
@@ -1019,7 +1095,7 @@ public class Comdb2Handle extends AbstractConnection {
                         queryList = new ArrayList<QueryItem>();
                         isHASqlCommit = true;
                     }
-                    skipFeature = false;
+                    readIntransResults = true;
                     snapshotFile = 0;
                     snapshotOffset = 0;
                     isRetry = 0;
@@ -1027,7 +1103,7 @@ public class Comdb2Handle extends AbstractConnection {
                     inTxn = false;
                     queryList.clear();
 
-                    if (_skipFeature) {
+                    if (!_readIntransResults) {
                         if (errVal != 0) {
                             if (is_rollback) {
                                 tdlog(Level.FINER, "Rollback returning 0 on errVal %d", errVal);
@@ -1038,14 +1114,14 @@ public class Comdb2Handle extends AbstractConnection {
                             }
                         }
                     } else if (errVal != 0) {
-                        tdlog(Level.FINEST, "Commit errVal is %d is_rollback=%b skipFeature=%b",
-                              errVal, is_rollback, _skipFeature);
-                        /* With skip_feature off, we need to read the 1st response
+                        tdlog(Level.FINEST, "Commit errVal is %d is_rollback=%b readIntransResults=%b",
+                              errVal, is_rollback, _readIntransResults);
+                        /* With read_intrans_results on, we need to read the 1st response
                            of commit/rollback even if there is an in-trans error. */
                         break;
                     } else {
-                        tdlog(Level.FINEST, "Commit errVal (2) is %d is_rollback=%b skipFeature=%b",
-                              errVal, is_rollback, _skipFeature);
+                        tdlog(Level.FINEST, "Commit errVal (2) is %d is_rollback=%b readIntransResults=%b",
+                              errVal, is_rollback, _readIntransResults);
                     }
                 }
 
@@ -1054,8 +1130,8 @@ public class Comdb2Handle extends AbstractConnection {
                     return is_rollback? 0 : errVal;
                 }
 
-                if (skipFeature && !isRead && (inTxn || !isHASql)) {
-                    tdlog(Level.FINER, "skipFeature is enabled and !isRead: %b returning 0", !isRead);
+                if (!readIntransResults && !isRead && (inTxn || !isHASql)) {
+                    tdlog(Level.FINER, "readIntransResults is disabled and !isRead: %b returning 0", !isRead);
                     return 0;
                 }
             } while (false);
@@ -1461,7 +1537,7 @@ public class Comdb2Handle extends AbstractConnection {
 
     @Override
     public synchronized int next() {
-        if (inTxn && skipFeature && !isRead) {
+        if (inTxn && !readIntransResults && !isRead) {
             return Errors.CDB2_OK_DONE;
         }
 
@@ -1635,8 +1711,8 @@ readloop:
 
             if (inTxn && lastResp.features != null) {
                 for (int feature : lastResp.features) {
-                    if (CDB2ServerFeatures.SKIP_ROWS_VALUE == feature) {
-                        skipFeature = true;
+                    if (CDB2ServerFeatures.SKIP_INTRANS_RESULTS_VALUE == feature) {
+                        readIntransResults = false;
                         break;
                     }
                 }
@@ -1710,9 +1786,11 @@ readloop:
 
         try {
             io = new SSLIO((SockIO)io, sslmode,
+                           myDbName, sslNIDDbName,
                            sslcert, sslcerttype,
                            sslcertpass, sslca,
-                           sslcatype, sslcapass);
+                           sslcatype, sslcapass,
+                           sslcrl);
             return true;
         } catch (SSLHandshakeException she) {
             /* this is NOT retry-able. */

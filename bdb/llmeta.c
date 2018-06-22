@@ -8655,7 +8655,7 @@ typedef struct {
     } u;
 } passwd_hash;
 #define ITERATIONS 1000
-int bdb_user_password_check(char *user, char *passwd, int  *valid_user)
+int bdb_user_password_check(char *user, char *passwd, int *valid_user)
 {
     passwd_key key = {0};
     if (valid_user)

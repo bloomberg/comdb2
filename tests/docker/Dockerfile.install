@@ -19,11 +19,11 @@ RUN apt-get update && \
     ncurses-dev \
     protobuf-c-compiler \
     tcl \
+    tcl-dev \
     uuid-dev \
     libz1 \
     liblz4-tool \
     libprotobuf-c1 \
-    libreadline6 \
     libsqlite3-0 \
     libuuid1 \
     libz1 \
@@ -43,7 +43,7 @@ RUN cd /comdb2 &&  \
     rm -rf build && \
     mkdir build && \
     cd build && \
-    cmake .. && \
+    cmake -DWITH_TCL=1 .. && \
     make -j4 && \
     make -j4 test-tools && \
     make install &&  \

@@ -231,16 +231,7 @@ public class Comdb2Connection implements Connection {
     }
 
     public void setSSLMode(String mode) {
-        SSL_MODE sslmode;
-        if ("REQUIRE".equalsIgnoreCase(mode))
-            sslmode = SSL_MODE.REQUIRE;
-        else if ("VERIFY_CA".equalsIgnoreCase(mode))
-            sslmode = SSL_MODE.VERIFY_CA;
-        else if ("VERIFY_HOSTNAME".equalsIgnoreCase(mode))
-            sslmode = SSL_MODE.VERIFY_HOSTNAME;
-        else
-            sslmode = SSL_MODE.ALLOW;
-        hndl.setSSLMode(sslmode);
+        hndl.setSSLMode(mode);
     }
 
     public void setSSLCrt(String crt) {
@@ -265,6 +256,10 @@ public class Comdb2Connection implements Connection {
 
     public void setSSLCAType(String catype) {
         hndl.setSSLCAType(catype);
+    }
+
+    public void setSSLCRL(String crl) {
+        hndl.setSSLCRL(crl);
     }
 
     public void setAllowPmuxRoute(String val) {

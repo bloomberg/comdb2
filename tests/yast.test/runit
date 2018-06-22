@@ -49,17 +49,23 @@ then
     exit 1
 fi
 
+FILE=$2
+if [ -z "$FILE" ];
+then
+    FILE="*.test"
+fi
+
 FILEPATH="$TMPDIR/files"
-export COMDB2SQL=`which cdb2sql`
+TCLCDB2="$BUILDDIR/tcl"
 mkdir -p $FILEPATH
 echo "Yet Another SQL Test (yast) for Comdb2"
-echo "I am using $COMDB2SQL"
+echo "I am using $TCLCDB2"
 echo "logs at: $HOSTNAME:$TMPDIR"
 RC=0
-for test in `ls *.test`;
+for test in `ls $FILE`;
 do
     echo -n "$test..."
-    tclsh $test $DB $FILEPATH $COMDB2SQL $CDB2_CONFIG
+    tclsh $test $DB $FILEPATH $TCLCDB2 $CDB2_CONFIG
     if [ "$?" == "0" ] ; then
         echo_color " PASS" "green"
     else

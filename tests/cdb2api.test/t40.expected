@@ -1,0 +1,12 @@
+(version='mk')
+line no 5:end
+
+comdb2_lua> line no 3:        local var = 'mk'
+
+comdb2_lua> line no 4:        db:emit(var)
+
+comdb2_lua> got local variable var : mk
+
+comdb2_lua> 
+comdb2_lua> ($0='km')
+line no 5:end

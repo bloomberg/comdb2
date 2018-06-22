@@ -25,11 +25,11 @@ source $testdir/tester.tcl
 
 # Basic sanity checks.
 #
-comdb2_omit_test do_test analyze-1.1 {
-  gcatchsql {
+do_test analyze-1.1 {
+  catchsql {
     ANALYZE nosuchtable
   }
-} {1 {[analyze nosuchtable 100] failed with rc -3 Table not found}}
+} {1 {Internal Error}}
 do_test analyze-1.2 {
   execsql {
     SELECT count(*) FROM sqlite_master WHERE name='sqlite_stat1'

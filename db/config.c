@@ -361,7 +361,10 @@ static void add_legacy_default_options(struct dbenv *dbenv)
         "setattr NET_SEND_GBLCONTEXT 1",
         "setattr ENABLE_SEQNUM_GENERATIONS 0",
         "setattr MASTER_LEASE 0",
-        "setattr SC_DONE_SAME_TRAN 0"};
+        "setattr SC_DONE_SAME_TRAN 0",
+        "logmsg notimestamp"
+    };
+
     for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++)
         defer_option(dbenv, DEFERRED_LEGACY_DEFAULTS, legacy_options[i], -1, 0);
 }
