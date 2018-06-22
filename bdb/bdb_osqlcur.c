@@ -32,6 +32,7 @@ typedef struct tran_shadow {
     tmptable_t **
         tbls;   /* temptables for each stripe, 1 for index, blobs, skip */
     int ntbls;  /* how many stripes */
+    int nshadows; /* number of shadows (for indexes) */
     int bkfill; /* set if this was bkfilled */
     bdb_osql_log_t *
         lastlog; /* set this to the last log processed for this btree */
@@ -56,7 +57,7 @@ static void open_shadow_nocursor(bdb_state_type *bdb_state,
                                  int *bdberr);
 
 static int bdb_free_shadows_table(bdb_state_type *bdb_state,
-                                  tran_shadow_t *shadows, int nshadows);
+                                  tran_shadow_t *shadows);
 
 /**
  * Opens a shadow file for either an index or data
@@ -565,20 +566,17 @@ int bdb_tran_free_shadows(bdb_state_type *bdb_state, tran_type *tran)
 
     /* XXX needs to be fixed */
     for (dbnum = 0; dbnum < tran->numchildren; dbnum++) {
-        if (bdb_state->children[dbnum]) {
-            have_errors += bdb_free_shadows_table(
-                bdb_state, tran->tables[dbnum].ix_shadows,
-                bdb_state->children[dbnum]->numix);
+        have_errors +=
+            bdb_free_shadows_table(bdb_state, tran->tables[dbnum].ix_shadows);
 
-            have_errors += bdb_free_shadows_table(
-                bdb_state, tran->tables[dbnum].dt_shadows, 1);
+        have_errors +=
+            bdb_free_shadows_table(bdb_state, tran->tables[dbnum].dt_shadows);
 
-            have_errors += bdb_free_shadows_table(
-                bdb_state, tran->tables[dbnum].sk_shadows, 1);
+        have_errors +=
+            bdb_free_shadows_table(bdb_state, tran->tables[dbnum].sk_shadows);
 
-            have_errors += bdb_free_shadows_table(
-                bdb_state, tran->tables[dbnum].bl_shadows, MAXBLOBS + 1);
-        }
+        have_errors +=
+            bdb_free_shadows_table(bdb_state, tran->tables[dbnum].bl_shadows);
     }
 
     free(tran->tables);
@@ -875,6 +873,7 @@ static tmpcursor_t *open_shadow_int(bdb_state_type *bdb_state,
             *bdberr = BDBERR_BADARGS;
             return NULL;
         }
+        (*pshadows)->nshadows = maxfile;
     }
 
     if (!(*pshadows)[file].tbls) {
@@ -951,17 +950,19 @@ static void open_shadow_nocursor(bdb_state_type *bdb_state,
 
 /* free a set of shadows */
 static int bdb_free_shadows_table(bdb_state_type *bdb_state,
-                                  tran_shadow_t *shadows, int nshadows)
+                                  tran_shadow_t *shadows)
 {
     int rc = 0;
     int bdberr = 0;
     int have_errors = 0;
     int num = 0;
     int tbl = 0;
+    int nshadows = 0;
 
     if (!shadows)
         return 0;
 
+    nshadows = shadows->nshadows;
     for (num = 0; num < nshadows; num++) {
         /* free a tran_shadow */
         if (shadows[num].tbls) {
