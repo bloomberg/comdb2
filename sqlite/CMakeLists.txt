@@ -118,7 +118,7 @@ find_program(tclsh NAMES tclsh8.6 tclsh8.5 tclsh)
 add_executable(lemon tool/lemon.c)
 add_custom_command(
   OUTPUT parse.c parse.h
-  DEPENDS lemon src/lempar.c src/parse.y
+  DEPENDS lemon tool/lempar.c src/parse.y
   COMMAND lemon ${SQLITE_FLAGS} parse.y
   COMMAND ${CMAKE_COMMAND} -E copy parse.h parse.h.temp
   COMMAND ${tclsh} addopcodes.tcl parse.h.temp > parse.h
