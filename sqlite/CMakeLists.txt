@@ -58,15 +58,12 @@ add_library(sqlite
   src/malloc.c
   src/md5.c
   src/mem1.c
-
   src/memjournal.c
   src/mutex.c
   src/mutex_noop.c
   src/mutex_unix.c
-
   src/os.c
   src/os_unix.c
-
   src/pragma.c
   src/prepare.c
   src/printf.c
@@ -121,7 +118,7 @@ find_program(tclsh NAMES tclsh8.6 tclsh8.5 tclsh)
 add_executable(lemon tool/lemon.c)
 add_custom_command(
   OUTPUT parse.c parse.h
-  DEPENDS lemon lempar.c parse.y
+  DEPENDS lemon src/lempar.c src/parse.y
   COMMAND lemon ${SQLITE_FLAGS} parse.y
   COMMAND ${CMAKE_COMMAND} -E copy parse.h parse.h.temp
   COMMAND ${tclsh} addopcodes.tcl parse.h.temp > parse.h
@@ -130,29 +127,29 @@ add_custom_command(
 add_custom_command(
   OUTPUT opcodes.c opcodes.h
   DEPENDS parse.h src/vdbe.c
-  COMMAND cat parse.h ${CMAKE_CURRENT_SOURCE_DIR}/vdbe.c | ${tclsh} mkopcodeh.tcl > opcodes.h
+  COMMAND cat parse.h ${CMAKE_CURRENT_SOURCE_DIR}/src/vdbe.c | ${tclsh} mkopcodeh.tcl > opcodes.h
   COMMAND sort -n -b -k 3 opcodes.h | ${tclsh} mkopcodec.tcl opcodes.h > opcodes.c
 )
 add_custom_command(
   OUTPUT serialget.c
   DEPENDS parse.c src/vdbeaux.c
-  COMMAND sed -n "/START_INLINE_SERIALGET/,/END_INLINE_SERIALGET/p" ${CMAKE_CURRENT_SOURCE_DIR}/vdbeaux.c > serialget.c
+  COMMAND sed -n "/START_INLINE_SERIALGET/,/END_INLINE_SERIALGET/p" ${CMAKE_CURRENT_SOURCE_DIR}/src/vdbeaux.c > serialget.c
 )
 add_custom_command(
   OUTPUT memcompare.c
   DEPENDS parse.c src/vdbeaux.c serialget.c
   COMMAND ${CMAKE_COMMAND} -E echo '\#include <serialget.c>' > memcompare.c
-  COMMAND sed -n "/START_INLINE_MEMCOMPARE/,/END_INLINE_MEMCOMPARE/p" ${CMAKE_CURRENT_SOURCE_DIR}/vdbeaux.c >> memcompare.c
+  COMMAND sed -n "/START_INLINE_MEMCOMPARE/,/END_INLINE_MEMCOMPARE/p" ${CMAKE_CURRENT_SOURCE_DIR}/src/vdbeaux.c >> memcompare.c
 )
 add_custom_command(
   OUTPUT vdbecompare.c
   DEPENDS parse.c memcompare.c
   COMMAND echo '\#include <memcompare.c>' > vdbecompare.c
-  COMMAND sed -n "/START_INLINE_VDBECOMPARE/,/END_INLINE_VDBECOMPARE/p" ${CMAKE_CURRENT_SOURCE_DIR}/vdbeaux.c >> vdbecompare.c
+  COMMAND sed -n "/START_INLINE_VDBECOMPARE/,/END_INLINE_VDBECOMPARE/p" ${CMAKE_CURRENT_SOURCE_DIR}/src/vdbeaux.c >> vdbecompare.c
 )
 
 include_directories(
-  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/ext/comdb2
   ${CMAKE_CURRENT_SOURCE_DIR}/ext/misc
