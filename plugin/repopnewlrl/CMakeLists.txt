@@ -17,7 +17,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/lua
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
-  ${PROJECT_SOURCE_DIR}/sqlite
+  ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_BINARY_DIR}/db
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_BINARY_DIR}/protobuf

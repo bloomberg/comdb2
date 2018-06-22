@@ -1,4 +1,10 @@
 add_library(sqlite
+  keywordhash.h
+  memcompare.c
+  opcodes.c
+  parse.c
+  serialget.c
+  vdbecompare.c
   ext/comdb2/appsock_handlers.c
   ext/comdb2/columns.c
   ext/comdb2/constraints.c
@@ -19,7 +25,7 @@ add_library(sqlite
   ext/comdb2/users.c
   ext/comdb2/clientstats.c
   ext/comdb2/ezsystables.c
-  ext/comdb2/typesamples.c 
+  ext/comdb2/typesamples.c
   ext/misc/completion.c
   ext/misc/json1.c
   ext/expert/sqlite3expert.c
@@ -46,22 +52,21 @@ add_library(sqlite
   src/global.c
   src/hash.c
   src/insert.c
-  src/keywordhash.h
   src/legacy.c
   src/loadext.c
   src/main.c
   src/malloc.c
   src/md5.c
   src/mem1.c
-  src/memcompare.c
+
   src/memjournal.c
   src/mutex.c
   src/mutex_noop.c
   src/mutex_unix.c
-  src/opcodes.c
+
   src/os.c
   src/os_unix.c
-  src/parse.c
+
   src/pragma.c
   src/prepare.c
   src/printf.c
@@ -69,7 +74,6 @@ add_library(sqlite
   src/resolve.c
   src/rowset.c
   src/select.c
-  src/serialget.c
   src/sqlite_tunables.c
   src/status.c
   src/table.c
@@ -83,7 +87,6 @@ add_library(sqlite
   src/vdbeapi.c
   src/vdbeaux.c
   src/vdbeblob.c
-  src/vdbecompare.c
   src/vdbemem.c
   src/vdbesort.c
   src/vdbetrace.c
@@ -126,18 +129,18 @@ add_custom_command(
 
 add_custom_command(
   OUTPUT opcodes.c opcodes.h
-  DEPENDS parse.h vdbe.c
+  DEPENDS parse.h src/vdbe.c
   COMMAND cat parse.h ${CMAKE_CURRENT_SOURCE_DIR}/vdbe.c | ${tclsh} mkopcodeh.tcl > opcodes.h
   COMMAND sort -n -b -k 3 opcodes.h | ${tclsh} mkopcodec.tcl opcodes.h > opcodes.c
 )
 add_custom_command(
   OUTPUT serialget.c
-  DEPENDS parse.c vdbeaux.c
+  DEPENDS parse.c src/vdbeaux.c
   COMMAND sed -n "/START_INLINE_SERIALGET/,/END_INLINE_SERIALGET/p" ${CMAKE_CURRENT_SOURCE_DIR}/vdbeaux.c > serialget.c
 )
 add_custom_command(
   OUTPUT memcompare.c
-  DEPENDS parse.c vdbeaux.c serialget.c
+  DEPENDS parse.c src/vdbeaux.c serialget.c
   COMMAND ${CMAKE_COMMAND} -E echo '\#include <serialget.c>' > memcompare.c
   COMMAND sed -n "/START_INLINE_MEMCOMPARE/,/END_INLINE_MEMCOMPARE/p" ${CMAKE_CURRENT_SOURCE_DIR}/vdbeaux.c >> memcompare.c
 )
