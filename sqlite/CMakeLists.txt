@@ -1,21 +1,4 @@
 add_library(sqlite
-  analyze.c
-  attach.c
-  auth.c
-  bitvec.c
-  btmutex.c
-  build.c
-  callback.c
-  comdb2build.c
-  comdb2lua.c
-  comdb2vdbe.c
-  complete.c
-  ctime.c
-  dbstat.c
-  decimal.c
-  delete.c
-  dttz.c
-  expr.c
   ext/comdb2/appsock_handlers.c
   ext/comdb2/columns.c
   ext/comdb2/constraints.c
@@ -41,57 +24,74 @@ add_library(sqlite
   ext/misc/json1.c
   ext/expert/sqlite3expert.c
   ext/misc/series.c
-  fault.c
-  func.c
-  global.c
-  hash.c
-  insert.c
-  keywordhash.h
-  legacy.c
-  loadext.c
-  main.c
-  malloc.c
-  md5.c
-  mem1.c
-  memcompare.c
-  memjournal.c
-  mutex.c
-  mutex_noop.c
-  mutex_unix.c
-  opcodes.c
-  os.c
-  os_unix.c
-  parse.c
-  pragma.c
-  prepare.c
-  printf.c
-  random.c
-  resolve.c
-  rowset.c
-  select.c
-  serialget.c
-  sqlite_tunables.c
-  status.c
-  table.c
-  tokenize.c
-  treeview.c
-  trigger.c
-  update.c
-  utf.c
-  util.c
-  vdbe.c
-  vdbeapi.c
-  vdbeaux.c
-  vdbeblob.c
-  vdbecompare.c
-  vdbemem.c
-  vdbesort.c
-  vdbetrace.c
-  vtab.c
-  walker.c
-  where.c
-  wherecode.c
-  whereexpr.c
+  src/analyze.c
+  src/attach.c
+  src/auth.c
+  src/bitvec.c
+  src/btmutex.c
+  src/build.c
+  src/callback.c
+  src/comdb2build.c
+  src/comdb2lua.c
+  src/comdb2vdbe.c
+  src/complete.c
+  src/ctime.c
+  src/dbstat.c
+  src/decimal.c
+  src/delete.c
+  src/dttz.c
+  src/expr.c
+  src/fault.c
+  src/func.c
+  src/global.c
+  src/hash.c
+  src/insert.c
+  src/keywordhash.h
+  src/legacy.c
+  src/loadext.c
+  src/main.c
+  src/malloc.c
+  src/md5.c
+  src/mem1.c
+  src/memcompare.c
+  src/memjournal.c
+  src/mutex.c
+  src/mutex_noop.c
+  src/mutex_unix.c
+  src/opcodes.c
+  src/os.c
+  src/os_unix.c
+  src/parse.c
+  src/pragma.c
+  src/prepare.c
+  src/printf.c
+  src/random.c
+  src/resolve.c
+  src/rowset.c
+  src/select.c
+  src/serialget.c
+  src/sqlite_tunables.c
+  src/status.c
+  src/table.c
+  src/tokenize.c
+  src/treeview.c
+  src/trigger.c
+  src/update.c
+  src/utf.c
+  src/util.c
+  src/vdbe.c
+  src/vdbeapi.c
+  src/vdbeaux.c
+  src/vdbeblob.c
+  src/vdbecompare.c
+  src/vdbemem.c
+  src/vdbesort.c
+  src/vdbetrace.c
+  src/vtab.c
+  src/walker.c
+  src/where.c
+  src/wherecode.c
+  src/whereexpr.c
 )
 include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(${SQLITE_FLAGS})
@@ -100,13 +100,13 @@ target_compile_definitions(sqlite PRIVATE ${SQLITE_FLAGS})
 set(module sqlite)
 set(MODULE SQLITE)
 configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_sqlite.h @ONLY)
-configure_file(lempar.c lempar.c COPYONLY)
-configure_file(parse.y parse.y COPYONLY)
-configure_file(addopcodes.tcl addopcodes.tcl COPYONLY)
-configure_file(mkopcodec.tcl mkopcodec.tcl COPYONLY)
-configure_file(mkopcodeh.tcl mkopcodeh.tcl COPYONLY)
+configure_file(src/parse.y parse.y COPYONLY)
+configure_file(tool/lempar.c lempar.c COPYONLY)
+configure_file(tool/addopcodes.tcl addopcodes.tcl COPYONLY)
+configure_file(tool/mkopcodec.tcl mkopcodec.tcl COPYONLY)
+configure_file(tool/mkopcodeh.tcl mkopcodeh.tcl COPYONLY)
 
-add_executable(mkkeywordhash mkkeywordhash.c)
+add_executable(mkkeywordhash tool/mkkeywordhash.c)
 target_compile_definitions(mkkeywordhash PRIVATE ${SQLITE_FLAGS})
 add_custom_command(
   OUTPUT keywordhash.h
@@ -114,8 +114,8 @@ add_custom_command(
   COMMAND mkkeywordhash > keywordhash.h
 )
 
-find_program(tclsh NAMES tclsh tclsh8.5)
-add_executable(lemon lemon.c)
+find_program(tclsh NAMES tclsh8.6 tclsh8.5 tclsh)
+add_executable(lemon tool/lemon.c)
 add_custom_command(
   OUTPUT parse.c parse.h
   DEPENDS lemon lempar.c parse.y
