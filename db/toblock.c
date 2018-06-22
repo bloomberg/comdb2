@@ -4760,8 +4760,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         int verror = 0;
         if (gbl_reorder_idx_writes)
             rc = process_defered_table(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
-        else
-            rc = delayed_key_adds(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
+        rc = delayed_key_adds(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
+
         if (rc != 0) {
             constraint_violation = 1;
             opnum = blkpos; /* so we report the failed blockop accurately */

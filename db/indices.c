@@ -52,7 +52,8 @@ int add_record_indices(struct ireq *iq, void *trans,
     int od_tail_len;
     void *cur = NULL;
     ctkey ctk = {0};
-    if (gbl_reorder_idx_writes) {
+    bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from == iq->usedb;
+    if (reorder) {
         cur = get_constraint_table_cursor(defered_index_tbl);
         if (cur == NULL) {
             logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
@@ -119,7 +120,7 @@ int add_record_indices(struct ireq *iq, void *trans,
         if (iq->osql_step_ix)
             gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
 
-        if (gbl_reorder_idx_writes) {
+        if (reorder) {
             //if not datacopy, no need to save od_dta_tail
             void *data = NULL;
             int datalen = 0;
@@ -235,7 +236,8 @@ int upd_record_indices(struct ireq *iq, void *trans,
     void *cur = NULL;
     ctkey delctk = {0};
     ctkey ctk = {0};
-    if (gbl_reorder_idx_writes) {
+    bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from == iq->usedb;
+    if (reorder) {
         cur = get_constraint_table_cursor(defered_index_tbl);
         if (cur == NULL) {
             logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
@@ -352,7 +354,7 @@ int upd_record_indices(struct ireq *iq, void *trans,
               ixnum, *newgenid);*/
 
             gbl_upd_key++;
-            if (gbl_reorder_idx_writes) {
+            if (reorder) {
                 //if not datacopy, no need to save od_dta_tail
                 void *data = NULL;
                 int datalen = 0;
@@ -406,7 +408,7 @@ printf("AZ: inserttmptbl type %d, index %d, genid %llx\n", ctk.type, ctk.ixnum, 
             /* only delete keys when told */
             if (!gbl_partial_indexes || !iq->usedb->ix_partial ||
                 (del_keys & (1ULL << ixnum))) {
-                if (gbl_reorder_idx_writes) {
+                if (reorder) {
                     //if not datacopy, no need to save od_dta_tail
                     void *data = NULL;
                     int datalen = 0;
@@ -456,7 +458,7 @@ printf("AZ: direct upd ix_delk genid=%llx newwgenid=%llx rc %d\n", vgenid, *newg
 
             if (!gbl_partial_indexes || !iq->usedb->ix_partial ||
                 (ins_keys & (1ULL << ixnum))) {
-                if (gbl_reorder_idx_writes) {
+                if (reorder) {
                     //if not datacopy, no need to save od_dta_tail
                     void *data = NULL;
                     int datalen = 0;
@@ -468,7 +470,7 @@ printf("AZ: direct upd ix_delk genid=%llx newwgenid=%llx rc %d\n", vgenid, *newg
                     ctk.genid = *newgenid;
                     ctk.ixnum = ixnum;
                     int err = 0;
-        printf("AZ: inserttmptbl type %d, index %d, genid %llx\n", ctk.type, ctk.ixnum, ctk.genid);
+printf("AZ: inserttmptbl type %d, index %d, genid %llx\n", ctk.type, ctk.ixnum, ctk.genid);
                     rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ctk, sizeof(ctk),
                             data, datalen, &err);
                     if (rc != 0) {
@@ -507,7 +509,8 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     int rc = 0;
     void *cur = NULL;
     ctkey delctk = {0};
-    if (gbl_reorder_idx_writes) {
+    bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from == iq->usedb;
+    if (reorder) {
         cur = get_constraint_table_cursor(defered_index_tbl);
         if (cur == NULL) {
             logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
@@ -563,14 +566,14 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
         if (iq->osql_step_ix)
             gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
 
-        if (gbl_reorder_idx_writes) {
+        if (reorder) {
             //if not datacopy, no need to save od_dta_tail
             void *data = NULL;
             int datalen = 0;
             delctk.genid = genid;
             delctk.ixnum = ixnum;
             int err = 0;
-            printf("AZ: inserttmptbl type %d, index %d, genid %llx\n", delctk.type, delctk.ixnum, delctk.genid);
+printf("AZ: inserttmptbl type %d, index %d, genid %llx\n", delctk.type, delctk.ixnum, delctk.genid);
             rc = bdb_temp_table_insert(thedb->bdb_env, cur, &delctk, sizeof(delctk),
                     data, datalen, &err);
             if (rc != 0) {
