@@ -277,8 +277,7 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
         if (epoch || file || offset) {
             backfill_required = 1;
             have_lsn = 1;
-        }
-        else if (gbl_rowlocks) {
+        } else if (gbl_rowlocks) {
             backfill_required = 1;
             have_lsn = 0;
         }
@@ -291,8 +290,9 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
         DB_LSN my_lsn, dur_lsn, arg_lsn;
         uint32_t my_gen;
 
-        if ((rc = request_durable_lsn_from_master(bdb_state, &dur_lsn.file, 
-                        &dur_lsn.offset, &durable_gen)) != 0) {
+        if ((rc = request_durable_lsn_from_master(bdb_state, &dur_lsn.file,
+                                                  &dur_lsn.offset,
+                                                  &durable_gen)) != 0) {
             *bdberr = BDBERR_NOT_DURABLE;
             return NULL;
         }
@@ -301,7 +301,8 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
 
         bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &my_gen);
         __log_txn_lsn(bdb_state->dbenv, &my_lsn, NULL, NULL);
-        // bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &my_lsn, &my_gen);
+        // bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &my_lsn,
+        // &my_gen);
         BDB_RELLOCK();
 
         // if we're not at least this current send request to another node
@@ -311,14 +312,15 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
         }
 
         if (my_gen != durable_gen || (log_compare(&my_lsn, &dur_lsn) < 0) ||
-                (file && log_compare(&my_lsn, &arg_lsn) < 0))
-        {
+            (file && log_compare(&my_lsn, &arg_lsn) < 0)) {
             if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_USER, "%s line %d: returning not-durable, durable_gen=%u,"
-                        " my_gen=%u durable_lsn=[%d][%d], my_lsn=[%d][%d], "
-                        "arg_lsn=[%d][%d]\n", __func__, __LINE__, durable_gen, 
-                        my_gen, dur_lsn.file, dur_lsn.offset, my_lsn.file, 
-                        my_lsn.offset, file, offset);
+                logmsg(LOGMSG_USER,
+                       "%s line %d: returning not-durable, durable_gen=%u,"
+                       " my_gen=%u durable_lsn=[%d][%d], my_lsn=[%d][%d], "
+                       "arg_lsn=[%d][%d]\n",
+                       __func__, __LINE__, durable_gen, my_gen, dur_lsn.file,
+                       dur_lsn.offset, my_lsn.file, my_lsn.offset, file,
+                       offset);
             }
             *bdberr = BDBERR_NOT_DURABLE;
             return NULL;

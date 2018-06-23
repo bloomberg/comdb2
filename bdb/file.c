@@ -2751,8 +2751,8 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
     {
         /*fprintf(stderr, "dbenv_open: starting rep as client\n");*/
         logmsg(LOGMSG_USER,
-               "%s line %d calling rep_start as client with egen 0\n",
-               __func__, __LINE__);
+               "%s line %d calling rep_start as client with egen 0\n", __func__,
+               __LINE__);
         rc = dbenv->rep_start(dbenv, NULL, 0, DB_REP_CLIENT);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "dbenv_open: rep_start as client failed %d %s\n",

@@ -139,9 +139,11 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
             rc = request_durable_lsn_from_master(
                 thedb->bdb_env, &snapinfo_file, &snapinfo_offset, &durable_gen);
             if (rc == 0) {
-                sql_debug_logf(clnt, __func__, __LINE__, "master returned "
-                        "durable-lsn [%d][%d], clnt->is_hasql_retry=%d\n",
-                        *file, *offset, clnt->is_hasql_retry);
+                sql_debug_logf(
+                    clnt, __func__, __LINE__,
+                    "master returned "
+                    "durable-lsn [%d][%d], clnt->is_hasql_retry=%d\n",
+                    *file, *offset, clnt->is_hasql_retry);
             } else {
                 sql_debug_logf(clnt, __func__, __LINE__,
                                "durable-lsn request "
@@ -156,9 +158,9 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
                                       &snapinfo_offset);
             rc = 0;
             sql_debug_logf(clnt, __func__, __LINE__,
-                   "durable-lsn is disabled. Use my LSN [%d][%d], "
-                   "clnt->is_hasql_retry=%d\n", *file, *offset,
-                   clnt->is_hasql_retry);
+                           "durable-lsn is disabled. Use my LSN [%d][%d], "
+                           "clnt->is_hasql_retry=%d\n",
+                           *file, *offset, clnt->is_hasql_retry);
         }
 
         if (rc == 0) {

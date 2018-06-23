@@ -614,8 +614,8 @@ again:
                                    : OSQL_RECOM_REQ,
                          keep_session);
     if (rc) {
-        sql_debug_logf(clnt, __func__, __LINE__,
-                       "osql_sock_start returns %d\n", rc);
+        sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns %d\n",
+                       rc);
         goto error;
     }
 
