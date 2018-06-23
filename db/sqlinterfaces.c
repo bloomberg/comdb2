@@ -1202,8 +1202,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                 if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
                     rc = serial_commit(clnt, thd->sqlthd, clnt->tzname);
                     sql_debug_logf(clnt, __func__, __LINE__,
-                                   "serial-txn returns %d\n", pthread_self(),
-                                   rc);
+                                   "serial-txn returns %d\n", rc);
                 } else {
                     rc = snapisol_commit(clnt, thd->sqlthd, clnt->tzname);
                     sql_debug_logf(clnt, __func__, __LINE__,
