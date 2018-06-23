@@ -2645,8 +2645,8 @@ int get_prepared_stmt_try_lock(struct sqlthdstate *thd,
 {
     if (tryrdlock_schema_lk() != 0) {
         // only schemachange will wrlock(schema)
-        sql_debug_logf(clnt, __func__, __LINE__, "Returning SQLITE_SCHEMA on "
-                                                 "tryrdlock failure\n");
+        sql_debug_logf(clnt, __func__, __LINE__,
+                       "Returning SQLITE_SCHEMA on tryrdlock failure\n");
         return SQLITE_SCHEMA;
     }
     int rc = get_prepared_stmt_int(thd, clnt, rec, err, initial);

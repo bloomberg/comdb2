@@ -441,8 +441,8 @@ retry:
             logmsg(LOGMSG_USER, "%s recovered deadlock\n", __func__);
         clnt->deadlock_recovered++;
         if (clnt->deadlock_recovered > 100) {
-            sql_debug_logf(clnt, __func__, __LINE__, "deadlock_recovered is %d,"
-                                                     " returning SQLITE_BUSY\n",
+            sql_debug_logf(clnt, __func__, __LINE__,
+                           "deadlock_recovered is %d, returning SQLITE_BUSY\n",
                            clnt->deadlock_recovered);
             return SQLITE_BUSY;
         }

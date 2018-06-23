@@ -2737,8 +2737,8 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
     start_udp_reader(bdb_state);
 
     if (startasmaster) {
-        logmsg(LOGMSG_USER, "%s line %d calling rep_start as master with egen "
-                            "0\n",
+        logmsg(LOGMSG_USER,
+               "%s line %d calling rep_start as master with egen 0\n",
                __func__, __LINE__);
         rc = dbenv->rep_start(dbenv, NULL, 0, DB_REP_MASTER);
         if (rc != 0) {

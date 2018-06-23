@@ -8,7 +8,6 @@
 #include "ezsystables.h"
 #include "cdb2api.h"
 #include <dbinc/rep_types.h>
-#include <build/db.h>
 #include "bdb_int.h"
 #include <rep_qstat.h>
 #include <net.h>
