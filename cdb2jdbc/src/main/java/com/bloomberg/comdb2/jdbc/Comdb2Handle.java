@@ -232,7 +232,7 @@ public class Comdb2Handle extends AbstractConnection {
             sslmode = SSL_MODE.VERIFY_HOSTNAME;
         else if (mode.toUpperCase().startsWith("VERIFY_DBNAME")) {
             sslmode = SSL_MODE.VERIFY_DBNAME;
-            String[] splits = mode.split(",|;");
+            String[] splits = mode.split(",;\\s*");
             if (splits.length > 1)
                 sslNIDDbName = splits[1].toUpperCase();
         } else{

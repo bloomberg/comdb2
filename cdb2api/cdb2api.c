@@ -993,12 +993,14 @@ static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
         return SSL_VERIFY_CA;
     if (strcasecmp(SSL_MODE_VERIFY_HOST, s) == 0)
         return SSL_VERIFY_HOSTNAME;
-    if (strcasecmp(SSL_MODE_VERIFY_DBNAME, s) == 0) {
+    if (strncasecmp(SSL_MODE_VERIFY_DBNAME, s,
+                    sizeof(SSL_MODE_VERIFY_DBNAME) - 1) == 0) {
         s += sizeof(SSL_MODE_VERIFY_DBNAME);
         if (nid_dbname != NULL) {
             s = cdb2_skipws(s);
-            *nid_dbname = (*s == '\0') ? OBJ_txt2nid(s) : cdb2_nid_dbname;
+            *nid_dbname = (*s != '\0') ? OBJ_txt2nid(s) : cdb2_nid_dbname;
         }
+        return SSL_VERIFY_DBNAME;
     }
     return SSL_ALLOW;
 }
