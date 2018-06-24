@@ -263,7 +263,8 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
     struct bfillhndl *bkfill_hndl = NULL;
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "%s line %d called with epoch=%d lsn=[%d][%d] "
+        logmsg(LOGMSG_USER,
+               "%s line %d called with epoch=%d lsn=[%d][%d] "
                "is_retry=%d\n",
                __func__, __LINE__, epoch, file, offset, is_ha_retry);
     }
