@@ -294,8 +294,8 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
             uint32_t my_gen;
 
             /* Request my startpoint */
-            if (!file && (rc = request_durable_lsn_from_master(bdb_state, &file,
-                            &offset, &durable_gen)) != 0) {
+            if (!file && (rc = request_durable_lsn_from_master(
+                              bdb_state, &file, &offset, &durable_gen)) != 0) {
                 *bdberr = BDBERR_NOT_DURABLE;
                 return NULL;
             }
@@ -306,7 +306,8 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
             __log_txn_lsn(bdb_state->dbenv, &my_lsn, NULL, NULL);
             BDB_RELLOCK();
 
-            arg_lsn.file = file; arg_lsn.offset = offset;
+            arg_lsn.file = file;
+            arg_lsn.offset = offset;
 
             /* Verify generation numbers for durable-lsn case */
             if (durable_gen && my_gen != durable_gen)
@@ -322,8 +323,8 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
                     logmsg(LOGMSG_USER,
                            "%s line %d: returning not-durable, durable_gen=%u,"
                            " my_gen=%u req_lsn=[%d][%d] my_lsn=[%d][%d]\n",
-                           __func__, __LINE__, durable_gen, my_gen,
-                           file, offset, my_lsn.file, my_lsn.offset);
+                           __func__, __LINE__, durable_gen, my_gen, file,
+                           offset, my_lsn.file, my_lsn.offset);
                 }
                 *bdberr = BDBERR_NOT_DURABLE;
                 return NULL;

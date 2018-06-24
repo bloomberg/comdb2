@@ -5143,7 +5143,8 @@ void *watcher_thread(void *arg)
                     if (gbl_commit_delay_trace) {
                         logmsg(LOGMSG_USER,
                                "%s line %d setting commitdelay to "
-                               "skipdelaybase %d\n", __func__, __LINE__,
+                               "skipdelaybase %d\n",
+                               __func__, __LINE__,
                                bdb_state->attr->skipdelaybase);
                     }
                 }

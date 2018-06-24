@@ -2738,8 +2738,8 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
 
     if (startasmaster) {
         logmsg(LOGMSG_USER,
-               "%s line %d calling rep_start as master with egen 0\n",
-               __func__, __LINE__);
+               "%s line %d calling rep_start as master with egen 0\n", __func__,
+               __LINE__);
         rc = dbenv->rep_start(dbenv, NULL, 0, DB_REP_MASTER);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "dbenv_open: rep_start as master failed %d %s\n",
