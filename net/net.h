@@ -59,6 +59,17 @@ typedef int GETLSNFP(struct netinfo_struct *netinfo, void *record, int len,
 typedef int NEWNODEFP(struct netinfo_struct *netinfo, char hostname[],
                       int portnum);
 
+typedef void *QSTATINITFP(struct netinfo_struct *netinfo, const char *nettype,
+                          const char hostname[]);
+typedef void QSTATREADERFP(struct netinfo_struct *netinfo, void *netstat);
+typedef void QSTATCLEARFP(struct netinfo_struct *netinfo, void *netstat);
+typedef void QSTATENQUEFP(struct netinfo_struct *netinfo, void *netstat,
+                          void *rec, int len);
+typedef void QSTATFREEFP(struct netinfo_struct *netinfo, void *netstat);
+
+typedef void QSTATITERFP(struct netinfo_struct *netinfo, void *arg,
+                         void *qstat);
+
 typedef int NETALLOWFP(struct netinfo_struct *netinfo, const char *hostname);
 
 void net_setbufsz(netinfo_type *info, int bufsz);
@@ -69,6 +80,13 @@ void net_register_stop_thread_callback(netinfo_type *info, void (*)(void *));
 
 int net_is_connected(netinfo_type *netinfo_ptr, const char *hostname);
 int net_close_connection(netinfo_type *net, const char *hostname);
+
+enum {
+    NET_SEND_NODELAY = 0x00000001,
+    NET_SEND_NODROP = 0x00000002,
+    NET_SEND_INORDER = 0x00000004,
+    NET_SEND_TRACE = 0x00000008
+};
 
 enum {
     NET_SEND_FAIL_INVALIDNODE = -1,
@@ -98,12 +116,19 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
                      int usertype, void *data, int datalen, uint8_t **payloadptr, 
                      int *payloadlen, int waitforack, int waitms);
 
+int net_send_flags(netinfo_type *netinfo,
+                   const char *to_host, /* send to this node number */
+                   int usertype, void *dta, int dtalen, uint32_t flags);
+
 int net_send(netinfo_type *netinfo,
              const char *to_host, /* send to this node number */
              int usertype, void *dta, int dtalen, int nodelay);
 
 int net_send_nodrop(netinfo_type *netinfo, const char *to_host, int usertype,
                     void *dta, int dtalen, int nodelay);
+
+int net_send_inorder_nodrop(netinfo_type *netinfo, const char *to_host,
+                            int usertype, void *dta, int dtalen, int nodelay);
 
 int net_send_inorder(netinfo_type *netinfo,
                      const char *to_host, /* send to this node number */
@@ -119,6 +144,10 @@ int net_register_handler(netinfo_type *netinfo_ptr, int usertype, NETFP func);
 int net_register_hostdown(netinfo_type *netinfo_ptr, HOSTDOWNFP func);
 
 int net_register_getlsn(netinfo_type *netinfo_ptr, GETLSNFP func);
+
+int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
+                            QSTATREADERFP *reader, QSTATENQUEFP *enque,
+                            QSTATCLEARFP *qclear, QSTATFREEFP *qfree);
 
 /* register a callback that you can compare the order of things
    already on the write queue. */
@@ -399,6 +428,9 @@ int net_listen(int port);
 
 void net_set_throttle_percent(netinfo_type *netinfo_ptr, int x);
 void net_set_portmux_register_interval(netinfo_type *netinfo_ptr, int x);
+
+void net_queue_stat_iterate(netinfo_type *netinfo_ptr, QSTATITERFP func,
+                            void *arg);
 
 /* Blocks until the net-queue is X% full or less */
 int net_throttle_wait(netinfo_type *netinfo_ptr);

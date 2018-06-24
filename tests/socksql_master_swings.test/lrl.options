@@ -5,4 +5,9 @@ setattr DURABLE_LSNS 1
 master_swing_osql_verbose
 master_swing_sock_restart_sleep 2
 on block_set_commit_genid_trace
-logmsg level info
+logmsg level debug
+set_repinfo_master_trace on
+extended_sql_debug_trace on
+setattr WAIT_FOR_SEQNUM_TRACE 1
+dump_blkseq on
+nowatch

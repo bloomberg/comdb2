@@ -344,6 +344,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
 		    offsetof(struct __ltrans_descriptor, lnk));
 		pthread_mutex_init(&dbenv->ltrans_inactive_lk, NULL);
 		pthread_mutex_init(&dbenv->ltrans_active_lk, NULL);
+		pthread_mutex_init(&dbenv->locked_lsn_lk, NULL);
 	}
 
 	if (LF_ISSET(DB_INIT_TXN)) {

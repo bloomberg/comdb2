@@ -480,7 +480,7 @@ next word determines which option to set, and the following word determines its 
 |MEMPTRICKLEPERCENT|99 (PERCENT) | Try to keep at least this percentage of the buffer pool clean.  Write pages periodically until that's achieved.
 |MEMPTRICKLEMSECS|1000 (MSECS) | Pause for this many ms between runs of the cache flusher.
 |LITTLE_ENDIAN_BTREES|1 (BOOLEAN) | Enabling this sets byte ordering for pages to little endian
-|COMMITDELAYMAX|8 (QUANTITY) | Caps the max transaction delay time.  `COMMITDELAY` won't set above this value, unless set manually.
+|COMMITDELAYMAX|0 (QUANTITY) | Caps the max transaction delay time.  `COMMITDELAY` won't set above this value, unless set manually.
 |LOWDISKTHRESHOLD |95 (PERCENT) | Sets the low headroom threshold (percent of filesystem full) above which Comdb2 will start removing logs against set policy.
 |SQLBULKSZ | 2097152 (BYTES) | For index/data scans, the database will retrieve data in bulk instead of singlestepping a cursor.  This set the buffer size for the bulk retrieval.
 |ZLIBLEVEL |  6 (QUANTITY) | If zlib compression is enabled, this determines the compression level.
@@ -718,7 +718,7 @@ These options are toggle-able at runtime.
 |osync                            |Off         | Enables `O_SYNC` on data files (reads still go through FS cache) if `directio` isn't set
 |nonames                          |Off         | Use database name for some environment files (older setting, should remain off)
 |checksums                        |On          | Checksum data pages.  Turning this off is highly discouraged.
-|commitdelaymax                   |8           | Introduce a delay after each transaction before returning control to the application.  Occasionally useful to allow replicants to catch up on startup with a very busy system.
+|commitdelaymax                   |0           | Introduce a delay after each transaction before returning control to the application.  Occasionally useful to allow replicants to catch up on startup with a very busy system.
 |lock_conflict_trace              |Off         | Dump count of lock conflicts every second
 |no_lock_conflict_trace           |On          | Turns off `lock_conflict_trace`
 |blocksql_grace                   |10 sec      | Let block transactions run this long if db is exiting before being killed (and returning an error).
