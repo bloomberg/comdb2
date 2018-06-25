@@ -102,6 +102,17 @@ extern int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
         unsigned long long del_keys, blob_buffer_t *del_idx_blobs,
         const char *ondisktag);
 
+extern int upd_new_record_indices(struct ireq *iq, void *trans,
+        unsigned long long newgenid,
+        unsigned long long ins_keys,
+        const void *new_dta, const void *old_dta, int use_new_tag,
+        void *sc_old, void *sc_new, int nd_len,
+        unsigned long long del_keys, blob_buffer_t *add_idx_blobs,
+        blob_buffer_t *del_idx_blobs,
+        unsigned long long oldgenid, int deferredAdd);
+
+
+
 /*
  * Add a record:
  *  - check arguments
@@ -1748,83 +1759,7 @@ err:
     return retrc;
 }
 
-/*
- * Update a single record in the new table as part of a live schema
- * change.  This code is called to add to indices only, adding to
- * the dta files should be already done earlier.
- */
-int upd_new_record_add2indices(struct ireq *iq, void *trans,
-                               unsigned long long newgenid, const void *new_dta,
-                               int nd_len, unsigned long long ins_keys,
-                               int use_new_tag, blob_buffer_t *blobs)
-{
-    int prefixes = 0;
-    int rc = 0;
-#ifdef DEBUG
-    fprintf(stderr, "upd_new_record_add2indices: genid %llx\n", newgenid);
-#endif
 
-    if (!iq->usedb)
-        return ERR_BADREQ;
-
-    /* Add all keys */
-    for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-        char keytag[MAXTAGLEN];
-        char key[MAXKEYLEN];
-        char mangled_key[MAXKEYLEN];
-        char *od_dta_tail = NULL;
-        int od_tail_len = 0;
-
-        /* are we supposed to convert this ix -- if no skip work */
-        if (gbl_use_plan && iq->usedb->plan &&
-            iq->usedb->plan->ix_plan[ixnum] != -1)
-            continue;
-
-        /* only add  keys when told */
-        if (gbl_partial_indexes && iq->usedb->ix_partial &&
-            !(ins_keys & (1ULL << ixnum)))
-            continue;
-
-        snprintf(keytag, sizeof(keytag), ".NEW..ONDISK_IX_%d", ixnum);
-
-        /* form new index */
-        if (iq->idxInsert)
-            rc =
-                create_key_from_ireq(iq, ixnum, 0, &od_dta_tail, &od_tail_len,
-                                     mangled_key, (char *)new_dta, nd_len, key);
-        else
-            rc = create_key_from_ondisk_blobs(
-                iq->usedb, ixnum, &od_dta_tail, &od_tail_len, mangled_key,
-                use_new_tag ? ".NEW..ONDISK" : ".ONDISK", (char *)new_dta,
-                nd_len, keytag, key, NULL, blobs, blobs ? MAXBLOBS : 0, NULL);
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "upd_new_record_add2indices: %s newgenid 0x%llx "
-                   "conversions -> ix%d failed (use_new_tag %d) rc=%d\n",
-                   (iq->idxInsert ? "create_key_from_ireq"
-                                  : "create_key_from_ondisk_blobs"),
-                   newgenid, ixnum, use_new_tag, rc);
-            break;
-        }
-
-        rc = ix_addk(iq, trans, key, ixnum, newgenid, 2, (void *)od_dta_tail,
-                     od_tail_len, ix_isnullk(iq->usedb, key, ixnum));
-        if (iq->debug) {
-            reqprintf(iq, "ix_addk IX %d KEY ", ixnum);
-            reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
-            reqmoref(iq, " RC %d", rc);
-        }
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "upd_new_record_add2indices: ix_addk "
-                                 "newgenid 0x%llx ix_addk  ix%d rc=%d\n",
-                   newgenid, ixnum, rc);
-            fsnapf(stderr, key, getkeysize(iq->usedb, ixnum));
-            break;
-        }
-    }
-
-    return rc;
-}
 
 /*
  * Update a single record in the new table as part of a live schema
@@ -1855,7 +1790,6 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
     int prefixes = 0;
     int rc;
     int newrec_len;
-    int ixnum;
     int blobn;
     int myupdatecols[MAXCOLUMNS + 1];
     unsigned long long newgenidcpy = newgenid;
@@ -1884,12 +1818,11 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
 
     if ((gbl_partial_indexes && iq->usedb->ix_partial) ||
          (gbl_expressions_indexes && iq->usedb->ix_expr)) {
-        int ixnum;
         int rebuild_keys = 0;
         if (!gbl_use_plan || !iq->usedb->plan)
             rebuild_keys = 1;
         else {
-            for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
+            for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
                 if (iq->usedb->plan->ix_plan[ixnum] == -1) {
                     rebuild_keys = 1;
                     break;
@@ -2144,77 +2077,15 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         }
     }
 
-    /* First delete all keys */
-    for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-        char keytag[MAXTAGLEN];
-        char key[MAXKEYLEN];
-        char mangled_key[MAXKEYLEN];
-        char *od_dta_tail = NULL;
-        int od_tail_len = 0;
+    retrc = upd_new_record_indices(iq, trans, 
+        newgenid,
+        ins_keys,
+        new_dta, old_dta, use_new_tag,
+        sc_old, sc_new, nd_len,
+        del_keys, add_idx_blobs, 
+        del_idx_blobs,
+        oldgenid, deferredAdd);
 
-        if (gbl_use_plan && iq->usedb->plan &&
-            iq->usedb->plan->ix_plan[ixnum] != -1)
-            continue;
-
-        /* only delete keys when told */
-        if (gbl_partial_indexes && iq->usedb->ix_partial &&
-            !(del_keys & (1ULL << ixnum)))
-            continue;
-
-        snprintf(keytag, sizeof(keytag), ".NEW..ONDISK_IX_%d", ixnum);
-
-        if (iq->idxDelete) {
-            memcpy(key, iq->idxDelete[ixnum], iq->usedb->ix_keylen[ixnum]);
-            rc = 0;
-        } else
-            rc = create_key_from_ondisk_blobs(
-                iq->usedb, ixnum, NULL, NULL, NULL,
-                use_new_tag ? ".NEW..ONDISK" : ".ONDISK",
-                use_new_tag ? (char *)sc_old : (char *)old_dta,
-                0 /*not needed*/, keytag, key, NULL, del_idx_blobs,
-                del_idx_blobs ? MAXBLOBS : 0, NULL);
-        if (rc == -1) {
-            logmsg(LOGMSG_ERROR, "upd_new_record oldgenid 0x%llx conversions -> "
-                            "ix%d failed\n",
-                    oldgenid, ixnum);
-            if (iq->debug)
-                reqprintf(iq, "CAN'T FORM OLD INDEX %d", ixnum);
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
-            reqerrstr(iq, COMDB2_DEL_RC_INVL_IDX, "cannot form old index %d",
-                      ixnum);
-            retrc = rc;
-            goto err;
-        }
-
-        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, oldgenid, ix_isnullk(iq->usedb, key, ixnum));
-        if (iq->debug) {
-            reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
-            reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
-            reqmoref(iq, " RC %d", rc);
-        }
-
-        /* remap delete not found to retry */
-        if (rc == IX_NOTFND)
-            rc = RC_INTERNAL_RETRY;
-
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "upd_new_record oldgenid 0x%llx ix_delk -> "
-                            "ix%d, rc=%d failed\n",
-                    oldgenid, ixnum, rc);
-            retrc = rc;
-            goto err;
-        }
-    }
-
-    /* Add keys if we are not deferring.
-     * If we are deferring, add will be called from delayed_key_adds() */
-    if (!deferredAdd) {
-        retrc = upd_new_record_add2indices(
-            iq, trans, newgenid, use_new_tag ? sc_new : new_dta,
-            use_new_tag ? iq->usedb->lrl : nd_len, ins_keys, use_new_tag,
-            add_idx_blobs);
-    } else
-        reqprintf(iq, "is deferredAdd so will add to indices at the end");
 
 err:
     if (sc_old)
