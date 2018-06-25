@@ -2819,6 +2819,8 @@ struct Select {
 #define SF_MaybeConvert   0x08000  /* Need convertCompoundSelectToSubquery() */
 #define SF_Converted      0x10000  /* By convertCompoundSelectToSubquery() */
 #define SF_IncludeHidden  0x20000  /* Include hidden columns in output */
+/* COMDB2 MODIFICATION */
+#define SF_ASTIncluded  0x1000000  /* AST Generated */
 
 
 /*

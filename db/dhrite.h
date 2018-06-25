@@ -24,10 +24,12 @@ enum ast_type {
     AST_TYPE_INVALID = 0
     ,AST_TYPE_SELECT = 1
     ,AST_TYPE_INSERT = 2
+    ,AST_TYPE_UNION  = 3
 };
 
 ast_t* ast_init(void);
-int ast_push(ast_t *ast, enum ast_type op, void* obj);
+struct Vdbe;
+int ast_push(ast_t *ast, enum ast_type op, struct Vdbe *v, void* obj);
 void ast_destroy(ast_t **ast);
 void ast_print(ast_t *ast);
 

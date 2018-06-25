@@ -139,6 +139,17 @@ void sqlite3FinishCoding(Parse *pParse){
     return;
   }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if (pParse->ast) {
+    extern int comdb2_check_parallel(ast_t*);
+    if (comdb2_check_parallel(pParse->ast)) {
+        pParse->rc = SQLITE_SCHEMA_DOHSQL;
+        return;
+    }
+  }
+#endif
+
+
   /* Begin by generating some termination code at the end of the
   ** vdbe program
   */

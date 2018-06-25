@@ -677,103 +677,103 @@ static void mark_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     clnt->conns[clnt->conns_idx-2].done = 1;
 }
 
-static int dohosql_write_response(struct sqlclntstate *a, int b, void *c, int d)
+static int dohsql_write_response(struct sqlclntstate *a, int b, void *c, int d)
 {
     return 0;
 }
-static int dohosql_read_response(struct sqlclntstate *a, int b, void *c, int d)
+static int dohsql_read_response(struct sqlclntstate *a, int b, void *c, int d)
 {
     return -1;
 }
-static void *dohosql_save_stmt(struct sqlclntstate *clnt, void *arg)
+static void *dohsql_save_stmt(struct sqlclntstate *clnt, void *arg)
 {
     return strdup(clnt->sql);
 }
-static void *dohosql_restore_stmt(struct sqlclntstate *clnt, void *arg)
+static void *dohsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
 {
     clnt->sql = arg;
     return NULL;
 }
-static void *dohosql_destroy_stmt(struct sqlclntstate *clnt, void *arg)
+static void *dohsql_destroy_stmt(struct sqlclntstate *clnt, void *arg)
 {
     free(arg);
     return NULL;
 }
-static void *dohosql_print_stmt(struct sqlclntstate *clnt, void *arg)
+static void *dohsql_print_stmt(struct sqlclntstate *clnt, void *arg)
 {
     return arg;
 }
-static int dohosql_param_count(struct sqlclntstate *a)
+static int dohsql_param_count(struct sqlclntstate *a)
 {
     return 0;
 }
-static int dohosql_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
+static int dohsql_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
 {
     return -1;
 }
-static int dohosql_param_value(struct sqlclntstate *a, struct param_data *b, int c)
+static int dohsql_param_value(struct sqlclntstate *a, struct param_data *b, int c)
 {
     return -1;
 }
-static int dohosql_override_count(struct sqlclntstate *a)
+static int dohsql_override_count(struct sqlclntstate *a)
 {
     return 0;
 }
-static int dohosql_clr_cnonce(struct sqlclntstate *a)
+static int dohsql_clr_cnonce(struct sqlclntstate *a)
 {
     return -1;
 }
-static int dohosql_has_cnonce(struct sqlclntstate *a)
+static int dohsql_has_cnonce(struct sqlclntstate *a)
 {
     return 0;
 }
-static int dohosql_set_cnonce(struct sqlclntstate *a)
+static int dohsql_set_cnonce(struct sqlclntstate *a)
 {
     return -1;
 }
-static int dohosql_get_cnonce(struct sqlclntstate *a, snap_uid_t *b)
+static int dohsql_get_cnonce(struct sqlclntstate *a, snap_uid_t *b)
 {
     return -1;
 }
-static int dohosql_get_snapshot(struct sqlclntstate *a, int *b, int *c)
+static int dohsql_get_snapshot(struct sqlclntstate *a, int *b, int *c)
 {
     return -1;
 }
-static int dohosql_upd_snapshot(struct sqlclntstate *a)
+static int dohsql_upd_snapshot(struct sqlclntstate *a)
 {
     return -1;
 }
-static int dohosql_clr_snapshot(struct sqlclntstate *a)
+static int dohsql_clr_snapshot(struct sqlclntstate *a)
 {
     return -1;
 }
-static int dohosql_has_high_availability(struct sqlclntstate *a)
+static int dohsql_has_high_availability(struct sqlclntstate *a)
 {
     return 0;
 }
-static int dohosql_set_high_availability(struct sqlclntstate *a)
+static int dohsql_set_high_availability(struct sqlclntstate *a)
 {
     return -1;
 }
-static int dohosql_clr_high_availability(struct sqlclntstate *a)
+static int dohsql_clr_high_availability(struct sqlclntstate *a)
 {
     return -1;
 }
-static int dohosql_get_high_availability(struct sqlclntstate *a)
+static int dohsql_get_high_availability(struct sqlclntstate *a)
 {
     return 0;
 }
-static void dohosql_add_steps(struct sqlclntstate *a, double b)
+static void dohsql_add_steps(struct sqlclntstate *a, double b)
 {
 }
-static void dohosql_setup_client_info(struct sqlclntstate *a, struct sqlthdstate *b, char *c)
+static void dohsql_setup_client_info(struct sqlclntstate *a, struct sqlthdstate *b, char *c)
 {
 }
-static int dohosql_skip_row(struct sqlclntstate *a, uint64_t b)
+static int dohsql_skip_row(struct sqlclntstate *a, uint64_t b)
 {
     return 0;
 }
-static int dohosql_log_context(struct sqlclntstate *a, struct reqlogger *b)
+static int dohsql_log_context(struct sqlclntstate *a, struct reqlogger *b)
 {
     return 0;
 }
@@ -802,7 +802,7 @@ static int _shard_connect(struct sqlclntstate *clnt, int i)
     par->clnt->origin = clnt->origin;
     par->clnt->sql = strdup(clnt->sql);
 
-    plugin_set_callbacks(par->clnt, dohosql);
+    plugin_set_callbacks(par->clnt, dohsql);
 
     return SHARD_NOERR;
 }

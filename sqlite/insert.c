@@ -705,7 +705,7 @@ void sqlite3Insert(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 
     if(!pParse->ast) pParse->ast = ast_init();
-    ast_push(pParse->ast, AST_TYPE_INSERT, NULL);
+    ast_push(pParse->ast, AST_TYPE_INSERT, v, NULL);
 #endif
 
     regYield = ++pParse->nMem;

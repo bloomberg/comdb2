@@ -7758,6 +7758,7 @@ abort_due_to_error:
    && rc != SQLITE_TRAN_NOLOG
    && rc != SQLITE_TRAN_NOUNDO
    && rc != SQLITE_SCHEMA_REMOTE
+   && rc != SQLITE_SCHEMA_DOHSQL
   ){
     rc = SQLITE_ERROR;
   }

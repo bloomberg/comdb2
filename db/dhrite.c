@@ -55,11 +55,11 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p)
     char *selectPrior = NULL;
     char *where = NULL;
     sqlite3 *db = v->db;
+    char *limit = NULL;
 
     if (p->recording) return NULL; /* no selectv */
     if (p->pWith) return NULL; /* no CTE */
     if (p->pOffset) return NULL; /* no Offset */
-    if (p->pLimit) return NULL; /* no limit */
     if (p->pOrderBy) return NULL; /* no order by */
     if (p->pHaving) return NULL; /* no having */
     if (p->pGroupBy) return NULL; /* no group by */
@@ -81,12 +81,18 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p)
         return NULL;
     }
 
-    select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s",
+    if (p->pLimit) {
+        limit = sqlite3ExprDescribe(v, p->pLimit);
+    }
+
+    select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s%s%s",
             (selectPrior)?selectPrior:"", (selectPrior)?" uNioN aLL ":"",
             cols, tbl,
-            (where)?" WHeRe ":"", (where)?where:"");
+            (where)?" WHeRe ":"", (where)?where:"",
+            (limit)?" LiMiT ":"", (limit)?limit:"");
 
     sqlite3DbFree(db, cols);
+    if (limit) sqlite3DbFree(db, limit);
     if (where) sqlite3DbFree(db, where);
     if (selectPrior) sqlite3DbFree(db, where);
 
@@ -131,8 +137,132 @@ void ast_destroy(ast_t **ast)
     *ast = NULL;
 }
 
-int ast_push(ast_t *ast, enum ast_type op, void* obj)
+struct dohsql_node
 {
+    enum ast_type type;
+    char* sql;
+    struct dohsql_node **nodes;
+    int nnodes;
+};
+typedef struct dohsql_node dohsql_node_t;
+
+static dohsql_node_t* gen_oneselect(Vdbe *v, Select *p)
+{
+    dohsql_node_t *node;
+    Select *prior = p->pPrior;
+    Select *next = p->pNext;
+    int i;
+
+    p->selFlags |= SF_ASTIncluded;
+
+    node = (dohsql_node_t*)calloc(1, sizeof(dohsql_node_t));
+    if(!node)
+        return NULL;
+
+    node->type = AST_TYPE_SELECT;
+    p->pPrior = p->pNext = NULL;
+    node->sql = sqlite_struct_to_string(v, p);
+    p->pPrior = prior;
+    p->pNext = next;
+
+    if(!node->sql) {
+        free(node);
+        node = NULL;
+    }
+
+    return node;
+}
+
+static void node_free(Vdbe *v, dohsql_node_t **pnode)
+{
+    dohsql_node_t *node = *pnode;
+    int i;
+
+    /* children */
+    for(i=0;i<node->nnodes && node->nodes[i]; i++) {
+        node_free(v, &node->nodes[i]);
+    }
+
+    /* current node */
+    if((*pnode)->sql) {
+        sqlite3DbFree(v->db, (*pnode)->sql);
+    }
+    free(*pnode);
+    *pnode = NULL;
+}
+
+static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
+{
+    dohsql_node_t *node;
+    dohsql_node_t **psub;
+    Select *crt;
+
+    assert (p->op == TK_ALL && span>1);
+
+    node = (dohsql_node_t*)calloc(1, sizeof(dohsql_node_t)+span*sizeof(void*));
+    if(!node) return NULL;
+
+    node->type = AST_TYPE_UNION; 
+    node->nodes = (dohsql_node_t**)(node+1);
+    node->nnodes = span;
+
+    crt = p;
+    psub = node->nodes;
+    while(crt) {
+        *psub = gen_oneselect(v, crt);
+        if(!(*psub)) {
+            node_free(v, &node);
+            return NULL;
+        }
+        if(psub!=node->nodes) {
+            char *tmp = sqlite3_mprintf("%s uNioN aLL %s",
+                    (*(psub-1))->sql, (*psub)->sql);
+            sqlite3DbFree(v->db, node->sql);
+            node->sql = tmp;
+            if (!tmp) {
+                node_free(v, &node);
+                return NULL;
+            }
+        }
+
+        crt = crt->pPrior;
+        psub++;
+    }
+
+    return node;
+}
+    
+static dohsql_node_t* gen_select(Vdbe* v, Select *p)
+{
+    Select *crt;
+    int span = 0;
+    int i;
+
+    p->selFlags |= SF_ASTIncluded;
+
+    /* no joins or subqueries */
+    if (p->pSrc->nSrc > 1 || p->pSrc->a->pSelect)
+        return NULL;
+    
+    /* only handle union all */
+    crt = p;
+    while(crt) {
+        span++;
+        if(crt->op != TK_SELECT && crt->op != TK_ALL)
+            return NULL;
+        crt = crt->pPrior;
+    }
+
+    if (p->op == TK_SELECT)
+        return gen_oneselect(v, p);
+
+    return gen_union(v, p, span);  
+}
+
+int ast_push(ast_t *ast, enum ast_type op, Vdbe *v, void* obj)
+{
+    int ignore = 0;
+
     if (ast->nused>=ast->nalloc) {
         ast->stack = realloc(ast->stack, ast->nalloc+AST_STACK_INIT);
         if (!ast->stack)
@@ -140,12 +270,33 @@ int ast_push(ast_t *ast, enum ast_type op, void* obj)
         ast->nalloc += AST_STACK_INIT;
     }
 
-    ast->stack[ast->nused].op = op;
-    ast->stack[ast->nused].obj = obj;
-    ast->nused++;
 
+    switch(op) {
+    case AST_TYPE_SELECT: 
+    {
+        Select *p = (Select*)obj;
 
-    if(ast_verbouse) {
+        if((p->selFlags & SF_ASTIncluded) == 0) {
+            ast->stack[ast->nused].op = op;
+            ast->stack[ast->nused].obj = gen_select(v, p);
+            ast->nused++;
+        }
+        else
+        {
+            ignore = 1;
+        }
+        break;
+    }
+    default:
+    {
+        ast->stack[ast->nused].op = op;
+        ast->stack[ast->nused].obj = obj;
+        ast->nused++;
+        break;
+    }
+    }
+
+    if(ast_verbouse && !ignore) {
         ast_print(ast);
     }
 
@@ -171,11 +322,55 @@ const char* ast_type_str(enum ast_type type)
     return "INVALID";
 }
 
+const char* ast_param_str(enum ast_type type, void* obj)
+{
+    switch(type) {
+    case AST_TYPE_SELECT: return obj?((dohsql_node_t*)obj)->sql:"NULL";
+    case AST_TYPE_INSERT: return "()";
+    }
+    return "INVALID";
+}
+
 void ast_print(ast_t *ast)
 {
     int i;
     logmsg(LOGMSG_ERROR, "AST: [%d]\n", ast->nused);
     for(i=0;i<ast->nused;i++)
-        logmsg(LOGMSG_ERROR, "\t %d. %s\n", i, ast_type_str(ast->stack[i].op));
+        logmsg(LOGMSG_ERROR, "\t %d. %s \"%s\"\n", i, ast_type_str(ast->stack[i].op),
+               ast_param_str(ast->stack[i].op, ast->stack[i].obj));
 }
 
+int comdb2_check_parallel(ast_t *ast)
+{
+    dohsql_node_t *node;
+    int i;
+
+    if (ast->nused>1)
+        return 0;
+
+    if (ast->stack[0].op != AST_TYPE_SELECT) 
+        return 0;
+    if (!ast->stack[0].obj)
+        return 0;
+   
+    node = (dohsql_node_t*)ast->stack[0].obj;
+
+    if (strstr(node->sql, "sqlite_"))
+        return 0;
+    if (strstr(node->sql, "comdb2_"))
+        return 0;
+
+    if (node->type == AST_TYPE_SELECT) {
+        fprintf(stderr, "Single query \"%s\"\n", node->sql);
+        return 0;
+    }
+
+    if (node->type == AST_TYPE_UNION) {
+        fprintf(stderr, "Parallelizable union %d threads:\n", node->nnodes);
+        for(i=0;i<node->nnodes;i++) {
+            fprintf(stderr,"\t Thread %d: \"%s\"\n", i+1, node->nodes[i]->sql);
+        }
+        return 1;
+    }
+    return 0;
+}
