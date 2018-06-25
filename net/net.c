@@ -2462,8 +2462,7 @@ int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
 void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter,
                             void *arg)
 {
-    int i;
-    for (int i = 0 ; i <= MAX_USER_TYPE ; i++) {
+    for (int i=0; i<=MAX_USER_TYPE; i++) {
         if (netinfo_ptr->userfuncs[i].func) {
             uf_iter(netinfo_ptr, arg, netinfo_ptr->service,
                     netinfo_ptr->userfuncs[i].name,
