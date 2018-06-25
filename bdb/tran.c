@@ -1939,12 +1939,6 @@ static int bdb_tran_commit_with_seqnum_int_int(
         goto cleanup;
     }
 
-    /* delay on the master if we were told to */
-    if (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host &&
-        bdb_state->attr->commitdelay && tran->master) {
-        usleep(1000 * bdb_state->attr->commitdelay);
-    }
-
     if (tran->master) {
         /* form the seqnum for the caller */
         if (set_seqnum) {

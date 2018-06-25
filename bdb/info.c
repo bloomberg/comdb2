@@ -792,19 +792,10 @@ static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
             break;
 
         case STATE_INCOHERENT:
-            coherent_state = "INCOHERENT";
-            break;
-
         case STATE_INCOHERENT_SLOW:
-            coherent_state = "INCOHERENT_SLOW";
-            break;
-
-        /* Incoherent local is only meaningful on the master */
         case STATE_INCOHERENT_WAIT:
-            if (iammaster)
-                coherent_state = "INCOHERENT_WAIT";
-            else
-                coherent_state = "";
+            coherent_state = coherent_state_to_str(
+                bdb_state->coherent_state[nodeix(nodes[ii].host)]);
             break;
 
         default:
@@ -849,16 +840,20 @@ void bdb_short_netinfo_dump(FILE *out, bdb_state_type *bdb_state)
         }
         if (bdb_state->repinfo->master_host == nodes[ii].host)
             status_mstr = "MASTER";
-        else if (bdb_state->coherent_state[nodeix(nodes[ii].host)] ==
-                 STATE_INCOHERENT)
-            status_mstr = "INCOHERENT";
-        else if (bdb_state->coherent_state[nodeix(nodes[ii].host)] ==
-                 STATE_INCOHERENT_SLOW)
-            status_mstr = "INCOHERENT_SLOW";
-        else if (bdb_state->coherent_state[ii] == STATE_INCOHERENT_WAIT)
-            status_mstr = "INCOHERENT_WAIT";
-        else
-            status_mstr = " ";
+        else {
+            switch (bdb_state->coherent_state[nodeix(nodes[ii].host)]) {
+            case STATE_INCOHERENT:
+            case STATE_INCOHERENT_WAIT:
+            case STATE_INCOHERENT_SLOW:
+            default:
+                status_mstr = coherent_state_to_str(
+                    bdb_state->coherent_state[nodeix(nodes[ii].host)]);
+                break;
+            case STATE_COHERENT:
+                status_mstr = " ";
+                break;
+            }
+        }
 
         lsnp = &bdb_state->seqnum_info->seqnums[nodeix(nodes[ii].host)].lsn;
 
@@ -1531,7 +1526,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
 
     else if (tokcmp(tok, ltok, "elect") == 0) {
         logmsg(LOGMSG_USER, "forcing an election\n");
-        call_for_election(bdb_state);
+        call_for_election(bdb_state, __func__, __LINE__);
     }
 
     else if (tokcmp(tok, ltok, "repdbgy") == 0)

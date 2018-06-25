@@ -1,3 +1,4 @@
 setattr SC_RESTART_SEC 30
 test_sc_resume_race 1
 logmsg level info
+extended_sql_debug_trace

@@ -1,0 +1,76 @@
+# Things to investigate
+# 1 What if there is no blocking for the writes?
+# 2 LC_Cache
+# 3 Don't enque dups in the net-layer
+
+# Enable decoupled logs and fills
+# This setting to 0 disables the max-queue setting
+# BTW, this breaks if you allow it to grow forever: try to understand
+#max_logput_queue 100000 # this is the default now
+decoupled_logputs on
+#fillcursor_lookahead 0
+throttle_logput_trace on
+catchup_window_trace on
+setattr CATCHUP_WINDOW 40000000
+setattr CATCHUP_ON_COMMIT 1
+early_ack_trace on
+commit_delay_trace on
+durable_set_trace on
+set_coherent_state_trace on
+#set_seqnum_trace on
+setattr COMMITDELAYMAX 1025
+setattr TOOMANYSKIPPED 128
+
+# Enable cache
+#cache 100 mb
+
+# print_net_queue_size on
+
+# Linearizable is serializable + durable-lsn logic
+enable_serial_isolation
+
+# Enable durable lsn logic
+# setattr DURABLE_LSNS 1
+
+# Maximum time we'll wait to retrieve a durable LSN from the master
+# setattr DURABLE_LSN_REQUEST_WAITMS 2000
+
+# new_snapshot is seeing bugs here: disable for now, old snapshot works correctly
+disable_new_snapshot
+
+# Increase netpoll
+netpoll 2000
+
+# Very high osqltransfer
+maxosqltransfer 1000000
+
+# This was breaking things earlier.  Rivers has made changes (I need to retry)
+disable_page_compact
+
+# Check for deleteable logs every second
+setattr LOGDELETE_RUN_INTERVAL 1
+
+# Disable parallel rep (this was causing crashes)
+setattr REP_PROCESSORS 0
+setattr REP_WORKERS 0
+
+# Block forever on startup trying to sync with cluster
+setattr STARTUP_SYNC_ATTEMPTS -1
+
+# Perfect checkpoints is also causing crashes.  Disable for now.
+perfect_ckp 0
+
+# Don't run the watchdog thread
+nowatch
+
+# Disable this trace
+setattr UDP_DROP_WARN_PERCENT 100
+
+# Enable debug trace
+verbose_fills on
+verbose_repdups on
+warn_slow_replicants off
+
+# Disable compression so I can read printlog output
+init_with_compr none
+init_with_compr_blobs none

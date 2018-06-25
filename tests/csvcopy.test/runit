@@ -22,6 +22,8 @@ for node in $CLUSTER; do
     scp -o StrictHostKeyChecking=no agg.csv $node:$DBDIR/../.
 done
 
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table t1"
+
 for testreq in `ls t*.req` ; do
     # Setup all the tables this test case needs :-
     # First drop the table (its ok if this fails,

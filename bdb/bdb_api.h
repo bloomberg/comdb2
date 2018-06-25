@@ -982,7 +982,7 @@ int bdb_amimaster(bdb_state_type *bdb_handle);
 char *bdb_whoismaster(bdb_state_type *bdb_handle);
 
 int bdb_get_rep_master(bdb_state_type *bdb_state, char **master_out,
-                       uint32_t *egen);
+                       uint32_t *gen, uint32_t *egen);
 
 /* get current sanc list.  pass in size of array.  returns number of sanc
  * nodes (may be > passed in list length). */
@@ -1998,6 +1998,7 @@ int bdb_next_user_get(bdb_state_type *bdb_state, tran_type *tran, char *key,
                       char *user_out, int *isop, int *bdberr);
 int bdb_latest_commit_is_durable(void *bdb_state);
 int bdb_is_standalone(void *dbenv, void *in_bdb_state);
+int bdb_valid_lease(void *bdb_state);
 
 uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
 
