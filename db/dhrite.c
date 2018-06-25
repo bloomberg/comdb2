@@ -216,13 +216,15 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
         }
         if(psub!=node->nodes) {
             char *tmp = sqlite3_mprintf("%s uNioN aLL %s",
-                    (*(psub-1))->sql, (*psub)->sql);
+                    (*psub)->sql, node->sql);
             sqlite3DbFree(v->db, node->sql);
             node->sql = tmp;
             if (!tmp) {
                 node_free(v, &node);
                 return NULL;
             }
+        } else {
+            node->sql = sqlite3_mprintf("%s", (*psub)->sql);
         }
 
         crt = crt->pPrior;

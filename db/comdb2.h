@@ -3530,8 +3530,6 @@ extern int gbl_mifid2_datetime_range;
 /* Query fingerprinting */
 extern int gbl_fingerprint_queries;
 
-extern void hexdump(const void *buf, int size);
-
 /* Global switch for perfect checkpoint. */
 extern int gbl_use_perfect_ckp;
 /* (For testing only) Configure how long a checkpoint

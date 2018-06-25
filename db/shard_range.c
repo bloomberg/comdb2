@@ -778,6 +778,16 @@ static int dohsql_log_context(struct sqlclntstate *a, struct reqlogger *b)
     return 0;
 }
 
+static uint64_t dohsql_get_client_starttime(struct sqlclntstate *clnt)
+{
+    return 0;
+}
+
+static int dohsql_get_client_retries(struct sqlclntstate *clnt)
+{
+    return 0;
+}
+
 
 static int _shard_connect(struct sqlclntstate *clnt, int i)
 {
