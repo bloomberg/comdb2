@@ -226,7 +226,7 @@ typedef struct decom_struct {
 typedef struct userfunc_info {
     NETFP *func;
     const char *name;
-    int count;
+    int64_t count;
 } userfunc_t;
 
 struct netinfo_struct {

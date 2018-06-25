@@ -70,6 +70,9 @@ typedef void QSTATFREEFP(struct netinfo_struct *netinfo, void *netstat);
 typedef void QSTATITERFP(struct netinfo_struct *netinfo, void *arg,
                          void *qstat);
 
+typedef void UFUNCITERFP(struct netinfo_struct *netinfo, void *arg, char *service,
+                         char *userfunc, int64_t count);
+
 typedef int NETALLOWFP(struct netinfo_struct *netinfo, const char *hostname);
 
 void net_setbufsz(netinfo_type *info, int bufsz);
@@ -431,6 +434,8 @@ void net_set_throttle_percent(netinfo_type *netinfo_ptr, int x);
 void net_set_portmux_register_interval(netinfo_type *netinfo_ptr, int x);
 
 void net_queue_stat_iterate(netinfo_type *netinfo_ptr, QSTATITERFP func,
+                            void *arg);
+void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter,
                             void *arg);
 
 /* Blocks until the net-queue is X% full or less */
