@@ -579,7 +579,7 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
 
 void bdb_get_the_readlock(const char *idstr, const char *function, int line)
 {
-    return bdb_get_readlock(gbl_bdb_state, idstr, function, line);
+    bdb_get_readlock(gbl_bdb_state, idstr, function, line);
 }
 
 /* Release the lock of either type (decrements reference count, releases
@@ -656,7 +656,7 @@ void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
 
 void bdb_relthelock(const char *funcname, int line)
 {
-    return bdb_rellock(gbl_bdb_state, funcname, line);
+    bdb_rellock(gbl_bdb_state, funcname, line);
 }
 
 /* Check that all the locks are released; this ensures that no
