@@ -2430,23 +2430,23 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_BERKDB_FILENUM,
                          "berkdbfilenum", berkdb_receive_rtn);
 
-    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_TEST,
-                         "test", berkdb_receive_test);
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_TEST, "test",
+                         berkdb_receive_test);
 
-    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ADD,
-                         "add", berkdb_receive_msg);
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ADD, "add",
+                         berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ADD_NAME,
                          "add_name", berkdb_receive_msg);
 
-    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DEL,
-                         "del", berkdb_receive_msg);
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DEL, "del",
+                         berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DEL_NAME,
                          "del_name", berkdb_receive_msg);
 
-    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DECOM,
-                         "decom", berkdb_receive_msg);
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DECOM, "decom",
+                         berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DECOM_NAME,
                          "decom_name", berkdb_receive_msg);
@@ -2460,9 +2460,8 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_TRANSFERMASTER,
                          "transfermaster", berkdb_receive_msg);
 
-    net_register_handler(bdb_state->repinfo->netinfo,
-                         "transfermaster_name", USER_TYPE_TRANSFERMASTER_NAME,
-                         berkdb_receive_msg);
+    net_register_handler(bdb_state->repinfo->netinfo, "transfermaster_name",
+                         USER_TYPE_TRANSFERMASTER_NAME, berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_REPTRC,
                          "reptrc", berkdb_receive_msg);

@@ -2460,9 +2460,9 @@ int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
 }
 
 void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter,
-                            void *arg)
+                          void *arg)
 {
-    for (int i=0; i<=MAX_USER_TYPE; i++) {
+    for (int i = 0; i <= MAX_USER_TYPE; i++) {
         if (netinfo_ptr->userfuncs[i].func) {
             uf_iter(netinfo_ptr, arg, netinfo_ptr->service,
                     netinfo_ptr->userfuncs[i].name,
@@ -2518,7 +2518,7 @@ int net_register_hello(netinfo_type *netinfo_ptr, HELLOFP func)
 }
 
 int net_register_handler(netinfo_type *netinfo_ptr, int usertype,
-        const char *name, NETFP func)
+                         const char *name, NETFP func)
 {
     if (usertype < 0 || usertype > MAX_USER_TYPE)
         return -1;
@@ -3945,10 +3945,9 @@ static int process_user_message(netinfo_type *netinfo_ptr,
             Pthread_mutex_unlock(&(host_node_ptr->timestamp_lock));
 
             /* run the user's function */
-            netinfo_ptr->userfuncs[usertype].func(ack_state, 
-                                             netinfo_ptr->usrptr,
-                                             host_node_ptr->host, usertype,
-                                             data, datalen, 1);
+            netinfo_ptr->userfuncs[usertype].func(
+                ack_state, netinfo_ptr->usrptr, host_node_ptr->host, usertype,
+                data, datalen, 1);
             netinfo_ptr->userfuncs[usertype].count++;
 
             /* update timestamp before checking it */

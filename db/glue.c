@@ -4033,8 +4033,8 @@ int open_bdb_env(struct dbenv *dbenv)
         if (net_register_handler(dbenv->handle_sibling, NET_START_SC,
                                  "start_sc", net_start_sc))
             return -1;
-        if (net_register_handler(dbenv->handle_sibling, NET_STOP_SC,
-                                 "stop_sc", net_stop_sc))
+        if (net_register_handler(dbenv->handle_sibling, NET_STOP_SC, "stop_sc",
+                                 net_stop_sc))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_FLUSH_ALL,
                                  "flush_all", net_flush_all))
@@ -4052,8 +4052,9 @@ int open_bdb_env(struct dbenv *dbenv)
                                  "trigger_start", net_trigger_start))
             return -1;
         /* Authentication Check */
-        if (net_register_handler(dbenv->handle_sibling, NET_AUTHENTICATION_CHECK,
-                                 "authentication_check", net_authentication_check))
+        if (net_register_handler(
+                dbenv->handle_sibling, NET_AUTHENTICATION_CHECK,
+                "authentication_check", net_authentication_check))
             return -1;
         if (net_register_allow(dbenv->handle_sibling, net_allow_node))
             return -1;
