@@ -1004,9 +1004,10 @@ struct sql_state {
     const char *sql;                   /* the actual string used */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
 };
+int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
+                      struct sql_state *, struct errstat *);
 int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
-                               struct sql_state *, struct errstat *,
-                               int initial);
+                               struct sql_state *, struct errstat *);
 void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
