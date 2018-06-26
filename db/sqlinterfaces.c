@@ -2618,8 +2618,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     return rc;
 }
 
-static int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                             struct sql_state *rec, struct errstat *err)
+int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
+                      struct sql_state *rec, struct errstat *err)
 {
     rdlock_schema_lk();
     int rc = get_prepared_stmt_int(thd, clnt, rec, err, 1);
@@ -2641,7 +2641,7 @@ static int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 */
 int get_prepared_stmt_try_lock(struct sqlthdstate *thd,
                                struct sqlclntstate *clnt, struct sql_state *rec,
-                               struct errstat *err, int initial)
+                               struct errstat *err)
 {
     if (tryrdlock_schema_lk() != 0) {
         // only schemachange will wrlock(schema)
@@ -2649,7 +2649,7 @@ int get_prepared_stmt_try_lock(struct sqlthdstate *thd,
                        "Returning SQLITE_SCHEMA on tryrdlock failure\n");
         return SQLITE_SCHEMA;
     }
-    int rc = get_prepared_stmt_int(thd, clnt, rec, err, initial);
+    int rc = get_prepared_stmt_int(thd, clnt, rec, err, 0);
     unlock_schema_lk();
     return rc;
 }
