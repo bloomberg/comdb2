@@ -202,6 +202,9 @@ public class ProtobufProtocol implements Protocol {
             if (cdb2SqlQuery.features.size() > 0)
                 _sqlquery.addAllFeatures(cdb2SqlQuery.features);
 
+            if (cdb2SqlQuery.hasReqInfo)
+                _sqlquery.setReqInfo(CDB2_SQLQUERY.reqInfo.newBuilder().setTimestampus(cdb2SqlQuery.reqInfo.timestampus).setOffset(cdb2SqlQuery.reqInfo.num_retries));
+
             _query.setSqlquery(_sqlquery.build());
         }
 

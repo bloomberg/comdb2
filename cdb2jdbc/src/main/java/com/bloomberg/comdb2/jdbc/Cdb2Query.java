@@ -40,6 +40,11 @@ public class Cdb2Query implements Serializable {
         byte[] value;
     }
 
+    static class Cdb2ReqInfo {
+        long timestampus;
+        int num_retries;
+    }
+
     static class Cdb2SqlQuery {
         String dbName;
         String sqlQuery;
@@ -59,6 +64,8 @@ public class Cdb2Query implements Serializable {
         boolean hasRetry = false;
         int retry;
         List<Integer> features;
+        boolean hasReqInfo = false;
+        Cdb2ReqInfo reqInfo;
 
         public Cdb2SqlQuery(String dbName, String sql) {
             String tz = System.getenv("COMDB2TZ");
