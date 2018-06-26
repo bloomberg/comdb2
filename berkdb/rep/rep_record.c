@@ -4644,8 +4644,6 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
             static int lastpr = 0;
             int now;
 
-            if (*commit_gen == 0 && rectype != DB___txn_regop) 
-                abort();
             if (gbl_early_ack_trace && ((now = time(NULL)) - lastpr)) {
                 logmsg(LOGMSG_USER, "%s line %d send early-ack for %d:%d "
                         "commit-gen %d\n", __func__, __LINE__, maxlsn.file,
