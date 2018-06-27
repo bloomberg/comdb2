@@ -1,5 +1,9 @@
 /*
+<<<<<<< HEAD
    Copyright 2018 Bloomberg Finance L.P.
+=======
+   Copyright 2017 Bloomberg Finance L.P.
+>>>>>>> Expose transaction log via comdb2_transaction_log system table
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
