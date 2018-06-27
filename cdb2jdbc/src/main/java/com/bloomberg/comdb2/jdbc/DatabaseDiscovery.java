@@ -123,6 +123,10 @@ public class DatabaseDiscovery {
                             logger.log(Level.WARNING, "Invalid comdb2db timeout.", e);
                         }
                     }
+                    else if (tokens[1].equalsIgnoreCase("stack_at_open")
+                            && !hndl.hasSendStack) {
+                        hndl.sendStack = tokens[2].equalsIgnoreCase("true");
+                    }
                 } else if (tokens[0].equalsIgnoreCase(hndl.comdb2dbName)) {
                     /**
                      * Gets dbnumber and hosts of comdb2db.
