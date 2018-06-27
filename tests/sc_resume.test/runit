@@ -295,6 +295,7 @@ seed1=`get_sc_seed`
 #we can add feature to send('restart') where it will cleanup then exec self
 echo "sending downgrade"
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('downgrade')"
+sleep 5
 
 if [ ! -n "$CLUSTER" ] ; then
     assert_sc_seed $seed1

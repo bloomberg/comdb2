@@ -256,6 +256,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_timepartevents", &systblTimepartEventsModule, 0);
   if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_transaction_log", &systblTransactionLogModule, 0);
+  if (rc == SQLITE_OK)
     rc = systblTypeSamplesInit(db);
   if (rc == SQLITE_OK)
     rc = systblRepNetQueueStatInit(db);
