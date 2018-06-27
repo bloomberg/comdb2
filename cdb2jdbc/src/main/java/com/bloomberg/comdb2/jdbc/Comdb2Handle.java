@@ -23,8 +23,7 @@ import java.text.MessageFormat;
 import com.google.protobuf.*;
 
 import com.bloomberg.comdb2.jdbc.SockIO;
-import com.bloomberg.comdb2.jdbc.Cdb2Query.Cdb2BindValue;
-import com.bloomberg.comdb2.jdbc.Cdb2Query.Cdb2SqlQuery;
+import com.bloomberg.comdb2.jdbc.Cdb2Query.*;
 import com.bloomberg.comdb2.jdbc.Constants.*;
 import com.bloomberg.comdb2.jdbc.Sqlquery.*;
 import com.bloomberg.comdb2.jdbc.Sqlresponse.*;
@@ -129,6 +128,11 @@ public class Comdb2Handle extends AbstractConnection {
     private String sslcrl;
     PEER_SSL_MODE peersslmode = PEER_SSL_MODE.PEER_SSL_ALLOW;
 
+    /* argv0 */
+    boolean sentClientInfo;
+    boolean hasSendStack;
+    boolean sendStack = true;
+
     static class QueryItem {
         byte[] buffer;
         boolean isRead;
@@ -181,6 +185,11 @@ public class Comdb2Handle extends AbstractConnection {
         ret.sslcapass = sslcapass;
         ret.sslcatype = sslcatype;
         ret.peersslmode = peersslmode;
+
+        ret.sentClientInfo = sentClientInfo;
+        ret.hasSendStack = hasSendStack;
+        ret.sendStack = sendStack;
+
         return ret;
     }
 
@@ -310,6 +319,10 @@ public class Comdb2Handle extends AbstractConnection {
         }
 
         verifyretry = val;
+    }
+
+    public void setSendStack(boolean val) {
+        sendStack = val;
     }
 
     void addHosts(List<String> hosts) {
@@ -622,6 +635,13 @@ public class Comdb2Handle extends AbstractConnection {
         Cdb2Query query = new Cdb2Query();
         Cdb2SqlQuery sqlQuery = new Cdb2SqlQuery();
         query.cdb2SqlQuery = sqlQuery;
+
+        if (!sentClientInfo) {
+            sqlQuery.cinfo = new Cdb2ClientInfo();
+            sqlQuery.cinfo.argv0 = Comdb2ClientInfo.getCallerClass();
+            sqlQuery.cinfo.stack = Comdb2ClientInfo.getCallStack(32);
+            sentClientInfo = true;
+        }
 
         sqlQuery.dbName = myDbName;
         sqlQuery.sqlQuery = sql;
@@ -1771,6 +1791,8 @@ readloop:
             return true;
         } else {
             rc = reopen(true);
+            if (rc)
+                sentClientInfo = false;
             tdlog(Level.FINEST, "Connection reopened returned %b", rc);
             return rc;
         }
@@ -1812,6 +1834,7 @@ readloop:
                            sslcertpass, sslca,
                            sslcatype, sslcapass,
                            sslcrl);
+            sentClientInfo = false;
             return true;
         } catch (SSLHandshakeException she) {
             /* this is NOT retry-able. */
