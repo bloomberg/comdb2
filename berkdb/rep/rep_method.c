@@ -1477,6 +1477,8 @@ __rep_get_master(dbenv, master_out, gen, egen)
 	return 0;
 }
 
+extern pthread_mutex_t gbl_durable_lsn_lk;
+
 /*
  * __rep_stat --
  *	Fetch replication statistics.
@@ -1593,10 +1595,10 @@ __rep_stat(dbenv, statp, flags)
 	stats->lc_cache_hits = rep->stat.lc_cache_hits;
 	stats->lc_cache_misses = rep->stat.lc_cache_misses;
 	stats->lc_cache_size = dbenv->lc_cache.memused;
-	pthread_mutex_lock(&dbenv->durable_lsn_lk);
+	pthread_mutex_lock(&gbl_durable_lsn_lk);
     stats->durable_lsn = dbenv->durable_lsn;
     stats->durable_gen = dbenv->durable_generation;
-	pthread_mutex_unlock(&dbenv->durable_lsn_lk);
+	pthread_mutex_unlock(&gbl_durable_lsn_lk);
 
 	*statp = stats;
 	return (0);

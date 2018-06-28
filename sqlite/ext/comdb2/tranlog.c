@@ -22,14 +22,16 @@
 #include "comdb2.h"
 #include "build/db.h"
 #include "dbinc/db_swap.h"
+#include "dbinc_auto/txn_auto.h"
 
 /* Column numbers */
-#define TRANLOG_COLUMN_START    0
-#define TRANLOG_COLUMN_STOP     1
-#define TRANLOG_COLUMN_FLAGS    2
-#define TRANLOG_COLUMN_LSN      3
-#define TRANLOG_COLUMN_RECTYPE  4
-#define TRANLOG_COLUMN_LOG      5
+#define TRANLOG_COLUMN_START        0
+#define TRANLOG_COLUMN_STOP         1
+#define TRANLOG_COLUMN_FLAGS        2
+#define TRANLOG_COLUMN_LSN          3
+#define TRANLOG_COLUMN_RECTYPE      4
+#define TRANLOG_COLUMN_GENERATION   5
+#define TRANLOG_COLUMN_LOG          6
 
 
 /* Modeled after generate_series */
@@ -46,6 +48,7 @@ struct tranlog_cursor {
   char *curLsnStr;
   int flags;           /* 1 if we should block */
   int hitLast;
+  int notDurable;
   int openCursor;
   DB_LOGC *logc;             /* Log Cursor */
   DBT data;
@@ -61,7 +64,7 @@ static int tranlogConnect(
   sqlite3_vtab *pNew;
   int rc;
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE x(minlsn hidden,maxlsn hidden, flags hidden,lsn,rectype,payload)");
+     "CREATE TABLE x(minlsn hidden,maxlsn hidden, flags hidden,lsn,rectype,generation,payload)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -91,6 +94,8 @@ static int tranlogClose(sqlite3_vtab_cursor *cur){
       pCur->logc->close(pCur->logc, 0);
       pCur->openCursor = 0;
   }
+  if (pCur->data.data)
+      free(pCur->data.data);
   if (pCur->minLsnStr)
       sqlite3_free(pCur->minLsnStr);
   if (pCur->maxLsnStr)
@@ -102,8 +107,10 @@ static int tranlogClose(sqlite3_vtab_cursor *cur){
 }
 #include <bdb/bdb_int.h>
 
-extern pthread_cond_t logput_cond;
-extern pthread_mutex_t logput_lk;
+extern pthread_mutex_t gbl_logput_lk;
+extern pthread_cond_t gbl_logput_cond;
+extern pthread_mutex_t gbl_durable_lsn_lk;
+extern pthread_cond_t gbl_durable_lsn_cond;
 
 /*
 ** Advance a tranlog cursor to the next log entry
@@ -111,13 +118,11 @@ extern pthread_mutex_t logput_lk;
 static int tranlogNext(sqlite3_vtab_cursor *cur){
   tranlog_cursor *pCur = (tranlog_cursor*)cur;
   DB_LSN durable_lsn = {0};
-  int durable_gen = 0, rc, getflags=DB_NEXT;
+  int durable_gen=0, rc, getflags;
   bdb_state_type *bdb_state = thedb->bdb_env;
 
-  if (pCur->flags & TRANLOG_FLAGS_DURABLE) {
-      bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv,
-              &durable_lsn, &durable_gen);
-  }
+  if (pCur->notDurable || pCur->hitLast)
+      return SQLITE_OK;
 
   if (!pCur->openCursor) {
       if (rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &pCur->logc, 0)
@@ -135,6 +140,8 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
           pCur->curLsn = pCur->minLsn;
           getflags = DB_SET;
       }
+  } else {
+      getflags = DB_NEXT;
   }
 
   if (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, getflags) != 0) {
@@ -146,15 +153,41 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
               struct timespec ts;
               clock_gettime(CLOCK_REALTIME, &ts);
               ts.tv_nsec += (200 * 1000000);
-              pthread_mutex_lock(&logput_lk);
-              pthread_cond_timedwait(&logput_cond, &logput_lk, &ts);
-              pthread_mutex_unlock(&logput_lk);
+              pthread_mutex_lock(&gbl_logput_lk);
+              pthread_cond_timedwait(&gbl_logput_cond, &gbl_logput_lk, &ts);
+              pthread_mutex_unlock(&gbl_logput_lk);
           } while (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, DB_NEXT));
           rc = pCur->logc->get(pCur->logc, &pCur->curLsn,
                   &pCur->data, DB_NEXT) != 0;
       } else {
           pCur->hitLast = 1;
       }
+  }
+
+  if (pCur->flags & TRANLOG_FLAGS_DURABLE) {
+      do {
+          struct timespec ts;
+          bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv,
+                  &durable_lsn, &durable_gen);
+
+          /* We've already returned this lsn: break when the next is durable */
+          if (log_compare(&durable_lsn, &pCur->curLsn) >= 0)
+              break;
+
+          /* Return immediately if we are non-blocking */
+          else if ((pCur->flags & TRANLOG_FLAGS_BLOCK) == 0) {
+              pCur->notDurable = 1;
+              break;
+          }
+
+          /* Wait on a condition variable */
+          clock_gettime(CLOCK_REALTIME, &ts);
+          ts.tv_nsec += (200 * 1000000);
+          pthread_mutex_lock(&gbl_durable_lsn_lk);
+          pthread_cond_timedwait(&gbl_durable_lsn_cond, &gbl_durable_lsn_lk, &ts);
+          pthread_mutex_unlock(&gbl_durable_lsn_lk);
+
+      } while (1);
   }
   pCur->iRowid++;
   return SQLITE_OK;
@@ -216,7 +249,19 @@ static inline int parse_lsn(const char *lsnstr, DB_LSN *lsn)
     return 0;
 }
 
+static u_int32_t get_generation_from_regop_gen_record(char *data)
+{
+    u_int32_t generation;
+    LOGCOPY_32( &generation, &data[ 4 + 4 + 8 + 4] );
+    return generation;
+}
 
+static u_int32_t get_generation_from_rowlocks_record(char *data)
+{
+    u_int32_t generation;
+    LOGCOPY_32( &generation, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
+    return generation;
+}
 
 /*
 ** Return values of columns for the row at which the series_cursor
@@ -228,7 +273,10 @@ static int tranlogColumn(
   int i                       /* Which column to return */
 ){
   tranlog_cursor *pCur = (tranlog_cursor*)cur;
-  u_int32_t rectype = -1;
+  int rc;
+  u_int32_t rectype = 0;
+  u_int32_t generation = 0;
+
   switch( i ){
     case TRANLOG_COLUMN_START:
         if (!pCur->minLsnStr) {
@@ -258,7 +306,24 @@ static int tranlogColumn(
         break;
     case TRANLOG_COLUMN_RECTYPE:
         if (pCur->data.data)
-            LOGCOPY_32(&rectype, pCur->data.data); sqlite3_result_int64(ctx, rectype);
+            LOGCOPY_32(&rectype, pCur->data.data); 
+        sqlite3_result_int64(ctx, rectype);
+        break;
+    case TRANLOG_COLUMN_GENERATION:
+        if (pCur->data.data)
+            LOGCOPY_32(&rectype, pCur->data.data); 
+
+        if (rectype == DB___txn_regop_gen){
+            generation = get_generation_from_regop_gen_record(pCur->data.data);
+        }
+
+        if (rectype == DB___txn_regop_rowlocks) {
+            generation = get_generation_from_rowlocks_record(pCur->data.data);
+        }
+
+        if (generation > 0) {
+            sqlite3_result_int64(ctx, generation);
+        }
         break;
     case TRANLOG_COLUMN_LOG:
         sqlite3_result_blob(ctx, &pCur->data.data, pCur->data.size, NULL);
@@ -283,7 +348,14 @@ static int tranlogRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
 */
 static int tranlogEof(sqlite3_vtab_cursor *cur){
   tranlog_cursor *pCur = (tranlog_cursor*)cur;
-  if (pCur->hitLast)
+  int rc;
+
+  /* If we are not positioned, position now */
+  if (pCur->openCursor == 0) {
+      if ((rc=tranlogNext(cur)) != SQLITE_OK)
+          return rc;
+  }
+  if (pCur->hitLast || pCur->notDurable)
       return 1;
   if (pCur->maxLsn.file > 0 && log_compare(&pCur->curLsn, &pCur->maxLsn) > 0)
       return 1;
