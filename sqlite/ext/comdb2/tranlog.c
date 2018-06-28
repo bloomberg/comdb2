@@ -1,5 +1,5 @@
 /*
-   Copyright 2017 Bloomberg Finance L.P.
+   Copyright 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -454,7 +454,7 @@ static int tranlogBestIndex(
 ** This following structure defines all the methods for the 
 ** generate_series virtual table.
 */
-sqlite3_module systblTransactionLogModule = {
+sqlite3_module systblTransactionLogsModule = {
   0,                         /* iVersion */
   0,                         /* xCreate */
   tranlogConnect,            /* xConnect */
