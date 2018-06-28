@@ -26,7 +26,7 @@ const sqlite3_module systblClientStatsModule;
 const sqlite3_module systblTimepartModule;
 const sqlite3_module systblTimepartShardsModule;
 const sqlite3_module systblTimepartEventsModule;
-const sqlite3_module systblTransactionLogModule;
+const sqlite3_module systblTransactionLogsModule;
 
 int systblTypeSamplesInit(sqlite3 *db);
 int systblRepNetQueueStatInit(sqlite3 *db);
