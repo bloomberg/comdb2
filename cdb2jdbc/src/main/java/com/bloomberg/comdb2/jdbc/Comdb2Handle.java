@@ -681,9 +681,9 @@ public class Comdb2Handle extends AbstractConnection {
 
         sqlQuery.cnonce = cnonce;
         
-        sqlQuery.hasReqInfo = true;
+        sqlQuery.reqInfo = new Cdb2ReqInfo();
         sqlQuery.reqInfo.timestampus = timestampus;
-        sqlQuery.reqInfo.num_retries = nretry;
+        sqlQuery.reqInfo.numretries = nretry;
 
         if (snapshotFile > 0) { 
             tdlog(Level.FINEST, "Setting hasSnapshotInfo to true because snapshotFile is %d", snapshotFile);

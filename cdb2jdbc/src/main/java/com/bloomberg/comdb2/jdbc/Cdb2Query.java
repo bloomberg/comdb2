@@ -42,7 +42,7 @@ public class Cdb2Query implements Serializable {
 
     static class Cdb2ReqInfo {
         long timestampus;
-        int num_retries;
+        int numretries;
     }
 
     static class Cdb2ClientInfo {
@@ -73,7 +73,6 @@ public class Cdb2Query implements Serializable {
         boolean hasRetry = false;
         int retry;
         List<Integer> features;
-        boolean hasReqInfo = false;
         Cdb2ReqInfo reqInfo;
 
         public Cdb2SqlQuery(String dbName, String sql) {
