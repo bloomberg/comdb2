@@ -109,6 +109,8 @@
 #include <eventlog.h>
 #include "perf.h"
 
+#include "dohsql.h"
+
 /* delete this after comdb2_api.h changes makes it through */
 #define SQLHERR_MASTER_QUEUE_FULL -108
 #define SQLHERR_MASTER_TIMEOUT -109
@@ -346,6 +348,38 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 int read_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
     return clnt->plugin.read_response(clnt, R, D, I);
+}
+
+int column_count(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    struct sql_thread  *thd = NULL;
+
+    if (!clnt) {
+        thd = pthread_getspecific(query_info_key);
+        if (thd)
+            clnt = thd->clnt;
+    }
+
+    if (clnt && clnt->plugin.column_count)
+        return clnt->plugin.column_count(clnt, stmt);
+    
+    return sqlite3_column_count(stmt);
+}
+
+int column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int i)
+{
+    if (clnt && clnt->plugin.column_type)
+        return clnt->plugin.column_type(clnt, stmt, i);
+    
+    return sqlite3_column_type(stmt, i);
+}
+
+int next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    if (clnt && clnt->plugin.column_type)
+        return clnt->plugin.next_row(clnt, stmt);
+    
+   return sqlite3_step(stmt); 
 }
 
 int has_cnonce(struct sqlclntstate *clnt)
@@ -2903,8 +2937,7 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
                            bind_cnt, par_cnt);
         return -1;
     }
-
-    int cols = sqlite3_column_count(rec->stmt);
+    int cols = column_count(clnt, rec->stmt);
     int overrides = override_count(clnt);
     if (overrides && overrides != cols) {
         errstat_set_rcstrf(err, ERR_PREPARE,
@@ -3163,7 +3196,7 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
 static int post_sqlite_processing(struct sqlthdstate *thd,
                                   struct sqlclntstate *clnt,
                                   struct sql_state *rec, int postponed_write,
-                                  int ncols, uint64_t row_id)
+                                  uint64_t row_id)
 {
     test_no_btcursors(thd);
     if (clnt->client_understands_query_stats) {
@@ -3217,10 +3250,8 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         logmsg(LOGMSG_ERROR,
                "Fail to add query to transaction replay session\n");
 
-    int ncols = sqlite3_column_count(stmt);
-
     /* Get first row to figure out column structure */
-    int steprc = sqlite3_step(stmt);
+    int steprc = next_row(clnt, stmt);
     if (steprc == SQLITE_SCHEMA_REMOTE) {
         /* remote schema changed;
            Only safe to recover here
@@ -3286,7 +3317,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         if (clnt->rawnodestats)
             clnt->rawnodestats->sql_rows++;
 
-    } while ((rc = sqlite3_step(stmt)) == SQLITE_ROW);
+    } while ((rc = next_row(clnt, stmt)) == SQLITE_ROW);
 
     /* whatever sqlite returns in sqlite3_step is only used to step out of the
      * loop, otherwise ignored; we are gonna get it from sqlite (or osql.xerr)
@@ -3294,7 +3325,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
 postprocessing:
     /* closing: error codes, postponed write result and so on*/
-    rc = post_sqlite_processing(thd, clnt, rec, postponed_write, ncols, row_id);
+    rc = post_sqlite_processing(thd, clnt, rec, postponed_write, row_id);
 
     return rc;
 }
@@ -3404,7 +3435,12 @@ int handle_sqlite_requests(struct sqlthdstate *thd,
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
         if (rc == SQLITE_SCHEMA_REMOTE) {
             continue;
-        } else if (rc) {
+        if ( rc == SQLITE_SCHEMA_DOHSQL) {
+            rec.sql = strdup(dohsql_get_sql(clnt, 0));
+            continue;
+        }
+            
+        if (rc) {
             int irc = errstat_get_rc(&err);
             /* certain errors are saved, in that case we don't send anything */
             if (irc == ERR_PREPARE)
@@ -3441,7 +3477,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd,
             update_schema_remotes(clnt, &rec);
         }
 
-    } while (rc == SQLITE_SCHEMA_REMOTE);
+    } while (rc == SQLITE_SCHEMA_REMOTE || rc == SQLITE_SCHEMA_DOHSQL);
 
     /* set these after sending response so client gets results a bit sooner */
     post_run_reqlog(thd, clnt, &rec);
@@ -3813,7 +3849,7 @@ static void clean_queries_not_cached_in_srs(struct sqlclntstate *clnt)
     Pthread_mutex_unlock(&clnt->wait_mutex);
 }
 
-static void thr_set_user(int id)
+void thr_set_user(const char *label, int id)
 {
     char thdinfo[40];
     snprintf(thdinfo, sizeof(thdinfo), "appsock %u", id);
@@ -3842,7 +3878,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     if (!clnt->exec_lua_thread)
         abort();
 
-    thr_set_user(clnt->appsock_id);
+    thr_set_user("appsock", clnt->appsock_id);
 
     clnt->osql.timings.query_dispatched = osql_log_time();
     clnt->deque_timeus = comdb2_time_epochus();
@@ -3922,7 +3958,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     assert(sqlthd);
     sqlthd->clnt = clnt;
 
-    thr_set_user(clnt->appsock_id);
+    thr_set_user("appsock", clnt->appsock_id);
 
     clnt->added_to_hist = clnt->isselect = 0;
     clnt->osql.timings.query_dispatched = osql_log_time();
@@ -5007,7 +5043,7 @@ static int execute_sql_query_offload_inner_loop(struct sqlclntstate *clnt,
     int sent;
 
     if (!clnt->fdb_state.remote_sql_sb) {
-        while ((ret = sqlite3_step(stmt)) == SQLITE_ROW)
+        while ((ret = next_row(clnt, stmt)) == SQLITE_ROW)
             ;
     } else {
         bzero(&res, sizeof(res));
@@ -5030,7 +5066,7 @@ static int execute_sql_query_offload_inner_loop(struct sqlclntstate *clnt,
                 Pthread_mutex_lock(&clnt->dtran_mtx);
             }
 
-            ret = sqlite3_step(stmt);
+            ret = next_row(clnt, stmt);
 
             if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
                 clnt->dbtran.mode == TRANLEVEL_SERIAL) {

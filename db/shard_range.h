@@ -47,10 +47,6 @@ struct shard_limits {
 typedef struct shard_limits shard_limits_t;
 
 
-struct par_connector;
-typedef struct par_connector par_connector_t;
-
-
 /* Create a range structure */
 void shard_range_create(struct Parse *pParser, const char *tblname, 
         struct Token *col, struct ExprList *limits);

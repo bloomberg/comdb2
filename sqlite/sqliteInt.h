@@ -21,7 +21,7 @@
 #include "fwd_types.h"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#include "dhrite.h"
+#include "ast.h"
 #endif
 
 #undef debug_raw

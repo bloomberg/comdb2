@@ -262,8 +262,8 @@ void currange_free(CurRange *cr);
 
 struct stored_proc;
 struct lua_State;
-struct par_connector;
-typedef struct par_connector par_connector_t;
+struct dohsql;
+typedef struct dohsql dohsql_t;
 
 
 enum early_verify_error {
@@ -380,6 +380,11 @@ struct plugin_callbacks {
     ret_uint64_func *get_client_starttime; /* newsql_get_client_starttime */
     plugin_func *get_client_retries;       /* newsql_get_client_retries */
     plugin_func *send_intrans_response; /* newsql_send_intrans_response */
+    /* optional */
+    void *state;
+    int (*column_count)(struct sqlclntstate*, sqlite3_stmt*); /* sqlite3_column_count */
+    int (*column_type)(struct sqlclntstate *, sqlite3_stmt*, int i); /* sqlite3_column_type */
+    int (*next_row)(struct sqlclntstate *, sqlite3_stmt*); /* sqlite3_step */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
@@ -415,6 +420,10 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, get_client_starttime);                \
         make_plugin_callback(clnt, name, get_client_retries);                  \
         make_plugin_callback(clnt, name, send_intrans_response);               \
+        (clnt)->plugin.state = NULL;                                           \
+        (clnt)->plugin.column_count = NULL;                                    \
+        (clnt)->plugin.column_type = NULL;                                     \
+        (clnt)->plugin.next_row = NULL;                                        \
     } while (0)
 
 int param_count(struct sqlclntstate *);
@@ -649,7 +658,7 @@ struct sqlclntstate {
     int verify_remote_schemas;
 
     /* sharding scheme */
-    par_connector_t *conns;
+    dohsql_t *conns;
     int nconns;
     int conns_idx;
     int shard_slice;
@@ -1031,6 +1040,10 @@ response_func write_response;
 response_func read_response;
 int sql_writer(SBUF2 *, const char *, int);
 int typestr_to_type(const char *ctype);
+int column_count(struct sqlclntstate *clnt, sqlite3_stmt *stmt);
+int column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int i);
+int next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt);
+
 
 struct query_stats {
     int64_t nfstrap;

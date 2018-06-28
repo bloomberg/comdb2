@@ -431,7 +431,7 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     if (sql_query->n_types) {
         type = sql_query->types[col];
     } else if (stmt) {
-        type = sqlite3_column_type(stmt, col);
+        type = column_type(clnt, stmt, col);
     }
     if (type == SQLITE_NULL) {
         type = typestr_to_type(sqlite3_column_decltype(stmt, col));
@@ -492,7 +492,7 @@ extern int gbl_return_long_column_names;
 
 static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
-    int ncols = sqlite3_column_count(stmt);
+    int ncols = column_count(clnt, stmt);
     struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
@@ -523,7 +523,7 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
 {
     int ncols = arg->ncols;
     sqlite3_stmt *stmt = arg->stmt;
-    if (stmt && sqlite3_column_count(stmt) != ncols) {
+    if (stmt && column_count(clnt, stmt) != ncols) {
         return -1;
     }
     struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
@@ -726,7 +726,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     if (stmt == NULL) {
         return newsql_send_postponed_row(clnt);
     }
-    int ncols = sqlite3_column_count(stmt);
+    int ncols = column_count(clnt, stmt);
     struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
     assert(ncols == appdata->count);
     int flip = 0;
@@ -741,7 +741,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
-        if (sqlite3_column_type(stmt, i) == SQLITE_NULL) {
+        if (column_type(clnt, stmt, i) == SQLITE_NULL) {
             newsql_null(cols, i);
             continue;
         }

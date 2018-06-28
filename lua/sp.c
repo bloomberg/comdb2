@@ -1242,9 +1242,9 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
 
     lua_newtable(lua);
 
-    int ncols = sqlite3_column_count(stmt);
+    int ncols = column_count(clnt, stmt);
     for (int col = 0; col < ncols; col++) {
-        int type = sqlite3_column_type(stmt, col);
+        int type = column_type(clnt, stmt, col);
         switch (type) {
         case SQLITE_NULL: {
             int sqltype =
@@ -2093,7 +2093,7 @@ static int luatable_emit(Lua L)
     SP sp = getsp(L);
     sqlite3_stmt *stmt = get_sqlrow_stmt(L);
     if (stmt) {
-        cols = sqlite3_column_count(stmt);
+        cols = column_count(NULL, stmt);
     } else if (sp->parent->ntypes) {
         push_clnt_cols(L, sp);
         lua_pop(L, 1);
@@ -3158,7 +3158,7 @@ static int dbstmt_emit(Lua L)
     no_stmt_chk(L, dbstmt);
     setup_first_sqlite_step(sp, dbstmt);
     sqlite3_stmt *stmt = dbstmt->stmt;
-    int cols = sqlite3_column_count(stmt);
+    int cols = column_count(NULL, stmt);
     int rc;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         if (l_send_back_row(L, stmt, cols) != 0) {

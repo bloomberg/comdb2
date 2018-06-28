@@ -16,7 +16,8 @@
 
 #include "sqliteInt.h"
 #include "vdbeInt.h"
-#include "dhrite.h"
+#include "ast.h"
+#include "dohsql.h"
 
 
 static int ast_verbouse = 1;
@@ -137,15 +138,6 @@ void ast_destroy(ast_t **ast)
     *ast = NULL;
 }
 
-struct dohsql_node
-{
-    enum ast_type type;
-    char* sql;
-    struct dohsql_node **nodes;
-    int nnodes;
-};
-typedef struct dohsql_node dohsql_node_t;
-
 static dohsql_node_t* gen_oneselect(Vdbe *v, Select *p)
 {
     dohsql_node_t *node;
@@ -164,6 +156,8 @@ static dohsql_node_t* gen_oneselect(Vdbe *v, Select *p)
     node->sql = sqlite_struct_to_string(v, p);
     p->pPrior = prior;
     p->pNext = next;
+
+    node->ncols = p->pEList->nExpr;
 
     if(!node->sql) {
         free(node);
@@ -205,6 +199,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     node->type = AST_TYPE_UNION; 
     node->nodes = (dohsql_node_t**)(node+1);
     node->nnodes = span;
+    node->ncols = p->pEList->nExpr;
 
     crt = p;
     psub = node->nodes;
@@ -372,6 +367,9 @@ int comdb2_check_parallel(ast_t *ast)
         for(i=0;i<node->nnodes;i++) {
             fprintf(stderr,"\t Thread %d: \"%s\"\n", i+1, node->nodes[i]->sql);
         }
+
+        if(dohsql_distribute(node))
+            return 0;
         return 1;
     }
     return 0;

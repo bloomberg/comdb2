@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -14,36 +14,68 @@ See the License for the specific language governing permissions and
 limitations under the License.
  */
 
+#include <poll.h>
 #include "comdb2.h"
 #include "sql.h"
 #include "shard_range.h"
 #include "sqliteInt.h"
 #include "queue.h"
+#include "dohsql.h"
+#include "sqlinterfaces.h"
 
-extern void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt);
-extern int handle_sqlite_requests(struct sqlthdstate *thd,
-                                  struct sqlclntstate *clnt);
-extern void sql_reset_sqlthread(sqlite3 *db, struct sql_thread *thd);
+static int gbl_plugin_api_debug = 1;
 
+struct col {
+    int type;
+    char *name;
+};
+typedef struct col col_t;
 
-struct par_connector
-{
+struct dohsql_connector {
     struct sqlclntstate *clnt;
     queue_type *que;
+    queue_type *que_free;
     pthread_mutex_t mtx;
     int done;
+    char *thr_where;
+    col_t *cols;
+    int ncols;
+    int rc;
 };
+
+typedef struct dohsql_connector dohsql_connector_t;
+
+typedef Mem row_t;
+
+struct dohsql {
+    int nconns;
+    dohsql_connector_t * conns;
+    col_t *cols;
+    int ncols;
+    row_t *row;
+    int row_src;
+    int rc;
+};
+typedef struct dohsql dohsql_t;
 
 static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
                                       void *thddata, int op);
 static void sqlengine_work_shard(struct thdpool *pool, void *work,
                                    void *thddata);
-static int _shard_connect(struct sqlclntstate *clnt, int i);
 static Expr* _create_low(Parse *pParse, struct Token *col, int iColumn,
         ExprList *list, int shard);
 static Expr* _create_high(Parse *pParse, struct Token *col, int iColumn,
         ExprList *list, int shard);
 static int _colIndex(Table *pTab, const char *zCol);
+
+#define GET_CLNT \
+    struct sql_thread *thd = pthread_getspecific(query_info_key); \
+    struct sqlclntstate *clnt = thd->clnt;
+
+#define GET_CONN \
+    GET_CLNT; \
+    dohsql_connector_t *conn;
+
 
 /* Create a range structure */
 void shard_range_create(struct Parse *pParser, const char *tblname, 
@@ -106,8 +138,7 @@ void shard_range_destroy(shard_limits_t *shards) {
  */ 
 int shard_check_parallelism(int iTable)
 {
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->clnt;
+    GET_CLNT;
     struct dbtable *db;
     shard_limits_t *shards;
     int tblnum;
@@ -133,27 +164,7 @@ int shard_check_parallelism(int iTable)
     /* grab first shard */
     thd->crtshard=1;
 
-    /* setup communication queue */
-    clnt->conns = (par_connector_t*)calloc(shards->nlimits, sizeof(par_connector_t));
-    if(!clnt->conns)
-        return SHARD_ERR_MALLOC;
-    /*this initial will take care of the first shard */
-    clnt->conns_idx = thd->crtshard;
-    clnt->nconns = shards->nlimits;
-
-    for(i=0;i<clnt->nconns;i++)
-    {
-        if(rc = _shard_connect(clnt, i+2))
-            return rc;
-
-        /* launch the new sqlite engine a the next shard */
-        rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_shard_pp, clnt->conns[i].clnt, 1, 
-                             sqlcpy=strdup(clnt->sql));
-        if(rc) {
-            free(sqlcpy);
-            return SHARD_ERR_GENERIC;
-        }
-    }
+    /*.... create shards ...*/
 
     return SHARD_NOERR_DONE;
 }
@@ -212,10 +223,7 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
     int created_shadtbl = 0;
     char thdinfo[40];
 
-    /* associate the sql thread with the shard */
-    thd->sqlthd->crtshard = clnt->conns_idx; /* 1 is the originator */
-    snprintf(thdinfo, sizeof(thdinfo), "shard thread %u", clnt->appsock_id);
-    thrman_setid(thrman_self(), thdinfo);
+    thr_set_user("shard thread", clnt->appsock_id);
 
     rdlock_schema_lk();
     sqlengine_prepare_engine(thd, clnt, 0);
@@ -237,10 +245,10 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
     // Set whatever mode this client needs 
     rc = sql_set_transaction_mode(thd->sqldb, clnt, clnt_parent->dbtran.mode);
     osql_shadtbl_begin_query(thedb->bdb_env, clnt);
+    //expanded execute_sql_query 
+    query_stats_setup(thd, clnt);
     */
     
-    /*expanded execute_sql_query */
-    query_stats_setup(thd, clnt);
 
     clnt->query_rc = handle_sqlite_requests(thd, clnt);
 
@@ -254,7 +262,7 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
 
-    thrman_setid(thrman_self(), "[done]");
+    /*thrman_setid(thrman_self(), "[done]");*/
 }
 
 /**
@@ -265,8 +273,7 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
 int comdb2_shard_table_constraints(Parse *pParser, 
         const char *zName, const char *zDatabase, Expr **pWhere)
 {
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->clnt;
+    GET_CLNT;
     struct dbtable *db;
     int idx = clnt->conns_idx; /* this is 1 based */
     Expr *pExprLeft, *pExprRight, *pExpr;
@@ -370,12 +377,12 @@ static int form_new_row(struct sqlclntstate *clnt, int type,
         CDB2SQLRESPONSE *sql_response,
         void *(*alloc)(size_t size), 
         const char *func, int line,
-        par_connector_t *con);
+        dohsql_connector_t *con);
 
 
 static int cache_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                         int ncols, int row_id,
-                        CDB2SQLRESPONSE__Column **columns, par_connector_t *con)
+                        CDB2SQLRESPONSE__Column **columns, dohsql_connector_t *con)
 {
     CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
     int rc = 0;
@@ -444,7 +451,7 @@ static int form_new_row(struct sqlclntstate *clnt, int type,
         CDB2SQLRESPONSE *sql_response,
         void *(*alloc)(size_t size), 
         const char *func, int line,
-        par_connector_t *con)
+        dohsql_connector_t *con)
 {
     struct newsqlheader *phdr;
     cached_row_t *row;
@@ -502,7 +509,7 @@ static int form_new_row(struct sqlclntstate *clnt, int type,
 }
 
 static int cache_row_old(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                        int new_row_data_type, par_connector_t *con)
+                        int new_row_data_type, dohsql_connector_t *con)
 {
     struct fsqlresp resp;
     cached_row_t *row;
@@ -543,7 +550,7 @@ static int cache_row(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     int new_row_data_type, int ncols, int row_id, int rc,
                     CDB2SQLRESPONSE__Column **columns)
 {
-    par_connector_t *con;
+    dohsql_connector_t *con;
     if (!clnt->conns)
         return SHARD_ERR_GENERIC;
     if(clnt->conns_idx<=1 || !(con=&clnt->conns[clnt->conns_idx-2]))
@@ -668,7 +675,7 @@ static Expr* _create_high(Parse *pParser, struct Token *col, int iColumn,
 
     return ret;
 }
-
+/*
 static void mark_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         const char *func, int line)
 {
@@ -676,144 +683,393 @@ static void mark_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     clnt->conns[clnt->conns_idx-2].done = 1;
 }
-
-static int dohsql_write_response(struct sqlclntstate *a, int b, void *c, int d)
+*/
+static int inner_type(sqlite3_stmt *stmt, int col)
 {
+    int type = sqlite3_column_type(stmt, col);
+    if (type == SQLITE_NULL) {
+        type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+    }
+    if (type == SQLITE_DECIMAL) {
+        type = SQLITE_TEXT;
+    }
+    return type;
+}
+
+static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    dohsql_connector_t *conn = (dohsql_connector_t*)clnt->plugin.state;
+    int ncols, i;
+
+    ncols = sqlite3_column_count(stmt);
+
+    if (!conn->cols || conn->ncols < ncols) {
+        conn->cols = (col_t*)realloc(conn->cols, ncols);
+        if(!conn->cols)
+            return -1;
+    }
+    conn->ncols = ncols;
+
+    for(i=0;i<ncols;i++) {
+        conn->cols[i].type = inner_type(stmt, i);
+    }
+    return 0;
+}
+
+/* override sqlite engine */
+static int dohsql_dist_column_count(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    return clnt->conns->ncols;
+}
+
+static int dohsql_dist_column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int i)
+{
+    dohsql_t *conns = clnt->conns;
+
+    if (conns->row_src == 0)
+        return sqlite3_column_type(stmt, i);
+
+    return sqlite3_value_type(&conns->row[i]);
+}
+
+static void add_row(dohsql_t *conns, int i, row_t *row)
+{
+    if (conns->row) {
+        /* put the used row in the fre list */
+        if (i != conns->row_src)
+            pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
+        queue_add(conns->conns[conns->row_src].que_free, conns->row);
+        if (i != conns->row_src)
+            pthread_mutex_unlock(&conns->conns[conns->row_src].mtx);
+    }
+    /* new row */
+    conns->row = row;
+    conns->row_src = i;
+}
+
+/**
+ * this is a non-ordered merge of N engine outputs 
+ *
+ */
+static int dohsql_dist_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    dohsql_t *conns = clnt->conns;
+    row_t *row = NULL;
+    int rc = 0;
+    int i;
+    int empty = 1;
+
+wait_for_others:
+    for(i=1;i<conns->nconns;i++) {
+        if (conns->conns[i].rc == SQLITE_DONE) continue;
+        empty = 0;
+        if (conns->conns[i].rc != SQLITE_ROW) {
+                rc = conns->conns[i].rc;
+                break;
+        }
+        if (!row) {
+            pthread_mutex_lock(&conns->conns[i].mtx);
+            if (queue_count(conns->conns[i].que)>0) {
+                row = queue_next(conns->conns[i].que);
+                add_row(conns, i, row);
+                rc = SQLITE_ROW;
+                break; /* it is debatable if we wanna clear all previous before checking for error */
+            }
+            pthread_mutex_unlock(&conns->conns[i].mtx);
+        }
+    }
+
+    if (rc) /* including SQLITE_ROW */
+        return rc;
+
+    /* no row in others (yet) */
+    if(!row) {
+        if (conns->conns[0].rc != SQLITE_DONE) {
+            rc = sqlite3_step(stmt);
+
+            fprintf(stderr, "%s: rc =%d\n", __func__, rc);
+
+            if (rc == SQLITE_DONE)
+                conns->conns[0].rc = rc;
+            else {
+                if (rc == SQLITE_ROW) {
+                    add_row(conns, 0, NULL);
+                }
+                    
+                return rc;
+            }
+        }
+
+        if (!empty) {
+            poll(NULL, 0, 10);
+            goto wait_for_others;
+        }
+    }
+    return row?rc:SQLITE_DONE;
+}
+
+static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
+{
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s %d\n", pthread_self(), __func__, t); 
+    switch (t) {
+    case RESPONSE_COLUMNS: return inner_columns(c, a);
+    case RESPONSE_COLUMNS_STR: return 0/*newsql_columns_str(c, a, i)*/;
+    case RESPONSE_DEBUG: return 0/*newsql_debug(c, a)*/;
+    case RESPONSE_ERROR: return 0/*newsql_error(c, a, i)*/;
+    case RESPONSE_ERROR_ACCESS: return 0/*newsql_error(c, a, CDB2ERR_ACCESS)*/;
+    case RESPONSE_ERROR_BAD_STATE: return 0/*newsql_error(c, a, CDB2ERR_BADSTATE)*/;
+    case RESPONSE_ERROR_PREPARE: return 0/*newsql_error(c, a, CDB2ERR_PREPARE_ERROR)*/;
+    case RESPONSE_ERROR_REJECT: return 0/*newsql_error(c, a, CDB2ERR_REJECTED)*/;
+    case RESPONSE_FLUSH: return 0/*newsql_flush(c)*/;
+    case RESPONSE_HEARTBEAT: return 0/*newsql_heartbeat(c)*/;
+    case RESPONSE_ROW: return 0 /*newsql_row(c, a, i)*/;
+    case RESPONSE_ROW_LAST: return 0/*newsql_row_last(c)*/;
+    case RESPONSE_ROW_LAST_DUMMY: return 0/*newsql_row_last_dummy(c)*/;
+    case RESPONSE_ROW_LUA: return 0/*newsql_row_lua(c, a)*/;
+    case RESPONSE_ROW_STR: return 0/*newsql_row_str(c, a, i)*/;
+    case RESPONSE_TRACE: return 0/*newsql_trace(c, a)*/;
+    /* fastsql only messages */
+    case RESPONSE_COST:
+    case RESPONSE_EFFECTS:
+    case RESPONSE_ERROR_PREPARE_RETRY: return 0;
+    case RESPONSE_COLUMNS_LUA:
+    default: abort();
+    }
     return 0;
 }
 static int dohsql_read_response(struct sqlclntstate *a, int b, void *c, int d)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s %d\n", pthread_self(), __func__, b); 
     return -1;
 }
 static void *dohsql_save_stmt(struct sqlclntstate *clnt, void *arg)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return strdup(clnt->sql);
 }
 static void *dohsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     clnt->sql = arg;
     return NULL;
 }
 static void *dohsql_destroy_stmt(struct sqlclntstate *clnt, void *arg)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     free(arg);
     return NULL;
 }
 static void *dohsql_print_stmt(struct sqlclntstate *clnt, void *arg)
 {
+     if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return arg;
 }
 static int dohsql_param_count(struct sqlclntstate *a)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s TODO\n", pthread_self(), __func__); 
     return 0;
 }
 static int dohsql_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_param_value(struct sqlclntstate *a, struct param_data *b, int c)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_override_count(struct sqlclntstate *a)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s TODO\n", pthread_self(), __func__); 
     return 0;
 }
 static int dohsql_clr_cnonce(struct sqlclntstate *a)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_has_cnonce(struct sqlclntstate *a)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return 0;
 }
 static int dohsql_set_cnonce(struct sqlclntstate *a)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_get_cnonce(struct sqlclntstate *a, snap_uid_t *b)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_get_snapshot(struct sqlclntstate *a, int *b, int *c)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_upd_snapshot(struct sqlclntstate *a)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_clr_snapshot(struct sqlclntstate *a)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_has_high_availability(struct sqlclntstate *a)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return 0;
 }
 static int dohsql_set_high_availability(struct sqlclntstate *a)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_clr_high_availability(struct sqlclntstate *a)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_get_high_availability(struct sqlclntstate *a)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return 0;
 }
 static void dohsql_add_steps(struct sqlclntstate *a, double b)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
 }
-static void dohsql_setup_client_info(struct sqlclntstate *a, struct sqlthdstate *b, char *c)
+static void dohsql_setup_client_info(struct sqlclntstate *clnt, struct sqlthdstate *b, char *c)
 {
+    dohsql_connector_t *conn = (dohsql_connector_t*)clnt->plugin.state;
+   
+    if(conn->thr_where)
+        thrman_wheref(thrman_self(), "%s", conn->thr_where);
+
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s %s\n", pthread_self(), __func__, (conn->thr_where)?conn->thr_where: "NULL"); 
 }
 static int dohsql_skip_row(struct sqlclntstate *a, uint64_t b)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return 0;
 }
 static int dohsql_log_context(struct sqlclntstate *a, struct reqlogger *b)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s TODO\n", pthread_self(), __func__); 
     return 0;
 }
-
 static uint64_t dohsql_get_client_starttime(struct sqlclntstate *clnt)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return 0;
 }
-
 static int dohsql_get_client_retries(struct sqlclntstate *clnt)
 {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
     return 0;
 }
 
-
-static int _shard_connect(struct sqlclntstate *clnt, int i)
+static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
+        const char *sql)
 {
-    par_connector_t *par = &clnt->conns[i-2]; 
-
-    /* we need to create our own clnt structure; we can revise this later to share the same clnt */
-    par->clnt = (struct sqlclntstate*)calloc(1, sizeof(struct sqlclntstate));
-    if(!par->clnt) {
+    conn->clnt = (struct sqlclntstate*)calloc(1, sizeof(struct sqlclntstate));
+    if(!conn->clnt) {
         return SHARD_ERR_MALLOC;
     }
-    par->que = queue_new();
-    if(!par->que) {
+    conn->que = queue_new();
+    if(!conn->que) {
         return SHARD_ERR_MALLOC;
     }
-    pthread_mutex_init(&par->mtx, NULL);
+    pthread_mutex_init(&conn->mtx, NULL);
 
-    comdb2uuid(par->clnt->osql.uuid);
-    par->clnt->appsock_id = getarchtid();
-    init_sqlclntstate(par->clnt, par->clnt->osql.uuid, 1);
-    par->clnt->conns = clnt->conns;
-    par->clnt->conns_idx = i;
-    par->clnt->origin = clnt->origin;
-    par->clnt->sql = strdup(clnt->sql);
-
-    plugin_set_callbacks(par->clnt, dohsql);
+    comdb2uuid(conn->clnt->osql.uuid);
+    conn->clnt->appsock_id = getarchtid();
+    init_sqlclntstate(conn->clnt, conn->clnt->osql.uuid, 1);
+    conn->clnt->origin = clnt->origin;
+    conn->clnt->sql = strdup(sql);
+    plugin_set_callbacks(conn->clnt, dohsql);
+    conn->clnt->plugin.state = conn;
+    conn->thr_where = strdup(thrman_get_where(thrman_self()));
 
     return SHARD_NOERR;
+}
+
+int dohsql_distribute(dohsql_node_t *node)
+{
+    GET_CLNT;
+    dohsql_t *conns;
+    char *sqlcpy;
+    int i,rc;
+    
+    /* setup communication queue */
+    conns = (dohsql_t*)calloc(1, sizeof(dohsql_t) +
+            node->nnodes*sizeof(dohsql_connector_t));
+    if(!conns)
+        return SHARD_ERR_MALLOC;
+    conns->conns = (dohsql_connector_t*)(conns+1);
+    conns->nconns = node->nnodes;
+    conns->ncols = node->ncols;
+    clnt->conns = conns;
+    /* augment interface */
+    clnt->plugin.column_count = dohsql_dist_column_count;
+    clnt->plugin.column_type = dohsql_dist_column_type;
+    clnt->plugin.next_row = dohsql_dist_next_row;
+
+
+    /* start peers */
+    for(i=0;i<conns->nconns;i++)
+    {
+        if(rc = _shard_connect(clnt, &conns->conns[i], node->nodes[i]->sql))
+            return rc;
+
+        if(i>0) {
+            /* launch the new sqlite engine a the next shard */
+            rc = thdpool_enqueue(gbl_sqlengine_thdpool, 
+                    sqlengine_work_shard_pp, clnt->conns->conns[i].clnt, 1, 
+                    sqlcpy=strdup(node->nodes[i]->sql));
+            if(rc) {
+                free(sqlcpy);
+                return SHARD_ERR_GENERIC;
+            }
+        }
+    }
+
+    return SHARD_NOERR;
+}
+
+const char* dohsql_get_sql(struct sqlclntstate *clnt, int index)
+{
+    return clnt->conns->conns[index].clnt->sql;
 }
 
