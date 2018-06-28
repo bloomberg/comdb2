@@ -134,6 +134,9 @@ void wait_for_sc_to_stop(void)
         logmsg(LOGMSG_INFO, "proceeding with downgrade (waited for: %ds)\n",
                10 - retry);
     }
+    extern int gbl_test_sc_resume_race;
+    if (gbl_test_sc_resume_race)
+        sleep(5);
 }
 
 void allow_sc_to_run(void)

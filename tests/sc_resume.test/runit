@@ -26,6 +26,7 @@ fi
 
 # Number of insert_records function calls
 nins=0
+nupd=0
 
 
 function assertcnt 
@@ -144,6 +145,23 @@ function insert_records
         let j=j+1
     done
     echo "done inserting round $nins"
+}
+
+function update_records
+{
+    j=$1
+    nstop=$2
+    let nupd=nupd+1
+    updfl=update${nupd}.out
+    echo "update $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $updfl
+
+    while [[ $j -le $nstop ]]; do
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set b = 'x' || b where a = $j" &>> $updfl
+        let j=j+1
+        sleep 0.1
+    done
+    echo "done updating round $nupd"
 }
 
 
@@ -287,8 +305,12 @@ insert_records 201 400 &
 
 (cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" &> alter1.out || touch alter1.failed) &
 
-echo "sleep 15 to let alter1 process some rows"
-sleep 15
+echo "sleep 10 to let alter1 process some rows"
+sleep 10
+
+update_records 1 400 &
+
+sleep 2
 
 seed1=`get_sc_seed`
 #if it is a cluster we can downgrade, if it is single node we can restart
@@ -302,6 +324,8 @@ fi
 
 echo "wait for sc and insert commands above to return"
 wait
+
+sleep 5
 
 if [ -n "$CLUSTER" ] ; then
     echo expect the sc command to fail
