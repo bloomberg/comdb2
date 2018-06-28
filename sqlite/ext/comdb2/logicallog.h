@@ -1,10 +1,10 @@
-#ifndef INCLUDED_TRANLOG_H
-#define INCLUDED_TRANLOG_H
+#ifndef INCLUDED_LOGICALLOG_H
+#define INCLUDED_LOGICALLOG_H
 
 /* Define flags for the third argument */
 enum {
-    TRANLOG_FLAGS_BLOCK             = 0x1,
-    TRANLOG_FLAGS_DURABLE           = 0x2,
+    LOGICALLOG_FLAGS_BLOCK           = 0x1,
+    LOGICALLOG_FLAGS_DURABLE         = 0x2,
 };
 
 #endif

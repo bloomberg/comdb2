@@ -247,7 +247,6 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
     pthread_cond_broadcast(&gbl_logput_cond);
     pthread_mutex_unlock(&gbl_logput_lk);
 
-
 	lsn = *lsnp;
 
 	/*if (DB_llog_ltran_start == rectype) */
