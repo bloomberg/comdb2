@@ -302,15 +302,12 @@ echo "starting alter on master node $master"
 force_delay_master
 
 insert_records 201 400 &
+update_records 1 200 &
 
 (cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" &> alter1.out || touch alter1.failed) &
 
 echo "sleep 10 to let alter1 process some rows"
 sleep 10
-
-update_records 1 400 &
-
-sleep 2
 
 seed1=`get_sc_seed`
 #if it is a cluster we can downgrade, if it is single node we can restart
@@ -321,9 +318,6 @@ cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('downg
 if [ ! -n "$CLUSTER" ] ; then
     assert_sc_seed $seed1
 fi
-
-echo "wait for sc and insert commands above to return"
-wait
 
 sleep 5
 
@@ -360,6 +354,9 @@ if [ -n "$CLUSTER" ] ; then
 else 
     assert_sc_status 0
 fi
+
+echo "wait for sc and insert commands above to return"
+wait
 
 wait_for_sc
 
@@ -614,13 +611,13 @@ sleep 30
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c = c + 100000 where 1" > update.out 2>&1 &
 
-sleep 5
-
 echo "kill master node $master in the middle of alter"
 kill_restart_node $master
 
 master=`getmaster`
 echo "master node now $master"
+
+sleep 10
 
 wait_for_sc
 

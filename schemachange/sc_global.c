@@ -135,8 +135,10 @@ void wait_for_sc_to_stop(void)
                10 - retry);
     }
     extern int gbl_test_sc_resume_race;
-    if (gbl_test_sc_resume_race)
+    if (gbl_test_sc_resume_race) {
+        logmsg(LOGMSG_INFO, "%s: sleeping 5s to test\n", __func__);
         sleep(5);
+    }
 }
 
 void allow_sc_to_run(void)
@@ -303,6 +305,7 @@ void live_sc_off(struct dbtable *db)
     db->sc_to = NULL;
     db->sc_from = NULL;
     db->sc_abort = 0;
+    db->sc_downgrading = 0;
     pthread_rwlock_unlock(&sc_live_rwlock);
 }
 
