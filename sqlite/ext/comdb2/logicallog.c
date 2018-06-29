@@ -269,7 +269,7 @@ static int create_logical_payload(logicallog_cursor *pCur, DB_LSN regop_lsn,
     return 0;
 }
 
-static int advance_to_next(logicallog_cursor *pCur)
+static int advance_to_next_commit(logicallog_cursor *pCur)
 {
     bdb_state_type *bdb_state = thedb->bdb_env;
     u_int32_t rectype = 0;
@@ -442,9 +442,9 @@ static int dynstr_append(dynstr_t *dynstr, const char *str, int len)
             dynstr->alloced *= 2;
         }
         if ((dynstr->buf = realloc(dynstr->buf, dynstr->alloced)) == NULL) {
-            logmsg(LOGMSG_FATAL,
+            logmsg(LOGMSG_ERROR,
                    "%s line %d realloc returns NULL\n", __func__, __LINE__);
-            abort();
+            return -1;
         }
     }
     memcpy(&dynstr->buf[dynstr->len], str, len);
@@ -500,6 +500,26 @@ static int dynstr_pr(dynstr_t *dynstr, const char *fmt, ...)
 
 }
 
+static int json_blob(char *buf, int len, struct schema *sc, int ix,
+        dynstr_t *ds) 
+{
+    struct field *f;
+    struct field_conv_opts opts = {0};
+    int rc = 0;
+    assert(ix < sc->nmembers && ix >= 0);
+    rc += dynstr_pr(ds, "{");
+    f = &sc->member[ix];
+    if (stype_is_null(buf)) {
+        rc += dynstr_pr(ds, "\"%s\":NULL", f->name);
+    } else {
+        rc += dynstr_pr(ds, "\"%s\":x'", f->name);
+        rc += dynstr_hx(ds, (void *)buf, len);
+        rc += dynstr_pr(ds, "\"%s\"'", f->name);
+    }
+    rc += dynstr_pr(ds, "}");
+    return rc;
+}
+
 /* Copied & revised from printrecord */
 static int json_record(char *buf, int len, struct schema *sc,
         dynstr_t *ds) 
@@ -515,13 +535,13 @@ static int json_record(char *buf, int len, struct schema *sc,
     int printed = 0;
     int null = 0;
     int flen = 0;
-    int rc;
+    int rc, ret = 0;
 
 #ifdef _LINUX_SOURCE
     opts.flags |= FLD_CONV_LENDIAN;
 #endif
 
-    dynstr_pr(ds, "{");
+    ret += dynstr_pr(ds, "{");
     for (field = 0; field < sc->nmembers; field++) {
         int outdtsz = 0;
         null = 0;
@@ -541,11 +561,11 @@ static int json_record(char *buf, int len, struct schema *sc,
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/,
                 &uival, 8, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                dynstr_pr(ds, ",");
+                ret += dynstr_pr(ds, ",");
             if (null)
-                dynstr_pr(ds, "\"%s\":NULL", f->name);
+                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
             else
-                dynstr_pr(ds, "\"%s\"=%llu", f->name, uival);
+                ret += dynstr_pr(ds, "\"%s\"=%llu", f->name, uival);
             printed=1;
             break;
         case SERVER_BINT:
@@ -553,11 +573,11 @@ static int json_record(char *buf, int len, struct schema *sc,
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, &ival,
                 8, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                dynstr_pr(ds, ",");
+                ret += dynstr_pr(ds, ",");
             if (null)
-                dynstr_pr(ds, "\"%s\":NULL", f->name);
+                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
             else
-                dynstr_pr(ds, "\"%s\":%lld", f->name, ival);
+                ret += dynstr_pr(ds, "\"%s\":%lld", f->name, ival);
             printed=1;
             break;
         case SERVER_BREAL:
@@ -565,11 +585,11 @@ static int json_record(char *buf, int len, struct schema *sc,
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, &dval,
                 8, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                dynstr_pr(ds, ",");
+                ret += dynstr_pr(ds, ",");
             if (null)
-                dynstr_pr(ds, "\"%s\":NULL", f->name);
+                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
             else
-                dynstr_pr(ds, "\"%s\":%f", f->name, dval);
+                ret += dynstr_pr(ds, "\"%s\":%f", f->name, dval);
             printed=1;
             break;
         case SERVER_BCSTR:
@@ -578,11 +598,11 @@ static int json_record(char *buf, int len, struct schema *sc,
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
                 flen + 1, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                dynstr_pr(ds, ",");
+                ret += dynstr_pr(ds, ",");
             if (null)
-                dynstr_pr(ds, "\"%s\":NULL", f->name);
+                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
             else
-                dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
             printed=1;
             break;
         case SERVER_BYTEARRAY:
@@ -591,13 +611,13 @@ static int json_record(char *buf, int len, struct schema *sc,
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
                 flen, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                dynstr_pr(ds, ",");
+                ret += dynstr_pr(ds, ",");
             if (null)
-                dynstr_pr(ds, "\"%s\":NULL", f->name);
+                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
             else {
-                dynstr_pr(ds, "\"%s\":x'", f->name);
-                dynstr_hx(ds, (void *)sval, flen);
-                dynstr_pr(ds, "'");
+                ret += dynstr_pr(ds, "\"%s\":x'", f->name);
+                ret += dynstr_hx(ds, (void *)sval, flen);
+                ret += dynstr_pr(ds, "'");
             }
             printed=1;
 
@@ -608,11 +628,11 @@ static int json_record(char *buf, int len, struct schema *sc,
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
                 flen, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                dynstr_pr(ds, ",");
+                ret += dynstr_pr(ds, ",");
             if (null)
-                dynstr_pr(ds, "\"%s\":NULL", f->name);
+                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
             else {
-                dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
             }
             printed=1;
             break;
@@ -622,11 +642,11 @@ static int json_record(char *buf, int len, struct schema *sc,
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
                 flen, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                dynstr_pr(ds, ",");
+                ret += dynstr_pr(ds, ",");
             if (null)
-                dynstr_pr(ds, "\"%s\":NULL", f->name);
+                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
             else {
-                dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
             }
             printed=1;
             break;
@@ -636,11 +656,11 @@ static int json_record(char *buf, int len, struct schema *sc,
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
                 flen, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                dynstr_pr(ds, ",");
+                ret += dynstr_pr(ds, ",");
             if (null)
-                dynstr_pr(ds, "\"%s\":NULL", f->name);
+                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
             else {
-                dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
             }
             printed=1;
             break;
@@ -650,11 +670,11 @@ static int json_record(char *buf, int len, struct schema *sc,
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
                 flen, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                dynstr_pr(ds, ",");
+                ret += dynstr_pr(ds, ",");
             if (null)
-                dynstr_pr(ds, "\"%s\":NULL", f->name);
+                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
             else {
-                dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
             }
             printed=1;
             break;
@@ -664,11 +684,11 @@ static int json_record(char *buf, int len, struct schema *sc,
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
                 flen, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                dynstr_pr(ds, ",");
+                ret += dynstr_pr(ds, ",");
             if (null)
-                dynstr_pr(ds, "\"%s\":NULL", f->name);
+                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
             else {
-                dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
             }
             printed=1;
             break;
@@ -677,10 +697,10 @@ static int json_record(char *buf, int len, struct schema *sc,
                     __LINE__, f->type);
         }
     }
-    dynstr_pr(ds, "}");
+    ret += dynstr_pr(ds, "}");
     if (sval)
         free(sval);
-    return 0;
+    return ret;
 }
 
 static int produce_update_data_record(logicallog_cursor *pCur, DB_LOGC *logc, 
@@ -731,7 +751,10 @@ static int produce_update_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
 
     assert(dtalen <= MAXRECSZ);
     snprintf(pCur->genid, sizeof(pCur->genid), "x'%llx'", genid);
-    snprintf(pCur->opstring, sizeof(pCur->opstring), "insert");
+    if (dtafile == 0)
+        snprintf(pCur->opstring, sizeof(pCur->opstring), "update-record");
+    else
+        snprintf(pCur->opstring, sizeof(pCur->opstring), "update-blob");
 
     if ((packedbuf = retrieve_packed_memory(pCur)) == NULL) {
         logmsg(LOGMSG_ERROR, "%s line %d allocating memory\n", __func__,
@@ -743,7 +766,7 @@ static int produce_update_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
     /* Reconstruct record from berkley */
     if ((rc = bdb_reconstruct_update(bdb_state, &rec->lsn, 
                     NULL, 0, packedbuf, dtalen, NULL)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing insert for "
+        logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing update for "
                 "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
                 rec->lsn.offset);
         goto done;
@@ -751,7 +774,7 @@ static int produce_update_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
 
     /* Decompress and upgrade to current version */
     if ((rc = decompress_and_upgrade(pCur, pCur->table, packedbuf, dtalen, dtafile == 0)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing insert for "
+        logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing update for "
                 "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
                 rec->lsn.offset);
         goto done;
@@ -765,8 +788,9 @@ static int produce_update_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
             goto done;
         }
     } else {
+        int ix = get_schema_blob_field_idx((char *), table, ".ONDISK", dtafile);
         if ((rc = json_blob(pCur->record, pCur->reclen, pCur->db->schema,
-                        &pCur->jsonrec, dtafile)) != 0) {
+                        ix, &pCur->jsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_blob returns %d\n", __func__,
                     __LINE__, rc);
             goto done;
@@ -830,7 +854,11 @@ static int produce_add_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
 
     assert(dtalen <= MAXRECSZ);
     snprintf(pCur->genid, sizeof(pCur->genid), "x'%llx'", genid);
-    snprintf(pCur->opstring, sizeof(pCur->opstring), "insert");
+    if (dtafile == 0) { 
+        snprintf(pCur->opstring, sizeof(pCur->opstring), "insert-record");
+    } else {
+        snprintf(pCur->opstring, sizeof(pCur->opstring), "insert-blob");
+    }
 
     if ((packedbuf = retrieve_packed_memory(pCur)) == NULL) {
         logmsg(LOGMSG_ERROR, "%s line %d allocating memory\n", __func__,
@@ -864,8 +892,9 @@ static int produce_add_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
             goto done;
         }
     } else {
+        int ix = get_schema_blob_field_idx((char *), table, ".ONDISK", dtafile);
         if ((rc = json_blob(pCur->record, pCur->reclen, pCur->db->schema,
-                        &pCur->jsonrec, dtafile)) != 0) {
+                        ix, &pCur->jsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_blob returns %d\n", __func__,
                     __LINE__, rc);
             goto done;
@@ -968,8 +997,9 @@ static int produce_delete_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
             goto done;
         }
     } else {
+        int ix = get_schema_blob_field_idx((char *), table, ".ONDISK", dtafile);
         if ((rc = json_blob(pCur->record, pCur->reclen, pCur->db->schema,
-                        &pCur->jsonrec, dtafile)) != 0) {
+                        ix, &pCur->jsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_blob returns %d\n", __func__,
                     __LINE__, rc);
             goto done;
@@ -1090,14 +1120,14 @@ static int logicallogNext(sqlite3_vtab_cursor *cur){
       return SQLITE_OK;
 
 again:
-  if (pCur->log == NULL && advance_to_next(pCur) != 0)
+  if (pCur->log == NULL && advance_to_next_commit(pCur) != 0)
       return SQLITE_INTERNAL;
 
   if (pCur->log && !pCur->notDurable && !pCur->hitLast) {
       rc = unpack_logical_record(pCur);
       switch(rc) {
           case 1:
-              logmsg(LOGMSG_ERROR, "%s line %d advancing to next\n",
+              logmsg(LOGMSG_ERROR, "%s line %d unpacking record: continuing\n",
                       __func__, __LINE__);
               goto again;
               break;
