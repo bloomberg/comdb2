@@ -2152,6 +2152,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         return APPSOCK_RETURN_OK;
     }
 
+
     /*
       This flag cannot be set to non-zero until after all the early returns in
       this function; otherwise, we may "leak" appsock connections.
@@ -2167,6 +2168,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     thrman_change_type(thr_self, THRTYPE_APPSOCK_SQL);
 
     reset_clnt(&clnt, sb, 1);
+
+    clnt_register(&clnt);
+
     get_newsql_appdata(&clnt, 32);
     plugin_set_callbacks(&clnt, newsql);
     clnt.tzname[0] = '\0';
@@ -2227,6 +2231,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     if (!clnt.admin && do_query_on_master_check(dbenv, &clnt, sql_query))
         goto done;
 
+    clnt.conninfo.pid = sql_query->client_info->pid;
+    clnt.last_pid = sql_query->client_info->pid;
     clnt.osql.count_changes = 1;
     clnt.dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
     newsql_clr_high_availability(&clnt);

@@ -6232,12 +6232,15 @@ void clnt_register(struct sqlclntstate *clnt) {
     pthread_mutex_lock(&clnt_lk);
     clnt->connid = connid++;
     listc_abl(&clntlist, clnt);
+    printf("register %p top %p bot %p diff %d count %d\n", clnt, clntlist.top, clntlist.bot, clntlist.diff, clntlist.count);
     pthread_mutex_unlock(&clnt_lk);
 }
 
 void clnt_unregister(struct sqlclntstate *clnt) {
     pthread_mutex_lock(&clnt_lk);
+    printf("before unregister %p top %p bot %p diff %d count %d\n", clnt, clntlist.top, clntlist.bot, clntlist.diff, clntlist.count);
     listc_rfl(&clntlist, clnt);
+    printf("after unregister %p top %p bot %p diff %d count %d\n", clnt, clntlist.top, clntlist.bot, clntlist.diff, clntlist.count);
     pthread_mutex_unlock(&clnt_lk);
 }
 
