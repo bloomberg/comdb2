@@ -259,6 +259,10 @@ getmaster() {
     echo $master
 }
 
+function getrepnode {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep -v MASTER | grep lsn | head -1 | cut -f1 -d":" | tr -d '[:space:]'
+}
+
 function force_delay_master
 {
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
@@ -279,6 +283,8 @@ function wait_for_sc
 }
 
 echo "Test with insert, SC should not fail"
+
+sleep 5
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
@@ -373,6 +379,7 @@ do_verify
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("flush")'
 echo restart master to make sure when it comes up we are still at version 1
 kill_restart_node $master 
+sleep 5
 master=`getmaster`
 assert_sc_status 0
 assert_vers t1 1
@@ -406,6 +413,7 @@ fi
 
 #run inserts, updates, deletes and make sure they are in new btrees
 
+sleep 5
 master=`getmaster`
 echo "master node now $master"
 assert_sc_seed $seed2
@@ -455,9 +463,9 @@ if [ -f alter2.failed ] ; then
     cat alter2.out
 fi
 
-
 #run inserts, updates, deletes and make sure they are in new btrees
 
+sleep 5
 master=`getmaster`
 echo "master node now $master"
 assert_sc_seed $seed3
@@ -529,6 +537,7 @@ fi
 
 #run inserts, updates, deletes and make sure they are in new btrees
 
+sleep 5
 master=`getmaster`
 echo "master node now $master"
 assert_sc_seed $seed4
@@ -585,6 +594,7 @@ master=`getmaster`
 echo "master node now $master"
 kill_restart_node $master
 
+sleep 5
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }"
 
 echo "version should now be 5"
@@ -592,32 +602,33 @@ assert_vers t1 5
 do_verify
 
 sleep 5
-
 master=`getmaster`
 echo "master node now $master"
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "select a, c from t1 order by a" > pre.out 2>&1
+mach=`getrepnode`
+
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "select a, c from t1 order by a" > pre.out 2>&1
 
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')"
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('scdelay 0')"
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 60"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "PUT SCHEMACHANGE COMMITSLEEP 60"
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "PUT SCHEMACHANGE COMMITSLEEP 60"
 
 sleep 5
 
-(cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" &> alter22.out || touch alter22.failed) &
+(cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "alter table t1  { `cat t1_2.csc2 ` }" &> alter22.out || touch alter22.failed) &
 
-sleep 30
+sleep 20
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c = c + 100000 where 1" > update.out 2>&1 &
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "update t1 set c = c + 100000 where 1" > update.out 2>&1 &
 
 echo "kill master node $master in the middle of alter"
 kill_restart_node $master
 
+sleep 20
+
 master=`getmaster`
 echo "master node now $master"
-
-sleep 10
 
 wait_for_sc
 
