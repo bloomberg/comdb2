@@ -5190,8 +5190,17 @@ backout:
 
                 iq->priority = priority;
             }
-        } else
+        } else {
             assert(trans == NULL);
+            if (iq->tranddl) {
+                bdb_get_readlock(thedb->bdb_env, "sc_downgrade", __func__,
+                                 __LINE__);
+                if (thedb->master != gbl_mynode) {
+                    backout_schema_changes(iq, NULL);
+                }
+                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+            }
+        }
 
         if (rc == ERR_UNCOMMITABLE_TXN /*&& is_block2sqlmode_blocksql*/) {
             logmsg(

@@ -649,6 +649,7 @@ do_verify
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select a, c from t1 order by a" > post.out 2>&1
 diff pre.out post.out > /dev/null
 if [[ $? == 0 ]]; then
+    cat update.out
     failexit "expected updated column c"
 fi
 

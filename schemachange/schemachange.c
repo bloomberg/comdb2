@@ -574,12 +574,12 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
                             unsigned long long del_keys,
                             blob_buffer_t *oldblobs)
 {
+    if (iq->usedb->sc_downgrading)
+        return ERR_NOMASTER;
+
     if (iq->usedb->sc_from != iq->usedb) {
         return 0;
     }
-
-    if (iq->usedb->sc_downgrading)
-        return ERR_NOMASTER;
 
     int stripe = get_dtafile_from_genid(genid);
     if (stripe < 0 || stripe >= gbl_dtastripe) {
@@ -626,12 +626,12 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
                          blob_buffer_t *blobs, size_t maxblobs, int origflags,
                          int *rrn)
 {
+    if (iq->usedb->sc_downgrading)
+        return ERR_NOMASTER;
+
     if (iq->usedb->sc_from != iq->usedb) {
         return 0;
     }
-
-    if (iq->usedb->sc_downgrading)
-        return ERR_NOMASTER;
 
     int stripe = get_dtafile_from_genid(genid);
     if (stripe < 0 || stripe >= gbl_dtastripe) {
@@ -721,12 +721,12 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                             int origflags, int rrn, int deferredAdd,
                             blob_buffer_t *oldblobs, blob_buffer_t *newblobs)
 {
+    if (iq->usedb->sc_downgrading)
+        return ERR_NOMASTER;
+
     if (iq->usedb->sc_from != iq->usedb) {
         return 0;
     }
-
-    if (iq->usedb->sc_downgrading)
-        return ERR_NOMASTER;
 
     int stripe = get_dtafile_from_genid(oldgenid);
     if (stripe < 0 || stripe >= gbl_dtastripe) {
