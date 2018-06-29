@@ -31,7 +31,8 @@
 #define TRANLOG_COLUMN_LSN          3
 #define TRANLOG_COLUMN_RECTYPE      4
 #define TRANLOG_COLUMN_GENERATION   5
-#define TRANLOG_COLUMN_LOG          6
+#define TRANLOG_COLUMN_TIMESTAMP    6
+#define TRANLOG_COLUMN_LOG          7
 
 
 /* Modeled after generate_series */
@@ -64,7 +65,7 @@ static int tranlogConnect(
   sqlite3_vtab *pNew;
   int rc;
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE x(minlsn hidden,maxlsn hidden, flags hidden,lsn,rectype,generation,payload)");
+     "CREATE TABLE x(minlsn hidden,maxlsn hidden, flags hidden,lsn,rectype,generation,timestamp,payload)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -249,6 +250,13 @@ static inline int parse_lsn(const char *lsnstr, DB_LSN *lsn)
     return 0;
 }
 
+static u_int64_t get_timestamp_from_regop_gen_record(char *data)
+{
+    u_int64_t timestamp;
+    LOGCOPY_64( &timestamp, &data[ 4 + 4 + 8 + 4 + 4 + 8] );
+    return timestamp;
+}
+
 static u_int32_t get_generation_from_regop_gen_record(char *data)
 {
     u_int32_t generation;
@@ -256,10 +264,38 @@ static u_int32_t get_generation_from_regop_gen_record(char *data)
     return generation;
 }
 
-static u_int32_t get_generation_from_rowlocks_record(char *data)
+static u_int64_t get_timestamp_from_regop_rowlocks_record(char *data)
+{
+    u_int64_t timestamp;
+    LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8] );
+    return timestamp;
+}
+
+static u_int32_t get_generation_from_regop_rowlocks_record(char *data)
 {
     u_int32_t generation;
     LOGCOPY_32( &generation, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
+    return generation;
+}
+
+static u_int32_t get_timestamp_from_regop_record(char *data)
+{
+    u_int32_t timestamp;
+    LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 4] );
+    return timestamp;
+}
+
+static u_int32_t get_timestamp_from_ckp_record(char *data)
+{
+    u_int32_t timestamp;
+    LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 8] );
+    return timestamp;
+}
+
+static u_int32_t get_generation_from_ckp_record(char *data)
+{
+    u_int32_t generation;
+    LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 8 + 4] );
     return generation;
 }
 
@@ -271,11 +307,13 @@ static int tranlogColumn(
   sqlite3_vtab_cursor *cur,   /* The cursor */
   sqlite3_context *ctx,       /* First argument to sqlite3_result_...() */
   int i                       /* Which column to return */
-){
+)
+{
   tranlog_cursor *pCur = (tranlog_cursor*)cur;
   int rc;
   u_int32_t rectype = 0;
   u_int32_t generation = 0;
+  int64_t timestamp = 0;
 
   switch( i ){
     case TRANLOG_COLUMN_START:
@@ -318,12 +356,44 @@ static int tranlogColumn(
         }
 
         if (rectype == DB___txn_regop_rowlocks) {
-            generation = get_generation_from_rowlocks_record(pCur->data.data);
+            generation = get_generation_from_regop_rowlocks_record(pCur->data.data);
+        }
+
+        if (rectype == DB___txn_ckp) {
+            generation = get_generation_from_ckp_record(pCur->data.data);
         }
 
         if (generation > 0) {
             sqlite3_result_int64(ctx, generation);
         }
+        break;
+
+    case TRANLOG_COLUMN_TIMESTAMP:
+        if (pCur->data.data)
+            LOGCOPY_32(&rectype, pCur->data.data); 
+
+        if (rectype == DB___txn_regop_gen){
+            timestamp = get_timestamp_from_regop_gen_record(pCur->data.data);
+        }
+
+        if (rectype == DB___txn_regop_rowlocks) {
+            timestamp = get_timestamp_from_regop_rowlocks_record(pCur->data.data);
+        }
+
+        if (rectype == DB___txn_regop) {
+            timestamp = get_timestamp_from_regop_record(pCur->data.data);
+        }
+
+        if (rectype == DB___txn_ckp) {
+            timestamp = get_timestamp_from_ckp_record(pCur->data.data);
+        }
+
+        if (timestamp > 0) {
+            sqlite3_result_int64(ctx, timestamp);
+        }
+        break;
+
+
         break;
     case TRANLOG_COLUMN_LOG:
         sqlite3_result_blob(ctx, &pCur->data.data, pCur->data.size, NULL);
