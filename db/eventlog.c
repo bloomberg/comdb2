@@ -524,6 +524,8 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
             cson_object_set(obj, "clientretries",
                     cson_new_int(clientretries));
         }
+        cson_object_set(obj, "connid", cson_new_int(logger->clnt->connid));
+        cson_object_set(obj, "pid", cson_new_int(logger->clnt->last_pid));
     }
 
     eventlog_context(obj, logger);
