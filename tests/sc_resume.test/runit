@@ -620,7 +620,17 @@ sleep 5
 
 sleep 20
 
-cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "update t1 set c = c + 100000 where 1" > update.out 2>&1 &
+function update_column_c
+{
+    while true ; do
+        cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "update t1 set c = c + 100000 where 1" > update.out 2>&1
+        grep "change nodes" update.out
+        if [[ $? != 0 ]]; then
+            break
+        fi
+    done
+}
+update_column_c &
 
 echo "kill master node $master in the middle of alter"
 kill_restart_node $master
