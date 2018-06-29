@@ -102,7 +102,7 @@ static int logicallogConnect(
   sqlite3_vtab *pNew;
   int rc;
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE x(minlsn hidden,maxlsn hidden, flags hidden,commitlsn,genid,operation,record)");
+     "CREATE TABLE x(minlsn hidden,maxlsn hidden,flags hidden,commitlsn,opnum,genid,operation,tablename,record)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -257,8 +257,8 @@ static int create_logical_payload(logicallog_cursor *pCur, DB_LSN regop_lsn,
         return SQLITE_NOMEM;
     }
 
-    if (pCur->log = parse_log_for_shadows(bdb_state, logc, &lsn, 1, &bdberr)) {
-        logmsg(LOGMSG_ERROR, "%d line %d parse_log_for_shadows failed for "
+    if ((pCur->log = parse_log_for_shadows(bdb_state, logc, &lsn, 0, &bdberr)) == NULL) {
+        logmsg(LOGMSG_INFO, "%d line %d parse_log_for_shadows failed for "
                 "%d:%d\n", __func__, __LINE__, lsn.file, lsn.offset);
         logc->close(logc, 0);
         return 1;
@@ -315,13 +315,13 @@ again:
             } else {
                 pCur->hitLast = 1;
             }
-            getflags = DB_NEXT;
-            if (pCur->data.data)
-                LOGCOPY_32(&rectype, pCur->data.data); 
-            else 
-                rectype = 0;
         }
-    } while(!pCur->hitLast && is_commit(rectype));
+        getflags = DB_NEXT;
+        if (pCur->data.data)
+            LOGCOPY_32(&rectype, pCur->data.data); 
+        else 
+            rectype = 0;
+    } while(!pCur->hitLast && !is_commit(rectype));
 
     if (pCur->flags & LOGICALLOG_FLAGS_DURABLE) {
         do {
@@ -390,7 +390,7 @@ static void *retrieve_unpacked_memory(logicallog_cursor *pCur)
 }
 
 static int decompress_and_upgrade(logicallog_cursor *pCur, char *table,
-        void *dta, int dtalen)
+        void *dta, int dtalen, int isrec)
 {
     char *unpackedbuf;
     int rc;
@@ -416,7 +416,7 @@ static int decompress_and_upgrade(logicallog_cursor *pCur, char *table,
 
     pCur->record = pCur->odh.recptr;
 
-    if ((rc = vtag_to_ondisk_vermap(pCur->db, pCur->record, &pCur->reclen,
+    if (isrec && (rc = vtag_to_ondisk_vermap(pCur->db, pCur->record, &pCur->reclen,
                     pCur->odh.csc2vers)) <= 0) {
         logmsg(LOGMSG_ERROR, "%s line %d vtag-to-ondisk error %d\n", __func__,
                 __LINE__, rc);
@@ -686,13 +686,199 @@ static int json_record(char *buf, int len, struct schema *sc,
 static int produce_update_data_record(logicallog_cursor *pCur, DB_LOGC *logc, 
         bdb_osql_log_rec_t *rec, DBT *logdta)
 {
-    return -1;
+    int rc, dtalen, page, index;
+    unsigned long long genid;
+    short dtafile, dtastripe;
+    void *packedbuf = NULL;
+    void *unpackedbuf = NULL;
+    char table[64] = {0};
+    llog_undo_upd_dta_args *upd_dta = NULL;
+    llog_undo_upd_dta_lk_args *upd_dta_lk = NULL;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+
+    if (pCur->table) {
+        free(pCur->table);
+        pCur->table = NULL;
+    }
+
+    if (rec->type == DB_llog_undo_upd_dta_lk) {
+        if ((rc = llog_undo_upd_dta_lk_read(bdb_state->dbenv,
+                        logdta->data,&upd_dta_lk)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s line %d error unpacking %d\n",
+                    __func__, __LINE__, rc);
+            rc = SQLITE_INTERNAL;
+            goto done;
+        }
+        genid = upd_dta_lk->genid;
+        dtafile = upd_dta_lk->dtafile;
+        dtastripe = upd_dta_lk->dtastripe;
+        dtalen = upd_dta_lk->dtalen;
+        pCur->table = strdup((char *)(upd_dta_lk->table.data));
+    } else {
+        if ((rc = llog_undo_upd_dta_read(bdb_state->dbenv, logdta->data,
+                &upd_dta)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s line %d error unpacking %d\n",
+                    __func__, __LINE__, rc);
+            rc = SQLITE_INTERNAL;
+            goto done;
+        }
+        genid = upd_dta->genid;
+        dtafile = upd_dta->dtafile;
+        dtastripe = upd_dta->dtastripe;
+        dtalen = upd_dta->dtalen;
+        pCur->table = strdup((char *)(upd_dta->table.data));
+    }
+
+    assert(dtalen <= MAXRECSZ);
+    snprintf(pCur->genid, sizeof(pCur->genid), "x'%llx'", genid);
+    snprintf(pCur->opstring, sizeof(pCur->opstring), "insert");
+
+    if ((packedbuf = retrieve_packed_memory(pCur)) == NULL) {
+        logmsg(LOGMSG_ERROR, "%s line %d allocating memory\n", __func__,
+                __LINE__);
+        rc = SQLITE_NOMEM;
+        goto done;
+    }
+
+    /* Reconstruct record from berkley */
+    if ((rc = bdb_reconstruct_update(bdb_state, &rec->lsn, 
+                    NULL, 0, packedbuf, dtalen, NULL)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing insert for "
+                "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
+                rec->lsn.offset);
+        goto done;
+    }
+
+    /* Decompress and upgrade to current version */
+    if ((rc = decompress_and_upgrade(pCur, pCur->table, packedbuf, dtalen, dtafile == 0)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing insert for "
+                "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
+                rec->lsn.offset);
+        goto done;
+    }
+
+    if (dtafile == 0) {
+        if ((rc = json_record(pCur->record, pCur->reclen, pCur->db->schema,
+                        &pCur->jsonrec)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s line %d json_record returns %d\n", __func__,
+                    __LINE__, rc);
+            goto done;
+        }
+    } else {
+        if ((rc = json_blob(pCur->record, pCur->reclen, pCur->db->schema,
+                        &pCur->jsonrec, dtafile)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s line %d json_blob returns %d\n", __func__,
+                    __LINE__, rc);
+            goto done;
+        }
+    }
+
+done:
+    if (upd_dta)
+        free(upd_dta);
+    if (upd_dta_lk)
+        free(upd_dta_lk);
+
+    return rc;
 }
 
 static int produce_add_data_record(logicallog_cursor *pCur, DB_LOGC *logc, 
         bdb_osql_log_rec_t *rec, DBT *logdta)
 {
-    return -1;
+    int rc, dtalen, page, index;
+    unsigned long long genid;
+    short dtafile, dtastripe;
+    void *packedbuf = NULL;
+    void *unpackedbuf = NULL;
+    char table[64] = {0};
+    llog_undo_add_dta_args *add_dta = NULL;
+    llog_undo_add_dta_lk_args *add_dta_lk = NULL;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+
+    if (pCur->table) {
+        free(pCur->table);
+        pCur->table = NULL;
+    }
+
+    if (rec->type == DB_llog_undo_add_dta_lk) {
+        if ((rc = llog_undo_add_dta_lk_read(bdb_state->dbenv,
+                        logdta->data,&add_dta_lk)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s line %d error unpacking %d\n",
+                    __func__, __LINE__, rc);
+            rc = SQLITE_INTERNAL;
+            goto done;
+        }
+        genid = add_dta_lk->genid;
+        dtafile = add_dta_lk->dtafile;
+        dtastripe = add_dta_lk->dtastripe;
+        dtalen = add_dta_lk->dtalen;
+        pCur->table = strdup((char *)(add_dta_lk->table.data));
+    } else {
+        if ((rc = llog_undo_add_dta_read(bdb_state->dbenv, logdta->data,
+                &add_dta)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s line %d error unpacking %d\n",
+                    __func__, __LINE__, rc);
+            rc = SQLITE_INTERNAL;
+            goto done;
+        }
+        genid = add_dta->genid;
+        dtafile = add_dta->dtafile;
+        dtastripe = add_dta->dtastripe;
+        dtalen = add_dta->dtalen;
+        pCur->table = strdup((char *)(add_dta->table.data));
+    }
+
+    assert(dtalen <= MAXRECSZ);
+    snprintf(pCur->genid, sizeof(pCur->genid), "x'%llx'", genid);
+    snprintf(pCur->opstring, sizeof(pCur->opstring), "insert");
+
+    if ((packedbuf = retrieve_packed_memory(pCur)) == NULL) {
+        logmsg(LOGMSG_ERROR, "%s line %d allocating memory\n", __func__,
+                __LINE__);
+        rc = SQLITE_NOMEM;
+        goto done;
+    }
+
+    /* Reconstruct record from berkley */
+    if ((rc = bdb_reconstruct_add(bdb_state, &rec->lsn, 
+                    NULL, 0, packedbuf, dtalen, NULL)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing insert for "
+                "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
+                rec->lsn.offset);
+        goto done;
+    }
+
+    /* Decompress and upgrade to current version */
+    if ((rc = decompress_and_upgrade(pCur, pCur->table, packedbuf, dtalen, dtafile == 0)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing insert for "
+                "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
+                rec->lsn.offset);
+        goto done;
+    }
+
+    if (dtafile == 0) {
+        if ((rc = json_record(pCur->record, pCur->reclen, pCur->db->schema,
+                        &pCur->jsonrec)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s line %d json_record returns %d\n", __func__,
+                    __LINE__, rc);
+            goto done;
+        }
+    } else {
+        if ((rc = json_blob(pCur->record, pCur->reclen, pCur->db->schema,
+                        &pCur->jsonrec, dtafile)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s line %d json_blob returns %d\n", __func__,
+                    __LINE__, rc);
+            goto done;
+        }
+    }
+
+done:
+    if (add_dta)
+        free(add_dta);
+    if (add_dta_lk)
+        free(add_dta_lk);
+
+    return rc;
 }
 
 static int produce_delete_data_record(logicallog_cursor *pCur, DB_LOGC *logc, 
@@ -716,7 +902,7 @@ static int produce_delete_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
     if (rec->type == DB_llog_undo_del_dta_lk) {
         if ((rc = llog_undo_del_dta_lk_read(bdb_state->dbenv,
                         logdta->data,&del_dta_lk)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s line %d error unpacking del_dta_lk, %d\n",
+            logmsg(LOGMSG_ERROR, "%s line %d error unpacking %d\n",
                     __func__, __LINE__, rc);
             rc = SQLITE_INTERNAL;
             goto done;
@@ -729,7 +915,7 @@ static int produce_delete_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
     } else {
         if ((rc = llog_undo_del_dta_read(bdb_state->dbenv, logdta->data,
                 &del_dta)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s line %d error unpacking del_dta, %d\n",
+            logmsg(LOGMSG_ERROR, "%s line %d error unpacking %d\n",
                     __func__, __LINE__, rc);
             rc = SQLITE_INTERNAL;
             goto done;
@@ -743,7 +929,12 @@ static int produce_delete_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
 
     assert(dtalen <= MAXRECSZ);
     snprintf(pCur->genid, sizeof(pCur->genid), "x'%llx'", genid);
-    snprintf(pCur->opstring, sizeof(pCur->opstring), "delete");
+
+    if (dtafile == 0) {
+        snprintf(pCur->opstring, sizeof(pCur->opstring), "delete-record");
+    } else {
+        snprintf(pCur->opstring, sizeof(pCur->opstring), "delete-blob");
+    }
 
     if ((packedbuf = retrieve_packed_memory(pCur)) == NULL) {
         logmsg(LOGMSG_ERROR, "%s line %d allocating memory\n", __func__,
@@ -762,15 +953,27 @@ static int produce_delete_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
     }
 
     /* Decompress and upgrade to current version */
-    if ((rc = decompress_and_upgrade(pCur, pCur->table, packedbuf, dtalen)) != 0) {
+    if ((rc = decompress_and_upgrade(pCur, pCur->table, packedbuf, dtalen, dtafile == 0)) != 0) {
         logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing delete for "
                 "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
                 rec->lsn.offset);
         goto done;
     }
 
-    if ((rc = json_record(pCur->record, pCur->reclen, pCur->db->schema,
-                    &pCur->jsonrec)) != 0) {
+    if (dtafile == 0) {
+        if ((rc = json_record(pCur->record, pCur->reclen, pCur->db->schema,
+                        &pCur->jsonrec)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s line %d json_record returns %d\n", __func__,
+                    __LINE__, rc);
+            goto done;
+        }
+    } else {
+        if ((rc = json_blob(pCur->record, pCur->reclen, pCur->db->schema,
+                        &pCur->jsonrec, dtafile)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s line %d json_blob returns %d\n", __func__,
+                    __LINE__, rc);
+            goto done;
+        }
     }
 
 done:
@@ -789,17 +992,7 @@ static int unpack_logical_record(logicallog_cursor *pCur)
     u_int32_t rectype;
     DBT logdta = {0};
     DB_LOGC *logc;
-    int rc;
-
-    if ((rec = listc_rbl(&pCur->log->impl->recs)) == NULL)
-        abort();
-
-    dynstr_reset(&pCur->jsonrec);
-    if (listc_size(&pCur->log->impl->recs) == 0) {
-        /* Tear-down */
-        bdb_osql_log_destroy(pCur->log);
-        pCur->log = NULL;
-    }
+    int rc, produced_row=0;
 
     if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0))
             != 0) { 
@@ -808,59 +1001,80 @@ static int unpack_logical_record(logicallog_cursor *pCur)
         return SQLITE_INTERNAL;
     }
 
-    logdta.flags = DB_DBT_REALLOC;
-    if ((rc = logc->get(logc, &rec->lsn, &logdta, DB_SET)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s line %d error %d retrieving lsn %d:%d\n",
-                __func__, __LINE__, rc, rec->lsn.file, rec->lsn.offset);
-        logc->close(logc, 0);
-        return SQLITE_INTERNAL;
-    }
-    LOGCOPY_32(&rectype, logdta.data);
-    assert(rectype == rec->type);
+    dynstr_reset(&pCur->jsonrec);
 
-    switch(rec->type) {
-        case DB_llog_undo_del_dta:
-        case DB_llog_undo_del_dta_lk:
-            if ((rc = produce_delete_data_record(pCur, logc, rec, &logdta)) == 0)
-                pCur->subop++;
-            break;
+    while (produced_row == 0 && (rec = listc_rbl(&pCur->log->impl->recs) != NULL)) {
 
-/*
-        case DB_llog_undo_del_ix:
-        case DB_llog_undo_del_ix_lk:
-            rc = produce_delete_index_record(pCur, logc, rec, &logdta);
-            break;
-*/
-        case DB_llog_undo_add_dta:
-        case DB_llog_undo_add_dta_lk:
-            if ((rc = produce_add_data_record(pCur, logc, rec, &logdta)) == 0)
-                pCur->subop++;
-            break;
-/*
-        case DB_llog_undo_add_ix:
-        case DB_llog_undo_add_ix_lk:
-            rc = produce_add_index_record(pCur, logc, rec, &logdta);
-            break;
-*/
-        case DB_llog_undo_upd_dta:
-        case DB_llog_undo_upd_dta_lk:
-            if ((rc = produce_update_data_record(pCur, logc, rec, &logdta)) == 0)
-                pCur->subop++;
-            break;
-/*
-        case DB_llog_undo_upd_ix:
-        case DB_llog_undo_upd_ix_lk:
-            rc = produce_update_index_record(pCur, logc, rec, &logdta);
-            break;
-        case DB_llog_ltran_comprec:
-            rc = produce_compensation_record(pCur, logc, rec, &logdta);
-            break;
-*/
+        if (listc_size(&pCur->log->impl->recs) == 0) {
+            /* Tear-down */
+            bdb_osql_log_destroy(pCur->log);
+            pCur->log = NULL;
+        }
+
+        logdta.flags = DB_DBT_REALLOC;
+        if ((rc = logc->get(logc, &rec->lsn, &logdta, DB_SET)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s line %d error %d retrieving lsn %d:%d\n",
+                    __func__, __LINE__, rc, rec->lsn.file, rec->lsn.offset);
+            logc->close(logc, 0);
+            return SQLITE_INTERNAL;
+        }
+        LOGCOPY_32(&rectype, logdta.data);
+        assert(rectype == rec->type);
+
+        switch(rec->type) {
+            case DB_llog_undo_del_dta:
+            case DB_llog_undo_del_dta_lk:
+                if ((rc = produce_delete_data_record(pCur, logc, rec, &logdta)) == 0) {
+                    pCur->subop++;
+                    produced_row=1;
+                }
+                break;
+
+                /*
+                   case DB_llog_undo_del_ix:
+                   case DB_llog_undo_del_ix_lk:
+                   rc = produce_delete_index_record(pCur, logc, rec, &logdta);
+                   break;
+                   */
+            case DB_llog_undo_add_dta:
+            case DB_llog_undo_add_dta_lk:
+                if ((rc = produce_add_data_record(pCur, logc, rec, &logdta)) == 0) {
+                    pCur->subop++;
+                    produced_row=1;
+                }
+                break;
+                /*
+                   case DB_llog_undo_add_ix:
+                   case DB_llog_undo_add_ix_lk:
+                   rc = produce_add_index_record(pCur, logc, rec, &logdta);
+                   break;
+                   */
+            case DB_llog_undo_upd_dta:
+            case DB_llog_undo_upd_dta_lk:
+                if ((rc = produce_update_data_record(pCur, logc, rec, &logdta)) == 0) {
+                    pCur->subop++;
+                    produced_row=1;
+                }
+                break;
+                /*
+                   case DB_llog_undo_upd_ix:
+                   case DB_llog_undo_upd_ix_lk:
+                   rc = produce_update_index_record(pCur, logc, rec, &logdta);
+                   break;
+                   case DB_llog_ltran_comprec:
+                   rc = produce_compensation_record(pCur, logc, rec, &logdta);
+                   break;
+                   */
+            default:
+                logmsg(LOGMSG_INFO, "%s line %d skipping %d\n", __func__, __LINE__,
+                        rec->type);
+                break;
+        }
+        free(rec);
     }
     logc->close(logc, 0);
-
-
-    return rc;
+    if (produced_row && rc == 0)
+        return 0;
 }
 
 /*
@@ -875,12 +1089,23 @@ static int logicallogNext(sqlite3_vtab_cursor *cur){
   if (pCur->notDurable || pCur->hitLast)
       return SQLITE_OK;
 
+again:
   if (pCur->log == NULL && advance_to_next(pCur) != 0)
       return SQLITE_INTERNAL;
 
   if (pCur->log && !pCur->notDurable && !pCur->hitLast) {
-      if ((rc = unpack_logical_record(pCur)) != 0) {
-          return SQLITE_INTERNAL;
+      rc = unpack_logical_record(pCur);
+      switch(rc) {
+          case 1:
+              logmsg(LOGMSG_ERROR, "%s line %d advancing to next\n",
+                      __func__, __LINE__);
+              goto again;
+              break;
+          case 0:
+              break;
+          default:
+              return SQLITE_INTERNAL;
+              break;
       }
   }
 
