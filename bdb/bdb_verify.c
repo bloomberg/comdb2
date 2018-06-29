@@ -708,6 +708,7 @@ static int bdb_verify_ll(
             buf_put(&genid, sizeof(unsigned long long),
                     (uint8_t *)&genid_flipped,
                     (uint8_t *)&genid_flipped + sizeof(unsigned long long));
+            genid_flipped = bdb_genid_to_host_order(genid);
 #else
             genid_flipped = genid;
 #endif

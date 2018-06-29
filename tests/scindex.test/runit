@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+set -x
 # Grab my database name.
 dbnm=$1
 
@@ -474,7 +475,9 @@ function do_verify
 
 function do_schemachange
 {
+do_verify
 sleep 2
+do_verify
 echo "Add int index"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
@@ -492,6 +495,7 @@ EOF
 if [[ $? != 0 ]]; then
     errquit "Schemachange has failed."
 fi
+echo "do_verify after first schema change"
 do_verify
 
 sleep 2
@@ -512,6 +516,7 @@ EOF
 if [[ $? != 0 ]]; then
     errquit "Schemachange has failed."
 fi
+echo "do_verify after second schema change"
 do_verify
 
 sleep 2

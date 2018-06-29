@@ -248,7 +248,7 @@ int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start, const uint8_t
     rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
                                sizeof(int) + sizeof(long long), &cte_record,
                                sizeof(cte), &err);
-printf("AZ: insert_add_op here rc=%d\n", rc);
+printf("AZ: insert_add_op here genid=%llx, rc=%d\n", bdb_genid_to_host_order(genid), rc);
     close_constraint_table_cursor(cur);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "insert_add_op: bdb_temp_table_insert rc = %d\n", rc);

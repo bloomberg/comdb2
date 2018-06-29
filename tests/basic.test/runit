@@ -216,13 +216,13 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)" &> dupins.txt
 echo "[insert into t2 values(1)] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't2' index 0" > dupins.exp
 if ! diff  dupins.txt dupins.exp; then
-    failexit "Expected failure when executing bad procedure"
+    failexit "Expected failure when inserting duplicate record"
 fi
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(2)" &> dupins.txt
 cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set i=1 where i=2" &> dupupd.txt
 echo "[update t2 set i=1 where i=2] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't2' index 0" > dupupd.exp
 if ! diff  dupupd.txt dupupd.exp; then
-    failexit "Expected failure when executing bad procedure"
+    failexit "Expected failure when updating with duplicate record"
 fi
 
 echo "begin
@@ -247,16 +247,20 @@ assert_schema t1 alltypes.csc2
 let NEWNUMREC=$((2*INITNUMREC))
 insert_records 1 $NEWNUMREC
 assertcnt $NEWNUMREC
+do_verify
 
 update_records 1 $NEWNUMREC
 assertcnt $NEWNUMREC
+do_verify
 
 delete_records $((INITNUMREC+1)) $NEWNUMREC
 assertcnt $INITNUMREC
+do_verify
 
 
 echo "Now call task that uses cdb2api to ins/upd/del"
 ${TESTSBUILDDIR}/cdb2api_caller $dbnm > cdb2api_caller.out
+do_verify
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" > select_all.out
 

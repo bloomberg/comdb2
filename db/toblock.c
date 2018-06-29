@@ -4758,8 +4758,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     if (delayed || gbl_goslow || gbl_reorder_idx_writes) {
         int verror = 0;
-        if (gbl_reorder_idx_writes)
-            rc = process_defered_table(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
         rc = delayed_key_adds(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
 
         if (rc != 0) {
@@ -4771,6 +4769,20 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             numerrs = 1;
             BACKOUT;
         }
+
+        if (gbl_reorder_idx_writes)
+            rc = process_defered_table(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
+
+        if (rc != 0) {
+            constraint_violation = 1;
+            opnum = blkpos; /* so we report the failed blockop accurately */
+            err.blockop_num = blkpos;
+            err.errcode = errout;
+            err.ixnum = ixout;
+            numerrs = 1;
+            BACKOUT;
+        }
+
 
         /* check foreign key constraints */
         verror = 0;

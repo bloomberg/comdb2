@@ -181,10 +181,14 @@ done >> ${LRL}
 
 mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
 
+# change dir to start all db operations from DBDIR
+cd $DBDIR >/dev/null
+
 PARAMS="$DBNAME --no-global-lrl"
 
 # The script occasionally fails here. Let's find out what the rc is.
 set +e
+# create the db
 $COMDB2_EXE --create --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid $PARAMS &> $TESTDIR/logs/${DBNAME}.init
 rc=$?
 rm -f ${DBNAME}.trap
@@ -237,8 +241,8 @@ check_db_port_running_node() {
 #    exit 1
 #fi
 
-# start it
-cd $DBDIR >/dev/null
+# start the db
+
 if [[ -z "$CLUSTER" ]]; then
 
     if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then

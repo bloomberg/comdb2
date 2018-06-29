@@ -87,7 +87,7 @@ extern int add_record_indices(struct ireq *iq, void *trans,
         int *ixfailnum, int *rrn, unsigned long long *genid,
         unsigned long long ins_keys, int opcode, int blkpos, 
         void *od_dta, size_t od_len,
-        const char *ondisktag, struct schema *ondisktagsc);
+        const char *ondisktag, struct schema *ondisktagsc, int flags);
 
 extern int upd_record_indices(struct ireq *iq, void *trans, 
         int *opfailcode, int *ixfailnum, int rrn, unsigned long long *genid,
@@ -138,7 +138,7 @@ extern int upd_new_record_indices(struct ireq *iq, void *trans,
         ERR;                                                                   \
     }
 
-inline static bool is_event_from_sc(int flags)
+inline bool is_event_from_sc(int flags)
 {
     return flags & RECFLAGS_NEW_SCHEMA;
 }
@@ -162,7 +162,6 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     size_t od_len;
     int prefixes = 0;
     unsigned char lclnulls[64];
-    const char *ondisktag;
     int using_myblobs = 0;
     int conv_flags = 0;
     blob_buffer_t myblobs[MAXBLOBS];
@@ -179,11 +178,6 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         blobs = myblobs;
         using_myblobs = 1;
     }
-
-    if (is_event_from_sc(flags))
-        ondisktag = ".NEW..ONDISK";
-    else
-        ondisktag = ".ONDISK";
 
     if (iq->debug) {
         reqpushprefixf(iq, "add_record: ");
@@ -352,8 +346,14 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     struct schema *ondisktagsc; // schema for .ONDISK
-    int tag_same_as_ondisktag = (strcmp(tag, ondisktag) == 0);
+    const char *ondisktag;
 
+    if (is_event_from_sc(flags))
+        ondisktag = ".NEW..ONDISK";
+    else
+        ondisktag = ".ONDISK";
+
+    int tag_same_as_ondisktag = (strcmp(tag, ondisktag) == 0);
     if (tag_same_as_ondisktag) {
         /* we have the ondisk data already, no conversion needed */
         od_dta = record;
@@ -478,11 +478,11 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     /* Form and add all the keys. */
     if (!(flags & RECFLAGS_NO_CONSTRAINTS)) { /* if NOT no constraints */
     /* If there are constraints, do the add to indices defered.*/
-//printf("AZ: delaying key adds\n");
         if (!is_event_from_sc(flags)) {
             /* enqueue the add of the key for constaint checking purposes */
             rc = insert_add_op(iq, NULL, NULL, opcode,
                                *rrn, -1, *genid, ins_keys, blkpos);
+printf("AZ: add_record called insert_add_op() rc=%d\n", rc);
             if (rc != 0) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO PUSH KEYOP");
@@ -500,7 +500,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
         retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode, 
                                 ixfailnum, rrn, genid, ins_keys, opcode, blkpos,
-                                od_dta, od_len, ondisktag, ondisktagsc);
+                                od_dta, od_len, ondisktag, ondisktagsc, flags);
         if (retrc) {
             ERR;
         }
