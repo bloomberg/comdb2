@@ -117,6 +117,7 @@ extern pthread_cond_t gbl_durable_lsn_cond;
 ** Advance a tranlog cursor to the next log entry
 */
 static int tranlogNext(sqlite3_vtab_cursor *cur){
+  struct sql_thread *thd = NULL;
   tranlog_cursor *pCur = (tranlog_cursor*)cur;
   DB_LSN durable_lsn = {0};
   int durable_gen=0, rc, getflags;
@@ -145,28 +146,18 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
       getflags = DB_NEXT;
   }
 
-  if (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, getflags) != 0) {
-      if (getflags != DB_NEXT) {
+  /* Special case for durable first requests: we need to know the lsn */
+  if ((pCur->flags & TRANLOG_FLAGS_DURABLE) && getflags == DB_FIRST) {
+      if (pCur->logc->get(
+          pCur->logc, &pCur->curLsn, &pCur->data, getflags) != 0) {
           return SQLITE_INTERNAL;
-      }
-      if (pCur->flags & TRANLOG_FLAGS_BLOCK) {
-          do {
-              struct timespec ts;
-              clock_gettime(CLOCK_REALTIME, &ts);
-              ts.tv_nsec += (200 * 1000000);
-              pthread_mutex_lock(&gbl_logput_lk);
-              pthread_cond_timedwait(&gbl_logput_cond, &gbl_logput_lk, &ts);
-              pthread_mutex_unlock(&gbl_logput_lk);
-          } while (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, DB_NEXT));
-          rc = pCur->logc->get(pCur->logc, &pCur->curLsn,
-                  &pCur->data, DB_NEXT) != 0;
-      } else {
-          pCur->hitLast = 1;
       }
   }
 
+  /* Don't advance cursor until this is durable */
   if (pCur->flags & TRANLOG_FLAGS_DURABLE) {
       do {
+          char *master;
           struct timespec ts;
           bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv,
                   &durable_lsn, &durable_gen);
@@ -176,7 +167,14 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
               break;
 
           /* Return immediately if we are non-blocking */
-          else if ((pCur->flags & TRANLOG_FLAGS_BLOCK) == 0) {
+          else if (!bdb_amimaster(bdb_state) ||
+                  (pCur->flags & TRANLOG_FLAGS_BLOCK) == 0) {
+              pCur->notDurable = 1;
+              break;
+          }
+
+          /* We want to downgrade */
+          if (bdb_the_lock_desired()) {
               pCur->notDurable = 1;
               break;
           }
@@ -190,6 +188,38 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
 
       } while (1);
   }
+
+  if (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, getflags) != 0) {
+      if (getflags != DB_NEXT) {
+          return SQLITE_INTERNAL;
+      }
+      if (pCur->flags & TRANLOG_FLAGS_BLOCK) {
+          do {
+              struct timespec ts;
+              clock_gettime(CLOCK_REALTIME, &ts);
+              ts.tv_nsec += (200 * 1000000);
+              pthread_mutex_lock(&gbl_logput_lk);
+              pthread_cond_timedwait(&gbl_logput_cond, &gbl_logput_lk, &ts);
+              pthread_mutex_unlock(&gbl_logput_lk);
+
+              int sleepms = 100;
+              while (bdb_the_lock_desired()) {
+                  if (thd == NULL) {
+                      pthread_getspecific(query_info_key));
+                  }
+                  recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
+                  sleepms*=2;
+                  if (sleepms > 10000)
+                      sleepms = 10000;
+              }
+          } while (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, DB_NEXT));
+          rc = pCur->logc->get(pCur->logc, &pCur->curLsn,
+                  &pCur->data, DB_NEXT) != 0;
+      } else {
+          pCur->hitLast = 1;
+      }
+  }
+
   pCur->iRowid++;
   return SQLITE_OK;
 }
@@ -365,6 +395,8 @@ static int tranlogColumn(
 
         if (generation > 0) {
             sqlite3_result_int64(ctx, generation);
+        } else {
+            sqlite3_result_null(ctx);
         }
         break;
 
@@ -390,10 +422,9 @@ static int tranlogColumn(
 
         if (timestamp > 0) {
             sqlite3_result_int64(ctx, timestamp);
+        } else {
+            sqlite3_result_null(ctx);
         }
-        break;
-
-
         break;
     case TRANLOG_COLUMN_LOG:
         sqlite3_result_blob(ctx, &pCur->data.data, pCur->data.size, NULL);
