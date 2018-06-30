@@ -1323,7 +1323,8 @@ __log_flush_int(dblp, lsnp, release)
 		    "Database environment corrupt; the wrong log files may",
 		    "have been removed or incompatible database files imported",
 		    "from another environment");
-		return (EINVAL);
+        /* Abort immediately */
+        abort();
 	} else {
 		/*
 		 * See if we need to wait.  s_lsn is not locked so some
