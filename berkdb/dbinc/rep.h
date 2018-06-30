@@ -8,55 +8,7 @@
 #ifndef _REP_H_
 #define	_REP_H_
 
-#define	REP_ALIVE	1	/* I am alive message. */
-#define	REP_ALIVE_REQ	2	/* Request for alive messages. */
-#define	REP_ALL_REQ	3	/* Request all log records greater than LSN. */
-#define	REP_DUPMASTER	4	/* Duplicate master detected; propagate. */
-#define	REP_FILE	5	/* Page of a database file. */
-#define	REP_FILE_REQ	6	/* Request for a database file. */
-#define	REP_LOG		7	/* Log record. */
-#define	REP_LOG_MORE	8	/* There are more log records to request. */
-#define	REP_LOG_REQ	9	/* Request for a log record. */
-#define	REP_MASTER_REQ	10	/* Who is the master */
-#define	REP_NEWCLIENT	11	/* Announces the presence of a new client. */
-#define	REP_NEWFILE	12	/* Announce a log file change. */
-#define	REP_NEWMASTER	13	/* Announces who the master is. */
-#define	REP_NEWSITE	14	/* Announces that a site has heard from a new
-				 * site; like NEWCLIENT, but indirect.  A
-				 * NEWCLIENT message comes directly from the new
-				 * client while a NEWSITE comes indirectly from
-				 * someone who heard about a NEWSITE.
-				 */
-#define	REP_PAGE	15	/* Database page. */
-#define	REP_PAGE_REQ	16	/* Request for a database page. */
-#define	REP_PLIST	17	/* Database page list. */
-#define	REP_PLIST_REQ	18	/* Request for a page list. */
-#define	REP_VERIFY	19	/* A log record for verification. */
-#define	REP_VERIFY_FAIL	20	/* The client is outdated. */
-#define	REP_VERIFY_REQ	21	/* Request for a log record to verify. */
-#define	REP_VOTE1	22	/* Send out your information for an election. */
-#define	REP_VOTE2	23	/* Send a "you are master" vote. */
-
-/* COMDB2 MODIFICATION */
-/* We want to be able to throttle log propagation to avoid filling 
-   the net queue; this will allow signal messages and catching up
-   log transfer to be transferred even though the database is under heavy
-   load
-   Problem is in berkdb_send_rtn both regular log messages and catching
-   up log replies are coming as REP_LOG
-   In __log_push we replace REP_LOG with REP_LOG_LOGPUT so we know
-   that this must be throttled; we revertto REP_LOG in the same routine
- */
-#define	REP_LOG_LOGPUT		24	/* Master internal: same as REP_LOG */
-
-/* COMDB2 MODIFICATION */
-/* Dump a page for a given fileid, for debugging */
-#define REP_PGDUMP_REQ      25
-
-/* COMDB2 MODIFICATION: bias election to the largest generation number written to the log */
-#define REP_GEN_VOTE1   26  /* Send our your information for an election */
-#define REP_GEN_VOTE2   27 /* Send a "you are master" vote. */
-
+#include "dbinc/rep_types.h"
 /* Shared replication structure. */
 
 typedef struct __rep {
@@ -129,6 +81,7 @@ typedef struct __rep {
 #define	REP_F_RECOVER		0x080		/* In recovery. */
 #define	REP_F_TALLY		0x100		/* Tallied vote before elect. */
 #define	REP_F_UPGRADE		0x200		/* Upgradeable replica. */
+#define REP_F_WAITSTART     0x400       /* No logputs until start */
 #define	REP_ISCLIENT	(REP_F_UPGRADE | REP_F_LOGSONLY)
 	u_int32_t	flags;
 } REP;
@@ -136,6 +89,8 @@ typedef struct __rep {
 #define	IN_ELECTION(R)		F_ISSET((R), REP_F_EPHASE1 | REP_F_EPHASE2)
 #define	IN_ELECTION_TALLY(R) \
 	F_ISSET((R), REP_F_EPHASE1 | REP_F_EPHASE2 | REP_F_TALLY)
+#define	IN_ELECTION_TALLY_WAITSTART(R) \
+	F_ISSET((R), REP_F_EPHASE1 | REP_F_EPHASE2 | REP_F_TALLY | REP_F_WAITSTART)
 #define	IS_REP_MASTER(dbenv)						\
 	(REP_ON(dbenv) && ((DB_REP *)(dbenv)->rep_handle)->region &&	\
 	    F_ISSET(((REP *)((DB_REP *)(dbenv)->rep_handle)->region),	\

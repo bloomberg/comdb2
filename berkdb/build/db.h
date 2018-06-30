@@ -126,13 +126,13 @@ typedef intptr_t roff_t;
 struct __db;		typedef struct __db DB;
 struct __db_bt_stat;	typedef struct __db_bt_stat DB_BTREE_STAT;
 struct __db_cipher;	typedef struct __db_cipher DB_CIPHER;
-struct __db_dbt;	typedef struct __db_dbt DBT;
 struct __db_env;	typedef struct __db_env DB_ENV;
 struct __db_h_stat;	typedef struct __db_h_stat DB_HASH_STAT;
 struct __db_ilock;	typedef struct __db_ilock DB_LOCK_ILOCK;
 struct __db_lock_stat;	typedef struct __db_lock_stat DB_LOCK_STAT;
 struct __db_lock_u;	typedef struct __db_lock_u DB_LOCK;
 struct __db_lockreq;	typedef struct __db_lockreq DB_LOCKREQ;
+struct __db_log_cursor_stat; typedef struct __db_log_cursor_stat DB_LOGC_STAT;
 struct __db_log_cursor;	typedef struct __db_log_cursor DB_LOGC;
 struct __db_log_stat;	typedef struct __db_log_stat DB_LOG_STAT;
 struct __db_lsn;	typedef struct __db_lsn DB_LSN;
@@ -171,38 +171,7 @@ struct __recovery_processor;
 struct __recovery_list;
 struct __db_trigger_subscription;
 
-#define __DB_DBT_INTERNAL                                       \
-	void	 *data;			/* Key/data */                      \
-	u_int32_t size;			/* key/data length */               \
-	u_int32_t ulen;			/* RO: length of user buffer. */    \
-	u_int32_t dlen;			/* RO: get/put record length. */    \
-	u_int32_t doff;			/* RO: get/put record offset. */
-
-struct __db_dbt_internal {
-    __DB_DBT_INTERNAL
-};
-
-/* Key/data structure -- a Data-Base Thang. */
-struct __db_dbt {
-	/*
-	 * data/size must be fields 1 and 2 for DB 1.85 compatibility.
-	 */
-    __DB_DBT_INTERNAL
-
-    void *app_data;
-
-#define	DB_DBT_APPMALLOC	0x001	/* Callback allocated memory. */
-#define	DB_DBT_ISSET		0x002	/* Lower level calls set value. */
-#define	DB_DBT_MALLOC		0x004	/* Return in malloc'd memory. */
-#define	DB_DBT_PARTIAL		0x008	/* Partial put/get. */
-#define	DB_DBT_REALLOC		0x010	/* Return in realloc'd memory. */
-#define	DB_DBT_USERMEM		0x020	/* Return in user's memory. */
-#define	DB_DBT_DUPOK		0x040	/* Insert if duplicate. */
-	u_int32_t flags;
-};
-
-
-
+#include "db_dbt.h"
 
 /*
  * Common flags --
@@ -382,6 +351,11 @@ struct __db_dbt {
 #define	DB_REP_PERMANENT        0x0000002	/* Important--app. may want to flush. */
 #define  DB_REP_LOGPROGRESS      0x0000004   /* marks a new log record, not a commit though */
 #define DB_REP_FLUSH            0x0000008
+
+/* Don't allow these to overlap with log_put flags */
+#define DB_REP_NODROP           0x0001000
+#define DB_REP_TRACE           0x0002000 /* Trace this through the net layer */
+#define DB_REP_SENDACK          0x0004000
 
 /*******************************************************
  * Locking.
@@ -624,6 +598,17 @@ struct __db_ltran {
 #define	DB_user_BEGIN		10000
 #define	DB_debug_FLAG		0x80000000
 
+struct __db_log_cursor_stat {
+    int incursor_count;
+    int ondisk_count;
+    int inregion_count;
+    unsigned long long incursorus;
+    unsigned long long ondiskus;
+    unsigned long long inregionus;
+    unsigned long long totalus;
+    unsigned long long lockwaitus;
+};
+
 /*
  * DB_LOGC --
  *	Log cursor.
@@ -649,11 +634,24 @@ struct __db_log_cursor {
 					/* Methods. */
 	int (*close) __P((DB_LOGC *, u_int32_t));
 	int (*get) __P((DB_LOGC *, DB_LSN *, DBT *, u_int32_t));
+    int (*stat) __P((DB_LOGC *, DB_LOGC_STAT **));
+
+    /* Instrumentation for log stats */
+    int incursor_count;
+    int ondisk_count;
+    int inregion_count;
+
+    u_int64_t incursorus;
+    u_int64_t ondiskus;
+    u_int64_t inregionus;
+    u_int64_t totalus;
+    u_int64_t lockwaitus;
 
 #define	DB_LOG_DISK		0x01	/* Log record came from disk. */
 #define	DB_LOG_LOCKED		0x02	/* Log region already locked */
 #define	DB_LOG_SILENT_ERR	0x04	/* Turn-off error messages. */
 #define DB_LOG_NO_PANIC		0x08    /* Don't panic on error. */
+#define DB_LOG_CUSTOM_SIZE  0x10    /* This cursor has a custom size */
 	u_int32_t flags;
     struct __db_log_cursor *next;
     struct __db_log_cursor *prev;
@@ -1304,6 +1302,7 @@ typedef enum {
 #define	DB_VERIFY_FATAL		(-30891)/* DB->verify cannot proceed. */
 #define DB_FIRST_MISS		(-30890)/* Return on first-miss in memp_fget. */
 #define DB_SEARCH_PGCACHE	(-30889)/* Search the recovery pagecache. */
+#define DB_ELECTION_GENCHG  (-30888)
 
 /* genid-pgno hashtable - some code stolen from plhash.c */
 #define GENID_SIZE 8
@@ -2083,6 +2082,8 @@ struct __db_env {
 	int     (*txn_logical_commit)
 		    __P((DB_ENV *, void *state, u_int64_t ltranid,
 		    DB_LSN *lsn));
+	DB_LSN last_locked_lsn;
+	pthread_mutex_t locked_lsn_lk;
 
 	/* Transactions. */
 	u_int32_t	 tx_max;	/* Maximum number of transactions. */
@@ -2287,13 +2288,13 @@ struct __db_env {
 	int  (*memp_trickle) __P((DB_ENV *, int, int *, int));
 
 	void *rep_handle;		/* Replication handle and methods. */
-	int  (*rep_elect) __P((DB_ENV *, int, int, u_int32_t, char **));
+	int  (*rep_elect) __P((DB_ENV *, int, int, u_int32_t, u_int32_t *, char **));
 	int  (*rep_flush) __P((DB_ENV *));
 	int  (*rep_process_message) __P((DB_ENV *, DBT *, DBT *,
 	    char **, DB_LSN *, uint32_t *));
 	int  (*rep_verify_will_recover) __P((DB_ENV *, DBT *, DBT *));
 	int  (*rep_truncate_repdb) __P((DB_ENV *));
-	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t));
+	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 	int  (*rep_stat) __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
 	int  (*set_logical_start) __P((DB_ENV *, int (*) (DB_ENV *, void *,
 		u_int64_t, DB_LSN *)));
@@ -2302,6 +2303,7 @@ struct __db_env {
 	int  (*get_rep_limit) __P((DB_ENV *, u_int32_t *, u_int32_t *));
 	int  (*set_rep_limit) __P((DB_ENV *, u_int32_t, u_int32_t));
 	void  (*get_rep_gen) __P((DB_ENV *, u_int32_t *));
+	int  (*get_last_locked) __P((DB_ENV *, DB_LSN *));
 	int  (*set_rep_request) __P((DB_ENV *, u_int32_t, u_int32_t));
 	int  (*set_rep_transport) __P((DB_ENV *, char*,
 		int (*) (DB_ENV *, const DBT *, const DBT *, const DB_LSN *,
@@ -2322,7 +2324,7 @@ struct __db_env {
 	int  (*set_timeout) __P((DB_ENV *, db_timeout_t, u_int32_t));
 	int  (*set_bulk_stops_on_page) __P((DB_ENV*, int));
 	int  (*memp_dump_bufferpool_info) __P((DB_ENV *, FILE *));
-	int  (*get_rep_master) __P((DB_ENV *, char **, u_int32_t *));
+	int  (*get_rep_master) __P((DB_ENV *, char **, u_int32_t *, u_int32_t *));
 	int  (*get_rep_eid) __P((DB_ENV *, char **));
 	void (*txn_dump_ltrans) __P((DB_ENV *, FILE *, u_int32_t));
 	int  (*lowest_logical_lsn) __P((DB_ENV *, DB_LSN *));
@@ -2848,7 +2850,7 @@ int berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
 u_int32_t file_id_for_recovery_record(DB_ENV *env, DB_LSN *lsn,
 	int rectype, DBT *dbt);
 
-int __rep_get_master(DB_ENV *dbenv, char **master, u_int32_t *egen);
+int __rep_get_master(DB_ENV *dbenv, char **master, u_int32_t *gen, u_int32_t *egen);
 int __rep_get_eid(DB_ENV *dbenv,char **eid);
 
 unsigned int __berkdb_count_freepages(int fd);

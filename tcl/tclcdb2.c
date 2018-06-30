@@ -216,7 +216,6 @@ static int		tclcdb2ObjCmd(ClientData clientData, Tcl_Interp *interp,
 static void		tclcdb2ObjCmdDeleteProc(ClientData clientData);
 
 static NameAndValue aOpenFlags[] = {
-    { "cache_ssl_sessions",   CDB2_CACHE_SSL_SESSIONS   },
     { "direct_cpu",           CDB2_DIRECT_CPU           },
     { "random",               CDB2_RANDOM               },
     { "randomroom",           CDB2_RANDOMROOM           },

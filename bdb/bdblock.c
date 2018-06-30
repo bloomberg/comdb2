@@ -577,6 +577,11 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
     lk->lockref++;
 }
 
+void bdb_get_the_readlock(const char *idstr, const char *function, int line)
+{
+    bdb_get_readlock(gbl_bdb_state, idstr, function, line);
+}
+
 /* Release the lock of either type (decrements reference count, releases
  * actual lock if reference count hits zero). */
 void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
@@ -647,6 +652,11 @@ void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
         if (gbl_bdblock_debug)
             rel_lock_ref_log(bdb_state, lk->lockref);
     }
+}
+
+void bdb_relthelock(const char *funcname, int line)
+{
+    bdb_rellock(gbl_bdb_state, funcname, line);
 }
 
 /* Check that all the locks are released; this ensures that no
@@ -868,6 +878,16 @@ void bdb_thread_event(bdb_state_type *bdb_state, int event)
         logmsg(LOGMSG_ERROR, "bdb_thread_event: event=%d?!\n", event);
         break;
     }
+}
+
+void bdb_thread_done_rw(void)
+{
+    bdb_thread_event(gbl_bdb_state, BDBTHR_EVENT_DONE_RDWR);
+}
+
+void bdb_thread_start_rw(void)
+{
+    bdb_thread_event(gbl_bdb_state, BDBTHR_EVENT_START_RDWR);
 }
 
 static void dump_int(thread_lock_info_type *lk, FILE *out)

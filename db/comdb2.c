@@ -4996,7 +4996,7 @@ int main(int argc, char **argv)
     timer_init(ttrap);
 
     if (isatty(fileno(stdout)))
-       logmsg_set_time(0);
+        logmsg_set_time(0);
 
     /* what is my local hostname */
     getmyid();

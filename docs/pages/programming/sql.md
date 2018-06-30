@@ -683,6 +683,30 @@ Sets a tunable that determines how hard the query planner will work to estimate 
 setting is a number from 1 (least effort, quickly formed plans) to 10 (most effort, possibly better plans).  The 
 default setting is 1.
 
+### SET SSL_MODE
+
+Sets client-side SSL mode. See [SSL Mode Summary](ssl.html#ssl-mode-summary) for details.
+
+### SET SSL_CERT_PATH
+
+Sets SSL certificate path. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_CERT
+
+Sets path to the SSL certificate. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_KEY
+
+Sets path to the SSL key. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_CA
+
+Sets path to the trusted CA. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_CRL
+
+Sets path to the CRL. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
 ## Common syntax rules
 
 ### qualified-table-name

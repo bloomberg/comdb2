@@ -163,7 +163,8 @@ bool compare_checksum(
         bool file_expanded = false;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-        posix_memalign((void**) &new_pagebuf, 512, pagesize);
+        if(posix_memalign((void**) &new_pagebuf, 512, pagesize))
+            throw Error("Failed to allocate output buffer");
 #else
         new_pagebuf = (uint8_t*) memalign(512, pagesize);
 #endif
@@ -266,7 +267,8 @@ ssize_t serialise_incr_file(
     uint8_t *pagebuf = NULL;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-    posix_memalign((void**) &pagebuf, 512, pagesize);
+    if(posix_memalign((void**) &pagebuf, 512, pagesize))
+        throw Error("Failed to allocate output buffer");
 #else
     pagebuf = (uint8_t*) memalign(512, pagesize);
 #endif

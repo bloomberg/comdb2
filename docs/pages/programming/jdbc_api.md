@@ -238,6 +238,10 @@ The parameters are as follows:
 
       Type of the trusted CA keystore. The default is `"JKS"`.
 
+    * _crl_=String
+
+      Path to the Certificate Revocation List (CRL), in `PEM` format.
+
     * _allow_pmux_route_=Boolean
 
       Allow connection forwarding via `pmux`. The default is `false`.
@@ -330,7 +334,7 @@ To load the JKS into the driver, the JDBC URL looks like this:
 jdbc:comdb2//<hostname>/<database>?key_store=<path/to/jks>&key_store_password=<passwd>
 ```
 
-A trusted CA keystore can be generated the same way.
+A trusted CA keystore can be generated the same way to authenticate the server.
 
 To load the trusted CA JKS into the driver, the JDBC URL looks like this:
 

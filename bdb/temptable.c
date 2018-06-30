@@ -37,6 +37,7 @@
 #include <execinfo.h>
 #endif
 #include <logmsg.h>
+#include <util.h>
 #include "comdb2_atomic.h"
 
 /* One of the difference between using b-tree and hash is that in using hash, we
@@ -1784,22 +1785,6 @@ inline int bdb_temp_table_move(bdb_state_type *bdb_state, struct temp_cursor *cu
     return -1;
 }
 
-static char hex(unsigned char a)
-{
-    if (a < 10)
-        return '0' + a;
-    return 'a' + (a - 10);
-}
-static void hexdump(char *key, int keylen)
-{
-    int i = 0;
-
-    for (i = 0; i < keylen; i++) {
-        logmsg(LOGMSG_USER, "%c%c", hex(((unsigned char)key[i]) / 16),
-                hex(((unsigned char)key[i]) % 16));
-    }
-}
-
 void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
 {
     int rc = 0;
@@ -1820,9 +1805,9 @@ void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
         dtasize_sd = bdb_temp_table_datasize(cur);
 
         logmsg(LOGMSG_USER, " ROW %d:\n\tkeylen=%d\n\tkey=\"", rowid, keysize_sd);
-        hexdump(key_sd, keysize_sd);
+        hexdump(LOGMSG_USER, key_sd, keysize_sd);
         logmsg(LOGMSG_USER, "\"\n\tdatalen=%d\n\tdata=\"", dtasize_sd);
-        hexdump(dta_sd, dtasize_sd);
+        hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
         logmsg(LOGMSG_USER, "\"\n");
 
         rowid++;

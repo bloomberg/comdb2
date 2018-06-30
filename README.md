@@ -149,15 +149,13 @@ On every machine in the cluster:
 
 | Directory | Description |
 | --- | --- |
-| bb/           | Useful generic modules |
 | bbinc/        | Header & Generic include files |
 | bdb/          | Table layer |
 | berkdb/       | Btrees layer |
 | cdb2api/      | Client code |
 | cdb2jdbc/     | JDBC driver |
+| cmake/        | cmake configuration files |
 | comdb2rle/    | Run length encoding |
-| comdb2tests/  | Contains all the tests that will be run for this version |
-| config/       | lrl config files |
 | contrib/      | Misc useful programs that aren't part of core Comdb2 |
 | crc32c/       | Checksum component |
 | csc2/         | csc2 processing |
@@ -165,14 +163,20 @@ On every machine in the cluster:
 | cson/         | JSON library |
 | datetime/     | Datetime component |
 | db/           | Types layer and overall glue |
-| deb/          | Sample debian package config |
 | dfp/          | Decimal number component |
 | dlmalloc/     | Local malloc version |
 | docs/         | Documentation |
 | lua/          | All things pertaining to lua VM used for stored procedures |
+| mem/          | Memory accounting subsystem |
 | net/          | Network component |
+| pkg/          | deb and rpm packaging rules |
+| plugin/       | Plugin subsystem |
 | protobuf/     | API to communicate with the server |
-| schemachange  | Code for table create/alter/truncate/etc |
+| schemachange/ | Code for table create/alter/truncate/etc |
+| sockpool/     | sockpool related files  |
 | sqlite/       | Sqlite VM SQL engine  |
+| tcl/          | Tcl language bindings |
 | tests/        | Comdb2 test suite |
 | tools/        | Tools that are part of Comdb2 core |
+| util/         | Useful generic modules |
+

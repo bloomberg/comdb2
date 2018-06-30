@@ -23,7 +23,6 @@ RUN apt-get update && \
     libz1 \
     liblz4-tool \
     libprotobuf-c1 \
-    libreadline6 \
     libsqlite3-0 \
     libuuid1 \
     libz1 \

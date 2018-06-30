@@ -4,6 +4,13 @@ bash -n "$0" | exit 1
 dbnm=$1
 keydir=$TESTDIR
 
+# Generate bad key
+openssl req -x509 -newkey rsa:4096 -keyout $keydir/badkey.pem \
+            -out $keydir/badcrt.pem -days 365 -nodes \
+            -subj "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=*.bloomberg.com"
+chmod a+r $keydir/badkey.pem $keydir/badcrt.pem
+cp $keydir/badcrt.pem $keydir/badca.pem
+
 # Write a bad key file
 cp $DBDIR/comdb2db.cfg $DBDIR/query1.cfg
 echo "comdb2_config:ssl_key=$keydir/badkey.pem" >>$DBDIR/query1.cfg
@@ -11,7 +18,7 @@ echo "comdb2_config:ssl_key=$keydir/badkey.pem" >>$DBDIR/query1.cfg
 cdb2sql --cdb2cfg $DBDIR/query1.cfg $dbnm default \
     "SELECT 'TESTKEYPERM'" 2>&1 | grep -c 'too open'
 if [ $? != 0 ]; then
-  echo "Failed to perform key permission check."
+  echo "Failed to perform key permission check." >&2
   exit 1
 fi
 
@@ -19,13 +26,25 @@ fi
 cp $DBDIR/comdb2db.cfg $DBDIR/query2.cfg
 echo "comdb2_config:ssl_cert_path=$DBDIR" >>$DBDIR/query2.cfg
 # BAD: Server should reject because of no client cert found
-cdb2sql --cdb2cfg $DBDIR/query2.cfg $dbnm default "SELECT 'TESTNOCERT'" >>output.actual 2>&1
+cdb2sql --cdb2cfg $DBDIR/query2.cfg $dbnm default "SELECT 'TESTNOCERT'" 2>&1 | grep -c 'certificate authentication failed'
+if [ $? != 0 ]; then
+  echo "Server failed to reject a client with no cert." >&2
+  exit 1
+fi
 
 # Write a bad ca file
+chmod 400 $keydir/badkey.pem
 cp $DBDIR/comdb2db.cfg $DBDIR/query3.cfg
 echo "comdb2_config:ssl_ca=$keydir/badca.pem" >>$DBDIR/query3.cfg
 # BAD: Client should reject it as the server cert is not trusted by 'badca.pem'
-cdb2sql --cdb2cfg $DBDIR/query3.cfg $dbnm default "SELECT 'TESTBADCA'" >>output.actual 2>&1
+# Gotcha:
+# If both client's and server's certs are root, we get 'certificate verify failed' error;
+# otherwise, if either of them is intermediate, we get 'block type is not 01'.
+cdb2sql --cdb2cfg $DBDIR/query3.cfg $dbnm default "SELECT 'TESTBADCA'" 2>&1 | grep -c 'certificate verify failed\|block type is not 01'
+if [ $? != 0 ]; then
+  echo "Client failed to reject server." >&2
+  exit 1
+fi
 
 # Write a bad cert path and enable verify
 cp $DBDIR/comdb2db.cfg $DBDIR/query4.cfg
@@ -35,29 +54,28 @@ comdb2_config:ssl_cert_path=$DBDIR" >>$DBDIR/query4.cfg
 cdb2sql --cdb2cfg $DBDIR/query4.cfg $dbnm default "SELECT 'TESTDEFAULTCA'" 2>&1 | \
     grep -c 'Could not read cacert'
 if [ $? != 0 ]; then
-  echo "Failed to auto search cacert file."
+  echo "Failed to auto search cacert file." >&2
   exit 1
 fi
 
 # GOOD
 echo "SELECT 'TESTSIMPLESQL1'
-SELECT 'TESTSIMPLESQL2'" | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - >>output.actual 2>&1
-diff output.actual output.expected
+SELECT 'TESTSIMPLESQL2'" | cdb2sql -s ${CDB2_OPTIONS} $dbnm default -
 
 if [ $? != 0 ]; then
-  echo "Failed. Please check diff."
+  echo "Failed to execute simple queries over secure channel." >&2
   exit 1
 fi
 
 ${TESTSBUILDDIR}/simple_ssl $dbnm
 if [ $? != 0 ]; then
-  echo "simple_ssl test failed."
+  echo "simple_ssl test failed." >&2
   exit 1
 fi
 
 cnt=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('memstat ssl')" | wc -l`
 if [ $cnt = 0 ]; then
-  echo "SSL memory not present"
+  echo "SSL memory not present" >&2
   exit 1
 fi
 
@@ -66,7 +84,7 @@ if [ "$host" != "" ]; then
     cdb2sql -v ${CDB2_OPTIONS} $dbnm --host $host 'select 1' >conn.out 2>&1
     numconnect=`cat conn.out | grep "newsql_connect" | grep -c 'entering'`
     if [ "$numconnect" != "1" ]; then
-        echo "Should only connect once but attempted to connect $numconnect times."
+        echo "Should only connect once but attempted to connect $numconnect times." >&2
         exit 1
     fi
 fi

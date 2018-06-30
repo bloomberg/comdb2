@@ -229,12 +229,17 @@ function get_schemachange_status
 }
 
 getmaster() {
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default '@send bdb cluster' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+    [[ $debug != "0" ]] && set -x
+    master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default '@send bdb cluster' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+    sleep 1
+    master2=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default '@send stat' | grep "MASTER IS" | tac -s " " | head -1 `
+    while [[ "$master" == "" || $master != $master2 ]] ; do 
+        master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default '@send bdb cluster' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+        sleep 1
+        master2=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default '@send stat' | grep "MASTER IS" | tac -s " " | head -1 `
+    done
+    echo $master
 }
-
-master=`getmaster`
-master2=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default '@send stat' | grep "MASTER IS" | tac -s " " | head -1 `
-assertres $master $master2
 
 function force_delay_master
 {

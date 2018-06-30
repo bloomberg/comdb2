@@ -1,0 +1,3 @@
+[SELECT 1] failed with rc -1 SSL Error: Could not read cacert NONEXISTENCE/root.crt: Unknown error -1.
+1
+[SELECT 1] failed with rc -1 SSL Error: Certificate does not match database name.

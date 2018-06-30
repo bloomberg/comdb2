@@ -118,7 +118,7 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
   ${PROJECT_SOURCE_DIR}
-  ${PROJECT_SOURCE_DIR}/bb
+  ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/bdb
   ${PROJECT_BINARY_DIR}/bdb
@@ -157,7 +157,7 @@ add_dependencies(comdb2 mem protobuf sqlite db bdb)
 target_link_libraries(comdb2
   schemachange
   bdb
-  bb
+  util
   cdb2api
   comdb2rle
   crc32c

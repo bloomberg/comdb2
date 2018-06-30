@@ -1029,6 +1029,7 @@ __db_get_numpages(dbp, numpages)
 	case DB_UNKNOWN:
 	default:
 		ret = __db_unknown_type(dbp->dbenv, "__db_numpages", dbp->type);
+		abort();
 		goto err;
 	}
 

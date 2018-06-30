@@ -1,11 +1,15 @@
 #!/bin/bash
 
 set -e
+nodeprefix="m"
 
 while [[ $1 = -* ]]; do
     if [[ "$1" = "-s" ]] || [[ "$1" = "--source" ]]; then
         shift
         src=$1
+    elif [[ "$1" = "-p" ]] || [[ "$1" = "--nodeprefix" ]]; then
+        shift
+        nodeprefix=$1
     elif [[ "$1" = "-n" ]] || [[ "$1" = "--numnodes" ]]; then
         shift
         numnodes=$1
@@ -21,14 +25,22 @@ done
 
 
 if [[ "$src" = "" ]] || [[ "$numnodes" = "" ]]; then
-    echo "Usage: $0 -s source_directory -n numnodes [-c commands] [-f file]" >&2
+    echo "Usage: $0 -s source_directory -p nodeprefix -n numnodes [-c commands] [-f file]" >&2
     exit 1
 fi
+
+prefix="$(git --git-dir "$src/.git" rev-parse --short HEAD)"
+if [[ "$prefix" = "" ]]; then
+    echo 'Could not get the revision.' >&2
+    exit 1
+fi
+export COMPOSE_PROJECT_NAME=$prefix
 
 rm -fr common
 mkdir common
 for node in $(seq 1 $numnodes); do
-    cluster="$cluster m${node}"
+    cluster="$cluster ${nodeprefix}${node}.${prefix}_default"
+    containers="$containers ${nodeprefix}$node"
 done
 
 if [[ -f /proc/sys/kernel/core_pattern ]]; then
@@ -38,17 +50,10 @@ if [[ -f /proc/sys/kernel/core_pattern ]]; then
         coredir=$(dirname $abspath)
         mkdir -p common/c1/cores
         for node in $(seq 1 $numnodes); do
-            mkdir -p common/m${node}/cores
+            mkdir -p common/${nodeprefix}${node}/cores
         done
     fi
 fi
-
-prefix="$(git --git-dir "$src/.git" rev-parse --short HEAD)"
-if [[ "$prefix" = "" ]]; then
-    echo 'Could not get the revision.' >&2
-    exit 1
-fi
-export COMPOSE_PROJECT_NAME=$prefix
 
 if [[ "$script" != "" ]]; then
     cp $script common/user_script
@@ -65,7 +70,8 @@ version: '2'
 
 services:
     client:
-        hostname: c1
+        container_name: c1
+        hostname: c1.${prefix}_default
         labels:
             what: "testclient"
         build:
@@ -89,10 +95,11 @@ cat >> $compose <<EOF
             - SYS_PTRACE
 EOF
 
-for node in $cluster; do
+for node in $containers; do
 cat >> $compose <<EOF
     $node:
-        hostname: $node
+        container_name: $node
+        hostname: $node.${prefix}_default
         labels:
             what: "testserver"
         build:

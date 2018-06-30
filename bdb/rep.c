@@ -85,6 +85,7 @@ int gbl_ignore_lost_master_time = 0;
 int gbl_prefault_latency = 0;
 
 extern struct thdpool *gbl_udppfault_thdpool;
+extern int gbl_commit_delay_trace;
 
 /* osqlcomm.c code, hurray! */
 extern void osql_decom_node(char *decom_host);
@@ -378,53 +379,7 @@ typedef struct {
     u_int32_t flags;   /* log_put flag value. */
 } rep_control_type;
 
-#define REP_ALIVE 1       /* I am alive message. */
-#define REP_ALIVE_REQ 2   /* Request for alive messages. */
-#define REP_ALL_REQ 3     /* Request all log records greater than LSN. */
-#define REP_DUPMASTER 4   /* Duplicate master detected; propagate. */
-#define REP_FILE 5        /* Page of a database file. */
-#define REP_FILE_REQ 6    /* Request for a database file. */
-#define REP_LOG 7         /* Log record. */
-#define REP_LOG_MORE 8    /* There are more log records to request. */
-#define REP_LOG_REQ 9     /* Request for a log record. */
-#define REP_MASTER_REQ 10 /* Who is the master */
-#define REP_NEWCLIENT 11  /* Announces the presence of a new client. */
-#define REP_NEWFILE 12    /* Announce a log file change. */
-#define REP_NEWMASTER 13  /* Announces who the master is. */
-#define REP_NEWSITE                                                            \
-    14                     /* Announces that a site has heard from a new       \
-                            * site; like NEWCLIENT, but indirect.  A           \
-                            * NEWCLIENT message comes directly from the new    \
-                            * client while a NEWSITE comes indirectly from     \
-                            * someone who heard about a NEWSITE.               \
-                            */
-#define REP_PAGE 15        /* Database page. */
-#define REP_PAGE_REQ 16    /* Request for a database page. */
-#define REP_PLIST 17       /* Database page list. */
-#define REP_PLIST_REQ 18   /* Request for a page list. */
-#define REP_VERIFY 19      /* A log record for verification. */
-#define REP_VERIFY_FAIL 20 /* The client is outdated. */
-#define REP_VERIFY_REQ 21  /* Request for a log record to verify. */
-#define REP_VOTE1 22       /* Send out your information for an election. */
-#define REP_VOTE2 23       /* Send a "you are master" vote. */
-#define REP_LOG_LOGPUT 24
-#define REP_PGDUMP_REQ 25
-#define REP_GEN_VOTE1 26 /* Send out your information for an election */
-#define REP_GEN_VOTE2 27 /* Send a "you are master" vote. */
-
-/* COMDB2 MODIFICATION */
-/* We want to be able to throttle log propagation to avoid filling
-   the net queue; this will allow signal messages and catching up
-   log transfer to be transferred even though the database is under heavy
-   load
-   Problem is in berkdb_send_rtn both regular log messages and catching
-   up log replies are coming as REP_LOG
-   In __log_push we replace REP_LOG with REP_LOG_LOGPUT so we know
-   that this must be throttled; we revertto REP_LOG in the same routine
- */
-#define REP_LOG_LOGPUT 24 /* Master internal: same as REP_LOG */
-
-/*extern int __bdb_no_send;*/
+#include <dbinc/rep_types.h>
 
 int is_electable(bdb_state_type *bdb_state, int *out_num_up,
                  int *out_num_connected);
@@ -476,10 +431,42 @@ void bdb_transfermaster(bdb_state_type *bdb_state)
         return;
     }
 
-    rc = bdb_downgrade(bdb_state, NULL);
+    rc = bdb_downgrade(bdb_state, 0, NULL);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d bdb_downgrade failed rc=%d ?\n", __FILE__,
                 __LINE__, rc);
+    }
+}
+
+int gbl_set_coherent_state_trace = 0;
+
+char *coherent_state_to_str(int state)
+{
+    switch (state) {
+    case STATE_INCOHERENT:
+        return "INCOHERENT";
+    case STATE_INCOHERENT_WAIT:
+        return "INCOHERENT_WAIT";
+    case STATE_INCOHERENT_SLOW:
+        return "INCOHERENT_SLOW";
+    case STATE_COHERENT:
+        return "COHERENT";
+    default:
+        return "?UNKNOWN_STATE?";
+    }
+}
+
+/* You should have the lock */
+static inline void set_coherent_state(bdb_state_type *bdb_state,
+                                      const char *hostname, int state,
+                                      const char *func, int line)
+{
+    if (bdb_state->coherent_state[nodeix(hostname)] != state) {
+        bdb_state->coherent_state[nodeix(hostname)] = state;
+        if (gbl_set_coherent_state_trace) {
+            logmsg(LOGMSG_USER, "%s line %d setting %s coherent state to %s\n",
+                   func, line, hostname, coherent_state_to_str(state));
+        }
     }
 }
 
@@ -560,7 +547,7 @@ again:
         numsleeps++;
         if (numsleeps > 2) {
             logmsg(LOGMSG_ERROR, "transfer master falling back to election\n");
-            bdb_downgrade(bdb_state, NULL);
+            bdb_downgrade(bdb_state, 0, NULL);
             return;
         }
 
@@ -582,7 +569,7 @@ again:
     /* he didnt ack the message?  kick off an election */
     if (rc != 0) {
         bdb_state->repinfo->dont_elect_untill_time = comdb2_time_epoch();
-        call_for_election(bdb_state);
+        call_for_election(bdb_state, __func__, __LINE__);
     }
 }
 
@@ -639,43 +626,92 @@ static void send_context_to_all(bdb_state_type *bdb_state)
     }
 }
 
-int is_incoherent(bdb_state_type *bdb_state, const char *host)
+static inline int is_incoherent_complete(bdb_state_type *bdb_state,
+                                         const char *host, int *incohwait)
 {
-    int is_incoherent;
+    int is_incoherent, state;
 
     is_incoherent = 0;
 
+    if (incohwait)
+        *incohwait = 0;
+
     pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+    state = bdb_state->coherent_state[nodeix(host)];
+    pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
     /* STATE_COHERENT and STATE_INCOHERENT_LOCAL return COHERENT. */
-    if (bdb_state->coherent_state[nodeix(host)] == STATE_INCOHERENT ||
-        bdb_state->coherent_state[nodeix(host)] == STATE_INCOHERENT_SLOW)
+    if (state == STATE_INCOHERENT || state == STATE_INCOHERENT_SLOW)
         is_incoherent = 1;
 
-    pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+    if (incohwait && state == STATE_INCOHERENT_WAIT)
+        *incohwait = 1;
 
     return is_incoherent;
 }
 
-/* 1/10th of the logfile */
-int gbl_incoherent_logput_window = 1000000;
+int is_incoherent(bdb_state_type *bdb_state, const char *host)
+{
+    return is_incoherent_complete(bdb_state, host, NULL);
+}
+
+int gbl_throttle_logput_trace = 0;
+int gbl_incoherent_logput_window = 0;
 
 static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
                                              const char *host)
 {
-    int ret = 0;
-    int64_t cntbytes;
+    int ret = 0, now, pr = 0;
+    static int lastpr = 0;
+    static unsigned long long throttles = 0;
+    unsigned long long cntbytes;
 
+    if (gbl_throttle_logput_trace && ((now = time(NULL)) - lastpr)) {
+        pr = 1;
+        lastpr = now;
+    }
+
+    /* INCOHERENT & INCOHERENT_SLOW */
     if (is_incoherent(bdb_state, host)) {
+        uint32_t window = gbl_incoherent_logput_window;
+
         DB_LSN *lsnp, *masterlsn;
-        lsnp = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
-        masterlsn = &bdb_state->seqnum_info
-                         ->seqnums[nodeix(bdb_state->repinfo->master_host)]
-                         .lsn;
-        cntbytes = subtract_lsn(bdb_state, masterlsn, lsnp);
-        if (cntbytes > gbl_incoherent_logput_window) {
+        if (!window) {
             ret = 1;
+            throttles++;
+            if (pr) {
+                logmsg(LOGMSG_USER,
+                       "%s throttling logput to %s, incoherent, %llu "
+                       "throttles\n",
+                       __func__, host, throttles);
+            }
+        } else {
+            lsnp = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
+            masterlsn = &bdb_state->seqnum_info
+                             ->seqnums[nodeix(bdb_state->repinfo->master_host)]
+                             .lsn;
+            cntbytes = subtract_lsn(bdb_state, masterlsn, lsnp);
+            if (cntbytes > window) {
+                ret = 1;
+                throttles++;
+                if (pr) {
+                    logmsg(LOGMSG_USER,
+                           "%s throttling logput to %s, incoherent"
+                           " %llu bytes behind, total throttles=%llu\n",
+                           __func__, host, cntbytes, throttles);
+                }
+            } else {
+                if (pr) {
+                    logmsg(LOGMSG_USER,
+                           "%s NOT throttling logput to %s, "
+                           "incoherent and %llu bytes behind, total, "
+                           "throttles=%llu\n",
+                           __func__, host, cntbytes, throttles);
+                }
+            }
         }
+    } else if (pr) {
+        logmsg(LOGMSG_USER, "%s allowing logput to %s\n", __func__, host);
     }
 
     return ret;
@@ -694,8 +730,11 @@ void rep_reset_send_callcount(void) { callcount = 0; }
 
 void rep_reset_send_bytecount(void) { bytecount = 0; }
 
+extern int gbl_decoupled_logputs;
+
 int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
-                    const DB_LSN *lsnp, char *host, int flags, void *usr_ptr)
+                    const DB_LSN *lsnp, char *host, uint32_t flags,
+                    void *usr_ptr)
 {
     bdb_state_type *bdb_state;
     char *buf;
@@ -980,21 +1019,38 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                 }
             }
 
+            if (dontsend && (flags & DB_REP_TRACE)) {
+                logmsg(LOGMSG_USER, "%s line %d logput to %s throttled\n",
+                       __func__, __LINE__, hostlist[i]);
+            }
+
             if (!dontsend) {
-                if (!is_logput) {
-                    rc = net_send_nodrop(bdb_state->repinfo->netinfo,
-                                         hostlist[i], USER_TYPE_BERKDB_REP, buf,
-                                         bufsz, nodelay);
-                } else {
-                    if (bdb_state->attr->net_inorder_logputs) {
-                        rc = net_send_inorder(bdb_state->repinfo->netinfo,
-                                              hostlist[i], USER_TYPE_BERKDB_REP,
-                                              buf, bufsz, nodelay);
-                    } else {
-                        rc =
-                            net_send(bdb_state->repinfo->netinfo, hostlist[i],
-                                     USER_TYPE_BERKDB_REP, buf, bufsz, nodelay);
-                    }
+                uint32_t sendflags = 0;
+                if (!is_logput)
+                    sendflags |= (NET_SEND_NODROP | NET_SEND_NODELAY);
+
+                if (flags & DB_REP_NODROP)
+                    sendflags |= NET_SEND_NODROP;
+
+                if (bdb_state->attr->net_inorder_logputs)
+                    sendflags |= NET_SEND_INORDER;
+
+                if (nodelay)
+                    sendflags |= NET_SEND_NODELAY;
+
+                if (flags & DB_REP_TRACE) {
+                    logmsg(LOGMSG_USER, "%s line %d calling net_send_flags\n",
+                           __func__, __LINE__);
+                    sendflags |= NET_SEND_TRACE;
+                }
+
+                rc =
+                    net_send_flags(bdb_state->repinfo->netinfo, hostlist[i],
+                                   USER_TYPE_BERKDB_REP, buf, bufsz, sendflags);
+
+                if (flags & DB_REP_TRACE) {
+                    logmsg(LOGMSG_USER, "%s line %d net_send_flags rc %d\n",
+                           __func__, __LINE__, rc);
                 }
                 if (rc != 0)
                     rc = 1; /* haha, keep ignoring it */
@@ -1020,46 +1076,35 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
             logmsg(LOGMSG_USER, "--- sending seq %d to %s, nodelay is %d\n", tmpseq,
                     host, nodelay);
 
-        if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
-            if ((flags & DB_REP_PERMANENT) && (tran)) {
-                if (bdb_state->attr->net_send_gblcontext && gblcontext) {
-                    dontsend = is_logput && throttle_updates_incoherent_nodes(
-                                                bdb_state, host);
-                    if (!gbl_rowlocks && !dontsend) {
+        uint32_t sendflags = 0;
 
-                        if (gblcontext == -1ULL) {
-                            logmsg(LOGMSG_ERROR,
-                                   "SENDING context -1 to node %s\n", host);
-                            cheap_stack_trace();
-                        }
+        if (!is_logput)
+            sendflags |= (NET_SEND_NODROP | NET_SEND_NODELAY);
 
-                        rc = net_send(bdb_state->repinfo->netinfo, host,
-                                      USER_TYPE_GBLCONTEXT, &gblcontext,
-                                      sizeof(unsigned long long), nodelay);
-                        if (rc != 0) {
-                            outrc = 1;
-                        }
-                    } else {
-                        outrc = 1;
-                    }
-                }
-            }
+        if (flags & DB_REP_NODROP)
+            sendflags |= NET_SEND_NODROP;
 
-        if (!outrc) {
-            rc = net_send(bdb_state->repinfo->netinfo, host,
-                          USER_TYPE_BERKDB_REP, buf, bufsz, nodelay);
+        if (bdb_state->attr->net_inorder_logputs)
+            sendflags |= NET_SEND_INORDER;
 
-            if (rc != 0)
-                outrc = 1;
+        if (nodelay)
+            sendflags |= NET_SEND_NODELAY;
+
+        if (flags & DB_REP_TRACE) {
+            logmsg(LOGMSG_USER, "%s line %d calling net_send_flags\n", __func__,
+                   __LINE__);
+            sendflags |= NET_SEND_TRACE;
         }
+
+        rc = net_send_flags(bdb_state->repinfo->netinfo, host,
+                            USER_TYPE_BERKDB_REP, buf, bufsz, sendflags);
+        if (rc != 0)
+            outrc = 1;
     }
 
     if (useheap)
         free(buf);
 
-    /*Pthread_mutex_unlock(&(bdb_state->repinfo->send_lock));*/
-
-    /*return 0;*/
     return outrc;
 }
 
@@ -1152,6 +1197,8 @@ static void abort_election_on_exit(bdb_state_type *bdb_state)
     pthread_exit(NULL);
 }
 
+int gbl_elect_priority_bias = 0;
+
 static void *elect_thread(void *args)
 {
     int rc, count, i;
@@ -1159,6 +1206,8 @@ static void *elect_thread(void *args)
     char *master_host, *old_master;
     int num;
     int num_connected;
+    int node_not_up = 0;
+    uint32_t newgen;
     elect_thread_args_type *elect_thread_args;
     int elect_time;
     const char *hostlist[REPMAX];
@@ -1222,6 +1271,10 @@ elect_again:
     /* Database may be exiting. Re-check before we re-elect. */
     abort_election_on_exit(bdb_state);
 
+    /* Poll so we don't send whomaster reqs in a tight loop */
+    if (elect_again)
+        poll(NULL, 0, 100);
+
     if (bdb_state->callback->electsettings_rtn) {
         int elect_time_microsecs = 0;
         int elect_time_max = 0;
@@ -1261,14 +1314,15 @@ elect_again:
         if (!(bdb_state->callback->nodeup_rtn(bdb_state,
                                               bdb_state->repinfo->myhost))) {
             rep_pri = rep_pri - 1;
+            node_not_up = 1;
         }
     }
 
-    if ((op == LOSE) || (op == REOPEN_AND_LOSE))
-        rep_pri = 1;
-
-    if (gbl_use_node_pri &&
-        rep_pri == REP_PRI) { /* if the node is up, then apply priorities. */
+    if (gbl_elect_priority_bias && !node_not_up) {
+        rep_pri = REP_PRI + gbl_elect_priority_bias;
+    } else if (gbl_use_node_pri &&
+               rep_pri ==
+                   REP_PRI) { /* if the node is up, then apply priorities. */
         rep_pri = REP_PRI + gbl_rep_node_pri; /* priority should be > priority
                                                  of nodes which are down.*/
     }
@@ -1306,8 +1360,12 @@ elect_again:
     old_master = bdb_state->repinfo->master_host;
     set_repinfo_master_host(bdb_state, db_eid_invalid, __func__, __LINE__);
 
+    /* Should be holding bdb readlock .. */
+    BDB_READLOCK("rep_elect");
+
     rc = bdb_state->dbenv->rep_elect(bdb_state->dbenv, elect_count, rep_pri,
-                                     elect_time, &master_host);
+                                     elect_time, &newgen, &master_host);
+    BDB_RELLOCK();
 
     if (rc != 0) {
         if (rc == DB_REP_UNAVAIL)
@@ -1315,19 +1373,6 @@ elect_again:
                 ((double)elect_time) / 1000000.00);
         else
             logmsg(LOGMSG_ERROR, "got %d from rep_elect\n", rc);
-
-        restart++;
-        if (restart == 5) {
-            /*try to reinit the process*/
-            logmsg(LOGMSG_DEBUG, "elect_thread: call rep_start\n");
-            called_rep_start++;
-            rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
-                                             DB_REP_CLIENT);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "elect_thread: rep_start returned error code %d\n", rc);
-            }
-            restart = 0;
-        }
 
         elect_time *= 2;
         elect_again++;
@@ -1338,10 +1383,8 @@ elect_again:
 
         goto elect_again;
     }
-
-/*
-fprintf(stderr, "************  done with rep_elect\n");
-*/
+    /* replace now: if i was already master, rep-start wont be called */
+    set_repinfo_master_host(bdb_state, master_host, __func__, __LINE__);
 
 #ifndef BERKDB_46
 
@@ -1350,44 +1393,6 @@ fprintf(stderr, "************  done with rep_elect\n");
 
         if (master_host == bdb_state->repinfo->myhost) {
             logmsg(LOGMSG_INFO, "elect_thread: we won the election\n");
-
-            /* give up our read lock, we will need a write lock here  */
-
-            /* we need to upgrade */
-            rc = bdb_upgrade(bdb_state, &done);
-            print(bdb_state, "back from bdb_upgrade%s\n",
-                  (!done) ? " (nop)" : "");
-
-            if (rc != 0) {
-                logmsg(LOGMSG_FATAL, "bdb_upgrade returned bad rcode %d\n", rc);
-                exit(1);
-            }
-
-            /* bdb_upgrade calls whoismaster_rtn. */
-            Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
-            bdb_state->repinfo->in_election = 0;
-            Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
-
-            bdb_thread_event(bdb_state, 0);
-            return NULL;
-        }
-
-        else if (old_master == master_host) {
-            set_repinfo_master_host(bdb_state, master_host, __func__, __LINE__);
-            logmsg(LOGMSG_INFO, "elect_thread: master didn't change\n");
-        }
-
-        else if (old_master == bdb_state->repinfo->myhost) {
-            logmsg(LOGMSG_INFO, "elect_thread: we lost the election as master: "
-                            "new_master is %s\n",
-                    master_host);
-            bdb_downgrade(bdb_state, &done);
-            if (done)
-                bdb_setmaster(bdb_state, master_host);
-        } else {
-            logmsg(LOGMSG_WARN, "elect_thread: we lost the election: new_master is %s\n",
-                    master_host);
-            bdb_setmaster(bdb_state, master_host);
         }
     }
 #endif
@@ -1439,13 +1444,16 @@ static void call_for_election_int(bdb_state_type *bdb_state, int op)
                 rc);
 }
 
-void call_for_election(bdb_state_type *bdb_state)
+void call_for_election(bdb_state_type *bdb_state, const char *func, int line)
 {
+    logmsg(LOGMSG_USER, "%s line %d called for election\n", func, line);
     call_for_election_int(bdb_state, DONT_LOSE);
 }
 
-void call_for_election_and_lose(bdb_state_type *bdb_state)
+void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func,
+                                int line)
 {
+    logmsg(LOGMSG_USER, "%s line %d called for election\n", func, line);
     call_for_election_int(bdb_state, LOSE);
 }
 
@@ -1455,10 +1463,11 @@ void call_for_election_and_lose(bdb_state_type *bdb_state)
    replication rollback.
    (bdb_state->rep_handle_dead = 1)
 */
-static void bdb_reopen(bdb_state_type *bdb_state)
+static void bdb_reopen(bdb_state_type *bdb_state, const char *func, int line)
 {
     logmsg(LOGMSG_DEBUG, "bdb_reopen called by tid 0x%lx\n", pthread_self());
-
+    logmsg(LOGMSG_USER, "%s line %d called for election (bdb_reopen)\n", func,
+           line);
     call_for_election_int(bdb_state, REOPEN_AND_LOSE);
 }
 
@@ -1603,8 +1612,8 @@ typedef struct __rep_control {
 } REP_CONTROL;
 */
 
-static inline int net_get_lsn(bdb_state_type *bdb_state, const void *buf,
-                              int buflen, DB_LSN *lsn)
+int net_get_lsn_rectype(bdb_state_type *bdb_state, const void *buf, int buflen,
+                        DB_LSN *lsn, int *myrectype)
 {
     int wire_header_type, usertype, recsize, rectype;
     uint8_t *p_buf;
@@ -1662,9 +1671,30 @@ static inline int net_get_lsn(bdb_state_type *bdb_state, const void *buf,
                                      p_buf_end)))
         return -1;
 
-    /* Check for LOGPUT */
-    if (rectype != 7)
+    /* Copyout rectype */
+    *myrectype = rectype;
+
+    return 0;
+}
+
+static int net_getlsn_rectype(netinfo_type *netinfo_ptr, void *record, int len,
+                              int *file, int *offset, int *rectype)
+{
+    bdb_state_type *bdb_state;
+    DB_LSN lsn;
+    int myrectype;
+
+    bdb_state = net_get_usrptr(netinfo_ptr);
+
+    if ((net_get_lsn_rectype(bdb_state, record, len, &lsn, &myrectype)) != 0)
         return -1;
+
+    if (file)
+        *file = lsn.file;
+    if (offset)
+        *offset = lsn.offset;
+    if (rectype)
+        *rectype = myrectype;
 
     return 0;
 }
@@ -1672,17 +1702,13 @@ static inline int net_get_lsn(bdb_state_type *bdb_state, const void *buf,
 int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, int *file,
                    int *offset)
 {
-    bdb_state_type *bdb_state;
-    DB_LSN lsn;
-
-    bdb_state = net_get_usrptr(netinfo_ptr);
-
-    if ((net_get_lsn(bdb_state, record, len, &lsn)) != 0)
-        return -1;
-
-    *file = lsn.file;
-    *offset = lsn.offset;
-    return 0;
+    int rectype;
+    if ((net_getlsn_rectype(netinfo_ptr, record, len, file, offset, &rectype) ==
+         0) &&
+        (rectype == 7)) {
+        return 0;
+    }
+    return -1;
 }
 
 /* Given two outgoing net buffers, which one is lower */
@@ -1698,10 +1724,10 @@ int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
 
     /* Do not tolerate malformed buffers.  I am inserting x with the inorder
      * flag.  It has to be correct. */
-    if ((rc = net_get_lsn(bdb_state, x, xlen, &xlsn)) != 0)
+    if ((rc = net_get_lsn_rectype(bdb_state, x, xlen, &xlsn, NULL)) != 0)
         abort();
 
-    if ((rc = net_get_lsn(bdb_state, y, ylen, &ylsn)) != 0)
+    if ((rc = net_get_lsn_rectype(bdb_state, y, ylen, &ylsn, NULL)) != 0)
         return -1;
 
     return log_compare(&xlsn, &ylsn);
@@ -1721,12 +1747,8 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum)
     if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
         pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
-        bdb_state->coherent_state[nodeix(hostname)] = STATE_INCOHERENT_WAIT;
-#ifdef INCOHERENT_CTRACE
-        ctrace("%s:%d setting host %s to INCOHERENT_WAIT\n", __FILE__, __LINE__,
-               hostname);
-#endif
-
+        set_coherent_state(bdb_state, hostname, STATE_INCOHERENT_WAIT, __func__,
+                           __LINE__);
         pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         /* Colease thread will do this */
@@ -1880,7 +1902,7 @@ void *hostdown_thread(void *arg)
             logmsg(LOGMSG_WARN, "net_hostdown_rtn: HOSTDOWN was the master, "
                             "calling for election\n");
 
-            call_for_election(bdb_state);
+            call_for_election(bdb_state, __func__, __LINE__);
         }
     }
 
@@ -1924,15 +1946,12 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
              * replicant will run recovery to catch up
              */
             defer_commits(bdb_state, host, __func__);
-            bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT;
+            set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
+                               __LINE__);
         }
 
         /* hostdown can defer commits */
         bdb_state->last_downgrade_time[nodeix(host)] = gettimeofday_ms();
-#ifdef INCOHERENT_CTRACE
-        ctrace("%s %d setting host %s to INCOHERENT_WAIT\n", __FILE__, __LINE__,
-               host);
-#endif
         pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
         trigger_unregister_node(host);
     } 
@@ -1944,7 +1963,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
 
         /* this is replicant, we are running election followed by recovery */
 
-        call_for_election(bdb_state);
+        call_for_election(bdb_state, __func__, __LINE__);
     }
 
     if (bdb_state->exiting)
@@ -1979,22 +1998,17 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
 void bdb_all_incoherent(bdb_state_type *bdb_state)
 {
     int i;
-
+    if (gbl_set_coherent_state_trace) {
+        logmsg(LOGMSG_USER, "%s line %d setting all nodes to INCOHERENT_WAIT\n",
+               __func__, __LINE__);
+    }
     pthread_mutex_lock(&(bdb_state->coherent_state_lock));
     for (i = 0; i < MAXNODES; i++) {
-#ifdef INCOHERENT_CTRACE
-        ctrace("%s %d setting node %d to INCOHERENT_WAIT\n", __FILE__, __LINE__,
-               i);
-#endif
         bdb_state->coherent_state[i] = STATE_INCOHERENT_WAIT;
     }
 
-    bdb_state->coherent_state[nodeix(bdb_state->repinfo->myhost)] =
-        STATE_COHERENT;
-#ifdef INCOHERENT_CTRACE
-    ctrace("%s %d setting node %d to COHERENT\n", __FILE__, __LINE__,
-           bdb_state->repinfo->myhost);
-#endif
+    set_coherent_state(bdb_state, bdb_state->repinfo->myhost, STATE_COHERENT,
+                       __func__, __LINE__);
 
     pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 }
@@ -2275,6 +2289,9 @@ int verify_master_leases(bdb_state_type *bdb_state, const char *func,
     return verify_master_leases_int(bdb_state, comlist, comcount, func, line);
 }
 
+int gbl_catchup_window_trace = 0;
+extern int gbl_set_seqnum_trace;
+
 static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                                      seqnum_type *seqnum, char *host,
                                      uint8_t is_tcp)
@@ -2286,7 +2303,8 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     int change_coherency;
     seqnum_type zero_seq;
     DB_LSN *masterlsn;
-    int rc, cntbytes;
+    int rc;
+    unsigned long long cntbytes;
     struct waiting_for_lsn *waitforlsn = NULL;
     int now;
     int track_times;
@@ -2323,7 +2341,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         if (seqnum->generation > mygen) {
             if (bdb_state->attr->downgrade_on_seqnum_gen_mismatch &&
                 bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
-                call_for_election(bdb_state);
+                call_for_election(bdb_state, __func__, __LINE__);
             return;
         }
 
@@ -2371,12 +2389,8 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
             pthread_mutex_lock(&bdb_state->coherent_state_lock);
             if (bdb_state->coherent_state[nodeix(host)] ==
                 STATE_INCOHERENT_SLOW) {
-                logmsg(LOGMSG_USER, "making %s incoherent due to no activity\n", host);
-                bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT;
-#ifdef INCOHERENT_CTRACE
-                ctrace("%s:%d setting host %s to INCOHERENT\n", __FILE__,
-                       __LINE__, host);
-#endif
+                set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
+                                   __LINE__);
             }
             pthread_mutex_unlock(&bdb_state->coherent_state_lock);
             last_slow_node_check_time = comdb2_time_epochms();
@@ -2401,16 +2415,35 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
 
     /* Completely possible .. it just means that the durable lsn will trail a
      * bit */
-    if (bdb_state->attr->wait_for_seqnum_trace && 
-            log_compare(&bdb_state->seqnum_info->seqnums[nodeix(host)].lsn, &seqnum->lsn) > 0) {
-        logmsg(LOGMSG_INFO, "%s seqnum from %s moving backwards from [%d][%d] to [%d][%d]\n",
-            __func__, host,
-            bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.file,
-            bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.offset,
-            seqnum->lsn.file, seqnum->lsn.offset);
+    if (bdb_state->attr->wait_for_seqnum_trace &&
+        log_compare(&bdb_state->seqnum_info->seqnums[nodeix(host)].lsn,
+                    &seqnum->lsn) > 0) {
+        logmsg(LOGMSG_USER,
+               "%s seqnum from %s moving backwards from [%d][%d] gen %d to "
+               "[%d][%d] gen %d\n",
+               __func__, host,
+               bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.file,
+               bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.offset,
+               bdb_state->seqnum_info->seqnums[nodeix(host)].generation,
+               seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation);
+    } else if (bdb_state->attr->wait_for_seqnum_trace) {
+        logmsg(LOGMSG_USER,
+               "%s seqnum from %s moving from [%d][%d] gen %d to "
+               "[%d][%d] gen %d commit_gen %d mygen %d change_coherency %d\n",
+               __func__, host,
+               bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.file,
+               bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.offset,
+               bdb_state->seqnum_info->seqnums[nodeix(host)].generation,
+               seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation,
+               seqnum->commit_generation, mygen, change_coherency);
     }
     memcpy(&(bdb_state->seqnum_info->seqnums[nodeix(host)]), seqnum,
            sizeof(seqnum_type));
+
+    if (gbl_set_seqnum_trace) {
+        logmsg(LOGMSG_USER, "%s line %d set %s seqnum to %d:%d\n", __func__,
+               __LINE__, host, seqnum->lsn.file, seqnum->lsn.offset);
+    }
 
     if (change_coherency && track_times) {
         if (bdb_state->seqnum_info->time_10seconds[nodeix(host)] == NULL) {
@@ -2489,12 +2522,13 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                             (gettimeofday_ms() -
                              bdb_state->last_downgrade_time[nodeix(host)]) <=
                                 downgrade_penalty) {
-                            bdb_state->coherent_state[nodeix(host)] =
-                                STATE_INCOHERENT_WAIT;
+                            set_coherent_state(bdb_state, host,
+                                               STATE_INCOHERENT_WAIT, __func__,
+                                               __LINE__);
                         } else {
                             /* dont send here under lock */
-                            bdb_state->coherent_state[nodeix(host)] =
-                                STATE_COHERENT;
+                            set_coherent_state(bdb_state, host, STATE_COHERENT,
+                                               __func__, __LINE__);
                             uint32_t gen;
                             bdb_state->dbenv->get_rep_gen(bdb_state->dbenv,
                                                           &gen);
@@ -2522,9 +2556,11 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                                           .lsn);
                         cntbytes =
                             subtract_lsn(bdb_state, masterlsn, &seqnum->lsn);
-                        if (cntbytes < catchup_window)
-                            bdb_state->coherent_state[nodeix(host)] =
-                                STATE_INCOHERENT_WAIT;
+                        if (cntbytes < catchup_window) {
+                            set_coherent_state(bdb_state, host,
+                                               STATE_INCOHERENT_WAIT, __func__,
+                                               __LINE__);
+                        }
                     }
                 }
             }
@@ -2536,16 +2572,26 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
 
 /* returns -999 on timeout */
 static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
-                                                    seqnum_type *seqnum,
+                                                    seqnum_type *master_seqnum,
                                                     char *host)
 {
+    seqnum_type *host_seqnum;
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+    host_seqnum = &bdb_state->seqnum_info->seqnums[nodeix(host)];
 
     /*fprintf(stderr, "calling bdb_seqnum_compare\n");*/
-    if (bdb_seqnum_compare(bdb_state,
-                           &(bdb_state->seqnum_info->seqnums[nodeix(host)]),
-                           seqnum) >= 0) {
+    if (bdb_seqnum_compare(bdb_state, host_seqnum, master_seqnum) >= 0) {
         /*fprintf(stderr, "compared >=, returning\n");*/
+        if (gbl_set_coherent_state_trace) {
+            logmsg(LOGMSG_USER,
+                   "%s line %d returning COHERENT for %s, "
+                   "master_seqnum=%d:%d generation %d ptr %p, incoming "
+                   "seqnum=%d:%d generation %d\n",
+                   __func__, __LINE__, host, master_seqnum->lsn.file,
+                   master_seqnum->lsn.offset, master_seqnum->generation,
+                   master_seqnum, host_seqnum->lsn.file,
+                   host_seqnum->lsn.offset, host_seqnum->generation);
+        }
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         return 0;
     }
@@ -2636,14 +2682,10 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                     if (bdb_state->coherent_state[nodeix(worst_node)] ==
                         STATE_COHERENT)
                         defer_commits(bdb_state, worst_node, __func__);
-                    bdb_state->coherent_state[nodeix(host)] =
-                        STATE_INCOHERENT_SLOW;
+                    set_coherent_state(bdb_state, host, STATE_INCOHERENT_SLOW,
+                                       __func__, __LINE__);
                     bdb_state->last_downgrade_time[nodeix(host)] =
                         gettimeofday_ms();
-#ifdef INCOHERENT_CTRACE
-                    ctrace("%s:%d setting host %s to COHERENT\n", __FILE__,
-                           __LINE__, worst_node);
-#endif
                 }
             }
         }
@@ -2680,11 +2722,8 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                       bdb_state->attr->slowrep_incoherent_factor +
                   bdb_state->attr->slowrep_incoherent_mintime))) {
                 print_message = 1;
-                bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT;
-#ifdef INCOHERENT_CTRACE
-                ctrace("%s:%d setting host %s to INCOHERENT\n", __FILE__,
-                       __LINE__, host);
-#endif
+                set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
+                                   __LINE__);
             }
             pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
             if (print_message)
@@ -2768,11 +2807,8 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
                     defer_commits(bdb_state, host, __func__);
                 bdb_state->last_downgrade_time[nodeix(host)] =
                     gettimeofday_ms();
-                bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT;
-#ifdef INCOHERENT_CTRACE
-                ctrace("%s:%d setting host %s to INCOHERENT\n", __FILE__,
-                       __LINE__, host);
-#endif
+                set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
+                                   __LINE__);
                 bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
         }
 
@@ -2899,10 +2935,6 @@ again:
     /* Timeout */
     else if (rc == ETIMEDOUT && remaining <= 0) {
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
-#ifdef INCOHERENT_CTRACE
-        ctrace("%s:%d: returning timeout for syncing to node %s\n", __FILE__,
-               __LINE__, host);
-#endif
         if (bdb_state->attr->wait_for_seqnum_trace) {
             logmsg(LOGMSG_USER, "%s line %d called from %d %s timed out, mach-gen %u mach_lsn %d:%d waiting for %u %d:%d\n", 
                     __func__, __LINE__, lineno, host, got_gen, got_lsn.file, got_lsn.offset,
@@ -3011,6 +3043,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     int do_slow_node_check = 0;
     DB_LSN *masterlsn;
     int numnodes;
+    int numwait;
     int rc;
     int waitms;
     int numskip;
@@ -3046,6 +3079,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     do {
         numnodes = 0;
         numskip = 0;
+        numwait = 0;
 
         if (durable_lsns) {
             total_connected = j = net_get_sanctioned_replicants(
@@ -3089,10 +3123,13 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
         }
 
         for (i = 0; i < j; i++) {
+            int wait = 0;
             /* is_incoherent returns 0 for COHERENT & INCOHERENT_WAIT */
-            if (!(is_incoherent(bdb_state, connlist[i]))) {
+            if (!(is_incoherent_complete(bdb_state, connlist[i], &wait))) {
                 nodelist[numnodes] = connlist[i];
                 numnodes++;
+                if (wait)
+                    numwait++;
             } else {
                 skiplist[numskip] = connlist[i];
                 numskip++;
@@ -3208,10 +3245,6 @@ got_ack:
             logmsg(LOGMSG_WARN, "replication timeout to node %s (%d ms), base node "
                             "was %s with %d ms\n",
                     nodelist[i], waitms, base_node, we_used);
-#ifdef INCOHERENT_CTRACE
-            ctrace("%s:%d : replication timeout to node %s\n", __FILE__,
-                   __LINE__, nodelist[i]);
-#endif
             numfailed++;
         }
 
@@ -3253,32 +3286,21 @@ got_ack:
                               .lsn);
                     cntbytes = subtract_lsn(bdb_state, masterlsn, &nodelsn);
 
-                    bdb_state->coherent_state[nodeix(nodelist[i])] =
-                        (cntbytes < catchup_window) ? STATE_INCOHERENT_WAIT
-                                                    : STATE_INCOHERENT;
+                    set_coherent_state(bdb_state, nodelist[i],
+                                       (cntbytes < catchup_window)
+                                           ? STATE_INCOHERENT_WAIT
+                                           : STATE_INCOHERENT,
+                                       __func__, __LINE__);
                 } else
-                    bdb_state->coherent_state[nodeix(nodelist[i])] =
-                        STATE_INCOHERENT;
+                    set_coherent_state(bdb_state, nodelist[i], STATE_INCOHERENT,
+                                       __func__, __LINE__);
 
                 /* Record the downgrade time */
                 bdb_state->last_downgrade_time[nodeix(nodelist[i])] =
                     gettimeofday_ms();
 
-#ifdef INCOHERENT_CTRACE
-                ctrace("%s %d setting node %s to INCOHERENT\n", __FILE__,
-                       __LINE__, nodelist[i]);
-#endif
                 bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
             }
-#ifdef INCOHERENT_CTRACE
-            else {
-                ctrace("%s:%d not setting %s to INCOHERENT because seqnum->lsn "
-                       "is %d:%d and node->lsn is %d:%d\n",
-                       __FILE__, __LINE__, nodelist[i], seqnum->lsn.file,
-                       seqnum->lsn.offset,
-                       nodelsn.file, nodelsn.offset);
-            }
-#endif
 
             Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
         }
@@ -3288,7 +3310,7 @@ done_wait:
 
     outrc = 0;
 
-    if (!numfailed && !numskip &&
+    if (!numfailed && !numskip && !numwait &&
         bdb_state->attr->remove_commitdelay_on_coherent_cluster &&
         bdb_state->attr->commitdelay) {
         logmsg(LOGMSG_INFO, "Cluster is in sync, removing commitdelay\n");
@@ -3351,8 +3373,7 @@ done_wait:
             }
         }
 
-        // TODO : put trace on switch
-        if (bdb_state->attr->wait_for_seqnum_trace && ((now = time(NULL)) > lastpr)) {
+        if (bdb_state->attr->wait_for_seqnum_trace) {
             DB_LSN calc_lsn;
             uint32_t calc_gen;
             calculate_durable_lsn(bdb_state, &calc_lsn, &calc_gen, 1);
@@ -3360,7 +3381,7 @@ done_wait:
              * seqnums can race against each other.  If we got a majority of 
              * these during the commit we are okay */
             if (was_durable && log_compare(&calc_lsn, &seqnum->lsn) < 0) {
-                logmsg(LOGMSG_ERROR,
+                logmsg(LOGMSG_USER,
                        "ERROR: calculate_durable_lsn trails seqnum, "
                        "but this is durable (%d:%d vs %d:%d)?\n",
                        calc_lsn.file, calc_lsn.offset, seqnum->lsn.file,
@@ -3580,8 +3601,8 @@ void send_myseqnum_to_all(bdb_state_type *bdb_state, int nodelay)
                           sizeof(seqnum_type), nodelay);
 
             if (rc) {
-                logmsg(LOGMSG_ERROR, "0x%lx %s:%d net_send rc=%d\n",
-                       pthread_self(), __FILE__, __LINE__, rc);
+                logmsg(LOGMSG_ERROR, "0x%lx %s:%d net_send rc=%d to %s\n",
+                       pthread_self(), __func__, __LINE__, rc, hostlist[i]);
             }
         }
     }
@@ -3598,13 +3619,51 @@ void bdb_exiting(bdb_state_type *bdb_state)
     MEMORY_SYNC;
 }
 
+int gbl_last_locked_seqnum = 1;
+
+void bdb_set_seqnum(void *in_bdb_state)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    static int lastpr = 0;
+    int now;
+    DB_LSN lastlsn;
+    uint32_t mygen;
+
+    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
+
+    /* Always only use get_last_locked.  Leave the other in until we are sure
+     * that this code works. */
+    if (gbl_last_locked_seqnum &&
+        bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
+        bdb_state->dbenv->get_last_locked(bdb_state->dbenv, &lastlsn);
+    else
+        __log_txn_lsn(bdb_state->dbenv, &lastlsn, NULL, NULL);
+
+    if (lastlsn.file > 0) {
+        Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+        bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
+            .lsn = lastlsn;
+        bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
+            .generation = mygen;
+
+        if (gbl_set_seqnum_trace && (now = time(NULL)) - lastpr) {
+            logmsg(LOGMSG_USER, "%s line %d set %s seqnum to %d:%d gen %d\n",
+                   __func__, __LINE__, bdb_state->repinfo->myhost, lastlsn.file,
+                   lastlsn.offset, mygen);
+            lastpr = now;
+        }
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+    }
+}
+
 static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
                           DBT *rec)
 {
     int rc;
     int r;
+    char *master;
+    int gen, egen;
     DB_LSN permlsn;
-    DB_LSN lastlsn;
     uint32_t generation, commit_generation;
     int outrc;
     int time1, time2;
@@ -3612,6 +3671,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     int force_election = 0;
     int rectype;
     int got_writelock = 0;
+    int got_vote2lock = 0;
     int done = 0;
     int master_confused = 0;
 
@@ -3647,11 +3707,17 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
        locks.
        Grab the bdb_writelock here rather than inside of berkdb so that we avoid
        racing against a rep_start. */
-    if (rectype == REP_VERIFY && bdb_is_open(bdb_state) &&
-        bdb_state->dbenv->rep_verify_will_recover(bdb_state->dbenv, control,
-                                                  rec)) {
+    if (rectype == REP_VERIFY && bdb_state->dbenv->rep_verify_will_recover(
+                                     bdb_state->dbenv, control, rec)) {
         BDB_WRITELOCK_REP("bdb_rep_verify");
         got_writelock = 1;
+    }
+
+    static pthread_mutex_t vote2_lock = PTHREAD_MUTEX_INITIALIZER;
+
+    if (rectype == REP_VOTE2 || rectype == REP_GEN_VOTE2) {
+        pthread_mutex_lock(&vote2_lock);
+        got_vote2lock = 1;
     }
 
     bdb_state->repinfo->in_rep_process_message = 1;
@@ -3663,6 +3729,13 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     r = bdb_state->dbenv->rep_process_message(
         bdb_state->dbenv, control, rec, &host, &permlsn, &commit_generation);
+
+    if (got_vote2lock) {
+        if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
+            abort();
+        }
+        pthread_mutex_unlock(&vote2_lock);
+    }
 
     /*
     fprintf(stderr, "%s line %d permlsn = <%d:%d> rectype = %d\n", __FILE__,
@@ -3711,32 +3784,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     switch (r) {
     case 0:
         bdb_state->repinfo->repstats.rep_zerorc++;
-        uint32_t mygen;
-
-        /* nothing interesting happened - all is a-ok */
-
-        // we are in berkdb .. we are holding the bdb lock .. the generation can't change
-        bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
-        __log_txn_lsn(bdb_state->dbenv, &lastlsn, NULL, NULL);
-
-        /* we still need to account for log updates that missed by ISPERM logic
-         */
-        /*if ( rectype == REP_LOG || rectype == REP_LOG_MORE)*/
-        {
-            Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-            bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
-                .lsn = lastlsn;
-            bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
-                .generation = mygen;
-            Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
-        }
-
-        /*
-        fprintf(stderr, "%s line %d case 0 lastlsn = <%d:%d>\n", __FILE__,
-        __LINE__,
-              lastlsn.file, lastlsn.offset);
-        */
-
+        bdb_set_seqnum(bdb_state);
         break;
 
     case DB_REP_NEWSITE:
@@ -3765,7 +3813,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
             !master_confused)
             break;
 
-        call_for_election(bdb_state);
+        call_for_election(bdb_state, __func__, __LINE__);
 
         /*
            send a hello msg to the node who called for an election.  the
@@ -3778,20 +3826,22 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     case DB_REP_NEWMASTER:
         bdb_state->repinfo->repstats.rep_newmaster++;
+
         logmsg(LOGMSG_WARN,
-               "process_berkdb: DB_REP_NEWMASTER %s time=%ld generation=%u\n",
-               host, time(NULL), generation);
+               "process_berkdb: DB_REP_NEWMASTER %s time=%ld upgraded to "
+               "gen=%u egen=%d\n",
+               host, time(NULL), gen, egen);
 
         /* Check if it's us. */
         if (host == bdb_state->repinfo->myhost) {
-            logmsg(LOGMSG_WARN, "NEWMASTER is ME\n");
+            assert(got_vote2lock);
+            logmsg(LOGMSG_WARN, "NEWMASTER is ME for GENERATION %d\n", egen);
 
             /* I'm upgrading and this thread could be holding logical locks:
              * abort sql threads waiting on logical locks */
             BDB_WRITELOCK_REP("upgrade");
-
             /* we need to upgrade */
-            rc = bdb_upgrade(bdb_state, &done);
+            rc = bdb_upgrade(bdb_state, egen, &done);
 
             BDB_RELLOCK();
 
@@ -3805,7 +3855,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         } else {
             /* it's not us, but we were master - we need to downgrade */
             if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
-                rc = bdb_downgrade(bdb_state, &done);
+                rc = bdb_downgrade(bdb_state, egen, &done);
             } else
                 done = 1;
         }
@@ -3828,13 +3878,10 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         logmsg(LOGMSG_WARN, "rep_process_message: got DUPMASTER from %s, "
                 "I think master is %s.  dowgrading and calling for election\n",
                 host, oldmaster);
-        rc = bdb_downgrade(bdb_state, NULL);
+        rc = bdb_downgrade(bdb_state, 0, NULL);
         break;
 
     case DB_REP_ISPERM: {
-        if (bdb_state->check_for_isperm) {
-            bdb_state->got_isperm = 1;
-        }
         bdb_state->repinfo->repstats.rep_isperm++;
 
         char *mynode = bdb_state->repinfo->myhost;
@@ -3916,7 +3963,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
                 logmsg(LOGMSG_ERROR,
                        "Call for election on strange msgtype %d on replicant\n",
                        r);
-                call_for_election(bdb_state);
+                call_for_election(bdb_state, __func__, __LINE__);
             } else
                 abort();
         }
@@ -3941,6 +3988,16 @@ static int bdb_am_i_coherent_int(bdb_state_type *bdb_state)
     }
 
     return (gettimeofday_ms() <= get_coherency_timestamp());
+}
+
+int bdb_valid_lease(void *in_bdb_state)
+{
+    int x;
+    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    BDB_READLOCK("bdb_am_i_coherent");
+    x = (gettimeofday_ms() <= get_coherency_timestamp());
+    BDB_RELLOCK();
+    return x;
 }
 
 int bdb_am_i_coherent(bdb_state_type *bdb_state)
@@ -3973,20 +4030,11 @@ void bdb_set_notcoherent(bdb_state_type *bdb_state, int notcoherent)
     ** Friendly reminder over net? */
     if (!bdb_state->passed_dbenv_open && notcoherent) {
         BDB_RELLOCK();
-#ifdef INCOHERENT_CTRACE
-        ctrace("%s %d ignoring not_coherent %d because we are not open\n",
-               __FILE__, __LINE__, notcoherent);
-#endif
         return;
     }
 
     bdb_state->not_coherent = notcoherent;
     bdb_state->not_coherent_time = comdb2_time_epoch();
-
-#ifdef INCOHERENT_CTRACE
-    ctrace("%s %d setting not_coherent to %d\n", __FILE__, __LINE__,
-           notcoherent);
-#endif
 
     BDB_RELLOCK();
 }
@@ -4408,7 +4456,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
 
     case USER_TYPE_TRANSFERMASTER_NAME:
         /* Prevent race against watcher thread. */
-        logmsg(LOGMSG_INFO, "transfer master recieved\n");
+        logmsg(LOGMSG_INFO, "transfer master received\n");
         bdb_state->repinfo->dont_elect_untill_time = comdb2_time_epoch() + 5;
         bdb_state->need_to_upgrade = 1;
 
@@ -4657,6 +4705,14 @@ int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
     return rc;
 }
 
+int bdb_commitdelay(void *arg)
+{
+    bdb_state_type *bdb_state = arg;
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    return bdb_state->attr->commitdelay;
+}
+
 static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
                                   char *from_node, int usertype, void *dta,
                                   int dtalen, uint8_t is_tcp)
@@ -4808,12 +4864,13 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
         break;
 
     case USER_TYPE_COMMITDELAYMORE:
-        if (bdb_state->attr->commitdelay < bdb_state->attr->commitdelaymax) {
-            if (bdb_state->attr->commitdelay == 0)
-                bdb_state->attr->commitdelay = 1;
-            else
-                bdb_state->attr->commitdelay *= 2;
-        }
+        if (bdb_state->attr->commitdelay == 0)
+            bdb_state->attr->commitdelay = 1;
+        else
+            bdb_state->attr->commitdelay *= 2;
+
+        if (bdb_state->attr->commitdelay > bdb_state->attr->commitdelaymax)
+            bdb_state->attr->commitdelay = bdb_state->attr->commitdelaymax;
 
         logmsg(LOGMSG_WARN, "--- got commitdelaymore req from node %s.  now %d\n",
                 from_node, bdb_state->attr->commitdelay);
@@ -4826,6 +4883,8 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
 
         bdb_state->attr->commitdelay = 0;
         send_context_to_all(bdb_state);
+        logmsg(gbl_commit_delay_trace ? LOGMSG_USER : LOGMSG_WARN,
+               "-- setting commitdelay to 0 on COMMITDELAYNONE\n");
         break;
 
     case USER_TYPE_GETCONTEXT:
@@ -4911,6 +4970,16 @@ extern int gbl_dump_locks_on_repwait;
 extern int gbl_lock_get_list_start;
 int bdb_clean_pglogs_queues(bdb_state_type *bdb_state);
 extern int db_is_stopped();
+
+int request_delaymore(void *bdb_state_in)
+{
+    int rc;
+    bdb_state_type *bdb_state = (bdb_state_type *)bdb_state_in;
+    rc = net_send_flags(bdb_state->repinfo->netinfo,
+                        bdb_state->repinfo->master_host,
+                        USER_TYPE_COMMITDELAYMORE, NULL, 0, NET_SEND_NODROP);
+    return rc;
+}
 
 void *watcher_thread(void *arg)
 {
@@ -5010,10 +5079,6 @@ void *watcher_thread(void *arg)
             if (behind > bdb_state->attr->commitdelaybehindthresh) {
                 int rc;
 
-                if (bdb_state->attr->goose_replication_for_incoherent_nodes)
-                    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
-                                                     DB_REP_CLIENT);
-
                 if (behind > last_behind) /* we are falling further behind */
                     num_times_behind++;
                 else
@@ -5022,22 +5087,17 @@ void *watcher_thread(void *arg)
                 if (num_times_behind > bdb_state->attr->numtimesbehind) {
                     logmsg(LOGMSG_WARN, "i am incoherent and falling behind\n");
 
-                    /* Alex says this was an attempt to goose the database in
-                     * the
-                     * slow replication case, no real science behind it. */
-                    if (bdb_state->attr->goose_replication_for_incoherent_nodes)
-                        rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
-                                                         DB_REP_CLIENT);
-
                     if (bdb_state->attr->enable_incoherent_delaymore) {
-                        rc = net_send(bdb_state->repinfo->netinfo,
-                                      bdb_state->repinfo->master_host,
-                                      USER_TYPE_COMMITDELAYMORE, NULL, 0, 1);
+                        rc = request_delaymore(bdb_state);
 
                         if (rc != 0) {
                             logmsg(LOGMSG_ERROR,
                                    "failed to send COMMITDELAYMORE to %s\n",
                                    bdb_state->repinfo->master_host);
+                        } else if (gbl_commit_delay_trace) {
+                            logmsg(LOGMSG_USER,
+                                   "%s line %d requested COMMITDELAYMORE\n",
+                                   __func__, __LINE__);
                         }
                     }
 
@@ -5077,17 +5137,15 @@ void *watcher_thread(void *arg)
 
                 /* delay ourselves */
                 if (bdb_state->attr->commitdelay <
-                    bdb_state->attr->skipdelaybase)
+                    bdb_state->attr->skipdelaybase) {
                     bdb_state->attr->commitdelay =
                         bdb_state->attr->skipdelaybase;
-
-                /* try to jigger replication */
-                if (bdb_state->attr->goose_replication_for_incoherent_nodes) {
-                    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
-                                                     DB_REP_MASTER);
-                    if (rc != 0) {
-                        logmsg(LOGMSG_ERROR, "rep_start failed\n");
-                        return NULL;
+                    if (gbl_commit_delay_trace) {
+                        logmsg(LOGMSG_USER,
+                               "%s line %d setting commitdelay to "
+                               "skipdelaybase %d\n",
+                               __func__, __LINE__,
+                               bdb_state->attr->skipdelaybase);
                     }
                 }
             }
@@ -5146,7 +5204,7 @@ void *watcher_thread(void *arg)
         }
 
         master_host = bdb_state->repinfo->master_host;
-        bdb_get_rep_master(bdb_state, &rep_master, NULL);
+        bdb_get_rep_master(bdb_state, &rep_master, NULL, NULL);
 
         if (bdb_state->caught_up) {
             /* periodically send info too all nodes about our curresnt LSN and
@@ -5218,7 +5276,7 @@ void *watcher_thread(void *arg)
                 }
             } else {
                 /* mismatch between master_host and rep_master*/
-                bdb_downgrade(bdb_state, NULL);
+                bdb_downgrade(bdb_state, 0, NULL);
             }
         }
 
@@ -5245,33 +5303,19 @@ void *watcher_thread(void *arg)
                 ((bdb_state->callback->nodeup_rtn)(bdb_state, mynode))) {
                 master_is_bad++;
 
-                if (bdb_state->attr->hostile_takeover_retries &&
-                    master_is_bad > bdb_state->attr->hostile_takeover_retries) {
-                    logmsg(LOGMSG_WARN, 
-                            "master %s is marked down and i am up, taking over",
-                            master_host);
-
-                    rc = bdb_upgrade(bdb_state, &done);
-                    if (!done) {
-                        logmsg(LOGMSG_ERROR, "master upgrade failed, too early\n");
-                    } else {
-                        bdb_setmaster(bdb_state, bdb_state->repinfo->myhost);
-                    }
-
-                    master_is_bad = 0;
-                } else {
-                    logmsg(LOGMSG_WARN, "master %s is marked down and i am up "
-                                    "telling him to yield\n",
-                            master_host);
-                    send_downgrade_and_lose(bdb_state);
-                    /* Don't call for election- the other node will transfer
-                     * master. */
-                }
+                logmsg(LOGMSG_WARN,
+                       "master %s is marked down and i am up telling him to "
+                       "yield\n",
+                       master_host);
+                send_downgrade_and_lose(bdb_state);
+                /* Don't call for election- the other node will transfer
+                 * master. */
             } else {
                 master_is_bad = 0;
             }
         }
 
+        /* This is for the test-only upgrade codepath */
         if (bdb_state->need_to_upgrade) {
 
             /* if we're already master, like if the election thread promoted us,
@@ -5279,7 +5323,7 @@ void *watcher_thread(void *arg)
             if (master_host != bdb_state->repinfo->myhost) {
                 logmsg(LOGMSG_INFO, "calling bdb_upgrade because we were told to\n");
 
-                rc = bdb_upgrade(bdb_state, &done);
+                rc = bdb_upgrade(bdb_state, 0, &done);
                 if (rc != 0) {
                     logmsg(LOGMSG_ERROR, "got %d from bdb_upgrade%s\n", rc,
                             (!done) ? " (nop)" : "");
@@ -5323,7 +5367,7 @@ void *watcher_thread(void *arg)
         /* downgrade ourselves if we are in a dupmaster situation */
         if (master_host == bdb_master_dupe) {
             print(bdb_state, "calling bdb_downgrade\n");
-            bdb_downgrade(bdb_state, NULL);
+            bdb_downgrade(bdb_state, 0, NULL);
             print(bdb_state, "back from bdb_downgrade\n");
         }
 
@@ -5360,7 +5404,7 @@ void *watcher_thread(void *arg)
                 logmsg(LOGMSG_DEBUG, "0x%lx %s:%d %s: calling for election\n",
                        pthread_self(), __FILE__, __LINE__, __func__);
 
-                call_for_election(bdb_state);
+                call_for_election(bdb_state, __func__, __LINE__);
             }
         }
 
@@ -5368,13 +5412,13 @@ void *watcher_thread(void *arg)
             logmsg(LOGMSG_WARN, "watcher found rep_handle_dead");
 
             bdb_state->rep_handle_dead = 0;
-            bdb_reopen(bdb_state);
+            bdb_reopen(bdb_state, __func__, __LINE__);
         }
 
         /* check if the master is db_eid_invalid and call election is so */
         if (!bdb_state->repinfo->in_election) {
             if (rep_master == db_eid_invalid)
-                call_for_election(bdb_state);
+                call_for_election(bdb_state, __func__, __LINE__);
         }
 
         /* check if some thread has called close_hostnode

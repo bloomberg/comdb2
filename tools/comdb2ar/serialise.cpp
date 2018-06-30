@@ -230,7 +230,8 @@ reopen:
     unsigned long long pageno = 0;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-        posix_memalign((void**) &pagebuf, 512, bufsize);
+        if(posix_memalign((void**) &pagebuf, 512, bufsize))
+            throw Error("Failed to allocate output buffer");
 #else
         pagebuf = (uint8_t*) memalign(512, bufsize);
 #endif
@@ -1337,7 +1338,8 @@ void write_incremental_file (
     off_t offset = 0;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-    posix_memalign((void**) &pagebuf, 512, bufsize);
+    if(posix_memalign((void**) &pagebuf, 512, bufsize))
+        throw Error("Failed to allocate output buffer");
 #else
     pagebuf = (uint8_t*) memalign(512, bufsize);
 #endif

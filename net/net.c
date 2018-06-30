@@ -605,6 +605,8 @@ static void check_list_sizes(host_node_type *host_node_ptr)
 }
 #endif
 
+int gbl_print_net_queue_size = 0;
+
 /* Enque a net message consisting of a header and some optional data.
  * The caller should hold the enque lock.
  * Note that dataptr1==NULL => datasz1==0 and dataptr2==NULL => datasz2==0
@@ -784,6 +786,11 @@ fprintf(stderr, "[%s] using malloc for %d bytes\n",
         insert->prev = host_node_ptr->write_tail;
         insert->next = NULL;
         host_node_ptr->write_tail = insert;
+    }
+
+    if (netinfo_ptr->qstat_enque_rtn) {
+        (netinfo_ptr->qstat_enque_rtn)(netinfo_ptr, host_node_ptr->qstat,
+                                       insert->payload.raw, insert->len);
     }
 
     if (host_node_ptr->netinfo_ptr->trace && debug_switch_net_verbose())
@@ -1097,7 +1104,8 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
             return -1;
         }
 
-        rc = sslio_accept(sb, gbl_ssl_ctx, gbl_rep_ssl_mode, NULL, 0);
+        rc = sslio_accept(sb, gbl_ssl_ctx, gbl_rep_ssl_mode, gbl_dbname,
+                          gbl_nid_dbname, NULL, 0, 1);
         if (rc != 1)
             return -1;
     } else if (gbl_rep_ssl_mode >= SSL_REQUIRE) {
@@ -1241,8 +1249,8 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
 #if WITH_SSL
     if (gbl_rep_ssl_mode >= SSL_REQUIRE) {
         sbuf2flush(sb);
-        if (sslio_connect(sb, gbl_ssl_ctx,
-                          gbl_rep_ssl_mode, NULL, 0) != 1)
+        if (sslio_connect(sb, gbl_ssl_ctx, gbl_rep_ssl_mode, gbl_dbname,
+                          gbl_nid_dbname, NULL, 0, 1) != 1)
             return 1;
     }
 #endif
@@ -2076,7 +2084,7 @@ static void dump_queue(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
                         int usertype, void *data, int datalen, int nodelay,
                         int numtails, void **tails, int *taillens, int nodrop,
-                        int inorder)
+                        int inorder, int trace)
 {
     host_node_type *host_node_ptr;
     net_send_message_header tmphd, msghd;
@@ -2096,7 +2104,7 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     if (usertype == 2) {
         int last = __atomic_exchange_n(&curr_udp_cnt, 0, __ATOMIC_SEQ_CST);
         if (last > 0)
-            printf("udp_packets sent %d\n", last);
+            logmsg(LOGMSG_USER, "udp_packets sent %d\n", last);
     }
 #endif
 
@@ -2121,22 +2129,38 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, host);
     if (host_node_ptr == NULL) {
         Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning INVALIDNODE\n", __func__,
+                   __LINE__);
+        }
         return NET_SEND_FAIL_INVALIDNODE;
     }
 
     if (host_node_ptr->host == netinfo_ptr->myhostname) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning FAIL_SENDTOME\n",
+                   __func__, __LINE__);
+        }
         rc = NET_SEND_FAIL_SENDTOME;
         goto end;
     }
 
     /* fail if we don't have a socket */
     if (host_node_ptr->fd == -1) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning NOSOCK\n", __func__,
+                   __LINE__);
+        }
         rc = NET_SEND_FAIL_NOSOCK;
         goto end;
     }
 
     /* fail if we are closed */
     if (host_node_ptr->closed) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning CLOSED\n", __func__,
+                   __LINE__);
+        }
         rc = NET_SEND_FAIL_CLOSED;
         goto end;
     }
@@ -2194,22 +2218,38 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
 
     /* queue is full */
     if (-2 == rc) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning QUEUE-FULL\n", __func__,
+                   __LINE__);
+        }
         rc = NET_SEND_FAIL_QUEUE_FULL;
     }
 
     /* write_list failed to malloc */
     else if (2 == rc) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning MALLOC-FAIL\n", __func__,
+                   __LINE__);
+        }
         rc = NET_SEND_FAIL_MALLOC_FAIL;
     }
 
     /* all other failures */
     else if (0 != rc) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d returning WRITEFAIL\n", __func__,
+                   __LINE__);
+        }
         rc = NET_SEND_FAIL_WRITEFAIL;
     }
 
     /* testpoint- throw 'queue-full' errors */
     if ((0 == rc) && (NET_TEST_QUEUE_FULL == netinfo_ptr->net_test) &&
         (rand() % 1000)) {
+        if (trace) {
+            logmsg(LOGMSG_USER, "%s line %d debug/random QUEUE-FULL\n",
+                   __func__, __LINE__);
+        }
         rc = NET_SEND_FAIL_QUEUE_FULL;
     }
 
@@ -2249,7 +2289,23 @@ int net_send_inorder(netinfo_type *netinfo_ptr, const char *host, int usertype,
                      void *data, int datalen, int nodelay)
 {
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 0,
-                        NULL, 0, 0, 1);
+                        NULL, 0, 0, 1, 0);
+}
+
+int net_send_inorder_nodrop(netinfo_type *netinfo_ptr, const char *host,
+                            int usertype, void *data, int datalen, int nodelay)
+{
+    return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 0,
+                        NULL, 0, 1, 1, 0);
+}
+
+int net_send_flags(netinfo_type *netinfo_ptr, const char *host, int usertype,
+                   void *data, int datalen, uint32_t flags)
+{
+    return net_send_int(netinfo_ptr, host, usertype, data, datalen,
+                        (flags & NET_SEND_NODELAY), 0, NULL, 0,
+                        (flags & NET_SEND_NODROP), (flags & NET_SEND_INORDER),
+                        (flags & NET_SEND_TRACE));
 }
 
 int net_send(netinfo_type *netinfo_ptr, const char *host, int usertype,
@@ -2257,7 +2313,7 @@ int net_send(netinfo_type *netinfo_ptr, const char *host, int usertype,
 {
 
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 0,
-                        NULL, 0, 0, 0);
+                        NULL, 0, 0, 0, 0);
 }
 
 int net_send_nodrop(netinfo_type *netinfo_ptr, const char *host, int usertype,
@@ -2265,7 +2321,7 @@ int net_send_nodrop(netinfo_type *netinfo_ptr, const char *host, int usertype,
 {
 
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 0,
-                        NULL, 0, 1, 0);
+                        NULL, 0, 1, 0, 0);
 }
 
 int net_send_tails(netinfo_type *netinfo_ptr, const char *host, int usertype,
@@ -2274,7 +2330,7 @@ int net_send_tails(netinfo_type *netinfo_ptr, const char *host, int usertype,
 {
 
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay,
-                        numtails, tails, taillens, 0, 0);
+                        numtails, tails, taillens, 0, 0, 0);
 }
 
 int net_send_tail(netinfo_type *netinfo_ptr, const char *host, int usertype,
@@ -2294,7 +2350,7 @@ int net_send_tail(netinfo_type *netinfo_ptr, const char *host, int usertype,
     printf("\n");
 #endif
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 1,
-                        &tail, &tailen, 0, 0);
+                        &tail, &tailen, 0, 0, 0);
 }
 
 /* returns all nodes MINUS you */
@@ -2374,6 +2430,46 @@ int net_get_all_nodes_connected(netinfo_type *netinfo_ptr,
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
     return count;
+}
+
+int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
+                            QSTATREADERFP *reader, QSTATENQUEFP *enque,
+                            QSTATCLEARFP *qclear, QSTATFREEFP *qfree)
+{
+    host_node_type *tmp_host_ptr;
+
+    /* Set qstat for each existing node */
+    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+
+    for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
+         tmp_host_ptr = tmp_host_ptr->next) {
+        if (strcmp(tmp_host_ptr->host, netinfo_ptr->myhostname) != 0) {
+            tmp_host_ptr->qstat =
+                qinit(netinfo_ptr, netinfo_ptr->service, tmp_host_ptr->host);
+        }
+    }
+
+    netinfo_ptr->qstat_free_rtn = qfree;
+    netinfo_ptr->qstat_init_rtn = qinit;
+    netinfo_ptr->qstat_reader_rtn = reader;
+    netinfo_ptr->qstat_enque_rtn = enque;
+    netinfo_ptr->qstat_clear_rtn = qclear;
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+
+    return 0;
+}
+
+void net_queue_stat_iterate(netinfo_type *netinfo_ptr, QSTATITERFP qs_iter,
+                            void *arg)
+{
+    host_node_type *tmp_host_ptr;
+
+    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+    for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
+         tmp_host_ptr = tmp_host_ptr->next) {
+        qs_iter(netinfo_ptr, arg, tmp_host_ptr->qstat);
+    }
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 }
 
 int net_register_getlsn(netinfo_type *netinfo_ptr, GETLSNFP func)
@@ -2709,6 +2805,13 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
         goto err;
     }
 
+    if (netinfo_ptr->qstat_init_rtn) {
+        ptr->qstat = (netinfo_ptr->qstat_init_rtn)(
+            netinfo_ptr, netinfo_ptr->service, hostname);
+    } else {
+        ptr->qstat = NULL;
+    }
+
     netinfo_ptr->head = ptr;
     ptr->stats.bytes_written = ptr->stats.bytes_read = 0;
     ptr->stats.throttle_waits = ptr->stats.reorders = 0;
@@ -2786,6 +2889,10 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
             tmp->next = host_node_ptr->next;
         }
     }
+
+    /* Call qstat free routine if its set */
+    if (netinfo_ptr->qstat_free_rtn)
+        (netinfo_ptr->qstat_free_rtn)(netinfo_ptr, host_node_ptr->qstat);
 
     // if last_used is eq to host_node_ptr->host, clear last_used_node_ptr
     if (host_node_ptr == netinfo_ptr->last_used_node_ptr) {
@@ -4260,6 +4367,8 @@ void kill_subnet(char *subnet)
     Pthread_mutex_unlock(&nets_list_lk);
 }
 
+int gbl_net_writer_thread_poll_ms = 1000;
+
 static void *writer_thread(void *args)
 {
     netinfo_type *netinfo_ptr;
@@ -4301,6 +4410,11 @@ static void *writer_thread(void *args)
             bytes = host_node_ptr->enque_bytes;
             host_node_ptr->enque_count = 0;
             host_node_ptr->enque_bytes = 0;
+
+            if (netinfo_ptr->qstat_clear_rtn) {
+                (netinfo_ptr->qstat_clear_rtn)(netinfo_ptr,
+                                               host_node_ptr->qstat);
+            }
 
             /* release this before writing to sock*/
             Pthread_mutex_unlock(&(host_node_ptr->enquelk));
@@ -4422,7 +4536,7 @@ static void *writer_thread(void *args)
         rc = gettimeofday(&tv, NULL);
         timeval_to_timespec(&tv, &waittime);
 #endif
-        add_millisecs_to_timespec(&waittime, 5000);
+        add_millisecs_to_timespec(&waittime, gbl_net_writer_thread_poll_ms);
 
         pthread_cond_timedwait(&(host_node_ptr->write_wakeup),
                                &(host_node_ptr->enquelk), &waittime);
@@ -4588,7 +4702,7 @@ static void *reader_thread(void *arg)
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
     wire_header_type wire_header;
-    int rc;
+    int rc, set_qstat = 0;
     int th_start_time = comdb2_time_epoch();
     char fromhost[256], tohost[256];
 
@@ -4607,6 +4721,12 @@ static void *reader_thread(void *arg)
 
     while (!host_node_ptr->decom_flag && !host_node_ptr->closed &&
            !netinfo_ptr->exiting) {
+
+        if (set_qstat == 0 && netinfo_ptr->qstat_reader_rtn) {
+            (netinfo_ptr->qstat_reader_rtn)(netinfo_ptr, host_node_ptr->qstat);
+            set_qstat = 1;
+        }
+
         host_node_ptr->timestamp = time(NULL);
 
         if (netinfo_ptr->trace && debug_switch_net_verbose())

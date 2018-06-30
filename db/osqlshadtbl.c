@@ -1617,9 +1617,10 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         
             rc = process_local_shadtbl_index(clnt, tbl, bdberr, genid, 1);
             if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: error writting index record to master in "
-                        "offload mode %d!\n",
-                        __func__, rc);
+                logmsg(LOGMSG_ERROR,
+                       "%s: error writing index record to master in "
+                       "offload mode %d!\n",
+                       __func__, rc);
                 return SQLITE_INTERNAL;
             }
 
@@ -2832,12 +2833,6 @@ int osql_save_schemachange(struct sql_thread *thd,
         logmsg(LOGMSG_ERROR, "%s: error getting sc table for \'%s\'\n",
                __func__, sc->table);
         return -1;
-    }
-
-    if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ||
-        clnt->in_client_trans) {
-        sc->rqid = osql->rqid;
-        comdb2uuidcpy(sc->uuid, osql->uuid);
     }
 
     if (pack_schema_change_type(sc, &packed_sc_data, &packed_sc_data_len)) {

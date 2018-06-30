@@ -473,8 +473,11 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         if (clientstarttime && logger->startus > clientstarttime)
             cson_object_set(obj, "startlag", /* in microseconds */
                             cson_new_int(logger->startus - clientstarttime));
-        cson_object_set(obj, "clientretries",
-                        cson_new_int(get_client_retries(logger->clnt)));
+        int clientretries = get_client_retries(logger->clnt);
+        if (clientretries > 0) {
+            cson_object_set(obj, "clientretries",
+                    cson_new_int(clientretries));
+        }
     }
 
     eventlog_context(obj, logger);

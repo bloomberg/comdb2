@@ -524,6 +524,8 @@ struct sqlclntstate {
 
     int have_user;
     char user[MAX_USERNAME_LEN];
+    int is_x509_user; /* True if the user is retrieved
+                         from a client certificate. */
 
     int have_password;
     char password[MAX_PASSWORD_LEN];
@@ -550,7 +552,6 @@ struct sqlclntstate {
     int isselect;   /* track if the query is a select query.*/
     int isUnlocked;
     int writeTransaction;
-    int send_one_row;
     int verify_retries; /* how many verify retries we've borne */
     int verifyretry_off;
     int pageordertablescan;
@@ -559,7 +560,6 @@ struct sqlclntstate {
     int snapshot_offset;
     int is_hasql_retry;
     int is_readonly;
-    int send_intransresults;
     int is_expert;
     int added_to_hist;
 
@@ -609,7 +609,47 @@ struct sqlclntstate {
 
     int8_t wrong_db;
     int8_t is_lua_sql_thread;
-    int8_t skip_feature;
+
+    /*              (SERVER)
+      Default --> (val: 1)
+                      |
+                      +--> Client has SKIP feature?
+                                   |    |
+                                NO |    | YES
+                                   |    |
+      SET INTRANSRESULTS OFF ------)--->+--> (val: 0) --+
+                                   |                    |
+                                   |  +-----------------+
+                                   |  |
+                                   |  +---> Send server SKIP feature;
+                                   |        Don't send intrans results
+                                   |
+      SET INTRANSRESULTS ON        +-------> (val: 1) --+
+                |                                       |
+                | (val: -1)           +-----------------+
+                |                     |
+                +---------------------+--> Don't send server SKIP feature;
+                                           Send intrans results
+
+                    (CLIENT)
+      CDB2_READ_INTRANS_RESULTS is ON?
+                     /\
+       NO (default) /  \ YES
+                   /    \
+       Send Client       \
+       SKIP feature       \
+                /          \
+       Server has           \
+            SKIP feature?    \
+             /          \     \
+          Y /            \ N   \
+           /              \     \
+       Don't read         Read intrans results
+       intrans results    for writes
+       for writes
+
+     */
+    int8_t send_intrans_results;
     int8_t high_availability_flag;
     int8_t hasql_on;
 
@@ -964,9 +1004,10 @@ struct sql_state {
     const char *sql;                   /* the actual string used */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
 };
+int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
+                      struct sql_state *, struct errstat *);
 int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
-                               struct sql_state *, struct errstat *,
-                               int initial);
+                               struct sql_state *, struct errstat *);
 void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);

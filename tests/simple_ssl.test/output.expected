@@ -1,4 +1,0 @@
-[SELECT 'TESTNOCERT'] failed with rc -1 Client certificate authentication failed.
-[SELECT 'TESTBADCA'] failed with rc -1 SSL Error: A failure in SSL library occured: (0) certificate verify failed
-('TESTSIMPLESQL1'='TESTSIMPLESQL1')
-('TESTSIMPLESQL2'='TESTSIMPLESQL2')

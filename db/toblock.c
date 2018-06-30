@@ -2490,7 +2490,8 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent)
         unlock_schema_lk();
         iq->sc_locked = 0;
     }
-    rc = trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL, 0);
+    rc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_mynode, 0, 1, NULL,
+                              0, NULL, 0);
     if (rc != 0) {
         logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
                __LINE__, rc);
@@ -2716,6 +2717,14 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             void *replay_data = NULL;
             int replay_len = 0;
             int findout;
+            bdb_get_readlock(thedb->bdb_env, "early_replay_cnonce", __func__,
+                             __LINE__);
+            if (thedb->master != gbl_mynode) {
+                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+                outrc = ERR_NOMASTER;
+                fromline = __LINE__;
+                goto cleanup;
+            }
             findout = bdb_blkseq_find(thedb->bdb_env, parent_trans,
                                       iq->snap_info.key, iq->snap_info.keylen,
                                       &replay_data, &replay_len);
@@ -2724,15 +2733,25 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 outrc = do_replay_case(iq, iq->snap_info.key,
                                        iq->snap_info.keylen, num_reqs, 0,
                                        replay_data, replay_len, __LINE__);
+                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
                 did_replay = 1;
                 fromline = __LINE__;
                 goto cleanup;
             }
+            bdb_rellock(thedb->bdb_env, __func__, __LINE__);
         }
 
         if ((got_blockseq || got_blockseq2) && got_osql && !iq->have_snap_info) {
             /* register this blockseq early to detect expensive replays
                of the same blocksql transactions */
+            bdb_get_readlock(thedb->bdb_env, "early_replay", __func__,
+                             __LINE__);
+            if (thedb->master != gbl_mynode) {
+                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+                outrc = ERR_NOMASTER;
+                fromline = __LINE__;
+                goto cleanup;
+            }
             rc = osql_blkseq_register(iq);
             switch (rc) {
             case OSQL_BLOCKSEQ_INV:
@@ -2744,10 +2763,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 logmsg(LOGMSG_WARN, "early blocksql replay detection\n");
                 outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0,
                                        NULL, 0, __LINE__);
+                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
                 did_replay = 1;
                 fromline = __LINE__;
                 goto cleanup;
             }
+            bdb_rellock(thedb->bdb_env, __func__, __LINE__);
         }
         iq->p_buf_in = p_buf_in_saved;
 
@@ -4944,7 +4965,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
        have nested logical transactions.  we need to delay the commit until the
        point where we would write the blkseq using the parent transaction,
        and call tran_commit_logical_with_blkseq instead */
-    if (!rowlocks && parent_trans) {
+    if (!rowlocks && parent_trans && !iq->tranddl) {
         /*fprintf(stderr, "commit child\n");*/
         irc = trans_commit(iq, trans, source_host);
         if (irc != 0) { /* this shouldnt happen */
@@ -5371,9 +5392,13 @@ backout:
         if (rowlocks) {
             irc = trans ? trans_abort_logical(iq, trans, NULL, 0, NULL, 0) : 0;
         } else {
-            if (iq->tranddl)
+            if (iq->tranddl) {
+                if (trans) {
+                    trans_abort(iq, trans);
+                    trans = NULL;
+                }
                 backout_and_abort_tranddl(iq, parent_trans);
-            else
+            } else
                 trans_abort(iq, parent_trans);
             parent_trans = NULL;
         }
@@ -5552,7 +5577,6 @@ add_blkseq:
         memcpy(p_buf_fstblk, &t, sizeof(int));
 
         if (!rowlocks) {
-            extern int gbl_always_send_cnonce;
             // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
             if (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY &&
                 (iq->have_snap_info && iq->snap_info.replicant_can_retry)) {
@@ -5579,8 +5603,13 @@ add_blkseq:
             if (rc == 0 && have_blkseq) {
                 if (iq->tranddl) {
                     if (backed_out) {
+                        assert(trans == NULL);
                         bdb_ltran_put_schema_lock(iq->sc_logical_tran);
-                    } else if (iq->sc_tran) {
+                    } else {
+                        assert(iq->sc_tran);
+                        assert(trans != NULL);
+                        trans_commit(iq, trans, source_host);
+                        trans = NULL;
                         irc = trans_commit(iq, iq->sc_tran, source_host);
                         if (irc != 0) { /* this shouldnt happen */
                             logmsg(LOGMSG_FATAL,
@@ -5641,6 +5670,10 @@ add_blkseq:
                     hascommitlock = 0;
                 }
                 if (iq->tranddl) {
+                    if (trans) {
+                        trans_abort(iq, trans);
+                        trans = NULL;
+                    }
                     backout_and_abort_tranddl(iq, parent_trans);
                 } else {
                     trans_abort(iq, parent_trans);

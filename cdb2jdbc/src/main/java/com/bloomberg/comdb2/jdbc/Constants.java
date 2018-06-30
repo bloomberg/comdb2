@@ -108,6 +108,7 @@ public class Constants {
         , REQUIRE
         , VERIFY_CA
         , VERIFY_HOSTNAME
+        , VERIFY_DBNAME
     }
 
     public enum PEER_SSL_MODE {

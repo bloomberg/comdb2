@@ -27,7 +27,7 @@ You'll need to install a few dependencies first. It's not a big list.  Exact nam
 
 |Distro          | Dependencies |
 |----------------|--------------|
-|  Ubuntu 16.04, 16.10 | `sudo apt-get install -y build-essential bison flex libprotobuf-c-dev libreadline-dev libsqlite3-dev libssl-dev libunwind-dev libz1 libz-dev make gawk protobuf-c-compiler uuid-dev liblz4-tool liblz4-dev libprotobuf-c1 libreadline6 libsqlite3-0 libuuid1 libz1 tzdata ncurses-dev tcl bc`
+|  Ubuntu 16.04, 16.10 | `sudo apt-get install -y build-essential bison flex libprotobuf-c-dev libreadline-dev libsqlite3-dev libssl-dev libunwind-dev libz1 libz-dev make gawk protobuf-c-compiler uuid-dev liblz4-tool liblz4-dev libprotobuf-c1 libsqlite3-0 libuuid1 libz1 tzdata ncurses-dev tcl bc`
 | CentOS 7  | `sudo yum install -y gcc gcc-c++ protobuf-c libunwind libunwind-devel protobuf-c-devel byacc flex openssl openssl-devel openssl-libs readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel zlib lz4-devel gawk tcl epel-release lz4 which`
 
 ### Building

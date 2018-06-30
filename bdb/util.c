@@ -151,18 +151,6 @@ int setup_waittime(struct timespec *waittime, int waitms)
     return 0;
 }
 
-void hexdumpdbt(DBT *dbt)
-{
-    unsigned char *s = dbt->data;
-    int len = dbt->size;
-
-    while (len) {
-        printf("%02x", *s);
-        s++;
-        len--;
-    }
-}
-
 /* Given a berkeley db lockid (i.e. some bytes of data), try to get
  * a human readable name for it.  This is based on __lock_printlock
  * in lock/lock_stat.c */

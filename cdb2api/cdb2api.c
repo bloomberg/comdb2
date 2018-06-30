@@ -96,6 +96,16 @@ static char cdb2_sslcertpath[PATH_MAX];
 static char cdb2_sslcert[PATH_MAX];
 static char cdb2_sslkey[PATH_MAX];
 static char cdb2_sslca[PATH_MAX];
+#if HAVE_CRL
+static char cdb2_sslcrl[PATH_MAX];
+#endif
+
+#ifdef NID_host /* available as of RFC 4524 */
+#define CDB2_NID_DBNAME_DEFAULT NID_host
+#else
+#define CDB2_NID_DBNAME_DEFAULT NID_commonName
+#endif
+int cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
 
 #define CDB2_CACHE_SSL_SESS_DEFAULT 0
 static int cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
@@ -178,7 +188,9 @@ static void reset_the_configuration(void)
     memset(cdb2_sslcert, 0, sizeof(cdb2_sslcert));
     memset(cdb2_sslkey, 0, sizeof(cdb2_sslkey));
     memset(cdb2_sslca, 0, sizeof(cdb2_sslca));
+    memset(cdb2_sslcrl, 0, sizeof(cdb2_sslcrl));
 
+    cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
     cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
 #endif
 
@@ -257,10 +269,8 @@ static char *ibm_getargv0(void)
 
 static inline const char *cdb2_skipws(const char *str)
 {
-    if (str) {
-        while (*str && isspace(*str))
-            str++;
-    }
+    while (*str && isspace(*str))
+        str++;
     return str;
 }
 
@@ -839,7 +849,7 @@ struct cdb2_hndl {
     int num_set_commands_sent;
     int is_read;
     unsigned long long rows_read;
-    int skip_feature;
+    int read_intrans_results;
     int first_record_read;
     char **commands;
     int ack;
@@ -856,7 +866,10 @@ struct cdb2_hndl {
     char *cert;
     char *key;
     char *ca;
+    char *crl;
+    int cache_ssl_sess;
     cdb2_ssl_sess_list *sess_list;
+    int nid_dbname;
 #endif
     struct context_messages context_msgs;
     char *env_tz;
@@ -972,13 +985,23 @@ int is_valid_int(const char *str)
 }
 
 #if WITH_SSL
-static ssl_mode ssl_string_to_mode(const char *s) {
+static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
+{
     if (strcasecmp(SSL_MODE_REQUIRE, s) == 0)
         return SSL_REQUIRE;
     if (strcasecmp(SSL_MODE_VERIFY_CA, s) == 0)
         return SSL_VERIFY_CA;
     if (strcasecmp(SSL_MODE_VERIFY_HOST, s) == 0)
         return SSL_VERIFY_HOSTNAME;
+    if (strncasecmp(SSL_MODE_VERIFY_DBNAME, s,
+                    sizeof(SSL_MODE_VERIFY_DBNAME) - 1) == 0) {
+        s += sizeof(SSL_MODE_VERIFY_DBNAME);
+        if (nid_dbname != NULL) {
+            s = cdb2_skipws(s);
+            *nid_dbname = (*s != '\0') ? OBJ_txt2nid(s) : cdb2_nid_dbname;
+        }
+        return SSL_VERIFY_DBNAME;
+    }
     return SSL_ALLOW;
 }
 #endif
@@ -1094,6 +1117,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                         cdb2_c_ssl_mode = SSL_VERIFY_CA;
                     else if (strcasecmp(SSL_MODE_VERIFY_HOST, tok) == 0)
                         cdb2_c_ssl_mode = SSL_VERIFY_HOSTNAME;
+                    else if (strcasecmp(SSL_MODE_VERIFY_DBNAME, tok) == 0) {
+                        cdb2_c_ssl_mode = SSL_VERIFY_DBNAME;
+                        tok = strtok_r(NULL, " :,", &last);
+                        if (tok != NULL)
+                            cdb2_nid_dbname = OBJ_txt2nid(tok);
+                    }
                 }
             } else if (strcasecmp(SSL_CERT_PATH_OPT, tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
@@ -1119,10 +1148,19 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                     strncpy(cdb2_sslca, tok, PATH_MAX);
                     cdb2_sslca[PATH_MAX - 1] = '\0';
                 }
+#if HAVE_CRL
+            } else if (strcasecmp(SSL_CRL_OPT, tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok) {
+                    strncpy(cdb2_sslcrl, tok, PATH_MAX);
+                    cdb2_sslcrl[PATH_MAX - 1] = '\0';
+                }
+#endif /* HAVE_CRL */
             } else if (strcasecmp("ssl_session_cache", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     cdb2_cache_ssl_sess = !!atoi(tok);
+#endif /* WITH_SSL */
             } else if (strcasecmp("allow_pmux_route", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
@@ -1132,7 +1170,6 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                         cdb2_allow_pmux_route = 0;
                     }
                 }
-#endif
             }
             pthread_mutex_unlock(&cdb2_sockpool_mutex);
         }
@@ -1661,8 +1698,9 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
         return -1;
     }
 
-    rc = ssl_new_ctx(&ctx, hndl->sslpath, &hndl->cert, &hndl->key, &hndl->ca,
-                     hndl->num_hosts, NULL, hndl->errstr, sizeof(hndl->errstr));
+    rc = ssl_new_ctx(&ctx, hndl->c_sslmode, hndl->sslpath, &hndl->cert,
+                     &hndl->key, &hndl->ca, &hndl->crl, hndl->num_hosts, NULL,
+                     hndl->errstr, sizeof(hndl->errstr));
     if (rc != 0) {
         hndl->sslerr = 1;
         return -1;
@@ -1670,7 +1708,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 
     p = (hndl->sess_list == NULL) ? NULL : &(hndl->sess_list->list[indx]);
 
-    rc = sslio_connect(sb, ctx, hndl->c_sslmode,
+    rc = sslio_connect(sb, ctx, hndl->c_sslmode, hndl->dbname, hndl->nid_dbname,
                        hndl->errstr, sizeof(hndl->errstr),
                        ((p != NULL) ? p->sess : NULL), &hndl->sslerr);
 
@@ -1682,7 +1720,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
         return -1;
     }
 
-    if (cdb2_cache_ssl_sess) {
+    if (hndl->cache_ssl_sess) {
         if (hndl->sess_list == NULL) {
             hndl->sess_list = malloc(sizeof(cdb2_ssl_sess_list));
             if (hndl->sess_list == NULL)
@@ -1704,7 +1742,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
                    we lose the caching ability, and that's it. */
                 free(hndl->sess_list);
                 hndl->sess_list = NULL;
-                cdb2_cache_ssl_sess = 0;
+                hndl->cache_ssl_sess = 0;
                 return 0;
             }
 
@@ -2400,7 +2438,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
     }
 
     if (hndl && !(hndl->flags & CDB2_READ_INTRANS_RESULTS) && is_begin) {
-        features[n_features] = CDB2_CLIENT_FEATURES__SKIP_ROWS;
+        features[n_features] = CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS;
         n_features++;
     }
 
@@ -2412,7 +2450,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
         features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
         n_features++;
         if ((hndl->flags & CDB2_DIRECT_CPU) ||
-            (retries_done && hndl->master == hndl->connected_host)) {
+            (retries_done >= (hndl->num_hosts * 2 - 1) && hndl->master ==
+             hndl->connected_host)) {
             features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
             n_features++;
         }
@@ -2680,9 +2719,9 @@ retry_next_record:
             hndl->num_set_commands_sent = hndl->num_set_commands;
         }
         for (ii = 0; ii < hndl->lastresponse->n_features; ii++) {
-            if (hndl->in_trans && (CDB2_SERVER_FEATURES__SKIP_ROWS ==
+            if (hndl->in_trans && (CDB2_SERVER_FEATURES__SKIP_INTRANS_RESULTS ==
                                    hndl->lastresponse->features[ii]))
-                hndl->skip_feature = 1;
+                hndl->read_intrans_results = 0;
         }
 
         PRINT_RETURN_OK(CDB2_OK_DONE);
@@ -2697,7 +2736,7 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
 
     pthread_once(&init_once, do_init_once);
 
-    if (hndl->in_trans && hndl->skip_feature && !hndl->is_read) {
+    if (hndl->in_trans && !hndl->read_intrans_results && !hndl->is_read) {
         rc = CDB2_OK_DONE;
     } else if (hndl->lastresponse && hndl->first_record_read == 0) {
         hndl->first_record_read = 1;
@@ -2848,6 +2887,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     free(hndl->cert);
     free(hndl->key);
     free(hndl->ca);
+    free(hndl->crl);
     if (hndl->sess_list) {
         /* This is correct - we don't have to do it under lock. */
         hndl->sess_list->ref = 0;
@@ -3041,7 +3081,7 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
     hndl->is_retry = num_retry;
 
     clear_responses(hndl);
-    hndl->skip_feature = 0;
+    hndl->read_intrans_results = 1;
 
     hndl->in_trans = 0;
     if (hndl->debug_trace) {
@@ -3181,7 +3221,7 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         int len = 0;
         i++;
 
-        if (hndl->skip_feature && !item->is_read) {
+        if (!hndl->read_intrans_results && !item->is_read) {
             item = item->next;
             continue;
         }
@@ -3308,6 +3348,85 @@ static int is_hasql(const char *set_command, int *value)
     return 1;
 }
 
+#if WITH_SSL
+/*
+ *  0 - Processed an SSL set
+ * >0 - Failed to process an SSL set
+ * <0 - Not an SSL set
+ */
+static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
+{
+    int rc = 0;
+    const char *p = &cmd[sizeof("SET") - 1];
+    p = cdb2_skipws(p);
+
+    if (strncasecmp(p, "SSL_MODE", sizeof("SSL_MODE") - 1) == 0) {
+        p += sizeof("SSL_MODE");
+        p = cdb2_skipws(p);
+        hndl->c_sslmode = ssl_string_to_mode(p, &hndl->nid_dbname);
+    } else if (strncasecmp(p, SSL_CERT_PATH_OPT,
+                           sizeof(SSL_CERT_PATH_OPT) - 1) == 0) {
+        p += sizeof(SSL_CERT_PATH_OPT);
+        p = cdb2_skipws(p);
+        free(hndl->sslpath);
+        hndl->sslpath = strdup(p);
+        if (hndl->sslpath == NULL)
+            rc = ENOMEM;
+    } else if (strncasecmp(p, SSL_CERT_OPT, sizeof(SSL_CERT_OPT) - 1) == 0) {
+        p += sizeof(SSL_CERT_OPT);
+        p = cdb2_skipws(p);
+        free(hndl->cert);
+        hndl->cert = strdup(p);
+        if (hndl->cert == NULL)
+            rc = ENOMEM;
+    } else if (strncasecmp(p, SSL_KEY_OPT, sizeof(SSL_KEY_OPT) - 1) == 0) {
+        p += sizeof(SSL_KEY_OPT);
+        p = cdb2_skipws(p);
+        free(hndl->key);
+        hndl->key = strdup(p);
+        if (hndl->key == NULL)
+            rc = ENOMEM;
+    } else if (strncasecmp(p, SSL_CA_OPT, sizeof(SSL_CA_OPT) - 1) == 0) {
+        p += sizeof(SSL_CA_OPT);
+        p = cdb2_skipws(p);
+        free(hndl->ca);
+        hndl->ca = strdup(p);
+        if (hndl->ca == NULL)
+            rc = ENOMEM;
+#if HAVE_CRL
+    } else if (strncasecmp(p, SSL_CRL_OPT, sizeof(SSL_CRL_OPT) - 1) == 0) {
+        p += sizeof(SSL_CRL_OPT);
+        p = cdb2_skipws(p);
+        free(hndl->crl);
+        hndl->crl = strdup(p);
+        if (hndl->crl == NULL)
+            rc = ENOMEM;
+#endif /* HAVE_CRL */
+    } else if (strncasecmp(p, "SSL_SESSION_CACHE",
+                           sizeof("SSL_SESSION_CACHE") - 1) == 0) {
+        p += sizeof("SSL_SESSION_CACHE");
+        p = cdb2_skipws(p);
+        hndl->cache_ssl_sess = (strncasecmp(p, "ON", 2) == 0);
+        if (hndl->cache_ssl_sess)
+            cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
+    } else {
+        rc = -1;
+    }
+
+    if (rc == 0) {
+        /* Reset ssl error flag. */
+        hndl->sslerr = 0;
+        /* Refresh connection if SSL config has changed. */
+        if (hndl->sb != NULL) {
+            newsql_disconnect(hndl, hndl->sb, __LINE__);
+            hndl->sb = NULL;
+        }
+    }
+
+    return rc;
+}
+#endif /* WITH_SSL */
+
 static inline void cleanup_query_list(cdb2_hndl_tp *hndl,
                                       cdb2_query_list *commit_query_list,
                                       int line)
@@ -3315,7 +3434,7 @@ static inline void cleanup_query_list(cdb2_hndl_tp *hndl,
     if (hndl->debug_trace && line)
         fprintf(stderr, "%s:%d called from line %d\n", __func__, __LINE__,
                 line);
-    hndl->skip_feature = 0;
+    hndl->read_intrans_results = 1;
     hndl->snapshot_file = 0;
     hndl->snapshot_offset = 0;
     hndl->is_retry = 0;
@@ -3358,12 +3477,20 @@ static inline void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
 static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 {
     int i, j, k;
+
     if (hndl->in_trans) {
         sprintf(hndl->errstr, "Can't run set query inside transaction.");
         hndl->error_in_trans = CDB2ERR_BADREQ;
         hndl->client_side_error = 1;
         return CDB2ERR_BADREQ;
     }
+
+#if WITH_SSL
+    int rc = process_ssl_set_command(hndl, sql);
+    if (rc >= 0)
+        return rc;
+#endif
+
     i = hndl->num_set_commands;
     if (i > 0) {
         int skip_len = 4;
@@ -3697,7 +3824,7 @@ retry_queries:
     int len;
     int type = 0;
     int err_val = hndl->error_in_trans;
-    int skip_feature = hndl->skip_feature;
+    int read_intrans_results = hndl->read_intrans_results;
 
     if (is_rollback || is_commit) {
         if (is_commit && hndl->snapshot_file) {
@@ -3708,7 +3835,7 @@ retry_queries:
             hndl->query_list = NULL;
             is_hasql_commit = 1;
         }
-        hndl->skip_feature = 0;
+        hndl->read_intrans_results = 1;
         clear_snapshot_info(hndl, __LINE__);
         hndl->error_in_trans = 0;
         if (hndl->debug_trace) {
@@ -3727,7 +3854,7 @@ retry_queries:
         }
         hndl->query_list = NULL;
 
-        if (skip_feature && !hndl->client_side_error) {
+        if (!read_intrans_results && !hndl->client_side_error) {
             if (err_val) {
                 if (is_rollback) {
                     PRINT_RETURN(0);
@@ -3737,7 +3864,7 @@ retry_queries:
             }
         } else if (err_val) {
             hndl->client_side_error = 0;
-            /* With skip_feature off, we need to read the 1st response
+            /* With read_intrans_results on, we need to read the 1st response
                of commit/rollback even if there is an in-trans error. */
             goto read_record;
         }
@@ -3747,8 +3874,7 @@ retry_queries:
         PRINT_RETURN(err_val);
     }
 
-    if (hndl->skip_feature && !hndl->is_read && 
-         (hndl->in_trans || !hndl->is_hasql)) {
+    if (!hndl->read_intrans_results && !hndl->is_read && hndl->in_trans) {
         if (hndl->debug_trace) {
             fprintf(stderr, "td %u %s:%d in_trans=%d is_hasql=%d\n",
                     (uint32_t)pthread_self(), __func__, __LINE__,
@@ -3829,11 +3955,29 @@ read_record:
                suppress any error. */
             if (is_rollback) {
                 PRINT_RETURN(0);
-            }
-            else if (is_retryable(hndl, err_val)) {
+            } else if (is_retryable(hndl, err_val) &&
+                       (hndl->snapshot_file ||
+                        (!hndl->in_trans && !is_commit) || commit_file)) {
                 hndl->error_in_trans = 0;
                 newsql_disconnect(hndl, hndl->sb, __LINE__);
                 hndl->retry_all=1;
+                if (commit_file) {
+                    if (hndl->debug_trace) {
+                        fprintf(stderr,
+                                "td %u:%d: i am retrying, retries_done %d\n",
+                                (uint32_t)pthread_self(), __LINE__,
+                                retries_done);
+                        fprintf(stderr, "td %u %s:%d setting in_trans to 1\n",
+                                (uint32_t)pthread_self(), __func__, __LINE__);
+                    }
+                    hndl->in_trans = 1;
+                    hndl->snapshot_file = commit_file;
+                    hndl->snapshot_offset = commit_offset;
+                    hndl->is_retry = commit_is_retry;
+                    hndl->query_list = commit_query_list;
+                    commit_query_list = NULL;
+                    commit_file = 0;
+                }
                 if (hndl->debug_trace) {
                     fprintf(stderr, "td %u %s:%d goto retry_queries "
                                     "err_val=%d\n",
@@ -3933,10 +4077,29 @@ read_record:
 
             if (is_rollback) {
                 PRINT_RETURN(0);
-            } else if (is_retryable(hndl, err_val)) {
+            } else if (is_retryable(hndl, err_val) &&
+                       (hndl->snapshot_file ||
+                        (!hndl->in_trans && !is_commit) || commit_file)) {
                 hndl->error_in_trans = 0;
                 newsql_disconnect(hndl, hndl->sb, __LINE__);
                 hndl->retry_all=1;
+                if (commit_file) {
+                    if (hndl->debug_trace) {
+                        fprintf(stderr,
+                                "td %u:%d: i am retrying, retries_done %d\n",
+                                (uint32_t)pthread_self(), __LINE__,
+                                retries_done);
+                        fprintf(stderr, "td %u %s:%d setting in_trans to 1\n",
+                                (uint32_t)pthread_self(), __func__, __LINE__);
+                    }
+                    hndl->in_trans = 1;
+                    hndl->snapshot_file = commit_file;
+                    hndl->snapshot_offset = commit_offset;
+                    hndl->is_retry = commit_is_retry;
+                    hndl->query_list = commit_query_list;
+                    commit_query_list = NULL;
+                    commit_file = 0;
+                }
                 if (hndl->debug_trace) {
                     fprintf(stderr, "td %u %s:%d goto retry_queries "
                                     "err_val=%d\n",
@@ -4006,8 +4169,10 @@ read_record:
         }
     }
 
-    if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__MASTER_TIMEOUT ||
-        hndl->firstresponse->error_code == CDB2ERR_CHANGENODE) {
+    if ((hndl->firstresponse->error_code == CDB2__ERROR_CODE__MASTER_TIMEOUT ||
+         hndl->firstresponse->error_code == CDB2ERR_CHANGENODE) &&
+        (hndl->snapshot_file || (!hndl->in_trans && !is_commit) ||
+         commit_file)) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->sb = NULL;
         hndl->retry_all = 1;
@@ -4051,7 +4216,9 @@ read_record:
 
     if (hndl->firstresponse->response_type == RESPONSE_TYPE__COLUMN_NAMES) {
         /* Handle rejects from Server. */
-        if (is_retryable(hndl, hndl->firstresponse->error_code)) {
+        if (is_retryable(hndl, hndl->firstresponse->error_code) &&
+            (hndl->snapshot_file || (!hndl->in_trans && !is_commit) ||
+             commit_file)) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             hndl->sb = NULL;
             hndl->retry_all = 1;
@@ -5149,9 +5316,11 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
     char *sslenv;
 
     if ((sslenv = getenv("SSL_MODE")) != NULL && sslenv[0] != '\0')
-        hndl->c_sslmode = ssl_string_to_mode(sslenv);
-    else
+        hndl->c_sslmode = ssl_string_to_mode(sslenv, &hndl->nid_dbname);
+    else {
         hndl->c_sslmode = cdb2_c_ssl_mode;
+        hndl->nid_dbname = cdb2_nid_dbname;
+    }
 
     if ((sslenv = getenv("SSL_CERT_PATH")) != NULL && sslenv[0] != '\0') {
         hndl->sslpath = strdup(sslenv);
@@ -5193,27 +5362,25 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
             return ENOMEM;
     }
 
-    /* If we are told to verify server, and cacert file is NULL,
-       we explicitly make one with the default name so that
-       ssl_new_ctx() would fail if it could not load the CA. */
-    if (hndl->c_sslmode >= SSL_VERIFY_CA && hndl->ca == NULL) {
-        if (hndl->sslpath == NULL) {
-            snprintf(hndl->errstr, sizeof(hndl->errstr),
-                     "A trusted CA certificate is required "
-                     "to verify server certificates.");
-            return EINVAL;
-        }
-        hndl->ca = malloc(strlen(hndl->sslpath) + sizeof("/" DEFAULT_CA));
-        if (hndl->ca == NULL)
+#if HAVE_CRL
+    if ((sslenv = getenv("SSL_CRL")) != NULL && sslenv[0] != '\0') {
+        hndl->crl = strdup(sslenv);
+        if (hndl->crl == NULL)
             return ENOMEM;
-        /* overflow-safe */
-        sprintf(hndl->ca, "%s/%s", hndl->sslpath, DEFAULT_CA);
+    } else if (cdb2_sslcrl[0] != '\0') {
+        hndl->crl = strdup(cdb2_sslcrl);
+        if (hndl->crl == NULL)
+            return ENOMEM;
     }
+#endif
 
     /* Set up SSL sessions. */
     if ((sslenv = getenv("SSL_SESSION_CACHE")) != NULL)
-        cdb2_cache_ssl_sess = !!atoi(sslenv);
-    cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
+        hndl->cache_ssl_sess = !!atoi(sslenv);
+    else
+        hndl->cache_ssl_sess = cdb2_cache_ssl_sess;
+    if (hndl->cache_ssl_sess)
+        cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
 
     /* Reset for next cdb2_open() */
     cdb2_c_ssl_mode = SSL_ALLOW;
@@ -5221,7 +5388,10 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
     cdb2_sslcert[0] = '\0';
     cdb2_sslkey[0] = '\0';
     cdb2_sslca[0] = '\0';
+    cdb2_sslcrl[0] = '\0';
 
+    cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
+    cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
     return 0;
 }
 
@@ -5376,6 +5546,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->dbnum = 1;
     hndl->connected_host = -1;
     hndl->send_stack = 1;
+    hndl->read_intrans_results = 1;
 #if WITH_SSL
     /* We don't do dbinfo if DIRECT_CPU. So we'd default peer SSL mode to
        ALLOW. We will find it out later when we send SSL negotitaion packet

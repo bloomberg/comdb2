@@ -639,6 +639,11 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     db->sc_to = newdb;
 
+    if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort) {
+        sc_errf(s, "Aborting schema change %s\n", s->table);
+        goto backout;
+    }
+
     /* All records converted ok.  Whether this is live schema change or
      * not, the db is readonly at this point so we can reset the live
      * schema change flag. */
@@ -820,10 +825,9 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     return 0;
 
 backout:
+    live_sc_off(db);
     backout_constraint_pointers(newdb, db);
-#if 0 /* bp sc backout deals with this */
     delete_temp_table(iq, newdb);
-#endif
     change_schemas_recover(/*s->table*/ db->tablename);
 
     logmsg(LOGMSG_WARN,

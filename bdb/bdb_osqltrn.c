@@ -251,20 +251,22 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
 bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
                                       tran_type *shadow_tran, int trak,
                                       int *bdberr, int epoch, int file,
-                                      int offset)
+                                      int offset, int is_ha_retry)
 {
     bdb_osql_trn_t *trn = NULL;
     DB_LSN lsn;
     int rc = 0, durable_lsns = bdb_state->attr->durable_lsns;
     bdb_state_type *parent;
     DB_LSN durable_lsn = {0};
-    uint32_t durable_gen;
-    int backfill_required = 0, requested_from_master = 0, have_lsn = 0;
+    uint32_t durable_gen = 0;
+    int backfill_required = 0;
     struct bfillhndl *bkfill_hndl = NULL;
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "%s line %d called with epoch=%d lsn=[%d][%d]\n",
-                __func__, __LINE__, epoch, file, offset);
+        logmsg(LOGMSG_USER,
+               "%s line %d called with epoch=%d lsn=[%d][%d] "
+               "is_retry=%d\n",
+               __func__, __LINE__, epoch, file, offset, is_ha_retry);
     }
 
     if (bdb_state->parent)
@@ -272,65 +274,66 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
     else
         parent = bdb_state;
 
+    if (!is_ha_retry)
+        file = 0;
+
     if ((shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
          shadow_tran->tranclass == TRANCLASS_SERIALIZABLE)) {
-        if (epoch || file || offset) {
+        int behind = 0;
+
+        /* Assert that we have an lsn for ha-retries */
+        if (is_ha_retry)
+            assert(file);
+
+        /* Don't request an LSN if we're given one */
+        if (epoch || file)
             backfill_required = 1;
-            have_lsn = 1;
-        }
-        else if (gbl_rowlocks) {
-            backfill_required = 1;
-            have_lsn = 0;
-        }
-    }
 
-    // Always get the durable lsn from master
-    if ((shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-         shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) &&
-        durable_lsns) {
-        DB_LSN my_lsn, dur_lsn, arg_lsn;
-        uint32_t my_gen;
+        /* Request our startpoint from the master */
+        if (durable_lsns || file) {
+            DB_LSN my_lsn, arg_lsn;
+            uint32_t my_gen;
 
-        if ((rc = request_durable_lsn_from_master(bdb_state, &dur_lsn.file, 
-                        &dur_lsn.offset, &durable_gen)) != 0) {
-            *bdberr = BDBERR_NOT_DURABLE;
-            return NULL;
-        }
+            /* Request my startpoint */
+            if (!file && (rc = request_durable_lsn_from_master(
+                              bdb_state, &file, &offset, &durable_gen)) != 0) {
+                *bdberr = BDBERR_NOT_DURABLE;
+                return NULL;
+            }
 
-        BDB_READLOCK("bdb_durable_check");
+            /* Get our current lsn */
+            BDB_READLOCK("bdb_current_lsn");
+            bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &my_gen);
+            __log_txn_lsn(bdb_state->dbenv, &my_lsn, NULL, NULL);
+            BDB_RELLOCK();
 
-        bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &my_gen);
-        __log_txn_lsn(bdb_state->dbenv, &my_lsn, NULL, NULL);
-        // bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &my_lsn, &my_gen);
-        BDB_RELLOCK();
-
-        // if we're not at least this current send request to another node
-        if (file) {
             arg_lsn.file = file;
             arg_lsn.offset = offset;
-        }
 
-        if (my_gen != durable_gen || (log_compare(&my_lsn, &dur_lsn) < 0) ||
-                (file && log_compare(&my_lsn, &arg_lsn) < 0))
-        {
-            if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_USER, "%s line %d: returning not-durable, durable_gen=%u,"
-                        " my_gen=%u durable_lsn=[%d][%d], my_lsn=[%d][%d], "
-                        "arg_lsn=[%d][%d]\n", __func__, __LINE__, durable_gen, 
-                        my_gen, dur_lsn.file, dur_lsn.offset, my_lsn.file, 
-                        my_lsn.offset, file, offset);
+            /* Verify generation numbers for durable-lsn case */
+            if (durable_gen && my_gen != durable_gen)
+                behind = 1;
+
+            /* Verify lsns for both cases */
+            else if (log_compare(&my_lsn, &arg_lsn) < 0)
+                behind = 1;
+
+            /* Error out if we are too far behind */
+            if (behind) {
+                if (gbl_extended_sql_debug_trace) {
+                    logmsg(LOGMSG_USER,
+                           "%s line %d: returning not-durable, durable_gen=%u,"
+                           " my_gen=%u req_lsn=[%d][%d] my_lsn=[%d][%d]\n",
+                           __func__, __LINE__, durable_gen, my_gen, file,
+                           offset, my_lsn.file, my_lsn.offset);
+                }
+                *bdberr = BDBERR_NOT_DURABLE;
+                return NULL;
             }
-            *bdberr = BDBERR_NOT_DURABLE;
-            return NULL;
-        }
 
-        /* If this isn't an asof query, backfill to the durable-lsn  */
-        if (!epoch && !file) {
-            file = dur_lsn.file;
-            offset = dur_lsn.offset;
+            /* Otherwise we'll do backfill */
+            backfill_required = 1;
         }
-
-        backfill_required = 1;
     }
 
     rc = pthread_mutex_lock(&trn_repo_mtx);

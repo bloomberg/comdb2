@@ -5,11 +5,23 @@ permalink: auth.html
 ---
 
 ## Authenticating comdb2 session
+
+### Password-based Authentication
+
 A comdb2 session can be authenticated by setting username and password using [set user](sql.html#set-user) and [set password](sql.html#set-password), just after opening the connection.
 
 ```sql
 set user 'foo_user'
 set password 'foo_password'
+``` 
+
+### Certificate-based Authentication
+
+A comdb2 session can also be authenticated by setting the client certificate using [set user](sql.html#set-sslcert) and [set password](sql.html#set-sslkey), just after opening the connection.
+
+```sql
+set ssl_cert /path/to/certificate
+set ssl_key /path/to/key
 ``` 
 
 ## Adding/deleting users to database

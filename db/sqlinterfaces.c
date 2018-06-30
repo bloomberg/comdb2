@@ -178,6 +178,73 @@ static int execute_sql_query_offload(struct sqlthdstate *,
                                      struct sqlclntstate *);
 static int record_query_cost(struct sql_thread *, struct sqlclntstate *);
 
+static int sql_debug_logf_int(struct sqlclntstate *clnt, const char *func,
+                              int line, const char *fmt, va_list args)
+{
+    char *s;
+    int cn_len;
+    snap_uid_t snap = {0};
+    char *cnonce;
+    int len;
+    int nchars;
+    va_list args_c;
+
+    if (clnt && get_cnonce(clnt, &snap) == 0) {
+        cn_len = snap.keylen;
+        cnonce = alloca(cn_len + 1);
+        memcpy(cnonce, snap.key, cn_len);
+        cnonce[cn_len] = '\0';
+    } else {
+        cnonce = "(no-cnonce)";
+    }
+
+    len = 256;
+    s = malloc(len);
+    if (!s) {
+        logmsg(LOGMSG_ERROR, "%s:malloc(%d) failed\n", __func__, len);
+        return -1;
+    }
+
+    va_copy(args_c, args);
+    nchars = vsnprintf(s, len, fmt, args);
+
+    if (nchars >= len) {
+        len = nchars + 1;
+        char *news = realloc(s, len);
+        if (!news) {
+            logmsg(LOGMSG_ERROR, "%s:realloc(%d) failed\n", __func__, len);
+            va_end(args_c);
+            free(s);
+            return -1;
+        }
+        s = news;
+        len = vsnprintf(s, len, fmt, args_c);
+    } else {
+        len = strlen(s);
+    }
+    va_end(args_c);
+
+    logmsg(LOGMSG_USER, "%s %s line %d: %s", cnonce, func, line, s);
+
+    free(s);
+    return 0;
+}
+
+int sql_debug_logf(struct sqlclntstate *clnt, const char *func, int line,
+                   const char *fmt, ...)
+{
+    if (!gbl_extended_sql_debug_trace)
+        return 0;
+    else {
+        va_list args;
+        int rc;
+        va_start(args, fmt);
+        rc = sql_debug_logf_int(clnt, func, line, fmt, args);
+        va_end(args);
+        return rc;
+    }
+}
+
 static inline void comdb2_set_sqlite_vdbe_tzname_int(Vdbe *p,
                                                      struct sqlclntstate *clnt)
 {
@@ -710,6 +777,133 @@ static inline char *skipws(char *str)
     return str;
 }
 
+static int retrieve_snapshot_info(char *sql, char *tzname)
+{
+    char *str = sql;
+
+    if (str && *str) {
+        str = skipws(str);
+
+        if (str && *str) {
+            /* skip "transaction" if any */
+            if (!strncasecmp(str, "transaction", 11)) {
+                str += 11;
+                str = skipws(str);
+            }
+
+            if (str && *str) {
+                /* handle "as of" */
+                if (!strncasecmp(str, "as", 2)) {
+                    str += 2;
+                    str = skipws(str);
+                    if (str && *str) {
+                        if (!strncasecmp(str, "of", 2)) {
+                            str += 2;
+                            str = skipws(str);
+                        }
+                    } else {
+                        logmsg(LOGMSG_ERROR,
+                               "Incorrect syntax, use begin ... as of ...\n");
+                        return -1;
+                    }
+                } else {
+                    logmsg(LOGMSG_USER,
+                           "Incorrect syntax, use begin ... as of ...\n");
+                    return -1;
+                }
+            } else
+                return 0;
+
+            if (str && *str) {
+                if (!strncasecmp(str, "datetime", 8)) {
+                    str += 8;
+                    str = skipws(str);
+
+                    if (str && *str) {
+                        /* convert this to a decimal and pass it along */
+                        server_datetime_t sdt;
+                        struct field_conv_opts_tz convopts = {0};
+                        int outdtsz;
+                        long long ret = 0;
+                        int isnull = 0;
+
+                        memcpy(convopts.tzname, tzname,
+                               sizeof(convopts.tzname));
+                        convopts.flags = FLD_CONV_TZONE;
+
+                        if (CLIENT_CSTR_to_SERVER_DATETIME(
+                                str, strlen(str) + 1, 0,
+                                (struct field_conv_opts *)&convopts, NULL, &sdt,
+                                sizeof(sdt), &outdtsz, NULL, NULL)) {
+                            logmsg(LOGMSG_ERROR,
+                                   "Failed to parse snapshot datetime value\n");
+                            return -1;
+                        }
+
+                        if (SERVER_DATETIME_to_CLIENT_INT(
+                                &sdt, sizeof(sdt), NULL, NULL, &ret,
+                                sizeof(ret), &isnull, &outdtsz, NULL, NULL)) {
+                            logmsg(LOGMSG_ERROR, "Failed to convert snapshot "
+                                                 "datetime value to epoch\n");
+                            return -1;
+                        } else {
+                            long long lcl_ret = flibc_ntohll(ret);
+                            if (gbl_new_snapisol_asof &&
+                                bdb_is_timestamp_recoverable(thedb->bdb_env,
+                                                             lcl_ret) <= 0) {
+                                logmsg(LOGMSG_ERROR,
+                                       "No log file to maintain "
+                                       "snapshot epoch %lld\n",
+                                       lcl_ret);
+                                return -1;
+                            } else {
+                                logmsg(LOGMSG_DEBUG,
+                                       "Detected snapshot epoch %lld\n",
+                                       lcl_ret);
+                                return lcl_ret;
+                            }
+                        }
+                    } else {
+                        logmsg(LOGMSG_ERROR,
+                               "Missing datetime info for snapshot\n");
+                        return -1;
+                    }
+                } else {
+                    logmsg(LOGMSG_ERROR,
+                           "Missing snapshot information or garbage "
+                           "after \"begin\"\n");
+                    return -1;
+                }
+                /*
+                   else if (!strncasecmp(str, "genid"))
+                   {
+
+                   }
+                 */
+            } else {
+                logmsg(LOGMSG_ERROR, "Missing snapshot info after \"as of\"\n");
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+static void snapshot_as_of(struct sqlclntstate *clnt)
+{
+    int epoch = 0;
+    if (strlen(clnt->sql) > 6)
+        epoch = retrieve_snapshot_info(&clnt->sql[6], clnt->tzname);
+
+    if (epoch < 0) {
+        /* overload this for now */
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_WRONG_STATE);
+    } else {
+        clnt->snapshot = epoch;
+    }
+}
+
 /**
  * Cluster here all pre-sqlite parsing, detecting requests that
  * are not handled by sqlite (transaction commands, pragma, stored proc,
@@ -749,6 +943,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             clnt->dml_tables = hash_init_strcase(0);
 
             upd_snapshot(clnt);
+            snapshot_as_of(clnt);
         }
     } else if (!strncasecmp(clnt->sql, "commit", 6)) {
         clnt->snapshot = 0;
@@ -764,6 +959,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                     SQLENG_FNSH_STATE);
             clnt->in_client_trans = 0;
+            clnt->trans_has_sp = 0;
         }
     } else if (!strncasecmp(clnt->sql, "rollback", 8)) {
         clnt->snapshot = 0;
@@ -779,6 +975,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                     SQLENG_FNSH_RBK_STATE);
             clnt->in_client_trans = 0;
+            clnt->trans_has_sp = 0;
         }
     }
 }
@@ -944,10 +1141,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     } else {
         bzero(clnt->dirty, sizeof(clnt->dirty));
 
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%x %s called\n", (int)pthread_self(),
-                   __func__);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "starting\n");
 
         switch (clnt->dbtran.mode) {
         case TRANLEVEL_RECOM: {
@@ -1007,18 +1201,12 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             if (clnt->ctrl_sqlengine == SQLENG_FNSH_STATE) {
                 if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
                     rc = serial_commit(clnt, thd->sqlthd, clnt->tzname);
-                    if (gbl_extended_sql_debug_trace) {
-                        logmsg(LOGMSG_USER,
-                               "td=%lu serial-txn %s line %d returns %d\n",
-                               pthread_self(), __func__, __LINE__, rc);
-                    }
+                    sql_debug_logf(clnt, __func__, __LINE__,
+                                   "serial-txn returns %d\n", rc);
                 } else {
                     rc = snapisol_commit(clnt, thd->sqlthd, clnt->tzname);
-                    if (gbl_extended_sql_debug_trace) {
-                        logmsg(LOGMSG_ERROR,
-                               "td=%lu snapshot-txn %s line %d returns %d\n",
-                               pthread_self(), __func__, __LINE__, rc);
-                    }
+                    sql_debug_logf(clnt, __func__, __LINE__,
+                                   "snapshot-txn returns %d\n", rc);
                 }
                 /* if a transaction exists
                    (it doesn't for empty begin/commit */
@@ -1039,12 +1227,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                             /* convert this to user code */
                             rc = blockproc2sql_error(clnt->osql.xerr.errval,
                                                      __func__, __LINE__);
-                            if (gbl_extended_sql_debug_trace) {
-                                logmsg(LOGMSG_USER,
-                                       "td=%lu %s line %d returning "
-                                       "converted-rc %d\n",
-                                       pthread_self(), __func__, __LINE__, rc);
-                            }
+                            sql_debug_logf(clnt, __func__, __LINE__,
+                                           "returning"
+                                           " converted-rc %d\n",
+                                           rc);
                         } else if (rc == SQLITE_CLIENT_CHANGENODE) {
                             rc = has_high_availability(clnt)
                                      ? CDB2ERR_CHANGENODE
@@ -1068,12 +1254,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                                 bdberr);
                     }
                 } else {
-                    if (gbl_extended_sql_debug_trace) {
-                        logmsg(
-                            LOGMSG_USER,
-                            "td=%lu no-shadow-tran %s line %d, returning %d\n",
-                            pthread_self(), __func__, __LINE__, rc);
-                    }
+                    sql_debug_logf(clnt, __func__, __LINE__,
+                                   "no-shadow-tran returning %d\n", rc);
                     if (rc == SQLITE_ABORT) {
                         rc = blockproc2sql_error(clnt->osql.xerr.errval,
                                                  __func__, __LINE__);
@@ -1129,6 +1311,9 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                 clnt->osql.xerr.errval = SQLITE_INTERNAL;
                 /* this will cancel the bp tran */
 
+                sql_debug_logf(clnt, __func__, __LINE__,
+                               "setting errval to SQLITE_INTERNAL\n");
+
                 reqlog_logf(
                     thd->logger, REQL_QUERY, "\"%s\" SOCKSL abort replay=%d\n",
                     (clnt->sql) ? clnt->sql : "(???.)", clnt->osql.replay);
@@ -1141,9 +1326,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     int irc = 0;
                     irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
                     if (irc) {
-                        logmsg(LOGMSG_ERROR, 
-                                "%s: failed to abort sorese transactin irc=%d\n",
-                                __func__, irc);
+                        logmsg(
+                            LOGMSG_ERROR,
+                            "%s: failed to abort sorese transaction irc=%d\n",
+                            __func__, irc);
                     }
                     if (clnt->early_retry == EARLY_ERR_VERIFY) {
                         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
@@ -1169,12 +1355,19 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                         osql_set_replay(__FILE__, __LINE__, clnt,
                                         OSQL_RETRY_LAST);
                     }
-
+                    sql_debug_logf(
+                        clnt, __func__, __LINE__,
+                        "'%s' socksql failed commit rc=%d replay=%d\n",
+                        clnt->sql ? clnt->sql : "(?)", rc, clnt->osql.replay);
                     reqlog_logf(thd->logger, REQL_QUERY,
                                 "\"%s\" SOCKSL failed commit rc=%d replay=%d\n",
                                 (clnt->sql) ? clnt->sql : "(???.)", rc,
                                 clnt->osql.replay);
                 } else if (rc == 0) {
+                    sql_debug_logf(clnt, __func__, __LINE__,
+                                   "'%s' socksql commit rc=%d replay=%d\n",
+                                   clnt->sql ? clnt->sql : "(?)", rc,
+                                   clnt->osql.replay);
                     reqlog_logf(thd->logger, REQL_QUERY,
                                 "\"%s\" SOCKSL commit rc=%d replay=%d\n",
                                 (clnt->sql) ? clnt->sql : "(???.)", rc,
@@ -1191,6 +1384,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             } else {
                 reset_query_effects(clnt);
                 rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
+                sql_debug_logf(clnt, __func__, __LINE__,
+                               "'%s' socksql abort rc=%d replay=%d\n",
+                               clnt->sql ? clnt->sql : "(?)", rc,
+                               clnt->osql.replay);
                 reqlog_logf(thd->logger, REQL_QUERY,
                             "\"%s\" SOCKSL abort(2) rc=%d replay=%d\n",
                             (clnt->sql) ? clnt->sql : "(???.)", rc,
@@ -2012,21 +2209,20 @@ static inline int check_user_password(struct sqlclntstate *clnt)
     if (!gbl_uses_password)
         return 0;
 
-    if (gbl_uses_password) {
-        if (!clnt->have_user) {
-            clnt->have_user = 1;
-            strcpy(clnt->user, DEFAULT_USER);
-        }
-        if (!clnt->have_password) {
-            clnt->have_password = 1;
-            strcpy(clnt->password, DEFAULT_PASSWORD);
-        }
-    }
-    if (clnt->have_user && clnt->have_password) {
-        password_rc = bdb_user_password_check(clnt->user, clnt->password, &valid_user);
+    if (!clnt->have_user) {
+        clnt->have_user = 1;
+        strcpy(clnt->user, DEFAULT_USER);
     }
 
-    if (!clnt->have_user || !clnt->have_password || password_rc != 0) {
+    if (!clnt->have_password) {
+        clnt->have_password = 1;
+        strcpy(clnt->password, DEFAULT_PASSWORD);
+    }
+
+    password_rc =
+        bdb_user_password_check(clnt->user, clnt->password, &valid_user);
+
+    if (password_rc != 0) {
         write_response(clnt, RESPONSE_ERROR_ACCESS, "access denied", 0);
         return 1;
     }
@@ -2245,7 +2441,6 @@ void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 }
 
-
 static void update_schema_remotes(struct sqlclntstate *clnt,
                                   struct sql_state *rec)
 {
@@ -2423,8 +2618,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     return rc;
 }
 
-static int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                             struct sql_state *rec, struct errstat *err)
+int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
+                      struct sql_state *rec, struct errstat *err)
 {
     rdlock_schema_lk();
     int rc = get_prepared_stmt_int(thd, clnt, rec, err, 1);
@@ -2446,13 +2641,15 @@ static int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 */
 int get_prepared_stmt_try_lock(struct sqlthdstate *thd,
                                struct sqlclntstate *clnt, struct sql_state *rec,
-                               struct errstat *err, int initial)
+                               struct errstat *err)
 {
     if (tryrdlock_schema_lk() != 0) {
         // only schemachange will wrlock(schema)
+        sql_debug_logf(clnt, __func__, __LINE__,
+                       "Returning SQLITE_SCHEMA on tryrdlock failure\n");
         return SQLITE_SCHEMA;
     }
-    int rc = get_prepared_stmt_int(thd, clnt, rec, err, initial);
+    int rc = get_prepared_stmt_int(thd, clnt, rec, err, 0);
     unlock_schema_lk();
     return rc;
 }
@@ -2658,10 +2855,6 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     }
 
     if (stored_proc) {
-        clnt->trans_has_sp = 1;
-    }
-
-    if (stored_proc) {
         handle_stored_proc(thd, clnt);
         *outrc = 0;
         return 1;
@@ -2688,6 +2881,8 @@ static int skip_response_int(struct sqlclntstate *clnt, int from_error)
         return 0;
     if (clnt->in_client_trans) {
         if (from_error && !clnt->had_errors) /* send on first error */
+            return 0;
+        if (clnt->send_intrans_results)
             return 0;
         return 1;
     }
@@ -2824,16 +3019,9 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
         pthread_mutex_unlock(&clnt->wait_mutex);
-        if (skip_response(clnt)) {
-            if (clnt->send_one_row) {
-                clnt->send_one_row = 0;
-                clnt->skip_feature = 1;
-                write_response(clnt, RESPONSE_ROW_LAST_DUMMY, 0, 0);
-            }
-        } else {
-            if (postponed_write) {
+        if (!skip_response(clnt)) {
+            if (postponed_write)
                 send_row(clnt, NULL, row_id, 0, NULL);
-            }
             write_response(clnt, RESPONSE_EFFECTS, 0, 0);
             write_response(clnt, RESPONSE_ROW_LAST, 0, 0);
         }
@@ -3001,6 +3189,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     struct sql_state rec = {0};
     char *errstr;
     reqlog_set_event(thd->logger, "sp");
+    clnt->trans_has_sp = 1;
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
         clnt->had_errors = 1;
@@ -3011,6 +3200,8 @@ static void handle_stored_proc(struct sqlthdstate *thd,
             free(errstr);
         }
     }
+    if (!clnt->in_client_trans)
+        clnt->trans_has_sp = 0;
     test_no_btcursors(thd);
     sqlite_done(thd, clnt, &rec, 0);
 }
@@ -3081,11 +3272,20 @@ errors:
 
 static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
+    int rc;
+
     if (gbl_check_access_controls) {
         check_access_controls(thedb);
         gbl_check_access_controls = 0;
     }
-    int rc = check_user_password(clnt);
+
+    /* If 1) this is an SSL connection, 2) and client sends a certificate,
+       3) and client does not override the user, let it through. */
+    if (sslio_has_x509(clnt->sb) && clnt->is_x509_user)
+        rc = 0;
+    else
+        rc = check_user_password(clnt);
+
     if (rc == 0) {
         if (thd->lastuser[0] != '\0' && strcmp(thd->lastuser, clnt->user) != 0)
             delete_prepared_stmts(thd);
@@ -3802,6 +4002,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     /* reset the user */
     clnt->have_user = 0;
+    clnt->is_x509_user = 0;
     bzero(clnt->user, sizeof(clnt->user));
 
     /* reset the password */
@@ -3836,7 +4037,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->saved_rc = 0;
     clnt->want_stored_procedure_debug = 0;
     clnt->want_stored_procedure_trace = 0;
-    clnt->send_one_row = 0;
     clnt->verifyretry_off = 0;
     clnt->is_expert = 0;
 
@@ -3853,7 +4053,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->early_retry = 0;
     clnt_reset_cursor_hints(clnt);
 
-    clnt->skip_feature = 0;
+    clnt->send_intrans_results = 1;
 
     bzero(clnt->dirty, sizeof(clnt->dirty));
 
@@ -3893,7 +4093,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->ncontext = 0;
     clnt->statement_query_effects = 0;
     clnt->wrong_db = 0;
-    clnt->send_intransresults = 0;
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
@@ -5149,11 +5348,11 @@ static int internal_log_context(struct sqlclntstate *a, struct reqlogger *b)
 }
 static uint64_t internal_get_client_starttime(struct sqlclntstate *a)
 {
-    return -1;
+    return 0;
 }
 static int internal_get_client_retries(struct sqlclntstate *a)
 {
-    return -1;
+    return 0;
 }
 void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {

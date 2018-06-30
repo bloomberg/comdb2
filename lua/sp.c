@@ -1509,15 +1509,6 @@ static int db_db_debug(Lua lua)
         }
         lua_settop(lua, 0); /* remove eventual returns */
         if (finish_execute) {
-            SP sp = getsp(lua);
-            if (is_cont && (sp->clnt == sp->debug_clnt) &&
-                sp->clnt->want_stored_procedure_debug) {
-                clnt_info *info = malloc(sizeof(clnt_info));
-                info->clnt = sp->clnt;
-                info->thread_id = pthread_self();
-                pthread_t read_client;
-                pthread_create(&read_client, NULL, read_client_socket, info);
-            }
             return 0;
         }
     }
@@ -1744,7 +1735,7 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
                 "variables')\n"
                 "     db.debug('getvariable(num)         -- Get local variable "
                 "of the number displayed in getinfo call.')\n"
-                "     db.debug('setvariable(num)         -- Set local variable "
+                "     db.debug('setvariable(num, value)  -- Set local variable "
                 "of the number displayed in getinfo call.')\n"
                 "     db.debug('print                    -- Display Local "
                 "Variable by name')\n"
@@ -2014,7 +2005,8 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
     struct sql_state rec_lcl = {0};
     struct sql_state *rec_ptr = rec ? rec : &rec_lcl;
     rec_ptr->sql = sql;
-    sp->rc = get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, sp->initial);
+    sp->rc = sp->initial ? get_prepared_stmt(sp->thd, sp->clnt, rec_ptr, &err)
+                         : get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err);
     sp->initial = 0;
     if (sp->rc == 0) {
         *stmt = rec_ptr->stmt;
@@ -4843,7 +4835,11 @@ static int push_null(Lua L, int param_type)
 static int push_param(Lua L, struct sqlclntstate *clnt, int64_t index)
 {
     struct param_data p;
-    param_value(clnt, &p, index);
+    if (param_value(clnt, &p, index) != 0) {
+        if (p.type > CLIENT_MINTYPE && p.type < CLIENT_MAXTYPE)
+            return p.type;
+        return -1;
+    }
     if (p.null || p.type == COMDB2_NULL_TYPE) {
         return push_null(L, p.type);
     }
@@ -5350,8 +5346,12 @@ static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
     }
     if (rc != arg_end) {
         *err = malloc(64);
-        if (snprintf((char *)*err, 60, "bad argument -> %s", msg) >= 60) {
-            strcat(*err, "...");
+        if (arg.type == arg_param) {
+            snprintf(*err, 60, "Bad parameter:%s type:%d", arg.buf + 1, rc);
+        } else {
+            if (snprintf(*err, 60, "bad argument -> %s", msg) >= 60) {
+                strcat(*err, "...");
+            }
         }
         reset_sp(sp);
         return -1;

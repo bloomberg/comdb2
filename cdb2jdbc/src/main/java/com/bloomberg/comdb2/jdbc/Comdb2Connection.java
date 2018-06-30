@@ -219,28 +219,12 @@ public class Comdb2Connection implements Connection {
         hndl.setMaxRetries(n);
     }
 
-    public void setDebug(String dbg) {
-        /* valid values: true, 1, T or on */
-        if ("true".equalsIgnoreCase(dbg)
-                || "1".equalsIgnoreCase(dbg)
-                || "T".equalsIgnoreCase(dbg)
-                || "on".equalsIgnoreCase(dbg))
-            hndl.setDebug(true);
-        else
-            hndl.setDebug(false);
+    public void setDebug(boolean dbg) {
+        hndl.setDebug(dbg);
     }
 
     public void setSSLMode(String mode) {
-        SSL_MODE sslmode;
-        if ("REQUIRE".equalsIgnoreCase(mode))
-            sslmode = SSL_MODE.REQUIRE;
-        else if ("VERIFY_CA".equalsIgnoreCase(mode))
-            sslmode = SSL_MODE.VERIFY_CA;
-        else if ("VERIFY_HOSTNAME".equalsIgnoreCase(mode))
-            sslmode = SSL_MODE.VERIFY_HOSTNAME;
-        else
-            sslmode = SSL_MODE.ALLOW;
-        hndl.setSSLMode(sslmode);
+        hndl.setSSLMode(mode);
     }
 
     public void setSSLCrt(String crt) {
@@ -267,34 +251,25 @@ public class Comdb2Connection implements Connection {
         hndl.setSSLCAType(catype);
     }
 
-    public void setAllowPmuxRoute(String val) {
-        if ("true".equalsIgnoreCase(val)
-                || "1".equalsIgnoreCase(val)
-                || "T".equalsIgnoreCase(val)
-                || "on".equalsIgnoreCase(val))
-            hndl.setAllowPmuxRoute(true);
-        else
-            hndl.setAllowPmuxRoute(false);
+    public void setSSLCRL(String crl) {
+        hndl.setSSLCRL(crl);
     }
 
-    public void setStatementQueryEffects(String val) {
-        if ("true".equalsIgnoreCase(val)
-                || "1".equalsIgnoreCase(val)
-                || "T".equalsIgnoreCase(val)
-                || "on".equalsIgnoreCase(val))
-            hndl.setStatementQueryEffects(true);
-        else
-            hndl.setStatementQueryEffects(false);
+    public void setAllowPmuxRoute(boolean rte) {
+        hndl.setAllowPmuxRoute(rte);
     }
 
-    public void setVerifyRetry(String val) {
-        if ("true".equalsIgnoreCase(val)
-                || "1".equalsIgnoreCase(val)
-                || "T".equalsIgnoreCase(val)
-                || "on".equalsIgnoreCase(val))
-            hndl.setVerifyRetry(true);
-        else
-            hndl.setVerifyRetry(false);
+    public void setStatementQueryEffects(boolean stmtEffects) {
+        hndl.setStatementQueryEffects(stmtEffects);
+    }
+
+    public void setVerifyRetry(boolean vrfyRetry) {
+        hndl.setVerifyRetry(vrfyRetry);
+    }
+
+    public void setStackAtOpen(boolean sendStack) {
+        hndl.hasSendStack = true;
+        hndl.setSendStack(sendStack);
     }
 
     public ArrayList<String> getDbHosts() throws NoDbHostFoundException{

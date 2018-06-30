@@ -115,6 +115,8 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
         rep->committed_lsn = *lsnp;
+        if (argp->generation > rep->gen)
+            __rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
@@ -400,6 +402,8 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
         rep->committed_lsn = *lsnp;
+        if (argp->generation > rep->gen)
+            __rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} 
 	else if ((dbenv->tx_timestamp != 0 &&

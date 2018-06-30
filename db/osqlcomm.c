@@ -14,11 +14,11 @@
    limitations under the License.
  */
 
+#include "limit_fortify.h"
 #include <strings.h>
 #include <errno.h>
 #include <poll.h>
 #include <util.h>
-#include "limit_fortify.h"
 #include "osqlcomm.h"
 #include "osqlsession.h"
 #include "sqloffload.h"

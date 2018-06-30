@@ -51,7 +51,7 @@ int bdb_osql_trn_repo_unlock();
 bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
                                       struct tran_tag *shadow_tran, int trak,
                                       int *bdberr, int epoch, int file,
-                                      int offset);
+                                      int offset, int is_ha_retry);
 
 /**
  *  Unregister a shadow transaction with the repository

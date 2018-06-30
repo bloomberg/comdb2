@@ -647,10 +647,10 @@ tran_type *bdb_tran_begin_readcommitted(bdb_state_type *, int trak,
 
 tran_type *bdb_tran_begin_serializable(bdb_state_type *bdb_state, int trak,
                                        int *bdberr, int epoch, int file,
-                                       int offset);
+                                       int offset, int is_ha_retry);
 tran_type *bdb_tran_begin_snapisol(bdb_state_type *bdb_state, int trak,
-                                   int *bdberr, int epoch, int file,
-                                   int offset);
+                                   int *bdberr, int epoch, int file, int offset,
+                                   int is_ha_retry);
 
 /* commit the transaction referenced by the tran handle */
 int bdb_tran_commit(bdb_state_type *bdb_handle, tran_type *tran, int *bdberr);
@@ -982,7 +982,7 @@ int bdb_amimaster(bdb_state_type *bdb_handle);
 char *bdb_whoismaster(bdb_state_type *bdb_handle);
 
 int bdb_get_rep_master(bdb_state_type *bdb_state, char **master_out,
-                       uint32_t *egen);
+                       uint32_t *gen, uint32_t *egen);
 
 /* get current sanc list.  pass in size of array.  returns number of sanc
  * nodes (may be > passed in list length). */
@@ -1998,6 +1998,7 @@ int bdb_next_user_get(bdb_state_type *bdb_state, tran_type *tran, char *key,
                       char *user_out, int *isop, int *bdberr);
 int bdb_latest_commit_is_durable(void *bdb_state);
 int bdb_is_standalone(void *dbenv, void *in_bdb_state);
+int bdb_valid_lease(void *bdb_state);
 
 uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
 

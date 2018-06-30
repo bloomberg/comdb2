@@ -41,27 +41,39 @@
 #  endif
 #endif
 
+#if OPENSSL_VERSION_NUMBER >= 0x00907000L
+#define HAVE_CRL 1
+#else
+#define HAVE_CRL 0
+#endif
+
 /* Common SSL options and values */
 #define SSL_CERT_PATH_OPT       "ssl_cert_path"
 #define SSL_CERT_OPT            "ssl_cert"
 #define SSL_KEY_OPT             "ssl_key"
 #define SSL_CA_OPT              "ssl_ca"
+#if HAVE_CRL
+#define SSL_CRL_OPT "ssl_crl"
+#endif
 
 #define SSL_MODE_ALLOW          "ALLOW"
 #define SSL_MODE_REQUIRE        "REQUIRE"
 #define SSL_MODE_VERIFY_CA      "VERIFY_CA"
 #define SSL_MODE_VERIFY_HOST    "VERIFY_HOSTNAME"
+#define SSL_MODE_VERIFY_DBNAME "VERIFY_DBNAME"
 #define SSL_MODE_OPTIONAL       "OPTIONAL"
 
 /* Default file names */
 #if SBUF2_SERVER
 #  define DEFAULT_KEY           "server.key"
 #  define DEFAULT_CERT          "server.crt"
-#  define DEFAULT_CA            "root.crt"
 #else
 #  define DEFAULT_KEY           "client.key"
 #  define DEFAULT_CERT          "client.crt"
-#  define DEFAULT_CA            "root.crt"
+#endif
+#define DEFAULT_CA "root.crt"
+#if HAVE_CRL
+#define DEFAULT_CRL "root.crl"
 #endif
 
 /* logmsg: when compiled with cdb2api, do nothing. */
@@ -108,14 +120,14 @@ do {                                            \
             PRINT_SSL_ERRSTR_MT(cb, msg);                       \
     } while (0)
 
-
 typedef enum {
     SSL_DISABLE, /* invisible to users */
     SSL_UNKNOWN, /* invisible to users */
     SSL_ALLOW,
     SSL_REQUIRE,
-    SSL_VERIFY_CA, /* It implies REQUIRE. */
-    SSL_VERIFY_HOSTNAME /* It impiles VERIFY_CA. */
+    SSL_VERIFY_CA,       /* It implies REQUIRE. */
+    SSL_VERIFY_HOSTNAME, /* It impiles VERIFY_CA. */
+    SSL_VERIFY_DBNAME    /* It impiles VERIFY_HOSTNAME. */
 } ssl_mode;
 
 typedef enum {
@@ -161,9 +173,10 @@ int SBUF2_FUNC(ssl_init)(int init_openssl, int init_crypto, int locking,
  * RETURN VALUES
  * 0 upon success
  */
-int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, const char *dir, char **cert,
-                            char **key, char **ca, long sesssz,
-                            const char *ciphers, char *err, size_t n);
+int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
+                            char **cert, char **key, char **ca, char **crl,
+                            long sesssz, const char *ciphers, char *err,
+                            size_t n);
 #define ssl_new_ctx SBUF2_FUNC(ssl_new_ctx)
 
 #endif

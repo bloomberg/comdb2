@@ -203,6 +203,10 @@ struct host_node_tag {
     pthread_mutex_t throttle_lock;
     pthread_cond_t throttle_wakeup;
     int last_queue_dump;
+    int last_print_queue_time;
+    int interval_max_queue_count;
+    int interval_max_queue_bytes;
+    void *qstat;
 };
 
 /* Cut down data structure used for storing the sanc list. */
@@ -321,6 +325,11 @@ struct netinfo_struct {
     int use_getservbyname;
     int hellofd;
     GETLSNFP *getlsn_rtn;
+    QSTATINITFP *qstat_init_rtn;
+    QSTATREADERFP *qstat_reader_rtn;
+    QSTATENQUEFP *qstat_enque_rtn;
+    QSTATCLEARFP *qstat_clear_rtn;
+    QSTATFREEFP *qstat_free_rtn;
 };
 
 typedef struct ack_state_struct {
@@ -334,4 +343,9 @@ typedef struct ack_state_struct {
 void host_node_printf(loglvl lvl, host_node_type *host_node_ptr, const char *fmt, ...);
 void host_node_errf(loglvl lvl, host_node_type *host_node_ptr, const char *fmt, ...);
 
+#if WITH_SSL
+/* To verify replicant database name. */
+extern char gbl_dbname[MAX_DBNAME_LENGTH];
+extern int gbl_nid_dbname;
+#endif
 #endif /* INCLUDED__NET_INT_H */

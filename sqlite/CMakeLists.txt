@@ -37,6 +37,7 @@ add_library(sqlite
   ext/comdb2/clientstats.c
   ext/comdb2/ezsystables.c
   ext/comdb2/typesamples.c 
+  ext/comdb2/repnetqueue.c
   ext/misc/completion.c
   ext/misc/json1.c
   ext/expert/sqlite3expert.c
@@ -155,7 +156,7 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/ext/misc
   ${CMAKE_CURRENT_SOURCE_DIR}/ext/expert
   ${PROJECT_SOURCE_DIR}
-  ${PROJECT_SOURCE_DIR}/bb
+  ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/bdb
   ${PROJECT_SOURCE_DIR}/cdb2api
@@ -172,6 +173,11 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/net
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/schemachange
+  ${PROJECT_BINARY_DIR}/berkdb
+  ${PROJECT_BINARY_DIR}/bdb
+  ${PROJECT_SOURCE_DIR}/build/berkdb
+  ${PROJECT_SOURCE_DIR}/build/bdb
+  ${PROJECT_SOURCE_DIR}/berkdb
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}
 )

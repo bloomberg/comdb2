@@ -8,6 +8,7 @@
 #include "db_config.h"
 #include "dbinc/db_swap.h"
 #include "logmsg.h"
+#include <epochlib.h>
 
 #ifndef lint
 static const char revid[] = "$Id: rep_util.c,v 1.103 2003/11/14 05:32:32 ubell Exp $";
@@ -35,11 +36,13 @@ static const char revid[] = "$Id: rep_util.c,v 1.103 2003/11/14 05:32:32 ubell E
 
 #include "util.h"
 
+extern pthread_mutex_t rep_candidate_lock;
 extern int gbl_passed_repverify;
 struct bdb_state_tag;
 void bdb_set_rep_handle_dead(struct bdb_state_tag *);
 #endif
 
+int gbl_verbose_master_req = 0;
 
 /*
  * rep_util.c:
@@ -80,7 +83,19 @@ __rep_check_alloc(dbenv, r, n)
 	return (0);
 }
 
-int gbl_verbose_master_req;
+extern int gbl_verbose_fills;
+
+static inline int is_logput(int type) {
+    switch (type) {
+        case REP_LOG:
+        case REP_LOG_LOGPUT:
+        case REP_LOG_FILL:
+        case REP_LOG_MORE:
+            return 1;
+        default:
+            return 0;
+    }
+}
 
 /*
  * __rep_send_message --
@@ -114,11 +129,11 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 	if (gbl_verbose_master_req) {
 		switch (rtype) {
 			case REP_MASTER_REQ:
-				logmsg(LOGMSG_ERROR, "%s sending REP_MASTER_REQ to %s\n",
+				logmsg(LOGMSG_USER, "%s sending REP_MASTER_REQ to %s\n",
 					__func__, eid);
 				break;
 			case REP_NEWMASTER:
-				logmsg(LOGMSG_ERROR, "%s sending REP_NEWMASTER to %s\n",
+				logmsg(LOGMSG_USER, "%s sending REP_NEWMASTER to %s\n",
 					__func__, eid);
 				break;
 			default: 
@@ -185,13 +200,10 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 	myflags = 0;
 	if (LF_ISSET(DB_LOG_PERM)) {
 		myflags = DB_REP_PERMANENT;
-	} else if (rtype == REP_LOG || rtype == REP_LOG_LOGPUT) {
+	} else if (is_logput(rtype)) {
 		myflags = DB_REP_LOGPROGRESS;
-		if (flags & DB_REP_NOBUFFER) {
-			/* we wanted to flush this record */
-			myflags |= DB_REP_NOBUFFER;
-		}
-	} else if (rtype != REP_LOG && rtype != REP_LOG_LOGPUT) {
+        myflags |= (flags & (DB_REP_NOBUFFER|DB_REP_NODROP));
+	} else if (!is_logput(rtype)) {
 		myflags = DB_REP_NOBUFFER;
 	} else {
 		/*
@@ -219,8 +231,19 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 	if (LOG_SWAPPED())
 		__rep_control_swap(&cntrl);
 
+    if (LF_ISSET(DB_REP_TRACE)) {
+        logmsg(LOGMSG_USER, "%s line %d tracing for rtype %d\n", __func__, 
+                __LINE__, rtype);
+        myflags |= DB_REP_TRACE;
+    }
+
 	ret = dbenv->rep_send(dbenv, &cdbt, dbtp, &cntrl.lsn, eid, myflags,
 	    usr_ptr);
+
+    if (LF_ISSET(DB_REP_TRACE)) {
+        logmsg(LOGMSG_USER, "%s line %d rep_send returns %d\n", __func__, 
+                __LINE__, ret);
+    }
 
 	/* Do we need to swap back? */
 	if (LOG_SWAPPED())
@@ -280,6 +303,28 @@ __rep_print_logmsg(dbenv, logdbt, lsnp)
 
 #endif
 /*
+ * __rep_set_gen --
+ *  Called as a utility function to see places where an instance's 
+ * replication generation can be changed.
+ *
+ * PUBLIC: void __rep_set_gen __P((DB_ENV *, const char *func, int line, int gen));
+ */
+void
+__rep_set_gen(dbenv, func, line, gen)
+    DB_ENV *dbenv;
+    const char *func;
+    int line;
+    int gen;
+{
+	DB_REP *db_rep;
+	REP *rep;
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+    logmsg(LOGMSG_DEBUG, "%s line %d setting rep->gen to %d\n", func, line, gen);
+    rep->gen = gen;
+}
+
+/*
  * __rep_new_master --
  *	Called after a master election to sync back up with a new master.
  * It's possible that we already know of this new master in which case
@@ -293,6 +338,8 @@ __rep_print_logmsg(dbenv, logdbt, lsnp)
  */
 
 int gbl_abort_on_incorrect_upgrade;
+extern int last_fill;
+extern int gbl_decoupled_logputs;
 
 int
 __rep_new_master(dbenv, cntrl, eid)
@@ -312,28 +359,33 @@ __rep_new_master(dbenv, cntrl, eid)
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 	ret = 0;
+    pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	__rep_elect_done(dbenv, rep);
 
         /* This should never happen: we are calling new-master against a
            network message with a lower generation.  I believe this is the
            election bug that I've been tracking down: this node's generation
            can change from when we initially checked it at the top of
            process_message. */
-        logmsg(LOGMSG_USER, "%s: my-gen=%u ctl-gen=%u rep-master=%s new=%s\n",
+        logmsg(LOGMSG_DEBUG, "%s: my-gen=%u ctl-gen=%u rep-master=%s new=%s\n",
                __func__, rep->gen, cntrl->gen, rep->master_id, eid);
         if (rep->gen > cntrl->gen) {
-            logmsg(LOGMSG_USER,
+            logmsg(LOGMSG_INFO,
                    "%s: rep-gen (%u) > cntrl->gen (%u): ignoring upgrade\n",
                    __func__, rep->gen, cntrl->gen);
 
             if (gbl_abort_on_incorrect_upgrade) abort();
 
             MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+            pthread_mutex_unlock(&rep_candidate_lock);
             rep->stat.st_msgs_badgen++;
             return 0;
         }
 
+        if (cntrl->gen < rep->gen)
+            abort();
+
+        __rep_elect_done(dbenv, rep, 0);
         change = rep->gen < cntrl->gen || rep->master_id != eid;
         if (change) {
 #ifdef DIAGNOSTIC
@@ -341,7 +393,7 @@ __rep_new_master(dbenv, cntrl, eid)
                 __db_err(dbenv, "Updating gen from %lu to %lu from master %d",
                          (u_long)rep->gen, (u_long)cntrl->gen, eid);
 #endif
-		rep->gen = cntrl->gen;
+        __rep_set_gen(dbenv, __func__, __LINE__, cntrl->gen);
 		if (rep->egen <= rep->gen)
 			rep->egen = rep->gen + 1;
 #ifdef DIAGNOSTIC
@@ -353,6 +405,8 @@ __rep_new_master(dbenv, cntrl, eid)
 		rep->stat.st_master_changes++;
 		F_SET(rep, REP_F_NOARCHIVE | REP_F_RECOVER);
 	}
+	F_CLR(rep, REP_F_WAITSTART);
+	pthread_mutex_unlock(&rep_candidate_lock);
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 	dblp = dbenv->lg_handle;
@@ -384,9 +438,22 @@ __rep_new_master(dbenv, cntrl, eid)
 				    REP_VERIFY_REQ, &last_lsn, NULL, 0, NULL);
 			}
 		} else {
-			if (log_compare(&lsn, &cntrl->lsn) < 0)
-				(void)__rep_send_message(dbenv,
-				    eid, REP_ALL_REQ, &lsn, NULL, 0, NULL);
+            /* Let the apply-thread make this request */
+			if (log_compare(&lsn, &cntrl->lsn) < 0 && !gbl_decoupled_logputs) {
+				if (__rep_send_message(dbenv, eid, REP_ALL_REQ, &lsn, 
+                            NULL, DB_REP_NODROP|DB_REP_NOBUFFER, NULL) == 0) {
+                    if (gbl_verbose_fills) {
+                        logmsg(LOGMSG_USER, "%s line %d sending REP_ALL_REQ "
+                                "for %d:%d\n", __func__, __LINE__, lsn.file,
+                                lsn.offset);
+                    }
+                    last_fill = comdb2_time_epochms();
+                } else if (gbl_verbose_fills) {
+                    logmsg(LOGMSG_USER, "%s line %d failed REP_ALL_REQ for "
+                            "%d:%d\n", __func__, __LINE__, lsn.file, 
+                            lsn.offset);
+                }
+            }
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 			F_CLR(rep, REP_F_NOARCHIVE);
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
@@ -422,8 +489,10 @@ empty:		MUTEX_LOCK(dbenv, db_rep->db_mutexp);
 			 */
 			lp->wait_recs = rep->max_gap;
 			MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
-			(void)__rep_send_message(dbenv, rep->master_id,
-			    REP_ALL_REQ, &lsn, NULL, 0, NULL);
+			if (__rep_send_message(dbenv, rep->master_id,
+			    REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) == 0) {
+                last_fill = comdb2_time_epochms();
+            } 
 		} else
 			MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 
@@ -599,18 +668,21 @@ __rep_send_gen_vote(dbenv, lsnp, nsites, pri, tiebreaker, egen, committed_gen,
 	(void)__rep_send_message(dbenv, eid, vtype, lsnp, &vote_dbt, 0, NULL);
 }
 
+pthread_mutex_t gbl_rep_egen_lk = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t gbl_rep_egen_cd = PTHREAD_COND_INITIALIZER;
 
 /*
  * __rep_elect_done
  *	Clear all election information for this site.  Assumes the
  *	caller hold rep_mutex.
  *
- * PUBLIC: void __rep_elect_done __P((DB_ENV *, REP *));
+ * PUBLIC: void __rep_elect_done __P((DB_ENV *, REP *, int egen));
  */
 void
-__rep_elect_done(dbenv, rep)
+__rep_elect_done(dbenv, rep, egen)
 	DB_ENV *dbenv;
 	REP *rep;
+    int egen;
 {
 	int inelect;
 
@@ -622,8 +694,15 @@ __rep_elect_done(dbenv, rep)
 	F_CLR(rep, REP_F_EPHASE1 | REP_F_EPHASE2 | REP_F_TALLY);
 	rep->sites = 0;
 	rep->votes = 0;
-	if (inelect)
-		rep->egen++;
+	if (inelect) {
+        pthread_mutex_lock(&gbl_rep_egen_lk);
+        if (egen)
+            rep->egen = egen;
+        else
+            rep->egen++;
+        pthread_cond_broadcast(&gbl_rep_egen_cd);
+        pthread_mutex_unlock(&gbl_rep_egen_lk);
+    }
 #ifdef DIAGNOSTIC
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 		__db_err(dbenv, "Election done; egen %lu", (u_long)rep->egen);
@@ -832,6 +911,44 @@ __op_rep_exit(dbenv)
 	DB_ASSERT(rep->op_cnt > 0);
 	rep->op_cnt--;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+}
+
+/*
+ * __rep_set_last_locked --
+ *
+ *	Get the last "locked" lsn
+ *
+ * PUBLIC: int __rep_set_last_locked __P((DB_ENV *, DB_LSN *));
+ */
+int 
+__rep_set_last_locked(dbenv, last_locked_lsn)
+    DB_ENV *dbenv;
+    DB_LSN *last_locked_lsn;
+{
+    pthread_mutex_lock(&dbenv->locked_lsn_lk);
+    if (last_locked_lsn->file <= 0) 
+        abort();
+    dbenv->last_locked_lsn = *last_locked_lsn;
+    pthread_mutex_unlock(&dbenv->locked_lsn_lk);
+    return 0;
+}
+
+/*
+ * __rep_get_last_locked --
+ *
+ *	Get the last "locked" lsn
+ *
+ * PUBLIC: int __rep_get_last_locked __P((DB_ENV *, DB_LSN *));
+ */
+int
+__rep_get_last_locked(dbenv, last_locked_lsn)
+	DB_ENV *dbenv;
+    DB_LSN *last_locked_lsn;
+{
+    pthread_mutex_lock(&dbenv->locked_lsn_lk);
+    *last_locked_lsn = dbenv->last_locked_lsn;
+    pthread_mutex_unlock(&dbenv->locked_lsn_lk);
+    return 0;
 }
 
 /*

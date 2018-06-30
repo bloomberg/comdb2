@@ -21,6 +21,8 @@
 #include <inttypes.h>
 #include <netinet/in.h>
 #include <stdarg.h>
+#include <logmsg.h>
+#include <build/db_dbt.h>
 
 #ifndef YESNO
 #define YESNO(x) ((x) ? "yes" : "no")
@@ -71,5 +73,8 @@ void cleanup_file_locations();
 
 char *util_tohex(char *out, const char *in, size_t len);
 void hexdumpbuf(char *key, int keylen, char **buf);
+void hexdump(loglvl lvl, unsigned char *key, int keylen);
+void hexdumpdbt(DBT *dbt);
+void hexdumpfp(FILE *fp, unsigned char *key, int keylen);
 
 #endif

@@ -955,8 +955,6 @@ struct bdb_state_tag {
     signed char need_to_downgrade_and_lose;
 
     signed char rep_trace;
-    signed char check_for_isperm;
-    signed char got_isperm;
     signed char berkdb_rep_startupdone;
 
     signed char rep_started;
@@ -1175,8 +1173,8 @@ void *myrealloc(void *ptr, size_t size);
 
 void bdb_get_txn_stats(bdb_state_type *bdb_state, int *txn_commits);
 
-int bdb_upgrade(bdb_state_type *bdb_state, int *done);
-int bdb_downgrade(bdb_state_type *bdb_state, int *done);
+int bdb_upgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done);
+int bdb_downgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done);
 int bdb_downgrade_noelect(bdb_state_type *bdb_state);
 int get_seqnum(bdb_state_type *bdb_state, const char *host);
 void bdb_set_key(bdb_state_type *bdb_state);
@@ -1314,7 +1312,7 @@ int bdb_rowlock_int(DB_ENV *dbenv, DB_TXN *txn, unsigned long long genid,
 
 int rep_caught_up(bdb_state_type *bdb_state);
 
-void call_for_election(bdb_state_type *bdb_state);
+void call_for_election(bdb_state_type *bdb_state, const char *func, int line);
 
 int bdb_next_dtafile(bdb_state_type *bdb_state);
 
@@ -1547,8 +1545,6 @@ int form_rowlock_keyname(bdb_state_type *bdb_state, int ixnum,
 int form_keylock_keyname(bdb_state_type *bdb_state, int ixnum, void *key,
                          int keylen, char *keynamebuf, DBT *dbt_out);
 
-void hexdumpdbt(DBT *dbt);
-
 void set_gblcontext(bdb_state_type *bdb_state, unsigned long long gblcontext);
 unsigned long long get_gblcontext(bdb_state_type *bdb_state);
 
@@ -1750,7 +1746,8 @@ void bdb_setmaster(bdb_state_type *bdb_state, char *host);
 int __db_check_all_btree_cursors(DB *dbp, db_pgno_t pgno);
 void __db_err(const DB_ENV *dbenv, const char *fmt, ...);
 
-void call_for_election_and_lose(bdb_state_type *bdb_state);
+void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func,
+                                int line);
 
 extern int gbl_sql_tranlevel_default;
 extern int gbl_sql_tranlevel_preserved;
@@ -1863,5 +1860,7 @@ int has_low_headroom(const char *path, int threshold, int debug);
 
 const char *deadlock_policy_str(u_int32_t policy);
 int deadlock_policy_max();
+
+char *coherent_state_to_str(int state);
 
 #endif /* __bdb_int_h__ */

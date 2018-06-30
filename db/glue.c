@@ -437,7 +437,7 @@ tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
 }
 
 tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
-                                int offset, int *error)
+                                int offset, int *error, int is_ha_retry)
 {
     void *bdb_handle = bdb_handle_from_ireq(iq);
     tran_type *out_trans = NULL;
@@ -450,8 +450,8 @@ tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
         logmsg(LOGMSG_USER, "td=%x %s called with epoch=%d file=%d offset=%d\n",
                (int)pthread_self(), __func__, epoch, file, offset);
     }
-    out_trans =
-        bdb_tran_begin_snapisol(bdb_handle, trak, error, epoch, file, offset);
+    out_trans = bdb_tran_begin_snapisol(bdb_handle, trak, error, epoch, file,
+                                        offset, is_ha_retry);
     iq->gluewhere = "bdb_tran_begin_snapisol done";
 
     if (out_trans == NULL) {
@@ -462,8 +462,9 @@ tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
     return out_trans;
 }
 
-tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch, int file,
-        int offset, int *error)
+tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch,
+                                    int file, int offset, int *error,
+                                    int is_ha_retry)
 {
     void *bdb_handle = bdb_handle_from_ireq(iq);
     tran_type *out_trans = NULL;
@@ -475,8 +476,8 @@ tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch, int fi
         logmsg(LOGMSG_USER, "td=%x %s called with epoch=%d file=%d offset=%d\n",
                (int)pthread_self(), __func__, epoch, file, offset);
     }
-    out_trans = bdb_tran_begin_serializable(bdb_handle, trak, &bdberr, epoch, 
-            file, offset);
+    out_trans = bdb_tran_begin_serializable(bdb_handle, trak, &bdberr, epoch,
+                                            file, offset, is_ha_retry);
     iq->gluewhere = "bdb_tran_begin done";
 
     if (out_trans == NULL) {
@@ -738,6 +739,8 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
 {
     int rc, rc2;
     db_seqnum_type ss;
+    char *cnonce = NULL;
+    int cn_len;
     void *bdb_handle = bdb_handle_from_ireq(iq);
     struct dbenv *dbenv = dbenv_from_ireq(iq);
 
@@ -745,11 +748,30 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
 
     rc = trans_commit_seqnum_int(bdb_handle, dbenv, iq, trans, &ss, logical,
                                  blkseq, blklen, blkkey, blkkeylen);
-    if (rc != 0)
+
+    if (gbl_extended_sql_debug_trace && iq->have_snap_info) {
+        cn_len = iq->snap_info.keylen;
+        cnonce = alloca(cn_len + 1);
+        memcpy(cnonce, iq->snap_info.key, cn_len);
+        cnonce[cn_len] = '\0';
+        logmsg(LOGMSG_USER, "%s %s line %d: trans_commit returns %d\n", cnonce,
+               __func__, __LINE__, rc);
+    }
+
+    if (rc != 0) {
         return rc;
+    }
 
     rc = trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host,
                                    timeoutms, adaptive, &ss);
+
+    if (cnonce) {
+        DB_LSN *lsn = (DB_LSN *)&ss;
+        logmsg(LOGMSG_USER,
+               "%s %s line %d: wait_for_seqnum [%d][%d] returns %d\n", cnonce,
+               __func__, __LINE__, lsn->file, lsn->offset, rc);
+    }
+
     return rc;
 }
 
@@ -782,7 +804,7 @@ int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host)
 int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
                         void *seqkey, int seqkeylen)
 {
-    int bdberr, rc = 0;
+    int bdberr, rc = 0, *file;
     void *bdb_handle = bdb_handle_from_ireq(iq);
     struct dbenv *dbenv = dbenv_from_ireq(iq);
     db_seqnum_type ss;
@@ -800,11 +822,13 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
         else
             rc = ERR_INTERNAL;
     }
-    /* Not sure why we have this inconsistency where we wait for logical commits
-       but
-       not logical aborts, but it's wrong. */
-    trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, gbl_mynode,
-                              -1 /* timeoutms */, 1 /* adaptive */, &ss);
+
+    /* Single phy-txn logical aborts will set ss to 0: check before waiting */
+    file = (u_int32_t *)&ss;
+    if (*file != 0) {
+        trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, gbl_mynode,
+                                  -1 /* timeoutms */, 1 /* adaptive */, &ss);
+    }
     return rc;
 }
 
@@ -929,11 +953,6 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
     bdb_handle = get_bdb_handle(db, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
-
-#if 0
-    fprintf(stderr, "ix_addkey(%x)\n", ixnum);
-    hexdump(key, getkeysize(db, ixnum));
-#endif
 
     iq->gluewhere = "bdb_prim_addkey";
     rc = bdb_prim_addkey_genid(bdb_handle, trans, key, ixnum, rrn, genid, dta,
@@ -2932,20 +2951,20 @@ static int new_master_callback(void *bdb_handle, char *host)
     ++gbl_master_changes;
     struct dbenv *dbenv;
     char *oldmaster, *newmaster;
-    uint32_t oldegen, egen;
+    uint32_t oldgen, gen, egen;
     int trigger_timepart = 0;
     dbenv = bdb_get_usr_ptr(bdb_handle);
     oldmaster = dbenv->master;
-    oldegen = dbenv->egen;
+    oldgen = dbenv->gen;
     dbenv->master = host;
 
-    bdb_get_rep_master(bdb_handle, &newmaster, &egen);
+    bdb_get_rep_master(bdb_handle, &newmaster, &gen, &egen);
     if (gbl_master_swing_osql_verbose)
         logmsg(LOGMSG_INFO,
                "%s:%d new master node %s, rep_master %s, rep_egen %u\n",
                __func__, __LINE__, host ? host : "NULL",
                newmaster ? newmaster : "NULL", egen);
-    dbenv->egen = egen;
+    dbenv->gen = gen;
     /*this is only used when handle not established yet. */
     if (host == gbl_mynode) {
         if (oldmaster != host) {
@@ -2961,7 +2980,7 @@ static int new_master_callback(void *bdb_handle, char *host)
             trigger_clear_hash();
             trigger_timepart = 1;
 
-            if (oldegen != egen) {
+            if (oldgen != gen) {
                 osql_repository_cancelall();
             }
         }

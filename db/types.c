@@ -50,8 +50,7 @@
 
 #include "debug_switches.h"
 #include "logmsg.h"
-
-extern void hexdump(const void *buf, int size);
+#include "util.h"
 
 struct thr_handle;
 struct reqlogger *thrman_get_reqlogger(struct thr_handle *thr);
@@ -9501,7 +9500,7 @@ int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 make_order IN (exponent %d %x):\n", exponent,
                 exponent);
-        hexdump(pdec64, sizeof(*pdec64));
+        hexdump(LOGMSG_USER, (unsigned char *)pdec64, sizeof(*pdec64));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9552,7 +9551,7 @@ int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 make_order OUT:\n");
-        hexdump(pdec64, sizeof(*pdec64));
+        hexdump(LOGMSG_USER, (unsigned char *)pdec64, sizeof(*pdec64));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9598,7 +9597,7 @@ int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 unmake_order IN (exponent %d %x):\n", *exponent,
                 *exponent);
-        hexdump(decimals, DECDOUBLE_PACKED_COEF);
+        hexdump(LOGMSG_USER, (unsigned char *)decimals, DECDOUBLE_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9702,7 +9701,7 @@ int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 unmake_order out (exponent %d %x):\n", *exponent,
                 *exponent);
-        hexdump(decimals, DECDOUBLE_PACKED_COEF);
+        hexdump(LOGMSG_USER, (unsigned char *)decimals, DECDOUBLE_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9719,7 +9718,7 @@ int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 make_order IN (exponent %d %x):\n", exponent,
                 exponent);
-        hexdump(pdec128, sizeof(*pdec128));
+        hexdump(LOGMSG_USER, (unsigned char *)pdec128, sizeof(*pdec128));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9772,7 +9771,7 @@ int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 make_order OUT:\n");
-        hexdump(pdec128, sizeof(*pdec128));
+        hexdump(LOGMSG_USER, (unsigned char *)pdec128, sizeof(*pdec128));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9790,7 +9789,7 @@ int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 unmake_order IN (exponent %d %x):\n", *exponent,
                 *exponent);
-        hexdump(decimals, DECQUAD_PACKED_COEF);
+        hexdump(LOGMSG_USER, (unsigned char *)decimals, DECQUAD_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9882,7 +9881,7 @@ int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 unmake_order out (exponent %d %x):\n",
                 *exponent, *exponent);
-        hexdump(decimals, DECQUAD_PACKED_COEF);
+        hexdump(LOGMSG_USER, (unsigned char *)decimals, DECQUAD_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9928,7 +9927,7 @@ static void decimal32_ondisk_to_single(server_decimal32_t *pdec32,
     if (exponent < DECSINGLE_Emin - 7 || exponent > DECSINGLE_Emax + 7) {
         logmsg(LOGMSG_ERROR, "%s; format issues with decimal32: exponent=%d\n",
                 __func__, exponent);
-        hexdump(pdec32, sizeof(*pdec32));
+        hexdump(LOGMSG_USER, (unsigned char *)pdec32, sizeof(*pdec32));
         logmsg(LOGMSG_USER, "\n");
         exponent ^= 0x080;
     }
@@ -9968,7 +9967,7 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
             comdb2_int2 tmp;
             logmsg(LOGMSG_ERROR, "%s; format issues with decimal64: exponent=%d\n",
                     __func__, exponent);
-            hexdump(pdec64, sizeof(*pdec64));
+            hexdump(LOGMSG_ERROR, (unsigned char *)pdec64, sizeof(*pdec64));
             logmsg(LOGMSG_ERROR, "\n");
             int2b_to_int2(exponent, &tmp);
             exponent = tmp;
@@ -10010,7 +10009,7 @@ void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
             comdb2_int2 tmp;
             logmsg(LOGMSG_USER, "%s; format issues with decimal128: exponent=%d\n",
                     __func__, exponent);
-            hexdump(pdec128, sizeof(*pdec128));
+            hexdump(LOGMSG_USER, (unsigned char *)pdec128, sizeof(*pdec128));
             logmsg(LOGMSG_USER, "\n");
             int2b_to_int2(exponent, &tmp);
             exponent = tmp;
@@ -13601,6 +13600,33 @@ static int get_int_field(int64_t *out, void *in, size_t len, int flip)
     return 0;
 }
 
+static int get_uint_field(uint64_t *out, void *in, size_t len, int flip)
+{
+    uint16_t u16;
+    uint32_t u32;
+    uint64_t u64;
+    switch (len) {
+    case sizeof(uint16_t):
+        memcpy(&u16, in, len);
+        if (flip) u16 = flibc_shortflip(u16);
+        *out = u16;
+        break;
+    case sizeof(uint32_t):
+        memcpy(&u32, in, len);
+        if (flip) u32 = flibc_intflip(u32);
+        *out = u32;
+        break;
+    case sizeof(uint64_t):
+        memcpy(&u64, in, len);
+        if (flip) u64 = flibc_llflip(u64);
+        *out = u64;
+        break;
+    default:
+        return -1;
+    }
+    return *out <= LLONG_MAX ? 0 : -1;
+}
+
 static int get_real_field(double *out, void *in, size_t len, int flip)
 {
     float f;
@@ -14543,9 +14569,11 @@ int get_type(struct param_data *param, void *p, int len, int type,
     param->null = 0;
     switch (type) {
     case CLIENT_INT:
-    case CLIENT_UINT:
         param->len = sizeof(param->u.i);
         return get_int_field(&param->u.i, p, len, flip);
+    case CLIENT_UINT:
+        param->len = sizeof(param->u.i);
+        return get_uint_field(&param->u.i, p, len, flip);
     case CLIENT_REAL:
         param->len = sizeof(param->u.r);
         return get_real_field(&param->u.r, p, len, flip);

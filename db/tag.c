@@ -60,7 +60,6 @@
 #include "logmsg.h"
 
 extern struct dbenv *thedb;
-extern void hexdump(const void *buf, int size);
 extern pthread_mutex_t csc2_subsystem_mtx;
 
 pthread_key_t unique_tag_key;
@@ -5005,12 +5004,6 @@ int compare_indexes(const char *table, FILE *out)
     return 0;
 }
 
-void hexdumpdta(unsigned char *p, int len)
-{
-    for (int i = 0; i < len; i++)
-        logmsg(LOGMSG_USER, "%02x", p[i]);
-}
-
 void printrecord(char *buf, struct schema *sc, int len)
 {
     int field;
@@ -5091,7 +5084,7 @@ void printrecord(char *buf, struct schema *sc, int len)
                 logmsg(LOGMSG_USER, "%s=NULL", f->name);
             else {
                 logmsg(LOGMSG_USER, "%s=", f->name);
-                hexdumpdta((void *)sval, flen);
+                hexdump(LOGMSG_USER, (void *)sval, flen);
             }
             free(sval);
 
@@ -7449,7 +7442,8 @@ int extract_decimal_quantum(struct dbtable *db, int ix, char *inbuf, char *poutb
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec extract IN:\n");
-                hexdump(&inbuf[s->member[i].offset], s->member[i].len);
+                hexdump(LOGMSG_USER, &inbuf[s->member[i].offset],
+                        s->member[i].len);
                 logmsg(LOGMSG_USER, "\n");
             }
 
@@ -7464,7 +7458,8 @@ int extract_decimal_quantum(struct dbtable *db, int ix, char *inbuf, char *poutb
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec extract OUT:\n");
-                hexdump(&inbuf[s->member[i].offset], s->member[i].len);
+                hexdump(LOGMSG_USER, &inbuf[s->member[i].offset],
+                        s->member[i].len);
                 logmsg(LOGMSG_USER, "\n");
             }
         }

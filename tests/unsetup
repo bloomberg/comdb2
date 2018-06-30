@@ -99,8 +99,10 @@ cleanup_cluster() {
         fi
 
         if [ "$successful" != "1" ] ; then 
-            echo copy $node:${TESTDIR} content locally to $TESTDIR/$node for investigation
-            scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node < /dev/null &
+            echo copy $node:${DBDIR} content locally to $DBDIR/$node/ for investigation
+            mkdir $DBDIR/$node/
+            scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node/ < /dev/null &
+            scp -r -o StrictHostKeyChecking=no $node:${TESTDIR}/var/log/cdb2/${DBNAME}* $DBDIR/$node/ < /dev/null &
         elif [ "$CLEANUPDBDIR" == "1" ] ; then 
             ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.*" < /dev/null &
         fi

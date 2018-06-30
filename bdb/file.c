@@ -95,6 +95,7 @@
 
 #include "dbinc/log.h"
 #include "dbinc/txn.h"
+#include <rep_qstat.h>
 
 #include <bdb_queuedb.h>
 
@@ -139,6 +140,7 @@ const char *get_sc_to_name(const char *name);
 LISTC_T(struct checkpoint_list) ckp_lst;
 pthread_mutex_t ckp_lst_mtx;
 int ckp_lst_ready = 0;
+extern int gbl_set_seqnum_trace;
 
 int bdb_checkpoint_list_init()
 {
@@ -206,8 +208,8 @@ void set_repinfo_master_host(bdb_state_type *bdb_state, char *master,
         bdb_state = bdb_state->parent;
 
     if (bdb_state->attr->set_repinfo_master_trace) {
-        logmsg(LOGMSG_INFO, "Setting repinfo master to %s from %s line %u\n",
-                master, func, line);
+        logmsg(LOGMSG_USER, "Setting repinfo master to %s from %s line %u\n",
+               master, func, line);
     }
     bdb_state->repinfo->master_host = master;
 }
@@ -1882,7 +1884,10 @@ static int print_catchup_message(bdb_state_type *bdb_state, int phase,
                 } else
                     logmsg(LOGMSG_WARN, "I AM NOT MAKING ANY PROGRESS.\n");
             } else {
-                rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
+                logmsg(LOGMSG_USER,
+                       "%s line %d calling rep_start as client with egen 0\n",
+                       __func__, __LINE__);
+                rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0,
                                                  DB_REP_CLIENT);
 
                 logmsg(LOGMSG_WARN, "I AM FALLING FURTHER BEHIND THE MASTER NODE.\n"); 
@@ -2125,6 +2130,8 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
         return 1;
     return net_is_single_sanctioned_node(bdb_state->repinfo->netinfo);
 }
+
+extern int gbl_commit_delay_trace;
 
 static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 {
@@ -2525,6 +2532,9 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     net_register_getlsn(bdb_state->repinfo->netinfo, net_getlsn_rtn);
 
+    /* Register qstat if its enabled */
+    net_rep_qstat_init(bdb_state->repinfo->netinfo);
+
     /* set the callback data so we get our bdb_state pointer from these
      * calls. */
     net_set_callback_data(bdb_state->repinfo->netinfo, bdb_state);
@@ -2727,7 +2737,10 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
     start_udp_reader(bdb_state);
 
     if (startasmaster) {
-        rc = dbenv->rep_start(dbenv, NULL, DB_REP_MASTER);
+        logmsg(LOGMSG_USER,
+               "%s line %d calling rep_start as master with egen 0\n", __func__,
+               __LINE__);
+        rc = dbenv->rep_start(dbenv, NULL, 0, DB_REP_MASTER);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "dbenv_open: rep_start as master failed %d %s\n",
                     rc, db_strerror(rc));
@@ -2737,7 +2750,10 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
     } else /* we start as a client */
     {
         /*fprintf(stderr, "dbenv_open: starting rep as client\n");*/
-        rc = dbenv->rep_start(dbenv, NULL, DB_REP_CLIENT);
+        logmsg(LOGMSG_USER,
+               "%s line %d calling rep_start as client with egen 0\n", __func__,
+               __LINE__);
+        rc = dbenv->rep_start(dbenv, NULL, 0, DB_REP_CLIENT);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "dbenv_open: rep_start as client failed %d %s\n",
                     rc, db_strerror(rc));
@@ -2816,8 +2832,8 @@ waitformaster:
 /* berkdb 4.2 doesnt support startup done message, so skip this phase */
 #if defined(BERKDB_4_3) || defined(BERKDB_4_5) || defined(BERKDB_46)
 
+again1:
     if (bdb_state->repinfo->master_host != myhost) {
-    again1:
         master_host = bdb_state->repinfo->master_host;
         if (master_host == myhost)
             goto done1;
@@ -2907,9 +2923,9 @@ done1:
        the lsn of the master
        */
 
+again2:
     if (bdb_state->repinfo->master_host != myhost) {
     /* now loop till we are close */
-    again2:
         master_host = bdb_state->repinfo->master_host;
         if (master_host == myhost)
             goto done2;
@@ -3142,6 +3158,10 @@ again:
         rc = net_send(bdb_state->repinfo->netinfo,
                       bdb_state->repinfo->master_host,
                       USER_TYPE_COMMITDELAYNONE, NULL, 0, 1);
+        if (gbl_commit_delay_trace) {
+            logmsg(LOGMSG_USER, "%s line %d sending COMMITDELAYNONE\n",
+                   __func__, __LINE__);
+        }
     }
 
     /*
@@ -4030,6 +4050,8 @@ static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
                         db_flags |= DB_OLCOMPACT;
                     rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags,
                                    db_mode);
+                    logmsg(LOGMSG_DEBUG, "dbp->open %s type=%d rc %d\n",
+                           tmpname, dbp->type, rc);
                 } while (tid == NULL && iter++ < 100 && rc == DB_LOCK_DEADLOCK);
 
                 if (rc != 0) {
@@ -4637,7 +4659,10 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
     }
 
     /* now become a client of the replication group */
-    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, DB_REP_CLIENT);
+    logmsg(LOGMSG_USER, "%s line %d calling rep_start as client with egen 0\n",
+           __func__, __LINE__);
+
+    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_CLIENT);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "rep_start as client failed\n");
         outrc = 1;
@@ -4704,8 +4729,9 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
     Pthread_mutex_unlock(&(bdb_state->children_lock));
 
     /* now become a client of the replication group */
-    logmsg(LOGMSG_INFO, "downgrade: starting rep as client\n");
-    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, DB_REP_CLIENT);
+    logmsg(LOGMSG_USER, "%s line %d calling rep_start as client with egen 0\n",
+           __func__, __LINE__);
+    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_CLIENT);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "rep_start as client failed\n");
         outrc = 1;
@@ -4719,7 +4745,7 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
         *downgraded = 1;
 
     if (!noelect)
-        call_for_election_and_lose(bdb_state);
+        call_for_election_and_lose(bdb_state, __func__, __LINE__);
 
     logmsg(LOGMSG_ERROR, "%s returning\n", __func__);
     return outrc;
@@ -4728,7 +4754,8 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
 void defer_commits_for_upgrade(bdb_state_type *bdb_state, const char *host,
                                const char *func);
 
-static int bdb_upgrade_int(bdb_state_type *bdb_state, int *upgraded)
+static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen,
+                           int *upgraded)
 {
     int rc;
     int outrc;
@@ -4756,7 +4783,11 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, int *upgraded)
            set the master ! which unlocks the bdb_open_env or open_bdb_env,
            and db comes up finally.
         */
-        rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, DB_REP_MASTER);
+        logmsg(LOGMSG_USER,
+               "%s line %d calling rep_start as master with egen 0\n", __func__,
+               __LINE__);
+        rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, newgen,
+                                         DB_REP_MASTER);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "rep_start failed rc %d\n", rc);
             return -1;
@@ -4805,8 +4836,10 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, int *upgraded)
         }
     }
     Pthread_mutex_unlock(&(bdb_state->children_lock));
-
-    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, DB_REP_MASTER);
+    logmsg(LOGMSG_USER, "%s line %d calling rep_start as master with egen %d\n",
+           __func__, __LINE__, newgen);
+    rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, newgen,
+                                     DB_REP_MASTER);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "rep_start failed rc %d\n", rc);
         return 1;
@@ -4859,7 +4892,8 @@ void *dummy_add_thread(void *arg);
 void bdb_all_incoherent(bdb_state_type *bdb_state);
 
 static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
-                                             int timeout, int *done)
+                                             int timeout, uint32_t newgen,
+                                             int *done)
 {
     int rc;
     char *lock_str;
@@ -4948,7 +4982,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
 
     case UPGRADE:
         logmsg(LOGMSG_DEBUG, "calling bdb_upgrade_int\n");
-        rc = bdb_upgrade_int(bdb_state, done);
+        rc = bdb_upgrade_int(bdb_state, newgen, done);
         logmsg(LOGMSG_DEBUG, "back from bdb_upgrade_int\n");
 
         {
@@ -4975,7 +5009,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
     return rc;
 }
 
-int bdb_upgrade(bdb_state_type *bdb_state, int *done)
+int bdb_upgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done)
 {
     int i;
 
@@ -4986,28 +5020,34 @@ int bdb_upgrade(bdb_state_type *bdb_state, int *done)
         return 0;
 
     logmsg(LOGMSG_DEBUG, "%s:%d %s set file = 0\n", __FILE__, __LINE__, __func__);
+    if (gbl_set_seqnum_trace) {
+        logmsg(LOGMSG_USER, "%s line %d setting all seqnums to 0\n", __func__,
+               __LINE__);
+    }
     for (i = 0; i < MAXNODES; i++) {
         bdb_state->seqnum_info->seqnums[i].lsn.file = 0;
     }
 
-    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, UPGRADE, 30, done);
+    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, UPGRADE, 30, newgen,
+                                             done);
 }
 
-int bdb_downgrade(bdb_state_type *bdb_state, int *done)
+int bdb_downgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done)
 {
-    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, DOWNGRADE, 5, done);
+    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, DOWNGRADE, 5, newgen,
+                                             done);
 }
 
 int bdb_downgrade_noelect(bdb_state_type *bdb_state)
 {
-    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, DOWNGRADE_NOELECT, 5,
+    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, DOWNGRADE_NOELECT, 5, 0,
                                              NULL);
 }
 
 /* not intended to be called by anyone but elect thread */
 int bdb_reopen_inline(bdb_state_type *bdb_state)
 {
-    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, REOPEN, 5, NULL);
+    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, REOPEN, 5, 0, NULL);
 }
 
 extern pthread_key_t lockmgr_key;
@@ -5668,15 +5708,22 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
          */
         BDB_WRITELOCK("bdb_open_int");
 
-        if (net_get_mynode(bdb_state->repinfo->netinfo) ==
-            bdb_state->repinfo->master_host) {
+        char *master;
+        int gen, egen;
+
+        if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) == 0 &&
+            net_get_mynode(bdb_state->repinfo->netinfo) == master) {
             logmsg(LOGMSG_INFO, "%s:%d read_write = 1\n", __FILE__, __LINE__);
             iammaster = 1;
         } else
             iammaster = 0;
 
         if (is_real_netinfo(bdb_state->repinfo->netinfo) && iammaster) {
-            rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL,
+
+            logmsg(LOGMSG_USER,
+                   "%s line %d calling rep_start as master with egen %d\n",
+                   __func__, __LINE__, gen);
+            rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, gen,
                                              DB_REP_MASTER);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "rep_start as master failed %d %s\n", rc,

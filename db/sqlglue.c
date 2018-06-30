@@ -4363,9 +4363,9 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
         goto done;
 
     case TRANLEVEL_SNAPISOL:
-        clnt->dbtran.shadow_tran =
-            trans_start_snapisol(&iq, clnt->bdb_osql_trak, clnt->snapshot,
-                                 snapshot_file, snapshot_offset, &error);
+        clnt->dbtran.shadow_tran = trans_start_snapisol(
+            &iq, clnt->bdb_osql_trak, clnt->snapshot, snapshot_file,
+            snapshot_offset, &error, clnt->is_hasql_retry);
 
         if (!clnt->dbtran.shadow_tran) {
             logmsg(LOGMSG_ERROR, "%s:trans_start_snapisol error %d\n", __func__,
@@ -4394,9 +4394,9 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
          * the same data (inserts are easily skipped, but deletes
          * and updates will have visible effects otherwise
          */
-        clnt->dbtran.shadow_tran =
-            trans_start_serializable(&iq, clnt->bdb_osql_trak, clnt->snapshot,
-                                     snapshot_file, snapshot_offset, &error);
+        clnt->dbtran.shadow_tran = trans_start_serializable(
+            &iq, clnt->bdb_osql_trak, clnt->snapshot, snapshot_file,
+            snapshot_offset, &error, clnt->is_hasql_retry);
 
         if (!clnt->dbtran.shadow_tran) {
             logmsg(LOGMSG_ERROR, "%s:trans_start_serializable error\n", __func__);
@@ -4445,6 +4445,8 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
         rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);
         if (clnt->client_understands_query_stats)
             osql_query_dbglog(thd, clnt->queryid);
+        sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns %d\n",
+                       rc);
         break;
 
     }
@@ -4574,8 +4576,11 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
                 clnt, pthread_self(), clnt->dbtran.mode, clnt->intrans);
     }
 #endif
-    if ((rc = initialize_shadow_trans(clnt, thd)) != 0)
+    if ((rc = initialize_shadow_trans(clnt, thd)) != 0) {
+        sql_debug_logf(clnt, __func__, __LINE__,
+                       "initialize_shadow_tran returns %d\n", rc);
         goto done;
+    }
 
     uuidstr_t us;
     char rqidinfo[40];
@@ -4728,8 +4733,8 @@ int sqlite3BtreeCommit(Btree *pBt)
             int irc = 0;
             irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
             if (irc) {
-                logmsg(LOGMSG_ERROR, 
-                        "%s: failed to abort sorese transactin irc=%d\n",
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to abort sorese transaction irc=%d\n",
                        __func__, irc);
             }
             if (clnt->early_retry == EARLY_ERR_VERIFY) {
@@ -6727,7 +6732,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec set quantum IN:\n");
-                hexdump(new_in, f->len);
+                hexdump(LOGMSG_USER, new_in, f->len);
                 logmsg(LOGMSG_USER, "\n");
             }
 
@@ -6759,7 +6764,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec set quantum OUT:\n");
-                hexdump(new_in, f->len);
+                hexdump(LOGMSG_USER, new_in, f->len);
                 logmsg(LOGMSG_USER, "\n");
             }
 

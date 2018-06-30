@@ -196,9 +196,12 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         seed = bdb_get_a_genid(thedb->bdb_env);
         logmsg(LOGMSG_INFO, "Starting schema change: new seed 0x%llx\n", seed);
     }
-
+    uuidstr_t us;
+    comdb2uuidstr(s->uuid, us);
     rc = sc_set_running(s->table, 1, seed, node, time(NULL));
     if (rc != 0) {
+        logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
+               us, rc);
         if (!doing_upgrade || s->fulluprecs || s->partialuprecs) {
             errstat_set_strf(&iq->errstat, "Schema change already in progress");
             free_schema_change_type(s);
@@ -229,6 +232,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             }
         }
     }
+
+    logmsg(LOGMSG_INFO, "sc_set_running schemachange [%llx %s]\n", s->rqid, us);
 
     iq->sc_host = node ? crc32c((uint8_t *)node, strlen(node)) : 0;
     if (thedb->master == gbl_mynode && !s->resume && iq->sc_seed != seed) {

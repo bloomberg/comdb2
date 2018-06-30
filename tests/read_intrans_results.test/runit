@@ -1,0 +1,3 @@
+#!/bin/sh
+bash -n "$0" | exit 1
+${TESTSBUILDDIR}/cdb2api_read_intrans_results $1

@@ -92,6 +92,7 @@
 #include "bdb_osqlcur.h"
 #include "bdb_osqllog.h"
 #include "logmsg.h"
+#include "util.h"
 
 static unsigned int berkdb_counter = 0;
 
@@ -1235,46 +1236,6 @@ static int bdb_berkdb_move(bdb_berkdb_t *pberkdb, int dir, int *bdberr)
         return -1;
     }
 }
-static inline char hex(unsigned char a)
-{
-    if (a < 10)
-        return '0' + a;
-    return 'a' + (a - 10);
-}
-
-static void hexdumpbuf(char *key, int keylen, char **buf)
-{
-    int i = 0;
-    char *output = malloc((2 * keylen) + 2);
-    char byte[3];
-    output[0] = '\0';
-    byte[2] = '\0';
-
-    for (i = 0; i < keylen; i++) {
-        snprintf(byte, sizeof(byte), "%c%c", hex(((unsigned char)key[i]) / 16),
-                 hex(((unsigned char)key[i]) % 16));
-        strcat(output, byte);
-    }
-
-    *buf = output;
-}
-
-static void hexdump(char *key, int keylen)
-{
-    int i = 0;
-    char *output = alloca((2 * keylen) + 2);
-    char byte[3];
-    output[0] = '\0';
-    byte[2] = '\0';
-
-    for (i = 0; i < keylen; i++) {
-        snprintf(byte, sizeof(byte), "%c%c", hex(((unsigned char)key[i]) / 16),
-                 hex(((unsigned char)key[i]) % 16));
-        strcat(output, byte);
-    }
-    /* Make this a single fprintf to make it more difficult to fragment. */
-    logmsg(LOGMSG_USER, "%s\n", output);
-}
 
 static int bdb_berkdb_find_real(bdb_berkdb_t *pberkdb, void *key, int keylen,
                                 int how, int *bdberr)
@@ -1301,7 +1262,7 @@ static int bdb_berkdb_find_real(bdb_berkdb_t *pberkdb, void *key, int keylen,
     if (berkdb->trak) {
         logmsg(LOGMSG_USER, "TRK: %p find real rc=%d bdberr=%d keylen=%d key=0x",
                 pberkdb, rc, *bdberr, keylen);
-        hexdump(key, keylen);
+        hexdump(LOGMSG_USER, key, keylen);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -1349,7 +1310,7 @@ static int bdb_berkdb_find_shad(bdb_berkdb_t *pberkdb, void *key, int keylen,
     if (berkdb->trak) {
         logmsg(LOGMSG_USER, "TRK: %p find shad rc=%d bdberr=%d keylen=%d key=0x",
                 pberkdb, rc, *bdberr, keylen);
-        hexdump(key, keylen);
+        hexdump(LOGMSG_USER, key, keylen);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -1535,9 +1496,9 @@ static int bdb_berkdb_insert(bdb_berkdb_t *pberkdb, char *key, int keylen,
     if (berkdb->trak) {
         logmsg(LOGMSG_USER, "TRK: %p insert rc=%d bdberr=%d", pberkdb, rc, *bdberr);
         logmsg(LOGMSG_USER, "\n\tkeylen=%d key=0x", keylen);
-        hexdump(key, keylen);
+        hexdump(LOGMSG_USER, key, keylen);
         logmsg(LOGMSG_USER, "\n\tdatalen=%d data=0x", dtalen);
-        hexdump(dta, dtalen);
+        hexdump(LOGMSG_USER, dta, dtalen);
         logmsg(LOGMSG_USER, "\n");
     }
 

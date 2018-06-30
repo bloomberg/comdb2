@@ -41,6 +41,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #include <walkback.h>
 #endif
 #include "logmsg.h"
+#include "util.h"
 
 
 #ifdef TRACE_ON_ADDING_LOCKS
@@ -120,29 +121,6 @@ pthread_key_t lockmgr_key;
 static int __lock_getlocker_int(DB_LOCKTAB *, u_int32_t locker, u_int32_t indx,
     u_int32_t partition, int create, u_int32_t retries, DB_LOCKER **retp,
     int *created, int is_logical);
-
-static char
-hex(unsigned char a)
-{
-	return a < 10 ? '0' + a : 'a' + (a - 10);
-}
-
-void
-hexdump(FILE *fp, unsigned char *key, int keylen)
-{
-	int i = 0;
-	for (i = 0; i < keylen; i++) {
-        if (fp) {
-            fprintf(fp, "%c%c", 
-		    hex(((unsigned char)key[i]) / 16),
-		    hex(((unsigned char)key[i]) % 16));
-        } else {
-		logmsg(LOGMSG_USER, "%c%c",
-		    hex(((unsigned char)key[i]) / 16),
-		    hex(((unsigned char)key[i]) % 16));
-        }
-	}
-}
 
 void
 berkdb_dump_locks_for_locker(dbenv, id)
@@ -2105,22 +2083,6 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		snprintf(desc, sizeof(desc), "NULL OBJ LK");
 	}
 
-	/*printf("%d put %s size=%d", pthread_self(), desc, sh_obj->lockobj.size); */
-
-	/*snprintf(lkbuffer[idx], LKBUFSZ, "%d put %s size=%d", pthread_self(), desc, sh_obj->lockobj.size); */
-	/*printf("%d get lid %x %s size=%d ", pthread_self(), locker, desc, obj->size); */
-
-	/*
-	 * if (obj->size == sizeof(DB_LOCK_ILOCK))
-	 * {
-	 * printf(" [ ");
-	 * hexdump(((DB_LOCK_ILOCK*)(obj->data))->fileid, 20);
-	 * printf(" ]\n");
-	 * }
-	 * else
-	 * printf("\n");
-	 */
-
 	pthread_mutex_lock(&lblk);
 	idx = lbcounter;
 	lbcounter = (lbcounter + 1) % LKBUFMAX;
@@ -3214,18 +3176,6 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 		threadid[idx] = pthread_self();
 		snprintf(lkbuffer[idx], LKBUFSZ, "%d put %s size=%d",
 		    pthread_self(), desc, sh_obj->lockobj.size);
-		/*printf("%d put %s size=%d", pthread_self(), desc, sh_obj->lockobj.size); */
-		/*
-		 * if (sh_obj->lockobj.size == sizeof(DB_LOCK_ILOCK))
-		 * {
-		 * printf(" [ ");
-		 * hexdump(((DB_LOCK_ILOCK*)(lockdata))->fileid, 20);
-		 * printf(" ]\n");
-		 * }
-		 * else
-		 * printf("\n");
-		 */
-
 	}
 #endif
 
@@ -4533,21 +4483,6 @@ __latch_trade_comp(DB_ENV *dbenv, const DBT *obj, u_int32_t oldlocker,
 	idx = latchhash(dbenv, obj);
 	latch = &region->latches[idx];
 
-#ifdef VERBOSE_LATCH
-	if (latch->lockerid != oldlocker && latch->lockerid != newlocker) {
-		DB_LOCK_ILOCK *ilock = (DB_LOCK_ILOCK *)obj->data;
-		printf("Invalid lockerid owns latch %p lockerid is %u (0x%x)\n",
-		    latch, latch->lockerid, latch->lockerid);
-		printf
-		    ("I want to upgrade from owner %u (0x%x) to owner %u (0x%x)\n",
-		    oldlocker, oldlocker, newlocker, newlocker);
-		printf("fileid=0x");
-		hexdump(ilock->fileid, DB_FILE_ID_LEN);
-		printf(" pgno=%u\n", ilock->pgno);
-		fflush(stdout);
-		abort();
-	}
-#endif
 	assert(latch->lockerid == oldlocker || latch->lockerid == newlocker);
 
 	if (latch->lockerid == oldlocker) {
@@ -5618,7 +5553,7 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 				else
 					logmsg(LOGMSG_USER, "\t\tFILEID: ");
 
-				hexdump(fp, lock->fileid, sizeof(lock->fileid));
+				hexdumpfp(fp, lock->fileid, sizeof(lock->fileid));
 				if (fp) {
 					fprintf(fp, " TYPE: %s", ilock_type_str(lock->type));
 					fprintf(fp, " PAGE: %u", lock->pgno);
@@ -5784,7 +5719,7 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
                     else
                         logmsg(LOGMSG_USER, "\t\tFILEID: ");
 
-					hexdump(fp, lock->fileid,
+					hexdumpfp(fp, lock->fileid,
 					    sizeof(lock->fileid));
                     if (fp) {
                         fprintf(fp, " TYPE: %s",

@@ -26,10 +26,10 @@ typedef struct VdbeSorter VdbeSorter;
 #include "poll.h"
 #include "flibc.h"
 #include "logmsg.h"
-#include "ssl_bend.h" /* for gbl_client_ssl_mode & gbl_ssl_allow_remsql */
 #include "comdb2_appsock.h"
 
 #if WITH_SSL
+#include "ssl_bend.h" /* for gbl_client_ssl_mode & gbl_ssl_allow_remsql */
 #include "ssl_support.h"
 #endif
 
@@ -1014,7 +1014,8 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
             rc = sbuf2flush(sb);
             if (rc<0)
                 return -1;
-            rc = sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL, 0);
+            rc = sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL,
+                              gbl_nid_dbname, NULL, 0, 1);
             if (rc!= 1)
                 return -1;
         }

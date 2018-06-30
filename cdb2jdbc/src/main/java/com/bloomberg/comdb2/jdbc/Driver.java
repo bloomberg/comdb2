@@ -64,6 +64,24 @@ public class Driver implements java.sql.Driver {
         }
     }
 
+    protected static class BooleanOption extends Option {
+        void set(Comdb2Connection conn, String val) throws Throwable {
+            int intval = Integer.parseInt(val);
+            if ("true".equalsIgnoreCase(val)
+                    || "1".equalsIgnoreCase(val)
+                    || "T".equalsIgnoreCase(val)
+                    || "on".equalsIgnoreCase(val))
+                m.invoke(conn, true);
+            else
+                m.invoke(conn, false);
+        }
+        BooleanOption(String opt, String setter) throws Throwable {
+            Class<Comdb2Connection> cls = Comdb2Connection.class;
+            m = cls.getMethod("set" + setter, Boolean.TYPE);
+            this.opt = opt;
+        }
+    }
+
     public static Driver getInstance() throws SQLException {
         try {
             __instance.options.put("maxquerytime", new IntegerOption("maxquerytime", "QueryTimeout"));
@@ -84,7 +102,7 @@ public class Driver implements java.sql.Driver {
             __instance.options.put("microsecond_fraction", new StringOption("microsecond_fraction", "MicroSecond"));
             __instance.options.put("preferred_machine", new StringOption("preferred_machine", "PrefMach"));
             __instance.options.put("comdb2db_max_age", new IntegerOption("comdb2db_max_age", "Comdb2dbMaxAge"));
-            __instance.options.put("debug", new StringOption("debug", "Debug"));
+            __instance.options.put("debug", new BooleanOption("debug", "Debug"));
             __instance.options.put("max_retries", new IntegerOption("max_retries", "MaxRetries"));
             __instance.options.put("ssl_mode", new StringOption("ssl_mode", "SSLMode"));
             __instance.options.put("key_store", new StringOption("key_store", "SSLCrt"));
@@ -93,10 +111,12 @@ public class Driver implements java.sql.Driver {
             __instance.options.put("trust_store", new StringOption("trust_store", "SSLCA"));
             __instance.options.put("trust_store_password", new StringOption("trust_store_password", "SSLCAPass"));
             __instance.options.put("trust_store_type", new StringOption("trust_store_type", "SSLCAType"));
-            __instance.options.put("allow_pmux_route", new StringOption("allow_pmux_route", "AllowPmuxRoute"));
+            __instance.options.put("crl", new StringOption("crl", "SSLCRL"));
+            __instance.options.put("allow_pmux_route", new BooleanOption("allow_pmux_route", "AllowPmuxRoute"));
             __instance.options.put("statement_query_effects",
-                    new StringOption("statement_query_effects", "StatementQueryEffects"));
-            __instance.options.put("verify_retry", new StringOption("verify_retry", "VerifyRetry"));
+                    new BooleanOption("statement_query_effects", "StatementQueryEffects"));
+            __instance.options.put("verify_retry", new BooleanOption("verify_retry", "VerifyRetry"));
+            __instance.options.put("stack_at_open", new BooleanOption("stack_at_open", "StackAtOpen"));
         } catch (Throwable e) {
             throw new SQLException(e);
         }
