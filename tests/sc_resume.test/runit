@@ -248,13 +248,18 @@ function get_schemachange_status
 
 getmaster() {
     [[ $debug != "0" ]] && set -x
-    master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default '@send bdb cluster' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
-    sleep 1
-    master2=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default '@send stat' | grep "MASTER IS" | tac -s " " | head -1 `
-    while [[ "$master" == "" || $master != $master2 ]] ; do 
-        master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default '@send bdb cluster' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
-        sleep 1
-        master2=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default '@send stat' | grep "MASTER IS" | tac -s " " | head -1 `
+    master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb cluster')" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+    ok=0
+    while [[ "$ok" != "1" ]] ; do
+        ok=1
+        for node in $CLUSTER ; do
+            master2=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('bdb cluster')" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+            if [[ "$master" == "" || $master != $master2 ]] ; then
+                master="$master2"
+                ok=0
+                break
+            fi
+        done
     done
     echo $master
 }
