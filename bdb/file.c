@@ -2460,8 +2460,9 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_TRANSFERMASTER,
                          "transfermaster", berkdb_receive_msg);
 
-    net_register_handler(bdb_state->repinfo->netinfo, "transfermaster_name",
-                         USER_TYPE_TRANSFERMASTER_NAME, berkdb_receive_msg);
+    net_register_handler(bdb_state->repinfo->netinfo,
+                         USER_TYPE_TRANSFERMASTER_NAME, "tranfermaster_name",
+                         berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_REPTRC,
                          "reptrc", berkdb_receive_msg);
