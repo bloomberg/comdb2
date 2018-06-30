@@ -75,6 +75,8 @@ int __db_debug_log(DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, const DBT *,
     int32_t, const DBT *, const DBT *, u_int32_t);
 
 extern int gbl_inflate_log;
+pthread_cond_t gbl_logput_cond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t gbl_logput_lk = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  * __log_put_pp --
@@ -236,10 +238,14 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 
 	ZERO_LSN(old_lsn);
 
+    pthread_mutex_lock(&gbl_logput_lk);
 	if ((ret =
 		__log_put_next(dbenv, lsnp, contextp, dbt, udbt, &hdr, &old_lsn,
 		    off_context, key, flags)) != 0)
 		goto panic_check;
+
+    pthread_cond_broadcast(&gbl_logput_cond);
+    pthread_mutex_unlock(&gbl_logput_lk);
 
 	lsn = *lsnp;
 
@@ -380,7 +386,6 @@ err:
 			lastpr = now;
 		}
 	}
-
 
 	/*
 	 * If auto-remove is set and we switched files, remove unnecessary
