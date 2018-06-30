@@ -262,7 +262,7 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblRepNetQueueStatInit(db);
   if (rc == SQLITE_OK)
-    rc = systblNetUserfuncInit(db);
+    rc = systblNetUserfuncsInit(db);
 #endif
   return rc;
 }

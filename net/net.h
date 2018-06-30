@@ -71,7 +71,8 @@ typedef void QSTATITERFP(struct netinfo_struct *netinfo, void *arg,
                          void *qstat);
 
 typedef void UFUNCITERFP(struct netinfo_struct *netinfo, void *arg,
-                         char *service, char *userfunc, int64_t count);
+                         char *service, char *userfunc, int64_t count,
+                         int64_t totus);
 
 typedef int NETALLOWFP(struct netinfo_struct *netinfo, const char *hostname);
 
@@ -141,7 +142,7 @@ int net_send_inorder(netinfo_type *netinfo,
 /* register your callback routine that will be called when
    user messages of type "usertype" are recieved */
 int net_register_handler(netinfo_type *netinfo_ptr, int usertype,
-                         const char *name, NETFP func);
+                         char *name, NETFP func);
 
 /* register your callback routine that will be called when a
    disconnect happens for a node */

@@ -13,6 +13,7 @@ typedef struct systable_net_userfunc {
     char                    *service;
     char                    *userfunc;
     int64_t                 count;
+    int64_t                 totus;
 } systable_net_userfunc_t;
 
 typedef struct net_get_userfunc {
@@ -22,7 +23,7 @@ typedef struct net_get_userfunc {
 } net_get_userfunc_t;
 
 static void userfunc_to_systable(struct netinfo_struct *netinfo_ptr, void *arg,
-        char *service, char *userfunc, int64_t count)
+        char *service, char *userfunc, int64_t count, int64_t totus)
 {
     net_get_userfunc_t *uf = (net_get_userfunc_t *)arg;
     uf->count++;
@@ -39,6 +40,7 @@ static void userfunc_to_systable(struct netinfo_struct *netinfo_ptr, void *arg,
     u->service = service;
     u->userfunc = userfunc;
     u->count = count;
+    u->totus = totus;
 }
 
 static int get_net_userfuncs(void **data, int *records)
@@ -59,11 +61,12 @@ static void free_net_userfuncs(void *p, int n)
     free(p);
 }
 
-int systblNetUserfuncInit(sqlite3 *db) {
-    return create_system_table(db, "comdb2_net_userfunc", get_net_userfuncs,
+int systblNetUserfuncsInit(sqlite3 *db) {
+    return create_system_table(db, "comdb2_net_userfuncs", get_net_userfuncs,
             free_net_userfuncs, sizeof(systable_net_userfunc_t),
             CDB2_CSTRING, "service", offsetof(systable_net_userfunc_t, service),
             CDB2_CSTRING, "userfunc", offsetof(systable_net_userfunc_t, userfunc),
             CDB2_INTEGER, "count", offsetof(systable_net_userfunc_t, count),
+            CDB2_INTEGER, "totalus", offsetof(systable_net_userfunc_t, totus),
             SYSTABLE_END_OF_FIELDS);
 }
