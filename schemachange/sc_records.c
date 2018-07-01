@@ -107,8 +107,8 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
     if (data->live)
         sc_printf(data->s, ">> adds %u upds %d dels %u extra genids "
                            "%u\n",
-                  data->s->sc_adds, data->s->sc_updates, data->s->sc_deletes,
-                  data->s->sc_adds + data->s->sc_updates);
+                  data->s->db->sc_adds, data->s->db->sc_updates, data->s->db->sc_deletes,
+                  data->s->db->sc_adds + data->s->db->sc_updates);
 
     /* totals across all threads */
     if (data->scanmode != SCAN_PARALLEL) return 1;
@@ -118,7 +118,7 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
     sc_printf(data->s, "progress TOTAL %lld +%lld actual "
                        "progress total %lld rate %lld r/s\n",
               data->s->sc_nrecs, total_nrecs_diff,
-              data->s->sc_nrecs - (data->s->sc_adds + data->s->sc_updates),
+              data->s->sc_nrecs - (data->s->db->sc_adds + data->s->db->sc_updates),
               total_nrecs_diff / sc_report_freq);
     return 1;
 }

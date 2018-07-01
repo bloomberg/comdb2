@@ -766,6 +766,14 @@ struct dbtable {
     int sc_downgrading;
     unsigned long long *sc_genids; /* schemachange stripe pointers */
 
+    /* count the number of updates and deletes done by schemachange
+     * when behind the cursor.  This helps us know how many
+     * records we've really done (since every update behind the cursor
+     * effectively means we have to go back and do that record again). */
+    unsigned sc_adds;
+    unsigned sc_deletes;
+    unsigned sc_updates;
+
     unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
     unsigned int sqlcur_cur; /* count how many cursors where open in cur mode */
 
