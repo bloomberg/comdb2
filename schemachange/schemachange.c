@@ -330,12 +330,13 @@ int start_schema_change(struct schema_change_type *s)
 
 void delay_if_sc_resuming(struct ireq *iq)
 {
-    if (gbl_sc_resume_start == 0) return;
+    if (gbl_sc_resume_start <= 0)
+        return;
 
     int diff;
     int printerr = 0;
     int start_time = comdb2_time_epochms();
-    while (gbl_sc_resume_start) {
+    while (gbl_sc_resume_start > 0) {
         if ((diff = comdb2_time_epochms() - start_time) > 300 && !printerr) {
             logmsg(LOGMSG_WARN, "Delaying since gbl_sc_resume_start has not "
                                 "been reset to 0 for %dms\n",

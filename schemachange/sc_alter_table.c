@@ -542,7 +542,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                    __func__, __LINE__);
             sleep(5);
         }
-        ATOMIC_ADD(gbl_sc_resume_start, -1);
+        if (gbl_sc_resume_start > 0)
+            ATOMIC_ADD(gbl_sc_resume_start, -1);
     }
     MEMORY_SYNC;
 
