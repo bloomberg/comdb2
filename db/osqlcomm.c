@@ -5798,7 +5798,12 @@ static int offload_net_send(const char *host, int usertype, void *data,
                 /* on closed sockets, we simply return; a callback
                    will trigger on the other side signalling we've
                    lost the comm party */
-                return rc;
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
+                       __FILE__, __LINE__, host);
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d socket is closed, return wrong master\n",
+                       __FILE__, __LINE__);
+                return OSQL_SEND_ERROR_WRONGMASTER;
             } else if (rc) {
                 unknownerror_retry++;
                 if (unknownerror_retry >= UNK_ERR_SEND_RETRY) {
@@ -5856,23 +5861,42 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
                                               tails, tailens);
         }
 
-        if (NET_SEND_FAIL_QUEUE_FULL == rc || NET_SEND_FAIL_MALLOC_FAIL == rc) {
+        if (NET_SEND_FAIL_QUEUE_FULL == rc || NET_SEND_FAIL_MALLOC_FAIL == rc ||
+            NET_SEND_FAIL_NOSOCK == rc) {
 
             if (total_wait > gbl_osql_bkoff_netsend_lmt) {
-                logmsg(LOGMSG_ERROR, "%s giving up sending to %s\n", __func__, host);
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
+                       __FILE__, __LINE__, host ? host : gbl_mynode);
                 return -1;
             }
 
-            if ((rc = osql_comm_check_bdb_lock()))
+            if ((rc = osql_comm_check_bdb_lock())) {
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
+                       __FILE__, __LINE__, host ? host : gbl_mynode);
                 return rc;
+            }
 
             poll(NULL, 0, backoff);
             /*backoff *= 2; */
             total_wait += backoff;
+        } else if (NET_SEND_FAIL_CLOSED == rc) {
+            /* on closed sockets, we simply return; a callback
+               will trigger on the other side signalling we've
+               lost the comm party */
+            logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
+                   __LINE__, host ? host : gbl_mynode);
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d socket is closed, return wrong master\n", __FILE__,
+                   __LINE__);
+            return OSQL_SEND_ERROR_WRONGMASTER;
         } else if (rc) {
             unknownerror_retry++;
-            if (unknownerror_retry >= UNK_ERR_SEND_RETRY)
+            if (unknownerror_retry >= UNK_ERR_SEND_RETRY) {
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
+                       __FILE__, __LINE__, host ? host : gbl_mynode);
+                comdb2_linux_cheap_stack_trace();
                 return -1;
+            }
         }
     }
 

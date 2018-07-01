@@ -127,12 +127,28 @@ void wait_for_sc_to_stop(void)
     logmsg(LOGMSG_INFO, "%s: set stopsc\n", __func__);
     if (gbl_schema_change_in_progress) {
         logmsg(LOGMSG_INFO, "giving schemachange time to stop\n");
-        int retry = 10;
-        while (gbl_schema_change_in_progress && retry--) {
+        int waited = 0;
+        while (gbl_schema_change_in_progress) {
             sleep(1);
+            waited++;
+            if (waited > 10)
+                logmsg(LOGMSG_ERROR,
+                       "downgrade waiting schema changes to stop for: %ds\n",
+                       waited);
+            if (waited > 60) {
+                logmsg(LOGMSG_FATAL,
+                       "schema changes take too long to stop, waited %ds\n",
+                       waited);
+                abort();
+            }
         }
         logmsg(LOGMSG_INFO, "proceeding with downgrade (waited for: %ds)\n",
-               10 - retry);
+               waited);
+    }
+    extern int gbl_test_sc_resume_race;
+    if (gbl_test_sc_resume_race) {
+        logmsg(LOGMSG_INFO, "%s: sleeping 5s to test\n", __func__);
+        sleep(5);
     }
 }
 
@@ -300,6 +316,7 @@ void live_sc_off(struct dbtable *db)
     db->sc_to = NULL;
     db->sc_from = NULL;
     db->sc_abort = 0;
+    db->sc_downgrading = 0;
     pthread_rwlock_unlock(&sc_live_rwlock);
 }
 

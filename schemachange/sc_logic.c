@@ -471,14 +471,26 @@ int do_schema_change_tran(sc_arg_t *arg)
     if (rc == SC_MASTER_DOWNGRADE) {
         if (s && s->newdb && s->newdb->handle) {
             int bdberr;
-            if (!trans) {
-                /* start new event; some functions above end event on return */
+
+            if (!trans)
                 backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
-                bdb_close_only(s->newdb->handle, &bdberr);
+
+            /* return NOMASTER for live schemachange writes */
+            start_exclusive_backend_request(thedb);
+            pthread_rwlock_wrlock(&sc_live_rwlock);
+            s->db->sc_to = NULL;
+            s->db->sc_from = NULL;
+            s->db->sc_abort = 0;
+            s->db->sc_downgrading = 1;
+            pthread_rwlock_unlock(&sc_live_rwlock);
+            end_backend_request(thedb);
+
+            bdb_close_only(s->newdb->handle, &bdberr);
+            freedb(s->newdb);
+            s->newdb = NULL;
+
+            if (!trans)
                 backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
-            } else {
-                bdb_close_only_sc(s->newdb->handle, trans, &bdberr);
-            }
         }
     }
     reset_sc_thread(oldtype, s);

@@ -303,15 +303,10 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
                 tran_type * *outtran, int force_commit);
             rc = get_physical_transaction(bdb_handle, *out_trans,
                                           &physical_tran, 0);
-            if (rc == BDBERR_READONLY) {
+            if (rc) {
                 trans_abort_logical(iq, *out_trans, NULL, 0, NULL, 0);
                 *out_trans = NULL;
                 bdberr = rc;
-            }
-            if (rc) {
-                logmsg(LOGMSG_FATAL, "%s :failed to get physical_tran\n",
-                       __func__);
-                abort();
             }
         }
     }
