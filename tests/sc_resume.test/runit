@@ -628,7 +628,7 @@ sleep 20
 function update_column_c
 {
     while true ; do
-        cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "update t1 set c = c + 100000 where 1" > update.out 2>&1
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c = c + 100000 where 1" > update.out 2>&1
         grep -e "Client api should" -e "Cannot connect to db" update.out
         if [[ $? != 0 ]]; then
             break
