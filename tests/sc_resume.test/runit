@@ -289,7 +289,7 @@ function wait_for_sc
 
 echo "Test with insert, SC should not fail"
 
-sleep 5
+master=`getmaster`
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
