@@ -67,6 +67,10 @@ static inline void release_rebuild_thr(int *thrcount)
     ATOMIC_ADD((*thrcount), -1);
 }
 
+/* Return true if there were writes to table undergoing SC (data->from)
+ * Note that data is local to this thread so this accounting happens 
+ * for each thread performing SC.
+ */
 static inline int tbl_had_writes(struct convert_record_data *data)
 {
     unsigned oldcount = data->write_count;
@@ -82,8 +86,7 @@ static inline int tbl_had_writes(struct convert_record_data *data)
 static inline int print_global_sc_stat(struct convert_record_data *data,
                                        int now, int sc_report_freq)
 {
-    static int total_lasttime = 0; /* used for global stats */
-    int copy_total_lasttime = total_lasttime;
+    int copy_total_lasttime = data->cmembers->total_lasttime;
 
     /* Do work without locking */
     if (now < copy_total_lasttime + sc_report_freq) return 0;
@@ -93,7 +96,7 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
      * to print. If it failed, another thread is doing that work.
      */
 
-    bool res = CAS(total_lasttime, copy_total_lasttime, now);
+    bool res = CAS(data->cmembers->total_lasttime, copy_total_lasttime, now);
     if (!res) return 0;
 
     /* number of adds after schema cursor (by definition, all adds)
@@ -104,18 +107,18 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
     if (data->live)
         sc_printf(data->s, ">> adds %u upds %d dels %u extra genids "
                            "%u\n",
-                  gbl_sc_adds, gbl_sc_updates, gbl_sc_deletes,
-                  gbl_sc_adds + gbl_sc_updates);
+                  data->s->sc_adds, data->s->sc_updates, data->s->sc_deletes,
+                  data->s->sc_adds + data->s->sc_updates);
 
     /* totals across all threads */
     if (data->scanmode != SCAN_PARALLEL) return 1;
 
-    long long total_nrecs_diff = gbl_sc_nrecs - gbl_sc_prev_nrecs;
-    gbl_sc_prev_nrecs = gbl_sc_nrecs;
+    long long total_nrecs_diff = data->s->sc_nrecs - data->s->sc_prev_nrecs;
+    data->s->sc_prev_nrecs = data->s->sc_nrecs;
     sc_printf(data->s, "progress TOTAL %lld +%lld actual "
                        "progress total %lld rate %lld r/s\n",
-              gbl_sc_nrecs, total_nrecs_diff,
-              gbl_sc_nrecs - (gbl_sc_adds + gbl_sc_updates),
+              data->s->sc_nrecs, total_nrecs_diff,
+              data->s->sc_nrecs - (data->s->sc_adds + data->s->sc_updates),
               total_nrecs_diff / sc_report_freq);
     return 1;
 }
@@ -151,22 +154,13 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
     data->cmembers->ndeadlocks = ndeadlocks;
     data->cmembers->nlockwaits = nlockwaits;
     logmsg(
-        LOGMSG_INFO,
+        LOGMSG_DEBUG,
         "%s: diff_deadlocks=%ld, diff_lockwaits=%ld, maxthr=%d, currthr=%d\n",
         __func__, diff_deadlocks, diff_lockwaits, data->cmembers->maxthreads,
         data->cmembers->thrcount);
     increase_max_threads(
         &data->cmembers->maxthreads,
         bdb_attr_get(data->from->dbenv->bdb_attr, BDB_ATTR_SC_USE_NUM_THREADS));
-}
-
-void live_sc_enter_exclusive_all(bdb_state_type *bdb_state, tran_type *trans)
-{
-    unsigned stripe;
-    for (stripe = 0; stripe < gbl_dtastripe; ++stripe) {
-        bdb_lock_stripe_write(bdb_state, stripe, trans);
-    }
-    return;
 }
 
 /* If the schema is resuming it sets sc_genids to be the last genid for each
@@ -319,7 +313,7 @@ void convert_record_data_cleanup(struct convert_record_data *data)
     }
 }
 
-static int convert_server_record(const void *inbufp, const char *from_tag,
+static inline int convert_server_record(const void *inbufp, const char *from_tag,
                                  struct dbrecord *db,
                                  struct schema_change_type *s)
 {
@@ -955,7 +949,7 @@ err: /*if (is_schema_change_doomed())*/
 
     if (data->live) delay_sc_if_needed(data, &ss);
 
-    gbl_sc_nrecs++;
+    ATOMIC_ADD(data->s->sc_nrecs, 1);
 
     int now = comdb2_time_epoch();
     if ((rc = report_sc_progress(data, now))) return rc;
@@ -1487,7 +1481,8 @@ static int upgrade_records(struct convert_record_data *data)
         break;
     } // end of rc check
 
-    ++gbl_sc_nrecs;
+    ATOMIC_ADD(data->s->sc_nrecs, 1);
+
     data->sc_genids[data->stripe] = genid;
     now = comdb2_time_epoch();
 

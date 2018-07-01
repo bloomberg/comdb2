@@ -63,11 +63,6 @@ pthread_mutex_t gbl_sc_lock = PTHREAD_MUTEX_INITIALIZER;
 int doing_conversion = 0;
 /* boolean value set to nonzero if table upgrade is in progress */
 int doing_upgrade = 0;
-unsigned gbl_sc_adds;
-unsigned gbl_sc_updates;
-unsigned gbl_sc_deletes;
-long long gbl_sc_nrecs;
-long long gbl_sc_prev_nrecs; /* nrecs since last report */
 int gbl_sc_report_freq = 15; /* seconds between reports */
 int gbl_sc_abort = 0;
 int gbl_sc_resume_start = 0;
@@ -283,11 +278,9 @@ void sc_status(struct dbenv *dbenv)
                mach ? mach : "(unknown)", tm.tm_year + 1900, tm.tm_mon + 1,
                tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, sctbl->table);
         if (doing_conversion) {
-            logmsg(LOGMSG_USER, "Conversion phase running %lld converted\n",
-                   gbl_sc_nrecs);
+            logmsg(LOGMSG_USER, "Conversion phase running\n");
         } else if (doing_upgrade) {
-            logmsg(LOGMSG_USER, "Upgrade phase running %lld upgraded\n",
-                   gbl_sc_nrecs);
+            logmsg(LOGMSG_USER, "Upgrade phase running\n");
         }
         logmsg(LOGMSG_USER, "-------------------------\n");
         sctbl = hash_next(sc_tables, &ent, &bkt);
@@ -300,11 +293,6 @@ void sc_status(struct dbenv *dbenv)
 
 void reset_sc_stat()
 {
-    gbl_sc_adds = 0;
-    gbl_sc_updates = 0;
-    gbl_sc_deletes = 0;
-    gbl_sc_nrecs = 0;
-    gbl_sc_prev_nrecs = 0;
     gbl_sc_abort = 0;
 }
 /* Turn off live schema change.  This HAS to be done while holding the exclusive

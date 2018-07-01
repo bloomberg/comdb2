@@ -2355,15 +2355,6 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
     }
 
     javasp_trans_end(iq->jsph);
-
-    if (rc == 0) {
-        /* yes - there is no locking here so we could get inaccuracies.
-         * doesn't matter. */
-        gbl_sc_adds += iq->sc_adds;
-        gbl_sc_updates += iq->sc_updates;
-        gbl_sc_deletes += iq->sc_deletes;
-    }
-
     return rc;
 }
 

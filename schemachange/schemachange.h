@@ -179,6 +179,16 @@ struct schema_change_type {
                              At least this datastructure lives as much as the
                            whole schema change (I will change this in the
                            future)*/
+    uint64_t sc_nrecs;
+    uint64_t sc_prev_nrecs;
+
+    /* count the number of updates and deletes done by this transaction in
+     * a live schema change behind the cursor.  This helps us know how many
+     * records we've really done (since every update behind the cursor
+     * effectively means we have to go back and do that record again). */
+    unsigned sc_adds;
+    unsigned sc_deletes;
+    unsigned sc_updates;
 
     /*********************** temporary fields for table upgrade
      * ************************/
