@@ -3952,9 +3952,39 @@ void reset_calls_per_sec(void);
 int throttle_lim = 10000;
 int cpu_throttle_threshold = 100000;
 
-#if 0
-void *pq_thread(void *);
-#endif
+#include "comdb2_atomic.h"
+
+int get_query_stats(struct query_stats *stats)
+{
+    const struct bdb_thread_stats *pstats;
+    int rc;
+
+    stats->nfstrap = ATOMIC_LOAD(n_fstrap);
+    stats->nsql = ATOMIC_LOAD(gbl_nsql) + ATOMIC_LOAD(gbl_nnewsql);
+    stats->nsteps = ATOMIC_LOAD(gbl_nsql_steps) +
+        ATOMIC_LOAD(gbl_nnewsql_steps);
+    stats->ncommits = ATOMIC_LOAD(n_commits);
+    stats->nretries = ATOMIC_LOAD(n_retries);
+
+    if (thedb->exiting || thedb->stopped) {
+        return 1;
+    }
+
+    rc = bdb_get_lock_counters(thedb->bdb_env, &stats->ndeadlocks,
+                               &stats->nlockwaits);
+    if (rc) {
+        return 1;
+    }
+    bdb_get_bpool_counters(thedb->bdb_env, &stats->nbpoolhits,
+                           &stats->nbpoolmisses);
+
+    pstats = bdb_get_process_stats();
+    stats->npwrites = pstats->n_pwrites;
+    stats->npreads = pstats->n_preads;
+
+    return 0;
+}
+ 
 
 void *statthd(void *p)
 {
