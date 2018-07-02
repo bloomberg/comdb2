@@ -32,7 +32,7 @@ add_library(sqlite
   ext/comdb2/tablesizes.c
   ext/comdb2/threadpools.c
   ext/comdb2/triggers.c
-  ext/comdb2/stats.c
+  ext/comdb2/statistics.c
   ext/comdb2/tunables.c
   ext/comdb2/users.c
   ext/comdb2/tranlog.c

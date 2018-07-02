@@ -25,6 +25,8 @@
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
 #include "sql.h"
+#include "statistics.h"
+
 
 /*
   comdb2_stats: List various query related stats.
@@ -33,22 +35,14 @@
 typedef struct {
     sqlite3_vtab_cursor base; /* Base class - must be first */
     sqlite3_int64 rowid;      /* Row ID */
-    struct query_stats stats; /* Statistics */
 } systbl_stats_cursor;
 
 /* Column numbers (always keep the below table definition in sync). */
 enum {
-    COLUMN_FSTRAP,
-    COLUMN_SQL,
-    COLUMN_STEPS,
-    COLUMN_COMMITS,
-    COLUMN_RETRIES,
-    COLUMN_DEADLOCKS,
-    COLUMN_LOCKWAITS,
-    COLUMN_BPOOL_HITS,
-    COLUMN_BPOOL_MISSES,
-    COLUMN_PWRITES,
-    COLUMN_PREADS,
+    COLUMN_NAME,
+    COLUMN_DESCR,
+    COLUMN_TYPE,
+    COLUMN_VALUE,
 };
 
 static int systblStatsConnect(sqlite3 *db, void *pAux, int argc,
@@ -58,9 +52,9 @@ static int systblStatsConnect(sqlite3 *db, void *pAux, int argc,
     int rc;
 
     rc = sqlite3_declare_vtab(
-        db, "CREATE TABLE comdb2_stats(\"fstrap\", \"sql\", \"steps\", "
-            "\"commits\", \"retries\", \"deadlocks\", \"lockwaits\", "
-            "\"bpool_hits\", \"bpool_misses\", \"pwrites\", \"preads\")");
+        db,
+        "CREATE TABLE comdb2_statistics(\"name\", \"description\", \"type\", "
+        "\"value\")");
 
     if (rc == SQLITE_OK) {
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
@@ -93,8 +87,8 @@ static int systblStatsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
     }
     memset(cur, 0, sizeof(*cur));
 
-    /* Gather the stats. */
-    rc = get_query_stats(&cur->stats);
+    /* Refresh the stats. */
+    rc = refresh_statistics();
     if (rc) {
         return SQLITE_INTERNAL;
     }
@@ -127,50 +121,30 @@ static int systblStatsNext(sqlite3_vtab_cursor *cur)
 static int systblStatsEof(sqlite3_vtab_cursor *cur)
 {
     systbl_stats_cursor *pCur = (systbl_stats_cursor *)cur;
-    return (pCur->rowid == 1) ? 1 : 0;
+    return (pCur->rowid >= gbl_statistics_count - 1) ? 1 : 0;
 }
 
 static int systblStatsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
                              int pos)
 {
     systbl_stats_cursor *pCur = (systbl_stats_cursor *)cur;
+    comdb2_statistic *stat = &gbl_statistics[pCur->rowid];
 
     switch (pos) {
-    case COLUMN_FSTRAP:
-        sqlite3_result_int(ctx, pCur->stats.nfstrap);
-        break;
-    case COLUMN_SQL:
-        sqlite3_result_int(ctx, pCur->stats.nsql);
-        break;
-    case COLUMN_STEPS:
-        sqlite3_result_int(ctx, pCur->stats.nsteps);
-        break;
-    case COLUMN_COMMITS:
-        sqlite3_result_int(ctx, pCur->stats.ncommits);
-        break;
-    case COLUMN_RETRIES:
-        sqlite3_result_int(ctx, pCur->stats.nretries);
-        break;
-    case COLUMN_DEADLOCKS:
-        sqlite3_result_int(ctx, pCur->stats.ndeadlocks);
-        break;
-    case COLUMN_LOCKWAITS:
-        sqlite3_result_int(ctx, pCur->stats.nlockwaits);
-        break;
-    case COLUMN_BPOOL_HITS:
-        sqlite3_result_int(ctx, pCur->stats.nbpoolhits);
-        break;
-    case COLUMN_BPOOL_MISSES:
-        sqlite3_result_int(ctx, pCur->stats.nbpoolmisses);
-        break;
-    case COLUMN_PWRITES:
-        sqlite3_result_int(ctx, pCur->stats.npwrites);
-        break;
-    case COLUMN_PREADS:
-        sqlite3_result_int(ctx, pCur->stats.npreads);
-        break;
-    default:
-        assert(0);
+        case COLUMN_NAME:
+            sqlite3_result_text(ctx, stat->name, -1, NULL);
+            break;
+        case COLUMN_DESCR:
+            sqlite3_result_text(ctx, stat->descr, -1, NULL);
+            break;
+        case COLUMN_TYPE:
+            sqlite3_result_text(ctx, statistic_type(stat->type), -1, NULL);
+            break;
+        case COLUMN_VALUE:
+            sqlite3_result_int64(ctx, *(int64_t *)stat->var);
+            break;
+        default:
+            assert(0);
     };
 
     return SQLITE_OK;
