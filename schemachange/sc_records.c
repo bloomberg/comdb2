@@ -80,10 +80,18 @@ static inline int tbl_had_writes(struct convert_record_data *data)
     return (data->write_count - oldcount) != 0;
 }
 
+static inline void print_final_sc_stat(struct convert_record_data *data)
+{
+    sc_printf(data->s, "[%s] TOTAL converted %lld sc_adds %lld sc_upds %lld sc_dels %lld\n",
+              data->from->tablename, 
+              data->from->sc_nrecs - (data->from->sc_adds + data->from->sc_updates + data->from->sc_deletes),
+              data->from->sc_adds, data->from->sc_updates, data->from->sc_deletes);
+}
+
 /* prints global stats if not printed in the last sc_report_freq,
  * returns 1 if successful
  */
-static inline int print_global_sc_stat(struct convert_record_data *data,
+static inline int print_aggregate_sc_stat(struct convert_record_data *data,
                                        int now, int sc_report_freq)
 {
     int copy_total_lasttime = data->cmembers->total_lasttime;
@@ -385,7 +393,7 @@ static int report_sc_progress(struct convert_record_data *data, int now)
                   data->nrecs, diff_nrecs, diff_nrecs / copy_sc_report_freq);
 
         /* now do global sc data */
-        int res = print_global_sc_stat(data, now, copy_sc_report_freq);
+        int res = print_aggregate_sc_stat(data, now, copy_sc_report_freq);
         /* check headroom only if this thread printed the global stats */
         if (res && check_sc_headroom(data->s, data->from, data->to)) {
             if (data->s->force) {
@@ -1276,6 +1284,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         pthread_attr_destroy(&attr);
     }
 
+    print_final_sc_stat(&data);
+
     convert_record_data_cleanup(&data);
 
     if (data.cmembers) {
@@ -1502,7 +1512,7 @@ static int upgrade_records(struct convert_record_data *data)
             diff_nrecs / copy_sc_report_freq);
 
         /* now do global sc data */
-        int res = print_global_sc_stat(data, now, copy_sc_report_freq);
+        int res = print_aggregate_sc_stat(data, now, copy_sc_report_freq);
         /* check headroom only if this thread printed the global stats */
         if (res && check_sc_headroom(data->s, data->from, data->to)) {
             if (data->s->force) {
