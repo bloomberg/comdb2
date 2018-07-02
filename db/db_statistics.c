@@ -57,18 +57,20 @@ comdb2_statistic gbl_statistics[] = {
      NULL},
     {"bpool_misses", "Buffer pool misses", STATISTIC_COLLECTION_TYPE_CUMULATIVE, STATISTIC_INTEGER,
      &gbl_stats.bpool_misses, NULL},
+    {"cache_hit_rate", "Buffer pool request hit rate", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
+     &gbl_stats.cache_hit_rate, NULL},
     {"commits", "Number of commits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &gbl_stats.commits,
      NULL},
     {"connections", "Total connections", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &gbl_stats.connections, NULL},
-    {"conntimeouts", "Timed out connection attempts", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
+    {"connection_timeouts", "Timed out connection attempts", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &gbl_stats.connection_timeouts, NULL},
+    {"cpu_percent", "Timed out connection attempts", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
+     &gbl_stats.cpu_percent, NULL},
     {"deadlocks", "Number of deadlocks", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &gbl_stats.deadlocks, NULL},
-    {"fstrap", "Number of socket requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
+    {"fstraps", "Number of socket requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &gbl_stats.fstraps, NULL}, 
-    {"hitrate", "Cache hit rate", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &gbl_stats.cache_hit_rate, NULL},
     {"lockrequests", "Total lock requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &gbl_stats.lockrequests, NULL},
     {"lockwaits", "Number of lock waits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
@@ -98,7 +100,7 @@ const char *statistic_collection_type_string(comdb2_collection_type t) {
         case STATISTIC_COLLECTION_TYPE_CUMULATIVE:
             return "cumulative";
         case STATISTIC_COLLECTION_TYPE_LATEST:
-            return "lastest";
+            return "latest";
     }
     return "???";
 } 
@@ -109,6 +111,11 @@ int gbl_statistics_count = sizeof(gbl_statistics) / sizeof(comdb2_statistic);
 
 extern int n_commits;
 extern long n_fstrap;
+
+
+/* TODO: this isn't threadsafe. */
+static time_t last_time;
+static int64_t last_counter;
 
 int refresh_statistics(void)
 {
@@ -160,9 +167,13 @@ int refresh_statistics(void)
 #ifdef _LINUX_SOURCE
     /* memory */
     struct rlimit rl;
+    int hz = sysconf(_SC_CLK_TCK);
     rc = getrlimit(RLIMIT_AS, &rl);
     if (rc == 0) {
-        gbl_stats.memory_ulimit = rl.rlim_cur / (1024*1024);
+        if (rl.rlim_cur == RLIM_INFINITY)
+            gbl_stats.memory_ulimit = 0;
+        else
+            gbl_stats.memory_ulimit = rl.rlim_cur / (1024*1024);
     }
     else {
         gbl_stats.memory_ulimit = 0;
@@ -173,12 +184,26 @@ int refresh_statistics(void)
         fgets(line, sizeof(line), f);
         fclose(f);
         long num_threads;
-        unsigned long vmsize;
-        /* threads=20  vm=23 */
-        rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %*lu %*lu %*ld %*ld %*ld %*ld %ld %*ld %*llu %lu", &num_threads, &vmsize);
-        if (rc == 2) {
+        unsigned long vmsize, utime, stime;
+        /* usertime=14 systemtime=15 threads=20 vm=23 */
+        rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %lu %lu %*ld %*ld %*ld %*ld %ld %*ld %*llu %lu", &utime, &stime, &num_threads, &vmsize);
+        if (rc == 4) {
             gbl_stats.threads = num_threads;
             gbl_stats.memory_usage = vmsize / (1024*1024);
+            if (last_time == 0) {
+                gbl_stats.cpu_percent = 0;
+                last_time = time(NULL);
+                last_counter = utime + stime;
+            }
+            else {
+                gbl_stats.cpu_percent = 0;
+                time_t now = time(NULL);
+                int64_t sys_ticks = (now - last_time) * hz;
+
+                gbl_stats.cpu_percent = ((double) ((utime+stime) - last_counter) / (double) sys_ticks) * 100;
+                last_counter = utime+stime;
+                last_time = now;
+            }
         }
     }
 #endif
