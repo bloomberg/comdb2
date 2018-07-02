@@ -105,20 +105,20 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
      * number of genids added since sc began (adds + updates)
      */
     if (data->live)
-        sc_printf(data->s, ">> adds %u upds %d dels %u extra genids "
+        sc_printf(data->s, "[%s] >> adds %u upds %d dels %u extra genids "
                            "%u\n",
-                  data->s->db->sc_adds, data->s->db->sc_updates, data->s->db->sc_deletes,
-                  data->s->db->sc_adds + data->s->db->sc_updates);
+                  data->from->tablename, data->from->sc_adds, data->from->sc_updates, data->from->sc_deletes,
+                  data->from->sc_adds + data->from->sc_updates);
 
     /* totals across all threads */
     if (data->scanmode != SCAN_PARALLEL) return 1;
 
-    long long total_nrecs_diff = data->s->sc_nrecs - data->s->sc_prev_nrecs;
-    data->s->sc_prev_nrecs = data->s->sc_nrecs;
-    sc_printf(data->s, "progress TOTAL %lld +%lld actual "
+    long long total_nrecs_diff = data->from->sc_nrecs - data->from->sc_prev_nrecs;
+    data->from->sc_prev_nrecs = data->from->sc_nrecs;
+    sc_printf(data->s, "[%s] progress TOTAL %lld +%lld actual "
                        "progress total %lld rate %lld r/s\n",
-              data->s->sc_nrecs, total_nrecs_diff,
-              data->s->sc_nrecs - (data->s->db->sc_adds + data->s->db->sc_updates),
+              data->from->tablename, data->from->sc_nrecs, total_nrecs_diff,
+              data->from->sc_nrecs - (data->from->sc_adds + data->from->sc_updates),
               total_nrecs_diff / sc_report_freq);
     return 1;
 }
@@ -227,8 +227,8 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
             free(rec);
             return -1;
         }
-        sc_printf(s, "resuming stripe %2d from 0x%016llx\n", stripe,
-                  sc_genids[stripe]);
+        sc_printf(s, "[%s] resuming stripe %2d from 0x%016llx\n",
+                  db->tablename, stripe, sc_genids[stripe]);
     }
 
     free(rec);
@@ -379,10 +379,10 @@ static int report_sc_progress(struct convert_record_data *data, int now)
         data->prev_nrecs = data->nrecs;
 
         /* print thread specific stats */
-        sc_printf(data->s, "progress stripe %d changed genids %u progress %lld"
+        sc_printf(data->s, "[%s] progress stripe %d changed genids %u progress %lld"
                            " recs +%lld (%lld r/s)\n",
-                  data->stripe, data->n_genids_changed, data->nrecs, diff_nrecs,
-                  diff_nrecs / copy_sc_report_freq);
+                  data->from->tablename, data->stripe, data->n_genids_changed, 
+                  data->nrecs, diff_nrecs, diff_nrecs / copy_sc_report_freq);
 
         /* now do global sc data */
         int res = print_global_sc_stat(data, now, copy_sc_report_freq);
@@ -528,8 +528,8 @@ static int convert_record(struct convert_record_data *data)
                 if (rc != 0) rc = -1; // convert_record expects -1
             }
             sc_printf(data->s,
-                      "finished stripe %d, setting genid %llx, rc %d\n",
-                      data->stripe, data->sc_genids[data->stripe], rc);
+                      "[%s] finished stripe %d, setting genid %llx, rc %d\n",
+                      data->from->tablename, data->stripe, data->sc_genids[data->stripe], rc);
             return rc;
         } else if (rc == RC_INTERNAL_RETRY) {
             trans_abort(&data->iq, data->trans);
@@ -949,7 +949,7 @@ err: /*if (is_schema_change_doomed())*/
 
     if (data->live) delay_sc_if_needed(data, &ss);
 
-    ATOMIC_ADD(data->s->sc_nrecs, 1);
+    ATOMIC_ADD(data->from->sc_nrecs, 1);
 
     int now = comdb2_time_epoch();
     if ((rc = report_sc_progress(data, now))) return rc;
@@ -1068,9 +1068,9 @@ void *convert_records_thd(struct convert_record_data *data)
 cleanup:
     if (data->outrc == 0) {
         sc_printf(data->s,
-                  "successfully converted %lld records with %d retries "
+                  "[%s] successfully converted %lld records with %d retries "
                   "stripe %d\n",
-                  data->nrecs, data->totnretries, data->stripe);
+                  data->from->tablename, data->nrecs, data->totnretries, data->stripe);
     } else {
         if (gbl_sc_abort || data->from->sc_abort ||
             (data->s->iq && data->s->iq->sc_should_abort)) {
@@ -1215,15 +1215,15 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
             threadData[ii].stripe = ii;
 
             if (sc_genids[ii] == -1ULL) {
-                sc_printf(threadData[ii].s, "stripe %d was done\n",
-                          threadData[ii].stripe);
+                sc_printf(threadData[ii].s, "[%s] stripe %d was done\n",
+                          from->tablename, threadData[ii].stripe);
                 threadSkipped[ii] = 1;
                 continue;
             } else
                 threadSkipped[ii] = 0;
 
-            sc_printf(threadData[ii].s, "starting thread for stripe: %d\n",
-                      threadData[ii].stripe);
+            sc_printf(threadData[ii].s, "[%s] starting thread for stripe: %d\n",
+                      from->tablename, threadData[ii].stripe);
 
             /* start thread */
             /* convert_records_thd( &threadData[ ii ]); |+ serialized calls +|*/
@@ -1233,9 +1233,9 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
             /* if thread creation failed */
             if (rc) {
-                sc_errf(threadData[ii].s, "starting thread failed for"
+                sc_errf(threadData[ii].s, "[%s] starting thread failed for"
                                           " stripe: %d with return code: %d\n",
-                        threadData[ii].stripe, rc);
+                        from->tablename, threadData[ii].stripe, rc);
 
                 outrc = -1;
                 break;
@@ -1481,7 +1481,7 @@ static int upgrade_records(struct convert_record_data *data)
         break;
     } // end of rc check
 
-    ATOMIC_ADD(data->s->sc_nrecs, 1);
+    ATOMIC_ADD(data->from->sc_nrecs, 1);
 
     data->sc_genids[data->stripe] = genid;
     now = comdb2_time_epoch();
@@ -1642,8 +1642,8 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
         for (idx = 0; idx != gbl_dtastripe; ++idx) {
             thread_data[idx] = data;
             thread_data[idx].stripe = idx;
-            sc_printf(thread_data[idx].s, "starting thread for stripe: %d\n",
-                      thread_data[idx].stripe);
+            sc_printf(thread_data[idx].s, "[%s] starting thread for stripe: %d\n",
+                      db->tablename, thread_data[idx].stripe);
 
             rc = pthread_create(&thread_data[idx].tid, &attr,
                                 upgrade_records_thd, &thread_data[idx]);

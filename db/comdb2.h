@@ -698,7 +698,7 @@ struct dbtable {
     unsigned prev_blocktypcnt[BLOCK_MAXOPCODE];
     unsigned prev_blockosqltypcnt[MAX_OSQL_TYPES];
     unsigned prev_nsql;
-    /* counters for autoanalyze */
+    /* counters for writes to this table */
     unsigned write_count[RECORD_WRITE_MAX];
     unsigned saved_write_count[RECORD_WRITE_MAX];
     unsigned aa_saved_counter; // zeroed out at autoanalyze
@@ -773,6 +773,14 @@ struct dbtable {
     unsigned sc_adds;
     unsigned sc_deletes;
     unsigned sc_updates;
+
+    uint64_t sc_nrecs;
+    uint64_t sc_prev_nrecs;
+    /* boolean value set to nonzero if table rebuild is in progress */
+    uint8_t  doing_conversion;
+    /* boolean value set to nonzero if table upgrade is in progress */
+    uint8_t  doing_upgrade;
+
 
     unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
     unsigned int sqlcur_cur; /* count how many cursors where open in cur mode */

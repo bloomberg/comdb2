@@ -179,9 +179,6 @@ struct schema_change_type {
                              At least this datastructure lives as much as the
                            whole schema change (I will change this in the
                            future)*/
-    uint64_t sc_nrecs;
-    uint64_t sc_prev_nrecs;
-
 
     /*********************** temporary fields for table upgrade
      * ************************/

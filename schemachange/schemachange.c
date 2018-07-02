@@ -202,7 +202,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
                us, rc);
-        if (!doing_upgrade || s->fulluprecs || s->partialuprecs) {
+        if (!s->db->doing_upgrade || s->fulluprecs || s->partialuprecs) {
             errstat_set_strf(&iq->errstat, "Schema change already in progress");
             free_schema_change_type(s);
             return SC_CANT_SET_RUNNING;
@@ -217,10 +217,10 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             // give time to let upgrade threads exit
             while (maxcancelretry-- > 0) {
                 sleep(1);
-                if (!doing_upgrade) break;
+                if (!s->db->doing_upgrade) break;
             }
 
-            if (doing_upgrade) {
+            if (s->db->doing_upgrade) {
                 sc_errf(s, "failed to cancel table upgrade threads\n");
                 free_schema_change_type(s);
                 return SC_CANT_SET_RUNNING;
