@@ -482,7 +482,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             /* enqueue the add of the key for constaint checking purposes */
             rc = insert_add_op(iq, NULL, NULL, opcode,
                                *rrn, -1, *genid, ins_keys, blkpos);
-printf("AZ: add_record called insert_add_op() rc=%d\n", rc);
+printf("AZ: add_record called insert_add_op() tbl=%s rc=%d\n", iq->usedb->tablename, rc);
             if (rc != 0) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO PUSH KEYOP");

@@ -2660,6 +2660,7 @@ printf("AZ: blk numreq = %d\n", p_blkstate->numreq);
              ++opnum, block_state_next(iq, p_blkstate)) {
             struct packedreq_hdr hdr;
 
+printf("AZ: 1loop opnum = %d\n", opnum);
             iq->p_buf_in = packedreq_hdr_get(&hdr, iq->p_buf_in,
                                              p_blkstate->p_buf_req_end);
             if (iq->p_buf_in == NULL)
@@ -2930,6 +2931,7 @@ printf("AZ: blk numreq = %d\n", p_blkstate->numreq);
             is_mixed_sqldyn = 1;
         }
 
+printf("AZ: 2loop opnum = %d opcode = %d\n", opnum, hdr.opcode);
         switch (hdr.opcode) {
         case BLOCK2_UPDBYKEY: {
             struct packedreq_updbykey updbykey;
