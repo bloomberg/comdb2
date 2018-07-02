@@ -42,31 +42,44 @@ struct comdb2_statistics_store gbl_stats;
   Please keep'em sorted.
 */
 comdb2_statistic gbl_statistics[] = {
-    {"bpool_hits", "Buffer pool hits", STATISTIC_INTEGER, &gbl_stats.bpool_hits,
+    {"bpool_hits", "Buffer pool hits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &gbl_stats.bpool_hits,
      NULL},
-    {"bpool_misses", "Buffer pool misses", STATISTIC_INTEGER,
+    {"bpool_misses", "Buffer pool misses", STATISTIC_COLLECTION_TYPE_CUMULATIVE, STATISTIC_INTEGER,
      &gbl_stats.bpool_misses, NULL},
-    {"commits", "Number of commits", STATISTIC_INTEGER, &gbl_stats.commits,
+    {"commits", "Number of commits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &gbl_stats.commits,
      NULL},
-    {"deadlocks", "Number of deadlocks", STATISTIC_INTEGER,
+    {"deadlocks", "Number of deadlocks", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &gbl_stats.deadlocks, NULL},
-    {"fstrap", "Number of socket requests", STATISTIC_INTEGER,
-     &gbl_stats.fstraps, NULL},
-    {"lockwaits", "Number of lock waits", STATISTIC_INTEGER,
+    {"fstrap", "Number of socket requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
+     &gbl_stats.fstraps, NULL}, 
+    {"lockwaits", "Number of lock waits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &gbl_stats.lockwaits, NULL},
-    {"preads", "Number of pread()'s", STATISTIC_INTEGER, &gbl_stats.preads,
+    {"preads", "Number of pread()'s", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,  &gbl_stats.preads,
      NULL},
-    {"pwrites", "Number of pwrite()'s", STATISTIC_INTEGER, &gbl_stats.pwrites,
+    {"pwrites", "Number of pwrite()'s", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &gbl_stats.pwrites,
      NULL},
-    {"retries", "Number of retries", STATISTIC_INTEGER, &gbl_stats.retries,
+    {"retries", "Number of retries", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &gbl_stats.retries,
      NULL},
-    {"sql_cost", "Number of sql steps executed (cost)", STATISTIC_INTEGER,
+    {"sql_cost", "Number of sql steps executed (cost)", STATISTIC_COLLECTION_TYPE_CUMULATIVE, STATISTIC_INTEGER,
      &gbl_stats.sql_cost, NULL},
-    {"sql_count", "Number of sql queries executed", STATISTIC_INTEGER,
+    {"sql_count", "Number of sql queries executed", STATISTIC_COLLECTION_TYPE_CUMULATIVE, STATISTIC_INTEGER,
      &gbl_stats.sql_count, NULL},
-    {"sql_count", "Number of sql queries executed", STATISTIC_INTEGER,
+    {"start_time", "Server start time", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
      &gbl_stats.start_time, NULL},
+
 };
+
+const char *statistic_collection_type_string(comdb2_collection_type t) {
+    switch (t) {
+        case STATISTIC_COLLECTION_TYPE_CUMULATIVE:
+            return "cumulative";
+        case STATISTIC_COLLECTION_TYPE_LATEST:
+            return "lastest";
+    }
+    return "???";
+} 
+
+
 
 int gbl_statistics_count = sizeof(gbl_statistics) / sizeof(comdb2_statistic);
 

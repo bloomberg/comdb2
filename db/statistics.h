@@ -26,6 +26,11 @@ typedef enum {
     STATISTIC_INVALID,
 } comdb2_statistic_type;
 
+typedef enum {
+    STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+    STATISTIC_COLLECTION_TYPE_LATEST,
+} comdb2_collection_type;
+
 struct comdb2_statistic {
     /* Name of the statistic. (Mandatory) */
     const char *name;
@@ -35,6 +40,9 @@ struct comdb2_statistic {
 
     /* Type of the statistic. (Mandatory) */
     comdb2_statistic_type type;
+
+    /* Counter. (Mandatory) */
+    comdb2_collection_type collection_type;
 
     /* Pointer to the variable that stores the statistic's value. (Mandatory) */
     void *var;
@@ -58,5 +66,8 @@ int init_statistics(void);
 
 /* Return the statistic type in C-string. */
 const char *statistic_type(comdb2_statistic_type type);
+
+/* Return how we keep the counter for this statistic (C-string) */
+const char *statistic_collection_type_string(comdb2_collection_type t);
 
 #endif /* _STATISTICS_H */

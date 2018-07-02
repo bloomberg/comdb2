@@ -43,6 +43,7 @@ enum {
     COLUMN_DESCR,
     COLUMN_TYPE,
     COLUMN_VALUE,
+    COLUMN_COLLECTION_TYPE
 };
 
 static int systblStatsConnect(sqlite3 *db, void *pAux, int argc,
@@ -54,7 +55,7 @@ static int systblStatsConnect(sqlite3 *db, void *pAux, int argc,
     rc = sqlite3_declare_vtab(
         db,
         "CREATE TABLE comdb2_statistics(\"name\", \"description\", \"type\", "
-        "\"value\")");
+        "\"value\", \"collection_type\")");
 
     if (rc == SQLITE_OK) {
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
@@ -142,6 +143,9 @@ static int systblStatsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
             break;
         case COLUMN_VALUE:
             sqlite3_result_int64(ctx, *(int64_t *)stat->var);
+            break;
+        case COLUMN_COLLECTION_TYPE:
+            sqlite3_result_text(ctx,statistic_collection_type_string(stat->collection_type), -1, NULL);
             break;
         default:
             assert(0);
