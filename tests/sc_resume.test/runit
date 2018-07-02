@@ -100,7 +100,7 @@ function get_sc_seed
         failexit "sending stat to new master $master"
     fi
 
-    scseed=`grep "Schema change in progress with seed" stat1.out | awk '{print $7}'`
+    scseed=`grep "Schema change in progress" stat1.out | awk '{print $10}'`
     if [ "x$scseed" == "x" ] ; then
         failexit "scseed is empty"
     fi
