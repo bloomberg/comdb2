@@ -217,7 +217,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             // give time to let upgrade threads exit
             while (maxcancelretry-- > 0) {
                 sleep(1);
-                if (!s->db->doing_upgrade) break;
+                if (!s->db->doing_upgrade)
+                    break;
             }
 
             if (s->db->doing_upgrade) {

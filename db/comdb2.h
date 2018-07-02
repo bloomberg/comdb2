@@ -777,10 +777,9 @@ struct dbtable {
     uint64_t sc_nrecs;
     uint64_t sc_prev_nrecs;
     /* boolean value set to nonzero if table rebuild is in progress */
-    uint8_t  doing_conversion;
+    uint8_t doing_conversion;
     /* boolean value set to nonzero if table upgrade is in progress */
-    uint8_t  doing_upgrade;
-
+    uint8_t doing_upgrade;
 
     unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
     unsigned int sqlcur_cur; /* count how many cursors where open in cur mode */

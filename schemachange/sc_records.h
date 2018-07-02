@@ -24,7 +24,7 @@ struct common_members {
     int thrcount;                // number of threads currently available
     int maxthreads;              // maximum number of SC threads allowed
     int is_decrease_thrds; // is feature on to backoff and decrease threads
-    int total_lasttime; //last time we computed total stats
+    int total_lasttime;    // last time we computed total stats
 };
 
 /* for passing state data to schema change threads/functions */

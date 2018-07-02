@@ -363,7 +363,8 @@ if [ -n "$CLUSTER" ] ; then
     # Only valid for clustered: make sure that the current schema is the t1_1.csc2
     assert_schema t1 t1_1.csc2
 else 
-    assert_sc_status 0
+    #single node, not always valid that: assert_sc_status 0
+    echo "single node, do nothing"
 fi
 
 echo "wait for sc and insert commands above to return"

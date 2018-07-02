@@ -469,7 +469,7 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
         iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
         rc = 0; // should just fail SC
-    } 
+    }
 
     ATOMIC_ADD(usedb->sc_updates, 1);
     if (iq->debug) {

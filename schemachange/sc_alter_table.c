@@ -579,7 +579,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     if (s->convert_sleep > 0) {
-        sc_printf(s, "[%s] Sleeping after conversion for %d...\n", 
+        sc_printf(s, "[%s] Sleeping after conversion for %d...\n",
                   db->tablename, s->convert_sleep);
         logmsg(LOGMSG_INFO, "Sleeping after conversion for %d...\n",
                s->convert_sleep);
