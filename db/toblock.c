@@ -2564,6 +2564,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     /* same for oplog counter */
     iq->oplog_numops = 0;
 
+printf("AZ: blk numreq = %d\n", p_blkstate->numreq);
+
     num_reqs = p_blkstate->numreq;
 
     /* reset queue hits stats so we don't accumulate them over several

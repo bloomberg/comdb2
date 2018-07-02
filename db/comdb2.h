@@ -648,7 +648,7 @@ struct dbtable {
     char *lrlfname;
     char *tablename;
 
-    int dbnum;
+    int dbnum; /* zero unless setup as comdbg table */
     int lrl; /*dat len in bytes*/
     /*index*/
     unsigned short nix; /*number of indices*/
