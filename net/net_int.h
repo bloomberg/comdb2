@@ -337,6 +337,9 @@ struct netinfo_struct {
     QSTATENQUEFP *qstat_enque_rtn;
     QSTATCLEARFP *qstat_clear_rtn;
     QSTATFREEFP *qstat_free_rtn;
+
+    int64_t num_accepts;
+    int64_t num_accept_timeouts;
 };
 
 typedef struct ack_state_struct {

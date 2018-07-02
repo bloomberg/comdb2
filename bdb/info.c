@@ -182,8 +182,8 @@ static void log_stats(FILE *out, bdb_state_type *bdb_state)
     free(stats);
 }
 
-int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
-                          int64_t *waits)
+int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks, int64_t *waits, 
+    int64_t *requests)
 {
     int rc;
     DB_LOCK_STAT *lock_stats = NULL;
@@ -191,8 +191,12 @@ int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
     rc = bdb_state->dbenv->lock_stat(bdb_state->dbenv, &lock_stats, 0);
     if (rc)
         return rc;
-    *deadlocks = lock_stats->st_ndeadlocks;
-    *waits = lock_stats->st_nconflicts;
+    if (deadlocks)
+        *deadlocks = lock_stats->st_ndeadlocks;
+    if (waits)
+        *waits = lock_stats->st_nconflicts;
+    if (requests)
+        *requests = lock_stats->st_nrequests;
 
     free(lock_stats);
     return 0;

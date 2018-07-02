@@ -142,7 +142,14 @@ static int systblStatsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
             sqlite3_result_text(ctx, statistic_type(stat->type), -1, NULL);
             break;
         case COLUMN_VALUE:
-            sqlite3_result_int64(ctx, *(int64_t *)stat->var);
+            switch (stat->type) {
+                case STATISTIC_INTEGER:
+                    sqlite3_result_int64(ctx, *(int64_t *)stat->var);
+                    break;
+                case STATISTIC_DOUBLE:
+                    sqlite3_result_double(ctx, *(double *)stat->var);
+                    break;
+            }
             break;
         case COLUMN_COLLECTION_TYPE:
             sqlite3_result_text(ctx,statistic_collection_type_string(stat->collection_type), -1, NULL);

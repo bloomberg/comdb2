@@ -155,3 +155,11 @@ void net_cmd(netinfo_type *netinfo_ptr, char *line, int lline, int st, int op1)
             logmsg(LOGMSG_USER, "%s\n", help_msg[ii]);
     }
 }
+
+int64_t net_get_num_accepts(netinfo_type *netinfo_ptr) {
+   return netinfo_ptr->num_accepts;
+}
+
+int64_t net_get_num_accept_timeouts(netinfo_type *netinfo_ptr) {
+   return netinfo_ptr->num_accept_timeouts;
+}

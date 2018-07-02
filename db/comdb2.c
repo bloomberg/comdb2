@@ -4056,7 +4056,7 @@ void *statthd(void *p)
         bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
                                (int64_t *)&bpool_misses);
 
-        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
+        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits, NULL);
         diff_deadlocks = ndeadlocks - last_ndeadlocks;
         diff_lockwaits = nlockwaits - last_nlockwaits;
 

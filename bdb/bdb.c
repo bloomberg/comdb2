@@ -267,8 +267,10 @@ void bdb_get_cache_stats(bdb_state_type *bdb_state, uint64_t *hits,
                                 DB_STAT_MINIMAL);
 
     /* We find leaf pages only a more useful metric. */
-    *hits = mpool_stats->st_cache_lhit;
-    *misses = mpool_stats->st_cache_lmiss;
+    if (hits)
+        *hits = mpool_stats->st_cache_lhit;
+    if (misses)
+        *misses = mpool_stats->st_cache_lmiss;
     if (reads)
         *reads = mpool_stats->st_page_in;
     if (writes)

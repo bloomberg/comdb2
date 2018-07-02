@@ -3468,6 +3468,9 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
     }
     netinfo_ptr->hellofd = -1;
 
+    netinfo_ptr->num_accepts = 0;
+    netinfo_ptr->num_accept_timeouts = 0;
+
     return netinfo_ptr;
 
 fail:
@@ -6062,6 +6065,8 @@ static void *accept_thread(void *arg)
         /* poll */
         rc = poll(&pol, 1, polltm);
 
+        netinfo_ptr->num_accepts++;
+
         /* drop connection on poll error */
         if (rc < 0) {
             findpeer(new_fd, paddr, sizeof(paddr));
@@ -6077,6 +6082,7 @@ static void *accept_thread(void *arg)
             logmsg(LOGMSG_ERROR, "%s: timeout reading from socket, peeraddr=%s\n",
                     __func__, paddr);
             sbuf2close(sb);
+            netinfo_ptr->num_accept_timeouts++;
             continue;
         }
 
