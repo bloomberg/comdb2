@@ -1399,4 +1399,10 @@ REGISTER_TUNABLE("legacy_defaults", "Configure server with legacy defaults",
                  TUNABLE_BOOLEAN, NULL, NOARG | INTERNAL | READONLY | READEARLY,
                  NULL, NULL, pre_read_legacy_defaults, NULL);
 
+REGISTER_TUNABLE("netconndumptime",
+                 "Dump connection statistics to ctrace this often.",
+                 TUNABLE_INTEGER, NULL, 0, netconndumptime_value, NULL, 
+                 netconndumptime_update, NULL);
+
+
 #endif /* _DB_TUNABLES_H */

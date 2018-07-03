@@ -50,7 +50,6 @@ set(src
   printlog.c
   process_message.c
   pushlogs.c
-  quantize.c
   record.c
   repl_wait.c
   reqdebug.c

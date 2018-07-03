@@ -33,6 +33,7 @@
 #include "net_types.h"
 #include "cdb2_constants.h"
 #include "logmsg.h"
+#include "quantize.h"
 
 enum {
     /* Flags for write_list() */
@@ -338,8 +339,11 @@ struct netinfo_struct {
     QSTATCLEARFP *qstat_clear_rtn;
     QSTATFREEFP *qstat_free_rtn;
 
+    struct quantize *conntime_all;
+    struct quantize *conntime_periodic;
     int64_t num_accepts;
     int64_t num_accept_timeouts;
+    int conntime_dump_period;
 };
 
 typedef struct ack_state_struct {

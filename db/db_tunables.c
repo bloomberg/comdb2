@@ -29,6 +29,7 @@
 #include "intern_strings.h"
 #include "portmuxapi.h"
 #include "config.h"
+#include "net.h"
 
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512
@@ -625,6 +626,23 @@ static int broken_max_rec_sz_update(void *context, void *value)
     logmsg(LOGMSG_INFO, "Allow db to start with max record size of %d\n",
            COMDB2_MAX_RECORD_SIZE + gbl_broken_max_rec_sz);
     return 0;
+}
+
+
+static int netconndumptime_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    int val = *(int *)value;
+    net_set_conntime_dump_period(thedb->handle_sibling, val);
+    return 0;
+}
+
+static void *netconndumptime_value(void *context)
+{
+    static char val[64];
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    sprintf(val, "%d", net_get_conntime_dump_period(thedb->handle_sibling));
+    return val;
 }
 
 const char *deadlock_policy_str(int policy);
@@ -1429,3 +1447,4 @@ const char *tunable_error(comdb2_tunable_err code)
     }
     return "????";
 }
+

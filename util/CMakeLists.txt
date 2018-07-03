@@ -27,6 +27,7 @@ set(src
   pool.c
   pooltest.c
   portmuxusr.c
+  quantize.c
   queue.c
   queuetest.c
   roll_file.c

@@ -168,7 +168,6 @@ int refresh_metrics(void)
 #ifdef _LINUX_SOURCE
     /* memory */
     struct rlimit rl;
-    int hz = sysconf(_SC_CLK_TCK);
     rc = getrlimit(RLIMIT_AS, &rl);
     if (rc == 0) {
         if (rl.rlim_cur == RLIM_INFINITY)
@@ -192,7 +191,7 @@ int refresh_metrics(void)
             stats.memory_usage = vmsize / (1024*1024);
         }
     }
-    stat.cpu_percent = gbl_cpupercent;
+    stats.cpu_percent = gbl_cpupercent;
 #endif
 
     return 0;
@@ -221,3 +220,42 @@ const char *metric_type(comdb2_metric_type type)
         abort();
     }
 }
+
+void update_cpu_percent(void) {
+   static time_t last_time = 0;
+   static int64_t last_counter = 0;
+   int hz = sysconf(_SC_CLK_TCK);
+
+   double cpu_percent = 0;
+
+   FILE *f = fopen("/proc/self/stat", "r");
+   if (f) {
+      char line[1024];
+      fgets(line, sizeof(line), f);
+      fclose(f);
+      unsigned long utime, stime;
+      /* usertime=14 systemtime=15 */
+      int rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %lu %lu", &utime, &stime);
+      if (rc == 2) {
+         if (last_time == 0) {
+            cpu_percent = 0;
+            last_time = time(NULL);
+            last_counter = utime + stime;
+         }
+         else {
+            stats.cpu_percent = 0;
+            time_t now = time(NULL);
+            int64_t sys_ticks = (now - last_time) * hz;
+
+            cpu_percent = ((double) ((utime+stime) - last_counter) / (double) sys_ticks) * 100;
+
+            last_counter = utime+stime;
+            last_time = now;
+         }
+      }
+   }
+
+   gbl_cpupercent = cpu_percent;
+}
+
+

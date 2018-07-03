@@ -3960,42 +3960,6 @@ int cpu_throttle_threshold = 100000;
 
 double gbl_cpupercent;
 
-void update_cpu_percent(void) {
-   static time_t last_time = 0;
-   static int64_t last_counter = 0;
-
-   double cpu_percent = 0;
-
-   FILE *f = fopen("/proc/self/stat", "r");
-   if (f) {
-      char line[1024];
-      fgets(line, sizeof(line), f);
-      fclose(f);
-      unsigned long utime, stime;
-      /* usertime=14 systemtime=15 */
-      rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %lu %lu", &utime, &stime);
-      if (rc == 2) {
-         if (last_time == 0) {
-            cpu_percent = 0;
-            last_time = time(NULL);
-            last_counter = utime + stime;
-         }
-         else {
-            stats.cpu_percent = 0;
-            time_t now = time(NULL);
-            int64_t sys_ticks = (now - last_time) * hz;
-
-            cpu_percent = ((double) ((utime+stime) - last_counter) / (double) sys_ticks) * 100;
-
-            last_counter = utime+stime;
-            last_time = now;
-         }
-      }
-   }
-
-   gbl_cpupercent = cpu_percent;
-}
-
 
 void *statthd(void *p)
 {
@@ -4057,6 +4021,12 @@ void *statthd(void *p)
     uint64_t last_report_bpool_hits = 0;
     uint64_t last_report_bpool_misses = 0;
 
+    int64_t conns=0, conn_timeouts=0;
+    int64_t last_conns=0, last_conn_timeouts=0; 
+    int64_t diff_conns=0, diff_conn_timeouts=0; 
+    int64_t last_report_conns = 0;
+    int64_t last_report_conn_timeouts = 0;
+
     struct reqlogger *statlogger = NULL;
     struct bdb_thread_stats last_bdb_stats = {0};
     struct bdb_thread_stats cur_bdb_stats;
@@ -4091,6 +4061,9 @@ void *statthd(void *p)
         nretries = n_retries;
         vreplays = gbl_verify_tran_replays;
 
+        conns = net_get_num_accepts(thedb->handle_sibling);
+        conn_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
+
         bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
                                (int64_t *)&bpool_misses);
 
@@ -4109,6 +4082,8 @@ void *statthd(void *p)
         diff_ncommit_time = ncommit_time - last_ncommit_time;
         diff_bpool_hits = bpool_hits - last_bpool_hits;
         diff_bpool_misses = bpool_misses - last_bpool_misses;
+        diff_conns = conns - last_conns;
+        diff_conn_timeouts = conn_timeouts - last_conn_timeouts;
 
         last_qtrap = nqtrap;
         last_fstrap = nfstrap;
@@ -4123,13 +4098,16 @@ void *statthd(void *p)
         last_ncommit_time = ncommit_time;
         last_bpool_hits = bpool_hits;
         last_bpool_misses = bpool_misses;
+        last_conns = conns;
+        last_conn_timeouts = conn_timeouts;
 
         have_scon_header = 0;
         have_scon_stats = 0;
 
         if (diff_qtrap || diff_nsql || diff_newsql || diff_nsql_steps ||
             diff_fstrap || diff_vreplays || diff_bpool_hits ||
-            diff_bpool_misses || diff_ncommit_time) {
+            diff_bpool_misses || diff_ncommit_time ||
+            diff_conns || diff_conn_timeouts) {
             if (gbl_report) {
                 logmsg(LOGMSG_USER, "diff");
                 have_scon_header = 1;
@@ -4158,6 +4136,10 @@ void *statthd(void *p)
                     logmsg(LOGMSG_USER, " cache_hits %lu", diff_bpool_hits);
                 if (diff_bpool_misses)
                     logmsg(LOGMSG_USER, " cache_misses %lu", diff_bpool_misses);
+                if (diff_conns)
+                    printf(" connects %lld", diff_conns);
+                if (diff_conn_timeouts)
+                    printf(" connect_timeouts %lld", diff_conn_timeouts);
                 have_scon_stats = 1;
             }
         }
@@ -4167,6 +4149,7 @@ void *statthd(void *p)
         if (have_scon_stats)
             logmsg(LOGMSG_USER, "\n");
 
+        extern void update_cpu_percent(void);
         if (count % 5 == 0)
             update_cpu_percent();
 
@@ -4367,6 +4350,12 @@ void *statthd(void *p)
                     lastlsnbytes = curlsnbytes;
                 }
 
+                if (conns - last_report_conns) {
+                   reqlog_logf(statlogger, REQL_INFO, "connections %lld timeouts %lld\n", 
+                         conns - last_report_conns,
+                         conn_timeouts - last_report_conn_timeouts);
+                }
+
                 reqlog_diffstat_dump(statlogger);
 
                 count = 0;
@@ -4386,6 +4375,9 @@ void *statthd(void *p)
 
                 last_report_ncommits = ncommits;
                 last_report_ncommit_time = ncommit_time;
+
+                last_report_conns = conns;
+                last_report_conn_timeouts = conn_timeouts;
 
                 osql_comm_diffstat(statlogger, NULL);
                 strbuf_free(logstr);
