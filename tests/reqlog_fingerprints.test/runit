@@ -18,8 +18,8 @@ cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longrequest 0')"
 cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longsqlrequest 0')"
 
 # Run queries
-cdb2sql --host $mach $dbnm "SELECT 1" >/dev/null
-cdb2sql --host $mach $dbnm "SELECT 1+1" >/dev/null
+cdb2sql --host $mach $dbnm "SELECT 1" &> sel1.out
+cdb2sql --host $mach $dbnm "SELECT 1+1" &> sel11.out
 
 logfile=
 if [ -n "$CLUSTER" ] ; then
