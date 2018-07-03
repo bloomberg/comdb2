@@ -62,6 +62,9 @@ bad:
 }
 
 void time_metric_add(struct time_metric *t, int value) {
+    if (!gbl_timeseries_metrics)
+        return;
+
     time_t now = comdb2_time_epoch();
 
     if (!gbl_timeseries_metrics)

@@ -4412,6 +4412,13 @@ void *statthd(void *p)
         if (gbl_repscore)
             bdb_show_reptimes_compact(thedb->bdb_env);
 
+
+        /* Push out old metrics */
+        time_metric_purge_old(thedb->service_time);
+        time_metric_purge_old(thedb->queue_depth);
+        time_metric_purge_old(thedb->concurrent_queries);
+        time_metric_purge_old(thedb->connections);
+
         ++count;
         sleep(1);
     }

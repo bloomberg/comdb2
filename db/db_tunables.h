@@ -1404,5 +1404,16 @@ REGISTER_TUNABLE("netconndumptime",
                  TUNABLE_INTEGER, NULL, 0, netconndumptime_value, NULL, 
                  netconndumptime_update, NULL);
 
+REGISTER_TUNABLE("timeseries_metrics_maxpoints",
+                 "Maximum data points to keep in memory for various metrics",
+                 TUNABLE_INTEGER, &gbl_metric_maxpoints, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("timeseries_metrics_maxage",
+                 "Time to keep metrics in memory",
+                 TUNABLE_INTEGER, &gbl_metric_maxage, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("timeseries_metrics",
+                 "Keep time series data for some metrics",
+                 TUNABLE_INTEGER, &gbl_timeseries_metrics, 0, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

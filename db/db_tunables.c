@@ -243,6 +243,10 @@ static int ctrace_gzip;
 int gbl_ddl_cascade_drop = 1;
 extern int gbl_queuedb_genid_filename;
 
+extern int gbl_timeseries_metrics;
+extern int gbl_metric_maxpoints;
+extern int gbl_metric_maxage;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need
