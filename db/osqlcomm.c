@@ -6756,9 +6756,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (rc != 0) {
             if (rc != RC_INTERNAL_RETRY) {
-                reqerrstr(iq, COMDB2_DEL_RC_INVL_KEY,
-                          "unable to delete genid =%llx rc=%d",
-                          bdb_genid_to_host_order(dt.genid), rc);
+                errstat_cat_strf(&iq->errstat,
+                                 " unable to delete genid =%llx rc=%d",
+                                 bdb_genid_to_host_order(dt.genid), rc);
             }
 
             return rc; /*this is blkproc rc */
@@ -6847,8 +6847,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                           get_keynm_from_db_idx(iq->usedb, err->ixnum),
                           iq->usedb->tablename, err->ixnum);
             } else if (rc != RC_INTERNAL_RETRY) {
-                reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY,
-                          "unable to add record rc = %d", rc);
+                errstat_cat_strf(&iq->errstat,
+                                 " unable to add record rc = %d", rc);
             }
 
             if (logsb)
@@ -6983,8 +6983,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (rc != 0) {
             if (rc != RC_INTERNAL_RETRY) {
-                reqerrstr(iq, COMDB2_UPD_RC_INVL_KEY,
-                          "unable to update record rc = %d", rc);
+                errstat_cat_strf(&iq->errstat,
+                                 " unable to update record rc = %d", rc);
             }
             if (logsb)
                 sbuf2printf(logsb,

@@ -284,7 +284,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                           reclen, tag, expected_dat_len);
             reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
             reqerrstr(iq, COMDB2_ADD_RC_INVL_DTA,
-                      "bad data length %u tag '%s' expects data length %u\n",
+                      "bad data length %u tag '%s' expects data length %u",
                       reclen, tag, expected_dat_len);
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
@@ -914,7 +914,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 reqprintf(iq, "BAD DTA LEN %u TAG %s EXPECTS DTALEN %u\n",
                           reclen, tag, expected_dat_len);
             reqerrstr(iq, COMDB2_UPD_RC_INVL_DTA,
-                      "bad data length %u tag '%s' expects data length %u\n",
+                      "bad data length %u tag '%s' expects data length %u",
                       reclen, tag, expected_dat_len);
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
