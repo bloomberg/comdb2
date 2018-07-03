@@ -1074,7 +1074,6 @@ static int process_this_session(
 
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     unsigned long long rqid = osql_sess_getrqid(sess);
-    oplog_key_t *key = NULL;
     oplog_key_t key_next, key_crt;
     char *data = NULL;
     int datalen = 0;
@@ -1093,16 +1092,7 @@ static int process_this_session(
 
     iq->queryid = osql_sess_queryid(sess);
 
-    key = (oplog_key_t *)malloc(sizeof(oplog_key_t));
-    if (!key) {
-        logmsg(LOGMSG_ERROR, "%s: unable to allocated %zu bytes\n", __func__,
-               sizeof(oplog_key_t));
-        return -1;
-    }
-
-    key->seq = 0;
     osql_sess_getuuid(sess, uuid);
-    key_next = key_crt = *key;
 
     if (rqid != OSQL_RQID_USE_UUID)
         reqlog_set_rqid(iq->reqlogger, &rqid, sizeof(unsigned long long));
@@ -1111,16 +1101,14 @@ static int process_this_session(
     reqlog_set_event(iq->reqlogger, "txn");
 
     /* go through each record */
-    rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
-                                   bdberr);
-    if(rc != IX_FND)
-        free(key);
+    rc = bdb_temp_table_first(thedb->bdb_env, dbc, bdberr);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
         reqlog_set_error(iq->reqlogger, "bdb_temp_table_first failed", rc);
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_first failed rc=%d bdberr=%d\n",
                 __func__, rc, *bdberr);
         return rc;
     }
+    key_next = key_crt = *(oplog_key_t *)bdb_temp_table_key(dbc);
 
     if (rc == IX_NOTFND) {
         comdb2uuidstr(uuid, us);
