@@ -47,11 +47,11 @@ struct comdb2_metrics_store {
     int64_t start_time;
     int64_t threads;
     int64_t diskspace;
-
     double service_time;
     double queue_depth;
     double concurrent_sql;
     double concurrent_connections;
+    int64_t ismaster;
 };
 
 static struct comdb2_metrics_store stats;
@@ -85,6 +85,8 @@ comdb2_metric gbl_metrics[] = {
      &stats.diskspace, NULL},
     {"fstraps", "Number of socket requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &stats.fstraps, NULL}, 
+    {"ismaster", "Is this machine the current master", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
+     &stats.ismaster, NULL},
     {"lockrequests", "Total lock requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.lockrequests, NULL},
     {"lockwaits", "Number of lock waits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
@@ -235,6 +237,8 @@ int refresh_metrics(void)
     stats.queue_depth = time_metric_average(thedb->queue_depth);
     stats.concurrent_sql = time_metric_average(thedb->concurrent_queries);
     stats.concurrent_connections = time_metric_average(thedb->connections);
+    int master = bdb_whoismaster((bdb_state_type*) thedb->bdb_env) == gbl_mynode ? 1 : 0; 
+    stats.ismaster = master;
 
     return 0;
 }
