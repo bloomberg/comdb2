@@ -1749,6 +1749,8 @@ extern int gbl_compress_page_compact_log;
 extern unsigned int gbl_max_num_compact_pages_per_txn;
 extern char *gbl_dbdir;
 
+extern double gbl_cpupercent;
+
 /* init routines */
 int appsock_init(void);
 int thd_init(void);

@@ -3958,6 +3958,44 @@ void reset_calls_per_sec(void);
 int throttle_lim = 10000;
 int cpu_throttle_threshold = 100000;
 
+double gbl_cpupercent;
+
+void update_cpu_percent(void) {
+   static time_t last_time = 0;
+   static int64_t last_counter = 0;
+
+   double cpu_percent = 0;
+
+   FILE *f = fopen("/proc/self/stat", "r");
+   if (f) {
+      char line[1024];
+      fgets(line, sizeof(line), f);
+      fclose(f);
+      unsigned long utime, stime;
+      /* usertime=14 systemtime=15 */
+      rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %lu %lu", &utime, &stime);
+      if (rc == 2) {
+         if (last_time == 0) {
+            cpu_percent = 0;
+            last_time = time(NULL);
+            last_counter = utime + stime;
+         }
+         else {
+            stats.cpu_percent = 0;
+            time_t now = time(NULL);
+            int64_t sys_ticks = (now - last_time) * hz;
+
+            cpu_percent = ((double) ((utime+stime) - last_counter) / (double) sys_ticks) * 100;
+
+            last_counter = utime+stime;
+            last_time = now;
+         }
+      }
+   }
+
+   gbl_cpupercent = cpu_percent;
+}
+
 
 void *statthd(void *p)
 {
@@ -4128,6 +4166,9 @@ void *statthd(void *p)
 
         if (have_scon_stats)
             logmsg(LOGMSG_USER, "\n");
+
+        if (count % 5 == 0)
+            update_cpu_percent();
 
         if (!gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();

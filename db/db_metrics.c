@@ -66,7 +66,7 @@ comdb2_metric gbl_metrics[] = {
      &stats.connections, NULL},
     {"connection_timeouts", "Timed out connection attempts", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &stats.connection_timeouts, NULL},
-    {"cpu_percent", "Timed out connection attempts", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
+    {"cpu_percent", "Database CPU time over last 5 seconds", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
      &stats.cpu_percent, NULL},
     {"deadlocks", "Number of deadlocks", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &stats.deadlocks, NULL},
@@ -185,28 +185,14 @@ int refresh_metrics(void)
         fgets(line, sizeof(line), f);
         fclose(f);
         long num_threads;
-        unsigned long vmsize, utime, stime;
-        /* usertime=14 systemtime=15 threads=20 vm=23 */
-        rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %lu %lu %*ld %*ld %*ld %*ld %ld %*ld %*llu %lu", &utime, &stime, &num_threads, &vmsize);
-        if (rc == 4) {
+        unsigned long vmsize;
+        rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %*lu %*lu %*ld %*ld %*ld %*ld %ld %*ld %*llu %lu", &num_threads, &vmsize);
+        if (rc == 2) {
             stats.threads = num_threads;
             stats.memory_usage = vmsize / (1024*1024);
-            if (last_time == 0) {
-                stats.cpu_percent = 0;
-                last_time = time(NULL);
-                last_counter = utime + stime;
-            }
-            else {
-                stats.cpu_percent = 0;
-                time_t now = time(NULL);
-                int64_t sys_ticks = (now - last_time) * hz;
-
-                stats.cpu_percent = ((double) ((utime+stime) - last_counter) / (double) sys_ticks) * 100;
-                last_counter = utime+stime;
-                last_time = now;
-            }
         }
     }
+    stat.cpu_percent = gbl_cpupercent;
 #endif
 
     return 0;
