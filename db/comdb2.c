@@ -127,7 +127,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <bb_oscompat.h>
 #include <schemachange.h>
 #include "comdb2_atomic.h"
-#include "statistics.h"
+#include "metrics.h"
 
 
 #define tokdup strndup
@@ -3157,7 +3157,7 @@ static int init(int argc, char **argv)
     pthread_attr_setdetachstate(&gbl_pthread_attr, PTHREAD_CREATE_DETACHED);
 
     /* Initialize the statistics. */
-    init_statistics();
+    init_metrics();
 
     rc = pthread_key_create(&comdb2_open_key, NULL);
     if (rc) {

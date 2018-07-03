@@ -27,7 +27,7 @@ const sqlite3_module systblTimepartModule;
 const sqlite3_module systblTimepartShardsModule;
 const sqlite3_module systblTimepartEventsModule;
 const sqlite3_module systblTransactionLogsModule;
-const sqlite3_module systblStatsModule;
+const sqlite3_module systblMetricsModule;
 const sqlite3_module systblFingerprintsModule;
 
 

@@ -258,7 +258,7 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_transaction_logs", &systblTransactionLogsModule, 0);
   if (rc == SQLITE_OK)
-    rc = sqlite3_create_module(db, "comdb2_statistics", &systblStatsModule, 0);
+    rc = sqlite3_create_module(db, "comdb2_metrics", &systblMetricsModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_fingerprints", &systblFingerprintsModule, 0);
   if (rc == SQLITE_OK)

@@ -23,6 +23,7 @@ add_library(sqlite
   ext/comdb2/keys.c
   ext/comdb2/keywords.c
   ext/comdb2/limits.c
+  ext/comdb2/metrics.c
   ext/comdb2/opcode_handlers.c
   ext/comdb2/plugins.c
   ext/comdb2/procedures.c
@@ -32,7 +33,6 @@ add_library(sqlite
   ext/comdb2/tablesizes.c
   ext/comdb2/threadpools.c
   ext/comdb2/triggers.c
-  ext/comdb2/statistics.c
   ext/comdb2/tunables.c
   ext/comdb2/users.c
   ext/comdb2/tranlog.c

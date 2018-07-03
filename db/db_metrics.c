@@ -16,14 +16,15 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <unistd.h>
 #include "comdb2.h"
 #include "comdb2_atomic.h"
-#include "statistics.h"
+#include "metrics.h"
 
 #include <sys/time.h>
 #include <sys/resource.h>
 
-struct comdb2_statistics_store {
+struct comdb2_metrics_store {
     int64_t bpool_hits;
     int64_t bpool_misses;
     double  cache_hit_rate;
@@ -46,56 +47,56 @@ struct comdb2_statistics_store {
     int64_t threads;
 };
 
-struct comdb2_statistics_store gbl_stats;
+static struct comdb2_metrics_store stats;
 
 /*
   List of (almost) all comdb2 stats.
   Please keep'em sorted.
 */
-comdb2_statistic gbl_statistics[] = {
-    {"bpool_hits", "Buffer pool hits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &gbl_stats.bpool_hits,
+comdb2_metric gbl_metrics[] = {
+    {"bpool_hits", "Buffer pool hits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.bpool_hits,
      NULL},
     {"bpool_misses", "Buffer pool misses", STATISTIC_COLLECTION_TYPE_CUMULATIVE, STATISTIC_INTEGER,
-     &gbl_stats.bpool_misses, NULL},
+     &stats.bpool_misses, NULL},
     {"cache_hit_rate", "Buffer pool request hit rate", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &gbl_stats.cache_hit_rate, NULL},
-    {"commits", "Number of commits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &gbl_stats.commits,
+     &stats.cache_hit_rate, NULL},
+    {"commits", "Number of commits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.commits,
      NULL},
     {"connections", "Total connections", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &gbl_stats.connections, NULL},
+     &stats.connections, NULL},
     {"connection_timeouts", "Timed out connection attempts", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &gbl_stats.connection_timeouts, NULL},
+     &stats.connection_timeouts, NULL},
     {"cpu_percent", "Timed out connection attempts", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &gbl_stats.cpu_percent, NULL},
+     &stats.cpu_percent, NULL},
     {"deadlocks", "Number of deadlocks", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &gbl_stats.deadlocks, NULL},
+     &stats.deadlocks, NULL},
     {"fstraps", "Number of socket requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &gbl_stats.fstraps, NULL}, 
+     &stats.fstraps, NULL}, 
     {"lockrequests", "Total lock requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     &gbl_stats.lockrequests, NULL},
+     &stats.lockrequests, NULL},
     {"lockwaits", "Number of lock waits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &gbl_stats.lockwaits, NULL},
+     &stats.lockwaits, NULL},
     {"memory_ulimit", "Virtual address space ulimit", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &gbl_stats.memory_ulimit, NULL},
+     &stats.memory_ulimit, NULL},
     {"memory_usage", "Address space size",  STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &gbl_stats.memory_usage, NULL},
-    {"preads", "Number of pread()'s", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,  &gbl_stats.preads,
+     &stats.memory_usage, NULL},
+    {"preads", "Number of pread()'s", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,  &stats.preads,
      NULL},
-    {"pwrites", "Number of pwrite()'s", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &gbl_stats.pwrites,
+    {"pwrites", "Number of pwrite()'s", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.pwrites,
      NULL},
-    {"retries", "Number of retries", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &gbl_stats.retries,
+    {"retries", "Number of retries", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.retries,
      NULL},
     {"sql_cost", "Number of sql steps executed (cost)", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     &gbl_stats.sql_cost, NULL},
+     &stats.sql_cost, NULL},
     {"sql_count", "Number of sql queries executed", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     &gbl_stats.sql_count, NULL},
+     &stats.sql_count, NULL},
     {"start_time", "Server start time", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &gbl_stats.start_time, NULL},
+     &stats.start_time, NULL},
     {"threads", "Number of threads",  STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &gbl_stats.threads, NULL},
+     &stats.threads, NULL},
 };
 
-const char *statistic_collection_type_string(comdb2_collection_type t) {
+const char *metric_collection_type_string(comdb2_collection_type t) {
     switch (t) {
         case STATISTIC_COLLECTION_TYPE_CUMULATIVE:
             return "cumulative";
@@ -107,7 +108,7 @@ const char *statistic_collection_type_string(comdb2_collection_type t) {
 
 
 
-int gbl_statistics_count = sizeof(gbl_statistics) / sizeof(comdb2_statistic);
+int gbl_metrics_count = sizeof(gbl_metrics) / sizeof(comdb2_metric);
 
 extern int n_commits;
 extern long n_fstrap;
@@ -117,7 +118,7 @@ extern long n_fstrap;
 static time_t last_time;
 static int64_t last_counter;
 
-int refresh_statistics(void)
+int refresh_metrics(void)
 {
     int rc;
     const struct bdb_thread_stats *pstats;
@@ -126,22 +127,22 @@ int refresh_statistics(void)
     if (thedb->exiting || thedb->stopped)
         return 1;
 
-    gbl_stats.commits = n_commits;
-    gbl_stats.fstraps = n_fstrap;
-    gbl_stats.retries = n_retries;
-    gbl_stats.sql_cost = gbl_nsql_steps + gbl_nnewsql_steps;
-    gbl_stats.sql_count = gbl_nsql + gbl_nnewsql;
+    stats.commits = n_commits;
+    stats.fstraps = n_fstrap;
+    stats.retries = n_retries;
+    stats.sql_cost = gbl_nsql_steps + gbl_nnewsql_steps;
+    stats.sql_count = gbl_nsql + gbl_nnewsql;
 
-    rc = bdb_get_lock_counters(thedb->bdb_env, &gbl_stats.deadlocks,
-                               &gbl_stats.lockwaits, &gbl_stats.lockrequests);
+    rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks,
+                               &stats.lockwaits, &stats.lockrequests);
     if (rc) {
         fprintf(stderr, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);
         return 1;
     }
 
-    rc = bdb_get_bpool_counters(thedb->bdb_env, &gbl_stats.bpool_hits,
-                                &gbl_stats.bpool_misses);
+    rc = bdb_get_bpool_counters(thedb->bdb_env, &stats.bpool_hits,
+                                &stats.bpool_misses);
     if (rc) {
         fprintf(stderr, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);
@@ -149,21 +150,21 @@ int refresh_statistics(void)
     }
 
     pstats = bdb_get_process_stats();
-    gbl_stats.preads = pstats->n_preads;
-    gbl_stats.pwrites = pstats->n_pwrites;
+    stats.preads = pstats->n_preads;
+    stats.pwrites = pstats->n_pwrites;
 
     /* connections stats */
-    gbl_stats.connections = net_get_num_accepts(thedb->handle_sibling);
-    gbl_stats.connection_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
+    stats.connections = net_get_num_accepts(thedb->handle_sibling);
+    stats.connection_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
     
     /* cache hit rate */
     uint64_t hits, misses;
     bdb_get_cache_stats(thedb->bdb_env, &hits, &misses, NULL, NULL, NULL, NULL);
-    gbl_stats.cache_hit_rate = 100 * ((double) hits / ((double) hits + (double) misses));
+    stats.cache_hit_rate = 100 * ((double) hits / ((double) hits + (double) misses));
 
-    gbl_stats.memory_ulimit = 0;
-    gbl_stats.memory_usage = 0;
-    gbl_stats.threads = 0;
+    stats.memory_ulimit = 0;
+    stats.memory_usage = 0;
+    stats.threads = 0;
 #ifdef _LINUX_SOURCE
     /* memory */
     struct rlimit rl;
@@ -171,12 +172,12 @@ int refresh_statistics(void)
     rc = getrlimit(RLIMIT_AS, &rl);
     if (rc == 0) {
         if (rl.rlim_cur == RLIM_INFINITY)
-            gbl_stats.memory_ulimit = 0;
+            stats.memory_ulimit = 0;
         else
-            gbl_stats.memory_ulimit = rl.rlim_cur / (1024*1024);
+            stats.memory_ulimit = rl.rlim_cur / (1024*1024);
     }
     else {
-        gbl_stats.memory_ulimit = 0;
+        stats.memory_ulimit = 0;
     }
     FILE *f = fopen("/proc/self/stat", "r");
     if (f) {
@@ -188,19 +189,19 @@ int refresh_statistics(void)
         /* usertime=14 systemtime=15 threads=20 vm=23 */
         rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %lu %lu %*ld %*ld %*ld %*ld %ld %*ld %*llu %lu", &utime, &stime, &num_threads, &vmsize);
         if (rc == 4) {
-            gbl_stats.threads = num_threads;
-            gbl_stats.memory_usage = vmsize / (1024*1024);
+            stats.threads = num_threads;
+            stats.memory_usage = vmsize / (1024*1024);
             if (last_time == 0) {
-                gbl_stats.cpu_percent = 0;
+                stats.cpu_percent = 0;
                 last_time = time(NULL);
                 last_counter = utime + stime;
             }
             else {
-                gbl_stats.cpu_percent = 0;
+                stats.cpu_percent = 0;
                 time_t now = time(NULL);
                 int64_t sys_ticks = (now - last_time) * hz;
 
-                gbl_stats.cpu_percent = ((double) ((utime+stime) - last_counter) / (double) sys_ticks) * 100;
+                stats.cpu_percent = ((double) ((utime+stime) - last_counter) / (double) sys_ticks) * 100;
                 last_counter = utime+stime;
                 last_time = now;
             }
@@ -211,18 +212,18 @@ int refresh_statistics(void)
     return 0;
 }
 
-int init_statistics(void)
+int init_metrics(void)
 {
     time_t t;
 
-    memset(&gbl_stats, 0, sizeof(struct comdb2_statistics_store));
+    memset(&stats, 0, sizeof(struct comdb2_metrics_store));
 
     t = time(NULL);
-    gbl_stats.start_time = (int64_t) t;
+    stats.start_time = (int64_t) t;
     return 0;
 }
 
-const char *statistic_type(comdb2_statistic_type type)
+const char *metric_type(comdb2_metric_type type)
 {
     switch (type) {
     case STATISTIC_INTEGER:
@@ -234,4 +235,3 @@ const char *statistic_type(comdb2_statistic_type type)
         abort();
     }
 }
-
