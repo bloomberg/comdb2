@@ -41,6 +41,7 @@ add_library(sqlite
   ext/comdb2/typesamples.c 
   ext/comdb2/repnetqueue.c
   ext/comdb2/netuserfunc.c
+  ext/comdb2/timeseries.c
   ext/misc/completion.c
   ext/misc/json1.c
   ext/expert/sqlite3expert.c

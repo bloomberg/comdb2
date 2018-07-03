@@ -108,6 +108,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "fdb_fend.h"
 #include "fdb_bend.h"
 #include <flibc.h>
+#include "perf.h"
 
 #include <autoanalyze.h>
 #include <sqlglue.h>
@@ -2432,6 +2433,11 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     listc_init(&dbenv->sqlhist, offsetof(struct sql_hist, lnk));
     dbenv->master = NULL; /*no known master at this point.*/
     dbenv->errstaton = 1; /* ON */
+
+    dbenv->service_time = time_metric_new("service_time");
+    dbenv->queue_depth = time_metric_new("queue_depth");
+    dbenv->concurrent_queries = time_metric_new("concurrent_queries");
+    dbenv->connections = time_metric_new("connections");
 
     return dbenv;
 }

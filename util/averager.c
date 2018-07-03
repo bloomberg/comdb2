@@ -93,6 +93,24 @@ void averager_destroy(struct averager *avg) { pool_free(avg->pool); }
 
 int averager_depth(struct averager *avg) { return avg->ticks.count; }
 
+int averager_get_points(struct averager *avg, struct point **values, int *nvalues) {
+    struct point *points;
+    points = malloc(sizeof(struct point) * avg->ticks.count);
+    if (points == NULL)
+        return -1;
+    int pt = 0;
+    struct tick *t;
+    LISTC_FOR_EACH(&avg->ticks, t, lnk) {
+        points[pt].time_added = t->time_added;
+        points[pt++].value = t->value;
+    }
+    *nvalues = pt;
+    *values = points;
+    return 0;
+}
+
+
+
 #ifdef TEST_AVERAGER
 int main(int argc, char *argv[])
 {

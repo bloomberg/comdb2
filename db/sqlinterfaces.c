@@ -109,6 +109,7 @@
 #include "logmsg.h"
 #include <str0.h>
 #include <eventlog.h>
+#include "perf.h"
 
 /* delete this after comdb2_api.h changes makes it through */
 #define SQLHERR_MASTER_QUEUE_FULL -108
@@ -691,6 +692,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     h->time = comdb2_time_epochms() - thd->startms;
     h->when = thd->stime;
     h->txnid = rqid;
+
+    time_metric_add(thedb->service_time, h->time);
 
     /* request logging framework takes care of logging long sql requests */
     reqlog_set_cost(logger, h->cost);
@@ -3717,6 +3720,9 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
 
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
     clnt->enque_timeus = comdb2_time_epochus();
+
+    time_metric_add(thedb->concurrent_queries, thdpool_get_nthds(gbl_sqlengine_thdpool));
+    time_metric_add(thedb->concurrent_queries, thdpool_get_queue_depth(gbl_sqlengine_thdpool));
 
     sqlcpy = strdup(msg);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,

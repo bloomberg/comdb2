@@ -1100,3 +1100,8 @@ struct thdpool *thdpool_next_pool(struct thdpool *pool)
 {
     return (pool) ? pool->lnk.next : 0;
 }
+
+int thdpool_get_queue_depth(struct thdpool *pool)
+{
+    return pool->queue.count;
+}

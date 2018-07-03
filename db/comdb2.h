@@ -99,6 +99,7 @@ typedef long long tranid_t;
 #include <trigger.h>
 #include <cdb2_constants.h>
 #include <schema_lk.h>
+#include "perf.h"
 
 /* buffer offset, given base ptr & right ptr */
 #define BUFOFF(base, right) ((int)(((char *)right) - ((char *)base)))
@@ -969,6 +970,11 @@ struct dbenv {
     /* locking for the queue system */
     pthread_mutex_t dbqueue_admin_lk;
     int dbqueue_admin_running;
+
+    struct time_metric* service_time;
+    struct time_metric* queue_depth;
+    struct time_metric* concurrent_queries;
+    struct time_metric* connections;
 };
 
 extern struct dbenv *thedb;

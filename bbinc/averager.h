@@ -25,4 +25,11 @@ void averager_destroy(struct averager *avg);
 int averager_depth(struct averager *avg);
 void averager_purge_old(struct averager *avg, int now);
 
+struct point {
+    time_t time_added;
+    int value;
+};
+
+int averager_get_points(struct averager *agv, struct point **values, int *nvalues);
+
 #endif

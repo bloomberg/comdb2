@@ -23,6 +23,7 @@ set(src
   misc.c
   nodemap.c
   object_pool.c
+  perf.c
   plhash.c
   pool.c
   pooltest.c
