@@ -28,7 +28,10 @@ else
     logfile="$TESTDIR/logs/$dbnm.db"
 fi
 
+sleep 1 # give time for .db file to flush
+
 # These change every time sqlite changes: just regenerate
+echo including $logfile
 cat $logfile
 
 grep '9269abf85f7fd161e398a8327ab32304' $logfile # SELECT 1
