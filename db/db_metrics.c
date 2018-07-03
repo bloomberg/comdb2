@@ -47,6 +47,11 @@ struct comdb2_metrics_store {
     int64_t start_time;
     int64_t threads;
     int64_t diskspace;
+
+    double service_time;
+    double queue_depth;
+    double concurrent_sql;
+    double concurrent_connections;
 };
 
 static struct comdb2_metrics_store stats;
@@ -64,6 +69,10 @@ comdb2_metric gbl_metrics[] = {
      &stats.cache_hit_rate, NULL},
     {"commits", "Number of commits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.commits,
      NULL},
+    {"concurrent_sql", "Concurrent SQL queries",  STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
+     &stats.concurrent_sql, NULL},
+    {"concurrent_connections", "Number of concurrent connections ",  STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
+     &stats.concurrent_connections, NULL},
     {"connections", "Total connections", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &stats.connections, NULL},
     {"connection_timeouts", "Timed out connection attempts", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
@@ -88,8 +97,12 @@ comdb2_metric gbl_metrics[] = {
      NULL},
     {"pwrites", "Number of pwrite()'s", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.pwrites,
      NULL},
+    {"queue_depth", "Request queue depth",  STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
+     &stats.queue_depth, NULL},
     {"retries", "Number of retries", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.retries,
      NULL},
+    {"service_time", "Service time",  STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
+     &stats.service_time, NULL},
     {"sql_cost", "Number of sql steps executed (cost)", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.sql_cost, NULL},
     {"sql_count", "Number of sql queries executed", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
@@ -218,6 +231,10 @@ int refresh_metrics(void)
     stats.cpu_percent = gbl_cpupercent;
 #endif
     stats.diskspace = refresh_diskspace(thedb);
+    stats.service_time = time_metric_average(thedb->service_time);
+    stats.queue_depth = time_metric_average(thedb->queue_depth);
+    stats.concurrent_sql = time_metric_average(thedb->concurrent_queries);
+    stats.concurrent_connections = time_metric_average(thedb->connections);
 
     return 0;
 }
