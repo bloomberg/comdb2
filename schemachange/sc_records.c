@@ -82,17 +82,20 @@ static inline int tbl_had_writes(struct convert_record_data *data)
 
 static inline void print_final_sc_stat(struct convert_record_data *data)
 {
-    sc_printf(data->s, "[%s] TOTAL converted %lld sc_adds %d sc_updates %d sc_deletess %d\n",
-              data->from->tablename, 
-              data->from->sc_nrecs - (data->from->sc_adds + data->from->sc_updates + data->from->sc_deletes),
-              data->from->sc_adds, data->from->sc_updates, data->from->sc_deletes);
+    sc_printf(
+        data->s,
+        "[%s] TOTAL converted %lld sc_adds %d sc_updates %d sc_deletess %d\n",
+        data->from->tablename,
+        data->from->sc_nrecs - (data->from->sc_adds + data->from->sc_updates +
+                                data->from->sc_deletes),
+        data->from->sc_adds, data->from->sc_updates, data->from->sc_deletes);
 }
 
 /* prints global stats if not printed in the last sc_report_freq,
  * returns 1 if successful
  */
 static inline int print_aggregate_sc_stat(struct convert_record_data *data,
-                                       int now, int sc_report_freq)
+                                          int now, int sc_report_freq)
 {
     int copy_total_lasttime = data->cmembers->total_lasttime;
 
@@ -440,8 +443,8 @@ static int convert_record(struct convert_record_data *data)
         return -1;
     }
     if (tbl_had_writes(data)) {
+        /* NB: if we return here, writes could block SC forever, so lets not */
         usleep(gbl_sc_usleep);
-        //TODO: if we return here, writes can block SC forever: return 1;
     }
 
     if (data->trans == NULL) {
