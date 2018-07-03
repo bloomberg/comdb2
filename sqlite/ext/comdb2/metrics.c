@@ -122,7 +122,7 @@ static int systblMetricsNext(sqlite3_vtab_cursor *cur)
 static int systblMetricsEof(sqlite3_vtab_cursor *cur)
 {
     systbl_metrics_cursor *pCur = (systbl_metrics_cursor *)cur;
-    return (pCur->rowid >= gbl_metrics_count - 1) ? 1 : 0;
+    return (pCur->rowid >= gbl_metrics_count) ? 1 : 0;
 }
 
 static int systblMetricsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,

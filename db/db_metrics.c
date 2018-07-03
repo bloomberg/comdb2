@@ -20,6 +20,7 @@
 #include "comdb2.h"
 #include "comdb2_atomic.h"
 #include "metrics.h"
+#include "bdb_api.h"
 
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -45,6 +46,7 @@ struct comdb2_metrics_store {
     int64_t sql_count;
     int64_t start_time;
     int64_t threads;
+    int64_t diskspace;
 };
 
 static struct comdb2_metrics_store stats;
@@ -70,6 +72,8 @@ comdb2_metric gbl_metrics[] = {
      &stats.cpu_percent, NULL},
     {"deadlocks", "Number of deadlocks", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &stats.deadlocks, NULL},
+    {"diskspace", "Disk space used (MB)",  STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
+     &stats.diskspace, NULL},
     {"fstraps", "Number of socket requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &stats.fstraps, NULL}, 
     {"lockrequests", "Total lock requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
@@ -113,6 +117,26 @@ int gbl_metrics_count = sizeof(gbl_metrics) / sizeof(comdb2_metric);
 extern int n_commits;
 extern long n_fstrap;
 
+
+static int64_t refresh_diskspace(struct dbenv *dbenv) {
+    int64_t total = 0;
+    int ndb;
+    struct dbtable *db;
+    unsigned int num_logs;
+
+    for(ndb = 0; ndb < dbenv->num_dbs; ndb++)
+    {
+        db = dbenv->dbs[ndb];
+        total += calc_table_size(db);
+    }
+    for(ndb = 0; ndb < dbenv->num_qdbs; ndb++)
+    {
+        db = dbenv->qdbs[ndb];
+        total += calc_table_size(db);
+    }
+    total += bdb_logs_size(dbenv->bdb_env, &num_logs);
+    return total / (1024*1024);
+}
 
 /* TODO: this isn't threadsafe. */
 static time_t last_time;
@@ -193,6 +217,7 @@ int refresh_metrics(void)
     }
     stats.cpu_percent = gbl_cpupercent;
 #endif
+    stats.diskspace = refresh_diskspace(thedb);
 
     return 0;
 }
