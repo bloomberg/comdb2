@@ -72,7 +72,7 @@ comdb2_metric gbl_metrics[] = {
      &stats.cpu_percent, NULL},
     {"deadlocks", "Number of deadlocks", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &stats.deadlocks, NULL},
-    {"diskspace", "Disk space used (MB)",  STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
+    {"diskspace", "Disk space used (bytes)",  STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
      &stats.diskspace, NULL},
     {"fstraps", "Number of socket requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &stats.fstraps, NULL}, 
@@ -135,7 +135,7 @@ static int64_t refresh_diskspace(struct dbenv *dbenv) {
         total += calc_table_size(db);
     }
     total += bdb_logs_size(dbenv->bdb_env, &num_logs);
-    return total / (1024*1024);
+    return total;
 }
 
 /* TODO: this isn't threadsafe. */
