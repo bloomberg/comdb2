@@ -76,29 +76,31 @@ find_cores() {
     local COREFL="$COREDIR/$CPAT"
     local CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '$COREFL' 2> /dev/null"
     local PIDFL=${TMPDIR}/${DBNAME}.pid
-    if [[ -z "$CLUSTER" ]] || [[ `echo $CLUSTER | grep $HOSTNAME ` ]]; then
-        if [[ -n "$CLUSTER" ]] ; then
-            PIDFL=${TMPDIR}/${DBNAME}.$HOSTNAME.pid
-        fi
 
-        if [ $has_pattern -eq 1 ] ; then
-            local PID=$(cat ${PIDFL} 2> /dev/null)
-            COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
-            COREFL=$COREDIR/$COREFL
-            CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*' 2> /dev/null"
-            if [ "x$PID" == "x" ] ; then
-                CORECMD="echo ''"
-            fi
-        fi
 
-        eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
-        if [[ -n "$cr" ]] ; then
-            echo "Core file $HOSTNAME:${cr} copied to $DBDIR" > core_stacktrace.$node.txt
-            cp ${cr} $DBDIR
-            which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> core_stacktrace.$HOSTNAME.txt
-            echo $cr # this is the return value of the function
+    # always check localhost because thats where we create db
+    if [[ -n "$CLUSTER" ]] ; then
+        PIDFL=${TMPDIR}/${DBNAME}.$HOSTNAME.pid
+    fi
+
+    if [ $has_pattern -eq 1 ] ; then
+        local PID=$(cat ${PIDFL} 2> /dev/null)
+        COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g"`
+        COREFL=$COREDIR/$COREFL
+        CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*' 2> /dev/null"
+        if [ "x$PID" == "x" ] ; then
+            CORECMD="echo ''"
         fi
     fi
+
+    eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
+    if [[ -n "$cr" ]] ; then
+        echo "Core file $HOSTNAME:${cr} copied to $DBDIR" > core_stacktrace.$node.txt
+        cp ${cr} $DBDIR
+        which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> core_stacktrace.$HOSTNAME.txt
+        echo $cr # this is the return value of the function
+    fi
+
 
     for node in ${CLUSTER/$HOSTNAME/} ; do
         if [ $has_pattern -eq 1 ] ; then
@@ -134,7 +136,7 @@ call_setup() {
     else
         { timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup 2>&1 || echo $?; } | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!"
     fi
-    sleep 0.1
+    sleep 0.8 # wait a bit for any cores
     #last line of .setup file will contain the error rc if any
     ret=`tail -1 ${TESTDIR}/logs/${DBNAME}.setup | cut -c11-`
     cr=`find_cores`
