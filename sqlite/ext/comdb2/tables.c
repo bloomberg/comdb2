@@ -262,7 +262,9 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_fingerprints", &systblFingerprintsModule, 0);
   if (rc == SQLITE_OK)
-      rc = sqlite3_create_module(db, "comdb2_timeseries", &systblTimeseriesModule, 0);
+    rc = sqlite3_create_module(db, "comdb2_timeseries", &systblTimeseriesModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_repl_stats", &systblReplStatsModule, 0);
   if (rc == SQLITE_OK)
     rc = systblTypeSamplesInit(db);
   if (rc == SQLITE_OK)
@@ -271,7 +273,6 @@ int comdb2SystblInit(
     rc = systblNetUserfuncsInit(db);
   if (rc == SQLITE_OK)
     rc = systblClusterInit(db);
-
 #endif
   return rc;
 }

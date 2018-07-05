@@ -30,6 +30,7 @@ const sqlite3_module systblTransactionLogsModule;
 const sqlite3_module systblMetricsModule;
 const sqlite3_module systblFingerprintsModule;
 const sqlite3_module systblTimeseriesModule;
+const sqlite3_module systblReplStatsModule;
 
 
 int systblTypeSamplesInit(sqlite3 *db);

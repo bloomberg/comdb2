@@ -21,6 +21,8 @@ struct averager;
 struct averager *averager_new(int limit, int maxpoints);
 void averager_add(struct averager *avg, int value, int now);
 double averager_avg(struct averager *avg);
+int averager_max(struct averager *avg);
+int averager_min(struct averager *avg);
 void averager_destroy(struct averager *avg);
 int averager_depth(struct averager *avg);
 void averager_purge_old(struct averager *avg, int now);

@@ -46,6 +46,7 @@ struct comdb2_metrics_store {
     int64_t sql_count;
     int64_t start_time;
     int64_t threads;
+    int64_t current_connections;
     int64_t diskspace;
     double service_time;
     double queue_depth;
@@ -79,6 +80,8 @@ comdb2_metric gbl_metrics[] = {
      &stats.connection_timeouts, NULL},
     {"cpu_percent", "Database CPU time over last 5 seconds", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
      &stats.cpu_percent, NULL},
+    {"current_connections", "Number of current connections", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.current_connections, NULL},
     {"deadlocks", "Number of deadlocks", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &stats.deadlocks, NULL},
     {"diskspace", "Disk space used (bytes)",  STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
@@ -161,6 +164,7 @@ int refresh_metrics(void)
 {
     int rc;
     const struct bdb_thread_stats *pstats;
+    extern int active_appsock_conns;
 
     /* Check whether the server is exiting. */
     if (thedb->exiting || thedb->stopped)
@@ -171,6 +175,7 @@ int refresh_metrics(void)
     stats.retries = n_retries;
     stats.sql_cost = gbl_nsql_steps + gbl_nnewsql_steps;
     stats.sql_count = gbl_nsql + gbl_nnewsql;
+    stats.current_connections = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
 
     rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks,
                                &stats.lockwaits, &stats.lockrequests);

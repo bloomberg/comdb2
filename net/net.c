@@ -3473,6 +3473,7 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
     netinfo_ptr->num_accepts = 0;
     netinfo_ptr->num_accept_timeouts = 0;
     netinfo_ptr->conntime_dump_period = 10 * 60;
+    netinfo_ptr->num_current_non_appsock_accepts = 0;
 
     netinfo_ptr->num_accepts = 0;
     netinfo_ptr->num_accept_timeouts = 0;
@@ -5764,6 +5765,8 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
             host_node_printf(LOGMSG_USER, host_node_ptr, "becomming connect thread\n");
         connect_thread(host_node_ptr);
     }
+
+    ++netinfo_ptr->num_current_non_appsock_accepts;
 }
 
 

@@ -172,3 +172,7 @@ int64_t net_get_num_accepts(netinfo_type *netinfo_ptr) {
 int64_t net_get_num_accept_timeouts(netinfo_type *netinfo_ptr) {
    return netinfo_ptr->num_accept_timeouts;
 }
+
+int64_t net_get_num_current_non_appsock_accepts(netinfo_type *netinfo_ptr) {
+   return netinfo_ptr->num_current_non_appsock_accepts;
+}
