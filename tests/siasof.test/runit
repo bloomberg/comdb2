@@ -1483,7 +1483,7 @@ trap - INT EXIT
 
 # If we made it here we passed.
 if [[ "$rcode" == "0" ]]; then
-    rm -rf $TMPDIR
+    rm $TMPDIR/cdb2tst_*
     echo "Testcase passed."
 fi
 
