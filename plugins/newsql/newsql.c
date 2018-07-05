@@ -2231,8 +2231,14 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     if (!clnt.admin && do_query_on_master_check(dbenv, &clnt, sql_query))
         goto done;
 
-    clnt.conninfo.pid = sql_query->client_info->pid;
-    clnt.last_pid = sql_query->client_info->pid;
+    if (sql_query->client_info) {
+        clnt.conninfo.pid = sql_query->client_info->pid;
+        clnt.last_pid = sql_query->client_info->pid;
+    }
+    else {
+        clnt.conninfo.pid = 0;
+        clnt.last_pid = 0;
+    }
     clnt.osql.count_changes = 1;
     clnt.dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
     newsql_clr_high_availability(&clnt);
