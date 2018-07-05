@@ -325,6 +325,11 @@ static void thd_dump_nolock(void)
         logmsg(LOGMSG_USER, "no active threads\n");
 }
 
+int thd_queue_depth(void)
+{
+    return q_reqs.count;
+}
+
 void thd_coalesce(struct dbenv *dbenv)
 {
     LOCK(&lock)

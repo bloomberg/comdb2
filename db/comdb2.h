@@ -1795,6 +1795,7 @@ void thd_coalesce(struct dbenv *dbenv);
 void unlock_swapin(void);
 char *getorigin(struct ireq *iq);
 void thd_dump(void);
+int thd_queue_depth(void);
 
 enum comdb2_queue_types {
     REQ_WAITFT = 0,

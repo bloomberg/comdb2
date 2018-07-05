@@ -284,38 +284,38 @@ static void lock_stats(FILE *out, bdb_state_type *bdb_state)
     logmsgf(LOGMSG_USER, out, "deadlock-detect-policy: %s\n", deadlock_policy_str(policy));
     prn_stat(st_id);
     prn_stat(st_cur_maxid);
-    prn_stat(st_maxlocks);
-    prn_stat(st_maxlockers);
-    prn_stat(st_maxobjects);
+    prn_lstat(st_maxlocks);
+    prn_lstat(st_maxlockers);
+    prn_lstat(st_maxobjects);
     prn_stat(st_nmodes);
-    prn_stat(st_nlocks);
-    prn_stat(st_maxnlocks);
-    prn_stat(st_nlockers);
-    prn_stat(st_maxnlockers);
-    prn_stat(st_nobjects);
-    prn_stat(st_maxnobjects);
+    prn_lstat(st_nlocks);
+    prn_lstat(st_maxnlocks);
+    prn_lstat(st_nlockers);
+    prn_lstat(st_maxnlockers);
+    prn_lstat(st_nobjects);
+    prn_lstat(st_maxnobjects);
 #if !defined(BERKDB_4_5) && !defined(BERKDB_46)
-    prn_stat(st_nconflicts);
+    prn_lstat(st_nconflicts);
 #endif
-    prn_stat(st_nrequests);
-    prn_stat(st_nreleases);
+    prn_lstat(st_nrequests);
+    prn_lstat(st_nreleases);
 #if !defined(BERKDB_4_5) && !defined(BERKDB_46)
-    prn_stat(st_nnowaits);
+    prn_lstat(st_nnowaits);
 #endif
-    prn_stat(st_ndeadlocks);
+    prn_lstat(st_ndeadlocks);
     prn_stat(st_locktimeout);
-    prn_stat(st_nlocktimeouts);
+    prn_lstat(st_nlocktimeouts);
     prn_stat(st_txntimeout);
-    prn_stat(st_ntxntimeouts);
-    prn_stat(st_region_wait);
-    prn_stat(st_region_nowait);
+    prn_lstat(st_ntxntimeouts);
+    prn_lstat(st_region_wait);
+    prn_lstat(st_region_nowait);
     logmsgf(LOGMSG_USER, out, "locks_check_waiters: %s\n",
             gbl_locks_check_waiters ? "enabled" : "disabled");
     logmsgf(LOGMSG_USER, out, "no_waiter_commit_skips: %llu\n", check_waiters_skip_count);
     logmsgf(LOGMSG_USER, out, "waiter_commits: %llu\n", check_waiters_commit_count);
     logmsgf(LOGMSG_USER, out, "rowlocks_deadlock_retries: %llu\n",
             gbl_rowlocks_deadlock_retries);
-    prn_stat(st_regsize);
+    prn_lstat(st_regsize);
 
     free(stats);
 }
@@ -509,73 +509,66 @@ static void cache_stats(FILE *out, bdb_state_type *bdb_state, int extra)
     bdb_state->dbenv->memp_stat(bdb_state->dbenv, &stats, extra ? &fsp : NULL,
                                 0);
 
-    prn_stat(st_gbytes);
-    prn_stat(st_bytes);
-    prn_stat(st_ncache);
-    prn_stat(st_regsize);
-    prn_stat(st_map);
-    prn_stat(st_cache_hit);
-    prn_stat(st_cache_miss);
-    prn_stat(st_cache_ihit);
-    prn_stat(st_cache_imiss);
-    prn_stat(st_cache_lhit);
-    prn_stat(st_cache_lmiss);
-    prn_stat(st_page_pf_in);
-    prn_stat(st_page_pf_in_late);
-    prn_stat(st_page_in);
-    prn_stat(st_page_out);
-    prn_stat(st_ro_merges);
-    prn_stat(st_rw_merges);
-    prn_stat(st_ro_evict);
-    prn_stat(st_rw_evict);
-    prn_stat(st_ro_levict);
-    prn_stat(st_rw_levict);
-    prn_stat(st_pf_evict);
-    prn_stat(st_rw_evict_skip);
-    prn_stat(st_page_trickle);
-    prn_stat(st_pages);
-    prn_stat(st_page_clean);
+    prn_lstat(st_gbytes);
+    prn_lstat(st_bytes);
+    prn_lstat(st_ncache);
+    prn_lstat(st_regsize);
+    prn_lstat(st_map);
+    prn_lstat(st_cache_hit);
+    prn_lstat(st_cache_miss);
+    prn_lstat(st_cache_ihit);
+    prn_lstat(st_cache_imiss);
+    prn_lstat(st_cache_lhit);
+    prn_lstat(st_cache_lmiss);
+    prn_lstat(st_page_pf_in);
+    prn_lstat(st_page_pf_in_late);
+    prn_lstat(st_page_in);
+    prn_lstat(st_page_out);
+    prn_lstat(st_ro_merges);
+    prn_lstat(st_rw_merges);
+    prn_lstat(st_ro_evict);
+    prn_lstat(st_rw_evict);
+    prn_lstat(st_ro_levict);
+    prn_lstat(st_rw_levict);
+    prn_lstat(st_pf_evict);
+    prn_lstat(st_rw_evict_skip);
+    prn_lstat(st_page_trickle);
+    prn_lstat(st_pages);
+    prn_lstat(st_page_clean);
     logmsgf(LOGMSG_USER, out, "st_page_dirty: %d\n", stats->st_page_dirty);
-    prn_stat(st_hash_buckets);
-    prn_stat(st_hash_searches);
-    prn_stat(st_hash_longest);
-    prn_stat(st_hash_examined);
-    prn_stat(st_hash_nowait);
-    prn_stat(st_hash_wait);
-    prn_stat(st_hash_max_wait);
-    prn_stat(st_region_wait);
-    prn_stat(st_region_nowait);
-    prn_stat(st_alloc);
-    prn_stat(st_alloc_buckets);
-    prn_stat(st_alloc_max_buckets);
-    prn_stat(st_alloc_pages);
-    prn_stat(st_alloc_max_pages);
-    prn_stat(st_ckp_pages_sync);
-    prn_stat(st_ckp_pages_skip);
+    prn_lstat(st_hash_buckets);
+    prn_lstat(st_hash_searches);
+    prn_lstat(st_hash_longest);
+    prn_lstat(st_hash_examined);
+    prn_lstat(st_hash_nowait);
+    prn_lstat(st_hash_wait);
+    prn_lstat(st_hash_max_wait);
+    prn_lstat(st_region_wait);
+    prn_lstat(st_region_nowait);
+    prn_lstat(st_alloc);
+    prn_lstat(st_alloc_buckets);
+    prn_lstat(st_alloc_max_buckets);
+    prn_lstat(st_alloc_pages);
+    prn_lstat(st_alloc_max_pages);
+    prn_lstat(st_ckp_pages_sync);
+    prn_lstat(st_ckp_pages_skip);
 
     if (extra) {
         bdb_state->dbenv->memp_dump_region(bdb_state->dbenv, "A", out);
 
         for (i = fsp; i != NULL && *i != NULL; ++i) {
             logmsgf(LOGMSG_USER, out, "Pool file [%s]:-\n", (*i)->file_name);
-            logmsgf(LOGMSG_USER, out, "  st_pagesize   : %u\n", (unsigned)(*i)->st_pagesize);
-            logmsgf(LOGMSG_USER, out, "  st_map        : %u\n", (unsigned)(*i)->st_map);
-            logmsgf(LOGMSG_USER, out, "  st_cache_hit  : %u\n",
-                    (unsigned)(*i)->st_cache_hit);
-            logmsgf(LOGMSG_USER, out, "  st_cache_miss : %u\n",
-                    (unsigned)(*i)->st_cache_miss);
-            logmsgf(LOGMSG_USER, out, "  st_cache_ihit : %u\n",
-                    (unsigned)(*i)->st_cache_ihit);
-            logmsgf(LOGMSG_USER, out, "  st_cache_imiss: %u\n",
-                    (unsigned)(*i)->st_cache_imiss);
-            logmsgf(LOGMSG_USER, out, "  st_cache_lhit : %u\n",
-                    (unsigned)(*i)->st_cache_lhit);
-            logmsgf(LOGMSG_USER, out, "  st_cache_lmiss: %u\n",
-                    (unsigned)(*i)->st_cache_lmiss);
-            logmsgf(LOGMSG_USER, out, "  st_page_create: %u\n",
-                    (unsigned)(*i)->st_page_create);
-            logmsgf(LOGMSG_USER, out, "  st_page_in    : %u\n", (unsigned)(*i)->st_page_in);
-            logmsgf(LOGMSG_USER, out, "  st_page_out   : %u\n", (unsigned)(*i)->st_page_out);
+            logmsgf(LOGMSG_USER, out, "  st_pagesize   : %"PRId64"\n", (*i)->st_pagesize);
+            logmsgf(LOGMSG_USER, out, "  st_map        : %"PRId64"\n", (*i)->st_map);
+            logmsgf(LOGMSG_USER, out, "  st_cache_hit  : %"PRId64"\n", (*i)->st_cache_hit);
+            logmsgf(LOGMSG_USER, out, "  st_cache_miss : %"PRId64"\n", (*i)->st_cache_miss);
+            logmsgf(LOGMSG_USER, out, "  st_cache_ihit : %"PRId64"\n", (*i)->st_cache_ihit);
+            logmsgf(LOGMSG_USER, out, "  st_cache_imiss: %"PRId64"\n", (*i)->st_cache_imiss);
+            logmsgf(LOGMSG_USER, out, "  st_cache_lhit : %"PRId64"\n", (*i)->st_cache_lhit);
+            logmsgf(LOGMSG_USER, out, "  st_cache_lmiss: %"PRId64"\n", (*i)->st_cache_lmiss);
+            logmsgf(LOGMSG_USER, out, "  st_page_create: %"PRId64"\n", (*i)->st_page_create);
+            logmsgf(LOGMSG_USER, out, "  st_page_in    : %"PRId64"\n", (*i)->st_page_in);
+            logmsgf(LOGMSG_USER, out, "  st_page_out   : %"PRId64"\n", (*i)->st_page_out);
         }
 
         free(fsp);
@@ -590,35 +583,35 @@ static void temp_cache_stats(FILE *out, bdb_state_type *bdb_state)
 
     bdb_temp_table_stat(bdb_state, &stats);
 
-    prn_stat(st_cache_hit);
-    prn_stat(st_cache_miss);
-    prn_stat(st_cache_ihit);
-    prn_stat(st_cache_imiss);
-    prn_stat(st_cache_lhit);
-    prn_stat(st_cache_lmiss);
-    prn_stat(st_page_pf_in);
-    prn_stat(st_page_in);
-    prn_stat(st_page_out);
-    prn_stat(st_ro_merges);
-    prn_stat(st_rw_merges);
-    prn_stat(st_ro_evict);
-    prn_stat(st_rw_evict);
-    prn_stat(st_pf_evict);
-    prn_stat(st_rw_evict_skip);
-    prn_stat(st_page_trickle);
-    prn_stat(st_hash_searches);
-    prn_stat(st_hash_longest);
-    prn_stat(st_hash_examined);
-    prn_stat(st_hash_nowait);
-    prn_stat(st_hash_wait);
-    prn_stat(st_hash_max_wait);
-    prn_stat(st_region_wait);
-    prn_stat(st_region_nowait);
-    prn_stat(st_alloc);
-    prn_stat(st_alloc_buckets);
-    prn_stat(st_alloc_max_buckets);
-    prn_stat(st_alloc_pages);
-    prn_stat(st_alloc_max_pages);
+    prn_lstat(st_cache_hit);
+    prn_lstat(st_cache_miss);
+    prn_lstat(st_cache_ihit);
+    prn_lstat(st_cache_imiss);
+    prn_lstat(st_cache_lhit);
+    prn_lstat(st_cache_lmiss);
+    prn_lstat(st_page_pf_in);
+    prn_lstat(st_page_in);
+    prn_lstat(st_page_out);
+    prn_lstat(st_ro_merges);
+    prn_lstat(st_rw_merges);
+    prn_lstat(st_ro_evict);
+    prn_lstat(st_rw_evict);
+    prn_lstat(st_pf_evict);
+    prn_lstat(st_rw_evict_skip);
+    prn_lstat(st_page_trickle);
+    prn_lstat(st_hash_searches);
+    prn_lstat(st_hash_longest);
+    prn_lstat(st_hash_examined);
+    prn_lstat(st_hash_nowait);
+    prn_lstat(st_hash_wait);
+    prn_lstat(st_hash_max_wait);
+    prn_lstat(st_region_wait);
+    prn_lstat(st_region_nowait);
+    prn_lstat(st_alloc);
+    prn_lstat(st_alloc_buckets);
+    prn_lstat(st_alloc_max_buckets);
+    prn_lstat(st_alloc_pages);
+    prn_lstat(st_alloc_max_pages);
 
     free(stats);
 }
@@ -2139,8 +2132,8 @@ repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
 
         if (rc != 0 ||
-                bdb_state->seqnum_info->time_10seconds[node] == NULL || 
-                bdb_state->seqnum_info->time_minute[node] == NULL) {
+                bdb_state->seqnum_info->time_10seconds[nodeix(host)] == NULL || 
+                bdb_state->seqnum_info->time_minute[nodeix(host)] == NULL) {
             /* Make sure we don't read uninitialized data on error. */
             pos->bytes_written = 0;
             pos->bytes_read = 0;

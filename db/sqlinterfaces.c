@@ -3697,6 +3697,8 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     char thdinfo[40];
     int rc;
     struct thr_handle *self = thrman_self();
+    int q_depth_tag_and_sql;
+
     if (self) {
         if (clnt->exec_lua_thread)
             thrman_set_subtype(self, THRSUBTYPE_LUA_SQL);
@@ -3721,8 +3723,12 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
     clnt->enque_timeus = comdb2_time_epochus();
 
+    q_depth_tag_and_sql = thd_queue_depth();
+    if (thdpool_get_nthds(gbl_sqlengine_thdpool) == thdpool_get_maxthds(gbl_sqlengine_thdpool))
+        q_depth_tag_and_sql += thdpool_get_queue_depth(gbl_sqlengine_thdpool) + 1;
+
     time_metric_add(thedb->concurrent_queries, thdpool_get_nthds(gbl_sqlengine_thdpool));
-    time_metric_add(thedb->concurrent_queries, thdpool_get_queue_depth(gbl_sqlengine_thdpool));
+    time_metric_add(thedb->concurrent_queries, q_depth_tag_and_sql);
 
     sqlcpy = strdup(msg);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
