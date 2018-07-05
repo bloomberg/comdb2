@@ -4367,8 +4367,8 @@ void *statthd(void *p)
                 if (conns - last_report_conns || curr_conns - last_report_curr_conns) {
                    reqlog_logf(statlogger, REQL_INFO, "connections %lld timeouts %lld current_connections %lld\n", 
                          conns - last_report_conns,
-                         curr_conns - last_report_curr_conns,
-                         conn_timeouts - last_report_conn_timeouts);
+                         conn_timeouts - last_report_conn_timeouts,
+                         curr_conns - last_report_curr_conns);
                 }
 
 
