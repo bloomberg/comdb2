@@ -655,8 +655,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
 
     key.seq = seq;
-    if (sess->rqid != rqid) 
-        abort();
+    assert (sess->rqid == rqid);
 
     /* add the op into the temporary table */
     if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
@@ -703,9 +702,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
     if (rc_op) {
-        logmsg(LOGMSG_ERROR, 
-            "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
-            __func__, key.seq, rc_op, bdberr);
+        logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
+               __func__, key.seq, rc_op, bdberr);
     } else if (gbl_osqlpfault_threads) {
         osql_page_prefault(rpl, rplen, &(tran->last_db),
                            &(osql_session_get_ireq(sess)->osql_step_ix), rqid,

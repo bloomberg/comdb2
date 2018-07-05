@@ -5780,18 +5780,18 @@ static int offload_net_send(const char *host, int usertype, void *data,
 #endif
         rc = net_send(netinfo_ptr, host, usertype, data, datalen, nodelay);
 
-        if (NET_SEND_FAIL_QUEUE_FULL == rc ||
-            NET_SEND_FAIL_MALLOC_FAIL == rc || NET_SEND_FAIL_NOSOCK == rc) {
+        if (NET_SEND_FAIL_QUEUE_FULL == rc || NET_SEND_FAIL_MALLOC_FAIL == rc ||
+            NET_SEND_FAIL_NOSOCK == rc) {
 
             if (total_wait > gbl_osql_bkoff_netsend_lmt) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
-                        __LINE__, host);
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
+                       __FILE__, __LINE__, host);
                 return -1;
             }
 
             if (osql_comm_check_bdb_lock() != 0) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
-                        __LINE__, host);
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
+                       __FILE__, __LINE__, host);
                 return rc;
             }
 
@@ -5802,17 +5802,17 @@ static int offload_net_send(const char *host, int usertype, void *data,
             /* on closed sockets, we simply return; a callback
                will trigger on the other side signalling we've
                lost the comm party */
-            logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
-                   __FILE__, __LINE__, host);
+            logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
+                   __LINE__, host);
             logmsg(LOGMSG_ERROR,
-                   "%s:%d socket is closed, return wrong master\n",
-                   __FILE__, __LINE__);
+                   "%s:%d socket is closed, return wrong master\n", __FILE__,
+                   __LINE__);
             return OSQL_SEND_ERROR_WRONGMASTER;
         } else if (rc) {
             unknownerror_retry++;
             if (unknownerror_retry >= UNK_ERR_SEND_RETRY) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
-                        __LINE__, host);
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
+                       __FILE__, __LINE__, host);
                 comdb2_linux_cheap_stack_trace();
                 return -1;
             }
