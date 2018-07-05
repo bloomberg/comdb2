@@ -19,6 +19,7 @@ add_library(sqlite
   ext/comdb2/appsock_handlers.c
   ext/comdb2/columns.c
   ext/comdb2/constraints.c
+  ext/comdb2/cluster.c
   ext/comdb2/keycomponents.c
   ext/comdb2/keys.c
   ext/comdb2/keywords.c

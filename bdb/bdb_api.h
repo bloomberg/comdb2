@@ -2036,4 +2036,14 @@ int bdb_process_each_table_idx_entry(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                             int *bdberr);
 
+struct cluster_info {
+    char *host;
+    int64_t port;
+    char *is_master;
+    char *coherent_state;
+};
+
+int bdb_fill_cluster_info(void **data, int *num_nodes);
+
+
 #endif

@@ -72,6 +72,7 @@ void __dbenv_heap_dump __P((DB_ENV * dbenv));
 int __lock_dump_region_int(DB_ENV *, const char *area, FILE *,
                            int just_active_locks);
 int __db_cprint(DB *dbp);
+char *bdb_coherent_state_string(const char *host);
 
 static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,
                                   char *name);
@@ -790,21 +791,7 @@ static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
 
         lsnp = &bdb_state->seqnum_info->seqnums[nodeix(nodes[ii].host)].lsn;
 
-        switch (bdb_state->coherent_state[nodeix(nodes[ii].host)]) {
-        case STATE_COHERENT:
-            coherent_state = "";
-            break;
-
-        case STATE_INCOHERENT:
-        case STATE_INCOHERENT_SLOW:
-        case STATE_INCOHERENT_WAIT:
-            coherent_state = coherent_state_to_str(
-                bdb_state->coherent_state[nodeix(nodes[ii].host)]);
-            break;
-
-        default:
-            coherent_state = "???";
-        }
+        coherent_state = bdb_coherent_state_string(nodes[ii].host);
 
         logmsgf(LOGMSG_USER, out, "%16s:%d %-6s %-1s fd %-3d lsn %s f %d %s\n",
                 nodes[ii].host, nodes[ii].port, status_mstr, status,
@@ -2108,4 +2095,59 @@ void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table)
 
     net_send(bdb_state->repinfo->netinfo, bdb_state->repinfo->master_host,
              USER_TYPE_ANALYZED_TBL, table, strlen(table), 0);
+}
+
+char *bdb_coherent_state_string(const char *host) {
+    char *coherent_state;
+    bdb_state_type *bdb_state = gbl_bdb_state;
+    int iammaster = bdb_state->repinfo->myhost == bdb_state->repinfo->master_host;
+
+    switch (bdb_state->coherent_state[nodeix(host)]) {
+        case STATE_COHERENT:
+            coherent_state = "";
+            break;
+
+        case STATE_INCOHERENT:
+            coherent_state = "INCOHERENT";
+            break;
+
+        case STATE_INCOHERENT_SLOW:
+            coherent_state = "INCOHERENT_SLOW";
+            break;
+
+            /* Incoherent local is only meaningful on the master */
+        case STATE_INCOHERENT_WAIT:
+            if(iammaster)
+                coherent_state = "INCOHERENT_WAIT";
+            else
+                coherent_state = "";
+            break;
+
+        default:
+            coherent_state = "???";
+    }
+    return coherent_state;
+}
+
+
+int bdb_fill_cluster_info(void **data, int *num_nodes) {
+    struct cluster_info *info;
+    bdb_state_type *bdb_state = gbl_bdb_state;
+
+    struct host_node_info nodes[REPMAX];
+    *num_nodes = net_get_nodes_info(bdb_state->repinfo->netinfo,
+            REPMAX, nodes);
+    info = malloc(sizeof(struct cluster_info) * *num_nodes);
+    if (info == NULL)
+        return -1;
+    for (int i = 0; i < *num_nodes; i++) {
+        info[i].host = strdup(nodes[i].host);
+        info[i].port = nodes[i].port;
+        info[i].is_master = (nodes[i].host == gbl_bdb_state->repinfo->master_host) ? "Y" : "N";
+        info[i].coherent_state = bdb_coherent_state_string(nodes[i].host);
+        if (info[i].coherent_state[0] == 0)
+            info[i].coherent_state = "coherent";
+    }
+    *data = info;
+    return 0;
 }

@@ -35,6 +35,7 @@ const sqlite3_module systblTimeseriesModule;
 int systblTypeSamplesInit(sqlite3 *db);
 int systblRepNetQueueStatInit(sqlite3 *db);
 int systblNetUserfuncsInit(sqlite3 *db);
+int systblClusterInit(sqlite3 *db);
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")
