@@ -262,7 +262,8 @@ for node in $cluster ; do
     fi
 done
 
-
+echo "core location:" 
+cat  /proc/sys/kernel/core_pattern
 
 echo "create, alter, drop table t2"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2  { `cat alltypes.csc2 ` }"

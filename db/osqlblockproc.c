@@ -107,8 +107,6 @@ struct blocksql_tran {
 };
 
 typedef struct oplog_key {
-    unsigned long long rqid;
-    uuid_t uuid;
     unsigned long long seq;
 } oplog_key_t;
 
@@ -142,18 +140,6 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
     oplog_key_t *k2 = (oplog_key_t *)key2;
 #endif
     int cmp;
-
-    if (k1->rqid < k2->rqid) {
-        return -1;
-    }
-
-    if (k1->rqid > k2->rqid) {
-        return 1;
-    }
-
-    cmp = comdb2uuidcmp(k1->uuid, k2->uuid);
-    if (cmp)
-        return cmp;
 
     if (k1->seq < k2->seq) {
         return -1;
@@ -668,9 +654,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
 
-    key.rqid = rqid;
     key.seq = seq;
-    comdb2uuidcpy(key.uuid, uuid);
+    assert (sess->rqid == rqid);
 
     /* add the op into the temporary table */
     if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
@@ -711,15 +696,14 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     }
 
 #if 0 
-   printf("%s: rqid=%llx Saving op type=%d\n", __func__, key.rqid, ntohl(*((int*)rpl)));
+   printf("%s: rqid=%llx Saving op type=%d\n", __func__, rqid, ntohl(*((int*)rpl)));
 #endif
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
     if (rc_op) {
-        logmsg(LOGMSG_ERROR, 
-            "%s: fail to put oplog rqid=%llx (%lld) seq=%llu rc=%d bdberr=%d\n",
-            __func__, key.rqid, key.rqid, key.seq, rc_op, bdberr);
+        logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
+               __func__, key.seq, rc_op, bdberr);
     } else if (gbl_osqlpfault_threads) {
         osql_page_prefault(rpl, rplen, &(tran->last_db),
                            &(osql_session_get_ireq(sess)->osql_step_ix), rqid,
@@ -1088,7 +1072,6 @@ static int process_this_session(
 
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     unsigned long long rqid = osql_sess_getrqid(sess);
-    oplog_key_t *key = NULL;
     oplog_key_t key_next, key_crt;
     char *data = NULL;
     int datalen = 0;
@@ -1107,36 +1090,23 @@ static int process_this_session(
 
     iq->queryid = osql_sess_queryid(sess);
 
-    key = (oplog_key_t *)malloc(sizeof(oplog_key_t));
-    if (!key) {
-        logmsg(LOGMSG_ERROR, "%s: unable to allocated %zu bytes\n", __func__,
-               sizeof(oplog_key_t));
-        return -1;
-    }
-
-    key->rqid = rqid;
-    key->seq = 0;
-    osql_sess_getuuid(sess, key->uuid);
     osql_sess_getuuid(sess, uuid);
-    key_next = key_crt = *key;
 
-    if (key->rqid != OSQL_RQID_USE_UUID)
-        reqlog_set_rqid(iq->reqlogger, &key->rqid, sizeof(unsigned long long));
+    if (rqid != OSQL_RQID_USE_UUID)
+        reqlog_set_rqid(iq->reqlogger, &rqid, sizeof(unsigned long long));
     else
         reqlog_set_rqid(iq->reqlogger, uuid, sizeof(uuid));
     reqlog_set_event(iq->reqlogger, "txn");
 
     /* go through each record */
-    rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
-                                   bdberr);
-    if(rc != IX_FND)
-        free(key);
+    rc = bdb_temp_table_first(thedb->bdb_env, dbc, bdberr);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
         reqlog_set_error(iq->reqlogger, "bdb_temp_table_first failed", rc);
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_first failed rc=%d bdberr=%d\n",
                 __func__, rc, *bdberr);
         return rc;
     }
+    key_next = key_crt = *(oplog_key_t *)bdb_temp_table_key(dbc);
 
     if (rc == IX_NOTFND) {
         comdb2uuidstr(uuid, us);
@@ -1184,22 +1154,6 @@ static int process_this_session(
         if (!rc) {
             /* are we still on the same rqid */
             key_next = *(oplog_key_t *)bdb_temp_table_key(dbc);
-            if (key_next.rqid != key_crt.rqid) {
-                /* done with the current transaction*/
-                break;
-            }
-            if (key_crt.rqid == OSQL_RQID_USE_UUID) {
-                if (comdb2uuidcmp(key_crt.uuid, key_next.uuid)) {
-                    /* done with the current transaction*/
-                    break;
-                }
-            } else {
-                if (key_next.rqid != key_crt.rqid) {
-                    /* done with the current transaction*/
-                    break;
-                }
-            }
-
             /* check correct sequence; this is an attempt to
                catch dropped packets - not that we would do that purposely */
             if (key_next.seq != key_crt.seq + 1) {

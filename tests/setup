@@ -180,6 +180,7 @@ for csc2 in $(ls *.csc2 2>/dev/null); do
 done >> ${LRL}
 
 mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
+cd $DBDIR >/dev/null
 
 PARAMS="$DBNAME --no-global-lrl"
 
@@ -238,7 +239,6 @@ check_db_port_running_node() {
 #fi
 
 # start it
-cd $DBDIR >/dev/null
 if [[ -z "$CLUSTER" ]]; then
 
     if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
@@ -281,7 +281,7 @@ else
     i=0
     declare -a pids
     for node in ${CLUSTER/$HOSTNAME/}; do
-        cat $ARFILE | ssh $SSH_OPT $node "$COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $TESTDIR/logs/${DBNAME}.${node}.copy &
+        cat $ARFILE | ssh $SSH_OPT $node "cd ${DBDIR}; $COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $TESTDIR/logs/${DBNAME}.${node}.copy &
         pids[$i]=$!
         let i=i+1
     done
