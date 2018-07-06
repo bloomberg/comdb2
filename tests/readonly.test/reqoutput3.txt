@@ -1,0 +1,2 @@
+[insert into t values (1)] failed with rc -21 
+[update t set id=id+1 limit 1] failed with rc -21 
