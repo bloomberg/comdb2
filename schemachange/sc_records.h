@@ -24,6 +24,7 @@ struct common_members {
     int thrcount;                // number of threads currently available
     int maxthreads;              // maximum number of SC threads allowed
     int is_decrease_thrds; // is feature on to backoff and decrease threads
+    int total_lasttime;    // last time we computed total stats
 };
 
 /* for passing state data to schema change threads/functions */
@@ -54,6 +55,7 @@ struct convert_record_data {
     int num_records_per_trans;
     int num_retry_errors;
     int *tagmap; // mapping of fields from -> to
+    /* all the data objects point to the same single cmembers object */
     struct common_members *cmembers;
     unsigned int write_count; // saved write counter to this tbl
 };

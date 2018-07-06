@@ -27,6 +27,7 @@
 #include "views.h"
 #include "logmsg.h"
 #include "bdb_net.h"
+#include "comdb2_atomic.h"
 
 static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
                                const char *newtable)
@@ -157,9 +158,9 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
         usedb->sc_abort = 1;
         MEMORY_SYNC;
         rc = 0; // should just fail SC
-    } else if (rc == 0) {
-        (iq->sc_deletes)++;
     }
+
+    ATOMIC_ADD(usedb->sc_deletes, 1);
     if (iq->debug) {
         reqpopprefixes(iq, 1);
     }
@@ -422,7 +423,7 @@ done:
         reqpopprefixes(iq, 1);
     }
 
-    iq->sc_adds++;
+    ATOMIC_ADD(usedb->sc_adds, 1);
     free(new_dta);
     return rc;
 }
@@ -468,9 +469,9 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
         iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
         rc = 0; // should just fail SC
-    } else if (rc == 0) {
-        (iq->sc_updates)++;
     }
+
+    ATOMIC_ADD(usedb->sc_updates, 1);
     if (iq->debug) {
         reqpopprefixes(iq, 1);
     }

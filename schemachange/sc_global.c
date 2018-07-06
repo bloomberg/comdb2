@@ -59,15 +59,6 @@ int gbl_sc_last_writer_time = 0;
 
 /* updates/deletes done behind the cursor since schema change started */
 pthread_mutex_t gbl_sc_lock = PTHREAD_MUTEX_INITIALIZER;
-/* boolean value set to nonzero if table rebuild is in progress */
-int doing_conversion = 0;
-/* boolean value set to nonzero if table upgrade is in progress */
-int doing_upgrade = 0;
-unsigned gbl_sc_adds;
-unsigned gbl_sc_updates;
-unsigned gbl_sc_deletes;
-long long gbl_sc_nrecs;
-long long gbl_sc_prev_nrecs; /* nrecs since last report */
 int gbl_sc_report_freq = 15; /* seconds between reports */
 int gbl_sc_abort = 0;
 int gbl_sc_resume_start = 0;
@@ -159,7 +150,7 @@ void allow_sc_to_run(void)
 }
 
 typedef struct {
-    char *table;
+    char *tablename;
     uint64_t seed;
     uint32_t host; /* crc32 of machine name */
     time_t time;
@@ -191,7 +182,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     if (sc_tables == NULL) {
         sc_tables =
             hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                           offsetof(sc_table_t, table), 0);
+                           offsetof(sc_table_t, tablename), 0);
     }
     assert(sc_tables);
 
@@ -223,7 +214,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
             sctbl = calloc(1, offsetof(sc_table_t, mem) + strlen(table) + 1);
             assert(sctbl);
             strcpy(sctbl->mem, table);
-            sctbl->table = sctbl->mem;
+            sctbl->tablename = sctbl->mem;
 
             sctbl->seed = seed;
             sctbl->host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
@@ -275,20 +266,23 @@ void sc_status(struct dbenv *dbenv)
         localtime_r(&timet, &tm);
 
         logmsg(LOGMSG_USER, "-------------------------\n");
-        logmsg(LOGMSG_USER, "Schema change in progress with seed 0x%lx\n",
-               sctbl->seed);
         logmsg(LOGMSG_USER,
-               "(Started on node %s at %04d-%02d-%02d %02d:%02d:%02d) for "
-               "table %s\n",
+               "Schema change in progress for table %s "
+               "with seed 0x%lx\n",
+               sctbl->tablename, sctbl->seed);
+        logmsg(LOGMSG_USER,
+               "(Started on node %s at %04d-%02d-%02d %02d:%02d:%02d)\n",
                mach ? mach : "(unknown)", tm.tm_year + 1900, tm.tm_mon + 1,
-               tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, sctbl->table);
-        if (doing_conversion) {
+               tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+        struct dbtable *db = get_dbtable_by_name(sctbl->tablename);
+
+        if (db && db->doing_conversion)
             logmsg(LOGMSG_USER, "Conversion phase running %lld converted\n",
-                   gbl_sc_nrecs);
-        } else if (doing_upgrade) {
+                   db->sc_nrecs);
+        else if (db && db->doing_upgrade)
             logmsg(LOGMSG_USER, "Upgrade phase running %lld upgraded\n",
-                   gbl_sc_nrecs);
-        }
+                   db->sc_nrecs);
+
         logmsg(LOGMSG_USER, "-------------------------\n");
         sctbl = hash_next(sc_tables, &ent, &bkt);
     }
@@ -300,11 +294,6 @@ void sc_status(struct dbenv *dbenv)
 
 void reset_sc_stat()
 {
-    gbl_sc_adds = 0;
-    gbl_sc_updates = 0;
-    gbl_sc_deletes = 0;
-    gbl_sc_nrecs = 0;
-    gbl_sc_prev_nrecs = 0;
     gbl_sc_abort = 0;
 }
 /* Turn off live schema change.  This HAS to be done while holding the exclusive
@@ -317,6 +306,11 @@ void live_sc_off(struct dbtable *db)
     db->sc_from = NULL;
     db->sc_abort = 0;
     db->sc_downgrading = 0;
+    db->sc_adds = 0;
+    db->sc_updates = 0;
+    db->sc_deletes = 0;
+    db->sc_nrecs = 0;
+    db->sc_prev_nrecs = 0;
     pthread_rwlock_unlock(&sc_live_rwlock);
 }
 

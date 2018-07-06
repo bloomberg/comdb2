@@ -698,7 +698,7 @@ struct dbtable {
     unsigned prev_blocktypcnt[BLOCK_MAXOPCODE];
     unsigned prev_blockosqltypcnt[MAX_OSQL_TYPES];
     unsigned prev_nsql;
-    /* counters for autoanalyze */
+    /* counters for writes to this table */
     unsigned write_count[RECORD_WRITE_MAX];
     unsigned saved_write_count[RECORD_WRITE_MAX];
     unsigned aa_saved_counter; // zeroed out at autoanalyze
@@ -765,6 +765,21 @@ struct dbtable {
     int sc_abort;
     int sc_downgrading;
     unsigned long long *sc_genids; /* schemachange stripe pointers */
+
+    /* count the number of updates and deletes done by schemachange
+     * when behind the cursor.  This helps us know how many
+     * records we've really done (since every update behind the cursor
+     * effectively means we have to go back and do that record again). */
+    unsigned sc_adds;
+    unsigned sc_deletes;
+    unsigned sc_updates;
+
+    uint64_t sc_nrecs;
+    uint64_t sc_prev_nrecs;
+    /* boolean value set to nonzero if table rebuild is in progress */
+    uint8_t doing_conversion;
+    /* boolean value set to nonzero if table upgrade is in progress */
+    uint8_t doing_upgrade;
 
     unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
     unsigned int sqlcur_cur; /* count how many cursors where open in cur mode */
@@ -1334,14 +1349,6 @@ struct ireq {
     /* more stats - number of retries done under this request */
     int retries;
 
-    /* count the number of updates and deletes done by this transaction in
-     * a live schema change behind the cursor.  This helps us know how many
-     * records we've really done (since every update behind the cursor
-     * effectively means we have to go back and do that record again). */
-    unsigned sc_adds;
-    unsigned sc_deletes;
-    unsigned sc_updates;
-
     int ixused;    /* what index was used? */
     int ixstepcnt; /* how many steps on that index? */
 
@@ -1615,11 +1622,6 @@ extern int gbl_init_single_meta;
 extern unsigned long long gbl_sc_genids[MAXDTASTRIPE];
 extern int gbl_sc_usleep;
 extern int gbl_sc_wrusleep;
-extern unsigned gbl_sc_adds;
-extern unsigned gbl_sc_updates;
-extern unsigned gbl_sc_deletes;
-extern long long gbl_sc_nrecs;
-extern long long gbl_sc_prev_nrecs;
 extern int gbl_sc_last_writer_time;
 extern int gbl_default_livesc;
 extern int gbl_default_plannedsc;

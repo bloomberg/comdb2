@@ -558,12 +558,12 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
      * that doesn't require rebuilding anything. */
     if ((!newdb->plan || newdb->plan->plan_convert) ||
         changed == SC_CONSTRAINT_CHANGE) {
-        doing_conversion = 1;
+        db->doing_conversion = 1;
         if (!s->live)
             gbl_readonly_sc = 1;
         rc = convert_all_records(db, newdb, newdb->sc_genids, s);
         if (rc == 1) rc = 0;
-        doing_conversion = 0;
+        db->doing_conversion = 0;
     } else
         rc = 0;
 
@@ -579,11 +579,12 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     if (s->convert_sleep > 0) {
-        sc_printf(s, "Sleeping after conversion for %d...\n", s->convert_sleep);
+        sc_printf(s, "[%s] Sleeping after conversion for %d...\n",
+                  db->tablename, s->convert_sleep);
         logmsg(LOGMSG_INFO, "Sleeping after conversion for %d...\n",
                s->convert_sleep);
         sleep(s->convert_sleep);
-        sc_printf(s, "...slept for %d\n", s->convert_sleep);
+        sc_printf(s, "[%s] ...slept for %d\n", db->tablename, s->convert_sleep);
     }
 
     if (rc && rc != SC_MASTER_DOWNGRADE) {
@@ -877,9 +878,9 @@ int do_upgrade_table_int(struct schema_change_type *s)
 
     reset_sc_stat();
 
-    doing_upgrade = 1;
+    db->doing_upgrade = 1;
     rc = upgrade_all_records(db, db->sc_genids, s);
-    doing_upgrade = 0;
+    db->doing_upgrade = 0;
 
     if (stopsc)
         rc = SC_MASTER_DOWNGRADE;
