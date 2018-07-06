@@ -14,10 +14,8 @@
    limitations under the License.
  */
 
-#include "logicallog.h"
 #include <stdarg.h>
 #include "sqlite3ext.h"
-#include "logicallog.h"
 #include <assert.h>
 #include <string.h>
 #include "comdb2.h"
@@ -34,46 +32,40 @@
 #include "llog_auto.h"
 #include "llog_ext.h"
 
+/* Allocate maximum for unpacking */
+#define PACKED_MEMORY_SIZE (MAXBLOBLENGTH + 7)
+
 /* Column numbers */
-#define LOGICALLOG_COLUMN_START        0
-#define LOGICALLOG_COLUMN_STOP         1
-#define LOGICALLOG_COLUMN_FLAGS        2
-#define LOGICALLOG_COLUMN_COMMITLSN    3
-#define LOGICALLOG_COLUMN_OPNUM        4
-#define LOGICALLOG_COLUMN_OPERATION    5
-#define LOGICALLOG_COLUMN_TABLE        6
-#define LOGICALLOG_COLUMN_OLDGENID     7
-#define LOGICALLOG_COLUMN_OLDRECORD    8
-#define LOGICALLOG_COLUMN_GENID        9
-#define LOGICALLOG_COLUMN_RECORD       10
+#define LOGICALOPS_COLUMN_START        0
+#define LOGICALOPS_COLUMN_STOP         1
+#define LOGICALOPS_COLUMN_COMMITLSN    2
+#define LOGICALOPS_COLUMN_OPNUM        3
+#define LOGICALOPS_COLUMN_OPERATION    4
+#define LOGICALOPS_COLUMN_TABLE        5
+#define LOGICALOPS_COLUMN_OLDGENID     6
+#define LOGICALOPS_COLUMN_OLDRECORD    7
+#define LOGICALOPS_COLUMN_GENID        8
+#define LOGICALOPS_COLUMN_RECORD       9
 
-extern pthread_mutex_t gbl_logput_lk;
-extern pthread_cond_t gbl_logput_cond;
-extern pthread_mutex_t gbl_durable_lsn_lk;
-extern pthread_cond_t gbl_durable_lsn_cond;
-
+/* Dynamically reallocating string type */
 typedef struct dynstr {
     char *buf;
     int len;
     int alloced;
 } dynstr_t;
 
-
 /* Modeled after generate_series */
-typedef struct logicallog_cursor logicallog_cursor;
-struct logicallog_cursor {
+typedef struct logicalops_cursor logicalops_cursor;
+struct logicalops_cursor {
   sqlite3_vtab_cursor base;  /* Base class - must be first */
   sqlite3_int64 iRowid;      /* The rowid */
-  sqlite3_int64 idx;
   DB_LSN curLsn;             /* Current LSN */
   DB_LSN minLsn;             /* Minimum LSN */
   DB_LSN maxLsn;             /* Maximum LSN */
   char *minLsnStr;
   char *maxLsnStr;
   char *curLsnStr;
-  int flags;           /* 1 if we should block */
   int hitLast;
-  int notDurable;
   int openCursor;
   int subop;
   DB_LOGC *logc;             /* Log Cursor */
@@ -86,9 +78,6 @@ struct logicallog_cursor {
   void *unpacked;
   dynstr_t jsonrec;
   dynstr_t oldjsonrec;
-  int recstralloc;
-  int recstrlen;
-  int recstrsz;
   struct dbtable *db;
   struct odh odh;
   struct odh oldodh;
@@ -101,7 +90,7 @@ struct logicallog_cursor {
   int oldreclen;
 };
 
-static int logicallogConnect(
+static int logicalopsConnect(
   sqlite3 *db,
   void *pAux,
   int argc, const char *const*argv,
@@ -111,7 +100,7 @@ static int logicallogConnect(
   sqlite3_vtab *pNew;
   int rc;
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE x(minlsn hidden,maxlsn hidden,flags hidden,commitlsn,opnum,operation,tablename,oldgenid,oldrecord,genid,record)");
+     "CREATE TABLE x(minlsn hidden,maxlsn hidden,commitlsn,opnum,operation,tablename,oldgenid,oldrecord,genid,record)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -120,13 +109,13 @@ static int logicallogConnect(
   return rc;
 }
 
-static int logicallogDisconnect(sqlite3_vtab *pVtab){
+static int logicalopsDisconnect(sqlite3_vtab *pVtab){
   sqlite3_free(pVtab);
   return SQLITE_OK;
 }
 
-static int logicallogOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
-  logicallog_cursor *pCur;
+static int logicalopsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
+  logicalops_cursor *pCur;
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
@@ -134,8 +123,8 @@ static int logicallogOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   return SQLITE_OK;
 }
 
-static int logicallogClose(sqlite3_vtab_cursor *cur){
-  logicallog_cursor *pCur = (logicallog_cursor*)cur;
+static int logicalopsClose(sqlite3_vtab_cursor *cur){
+  logicalops_cursor *pCur = (logicalops_cursor*)cur;
   if (pCur->openCursor) {
       assert(pCur->logc);
       pCur->logc->close(pCur->logc, 0);
@@ -255,7 +244,7 @@ static inline int retrieve_start_lsn(DBT *data, u_int32_t rectype, DB_LSN *lsn)
     return 0;
 }
 
-static int create_logical_payload(logicallog_cursor *pCur, DB_LSN regop_lsn,
+static int create_logical_payload(logicalops_cursor *pCur, DB_LSN regop_lsn,
         DBT *data, u_int32_t rectype)
 {
     bdb_state_type *bdb_state = thedb->bdb_env;
@@ -284,11 +273,10 @@ static int create_logical_payload(logicallog_cursor *pCur, DB_LSN regop_lsn,
     return 0;
 }
 
-static int advance_to_next_commit(logicallog_cursor *pCur)
+static int advance_to_next_commit(logicalops_cursor *pCur)
 {
     bdb_state_type *bdb_state = thedb->bdb_env;
     u_int32_t rectype = 0;
-    DB_LSN durable_lsn = {0};
     int rc, getflags = 0, durable_gen = 0;
     if (!pCur->openCursor) {
         if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &pCur->logc,
@@ -316,20 +304,7 @@ again:
             if (getflags != DB_NEXT) {
                 return SQLITE_INTERNAL;
             }
-            if (pCur->flags & LOGICALLOG_FLAGS_BLOCK) {
-                do {
-                    struct timespec ts;
-                    clock_gettime(CLOCK_REALTIME, &ts);
-                    ts.tv_nsec += (200 * 1000000);
-                    pthread_mutex_lock(&gbl_logput_lk);
-                    pthread_cond_timedwait(&gbl_logput_cond, &gbl_logput_lk, &ts);
-                    pthread_mutex_unlock(&gbl_logput_lk);
-                } while (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, DB_NEXT));
-                rc = pCur->logc->get(pCur->logc, &pCur->curLsn,
-                        &pCur->data, DB_NEXT) != 0;
-            } else {
-                pCur->hitLast = 1;
-            }
+            pCur->hitLast = 1;
         }
         getflags = DB_NEXT;
         if (pCur->data.data)
@@ -338,33 +313,8 @@ again:
             rectype = 0;
     } while(!pCur->hitLast && !is_commit(rectype));
 
-    if (pCur->flags & LOGICALLOG_FLAGS_DURABLE) {
-        do {
-            struct timespec ts;
-            bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv,
-                    &durable_lsn, &durable_gen);
 
-            /* We've already returned this lsn: break when the next is durable */
-            if (log_compare(&durable_lsn, &pCur->curLsn) >= 0)
-                break;
-
-            /* Return immediately if we are non-blocking */
-            else if ((pCur->flags & LOGICALLOG_FLAGS_BLOCK) == 0) {
-                pCur->notDurable = 1;
-                break;
-            }
-
-            /* Wait on a condition variable */
-            clock_gettime(CLOCK_REALTIME, &ts);
-            ts.tv_nsec += (200 * 1000000);
-            pthread_mutex_lock(&gbl_durable_lsn_lk);
-            pthread_cond_timedwait(&gbl_durable_lsn_cond, &gbl_durable_lsn_lk, &ts);
-            pthread_mutex_unlock(&gbl_durable_lsn_lk);
-
-        } while(1);
-    }
-
-    if (!pCur->notDurable && !pCur->hitLast) {
+    if (!pCur->hitLast) {
         /* Can happen if we're missing the beginning of the transaction */
         switch (rc = create_logical_payload(pCur, pCur->curLsn, &pCur->data, rectype)){
             /* Reconstructed logical log */
@@ -387,9 +337,7 @@ again:
     return 0;
 }
 
-#define PACKED_MEMORY_SIZE (MAXBLOBLENGTH + 7)
-
-static void *retrieve_packed_memory_prev(logicallog_cursor *pCur)
+static void *retrieve_packed_memory_prev(logicalops_cursor *pCur)
 {
     if (pCur->packedprev == NULL) {
         pCur->packedprev = sqlite3_malloc(PACKED_MEMORY_SIZE);
@@ -397,7 +345,7 @@ static void *retrieve_packed_memory_prev(logicallog_cursor *pCur)
     return pCur->packedprev;
 }
 
-static void *retrieve_packed_memory(logicallog_cursor *pCur)
+static void *retrieve_packed_memory(logicalops_cursor *pCur)
 {
     if (pCur->packed == NULL) {
         pCur->packed = sqlite3_malloc(PACKED_MEMORY_SIZE);
@@ -405,7 +353,7 @@ static void *retrieve_packed_memory(logicallog_cursor *pCur)
     return pCur->packed;
 }
 
-static void *retrieve_unpacked_memory(logicallog_cursor *pCur)
+static void *retrieve_unpacked_memory(logicalops_cursor *pCur)
 {
     if (pCur->unpacked == NULL) {
         pCur->unpacked = sqlite3_malloc(MAXRECSZ);
@@ -413,7 +361,7 @@ static void *retrieve_unpacked_memory(logicallog_cursor *pCur)
     return pCur->unpacked;
 }
 
-static void *retrieve_unpacked_memory_prev(logicallog_cursor *pCur)
+static void *retrieve_unpacked_memory_prev(logicalops_cursor *pCur)
 {
     if (pCur->unpackedprev == NULL) {
         pCur->unpackedprev = sqlite3_malloc(MAXRECSZ);
@@ -421,7 +369,7 @@ static void *retrieve_unpacked_memory_prev(logicallog_cursor *pCur)
     return pCur->unpackedprev;
 }
 
-static int decompress_and_upgrade(logicallog_cursor *pCur, char *table,
+static int decompress_and_upgrade(logicalops_cursor *pCur, char *table,
         void *dta, int dtalen, int isrec, char *unpackedbuf, struct odh *odh,
         void **record, int *reclen)
 {
@@ -712,6 +660,8 @@ static int json_record(char *buf, int len, struct schema *sc,
             break;
         case SERVER_BLOB:
             in = (buf + f->offset);
+            if (printed)
+                ret += dynstr_pr(ds, ",");
             if (stype_is_null(in)) {
                 ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
             } else {
@@ -729,12 +679,12 @@ static int json_record(char *buf, int len, struct schema *sc,
     return ret;
 }
 
-static void genid_format(logicallog_cursor *pCur, unsigned long long genid, char *stgenid, int sz)
+static void genid_format(logicalops_cursor *pCur, unsigned long long genid, char *stgenid, int sz)
 {
     snprintf(stgenid, sz, "x%016llx", genid);
 }
 
-static void reset_record_state(logicallog_cursor *pCur)
+static void reset_record_state(logicalops_cursor *pCur)
 {
     if (pCur->table) {
         free(pCur->table);
@@ -746,7 +696,7 @@ static void reset_record_state(logicallog_cursor *pCur)
     pCur->genid[0] = pCur->oldgenid[0] = '\0';
 }
 
-static int produce_update_data_record(logicallog_cursor *pCur, DB_LOGC *logc, 
+static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc, 
         bdb_osql_log_rec_t *rec, DBT *logdta)
 {
     int rc, dtalen, page, index;
@@ -850,7 +800,7 @@ static int produce_update_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
     char *unpackedprev = retrieve_unpacked_memory_prev(pCur);
 
     /* Decompress and upgrade new record to current version */
-    if ((rc = decompress_and_upgrade(pCur, pCur->table, packedbuf, dtalen,
+    if ((rc = decompress_and_upgrade(pCur, pCur->table, packedbuf, updlen,
                     dtafile == 0, unpacked, &pCur->odh, &pCur->record, &pCur->reclen)) != 0) {
         logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing update for "
                 "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
@@ -859,7 +809,7 @@ static int produce_update_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
     }
 
     /* Decompress and upgrade prev record to current version */
-    if ((rc = decompress_and_upgrade(pCur, pCur->table, packedprevbuf, dtalen,
+    if ((rc = decompress_and_upgrade(pCur, pCur->table, packedprevbuf, prevlen,
                     dtafile == 0, unpackedprev, &pCur->oldodh, &pCur->oldrecord,
                     &pCur->oldreclen)) != 0) {
         logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing update for "
@@ -906,7 +856,7 @@ done:
     return rc;
 }
 
-static int produce_add_data_record(logicallog_cursor *pCur, DB_LOGC *logc, 
+static int produce_add_data_record(logicalops_cursor *pCur, DB_LOGC *logc, 
         bdb_osql_log_rec_t *rec, DBT *logdta)
 {
     int rc, dtalen, ixlen, page, index, rlen;
@@ -1013,7 +963,7 @@ done:
     return rc;
 }
 
-static int produce_delete_data_record(logicallog_cursor *pCur, DB_LOGC *logc, 
+static int produce_delete_data_record(logicalops_cursor *pCur, DB_LOGC *logc, 
         bdb_osql_log_rec_t *rec, DBT *logdta)
 {
     int rc, dtalen, page, index;
@@ -1079,7 +1029,7 @@ static int produce_delete_data_record(logicallog_cursor *pCur, DB_LOGC *logc,
 
     /* Reconstruct record from berkley */
     if ((rc = bdb_reconstruct_delete(bdb_state, &rec->lsn, &page,
-                    &index, NULL, 0, packedprevbuf, dtalen, NULL)) != 0) {
+                    &index, NULL, 0, packedprevbuf, dtalen, &dtalen)) != 0) {
         logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing delete for "
                 "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
                 rec->lsn.offset);
@@ -1124,7 +1074,7 @@ done:
     return rc;
 }
 
-static int unpack_logical_record(logicallog_cursor *pCur)
+static int unpack_logical_record(logicalops_cursor *pCur)
 {
     bdb_osql_log_rec_t *rec;
     bdb_state_type *bdb_state = thedb->bdb_env;
@@ -1216,22 +1166,21 @@ static int unpack_logical_record(logicallog_cursor *pCur)
 }
 
 /*
-** Advance a logicallog cursor to the next log entry
+** Advance a logicalops cursor to the next log entry
 */
-static int logicallogNext(sqlite3_vtab_cursor *cur){
-  logicallog_cursor *pCur = (logicallog_cursor*)cur;
-  DB_LSN durable_lsn = {0};
+static int logicalopsNext(sqlite3_vtab_cursor *cur){
+  logicalops_cursor *pCur = (logicalops_cursor*)cur;
   int rc;
   bdb_state_type *bdb_state = thedb->bdb_env;
 
-  if (pCur->notDurable || pCur->hitLast)
+  if (pCur->hitLast)
       return SQLITE_OK;
 
 again:
   if (pCur->log == NULL && (advance_to_next_commit(pCur) != 0))
       return SQLITE_INTERNAL;
 
-  if (pCur->log && !pCur->notDurable && !pCur->hitLast) {
+  if (pCur->log && !pCur->hitLast) {
       rc = unpack_logical_record(pCur);
       switch(rc) {
           case 1:
@@ -1254,7 +1203,7 @@ again:
 #define skipws(p) { while (*p != '\0' && *p == ' ') p++; }
 #define isnum(p) ( *p >= '0' && *p <= '9' )
 
-static inline void logicallog_lsn_to_str(char *st, DB_LSN *lsn)
+static inline void logicalops_lsn_to_str(char *st, DB_LSN *lsn)
 {
     sprintf(st, "{%d:%d}", lsn->file, lsn->offset);
 }
@@ -1321,72 +1270,65 @@ static u_int32_t get_generation_from_rowlocks_record(char *data)
     return generation;
 }
 
-/*
-** Return values of columns for the row at which the series_cursor
-** is currently pointing.
-*/
-static int logicallogColumn(
-  sqlite3_vtab_cursor *cur,   /* The cursor */
-  sqlite3_context *ctx,       /* First argument to sqlite3_result_...() */
-  int i                       /* Which column to return */
+static int logicalopsColumn(
+  sqlite3_vtab_cursor *cur,
+  sqlite3_context *ctx,
+  int i
 ){
-  logicallog_cursor *pCur = (logicallog_cursor*)cur;
+  logicalops_cursor *pCur = (logicalops_cursor*)cur;
 
   switch( i ){
-    case LOGICALLOG_COLUMN_START:
+    case LOGICALOPS_COLUMN_START:
         if (!pCur->minLsnStr) {
             pCur->minLsnStr = sqlite3_malloc(32);
-            logicallog_lsn_to_str(pCur->minLsnStr, &pCur->minLsn);
+            logicalops_lsn_to_str(pCur->minLsnStr, &pCur->minLsn);
         }
         sqlite3_result_text(ctx, pCur->minLsnStr, -1, NULL);
         break;
 
-    case LOGICALLOG_COLUMN_STOP:
+    case LOGICALOPS_COLUMN_STOP:
         if (!pCur->maxLsnStr) {
             pCur->maxLsnStr = sqlite3_malloc(32);
-            logicallog_lsn_to_str(pCur->maxLsnStr, &pCur->maxLsn);
+            logicalops_lsn_to_str(pCur->maxLsnStr, &pCur->maxLsn);
         }
         sqlite3_result_text(ctx, pCur->maxLsnStr, -1, NULL);
         break;
 
-    case LOGICALLOG_COLUMN_FLAGS:
-        sqlite3_result_int64(ctx, pCur->flags);
-        break;
-    case LOGICALLOG_COLUMN_COMMITLSN:
+    case LOGICALOPS_COLUMN_COMMITLSN:
         if (!pCur->curLsnStr) {
             pCur->curLsnStr = sqlite3_malloc(32);
         }
-        logicallog_lsn_to_str(pCur->curLsnStr, &pCur->curLsn);
+        logicalops_lsn_to_str(pCur->curLsnStr, &pCur->curLsn);
         sqlite3_result_text(ctx, pCur->curLsnStr, -1, NULL);
         break;
-    case LOGICALLOG_COLUMN_OPNUM:
+    case LOGICALOPS_COLUMN_OPNUM:
         sqlite3_result_int64(ctx, pCur->subop);
         break;
-    case LOGICALLOG_COLUMN_GENID:
+    case LOGICALOPS_COLUMN_GENID:
         if (pCur->genid[0] == '\0')
             sqlite3_result_null(ctx);
         else
             sqlite3_result_text(ctx, pCur->genid, -1, NULL);
         break;
-    case LOGICALLOG_COLUMN_OLDGENID:
+    case LOGICALOPS_COLUMN_OLDGENID:
         if (pCur->oldgenid[0] == '\0')
             sqlite3_result_null(ctx);
         else
             sqlite3_result_text(ctx, pCur->oldgenid, -1, NULL);
         break;
-    case LOGICALLOG_COLUMN_OPERATION:
+    case LOGICALOPS_COLUMN_OPERATION:
         sqlite3_result_text(ctx, pCur->opstring, -1, NULL);
         break;
-    case LOGICALLOG_COLUMN_TABLE:
+    case LOGICALOPS_COLUMN_TABLE:
         sqlite3_result_text(ctx, pCur->table, -1, NULL);
         break;
-    case LOGICALLOG_COLUMN_OLDRECORD:
+    case LOGICALOPS_COLUMN_OLDRECORD:
         if (pCur->oldjsonrec.len == 0)
             sqlite3_result_null(ctx);
         else
             sqlite3_result_text(ctx, pCur->oldjsonrec.buf, pCur->oldjsonrec.len, NULL);
         break;
-    case LOGICALLOG_COLUMN_RECORD:
+    case LOGICALOPS_COLUMN_RECORD:
         if (pCur->jsonrec.len == 0)
             sqlite3_result_null(ctx);
         else
@@ -1396,42 +1338,34 @@ static int logicallogColumn(
   return SQLITE_OK;
 }
 
-/*
-** Return the rowid for the current row.  In this implementation, the
-** rowid is the same as the output value.
-*/
-static int logicallogRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
-  logicallog_cursor *pCur = (logicallog_cursor*)cur;
+static int logicalopsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
+  logicalops_cursor *pCur = (logicalops_cursor*)cur;
   *pRowid = pCur->iRowid;
   return SQLITE_OK;
 }
 
-/*
-** Return TRUE if the cursor has been moved off of the last
-** row of output.
-*/
-static int logicallogEof(sqlite3_vtab_cursor *cur){
-  logicallog_cursor *pCur = (logicallog_cursor*)cur;
+static int logicalopsEof(sqlite3_vtab_cursor *cur){
+  logicalops_cursor *pCur = (logicalops_cursor*)cur;
   int rc;
 
   /* If we are not positioned, position now */
   if (pCur->openCursor == 0) {
-      if ((rc=logicallogNext(cur)) != SQLITE_OK)
+      if ((rc=logicalopsNext(cur)) != SQLITE_OK)
           return rc;
   }
-  if (pCur->hitLast || pCur->notDurable)
+  if (pCur->hitLast)
       return 1;
   if (pCur->maxLsn.file > 0 && log_compare(&pCur->curLsn, &pCur->maxLsn) > 0)
       return 1;
   return 0;
 }
 
-static int logicallogFilter(
+static int logicalopsFilter(
   sqlite3_vtab_cursor *pVtabCursor, 
   int idxNum, const char *idxStr,
   int argc, sqlite3_value **argv
 ){
-  logicallog_cursor *pCur = (logicallog_cursor *)pVtabCursor;
+  logicalops_cursor *pCur = (logicalops_cursor *)pVtabCursor;
   int i = 0;
 
   bzero(&pCur->minLsn, sizeof(pCur->minLsn));
@@ -1448,25 +1382,19 @@ static int logicallogFilter(
         return SQLITE_CONV_ERROR;
     }
   }
-  pCur->flags = 0;
-  if( idxNum & 4 ){
-    int64_t flags = sqlite3_value_int64(argv[i++]);
-    pCur->flags = flags;
-  }
   pCur->iRowid = 1;
   return SQLITE_OK;
 }
 
-static int logicallogBestIndex(
+static int logicalopsBestIndex(
   sqlite3_vtab *tab,
   sqlite3_index_info *pIdxInfo
 ){
-  int i;                 /* Loop over constraints */
-  int idxNum = 0;        /* The query plan bitmask */
-  int startIdx = -1;     /* Index of the start= constraint, or -1 if none */
-  int stopIdx = -1;      /* Index of the stop= constraint, or -1 if none */
-  int flagsIdx = -1;     /* Index of the block= constraint, block waiting if set */
-  int nArg = 0;          /* Number of arguments that seriesFilter() expects */
+  int i;
+  int idxNum = 0;
+  int startIdx = -1;
+  int stopIdx = -1;
+  int nArg = 0;
 
   const struct sqlite3_index_constraint *pConstraint;
   pConstraint = pIdxInfo->aConstraint;
@@ -1474,17 +1402,13 @@ static int logicallogBestIndex(
     if( pConstraint->usable==0 ) continue;
     if( pConstraint->op!=SQLITE_INDEX_CONSTRAINT_EQ ) continue;
     switch( pConstraint->iColumn ){
-      case LOGICALLOG_COLUMN_START:
+      case LOGICALOPS_COLUMN_START:
         startIdx = i;
         idxNum |= 1;
         break;
-      case LOGICALLOG_COLUMN_STOP:
+      case LOGICALOPS_COLUMN_STOP:
         stopIdx = i;
         idxNum |= 2;
-        break;
-      case LOGICALLOG_COLUMN_FLAGS:
-        flagsIdx = i;
-        idxNum |= 4;
         break;
     }
   }
@@ -1495,10 +1419,6 @@ static int logicallogBestIndex(
   if( stopIdx>=0 ){
     pIdxInfo->aConstraintUsage[stopIdx].argvIndex = ++nArg;
     pIdxInfo->aConstraintUsage[stopIdx].omit = 1;
-  }
-  if( flagsIdx>=0 ){
-    pIdxInfo->aConstraintUsage[flagsIdx].argvIndex = ++nArg;
-    pIdxInfo->aConstraintUsage[flagsIdx].omit = 1;
   }
   if( (idxNum & 3)==3 ){
     /* Both start= and stop= boundaries are available.  This is the 
@@ -1518,20 +1438,20 @@ static int logicallogBestIndex(
 ** This following structure defines all the methods for the 
 ** generate_series virtual table.
 */
-sqlite3_module systblLogicalLogsModule = {
+sqlite3_module systblLogicalOpsModule = {
   0,                         /* iVersion */
   0,                         /* xCreate */
-  logicallogConnect,            /* xConnect */
-  logicallogBestIndex,          /* xBestIndex */
-  logicallogDisconnect,         /* xDisconnect */
+  logicalopsConnect,            /* xConnect */
+  logicalopsBestIndex,          /* xBestIndex */
+  logicalopsDisconnect,         /* xDisconnect */
   0,                         /* xDestroy */
-  logicallogOpen,               /* xOpen - open a cursor */
-  logicallogClose,              /* xClose - close a cursor */
-  logicallogFilter,             /* xFilter - configure scan constraints */
-  logicallogNext,               /* xNext - advance a cursor */
-  logicallogEof,                /* xEof - check for end of scan */
-  logicallogColumn,             /* xColumn - read data */
-  logicallogRowid,              /* xRowid - read data */
+  logicalopsOpen,               /* xOpen - open a cursor */
+  logicalopsClose,              /* xClose - close a cursor */
+  logicalopsFilter,             /* xFilter - configure scan constraints */
+  logicalopsNext,               /* xNext - advance a cursor */
+  logicalopsEof,                /* xEof - check for end of scan */
+  logicalopsColumn,             /* xColumn - read data */
+  logicalopsRowid,              /* xRowid - read data */
   0,                         /* xUpdate */
   0,                         /* xBegin */
   0,                         /* xSync */
