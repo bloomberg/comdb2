@@ -3025,12 +3025,13 @@ static int bdb_osql_log_try_run_optimized(bdb_cursor_impl_t *cur,
                                             upd_dta->newgenid)) {
                 /* Retrieve the page and index for an inplace update. */
                 rc = bdb_reconstruct_inplace_update(
-                    cur->state, &rec->lsn, NULL, upd_dta->old_dta_len, &offset,
-                    NULL, &page, &index);
+                    cur->state, &rec->lsn, NULL, NULL, NULL, NULL, &offset,
+                    &page, &index);
             } else {
                 /* Retrieve the page and index for a normal (addrem) update. */
                 rc = bdb_reconstruct_update(cur->state, &rec->lsn, &page,
-                                            &index, NULL, 0, NULL, 0);
+                                            &index, NULL, NULL, NULL, NULL,
+                                            NULL, NULL, NULL, NULL);
             }
 
             /* Fail if this fails. */
@@ -3953,8 +3954,9 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
 
         /* If this is inplace, search for a berkley repl log entry.  */
         if (inplace && old_dta_len > 0) {
+            updlen = old_dta_len;
             rc = bdb_reconstruct_inplace_update(bdb_state, &rec->lsn, dtabuf,
-                                                old_dta_len, &offset, &updlen,
+                                                &updlen, NULL, NULL,  &offset,
                                                 &page, &index);
 
             /* Sanity check results. */
@@ -3963,8 +3965,11 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
         }
         /* Get the addrem's which correlate to this logical update. */
         else {
+            int old_len = old_dta_len;
             rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index,
-                                        NULL, 0, dtabuf, old_dta_len);
+                                        NULL, 0, dtabuf, &old_dta_len, NULL, NULL,
+                                        NULL, NULL);
+            assert(old_dta_len == old_len);
         }
         if (rc) {
             if (rc == BDBERR_NO_LOG)
@@ -4260,9 +4265,10 @@ static int bdb_osql_log_get_optim_data_int(bdb_state_type *bdb_state,
         }
 
         if (inplace) {
+            updlen = upd_dta->old_dta_len;
             rc = bdb_reconstruct_inplace_update(bdb_state, lsn, ptr,
-                                                upd_dta->old_dta_len, &offset,
-                                                &updlen, NULL, NULL);
+                                                &updlen, NULL, NULL, &offset,
+                                                NULL, NULL);
 
         } else {
             rc = bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL, 0,
