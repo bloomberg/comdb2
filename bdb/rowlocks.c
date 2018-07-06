@@ -633,60 +633,72 @@ int bdb_reconstruct_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
     int rc;
     int i = 0;
     static int cnt = 0;
-    DB_LSN nextlsn;
+    DB_LSN nextlsn, savelsn;
     int debugit = 0;
     DB_LSN lsn = *startlsn;
     int tmp_page, tmp_index, haveit;
     int maxfill;
 
     /* Get prev data */
+again1:
     do {
         rc = get_next_addrem_buffer(bdb_state, &lsn, prevdata,
                 prevdatalen ? *prevdatalen : 0,
                 &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
-        if (rc == BDBERR_NO_LOG)
-            return rc;
-    } while (nextlsn.file != 0 && haveit == 0);
+    } while (rc == 0 && nextlsn.file != 0 && haveit == 0);
+
+    if (rc == BDBERR_NO_LOG || nextlsn.file == 0 || haveit == 0)
+        return BDBERR_NO_LOG;
+
     if (prevdatalen)
         *prevdatalen = outlen;
 
     /* Get prev index */
-    do {
-        rc = get_next_addrem_buffer(bdb_state, &lsn, prevkey,
-                prevkeylen ? *prevkeylen : 0,
-                &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
-        if (rc == BDBERR_NO_LOG)
-            return rc;
-    } while (nextlsn.file != 0 && haveit == 0);
+    rc = get_next_addrem_buffer(bdb_state, &lsn, prevkey,
+            prevkeylen ? *prevkeylen : 0,
+            &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
+    if (rc == BDBERR_NO_LOG || nextlsn.file == 0)
+        return rc;
+
+    if (!haveit)
+        goto again1;
+
     if (prevkeylen)
         *prevkeylen = outlen;
 
     if (page) *page = tmp_page;
     if (index) *index = tmp_index;
 
-    if (newkey || newdata) {
-        /* Get newdata */
-        do {
-            rc = get_next_addrem_buffer(bdb_state, &lsn, newkey,
-                    newkeylen ? *newkeylen : 0, &outlen, &tmp_page, &tmp_index,
-                    &haveit, &nextlsn);
-            if (rc == BDBERR_NO_LOG)
-                return rc;
-        } while (nextlsn.file != 0 && haveit == 0);
-        if (newkeylen)
-            *newkeylen = outlen;
+    if (!newkey && !newdata)
+        return 0;
 
-        /* Get newdata */
-        do {
-            rc = get_next_addrem_buffer(bdb_state, &lsn, newdata, 
-                    newdatalen ? *newdatalen : 0,
-                    &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
-            if (rc == BDBERR_NO_LOG)
-                return rc;
-        } while (nextlsn.file != 0 && haveit == 0);
-        if (newdatalen)
-            *newdatalen = outlen;
-    }
+again2:
+    do {
+        rc = get_next_addrem_buffer(bdb_state, &lsn, newdata,
+                newdatalen ? *newdatalen : 0, &outlen, &tmp_page, &tmp_index,
+                &haveit, &nextlsn);
+    } while (rc == 0 && nextlsn.file != 0 && haveit == 0);
+
+    if (rc == BDBERR_NO_LOG || nextlsn.file == 0 || haveit == 0)
+        return BDBERR_NO_LOG;
+
+    if (newkeylen)
+        *newkeylen = outlen;
+
+    /* Get newdata */
+    rc = get_next_addrem_buffer(bdb_state, &lsn, newkey, 
+            newkeylen ? *newkeylen : 0,
+            &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
+
+    if (rc == BDBERR_NO_LOG || nextlsn.file == 0)
+        return rc;
+
+    if (!haveit)
+        goto again2;
+
+    if (newdatalen)
+        *newdatalen = outlen;
+
     return 0;
 }
 
