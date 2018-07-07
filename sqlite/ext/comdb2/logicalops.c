@@ -659,6 +659,7 @@ static int json_record(char *buf, int len, struct schema *sc,
             printed=1;
             break;
         case SERVER_BLOB:
+        case SERVER_VUTF8:
             in = (buf + f->offset);
             if (printed)
                 ret += dynstr_pr(ds, ",");

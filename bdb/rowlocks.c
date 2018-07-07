@@ -682,8 +682,8 @@ again2:
     if (rc == BDBERR_NO_LOG || nextlsn.file == 0 || haveit == 0)
         return BDBERR_NO_LOG;
 
-    if (newkeylen)
-        *newkeylen = outlen;
+    if (newdatalen)
+        *newdatalen = outlen;
 
     /* Get newdata */
     rc = get_next_addrem_buffer(bdb_state, &lsn, newkey, 
@@ -696,8 +696,8 @@ again2:
     if (!haveit)
         goto again2;
 
-    if (newdatalen)
-        *newdatalen = outlen;
+    if (newkeylen)
+        *newkeylen = outlen;
 
     return 0;
 }
