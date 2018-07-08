@@ -3506,6 +3506,8 @@ done:
     return rc;
 }
 
+int gbl_abort_on_reconstruct_failure = 0;
+
 static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
                                         bdb_osql_log_t *log,
                                         bdb_osql_log_rec_t *rec, DBT *inlogdta,
@@ -3564,6 +3566,8 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
         else {
             if (rc == DB_NOTFOUND) {
                 *bdberr = BDBERR_NO_LOG;
+                if (gbl_abort_on_reconstruct_failure)
+                    abort();
                 return -1;
             }
             logmsg(LOGMSG_ERROR, "Unable to get log lsn %d:%d!\n", rec->lsn.file,
@@ -3657,8 +3661,12 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
         rc = bdb_reconstruct_delete(bdb_state, &rec->lsn, &page, &index, NULL,
                                     0, dtabuf, dtalen, NULL);
         if (rc) {
-            if (rc == BDBERR_NO_LOG)
+            if (gbl_abort_on_reconstruct_failure)
+                abort();
+
+            if (rc == BDBERR_NO_LOG) {
                 *bdberr = rc;
+            }
 
             logmsg(LOGMSG_ERROR, "%s:%d Failed to reconstruct delete dta\n",
                     __FILE__, __LINE__);
@@ -3752,8 +3760,13 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
             bdb_state, &rec->lsn, NULL, NULL, keybuf, keylen, dtabuf,
             dtalen + 4 * bdb_state->ixcollattr[ix], &outdatalen);
         if (rc) {
-            if (rc == BDBERR_NO_LOG)
+            if (gbl_abort_on_reconstruct_failure)
+                abort();
+
+            if (rc == BDBERR_NO_LOG) {
                 *bdberr = rc;
+                abort();
+            }
 
             logmsg(LOGMSG_ERROR, "%s:%d Failed to reconstruct delete ix\n", __FILE__,
                     __LINE__);
@@ -3972,8 +3985,12 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
             assert(old_dta_len == old_len);
         }
         if (rc) {
-            if (rc == BDBERR_NO_LOG)
+            if (gbl_abort_on_reconstruct_failure)
+                abort();
+
+            if (rc == BDBERR_NO_LOG) {
                 *bdberr = rc;
+            }
 
             if (free_ptr)
                 free(free_ptr);
@@ -4078,8 +4095,11 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
 
         rc = bdb_reconstruct_key_update(
             bdb_state, &rec->lsn, (void **)&collattr, &offset, &collattrlen);
-        if (rc)
+        if (rc) {
+            if (gbl_abort_on_reconstruct_failure)
+                abort();
             return rc;
+        }
 
         assert(offset == 0);
 
@@ -4223,6 +4243,9 @@ static int bdb_osql_log_get_optim_data_int(bdb_state_type *bdb_state,
         rc = bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL, 0, ptr,
                                     del_dta->dtalen, NULL);
         if (rc) {
+            if (gbl_abort_on_reconstruct_failure)
+                abort();
+
             if (rc == BDBERR_NO_LOG)
                 *bdberr = rc;
 
@@ -4275,6 +4298,9 @@ static int bdb_osql_log_get_optim_data_int(bdb_state_type *bdb_state,
                                         ptr, upd_dta->old_dta_len, NULL);
         }
         if (rc) {
+            if (gbl_abort_on_reconstruct_failure)
+                abort();
+
             if (rc == BDBERR_NO_LOG)
                 *bdberr = rc;
 
