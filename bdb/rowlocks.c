@@ -638,13 +638,14 @@ int bdb_reconstruct_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
     DB_LSN lsn = *startlsn;
     int tmp_page, tmp_index, haveit;
     int maxfill;
+    int pvlen;
 
     /* Get prev data */
 again1:
+    pvlen = prevdatalen ? *prevdatalen : 0;
     do {
-        rc = get_next_addrem_buffer(bdb_state, &lsn, prevdata,
-                prevdatalen ? *prevdatalen : 0,
-                &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
+        rc = get_next_addrem_buffer(bdb_state, &lsn, pvlen ? prevdata : NULL,
+                pvlen, &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
     } while (rc == 0 && nextlsn.file != 0 && haveit == 0);
 
     if (rc == BDBERR_NO_LOG || nextlsn.file == 0 || haveit == 0)
@@ -654,9 +655,10 @@ again1:
         *prevdatalen = outlen;
 
     /* Get prev index */
-    rc = get_next_addrem_buffer(bdb_state, &lsn, prevkey,
-            prevkeylen ? *prevkeylen : 0,
-            &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
+    pvlen = prevkeylen ? *prevkeylen : 0;
+    rc = get_next_addrem_buffer(bdb_state, &lsn, pvlen ? prevkey : NULL,
+            pvlen, &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
+
     if (rc == BDBERR_NO_LOG || nextlsn.file == 0)
         return rc;
 
@@ -673,10 +675,10 @@ again1:
         return 0;
 
 again2:
+    pvlen = newdatalen ? *newdatalen : 0;
     do {
-        rc = get_next_addrem_buffer(bdb_state, &lsn, newdata,
-                newdatalen ? *newdatalen : 0, &outlen, &tmp_page, &tmp_index,
-                &haveit, &nextlsn);
+        rc = get_next_addrem_buffer(bdb_state, &lsn, pvlen ? newdata : NULL,
+                pvlen, &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
     } while (rc == 0 && nextlsn.file != 0 && haveit == 0);
 
     if (rc == BDBERR_NO_LOG || nextlsn.file == 0 || haveit == 0)
@@ -686,9 +688,9 @@ again2:
         *newdatalen = outlen;
 
     /* Get newdata */
-    rc = get_next_addrem_buffer(bdb_state, &lsn, newkey, 
-            newkeylen ? *newkeylen : 0,
-            &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
+    pvlen = newkeylen ? *newkeylen : 0;
+    rc = get_next_addrem_buffer(bdb_state, &lsn, pvlen ? newkey : NULL,
+            pvlen, &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
 
     if (rc == BDBERR_NO_LOG || nextlsn.file == 0)
         return rc;

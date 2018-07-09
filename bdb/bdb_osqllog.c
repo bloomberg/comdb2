@@ -3979,9 +3979,16 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
         /* Get the addrem's which correlate to this logical update. */
         else {
             int old_len = old_dta_len;
-            rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index,
-                                        NULL, 0, dtabuf, &old_dta_len, NULL, NULL,
-                                        NULL, NULL);
+            /* This only works if there's a previous record */
+            if (old_len == 0)
+                assert(dtafile != 0);
+
+            /* Only reconstruct previously existing records */
+            if (old_len > 0) {
+                rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index,
+                        NULL, 0, dtabuf, &old_dta_len, NULL, NULL,
+                        NULL, NULL);
+            }
             assert(old_dta_len == old_len);
         }
         if (rc) {
