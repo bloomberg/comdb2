@@ -54,6 +54,7 @@ extern char **sfuncs;
 extern char **afuncs;
 static int gbl_nogbllrl; /* don't load /bb/bin/comdb2*.lrl */
 
+static int pre_read_option(char *, int);
 static int read_lrl_option(struct dbenv *, char *, struct read_lrl_option_type *, int);
 
 static struct option long_options[] = {
@@ -227,8 +228,16 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
     return 0;
 }
 
-static int defer_option(struct dbenv *dbenv, enum deferred_option_level lvl,
-                        char *option, int len, int line)
+struct deferred_option {
+    char *option;
+    int line;
+    int len;
+    LINKC_T(struct deferred_option) lnk;
+};
+
+LISTC_T(struct deferred_option) deferred_options;
+
+static int defer_option(char *option, int len, int line)
 {
     struct deferred_option *opt;
     if (len == -1) len = strlen(option);
@@ -246,7 +255,7 @@ static int defer_option(struct dbenv *dbenv, enum deferred_option_level lvl,
     memcpy(opt->option, option, len);
     opt->line = line;
     opt->len = strlen(opt->option);
-    listc_abl(&dbenv->deferred_options[lvl], opt);
+    listc_abl(&deferred_options, opt);
     return 0;
 }
 
@@ -263,6 +272,81 @@ int deferred_do_commands(struct dbenv *env, char *option,
     else if (tokcmp(tok, tlen, "do") == 0)
         rc = process_command(env, option + st, len - st, 0);
     return rc;
+}
+
+void process_deferred_options(struct dbenv *dbenv, lrl_reader *callback)
+{
+    struct deferred_option *opt;
+    LISTC_FOR_EACH(&deferred_options, opt, lnk) {
+        callback(dbenv, opt->option, NULL, opt->len);
+    }
+}
+
+void clear_deferred_options(void)
+{
+    struct deferred_option *opt;
+    opt = listc_rtl(&deferred_options);
+    while (opt) {
+        free(opt->option);
+        free(opt);
+        opt = listc_rtl(&deferred_options);
+    }
+}
+
+static char *legacy_options[] = {
+    "disallow write from beta if prod",
+    "noblobstripe",
+    "nullsort high",
+    "dont_sort_nulls_with_header",
+    "nochecksums",
+    "sql_tranlevel_default comdb2",	  /* check this one*/
+    "sql_tranlevel_default prefer_oldblock", /* and this one */
+    "off fix_cstr",
+    "no_null_blob_fix",
+    "no_static_tag_blob_fix",
+    "dont_forbid_ulonglong",
+    "dont_init_with_ondisk_header",
+    "dont_init_with_instant_schema_change",
+    "dont_init_with_inplace_updates",
+    "dont_prefix_foreign_keys",
+    "dont_superset_foreign_keys",
+    "disable_inplace_blobs",
+    "disable_inplace_blob_optimization",
+    "disable_osql_blob_optimization",
+    "nocrc32c",
+    "enable_tagged_api",
+    "nokeycompr",
+    "norcache",
+    "usenames",
+    "setattr DIRECTIO 0",
+    "berkattr elect_highest_committed_gen 0",
+    "unnatural_types 1",
+    "enable_sql_stmt_caching none",
+    "on accept_on_child_nets",
+    "env_messages",
+    "off return_long_column_names",
+    "ddl_cascade_drop 0",
+    "setattr NET_SEND_GBLCONTEXT 1",
+    "setattr ENABLE_SEQNUM_GENERATIONS 0",
+    "setattr MASTER_LEASE 0",
+    "setattr SC_DONE_SAME_TRAN 0",
+    "logmsg notimestamp",
+};
+
+int pre_read_legacy_defaults(void *_, void *__)
+{
+    for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++) {
+        pre_read_option(legacy_options[i], strlen(legacy_options[i]));
+    }
+    return 0;
+}
+
+static void read_legacy_defaults(struct dbenv *dbenv,
+                                 struct read_lrl_option_type *options)
+{
+    for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++) {
+        read_lrl_option(dbenv, legacy_options[i], options, strlen(legacy_options[i]));
+    }
 }
 
 /* handles "if"'s, returns 1 if this isn't an "if" statement or if the statement
@@ -291,84 +375,6 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
     return 1; /* there was no "if" statement or it was true */
 }
 
-void process_deferred_options(struct dbenv *dbenv,
-                              enum deferred_option_level lvl, void *usrdata,
-                              lrl_reader *callback)
-{
-    struct deferred_option *opt;
-    int rc;
-
-    LISTC_FOR_EACH(&dbenv->deferred_options[lvl], opt, lnk)
-    {
-        callback(dbenv, opt->option, usrdata, opt->len);
-    }
-}
-
-void clear_deferred_options(struct dbenv *dbenv, enum deferred_option_level lvl)
-{
-    struct deferred_option *opt;
-    opt = listc_rtl(&dbenv->deferred_options[lvl]);
-    while (opt) {
-        free(opt->option);
-        free(opt);
-        opt = listc_rtl(&dbenv->deferred_options[lvl]);
-    }
-}
-
-static void init_deferred_options(struct dbenv *dbenv)
-{
-    for (int lvl = 0; lvl < DEFERRED_OPTION_MAX; lvl++) {
-        listc_init(&dbenv->deferred_options[lvl],
-                   offsetof(struct deferred_option, lnk));
-    }
-}
-
-static void add_legacy_default_options(struct dbenv *dbenv)
-{
-    char *legacy_options[] = {
-        "disallow write from beta if prod",
-        "noblobstripe",
-        "nullsort high",
-        "dont_sort_nulls_with_header",
-        "nochecksums",
-        "sql_tranlevel_default comdb2",          /* check this one*/
-        "sql_tranlevel_default prefer_oldblock", /* and this one */
-        "off fix_cstr",
-        "no_null_blob_fix",
-        "no_static_tag_blob_fix",
-        "dont_forbid_ulonglong",
-        "dont_init_with_ondisk_header",
-        "dont_init_with_instant_schema_change",
-        "dont_init_with_inplace_updates",
-        "dont_prefix_foreign_keys",
-        "dont_superset_foreign_keys",
-        "disable_inplace_blobs",
-        "disable_inplace_blob_optimization",
-        "disable_osql_blob_optimization",
-        "nocrc32c",
-        "enable_tagged_api",
-        "nokeycompr",
-        "norcache",
-        "usenames",
-        "setattr DIRECTIO 0",
-        "berkattr elect_highest_committed_gen 0",
-        "unnatural_types 1",
-        "enable_sql_stmt_caching none",
-        "on accept_on_child_nets",
-        "env_messages",
-        "off return_long_column_names",
-        "ddl_cascade_drop 0",
-        "setattr NET_SEND_GBLCONTEXT 1",
-        "setattr ENABLE_SEQNUM_GENERATIONS 0",
-        "setattr MASTER_LEASE 0",
-        "setattr SC_DONE_SAME_TRAN 0",
-        "logmsg notimestamp"
-    };
-
-    for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++)
-        defer_option(dbenv, DEFERRED_LEGACY_DEFAULTS, legacy_options[i], -1, 0);
-}
-
 void getmyaddr()
 {
     struct hostent *h;
@@ -382,7 +388,7 @@ void getmyaddr()
     memcpy(&gbl_myaddr.s_addr, h->h_addr, h->h_length);
 }
 
-static int pre_read_option(struct dbenv *dbenv, char *line, int llen)
+static int pre_read_option(char *line, int llen)
 {
     char *tok;
     int st = 0;
@@ -397,23 +403,14 @@ static int pre_read_option(struct dbenv *dbenv, char *line, int llen)
         return 0;
     }
 
-    if (tokcmp(tok, ltok, "legacy_defaults") == 0) {
-        add_legacy_default_options(dbenv);
-    }
-
     /* Handle global tunables which are supposed to be read early. */
     rc = handle_lrl_tunable(tok, ltok, line + st, llen - st, READEARLY);
+
     /* Follow through, if the tunable is not found. */
     if (rc != TUNABLE_ERR_INVALID_TUNABLE) {
         return rc;
     }
     return 0;
-}
-
-static int pre_read_deferred_callback(struct dbenv *env, char *option,
-                                      struct read_lrl_option_type *p, int len)
-{
-    return pre_read_option(env, option, len);
 }
 
 static void pre_read_lrl_file(struct dbenv *dbenv, const char *lrlname)
@@ -428,11 +425,8 @@ static void pre_read_lrl_file(struct dbenv *dbenv, const char *lrlname)
     }
 
     while (fgets(line, sizeof(line), ff)) {
-        pre_read_option(dbenv, line, strlen(line));
+        pre_read_option(line, strlen(line));
     }
-
-    process_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS, NULL,
-                             pre_read_deferred_callback);
 
     fclose(ff); /* lets get one fd back */
 }
@@ -467,15 +461,13 @@ struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
     }
 
     logmsg(LOGMSG_INFO, "processing %s...\n", lrlname);
+
     while (fgets(line, sizeof(line), ff)) {
         char *s = strchr(line, '\n');
         if (s) *s = 0;
         options.lineno++;
         read_lrl_option(dbenv, line, &options, strlen(line));
     }
-    options.lineno = 0;
-    process_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS, &options, read_lrl_option);
-    clear_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS);
 
     /* process legacy options (we deferred them) */
 
@@ -1277,14 +1269,12 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         free(attr);
         free(value);
     } else if (tokcmp(line, ltok, "sqllogger") == 0) {
-        /* This is one of several things we can't do until we have more of
-         * an environment set up.
-         * What would be nice is if processing options was decoupled from
-         * reading files, so we
-         * could build a list of deferred options and call process_lrl_line
-         * on them one by one.
-         * One day. No, pre_read_lrl_file isn't what I want. */
-        defer_option(dbenv, DEFERRED_SEND_COMMAND, line, len, options->lineno);
+        /* This is one of several things we can't do until we have more of an
+         * environment set up. What would be nice is if processing options was
+         * decoupled from reading files, so we could build a list of deferred
+         * options and call process_lrl_line on them one by one. One day. No,
+         * pre_read_lrl_file isn't what I want. */
+        defer_option(line, len, options->lineno);
     } else if (tokcmp(line, ltok, "location") == 0) {
         /* ignore - these are processed by init_file_locations */
     } else if (tokcmp(tok, ltok, "include") == 0) {
@@ -1314,7 +1304,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
 
         read_lrl_file(dbenv, file, 0);
     } else if (tokcmp(line, ltok, "do") == 0) {
-        defer_option(dbenv, DEFERRED_SEND_COMMAND, line, len, options->lineno);
+        defer_option(line, len, options->lineno);
     } else if (tokcmp(line, ltok, "default_datetime_precision") == 0) {
         tok = segtok(line, len, &st, &ltok);
         if (ltok <= 0) {
@@ -1330,10 +1320,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             return -1;
 #endif
     } else if (tokcmp(tok, ltok, "legacy_defaults") == 0) {
-        /* NOOP: Already handled in pre_read_option(); check added here to keep
-         * handle_lrl_tunable() from throwing a warning as legacy_defaults has
-         * not been registered into the new tunables sub-system yet.
-         */
+        read_legacy_defaults(dbenv, options);
     } else {
         /* Handle tunables registered under tunables sub-system. */
         rc = handle_lrl_tunable(tok, ltok, line + st, len - st, 0);
@@ -1423,7 +1410,7 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
     int loaded_comdb2_local = 0;
     const char *crtdir = getenv("PWD");
 
-    init_deferred_options(dbenv);
+    listc_init(&deferred_options, offsetof(struct deferred_option, lnk));
     listc_init(&dbenv->lrl_files, offsetof(struct lrlfile, lnk));
 
     if (lrlname) pre_read_lrl_file(dbenv, lrlname);

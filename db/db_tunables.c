@@ -28,6 +28,7 @@
 #include "analyze.h"
 #include "intern_strings.h"
 #include "portmuxapi.h"
+#include "config.h"
 
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512
@@ -1326,7 +1327,7 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
 
     if (!(t = hash_find_readonly(gbl_tunables->hash, &tok))) {
         /* Do not warn in READEARLY phase. */
-        if ((flags & READEARLY == 0)) {
+        if ((flags & READEARLY) == 0) {
             logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", tok);
         }
         return TUNABLE_ERR_INVALID_TUNABLE;

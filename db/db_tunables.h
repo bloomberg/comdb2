@@ -1391,5 +1391,8 @@ REGISTER_TUNABLE("inmem_repdb_memory",
                  "Current memory usage of in-memory repdb.  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_inmem_repdb_memory, READONLY, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("legacy_defaults", "Configure server with legacy defaults",
+                 TUNABLE_BOOLEAN, NULL, NOARG | INTERNAL | READONLY | READEARLY,
+                 NULL, NULL, pre_read_legacy_defaults, NULL);
 
 #endif /* _DB_TUNABLES_H */

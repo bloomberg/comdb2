@@ -512,13 +512,6 @@ enum RECORD_WRITE_TYPES {
     RECORD_WRITE_MAX = 3
 };
 
-enum deferred_option_level {
-   DEFERRED_SEND_COMMAND,
-   DEFERRED_LEGACY_DEFAULTS,
-
-   DEFERRED_OPTION_MAX
-};
-
 /* Raw stats, kept on a per origin machine basis.  This whole struct is
  * essentially an array of unsigneds.  Please don't add any other data
  * type as this allows us to easily sum it and diff it in a loop in reqlog.c.
@@ -816,13 +809,6 @@ struct coordinated_component {
     int dbnum;
 };
 
-struct deferred_option {
-    char *option;
-    int line;
-    int len;
-    LINKC_T(struct deferred_option) lnk;
-};
-
 struct lrlfile {
     char *file;
     LINKC_T(struct lrlfile) lnk;
@@ -974,7 +960,6 @@ struct dbenv {
     unsigned prev_txns_aborted;
     int wait_for_N_nodes;
 
-    LISTC_T(struct deferred_option) deferred_options[DEFERRED_OPTION_MAX];
     LISTC_T(struct lrlfile) lrl_files;
 
     int incoh_notcoherent;

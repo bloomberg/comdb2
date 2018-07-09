@@ -5103,9 +5103,8 @@ int main(int argc, char **argv)
     if (comdb2ma_stats_cron() != 0)
         abort();
 
-    process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
-                             deferred_do_commands);
-    clear_deferred_options(thedb, DEFERRED_SEND_COMMAND);
+    process_deferred_options(thedb, deferred_do_commands);
+    clear_deferred_options();
 
     // db started - disable recsize kludge so
     // new schemachanges won't allow broken size.
