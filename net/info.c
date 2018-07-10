@@ -90,6 +90,8 @@ static void basic_stat(netinfo_type *netinfo_ptr, FILE *out)
 
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
 
+    net_subnet_status(out);
+
     for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
         basic_node_data(ptr, out);
     }
