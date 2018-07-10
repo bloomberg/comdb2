@@ -624,12 +624,13 @@ static int form_indexfile_name(bdb_state_type *bdb_state, DB_TXN *tid,
                           0 /*isstriped*/, 0 /*stripenum*/, outbuf, buflen);
 }
 
+int gbl_queuedb_genid_filename = 1;
 static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
                              int create, char *name, size_t len)
 {
     unsigned long long ver;
     int rc, bdberr;
-    if (create) {
+    if (create && gbl_queuedb_genid_filename) {
         ver = flibc_htonll(bdb_get_cmp_context(bdb_state));
         rc = bdb_new_file_version_qdb(bdb_state, tran, ver, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {

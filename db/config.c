@@ -331,6 +331,7 @@ static char *legacy_options[] = {
     "setattr MASTER_LEASE 0",
     "setattr SC_DONE_SAME_TRAN 0",
     "logmsg notimestamp",
+    "queuedb_genid_filename off",
 };
 
 int pre_read_legacy_defaults(void *_, void *__)
@@ -1320,6 +1321,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             return -1;
 #endif
     } else if (tokcmp(tok, ltok, "legacy_defaults") == 0) {
+        /* Process here because can't pass to handle_lrl_tunable (where it is
+         * marked as READEARLY) */
         read_legacy_defaults(dbenv, options);
     } else {
         /* Handle tunables registered under tunables sub-system. */
