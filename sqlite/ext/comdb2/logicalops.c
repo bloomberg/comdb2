@@ -19,6 +19,7 @@
 #include <assert.h>
 #include <string.h>
 #include "comdb2.h"
+#include "sql.h"
 #include "build/db.h"
 #include "build/db_int.h"
 #include "dbinc/db_swap.h"
@@ -71,6 +72,7 @@ struct logicalops_cursor {
   DB_LOGC *logc;             /* Log Cursor */
   DBT data;
   bdb_osql_log_t *log;
+  char *tz;
   char *table;
   void *packedprev;
   void *unpackedprev;
@@ -106,6 +108,7 @@ static int logicalopsConnect(
     if( pNew==0 ) return SQLITE_NOMEM;
     memset(pNew, 0, sizeof(*pNew));
   }
+
   return rc;
 }
 
@@ -119,6 +122,9 @@ static int logicalopsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
+  struct sql_thread *thd = pthread_getspecific(query_info_key);
+  if (thd && thd->clnt)
+      pCur->tz = thd->clnt->tzname;
   *ppCursor = &pCur->base;
   return SQLITE_OK;
 }
@@ -281,7 +287,7 @@ static int advance_to_next_commit(logicalops_cursor *pCur)
     if (!pCur->openCursor) {
         if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &pCur->logc,
                         0)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s line %d error getting a log cursor rc=%d\n",
+            logmsg(LOGMSG_ERROR, "%s line %d error getting log-cursor rc=%d\n",
                     __func__, __LINE__, rc);
             return SQLITE_INTERNAL;
         }
@@ -300,10 +306,8 @@ static int advance_to_next_commit(logicalops_cursor *pCur)
 
 again:
     do {
-        if (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, getflags) != 0) {
-            if (getflags != DB_NEXT) {
-                return SQLITE_INTERNAL;
-            }
+        if (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data,
+                    getflags) != 0) {
             pCur->hitLast = 1;
         }
         getflags = DB_NEXT;
@@ -485,13 +489,16 @@ static int json_blob(char *buf, int len, struct schema *sc, int ix,
     return rc;
 }
 
+extern pthread_key_t query_info_key;
+
 /* Copied & revised from printrecord */
-static int json_record(char *buf, int len, struct schema *sc,
-        dynstr_t *ds) 
+static int json_record(logicalops_cursor *pCur, char *buf, int len,
+        struct schema *sc, dynstr_t *ds) 
 {
     int field;
     struct field *f;
-    struct field_conv_opts opts = {0};
+    struct field_conv_opts_tz tzopts = {0};
+    struct field_conv_opts *opts = (struct field_conv_opts *)&tzopts;
 
     unsigned long long uival;
     long long ival;
@@ -504,8 +511,13 @@ static int json_record(char *buf, int len, struct schema *sc,
     void *in;
 
 #ifdef _LINUX_SOURCE
-    opts.flags |= FLD_CONV_LENDIAN;
+    tzopts.flags |= FLD_CONV_LENDIAN;
 #endif
+    tzopts.flags |= FLD_CONV_TZONE; 
+    if (pCur->tz)
+        snprintf(tzopts.tzname, sizeof(tzopts.tzname), "%s", pCur->tz);
+    else
+        snprintf(tzopts.tzname, sizeof(tzopts.tzname), "US/Eastern");
 
     ret += dynstr_pr(ds, "{");
     for (field = 0; field < sc->nmembers; field++) {
@@ -524,8 +536,8 @@ static int json_record(char *buf, int len, struct schema *sc,
         switch (f->type) {
         case SERVER_UINT:
             rc = SERVER_UINT_to_CLIENT_UINT(
-                buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/,
-                &uival, 8, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
+                buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/,
+                &uival, 8, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
                 ret += dynstr_pr(ds, ",");
             if (null)
@@ -536,8 +548,8 @@ static int json_record(char *buf, int len, struct schema *sc,
             break;
         case SERVER_BINT:
             rc = SERVER_BINT_to_CLIENT_INT(
-                buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, &ival,
-                8, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
+                buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, &ival,
+                8, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
                 ret += dynstr_pr(ds, ",");
             if (null)
@@ -548,8 +560,8 @@ static int json_record(char *buf, int len, struct schema *sc,
             break;
         case SERVER_BREAL:
             rc = SERVER_BREAL_to_CLIENT_REAL(
-                buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, &dval,
-                8, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
+                buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, &dval,
+                8, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
                 ret += dynstr_pr(ds, ",");
             if (null)
@@ -561,8 +573,8 @@ static int json_record(char *buf, int len, struct schema *sc,
         case SERVER_BCSTR:
             sval = realloc(sval, flen + 1);
             rc = SERVER_BCSTR_to_CLIENT_CSTR(
-                buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
-                flen + 1, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
+                buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
+                flen + 1, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
                 ret += dynstr_pr(ds, ",");
             if (null)
@@ -572,27 +584,22 @@ static int json_record(char *buf, int len, struct schema *sc,
             printed=1;
             break;
         case SERVER_BYTEARRAY:
-            sval = realloc(sval, flen);
-            rc = SERVER_BYTEARRAY_to_CLIENT_BYTEARRAY(
-                buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
-                flen, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
+            in = (buf + f->offset);
             if (printed)
                 ret += dynstr_pr(ds, ",");
             if (null)
                 ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
             else {
-                ret += dynstr_pr(ds, "\"%s\":x'", f->name);
-                ret += dynstr_hx(ds, (void *)sval, flen);
-                ret += dynstr_pr(ds, "'");
+                ret += dynstr_pr(ds, "\"%s\":x", f->name);
+                ret += dynstr_hx(ds, in + 1, flen - 1);
             }
             printed=1;
-
             break;
         case SERVER_DATETIME:
             sval = realloc(sval,100);
             rc = SERVER_DATETIME_to_CLIENT_CSTR(
-                buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
-                flen, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
+                buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
+                100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
                 ret += dynstr_pr(ds, ",");
             if (null)
@@ -605,8 +612,8 @@ static int json_record(char *buf, int len, struct schema *sc,
         case SERVER_INTVYM:
             sval = realloc(sval,100);
             rc = SERVER_INTVYM_to_CLIENT_CSTR(
-                buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
-                flen, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
+                buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
+                100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
                 ret += dynstr_pr(ds, ",");
             if (null)
@@ -619,8 +626,8 @@ static int json_record(char *buf, int len, struct schema *sc,
         case SERVER_DECIMAL:
             sval = realloc(sval,100);
             rc = SERVER_DECIMAL_to_CLIENT_CSTR(
-                buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
-                flen, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
+                buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
+                100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
                 ret += dynstr_pr(ds, ",");
             if (null)
@@ -633,8 +640,22 @@ static int json_record(char *buf, int len, struct schema *sc,
         case SERVER_DATETIMEUS:
             sval = realloc(sval,100);
             rc = SERVER_DATETIMEUS_to_CLIENT_CSTR(
-                buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
-                flen, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
+                buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
+                100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
+            if (printed)
+                ret += dynstr_pr(ds, ",");
+            if (null)
+                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+            else {
+                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+            }
+            printed=1;
+            break;
+        case SERVER_INTVDS:
+            sval = realloc(sval,100);
+            rc = SERVER_INTVDS_to_CLIENT_CSTR(
+                buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
+                100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
                 ret += dynstr_pr(ds, ",");
             if (null)
@@ -647,8 +668,8 @@ static int json_record(char *buf, int len, struct schema *sc,
         case SERVER_INTVDSUS:
             sval = realloc(sval,100);
             rc = SERVER_INTVDSUS_to_CLIENT_CSTR(
-                buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
-                flen, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
+                buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
+                100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
                 ret += dynstr_pr(ds, ",");
             if (null)
@@ -658,8 +679,29 @@ static int json_record(char *buf, int len, struct schema *sc,
             }
             printed=1;
             break;
-        case SERVER_BLOB:
+        case SERVER_BLOB2:
+            in = (buf + f->offset);
+            if (printed)
+                ret += dynstr_pr(ds, ",");
+            if (stype_is_null(in))
+                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+            else {
+                ret += dynstr_pr(ds, "\"%s\":x", f->name);
+                ret += dynstr_hx(ds, (void *)in + 5, flen - 5);
+            }
+            break;
         case SERVER_VUTF8:
+            in = (buf + f->offset);
+            if (printed)
+                ret += dynstr_pr(ds, ",");
+            if (stype_is_null(in))
+                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+            else {
+                ret += dynstr_pr(ds, "\"%s\":x", f->name);
+                ret += dynstr_hx(ds, (void *)in + 5, flen - 5);
+            }
+            break;
+        case SERVER_BLOB:
             in = (buf + f->offset);
             if (printed)
                 ret += dynstr_pr(ds, ",");
@@ -820,13 +862,13 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
     }
 
     if (dtafile == 0) {
-        if ((rc = json_record(pCur->record, pCur->reclen, pCur->db->schema,
+        if ((rc = json_record(pCur, pCur->record, pCur->reclen, pCur->db->schema,
                         &pCur->jsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_record returns %d\n", __func__,
                     __LINE__, rc);
             goto done;
         }
-        if ((rc = json_record(pCur->oldrecord, pCur->oldreclen, pCur->db->schema,
+        if ((rc = json_record(pCur, pCur->oldrecord, pCur->oldreclen, pCur->db->schema,
                         &pCur->oldjsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_record returns %d\n", __func__,
                     __LINE__, rc);
@@ -939,7 +981,7 @@ static int produce_add_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
     }
 
     if (dtafile == 0) {
-        if ((rc = json_record(pCur->record, pCur->reclen, pCur->db->schema,
+        if ((rc = json_record(pCur, pCur->record, pCur->reclen, pCur->db->schema,
                         &pCur->jsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_record returns %d\n", __func__,
                     __LINE__, rc);
@@ -1050,7 +1092,7 @@ static int produce_delete_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
     }
 
     if (dtafile == 0) {
-        if ((rc = json_record(pCur->oldrecord, pCur->oldreclen, pCur->db->schema,
+        if ((rc = json_record(pCur, pCur->oldrecord, pCur->oldreclen, pCur->db->schema,
                         &pCur->oldjsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_record returns %d\n", __func__,
                     __LINE__, rc);
@@ -1163,7 +1205,7 @@ static int unpack_logical_record(logicalops_cursor *pCur)
         pCur->log = NULL;
     }
 
-    return (produced_row && rc == 0) ? 0 : -1;
+    return (produced_row && rc != 0) ? -1 : 0;
 }
 
 /*
