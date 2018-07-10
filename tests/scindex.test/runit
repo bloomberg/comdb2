@@ -744,6 +744,64 @@ schema
 }\$\$
 EOF
 
+
+echo "Add index with spaces -- should not succeed"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+alter table t1 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+keys
+{
+   dup "KEYWITH SPACE"  = id
+}
+}$$
+EOF
+if [[ $? == 0 ]]; then
+    errquit "Schemachange has succeded and thats a problem"
+fi
+
+echo "Add index with empty name -- should not succeed"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+alter table t1 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+keys
+{
+   dup ""  = id
+}
+}$$
+EOF
+if [[ $? == 0 ]]; then
+    errquit "Schemachange has succeded and thats a problem"
+fi
+
+
+echo "Add long index name -- should not succeed"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+alter table t1 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+keys
+{
+   dup "KEY_12345678901234567890123456789012345678901234567890"  = id   # 54 characters -- too long
+}
+}$$
+EOF
+if [[ $? == 0 ]]; then
+    errquit "Schemachange has succeded and thats a problem"
+fi
+
+
+
 # If bgdebugging is enabled, print the filename.
 if [[ "1" == "$bgdebug" ]]; then
 
