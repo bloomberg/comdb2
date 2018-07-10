@@ -6847,8 +6847,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                           get_keynm_from_db_idx(iq->usedb, err->ixnum),
                           iq->usedb->tablename, err->ixnum);
             } else if (rc != RC_INTERNAL_RETRY) {
-                errstat_cat_strf(&iq->errstat,
-                                 " unable to add record rc = %d", rc);
+                errstat_cat_strf(&iq->errstat, " unable to add record rc = %d",
+                                 rc);
             }
 
             if (logsb)
