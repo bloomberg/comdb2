@@ -513,13 +513,6 @@ enum RECORD_WRITE_TYPES {
     RECORD_WRITE_MAX = 3
 };
 
-enum deferred_option_level {
-   DEFERRED_SEND_COMMAND,
-   DEFERRED_LEGACY_DEFAULTS,
-
-   DEFERRED_OPTION_MAX
-};
-
 /* Raw stats, kept on a per origin machine basis.  This whole struct is
  * essentially an array of unsigneds.  Please don't add any other data
  * type as this allows us to easily sum it and diff it in a loop in reqlog.c.
@@ -699,7 +692,7 @@ struct dbtable {
     unsigned prev_blocktypcnt[BLOCK_MAXOPCODE];
     unsigned prev_blockosqltypcnt[MAX_OSQL_TYPES];
     unsigned prev_nsql;
-    /* counters for autoanalyze */
+    /* counters for writes to this table */
     unsigned write_count[RECORD_WRITE_MAX];
     unsigned saved_write_count[RECORD_WRITE_MAX];
     unsigned aa_saved_counter; // zeroed out at autoanalyze
@@ -764,7 +757,23 @@ struct dbtable {
     struct dbtable *sc_from; /* point to the source db, replace global sc_from */
     struct dbtable *sc_to; /* point to the new db, replace global sc_to */
     int sc_abort;
+    int sc_downgrading;
     unsigned long long *sc_genids; /* schemachange stripe pointers */
+
+    /* count the number of updates and deletes done by schemachange
+     * when behind the cursor.  This helps us know how many
+     * records we've really done (since every update behind the cursor
+     * effectively means we have to go back and do that record again). */
+    unsigned sc_adds;
+    unsigned sc_deletes;
+    unsigned sc_updates;
+
+    uint64_t sc_nrecs;
+    uint64_t sc_prev_nrecs;
+    /* boolean value set to nonzero if table rebuild is in progress */
+    uint8_t doing_conversion;
+    /* boolean value set to nonzero if table upgrade is in progress */
+    uint8_t doing_upgrade;
 
     unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
     unsigned int sqlcur_cur; /* count how many cursors where open in cur mode */
@@ -799,13 +808,6 @@ struct log_delete_state {
 struct coordinated_component {
     LINKC_T(struct coordinated_component) lnk;
     int dbnum;
-};
-
-struct deferred_option {
-    char *option;
-    int line;
-    int len;
-    LINKC_T(struct deferred_option) lnk;
 };
 
 struct lrlfile {
@@ -959,7 +961,6 @@ struct dbenv {
     unsigned prev_txns_aborted;
     int wait_for_N_nodes;
 
-    LISTC_T(struct deferred_option) deferred_options[DEFERRED_OPTION_MAX];
     LISTC_T(struct lrlfile) lrl_files;
 
     int incoh_notcoherent;
@@ -1334,14 +1335,6 @@ struct ireq {
     /* more stats - number of retries done under this request */
     int retries;
 
-    /* count the number of updates and deletes done by this transaction in
-     * a live schema change behind the cursor.  This helps us know how many
-     * records we've really done (since every update behind the cursor
-     * effectively means we have to go back and do that record again). */
-    unsigned sc_adds;
-    unsigned sc_deletes;
-    unsigned sc_updates;
-
     int ixused;    /* what index was used? */
     int ixstepcnt; /* how many steps on that index? */
 
@@ -1615,11 +1608,6 @@ extern int gbl_init_single_meta;
 extern unsigned long long gbl_sc_genids[MAXDTASTRIPE];
 extern int gbl_sc_usleep;
 extern int gbl_sc_wrusleep;
-extern unsigned gbl_sc_adds;
-extern unsigned gbl_sc_updates;
-extern unsigned gbl_sc_deletes;
-extern long long gbl_sc_nrecs;
-extern long long gbl_sc_prev_nrecs;
 extern int gbl_sc_last_writer_time;
 extern int gbl_default_livesc;
 extern int gbl_default_plannedsc;

@@ -761,6 +761,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     }
 
     key.seq = seq;
+    assert (sess->rqid == rqid);
 
     /* add the op into the temporary table */
     if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
@@ -810,9 +811,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
     if (rc_op) {
-        logmsg(LOGMSG_ERROR, 
-            "%s: fail to put oplog rqid=%llx (%lld) seq=%llu rc=%d bdberr=%d\n",
-            __func__, rqid, rqid, key.seq, rc_op, bdberr);
+        logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
+               __func__, key.seq, rc_op, bdberr);
     } else if (gbl_osqlpfault_threads) {
         osql_page_prefault(rpl, rplen, &(tran->last_db),
                            &(osql_session_get_ireq(sess)->osql_step_ix), rqid,
@@ -1180,7 +1180,6 @@ static int process_this_session(
 
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     unsigned long long rqid = osql_sess_getrqid(sess);
-    oplog_key_t *key = NULL;
     int countops = 0;
     int lastrcv = 0;
     int rc = 0, rc_out = 0;
@@ -1197,15 +1196,6 @@ static int process_this_session(
     iq->queryid = osql_sess_queryid(sess);
     iq->debug = 1; //AZ
 
-    key = (oplog_key_t *)malloc(sizeof(oplog_key_t));
-    if (!key) {
-        logmsg(LOGMSG_ERROR, "%s: unable to allocated %zu bytes\n", __func__,
-               sizeof(oplog_key_t));
-        return -1;
-    }
-
-    key->tbl_idx = 0;
-    key->stripe = 0;
     osql_sess_getuuid(sess, uuid);
 
     if (rqid != OSQL_RQID_USE_UUID)
@@ -1217,14 +1207,6 @@ static int process_this_session(
     //bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
     /* go through each record */
     rc = bdb_temp_table_first(thedb->bdb_env, dbc, bdberr);
-    //rc = bdb_temp_table_find(thedb->bdb_env, dbc, key, sizeof(*key), NULL, bdberr);
-//printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
-/* orig was:
-    rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
-                                   bdberr);
-*/
-    if(rc != IX_FND)
-        free(key);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
         reqlog_set_error(iq->reqlogger, "bdb_temp_table_first failed", rc);
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_first failed rc=%d bdberr=%d\n",

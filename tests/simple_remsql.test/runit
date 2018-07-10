@@ -229,7 +229,12 @@ echo "Starting tests"
 ./remsql_curmoves.sh $dbname $cdb2config $srcdbname  $dbdir $testdir 
 result=$?
 
-$TESTSROOTDIR/unsetup &> $TESTDIR/logs/$DBNAME.unsetup
+if (( $result == 0 )) ; then
+   successful=1
+fi
+
+$TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
+
 
 function old_clenaup(){
 if (( $is_local == 0 )) ; then

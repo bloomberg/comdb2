@@ -2901,73 +2901,78 @@ int osql_comm_init(struct dbenv *dbenv)
     }
 
     /* sqloffload handler */
-    net_register_handler(tmp->handle_sibling, NET_OSQL_BLOCK_RPL, net_osql_rpl);
+    net_register_handler(tmp->handle_sibling, NET_OSQL_BLOCK_RPL,
+                         "osql_block_rpl", net_osql_rpl);
     net_register_handler(tmp->handle_sibling, NET_OSQL_BLOCK_RPL_UUID,
-                         net_osql_rpl);
+                         "osql_block_rpl_uuid", net_osql_rpl);
 
-    net_register_handler(tmp->handle_sibling, NET_OSQL_SOCK_REQ, net_sosql_req);
-    net_register_handler(tmp->handle_sibling, NET_OSQL_SOCK_RPL, net_osql_rpl);
-    net_register_handler(tmp->handle_sibling, NET_OSQL_SIGNAL,
+    net_register_handler(tmp->handle_sibling, NET_OSQL_SOCK_REQ,
+                         "osql_sock_req", net_sosql_req);
+    net_register_handler(tmp->handle_sibling, NET_OSQL_SOCK_RPL,
+                         "osql_sock_rpl", net_osql_rpl);
+    net_register_handler(tmp->handle_sibling, NET_OSQL_SIGNAL, "osql_signal",
                          net_sorese_signal);
 
     net_register_handler(tmp->handle_sibling, NET_OSQL_RECOM_REQ,
-                         net_recom_req);
-    net_register_handler(tmp->handle_sibling, NET_OSQL_RECOM_RPL, net_osql_rpl);
+                         "osql_recom_req", net_recom_req);
+    net_register_handler(tmp->handle_sibling, NET_OSQL_RECOM_RPL,
+                         "osql_recom_rpl", net_osql_rpl);
 
     net_register_handler(tmp->handle_sibling, NET_OSQL_SNAPISOL_REQ,
-                         net_snapisol_req);
+                         "osql_snapisol_req", net_snapisol_req);
     net_register_handler(tmp->handle_sibling, NET_OSQL_SNAPISOL_RPL,
-                         net_osql_rpl);
+                         "osql_snapisol_rpl", net_osql_rpl);
 
     net_register_handler(tmp->handle_sibling, NET_OSQL_SERIAL_REQ,
-                         net_serial_req);
+                         "osql_serial_req", net_serial_req);
     net_register_handler(tmp->handle_sibling, NET_OSQL_SERIAL_RPL,
-                         net_osql_rpl);
+                         "osql_serial_rpl", net_osql_rpl);
 
-    net_register_handler(tmp->handle_sibling, NET_HBEAT_SQL,
+    net_register_handler(tmp->handle_sibling, NET_HBEAT_SQL, "hbeat_sql",
                          net_osql_heartbeat);
-    net_register_handler(tmp->handle_sibling, NET_OSQL_POKE, net_osql_poked);
+    net_register_handler(tmp->handle_sibling, NET_OSQL_POKE, "osql_poke",
+                         net_osql_poked);
     net_register_handler(tmp->handle_sibling, NET_OSQL_MASTER_CHECK,
-                         net_osql_master_check);
+                         "osql_master_check", net_osql_master_check);
     net_register_handler(tmp->handle_sibling, NET_OSQL_MASTER_CHECKED,
-                         net_osql_master_checked);
+                         "osql_master_checked", net_osql_master_checked);
     /* register echo service handler */
     net_register_handler(tmp->handle_sibling, NET_OSQL_ECHO_PING,
-                         net_osql_rcv_echo_ping);
+                         "osql_echo_ping", net_osql_rcv_echo_ping);
     net_register_handler(tmp->handle_sibling, NET_OSQL_ECHO_PONG,
-                         net_osql_rcv_echo_pong);
+                         "osql_echo_pong", net_osql_rcv_echo_pong);
 
     /* register the uuid clones */
     net_register_handler(tmp->handle_sibling, NET_OSQL_SOCK_REQ_UUID,
-                         net_sosql_req);
+                         "osql_sock_req_uuid", net_sosql_req);
     net_register_handler(tmp->handle_sibling, NET_OSQL_SOCK_RPL_UUID,
-                         net_osql_rpl);
+                         "osql_sock_rpl_uuid", net_osql_rpl);
     net_register_handler(tmp->handle_sibling, NET_OSQL_SIGNAL_UUID,
-                         net_sorese_signal);
+                         "osql_signal_uuid", net_sorese_signal);
 
     net_register_handler(tmp->handle_sibling, NET_OSQL_RECOM_REQ_UUID,
-                         net_recom_req);
+                         "osql_recom_req_uuid", net_recom_req);
     net_register_handler(tmp->handle_sibling, NET_OSQL_RECOM_RPL_UUID,
-                         net_osql_rpl);
+                         "osql_recom_rpl_uuid", net_osql_rpl);
 
     net_register_handler(tmp->handle_sibling, NET_OSQL_SNAPISOL_REQ_UUID,
-                         net_snapisol_req);
+                         "osql_snapisol_req_uuid", net_snapisol_req);
     net_register_handler(tmp->handle_sibling, NET_OSQL_SNAPISOL_RPL_UUID,
-                         net_osql_rpl);
+                         "osql_snapisol_rpl_uuid", net_osql_rpl);
 
     net_register_handler(tmp->handle_sibling, NET_OSQL_SERIAL_REQ_UUID,
-                         net_serial_req);
+                         "osql_serial_req_uuid", net_serial_req);
     net_register_handler(tmp->handle_sibling, NET_OSQL_SERIAL_RPL_UUID,
-                         net_osql_rpl);
+                         "osql_serial_rpl_uuid", net_osql_rpl);
 
     net_register_handler(tmp->handle_sibling, NET_HBEAT_SQL_UUID,
-                         net_osql_heartbeat);
+                         "hbeat_sql_uuid", net_osql_heartbeat);
     net_register_handler(tmp->handle_sibling, NET_OSQL_POKE_UUID,
-                         net_osql_poked_uuid);
+                         "osql_poke_uuid", net_osql_poked_uuid);
     net_register_handler(tmp->handle_sibling, NET_OSQL_MASTER_CHECK_UUID,
-                         net_osql_master_check);
+                         "osql_master_check_uuid", net_osql_master_check);
     net_register_handler(tmp->handle_sibling, NET_OSQL_MASTER_CHECKED_UUID,
-                         net_osql_master_checked);
+                         "osql_master_checked_uuid", net_osql_master_checked);
 
     /* this guy will terminate pending requests */
     net_register_hostdown(tmp->handle_sibling, net_osql_nodedwn);
@@ -2990,14 +2995,16 @@ int osql_comm_init(struct dbenv *dbenv)
         net_set_heartbeat_check_time(tmp->handle_sibling, gbl_heartbeat_check);
 
     /* remote blocksql request handler. */
-    net_register_handler(tmp->handle_sibling, NET_BLOCK_REQ, net_block_req);
-    net_register_handler(tmp->handle_sibling, NET_BLOCK_REPLY, net_block_reply);
+    net_register_handler(tmp->handle_sibling, NET_BLOCK_REQ, "block_req",
+                         net_block_req);
+    net_register_handler(tmp->handle_sibling, NET_BLOCK_REPLY, "block_reply",
+                         net_block_reply);
 
     /* remote snap uid requests */
     net_register_handler(tmp->handle_sibling, NET_OSQL_SNAP_UID_REQ,
-                         net_snap_uid_req);
+                         "osql_snap_uid_req", net_snap_uid_req);
     net_register_handler(tmp->handle_sibling, NET_OSQL_SNAP_UID_RPL,
-                         net_snap_uid_rpl);
+                         "osql_snap_uid_rpl", net_snap_uid_rpl);
 
     /* kick the guy */
     rc = net_init(tmp->handle_sibling);
@@ -5760,12 +5767,6 @@ int osql_comm_check_bdb_lock(void)
 static int offload_net_send(const char *host, int usertype, void *data,
                             int datalen, int nodelay)
 {
-    netinfo_type *netinfo_ptr = comm->handle_sibling;
-    int backoff = gbl_osql_bkoff_netsend;
-    int total_wait = backoff;
-    int unknownerror_retry = 0;
-    int rc = -1;
-
     if (debug_switch_osql_simulate_send_error()) {
         if (rand() % 4 == 0) /*25% chance of failure*/
         {
@@ -5783,6 +5784,12 @@ static int offload_net_send(const char *host, int usertype, void *data,
         return 0;
     }
 
+    netinfo_type *netinfo_ptr = comm->handle_sibling;
+    int backoff = gbl_osql_bkoff_netsend;
+    int total_wait = backoff;
+    int unknownerror_retry = 0;
+    int rc = -1;
+
     /* remote send */
     while (rc) {
 #if 0
@@ -5790,18 +5797,18 @@ static int offload_net_send(const char *host, int usertype, void *data,
 #endif
         rc = net_send(netinfo_ptr, host, usertype, data, datalen, nodelay);
 
-        if (NET_SEND_FAIL_QUEUE_FULL == rc ||
-            NET_SEND_FAIL_MALLOC_FAIL == rc || NET_SEND_FAIL_NOSOCK == rc) {
+        if (NET_SEND_FAIL_QUEUE_FULL == rc || NET_SEND_FAIL_MALLOC_FAIL == rc ||
+            NET_SEND_FAIL_NOSOCK == rc) {
 
             if (total_wait > gbl_osql_bkoff_netsend_lmt) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
-                        __LINE__, host);
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
+                       __FILE__, __LINE__, host);
                 return -1;
             }
 
             if (osql_comm_check_bdb_lock() != 0) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
-                        __LINE__, host);
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
+                       __FILE__, __LINE__, host);
                 return rc;
             }
 
@@ -5812,18 +5819,22 @@ static int offload_net_send(const char *host, int usertype, void *data,
             /* on closed sockets, we simply return; a callback
                will trigger on the other side signalling we've
                lost the comm party */
-            return rc;
+            logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
+                   __LINE__, host);
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d socket is closed, return wrong master\n", __FILE__,
+                   __LINE__);
+            return OSQL_SEND_ERROR_WRONGMASTER;
         } else if (rc) {
             unknownerror_retry++;
             if (unknownerror_retry >= UNK_ERR_SEND_RETRY) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
-                        __LINE__, host);
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
+                       __FILE__, __LINE__, host);
                 comdb2_linux_cheap_stack_trace();
                 return -1;
             }
         }
     }
-
     return rc;
 }
 
@@ -5864,23 +5875,42 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
                                               tails, tailens);
         }
 
-        if (NET_SEND_FAIL_QUEUE_FULL == rc || NET_SEND_FAIL_MALLOC_FAIL == rc) {
+        if (NET_SEND_FAIL_QUEUE_FULL == rc || NET_SEND_FAIL_MALLOC_FAIL == rc ||
+            NET_SEND_FAIL_NOSOCK == rc) {
 
             if (total_wait > gbl_osql_bkoff_netsend_lmt) {
-                logmsg(LOGMSG_ERROR, "%s giving up sending to %s\n", __func__, host);
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
+                       __FILE__, __LINE__, host ? host : gbl_mynode);
                 return -1;
             }
 
-            if ((rc = osql_comm_check_bdb_lock()))
+            if ((rc = osql_comm_check_bdb_lock())) {
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
+                       __FILE__, __LINE__, host ? host : gbl_mynode);
                 return rc;
+            }
 
             poll(NULL, 0, backoff);
             /*backoff *= 2; */
             total_wait += backoff;
+        } else if (NET_SEND_FAIL_CLOSED == rc) {
+            /* on closed sockets, we simply return; a callback
+               will trigger on the other side signalling we've
+               lost the comm party */
+            logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
+                   __LINE__, host ? host : gbl_mynode);
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d socket is closed, return wrong master\n", __FILE__,
+                   __LINE__);
+            return OSQL_SEND_ERROR_WRONGMASTER;
         } else if (rc) {
             unknownerror_retry++;
-            if (unknownerror_retry >= UNK_ERR_SEND_RETRY)
+            if (unknownerror_retry >= UNK_ERR_SEND_RETRY) {
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
+                       __FILE__, __LINE__, host ? host : gbl_mynode);
+                comdb2_linux_cheap_stack_trace();
                 return -1;
+            }
         }
     }
 

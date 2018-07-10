@@ -1114,7 +1114,6 @@ static int osql_send_delrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
 
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
-    char *host = thd->clnt->osql.host;
     unsigned long long rqid = thd->clnt->osql.rqid;
     int restarted;
     int rc = 0;
@@ -1750,7 +1749,6 @@ int osql_schemachange_logic(struct schema_change_type *sc,
 {
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
-    char *host = thd->clnt->osql.host;
     int restarted;
     int rc = 0;
     unsigned long long rqid = thd->clnt->osql.rqid;
@@ -1801,8 +1799,9 @@ int osql_schemachange_logic(struct schema_change_type *sc,
                                      version);
             }
             if (rc == SQLITE_OK) {
-                rc = osql_send_schemachange(host, rqid, thd->clnt->osql.uuid,
-                                            sc, NET_OSQL_SOCK_RPL, osql->logsb);
+                rc = osql_send_schemachange(osql->host, rqid,
+                                            thd->clnt->osql.uuid, sc,
+                                            NET_OSQL_SOCK_RPL, osql->logsb);
             }
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
@@ -1829,14 +1828,13 @@ int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
 {
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
-    char *host = thd->clnt->osql.host;
     unsigned long long rqid = thd->clnt->osql.rqid;
     int restarted;
     int rc;
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         do {
-            rc = osql_send_bpfunc(host, rqid, thd->clnt->osql.uuid, arg,
+            rc = osql_send_bpfunc(osql->host, rqid, thd->clnt->osql.uuid, arg,
                                   NET_OSQL_SOCK_RPL, osql->logsb);
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);

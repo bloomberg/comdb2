@@ -70,6 +70,10 @@ typedef void QSTATFREEFP(struct netinfo_struct *netinfo, void *netstat);
 typedef void QSTATITERFP(struct netinfo_struct *netinfo, void *arg,
                          void *qstat);
 
+typedef void UFUNCITERFP(struct netinfo_struct *netinfo, void *arg,
+                         char *service, char *userfunc, int64_t count,
+                         int64_t totus);
+
 typedef int NETALLOWFP(struct netinfo_struct *netinfo, const char *hostname);
 
 void net_setbufsz(netinfo_type *info, int bufsz);
@@ -137,7 +141,8 @@ int net_send_inorder(netinfo_type *netinfo,
 
 /* register your callback routine that will be called when
    user messages of type "usertype" are recieved */
-int net_register_handler(netinfo_type *netinfo_ptr, int usertype, NETFP func);
+int net_register_handler(netinfo_type *netinfo_ptr, int usertype,
+                         char *name, NETFP func);
 
 /* register your callback routine that will be called when a
    disconnect happens for a node */
@@ -431,6 +436,8 @@ void net_set_portmux_register_interval(netinfo_type *netinfo_ptr, int x);
 
 void net_queue_stat_iterate(netinfo_type *netinfo_ptr, QSTATITERFP func,
                             void *arg);
+void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter,
+                          void *arg);
 
 /* Blocks until the net-queue is X% full or less */
 int net_throttle_wait(netinfo_type *netinfo_ptr);

@@ -202,7 +202,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
                us, rc);
-        if (!doing_upgrade || s->fulluprecs || s->partialuprecs) {
+        if (!s->db->doing_upgrade || s->fulluprecs || s->partialuprecs) {
             errstat_set_strf(&iq->errstat, "Schema change already in progress");
             free_schema_change_type(s);
             return SC_CANT_SET_RUNNING;
@@ -217,10 +217,11 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             // give time to let upgrade threads exit
             while (maxcancelretry-- > 0) {
                 sleep(1);
-                if (!doing_upgrade) break;
+                if (!s->db->doing_upgrade)
+                    break;
             }
 
-            if (doing_upgrade) {
+            if (s->db->doing_upgrade) {
                 sc_errf(s, "failed to cancel table upgrade threads\n");
                 free_schema_change_type(s);
                 return SC_CANT_SET_RUNNING;
@@ -330,12 +331,13 @@ int start_schema_change(struct schema_change_type *s)
 
 void delay_if_sc_resuming(struct ireq *iq)
 {
-    if (gbl_sc_resume_start == 0) return;
+    if (gbl_sc_resume_start <= 0)
+        return;
 
     int diff;
     int printerr = 0;
     int start_time = comdb2_time_epochms();
-    while (gbl_sc_resume_start) {
+    while (gbl_sc_resume_start > 0) {
         if ((diff = comdb2_time_epochms() - start_time) > 300 && !printerr) {
             logmsg(LOGMSG_WARN, "Delaying since gbl_sc_resume_start has not "
                                 "been reset to 0 for %dms\n",
@@ -574,6 +576,9 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
                             unsigned long long del_keys,
                             blob_buffer_t *oldblobs)
 {
+    if (iq->usedb->sc_downgrading)
+        return ERR_NOMASTER;
+
     if (iq->usedb->sc_from != iq->usedb) {
         return 0;
     }
@@ -623,6 +628,9 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
                          blob_buffer_t *blobs, size_t maxblobs, int origflags,
                          int *rrn)
 {
+    if (iq->usedb->sc_downgrading)
+        return ERR_NOMASTER;
+
     if (iq->usedb->sc_from != iq->usedb) {
         return 0;
     }
@@ -715,6 +723,9 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                             int origflags, int rrn, int deferredAdd,
                             blob_buffer_t *oldblobs, blob_buffer_t *newblobs)
 {
+    if (iq->usedb->sc_downgrading)
+        return ERR_NOMASTER;
+
     if (iq->usedb->sc_from != iq->usedb) {
         return 0;
     }

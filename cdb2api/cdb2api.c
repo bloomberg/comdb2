@@ -4687,6 +4687,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     bindvars[2] = bind_room;
     char newsql_typestr[128];
     int is_sockfd = 1;
+    int i = 0;
 
     if (num_same_room)
         *num_same_room = 0;
@@ -4712,7 +4713,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     }
 
     if (fd < 0) {
-        int i = 0;
+        i = 0;
         for (i = 0; i < 3; i++) {
             free(bindvars[i]);
         }
@@ -4722,7 +4723,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     SBUF2 *ss = sbuf2open(fd, 0);
     if (ss == 0) {
         close(fd);
-        int i = 0;
+        i = 0;
         for (i = 0; i < n_bindvars; i++) {
             free(bindvars[i]);
         }
@@ -4733,10 +4734,16 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     if (is_sockfd == 0) {
         sbuf2printf(ss, "newsql\n");
         sbuf2flush(ss);
+    } else {
+        rc = send_reset(ss);
+        if (rc != 0) {
+            goto free_vars;
+        }
     }
     rc = cdb2_send_query(NULL, ss, comdb2db_name, sql_query, 0, 0, NULL, 3,
                          bindvars, 0, NULL, 0, 0, num_retries, 0, __LINE__);
-    int i = 0;
+free_vars:
+    i = 0;
     for (i = 0; i < 3; i++) {
         free(bindvars[i]);
     }

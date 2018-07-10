@@ -534,6 +534,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
     db->sc_abort = 0;
+    db->sc_downgrading = 0;
     pthread_rwlock_unlock(&sc_live_rwlock);
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race && !stopsc) {
@@ -541,33 +542,28 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                    __func__, __LINE__);
             sleep(5);
         }
-        ATOMIC_ADD(gbl_sc_resume_start, -1);
+        if (gbl_sc_resume_start > 0)
+            ATOMIC_ADD(gbl_sc_resume_start, -1);
     }
     MEMORY_SYNC;
 
-    /* give a chance for sc to stop */
-    if (stopsc) {
-        sc_errf(s, "master downgrading\n");
-        change_schemas_recover(s->table);
-        return SC_MASTER_DOWNGRADE;
-    }
     reset_sc_stat();
     rc = wait_to_resume(s);
-    if (rc) {
-        change_schemas_recover(s->table);
-        return rc;
+    if (rc || stopsc) {
+        sc_errf(s, "master downgrading\n");
+        return SC_MASTER_DOWNGRADE;
     }
 
     /* skip converting records for fastinit and planned schema change
      * that doesn't require rebuilding anything. */
     if ((!newdb->plan || newdb->plan->plan_convert) ||
         changed == SC_CONSTRAINT_CHANGE) {
-        doing_conversion = 1;
+        db->doing_conversion = 1;
         if (!s->live)
             gbl_readonly_sc = 1;
         rc = convert_all_records(db, newdb, newdb->sc_genids, s);
         if (rc == 1) rc = 0;
-        doing_conversion = 0;
+        db->doing_conversion = 0;
     } else
         rc = 0;
 
@@ -583,11 +579,12 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     if (s->convert_sleep > 0) {
-        sc_printf(s, "Sleeping after conversion for %d...\n", s->convert_sleep);
+        sc_printf(s, "[%s] Sleeping after conversion for %d...\n",
+                  db->tablename, s->convert_sleep);
         logmsg(LOGMSG_INFO, "Sleeping after conversion for %d...\n",
                s->convert_sleep);
         sleep(s->convert_sleep);
-        sc_printf(s, "...slept for %d\n", s->convert_sleep);
+        sc_printf(s, "[%s] ...slept for %d\n", db->tablename, s->convert_sleep);
     }
 
     if (rc && rc != SC_MASTER_DOWNGRADE) {
@@ -881,9 +878,9 @@ int do_upgrade_table_int(struct schema_change_type *s)
 
     reset_sc_stat();
 
-    doing_upgrade = 1;
+    db->doing_upgrade = 1;
     rc = upgrade_all_records(db, db->sc_genids, s);
-    doing_upgrade = 0;
+    db->doing_upgrade = 0;
 
     if (stopsc)
         rc = SC_MASTER_DOWNGRADE;

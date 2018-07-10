@@ -1267,6 +1267,8 @@ __dbenv_set_comdb2_dirs(dbenv, data_dir, txn_dir, tmp_dir)
 	return 0;
 }
 
+pthread_mutex_t gbl_durable_lsn_lk = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t gbl_durable_lsn_cond = PTHREAD_COND_INITIALIZER;
 
 static void
 __dbenv_set_durable_lsn(dbenv, lsnp, generation)
@@ -1284,7 +1286,7 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 		abort();
 	}
 
-	pthread_mutex_lock(&dbenv->durable_lsn_lk);
+	pthread_mutex_lock(&gbl_durable_lsn_lk);
 
 	if (generation > dbenv->durable_generation &&
 	    log_compare(lsnp, &dbenv->durable_lsn) < 0) {
@@ -1325,7 +1327,8 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 		}
 	}
 
-	pthread_mutex_unlock(&dbenv->durable_lsn_lk);
+    pthread_cond_broadcast(&gbl_durable_lsn_cond);
+	pthread_mutex_unlock(&gbl_durable_lsn_lk);
 }
 
 static void
@@ -1335,10 +1338,10 @@ __dbenv_get_durable_lsn(dbenv, lsnp, generation)
 	uint32_t *generation;
 {
 	DB_REP *db_rep = dbenv->rep_handle;
-	pthread_mutex_lock(&dbenv->durable_lsn_lk);
+	pthread_mutex_lock(&gbl_durable_lsn_lk);
 	*lsnp = dbenv->durable_lsn;
 	*generation = dbenv->durable_generation;
-	pthread_mutex_unlock(&dbenv->durable_lsn_lk);
+	pthread_mutex_unlock(&gbl_durable_lsn_lk);
 }
 
 static int
