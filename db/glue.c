@@ -1053,12 +1053,6 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
     /*fall through to default*/
     default:
         logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_delkey return unhandled rc %d\n", bdberr);
-        while (1) {
-            logmsg(LOGMSG_ERROR,
-                   "Thread %x got delete key error - send lockstat.\n",
-                   (int)pthread_self());
-            sleep(5);
-        }
         return ERR_INTERNAL;
     }
 }
