@@ -23,10 +23,9 @@
 */
 typedef struct Incrblob Incrblob;
 struct Incrblob {
-  int flags;              /* Copy of "flags" passed to sqlite3_blob_open() */
   int nByte;              /* Size of open blob, in bytes */
   int iOffset;            /* Byte offset of blob in cursor data */
-  int iCol;               /* Table column this handle is open on */
+  u16 iCol;               /* Table column this handle is open on */
   BtCursor *pCsr;         /* Cursor pointing at blob row */
   sqlite3_stmt *pStmt;    /* Statement holding cursor open */
   sqlite3 *db;            /* The associated database */
@@ -57,18 +56,33 @@ static int blobSeekToRow(Incrblob *p, sqlite3_int64 iRow, char **pzErr){
   char *zErr = 0;                 /* Error message */
   Vdbe *v = (Vdbe *)p->pStmt;
 
-  /* Set the value of the SQL statements only variable to integer iRow. 
-  ** This is done directly instead of using sqlite3_bind_int64() to avoid 
-  ** triggering asserts related to mutexes.
+  /* Set the value of register r[1] in the SQL statement to integer iRow. 
+  ** This is done directly as a performance optimization
   */
-  assert( v->aVar[0].flags&MEM_Int );
-  v->aVar[0].u.i = iRow;
+  v->aMem[1].flags = MEM_Int;
+  v->aMem[1].u.i = iRow;
 
-  rc = sqlite3_step(p->pStmt);
+  /* If the statement has been run before (and is paused at the OP_ResultRow)
+  ** then back it up to the point where it does the OP_NotExists.  This could
+  ** have been down with an extra OP_Goto, but simply setting the program
+  ** counter is faster. */
+  if( v->pc>4 ){
+    v->pc = 4;
+    assert( v->aOp[v->pc].opcode==OP_NotExists );
+    rc = sqlite3VdbeExec(v);
+  }else{
+    rc = sqlite3_step(p->pStmt);
+  }
   if( rc==SQLITE_ROW ){
     VdbeCursor *pC = v->apCsr[0];
-    u32 type = pC->aType[p->iCol];
+    u32 type = pC->nHdrParsed>p->iCol ? pC->aType[p->iCol] : 0;
+    testcase( pC->nHdrParsed==p->iCol );
+    testcase( pC->nHdrParsed==p->iCol+1 );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( sqlite3IsFixedLengthSerialType(type) ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+    if( type<12 ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       zErr = sqlite3MPrintf(p->db, "cannot open value of type %s",
           type==0?"null": type==7?"real": "integer"
       );
@@ -112,7 +126,7 @@ int sqlite3_blob_open(
   const char *zTable,     /* The table containing the blob */
   const char *zColumn,    /* The column containing the blob */
   sqlite_int64 iRow,      /* The row containing the glob */
-  int flags,              /* True -> read/write access, false -> read-only */
+  int wrFlag,             /* True -> read/write access, false -> read-only */
   sqlite3_blob **ppBlob   /* Handle for accessing the blob returned here */
 ){
   int nAttempt = 0;
@@ -120,8 +134,8 @@ int sqlite3_blob_open(
   int rc = SQLITE_OK;
   char *zErr = 0;
   Table *pTab;
-  Parse *pParse = 0;
   Incrblob *pBlob = 0;
+  Parse sParse;
 
 #ifdef SQLITE_ENABLE_API_ARMOR
   if( ppBlob==0 ){
@@ -134,42 +148,39 @@ int sqlite3_blob_open(
     return SQLITE_MISUSE_BKPT;
   }
 #endif
-  flags = !!flags;                /* flags = (flags ? 1 : 0); */
+  wrFlag = !!wrFlag;                /* wrFlag = (wrFlag ? 1 : 0); */
 
   sqlite3_mutex_enter(db->mutex);
 
   pBlob = (Incrblob *)sqlite3DbMallocZero(db, sizeof(Incrblob));
-  if( !pBlob ) goto blob_open_out;
-  pParse = sqlite3StackAllocRaw(db, sizeof(*pParse));
-  if( !pParse ) goto blob_open_out;
-
   do {
-    memset(pParse, 0, sizeof(Parse));
-    pParse->db = db;
+    memset(&sParse, 0, sizeof(Parse));
+    if( !pBlob ) goto blob_open_out;
+    sParse.db = db;
     sqlite3DbFree(db, zErr);
     zErr = 0;
 
     sqlite3BtreeEnterAll(db);
-    pTab = sqlite3LocateTable(pParse, 0, zTable, zDb);
+    pTab = sqlite3LocateTable(&sParse, 0, zTable, zDb);
     if( pTab && IsVirtual(pTab) ){
       pTab = 0;
-      sqlite3ErrorMsg(pParse, "cannot open virtual table: %s", zTable);
+      sqlite3ErrorMsg(&sParse, "cannot open virtual table: %s", zTable);
     }
     if( pTab && !HasRowid(pTab) ){
       pTab = 0;
-      sqlite3ErrorMsg(pParse, "cannot open table without rowid: %s", zTable);
+      sqlite3ErrorMsg(&sParse, "cannot open table without rowid: %s", zTable);
     }
 #ifndef SQLITE_OMIT_VIEW
     if( pTab && pTab->pSelect ){
       pTab = 0;
-      sqlite3ErrorMsg(pParse, "cannot open view: %s", zTable);
+      sqlite3ErrorMsg(&sParse, "cannot open view: %s", zTable);
     }
 #endif
     if( !pTab ){
-      if( pParse->zErrMsg ){
+      if( sParse.zErrMsg ){
         sqlite3DbFree(db, zErr);
-        zErr = pParse->zErrMsg;
-        pParse->zErrMsg = 0;
+        zErr = sParse.zErrMsg;
+        sParse.zErrMsg = 0;
       }
       rc = SQLITE_ERROR;
       sqlite3BtreeLeaveAll(db);
@@ -179,7 +190,7 @@ int sqlite3_blob_open(
     pBlob->zDb = db->aDb[sqlite3SchemaToIndex(db, pTab->pSchema)].zDbSName;
 
     /* Now search pTab for the exact column. */
-    for(iCol=0; iCol<pTab->nCol; iCol++){
+    for(iCol=0; iCol<pTab->nCol; iCol++) {
       if( sqlite3StrICmp(pTab->aCol[iCol].zName, zColumn)==0 ){
         break;
       }
@@ -194,9 +205,8 @@ int sqlite3_blob_open(
 
     /* If the value is being opened for writing, check that the
     ** column is not indexed, and that it is not part of a foreign key. 
-    ** It is against the rules to open a column to which either of these
-    ** descriptions applies for writing.  */
-    if( flags ){
+    */
+    if( wrFlag ){
       const char *zFault = 0;
       Index *pIdx;
 #ifndef SQLITE_OMIT_FOREIGN_KEY
@@ -234,7 +244,7 @@ int sqlite3_blob_open(
       }
     }
 
-    pBlob->pStmt = (sqlite3_stmt *)sqlite3VdbeCreate(pParse);
+    pBlob->pStmt = (sqlite3_stmt *)sqlite3VdbeCreate(&sParse);
     assert( pBlob->pStmt || db->mallocFailed );
     if( pBlob->pStmt ){
       
@@ -257,22 +267,21 @@ int sqlite3_blob_open(
       static const VdbeOpList openBlob[] = {
         {OP_TableLock,      0, 0, 0},  /* 0: Acquire a read or write lock */
         {OP_OpenRead,       0, 0, 0},  /* 1: Open a cursor */
-        {OP_Variable,       1, 1, 0},  /* 2: Move ?1 into reg[1] */
-        {OP_NotExists,      0, 7, 1},  /* 3: Seek the cursor */
-        {OP_Column,         0, 0, 1},  /* 4  */
-        {OP_ResultRow,      1, 0, 0},  /* 5  */
-        {OP_Goto,           0, 2, 0},  /* 6  */
-        {OP_Close,          0, 0, 0},  /* 7  */
-        {OP_Halt,           0, 0, 0},  /* 8  */
+        /* blobSeekToRow() will initialize r[1] to the desired rowid */
+        {OP_NotExists,      0, 5, 1},  /* 2: Seek the cursor to rowid=r[1] */
+        {OP_Column,         0, 0, 1},  /* 3  */
+        {OP_ResultRow,      1, 0, 0},  /* 4  */
+        {OP_Halt,           0, 0, 0},  /* 5  */
       };
       Vdbe *v = (Vdbe *)pBlob->pStmt;
       int iDb = sqlite3SchemaToIndex(db, pTab->pSchema);
       VdbeOp *aOp;
 
-      sqlite3VdbeAddOp4Int(v, OP_Transaction, iDb, flags, 
+      sqlite3VdbeAddOp4Int(v, OP_Transaction, iDb, wrFlag, 
                            pTab->pSchema->schema_cookie,
                            pTab->pSchema->iGeneration);
-      sqlite3VdbeChangeP5(v, 1);     
+      sqlite3VdbeChangeP5(v, 1);
+      assert( sqlite3VdbeCurrentAddr(v)==2 || db->mallocFailed );
       aOp = sqlite3VdbeAddOpList(v, ArraySize(openBlob), openBlob, iLn);
 
       /* Make sure a mutex is held on the table to be accessed */
@@ -286,15 +295,15 @@ int sqlite3_blob_open(
 #else
         aOp[0].p1 = iDb;
         aOp[0].p2 = pTab->tnum;
-        aOp[0].p3 = flags;
-        sqlite3VdbeChangeP4(v, 1, pTab->zName, P4_TRANSIENT);
+        aOp[0].p3 = wrFlag;
+        sqlite3VdbeChangeP4(v, 2, pTab->zName, P4_TRANSIENT);
       }
       if( db->mallocFailed==0 ){
 #endif
 
         /* Remove either the OP_OpenWrite or OpenRead. Set the P2 
         ** parameter of the other to pTab->tnum.  */
-        if( flags ) aOp[1].opcode = OP_OpenWrite;
+        if( wrFlag ) aOp[1].opcode = OP_OpenWrite;
         aOp[1].p2 = pTab->tnum;
         aOp[1].p3 = iDb;   
 
@@ -307,23 +316,21 @@ int sqlite3_blob_open(
         */
         aOp[1].p4type = P4_INT32;
         aOp[1].p4.i = pTab->nCol+1;
-        aOp[4].p2 = pTab->nCol;
+        aOp[3].p2 = pTab->nCol;
 
-        pParse->nVar = 1;
-        pParse->nMem = 1;
-        pParse->nTab = 1;
-        sqlite3VdbeMakeReady(v, pParse);
+        sParse.nVar = 0;
+        sParse.nMem = 1;
+        sParse.nTab = 1;
+        sqlite3VdbeMakeReady(v, &sParse);
       }
     }
    
-    pBlob->flags = flags;
     pBlob->iCol = iCol;
     pBlob->db = db;
     sqlite3BtreeLeaveAll(db);
     if( db->mallocFailed ){
       goto blob_open_out;
     }
-    sqlite3_bind_int64(pBlob->pStmt, 1, iRow);
     rc = blobSeekToRow(pBlob, iRow, &zErr);
   } while( (++nAttempt)<SQLITE_MAX_SCHEMA_RETRY && rc==SQLITE_SCHEMA );
 
@@ -336,8 +343,7 @@ blob_open_out:
   }
   sqlite3ErrorWithMsg(db, rc, (zErr ? "%s" : 0), zErr);
   sqlite3DbFree(db, zErr);
-  sqlite3ParserReset(pParse);
-  sqlite3StackFree(db, pParse);
+  sqlite3ParserReset(&sParse);
   rc = sqlite3ApiExit(db, rc);
   sqlite3_mutex_leave(db->mutex);
   return rc;
@@ -441,7 +447,7 @@ static int blobReadWrite(
 ** Read data from a blob handle.
 */
 int sqlite3_blob_read(sqlite3_blob *pBlob, void *z, int n, int iOffset){
-  return blobReadWrite(pBlob, z, n, iOffset, sqlite3BtreeData);
+  return blobReadWrite(pBlob, z, n, iOffset, sqlite3BtreePayloadChecked);
 }
 
 /*

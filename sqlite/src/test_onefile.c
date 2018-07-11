@@ -826,5 +826,5 @@ int fs_register(void){
 }
 
 #ifdef SQLITE_TEST
-  int SqlitetestOnefile_Init(){return fs_register();}
+  int SqlitetestOnefile_Init() {return fs_register();}
 #endif

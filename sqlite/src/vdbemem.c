@@ -18,7 +18,7 @@
 #include "sqliteInt.h"
 #include "vdbeInt.h"
 
-/* COMDB2 MODIFICATION */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <arpa/inet.h>
 #include <inttypes.h>
 #include <flibc.h>
@@ -27,6 +27,7 @@
 #include <util.h>
 #include "debug_switches.h"
 #include "logmsg.h"
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifdef SQLITE_DEBUG
 /*
@@ -37,25 +38,60 @@
 */
 int sqlite3VdbeCheckMemInvariants(Mem *p){
   /* If MEM_Dyn is set then Mem.xDel!=0.  
-  ** Mem.xDel is might not be initialized if MEM_Dyn is clear.
+  ** Mem.xDel might not be initialized if MEM_Dyn is clear.
   */
-  /* COMDB2 MODIFICATION: these asserts dont work for comdb2 */
-  //assert( (p->flags & MEM_Dyn)==0 || p->xDel!=0 );
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+  assert( (p->flags & MEM_Dyn)==0 || p->xDel!=0 );
 
   /* MEM_Dyn may only be set if Mem.szMalloc==0.  In this way we
   ** ensure that if Mem.szMalloc>0 then it is safe to do
   ** Mem.z = Mem.zMalloc without having to check Mem.flags&MEM_Dyn.
   ** That saves a few cycles in inner loops. */
-  //assert( (p->flags & MEM_Dyn)==0 || p->szMalloc==0 );
+  assert( (p->flags & MEM_Dyn)==0 || p->szMalloc==0 );
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /* Cannot be both MEM_Int and MEM_Real at the same time */
   assert( (p->flags & (MEM_Int|MEM_Real))!=(MEM_Int|MEM_Real) );
 
+  if( p->flags & MEM_Null ){
+    /* Cannot be both MEM_Null and some other type */
+    assert( (p->flags & (MEM_Int|MEM_Real|MEM_Str|MEM_Blob
+                         |MEM_RowSet|MEM_Frame|MEM_Agg))==0 );
+
+    /* If MEM_Null is set, then either the value is a pure NULL (the usual
+    ** case) or it is a pointer set using sqlite3_bind_pointer() or
+    ** sqlite3_result_pointer().  If a pointer, then MEM_Term must also be
+    ** set.
+    */
+    if( (p->flags & (MEM_Term|MEM_Subtype))==(MEM_Term|MEM_Subtype) ){
+      /* This is a pointer type.  There may be a flag to indicate what to
+      ** do with the pointer. */
+      assert( ((p->flags&MEM_Dyn)!=0 ? 1 : 0) +
+              ((p->flags&MEM_Ephem)!=0 ? 1 : 0) +
+              ((p->flags&MEM_Static)!=0 ? 1 : 0) <= 1 );
+
+      /* No other bits set */
+      assert( (p->flags & ~(MEM_Null|MEM_Term|MEM_Subtype
+                           |MEM_Dyn|MEM_Ephem|MEM_Static))==0 );
+    }else{
+      /* A pure NULL might have other flags, such as MEM_Static, MEM_Dyn,
+      ** MEM_Ephem, MEM_Cleared, or MEM_Subtype */
+    }
+  }else{
+    /* The MEM_Cleared bit is only allowed on NULLs */
+    assert( (p->flags & MEM_Cleared)==0 );
+  }
+
   /* The szMalloc field holds the correct memory allocation size */
-  /* COMDB2: TODO: fix this assert -- either to correct spec or explain why it
-  is not needed
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /*
+  ** TODO: fix this assert -- either to correct spec or explain why
+  **       it is not needed.
+  */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( p->szMalloc==0
-       || p->szMalloc==sqlite3DbMallocSize(p->db,p->zMalloc) ); */
+       || p->szMalloc==sqlite3DbMallocSize(p->db,p->zMalloc) );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /* If p holds a string or blob, the Mem.z must point to exactly
   ** one of the following:
@@ -64,19 +100,66 @@ int sqlite3VdbeCheckMemInvariants(Mem *p){
   **   (2) Memory to be freed using Mem.xDel
   **   (3) An ephemeral string or blob
   **   (4) A static string or blob
+  */
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   if( (p->flags & (MEM_Str|MEM_Blob)) && p->n>0 ){
-    assert(
+    assert( 
       ((p->szMalloc>0 && p->z==p->zMalloc)? 1 : 0) +
       ((p->flags&MEM_Dyn)!=0 ? 1 : 0) +
       ((p->flags&MEM_Ephem)!=0 ? 1 : 0) +
-      ((p->flags&MEM_Static)!=0 ? 1 : 0) >= 1
+      ((p->flags&MEM_Static)!=0 ? 1 : 0) == 1
     );
   }
-  */
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   return 1;
 }
 #endif
 
+#ifdef SQLITE_DEBUG
+/*
+** Check that string value of pMem agrees with its integer or real value.
+**
+** A single int or real value always converts to the same strings.  But
+** many different strings can be converted into the same int or real.
+** If a table contains a numeric value and an index is based on the
+** corresponding string value, then it is important that the string be
+** derived from the numeric value, not the other way around, to ensure
+** that the index and table are consistent.  See ticket
+** https://www.sqlite.org/src/info/343634942dd54ab (2018-01-31) for
+** an example.
+**
+** This routine looks at pMem to verify that if it has both a numeric
+** representation and a string representation then the string rep has
+** been derived from the numeric and not the other way around.  It returns
+** true if everything is ok and false if there is a problem.
+**
+** This routine is for use inside of assert() statements only.
+*/
+int sqlite3VdbeMemConsistentDualRep(Mem *p){
+  char zBuf[100];
+  char *z;
+  int i, j, incr;
+  if( (p->flags & MEM_Str)==0 ) return 1;
+  if( (p->flags & (MEM_Int|MEM_Real))==0 ) return 1;
+  if( p->flags & MEM_Int ){
+    sqlite3_snprintf(sizeof(zBuf),zBuf,"%lld",p->u.i);
+  }else{
+    sqlite3_snprintf(sizeof(zBuf),zBuf,"%!.15g",p->u.r);
+  }
+  z = p->z;
+  i = j = 0;
+  incr = 1;
+  if( p->enc!=SQLITE_UTF8 ){
+    incr = 2;
+    if( p->enc==SQLITE_UTF16BE ) z++;
+  }
+  while( zBuf[j] ){
+    if( zBuf[j++]!=z[i] ) return 0;
+    i += incr;
+  }
+  return 1;
+}
+#endif /* SQLITE_DEBUG */
 
 /*
 ** If pMem is an object with a valid string representation, this routine
@@ -136,39 +219,42 @@ SQLITE_NOINLINE int sqlite3VdbeMemGrow(Mem *pMem, int n, int bPreserve){
   assert( bPreserve==0 || pMem->flags&(MEM_Blob|MEM_Str) );
   testcase( bPreserve && pMem->z==0 );
 
-  /* COMDB2: TODO: fix this assert
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   assert( pMem->szMalloc==0
-       || pMem->szMalloc==sqlite3DbMallocSize(pMem->db, pMem->zMalloc) ); */
-  if( pMem->szMalloc<n ){
-    if( n<32 ) n = 32;
-    if( bPreserve && pMem->szMalloc>0 && pMem->z==pMem->zMalloc ){
-      pMem->z = pMem->zMalloc = sqlite3DbReallocOrFree(pMem->db, pMem->z, n);
-      bPreserve = 0;
-    }else{
-      if( pMem->szMalloc>0 ) sqlite3DbFree(pMem->db, pMem->zMalloc);
-      pMem->zMalloc = sqlite3DbMallocRaw(pMem->db, n);
-    }
-    if( pMem->zMalloc==0 ){
-      sqlite3VdbeMemSetNull(pMem);
-      pMem->z = 0;
-      pMem->szMalloc = 0;
-      return SQLITE_NOMEM_BKPT;
-    }else{
-      pMem->szMalloc = sqlite3DbMallocSize(pMem->db, pMem->zMalloc);
-    }
+       || pMem->szMalloc==sqlite3DbMallocSize(pMem->db, pMem->zMalloc) );
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+  if( n<32 ) n = 32;
+  if( pMem->szMalloc>0 && bPreserve && pMem->z==pMem->zMalloc ){
+    pMem->z = pMem->zMalloc = sqlite3DbReallocOrFree(pMem->db, pMem->z, n);
+    bPreserve = 0;
+  }else{
+    if( pMem->szMalloc>0 ) sqlite3DbFreeNN(pMem->db, pMem->zMalloc);
+    pMem->zMalloc = sqlite3DbMallocRaw(pMem->db, n);
+  }
+  if( pMem->zMalloc==0 ){
+    sqlite3VdbeMemSetNull(pMem);
+    pMem->z = 0;
+    pMem->szMalloc = 0;
+    return SQLITE_NOMEM_BKPT;
+  }else{
+    pMem->szMalloc = sqlite3DbMallocSize(pMem->db, pMem->zMalloc);
   }
 
-  if( bPreserve && pMem->z && pMem->z!=pMem->zMalloc ){
+  if( bPreserve && pMem->z ){
+    assert( pMem->z!=pMem->zMalloc );
     memcpy(pMem->zMalloc, pMem->z, pMem->n);
-
-    /* COMDB2 MODIFICATION */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( pMem->flags&MEM_Xor ){
       xorbufcpy(pMem->zMalloc, pMem->zMalloc, pMem->n);
       pMem->flags &= ~MEM_Xor;
     }
-
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
-  if( (pMem->flags&MEM_Dyn)!=0 && pMem->xDel){ /* COMDB2 MODIFICATION */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( (pMem->flags&MEM_Dyn)!=0 && pMem->xDel ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  if( (pMem->flags&MEM_Dyn)!=0 ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( pMem->xDel!=0 && pMem->xDel!=SQLITE_DYNAMIC );
     pMem->xDel((void *)(pMem->z));
   }
@@ -185,8 +271,8 @@ SQLITE_NOINLINE int sqlite3VdbeMemGrow(Mem *pMem, int n, int bPreserve){
 **
 ** Any prior string or blob content in the pMem object may be discarded.
 ** The pMem->xDel destructor is called, if it exists.  Though MEM_Str
-** and MEM_Blob values may be discarded, MEM_Int, MEM_Real, MEM_Datetime,
-** MEM_Interval and MEM_Null values are preserved.
+** and MEM_Blob values may be discarded, MEM_Int, MEM_Real, and MEM_Null
+** values are preserved.
 **
 ** Return SQLITE_OK on success or an error code (probably SQLITE_NOMEM)
 ** if unable to complete the resizing.
@@ -199,7 +285,25 @@ int sqlite3VdbeMemClearAndResize(Mem *pMem, int szNew){
   }
   assert( (pMem->flags & MEM_Dyn)==0 );
   pMem->z = pMem->zMalloc;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   pMem->flags &= (MEM_Null|MEM_Int|MEM_Real|MEM_Datetime|MEM_Interval);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  pMem->flags &= (MEM_Null|MEM_Int|MEM_Real);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  return SQLITE_OK;
+}
+
+/*
+** It is already known that pMem contains an unterminated string.
+** Add the zero terminator.
+*/
+static SQLITE_NOINLINE int vdbeMemAddTerminator(Mem *pMem){
+  if( sqlite3VdbeMemGrow(pMem, pMem->n+2, 1) ){
+    return SQLITE_NOMEM_BKPT;
+  }
+  pMem->z[pMem->n] = 0;
+  pMem->z[pMem->n+1] = 0;
+  pMem->flags |= MEM_Term;
   return SQLITE_OK;
 }
 
@@ -215,12 +319,8 @@ int sqlite3VdbeMemMakeWriteable(Mem *pMem){
   if( (pMem->flags & (MEM_Str|MEM_Blob))!=0 ){
     if( ExpandBlob(pMem) ) return SQLITE_NOMEM;
     if( pMem->szMalloc==0 || pMem->z!=pMem->zMalloc ){
-      if( sqlite3VdbeMemGrow(pMem, pMem->n + 2, 1) ){
-        return SQLITE_NOMEM_BKPT;
-      }
-      pMem->z[pMem->n] = 0;
-      pMem->z[pMem->n+1] = 0;
-      pMem->flags |= MEM_Term;
+      int rc = vdbeMemAddTerminator(pMem);
+      if( rc ) return rc;
     }
   }
   pMem->flags &= ~MEM_Ephem;
@@ -260,20 +360,6 @@ int sqlite3VdbeMemExpandBlob(Mem *pMem){
 #endif
 
 /*
-** It is already known that pMem contains an unterminated string.
-** Add the zero terminator.
-*/
-static SQLITE_NOINLINE int vdbeMemAddTerminator(Mem *pMem){
-  if( sqlite3VdbeMemGrow(pMem, pMem->n+2, 1) ){
-    return SQLITE_NOMEM_BKPT;
-  }
-  pMem->z[pMem->n] = 0;
-  pMem->z[pMem->n+1] = 0;
-  pMem->flags |= MEM_Term;
-  return SQLITE_OK;
-}
-
-/*
 ** Make sure the given Mem is \u0000 terminated.
 */
 int sqlite3VdbeMemNulTerminate(Mem *pMem){
@@ -302,15 +388,17 @@ int sqlite3VdbeMemNulTerminate(Mem *pMem){
 ** user and the latter is an internal programming error.
 */
 int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
-  int rc = SQLITE_OK;
   int fg = pMem->flags;
   const int nByte = 32;
 
   assert( pMem->db==0 || sqlite3_mutex_held(pMem->db->mutex) );
   assert( !(fg&MEM_Zero) );
   assert( !(fg&(MEM_Str|MEM_Blob)) );
-  /* COMDB2 MODIFICATION */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   assert( fg&(MEM_Int|MEM_Real|MEM_Datetime|MEM_Interval) );
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  assert( fg&(MEM_Int|MEM_Real) );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( (pMem->flags&MEM_RowSet)==0 );
   assert( EIGHT_BYTE_ALIGNMENT(pMem) );
 
@@ -326,21 +414,39 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
   ** 
   ** FIX ME: It would be better if sqlite3_snprintf() could do UTF-16.
   */
-  /* COMDB2 MODIFICATION */
-#ifdef SQLITE_BUILDING_FOR_COMDB2
-  if( fg & MEM_Interval ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( fg&MEM_Interval ){
     char tmp[64];
-    int n = 0;
-    if (pMem->du.tv.type == INTV_DECIMAL_TYPE) {
-        rc = sqlite3DecimalToString(&pMem->du.tv.u.dec, tmp, sizeof(tmp));
-        tmp[sizeof(tmp) - 1] = 0;
-        n = strlen(tmp);
-    } else {
-        rc = intv_to_str(&pMem->du.tv, tmp, sizeof(tmp), &n);
-    }
-    if( rc!=0 ){
-       logmsg(LOGMSG_ERROR, "interval_to_str failed type:%d need:%d\n", pMem->du.tv.type, n);
-       return SQLITE_INTERNAL;
+    char *z;
+
+    if( pMem->du.tv.type==INTV_YM_TYPE ){
+      snprintf(tmp, sizeof(tmp), "%s%u-%2.2u",
+               (pMem->du.tv.sign==-1) ? "- " : "", pMem->du.tv.u.ym.years,
+               pMem->du.tv.u.ym.months);
+      tmp[sizeof(tmp) - 1] = 0;
+    }else if( pMem->du.tv.type==INTV_DS_TYPE ){
+      snprintf(tmp, sizeof(tmp), "%s%u %2.2u:%2.2u:%2.2u.%3.3u",
+               (pMem->du.tv.sign==-1)?"- ":"", pMem->du.tv.u.ds.days,
+               pMem->du.tv.u.ds.hours, pMem->du.tv.u.ds.mins,
+               pMem->du.tv.u.ds.sec, pMem->du.tv.u.ds.frac);
+      tmp[sizeof(tmp) - 1] = 0;
+    }else if( pMem->du.tv.type==INTV_DSUS_TYPE ){
+      snprintf(tmp, sizeof(tmp), "%s%u %2.2u:%2.2u:%2.2u.%6.6u",
+               (pMem->du.tv.sign==-1) ? "- " : "", pMem->du.tv.u.ds.days,
+               pMem->du.tv.u.ds.hours, pMem->du.tv.u.ds.mins,
+               pMem->du.tv.u.ds.sec, pMem->du.tv.u.ds.frac);
+      tmp[sizeof(tmp) - 1] = 0;
+    }else if( pMem->du.tv.type==INTV_DECIMAL_TYPE ){
+      /* max string is like 43 letters */
+      if( sqlite3DecimalToString(&pMem->du.tv.u.dec, tmp, sizeof(tmp)) ){
+        logmsg(LOGMSG_ERROR, "%s:%d failed to convert decimal to string\n", 
+               __FILE__, __LINE__);
+        return SQLITE_INTERNAL;
+      }
+    }else{
+      logmsg(LOGMSG_ERROR, "BUG %s:%d type=%d\n", __FILE__, __LINE__,
+             pMem->du.tv.type);
+      return SQLITE_INTERNAL;
     }
     if( pMem->zMalloc ){
         sqlite3DbFree(pMem->db, pMem->zMalloc);
@@ -348,9 +454,9 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
         pMem->szMalloc = 0;
         pMem->z = NULL;
     }
-    pMem->n = n;
-    char *z = sqlite3GlobalConfig.m.xMalloc(pMem->n+2);
-    if( !z ) return SQLITE_NOMEM;
+    pMem->n = strlen(tmp);
+    z = sqlite3GlobalConfig.m.xMalloc(pMem->n + 2);
+    if( !z ) return SQLITE_NOMEM_BKPT;
     memcpy(z, tmp, pMem->n);
     z[pMem->n] = 0;
     z[pMem->n+1] = 0;
@@ -362,9 +468,8 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
     if( pMem->xDel ) pMem->xDel = 0;
     if( bForce ) pMem->flags &= ~MEM_Interval;
     sqlite3VdbeChangeEncoding(pMem, enc);
-
-  }else if( fg & MEM_Datetime ){
-
+    return SQLITE_OK;
+  }else if( fg&MEM_Datetime ){
     char    tmp[64];
     int     outdtsz;
 
@@ -392,6 +497,7 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
       if( pMem->xDel ) pMem->xDel = 0;
       if( bForce ) pMem->flags &= ~MEM_Datetime;
       sqlite3VdbeChangeEncoding(pMem, enc);
+      return SQLITE_OK;
     }else{
       char *z;
       pMem->n = strlen(tmp);
@@ -408,27 +514,22 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
       if( pMem->xDel ) pMem->xDel = 0;
       if( bForce ) pMem->flags &= ~MEM_Datetime;
       sqlite3VdbeChangeEncoding(pMem, enc);
+      return SQLITE_OK;
     }
+  }else
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  if( fg & MEM_Int ){
+    sqlite3_snprintf(nByte, pMem->z, "%lld", pMem->u.i);
+  }else{
+    assert( fg & MEM_Real );
+    sqlite3_snprintf(nByte, pMem->z, "%!.15g", pMem->u.r);
   }
-#else
-  if (0);
-#endif /* SQLITE_BUILDING_FOR_COMDB2 */
-  else {
-    if( fg & MEM_Int ){
-      sqlite3_snprintf(nByte, pMem->z, "%lld", pMem->u.i);
-    }else{
-      assert( fg & MEM_Real );
-      sqlite3_snprintf(nByte, pMem->z, "%!.15g", pMem->u.r);
-    }
-    pMem->n = sqlite3Strlen30(pMem->z);
-    pMem->enc = SQLITE_UTF8;
-    pMem->flags |= MEM_Str|MEM_Term;
-    if( bForce ) pMem->flags &= ~(MEM_Int|MEM_Real);
-    sqlite3VdbeChangeEncoding(pMem, enc);
-    rc = SQLITE_OK;
-  }
-  /* COMDB2 MODIFICATION */
-  return rc;
+  pMem->n = sqlite3Strlen30(pMem->z);
+  pMem->enc = SQLITE_UTF8;
+  pMem->flags |= MEM_Str|MEM_Term;
+  if( bForce ) pMem->flags &= ~(MEM_Int|MEM_Real);
+  sqlite3VdbeChangeEncoding(pMem, enc);
+  return SQLITE_OK;
 }
 
 /*
@@ -440,27 +541,54 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
 ** otherwise.
 */
 int sqlite3VdbeMemFinalize(Mem *pMem, FuncDef *pFunc){
-  int rc = SQLITE_OK;
-  if( ALWAYS(pFunc && pFunc->xFinalize) ){
-    sqlite3_context ctx;
-    Mem t;
-    assert( (pMem->flags & MEM_Null)!=0 || pFunc==pMem->u.pDef );
-    assert( pMem->db==0 || sqlite3_mutex_held(pMem->db->mutex) );
-    memset(&ctx, 0, sizeof(ctx));
-    memset(&t, 0, sizeof(t));
-    t.flags = MEM_Null;
-    t.db = pMem->db;
-    ctx.pOut = &t;
-    ctx.pMem = pMem;
-    ctx.pFunc = pFunc;
-    pFunc->xFinalize(&ctx); /* IMP: R-24505-23230 */
-    assert( (pMem->flags & MEM_Dyn)==0 );
-    if( pMem->szMalloc>0 ) sqlite3DbFree(pMem->db, pMem->zMalloc);
-    memcpy(pMem, &t, sizeof(t));
-    rc = ctx.isError;
-  }
-  return rc;
+  sqlite3_context ctx;
+  Mem t;
+  assert( pFunc!=0 );
+  assert( pFunc->xFinalize!=0 );
+  assert( (pMem->flags & MEM_Null)!=0 || pFunc==pMem->u.pDef );
+  assert( pMem->db==0 || sqlite3_mutex_held(pMem->db->mutex) );
+  memset(&ctx, 0, sizeof(ctx));
+  memset(&t, 0, sizeof(t));
+  t.flags = MEM_Null;
+  t.db = pMem->db;
+  ctx.pOut = &t;
+  ctx.pMem = pMem;
+  ctx.pFunc = pFunc;
+  pFunc->xFinalize(&ctx); /* IMP: R-24505-23230 */
+  assert( (pMem->flags & MEM_Dyn)==0 );
+  if( pMem->szMalloc>0 ) sqlite3DbFreeNN(pMem->db, pMem->zMalloc);
+  memcpy(pMem, &t, sizeof(t));
+  return ctx.isError;
 }
+
+/*
+** Memory cell pAccum contains the context of an aggregate function.
+** This routine calls the xValue method for that function and stores
+** the results in memory cell pMem.
+**
+** SQLITE_ERROR is returned if xValue() reports an error. SQLITE_OK 
+** otherwise.
+*/
+#ifndef SQLITE_OMIT_WINDOWFUNC
+int sqlite3VdbeMemAggValue(Mem *pAccum, Mem *pOut, FuncDef *pFunc){
+  sqlite3_context ctx;
+  Mem t;
+  assert( pFunc!=0 );
+  assert( pFunc->xValue!=0 );
+  assert( (pAccum->flags & MEM_Null)!=0 || pFunc==pAccum->u.pDef );
+  assert( pAccum->db==0 || sqlite3_mutex_held(pAccum->db->mutex) );
+  memset(&ctx, 0, sizeof(ctx));
+  memset(&t, 0, sizeof(t));
+  t.flags = MEM_Null;
+  t.db = pAccum->db;
+  sqlite3VdbeMemSetNull(pOut);
+  ctx.pOut = pOut;
+  ctx.pMem = pAccum;
+  ctx.pFunc = pFunc;
+  pFunc->xValue(&ctx);
+  return ctx.isError;
+}
+#endif /* SQLITE_OMIT_WINDOWFUNC */
 
 /*
 ** If the memory cell contains a value that must be freed by
@@ -479,7 +607,11 @@ static SQLITE_NOINLINE void vdbeMemClearExternAndSetNull(Mem *p){
     assert( (p->flags & MEM_Agg)==0 );
     testcase( p->flags & MEM_Dyn );
   }
-  if( p->flags&MEM_Dyn && p->xDel ){ /* COMDB2 MODIFICATION */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( p->flags&MEM_Dyn && p->xDel ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  if( p->flags&MEM_Dyn ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( (p->flags&MEM_RowSet)==0 );
     assert( p->xDel!=SQLITE_DYNAMIC && p->xDel!=0 );
     p->xDel((void *)p->z);
@@ -506,7 +638,7 @@ static SQLITE_NOINLINE void vdbeMemClear(Mem *p){
     vdbeMemClearExternAndSetNull(p);
   }
   if( p->szMalloc ){
-    sqlite3DbFree(p->db, p->zMalloc);
+    sqlite3DbFreeNN(p->db, p->zMalloc);
     p->szMalloc = 0;
   }
   p->z = 0;
@@ -534,7 +666,7 @@ void sqlite3VdbeMemRelease(Mem *p){
 ** If the double is out of range of a 64-bit signed integer then
 ** return the closest available 64-bit signed integer.
 */
-static i64 doubleToInt64(double r){
+static SQLITE_NOINLINE i64 doubleToInt64(double r){
 #ifdef SQLITE_OMIT_FLOATING_POINT
   /* When floating-point is omitted, double and int64 are the same thing */
   return r;
@@ -570,6 +702,11 @@ static i64 doubleToInt64(double r){
 **
 ** If pMem represents a string value, its encoding might be changed.
 */
+static SQLITE_NOINLINE i64 memIntValue(Mem *pMem){
+  i64 value = 0;
+  sqlite3Atoi64(pMem->z, &value, pMem->n, pMem->enc);
+  return value;
+}
 i64 sqlite3VdbeIntValue(Mem *pMem){
   int flags;
   assert( pMem->db==0 || sqlite3_mutex_held(pMem->db->mutex) );
@@ -579,37 +716,28 @@ i64 sqlite3VdbeIntValue(Mem *pMem){
     return pMem->u.i;
   }else if( flags & MEM_Real ){
     return doubleToInt64(pMem->u.r);
-  }
-  /* COMDB2 MODIFICATION */
-  else if( pMem->flags & MEM_Interval)
-  {
-    if(pMem->du.tv.type == INTV_YM_TYPE) 
-    {
-      return pMem->du.tv.sign*(i64)(pMem->du.tv.u.ym.years*12+
-          pMem->du.tv.u.ym.months);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  }else if( pMem->flags & MEM_Interval ){
+    if( pMem->du.tv.type==INTV_YM_TYPE ){
+      return pMem->du.tv.sign * (i64)(pMem->du.tv.u.ym.years * 12 +
+                                      pMem->du.tv.u.ym.months);
+    }else if( pMem->du.tv.type==INTV_DS_TYPE ||
+              pMem->du.tv.type==INTV_DSUS_TYPE ){
+      return pMem->du.tv.sign * (i64)(pMem->du.tv.u.ds.days * 24 * 3600 +
+                                      pMem->du.tv.u.ds.hours * 3600 +
+                                      pMem->du.tv.u.ds.mins * 60 +
+                                      pMem->du.tv.u.ds.sec);
+    }else{
+      logmsg(LOGMSG_ERROR, "%s:%d: Cannot convert a decimal to integer\n",
+             __FILE__, __LINE__);
+      return 0;
     }
-    else if(pMem->du.tv.type == INTV_DS_TYPE || pMem->du.tv.type == INTV_DSUS_TYPE)
-    {
-      return pMem->du.tv.sign*(i64)(
-          pMem->du.tv.u.ds.days*24*3600+
-          pMem->du.tv.u.ds.hours*3600+
-          pMem->du.tv.u.ds.mins*60+
-          pMem->du.tv.u.ds.sec);
-    }
-    else 
-    {
-       logmsg(LOGMSG_ERROR, "%s:%d: Cannot convert a decimal to integer\n", __FILE__, __LINE__);
-       return 0;
-    }
-  }
-  else if( pMem->flags & MEM_Datetime)
-  {
+  }else if( pMem->flags & MEM_Datetime ){
     return pMem->du.dt.dttz_sec;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }else if( flags & (MEM_Str|MEM_Blob) ){
-    i64 value = 0;
     assert( pMem->z || pMem->n==0 );
-    sqlite3Atoi64(pMem->z, &value, pMem->n, pMem->enc);
-    return value;
+    return memIntValue(pMem);
   }else{
     return 0;
   }
@@ -621,6 +749,12 @@ i64 sqlite3VdbeIntValue(Mem *pMem){
 ** value.  If it is a string or blob, try to convert it to a double.
 ** If it is a NULL, return 0.0.
 */
+static SQLITE_NOINLINE double memRealValue(Mem *pMem){
+  /* (double)0 In case of SQLITE_OMIT_FLOATING_POINT... */
+  double val = (double)0;
+  sqlite3AtoF(pMem->z, &val, pMem->n, pMem->enc);
+  return val;
+}
 double sqlite3VdbeRealValue(Mem *pMem){
   assert( pMem->db==0 || sqlite3_mutex_held(pMem->db->mutex) );
   assert( EIGHT_BYTE_ALIGNMENT(pMem) );
@@ -628,34 +762,39 @@ double sqlite3VdbeRealValue(Mem *pMem){
     return pMem->u.r;
   }else if( pMem->flags & MEM_Int ){
     return (double)pMem->u.i;
-
-   /* COMDB2 MODIFICATION */
-  }
-  else if( pMem->flags & MEM_Interval)
-  {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  }else if( pMem->flags & MEM_Interval ){
     char tmp[128];
     switch( pMem->du.tv.type ){
-    case INTV_YM_TYPE:
-    case INTV_DS_TYPE:
-    case INTV_DSUS_TYPE:
-      return interval_to_double(&pMem->du.tv);
-    default:
-       decQuadToString(&pMem->du.tv.u.dec, tmp);
-       return atof(tmp);
+      case INTV_YM_TYPE:
+      case INTV_DS_TYPE:
+      case INTV_DSUS_TYPE:
+        return interval_to_double(&pMem->du.tv);
+      default:
+        /* WARNING: lossy */
+        decQuadToString(&pMem->du.tv.u.dec, tmp);
+        return atof(tmp);
     }
   }else if( pMem->flags & MEM_Datetime ){
-    return pMem->du.dt.dttz_sec + 
-      pMem->du.dt.dttz_frac /
-      (pMem->du.dt.dttz_prec == DTTZ_PREC_MSEC ? 1E3 : 1E6);
+    return pMem->du.dt.dttz_sec + pMem->du.dt.dttz_frac /
+           (pMem->du.dt.dttz_prec == DTTZ_PREC_MSEC ? 1E3 : 1E6);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }else if( pMem->flags & (MEM_Str|MEM_Blob) ){
-    /* (double)0 In case of SQLITE_OMIT_FLOATING_POINT... */
-    double val = (double)0;
-    sqlite3AtoF(pMem->z, &val, pMem->n, pMem->enc);
-    return val;
+    return memRealValue(pMem);
   }else{
     /* (double)0 In case of SQLITE_OMIT_FLOATING_POINT... */
     return (double)0;
   }
+}
+
+/*
+** Return 1 if pMem represents true, and return 0 if pMem represents false.
+** Return the value ifNull if pMem is NULL.  
+*/
+int sqlite3VdbeBooleanValue(Mem *pMem, int ifNull){
+  if( pMem->flags & MEM_Int ) return pMem->u.i!=0;
+  if( pMem->flags & MEM_Null ) return ifNull;
+  return sqlite3VdbeRealValue(pMem)!=0.0;
 }
 
 /*
@@ -713,6 +852,18 @@ int sqlite3VdbeMemRealify(Mem *pMem){
   return SQLITE_OK;
 }
 
+/* Compare a floating point value to an integer.  Return true if the two
+** values are the same within the precision of the floating point value.
+**
+** For some versions of GCC on 32-bit machines, if you do the more obvious
+** comparison of "r1==(double)i" you sometimes get an answer of false even
+** though the r1 and (double)i values are bit-for-bit the same.
+*/
+static int sqlite3RealSameAsInt(double r1, sqlite3_int64 i){
+  double r2 = (double)i;
+  return memcmp(&r1, &r2, sizeof(r1))==0;
+}
+
 /*
 ** Convert pMem so that it has types MEM_Real or MEM_Int or both.
 ** Invalidate any prior representations.
@@ -723,16 +874,21 @@ int sqlite3VdbeMemRealify(Mem *pMem){
 */
 int sqlite3VdbeMemNumerify(Mem *pMem){
   if( (pMem->flags & (MEM_Int|MEM_Real|MEM_Null))==0 ){
-    assert( (pMem->flags & (MEM_Blob|MEM_Str|MEM_Interval|MEM_Datetime))!=0 );
+    int rc;
+    assert( (pMem->flags & (MEM_Blob|MEM_Str))!=0 );
     assert( pMem->db==0 || sqlite3_mutex_held(pMem->db->mutex) );
-    /* TODO: COMDB2 MODIFICATION */
-    /* string is NULL for cast(intervalds as string) */
-    if( pMem->z && 0==sqlite3Atoi64(pMem->z, &pMem->u.i, pMem->n, pMem->enc) ){
+    rc = sqlite3Atoi64(pMem->z, &pMem->u.i, pMem->n, pMem->enc);
+    if( rc==0 ){
       MemSetTypeFlag(pMem, MEM_Int);
     }else{
-      pMem->u.r = sqlite3VdbeRealValue(pMem);
-      MemSetTypeFlag(pMem, MEM_Real);
-      sqlite3VdbeIntegerAffinity(pMem);
+      i64 i = pMem->u.i;
+      sqlite3AtoF(pMem->z, &pMem->u.r, pMem->n, pMem->enc);
+      if( rc==1 && sqlite3RealSameAsInt(pMem->u.r, i) ){
+        pMem->u.i = i;
+        MemSetTypeFlag(pMem, MEM_Int);
+      }else{
+        MemSetTypeFlag(pMem, MEM_Real);
+      }
     }
   }
   assert( (pMem->flags & (MEM_Int|MEM_Real|MEM_Null))!=0 );
@@ -740,8 +896,9 @@ int sqlite3VdbeMemNumerify(Mem *pMem){
   return SQLITE_OK;
 }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 void sqlite3SetConversionError(void);
-
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Cast the datatype of the value in pMem according to the affinity
@@ -750,11 +907,15 @@ void sqlite3SetConversionError(void);
 ** affinity even if that results in loss of data.  This routine is
 ** used (for example) to implement the SQL "cast()" operator.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3VdbeMemCast(Vdbe *p, Mem *pMem, u8 aff, u8 encoding){
   int rc = SQLITE_OK, rc2;
   sqlite3 *db = p->db;
-
   if( pMem->flags & MEM_Null ) return rc;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+void sqlite3VdbeMemCast(Mem *pMem, u8 aff, u8 encoding){
+  if( pMem->flags & MEM_Null ) return;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   switch( aff ){
     case SQLITE_AFF_BLOB: {   /* Really a cast to BLOB */
       if( (pMem->flags & MEM_Blob)==0 ){
@@ -774,8 +935,11 @@ int sqlite3VdbeMemCast(Vdbe *p, Mem *pMem, u8 aff, u8 encoding){
       sqlite3VdbeMemIntegerify(pMem);
       break;
     }
-    case SQLITE_AFF_REAL:
-    /* COMDB2 MODIFICATION */
+    case SQLITE_AFF_REAL: {
+      sqlite3VdbeMemRealify(pMem);
+      break;
+    }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
     case SQLITE_AFF_SMALL: {
       sqlite3VdbeMemRealify(pMem);
       break;
@@ -812,19 +976,26 @@ int sqlite3VdbeMemCast(Vdbe *p, Mem *pMem, u8 aff, u8 encoding){
       }
       break;
     }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     default: {
       assert( aff==SQLITE_AFF_TEXT );
       assert( MEM_Str==(MEM_Blob>>3) );
       pMem->flags |= (pMem->flags&MEM_Blob)>>3;
       sqlite3ValueApplyAffinity(pMem, SQLITE_AFF_TEXT, encoding);
       assert( pMem->flags & MEM_Str || pMem->db->mallocFailed );
-      //pMem->flags &= ~(MEM_Int|MEM_Real|MEM_Blob|MEM_Zero);
-      if ( (pMem->flags & MEM_Str) & !pMem->db->mallocFailed )
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if ( (pMem->flags & MEM_Str) & !pMem->db->mallocFailed ){
         pMem->flags = MEM_Str | (~(MEM_AffMask|MEM_Zero));
+      }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+      pMem->flags &= ~(MEM_Int|MEM_Real|MEM_Blob|MEM_Zero);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       break;
     }
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   return rc;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
 /*
@@ -901,6 +1072,27 @@ void sqlite3VdbeMemSetInt64(Mem *pMem, i64 val){
   }
 }
 
+/* A no-op destructor */
+void sqlite3NoopDestructor(void *p){ UNUSED_PARAMETER(p); }
+
+/*
+** Set the value stored in *pMem should already be a NULL.
+** Also store a pointer to go with it.
+*/
+void sqlite3VdbeMemSetPointer(
+  Mem *pMem,
+  void *pPtr,
+  const char *zPType,
+  void (*xDestructor)(void*)
+){
+  assert( pMem->flags==MEM_Null );
+  pMem->u.zPType = zPType ? zPType : "";
+  pMem->z = pPtr;
+  pMem->flags = MEM_Null|MEM_Dyn|MEM_Subtype|MEM_Term;
+  pMem->eSubtype = 'p';
+  pMem->xDel = xDestructor ? xDestructor : sqlite3NoopDestructor;
+}
+
 #ifndef SQLITE_OMIT_FLOATING_POINT
 /*
 ** Delete any previous value and set the value stored in *pMem to val,
@@ -967,11 +1159,28 @@ void sqlite3VdbeMemAboutToChange(Vdbe *pVdbe, Mem *pMem){
   Mem *pX;
   for(i=0, pX=pVdbe->aMem; i<pVdbe->nMem; i++, pX++){
     if( pX->pScopyFrom==pMem ){
-      pX->flags |= MEM_Undefined;
+      /* If pX is marked as a shallow copy of pMem, then verify that
+      ** no significant changes have been made to pX since the OP_SCopy.
+      ** A significant change would indicated a missed call to this
+      ** function for pX.  Minor changes, such as adding or removing a
+      ** dual type, are allowed, as long as the underlying value is the
+      ** same. */
+      u16 mFlags = pMem->flags & pX->flags & pX->mScopyFlags;
+      assert( (mFlags&MEM_Int)==0 || pMem->u.i==pX->u.i );
+      assert( (mFlags&MEM_Real)==0 || pMem->u.r==pX->u.r );
+      assert( (mFlags&MEM_Str)==0  || (pMem->n==pX->n && pMem->z==pX->z) );
+      assert( (mFlags&MEM_Blob)==0  || sqlite3BlobCompare(pMem,pX)==0 );
+      
+      /* pMem is the register that is changing.  But also mark pX as
+      ** undefined so that we can quickly detect the shallow-copy error */
+      pX->flags = MEM_Undefined;
       pX->pScopyFrom = 0;
     }
   }
   pMem->pScopyFrom = 0;
+#ifdef SQLITE_DEBUG_COLUMN_CACHE
+  pMem->iTabColHash = 0;
+#endif
 }
 #endif /* SQLITE_DEBUG */
 
@@ -992,6 +1201,9 @@ void sqlite3VdbeMemShallowCopy(Mem *pTo, const Mem *pFrom, int srcType){
   assert( pTo->db==pFrom->db );
   if( VdbeMemDynamic(pTo) ){ vdbeClrCopy(pTo,pFrom,srcType); return; }
   memcpy(pTo, pFrom, MEMCELLSIZE);
+#ifdef SQLITE_DEBUG_COLUMNCACHE
+  pTo->iTabColHash = pFrom->iTabColHash;
+#endif
   if( (pFrom->flags&MEM_Static)==0 ){
     pTo->flags &= ~(MEM_Dyn|MEM_Static|MEM_Ephem);
     assert( srcType==MEM_Ephem || srcType==MEM_Static );
@@ -1009,6 +1221,9 @@ int sqlite3VdbeMemCopy(Mem *pTo, const Mem *pFrom){
   assert( (pFrom->flags & MEM_RowSet)==0 );
   if( VdbeMemDynamic(pTo) ) vdbeMemClearExternAndSetNull(pTo);
   memcpy(pTo, pFrom, MEMCELLSIZE);
+#ifdef SQLITE_DEBUG_COLUMNCACHE
+  pTo->iTabColHash = pFrom->iTabColHash;
+#endif
   pTo->flags &= ~MEM_Dyn;
   if( pTo->flags&(MEM_Str|MEM_Blob) ){
     if( 0==(pFrom->flags&MEM_Static) ){
@@ -1081,7 +1296,7 @@ int sqlite3VdbeMemSetStr(
   if( nByte<0 ){
     assert( enc!=0 );
     if( enc==SQLITE_UTF8 ){
-      nByte = sqlite3Strlen30(z);
+      nByte = 0x7fffffff & (int)strlen(z);
       if( nByte>iLimit ) nByte = iLimit+1;
     }else{
       for(nByte=0; nByte<=iLimit && (z[nByte] | z[nByte+1]); nByte+=2){}
@@ -1135,8 +1350,8 @@ int sqlite3VdbeMemSetStr(
 
   return SQLITE_OK;
 }
- 
-/* COMDB2 MODIFICATION */
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 /*
 ** Change the value of a Mem to be a datetime.
 */
@@ -1176,13 +1391,13 @@ int sqlite3VdbeMemSetDecimal(Mem *pMem, decQuad *val){
   pMem->flags = MEM_Interval;
   return SQLITE_OK;
 }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Move data out of a btree key or data field and into a Mem structure.
-** The data or key is taken from the entry that pCur is currently pointing
+** The data is payload from the entry that pCur is currently pointing
 ** to.  offset and amt determine what portion of the data or key to retrieve.
-** key is true to get the key or false to get data.  The result is written
-** into the pMem element.
+** The result is written into the pMem element.
 **
 ** The pMem object must have been initialized.  This routine will use
 ** pMem->zMalloc to hold the content from the btree, if possible.  New
@@ -1197,21 +1412,15 @@ static SQLITE_NOINLINE int vdbeMemFromBtreeResize(
   BtCursor *pCur,   /* Cursor pointing at record to retrieve. */
   u32 offset,       /* Offset from the start of data to return bytes from. */
   u32 amt,          /* Number of bytes to return. */
-  int key,          /* If true, retrieve from the btree key, not data. */
   Mem *pMem         /* OUT: Return data in this Mem structure. */
 ){
   int rc;
   pMem->flags = MEM_Null;
-  if( SQLITE_OK==(rc = sqlite3VdbeMemClearAndResize(pMem, amt+2)) ){
-    if( key ){
-      rc = sqlite3BtreeKey(pCur, offset, amt, pMem->z);
-    }else{
-      rc = sqlite3BtreeData(pCur, offset, amt, pMem->z);
-    }
+  if( SQLITE_OK==(rc = sqlite3VdbeMemClearAndResize(pMem, amt+1)) ){
+    rc = sqlite3BtreePayload(pCur, offset, amt, pMem->z);
     if( rc==SQLITE_OK ){
-      pMem->z[amt] = 0;
-      pMem->z[amt+1] = 0;
-      pMem->flags = MEM_Blob|MEM_Term;
+      pMem->z[amt] = 0;   /* Overrun area used when reading malformed records */
+      pMem->flags = MEM_Blob;
       pMem->n = (int)amt;
     }else{
       sqlite3VdbeMemRelease(pMem);
@@ -1223,7 +1432,6 @@ int sqlite3VdbeMemFromBtree(
   BtCursor *pCur,   /* Cursor pointing at record to retrieve. */
   u32 offset,       /* Offset from the start of data to return bytes from. */
   u32 amt,          /* Number of bytes to return. */
-  int key,          /* If true, retrieve from the btree key, not data. */
   Mem *pMem         /* OUT: Return data in this Mem structure. */
 ){
   char *zData;        /* Data from the btree layer */
@@ -1236,11 +1444,15 @@ int sqlite3VdbeMemFromBtree(
   /* Note: the calls to BtreeKeyFetch() and DataFetch() below assert() 
   ** that both the BtShared and database handle mutexes are held. */
   assert( (pMem->flags & MEM_RowSet)==0 );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( key ){
     zData = (char *)sqlite3BtreeKeyFetch(pCur, &available);
   }else{
     zData = (char *)sqlite3BtreeDataFetch(pCur, &available);
   }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  zData = (char *)sqlite3BtreePayloadFetch(pCur, &available);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( zData!=0 );
 
   if( offset+amt<=available ){
@@ -1248,7 +1460,7 @@ int sqlite3VdbeMemFromBtree(
     pMem->flags = MEM_Blob|MEM_Ephem;
     pMem->n = (int)amt;
   }else{
-    rc = vdbeMemFromBtreeResize(pCur, offset, amt, key, pMem);
+    rc = vdbeMemFromBtreeResize(pCur, offset, amt, pMem);
   }
 
   return rc;
@@ -1266,6 +1478,7 @@ static SQLITE_NOINLINE const void *valueToText(sqlite3_value* pVal, u8 enc){
   assert( (pVal->flags & MEM_RowSet)==0 );
   assert( (pVal->flags & (MEM_Null))==0 );
   if( pVal->flags & (MEM_Blob|MEM_Str) ){
+    if( ExpandBlob(pVal) ) return 0;
     pVal->flags |= MEM_Str;
     if( pVal->enc != (enc & ~SQLITE_UTF16_ALIGNED) ){
       sqlite3VdbeChangeEncoding(pVal, enc & ~SQLITE_UTF16_ALIGNED);
@@ -1278,14 +1491,19 @@ static SQLITE_NOINLINE const void *valueToText(sqlite3_value* pVal, u8 enc){
     }
     sqlite3VdbeMemNulTerminate(pVal); /* IMP: R-31275-44060 */
   }else{
-    /* COMDB2 MODIFICATION */
-    if (sqlite3VdbeMemStringify(pVal, enc, 0) != SQLITE_OK)
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( sqlite3VdbeMemStringify(pVal, enc, 0)!=SQLITE_OK ){
       return 0;
+    }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+    sqlite3VdbeMemStringify(pVal, enc, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( 0==(1&SQLITE_PTR_TO_INT(pVal->z)) );
   }
   assert(pVal->enc==(enc & ~SQLITE_UTF16_ALIGNED) || pVal->db==0
               || pVal->db->mallocFailed );
   if( pVal->enc==(enc & ~SQLITE_UTF16_ALIGNED) ){
+    assert( sqlite3VdbeMemConsistentDualRep(pVal) );
     return pVal->z;
   }else{
     return 0;
@@ -1308,6 +1526,7 @@ const void *sqlite3ValueText(sqlite3_value* pVal, u8 enc){
   assert( (enc&3)==(enc&~SQLITE_UTF16_ALIGNED) );
   assert( (pVal->flags & MEM_RowSet)==0 );
   if( (pVal->flags&(MEM_Str|MEM_Term))==(MEM_Str|MEM_Term) && pVal->enc==enc ){
+    assert( sqlite3VdbeMemConsistentDualRep(pVal) );
     return pVal->z;
   }
   if( pVal->flags&MEM_Null ){
@@ -1366,7 +1585,7 @@ static sqlite3_value *valueNew(sqlite3 *db, struct ValueNewStat4Ctx *p){
       if( pRec ){
         pRec->pKeyInfo = sqlite3KeyInfoOfIndex(p->pParse, pIdx);
         if( pRec->pKeyInfo ){
-          assert( pRec->pKeyInfo->nField+pRec->pKeyInfo->nXField==nCol );
+          assert( pRec->pKeyInfo->nAllField==nCol );
           assert( pRec->pKeyInfo->enc==ENC(db) );
           pRec->aMem = (Mem *)((u8*)pRec + ROUND8(sizeof(UnpackedRecord)));
           for(i=0; i<nCol; i++){
@@ -1374,7 +1593,7 @@ static sqlite3_value *valueNew(sqlite3 *db, struct ValueNewStat4Ctx *p){
             pRec->aMem[i].db = db;
           }
         }else{
-          sqlite3DbFree(db, pRec);
+          sqlite3DbFreeNN(db, pRec);
           pRec = 0;
         }
       }
@@ -1463,7 +1682,9 @@ static int valueFromFunction(
   memset(&ctx, 0, sizeof(ctx));
   ctx.pOut = pVal;
   ctx.pFunc = pFunc;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   ctx.pVdbe = db->pVdbe;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   pFunc->xSFunc(&ctx, nVal, apVal);
   if( ctx.isError ){
     rc = ctx.isError;
@@ -1487,7 +1708,7 @@ static int valueFromFunction(
     for(i=0; i<nVal; i++){
       sqlite3ValueFree(apVal[i]);
     }
-    sqlite3DbFree(db, apVal);
+    sqlite3DbFreeNN(db, apVal);
   }
 
   *ppVal = pVal;
@@ -1521,14 +1742,19 @@ static int valueFromExpr(
   int negInt = 1;
   const char *zNeg = "";
   int rc = SQLITE_OK;
-  Vdbe *p;
 
-  /* COMDB2 MODIFICATION: first in list, we dont support more than one vdbe on a db */
-  p = db->pVdbe;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* first in list, we dont support more than one vdbe on a db */
+  Vdbe *p = db->pVdbe;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   assert( pExpr!=0 );
   while( (op = pExpr->op)==TK_UPLUS || op==TK_SPAN ) pExpr = pExpr->pLeft;
+#if defined(SQLITE_ENABLE_STAT3_OR_STAT4)
+  if( op==TK_REGISTER ) op = pExpr->op2;
+#else
   if( NEVER(op==TK_REGISTER) ) op = pExpr->op2;
+#endif
 
   /* Compressed expressions only appear when parsing the DEFAULT clause
   ** on a table column definition, and hence only when pCtx==0.  This
@@ -1541,11 +1767,15 @@ static int valueFromExpr(
     rc = valueFromExpr(db, pExpr->pLeft, enc, aff, ppVal, pCtx);
     testcase( rc!=SQLITE_OK );
     if( *ppVal ){
-      if (aff == SQLITE_AFF_DATETIME) {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if( aff==SQLITE_AFF_DATETIME ){
         (*ppVal)->tz = p->tzname;
         (*ppVal)->dtprec = p->dtprec;
       }
       sqlite3VdbeMemCast(p, *ppVal, aff, SQLITE_UTF8);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+      sqlite3VdbeMemCast(*ppVal, aff, SQLITE_UTF8);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3ValueApplyAffinity(*ppVal, affinity, SQLITE_UTF8);
     }
     return rc;
@@ -1581,7 +1811,7 @@ static int valueFromExpr(
     if( enc!=SQLITE_UTF8 ){
       rc = sqlite3VdbeChangeEncoding(pVal, enc);
     }
-  }else if( op==TK_UMINUS  ){
+  }else if( op==TK_UMINUS ) {
     /* This branch happens for multiple negative signs.  Ex: -(-5) */
     if( SQLITE_OK==valueFromExpr(db,pExpr->pLeft,enc,affinity,&pVal,pCtx) 
      && pVal!=0
@@ -1600,6 +1830,7 @@ static int valueFromExpr(
   }else if( op==TK_NULL ){
     pVal = valueNew(db, pCtx);
     if( pVal==0 ) goto no_mem;
+    sqlite3VdbeMemNumerify(pVal);
   }
 #ifndef SQLITE_OMIT_BLOB_LITERAL
   else if( op==TK_BLOB ){
@@ -1615,18 +1846,25 @@ static int valueFromExpr(
                          0, SQLITE_DYNAMIC);
   }
 #endif
-
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
   else if( op==TK_FUNCTION && pCtx!=0 ){
     rc = valueFromFunction(db, pExpr, enc, affinity, &pVal, pCtx);
   }
 #endif
+  else if( op==TK_TRUEFALSE ){
+     pVal = valueNew(db, pCtx);
+     pVal->flags = MEM_Int;
+     pVal->u.i = pExpr->u.zToken[4]==0;
+  }
 
   *ppVal = pVal;
   return rc;
 
 no_mem:
-  sqlite3OomFault(db);
+#ifdef SQLITE_ENABLE_STAT3_OR_STAT4
+  if( pCtx==0 || pCtx->pParse->nErr==0 )
+#endif
+    sqlite3OomFault(db);
   sqlite3DbFree(db, zVal);
   assert( *ppVal==0 );
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
@@ -1693,7 +1931,7 @@ static void recordFunc(
     putVarint32(&aRet[1], iSerial);
     sqlite3VdbeSerialPut(&aRet[1+nSerial], argv[0], iSerial);
     sqlite3_result_blob(context, aRet, nRet, SQLITE_TRANSIENT);
-    sqlite3DbFree(db, aRet);
+    sqlite3DbFreeNN(db, aRet);
   }
 }
 
@@ -1707,9 +1945,8 @@ void sqlite3AnalyzeFunctions(void){
   sqlite3InsertBuiltinFuncs(aAnalyzeTableFuncs, ArraySize(aAnalyzeTableFuncs));
 }
 
-
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 /*
-** COMDB2 MODIFICATION
 ** There is no literal notation for datetime and interval. For these columns,
 ** try converting string literal to column's affinity for stat4 comparison.
 */
@@ -1727,11 +1964,11 @@ static int castExpr(
   Vdbe *v = db->pVdbe;
   const char *z = pExpr->u.zToken;
   switch( affinity ){
-    case SQLITE_AFF_DATETIME:
+    case SQLITE_AFF_DATETIME: {
       if( str_to_dttz(z, strlen(z), v->tzname, &dt, v->dtprec)==0 ){
         sqlite3_value *pVal = valueNew(db, pAlloc);
-        if ( pVal==NULL ){
-          return SQLITE_NOMEM;
+        if( pVal==NULL ){
+          return SQLITE_NOMEM_BKPT;
         }
         pVal->du.dt = dt;
         pVal->tz = v->tzname;
@@ -1741,15 +1978,14 @@ static int castExpr(
         return 0;
       }
       break;
-    case SQLITE_AFF_INTV_MO:
+    }
+    case SQLITE_AFF_INTV_MO: {
       type = INTV_YM_TYPE;
-      if(
-        str_to_interval( z, strlen(z), &type, &n0, &n1, &ds, &sign )==0
-        && type==0 // parsed into n0,n1
-      ){
+      if( str_to_interval(z, strlen(z), &type, &n0, &n1, &ds, &sign)==0
+       && type==0 ){ /* parsed into n0,n1 */
         sqlite3_value *pVal = valueNew(db, pAlloc);
-        if ( pVal==NULL ){
-          return SQLITE_NOMEM;
+        if( pVal==NULL ){
+          return SQLITE_NOMEM_BKPT;
         }
         intv_t *tv = &pVal->du.tv;
         tv->u.ym.years = n0;
@@ -1761,15 +1997,14 @@ static int castExpr(
         return 0;
       }
       break;
-    case SQLITE_AFF_INTV_SE:
+    }
+    case SQLITE_AFF_INTV_SE: {
       type = INTV_DSUS_TYPE;
-      if(
-        str_to_interval( z, strlen(z), &type, &n0, &n1, &ds, &sign )==0
-        && type==1 // parsed into ds
-      ){
+      if( str_to_interval(z, strlen(z), &type, &n0, &n1, &ds, &sign)==0
+       && type==1 ){ /* parsed into ds */
         sqlite3_value *pVal = valueNew(db, pAlloc);
-        if ( pVal==NULL ){
-          return SQLITE_NOMEM;
+        if( pVal==NULL ){
+          return SQLITE_NOMEM_BKPT;
         }
         intv_t *tv = &pVal->du.tv;
         tv->u.ds = ds;
@@ -1780,9 +2015,11 @@ static int castExpr(
         return 0;
       }
       break;
+    }
   }
   return valueFromExpr(db, pExpr, ENC(db), affinity, ppVal, pAlloc);
 }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Attempt to extract a value from pExpr and use it to construct *ppVal.
@@ -1816,14 +2053,13 @@ static int stat4ValueFromExpr(
   /* Skip over any TK_COLLATE nodes */
   pExpr = sqlite3ExprSkipCollate(pExpr);
 
+  assert( pExpr==0 || pExpr->op!=TK_REGISTER || pExpr->op2!=TK_VARIABLE );
   if( !pExpr ){
     pVal = valueNew(db, pAlloc);
     if( pVal ){
       sqlite3VdbeMemSetNull((Mem*)pVal);
     }
-  }else if( pExpr->op==TK_VARIABLE
-        || NEVER(pExpr->op==TK_REGISTER && pExpr->op2==TK_VARIABLE)
-  ){
+  }else if( pExpr->op==TK_VARIABLE && (db->flags & SQLITE_EnableQPSG)==0 ){
     Vdbe *v;
     int iBindVar = pExpr->iColumn;
     sqlite3VdbeSetVarmask(pParse->pVdbe, iBindVar);
@@ -1831,18 +2067,16 @@ static int stat4ValueFromExpr(
       pVal = valueNew(db, pAlloc);
       if( pVal ){
         rc = sqlite3VdbeMemCopy((Mem*)pVal, &v->aVar[iBindVar-1]);
-        if( rc==SQLITE_OK ){
-          sqlite3ValueApplyAffinity(pVal, affinity, ENC(db));
-        }
+        sqlite3ValueApplyAffinity(pVal, affinity, ENC(db));
         pVal->db = pParse->db;
       }
     }
   }else{
-#   if SQLITE_BUILDING_FOR_COMDB2
-    if( pExpr->op==TK_STRING && affinity!=SQLITE_AFF_TEXT )
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( pExpr->op==TK_STRING && affinity!=SQLITE_AFF_TEXT ){
       rc = castExpr(db, pExpr, affinity, &pVal, pAlloc);
-    else
-#   endif
+    }else
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     rc = valueFromExpr(db, pExpr, ENC(db), affinity, &pVal, pAlloc);
   }
 
@@ -1939,7 +2173,9 @@ int sqlite3Stat4ValueFromExpr(
   return stat4ValueFromExpr(pParse, pExpr, affinity, 0, ppVal);
 }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <serialget.c>
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Extract the iCol-th column from the nRec-byte record in pRec.  Write
@@ -1985,9 +2221,11 @@ int sqlite3Stat4Column(
     if( pMem==0 ) return SQLITE_NOMEM_BKPT;
   }
   sqlite3VdbeSerialGet(&a[iField-szField], t, pMem);
-  /* COMDB2 MODIFICATION */
-  if(11 == t) /* see sqlite3VdbeSerialGet, 11 is datetime blob */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( 11==t ){ /* see sqlite3VdbeSerialGet, 11 is datetime blob */
     pMem->tz = db->pVdbe->tzname;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   pMem->enc = ENC(db);
   return SQLITE_OK;
 }
@@ -2000,14 +2238,14 @@ int sqlite3Stat4Column(
 void sqlite3Stat4ProbeFree(UnpackedRecord *pRec){
   if( pRec ){
     int i;
-    int nCol = pRec->pKeyInfo->nField+pRec->pKeyInfo->nXField;
+    int nCol = pRec->pKeyInfo->nAllField;
     Mem *aMem = pRec->aMem;
     sqlite3 *db = aMem[0].db;
     for(i=0; i<nCol; i++){
       sqlite3VdbeMemRelease(&aMem[i]);
     }
     sqlite3KeyInfoUnref(pRec->pKeyInfo);
-    sqlite3DbFree(db, pRec);
+    sqlite3DbFreeNN(db, pRec);
   }
 }
 #endif /* ifdef SQLITE_ENABLE_STAT4 */
@@ -2031,7 +2269,7 @@ void sqlite3ValueSetStr(
 void sqlite3ValueFree(sqlite3_value *v){
   if( !v ) return;
   sqlite3VdbeMemRelease((Mem *)v);
-  sqlite3DbFree(((Mem*)v)->db, v);
+  sqlite3DbFreeNN(((Mem*)v)->db, v);
 }
 
 /*
@@ -2059,10 +2297,7 @@ int sqlite3ValueBytes(sqlite3_value *pVal, u8 enc){
   return valueBytes(pVal, enc);
 }
 
-#ifdef SQLITE_BUILDING_FOR_COMDB2
-
-/* COMDB2 MODIFICATION */
-
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 /*
 ** Add MEM_Datetime to the set of representations for the given Mem. 
 */
@@ -3067,6 +3302,4 @@ done:
    sqlite3VdbeMemRelease(&bcopy);
    return rc;
 }
-
-
-#endif /* SQLITE_BUILDING_FOR_COMDB2 */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

@@ -75,6 +75,7 @@ while {![eof $in]} {
   if {[regexp {^case OP_} $line]} {
     set line [split $line]
     set name [string trim [lindex $line 1] :]
+    if {$name=="OP_Abortable"} continue;  # put OP_Abortable last 
     set op($name) -1
     set jump($name) 0
     set in1($name) 0
@@ -113,7 +114,7 @@ while {![eof $in]} {
 #
 puts "/* Automatically generated.  Do not edit */"
 puts "/* See the tool/mkopcodeh.tcl script for details */"
-foreach name {OP_Noop OP_Explain} {
+foreach name {OP_Noop OP_Explain OP_Abortable} {
   set jump($name) 0
   set in1($name) 0
   set in2($name) 0
@@ -202,19 +203,17 @@ for {set i 0} {$i<=$max} {incr i} {
   set name $def($i)
   puts -nonewline [format {#define %-16s %3d} $name $i]
   set com {}
+  if {$jump($name)} {
+    lappend com "jump"
+  }
   if {[info exists sameas($i)]} {
-    set com "same as $sameas($i)"
+    lappend com "same as $sameas($i)"
   }
   if {[info exists synopsis($name)]} {
-    set x $synopsis($name)
-    if {$com==""} {
-      set com "synopsis: $x"
-    } else {
-      append com ", synopsis: $x"
-    }
+    lappend com "synopsis: $synopsis($name)"
   }
-  if {$com!=""} {
-    puts -nonewline [format " /* %-42s */" $com]
+  if {[llength $com]} {
+    puts -nonewline [format " /* %-42s */" [join $com {, }]]
   }
   puts ""
 }

@@ -57,7 +57,9 @@
 */
 #include <sys/sysctl.h>
 #include <malloc/malloc.h>
+#ifdef SQLITE_MIGHT_BE_SINGLE_CORE
 #include <libkern/OSAtomic.h>
+#endif /* SQLITE_MIGHT_BE_SINGLE_CORE */
 static malloc_zone_t* _sqliteZone_;
 #define SQLITE_MALLOC(x) malloc_zone_malloc(_sqliteZone_, (x))
 #define SQLITE_FREE(x) malloc_zone_free(_sqliteZone_, (x));
@@ -124,14 +126,22 @@ static malloc_zone_t* _sqliteZone_;
 ** routines.
 */
 static void *sqlite3MemMalloc(int nByte){
+#ifdef SQLITE_MALLOCSIZE
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   extern unsigned gbl_blob_sz_thresh_bytes;
   extern comdb2bma blobmem;
-#ifdef SQLITE_MALLOCSIZE
   void *p;
-  if( nByte > gbl_blob_sz_thresh_bytes )
+  testcase( ROUND8(nByte)==nByte );
+  if( nByte>gbl_blob_sz_thresh_bytes ){
     p = comdb2_bmalloc( blobmem, nByte );
-  else
+  }else{
     p = SQLITE_MALLOC( nByte );
+  }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  void *p;
+  testcase( ROUND8(nByte)==nByte );
+  p = SQLITE_MALLOC( nByte );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( p==0 ){
     testcase( sqlite3GlobalConfig.xLog!=0 );
     sqlite3_log(SQLITE_NOMEM, "failed to allocate %u bytes of memory", nByte);
@@ -140,11 +150,16 @@ static void *sqlite3MemMalloc(int nByte){
 #else
   sqlite3_int64 *p;
   assert( nByte>0 );
-  nByte = ROUND8(nByte);
-  if( nByte > gbl_blob_sz_thresh_bytes )
+  testcase( ROUND8(nByte)!=nByte );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( nByte>gbl_blob_sz_thresh_bytes ){
     p = comdb2_bmalloc( blobmem, nByte+8 );
-  else
+  }else{
     p = SQLITE_MALLOC( nByte+8 );
+  }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  p = SQLITE_MALLOC( nByte+8 );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( p ){
     p[0] = nByte;
     p++;
@@ -257,19 +272,10 @@ static int sqlite3MemInit(void *NotUsed){
   }else{
     /* only 1 core, use our own zone to contention over global locks, 
     ** e.g. we have our own dedicated locks */
-    bool success;
-    malloc_zone_t* newzone = malloc_create_zone(4096, 0);
-    malloc_set_zone_name(newzone, "Sqlite_Heap");
-    do{
-      success = OSAtomicCompareAndSwapPtrBarrier(NULL, newzone, 
-                                 (void * volatile *)&_sqliteZone_);
-    }while(!_sqliteZone_);
-    if( !success ){
-      /* somebody registered a zone first */
-      malloc_destroy_zone(newzone);
-    }
+    _sqliteZone_ = malloc_create_zone(4096, 0);
+    malloc_set_zone_name(_sqliteZone_, "Sqlite_Heap");
   }
-#endif
+#endif /*  defined(__APPLE__) && !defined(SQLITE_WITHOUT_ZONEMALLOC) */
   UNUSED_PARAMETER(NotUsed);
   return SQLITE_OK;
 }

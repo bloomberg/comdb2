@@ -105,6 +105,7 @@ CollSeq *sqlite3GetCollSeq(
   assert( !p || p->xCmp );
   if( p==0 ){
     sqlite3ErrorMsg(pParse, "no such collation sequence: %s", zName);
+    pParse->rc = SQLITE_ERROR_MISSING_COLLSEQ;
   }
   return p;
 }
@@ -121,7 +122,7 @@ CollSeq *sqlite3GetCollSeq(
 ** from the main database is substituted, if one is available.
 */
 int sqlite3CheckCollSeq(Parse *pParse, CollSeq *pColl){
-  if( pColl ){
+  if( pColl && pColl->xCmp==0 ){
     const char *zName = pColl->zName;
     sqlite3 *db = pParse->db;
     CollSeq *p = sqlite3GetCollSeq(pParse, ENC(db), pColl, zName);
@@ -157,8 +158,8 @@ static CollSeq *findCollSeqEntry(
   pColl = sqlite3HashFind(&db->aCollSeq, zName);
 
   if( 0==pColl && create ){
-    int nName = sqlite3Strlen30(zName);
-    pColl = sqlite3DbMallocZero(db, 3*sizeof(*pColl) + nName + 1);
+    int nName = sqlite3Strlen30(zName) + 1;
+    pColl = sqlite3DbMallocZero(db, 3*sizeof(*pColl) + nName);
     if( pColl ){
       CollSeq *pDel = 0;
       pColl[0].zName = (char*)&pColl[3];
@@ -168,7 +169,6 @@ static CollSeq *findCollSeqEntry(
       pColl[2].zName = (char*)&pColl[3];
       pColl[2].enc = SQLITE_UTF16BE;
       memcpy(pColl[0].zName, zName, nName);
-      pColl[0].zName[nName] = 0;
       pDel = sqlite3HashInsert(&db->aCollSeq, pColl[0].zName, pColl);
 
       /* If a malloc() failure occurred in sqlite3HashInsert(), it will 
@@ -308,7 +308,8 @@ void sqlite3InsertBuiltinFuncs(
     FuncDef *pOther;
     const char *zName = aDef[i].zName;
     int nName = sqlite3Strlen30(zName);
-    int h = (sqlite3UpperToLower[(u8)zName[0]] + nName) % SQLITE_FUNC_HASH_SZ;
+    int h = (zName[0] + nName) % SQLITE_FUNC_HASH_SZ;
+    assert( zName[0]>='a' && zName[0]<='z' );
     pOther = functionSearch(h, zName);
     if( pOther ){
       assert( pOther!=&aDef[i] && pOther->pNext!=&aDef[i] );
@@ -374,7 +375,7 @@ FuncDef *sqlite3FindFunction(
 
   /* If no match is found, search the built-in functions.
   **
-  ** If the SQLITE_PreferBuiltin flag is set, then search the built-in
+  ** If the DBFLAG_PreferBuiltin flag is set, then search the built-in
   ** functions even if a prior app-defined function was found.  And give
   ** priority to built-in functions.
   **
@@ -384,7 +385,7 @@ FuncDef *sqlite3FindFunction(
   ** new function.  But the FuncDefs for built-in functions are read-only.
   ** So we must not search for built-ins when creating a new function.
   */ 
-  if( !createFlag && (pBest==0 || (db->flags & SQLITE_PreferBuiltin)!=0) ){
+  if( !createFlag && (pBest==0 || (db->mDbFlags & DBFLAG_PreferBuiltin)!=0) ){
     bestScore = 0;
     h = (sqlite3UpperToLower[(u8)zName[0]] + nName) % SQLITE_FUNC_HASH_SZ;
     p = functionSearch(h, zName);
@@ -405,10 +406,12 @@ FuncDef *sqlite3FindFunction(
   if( createFlag && bestScore<FUNC_PERFECT_MATCH && 
       (pBest = sqlite3DbMallocZero(db, sizeof(*pBest)+nName+1))!=0 ){
     FuncDef *pOther;
+    u8 *z;
     pBest->zName = (const char*)&pBest[1];
     pBest->nArg = (u16)nArg;
     pBest->funcFlags = enc;
     memcpy((char*)&pBest[1], zName, nName+1);
+    for(z=(u8*)pBest->zName; *z; z++) *z = sqlite3UpperToLower[*z];
     pOther = (FuncDef*)sqlite3HashInsert(&db->aFunc, pBest->zName, pBest);
     if( pOther==pBest ){
       sqlite3DbFree(db, pBest);
@@ -456,22 +459,24 @@ void sqlite3SchemaClear(void *p){
   sqlite3HashClear(&pSchema->fkeyHash);
   pSchema->pSeqTab = 0;
   if( pSchema->schemaFlags & DB_SchemaLoaded ){
-#if 0
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
     /*
-    ** COMDB2 MODIFICATION
     ** we clear the schema when things change and we detect that
     ** comdb2 uses different mechanisms to protect against that, and
-    ** sqlite3BtreeUpdateMeta is not supported (sqlite3BtreeGetMeta returns
-    ** a constant 0
-    ** Nuke this out
+    ** sqlite3BtreeUpdateMeta is not supported (sqlite3BtreeGetMeta
+    ** returns a constant 0)
     **/
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pSchema->iGeneration++;
-#endif
-    pSchema->schemaFlags &= ~DB_SchemaLoaded;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* TODO: Should the flags be changed for comdb2? */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  pSchema->schemaFlags &= ~(DB_SchemaLoaded|DB_ResetWanted);
 }
 
-/* COMDB2 MODIFICATION */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 /*
 ** Follows the idea of sqlite3SchemaClear,but only clears tables and
 ** indexes for table "tblname"
@@ -503,6 +508,7 @@ void sqlite3SchemaClearByName(void *p, const char *tblname){
     }
   }
 }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Find and return the schema associated with a BTree.  Create

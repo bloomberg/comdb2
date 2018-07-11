@@ -67,7 +67,11 @@
 ** at all times.
 */
 #ifndef SQLITE_MAX_EXPR_DEPTH
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 # define SQLITE_MAX_EXPR_DEPTH 3000
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+# define SQLITE_MAX_EXPR_DEPTH 1000
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
 
 /*
@@ -87,7 +91,7 @@
 ** Not currently enforced.
 */
 #ifndef SQLITE_MAX_VDBE_OP
-# define SQLITE_MAX_VDBE_OP 25000
+# define SQLITE_MAX_VDBE_OP 250000000
 #endif
 
 /*
@@ -125,17 +129,24 @@
 ** and we have to allow 2 extra counts for the "main" and "temp" databases.
 */
 #ifndef SQLITE_MAX_ATTACHED
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 # define SQLITE_MAX_ATTACHED 100
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+# define SQLITE_MAX_ATTACHED 10
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
 
 
 /*
 ** The maximum value of a ?nnn wildcard that the parser will accept.
-** COMDB2 MODIFICATION
-** Comdb2 needs 1024 variables because Oracle has 1000, and DB2 has 1012.
 */
 #ifndef SQLITE_MAX_VARIABLE_NUMBER
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/* COMPAT: Needs 1024 vars because Oracle has 1000 and DB2 has 1012. */
 # define SQLITE_MAX_VARIABLE_NUMBER 2048
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+# define SQLITE_MAX_VARIABLE_NUMBER 999
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
 
 /* Maximum page size.  The upper bound on this value is 65536.  This a limit

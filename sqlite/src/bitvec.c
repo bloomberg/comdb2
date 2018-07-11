@@ -135,7 +135,7 @@ int sqlite3BitvecTestNotNull(Bitvec *p, u32 i){
     u32 bin = i/p->iDivisor;
     i = i%p->iDivisor;
     p = p->u.apSub[bin];
-    if( !p ){
+    if (!p) {
       return 0;
     }
   }
@@ -172,7 +172,7 @@ int sqlite3BitvecSet(Bitvec *p, u32 i){
   assert( i>0 );
   assert( i<=p->iSize );
   i--;
-  while( (p->iSize > BITVEC_NBIT) && p->iDivisor ){
+  while((p->iSize > BITVEC_NBIT) && p->iDivisor) {
     u32 bin = i/p->iDivisor;
     i = i%p->iDivisor;
     if( p->u.apSub[bin]==0 ){
@@ -190,9 +190,9 @@ int sqlite3BitvecSet(Bitvec *p, u32 i){
   /* completely fill the hash, then just add it without */
   /* worring about sub-dividing and re-hashing. */
   if( !p->u.aHash[h] ){
-    if( p->nSet<(BITVEC_NINT-1) ){
+    if (p->nSet<(BITVEC_NINT-1)) {
       goto bitvec_set_end;
-    }else{
+    } else {
       goto bitvec_set_rehash;
     }
   }
@@ -245,7 +245,7 @@ void sqlite3BitvecClear(Bitvec *p, u32 i, void *pBuf){
     u32 bin = i/p->iDivisor;
     i = i%p->iDivisor;
     p = p->u.apSub[bin];
-    if( !p ){
+    if (!p) {
       return;
     }
   }
@@ -293,7 +293,7 @@ u32 sqlite3BitvecSize(Bitvec *p){
   return p->iSize;
 }
 
-#ifndef SQLITE_OMIT_BUILTIN_TEST
+#ifndef SQLITE_UNTESTABLE
 /*
 ** Let V[] be an array of unsigned characters sufficient to hold
 ** up to N bits.  Let I be an integer between 0 and N.  0<=I<N.
@@ -408,4 +408,4 @@ bitvec_end:
   sqlite3BitvecDestroy(pBitvec);
   return rc;
 }
-#endif /* SQLITE_OMIT_BUILTIN_TEST */
+#endif /* SQLITE_UNTESTABLE */

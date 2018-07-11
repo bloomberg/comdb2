@@ -118,11 +118,9 @@ int sqlite3AuthReadCol(
 #endif
                 );
   if( rc==SQLITE_DENY ){
-    if( db->nDb>2 || iDb!=0 ){
-      sqlite3ErrorMsg(pParse, "access to %s.%s.%s is prohibited",zDb,zTab,zCol);
-    }else{
-      sqlite3ErrorMsg(pParse, "access to %s.%s is prohibited", zTab, zCol);
-    }
+    char *z = sqlite3_mprintf("%s.%s", zTab, zCol);
+    if( db->nDb>2 || iDb!=0 ) z = sqlite3_mprintf("%s.%z", zDb, z);
+    sqlite3ErrorMsg(pParse, "access to %z is prohibited", z);
     pParse->rc = SQLITE_AUTH;
   }else if( rc!=SQLITE_IGNORE && rc!=SQLITE_OK ){
     sqliteAuthBadReturnCode(pParse);
@@ -152,6 +150,7 @@ void sqlite3AuthRead(
   int iDb;              /* The index of the database the expression refers to */
   int iCol;             /* Index of column in table */
 
+  assert( pExpr->op==TK_COLUMN || pExpr->op==TK_TRIGGER );
   if( db->xAuth==0 ) return;
   iDb = sqlite3SchemaToIndex(pParse->db, pSchema);
   if( iDb<0 ){
@@ -160,7 +159,6 @@ void sqlite3AuthRead(
     return;
   }
 
-  assert( pExpr->op==TK_COLUMN || pExpr->op==TK_TRIGGER );
   if( pExpr->op==TK_TRIGGER ){
     pTab = pParse->pTriggerTab;
   }else{
@@ -216,6 +214,18 @@ int sqlite3AuthCheck(
   if( db->xAuth==0 ){
     return SQLITE_OK;
   }
+
+  /* EVIDENCE-OF: R-43249-19882 The third through sixth parameters to the
+  ** callback are either NULL pointers or zero-terminated strings that
+  ** contain additional details about the action to be authorized.
+  **
+  ** The following testcase() macros show that any of the 3rd through 6th
+  ** parameters can be either NULL or a string. */
+  testcase( zArg1==0 );
+  testcase( zArg2==0 );
+  testcase( zArg3==0 );
+  testcase( pParse->zAuthContext==0 );
+
   rc = db->xAuth(db->pAuthArg, code, zArg1, zArg2, zArg3, pParse->zAuthContext
 #ifdef SQLITE_USER_AUTHENTICATION
                  ,db->auth.zAuthUser

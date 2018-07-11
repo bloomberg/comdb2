@@ -74,7 +74,7 @@ static void renameTableFunc(
         zCsr += len;
         len = sqlite3GetToken(zCsr, &token);
       } while( token==TK_SPACE );
-      assert( len>0 );
+      assert( len>0 || !*zCsr );
     } while( token!=TK_LP && token!=TK_USING );
 
     zRet = sqlite3MPrintf(db, "%.*s\"%w\"%s", (int)(((u8*)tname.z) - zSql),
@@ -142,7 +142,7 @@ static void renameParentFunc(
     }
   }
 
-  zResult = sqlite3MPrintf(db, "%s%s", (zOutput?zOutput:""), zInput), 
+  zResult = sqlite3MPrintf(db, "%s%s", (zOutput?zOutput:""), zInput);
   sqlite3_result_text(context, zResult, -1, SQLITE_DYNAMIC);
   sqlite3DbFree(db, zOutput);
 }
@@ -198,7 +198,7 @@ static void renameTriggerFunc(
         zCsr += len;
         len = sqlite3GetToken(zCsr, &token);
       }while( token==TK_SPACE );
-      assert( len>0 );
+      assert( len>0 || !*zCsr );
 
       /* Variable 'dist' stores the number of tokens read since the most
       ** recent TK_DOT or TK_ON. This means that when a WHEN, FOR or BEGIN 
@@ -375,7 +375,7 @@ static void reloadTableSchema(Parse *pParse, Table *pTab, const char *zName){
 ** Or, if zName is not a system table, zero is returned.
 */
 static int isSystemTable(Parse *pParse, const char *zName){
-  if( sqlite3Strlen30(zName)>6 && 0==sqlite3StrNICmp(zName, "sqlite_", 7) ){
+  if( 0==sqlite3StrNICmp(zName, "sqlite_", 7) ){
     sqlite3ErrorMsg(pParse, "table %s may not be altered", zName);
     return 1;
   }
@@ -403,9 +403,9 @@ void sqlite3AlterRenameTable(
   char *zWhere = 0;         /* Where clause to locate temp triggers */
 #endif
   VTable *pVTab = 0;        /* Non-zero if this is a v-tab with an xRename() */
-  int savedDbFlags;         /* Saved value of db->flags */
+  u32 savedDbFlags;         /* Saved value of db->mDbFlags */
 
-  savedDbFlags = db->flags;  
+  savedDbFlags = db->mDbFlags;  
   if( NEVER(db->mallocFailed) ) goto exit_rename_table;
   assert( pSrc->nSrc==1 );
   assert( sqlite3BtreeHoldsAllMutexes(pParse->db) );
@@ -414,7 +414,7 @@ void sqlite3AlterRenameTable(
   if( !pTab ) goto exit_rename_table;
   iDb = sqlite3SchemaToIndex(pParse->db, pTab->pSchema);
   zDb = db->aDb[iDb].zDbSName;
-  db->flags |= SQLITE_PreferBuiltin;
+  db->mDbFlags |= DBFLAG_PreferBuiltin;
 
   /* Get a NULL terminated version of the new table name. */
   zName = sqlite3NameFromToken(db, pName);
@@ -504,7 +504,7 @@ void sqlite3AlterRenameTable(
       sqlite3NestedParse(pParse, 
           "UPDATE \"%w\".%s SET "
               "sql = sqlite_rename_parent(sql, %Q, %Q) "
-              "WHERE %s;", zDb, SCHEMA_TABLE(iDb), zTabName, zName, zWhere);
+              "WHERE %s;", zDb, MASTER_NAME, zTabName, zName, zWhere);
       sqlite3DbFree(db, zWhere);
     }
   }
@@ -528,7 +528,7 @@ void sqlite3AlterRenameTable(
             "ELSE name END "
       "WHERE tbl_name=%Q COLLATE nocase AND "
           "(type='table' OR type='index' OR type='trigger');", 
-      zDb, SCHEMA_TABLE(iDb), zName, zName, zName, 
+      zDb, MASTER_NAME, zName, zName, zName, 
 #ifndef SQLITE_OMIT_TRIGGER
       zName,
 #endif
@@ -579,7 +579,7 @@ void sqlite3AlterRenameTable(
 exit_rename_table:
   sqlite3SrcListDelete(db, pSrc);
   sqlite3DbFree(db, zName);
-  db->flags = savedDbFlags;
+  db->mDbFlags = savedDbFlags;
 }
 
 /*
@@ -680,20 +680,20 @@ void sqlite3AlterFinishAddColumn(Parse *pParse, Token *pColDef){
   zCol = sqlite3DbStrNDup(db, (char*)pColDef->z, pColDef->n);
   if( zCol ){
     char *zEnd = &zCol[pColDef->n-1];
-    int savedDbFlags = db->flags;
+    u32 savedDbFlags = db->mDbFlags;
     while( zEnd>zCol && (*zEnd==';' || sqlite3Isspace(*zEnd)) ){
       *zEnd-- = '\0';
     }
-    db->flags |= SQLITE_PreferBuiltin;
+    db->mDbFlags |= DBFLAG_PreferBuiltin;
     sqlite3NestedParse(pParse, 
         "UPDATE \"%w\".%s SET "
           "sql = substr(sql,1,%d) || ', ' || %Q || substr(sql,%d) "
         "WHERE type = 'table' AND name = %Q", 
-      zDb, SCHEMA_TABLE(iDb), pNew->addColOffset, zCol, pNew->addColOffset+1,
+      zDb, MASTER_NAME, pNew->addColOffset, zCol, pNew->addColOffset+1,
       zTab
     );
     sqlite3DbFree(db, zCol);
-    db->flags = savedDbFlags;
+    db->mDbFlags = savedDbFlags;
   }
 
   /* Make sure the schema version is at least 3.  But do not upgrade
@@ -773,7 +773,7 @@ void sqlite3AlterBeginAddColumn(Parse *pParse, SrcList *pSrc){
   pNew = (Table*)sqlite3DbMallocZero(db, sizeof(Table));
   if( !pNew ) goto exit_begin_add_column;
   pParse->pNewTable = pNew;
-  pNew->nRef = 1;
+  pNew->nTabRef = 1;
   pNew->nCol = pTab->nCol;
   assert( pNew->nCol>0 );
   nAlloc = (((pNew->nCol-1)/8)*8)+8;
@@ -793,7 +793,7 @@ void sqlite3AlterBeginAddColumn(Parse *pParse, SrcList *pSrc){
   }
   pNew->pSchema = db->aDb[iDb].pSchema;
   pNew->addColOffset = pTab->addColOffset;
-  pNew->nRef = 1;
+  pNew->nTabRef = 1;
 
   /* Begin a transaction and increment the schema cookie.  */
   sqlite3BeginWriteOperation(pParse, 0, iDb);

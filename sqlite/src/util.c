@@ -42,7 +42,7 @@ void sqlite3Coverage(int x){
 ** Return whatever integer value the test callback returns, or return
 ** SQLITE_OK if no test callback is installed.
 */
-#ifndef SQLITE_OMIT_BUILTIN_TEST
+#ifndef SQLITE_UNTESTABLE
 int sqlite3FaultSim(int iTest){
   int (*xCallback)(int) = sqlite3GlobalConfig.xTestCallback;
   return xCallback ? xCallback(iTest) : SQLITE_OK;
@@ -265,9 +265,10 @@ void sqlite3Dequote(char *z){
   z[j] = 0;
 }
 
-/* COMDB2 
- * return true if string is correctly quoted
- * ie first and last char are a quote...note that string should be null terminated
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/* return true if string is correctly quoted
+ * ie first and last char are a quote...
+ * note that string should be null terminated
  */
 int sqlite3IsCorrectlyQuoted(char *z){
   char quote = z[0];
@@ -277,6 +278,8 @@ int sqlite3IsCorrectlyQuoted(char *z){
   if( i > 1) return z[i-1] == quote;
   return 0;
 }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** Generate a Token object from a string
 */
@@ -330,6 +333,45 @@ int sqlite3_strnicmp(const char *zLeft, const char *zRight, int N){
   b = (unsigned char *)zRight;
   while( N-- > 0 && *a!=0 && UpperToLower[*a]==UpperToLower[*b]){ a++; b++; }
   return N<0 ? 0 : UpperToLower[*a] - UpperToLower[*b];
+}
+
+/*
+** Compute 10 to the E-th power.  Examples:  E==1 results in 10.
+** E==2 results in 100.  E==50 results in 1.0e50.
+**
+** This routine only works for values of E between 1 and 341.
+*/
+static LONGDOUBLE_TYPE sqlite3Pow10(int E){
+#if defined(_MSC_VER)
+  static const LONGDOUBLE_TYPE x[] = {
+    1.0e+001,
+    1.0e+002,
+    1.0e+004,
+    1.0e+008,
+    1.0e+016,
+    1.0e+032,
+    1.0e+064,
+    1.0e+128,
+    1.0e+256
+  };
+  LONGDOUBLE_TYPE r = 1.0;
+  int i;
+  assert( E>=0 && E<=307 );
+  for(i=0; E!=0; i++, E >>=1){
+    if( E & 1 ) r *= x[i];
+  }
+  return r;
+#else
+  LONGDOUBLE_TYPE x = 10.0;
+  LONGDOUBLE_TYPE r = 1.0;
+  while(1){
+    if( E & 1 ) r *= x;
+    E >>= 1;
+    if( E==0 ) break;
+    x *= x;
+  }
+  return r; 
+#endif
 }
 
 /*
@@ -399,12 +441,12 @@ int sqlite3AtoF(const char *z, double *pResult, int length, u8 enc){
   /* copy max significant digits to significand */
   while( z<zEnd && sqlite3Isdigit(*z) && s<((LARGEST_INT64-9)/10) ){
     s = s*10 + (*z - '0');
-    z+=incr, nDigits++;
+    z+=incr; nDigits++;
   }
 
   /* skip non-significant significand digits
   ** (increase exponent by d to shift decimal left) */
-  while( z<zEnd && sqlite3Isdigit(*z) ) z+=incr, nDigits++, d++;
+  while( z<zEnd && sqlite3Isdigit(*z) ){ z+=incr; nDigits++; d++; }
   if( z>=zEnd ) goto do_atof_calc;
 
   /* if decimal point is present */
@@ -417,7 +459,7 @@ int sqlite3AtoF(const char *z, double *pResult, int length, u8 enc){
         s = s*10 + (*z - '0');
         d--;
       }
-      z+=incr, nDigits++;
+      z+=incr; nDigits++;
     }
   }
   if( z>=zEnd ) goto do_atof_calc;
@@ -456,7 +498,7 @@ do_atof_calc:
   if( e<0 ) {
     esign = -1;
     e *= -1;
-  }else{
+  } else {
     esign = 1;
   }
 
@@ -487,11 +529,10 @@ do_atof_calc:
     if( e==0 ){                                         /*OPTIMIZATION-IF-TRUE*/
       result = (double)s;
     }else{
-      LONGDOUBLE_TYPE scale = 1.0;
       /* attempt to handle extremely small/large numbers better */
       if( e>307 ){                                      /*OPTIMIZATION-IF-TRUE*/
         if( e<342 ){                                    /*OPTIMIZATION-IF-TRUE*/
-          while( e%308 ) { scale *= 1.0e+1; e -= 1; }
+          LONGDOUBLE_TYPE scale = sqlite3Pow10(e-308);
           if( esign<0 ){
             result = s / scale;
             result /= 1.0e+308;
@@ -503,14 +544,15 @@ do_atof_calc:
           if( esign<0 ){
             result = 0.0*s;
           }else{
+#ifdef INFINITY
+            result = INFINITY*s;
+#else
             result = 1e308*1e308*s;  /* Infinity */
+#endif
           }
         }
       }else{
-        /* 1.0e+22 is the largest power of 10 than can be 
-        ** represented exactly. */
-        while( e%22 ) { scale *= 1.0e+1; e -= 1; }
-        while( e>0 ) { scale *= 1.0e+22; e -= 22; }
+        LONGDOUBLE_TYPE scale = sqlite3Pow10(e);
         if( esign<0 ){
           result = s / scale;
         }else{
@@ -565,16 +607,12 @@ static int compare2pow63(const char *zNum, int incr){
 ** Convert zNum to a 64-bit signed integer.  zNum must be decimal. This
 ** routine does *not* accept hexadecimal notation.
 **
-** If the zNum value is representable as a 64-bit twos-complement 
-** integer, then write that value into *pNum and return 0.
+** Returns:
 **
-** If zNum is exactly 9223372036854775808, return 2.  This special
-** case is broken out because while 9223372036854775808 cannot be a 
-** signed 64-bit integer, its negative -9223372036854775808 can be.
-**
-** If zNum is too big for a 64-bit integer and is not
-** 9223372036854775808  or if zNum contains any non-numeric text,
-** then return 1.
+**     0    Successful transformation.  Fits in a 64-bit signed integer.
+**     1    Excess non-space text after the integer value
+**     2    Integer too large for a 64-bit signed integer or is malformed
+**     3    Special case of 9223372036854775808
 **
 ** length is the number of bytes in the string (bytes, not characters).
 ** The string is not necessarily zero-terminated.  The encoding is
@@ -587,6 +625,7 @@ int sqlite3Atoi64(const char *zNum, i64 *pNum, int length, u8 enc){
   int i;
   int c = 0;
   int nonNum = 0;  /* True if input contains UTF16 with high byte non-zero */
+  int rc;          /* Baseline return code */
   const char *zStart;
   const char *zEnd = zNum + length;
   assert( enc==SQLITE_UTF8 || enc==SQLITE_UTF16LE || enc==SQLITE_UTF16BE );
@@ -614,43 +653,57 @@ int sqlite3Atoi64(const char *zNum, i64 *pNum, int length, u8 enc){
   for(i=0; &zNum[i]<zEnd && (c=zNum[i])>='0' && c<='9'; i+=incr){
     u = u*10 + c - '0';
   }
+  testcase( i==18*incr );
+  testcase( i==19*incr );
+  testcase( i==20*incr );
   if( u>LARGEST_INT64 ){
+    /* This test and assignment is needed only to suppress UB warnings
+    ** from clang and -fsanitize=undefined.  This test and assignment make
+    ** the code a little larger and slower, and no harm comes from omitting
+    ** them, but we must appaise the undefined-behavior pharisees. */
     *pNum = neg ? SMALLEST_INT64 : LARGEST_INT64;
   }else if( neg ){
     *pNum = -(i64)u;
   }else{
     *pNum = (i64)u;
   }
-  testcase( i==18 );
-  testcase( i==19 );
-  testcase( i==20 );
-  if( &zNum[i]<zEnd              /* Extra bytes at the end */
-   || (i==0 && zStart==zNum)     /* No digits */
-   || i>19*incr                  /* Too many digits */
+  rc = 0;
+  if( (i==0 && zStart==zNum)     /* No digits */
    || nonNum                     /* UTF16 with high-order bytes non-zero */
   ){
-    /* zNum is empty or contains non-numeric text or is longer
-    ** than 19 digits (thus guaranteeing that it is too large) */
-    return 1;
-  }else if( i<19*incr ){
+    rc = 1;
+  }else if( &zNum[i]<zEnd ){     /* Extra bytes at the end */
+    int jj = i;
+    do{
+      if( !sqlite3Isspace(zNum[jj]) ){
+        rc = 1;          /* Extra non-space text after the integer */
+        break;
+      }
+      jj += incr;
+    }while( &zNum[jj]<zEnd );
+  }
+  if( i<19*incr ){
     /* Less than 19 digits, so we know that it fits in 64 bits */
     assert( u<=LARGEST_INT64 );
-    return 0;
+    return rc;
   }else{
     /* zNum is a 19-digit numbers.  Compare it against 9223372036854775808. */
-    c = compare2pow63(zNum, incr);
+    c = i>19*incr ? 1 : compare2pow63(zNum, incr);
     if( c<0 ){
       /* zNum is less than 9223372036854775808 so it fits */
       assert( u<=LARGEST_INT64 );
-      return 0;
-    }else if( c>0 ){
-      /* zNum is greater than 9223372036854775808 so it overflows */
-      return 1;
+      return rc;
     }else{
-      /* zNum is exactly 9223372036854775808.  Fits if negative.  The
-      ** special case 2 overflow if positive */
-      assert( u-1==LARGEST_INT64 );
-      return neg ? 0 : 2;
+      *pNum = neg ? SMALLEST_INT64 : LARGEST_INT64;
+      if( c>0 ){
+        /* zNum is greater than 9223372036854775808 so it overflows */
+        return 2;
+      }else{
+        /* zNum is exactly 9223372036854775808.  Fits if negative.  The
+        ** special case 2 overflow if positive */
+        assert( u-1==LARGEST_INT64 );
+        return neg ? rc : 3;
+      }
     }
   }
 }
@@ -663,8 +716,9 @@ int sqlite3Atoi64(const char *zNum, i64 *pNum, int length, u8 enc){
 ** Returns:
 **
 **     0    Successful transformation.  Fits in a 64-bit signed integer.
-**     1    Integer too large for a 64-bit signed integer or is malformed
-**     2    Special case of 9223372036854775808
+**     1    Excess text after the integer value
+**     2    Integer too large for a 64-bit signed integer or is malformed
+**     3    Special case of 9223372036854775808
 */
 int sqlite3DecOrHexToI64(const char *z, i64 *pOut){
 #ifndef SQLITE_OMIT_HEX_INTEGER
@@ -678,7 +732,7 @@ int sqlite3DecOrHexToI64(const char *z, i64 *pOut){
       u = u*16 + sqlite3HexToInt(z[k]);
     }
     memcpy(pOut, &u, 8);
-    return (z[k]==0 && k-i<=16) ? 0 : 1;
+    return (z[k]==0 && k-i<=16) ? 0 : 2;
   }else
 #endif /* SQLITE_OMIT_HEX_INTEGER */
   {
@@ -725,6 +779,7 @@ int sqlite3GetInt32(const char *zNum, int *pValue){
     }
   }
 #endif
+  if( !sqlite3Isdigit(zNum[0]) ) return 0;
   while( zNum[0]=='0' ) zNum++;
   for(i=0; i<11 && (c = zNum[i] - '0')>=0 && c<=9; i++){
     v = v*10 + c;
@@ -1021,16 +1076,23 @@ u8 sqlite3GetVarint32(const unsigned char *p, u32 *v){
   ** by the getVarin32() macro */
   a = *p;
   /* a: p0 (unmasked) */
-  /*COMDB2 MODIFICATION */
-  /*#ifndef getVarint32*/
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   if (!(a&0x80))
   {
     /* Values between 0 and 127 */
     *v = a;
     return 1;
   }
-  /*COMDB2 MODIFICATION */
-  /*#endif*/
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#ifndef getVarint32
+  if (!(a&0x80))
+  {
+    /* Values between 0 and 127 */
+    *v = a;
+    return 1;
+  }
+#endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /* The 2-byte case */
   p++;
@@ -1154,13 +1216,11 @@ u32 sqlite3Get4byte(const u8 *p){
   u32 x;
   memcpy(&x,p,4);
   return x;
-#elif SQLITE_BYTEORDER==1234 && !defined(SQLITE_DISABLE_INTRINSIC) \
-    && defined(__GNUC__) && GCC_VERSION>=4003000
+#elif SQLITE_BYTEORDER==1234 && GCC_VERSION>=4003000
   u32 x;
   memcpy(&x,p,4);
   return __builtin_bswap32(x);
-#elif SQLITE_BYTEORDER==1234 && !defined(SQLITE_DISABLE_INTRINSIC) \
-    && defined(_MSC_VER) && _MSC_VER>=1300
+#elif SQLITE_BYTEORDER==1234 && MSVC_VERSION>=1300
   u32 x;
   memcpy(&x,p,4);
   return _byteswap_ulong(x);
@@ -1172,12 +1232,10 @@ u32 sqlite3Get4byte(const u8 *p){
 void sqlite3Put4byte(unsigned char *p, u32 v){
 #if SQLITE_BYTEORDER==4321
   memcpy(p,&v,4);
-#elif SQLITE_BYTEORDER==1234 && !defined(SQLITE_DISABLE_INTRINSIC) \
-    && defined(__GNUC__) && GCC_VERSION>=4003000
+#elif SQLITE_BYTEORDER==1234 && GCC_VERSION>=4003000
   u32 x = __builtin_bswap32(v);
   memcpy(p,&x,4);
-#elif SQLITE_BYTEORDER==1234 && !defined(SQLITE_DISABLE_INTRINSIC) \
-    && defined(_MSC_VER) && _MSC_VER>=1300
+#elif SQLITE_BYTEORDER==1234 && MSVC_VERSION>=1300
   u32 x = _byteswap_ulong(v);
   memcpy(p,&x,4);
 #else
@@ -1293,6 +1351,9 @@ int sqlite3SafetyCheckSickOrOk(sqlite3 *db){
 ** overflow, leave *pA unchanged and return 1.
 */
 int sqlite3AddInt64(i64 *pA, i64 iB){
+#if GCC_VERSION>=5004000 && !defined(__INTEL_COMPILER)
+  return __builtin_add_overflow(*pA, iB, pA);
+#else
   i64 iA = *pA;
   testcase( iA==0 ); testcase( iA==1 );
   testcase( iB==-1 ); testcase( iB==0 );
@@ -1307,8 +1368,12 @@ int sqlite3AddInt64(i64 *pA, i64 iB){
   }
   *pA += iB;
   return 0; 
+#endif
 }
 int sqlite3SubInt64(i64 *pA, i64 iB){
+#if GCC_VERSION>=5004000 && !defined(__INTEL_COMPILER)
+  return __builtin_sub_overflow(*pA, iB, pA);
+#else
   testcase( iB==SMALLEST_INT64+1 );
   if( iB==SMALLEST_INT64 ){
     testcase( (*pA)==(-1) ); testcase( (*pA)==0 );
@@ -1318,8 +1383,12 @@ int sqlite3SubInt64(i64 *pA, i64 iB){
   }else{
     return sqlite3AddInt64(pA, -iB);
   }
+#endif
 }
 int sqlite3MulInt64(i64 *pA, i64 iB){
+#if GCC_VERSION>=5004000 && !defined(__INTEL_COMPILER)
+  return __builtin_mul_overflow(*pA, iB, pA);
+#else
   i64 iA = *pA;
   if( iB>0 ){
     if( iA>LARGEST_INT64/iB ) return 1;
@@ -1335,6 +1404,7 @@ int sqlite3MulInt64(i64 *pA, i64 iB){
   }
   *pA = iA*iB;
   return 0;
+#endif
 }
 
 /*
@@ -1418,14 +1488,19 @@ LogEst sqlite3LogEst(u64 x){
     if( x<2 ) return 0;
     while( x<8 ){  y -= 10; x <<= 1; }
   }else{
+#if GCC_VERSION>=5004000
+    int i = 60 - __builtin_clzll(x);
+    y += i*10;
+    x >>= i;
+#else
     while( x>255 ){ y += 40; x >>= 4; }  /*OPTIMIZATION-IF-TRUE*/
     while( x>15 ){  y += 10; x >>= 1; }
+#endif
   }
   return a[x&7] + y - 10;
 }
 
-/* COMDB2 MODIFICATION */
-/*#ifndef SQLITE_OMIT_VIRTUALTABLE */
+#if defined(SQLITE_BUILDING_FOR_COMDB2) || !defined(SQLITE_OMIT_VIRTUALTABLE)
 /*
 ** Convert a double into a LogEst
 ** In other words, compute an approximation for 10*log2(x).
@@ -1440,8 +1515,7 @@ LogEst sqlite3LogEstFromDouble(double x){
   e = (a>>52) - 1022;
   return e*10;
 }
-/* COMDB2 MODIFICATION */
-/* #endif */ /* SQLITE_OMIT_VIRTUALTABLE */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || !defined(SQLITE_OMIT_VIRTUALTABLE) */
 
 #if defined(SQLITE_ENABLE_STMT_SCANSTATUS) || \
     defined(SQLITE_ENABLE_STAT3_OR_STAT4) || \
@@ -1469,3 +1543,106 @@ u64 sqlite3LogEstToInt(LogEst x){
   return x>=3 ? (n+8)<<(x-3) : (n+8)>>(3-x);
 }
 #endif /* defined SCANSTAT or STAT4 or ESTIMATED_ROWS */
+
+/*
+** Add a new name/number pair to a VList.  This might require that the
+** VList object be reallocated, so return the new VList.  If an OOM
+** error occurs, the original VList returned and the
+** db->mallocFailed flag is set.
+**
+** A VList is really just an array of integers.  To destroy a VList,
+** simply pass it to sqlite3DbFree().
+**
+** The first integer is the number of integers allocated for the whole
+** VList.  The second integer is the number of integers actually used.
+** Each name/number pair is encoded by subsequent groups of 3 or more
+** integers.
+**
+** Each name/number pair starts with two integers which are the numeric
+** value for the pair and the size of the name/number pair, respectively.
+** The text name overlays one or more following integers.  The text name
+** is always zero-terminated.
+**
+** Conceptually:
+**
+**    struct VList {
+**      int nAlloc;   // Number of allocated slots 
+**      int nUsed;    // Number of used slots 
+**      struct VListEntry {
+**        int iValue;    // Value for this entry
+**        int nSlot;     // Slots used by this entry
+**        // ... variable name goes here
+**      } a[0];
+**    }
+**
+** During code generation, pointers to the variable names within the
+** VList are taken.  When that happens, nAlloc is set to zero as an 
+** indication that the VList may never again be enlarged, since the
+** accompanying realloc() would invalidate the pointers.
+*/
+VList *sqlite3VListAdd(
+  sqlite3 *db,           /* The database connection used for malloc() */
+  VList *pIn,            /* The input VList.  Might be NULL */
+  const char *zName,     /* Name of symbol to add */
+  int nName,             /* Bytes of text in zName */
+  int iVal               /* Value to associate with zName */
+){
+  int nInt;              /* number of sizeof(int) objects needed for zName */
+  char *z;               /* Pointer to where zName will be stored */
+  int i;                 /* Index in pIn[] where zName is stored */
+
+  nInt = nName/4 + 3;
+  assert( pIn==0 || pIn[0]>=3 );  /* Verify ok to add new elements */
+  if( pIn==0 || pIn[1]+nInt > pIn[0] ){
+    /* Enlarge the allocation */
+    int nAlloc = (pIn ? pIn[0]*2 : 10) + nInt;
+    VList *pOut = sqlite3DbRealloc(db, pIn, nAlloc*sizeof(int));
+    if( pOut==0 ) return pIn;
+    if( pIn==0 ) pOut[1] = 2;
+    pIn = pOut;
+    pIn[0] = nAlloc;
+  }
+  i = pIn[1];
+  pIn[i] = iVal;
+  pIn[i+1] = nInt;
+  z = (char*)&pIn[i+2];
+  pIn[1] = i+nInt;
+  assert( pIn[1]<=pIn[0] );
+  memcpy(z, zName, nName);
+  z[nName] = 0;
+  return pIn;
+}
+
+/*
+** Return a pointer to the name of a variable in the given VList that
+** has the value iVal.  Or return a NULL if there is no such variable in
+** the list
+*/
+const char *sqlite3VListNumToName(VList *pIn, int iVal){
+  int i, mx;
+  if( pIn==0 ) return 0;
+  mx = pIn[1];
+  i = 2;
+  do{
+    if( pIn[i]==iVal ) return (char*)&pIn[i+2];
+    i += pIn[i+1];
+  }while( i<mx );
+  return 0;
+}
+
+/*
+** Return the number of the variable named zName, if it is in VList.
+** or return 0 if there is no such variable.
+*/
+int sqlite3VListNameToNum(VList *pIn, const char *zName, int nName){
+  int i, mx;
+  if( pIn==0 ) return 0;
+  mx = pIn[1];
+  i = 2;
+  do{
+    const char *z = (const char*)&pIn[i+2];
+    if( strncmp(z,zName,nName)==0 && z[nName]==0 ) return pIn[i];
+    i += pIn[i+1];
+  }while( i<mx );
+  return 0;
+}

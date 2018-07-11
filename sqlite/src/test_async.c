@@ -58,7 +58,7 @@ static int SQLITE_TCLAPI testAsyncInit(
     return TCL_ERROR;
   }
   zParent = Tcl_GetString(objv[1]);
-  if( !*zParent ){
+  if( !*zParent ) {
     zParent = 0;
   }
   if( Tcl_GetBooleanFromObj(interp, objv[2], &isDefault) ){
@@ -120,7 +120,7 @@ static int SQLITE_TCLAPI testAsyncStart(
     return TCL_ERROR;
   }
 
-  while( isStarted==0 ){ /* Busy loop */ }
+  while( isStarted==0 ) { /* Busy loop */ }
   return TCL_OK;
 }
 

@@ -259,37 +259,39 @@ typedef struct CellInfo CellInfo;
 #define PTF_LEAF      0x08
 
 /*
-** As each page of the file is loaded into memory, an instance of the following
-** structure is appended and initialized to zero.  This structure stores
-** information about the page that is decoded from the raw file page.
+** An instance of this object stores information about each a single database
+** page that has been loaded into memory.  The information in this object
+** is derived from the raw on-disk page content.
 **
-** The pParent field points back to the parent page.  This allows us to
-** walk up the BTree from any leaf to the root.  Care must be taken to
-** unref() the parent page pointer when this page is no longer referenced.
-** The pageDestructor() routine handles that chore.
+** As each database page is loaded into memory, the pager allocats an
+** instance of this object and zeros the first 8 bytes.  (This is the
+** "extra" information associated with each page of the pager.)
 **
 ** Access to all fields of this structure is controlled by the mutex
 ** stored in MemPage.pBt->mutex.
 */
 struct MemPage {
   u8 isInit;           /* True if previously initialized. MUST BE FIRST! */
-  u8 nOverflow;        /* Number of overflow cell bodies in aCell[] */
+  u8 bBusy;            /* Prevent endless loops on corrupt database files */
   u8 intKey;           /* True if table b-trees.  False for index b-trees */
   u8 intKeyLeaf;       /* True if the leaf of an intKey table */
+  Pgno pgno;           /* Page number for this page */
+  /* Only the first 8 bytes (above) are zeroed by pager.c when a new page
+  ** is allocated. All fields that follow must be initialized before use */
   u8 leaf;             /* True if a leaf page */
   u8 hdrOffset;        /* 100 for page 1.  0 otherwise */
   u8 childPtrSize;     /* 0 if leaf==1.  4 if leaf==0 */
   u8 max1bytePayload;  /* min(maxLocal,127) */
-  u8 bBusy;            /* Prevent endless loops on corrupt database files */
+  u8 nOverflow;        /* Number of overflow cell bodies in aCell[] */
   u16 maxLocal;        /* Copy of BtShared.maxLocal or BtShared.maxLeaf */
   u16 minLocal;        /* Copy of BtShared.minLocal or BtShared.minLeaf */
   u16 cellOffset;      /* Index in aData of first cell pointer */
   u16 nFree;           /* Number of free bytes on the page */
   u16 nCell;           /* Number of cells on this page, local and ovfl */
   u16 maskPage;        /* Mask for page offset */
-  u16 aiOvfl[5];       /* Insert the i-th overflow cell before the aiOvfl-th
+  u16 aiOvfl[4];       /* Insert the i-th overflow cell before the aiOvfl-th
                        ** non-overflow cell */
-  u8 *apOvfl[5];       /* Pointers to the body of overflow cells */
+  u8 *apOvfl[4];       /* Pointers to the body of overflow cells */
   BtShared *pBt;       /* Pointer to BtShared that this page is part of */
   u8 *aData;           /* Pointer to disk image of the page data */
   u8 *aDataEnd;        /* One byte past the end of usable data */
@@ -298,15 +300,7 @@ struct MemPage {
   DbPage *pDbPage;     /* Pager page handle */
   u16 (*xCellSize)(MemPage*,u8*);             /* cellSizePtr method */
   void (*xParseCell)(MemPage*,u8*,CellInfo*); /* btreeParseCell method */
-  Pgno pgno;           /* Page number for this page */
 };
-
-/*
-** The in-memory image of a disk page has the auxiliary information appended
-** to the end.  EXTRA_SIZE is the number of bytes of space needed to hold
-** that extra information.
-*/
-#define EXTRA_SIZE sizeof(MemPage)
 
 /*
 ** A linked list of the following structures is stored at BtShared.pLock.
@@ -454,10 +448,12 @@ struct BtShared {
 #define BTS_READ_ONLY        0x0001   /* Underlying file is readonly */
 #define BTS_PAGESIZE_FIXED   0x0002   /* Page size can no longer be changed */
 #define BTS_SECURE_DELETE    0x0004   /* PRAGMA secure_delete is enabled */
-#define BTS_INITIALLY_EMPTY  0x0008   /* Database was empty at trans start */
-#define BTS_NO_WAL           0x0010   /* Do not open write-ahead-log files */
-#define BTS_EXCLUSIVE        0x0020   /* pWriter has an exclusive lock */
-#define BTS_PENDING          0x0040   /* Waiting for read-locks to clear */
+#define BTS_OVERWRITE        0x0008   /* Overwrite deleted content with zeros */
+#define BTS_FAST_SECURE      0x000c   /* Combination of the previous two */
+#define BTS_INITIALLY_EMPTY  0x0010   /* Database was empty at trans start */
+#define BTS_NO_WAL           0x0020   /* Do not open write-ahead-log files */
+#define BTS_EXCLUSIVE        0x0040   /* pWriter has an exclusive lock */
+#define BTS_PENDING          0x0080   /* Waiting for read-locks to clear */
 
 /*
 ** An instance of the following structure is used to hold information
@@ -503,30 +499,31 @@ struct CellInfo {
 **    eState==FAULT:                   Cursor fault with skipNext as error code.
 */
 struct BtCursor {
-  Btree *pBtree;            /* The Btree to which this cursor belongs */
-  BtShared *pBt;            /* The BtShared this cursor points to */
-  BtCursor *pNext;          /* Forms a linked list of all cursors */
-  Pgno *aOverflow;          /* Cache of overflow page locations */
-  CellInfo info;            /* A parse of the cell we are pointing at */
-  i64 nKey;                 /* Size of pKey, or last integer key */
-  void *pKey;               /* Saved key that was cursor last known position */
-  Pgno pgnoRoot;            /* The root page of this tree */
-  int nOvflAlloc;           /* Allocated size of aOverflow[] array */
-  int skipNext;    /* Prev() is noop if negative. Next() is noop if positive.
-                   ** Error code if eState==CURSOR_FAULT */
+  u8 eState;                /* One of the CURSOR_XXX constants (see below) */
   u8 curFlags;              /* zero or more BTCF_* flags defined below */
   u8 curPagerFlags;         /* Flags to send to sqlite3PagerGet() */
-  u8 eState;                /* One of the CURSOR_XXX constants (see below) */
   u8 hints;                 /* As configured by CursorSetHints() */
+  int skipNext;    /* Prev() is noop if negative. Next() is noop if positive.
+                   ** Error code if eState==CURSOR_FAULT */
+  Btree *pBtree;            /* The Btree to which this cursor belongs */
+  Pgno *aOverflow;          /* Cache of overflow page locations */
+  void *pKey;               /* Saved key that was cursor last known position */
   /* All fields above are zeroed when the cursor is allocated.  See
   ** sqlite3BtreeCursorZero().  Fields that follow must be manually
   ** initialized. */
+#define BTCURSOR_FIRST_UNINIT pBt   /* Name of first uninitialized field */
+  BtShared *pBt;            /* The BtShared this cursor points to */
+  BtCursor *pNext;          /* Forms a linked list of all cursors */
+  CellInfo info;            /* A parse of the cell we are pointing at */
+  i64 nKey;                 /* Size of pKey, or last integer key */
+  Pgno pgnoRoot;            /* The root page of this tree */
   i8 iPage;                 /* Index of current page in apPage */
   u8 curIntKey;             /* Value of apPage[0]->intKey */
-  struct KeyInfo *pKeyInfo; /* Argument passed to comparison function */
-  void *padding1;           /* Make object size a multiple of 16 */
-  u16 aiIdx[BTCURSOR_MAX_DEPTH];        /* Current index in apPage[i] */
-  MemPage *apPage[BTCURSOR_MAX_DEPTH];  /* Pages from root to current page */
+  u16 ix;                   /* Current index for apPage[iPage] */
+  u16 aiIdx[BTCURSOR_MAX_DEPTH-1];     /* Current index in apPage[i] */
+  struct KeyInfo *pKeyInfo;            /* Arg passed to comparison function */
+  MemPage *pPage;                        /* Current page */
+  MemPage *apPage[BTCURSOR_MAX_DEPTH-1]; /* Stack of parents of current page */
 };
 
 /*
@@ -569,8 +566,8 @@ struct BtCursor {
 **   Do nothing else with this cursor.  Any attempt to use the cursor
 **   should return the error code stored in BtCursor.skipNext
 */
-#define CURSOR_INVALID           0
-#define CURSOR_VALID             1
+#define CURSOR_VALID             0
+#define CURSOR_INVALID           1
 #define CURSOR_SKIPNEXT          2
 #define CURSOR_REQUIRESEEK       3
 #define CURSOR_FAULT             4
@@ -698,11 +695,9 @@ struct IntegrityCk {
 */
 #if SQLITE_BYTEORDER==4321
 # define get2byteAligned(x)  (*(u16*)(x))
-#elif SQLITE_BYTEORDER==1234 && !defined(SQLITE_DISABLE_INTRINSIC) \
-    && GCC_VERSION>=4008000
+#elif SQLITE_BYTEORDER==1234 && GCC_VERSION>=4008000
 # define get2byteAligned(x)  __builtin_bswap16(*(u16*)(x))
-#elif SQLITE_BYTEORDER==1234 && !defined(SQLITE_DISABLE_INTRINSIC) \
-    && defined(_MSC_VER) && _MSC_VER>=1300
+#elif SQLITE_BYTEORDER==1234 && MSVC_VERSION>=1300
 # define get2byteAligned(x)  _byteswap_ushort(*(u16*)(x))
 #else
 # define get2byteAligned(x)  ((x)[0]<<8 | (x)[1])

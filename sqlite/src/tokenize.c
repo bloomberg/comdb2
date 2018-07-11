@@ -27,9 +27,9 @@
 ** all of them need to be used within the switch.
 */
 #define CC_X          0    /* The letter 'x', or start of BLOB literal */
-#define CC_DIGIT      1    /* Digits */
-#define CC_KYWD       2    /* Alphabetics or '_'.  Usable in a keyword */
-#define CC_ID         3    /* unicode characters usable in IDs */
+#define CC_KYWD       1    /* Alphabetics or '_'.  Usable in a keyword */
+#define CC_ID         2    /* unicode characters usable in IDs */
+#define CC_DIGIT      3    /* Digits */
 #define CC_DOLLAR     4    /* '$' */
 #define CC_VARALPHA   5    /* '@', '#', ':'.  Alphabetic SQL variables */
 #define CC_VARNUM     6    /* '?'.  Numeric SQL variables */
@@ -53,48 +53,60 @@
 #define CC_AND       24    /* '&' */
 #define CC_TILDA     25    /* '~' */
 #define CC_DOT       26    /* '.' */
-#define CC_LB        27    /* '{' */
-#define CC_RB        28    /* '}' */
-#define CC_ILLEGAL   29    /* Illegal character */
+#define CC_ILLEGAL   27    /* Illegal character */
+#define CC_NUL       28    /* 0x00 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define CC_LB        29    /* '{' */
+#define CC_RB        30    /* '}' */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 static const unsigned char aiClass[] = {
 #ifdef SQLITE_ASCII
 /*         x0  x1  x2  x3  x4  x5  x6  x7  x8  x9  xa  xb  xc  xd  xe  xf */
-/* 0x */   29, 29, 29, 29, 29, 29, 29, 29, 29,  7,  7, 29,  7,  7, 29, 29,
-/* 1x */   29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29,
+/* 0x */   28, 27, 27, 27, 27, 27, 27, 27, 27,  7,  7, 27,  7,  7, 27, 27,
+/* 1x */   27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
 /* 2x */    7, 15,  8,  5,  4, 22, 24,  8, 17, 18, 21, 20, 23, 11, 26, 16,
-/* 3x */    1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  5, 19, 12, 14, 13,  6,
-/* 4x */    5,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
-/* 5x */    2,  2,  2,  2,  2,  2,  2,  2,  0,  2,  2,  9, 29, 29, 29,  2,
-/* 6x */    8,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
-/* 7x */    2,  2,  2,  2,  2,  2,  2,  2,  0,  2,  2, 27, 10, 28, 25, 29,
-/* 8x */    3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
-/* 9x */    3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
-/* Ax */    3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
-/* Bx */    3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
-/* Cx */    3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
-/* Dx */    3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
-/* Ex */    3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
-/* Fx */    3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3
+/* 3x */    3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  5, 19, 12, 14, 13,  6,
+/* 4x */    5,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
+/* 5x */    1,  1,  1,  1,  1,  1,  1,  1,  0,  1,  1,  9, 27, 27, 27,  1,
+/* 6x */    8,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/* 7x */    1,  1,  1,  1,  1,  1,  1,  1,  0,  1,  1, 29, 10, 30, 25, 27,
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+/* 7x */    1,  1,  1,  1,  1,  1,  1,  1,  0,  1,  1, 27, 10, 27, 25, 27,
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+/* 8x */    2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
+/* 9x */    2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
+/* Ax */    2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
+/* Bx */    2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
+/* Cx */    2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
+/* Dx */    2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
+/* Ex */    2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
+/* Fx */    2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2
 #endif
 #ifdef SQLITE_EBCDIC
 /*         x0  x1  x2  x3  x4  x5  x6  x7  x8  x9  xa  xb  xc  xd  xe  xf */
-/* 0x */   29, 29, 29, 29, 29,  7, 29, 29, 29, 29, 29, 29,  7,  7, 29, 29,
-/* 1x */   29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29,
-/* 2x */   29, 29, 29, 29, 29,  7, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29,
-/* 3x */   29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29,
-/* 4x */    7, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 12, 17, 20, 10,
-/* 5x */   24, 29, 29, 29, 29, 29, 29, 29, 29, 29, 15,  4, 21, 18, 19, 29,
-/* 6x */   11, 16, 29, 29, 29, 29, 29, 29, 29, 29, 29, 23, 22,  2, 13,  7,
-/* 7x */   29, 29, 29, 29, 29, 29, 29, 29, 29,  8,  5,  5,  5,  8, 14,  8,
-/* 8x */   29,  2,  2,  2,  2,  2,  2,  2,  2,  2, 29, 29, 29, 29, 29, 29,
-/* 9x */   29,  2,  2,  2,  2,  2,  2,  2,  2,  2, 29, 29, 29, 29, 29, 29,
-/* 9x */   25,  2,  2,  2,  2,  2,  2,  0,  2,  2, 29, 29, 29, 29, 29, 29,
-/* Bx */   29, 29, 29, 29, 29, 29, 29, 29, 29, 29,  9, 29, 29, 29, 29, 29,
-/* Cx */   27,  2,  2,  2,  2,  2,  2,  2,  2,  2, 29, 29, 29, 29, 29, 29,
-/* Dx */   28,  2,  2,  2,  2,  2,  2,  2,  2,  2, 29, 29, 29, 29, 29, 29,
-/* Ex */   29, 29,  2,  2,  2,  2,  2,  0,  2,  2, 29, 29, 29, 29, 29, 29,
-/* Fx */    2,  2,  2,  2,  2,  2,  2,  2,  2,  2, 29, 29, 29, 29, 29, 29,
+/* 0x */   27, 27, 27, 27, 27,  7, 27, 27, 27, 27, 27, 27,  7,  7, 27, 27,
+/* 1x */   27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+/* 2x */   27, 27, 27, 27, 27,  7, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+/* 3x */   27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+/* 4x */    7, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 26, 12, 17, 20, 10,
+/* 5x */   24, 27, 27, 27, 27, 27, 27, 27, 27, 27, 15,  4, 21, 18, 19, 27,
+/* 6x */   11, 16, 27, 27, 27, 27, 27, 27, 27, 27, 27, 23, 22,  1, 13,  6,
+/* 7x */   27, 27, 27, 27, 27, 27, 27, 27, 27,  8,  5,  5,  5,  8, 14,  8,
+/* 8x */   27,  1,  1,  1,  1,  1,  1,  1,  1,  1, 27, 27, 27, 27, 27, 27,
+/* 9x */   27,  1,  1,  1,  1,  1,  1,  1,  1,  1, 27, 27, 27, 27, 27, 27,
+/* Ax */   27, 25,  1,  1,  1,  1,  1,  0,  1,  1, 27, 27, 27, 27, 27, 27,
+/* Bx */   27, 27, 27, 27, 27, 27, 27, 27, 27, 27,  9, 27, 27, 27, 27, 27,
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/* Cx */   29,  1,  1,  1,  1,  1,  1,  1,  1,  1, 27, 27, 27, 27, 27, 27,
+/* Dx */   30,  1,  1,  1,  1,  1,  1,  1,  1,  1, 27, 27, 27, 27, 27, 27,
+#else /*  defined(SQLITE_BUILDING_FOR_COMDB2) */
+/* Cx */   27,  1,  1,  1,  1,  1,  1,  1,  1,  1, 27, 27, 27, 27, 27, 27,
+/* Dx */   27,  1,  1,  1,  1,  1,  1,  1,  1,  1, 27, 27, 27, 27, 27, 27,
+#endif /*  defined(SQLITE_BUILDING_FOR_COMDB2) */
+/* Ex */   27, 27,  1,  1,  1,  1,  1,  0,  1,  1, 27, 27, 27, 27, 27, 27,
+/* Fx */    3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 27, 27, 27, 27, 27, 27,
 #endif
 };
 
@@ -190,6 +202,82 @@ const char sqlite3IsEbcdicIdChar[] = {
 int sqlite3IsIdChar(u8 c){ return IdChar(c); }
 #endif
 
+#ifndef SQLITE_OMIT_WINDOWFUNC
+/*
+** Return the id of the next token in string (*pz). Before returning, set
+** (*pz) to point to the byte following the parsed token.
+*/
+static int getToken(const unsigned char **pz){
+  const unsigned char *z = *pz;
+  int t;                          /* Token type to return */
+  do {
+    z += sqlite3GetToken(z, &t);
+  }while( t==TK_SPACE );
+  if( t==TK_ID 
+   || t==TK_STRING 
+   || t==TK_JOIN_KW 
+   || t==TK_WINDOW 
+   || t==TK_OVER 
+   || sqlite3ParserFallback(t)==TK_ID 
+  ){
+    t = TK_ID;
+  }
+  *pz = z;
+  return t;
+}
+
+/*
+** The following three functions are called immediately after the tokenizer
+** reads the keywords WINDOW, OVER and FILTER, respectively, to determine
+** whether the token should be treated as a keyword or an SQL identifier.
+** This cannot be handled by the usual lemon %fallback method, due to
+** the ambiguity in some constructions. e.g.
+**
+**   SELECT sum(x) OVER ...
+**
+** In the above, "OVER" might be a keyword, or it might be an alias for the 
+** sum(x) expression. If a "%fallback ID OVER" directive were added to 
+** grammar, then SQLite would always treat "OVER" as an alias, making it
+** impossible to call a window-function without a FILTER clause.
+**
+** WINDOW is treated as a keyword if:
+**
+**   * the following token is an identifier, or a keyword that can fallback
+**     to being an identifier, and
+**   * the token after than one is TK_AS.
+**
+** OVER is a keyword if:
+**
+**   * the previous token was TK_RP, and
+**   * the next token is either TK_LP or an identifier.
+**
+** FILTER is a keyword if:
+**
+**   * the previous token was TK_RP, and
+**   * the next token is TK_LP.
+*/
+static int analyzeWindowKeyword(const unsigned char *z){
+  int t;
+  t = getToken(&z);
+  if( t!=TK_ID ) return TK_ID;
+  t = getToken(&z);
+  if( t!=TK_AS ) return TK_ID;
+  return TK_WINDOW;
+}
+static int analyzeOverKeyword(const unsigned char *z, int lastToken){
+  if( lastToken==TK_RP ){
+    int t = getToken(&z);
+    if( t==TK_LP || t==TK_ID ) return TK_OVER;
+  }
+  return TK_ID;
+}
+static int analyzeFilterKeyword(const unsigned char *z, int lastToken){
+  if( lastToken==TK_RP && getToken(&z)==TK_LP ){
+    return TK_FILTER;
+  }
+  return TK_ID;
+}
+#endif /* SQLITE_OMIT_WINDOWFUNC */
 
 /*
 ** Return the length (in bytes) of the token that begins at z[0]. 
@@ -208,15 +296,6 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
       testcase( z[0]=='\r' );
       for(i=1; sqlite3Isspace(z[i]); i++){}
       *tokenType = TK_SPACE;
-      return i;
-    }
-    case CC_LB: {
-      i = 1;
-      while( z[i] != 0 ){ ++i; }
-      if (z[i - 1] == '}')
-        *tokenType = TK_NOSQL;
-      else
-        *tokenType = TK_ILLEGAL;
       return i;
     }
     case CC_MINUS: {
@@ -446,6 +525,25 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
       *tokenType = TK_ID;
       return keywordCode((char*)z, i, tokenType);
     }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    case CC_LB: {
+      /*
+      ** NOTE: This code assumes that a closing curly brace will be the
+      **       final non-NUL character (i.e. sets of curly braces will
+      **       not appear at arbitrary locations within the string.  No
+      **       attempt is made to verify curly brace nesting levels at
+      **       this level.
+      */
+      for(i=1; z[i]; i++){}
+      testcase( z[i-1]=='}' );  testcase( z[i-1]!='}' );
+      if( z[i-1]=='}' ){
+        *tokenType = TK_NOSQL;
+      }else{
+        *tokenType = TK_ILLEGAL;
+      }
+      return i;
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     case CC_X: {
 #ifndef SQLITE_OMIT_BLOB_LITERAL
       testcase( z[0]=='x' ); testcase( z[0]=='X' );
@@ -467,6 +565,10 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
       i = 1;
       break;
     }
+    case CC_NUL: {
+      *tokenType = TK_ILLEGAL;
+      return 0;
+    }
     default: {
       *tokenType = TK_ILLEGAL;
       return 1;
@@ -486,12 +588,15 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
 */
 int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
   int nErr = 0;                   /* Number of errors encountered */
-  int i;                          /* Loop counter */
   void *pEngine;                  /* The LEMON-generated LALR(1) parser */
+  int n = 0;                      /* Length of the next token token */
   int tokenType;                  /* type of the next token */
   int lastTokenParsed = -1;       /* type of the previous token */
   sqlite3 *db = pParse->db;       /* The database connection */
   int mxSqlLen;                   /* Max length of an SQL string */
+#ifdef sqlite3Parser_ENGINEALWAYSONSTACK
+  yyParser sEngine;    /* Space to hold the Lemon-generated Parser object */
+#endif
 
   assert( zSql!=0 );
   mxSqlLen = db->aLimit[SQLITE_LIMIT_SQL_LENGTH];
@@ -500,59 +605,81 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
   }
   pParse->rc = SQLITE_OK;
   pParse->zTail = zSql;
-  i = 0;
   assert( pzErrMsg!=0 );
   /* sqlite3ParserTrace(stdout, "parser: "); */
-  pEngine = sqlite3ParserAlloc(sqlite3Malloc);
+#ifdef sqlite3Parser_ENGINEALWAYSONSTACK
+  pEngine = &sEngine;
+  sqlite3ParserInit(pEngine, pParse);
+#else
+  pEngine = sqlite3ParserAlloc(sqlite3Malloc, pParse);
   if( pEngine==0 ){
     sqlite3OomFault(db);
     return SQLITE_NOMEM_BKPT;
   }
+#endif
   assert( pParse->pNewTable==0 );
   assert( pParse->pNewTrigger==0 );
   assert( pParse->nVar==0 );
-  assert( pParse->nzVar==0 );
-  assert( pParse->azVar==0 );
+  assert( pParse->pVList==0 );
   while( 1 ){
-    assert( i>=0 );
-    if( zSql[i]!=0 ){
-      pParse->sLastToken.z = &zSql[i];
-      pParse->sLastToken.n = sqlite3GetToken((u8*)&zSql[i],&tokenType);
-      i += pParse->sLastToken.n;
-      if( i>mxSqlLen ){
-        pParse->rc = SQLITE_TOOBIG;
-        break;
-      }
-    }else{
-      /* Upon reaching the end of input, call the parser two more times
-      ** with tokens TK_SEMI and 0, in that order. */
-      if( lastTokenParsed==TK_SEMI ){
-        tokenType = 0;
-      }else if( lastTokenParsed==0 ){
-        break;
-      }else{
-        tokenType = TK_SEMI;
-      }
+    n = sqlite3GetToken((u8*)zSql, &tokenType);
+    mxSqlLen -= n;
+    if( mxSqlLen<0 ){
+      pParse->rc = SQLITE_TOOBIG;
+      break;
     }
+#ifndef SQLITE_OMIT_WINDOWFUNC
+    if( tokenType>=TK_WINDOW ){
+      assert( tokenType==TK_SPACE || tokenType==TK_OVER || tokenType==TK_FILTER
+           || tokenType==TK_ILLEGAL || tokenType==TK_WINDOW 
+      );
+#else
     if( tokenType>=TK_SPACE ){
       assert( tokenType==TK_SPACE || tokenType==TK_ILLEGAL );
+#endif /* SQLITE_OMIT_WINDOWFUNC */
       if( db->u1.isInterrupted ){
         pParse->rc = SQLITE_INTERRUPT;
         break;
       }
-      if( tokenType==TK_ILLEGAL ){
-        sqlite3ErrorMsg(pParse, "unrecognized token: \"%T\"",
-                        &pParse->sLastToken);
+      if( tokenType==TK_SPACE ){
+        zSql += n;
+        continue;
+      }
+      if( zSql[0]==0 ){
+        /* Upon reaching the end of input, call the parser two more times
+        ** with tokens TK_SEMI and 0, in that order. */
+        if( lastTokenParsed==TK_SEMI ){
+          tokenType = 0;
+        }else if( lastTokenParsed==0 ){
+          break;
+        }else{
+          tokenType = TK_SEMI;
+        }
+        n = 0;
+#ifndef SQLITE_OMIT_WINDOWFUNC
+      }else if( tokenType==TK_WINDOW ){
+        assert( n==6 );
+        tokenType = analyzeWindowKeyword((const u8*)&zSql[6]);
+      }else if( tokenType==TK_OVER ){
+        assert( n==4 );
+        tokenType = analyzeOverKeyword((const u8*)&zSql[4], lastTokenParsed);
+      }else if( tokenType==TK_FILTER ){
+        assert( n==6 );
+        tokenType = analyzeFilterKeyword((const u8*)&zSql[6], lastTokenParsed);
+#endif /* SQLITE_OMIT_WINDOWFUNC */
+      }else{
+        sqlite3ErrorMsg(pParse, "unrecognized token: \"%.*s\"", n, zSql);
         break;
       }
-    }else{
-      sqlite3Parser(pEngine, tokenType, pParse->sLastToken, pParse);
-      lastTokenParsed = tokenType;
-      if( pParse->rc!=SQLITE_OK || db->mallocFailed ) break;
     }
+    pParse->sLastToken.z = zSql;
+    pParse->sLastToken.n = n;
+    sqlite3Parser(pEngine, tokenType, pParse->sLastToken);
+    lastTokenParsed = tokenType;
+    zSql += n;
+    if( pParse->rc!=SQLITE_OK || db->mallocFailed ) break;
   }
   assert( nErr==0 );
-  pParse->zTail = &zSql[i];
 #ifdef YYTRACKMAXSTACKDEPTH
   sqlite3_mutex_enter(sqlite3MallocMutex());
   sqlite3StatusHighwater(SQLITE_STATUS_PARSER_STACK,
@@ -560,7 +687,11 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
   );
   sqlite3_mutex_leave(sqlite3MallocMutex());
 #endif /* YYDEBUG */
+#ifdef sqlite3Parser_ENGINEALWAYSONSTACK
+  sqlite3ParserFinalize(pEngine);
+#else
   sqlite3ParserFree(pEngine, sqlite3_free);
+#endif
   if( db->mallocFailed ){
     pParse->rc = SQLITE_NOMEM_BKPT;
   }
@@ -570,10 +701,12 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
   assert( pzErrMsg!=0 );
   if( pParse->zErrMsg ){
     *pzErrMsg = pParse->zErrMsg;
-    sqlite3_log(pParse->rc, "%s", *pzErrMsg);
+    sqlite3_log(pParse->rc, "%s in \"%s\"", 
+                *pzErrMsg, pParse->zTail);
     pParse->zErrMsg = 0;
     nErr++;
   }
+  pParse->zTail = zSql;
   if( pParse->pVdbe && pParse->nErr>0 && pParse->nested==0 ){
     sqlite3VdbeDelete(pParse->pVdbe);
     pParse->pVdbe = 0;
@@ -599,12 +732,11 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
 
   if( pParse->pWithToFree ) sqlite3WithDelete(db, pParse->pWithToFree);
   sqlite3DeleteTrigger(db, pParse->pNewTrigger);
-  for(i=pParse->nzVar-1; i>=0; i--) sqlite3DbFree(db, pParse->azVar[i]);
-  sqlite3DbFree(db, pParse->azVar);
+  sqlite3DbFree(db, pParse->pVList);
   while( pParse->pAinc ){
     AutoincInfo *p = pParse->pAinc;
     pParse->pAinc = p->pNext;
-    sqlite3DbFree(db, p);
+    sqlite3DbFreeNN(db, p);
   }
   while( pParse->pZombieTab ){
     Table *p = pParse->pZombieTab;

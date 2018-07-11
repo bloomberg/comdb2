@@ -32,7 +32,7 @@ static SQLITE_WSD struct sqlite3StatType {
 
 /*
 ** Elements of sqlite3Stat[] are protected by either the memory allocator
-** mutex.  The following array determines which.
+** mutex, or by the pcache1 mutex.  The following array determines which.
 */
 static const char statMutex[] = {
   0,  /* SQLITE_STATUS_MEMORY_USED */
@@ -70,6 +70,10 @@ sqlite3_int64 sqlite3StatusValue(int op){
   wsdStatInit;
   assert( op>=0 && op<ArraySize(wsdStat.nowValue) );
   assert( op>=0 && op<ArraySize(statMutex) );
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+  assert( sqlite3_mutex_held(statMutex[op] ? sqlite3Pcache1Mutex()
+                                           : sqlite3MallocMutex()) );
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   return wsdStat.nowValue[op];
 }
 
@@ -88,6 +92,10 @@ void sqlite3StatusUp(int op, int N){
   wsdStatInit;
   assert( op>=0 && op<ArraySize(wsdStat.nowValue) );
   assert( op>=0 && op<ArraySize(statMutex) );
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+  assert( sqlite3_mutex_held(statMutex[op] ? sqlite3Pcache1Mutex()
+                                           : sqlite3MallocMutex()) );
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   wsdStat.nowValue[op] += N;
   if( wsdStat.nowValue[op]>wsdStat.mxValue[op] ){
     wsdStat.mxValue[op] = wsdStat.nowValue[op];
@@ -97,6 +105,10 @@ void sqlite3StatusDown(int op, int N){
   wsdStatInit;
   assert( N>=0 );
   assert( op>=0 && op<ArraySize(statMutex) );
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+  assert( sqlite3_mutex_held(statMutex[op] ? sqlite3Pcache1Mutex()
+                                           : sqlite3MallocMutex()) );
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( op>=0 && op<ArraySize(wsdStat.nowValue) );
   wsdStat.nowValue[op] -= N;
 }
@@ -112,9 +124,12 @@ void sqlite3StatusHighwater(int op, int X){
   newValue = (sqlite3StatValueType)X;
   assert( op>=0 && op<ArraySize(wsdStat.nowValue) );
   assert( op>=0 && op<ArraySize(statMutex) );
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+  assert( sqlite3_mutex_held(statMutex[op] ? sqlite3Pcache1Mutex()
+                                           : sqlite3MallocMutex()) );
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( op==SQLITE_STATUS_MALLOC_SIZE
           || op==SQLITE_STATUS_PAGECACHE_SIZE
-          || op==SQLITE_STATUS_SCRATCH_SIZE
           || op==SQLITE_STATUS_PARSER_STACK );
   if( newValue>wsdStat.mxValue[op] ){
     wsdStat.mxValue[op] = newValue;
@@ -138,7 +153,11 @@ int sqlite3_status64(
 #ifdef SQLITE_ENABLE_API_ARMOR
   if( pCurrent==0 || pHighwater==0 ) return SQLITE_MISUSE_BKPT;
 #endif
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   pMutex = sqlite3MallocMutex();
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  pMutex = statMutex[op] ? sqlite3Pcache1Mutex() : sqlite3MallocMutex();
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3_mutex_enter(pMutex);
   *pCurrent = wsdStat.nowValue[op];
   *pHighwater = wsdStat.mxValue[op];
@@ -164,6 +183,28 @@ int sqlite3_status(int op, int *pCurrent, int *pHighwater, int resetFlag){
 }
 
 /*
+** Return the number of LookasideSlot elements on the linked list
+*/
+static u32 countLookasideSlots(LookasideSlot *p){
+  u32 cnt = 0;
+  while( p ){
+    p = p->pNext;
+    cnt++;
+  }
+  return cnt;
+}
+
+/*
+** Count the number of slots of lookaside memory that are outstanding
+*/
+int sqlite3LookasideUsed(sqlite3 *db, int *pHighwater){
+  u32 nInit = countLookasideSlots(db->lookaside.pInit);
+  u32 nFree = countLookasideSlots(db->lookaside.pFree);
+  if( pHighwater ) *pHighwater = db->lookaside.nSlot - nInit;
+  return db->lookaside.nSlot - (nInit+nFree);
+}
+
+/*
 ** Query status information for a single database connection
 */
 int sqlite3_db_status(
@@ -182,10 +223,15 @@ int sqlite3_db_status(
   sqlite3_mutex_enter(db->mutex);
   switch( op ){
     case SQLITE_DBSTATUS_LOOKASIDE_USED: {
-      *pCurrent = db->lookaside.nOut;
-      *pHighwater = db->lookaside.mxOut;
+      *pCurrent = sqlite3LookasideUsed(db, pHighwater);
       if( resetFlag ){
-        db->lookaside.mxOut = db->lookaside.nOut;
+        LookasideSlot *p = db->lookaside.pFree;
+        if( p ){
+          while( p->pNext ) p = p->pNext;
+          p->pNext = db->lookaside.pInit;
+          db->lookaside.pInit = db->lookaside.pFree;
+          db->lookaside.pFree = 0;
+        }
       }
       break;
     }
@@ -303,6 +349,9 @@ int sqlite3_db_status(
     ** pagers the database handle is connected to. *pHighwater is always set 
     ** to zero.
     */
+    case SQLITE_DBSTATUS_CACHE_SPILL:
+      op = SQLITE_DBSTATUS_CACHE_WRITE+1;
+      /* Fall through into the next case */
     case SQLITE_DBSTATUS_CACHE_HIT:
     case SQLITE_DBSTATUS_CACHE_MISS:
     case SQLITE_DBSTATUS_CACHE_WRITE:{
