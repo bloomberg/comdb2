@@ -219,7 +219,13 @@ mempsync_thd(void *p)
 	DBT data_dbt;
 	DB_LSN lsn, sync_lsn;
 	DB_ENV *dbenv = p;
+	DB_REP *db_rep;
+	REP *rep;
+	u_int32_t generation;
 	int rep_check = 0;
+
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
 
 	/* slightly kludgy, but necessary since this code gets
 	 * called in recovery */
@@ -238,9 +244,14 @@ mempsync_thd(void *p)
 			break;
 		}
 		/* latch the lsn */
+		pthread_mutex_unlock(&mempsync_lk);
+		BDB_READLOCK("mempsync_thd");
+		pthread_mutex_lock(&mempsync_lk);
 		lsn = mempsync_lsn;
 		sync_lsn = lsn;
+		generation = rep->gen;
 		pthread_mutex_unlock(&mempsync_lk);
+		BDB_RELLOCK();
 
 		/*
 		 * When we do parallel recovery, there are "commit" records
@@ -290,20 +301,22 @@ mempsync_thd(void *p)
 			/* For the reference:  sync_lsn is the lsn of the txn_ckp in the log,
 			 * as provided by mempsync_sync_out_of_band(); 
 			 * Not sure if it safe to sync beyond ckp->ckp_lsn all the way to ckp lsn though */
-            rc = __log_flush_pp(dbenv, &sync_lsn);
-            if ((rc = __log_cursor(dbenv, &logc)) != 0)
-                goto err;
-
-            memset(&data_dbt, 0, sizeof(data_dbt));
-            data_dbt.flags = DB_DBT_REALLOC;
-
             BDB_READLOCK("mempsync_thd_ckp");
-            if ((rc = __log_c_get(logc, &sync_lsn, &data_dbt, DB_SET)) == 0) {
-                __txn_updateckp(dbenv, &sync_lsn);
-                __os_free(dbenv, data_dbt.data);
+            if (generation == rep->gen) {
+                rc = __log_flush_pp(dbenv, &sync_lsn);
+                if ((rc = __log_cursor(dbenv, &logc)) != 0)
+                    goto err;
+
+                memset(&data_dbt, 0, sizeof(data_dbt));
+                data_dbt.flags = DB_DBT_REALLOC;
+
+                if ((rc = __log_c_get(logc, &sync_lsn, &data_dbt, DB_SET)) == 0) {
+                    __txn_updateckp(dbenv, &sync_lsn);
+                    __os_free(dbenv, data_dbt.data);
+                }
+                __log_c_close(logc);
             }
             BDB_RELLOCK();
-            __log_c_close(logc);
 
 		} else {
 err:
