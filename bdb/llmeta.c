@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <alloca.h>
 #include <string.h>
 #include <strings.h>
 #include <limits.h>
