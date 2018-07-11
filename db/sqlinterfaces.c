@@ -3279,11 +3279,13 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         gbl_check_access_controls = 0;
     }
 
+#   if WITH_SSL
     /* If 1) this is an SSL connection, 2) and client sends a certificate,
        3) and client does not override the user, let it through. */
     if (sslio_has_x509(clnt->sb) && clnt->is_x509_user)
         rc = 0;
     else
+#   endif
         rc = check_user_password(clnt);
 
     if (rc == 0) {
