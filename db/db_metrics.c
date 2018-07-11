@@ -180,7 +180,7 @@ int refresh_metrics(void)
     rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks,
                                &stats.lockwaits, &stats.lockrequests);
     if (rc) {
-        fprintf(stderr, "failed to refresh statistics (%s:%d)\n", __FILE__,
+        logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);
         return 1;
     }
@@ -188,7 +188,7 @@ int refresh_metrics(void)
     rc = bdb_get_bpool_counters(thedb->bdb_env, &stats.bpool_hits,
                                 &stats.bpool_misses);
     if (rc) {
-        fprintf(stderr, "failed to refresh statistics (%s:%d)\n", __FILE__,
+        logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);
         return 1;
     }

@@ -4149,11 +4149,11 @@ void *statthd(void *p)
                 if (diff_bpool_misses)
                     logmsg(LOGMSG_USER, " cache_misses %lu", diff_bpool_misses);
                 if (diff_conns)
-                    printf(" connects %lld", diff_conns);
+                    logmsg(LOGMSG_USER, " connects %lld", diff_conns);
                 if (diff_curr_conns)
-                    printf(" current_connects %lld", diff_curr_conns);
+                    logmsg(LOGMSG_USER, " current_connects %lld", diff_curr_conns);
                 if (diff_conn_timeouts)
-                    printf(" connect_timeouts %lld", diff_conn_timeouts);
+                    logmsg(LOGMSG_USER, " connect_timeouts %lld", diff_conn_timeouts);
                 have_scon_stats = 1;
             }
         }
