@@ -4916,12 +4916,12 @@ out:
     return rc;
 }
 
-void net_subnet_status(FILE *out)
+void net_subnet_status()
 {
     int i = 0;
     pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
-        fprintf(out, "Subnet %s %s%s%s", subnet_suffices[i],
+        logmsg(LOGMSG_USER, "Subnet %s %s%s%s", subnet_suffices[i],
                 subnet_disabled[i] ? "disabled" : "enabled\n",
                 subnet_disabled[i] ? " at " : "",
                 subnet_disabled[i] ? ctime(&subnet_disabled[i]) : "");
@@ -4961,7 +4961,7 @@ void net_clipper(const char *subnet, int is_disable)
          if(gbl_ready) now = comdb2_time_epoch();
          else time(&now);
          if (gbl_verbose_net)
-            fprintf(stderr, "%x %s subnet %s time %d\n",
+            logmsg(LOGMSG_USER, "%x %s subnet %s time %d\n",
                   pthread_self(), (is_disable)?"Disabling":"Enabling", subnet_suffices[i], now);
 
          if (is_disable == 0) {

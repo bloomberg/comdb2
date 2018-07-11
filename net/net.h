@@ -447,7 +447,7 @@ void net_disable_explicit_flush_trace(void);
 
 void kill_subnet(const char *subnet);
 void net_clipper(const char *subnet, int onoff);
-void net_subnet_status(FILE *out);
+void net_subnet_status();
 
 void net_register_child_net(netinfo_type *netinfo_ptr,
                             netinfo_type *netinfo_child, int netnum,
