@@ -1409,11 +1409,11 @@ REGISTER_TUNABLE("timeseries_metrics_maxpoints",
                  TUNABLE_INTEGER, &gbl_metric_maxpoints, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("timeseries_metrics_maxage",
-                 "Time to keep metrics in memory",
+                 "Time to keep metrics in memory (seconds)",
                  TUNABLE_INTEGER, &gbl_metric_maxage, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("timeseries_metrics",
                  "Keep time series data for some metrics",
-                 TUNABLE_INTEGER, &gbl_timeseries_metrics, 0, NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_timeseries_metrics, 0, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
