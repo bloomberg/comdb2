@@ -111,8 +111,210 @@ if [ $? == 0 ] ; then
 fi
 
 
+echo "Add table with long tablename 32 characters-- should not succeed"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+create table t2345678901234567890123456789012 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+}\$\$
+EOF
+if [[ $? == 0 ]]; then
+    failexit "Schemachange has succeded and thats a problem"
+fi
+
+
+echo "Add table with long tablename 31 characters-- should succeed"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+drop table if exists t234567890123456789012345678901 
+create table t234567890123456789012345678901 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+}\$\$
+EOF
+if [[ $? != 0 ]]; then
+    failexit "Schemachange has failed and thats a problem"
+fi
+
+
+echo "Add table t4 needed for alters"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+drop table if exists t4
+create table t4 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+}\$\$
+EOF
+if [[ $? != 0 ]]; then
+    failexit "Schemachange has failed"
+fi
+
+
+echo "Add index with spaces -- should not succeed"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+create table t5 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+keys
+{
+   dup "KEYWITH SPACE"  = id
+}
+}\$\$
+EOF
+if [[ $? == 0 ]]; then
+    failexit "Schemachange has succeded and thats a problem"
+fi
+
+
+echo "Alter index with spaces -- should not succeed"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+alter table t4 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+keys
+{
+   dup "KEYWITH SPACE"  = id
+}
+}\$\$
+EOF
+if [[ $? == 0 ]]; then
+    failexit "Schemachange has succeded and thats a problem"
+fi
+
+
+
+echo "Add index with empty name -- should not succeed"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+create table t5 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+keys
+{
+   dup ""  = id
+}
+}\$\$
+EOF
+if [[ $? == 0 ]]; then
+    failexit "Schemachange has succeded and thats a problem"
+fi
+
+
+
+echo "Alter index with empty name -- should not succeed"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+alter table t4 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+keys
+{
+   dup ""  = id
+}
+}\$\$
+EOF
+if [[ $? == 0 ]]; then
+    failexit "Schemachange has succeded and thats a problem"
+fi
+
+
+echo "Add long index name -- 54 chars should not succeed"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+create table t5 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+keys
+{
+   dup "KEY_12345678901234567890123456789012345678901234567890"  = id  // 54 characters -- too long
+}
+}\$\$
+EOF
+if [[ $? == 0 ]]; then
+    failexit "Schemachange has succeded and thats a problem"
+fi
+
+
+echo "Alter long index name -- 54 chars should not succeed"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+alter table t4 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+keys
+{
+   dup "KEY_12345678901234567890123456789012345678901234567890"  = id  // 54 characters -- too long
+}
+}\$\$
+EOF
+if [[ $? == 0 ]]; then
+    failexit "Schemachange has succeded and thats a problem"
+fi
+
+echo "Add long index name -- 53 chars should succeed"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+create table t5 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+keys
+{
+   dup "KEY_1234567890123456789012345678901234567890123456789"  = id  // 53 characters -- should work
+}
+}\$\$
+EOF
+if [[ $? != 0 ]]; then
+    failexit "Schemachange has failed and thats a problem"
+fi
+
+
+echo "Alter long index name -- 53 chars should succeed"
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+alter table t4 {
+schema
+{
+   int  id
+   blob b1 null=yes
+}
+keys
+{
+   dup "KEY_1234567890123456789012345678901234567890123456789"  = id  // 53 characters -- should work
+}
+}\$\$
+EOF
+if [[ $? != 0 ]]; then
+    failexit "Schemachange has failed and thats a problem"
+fi
+
+
+
+
 INITCNT=100
-echo "Test with insert, updates, deletes"
+echo "Test with insert, updates, deletes into t1"
 
 insert_records_oneshot 1 $INITCNT
 
