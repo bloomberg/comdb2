@@ -402,7 +402,7 @@ fi
 
 
 do_verify
-cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild table t1  }"  > rebuild.txt 
+cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"  > rebuild.txt 
 
 
 echo "Success"
