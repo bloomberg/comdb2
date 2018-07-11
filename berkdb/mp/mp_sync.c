@@ -314,8 +314,8 @@ mempsync_thd(void *p)
                     __txn_updateckp(dbenv, &sync_lsn);
                     __os_free(dbenv, data_dbt.data);
                 }
+                __log_c_close(logc);
             }
-            __log_c_close(logc);
             BDB_RELLOCK();
 
 		} else {
