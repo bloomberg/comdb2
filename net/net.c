@@ -4922,9 +4922,9 @@ void net_subnet_status()
     pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
         logmsg(LOGMSG_USER, "Subnet %s %s%s%s", subnet_suffices[i],
-                subnet_disabled[i] ? "disabled" : "enabled\n",
-                subnet_disabled[i] ? " at " : "",
-                subnet_disabled[i] ? ctime(&subnet_disabled[i]) : "");
+               subnet_disabled[i] ? "disabled" : "enabled\n",
+               subnet_disabled[i] ? " at " : "",
+               subnet_disabled[i] ? ctime(&subnet_disabled[i]) : "");
     }
     pthread_mutex_unlock(&subnet_mtx);
 }
@@ -4951,45 +4951,48 @@ void net_set_bad_subnet(const char *subnet)
 
 void net_clipper(const char *subnet, int is_disable)
 {
-   int i = 0;
-   time_t now;
-   pthread_mutex_lock(&subnet_mtx);
-   for(i = 0; i < num_dedicated_subnets; i++) {
-      if(subnet_suffices[i][0] && 
-            strncmp(subnet, subnet_suffices[i], strlen(subnet)+1) == 0) {
-         extern int gbl_ready;
-         if(gbl_ready) now = comdb2_time_epoch();
-         else time(&now);
-         if (gbl_verbose_net)
-            logmsg(LOGMSG_USER, "%x %s subnet %s time %d\n",
-                  pthread_self(), (is_disable)?"Disabling":"Enabling", subnet_suffices[i], now);
+    int i = 0;
+    time_t now;
+    pthread_mutex_lock(&subnet_mtx);
+    for (i = 0; i < num_dedicated_subnets; i++) {
+        if (subnet_suffices[i][0] &&
+            strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
+            extern int gbl_ready;
+            if (gbl_ready)
+                now = comdb2_time_epoch();
+            else
+                time(&now);
+            if (gbl_verbose_net)
+                logmsg(LOGMSG_USER, "%x %s subnet %s time %d\n", pthread_self(),
+                       (is_disable) ? "Disabling" : "Enabling",
+                       subnet_suffices[i], now);
 
-         if (is_disable == 0) {
-            subnet_disabled[i] = 0;
-         } else {
-            subnet_disabled[i] = now;
-            kill_subnet(subnet);
-         }
-      }
-   }
-   pthread_mutex_unlock(&subnet_mtx);
+            if (is_disable == 0) {
+                subnet_disabled[i] = 0;
+            } else {
+                subnet_disabled[i] = now;
+                kill_subnet(subnet);
+            }
+        }
+    }
+    pthread_mutex_unlock(&subnet_mtx);
 }
 
 int net_subnet_disabled(const char *subnet)
 {
-   int i = 0;
-   int rc = 0;
-   pthread_mutex_lock(&subnet_mtx);
-   for(i = 0; i < num_dedicated_subnets; i++) {
-      if(subnet_suffices[i][0] && strncmp(subnet, subnet_suffices[i], strlen(subnet)+1) == 0) {
-         rc = (subnet_disabled[i]!=0);
-         break;
-      }
-   }
-   pthread_mutex_unlock(&subnet_mtx);
-   return rc;
+    int i = 0;
+    int rc = 0;
+    pthread_mutex_lock(&subnet_mtx);
+    for (i = 0; i < num_dedicated_subnets; i++) {
+        if (subnet_suffices[i][0] &&
+            strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
+            rc = (subnet_disabled[i] != 0);
+            break;
+        }
+    }
+    pthread_mutex_unlock(&subnet_mtx);
+    return rc;
 }
-
 
 int net_add_nondedicated_subnet(void *context, void *value)
 {
@@ -5677,11 +5680,12 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
     Pthread_mutex_unlock(&(host_node_ptr->write_lock));
 
     int rc = get_subnet_incomming_syn(host_node_ptr);
-    if(rc) 
-    {
+    if (rc) {
         host_node_printf(LOGMSG_INFO, host_node_ptr,
-                        "%s: Clipping connect from %s on disabled subnet %s\n",
-                __func__, host_node_ptr->host, (host_node_ptr->subnet)?host_node_ptr->subnet:"UNKNOWN");
+                         "%s: Clipping connect from %s on disabled subnet %s\n",
+                         __func__, host_node_ptr->host,
+                         (host_node_ptr->subnet) ? host_node_ptr->subnet
+                                                 : "UNKNOWN");
         Pthread_mutex_unlock(&(host_node_ptr->lock));
         Pthread_rwlock_unlock(&(netinfo_ptr->lock));
         return;

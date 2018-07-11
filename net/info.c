@@ -54,8 +54,8 @@ static void basic_node_data(struct host_node_tag *ptr)
 {
     struct timebuf t;
     char ip[16];
-    logmsg(LOGMSG_USER, "host %10s%s:%-5d fd %-3d", ptr->host, ptr->subnet, ptr->port,
-            ptr->fd);
+    logmsg(LOGMSG_USER, "host %10s%s:%-5d fd %-3d", ptr->host, ptr->subnet,
+           ptr->port, ptr->fd);
     if (ptr->have_connect_thread)
         logmsg(LOGMSG_USER, " cnt_thd");
     if (ptr->have_reader_thread)
@@ -76,12 +76,14 @@ static void basic_node_data(struct host_node_tag *ptr)
         logmsg(LOGMSG_USER, " DISTRESS!");
     logmsg(LOGMSG_USER, "\n");
 
-    logmsg(LOGMSG_USER, "  enque count %-5u peak %-5u at %s (hit max %u times)\n",
-            ptr->enque_count, ptr->peak_enque_count,
-            fmt_time(&t, ptr->peak_enque_count_time), ptr->num_queue_full);
+    logmsg(LOGMSG_USER,
+           "  enque count %-5u peak %-5u at %s (hit max %u times)\n",
+           ptr->enque_count, ptr->peak_enque_count,
+           fmt_time(&t, ptr->peak_enque_count_time), ptr->num_queue_full);
 
-    logmsg(LOGMSG_USER, "  enque bytes %-5u peak %-5u at %s\n", ptr->enque_bytes,
-            ptr->peak_enque_bytes, fmt_time(&t, ptr->peak_enque_bytes_time));
+    logmsg(LOGMSG_USER, "  enque bytes %-5u peak %-5u at %s\n",
+           ptr->enque_bytes, ptr->peak_enque_bytes,
+           fmt_time(&t, ptr->peak_enque_bytes_time));
 }
 
 static void basic_stat(netinfo_type *netinfo_ptr)
@@ -112,14 +114,14 @@ static void dump_node(netinfo_type *netinfo_ptr, char *host)
             basic_node_data(ptr);
             logmsg(LOGMSG_USER, "dedupe_count: %u\n", ptr->dedupe_count);
             Pthread_mutex_lock(&(ptr->enquelk));
-            logmsg(LOGMSG_USER, "write list %u items %u bytes:\n", ptr->enque_count,
-                    ptr->enque_bytes);
+            logmsg(LOGMSG_USER, "write list %u items %u bytes:\n",
+                   ptr->enque_count, ptr->enque_bytes);
             for (write_list_ptr = ptr->write_head; write_list_ptr != NULL;
                  write_list_ptr = write_list_ptr->next) {
                 logmsg(LOGMSG_USER, "  typ %d age %2d flg %2x len %4u\n",
-                        write_list_ptr->payload.header.type,
-                        comdb2_time_epoch() - write_list_ptr->enque_time,
-                        write_list_ptr->flags, (unsigned)write_list_ptr->len);
+                       write_list_ptr->payload.header.type,
+                       comdb2_time_epoch() - write_list_ptr->enque_time,
+                       write_list_ptr->flags, (unsigned)write_list_ptr->len);
             }
             Pthread_mutex_unlock(&(ptr->enquelk));
         }
