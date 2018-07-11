@@ -319,21 +319,6 @@ int sp_column_nil(struct response_data *, int);
 int sp_column_val(struct response_data *, int, int, void *);
 void *sp_column_ptr(struct response_data *, int, int, size_t *);
 
-struct param_data {
-    char *name;
-    int type;
-    int null;
-    int pos;
-    int len;
-    union {
-        int64_t i;
-        double r;
-        void *p;
-        dttz_t dt;
-        intv_t tv;
-    } u;
-};
-
 typedef int(plugin_func)(struct sqlclntstate *);
 typedef int(response_func)(struct sqlclntstate *, int, void *, int);
 typedef void *(replay_func)(struct sqlclntstate *, void *);

@@ -97,6 +97,12 @@ if(WITH_SSL)
   list(APPEND src ssl_bend.c)
 endif()
 
+option(DEBUG_TYPES "Build types.c independent of sqlglue.c" OFF)
+if(DEBUG_TYPES)
+  list(APPEND src types.c)
+  add_definitions(-DDEBUG_TYPES)
+endif()
+
 if(WITH_PLINK_TIMESTAMP)
   list(APPEND src ${CMAKE_CURRENT_BINARY_DIR}/plink_timestamp.c)
   set_source_files_properties(
