@@ -2056,7 +2056,21 @@ void add_dttz_intvds(const dttz_t *, const intv_t *, dttz_t *);
 void sub_dttz_intvds(const dttz_t *, const intv_t *, dttz_t *);
 void sub_dttz_dttz(const dttz_t *, const dttz_t *, intv_t *);
 
-struct param_data;
+struct param_data {
+    char *name;
+    int type;
+    int null;
+    int pos;
+    int len;
+    union {
+        int64_t i;
+        double r;
+        void *p;
+        dttz_t dt;
+        intv_t tv;
+    } u;
+};
+
 int get_type(struct param_data *out, void *in, int inlen, int intype,
              const char *tzname, int little);
 

@@ -34,6 +34,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 
+#include "comdb2.h"
 #include "types.h"
 #include "endian_core.h"
 #include "flibc.h"
