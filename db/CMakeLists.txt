@@ -103,14 +103,6 @@ if(DEBUG_TYPES)
   add_definitions(-DDEBUG_TYPES)
 endif()
 
-if(WITH_PLINK_TIMESTAMP)
-  list(APPEND src ${CMAKE_CURRENT_BINARY_DIR}/plink_timestamp.c)
-  set_source_files_properties(
-    ${CMAKE_CURRENT_BINARY_DIR}/plink_timestamp.c
-    PROPERTIES GENERATED TRUE
-  )
-endif()
-
 add_executable(comdb2 ${src})
 set(module uncategorized)
 set(MODULE UNCATEGORIZED)
