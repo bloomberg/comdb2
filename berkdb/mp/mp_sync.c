@@ -221,7 +221,7 @@ mempsync_thd(void *p)
 	DB_ENV *dbenv = p;
 	DB_REP *db_rep;
 	REP *rep;
-    u_int32_t generation;
+	u_int32_t generation;
 	int rep_check = 0;
 
 	db_rep = dbenv->rep_handle;
@@ -244,14 +244,14 @@ mempsync_thd(void *p)
 			break;
 		}
 		/* latch the lsn */
-        pthread_mutex_unlock(&mempsync_lk);
+		pthread_mutex_unlock(&mempsync_lk);
 		BDB_READLOCK("mempsync_thd");
 		pthread_mutex_lock(&mempsync_lk);
 		lsn = mempsync_lsn;
 		sync_lsn = lsn;
-        generation = rep->gen;
+		generation = rep->gen;
 		pthread_mutex_unlock(&mempsync_lk);
-        BDB_RELLOCK();
+		BDB_RELLOCK();
 
 		/*
 		 * When we do parallel recovery, there are "commit" records
