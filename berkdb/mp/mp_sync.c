@@ -315,8 +315,8 @@ mempsync_thd(void *p)
                     __os_free(dbenv, data_dbt.data);
                 }
             }
-            BDB_RELLOCK();
             __log_c_close(logc);
+            BDB_RELLOCK();
 
 		} else {
 err:
