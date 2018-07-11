@@ -609,11 +609,11 @@ constraints
 	}
 ')
 (type='index', name='$COMDB2_PK_3AE602D4', tbl_name='t5', rootpage=13, sql='create index "$COMDB2_PK_3AE602D4" on "t5" ("i");', csc2=NULL)
-[INSERT INTO t1 VALUES(NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't1'. unable to add record rc = 318
-[INSERT INTO t2 VALUES(NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't2'. unable to add record rc = 318
-[INSERT INTO t3 VALUES(1, NULL)] failed with rc 4 Null constraint violation for column 'j' on table 't3'. unable to add record rc = 318
-[INSERT INTO t3 VALUES(NULL, 1)] failed with rc 4 Null constraint violation for column 'i' on table 't3'. unable to add record rc = 318
-[INSERT INTO t3 VALUES(NULL, NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't3'. unable to add record rc = 318
+[INSERT INTO t1 VALUES(NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't1'. null constraint error data .ONDISK->.ONDISK 'null constraint violation from bint4 field 'i' to bint4 field 'i' for table 't1'' unable to add record rc = 318
+[INSERT INTO t2 VALUES(NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't2'. null constraint error data .ONDISK->.ONDISK 'null constraint violation from bint4 field 'i' to bint4 field 'i' for table 't2'' unable to add record rc = 318
+[INSERT INTO t3 VALUES(1, NULL)] failed with rc 4 Null constraint violation for column 'j' on table 't3'. null constraint error data .ONDISK->.ONDISK 'null constraint violation from bint4 field 'j' to bint4 field 'j' for table 't3'' unable to add record rc = 318
+[INSERT INTO t3 VALUES(NULL, 1)] failed with rc 4 Null constraint violation for column 'i' on table 't3'. null constraint error data .ONDISK->.ONDISK 'null constraint violation from bint4 field 'i' to bint4 field 'i' for table 't3'' unable to add record rc = 318
+[INSERT INTO t3 VALUES(NULL, NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't3'. null constraint error data .ONDISK->.ONDISK 'null constraint violation from bint4 field 'i' to bint4 field 'i' for table 't3'' unable to add record rc = 318
 (COUNT(*)=0=1)
 (COUNT(*)=0=1)
 (COUNT(*)=0=1)
