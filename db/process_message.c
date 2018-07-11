@@ -736,7 +736,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         tok=segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
 clipper_usage:
-            printf("Usage: netclipper disable|enable subnet\n");
+            logmsg(LOGMSG_USER, "Usage: netclipper disable|enable subnet\n");
             return -1;
         }
         if (tokcmp(tok, ltok, "disable")==0)
