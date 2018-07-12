@@ -274,7 +274,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DRYRUN
   ENABLE FUNCTION GENID48 GET GRANT IPU ISC KW LUA LZ4 NONE
   ODH OFF OP OPTIONS
-  PAGEORDER PARTITION PASSWORD PERIOD PROCEDURE PUT
+  PAGEORDER PASSWORD PERIOD PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RETENTION REVOKE RLE ROWLOCKS
   SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE
   THREADS THRESHOLD TIME TRUNCATE TUNABLE
@@ -370,19 +370,28 @@ scanpt(A) ::= . {
 //
 carglist ::= carglist ccons.
 carglist ::= .
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-ccons ::= DEFAULT term(X).            {comdb2AddDefaultValue(pParse,&X);}
-ccons ::= DEFAULT LP expr(X) RP.      {comdb2AddDefaultValue(pParse,&X);}
-ccons ::= DEFAULT PLUS term(X).       {comdb2AddDefaultValue(pParse,&X);}
-%endif SQLITE_BUILDING_FOR_COMDB2
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 ccons ::= CONSTRAINT nm(X).           {pParse->constraintName = X;}
 ccons ::= DEFAULT scanpt(A) term(X) scanpt(Z).
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+                            {comdb2AddDefaultValue(pParse,X,A,Z);}
+%endif SQLITE_BUILDING_FOR_COMDB2
+%ifndef SQLITE_BUILDING_FOR_COMDB2
                             {sqlite3AddDefaultValue(pParse,X,A,Z);}
+%endif !SQLITE_BUILDING_FOR_COMDB2
 ccons ::= DEFAULT LP(A) expr(X) RP(Z).
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+                            {comdb2AddDefaultValue(pParse,X,A.z+1,Z.z);}
+%endif SQLITE_BUILDING_FOR_COMDB2
+%ifndef SQLITE_BUILDING_FOR_COMDB2
                             {sqlite3AddDefaultValue(pParse,X,A.z+1,Z.z);}
+%endif !SQLITE_BUILDING_FOR_COMDB2
 ccons ::= DEFAULT PLUS(A) term(X) scanpt(Z).
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+                            {comdb2AddDefaultValue(pParse,X,A.z,Z);}
+%endif SQLITE_BUILDING_FOR_COMDB2
+%ifndef SQLITE_BUILDING_FOR_COMDB2
                             {sqlite3AddDefaultValue(pParse,X,A.z,Z);}
+%endif !SQLITE_BUILDING_FOR_COMDB2
 ccons ::= DEFAULT MINUS(A) term(X) scanpt(Z).      {
   Expr *p = sqlite3PExpr(pParse, TK_UMINUS, X, 0);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)

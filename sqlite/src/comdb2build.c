@@ -3603,8 +3603,12 @@ cleanup:
     return;
 }
 
-void comdb2AddDefaultValue(Parse *pParse, ExprSpan *pSpan)
-{
+void comdb2AddDefaultValue(
+  Parse *pParse,           /* Parsing context */
+  Expr *pExpr,             /* The parsed expression of the default value */
+  const char *zStart,      /* Start of the default value text */
+  const char *zEnd         /* First character past end of defaut value text */
+){
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct comdb2_column *column;
     char *def;
@@ -3612,7 +3616,7 @@ void comdb2AddDefaultValue(Parse *pParse, ExprSpan *pSpan)
 
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
-        sqlite3AddDefaultValue(pParse, pSpan);
+        sqlite3AddDefaultValue(pParse, pExpr, zStart, zEnd);
         return;
     }
 
@@ -3621,8 +3625,8 @@ void comdb2AddDefaultValue(Parse *pParse, ExprSpan *pSpan)
     }
 
     /* Add DEFAULT to the last add column. */
-    def_len = pSpan->zEnd - pSpan->zStart;
-    def = comdb2_strndup(ctx->mem, pSpan->zStart, def_len);
+    def_len = zEnd - zStart;
+    def = comdb2_strndup(ctx->mem, zStart, def_len);
     if (def == 0)
         goto oom;
     /* Remove the quotes around the default value (if any). */
