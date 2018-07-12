@@ -445,7 +445,9 @@ int net_throttle_wait(netinfo_type *netinfo_ptr);
 void net_enable_explicit_flush_trace(void);
 void net_disable_explicit_flush_trace(void);
 
-void kill_subnet(char *subnet);
+void kill_subnet(const char *subnet);
+void net_clipper(const char *subnet, int onoff);
+void net_subnet_status();
 
 void net_register_child_net(netinfo_type *netinfo_ptr,
                             netinfo_type *netinfo_child, int netnum,

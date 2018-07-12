@@ -728,7 +728,36 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         tokcpy0(tok, ltok, subnet, sizeof(subnet));
         logmsg(LOGMSG_INFO, "Killling subnet %s\n", subnet);
         kill_subnet(subnet);
-    } else if (tokcmp(tok, ltok, "fdbdebg") == 0) {
+    }
+    else if(tokcmp(tok,ltok, "netclipper")==0)
+    {
+        int flag;
+        char *subnet;
+        tok=segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+clipper_usage:
+            logmsg(LOGMSG_USER, "Usage: netclipper disable|enable subnet\n");
+            return -1;
+        }
+        if (tokcmp(tok, ltok, "disable")==0)
+        {
+            flag = 1;   
+        }
+        else if (tokcmp(tok, ltok, "enable")==0)
+        {
+            flag = 0;
+        }
+        else 
+            goto clipper_usage;
+
+        tok=segtok(line, lline, &st, &ltok);
+        if (ltok == 0) 
+            goto clipper_usage;
+        subnet = tokdup(tok, ltok);  
+        net_clipper(subnet, flag);
+        free(subnet);
+    }
+    else if (tokcmp(tok, ltok, "fdbdebg") == 0) {
         extern int gbl_fdb_track;
 
         int dbgflag;
