@@ -27,10 +27,10 @@
 #include "dbinc_auto/txn_ext.h"
 #include "dbinc_auto/txn_auto.h"
 #include "bdb_osql_log_rec.h"
+#include "llog_auto.h"
 #include "bdb_osqllog.h"
 #include "util.h"
 #include <bdb/bdb_int.h>
-#include "llog_auto.h"
 #include "llog_ext.h"
 
 /* Allocate maximum for unpacking */

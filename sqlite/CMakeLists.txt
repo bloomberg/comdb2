@@ -190,4 +190,4 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}
 )
-add_dependencies(sqlite mem protobuf)
+add_dependencies(sqlite mem protobuf bdb)
