@@ -6328,7 +6328,7 @@ int start_schema_change_tran_wrapper(const char *tblname,
         iq->sc_pending = iq->sc;
         if (arg->nshards == arg->indx + 1) {
             /* last shard was done */
-            bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
+            iq->osql_flags |= OSQL_FLAGS_SCDONE;
         } else {
             struct schema_change_type *new_sc = clone_schemachange_type(sc);
 
@@ -6479,7 +6479,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
             } else {
                 iq->sc->sc_next = iq->sc_pending;
                 iq->sc_pending = iq->sc;
-                bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
+                iq->osql_flags |= OSQL_FLAGS_SCDONE;
             }
         } else {
             timepart_sc_arg_t arg = {0};
@@ -6768,7 +6768,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
          * but since we changed the way we backup stats (used to be in llmeta)
          * this opcode is only used to reload stats now
          */
-        bset(&iq->osql_flags, OSQL_FLAGS_ANALYZE);
+        iq->osql_flags |= OSQL_FLAGS_ANALYZE;
     } break;
     case OSQL_INSREC:
     case OSQL_INSERT: {
@@ -7456,7 +7456,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     /* for socksql, is this a retry that need to be checked for self-deadlock?
      */
     if ((type == OSQL_SOCK_REQ || type == OSQL_SOCK_REQ_COST) &&
-        (btst(&req.flags, OSQL_FLAGS_CHECK_SELFLOCK))) {
+        (req.flags & OSQL_FLAGS_CHECK_SELFLOCK)) {
         /* just make sure we are above the threshold */
         iq->sorese.verify_retries += gbl_osql_verify_ext_chk;
     }

@@ -489,7 +489,7 @@ retry:
 
     if ((type == OSQL_SOCK_REQ || type == OSQL_SOCK_REQ_COST) &&
         clnt->verify_retries > gbl_osql_verify_ext_chk)
-        bset(&flags, OSQL_FLAGS_CHECK_SELFLOCK);
+        flags |= OSQL_FLAGS_CHECK_SELFLOCK;
     else
         flags = 0;
 
