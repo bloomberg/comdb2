@@ -28,9 +28,9 @@ Example code in Python to get database port:
 ```python
 def portmux_get(host, dbname):
   client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-  service = "comdb2/replication"
-  command = "get" + service + dbname + "\n"
-  client_socket.connect(host, 5105)
+  service = "comdb2/replication/"
+  command = "get " + service + dbname + "\n"
+  client_socket.connect((host, 5105))
   client_socket.send(command)
   byts = client_socket.recv(32)
   port = int(byts)
