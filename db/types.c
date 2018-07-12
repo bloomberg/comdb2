@@ -9405,8 +9405,8 @@ int make_order_decimal32(server_decimal32_t *pdec32)
     return 0;
 }
 
-int unmake_order_decimal32(server_decimal32_t *pdec32, char *decimals,
-                           int *exponent)
+static int unmake_order_decimal32(server_decimal32_t *pdec32, char *decimals,
+                                  int *exponent)
 {
     int adj_exp = 0;
     int i;
@@ -9491,7 +9491,7 @@ int unmake_order_decimal32(server_decimal32_t *pdec32, char *decimals,
     return 0;
 }
 
-int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
+static int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
 {
     short adj_exp;
     int i;
@@ -9559,7 +9559,8 @@ int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
     return 0;
 }
 
-int dec64_exponent_is_outrageous(server_decimal64_t *pdec64, char *decimals)
+static int dec64_exponent_is_outrageous(server_decimal64_t *pdec64,
+                                        char *decimals)
 {
     /* 0 decimals were able to insert exponents > 15, missing for %16=0 the mark
      * that it is a new format */
@@ -9587,8 +9588,8 @@ int dec64_exponent_is_outrageous(server_decimal64_t *pdec64, char *decimals)
     return 0;
 }
 
-int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
-                           int *exponent)
+static int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
+                                  int *exponent)
 {
     comdb2_int2 tmp;
     int2b exp;
@@ -9709,7 +9710,7 @@ int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
     return 0;
 }
 
-int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
+static int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
 {
     short adj_exp;
     int i;
@@ -9779,8 +9780,8 @@ int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
     return 0;
 }
 
-int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
-                            int *exponent)
+static int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
+                                   int *exponent)
 {
     comdb2_int2 tmp;
     int2b exp;
@@ -9978,7 +9979,7 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
     decDoubleFromPacked(dn, exponent, (uint8_t *)decimals);
 }
 
-void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
+static void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
 {
     char decimals[DECQUAD_PACKED_COEF];
     int exponent;
