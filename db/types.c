@@ -9410,7 +9410,7 @@ int unmake_order_decimal32(server_decimal32_t *pdec32, char *decimals,
 {
     int adj_exp = 0;
     int i;
-    char exp;
+    signed char exp;
 
     exp = pdec32->exp;
 
