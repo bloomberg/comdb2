@@ -172,14 +172,12 @@ create_table ::= createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z). {
    sqlite3StartTable(pParse,&Y,&Z,T,0,0,E);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
-
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= comdb2_create_table_csc2.
 comdb2_create_table_csc2 ::= createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
   comdb2CreateTableCSC2(pParse,&Y,&Z,O,&C,T,E);
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
-
 createkw(A) ::= CREATE(A).  {disableLookaside(pParse);}
 
 %type ifnotexists {int}
@@ -272,7 +270,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   BLOBFIELD BULKIMPORT
   CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COVERAGE CRLE
   DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DRYRUN
-  ENABLE FUNCTION GENID48 GET GRANT IPU ISC KW LUA LZ4 NONE
+  ENABLE FOR FUNCTION GENID48 GET GRANT IPU ISC KW LUA LZ4 NONE
   ODH OFF OP OPTIONS
   PAGEORDER PASSWORD PERIOD PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RETENTION REVOKE RLE ROWLOCKS
@@ -395,7 +393,7 @@ ccons ::= DEFAULT PLUS(A) term(X) scanpt(Z).
 ccons ::= DEFAULT MINUS(A) term(X) scanpt(Z).      {
   Expr *p = sqlite3PExpr(pParse, TK_UMINUS, X, 0);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  comdb2AddDefaultValue(pParse,&v);
+  comdb2AddDefaultValue(pParse,p,A.z,Z);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3AddDefaultValue(pParse,p,A.z,Z);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -407,7 +405,7 @@ ccons ::= DEFAULT scanpt id(X).       {
     testcase( p->op==TK_TRUEFALSE && sqlite3ExprTruthValue(p) );
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  comdb2AddDefaultValue(pParse,&v);
+  comdb2AddDefaultValue(pParse,p,X.z,X.z+X.n);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3AddDefaultValue(pParse,p,X.z,X.z+X.n);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -431,7 +429,6 @@ ccons ::= PRIMARY KEY sortorder(Z) onconf(R) autoinc(I).
 %ifndef SQLITE_BUILDING_FOR_COMDB2
                                  {sqlite3AddPrimaryKey(pParse,0,R,I,Z);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
-
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 ccons ::= UNIQUE onconf(R).      {
     comdb2AddIndex(pParse, 0, 0, R, 0, SQLITE_SO_ASC,
