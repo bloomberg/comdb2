@@ -50,7 +50,7 @@ enum {
     OSQL_SKIPSEQ = 0x7777
 };
 
-/* flags for handle_offloadsql_pool */
+/* flags for osql requests */
 enum {
     OSQL_FLAGS_RECORD_COST = 0x00000001,
     OSQL_FLAGS_AUTH = 0x00000002,
