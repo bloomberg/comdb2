@@ -748,28 +748,28 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
         int type = appdata->type[i];
         switch (type) {
         case SQLITE_INTEGER: {
-            int64_t i64 = sqlite3_column_int64(stmt, i);
+            int64_t i64 = column_int64(clnt, stmt, i);
             newsql_integer(cols, i, i64, flip);
             break;
         }
         case SQLITE_FLOAT: {
-            double d = sqlite3_column_double(stmt, i);
+            double d = column_double(clnt, stmt, i);
             newsql_double(cols, i, d, flip);
             break;
         }
         case SQLITE_TEXT: {
-            cols[i].value.len = sqlite3_column_bytes(stmt, i) + 1;
-            cols[i].value.data = (uint8_t *)sqlite3_column_text(stmt, i);
+            cols[i].value.len = column_bytes(clnt, stmt, i) + 1;
+            cols[i].value.data = (uint8_t *)column_text(clnt, stmt, i);
             break;
         }
         case SQLITE_BLOB: {
-            cols[i].value.len = sqlite3_column_bytes(stmt, i);
-            cols[i].value.data = (uint8_t *)sqlite3_column_blob(stmt, i);
+            cols[i].value.len = column_bytes(clnt, stmt, i);
+            cols[i].value.data = (uint8_t *)column_blob(clnt, stmt, i);
             break;
         }
         case SQLITE_DATETIME:
         case SQLITE_DATETIMEUS: {
-            const dttz_t *d = sqlite3_column_datetime(stmt, i);
+            const dttz_t *d = column_datetime(clnt, stmt, i);
             cdb2_client_datetime_t *c = alloca(sizeof(*c));
             if (convDttz2ClientDatetime(d, stmt_tzname(stmt), c, type) != 0) {
                 char *e =
@@ -796,14 +796,14 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
         }
         case SQLITE_INTERVAL_YM: {
             const intv_t *val =
-                sqlite3_column_interval(stmt, i, SQLITE_AFF_INTV_MO);
+                column_interval(clnt, stmt, i, SQLITE_AFF_INTV_MO);
             newsql_ym(cols, i, val, flip);
             break;
         }
         case SQLITE_INTERVAL_DS:
         case SQLITE_INTERVAL_DSUS: {
             const intv_t *val =
-                sqlite3_column_interval(stmt, i, SQLITE_AFF_INTV_SE);
+                column_interval(clnt, stmt, i, SQLITE_AFF_INTV_SE);
             newsql_ds(cols, i, val, flip);
             break;
         }

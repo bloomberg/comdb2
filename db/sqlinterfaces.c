@@ -366,17 +366,32 @@ int column_count(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     return sqlite3_column_count(stmt);
 }
 
-int column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int i)
+#define FUNC_COLUMN_TYPE(ret, type) \
+ret column_ ## type (struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol) \
+{ \
+    if (clnt && clnt->plugin.column_ ## type) \
+        return clnt->plugin.column_ ## type (clnt, stmt, iCol); \
+    return sqlite3_column_ ## type (stmt, iCol); \
+}
+
+FUNC_COLUMN_TYPE( int, type)
+FUNC_COLUMN_TYPE( sqlite_int64, int64)
+FUNC_COLUMN_TYPE( double, double)
+FUNC_COLUMN_TYPE( const unsigned char*, text)
+FUNC_COLUMN_TYPE( int, bytes)
+FUNC_COLUMN_TYPE( const void*, blob)
+FUNC_COLUMN_TYPE( const dttz_t*, datetime)
+
+const intv_t* column_interval (struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol, int type)
 {
-    if (clnt && clnt->plugin.column_type)
-        return clnt->plugin.column_type(clnt, stmt, i);
-    
-    return sqlite3_column_type(stmt, i);
+    if (clnt && clnt->plugin.column_interval) 
+        return clnt->plugin.column_interval(clnt, stmt, iCol, type);
+    return sqlite3_column_interval(stmt, iCol, type);
 }
 
 int next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
-    if (clnt && clnt->plugin.column_type)
+    if (clnt && clnt->plugin.next_row)
         return clnt->plugin.next_row(clnt, stmt);
     
    return sqlite3_step(stmt); 
@@ -3322,6 +3337,9 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     /* whatever sqlite returns in sqlite3_step is only used to step out of the
      * loop, otherwise ignored; we are gonna get it from sqlite (or osql.xerr)
      */
+    
+    logmsg(LOGMSG_ERROR, "XXX: %p Out of run_stmt rc=%d\n",
+           (clnt->plugin.state)?clnt->plugin.state:"(NA)", rc);
 
 postprocessing:
     /* closing: error codes, postponed write result and so on*/

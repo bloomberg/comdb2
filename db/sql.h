@@ -342,6 +342,9 @@ typedef int(skip_row_func)(struct sqlclntstate *, uint64_t);
 typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
 typedef uint64_t(ret_uint64_func)(struct sqlclntstate *);
 
+#define SQLITE_CALLBACK_API(ret, name) \
+    ret (*column_ ## name) (struct sqlclntstate*, sqlite3_stmt*,int)
+
 struct plugin_callbacks {
     response_func *write_response; /* newsql_write_response */
     response_func *read_response; /* newsql_read_response */
@@ -383,12 +386,21 @@ struct plugin_callbacks {
     /* optional */
     void *state;
     int (*column_count)(struct sqlclntstate*, sqlite3_stmt*); /* sqlite3_column_count */
-    int (*column_type)(struct sqlclntstate *, sqlite3_stmt*, int i); /* sqlite3_column_type */
     int (*next_row)(struct sqlclntstate *, sqlite3_stmt*); /* sqlite3_step */
+    SQLITE_CALLBACK_API( int, type); /* sqlite3_column_type */
+    SQLITE_CALLBACK_API( sqlite_int64, int64); /* sqlite3_column_int64*/
+    SQLITE_CALLBACK_API( double, double); /* sqlite3_column_double*/
+    SQLITE_CALLBACK_API( const unsigned char*, text); /* sqlite3_column_text */
+    SQLITE_CALLBACK_API( int, bytes); /* sqlite3_column_bytes */
+    SQLITE_CALLBACK_API( const void*, blob); /* sqlite3_column_bytes */
+    SQLITE_CALLBACK_API( const dttz_t*, datetime); /* sqlite3_column_datetime */
+    const intv_t* (*column_interval)(struct sqlclntstate*, sqlite3_stmt*, int, int); /* sqlite3_column_interval*/
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
     (clnt)->plugin.func = name##_##func
+#define make_plugin_optional_null(clnt, name)                                  \
+    (clnt)->plugin.column_ ## name = NULL
 
 #define plugin_set_callbacks(clnt, name)                                       \
     do {                                                                       \
@@ -420,9 +432,16 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, get_client_starttime);                \
         make_plugin_callback(clnt, name, get_client_retries);                  \
         make_plugin_callback(clnt, name, send_intrans_response);               \
+        make_plugin_optional_null(clnt, count);                                \
+        make_plugin_optional_null(clnt, type);                                 \
+        make_plugin_optional_null(clnt, int64);                                \
+        make_plugin_optional_null(clnt, double);                               \
+        make_plugin_optional_null(clnt, text);                                 \
+        make_plugin_optional_null(clnt, bytes);                                \
+        make_plugin_optional_null(clnt, blob);                                 \
+        make_plugin_optional_null(clnt, datetime);                             \
+        make_plugin_optional_null(clnt, interval);                             \
         (clnt)->plugin.state = NULL;                                           \
-        (clnt)->plugin.column_count = NULL;                                    \
-        (clnt)->plugin.column_type = NULL;                                     \
         (clnt)->plugin.next_row = NULL;                                        \
     } while (0)
 
@@ -1040,10 +1059,20 @@ response_func write_response;
 response_func read_response;
 int sql_writer(SBUF2 *, const char *, int);
 int typestr_to_type(const char *ctype);
-int column_count(struct sqlclntstate *clnt, sqlite3_stmt *stmt);
-int column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int i);
-int next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt);
+int column_count(struct sqlclntstate*, sqlite3_stmt*);
+int next_row(struct sqlclntstate*, sqlite3_stmt*);
 
+#define SQLITE_PROTO_API( ret, type) \
+ret column_ ## type (struct sqlclntstate*, sqlite3_stmt*,int)
+
+SQLITE_PROTO_API( int, type);
+SQLITE_PROTO_API( sqlite_int64, int64);
+SQLITE_PROTO_API( double, double);
+SQLITE_PROTO_API( const unsigned char*, text);
+SQLITE_PROTO_API( int, bytes);
+SQLITE_PROTO_API( const void*, blob);
+SQLITE_PROTO_API( const dttz_t*, datetime);
+const intv_t* column_interval(struct sqlclntstate*, sqlite3_stmt*,int, int);
 
 struct query_stats {
     int64_t nfstrap;

@@ -4586,5 +4586,7 @@ void comdb2WriteTransaction(Parse*);
 /* COMDB2 MODIFICATION */
 int sqlite3RecordCompareExprList(UnpackedRecord *rec, Mem *mems);
 int sqlite3ExprList2MemArray(ExprList *list, Mem *mems);
+Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem **cols);
+int sqlite3CloneResultFree(sqlite3_stmt *pStmt, Mem **cols);
 
 #endif /* _SQLITEINT_H_ */

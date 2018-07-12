@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include "comdb2.h"
 #include "sqliteInt.h"
 #include "vdbeInt.h"
 #include "ast.h"
@@ -117,7 +118,7 @@ ast_t* ast_init(void)
 {
     ast_t *ast;
 
-    ast = malloc(sizeof ast);
+    ast = malloc(sizeof(ast_t));
     if(!ast) return NULL;
 
     ast->nused = 0;
@@ -261,7 +262,8 @@ int ast_push(ast_t *ast, enum ast_type op, Vdbe *v, void* obj)
     int ignore = 0;
 
     if (ast->nused>=ast->nalloc) {
-        ast->stack = realloc(ast->stack, ast->nalloc+AST_STACK_INIT);
+        ast->stack = realloc(ast->stack, 
+                (ast->nalloc+AST_STACK_INIT)*sizeof(ast->stack[0]));
         if (!ast->stack)
             return -1;
         ast->nalloc += AST_STACK_INIT;
@@ -337,8 +339,9 @@ void ast_print(ast_t *ast)
                ast_param_str(ast->stack[i].op, ast->stack[i].obj));
 }
 
-int comdb2_check_parallel(ast_t *ast)
+int comdb2_check_parallel(Parse *pParse)
 {
+    ast_t *ast = pParse->ast;
     dohsql_node_t *node;
     int i;
 
@@ -357,6 +360,9 @@ int comdb2_check_parallel(ast_t *ast)
     if (strstr(node->sql, "comdb2_"))
         return 0;
 
+    if (pParse->explain && pParse->explain !=3)
+        return 0;
+
     if (node->type == AST_TYPE_SELECT) {
         fprintf(stderr, "Single query \"%s\"\n", node->sql);
         return 0;
@@ -368,9 +374,13 @@ int comdb2_check_parallel(ast_t *ast)
             fprintf(stderr,"\t Thread %d: \"%s\"\n", i+1, node->nodes[i]->sql);
         }
 
-        if(dohsql_distribute(node))
-            return 0;
-        return 1;
+        if (!pParse->explain) {
+            if(dohsql_distribute(node))
+                return 0;
+            return 1;
+        } else {
+            pParse->explain = 2;
+        }
     }
     return 0;
 }

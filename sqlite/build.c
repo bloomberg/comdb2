@@ -141,8 +141,8 @@ void sqlite3FinishCoding(Parse *pParse){
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if (pParse->ast) {
-    extern int comdb2_check_parallel(ast_t*);
-    if (comdb2_check_parallel(pParse->ast)) {
+    extern int comdb2_check_parallel(Parse*);
+    if (comdb2_check_parallel(pParse)) {
         pParse->rc = SQLITE_SCHEMA_DOHSQL;
         return;
     }
