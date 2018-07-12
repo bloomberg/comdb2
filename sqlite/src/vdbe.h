@@ -35,9 +35,7 @@ typedef struct Vdbe Vdbe;
 ** The names of the following types declared in vdbeInt.h are required
 ** for the VdbeOp definition.
 */
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 typedef struct sqlite3_value Mem;
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 typedef struct SubProgram SubProgram;
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)

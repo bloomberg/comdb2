@@ -3539,6 +3539,9 @@ int sqlite3VdbeCursorMoveto(VdbeCursor **pp, int *piCol){
 ** of SQLite will not understand those serial types.
 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define START_INLINE_SERIALGET
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 /*
 **
 ** The following changes to the above table were made for use by Comdb2:
@@ -3554,6 +3557,9 @@ int sqlite3VdbeCursorMoveto(VdbeCursor **pp, int *piCol){
 ** please update sqlite3IsFixedLengthSerialType accordingly.
 */
 #define SIZE_OF_INT_DSMS offsetof(intv_t, u.ds.prec) /* R5 ms-interval type */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define END_INLINE_SERIALGET
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
