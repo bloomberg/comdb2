@@ -3715,7 +3715,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     static pthread_mutex_t vote2_lock = PTHREAD_MUTEX_INITIALIZER;
 
-    if (rectype == REP_VOTE2 || rectype == REP_GEN_VOTE2) {
+    if (rectype == REP_VOTE2 || rectype == REP_GEN_VOTE2 ||
+            rectype == REP_NEWMASTER) {
         pthread_mutex_lock(&vote2_lock);
         got_vote2lock = 1;
     }
@@ -3826,6 +3827,12 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     case DB_REP_NEWMASTER:
         bdb_state->repinfo->repstats.rep_newmaster++;
+
+        if (!got_vote2lock) {
+            logmsg(LOGMSG_WARN, "process_berkdb: got NEWMASTER with no votelock2\n");
+            abort();
+            bdb_get_rep_master(bdb_state, &master, &gen, &egen);
+        }
 
         logmsg(LOGMSG_WARN,
                "process_berkdb: DB_REP_NEWMASTER %s time=%ld upgraded to "

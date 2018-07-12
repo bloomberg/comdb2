@@ -318,10 +318,39 @@ __rep_set_gen(dbenv, func, line, gen)
 {
 	DB_REP *db_rep;
 	REP *rep;
+    int egen;
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
-    logmsg(LOGMSG_DEBUG, "%s line %d setting rep->gen to %d\n", func, line, gen);
+    egen = rep->egen;
+    if (rep->egen <= gen)
+        egen = gen + 1;
+    logmsg(LOGMSG_DEBUG, "%s line %d setting rep->gen from %d to %d, egen from %d to %d\n",
+            func, line, rep->gen, gen, rep->egen, egen);
     rep->gen = gen;
+    rep->egen = egen;
+}
+
+/*
+ * __rep_set_egen --
+ *  Called as a utility function to see places where an instance's 
+ * replication election generation can be changed.
+ *
+ * PUBLIC: void __rep_set_egen __P((DB_ENV *, const char *func, int line, int egen));
+ */
+void
+__rep_set_egen(dbenv, func, line, egen)
+    DB_ENV *dbenv;
+    const char *func;
+    int line;
+    int egen;
+{
+	DB_REP *db_rep;
+	REP *rep;
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+    logmsg(LOGMSG_DEBUG, "%s line %d setting rep->egen from %d to %d\n",
+            func, line, rep->egen, egen);
+    rep->egen = egen;
 }
 
 /*
@@ -395,7 +424,7 @@ __rep_new_master(dbenv, cntrl, eid)
 #endif
         __rep_set_gen(dbenv, __func__, __LINE__, cntrl->gen);
 		if (rep->egen <= rep->gen)
-			rep->egen = rep->gen + 1;
+            __rep_set_egen(dbenv, __func__, __LINE__, rep->gen + 1);
 #ifdef DIAGNOSTIC
 		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 			__db_err(dbenv,
@@ -697,9 +726,9 @@ __rep_elect_done(dbenv, rep, egen)
 	if (inelect) {
         pthread_mutex_lock(&gbl_rep_egen_lk);
         if (egen)
-            rep->egen = egen;
+            __rep_set_egen(dbenv, __func__, __LINE__, egen);
         else
-            rep->egen++;
+            __rep_set_egen(dbenv, __func__, __LINE__, rep->egen+1);
         pthread_cond_broadcast(&gbl_rep_egen_cd);
         pthread_mutex_unlock(&gbl_rep_egen_lk);
     }

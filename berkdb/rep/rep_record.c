@@ -118,6 +118,7 @@ static int __rep_lsn_cmp __P((const void *, const void *));
 static int __rep_newfile __P((DB_ENV *, REP_CONTROL *, DB_LSN *));
 static int __rep_verify_match __P((DB_ENV *, REP_CONTROL *, time_t));
 void send_master_req(DB_ENV *dbenv, const char *func, int line);
+static inline void send_dupmaster(DB_ENV *dbenv, const char *func, int line);
 
 int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
     0, gbl_rep_trans_deadlocked = 0, gbl_rep_trans_inline =
@@ -169,8 +170,7 @@ int gbl_rep_process_msg_print_rc;
 				__db_err(dbenv, "Client record received on master");		\
 				__rep_print_message(dbenv, *eidp, rp, "rep_process_message");\
 			}																\
-			(void)__rep_send_message(dbenv, db_eid_broadcast, REP_DUPMASTER,\
-									 NULL, NULL, 0, NULL);					\
+            send_dupmaster(dbenv, __func__, __LINE__);                 \
 			ret = DB_REP_DUPMASTER;											\
 			fromline = __LINE__;											\
 			goto errlock;													\
@@ -216,8 +216,7 @@ int gbl_rep_process_msg_print_rc;
 #define CLIENT_ONLY(rep, rp)												\
 	do {																	\
 		if (!F_ISSET(rep, REP_ISCLIENT)) {									\
-			(void)__rep_send_message(dbenv, db_eid_broadcast, REP_DUPMASTER,\
-									 NULL, NULL, 0, NULL);					\
+			send_dupmaster(dbenv, __func__, __LINE__);				 \
 			ret = DB_REP_DUPMASTER;											\
 			fromline = __LINE__;											\
 			goto errlock;													\
@@ -310,11 +309,24 @@ extern int gbl_verbose_master_req;
 int gbl_last_master_req = 0;
 extern int rep_qstat_has_master_req(void);
 
+static inline void send_dupmaster(DB_ENV *dbenv, const char *func, int line)
+{
+    static unsigned long long call_count = 0, req_count = 0;
+    static int lastpr = 0;
+    int now, spanms=0;
+
+    call_count++;
+    __rep_send_message(dbenv, db_eid_broadcast, REP_DUPMASTER,
+            NULL, NULL, 0, NULL);
+
+    logmsg(LOGMSG_DEBUG, "%s line %d sending DUPMASTER\n", func, line);
+}
+
 void send_master_req(DB_ENV *dbenv, const char *func, int line)
 {
     static unsigned long long call_count = 0, req_count = 0;
     static int lastpr = 0;
-    int now, spanms=0, has_master_req;
+    int now, spanms=0;
 
     call_count++;
     if (!gbl_master_req_waitms || (spanms = (comdb2_time_epochms() -
@@ -1135,9 +1147,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 			rep->stat.st_dupmasters++;
 			ret = DB_REP_DUPMASTER;
 			if (rp->rectype != REP_DUPMASTER)
-				(void)__rep_send_message(dbenv,
-					db_eid_broadcast, REP_DUPMASTER,
-					NULL, NULL, 0, NULL);
+	            send_dupmaster(dbenv, __func__, __LINE__);
 			fromline = __LINE__;
 			goto errlock;
 		}
@@ -1163,7 +1173,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
             __rep_set_gen(dbenv, __func__, __LINE__, rp->gen);
 			gen = rp->gen;
 			if (rep->egen <= gen)
-				rep->egen = rep->gen + 1;
+                __rep_set_egen(dbenv, __func__, __LINE__, rep->gen + 1);
 #ifdef DIAGNOSTIC
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 				__db_err(dbenv, "Updating egen to %lu",
@@ -1293,7 +1303,7 @@ skip:				/*
 			    (u_long)egen, (u_long)rep->egen);
 #endif
 		if (egen > rep->egen)
-			rep->egen = egen;
+            __rep_set_egen(dbenv, __func__, __LINE__, egen);
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		break;
 	case REP_ALIVE_REQ:
@@ -1902,11 +1912,9 @@ more:           if (type == REP_LOG_MORE) {
 			/* We don't hold the rep mutex, and may miscount. */
 			rep->stat.st_dupmasters++;
 			ret = DB_REP_DUPMASTER;
-			(void)__rep_send_message(dbenv,
-			    db_eid_broadcast, REP_DUPMASTER, NULL, NULL, 0,
-			    NULL);
-				fromline = __LINE__;
-				goto errlock;
+			send_dupmaster(dbenv, __func__, __LINE__);
+			fromline = __LINE__;
+			goto errlock;
 		}
         if (gbl_verbose_master_req) {
             logmsg(LOGMSG_USER, "Received NEW MASTER from %s\n", *eidp);

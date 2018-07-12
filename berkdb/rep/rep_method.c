@@ -350,7 +350,7 @@ __rep_start(dbenv, dbt, gen, flags)
 				F_CLR(rep, REP_F_MASTERELECT);
 			}
 			if (rep->egen <= rep->gen)
-				rep->egen = rep->gen + 1;
+                __rep_set_egen(dbenv, __func__, __LINE__, rep->gen + 1);
 
             logmsg(LOGMSG_DEBUG, "%s line %d upgrading to gen %d egen %d\n",
                     __func__, __LINE__, rep->gen, rep->egen);
@@ -1206,10 +1206,11 @@ lockdone:
 	 * from elect_init where we were unable to grow_sites.  In
 	 * that case we do not want to discard all known election info.
 	 */
-	if (ret == 0 || ret == DB_REP_UNAVAIL)
+	if (ret == 0 || ret == DB_REP_UNAVAIL) {
 		__rep_elect_done(dbenv, rep, 0);
-	else if (orig_tally)
+    } else if (orig_tally) {
 		F_SET(rep, orig_tally);
+    }
 
     pthread_mutex_unlock(&rep_candidate_lock);
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
