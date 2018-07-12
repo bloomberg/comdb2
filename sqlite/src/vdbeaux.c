@@ -3493,10 +3493,6 @@ int sqlite3VdbeCursorMoveto(VdbeCursor **pp, int *piCol){
   return SQLITE_OK;
 }
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-#include <serialget.c>
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 /*
 ** The following functions:
 **
