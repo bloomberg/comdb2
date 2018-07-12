@@ -27,7 +27,7 @@ typedef struct Btree Btree;
 typedef struct BtCursor BtCursor;
 typedef struct BtShared BtShared;
 typedef struct BtreePayload BtreePayload;
-typedef struct Mem Mem;
+typedef struct sqlite3_value Mem;
 typedef struct Schema Schema;
 
 
