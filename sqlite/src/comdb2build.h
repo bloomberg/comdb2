@@ -52,7 +52,7 @@ void comdb2CreateTableStart(Parse *, Token *, Token *, int, int, int, int);
 void comdb2CreateTableEnd(Parse *, Token *, Token *, u8, int);
 void comdb2CreateTableLikeEnd(Parse *, Token *, Token *);
 void comdb2AddColumn(Parse *, Token *, Token *);
-void comdb2AddDefaultValue(Parse *, ExprSpan *);
+void comdb2AddDefaultValue(Parse *, Expr *, const char *, const char *);
 void comdb2AddNull(Parse *);
 void comdb2AddNotNull(Parse *, int);
 void comdb2AddPrimaryKey(Parse *, ExprList *, int, int, int);
