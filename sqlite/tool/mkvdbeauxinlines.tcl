@@ -181,6 +181,16 @@ for {set index 0} {$index < $length} {incr index} {
   set chunk($id,fileName) [file join \
       $outputDirectory [appendArgs $chunk($id,name) .c]]
 
+  if {![file exists $chunk($id,fileName)]} then {
+    if {[file tail $chunk($id,fileName)] eq "memcompare.c"} then {
+      set chunk($id,data) [appendArgs \
+          "#include <serialget.c>\n\n" $chunk($id,data)]
+    } elseif {[file tail $chunk($id,fileName)] eq "vdbecompare.c"} then {
+      set chunk($id,data) [appendArgs \
+          "#include <memcompare.c>\n\n" $chunk($id,data)]
+    }
+  }
+
   appendNormalizedFile $chunk($id,fileName) $chunk($id,data)
 
   #
