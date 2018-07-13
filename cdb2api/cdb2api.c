@@ -2399,6 +2399,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
         if (hndl)
             hndl->sent_client_info = 1;
     }
+
     sqlquery.dbname = (char *)dbname;
     sqlquery.sql_query = (char *)cdb2_skipws(sql);
 #if _LINUX_SOURCE
@@ -2415,16 +2416,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
     sqlquery.mach_class = cdb2_default_cluster;
 
 
-    if (hndl && hndl->debug_trace) {
-        char *host = "NOT-CONNECTED";
-        if (hndl->connected_host >= 0)
-            host = hndl->hosts[hndl->connected_host];
-
-        fprintf(stderr, "td %u %s:%d sending to %s '%s' from-line %d retries is"
-                        " %d do_append is %d\n",
-                (uint32_t)pthread_self(), __func__, __LINE__, host, sql,
-                fromline, retries_done, do_append);
-    }
+    
 
     query.sqlquery = &sqlquery;
 
@@ -2432,54 +2424,58 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
     if (sqlquery.n_set_flags)
         sqlquery.set_flags = &set_commands[n_set_commands_sent];
 
-    if (hndl && hndl->is_retry) {
-        sqlquery.has_retry = 1;
-        sqlquery.retry = hndl->is_retry;
-    }
-
-    if (hndl && !(hndl->flags & CDB2_READ_INTRANS_RESULTS) && is_begin) {
-        features[n_features] = CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS;
-        n_features++;
-    }
-
 #if WITH_SSL
-    features[n_features] = CDB2_CLIENT_FEATURES__SSL;
-    n_features++;
+    features[n_features++] = CDB2_CLIENT_FEATURES__SSL;
 #endif
-    if (hndl) {
-        features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
-        n_features++;
+
+    if (hndl) { 
+        features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
         if ((hndl->flags & CDB2_DIRECT_CPU) ||
             (retries_done >= (hndl->num_hosts * 2 - 1) && hndl->master ==
              hndl->connected_host)) {
-            features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
-            n_features++;
+            features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
         }
         if (retries_done >= hndl->num_hosts) {
-            features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
-            n_features++;
+            features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
+        }
+
+        if (hndl->debug_trace) {
+            char *host = "NOT-CONNECTED";
+            if (hndl->connected_host >= 0)
+                host = hndl->hosts[hndl->connected_host];
+
+            fprintf(stderr, "td %u %s:%d sending to %s '%s' from-line %d retries is"
+                    " %d do_append is %d\n",
+                    (uint32_t)pthread_self(), __func__, __LINE__, host, sql,
+                    fromline, retries_done, do_append);
+        }
+
+        if (hndl->is_retry) {
+            sqlquery.has_retry = 1;
+            sqlquery.retry = hndl->is_retry;
+        }
+
+        if ( !(hndl->flags & CDB2_READ_INTRANS_RESULTS) && is_begin) {
+            features[n_features++] = CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS;
+        }
+
+        if (hndl->cnonce_len > 0) {
+            /* Have a query id associated with each transaction/query */
+            sqlquery.has_cnonce = 1;
+            sqlquery.cnonce.data = (uint8_t*)hndl->cnonce;
+            sqlquery.cnonce.len = hndl->cnonce_len;
+        }
+
+        if (hndl->snapshot_file) {
+            CDB2SQLQUERY__Snapshotinfo snapshotinfo = CDB2__SQLQUERY__SNAPSHOTINFO__INIT;
+            snapshotinfo.file = hndl->snapshot_file;
+            snapshotinfo.offset = hndl->snapshot_offset;
+            sqlquery.snapshot_info = &snapshotinfo;
         }
     } else if (retries_done) {
-        features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
-        n_features++;
-        features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
-        n_features++;
-        features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
-        n_features++;
-    }
-
-    if (hndl && hndl->cnonce_len > 0) {
-        /* Have a query id associated with each transaction/query */
-        sqlquery.has_cnonce = 1;
-        sqlquery.cnonce.data = (uint8_t*)hndl->cnonce;
-        sqlquery.cnonce.len = hndl->cnonce_len;
-    }
-
-    CDB2SQLQUERY__Snapshotinfo snapshotinfo = CDB2__SQLQUERY__SNAPSHOTINFO__INIT;
-    if (hndl && hndl->snapshot_file) {
-        snapshotinfo.file = hndl->snapshot_file;
-        snapshotinfo.offset = hndl->snapshot_offset;
-        sqlquery.snapshot_info = &snapshotinfo;
+        features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
+        features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
+        features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
     }
 
     if (n_features) {
@@ -2520,13 +2516,12 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
     sbuf2write((char *)buf, len, sb);
 
     int rc = sbuf2flush(sb);
-
     if (rc < 0) {
         free(buf);
         return -1;
     }
 
-    if (hndl && hndl->in_trans && do_append) {
+    if (do_append && hndl->in_trans) {
         /* Retry number of transaction is different from that of query.*/
         cdb2_query_list *item = malloc(sizeof(cdb2_query_list));
         item->buf = buf;
