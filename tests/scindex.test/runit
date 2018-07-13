@@ -856,5 +856,6 @@ if [[ "0" != "$wr_t1" && $? == 0 ]]; then
 fi
 
 echo "Testcase passed."
+rm $TMPDIR/cdb2tst_*$$*
 
 exit 0
