@@ -30,9 +30,7 @@
 #define MAXDTASTRIPE 16
 #define MAXDYNTAGCOLUMNS 2048
 #define MAXINDEX 50
-#define MAXKEYLEN                                                              \
-    512 /* to clients it is 256, but tagged mode adds an extra byte to each    \
-           column so internally we allow twice that.*/
+#define MAXKEYLEN 512 
 #define MAXLRL 65536
 #define MAXNETS 3
 #define MAXNODES 32768

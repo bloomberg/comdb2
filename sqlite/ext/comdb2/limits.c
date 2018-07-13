@@ -25,6 +25,7 @@
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
 #include "cdb2_constants.h"
+#include "csc2/dynschemaload.h"  //MAXIDXNAMELEN
 
 #define COMDB2_LIMIT(LIMIT, DESCR)                                             \
     {                                                                          \
@@ -48,8 +49,9 @@ struct limit_t {
     COMDB2_LIMIT(MAXDTASTRIPE, "Maximum number of data stripes"),
     COMDB2_LIMIT(MAXDYNTAGCOLUMNS,
                  "Maximum number of bounded parameters per prepared statement"),
-    COMDB2_LIMIT(MAXINDEX, "Maximum number of indices"),
+    COMDB2_LIMIT(MAXINDEX, "Maximum number of keys (indices)"),
     COMDB2_LIMIT(MAXKEYLEN, "Maximum key length"),
+    {"MAXIDXNAMELEN", "Maximum keyname length", MAXIDXNAMELEN - 1},
     COMDB2_LIMIT(MAXNETS, "Maximum number of networks"),
     COMDB2_LIMIT(MAXNODES, "Maximum number of nodes"),
     COMDB2_LIMIT(MAXPLUGINS, "Maximum number of plugins"),
@@ -60,7 +62,7 @@ struct limit_t {
     COMDB2_LIMIT(MAX_SPNAME, "Maximum length of stored procedure"),
     COMDB2_LIMIT(MAX_SPVERSION_LEN,
                  "Maximum length of stored procedure version"),
-    COMDB2_LIMIT(MAXTABLELEN, "Maximum table name length"),
+    {"MAXTABLELEN", "Maximum table name length", MAXTABLELEN - 1},
     COMDB2_LIMIT(MAXTAGLEN, "Maximum tag name length"),
     COMDB2_LIMIT(REPMAX, "Maximum number of replicants")};
 
