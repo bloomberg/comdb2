@@ -1065,7 +1065,13 @@ proc create_table {origquery} {
 
     set name [lindex $field 0]
     set type [lindex $field 1]
+
+    set extra0 [lindex $field 2]
+    set extra1 [lindex $field 3]
+    set extra2 [lindex $field 4]
+
     set strlen ""
+    set dbstore ""
 
     switch [string toupper $type] {
       "" {
@@ -1103,14 +1109,14 @@ proc create_table {origquery} {
         set type "cstring"
         set strlen "\[64\]"
       }
+      "DEFAULT" {
+        set type "int"
+        set dbstore "dbstore=${extra0}"
+      }
       default {
         set type [string tolower $type]
       }
     }
-
-    set extra0 [lindex $field 2]
-    set extra1 [lindex $field 3]
-    set extra2 [lindex $field 4]
 
     set null "null=yes"
     switch [string toupper $extra0] {
@@ -1125,7 +1131,7 @@ proc create_table {origquery} {
         lappend unique $name
       }
     }
-    set line "    $type $name$strlen $null"
+    set line "    $type $name$strlen $dbstore $null"
     append csc2schema $line "\n"
   }
   append csc2schema "\}"

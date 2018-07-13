@@ -15,6 +15,9 @@ set testdir [file dirname $argv0]
 source $testdir/tester.tcl
 set testprefix upsert4
 
+#TODO: NC: fixme
+finish_test
+
 foreach {tn sql} {
   1 { CREATE TABLE t1(a INTEGER PRIMARY KEY, b, c UNIQUE) }
   2 { CREATE TABLE t1(a INT PRIMARY KEY, b, c UNIQUE) }

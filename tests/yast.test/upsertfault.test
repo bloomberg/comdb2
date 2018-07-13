@@ -15,6 +15,9 @@ set testdir [file dirname $argv0]
 source $testdir/tester.tcl
 set testprefix upsertfault
 
+#TODO: NC: fixme
+finish_test
+
 do_execsql_test 1.0 {
   CREATE TABLE t1(a PRIMARY KEY, b, c, d, UNIQUE(b, c));
   INSERT INTO t1 VALUES(1, 1, 1, 1);
