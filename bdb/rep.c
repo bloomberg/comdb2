@@ -1199,6 +1199,19 @@ static void abort_election_on_exit(bdb_state_type *bdb_state)
 
 int gbl_elect_priority_bias = 0;
 
+int gbl_rand_elect_timeout = 1;
+int gbl_rand_elect_min_ms = 1000;
+int gbl_rand_elect_max_ms = 5000;
+
+static int elect_random_timeout(void)
+{
+    int range = (gbl_rand_elect_max_ms - gbl_rand_elect_min_ms), timeout_ms;
+    range = range > 0 ? range : 2000;
+    timeout_ms = gbl_rand_elect_min_ms + (rand() % range);
+    if (timeout_ms <= 0) timeout_ms = 2000;
+    return (timeout_ms * 1000);
+}
+
 static void *elect_thread(void *args)
 {
     int rc, count, i;
@@ -1221,6 +1234,7 @@ static void *elect_thread(void *args)
     int done = 0;
     int called_rep_start = 0;
     int elect_again = 0;
+    int elect_time_max = (1000000 * 10);
 
     thread_started("bdb election");
 
@@ -1277,7 +1291,6 @@ elect_again:
 
     if (bdb_state->callback->electsettings_rtn) {
         int elect_time_microsecs = 0;
-        int elect_time_max = 0;
 
         if (bdb_state->callback->electsettings_rtn(
                 bdb_state, &elect_time_microsecs) == 0) {
@@ -1287,6 +1300,11 @@ elect_again:
 
         if (elect_time > elect_time_max)
             elect_time = elect_time_max;
+    }
+
+    /* Ignore that completely if rand-elect-time is set */
+    if (gbl_rand_elect_timeout) {
+        elect_time = elect_random_timeout();
     }
 
     if (!is_electable(bdb_state, &num, &num_connected)) {
@@ -1374,7 +1392,11 @@ elect_again:
         else
             logmsg(LOGMSG_ERROR, "got %d from rep_elect\n", rc);
 
-        elect_time *= 2;
+        if (gbl_rand_elect_timeout)
+            elect_time = elect_random_timeout();
+        else
+            elect_time *= 2;
+
         elect_again++;
         if (elect_again > 30) {
             logmsg(LOGMSG_ERROR, "election not proceeding, giving up\n");

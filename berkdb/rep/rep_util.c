@@ -414,7 +414,7 @@ __rep_new_master(dbenv, cntrl, eid)
         if (cntrl->gen < rep->gen)
             abort();
 
-        __rep_elect_done(dbenv, rep, 0);
+        __rep_elect_done(dbenv, rep, 0, __func__, __LINE__);
         change = rep->gen < cntrl->gen || rep->master_id != eid;
         if (change) {
 #ifdef DIAGNOSTIC
@@ -705,24 +705,23 @@ pthread_cond_t gbl_rep_egen_cd = PTHREAD_COND_INITIALIZER;
  *	Clear all election information for this site.  Assumes the
  *	caller hold rep_mutex.
  *
- * PUBLIC: void __rep_elect_done __P((DB_ENV *, REP *, int egen));
+ * PUBLIC: void __rep_elect_done __P((DB_ENV *, REP *, int egen, const char *func, int line));
  */
 void
-__rep_elect_done(dbenv, rep, egen)
+__rep_elect_done(dbenv, rep, egen, func, line)
 	DB_ENV *dbenv;
 	REP *rep;
     int egen;
+    const char *func;
+    int line;
 {
 	int inelect;
-
-#ifndef DIAGNOSTIC
-	COMPQUIET(dbenv, NULL);
-#endif
 
 	inelect = IN_ELECTION_TALLY(rep);
 	F_CLR(rep, REP_F_EPHASE1 | REP_F_EPHASE2 | REP_F_TALLY);
 	rep->sites = 0;
 	rep->votes = 0;
+    logmsg(LOGMSG_DEBUG, "%s called from %s line %d\n", __func__, func, line);
 	if (inelect) {
         pthread_mutex_lock(&gbl_rep_egen_lk);
         if (egen)
@@ -999,10 +998,13 @@ __rep_get_gen(dbenv, genp)
 	rep = db_rep->region;
 
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+  /*
 	if (rep->recover_gen > rep->gen)
 		*genp = rep->recover_gen;
 	else
 		*genp = rep->gen;
+*/
+    *genp = rep->gen;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 }
 

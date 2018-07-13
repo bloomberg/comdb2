@@ -23,6 +23,7 @@ static const char revid[] = "$Id: rep_method.c,v 1.134 2003/11/13 15:41:51 sue E
 #endif
 
 #include "db_int.h"
+#include "dbinc/db_swap.h"
 #include "dbinc/db_page.h"
 #include "dbinc/btree.h"
 #include "dbinc/log.h"
@@ -346,7 +347,7 @@ __rep_start(dbenv, dbt, gen, flags)
                 __rep_set_gen(dbenv, __func__, __LINE__, rep->recover_gen + 1);
             }
 			if (F_ISSET(rep, REP_F_MASTERELECT)) {
-				__rep_elect_done(dbenv, rep, 0);
+				__rep_elect_done(dbenv, rep, 0, __func__, __LINE__);
 				F_CLR(rep, REP_F_MASTERELECT);
 			}
 			if (rep->egen <= rep->gen)
@@ -892,6 +893,88 @@ __rep_set_rep_transport(dbenv, eid, f_send)
 extern pthread_mutex_t rep_queue_lock;
 extern void send_master_req(DB_ENV *dbenv, const char *func, int line);
 
+static int
+__retrieve_durable_commitlsn(dbenv, lsn, gen)
+	DB_ENV *dbenv;
+	DB_LSN *lsn;
+    u_int32_t *gen;
+{
+	DBT rec;
+	DB_LOGC *logc;
+	DB_LOG *dblp;
+	DB_REP *db_rep;
+    DB_LSN lastlsn, curlsn;
+	REP *rep;
+	u_int32_t rectype;
+    int ret;
+
+	PANIC_CHECK(dbenv);
+	ENV_REQUIRES_CONFIG(dbenv, dbenv->rep_handle,
+            "retrieve_durable_commitlsn",DB_INIT_REP);
+
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+	dblp = dbenv->lg_handle;
+
+    MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+    *lsn = rep->committed_lsn;
+    *gen = rep->committed_gen;
+    MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+
+    /* Return immediately */
+    if (lsn->file != 0)
+        return 0;
+
+	if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		return (ret);
+
+	memset(&rec, 0, sizeof(rec));
+	memset(lsn, 0, sizeof(lsn));
+
+	if ((ret = __log_c_get(logc, &lastlsn, &rec, DB_LAST)) != 0)
+		goto err;
+
+    curlsn = lastlsn;
+
+	LOGCOPY_32(&rectype, rec.data);
+
+    while (ret == 0 && rectype != DB___txn_regop_gen && rectype !=
+            DB___txn_regop_rowlocks) {
+        if ((ret = __log_c_get(logc, &curlsn, &rec, DB_PREV)) == 0)
+            LOGCOPY_32(&rectype, rec.data);
+    }
+
+    if (rectype == DB___txn_regop_gen) {
+        __txn_regop_gen_args *txn_gen_args = NULL;
+        if ((ret = __txn_regop_gen_read(dbenv, rec.data,
+                        &txn_gen_args)) != 0)
+            goto err;
+        MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+        rep->committed_lsn = *lsn = curlsn;
+        rep->committed_gen = *gen = txn_gen_args->generation;
+        if (rep->gen < rep->committed_gen)
+            __rep_set_gen(dbenv, __func__, __LINE__, rep->committed_gen);
+        MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+        __os_free(dbenv, txn_gen_args);
+    } else if (rectype == DB___txn_regop_rowlocks) {
+        __txn_regop_rowlocks_args *txn_rl_args = NULL;
+        if ((ret = __txn_regop_rowlocks_read(dbenv, rec.data,
+                        &txn_rl_args)) != 0)
+            goto err;
+        MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+        rep->committed_lsn = *lsn = curlsn;
+        rep->committed_gen = *gen = txn_rl_args->generation;
+        if (rep->gen < rep->committed_gen)
+            __rep_set_gen(dbenv, __func__, __LINE__, rep->committed_gen);
+        MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+        __os_free(dbenv, txn_rl_args);
+    }
+
+err:
+	__log_c_close(logc);
+    return ret;
+}
+
 /*
  * __rep_elect --
  *	Called after master failure to hold/participate in an election for
@@ -906,11 +989,11 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 	char **eidp;
 {
 	DB_LOG *dblp;
-	DB_LSN lsn;
+	DB_LSN lsn = {0};
 	DB_REP *db_rep;
 	REP *rep;
-	int done, in_progress, ret, tiebreaker, vtype, use_committed_gen;
-	u_int32_t egen, committed_gen, orig_tally, pid, sec, usec;
+	int done, in_progress, ret, tiebreaker, vtype, use_committed_gen, cnt, send_vote2;
+	u_int32_t egen, committed_gen = 0, orig_tally, pid, sec, usec;
 	char *send_vote;
 
 	PANIC_CHECK(dbenv);
@@ -935,15 +1018,15 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 	dblp = dbenv->lg_handle;
 
 	/* This sets 'use_committed_gen' and feature-tests simultaneously */
-	if ((use_committed_gen = dbenv->attr.elect_highest_committed_gen)) {
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-		lsn = rep->committed_lsn;
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-	} else {
-		R_LOCK(dbenv, &dblp->reginfo);
-		lsn = ((LOG *)dblp->reginfo.primary)->lsn;
-		R_UNLOCK(dbenv, &dblp->reginfo);
-	}
+    if ((use_committed_gen = dbenv->attr.elect_highest_committed_gen))
+        __retrieve_durable_commitlsn(dbenv, &lsn, &committed_gen);
+
+    if (lsn.file == 0)
+    {
+        R_LOCK(dbenv, &dblp->reginfo);
+        lsn = ((LOG *)dblp->reginfo.primary)->lsn;
+        R_UNLOCK(dbenv, &dblp->reginfo);
+    }
 
 	orig_tally = 0;
 	if ((ret = __rep_elect_init(dbenv,
@@ -1024,7 +1107,7 @@ restart:
 
 	/* Tally our own vote */
 	if (__rep_tally(dbenv, rep, rep->eid, &rep->sites, rep->egen,
-	    rep->tally_off) != 0)
+	    rep->tally_off, __func__, __LINE__) != 0)
 		goto lockdone;
 	__rep_cmp_vote(dbenv, rep, &rep->eid, rep->egen, &lsn, priority, 
             rep->gen, rep->committed_gen, tiebreaker);
@@ -1038,6 +1121,19 @@ restart:
 	send_vote = db_eid_invalid;
 	egen = rep->egen;
 	committed_gen = rep->committed_gen;
+    send_vote2 = rep->sites >= rep->nsites && rep->w_priority != 0;
+    logmsg(LOGMSG_DEBUG, "%s line %d send_vote2 is %d, rep->sites is %d, rep->nsites is %d\n",
+            __func__, __LINE__, rep->sites, rep->nsites);
+
+    /* If we have all vote1, change to PHASE2 immediately */
+    if (send_vote2) {
+        F_SET(rep, REP_F_EPHASE2);
+        F_CLR(rep, REP_F_EPHASE1);
+        if (rep->winner == rep->eid) {
+            (void)__rep_tally(dbenv, rep, rep->eid,
+                    &rep->votes, egen, rep->v2tally_off, __func__, __LINE__);
+        }
+    }
 
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
     pthread_mutex_unlock(&rep_candidate_lock);
@@ -1112,7 +1208,7 @@ restart:
 		 */
 		if (rep->winner == rep->eid) {
 			(void)__rep_tally(dbenv, rep, rep->eid, &rep->votes,
-			    egen, rep->v2tally_off);
+			    egen, rep->v2tally_off, __func__, __LINE__);
 #ifdef DIAGNOSTIC
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 				__db_err(dbenv,
@@ -1206,8 +1302,9 @@ lockdone:
 	 * from elect_init where we were unable to grow_sites.  In
 	 * that case we do not want to discard all known election info.
 	 */
+    logmsg(LOGMSG_DEBUG, "%s line %d ret is %d\n", __func__, __LINE__, ret);
 	if (ret == 0 || ret == DB_REP_UNAVAIL) {
-		__rep_elect_done(dbenv, rep, 0);
+		__rep_elect_done(dbenv, rep, 0, __func__, __LINE__);
     } else if (orig_tally) {
 		F_SET(rep, orig_tally);
     }

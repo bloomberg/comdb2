@@ -1146,8 +1146,10 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 		if (F_ISSET(rep, REP_F_MASTER)) {
 			rep->stat.st_dupmasters++;
 			ret = DB_REP_DUPMASTER;
+/*
 			if (rp->rectype != REP_DUPMASTER)
 	            send_dupmaster(dbenv, __func__, __LINE__);
+*/
 			fromline = __LINE__;
 			goto errlock;
 		}
@@ -2245,14 +2247,16 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		 * start over by tallying it.
 		 */
 		if (vi_egen < rep->egen) {
-			logmsg(LOGMSG_DEBUG, "%s line %d ignoring REP_VOTE1 from %s: it's egen is %d my-egen is %d\n",
-					__func__, __LINE__, *eidp, vi_egen, rep->egen);
+			logmsg(LOGMSG_DEBUG, "%s line %d ignoring %s from %s: it's egen is %d my-egen is %d\n",
+					__func__, __LINE__, rp->rectype == REP_VOTE1 ? "REP_VOTE1" : "REP_GEN_VOTE1",
+                    *eidp, vi_egen, rep->egen);
 			goto errunlock;
 		}
 		if (vi_egen > rep->egen) {
-			logmsg(LOGMSG_DEBUG, "%s line %d reseting election for REP_VOTE1 from %s: it's egen is %d my-egen is %d\n",
-					__func__, __LINE__, *eidp, vi_egen, rep->egen);
-			__rep_elect_done(dbenv, rep, vi_egen);
+			logmsg(LOGMSG_DEBUG, "%s line %d reseting election for %s from %s: it's egen is %d my-egen is %d\n",
+					__func__, __LINE__, rp->rectype == REP_VOTE1 ? "REP_VOTE1" : "REP_GEN_VOTE1",
+                    *eidp, vi_egen, rep->egen);
+			__rep_elect_done(dbenv, rep, vi_egen, __func__, __LINE__);
 			//rep->egen = vi_egen;
 		}
 		if (!IN_ELECTION(rep)) {
@@ -2295,7 +2299,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		 * ignore the vote.
 		 */
 		if ((ret = __rep_tally(dbenv, rep, *eidp, &rep->sites,
-			    vi_egen, rep->tally_off)) != 0) {
+			    vi_egen, rep->tally_off, __func__, __LINE__)) != 0) {
 #ifdef DIAGNOSTIC
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 				__db_err(dbenv, "Tally returned %d, sites %d",
@@ -2363,7 +2367,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			F_CLR(rep, REP_F_EPHASE1);
 			if (master == rep->eid) {
 				(void)__rep_tally(dbenv, rep, rep->eid,
-					&rep->votes, egen, rep->v2tally_off);
+					&rep->votes, egen, rep->v2tally_off, __func__, __LINE__);
 				goto errunlock;
 			}
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
@@ -2376,7 +2380,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 						__func__, __LINE__, master, committed_gen, rep->gen,
                         egen);
 				__rep_send_gen_vote(dbenv, NULL, 0, 0, 0, egen,
-					committed_gen, master, REP_VOTE2);
+					committed_gen, master, REP_GEN_VOTE2);
 			} else {
 				logmsg(LOGMSG_DEBUG, "%s line %d sending REP_VOTE2 to %s "
 						"(committed-gen=0) gen=%d egen=%d\n",
@@ -2465,7 +2469,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		 * __rep_tally takes care of cases 3 and 4.
 		 */
 		if ((ret = __rep_tally(dbenv, rep, *eidp, &rep->votes,
-			    vi_egen, rep->v2tally_off)) != 0) {
+			    vi_egen, rep->v2tally_off, __func__, __LINE__)) != 0) {
 			ret = 0;
 			goto errunlock;
 		}
@@ -6027,7 +6031,7 @@ __rep_newfile(dbenv, rc, lsnp)
 /*
  * __rep_tally --
  * PUBLIC: int __rep_tally __P((DB_ENV *, REP *, char *, int *,
- * PUBLIC:    u_int32_t, u_int32_t));
+ * PUBLIC:    u_int32_t, u_int32_t, const char *, int));
  *
  * Handle incoming vote1 message on a client.  Called with the db_rep
  * mutex held.  This function will return 0 if we successfully tally
@@ -6036,19 +6040,17 @@ __rep_newfile(dbenv, rc, lsnp)
  * caller passed in.
  */
 int
-__rep_tally(dbenv, rep, eid, countp, egen, vtoff)
+__rep_tally(dbenv, rep, eid, countp, egen, vtoff, func, line)
 	DB_ENV *dbenv;
 	REP *rep;
 	char *eid;
 	int *countp;
 	u_int32_t egen, vtoff;
+    const char *func;
+    int line;
 {
 	REP_VTALLY *tally, *vtp;
 	int i;
-
-#ifndef DIAGNOSTIC
-	COMPQUIET(rep, NULL);
-#endif
 
 	tally = R_ADDR((REGINFO *)dbenv->reginfo, vtoff);
 	i = 0;
@@ -6099,7 +6101,10 @@ __rep_tally(dbenv, rep, eid, countp, egen, vtoff)
 	vtp->eid = eid;
 	vtp->egen = egen;
 	(*countp)++;
-	return (0);
+    logmsg(LOGMSG_DEBUG, "%s set countp to %d for %s from eid %s %s line %d\n",
+             __func__, *countp, (vtoff == rep->tally_off)?"vote1":"vote2", eid,
+             func, line);
+    return (0);
 }
 
 /*
