@@ -625,6 +625,9 @@ struct sqlclntstate {
     int verify_remote_schemas;
     char *argv0;
     char *stack;
+
+    /* Ignore these indexes ON CONFLICT. */
+    uint8_t oc_ignore_idx;
 };
 
 /* Query stats. */

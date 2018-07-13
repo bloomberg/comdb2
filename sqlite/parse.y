@@ -934,12 +934,8 @@ upsert(A) ::= ON CONFLICT LP sortlist(T) RP where_opt(TW)
               DO UPDATE SET setlist(Z) where_opt(W).
               { A = sqlite3UpsertNew(pParse->db,T,TW.pExpr,Z,W.pExpr,
                                      OE_Update);}
-
-// TODO (NC): Enable support for the following.
-%ifdef COMDB2_UNSUPPORTED
 upsert(A) ::= ON CONFLICT LP sortlist(T) RP where_opt(TW) DO NOTHING.
               { A = sqlite3UpsertNew(pParse->db,T,TW.pExpr,0,0,OE_Ignore); }
-%endif
 upsert(A) ::= ON CONFLICT DO REPLACE.
               { A = sqlite3UpsertNew(pParse->db,0,0,0,0,OE_Replace); }
 upsert(A) ::= ON CONFLICT DO NOTHING.

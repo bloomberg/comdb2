@@ -7760,10 +7760,15 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         shadow_tran = clnt->dbtran.shadow_tran;
     }
 
+    enum bdb_open_type open_type;
+    if (shadow_tran && (clnt->dbtran.mode != TRANLEVEL_SOSQL)) {
+        open_type = (wrFlag) ? BDB_OPEN_BOTH_CREATE : BDB_OPEN_BOTH;
+    } else {
+        open_type = BDB_OPEN_REAL;
+    }
     cur->bdbcur = bdb_cursor_open(
         cur->db->handle, clnt->dbtran.cursor_tran, shadow_tran, cur->ixnum,
-        (shadow_tran && (clnt->dbtran.mode != TRANLEVEL_SOSQL)) ? BDB_OPEN_BOTH
-                                                                : BDB_OPEN_REAL,
+        open_type,
         (clnt->dbtran.mode == TRANLEVEL_SOSQL)
             ? NULL
             : osql_get_shadtbl_addtbl_newcursor(cur),
@@ -7914,7 +7919,8 @@ int sqlite3BtreeCursor(
     }
     /* real table */
     else {
-        rc = sqlite3BtreeCursor_cursor(pBt, iTable, flags & BTREE_CUR_WR,
+        rc = sqlite3BtreeCursor_cursor(pBt, iTable,
+                                       (flags & BTREE_CUR_WR) ? 1 : 0,
                                        sqlite3VdbeCompareRecordPacked, pKeyInfo,
                                        cur, thd);
         /* treat sqlite_stat1 as free */
@@ -8297,8 +8303,16 @@ int sqlite3BtreeInsert(
             if (flags != 0) {
                 rec_flags |= ((flags & OPFLAG_FORCE_VERIFY) ?
                                OSQL_FORCE_VERIFY : 0);
-                rec_flags |= ((flags & OPFLAG_IGNORE_FAILURE) ?
-                               OSQL_IGNORE_FAILURE : 0);
+
+                if (flags & OPFLAG_IGNORE_FAILURE) {
+                    if (clnt->oc_ignore_idx) {
+                        rec_flags = (((clnt->oc_ignore_idx - 1) << 8) |
+                                     OSQL_IGNORE_FAILURE);
+                    } else {
+                        rec_flags = (((MAXINDEX+1) << 8) |
+                                     OSQL_IGNORE_FAILURE);
+                    }
+                }
             }
 
             if (is_update) { /* Updating an existing record. */
@@ -10447,6 +10461,27 @@ int comdb2_get_planner_effort()
     struct sqlclntstate *clnt = thd->clnt;
 
     return clnt->planner_effort;
+}
+
+void comdb2_set_ignore_index(const char *dbname, char *idx)
+{
+    struct dbtable *db = get_dbtable_by_name(dbname);
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->clnt;
+
+    if (db) {
+        int i;
+        for (i = 0; i < db->nix; ++i) {
+            struct schema *s = db->ixschema[i];
+            if (s->sqlitetag && strcmp(s->sqlitetag, idx) == 0) {
+                clnt->oc_ignore_idx = i + 1;
+                return;
+            }
+        }
+    }
+
+    assert(0);
+    return;
 }
 
 static void sqlite3BtreeCursorHint_Flags(BtCursor *pCur, unsigned int mask)

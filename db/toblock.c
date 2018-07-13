@@ -1095,7 +1095,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
            __func__, line, outrc, printkey, iq->snap_info.keylen,
            iq->snap_info.key);
     free(printkey);
-    
+
     /* If the latest commit is durable, then the blkseq commit must be durable.  
      * This can incorrectly report NOT_DURABLE but that's sane given that half 
      * the cluster is incoherent */

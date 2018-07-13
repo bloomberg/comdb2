@@ -4144,6 +4144,7 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         ins_rpl.hd.sid = rqid;
         ins_rpl.dt.seq = genid;
         ins_rpl.dt.dk = dirty_keys;
+        ins_rpl.dt.flags = flags;
         ins_rpl.dt.nData = nData;
 
         if (send_dk)
@@ -6896,11 +6897,13 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (rc != 0) {
             if (err->errcode == OP_FAILED_UNIQ) {
+                int idx = dt.flags >> 8;
                 if ((dt.flags & OSQL_FORCE_VERIFY) != 0) {
                     err->errcode = OP_FAILED_VERIFY;
                     rc = ERR_VERIFY;
-                } else if (rc == IX_DUP &&
-                           (dt.flags & OSQL_IGNORE_FAILURE) != 0) {
+                } else if ((rc == IX_DUP) &&
+                           ((dt.flags & OSQL_IGNORE_FAILURE) != 0) &&
+                           ((idx == MAXINDEX + 1) || (idx == err->ixnum))) {
                     return 0;
                 } else {
                     /* this can happen if we're skipping delayed key adds */
