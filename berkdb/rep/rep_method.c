@@ -1123,7 +1123,7 @@ restart:
 	committed_gen = rep->committed_gen;
     send_vote2 = (rep->sites >= rep->nsites && rep->w_priority != 0);
     logmsg(LOGMSG_DEBUG, "%s line %d send_vote2 is %d, rep->sites is %d, rep->nsites is %d\n",
-            __func__, __LINE__, rep->sites, rep->nsites);
+            __func__, __LINE__, send_vote2, rep->sites, rep->nsites);
 
     /* If we have all vote1, change to PHASE2 immediately */
     if (send_vote2) {
