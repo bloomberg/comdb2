@@ -1121,7 +1121,7 @@ restart:
 	send_vote = db_eid_invalid;
 	egen = rep->egen;
 	committed_gen = rep->committed_gen;
-    send_vote2 = rep->sites >= rep->nsites && rep->w_priority != 0;
+    send_vote2 = (rep->sites >= rep->nsites && rep->w_priority != 0);
     logmsg(LOGMSG_DEBUG, "%s line %d send_vote2 is %d, rep->sites is %d, rep->nsites is %d\n",
             __func__, __LINE__, rep->sites, rep->nsites);
 

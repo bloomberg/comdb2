@@ -1201,7 +1201,7 @@ int gbl_elect_priority_bias = 0;
 
 int gbl_rand_elect_timeout = 1;
 int gbl_rand_elect_min_ms = 1000;
-int gbl_rand_elect_max_ms = 5000;
+int gbl_rand_elect_max_ms = 7000;
 
 static int elect_random_timeout(void)
 {

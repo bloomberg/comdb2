@@ -1404,7 +1404,7 @@ REGISTER_TUNABLE("random_elect_min_ms",
                  TUNABLE_INTEGER, &gbl_rand_elect_min_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("random_elect_max_ms",
-                 "Maximum election timeout.  (Default: 5000)",
+                 "Maximum election timeout.  (Default: 7000)",
                  TUNABLE_INTEGER, &gbl_rand_elect_max_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("legacy_defaults", "Configure server with legacy defaults",
