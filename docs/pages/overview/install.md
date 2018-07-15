@@ -99,4 +99,4 @@ A quick overview:
 | ```etc/cdb2/config/comdb2.d```     | Global database config files, settings in all *.lrl files in this directory apply to all databases |
 | ```include/``` and ```lib/```        | headers and libraries |
 | ```var/cdb2/``` | Default location for databases. Every database gets a subdirectory at create time. |
-| ```var/logs/cdb2``` | Default location for database informational log files |
+| ```var/logs/cdb2/``` | Default location for database informational log files |
