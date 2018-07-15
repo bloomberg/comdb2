@@ -2196,8 +2196,14 @@ retry:
         return 0;
     }
 
-    if (hdr.length == 0)
-        goto retry;
+    /* Return with a bad rcode here */
+    if (hdr.length == 0) {
+        if (hndl->debug_trace) {
+            fprintf(stderr, "td %p %s line %d - invalid header length (0)\n",
+                    (void *)pthread_self(), __func__, __LINE__);
+        }
+        return -1;
+    }
 
     if (type)
         *type = hdr.type;
@@ -2256,6 +2262,10 @@ retry:
             free(locbuf);
             if (rc < 0)
                 return -1;
+        }
+        if (hndl->debug_trace) {
+            fprintf(stderr, "td %p %s line %d - going to retry\n",
+                    (void *)pthread_self(), __func__, __LINE__);
         }
         goto retry;
     }
