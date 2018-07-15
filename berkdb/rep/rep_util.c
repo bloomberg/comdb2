@@ -998,12 +998,6 @@ __rep_get_gen(dbenv, genp)
 	rep = db_rep->region;
 
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-  /*
-	if (rep->recover_gen > rep->gen)
-		*genp = rep->recover_gen;
-	else
-		*genp = rep->gen;
-*/
     *genp = rep->gen;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 }

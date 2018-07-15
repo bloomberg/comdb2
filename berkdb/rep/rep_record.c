@@ -1146,10 +1146,6 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 		if (F_ISSET(rep, REP_F_MASTER)) {
 			rep->stat.st_dupmasters++;
 			ret = DB_REP_DUPMASTER;
-/*
-			if (rp->rectype != REP_DUPMASTER)
-	            send_dupmaster(dbenv, __func__, __LINE__);
-*/
 			fromline = __LINE__;
 			goto errlock;
 		}
