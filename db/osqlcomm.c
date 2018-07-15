@@ -2803,7 +2803,7 @@ static void net_stopthread_rtn(void *arg);
 static void *osql_heartbeat_thread(void *arg);
 static void signal_rtoff(void);
 
-static int check_master(char *tohost);
+static int check_master(const char *tohost);
 static int offload_net_send(const char *tohost, int usertype, void *data,
                             int datalen, int nodelay);
 static int offload_net_send_tail(const char *tohost, int usertype, void *data,
@@ -5772,6 +5772,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
     int total_wait = backoff;
     int unknownerror_retry = 0;
     int rc = -1;
+    int count = 0;
 
     /* remote send */
     while (rc) {
@@ -5779,6 +5780,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
      printf("NET SEND %d tmp=%llu\n", usertype, osql_log_time());
 #endif
         rc = net_send(netinfo_ptr, host, usertype, data, datalen, nodelay);
+        count++;
 
         if (NET_SEND_FAIL_QUEUE_FULL == rc || NET_SEND_FAIL_MALLOC_FAIL == rc ||
             NET_SEND_FAIL_NOSOCK == rc) {
@@ -5795,6 +5797,15 @@ static int offload_net_send(const char *host, int usertype, void *data,
                 return rc;
             }
 
+            if (rc == NET_SEND_FAIL_NOSOCK && check_master(host)) {
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s on master-swing\n",
+                       __FILE__, __LINE__, host);
+                return OSQL_SEND_ERROR_WRONGMASTER;
+            }
+
+            logmsg(LOGMSG_INFO, "%s line %d polling for %d on rc %d host is %s"
+                    " master is %s\n", __func__, __LINE__, backoff, rc, host,
+                    thedb->master);
             poll(NULL, 0, backoff);
             /*backoff *= 2; */
             total_wait += backoff;
@@ -6013,10 +6024,10 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
         stats[netrpl2req(usertype)].rcv_rdndt++;
 }
 
-static int check_master(char *tohost)
+static int check_master(const char *tohost)
 {
 
-    char *destnode = (!tohost) ? gbl_mynode : tohost;
+    const char *destnode = (tohost == NULL) ? gbl_mynode : tohost;
     char *master = thedb->master;
 
     if (destnode != master) {

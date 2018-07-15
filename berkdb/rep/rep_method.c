@@ -894,7 +894,7 @@ extern pthread_mutex_t rep_queue_lock;
 extern void send_master_req(DB_ENV *dbenv, const char *func, int line);
 
 static int
-__retrieve_durable_commitlsn(dbenv, lsn, gen)
+__retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 	DB_ENV *dbenv;
 	DB_LSN *lsn;
     u_int32_t *gen;
@@ -910,7 +910,7 @@ __retrieve_durable_commitlsn(dbenv, lsn, gen)
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv, dbenv->rep_handle,
-            "retrieve_durable_commitlsn",DB_INIT_REP);
+            "retrieve_logged_generation_commitlsn", DB_INIT_REP);
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
@@ -1019,7 +1019,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 
 	/* This sets 'use_committed_gen' and feature-tests simultaneously */
     if ((use_committed_gen = dbenv->attr.elect_highest_committed_gen))
-        __retrieve_durable_commitlsn(dbenv, &lsn, &committed_gen);
+        __retrieve_logged_generation_commitlsn(dbenv, &lsn, &committed_gen);
 
     if (lsn.file == 0)
     {

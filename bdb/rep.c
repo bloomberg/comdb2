@@ -1234,7 +1234,6 @@ static void *elect_thread(void *args)
     int done = 0;
     int called_rep_start = 0;
     int elect_again = 0;
-    int elect_time_max = (1000000 * 10);
 
     thread_started("bdb election");
 
@@ -1291,6 +1290,7 @@ elect_again:
 
     if (bdb_state->callback->electsettings_rtn) {
         int elect_time_microsecs = 0;
+        int elect_time_max = 0;
 
         if (bdb_state->callback->electsettings_rtn(
                 bdb_state, &elect_time_microsecs) == 0) {
@@ -1392,11 +1392,8 @@ elect_again:
         else
             logmsg(LOGMSG_ERROR, "got %d from rep_elect\n", rc);
 
-        if (gbl_rand_elect_timeout)
-            elect_time = elect_random_timeout();
-        else
-            elect_time *= 2;
-
+        /* ignored if rand_elect_timeout is set */
+        elect_time *= 2;
         elect_again++;
         if (elect_again > 30) {
             logmsg(LOGMSG_ERROR, "election not proceeding, giving up\n");
