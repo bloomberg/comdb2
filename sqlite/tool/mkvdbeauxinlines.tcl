@@ -162,7 +162,7 @@ for {set index 0} {$index < $length} {incr index} {
 
   regsub -all -line -- \
       $pattern(function) $chunk($id,data) {static inline \0} \
-      chunk($id,data)
+      chunk($id,output)
 
   incr index
 
@@ -192,29 +192,29 @@ for {set index 0} {$index < $length} {incr index} {
 
   if {![file exists $chunk($id,fileName)]} then {
     if {[file tail $chunk($id,fileName)] eq "memcompare.c"} then {
-      set chunk($id,data) [appendArgs \
+      set chunk($id,output) [appendArgs \
           "#include <serialget.c>\n\n" \
-          $chunk($id,data)]
+          $chunk($id,output)]
     } elseif {[file tail $chunk($id,fileName)] eq "vdbecompare.c"} then {
-      set chunk($id,data) [appendArgs \
+      set chunk($id,output) [appendArgs \
           "#include <memcompare.c>\n\n" \
-          $chunk($id,data)]
+          $chunk($id,output)]
     } elseif {[file tail $chunk($id,fileName)] eq "serialget.c"} then {
-      set chunk($id,data) [appendArgs \
+      set chunk($id,output) [appendArgs \
           "#ifndef SERIALGET_C\n" \
           "#define SERIALGET_C\n\n" \
-          $chunk($id,data) \
+          $chunk($id,output) \
           "\n\n#endif /* SERIALGET_C */\n"]
     }
   }
 
-  appendNormalizedFile $chunk($id,fileName) $chunk($id,data)
+  appendNormalizedFile $chunk($id,fileName) $chunk($id,output)
 
   #
   # TODO: Replace chunks of data with something else?
   #
   set outputData [string map \
-      [list $chunk($id,data) "\n chunk #$id\n"] $outputData]
+      [list $chunk($id,data) "\n/* chunk #$id */\n"] $outputData]
 }
 
 writeNormalizedFile [lindex $outputFileNames 0] $outputData
