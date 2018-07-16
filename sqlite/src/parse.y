@@ -438,6 +438,10 @@ ccons ::= KEY onconf(R).         {
     comdb2AddIndex(pParse, 0, 0, R, 0, SQLITE_SO_ASC,
                    SQLITE_IDXTYPE_DUPKEY, 0);
 }
+constraint_opt ::= CONSTRAINT.       { pParse->constraintName.n = 0; } 
+constraint_opt ::= CONSTRAINT nm(X). { pParse->constraintName = X; }
+ccons ::= constraint_opt REFERENCES nm(T) LP eidlist(TA) RP refargs(R).
+                                 {comdb2CreateForeignKey(pParse,0,&T,TA,R);}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
 ccons ::= UNIQUE onconf(R).      {sqlite3CreateIndex(pParse,0,0,0,0,R,0,0,0,0,
@@ -446,16 +450,12 @@ ccons ::= CHECK LP expr(X) RP.   {sqlite3AddCheckConstraint(pParse,X);}
 ccons ::= REFERENCES nm(T) eidlist_opt(TA) refargs(R).
                                  {sqlite3CreateForeignKey(pParse,0,&T,TA,R);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-ccons ::= constraint_opt REFERENCES nm(T) LP eidlist(TA) RP refargs(R).
-                                 {comdb2CreateForeignKey(pParse,0,&T,TA,R);}
-%endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
 ccons ::= defer_subclause(D).    {sqlite3DeferForeignKey(pParse,D);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 ccons ::= COLLATE ids(C).        {sqlite3AddCollateType(pParse, &C);}
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-ccons ::= WITH DBPAD EQ INTEGER(X). {
+ccons ::= OPTION DBPAD EQ INTEGER(X). {
     int tmp;
     if (!readIntFromToken(&X, &tmp))
         tmp = 0;
@@ -514,14 +514,22 @@ tcons ::= UNIQUE LP sortlist(X) RP onconf(R).
                                        SQLITE_IDXTYPE_UNIQUE);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-tcons ::= tconspk.
+%type with_opt {int}
+with_opt(A) ::= OPTION DATACOPY. {A = 1;}
+with_opt(A) ::= . {A = 0;}
+tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
+  comdb2AddPrimaryKey(pParse, X, R, I, 0);
+}
 tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP with_opt(O) where_opt(W). {
-    comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE,
-                   O);
+  comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE, O);
 }
 tcons ::= KEY nm_opt(I) LP sortlist(X) RP with_opt(O) where_opt(W). {
-    comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, SQLITE_IDXTYPE_DUPKEY,
-                   O);
+  comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, SQLITE_IDXTYPE_DUPKEY, O);
+}
+tcons ::= constraint_opt FOREIGN KEY LP eidlist(FA) RP
+          REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
+  comdb2CreateForeignKey(pParse, FA, &T, TA, R);
+  comdb2DeferForeignKey(pParse, D);
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
@@ -533,18 +541,6 @@ tcons ::= FOREIGN KEY LP eidlist(FA) RP
     sqlite3DeferForeignKey(pParse, D);
 }
 %endif !SQLITE_BUILDING_FOR_COMDB2
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-tcons ::= tconsfk.
-
-tconspk ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
-    comdb2AddPrimaryKey(pParse, X, R, I, 0);
-}
-tconsfk ::= constraint_opt FOREIGN KEY LP eidlist(FA) RP
-            REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
-    comdb2CreateForeignKey(pParse, FA, &T, TA, R);
-    comdb2DeferForeignKey(pParse, D);
-}
-%endif SQLITE_BUILDING_FOR_COMDB2
 
 %type defer_subclause_opt {int}
 defer_subclause_opt(A) ::= .                    {A = 0;}
@@ -1481,12 +1477,6 @@ cmd ::= createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
 uniqueflag(A) ::= UNIQUE.  {A = OE_Abort;}
 uniqueflag(A) ::= .        {A = OE_None;}
 
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-%type with_opt {int}
-with_opt(A) ::= WITH DATACOPY. {A = 1;}
-with_opt(A) ::= . {A = 0;}
-%endif SQLITE_BUILDING_FOR_COMDB2
-
 // The eidlist non-terminal (Expression Id List) generates an ExprList
 // from a list of identifiers.  The identifier names are in ExprList.a[].zName.
 // This list is stored in an ExprList rather than an IdList so that it
@@ -1768,6 +1758,49 @@ cmd ::= ANALYZE nm(X) dbnm(Y).  {sqlite3Analyze(pParse, &X, &Y);}
 
 //////////////////////// ALTER TABLE table ... ////////////////////////////////
 %ifndef SQLITE_OMIT_ALTERTABLE
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+%type dryrun {int}
+dryrun(D) ::= DRYRUN.  {D=1;}
+dryrun(D) ::= . {D=0;}
+cmd ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
+  comdb2WriteTransaction(pParse);
+  sqlite3AlterRenameTable(pParse,&X,&Y,D);
+}
+cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
+  comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,D);
+}
+cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) ADD COLUMN columnname(X) columntype(W). {
+  comdb2AlterTableStart(pParse,&Y,&Z,D);
+  comdb2AddColumn(pParse, &X, &W);
+  comdb2AlterTableEnd(pParse);
+}
+cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) DROP COLUMN columnname(X). {
+  comdb2AlterTableStart(pParse,&Y,&Z,D);
+  comdb2DropColumn(pParse, &X);
+  comdb2AlterTableEnd(pParse);
+}
+cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) ADD PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
+  comdb2AlterTableStart(pParse,&Y,&Z,D);
+  comdb2AddPrimaryKey(pParse, X, R, I, 0);
+  comdb2AlterTableEnd(pParse);
+}
+cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) DROP PRIMARY KEY. {
+  comdb2AlterTableStart(pParse,&Y,&Z,D);
+  comdb2DropPrimaryKey(pParse);
+  comdb2AlterTableEnd(pParse);
+}
+cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) ADD FOREIGN KEY nm_opt LP eidlist(FA) RP REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(DS). {
+  comdb2AlterTableStart(pParse,&Y,&Z,D);
+  comdb2CreateForeignKey(pParse, FA, &T, TA, R);
+  comdb2DeferForeignKey(pParse, DS);
+}
+cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) DROP FOREIGN KEY fknm(X). {
+  comdb2AlterTableStart(pParse,&Y,&Z,D);
+  comdb2DropForeignKey(pParse, &X);
+  comdb2AlterTableEnd(pParse);
+}
+%endif SQLITE_BUILDING_FOR_COMDB2
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= ALTER TABLE fullname(X) RENAME TO nm(Z). {
   sqlite3AlterRenameTable(pParse,X,&Z);
 }
@@ -1782,6 +1815,7 @@ add_column_fullname ::= fullname(X). {
 }
 kwcolumn_opt ::= .
 kwcolumn_opt ::= COLUMNKW.
+%endif !SQLITE_BUILDING_FOR_COMDB2
 %endif  SQLITE_OMIT_ALTERTABLE
 
 //////////////////////// CREATE VIRTUAL TABLE ... /////////////////////////////
@@ -2346,85 +2380,7 @@ cmd ::= DROP LUA CONSUMER nm(A). {
   comdb2DropTrigger(pParse,&A);
 }
 
-///////////////////////////////// ALTER TABLE /////////////////////////////////
-
-/* ALTER TABLE (CSC2) */
-cmd ::= comdb2_alter_table_csc2.
-comdb2_alter_table_csc2 ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
-  comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,D);
-}
-
-/* ALTER TABLE (Comdb2) */
-cmd ::= alter_table alter_table_action_list. {
-  comdb2AlterTableEnd(pParse);
-}
-
-alter_table ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) . {
-  comdb2AlterTableStart(pParse,&Y,&Z,D);
-}
-
-alter_table_action_list ::= .
-alter_table_action_list ::= alter_table_action_list alter_comma
-    alter_table_action.
-alter_table_action_list ::= alter_table_action.
-
-alter_table_action ::= alter_table_add_column.
-alter_table_action ::= alter_table_drop_column.
-alter_table_action ::= alter_table_add_index.
-alter_table_action ::= alter_table_drop_index.
-alter_table_action ::= alter_table_add_pk.
-alter_table_action ::= alter_table_drop_pk.
-alter_table_action ::= alter_table_add_fk.
-alter_table_action ::= alter_table_drop_fk.
-
-alter_comma ::= COMMA. {
-    /* Reset the constraint name. */
-    pParse->constraintName.n = 0;
-}
-
-alter_table_add_column ::= ADD kwcolumn_opt columnname carglist.
-alter_table_drop_column ::= DROP kwcolumn_opt nm(Y) . {
-  comdb2DropColumn(pParse, &Y);
-}
-
-alter_table_add_index ::= ADD uniqueflag(U) INDEX nm(I) LP sortlist(X) RP
-    with_opt(O) where_opt(W). {
-  comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC,
-                 (U == OE_Abort) ? SQLITE_IDXTYPE_UNIQUE :
-                 SQLITE_IDXTYPE_DUPKEY, O);
-}
-alter_table_drop_index ::= DROP INDEX nm(I). {
-    comdb2AlterDropIndex(pParse, &I);
-}
-
-alter_table_add_pk ::= ADD tconspk.
-alter_table_drop_pk ::= DROP PRIMARY KEY. {
-    comdb2DropPrimaryKey(pParse);
-}
-
-alter_table_add_fk ::= ADD tconsfk.
-alter_table_drop_fk ::= DROP FOREIGN KEY nm(Y). {
-    comdb2DropForeignKey(pParse, &Y);
-}
-
-kwcolumn_opt ::= .
-kwcolumn_opt ::= COLUMNKW.
-
-constraint_opt ::= .                 { pParse->constraintName.n = 0; } 
-constraint_opt ::= CONSTRAINT nm(X). { pParse->constraintName = X; }
-
 /////////////////////////// RENAME TABLE STATEMENT ////////////////////////////
-
-cmd ::= rename_comdb2table.
-
-rename_comdb2table ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
-    comdb2WriteTransaction(pParse);
-    sqlite3AlterRenameTable(pParse,&X,&Y,D);
-}
-
-%type dryrun {int}
-dryrun(D) ::= DRYRUN.  {D=1;}
-dryrun(D) ::= . {D=0;}
 
 %type nm_opt {Token}
 nm_opt(A) ::= .      {A.z=0; A.n=0;}
