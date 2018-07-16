@@ -101,11 +101,9 @@
 (name='check_page_in_recovery', description='verify that a page has or hasn't gotten corrupt', type='BOOLEAN', value='OFF', read_only='N')
 (name='check_pwrites', description='Read page after direct pwrite, check that it matches', type='BOOLEAN', value='OFF', read_only='N')
 (name='check_pwrites_debug', description='Read page after direct pwrite, check that it matches', type='INTEGER', value='0', read_only='N')
-(name='check_sparse_files', description='When allocating a page, check that we aren't creating a sparse file
-', type='BOOLEAN', value='OFF', read_only='N')
+(name='check_sparse_files', description='When allocating a page, check that we aren't creating a sparse file', type='BOOLEAN', value='OFF', read_only='N')
 (name='check_sql_source', description='Check sql source', type='BOOLEAN', value='OFF', read_only='N')
-(name='check_sqlite_numeric_types', description='Report if our numeric conversion disagrees with SQLite's
-', type='BOOLEAN', value='ON', read_only='N')
+(name='check_sqlite_numeric_types', description='Report if our numeric conversion disagrees with SQLite's', type='BOOLEAN', value='ON', read_only='N')
 (name='check_wrong_db', description='Return error if connecting to wrong database', type='BOOLEAN', value='ON', read_only='N')
 (name='check_zero_lsn_writes', description='Warn on writing pages with zero LSNs', type='BOOLEAN', value='ON', read_only='N')
 (name='checkctags', description='', type='ENUM', value='FULL', read_only='Y')
@@ -125,8 +123,7 @@
 (name='consolidate_dbreg_ranges', description='Combine adjacent dbreg ranges for same file', type='BOOLEAN', value='ON', read_only='N')
 (name='consumer_rtcpu', description='Don't send update broadcasts to rtcpu'd machines', type='BOOLEAN', value='ON', read_only='N')
 (name='convflush', description='', type='INTEGER', value='100', read_only='Y')
-(name='core_on_sparse_file', description='Generate a core if we catch berkeley creating a sparse file
-', type='BOOLEAN', value='OFF', read_only='N')
+(name='core_on_sparse_file', description='Generate a core if we catch berkeley creating a sparse file', type='BOOLEAN', value='OFF', read_only='N')
 (name='crc32c', description='Use crc32c (alternate faster implementation of CRC32, different checksums) for page checksums. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='createdbs', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='crypto', description='', type='STRING', value=NULL, read_only='Y')
@@ -259,10 +256,8 @@
 (name='enable_inplace_blobs', description='Do not update the rowid of a blob entry on an update. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='enable_lowpri_snapisol', description='Give lower priority to locks acquired when updating snapshot state. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='enable_osql_blob_optimization', description='Replicant tracks which columns are modified in a transaction to allow blob updates to be ommitted if possible. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
-(name='enable_osql_logging', description='Log every osql packet received in a special file, per iq
-', type='BOOLEAN', value='OFF', read_only='N')
-(name='enable_osql_longreq_logging', description='Log untruncated osql strings
-', type='BOOLEAN', value='OFF', read_only='N')
+(name='enable_osql_logging', description='Log every osql packet received in a special file, per iq', type='BOOLEAN', value='OFF', read_only='N')
+(name='enable_osql_longreq_logging', description='Log untruncated osql strings', type='BOOLEAN', value='OFF', read_only='N')
 (name='enable_overflow_page_trace', description='If set, warn when a page order table scan encounters an overflow page. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='enable_page_compact_backward_scan', description='', type='INTEGER', value='1', read_only='Y')
 (name='enable_pageorder_recsz_check', description='Disables 'disable_pageorder_recsz_chk'', type='BOOLEAN', value='ON', read_only='N')
@@ -852,8 +847,7 @@
 (name='use_appsock_as_sqlthread', description='', type='INTEGER', value='0', read_only='Y')
 (name='use_blackout_list', description='use_blackout_list', type='BOOLEAN', value='ON', read_only='N')
 (name='use_blkseq', description='Enable blkseq', type='BOOLEAN', value='ON', read_only='N')
-(name='use_fastseed_for_comdb2_seqno', description='Use fastseed instead of context for comdb2_seqno unique values
-', type='BOOLEAN', value='OFF', read_only='N')
+(name='use_fastseed_for_comdb2_seqno', description='Use fastseed instead of context for comdb2_seqno unique values', type='BOOLEAN', value='OFF', read_only='N')
 (name='use_live_schema_change', description='', type='INTEGER', value='1', read_only='Y')
 (name='use_node_priority', description='Sets node priority for the db. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='use_nondedicated_network', description='', type='STRING', value=NULL, read_only='Y')

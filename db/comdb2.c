@@ -4587,26 +4587,26 @@ static void register_all_int_switches()
                         &gbl_verify_rep_log_records);
     register_int_switch(
         "enable_osql_logging",
-        "Log every osql packet received in a special file, per iq\n",
+        "Log every osql packet received in a special file, per iq",
         &gbl_enable_osql_logging);
     register_int_switch("enable_osql_longreq_logging",
-                        "Log untruncated osql strings\n",
+                        "Log untruncated osql strings",
                         &gbl_enable_osql_longreq_logging);
     register_int_switch(
         "check_sparse_files",
-        "When allocating a page, check that we aren't creating a sparse file\n",
+        "When allocating a page, check that we aren't creating a sparse file",
         &gbl_check_sparse_files);
     register_int_switch(
         "core_on_sparse_file",
-        "Generate a core if we catch berkeley creating a sparse file\n",
+        "Generate a core if we catch berkeley creating a sparse file",
         &gbl_core_on_sparse_file);
     register_int_switch(
         "check_sqlite_numeric_types",
-        "Report if our numeric conversion disagrees with SQLite's\n",
+        "Report if our numeric conversion disagrees with SQLite's",
         &gbl_report_sqlite_numeric_conversion_errors);
     register_int_switch(
         "use_fastseed_for_comdb2_seqno",
-        "Use fastseed instead of context for comdb2_seqno unique values\n",
+        "Use fastseed instead of context for comdb2_seqno unique values",
         &gbl_use_fastseed_for_comdb2_seqno);
     register_int_switch(
         "disable_stable_for_ipu",
