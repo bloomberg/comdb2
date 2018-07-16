@@ -193,18 +193,21 @@ for {set index 0} {$index < $length} {incr index} {
   if {![file exists $chunk($id,fileName)]} then {
     if {[file tail $chunk($id,fileName)] eq "memcompare.c"} then {
       set chunk($id,output) [appendArgs \
+          "#ifndef MEMCOMPARE_C\n" \
+          "#define MEMCOMPARE_C\n\n" \
           "#include <serialget.c>\n\n" \
           $chunk($id,output)]
     } elseif {[file tail $chunk($id,fileName)] eq "vdbecompare.c"} then {
       set chunk($id,output) [appendArgs \
+          "#ifndef VDBECOMPARE_C\n" \
+          "#define VDBECOMPARE_C\n\n" \
           "#include <memcompare.c>\n\n" \
           $chunk($id,output)]
     } elseif {[file tail $chunk($id,fileName)] eq "serialget.c"} then {
       set chunk($id,output) [appendArgs \
           "#ifndef SERIALGET_C\n" \
           "#define SERIALGET_C\n\n" \
-          $chunk($id,output) \
-          "\n\n#endif /* SERIALGET_C */\n"]
+          $chunk($id,output)]
     }
   }
 
@@ -218,3 +221,14 @@ for {set index 0} {$index < $length} {incr index} {
 }
 
 writeNormalizedFile [lindex $outputFileNames 0] $outputData
+
+foreach outputFileName $outputFileNames {
+  set outputDefineName [string toupper \
+      [string map [list . _] [file tail $outputFileName]]]
+
+  if {[file exists $outputFileName] && \
+      [file size $outputFileName] > 0} then {
+    appendNormalizedFile $outputFileName \
+        [appendArgs "\n\n#endif /* " $outputDefineName " */\n"]
+  }
+}
