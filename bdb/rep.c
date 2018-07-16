@@ -1208,7 +1208,8 @@ static int elect_random_timeout(void)
     int range = (gbl_rand_elect_max_ms - gbl_rand_elect_min_ms), timeout_ms;
     range = range > 0 ? range : 2000;
     timeout_ms = gbl_rand_elect_min_ms + (rand() % range);
-    if (timeout_ms <= 0) timeout_ms = 2000;
+    if (timeout_ms <= 0)
+        timeout_ms = 2000;
     return (timeout_ms * 1000);
 }
 
@@ -3735,7 +3736,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     static pthread_mutex_t vote2_lock = PTHREAD_MUTEX_INITIALIZER;
 
     if (rectype == REP_VOTE2 || rectype == REP_GEN_VOTE2 ||
-            rectype == REP_NEWMASTER) {
+        rectype == REP_NEWMASTER) {
         pthread_mutex_lock(&vote2_lock);
         got_vote2lock = 1;
     }
@@ -3848,7 +3849,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         bdb_state->repinfo->repstats.rep_newmaster++;
 
         if (!got_vote2lock) {
-            logmsg(LOGMSG_WARN, "process_berkdb: got NEWMASTER with no votelock2\n");
+            logmsg(LOGMSG_WARN,
+                   "process_berkdb: got NEWMASTER with no votelock2\n");
             abort();
             bdb_get_rep_master(bdb_state, &master, &gen, &egen);
         }

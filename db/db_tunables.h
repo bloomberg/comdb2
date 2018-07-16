@@ -1400,13 +1400,13 @@ REGISTER_TUNABLE("random_election_timeout",
                  TUNABLE_BOOLEAN, &gbl_rand_elect_timeout,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("random_elect_min_ms",
-                 "Minimum election timeout.  (Default: 1000)",
-                 TUNABLE_INTEGER, &gbl_rand_elect_min_ms,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+                 "Minimum election timeout.  (Default: 1000)", TUNABLE_INTEGER,
+                 &gbl_rand_elect_min_ms, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("random_elect_max_ms",
-                 "Maximum election timeout.  (Default: 7000)",
-                 TUNABLE_INTEGER, &gbl_rand_elect_max_ms,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+                 "Maximum election timeout.  (Default: 7000)", TUNABLE_INTEGER,
+                 &gbl_rand_elect_max_ms, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("legacy_defaults", "Configure server with legacy defaults",
                  TUNABLE_BOOLEAN, NULL, NOARG | INTERNAL | READONLY | READEARLY,
                  NULL, NULL, pre_read_legacy_defaults, NULL);

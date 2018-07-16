@@ -5744,7 +5744,7 @@ int osql_comm_check_bdb_lock(const char *func, int line)
 
         if (clnt->deadlock_recovered > 100) {
             logmsg(LOGMSG_ERROR, "%s called recover_deadlock 100 times\n",
-                    __func__);
+                   __func__);
             rc = -1;
             goto out;
         }
@@ -5752,7 +5752,7 @@ int osql_comm_check_bdb_lock(const char *func, int line)
 out:
     if ((end = time(NULL)) - start > 2) {
         logmsg(LOGMSG_DEBUG, "%s line %d: %s took %d seconds\n", func, line,
-                __func__, end - start);
+               __func__, end - start);
     }
     return rc;
 }
@@ -5811,14 +5811,15 @@ static int offload_net_send(const char *host, int usertype, void *data,
             }
 
             if (rc == NET_SEND_FAIL_NOSOCK && check_master(host)) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s on master-swing\n",
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d giving up sending to %s on master-swing\n",
                        __FILE__, __LINE__, host);
                 return OSQL_SEND_ERROR_WRONGMASTER;
             }
 
             logmsg(LOGMSG_DEBUG, "%s line %d polling for %d on rc %d host is %s"
-                    " master is %s\n", __func__, __LINE__, backoff, rc, host,
-                    thedb->master);
+                                 " master is %s\n",
+                   __func__, __LINE__, backoff, rc, host, thedb->master);
             poll(NULL, 0, backoff);
             /*backoff *= 2; */
             total_wait += backoff;

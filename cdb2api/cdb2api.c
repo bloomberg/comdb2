@@ -2201,7 +2201,6 @@ retry:
             fprintf(stderr, "td %p %s line %d - hdr length (0) from mach %s\n",
                     (void *)pthread_self(), __func__, __LINE__,
                     hndl->hosts[hndl->connected_host]);
-
         }
         goto retry;
     }
