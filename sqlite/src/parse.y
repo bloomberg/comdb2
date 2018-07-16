@@ -591,9 +591,6 @@ cmd ::= DROP VIEW ifexists(E) fullname(X). {
 //
 cmd ::= select(X).  {
   SelectDest dest = {SRT_Output, 0, 0, 0, 0, 0};
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintSelect(pParse->db, X);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Select(pParse, X, &dest);
   sqlite3SelectDelete(pParse->db, X);
 }
@@ -980,18 +977,12 @@ limit_opt(A) ::= LIMIT expr(X) COMMA expr(Y).
 cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W) 
         orderby_opt(O) limit_opt(L). {
   sqlite3SrcListIndexedBy(pParse, X, &I);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintDelete(pParse->db, X, W);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DeleteFrom(pParse,X,W,O,L);
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
 cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W). {
   sqlite3SrcListIndexedBy(pParse, X, &I);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintDelete(pParse->db, X, W);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DeleteFrom(pParse,X,W,0,0);
 }
 %endif
@@ -1009,9 +1000,6 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
         where_opt(W) orderby_opt(O) limit_opt(L).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Update(pParse,X,Y,W,R,O,L,0);
 }
 %endif
@@ -1020,9 +1008,6 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
         where_opt(W).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Update(pParse,X,Y,W,R,0,0,0);
 }
 %endif
@@ -1047,29 +1032,12 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 
 ////////////////////////// The INSERT command /////////////////////////////////
 //
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= WITH wqlist(W) insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
-        upsert(U). {
-  sqlite3FingerprintInsert(pParse->db, X, S, F, W);
-  sqlite3Insert(pParse, X, S, F, R, U);
-}
-cmd ::= WITH RECURSIVE wqlist(W) insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
-        upsert(U). {
-  sqlite3FingerprintInsert(pParse->db, X, S, F, W);
-  sqlite3Insert(pParse, X, S, F, R, U);
-}
-%endif SQLITE_BUILDING_FOR_COMDB2
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
         upsert(U). {
   sqlite3Insert(pParse, X, S, F, R, U);
 }
-%endif !SQLITE_BUILDING_FOR_COMDB2
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES.
 {
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintInsert(pParse->db, X, NULL, F, 0);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Insert(pParse, X, 0, F, R, 0);
 }
 
