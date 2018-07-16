@@ -223,7 +223,7 @@ mempsync_thd(void *p)
 	REP *rep;
 	u_int32_t generation;
 	int rep_check = 0;
-    int dont_flush = 0;
+	int dont_flush = 0;
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
@@ -253,8 +253,8 @@ mempsync_thd(void *p)
 		generation = rep->gen;
 		pthread_mutex_unlock(&mempsync_lk);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-        /* Don't flush before rep_verify_match */
-        dont_flush = (F_ISSET(rep, REP_F_RECOVER) || rep->in_recovery);
+		/* Don't flush before rep_verify_match */
+		dont_flush = (F_ISSET(rep, REP_F_RECOVER) || rep->in_recovery);
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		BDB_RELLOCK();
 
