@@ -2196,13 +2196,14 @@ retry:
         return 0;
     }
 
-    /* Return with a bad rcode here */
     if (hdr.length == 0) {
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %p %s line %d - invalid header length (0)\n",
-                    (void *)pthread_self(), __func__, __LINE__);
+            fprintf(stderr, "td %p %s line %d - hdr length (0) from mach %s\n",
+                    (void *)pthread_self(), __func__, __LINE__,
+                    hndl->hosts[hndl->connected_host]);
+
         }
-        return -1;
+        goto retry;
     }
 
     if (type)

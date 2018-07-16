@@ -5706,12 +5706,15 @@ static int net_local_route_packet_tails(int usertype, void *data, int datalen,
     return 0;
 }
 
-int osql_comm_check_bdb_lock(void)
+int osql_comm_check_bdb_lock(const char *func, int line)
 {
     int rc = 0;
+    int start;
+    int end;
 
     /* check here if we need to wait for the lock, so we don't prevent this from
      * happening */
+    start = time(NULL);
     if (bdb_lock_desired(thedb->bdb_env)) {
         struct sql_thread *thd = pthread_getspecific(query_info_key);
         if (!thd) return 0;
@@ -5732,16 +5735,26 @@ int osql_comm_check_bdb_lock(void)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s recover_deadlock returned %d\n",
                     __func__, rc);
-            return -1;
+            rc = -1;
+            goto out;
         }
         logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
 
         clnt->deadlock_recovered++;
 
-        if (clnt->deadlock_recovered > 100)
-            return -1;
+        if (clnt->deadlock_recovered > 100) {
+            logmsg(LOGMSG_ERROR, "%s called recover_deadlock 100 times\n",
+                    __func__);
+            rc = -1;
+            goto out;
+        }
     }
-    return 0;
+out:
+    if ((end = time(NULL)) - start > 2) {
+        logmsg(LOGMSG_DEBUG, "%s line %d: %s took %d seconds\n", func, line,
+                __func__, end - start);
+    }
+    return rc;
 }
 
 /* this wrapper tries to provide a reliable net_send that will prevent loosing
@@ -5791,7 +5804,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
                 return -1;
             }
 
-            if (osql_comm_check_bdb_lock() != 0) {
+            if (osql_comm_check_bdb_lock(__func__, __LINE__) != 0) {
                 logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
                        __FILE__, __LINE__, host);
                 return rc;
@@ -5803,7 +5816,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
                 return OSQL_SEND_ERROR_WRONGMASTER;
             }
 
-            logmsg(LOGMSG_INFO, "%s line %d polling for %d on rc %d host is %s"
+            logmsg(LOGMSG_DEBUG, "%s line %d polling for %d on rc %d host is %s"
                     " master is %s\n", __func__, __LINE__, backoff, rc, host,
                     thedb->master);
             poll(NULL, 0, backoff);
@@ -5878,7 +5891,7 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
                 return -1;
             }
 
-            if ((rc = osql_comm_check_bdb_lock())) {
+            if ((rc = osql_comm_check_bdb_lock(__func__, __LINE__))) {
                 logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
                        __FILE__, __LINE__, host ? host : gbl_mynode);
                 return rc;

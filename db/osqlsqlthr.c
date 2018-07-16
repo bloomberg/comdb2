@@ -601,8 +601,8 @@ again:
             return SQLITE_INTERNAL;
     } else {
         if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "0x%lu Restarting clnt->osql.rqid=%llx\n",
-                   pthread_self(), clnt->osql.rqid);
+            logmsg(LOGMSG_USER, "0x%lu Restarting clnt->osql.rqid=%llx against %s\n",
+                   pthread_self(), clnt->osql.rqid, thedb->master);
         /* we should reset this ! */
         rc = osql_reuse_sqlthr(clnt, thedb->master);
         if (rc)
