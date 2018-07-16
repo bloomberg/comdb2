@@ -223,6 +223,7 @@ mempsync_thd(void *p)
 	REP *rep;
 	u_int32_t generation;
 	int rep_check = 0;
+    int dont_flush = 0;
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
@@ -251,6 +252,10 @@ mempsync_thd(void *p)
 		sync_lsn = lsn;
 		generation = rep->gen;
 		pthread_mutex_unlock(&mempsync_lk);
+		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+        /* Don't flush before rep_verify_match */
+        dont_flush = (F_ISSET(rep, REP_F_RECOVER) || rep->in_recovery);
+		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		BDB_RELLOCK();
 
 		/*
@@ -302,7 +307,7 @@ mempsync_thd(void *p)
 			 * as provided by mempsync_sync_out_of_band(); 
 			 * Not sure if it safe to sync beyond ckp->ckp_lsn all the way to ckp lsn though */
             BDB_READLOCK("mempsync_thd_ckp");
-            if (generation == rep->gen) {
+            if (generation == rep->gen && !dont_flush) {
                 rc = __log_flush_pp(dbenv, &sync_lsn);
                 if ((rc = __log_cursor(dbenv, &logc)) != 0)
                     goto err;
