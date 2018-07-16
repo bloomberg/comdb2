@@ -115,7 +115,16 @@ set pattern(end) [string trim {
 
 set pattern(function) {^(?:int|u32|i64)\s+(?:sqlite3|compare|vdbe)}
 
-set outputFileName [file join $outputDirectory vdbeaux.c]
+set outputFileNames [list \
+    [file join $outputDirectory vdbeaux.c] \
+    [file join $outputDirectory serialget.c] \
+    [file join $outputDirectory memcompare.c] \
+    [file join $outputDirectory vdbecompare.c]]
+
+foreach outputFileName $outputFileNames {
+  catch {file delete $outputFileName}
+}
+
 set data [readNormalizedFile $inputFileName]; set start 0
 
 set indexes(start) [regexp \
@@ -208,4 +217,4 @@ for {set index 0} {$index < $length} {incr index} {
       [list $chunk($id,data) "\n chunk #$id\n"] $outputData]
 }
 
-writeNormalizedFile $outputFileName $outputData
+writeNormalizedFile [lindex $outputFileNames 0] $outputData
