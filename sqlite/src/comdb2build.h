@@ -57,11 +57,12 @@ void comdb2AddNull(Parse *);
 void comdb2AddNotNull(Parse *, int);
 void comdb2AddPrimaryKey(Parse *, ExprList *, int, int, int);
 void comdb2DropPrimaryKey(Parse *);
-void comdb2AddIndex(Parse *, Token *, ExprList *, int, ExprSpan *, int, u8,
-                    int);
+void comdb2AddIndex(Parse *, Token *, ExprList *, int, Expr *, const char *,
+                    const char *, int, u8, int);
 void comdb2AddDbpad(Parse *, int);
 void comdb2CreateIndex(Parse *, Token *, Token *, SrcList *, ExprList *, int,
-                       Token *, ExprSpan *, int, int, u8, int, int);
+                       Token *, Expr *, const char *, const char *, int, int,
+                       u8, int, int);
 void comdb2CreateForeignKey(Parse *, ExprList *, Token *, ExprList *, int);
 void comdb2DeferForeignKey(Parse *, int);
 void comdb2DropForeignKey(Parse *, Token *);

@@ -24,7 +24,6 @@ close $in
 set extras {
   TRUEFALSE
   ISNOT
-  FUNCTION
   COLUMN
   AGG_FUNCTION
   AGG_COLUMN

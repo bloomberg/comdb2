@@ -203,7 +203,7 @@ for {set i 0} {$i<=$max} {incr i} {
   set name $def($i)
   puts -nonewline [format {#define %-16s %3d} $name $i]
   set com {}
-  if {$jump($name)} {
+  if {[info exists jump($name)] && $jump($name)} {
     lappend com "jump"
   }
   if {[info exists sameas($i)]} {

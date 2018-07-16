@@ -431,11 +431,11 @@ ccons ::= PRIMARY KEY sortorder(Z) onconf(R) autoinc(I).
 %endif !SQLITE_BUILDING_FOR_COMDB2
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 ccons ::= UNIQUE onconf(R).      {
-    comdb2AddIndex(pParse, 0, 0, R, 0, SQLITE_SO_ASC,
+    comdb2AddIndex(pParse, 0, 0, R, 0, 0, 0, SQLITE_SO_ASC,
                    SQLITE_IDXTYPE_UNIQUE, 0);
 }
 ccons ::= KEY onconf(R).         {
-    comdb2AddIndex(pParse, 0, 0, R, 0, SQLITE_SO_ASC,
+    comdb2AddIndex(pParse, 0, 0, R, 0, 0, 0, SQLITE_SO_ASC,
                    SQLITE_IDXTYPE_DUPKEY, 0);
 }
 constraint_opt ::= CONSTRAINT.       { pParse->constraintName.n = 0; } 
@@ -520,11 +520,11 @@ with_opt(A) ::= . {A = 0;}
 tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
   comdb2AddPrimaryKey(pParse, X, R, I, 0);
 }
-tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP with_opt(O) where_opt(W). {
-  comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE, O);
+tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
+  comdb2AddIndex(pParse, &I, X, 0, W, BW, AW, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE, O);
 }
-tcons ::= KEY nm_opt(I) LP sortlist(X) RP with_opt(O) where_opt(W). {
-  comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, SQLITE_IDXTYPE_DUPKEY, O);
+tcons ::= KEY nm_opt(I) LP sortlist(X) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
+  comdb2AddIndex(pParse, &I, X, 0, W, BW, AW, SQLITE_SO_ASC, SQLITE_IDXTYPE_DUPKEY, O);
 }
 tcons ::= constraint_opt FOREIGN KEY LP eidlist(FA) RP
           REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
@@ -1458,10 +1458,11 @@ paren_exprlist(A) ::= LP exprlist(X) RP.  {A = X;}
 //
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
-        ON nm(Y) LP sortlist(Z) RP with_opt(O) where_opt(W). {
+        ON nm(Y) LP sortlist(Z) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
   comdb2CreateIndex(pParse, &X, &D,
                     sqlite3SrcListAppend(pParse->db,0,&Y,0), Z, U,
-                    &S, &W, SQLITE_SO_ASC, NE, SQLITE_IDXTYPE_APPDEF, O, T);
+                     &S, W, BW, AW, SQLITE_SO_ASC, NE, SQLITE_IDXTYPE_APPDEF,
+                     O, T);
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2

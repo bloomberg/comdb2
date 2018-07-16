@@ -2824,7 +2824,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
             }
 
             comdb2AddIndex(pParse, 0 /* Key name will be generated */,
-                           &idx_cols, 0, 0, 0, SQLITE_IDXTYPE_DUPKEY, 0);
+                           &idx_cols, 0, 0, 0, 0, 0, SQLITE_IDXTYPE_DUPKEY, 0);
             if (pParse->rc)
                 goto cleanup;
 
@@ -3763,7 +3763,9 @@ static void comdb2AddIndexInt(
     char *keyname,      /* Index name (Optional) */
     ExprList *pList,    /* A list of columns to be indexed */
     int onError,        /* OE_Abort, OE_Ignore, OE_Replace, or OE_None */
-    ExprSpan *pPIWhere, /* WHERE clause for partial indices */
+    Expr *pPIWhere,     /* WHERE clause for partial indices */
+    const char *zStart, /* Start of WHERE clause token text */
+    const char *zEnd,   /* End of WHERE clause token text */
     int sortOrder,      /* Sort order of primary key when pList==NULL */
     u8 idxType,         /* The index type */
     int withOpts        /* WITH options (DATACOPY) */
@@ -3886,13 +3888,13 @@ static void comdb2AddIndexInt(
         }
     }
 
-    if (pPIWhere && pPIWhere->pExpr != 0) {
+    if (pPIWhere && zStart && zEnd) {
         char *where_clause;
         size_t where_sz;
 
-        where_sz = pPIWhere->zEnd - pPIWhere->zStart;
+        where_sz = zEnd - zStart;
         assert(where_sz > 0);
-        where_clause = comdb2_strndup(ctx->mem, pPIWhere->zStart, where_sz + 1);
+        where_clause = comdb2_strndup(ctx->mem, zStart, where_sz + 1);
         if (where_clause == 0)
             goto oom;
 
@@ -3970,7 +3972,7 @@ void comdb2AddPrimaryKey(
     if (keyname == 0)
         goto oom;
 
-    comdb2AddIndexInt(pParse, keyname, pList, onError, 0, sortOrder,
+    comdb2AddIndexInt(pParse, keyname, pList, onError, 0, 0, 0, sortOrder,
                       SQLITE_IDXTYPE_PRIMARYKEY, 0);
     if (pParse->rc)
         goto cleanup;
@@ -3998,7 +4000,9 @@ void comdb2AddIndex(
     Token *pName,       /* Index name (Optional) */
     ExprList *pList,    /* A list of columns to be indexed */
     int onError,        /* OE_Abort, OE_Ignore, OE_Replace, or OE_None */
-    ExprSpan *pPIWhere, /* WHERE clause for partial indices */
+    Expr *pPIWhere,     /* WHERE clause for partial indices */
+    const char *zStart, /* Start of WHERE clause token text */
+    const char *zEnd,   /* End of WHERE clause token text */
     int sortOrder,      /* Sort order of primary key when pList==NULL */
     u8 idxType,         /* The index type */
     int withOpts        /* WITH options (DATACOPY) */
@@ -4035,8 +4039,8 @@ void comdb2AddIndex(
         keyname = 0;
     }
 
-    comdb2AddIndexInt(pParse, keyname, pList, onError, pPIWhere, sortOrder,
-                      idxType, withOpts);
+    comdb2AddIndexInt(pParse, keyname, pList, onError, pPIWhere, zStart,
+                      zEnd, sortOrder, idxType, withOpts);
     if (pParse->rc)
         goto cleanup;
 
@@ -4059,7 +4063,9 @@ void comdb2CreateIndex(
     ExprList *pList,    /* A list of columns to be indexed */
     int onError,        /* OE_Abort, OE_Ignore, OE_Replace, or OE_None */
     Token *pStart,      /* The CREATE token that begins this statement */
-    ExprSpan *pPIWhere, /* WHERE clause for partial indices */
+    Expr *pPIWhere,     /* WHERE clause for partial indices */
+    const char *zStart, /* Start of WHERE clause token text */
+    const char *zEnd,   /* End of WHERE clause token text */
     int sortOrder,      /* Sort order of primary key when pList==NULL */
     int ifNotExist,     /* Omit error if index already exists */
     u8 idxType,         /* The index type */
@@ -4075,8 +4081,7 @@ void comdb2CreateIndex(
     if (temp || pParse->db->init.busy || pParse->db->isExpert ||
         IN_DECLARE_VTAB) {
         sqlite3CreateIndex(pParse, pName1, pName2, pTblName, pList, onError,
-                           pStart, pPIWhere->pExpr, sortOrder, ifNotExist,
-                           idxType);
+                           pStart, pPIWhere, sortOrder, ifNotExist, idxType);
         return;
     }
 
@@ -4131,8 +4136,8 @@ void comdb2CreateIndex(
         goto cleanup;
     }
 
-    comdb2AddIndexInt(pParse, keyname, pList, onError, pPIWhere, sortOrder,
-                      idxType, withOpts);
+    comdb2AddIndexInt(pParse, keyname, pList, onError, pPIWhere, zStart,
+                      zEnd, sortOrder, idxType, withOpts);
     if (pParse->rc)
         goto cleanup;
 
