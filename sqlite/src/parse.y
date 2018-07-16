@@ -727,7 +727,7 @@ values(A) ::= values(A) COMMA LP exprlist(Y) RP. {
 /* add the SELECTV instruction */
 oneselect(A) ::= SELECTV distinct(D) selcollist(W) from(X) where_opt(Y)
                  groupby_opt(P) having_opt(Q) orderby_opt(Z) limit_opt(L). {
-  A = sqlite3SelectNew(pParse,W,X,Y.pExpr,P,Q,Z,D,L);
+  A = sqlite3SelectNew(pParse,W,X,Y,P,Q,Z,D,L);
   A->op = TK_SELECTV;
   A->recording = 1;
 }
@@ -1048,18 +1048,23 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 ////////////////////////// The INSERT command /////////////////////////////////
 //
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= with(W) insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
+cmd ::= WITH wqlist(W) insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
         upsert(U). {
+  sqlite3FingerprintInsert(pParse->db, X, S, F, W);
+  sqlite3Insert(pParse, X, S, F, R, U);
+}
+cmd ::= WITH RECURSIVE wqlist(W) insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
+        upsert(U). {
+  sqlite3FingerprintInsert(pParse->db, X, S, F, W);
+  sqlite3Insert(pParse, X, S, F, R, U);
+}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
         upsert(U). {
-%endif !SQLITE_BUILDING_FOR_COMDB2
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintInsert(pParse->db, X, S, F, W);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Insert(pParse, X, S, F, R, U);
 }
+%endif !SQLITE_BUILDING_FOR_COMDB2
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES.
 {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
