@@ -24,8 +24,6 @@
 #include <zlib.h>
 #include "cdb2_constants.h"
 
-#define INCLUDE_KEYWORDHASH_H
-#define INCLUDE_FINALKEYWORD_H
 #include <keywordhash.h>
 
 extern pthread_key_t query_info_key;
