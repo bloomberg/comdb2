@@ -184,10 +184,18 @@ for {set index 0} {$index < $length} {incr index} {
   if {![file exists $chunk($id,fileName)]} then {
     if {[file tail $chunk($id,fileName)] eq "memcompare.c"} then {
       set chunk($id,data) [appendArgs \
-          "#include <serialget.c>\n\n" $chunk($id,data)]
+          "#include <serialget.c>\n\n" \
+          $chunk($id,data)]
     } elseif {[file tail $chunk($id,fileName)] eq "vdbecompare.c"} then {
       set chunk($id,data) [appendArgs \
-          "#include <memcompare.c>\n\n" $chunk($id,data)]
+          "#include <memcompare.c>\n\n" \
+          $chunk($id,data)]
+    } elseif {[file tail $chunk($id,fileName)] eq "serialget.c"} then {
+      set chunk($id,data) [appendArgs \
+          "#ifndef SERIALGET_C\n" \
+          "#define SERIALGET_C\n\n" \
+          $chunk($id,data) \
+          "\n\n#endif /* SERIALGET_C */\n"]
     }
   }
 
