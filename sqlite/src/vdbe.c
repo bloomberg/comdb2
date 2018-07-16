@@ -8298,7 +8298,7 @@ case OP_VerifyTabCol: {
 #endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-/* OpCode: OpFuncLoad P1 * * P4 *
+/* OpCode: OpFuncLoad * P2 * P4 *
 ** Synopsis: Load OpFunc P4 into mem[P2]
 **
 ** This operator loads the custom function stored in P4 into Mem[P2].
