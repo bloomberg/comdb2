@@ -727,7 +727,7 @@ values(A) ::= values(A) COMMA LP exprlist(Y) RP. {
 /* add the SELECTV instruction */
 oneselect(A) ::= SELECTV distinct(D) selcollist(W) from(X) where_opt(Y)
                  groupby_opt(P) having_opt(Q) orderby_opt(Z) limit_opt(L). {
-  A = sqlite3SelectNew(pParse,W,X,Y.pExpr,P,Q,Z,D,L.pLimit,L.pOffset);
+  A = sqlite3SelectNew(pParse,W,X,Y.pExpr,P,Q,Z,D,L);
   A->op = TK_SELECTV;
   A->recording = 1;
 }
@@ -981,7 +981,7 @@ cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W)
         orderby_opt(O) limit_opt(L). {
   sqlite3SrcListIndexedBy(pParse, X, &I);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintDelete(pParse->db, X, W.pExpr);
+  sqlite3FingerprintDelete(pParse->db, X, W);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DeleteFrom(pParse,X,W,O,L);
 }
@@ -990,7 +990,7 @@ cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W)
 cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W). {
   sqlite3SrcListIndexedBy(pParse, X, &I);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintDelete(pParse->db, X, W.pExpr);
+  sqlite3FingerprintDelete(pParse->db, X, W);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DeleteFrom(pParse,X,W,0,0);
 }
@@ -1010,7 +1010,7 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
+  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Update(pParse,X,Y,W,R,O,L,0);
 }
@@ -1021,7 +1021,7 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
+  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Update(pParse,X,Y,W,R,0,0,0);
 }
@@ -1047,8 +1047,14 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 
 ////////////////////////// The INSERT command /////////////////////////////////
 //
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+cmd ::= with(W) insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
+        upsert(U). {
+%endif SQLITE_BUILDING_FOR_COMDB2
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
         upsert(U). {
+%endif !SQLITE_BUILDING_FOR_COMDB2
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   sqlite3FingerprintInsert(pParse->db, X, S, F, W);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -1185,8 +1191,7 @@ expr(A) ::= expr(A) COLLATE DATACOPY. {
       pParse->rc = SQLITE_ERROR;
   } else {
       Token t = {"DATACOPY", 8};
-      A.pExpr = sqlite3ExprAddCollateToken(pParse, A.pExpr, &t, 1);
-      A.zEnd = &t.z[t.n];
+      A = sqlite3ExprAddCollateToken(pParse, A, &t, 1);
   }
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
