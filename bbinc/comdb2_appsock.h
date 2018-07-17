@@ -33,6 +33,7 @@ struct comdb2_appsock_arg {
     struct thr_handle *thr_self;
     struct dbenv *dbenv;
     struct dbtable *tab; /* Changed on the execution of 'use' */
+    int conv_flags;      /* Changed on the execution of 'lendian' */
     SBUF2 *sb;
     char *cmdline;
     int *keepsocket;
@@ -53,5 +54,14 @@ struct comdb2_appsock {
     int (*appsock_handler)(struct comdb2_appsock_arg *);
 };
 typedef struct comdb2_appsock comdb2_appsock_t;
+
+#define APPSOCK_PLUGIN_DESC(X)                                                 \
+    comdb2_appsock_t X##_plugin = {                                            \
+        #X,                  /* Name */                                        \
+        "",                  /* Usage info */                                  \
+        0,                   /* Execution count */                             \
+        0,                   /* Flags */                                       \
+        handle_##X##_request /* Handler function */                            \
+    };
 
 #endif /* ! __INCLUDED_COMDB2_APPSOCK_H */
