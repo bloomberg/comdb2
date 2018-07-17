@@ -603,6 +603,8 @@ static void append_field(struct byte_buffer *bytes, struct field *f,
              * zero-length or fits in the inline portion. */
             memcpy(&len, (uint8_t *)rec + f->offset + 1, sizeof(int));
             len = ntohl(len);
+            if (len > 0)
+                len--;
             byte_buffer_append_int32(bytes, len);
             byte_buffer_append(
                 bytes, (uint8_t *)rec + f->offset + 1 + sizeof(int), len);
@@ -630,6 +632,7 @@ static void append_field(struct byte_buffer *bytes, struct field *f,
 
             outopts.flags = FLD_CONV_TZONE;
             strcpy(outopts.tzname, record->trans->iq->tzname);
+            strcpy(outopts.tzname, "America/New_York");
 
             rc = SERVER_DATETIME_to_CLIENT_DATETIME(
                 (uint8_t *)rec + f->offset, sizeof(server_datetime_t), NULL,
