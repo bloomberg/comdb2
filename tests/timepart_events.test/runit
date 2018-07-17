@@ -4,6 +4,7 @@ bash -n "$0" | exit 1
 # Time partition testcase for comdb2
 ################################################################################
 
+set -x
 
 # args
 # <dbname>
@@ -17,6 +18,7 @@ touch $OUT
 
 function timepart_stats
 {
+    set -x
     echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, period, retention, nshards, shard0name, version from comdb2_timepartitions " >> $OUT
     cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, period, retention, nshards, shard0name, version from comdb2_timepartitions " >> $OUT
     if (( $? != 0 )) ; then
@@ -33,8 +35,8 @@ function timepart_stats
 
     #randomly we catch a drop event here; sleep to skip the deterministically
     sleep 6
-    echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
-    cdb2sql --host $master ${CDB2_OPTIONS} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
+    echo cdb2sql ${CDB2_OPTIONS} --host $master $dbname "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
+    cdb2sql --host $master ${CDB2_OPTIONS} $dbname "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
     if (( $? != 0 )) ; then
         echo "FAILURE"
         exit 1
@@ -43,6 +45,7 @@ function timepart_stats
 
 function get_master
 {
+    set -x
     master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
 }
 
@@ -66,11 +69,11 @@ sleep 20
 timepart_stats
 
 get_master
-cdb2sql ${CDB2_OPTIONS} --host $master $dbname default "exec procedure sys.cmd.send('downgrade')"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbname "exec procedure sys.cmd.send('downgrade')"
 sleep 5
 
 get_master
-cdb2sql ${CDB2_OPTIONS} --host $master $dbname default "exec procedure sys.cmd.send('downgrade')"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbname "exec procedure sys.cmd.send('downgrade')"
 sleep 5
 
 echo "Checking previous master" >> $OUT
@@ -81,11 +84,12 @@ timepart_stats
 
 # we need to scrub dbname from alpha
 sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
+sed "s/--host \w* //g" $OUT > $OUT.nohost
 
 
-difs=`diff $OUT $OUT.alpha.actual`
+difs=`diff $OUT.nohost $OUT.alpha.actual`
 if [[ ! -z "${difs}" ]] ; then
-   echo "diff $OUT $OUT.alpha.actual"
+   echo "diff $OUT.nohost $OUT.alpha.actual"
    echo ${difs}
    echo "FAILURE"
    exit 1
