@@ -1203,8 +1203,16 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
                 return rc;
             }
         }
-        rc =
-            CLIENT_to_SERVER(m->z, m->n, CLIENT_BYTEARRAY, null,
+
+        if (m->n >= f->len && f->type == SERVER_BYTEARRAY &&
+            (convopts->flags & FLD_CONV_TRUNCATE)) {
+            /* if the SQLite BLOB is longer than the bytearray field
+               and find-by-truncate is enabled. */
+            convopts->step = (f->flags & INDEX_DESCEND) ? 0 : 1;
+            bias_info->truncated = 1;
+        }
+
+        rc = CLIENT_to_SERVER(m->z, m->n, CLIENT_BYTEARRAY, null,
                              (struct field_conv_opts *)convopts, NULL /*blob */,
                              out + f->offset, f->len, f->type, 0, &outdtsz,
                              &f->convopts, &outblob[blobix] /*blob */);

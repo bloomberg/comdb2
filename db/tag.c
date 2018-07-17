@@ -1114,7 +1114,7 @@ static void dumpval(char *buf, int type, int len)
             logmsg(LOGMSG_USER, "\"%.*s\"", slen, buf);
             break;
         case CLIENT_PSTR2:
-            slen = pstr2lenlim(buf, len);
+            slen = len;
             logmsg(LOGMSG_USER, "\"%.*s\"", slen, buf);
             break;
         case CLIENT_BYTEARRAY:

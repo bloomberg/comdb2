@@ -479,7 +479,6 @@ int cstrlenlim(const char *s, int lim);
 int cstrlenlimflipped(const unsigned char *s, int lim);
 int validate_cstr(const char *s, int lim);
 int validate_pstr(const char *s, int lim);
-int pstr2lenlim(const char *s, int lim);
 int pstrlenlim(const char *s, int lim);
 int CLIENT_UINT_to_CLIENT_UINT(const void *in, int inlen,
                                const struct field_conv_opts *inopts,
