@@ -164,8 +164,6 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
 {
     comdb2_appsock_t *appsock;
     comdb2_appsock_arg_t arg;
-    struct dbtable *tab;
-    int conv_flags = 0;
     char line[128];
     char command[128];
     char *ptr;
@@ -176,7 +174,8 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
 
     sbuf2settimeout(sb, IOTIMEOUTMS, IOTIMEOUTMS);
 
-    tab = thedb->dbs[0];
+    arg.tab = thedb->dbs[0];
+    arg.conv_flags = 0;
 
     while (1) {
         thrman_where(thr_self, NULL);
@@ -216,8 +215,6 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
         /* Prepare the argument to be passed to the handler. */
         arg.thr_self = thr_self;
         arg.dbenv = thedb;
-        arg.tab = tab;
-        arg.conv_flags = conv_flags;
         arg.sb = sb;
         arg.cmdline = line;
         arg.keepsocket = keepsocket;
