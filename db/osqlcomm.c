@@ -5050,6 +5050,7 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
 
     int irc = 0;
     int msglen = 0;
+    char uuid[37];
     int type;
 
     /* slightly kludgy - we're constructing one of 4 message types - get a
@@ -5089,6 +5090,9 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
                 rpl_xerr.dt = *xerr;
 
                 osqlcomm_done_xerr_uuid_type_put(&(rpl_xerr), p_buf, p_buf_end);
+                logmsg(LOGMSG_DEBUG, "%s line %d master signaling %s uuid %s "
+                        "with rc=%d xerr=%d\n", __func__, __LINE__, sorese->host,
+                        comdb2uuidstr(sorese->uuid, uuid), rc, xerr->errval);
 
                 msglen = OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
 
@@ -5102,6 +5106,10 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
                 rpl_ok.dt.nops = sorese->nops;
 
                 osqlcomm_done_uuid_rpl_put(&(rpl_ok), p_buf, p_buf_end);
+
+                logmsg(LOGMSG_DEBUG, "%s line %d master signaling %s uuid %s "
+                        "with rc=%d xerr=%d\n", __func__, __LINE__, sorese->host,
+                        comdb2uuidstr(sorese->uuid, uuid), rc, xerr->errval);
 
                 msglen = OSQLCOMM_DONE_RPL_LEN;
             }
@@ -5117,6 +5125,10 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
                 rpl_xerr.hd.sid = sorese->rqid;
                 rpl_xerr.dt = *xerr;
 
+                logmsg(LOGMSG_DEBUG, "%s line %d master signaling %s rqid %llu "
+                        "with rc=%d xerr=%d\n", __func__, __LINE__, sorese->host,
+                        sorese->rqid, rc, xerr->errval);
+
                 osqlcomm_done_xerr_type_put(&(rpl_xerr), p_buf, p_buf_end);
 
                 msglen = OSQLCOMM_DONE_XERR_RPL_LEN;
@@ -5129,6 +5141,10 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
                 rpl_ok.hd.sid = sorese->rqid;
                 rpl_ok.dt.rc = 0;
                 rpl_ok.dt.nops = sorese->nops;
+
+                logmsg(LOGMSG_DEBUG, "%s line %d master signaling %s rqid %llu "
+                        "with rc=%d xerr=%d\n", __func__, __LINE__, sorese->host,
+                        sorese->rqid, rc, xerr->errval);
 
                 osqlcomm_done_rpl_put(&(rpl_ok), p_buf, p_buf_end);
 

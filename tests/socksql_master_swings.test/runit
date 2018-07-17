@@ -22,7 +22,7 @@ sleep 10
 # Run the executable
 exe=${TESTSBUILDDIR}/selectv
 
-$exe -d $dbname -D -t 5 > test.log 2>&1 &
+$exe -d $dbname -D -t 5 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> test.log &
 tpid=$!
 echo "Test Thread PID $tpid"
 
