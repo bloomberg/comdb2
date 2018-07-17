@@ -616,9 +616,8 @@ void bdb_clear_logfile_pglogs_stat();
 void bdb_osql_trn_clients_status();
 void bdb_newsi_mempool_stat();
 
-void *handle_exit_thd(void *arg) 
+static void *handle_exit_thd(void *arg)
 {
-    logmsg(LOGMSG_WARN, "DB requested exit...\n");
     static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&exiting_lock);
     if( gbl_exit ) {
@@ -689,7 +688,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     }
 
     if (tokcmp(tok, ltok, "exit") == 0) {
-        logmsg(LOGMSG_USER, "requesting exit...\n");
+        logmsg(LOGMSG_USER, "requested exit...\n");
 
         pthread_t thread_id;
         pthread_attr_t thd_attr;
