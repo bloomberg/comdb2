@@ -178,6 +178,9 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
 
     tab = thedb->dbs[0];
 
+    arg.tab = tab;
+    arg.conv_flags = conv_flags;
+
     while (1) {
         thrman_where(thr_self, NULL);
 
@@ -216,8 +219,6 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
         /* Prepare the argument to be passed to the handler. */
         arg.thr_self = thr_self;
         arg.dbenv = thedb;
-        arg.tab = tab;
-        arg.conv_flags = conv_flags;
         arg.sb = sb;
         arg.cmdline = line;
         arg.keepsocket = keepsocket;
