@@ -5620,13 +5620,27 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
                     hndl->hosts[0], hndl->ports[0]);
     } else if (is_machine_list(type)) {
         rc = configure_from_literal(hndl, type);
+        if (rc && hndl->debug_trace) {
+            fprintf(stderr, "td %u %s:%d configure_from_literal %s returns "
+                    "%d\n", (uint32_t)pthread_self(), __func__, __LINE__, type,
+                    rc);
+        }
     } else {
         rc = cdb2_get_dbhosts(hndl);
+        if (rc && hndl->debug_trace) {
+            fprintf(stderr, "td %u %s:%d cdb2_get_dbhosts returns %d\n",
+                    (uint32_t)pthread_self(), __func__, __LINE__, rc);
+        }
     }
 
 #if WITH_SSL
-    if (rc == 0)
+    if (rc == 0) {
         rc = set_up_ssl_params(hndl);
+        if (rc && hndl->debug_trace) {
+            fprintf(stderr, "td %u %s:%d cdb2_get_dbhosts returns %d\n",
+                    (uint32_t)pthread_self(), __func__, __LINE__, rc);
+        }
+    }
 #endif
 
     if (hndl->send_stack)
