@@ -4224,9 +4224,9 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_BYTEARRAY(
     if (innull) {
         set_null(out, outlen);
     } else {
-        int rc;
+        int rc, olen = inlen;
         if (inlen > outlen - 1) {
-            if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
+            if (inopts && (inopts->flags & FLD_CONV_TRUNCATE)) {
                 inlen = outlen - 1;
             } else {
                 return -1;
@@ -4236,6 +4236,19 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_BYTEARRAY(
                             outlen - 1, outdtsz, outopts, outblob);
         if (-1 == rc)
             return -1;
+        if (olen > outlen - 1 && inopts->step == 1) {
+            uint8_t *a = ((uint8_t *)out);
+            uint8_t *b = a + inlen;
+            while (b > a) {
+                if (*b != 0xff) {
+                    ++(*b);
+                    break;
+                }
+                --b;
+            }
+            if (b == a)
+                bset(out, truncate_bit);
+        }
         /* set data bit */
         set_data(out, in, 1);
         (*outdtsz)++;
