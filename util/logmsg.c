@@ -122,7 +122,7 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
         localtime_r(&t, &tm);
         if (do_thread) {
             snprintf(timestamp, sizeof(timestamp),
-                     "%04d/%02d/%02d %02d:%02d:%02d 0x%llx ", tm.tm_year + 1900,
+                     "%04d/%02d/%02d %02d:%02d:%02d 0x%lx ", tm.tm_year + 1900,
                      tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,
                      tm.tm_sec, pthread_self());
         } else {
