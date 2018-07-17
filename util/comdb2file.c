@@ -45,9 +45,9 @@ static void add_location(char *type, char *dir)
 
     l = hash_find(locations, &type);
     if (l) {
+        hash_del(locations, l);
         free(l->type);
         free(l->dir);
-        hash_del(locations, l);
         free(l);
     }
     l = malloc(sizeof(struct location));
