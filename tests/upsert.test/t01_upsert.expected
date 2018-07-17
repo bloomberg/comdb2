@@ -47,43 +47,56 @@ done
 done
 done
 done
+done
 (rows inserted=3)
 done
 done
 done
+(a='one', b=1)
+(a='two', b=1)
+(a='three', b=1)
+done
+[COMMIT] failed with rc 2 uncommitable txn on upd genid=1190006 rc=404
+done
+(a='one', b=1)
+(a='two', b=1)
+(a='three', b=1)
+done
+done
+done
+done
 (a='two', b=1)
 (a='four', b=1)
 (a='one', b=3)
 (a='three', b=2)
 done
 done
+(a='four', b=1)
 (a='one', b=3)
 (a='two', b=1)
 (a='three', b=2)
+done
 (a='four', b=1)
-done
-done
-done
-done
+(a='one', b=3)
+(a='three', b=2)
 (a='two', b=1)
-(a='one', b=5)
-(a='three', b=3)
-(a='four', b=2)
 done
-done
-(a='one', b=5)
-(a='two', b=1)
-(a='three', b=3)
-(a='four', b=2)
-done
-(a='four', b=2)
-(a='one', b=5)
-(a='three', b=3)
-(a='two', b=1)
 done
 done
 done
 (rows inserted=2)
+done
+done
+(rows inserted=2)
+done
+(a=1, b=2, c=0, 'x'='x')
+(a=3, b=4, c=0, 'x'='x')
+done
+[COMMIT] failed with rc 2 uncommitable txn on upd genid=12c0005 rc=404
+done
+(a=1, b=2, c=0, 'x'='x')
+(a=3, b=4, c=0, 'x'='x')
+done
 done
 done
 (rows inserted=1)
@@ -97,17 +110,5 @@ done
 (a=2, b=15, c=1, 'x'='x')
 (a=3, b=4, c=0, 'x'='x')
 done
-done
-done
-(rows inserted=0)
-done
-(a=1, b=99, c=2, 'x'='x')
-(a=2, b=15, c=1, 'x'='x')
-(a=3, b=4, c=0, 'x'='x')
-done
-done
-(a=1, b=99, c=2, 'x'='x')
-(a=2, b=15, c=1, 'x'='x')
-(a=3, b=4, c=0, 'x'='x')
 done
 done

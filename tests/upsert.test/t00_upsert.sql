@@ -84,3 +84,25 @@ SELECT * FROM t1
 INSERT INTO t1(x,y) SELECT 1,1 WHERE 1 ON CONFLICT(x) DO UPDATE SET y=max(t1.y,excluded.y) AND 1;
 SELECT * FROM t1
 DROP TABLE t1;
+
+# INDEX ON EXPRESSION (sqlite/test/upsert1.test)
+CREATE TABLE t1 {
+schema
+    {
+		int a
+		int b null = yes
+		int c dbstore = 0 null = yes
+    }
+keys
+    {
+		"COMDB2_PK" = a
+		"idx1" = (int)"a+b"
+    }
+} $$
+INSERT INTO t1(a,b) VALUES(7,8) ON CONFLICT(a+b) DO NOTHING;
+INSERT INTO t1(a,b) VALUES(8,7),(9,6) ON CONFLICT(a+b) DO NOTHING;
+SELECT * FROM t1;
+INSERT INTO t1(a,b) VALUES(8,7),(9,6) ON CONFLICT(a) DO NOTHING;
+SELECT * FROM t1;
+DROP TABLE t1;
+

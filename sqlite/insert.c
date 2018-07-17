@@ -550,11 +550,6 @@ void sqlite3Insert(
     goto insert_cleanup;
   }
 
-  /* COMDB2 MODIFICATION */
-  if (pUpsert && (pUpsert->oeFlag == OE_Replace)) {
-    onError = OE_Replace;
-  }
-
   /* If the Select object is really just a simple VALUES() list with a
   ** single row (the common case) then keep that one row of values
   ** and discard the other (unused) parts of the pSelect object
@@ -1485,14 +1480,19 @@ void sqlite3GenerateConstraintChecks(
 
   if( pUpsert ){
     if( pUpsert->pUpsertTarget==0 ){
-#if 0
       /* An ON CONFLICT DO NOTHING clause, without a constraint-target.
       ** Make all unique constraint resolution be OE_Ignore */
       assert( pUpsert->pUpsertSet==0 );
-      overrideError = OE_Ignore;
+
+      /* COMDB2 MODIFICATION */
+      /* The above condition also holds true for ON CONFLICT DO REPLACE (a
+       * Comdb2 extension). */
+      if ( overrideError!=OE_Replace )
+        overrideError = OE_Ignore;
+
       pUpsert = 0;
-#endif
-    }else if( (pUpIdx = pUpsert->pUpsertIdx)!=0 ){
+    }else if( (pUpIdx = pUpsert->pUpsertIdx)!=0  &&
+              (overrideError!=OE_Ignore) ){
       /* If the constraint-target is on some column other than
       ** then ROWID, then we might need to move the UPSERT around
       ** so that it occurs in the correct order. */
@@ -1639,14 +1639,6 @@ void sqlite3GenerateConstraintChecks(
     }
   }
 
-  /* In case of DO NOTHING, we bail out here and 'ignore' the error (if any)
-   * on the master instead in order to ensure that this command never fails
-   * due to duplicate key error.
-   */
-  if (pUpsert && pUpsert->oeFlag == OE_Ignore) {
-    return;
-  }
-
   /* Test all UNIQUE constraints by creating entries for each UNIQUE
   ** index and making sure that duplicate entries do not already exist.
   ** Compute the revised record entries for indices as we go.
@@ -1663,9 +1655,15 @@ void sqlite3GenerateConstraintChecks(
     if( aRegIdx[ix]==0 ) continue;  /* Skip indices that do not change */
 
     /* COMDB2 MODIFICATION */
-    if( pUpIdx && pUpIdx!=pIdx ) continue;
+    if( pUpIdx && pUpIdx!=pIdx) {
+        if ( (gbl_partial_indexes && pTab->hasPartIdx) ||
+             (gbl_expressions_indexes && pTab->hasExprIdx) ) {
+        } else {
+            continue;
+        }
+    }
 
-    if( pUpIdx==pIdx ){
+    if( pUpsert && pUpIdx==pIdx && overrideError!=OE_Ignore ){
       addrUniqueOk = sAddr.upsertBtm;
       upsertBypass = sqlite3VdbeGoto(v, 0);
       VdbeComment((v, "Skip upsert subroutine"));
@@ -1731,18 +1729,22 @@ void sqlite3GenerateConstraintChecks(
     onError = pIdx->onError;
 
     /* COMDB2 MODIFICATION */
-    int is_unique = is_comdb2_index_unique(pIdx->pTable->zName, pIdx->zName);
-    if (is_unique) {
+    if ( (pUpsert || overrideError==OE_Replace) &&
+         (is_comdb2_index_unique(pIdx->pTable->zName, pIdx->zName)) ) {
       onError = OE_Abort;
     }
 
-    if((!pUpsert && onError==OE_None) || !is_unique){
+    if ( overrideError==OE_Ignore ) {
+        onError = OE_None;
+    }
+
+    if( onError==OE_None ){
       sqlite3ReleaseTempRange(pParse, regIdx, pIdx->nColumn);
       sqlite3VdbeResolveLabel(v, addrUniqueOk);
       continue;  /* pIdx is not a UNIQUE index */
     }
 
-    if( overrideError!=OE_Default ){
+    if(overrideError!=OE_Default ){
       onError = overrideError;
     }else if( onError==OE_Default ){
       onError = OE_Abort;
@@ -1864,7 +1866,7 @@ void sqlite3GenerateConstraintChecks(
         break;
       }
     }
-    if( pUpIdx==pIdx ){
+    if( pUpIdx==pIdx && overrideError!=OE_Ignore ){
       sqlite3VdbeJumpHere(v, upsertBypass);
     }else{
       sqlite3VdbeResolveLabel(v, addrUniqueOk);

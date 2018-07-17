@@ -903,13 +903,13 @@ cmd ::= with(W) INSERT INTO fullname(X) idlist_opt(F) select(S)
         upsert(U). {
   sqlite3WithPush(pParse, W, 1);
   sqlite3FingerprintInsert(pParse->db, X, S, F, W);
-  sqlite3Insert(pParse, X, S, F, 0, U);
+  sqlite3Insert(pParse, X, S, F, (U)?U->oeFlag:0, U);
 }
 
 cmd ::= with(W) REPLACE INTO fullname(X) idlist_opt(F) select(S). {
   sqlite3WithPush(pParse, W, 1);
   sqlite3FingerprintInsert(pParse->db, X, S, F, W);
-  sqlite3Insert(pParse, X, S, F, 0,
+  sqlite3Insert(pParse, X, S, F, OE_Replace,
                 sqlite3UpsertNew(pParse->db,0,0,0,0, OE_Replace));
 }
 

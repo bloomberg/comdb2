@@ -47,3 +47,8 @@
 (x=1, y=2)
 (rows inserted=0)
 (x=1, y=1)
+(rows inserted=1)
+(rows inserted=2)
+(a=7, b=8, c=0)
+[INSERT INTO t1(a,b) VALUES(8,7),(9,6) ON CONFLICT(a) DO NOTHING] failed with rc 299 add key constraint duplicate key 'IDX1' on table 't1' index 1
+(a=7, b=8, c=0)
