@@ -1212,7 +1212,8 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
             bias_info->truncated = 1;
         }
 
-        rc = CLIENT_to_SERVER(m->z, m->n, CLIENT_BYTEARRAY, null,
+        rc =
+            CLIENT_to_SERVER(m->z, m->n, CLIENT_BYTEARRAY, null,
                              (struct field_conv_opts *)convopts, NULL /*blob */,
                              out + f->offset, f->len, f->type, 0, &outdtsz,
                              &f->convopts, &outblob[blobix] /*blob */);

@@ -344,7 +344,7 @@
 (name='keep_referenced_files', description='Don't remove any files that may still be referenced by the logs.', type='BOOLEAN', value='ON', read_only='N')
 (name='key_updates', description='Update non-dupe keys instead of delete/add', type='BOOLEAN', value='ON', read_only='N')
 (name='keycompr', description='Enable index compression (applies to newly allocated index pages, rebuild table to force for all pages.', type='BOOLEAN', value='ON', read_only='Y')
-(name='large_str_idx_find', description='Allow index search using out or range strings', type='BOOLEAN', value='ON', read_only='N')
+(name='large_str_idx_find', description='Allow index search using out-of-range strings or bytearrays', type='BOOLEAN', value='ON', read_only='N')
 (name='largepages', description='Enables large pages. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='latch_max_poll', description='Poll latch this many times before returning deadlock', type='INTEGER', value='5', read_only='N')
 (name='latch_max_wait', description='Block at most this many microseconds before returning deadlock', type='INTEGER', value='5000', read_only='N')
