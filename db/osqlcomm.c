@@ -5817,8 +5817,9 @@ static int offload_net_send(const char *host, int usertype, void *data,
                 return OSQL_SEND_ERROR_WRONGMASTER;
             }
 
-            logmsg(LOGMSG_DEBUG, "%s line %d polling for %d on rc %d host is %s"
-                                 " master is %s\n",
+            logmsg(LOGMSG_DEBUG,
+                   "%s line %d polling for %d on rc %d host is %s master is"
+                   " %s\n",
                    __func__, __LINE__, backoff, rc, host, thedb->master);
             poll(NULL, 0, backoff);
             /*backoff *= 2; */
