@@ -98,7 +98,8 @@ void *insert_records_thd(void *arg)
 
     if ((ret = cdb2_open(&sqlh, c->dbname, c->stage, 0)) != 0)
     {
-        fprintf(stderr, "Error getting sql handle, ret=%d\n", ret);
+        fprintf(stderr, "%s error opening db, dbname=%s ret=%d\n",
+                __func__, c->dbname, ret);
         exit(1);
     }
 
@@ -198,7 +199,8 @@ void *update_records_thd(void *arg)
 
     if ((ret = cdb2_open(&sqlh, c->dbname, c->stage, 0)) != 0)
     {
-        fprintf(stderr, "Error opening db, ret=%d\n", ret);
+        fprintf(stderr, "%s error opening db, dbname=%s ret=%d\n",
+                __func__, c->dbname, ret);
         exit(1);
     }
 
@@ -245,7 +247,7 @@ void *update_records_thd(void *arg)
         }
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
         {
-            fprintf(stderr, "error selecting record id=%d, ret=%d.\n", id, ret);
+            fprintf(stderr, "error selecting record id=%ld, ret=%d.\n", id, ret);
             exit(1);
         }
 
@@ -278,7 +280,7 @@ void *update_records_thd(void *arg)
         while(ret == CDB2_OK);
 
         if(sum < 20000) {
-           fprintf(stderr, "id = %d, sum = %lld < 20,000\n", id, sum);
+           fprintf(stderr, "id = %ld, sum = %lld < 20,000\n", id, sum);
            exit(1);
         }
 
@@ -296,7 +298,7 @@ void *update_records_thd(void *arg)
         }
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
         {
-            fprintf(stderr, "error selecting record id=%d and acct=%d, ret=%d.\n", id, acct, ret);
+            fprintf(stderr, "error selecting record id=%ld and acct=%ld, ret=%d.\n", id, acct, ret);
             exit(1);
         }
 
@@ -358,7 +360,7 @@ void *update_records_thd(void *arg)
         }
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
         {
-            fprintf(stderr, "error selecting record id=%d and acct=%d, ret=%d.\n", id, acct, ret);
+            fprintf(stderr, "error selecting record id=%ld and acct=%ld, ret=%d.\n", id, acct, ret);
             exit(1);
         }
         do
