@@ -12,6 +12,15 @@
 
 static char *argv0 = NULL;
 
+void failexit(const char *func, int line, int rc)
+{
+    fprintf(stderr, "%s line %d called exit with rc %d\n",
+            func, line, rc);
+    fflush(stderr);
+    fflush(stdout);
+    exit(rc);
+}
+
 void usage(FILE *f)
 {
     fprintf(f, "Usage: %s <cmd-line>\n", argv0);
@@ -83,7 +92,7 @@ void *schedule_thd(void *arg)
     if (f == NULL) {
         fprintf(stderr, "%s:%d Error opening log file %s\n", __func__, __LINE__,
                 sql);
-        exit(1);
+        failexit(__func__, __LINE__, 1);
     }
 
     char *conf = getenv("CDB2_CONFIG");
@@ -94,7 +103,7 @@ void *schedule_thd(void *arg)
                 __LINE__, ret);
         fprintf(stderr, "%s:%d Error getting sql handle, ret=%d\n", __func__,
                 __LINE__, ret);
-        exit(1);
+        failexit(__func__, __LINE__, 1);
     }
 
     cdb2_set_debug_trace(sqlh);
@@ -106,7 +115,7 @@ void *schedule_thd(void *arg)
                     __func__, __LINE__, ret);
             fprintf(stderr, "%s:%d Error setting transaction level ret=%d.\n",
                     __func__, __LINE__, ret);
-            exit(1);
+            failexit(__func__, __LINE__, 1);
         }
         do {
             ret = cdb2_next_record(sqlh);
@@ -167,7 +176,7 @@ void *schedule_thd(void *arg)
                     fprintf(stderr,
                             "%s:%d Unexpected type from cdb2_next_record, %d\n",
                             __func__, __LINE__, type);
-                    exit(1);
+                    failexit(__func__, __LINE__, 1);
                 }
                 ids[n++] = instid;
                 ret = cdb2_next_record(sqlh);
@@ -293,7 +302,7 @@ retry_add:
                         cdb2_errstr(sqlh));
                 fprintf(stderr, "BUG in thread %ld: FAILED TO INSERT: RET %d, ERR %s\n",
                         host, ret, cdb2_errstr(sqlh));
-                exit(1);
+                failexit(__func__, __LINE__, 1);
             }
         } else if (ret == CDB2ERR_CONSTRAINTS) {
             fprintf(f, "LOST TO ANOTHER THREAD\n");
@@ -308,7 +317,7 @@ retry_add:
                     cdb2_errstr(sqlh));
             fprintf(stderr, "BUG in thread %ld: FAILED TO UPDATE: RET %d, ERR %s\n", 
                     host, ret, cdb2_errstr(sqlh));
-            exit(1);
+            failexit(__func__, __LINE__, 1);
         }
         do {
             ret = cdb2_next_record(sqlh);
@@ -338,7 +347,7 @@ int schedule(config_t *c)
 
         if ((ret = pthread_create(&thds[i], &attr, schedule_thd, upd)) != 0) {
             fprintf(stderr, "Error creating pthread, ret=%d\n", ret);
-            exit(1);
+            failexit(__func__, __LINE__, 1);
         }
     }
 
@@ -405,7 +414,7 @@ int main(int argc, char *argv[])
     }
     /* Punt if there were errors. */
     if (err) {
-        exit(1);
+        failexit(__func__, __LINE__, 1);
     }
 
     printf(
@@ -430,7 +439,7 @@ int main(int argc, char *argv[])
     /* Punt if there were errors. */
     if (err) {
         usage(stderr);
-        exit(1);
+        failexit(__func__, __LINE__, 1);
     }
 
     schedule(c);
