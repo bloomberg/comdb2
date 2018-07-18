@@ -80,6 +80,7 @@ add_library(sqlite
   src/trigger.c
   src/update.c
   src/utf.c
+  src/upsert.c
   src/util.c
   src/vdbe.c
   src/vdbeapi.c
@@ -93,6 +94,7 @@ add_library(sqlite
   src/where.c
   src/wherecode.c
   src/whereexpr.c
+  src/window.c
 )
 include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(${SQLITE_FLAGS})
