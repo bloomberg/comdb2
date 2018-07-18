@@ -461,7 +461,7 @@ static int expertBestIndex(sqlite3_vtab *pVtab, sqlite3_index_info *pIdxInfo){
        && (pCons->op & opmask) 
       ){
         IdxConstraint *pNew;
-        const char *zColl = sqlite3_vtab_collation(dbv, i);
+        const char *zColl = sqlite3_vtab_collation(pIdxInfo, i);
         pNew = idxNewConstraint(&rc, zColl);
         if( pNew ){
           pNew->iCol = pCons->iColumn;
@@ -1751,7 +1751,7 @@ sqlite3expert *sqlite3_expert_new(sqlite3 *db, char **pzErrmsg){
     /* COMDB2 MODIFICATION */
     rc = sqlite3_open(":memory:", &pNew->dbm, NULL);
     if( rc==SQLITE_OK ){
-      sqlite3_db_config(pNew->dbm, SQLITE_DBCONFIG_FULL_EQP, 1, (int*)0);
+      sqlite3_db_config(pNew->dbm, SQLITE_DBCONFIG_TRIGGER_EQP, 1, (int*)0);
     }
   }
 
