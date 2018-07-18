@@ -53,6 +53,7 @@ struct comdb2_metrics_store {
     double concurrent_sql;
     double concurrent_connections;
     int64_t ismaster;
+    uint64_t num_sc_done;
 };
 
 static struct comdb2_metrics_store stats;
@@ -116,6 +117,8 @@ comdb2_metric gbl_metrics[] = {
      &stats.start_time, NULL},
     {"threads", "Number of threads",  STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.threads, NULL},
+    {"num_sc_done", "Number of schema changes done", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.num_sc_done, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -165,6 +168,7 @@ int refresh_metrics(void)
     int rc;
     const struct bdb_thread_stats *pstats;
     extern int active_appsock_conns;
+    int bdberr;
 
     /* Check whether the server is exiting. */
     if (thedb->exiting || thedb->stopped)
@@ -244,6 +248,12 @@ int refresh_metrics(void)
     stats.concurrent_connections = time_metric_average(thedb->connections);
     int master = bdb_whoismaster((bdb_state_type*) thedb->bdb_env) == gbl_mynode ? 1 : 0; 
     stats.ismaster = master;
+    rc = bdb_get_num_sc_done (((bdb_state_type*) thedb->bdb_env), NULL,
+                              (unsigned long long*)&stats.num_sc_done, &bdberr);
+    if (rc) {
+        fprintf(stderr, "failed to refresh metrics (%s:%d)\n", __FILE__, __LINE__);
+        return 1;
+    }
 
     return 0;
 }

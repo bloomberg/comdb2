@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include <alloca.h>
 #include <string.h>
 #include <strings.h>
 #include <limits.h>
@@ -160,7 +159,8 @@ typedef enum {
     LLMETA_DEFAULT_VERSIONED_SP = 43,
     LLMETA_TABLE_USER_SCHEMA = 44,
     LLMETA_USER_PASSWORD_HASH = 45,
-    LLMETA_FVER_FILE_TYPE_QDB = 46 /* file version for a dbqueue */
+    LLMETA_FVER_FILE_TYPE_QDB = 46, /* file version for a dbqueue */
+    LLMETA_TABLE_NUM_SC_DONE = 47
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -4424,6 +4424,96 @@ done:
         logmsg(LOGMSG_INFO, "Deleted SP %s:%d\n", sp_name, lua_ver);
     else
         logmsg(LOGMSG_ERROR, "%s %s:%d rc:%d\n", __func__, sp_name, lua_ver, rc);
+    return rc;
+}
+
+
+int bdb_get_num_sc_done(bdb_state_type *bdb_state, tran_type *tran, unsigned long long *num,
+                        int *bdberr)
+{
+    int rc;
+    char key[LLMETA_IXLEN] = {0};
+    struct llmeta_file_type_key file_type_key;
+    int fndlen;
+    *num = 0;
+    uint8_t *p_buf=(uint8_t *)key,
+        *p_buf_end=(p_buf + LLMETA_IXLEN);
+    unsigned long long tmpnum;
+
+    *bdberr = BDBERR_NOERROR;
+
+    file_type_key.file_type = LLMETA_TABLE_NUM_SC_DONE;
+
+    if(!(llmeta_file_type_key_put(&(file_type_key),p_buf, p_buf_end)))
+    {
+        fprintf( stderr, "%s: llmeta_file_type_key_put returns NULL\n",__func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, &tmpnum,
+            sizeof(tmpnum), &fndlen, bdberr);
+
+    tmpnum = flibc_ntohll(tmpnum);
+
+    if(rc == 0)
+        *num = tmpnum;
+    else
+        *num = 0;
+    return 0;
+}
+
+int bdb_increment_num_sc_done(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
+{
+    int rc;
+    int started_our_own_transaction = 0;
+    char key[LLMETA_IXLEN] = {0};
+    unsigned long long num = 0;
+
+    struct llmeta_file_type_key file_type_key;
+    uint8_t *p_buf=(uint8_t *)key,
+        *p_buf_end=(p_buf + LLMETA_IXLEN);
+
+    *bdberr = BDBERR_NOERROR;
+
+    if (tran == NULL) {
+        /* This function needs to be called with a parent transaction.*/
+        return -1;
+    }
+
+    file_type_key.file_type = LLMETA_TABLE_NUM_SC_DONE;
+
+    if(!(llmeta_file_type_key_put(&(file_type_key),p_buf, p_buf_end)))
+    {
+        fprintf( stderr, "%s: llmeta_file_type_key_put returns NULL\n",__func__);
+        *bdberr = BDBERR_BADARGS;
+        rc = -1;
+        goto done;
+    }
+
+    rc = bdb_get_num_sc_done(bdb_state, tran, &num, bdberr);
+    if (rc) {
+        if (*bdberr == BDBERR_FETCH_DTA) {
+            num = 1;
+            num = flibc_htonll(num);
+            rc = bdb_lite_add(llmeta_bdb_state, tran, &num, sizeof(unsigned long long), key, bdberr);
+            goto done;
+        }
+        else
+            goto done;
+    }
+
+    rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
+    if (rc && *bdberr != BDBERR_DEL_DTA)
+        goto done;
+
+    num++;
+
+    num = flibc_htonll(num);
+
+    rc = bdb_lite_add(llmeta_bdb_state, tran, &num, sizeof(unsigned long long), key, bdberr);
+
+done:
     return rc;
 }
 
