@@ -160,6 +160,9 @@ Expr *sqlite3LimitWhere(
   */
   if( pOrderBy && pLimit==0 ) {
     sqlite3ErrorMsg(pParse, "ORDER BY without LIMIT on %s", zStmtType);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+limit_where_cleanup:
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3ExprDelete(pParse->db, pWhere);
     sqlite3ExprListDelete(pParse->db, pOrderBy);
     return 0;
