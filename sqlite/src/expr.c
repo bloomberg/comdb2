@@ -4936,6 +4936,10 @@ void sqlite3ExprIfFalseDup(Parse *pParse, Expr *pExpr, int dest,int jumpIfNull){
   sqlite3ExprDelete(db, pCopy);
 }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#include <memcompare.c>
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** Expression pVar is guaranteed to be an SQL variable. pExpr may be any
 ** type of expression.
