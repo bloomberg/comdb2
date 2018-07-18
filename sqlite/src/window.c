@@ -827,7 +827,11 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
     assert( p->pSrc || db->mallocFailed );
     if( p->pSrc ){
       p->pSrc->a[0].pSelect = pSub;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      sqlite3SrcListAssignCursors(pParse, p->pSrc, p->op==TK_SELECTV || p->recording);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3SrcListAssignCursors(pParse, p->pSrc);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( sqlite3ExpandSubquery(pParse, &p->pSrc->a[0]) ){
         rc = SQLITE_NOMEM;
       }else{
