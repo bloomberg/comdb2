@@ -4045,7 +4045,7 @@ int sqlite3_bind_zeroblob64(sqlite3_stmt*, int, sqlite3_uint64);
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3_bind_datetime(sqlite3_stmt *pStmt, int i, dttz_t *dt, char *tz);
-int sqlite3_bind_interval(sqlite3_stmt *pStmt, int i, intv_t it);
+int sqlite3_bind_interval(sqlite3_stmt *pStmt, int i, intv_t *it);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*

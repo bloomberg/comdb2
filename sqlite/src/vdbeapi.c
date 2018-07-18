@@ -1546,7 +1546,7 @@ static int bindDatetime(
 
 static int bindInterval(
   sqlite3_stmt *pStmt, 
-  int i, intv_t it
+  int i, intv_t *it
 ){
   Vdbe *p = (Vdbe *) pStmt;
   Mem *pVar;
@@ -1556,7 +1556,7 @@ static int bindInterval(
   pVar = &p->aVar[i-1];
   pVar->flags = MEM_Interval;
   pVar->flags &= ~(MEM_Str|MEM_Static|MEM_Dyn|MEM_Ephem);
-  pVar->du.tv = it;
+  pVar->du.tv = *it;
   pVar->xDel = NULL;
   pVar->enc = 0;
   pVar->tz = NULL;
@@ -1574,7 +1574,7 @@ int sqlite3_bind_datetime(
 
 int sqlite3_bind_interval(
   sqlite3_stmt *pStmt,
-  int i, intv_t it
+  int i, intv_t *it
 ){
   return bindInterval(pStmt, i, it);
 }
