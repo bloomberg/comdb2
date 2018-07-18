@@ -127,6 +127,10 @@ extern "C" {
 #define SQLITE_VERSION_NUMBER --VERSION-NUMBER--
 #define SQLITE_SOURCE_ID      "--SOURCE-ID--"
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#include <types.h>
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** CAPI3REF: Run-Time Library Version Numbers
 ** KEYWORDS: sqlite3_version sqlite3_sourceid
@@ -452,9 +456,27 @@ int sqlite3_exec(
 #define SQLITE_ROW         100  /* sqlite3_step() has another row ready */
 #define SQLITE_DONE        101  /* sqlite3_step() has finished executing */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define SQLITE_DEADLOCK    200  /* deadlock happened, transaction aborted */
-#define SQLITE_ACCESS      201  /* failed permissions */
-#define SQLITE_LIMIT       202  /* query hit configured max cost */
+#define SQLITE_SCHEMA_REMOTE      50 /* distributed schema has inconsistent 
+                                      * local cache */
+#define SQLITE_DEADLOCK          200 /* deadlock happened, transaction aborted */
+#define SQLITE_ACCESS            201 /* failed permissions */
+#define SQLITE_LIMIT             202 /* query hit configured max cost */
+#define SQLITE_TRANTOOCOMPLEX    204 /* I refuse to use 203 for this */
+#define SQLITE_TRAN_CANCELLED    205 /* resource had to be freed, transaction
+                                      * was aborted */
+#define SQLITE_TRAN_NOLOG        206 /* log has been freed, unable to maintain
+                                      * snapshot */
+#define SQLITE_TRAN_NOUNDO       207 /* the database suffered an NON-undoable
+                                      * operation: fastinit, sc */
+#define SQLITE_CONV_ERROR        208 /* error converting types, sqlite_column_*
+                                      * routines */
+#define SQLITE_COMDB2SCHEMA      209 /* The current Vdbe has been changed under
+                                      * the hood (the compiled statement
+                                      * executed comdb2 custom code) */
+#define SQLITE_CLIENT_CHANGENODE 210 /* Ask the client api to retry against
+                                      * another node */
+#define SQLITE_DDL_MISUSE        211 /* overlapping tables detected in
+                                      * transactional DDLs */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /* end-of-error-codes */
 
@@ -3299,9 +3321,15 @@ void sqlite3_progress_handler(sqlite3*, int, int(*)(void*), void*);
 **
 ** See also: [sqlite3_temp_directory]
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+struct sqlthdstate;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 int sqlite3_open(
   const char *filename,   /* Database filename (UTF-8) */
   sqlite3 **ppDb          /* OUT: SQLite db handle */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ,struct sqlthdstate *
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 );
 int sqlite3_open16(
   const void *filename,   /* Database filename (UTF-16) */
@@ -3722,6 +3750,19 @@ int sqlite3_prepare16_v3(
   const void **pzTail     /* OUT: Pointer to unused portion of zSql */
 );
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+enum { SQLITE3_ENABLE_QUERY_PLAN = 1 };
+
+int sqlite3_prepare_flags(
+  sqlite3 *db,
+  const char *zSql,
+  int nBytes,
+  sqlite3_stmt **ppStmt,
+  const char** pzTail,
+  int flags
+);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** CAPI3REF: Retrieving Statement SQL
 ** METHOD: sqlite3_stmt
@@ -4000,11 +4041,12 @@ int sqlite3_bind_text64(sqlite3_stmt*, int, const char*, sqlite3_uint64,
 int sqlite3_bind_value(sqlite3_stmt*, int, const sqlite3_value*);
 int sqlite3_bind_pointer(sqlite3_stmt*, int, void*, const char*,void(*)(void*));
 int sqlite3_bind_zeroblob(sqlite3_stmt*, int, int n);
+int sqlite3_bind_zeroblob64(sqlite3_stmt*, int, sqlite3_uint64);
+
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3_bind_datetime(sqlite3_stmt *pStmt, int i, dttz_t dt, char *tz);
 int sqlite3_bind_interval(sqlite3_stmt *pStmt, int i, intv_t it);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-int sqlite3_bind_zeroblob64(sqlite3_stmt*, int, sqlite3_uint64);
 
 /*
 ** CAPI3REF: Number Of SQL Parameters
@@ -4100,10 +4142,15 @@ int sqlite3_clear_bindings(sqlite3_stmt*);
 int sqlite3_column_count(sqlite3_stmt *pStmt);
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-const void *sqlite3_value_datetime(sqlite3_value *pVal);
-void sqlite3_result_datetime(sqlite3_context *pCtx, sqlite3_value *pValue);
-const void *sqlite3_column_datetime(sqlite3_stmt *pStmt, int i);
-const void *sqlite3_column_interval(sqlite3_stmt *pStmt, int i, int type);
+const dttz_t *sqlite3_value_datetime(sqlite3_value*);
+const intv_t *sqlite3_value_interval(sqlite3_value*, int type);
+
+void sqlite3_result_datetime(sqlite3_context*, dttz_t*, const char *tz);
+void sqlite3_result_interval(sqlite3_context*, intv_t*);
+void sqlite3_result_decimal(sqlite3_context*, decQuad*);
+
+const dttz_t *sqlite3_column_datetime(sqlite3_stmt *pStmt, int i);
+const intv_t *sqlite3_column_interval(sqlite3_stmt *pStmt, int i, int type);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -4363,9 +4410,11 @@ int sqlite3_data_count(sqlite3_stmt *pStmt);
 #define SQLITE_DATETIME       6
 #define SQLITE_INTERVAL_YM    7
 #define SQLITE_INTERVAL_DS    8
-#define SQLITE_DATETIMEH      9
+#define SQLITE_DATETIMEUS     9
 #define SQLITE_INTERVAL_DSUS 10
 #define SQLITE_DECIMAL       11
+
+#define comdb2_is_valid_type(tp) ((SQLITE_INTEGER <= tp) && (tp <= SQLITE_DECIMAL))
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -4588,6 +4637,11 @@ int sqlite3_column_bytes(sqlite3_stmt*, int iCol);
 int sqlite3_column_bytes16(sqlite3_stmt*, int iCol);
 int sqlite3_column_type(sqlite3_stmt*, int iCol);
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int sqlite3_hasNColumns(sqlite3_stmt*, int iCol);
+int sqlite3_isColumnNullType(sqlite3_stmt*, int iCol);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** CAPI3REF: Destroy A Prepared Statement Object
 ** DESTRUCTOR: sqlite3_stmt
@@ -4646,6 +4700,8 @@ int sqlite3_reset(sqlite3_stmt *pStmt);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 /* Reset tspec of Prepared Statement. */
 int sqlite3_resetclock(sqlite3_stmt *pStmt);
+char *stmt_tzname(sqlite3_stmt *);
+void stmt_set_dtprec(sqlite3_stmt *, int);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -6072,6 +6128,10 @@ int sqlite3_table_column_metadata(
   int *pAutoinc               /* OUTPUT: True if column is auto-increment */
 );
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+char* sqlite3_prepare_plan(sqlite3_stmt *stmt);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** CAPI3REF: Load An Extension
 ** METHOD: sqlite3
@@ -6207,6 +6267,15 @@ int sqlite3_cancel_auto_extension(void(*xEntryPoint)(void));
 ** registered using [sqlite3_auto_extension()].
 */
 void sqlite3_reset_auto_extension(void);
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int sqlite3_stmt_has_remotes(sqlite3_stmt *stmt);
+
+const char *sqlite3_fingerprint(sqlite3*);
+int sqlite3_fingerprint_size(sqlite3*);
+int sqlite3_fingerprint_enable(sqlite3*);
+int sqlite3_fingerprint_disable(sqlite3*);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** The interface to the virtual-table mechanism is currently considered
