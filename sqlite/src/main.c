@@ -117,10 +117,10 @@ char *sqlite3_temp_directory = 0;
 char *sqlite3_data_directory = 0;
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-static void sqlite3PCacheBufferSetup(void *, int sz, int n){ return; }
-static int sqlite3PcacheInitialize(void){ return 0; }
-static void sqlite3PcacheShutdown(void){ return; }
-static void sqlite3PCacheSetDefault(void){ return; }
+void sqlite3PCacheBufferSetup(void *, int sz, int n){ return; }
+int sqlite3PcacheInitialize(void){ return 0; }
+void sqlite3PcacheShutdown(void){ return; }
+void sqlite3PCacheSetDefault(void){ return; }
 int sqlite3HeaderSizeBtree(void){ return 0; }
 int sqlite3HeaderSizePcache(void){ return 0; }
 int sqlite3HeaderSizePcache1(void){ return 0; }
