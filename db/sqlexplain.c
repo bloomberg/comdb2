@@ -843,12 +843,12 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         if (info && info->aSortOrder) {
             int i;
             strbuf_append(out, " sort order (");
-            for (i = 0; i < info->nField; i++) {
+            for (i = 0; i < info->nAllField; i++) {
                 if (info->aSortOrder[i])
                     strbuf_append(out, "desc");
                 else
                     strbuf_append(out, "asc");
-                if (i != info->nField - 1)
+                if (i != info->nAllField - 1)
                     strbuf_append(out, ", ");
             }
             strbuf_append(out, ")");
@@ -885,7 +885,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, "If no such records exist, go to %d", op->p2);
         break;
     }
-    case OP_Seek:
+    case OP_DeferredSeek:
         strbuf_appendf(out, "Move cursor [%d] to rowid of index cursor [%d]",
                        op->p1, op->p2);
         break;
@@ -939,7 +939,6 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_append(
             out, "Move change counter to database handle's change counter.");
         break;
-    case OP_RowKey:
     case OP_RowData:
         strbuf_appendf(out, "R%d = %s from cursor [%d] on ", op->p2,
                        op->opcode == OP_RowKey ? "key" : "data", op->p1);
@@ -973,13 +972,11 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
                        op->p1);
         break;
     case OP_Next:
-    case OP_NextIfOpen:
         strbuf_appendf(
             out, "Move cursor [%d] to next entry. If entry exists, go to %d",
             op->p1, op->p2);
         break;
     case OP_Prev:
-    case OP_PrevIfOpen:
         strbuf_appendf(
             out,
             "Move cursor [%d] to previous entry. If entry exists, go to %d",
@@ -1064,8 +1061,8 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, "If R%d != 0 then R%d -= %d, jump to %d", op->p1,
                        op->p1, op->p3, op->p2);
         break;
-    case OP_AggStep0:
     case OP_AggStep:
+    case OP_AggStep1:
         strbuf_appendf(out, "R%d = %s(", op->p3,
                        ((struct FuncDef *)op->p4.pFunc)->zName);
         for (int i = 0; i < op->p5; ++i) {
@@ -1100,12 +1097,12 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         if (info && info->aSortOrder) {
             int i;
             strbuf_append(out, " sort order (");
-            for (i = 0; i < info->nField; i++) {
+            for (i = 0; i < info->nAllField; i++) {
                 if (info->aSortOrder[i])
                     strbuf_append(out, "desc");
                 else
                     strbuf_append(out, "asc");
-                if (i != info->nField - 1)
+                if (i != info->nAllField - 1)
                     strbuf_append(out, ", ");
             }
             strbuf_append(out, ")");
@@ -1139,9 +1136,9 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_append(out, "Read and parse all entries from the MASTER tables");
         break;
 
-    case OP_CreateTable:
+    case OP_CreateBtree:
         strbuf_appendf(
-            out, "Create new temp table. Root page number of the new table "
+            out, "Create new btree. Root page number of the new btree "
                  "in R%d ",
             op->p2);
         break;
