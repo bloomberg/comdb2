@@ -24,8 +24,6 @@
 #include <zlib.h>
 #include "cdb2_constants.h"
 
-#include <keywordhash.h>
-
 extern pthread_key_t query_info_key;
 extern int gbl_commit_sleep;
 extern int gbl_convert_sleep;
@@ -1580,7 +1578,7 @@ int comdb2genidcontainstime(void)
 
 int producekw(OpFunc *f)
 {
-    for (int i=0; i < SQLITE_N_KEYWORD; i++)
+    for (int i=0; i < sqlite3_keyword_count(); i++)
     {
         const char *zName = 0;
         int nName = 0;
@@ -1598,7 +1596,7 @@ void comdb2getkw(Parse* pParse, int arg)
     Vdbe *v  = sqlite3GetVdbe(pParse);
     const char* colname[] = {"Keyword"};
     const int coltype = OPFUNC_STRING_TYPE;
-    OpFuncSetup stp = {1, colname, &coltype, SQLITE_N_KEYWORD};
+    OpFuncSetup stp = { 1, colname, &coltype, sqlite3_keyword_count() };
     comdb2prepareOpFunc(v, pParse, arg, NULL, &producekw, (vdbeFuncArgFree)  &free, &stp);
 
 }
