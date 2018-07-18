@@ -125,7 +125,7 @@ extern "C" {
 */
 #define SQLITE_VERSION        "3.25.0"
 #define SQLITE_VERSION_NUMBER 3025000
-#define SQLITE_SOURCE_ID      "2018-07-11 13:34:24 d120c45f3dc79f67afed0e44e5133569f784bc6792b15f5d79529deac2d1alt1"
+#define SQLITE_SOURCE_ID      "2018-07-18 16:00:28 db77b80ad4aaac70e7cd09847170ce562ceeb884c133203b301398c12e2ealt1"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -4044,7 +4044,7 @@ SQLITE_API int sqlite3_bind_zeroblob(sqlite3_stmt*, int, int n);
 SQLITE_API int sqlite3_bind_zeroblob64(sqlite3_stmt*, int, sqlite3_uint64);
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-SQLITE_API int sqlite3_bind_datetime(sqlite3_stmt *pStmt, int i, dttz_t dt, char *tz);
+SQLITE_API int sqlite3_bind_datetime(sqlite3_stmt *pStmt, int i, dttz_t *dt, char *tz);
 SQLITE_API int sqlite3_bind_interval(sqlite3_stmt *pStmt, int i, intv_t it);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
