@@ -17,6 +17,8 @@
 #ifndef INCLUDED_AVERAGER_H
 #define INCLUDED_AVERAGER_H
 
+#include <time.h>
+
 struct averager;
 struct averager *averager_new(int limit, int maxpoints);
 void averager_add(struct averager *avg, int value, int now);
