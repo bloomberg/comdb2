@@ -2794,35 +2794,37 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
           Implicitly add a new DUP key if a matching local index was not found.
         */
         if (key_found == 0) {
-            ExprList idx_cols;
-
-            idx_cols.nExpr = listc_size(&constraint->child_idx_col_list);
-            idx_cols.a = (struct ExprList_item *)comdb2_calloc(
-                ctx->mem, listc_size(&constraint->child_idx_col_list),
-                sizeof(struct ExprList_item));
-            if (idx_cols.a == 0)
-                goto oom;
-
+            ExprList *pList = 0;
             int i = 0;
+
             LISTC_FOR_EACH(&constraint->child_idx_col_list, child_idx_column,
                            lnk)
             {
-                idx_cols.a[i].pExpr = comdb2_calloc(ctx->mem, 1, sizeof(Expr));
-                if (idx_cols.a[i].pExpr == 0)
-                    goto oom;
+                Token x;
 
-                idx_cols.a[i].pExpr->u.zToken = child_idx_column->name;
-                idx_cols.a[i].zName = child_idx_column->name;
+                x.z = child_idx_column->name;
+                x.n = strlen(child_idx_column->name);
+
+                Expr *pExpr = sqlite3ExprAlloc(pParse->db, TK_ID, &x, 0);
+                if (pExpr == 0) goto oom;
+
+                pList = sqlite3ExprListAppend(pParse, pList, pExpr);
+                if (pList == 0) goto oom;
+
+                sqlite3ExprListSetName(pParse, pList, &x, 0);
+                if( pParse->db->mallocFailed ) goto oom;
+
                 if (child_idx_column->flags & INDEX_ORDER_DESC) {
-                    idx_cols.a[i].sortOrder = SQLITE_SO_DESC;
+                    pList->a[i].sortOrder = SQLITE_SO_DESC;
                 } else {
-                    idx_cols.a[i].sortOrder = SQLITE_SO_ASC;
+                    pList->a[i].sortOrder = SQLITE_SO_ASC;
                 }
+
                 i++;
             }
 
             comdb2AddIndex(pParse, 0 /* Key name will be generated */,
-                           &idx_cols, 0, 0, 0, 0, 0, SQLITE_IDXTYPE_DUPKEY, 0);
+                           pList, 0, 0, 0, 0, 0, SQLITE_IDXTYPE_DUPKEY, 0);
             if (pParse->rc)
                 goto cleanup;
 
