@@ -369,6 +369,8 @@ struct plugin_callbacks {
     log_context_func *log_context; /* newsql_log_context */
     ret_uint64_func *get_client_starttime; /* newsql_get_client_starttime */
     plugin_func *get_client_retries;       /* newsql_get_client_retries */
+    plugin_func
+        *skip_intrans_response; /* plugin specific skip response logic */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
@@ -403,6 +405,7 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, log_context);                         \
         make_plugin_callback(clnt, name, get_client_starttime);                \
         make_plugin_callback(clnt, name, get_client_retries);                  \
+        make_plugin_callback(clnt, name, skip_intrans_response);               \
     } while (0)
 
 int param_count(struct sqlclntstate *);
