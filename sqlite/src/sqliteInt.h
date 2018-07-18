@@ -678,6 +678,7 @@
 #ifndef SQLITE_DEFAULT_PCACHE_INITSZ
 # define SQLITE_DEFAULT_PCACHE_INITSZ 20
 #endif
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Default value for the SQLITE_CONFIG_SORTERREF_SIZE option.
@@ -694,7 +695,6 @@
 #if defined(SQLITE_MMAP_READWRITE) && defined(SQLITE_ENABLE_BATCH_ATOMIC_WRITE)
 #error Cannot use both SQLITE_MMAP_READWRITE and SQLITE_ENABLE_BATCH_ATOMIC_WRITE
 #endif
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** GCC does not define the offsetof() macro so we'll have to do it
