@@ -83,7 +83,8 @@ timepart_stats
 
 # we need to scrub dbname from alpha
 sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
-sed "s/--host \w* //g" $OUT > $OUT.nohost
+# Strip out --host <args> 
+sed "s/--host\s*\S*\s*//g" $OUT > $OUT.nohost
 
 
 difs=`diff $OUT.nohost $OUT.alpha.actual`
