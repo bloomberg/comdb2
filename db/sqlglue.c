@@ -5981,7 +5981,7 @@ done:
 const void *sqlite3BtreePayloadFetch(BtCursor *pCur, u32 *pAmt)
 {
   assert( pCur );
-  if( pCur->idxnum==-1 ){
+  if( pCur->ixnum==-1 ){
     return sqlite3BtreeDataFetch(pCur, pAmt);
   }else{
     return sqlite3BtreeKeyFetch(pCur, pAmt);
@@ -7966,9 +7966,8 @@ int sqlite3BtreeCursor(
     int iTable,               /* Index of root page */
     int wrFlag,               /* 1 for writing.  0 for read-only */
     struct KeyInfo *pKeyInfo, /* First argument to compare function */
-    BtCursor *cur,            /* Space to write cursor structure */
-    int flags)
-{
+    BtCursor *cur             /* Space to write cursor structure */
+){
     int rc = SQLITE_OK;
     static int cursorid = 0;
 
@@ -7987,14 +7986,14 @@ int sqlite3BtreeCursor(
      */
 
     cur->cursorid = cursorid++; /* for debug trace */
-    cur->open_flags = flags;
-    /*printf("Open Cursor rootpage=%d flags=%x\n", iTable, flags);*/
+    cur->open_flags = wrFlag;
+    /*printf("Open Cursor rootpage=%d flags=%x\n", iTable, wrFlag);*/
 
     cur->rootpage = iTable;
     cur->pKeyInfo = pKeyInfo;
 
     if (pBt->is_temporary) { /* temp table */
-        rc = sqlite3BtreeCursor_temptable(pBt, iTable, flags & BTREE_CUR_WR,
+        rc = sqlite3BtreeCursor_temptable(pBt, iTable, wrFlag & BTREE_CUR_WR,
                                           temp_table_cmp, pKeyInfo, cur, thd);
 
         cur->find_cost = cur->move_cost = 0.1;
@@ -8003,19 +8002,19 @@ int sqlite3BtreeCursor(
     /* sqlite_master table */
     else if (iTable == RTPAGE_SQLITE_MASTER && fdb_master_is_local(cur)) {
         rc = sqlite3BtreeCursor_master(
-            pBt, iTable, flags & BTREE_CUR_WR, sqlite3VdbeCompareRecordPacked,
+            pBt, iTable, wrFlag & BTREE_CUR_WR, sqlite3VdbeCompareRecordPacked,
             pKeyInfo, cur, thd, clnt->keyDdl, clnt->dataDdl, clnt->nDataDdl);
         cur->find_cost = cur->move_cost = cur->write_cost = 0.0;
     }
     /* remote cursor? */
     else if (pBt->is_remote) {
-        rc = sqlite3BtreeCursor_remote(pBt, iTable, flags & BTREE_CUR_WR,
+        rc = sqlite3BtreeCursor_remote(pBt, iTable, wrFlag & BTREE_CUR_WR,
                                        sqlite3VdbeCompareRecordPacked, pKeyInfo,
                                        cur, thd);
     }
     /* if this is analyze opening an index */
     else if (has_compressed_index(iTable, cur, thd)) {
-        rc = sqlite3BtreeCursor_analyze(pBt, iTable, flags & BTREE_CUR_WR,
+        rc = sqlite3BtreeCursor_analyze(pBt, iTable, wrFlag & BTREE_CUR_WR,
                                         sqlite3VdbeCompareRecordPacked,
                                         pKeyInfo, cur, thd);
         cur->find_cost = cur->move_cost = 0.1;
@@ -8023,7 +8022,7 @@ int sqlite3BtreeCursor(
     }
     /* real table */
     else {
-        rc = sqlite3BtreeCursor_cursor(pBt, iTable, flags & BTREE_CUR_WR,
+        rc = sqlite3BtreeCursor_cursor(pBt, iTable, wrFlag & BTREE_CUR_WR,
                                        sqlite3VdbeCompareRecordPacked, pKeyInfo,
                                        cur, thd);
         /* treat sqlite_stat1 as free */
@@ -8061,7 +8060,7 @@ int sqlite3BtreeCursor(
 
     reqlog_logf(pBt->reqlogger, REQL_TRACE,
                 "Cursor(pBt %d, iTable %d, wrFlag %d, cursor %d)      = %s\n",
-                pBt->btreeid, iTable, flags & BTREE_CUR_WR,
+                pBt->btreeid, iTable, wrFlag & BTREE_CUR_WR,
                 cur ? cur->cursorid : -1, sqlite3ErrStr(rc));
 
     if (cur && (clnt->dbtran.mode == TRANLEVEL_SERIAL ||
