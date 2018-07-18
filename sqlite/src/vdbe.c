@@ -4249,7 +4249,11 @@ case OP_OpenDup: {
   pCx->isEphemeral = 1;
   pCx->pKeyInfo = pOrig->pKeyInfo;
   pCx->isTable = pOrig->isTable;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  rc = sqlite3BtreeCursor(p, pOrig->pBtx, MASTER_ROOT, BTREE_CUR_WR|BTREE_WRCSR,
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = sqlite3BtreeCursor(pOrig->pBtx, MASTER_ROOT, BTREE_WRCSR,
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
                           pCx->pKeyInfo, pCx->uc.pCursor);
   /* The sqlite3BtreeCursor() routine can only fail for the first cursor
   ** opened for a database.  Since there is already an open cursor when this
