@@ -111,6 +111,7 @@ int cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
 static int cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
 
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t cdb2_cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct cdb2_ssl_sess_list cdb2_ssl_sess_list;
 static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *sessions);
@@ -908,6 +909,7 @@ void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries)
 
 void cdb2_set_comdb2db_config(const char *cfg_file)
 {
+    pthread_mutex_lock(&cdb2_cfg_lock);
     pthread_once(&init_once, do_init_once);
     if (log_calls)
         fprintf(stderr, "%p> %s(\"%s\")\n", (void *)pthread_self(), __func__,
@@ -918,11 +920,13 @@ void cdb2_set_comdb2db_config(const char *cfg_file)
     } else {
         reset_the_configuration();
     }
+    pthread_mutex_unlock(&cdb2_cfg_lock);
 }
 
 void cdb2_set_comdb2db_info(const char *cfg_info)
 {
     int len;
+    pthread_mutex_lock(&cdb2_cfg_lock);
     pthread_once(&init_once, do_init_once);
     if (log_calls)
         fprintf(stderr, "%p> cdb2_set_comdb2db_info(\"%s\")\n",
@@ -933,11 +937,13 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
     }
     if (cfg_info == NULL) {
         reset_the_configuration();
+        pthread_mutex_unlock(&cdb2_cfg_lock);
         return;
     }
     len = strlen(cfg_info) + 1;
     CDB2DBCONFIG_BUF = malloc(len);
     strncpy(CDB2DBCONFIG_BUF, cfg_info, len);
+    pthread_mutex_unlock(&cdb2_cfg_lock);
 }
 
 static inline int get_char(FILE *fp, const char *buf, int *chrno)
@@ -1212,8 +1218,11 @@ static int read_available_comdb2db_configs(
                 __LINE__);
     }
 
-    if (get_config_file(dbname, filename, sizeof(filename)) != 0)
+    pthread_mutex_lock(&cdb2_cfg_lock);
+    if (get_config_file(dbname, filename, sizeof(filename)) != 0) {
+        pthread_mutex_unlock(&cdb2_cfg_lock);
         return -1; // set error string?
+    }
 
     if (num_hosts)
         *num_hosts = 0;
@@ -1265,6 +1274,7 @@ static int read_available_comdb2db_configs(
                           send_stack);
         fclose(fp);
     }
+    pthread_mutex_unlock(&cdb2_cfg_lock);
     return 0;
 }
 
@@ -1971,7 +1981,6 @@ static int cdb2portmux_get(const char *remote_host, const char *app,
 
 void cdb2_use_hint(cdb2_hndl_tp *hndl)
 {
-    pthread_once(&init_once, do_init_once);
     hndl->use_hint = 1;
     if (log_calls) {
         fprintf(stderr, "%p> cdb2_use_hint(%p)\n", (void *)pthread_self(),
@@ -2739,8 +2748,6 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
 {
     int rc = 0;
 
-    pthread_once(&init_once, do_init_once);
-
     if (hndl->in_trans && !hndl->read_intrans_results && !hndl->is_read) {
         rc = CDB2_OK_DONE;
     } else if (hndl->lastresponse && hndl->first_record_read == 0) {
@@ -2769,7 +2776,6 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
 int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
 {
     int rc = 0;
-    pthread_once(&init_once, do_init_once);
 
     while (cdb2_next_record_int(hndl, 0) == CDB2_OK)
         ;
@@ -2819,7 +2825,6 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
 
 int cdb2_close(cdb2_hndl_tp *hndl)
 {
-    pthread_once(&init_once, do_init_once);
     if (log_calls)
         fprintf(stderr, "%p> cdb2_close(%p)\n", (void *)pthread_self(), hndl);
 
@@ -4352,8 +4357,6 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
 {
     int rc = 0, commit_rc;
 
-    pthread_once(&init_once, do_init_once);
-
     if (hndl->temp_trans && hndl->in_trans) {
         cdb2_run_statement_typed_int(hndl, "rollback", 0, NULL, __LINE__);
     }
@@ -4406,7 +4409,6 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
 int cdb2_numcolumns(cdb2_hndl_tp *hndl)
 {
     int rc;
-    pthread_once(&init_once, do_init_once);
     if (hndl->firstresponse == NULL)
         rc = 0;
     else
@@ -4421,7 +4423,6 @@ int cdb2_numcolumns(cdb2_hndl_tp *hndl)
 const char *cdb2_column_name(cdb2_hndl_tp *hndl, int col)
 {
     const char *ret;
-    pthread_once(&init_once, do_init_once);
     if (hndl->firstresponse == NULL)
         ret = NULL;
     else
@@ -4497,8 +4498,6 @@ const char *cdb2_errstr(cdb2_hndl_tp *hndl)
 {
     char *ret;
 
-    pthread_once(&init_once, do_init_once);
-
     if (hndl == NULL)
         ret = "unallocated cdb2 handle";
     else if (hndl->firstresponse == NULL) {
@@ -4553,7 +4552,6 @@ void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
 int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *varname, int type,
                     const void *varaddr, int length)
 {
-    pthread_once(&init_once, do_init_once);
     hndl->n_bindvars++;
     hndl->bindvars = realloc(hndl->bindvars, sizeof(CDB2SQLQUERY__Bindvalue *) *
                                                  hndl->n_bindvars);
@@ -4588,7 +4586,6 @@ int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *varname, int type,
 int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
                     const void *varaddr, int length)
 {
-    pthread_once(&init_once, do_init_once);
     if (log_calls)
         fprintf(stderr, "%p> cdb2_bind_index(%p, %d, %s, %p, %d)\n",
                 (void *)pthread_self(), hndl, index, cdb2_type_str(type),
@@ -4630,7 +4627,6 @@ int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
 
 int cdb2_clearbindings(cdb2_hndl_tp *hndl)
 {
-    pthread_once(&init_once, do_init_once);
     if (log_calls)
         fprintf(stderr, "%p> cdb2_clearbindings(%p)\n", (void *)pthread_self(),
                 hndl);
@@ -5161,7 +5157,6 @@ const char *cdb2_dbname(cdb2_hndl_tp *hndl)
 int cdb2_clone(cdb2_hndl_tp **handle, cdb2_hndl_tp *c_hndl)
 {
     cdb2_hndl_tp *hndl;
-    pthread_once(&init_once, do_init_once);
     *handle = hndl = calloc(1, sizeof(cdb2_hndl_tp));
     strncpy(hndl->dbname, c_hndl->dbname, sizeof(hndl->dbname) - 1);
     strncpy(hndl->cluster, c_hndl->cluster, sizeof(hndl->cluster) - 1);
@@ -5548,7 +5543,9 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     cdb2_hndl_tp *hndl;
     int rc = 0;
 
+    pthread_mutex_lock(&cdb2_cfg_lock);
     pthread_once(&init_once, do_init_once);
+    pthread_mutex_unlock(&cdb2_cfg_lock);
 
     *handle = hndl = calloc(1, sizeof(cdb2_hndl_tp));
     strncpy(hndl->dbname, dbname, sizeof(hndl->dbname) - 1);
