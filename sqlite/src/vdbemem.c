@@ -484,7 +484,6 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
       char *z;
       sqlite3ErrorWithMsg(pMem->db, SQLITE_CONV_ERROR,
             "can't convert datetime value to string");
-      rc = SQLITE_CONV_ERROR;
       pMem->n = strlen("conv_error");
       z = sqlite3GlobalConfig.m.xMalloc(pMem->n+2);
       if( !z ) return SQLITE_NOMEM;
@@ -497,7 +496,7 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
       if( pMem->xDel ) pMem->xDel = 0;
       if( bForce ) pMem->flags &= ~MEM_Datetime;
       sqlite3VdbeChangeEncoding(pMem, enc);
-      return SQLITE_OK;
+      return SQLITE_CONV_ERROR;
     }else{
       char *z;
       pMem->n = strlen(tmp);
@@ -1444,15 +1443,7 @@ int sqlite3VdbeMemFromBtree(
   /* Note: the calls to BtreeKeyFetch() and DataFetch() below assert() 
   ** that both the BtShared and database handle mutexes are held. */
   assert( (pMem->flags & MEM_RowSet)==0 );
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( key ){
-    zData = (char *)sqlite3BtreeKeyFetch(pCur, &available);
-  }else{
-    zData = (char *)sqlite3BtreeDataFetch(pCur, &available);
-  }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   zData = (char *)sqlite3BtreePayloadFetch(pCur, &available);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( zData!=0 );
 
   if( offset+amt<=available ){

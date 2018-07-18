@@ -3869,22 +3869,36 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
 }
 
 /*
- ** Step the cursor to the back to the previous entry in the database.  If
- ** successful then set *pRes=0.  If the cursor
- ** was already pointing to the first entry in the database before
- ** this routine was called, then set *pRes=1.
- */
-int sqlite3BtreePrevious(BtCursor *pCur, int *pRes)
+** Step the cursor to the back to the previous entry in the database.
+** Return values:
+**
+**     SQLITE_OK     success
+**     SQLITE_DONE   the cursor is already on the first element of the table
+**     otherwise     some kind of error occurred
+**
+** The main entry point is sqlite3BtreePrevious().  That routine is optimized
+** for the common case of merely decrementing the cell counter BtCursor.aiIdx
+** to the previous cell on the current page.  The (slower) btreePrevious()
+** helper routine is called when it is necessary to move to a different page
+** or to restore the cursor.
+**
+** If bit 0x01 of the F argument to sqlite3BtreePrevious(C,F) is 1, then
+** the cursor corresponds to an SQL index and this routine could have been
+** skipped if the SQL index had been a unique index.  The F argument is a
+** hint to the implement.  The native SQLite btree implementation does not
+** use this hint, but COMDB2 does.
+*/
+int sqlite3BtreePrevious(BtCursor *pCur, int flags)
 {
     int rc = SQLITE_OK;
     int fndlen;
     void *buf;
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
+    int *pRes = &flags;
 
     if (pCur->empty) {
-        *pRes = 1;
-        return rc;
+        return SQLITE_OK;
     }
 
     if (move_is_nop(pCur, pRes)) {
@@ -5898,6 +5912,83 @@ done:
     reqlog_loghex(pCur->bt->reqlogger, REQL_TRACE, out, *pAmt);
     reqlog_logl(pCur->bt->reqlogger, REQL_TRACE, "\n");
     return out;
+}
+
+/*
+** Read part of the payload for the row at which that cursor pCur is currently
+** pointing.  "amt" bytes will be transferred into pBuf[].  The transfer
+** begins at "offset".
+**
+** pCur can be pointing to either a table or an index b-tree.
+** If pointing to a table btree, then the content section is read.  If
+** pCur is pointing to an index b-tree then the key section is read.
+**
+** For sqlite3BtreePayload(), the caller must ensure that pCur is pointing
+** to a valid row in the table.  For sqlite3BtreePayloadChecked(), the
+** cursor might be invalid or might need to be restored before being read.
+**
+** Return SQLITE_OK on success or an error code if anything goes
+** wrong.  An error is returned if "offset+amt" is larger than
+** the available payload.
+**
+*******************************************************************************
+** NOTE: Given the current architectures of SQLite (i.e. it only calls into
+**       this function from one place) and comdb2 (i.e. it does not expose the
+**       concept of overflow pages to SQLite), it seems highly unlikely this
+**       function will be called; however, if there are changs to SQLite in the
+**       future that call into this function from more places, that may change.
+*******************************************************************************
+*/
+int sqlite3BtreePayload(BtCursor *pCur, u32 offset, u32 amt, void *pBuf){
+  int rc;
+  const void *pSrc;
+  u32 nSrc = 0;
+  u64 endOffset;
+
+  pSrc = sqlite3BtreePayloadFetch(pCur, &nSrc);
+  if( pSrc==0 ){
+    rc = SQLITE_ERROR;
+    goto done;
+  }
+  endOffset = (u64)offset + amt;
+  if( endOffset>=nSrc ){
+    rc = SQLITE_ERROR;
+    goto done;
+  }
+  memcpy(pBuf, pSrc + offset, amt);
+  rc = SQLITE_OK;
+
+done:
+  reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
+              "Payload(pCur %d offset %d amt %d)     = %d\n", pCur->cursorid,
+              offset, amt, rc);
+  reqlog_loghex(pCur->bt->reqlogger, REQL_TRACE, pBuf, amt);
+  reqlog_logl(pCur->bt->reqlogger, REQL_TRACE, "\n");
+  return rc;
+}
+
+/*
+** For the entry that cursor pCur is point to, return as
+** many bytes of the key or data as are available on the local
+** b-tree page.  Write the number of available bytes into *pAmt.
+**
+** The pointer returned is ephemeral.  The key/data may move
+** or be destroyed on the next call to any Btree routine,
+** including calls from other threads against the same cache.
+** Hence, a mutex on the BtShared should be held prior to calling
+** this routine.
+**
+** These routines is used to get quick access to key and data
+** in the common case where no overflow pages are used.
+*/
+const void *sqlite3BtreePayloadFetch(BtCursor *pCur, u32 *pAmt)
+{
+  assert( pCur );
+  if( pCur->idxnum==-1 ){
+    return sqlite3BtreeDataFetch(pCur, pAmt);
+  }else{
+    return sqlite3BtreeKeyFetch(pCur, pAmt);
+  }
 }
 
 /* add the costs of the sorter to the thd costs */

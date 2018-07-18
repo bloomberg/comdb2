@@ -13,8 +13,8 @@
 ** subsystem.  See comments in the source code for a detailed description
 ** of what each interface routine does.
 */
-#ifndef _BTREE_H_
-#define _BTREE_H_
+#ifndef BTREE_H
+#define BTREE_H
 
 /* TODO: This definition is just included so other modules compile. It
 ** needs to be revisited.
@@ -301,11 +301,13 @@ void sqlite3BtreeSkipNext(BtCursor*);
 int sqlite3BtreeLast(BtCursor*, int *pRes);
 int sqlite3BtreeNext(BtCursor*, int);
 int sqlite3BtreeEof(BtCursor*);
-int sqlite3BtreePrevious(BtCursor*, int *pRes);
+int sqlite3BtreePrevious(BtCursor*, int);
 i64 sqlite3BtreeIntegerKey(BtCursor*);
 int sqlite3BtreeKey(BtCursor*, u32 offset, u32 amt, void*);
 const void *sqlite3BtreeKeyFetch(BtCursor*, u32 *pAmt);
 const void *sqlite3BtreeDataFetch(BtCursor*, u32 *pAmt);
+int sqlite3BtreePayload(BtCursor*, u32 offset, u32 amt, void*);
+const void *sqlite3BtreePayloadFetch(BtCursor*, u32 *pAmt);
 u32 sqlite3BtreePayloadSize(BtCursor*);
 int sqlite3BtreeData(BtCursor*, u32 offset, u32 amt, void*);
 

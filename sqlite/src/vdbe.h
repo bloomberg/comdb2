@@ -318,16 +318,10 @@ int sqlite3VdbeRecordCompare(int,const void*,UnpackedRecord*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 static inline
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 int sqlite3VdbeRecordCompareWithSkip(int, const void *, UnpackedRecord *, int);
 UnpackedRecord *sqlite3VdbeAllocUnpackedRecord(KeyInfo*);
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-typedef int (*RecordCompare)(int,const void*,UnpackedRecord*,int);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 typedef int (*RecordCompare)(int,const void*,UnpackedRecord*);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 RecordCompare sqlite3VdbeFindCompare(UnpackedRecord*);
 
 #ifndef SQLITE_OMIT_TRIGGER
