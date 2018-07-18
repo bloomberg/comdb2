@@ -2493,9 +2493,7 @@ static int loadStat4(sqlite3 *db, const char *zDb){
       int x, cmp;
       int iPosGreater = iPos;
       int iPosSmaller = 0;
-      char *pFree = 0;
-      UnpackedRecord *pUnpacked = sqlite3VdbeAllocUnpackedRecord(
-                                                 pIdx->pKeyInfo, 0, 0, &pFree);
+      UnpackedRecord *pUnpacked = sqlite3VdbeAllocUnpackedRecord(pIdx->pKeyInfo);
       if( pUnpacked==0 ){
         sqlite3_finalize(pStmt);
         return SQLITE_NOMEM_BKPT;
@@ -2527,7 +2525,7 @@ static int loadStat4(sqlite3 *db, const char *zDb){
                                        pIdx->aSample[x].p, pUnpacked);
         if( cmp<0 ) break;
       }
-      sqlite3DbFree(db, pFree);
+      sqlite3DbFree(db, pUnpacked);
       /* Make room for sample @pos */
       if( iPos<pIdx->nSample ){
         int k;
