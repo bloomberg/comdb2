@@ -431,13 +431,13 @@ void explain_data_prepare(IndentInfo *p, Vdbe *v)
     int pc;           /* Index of operation in p->aiIndent[] */
 
     const int opNext[] = {OP_Next, OP_Prev, /* OP_VPrev, */ OP_VNext,
-                          OP_SorterNext, OP_NextIfOpen, OP_PrevIfOpen, 0};
+                          OP_SorterNext, 0};
     const int opYield[] = {OP_Yield,      OP_SeekLT, OP_SeekGT,
                            OP_RowSetRead, OP_Rewind, 0};
     const int opGoto[] = {OP_Goto, 0};
 
     const char *azNext[] = {"Next",       "Prev",       "VPrev",      "VNext",
-                            "SorterNext", "NextIfOpen", "PrevIfOpen", 0};
+                            "SorterNext", 0};
     const char *azYield[] = {"Yield",      "SeekLT", "SeekGT",
                              "RowSetRead", "Rewind", 0};
     const char *azGoto[] = {"Goto", 0};
@@ -940,8 +940,8 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
             out, "Move change counter to database handle's change counter.");
         break;
     case OP_RowData:
-        strbuf_appendf(out, "R%d = %s from cursor [%d] on ", op->p2,
-                       op->opcode == OP_RowKey ? "key" : "data", op->p1);
+        strbuf_appendf(out, "R%d = key or data from cursor [%d] on ", op->p2,
+                       op->p1);
         print_cursor_description(out, &cur[op->p1]);
         break;
     case OP_Rowid:
