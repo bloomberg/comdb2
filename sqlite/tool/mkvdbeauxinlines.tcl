@@ -161,8 +161,8 @@ for {set index 0} {$index < $length} {incr index} {
   set chunk($id,data) [string range $data $startIndex $endIndex]
 
   regsub -all -line -- \
-      $pattern(function) $chunk($id,data) {static inline \0} \
-      chunk($id,output)
+      $pattern(function) [string map [list "SQLITE_NOINLINE " ""] \
+      $chunk($id,data)] {static inline \0} chunk($id,output)
 
   incr index
 
