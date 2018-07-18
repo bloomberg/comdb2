@@ -121,7 +121,17 @@ static void attachFunc(
     ** from sqlite3_deserialize() to close database db->init.iDb and
     ** reopen it as a MemDB */
     pVfs = sqlite3_vfs_find("memdb");
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( pVfs==0 ){
+      zErrDyn = sqlite3MPrintf(db,
+                               "%s: the \"memdb\" VFS was not found\n",
+                               __func__);
+      rc = SQLITE_ERROR;
+      goto attach_error;
+    }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pVfs==0 ) return;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pNew = &db->aDb[db->init.iDb];
     if( pNew->pBt ) sqlite3BtreeClose(pNew->pBt);
     pNew->pBt = 0;

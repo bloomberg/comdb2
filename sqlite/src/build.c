@@ -2934,9 +2934,6 @@ void sqlite3CodeDropTable(Parse *pParse, Table *pTab, int iDb, int isView){
   sqlite3 *db = pParse->db;
   Trigger *pTrigger;
   Db *pDb = &db->aDb[iDb];
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  int bDropTable = 0;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   v = sqlite3GetVdbe(pParse);
   assert( v!=0 );
@@ -3008,6 +3005,9 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   Vdbe *v;
   sqlite3 *db = pParse->db;
   int iDb;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int bDropTable = 0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   if( db->mallocFailed ){
     goto exit_drop_table;
