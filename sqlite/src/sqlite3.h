@@ -4141,18 +4141,6 @@ SQLITE_API int sqlite3_clear_bindings(sqlite3_stmt*);
 */
 SQLITE_API int sqlite3_column_count(sqlite3_stmt *pStmt);
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-SQLITE_API const dttz_t *sqlite3_value_datetime(sqlite3_value*);
-SQLITE_API const intv_t *sqlite3_value_interval(sqlite3_value*, int type);
-
-SQLITE_API void sqlite3_result_datetime(sqlite3_context*, dttz_t*, const char *tz);
-SQLITE_API void sqlite3_result_interval(sqlite3_context*, intv_t*);
-SQLITE_API void sqlite3_result_decimal(sqlite3_context*, decQuad*);
-
-SQLITE_API const dttz_t *sqlite3_column_datetime(sqlite3_stmt *pStmt, int i);
-SQLITE_API const intv_t *sqlite3_column_interval(sqlite3_stmt *pStmt, int i, int type);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 /*
 ** CAPI3REF: Column Names In A Result Set
 ** METHOD: sqlite3_stmt
@@ -4638,6 +4626,9 @@ SQLITE_API int sqlite3_column_bytes16(sqlite3_stmt*, int iCol);
 SQLITE_API int sqlite3_column_type(sqlite3_stmt*, int iCol);
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+SQLITE_API const dttz_t *sqlite3_column_datetime(sqlite3_stmt *pStmt, int i);
+SQLITE_API const intv_t *sqlite3_column_interval(sqlite3_stmt *pStmt, int i, int type);
+
 SQLITE_API int sqlite3_hasNColumns(sqlite3_stmt*, int iCol);
 SQLITE_API int sqlite3_isColumnNullType(sqlite3_stmt*, int iCol);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -5037,6 +5028,11 @@ SQLITE_API int sqlite3_value_type(sqlite3_value*);
 SQLITE_API int sqlite3_value_numeric_type(sqlite3_value*);
 SQLITE_API int sqlite3_value_nochange(sqlite3_value*);
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+SQLITE_API const dttz_t *sqlite3_value_datetime(sqlite3_value*);
+SQLITE_API const intv_t *sqlite3_value_interval(sqlite3_value*, int type);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** CAPI3REF: Finding The Subtype Of SQL Values
 ** METHOD: sqlite3_value
@@ -5364,12 +5360,13 @@ SQLITE_API void sqlite3_result_text16be(sqlite3_context*, const void*, int,void(
 SQLITE_API void sqlite3_result_value(sqlite3_context*, sqlite3_value*);
 SQLITE_API void sqlite3_result_pointer(sqlite3_context*, void*,const char*,void(*)(void*));
 SQLITE_API void sqlite3_result_zeroblob(sqlite3_context*, int n);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-SQLITE_API void sqlite3_result_datetime(sqlite3_context*, sqlite3_value*);
-SQLITE_API void sqlite3_result_interval(sqlite3_context*, intv_t*);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 SQLITE_API int sqlite3_result_zeroblob64(sqlite3_context*, sqlite3_uint64 n);
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+SQLITE_API void sqlite3_result_datetime(sqlite3_context*, dttz_t*, const char *tz);
+SQLITE_API void sqlite3_result_interval(sqlite3_context*, intv_t*);
+SQLITE_API void sqlite3_result_decimal(sqlite3_context*, decQuad*);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Setting The Subtype Of An SQL Function
