@@ -3390,7 +3390,8 @@ static int SQLITE_NOINLINE handleDeferredMoveto(VdbeCursor *p){
   /* NOTE: this will only be used for table direct lookup, which is not
      happening for remote cursors */
   rc = sqlite3BtreeMovetoUnpacked(p->uc.pCursor, 0, p->movetoTarget, 
-                OP_Seek /* the only OP that gets you in this mode*/, &res);
+                OP_DeferredSeek /* the only OP that gets you in this mode*/,
+                &res);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = sqlite3BtreeMovetoUnpacked(p->uc.pCursor, 0, p->movetoTarget, 0, &res);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

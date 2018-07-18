@@ -299,7 +299,7 @@ int sqlite3BtreeFirst(BtCursor*, int *pRes);
 void sqlite3BtreeSkipNext(BtCursor*);
 #endif
 int sqlite3BtreeLast(BtCursor*, int *pRes);
-int sqlite3BtreeNext(BtCursor*, int *pRes);
+int sqlite3BtreeNext(BtCursor*, int);
 int sqlite3BtreeEof(BtCursor*);
 int sqlite3BtreePrevious(BtCursor*, int *pRes);
 i64 sqlite3BtreeIntegerKey(BtCursor*);

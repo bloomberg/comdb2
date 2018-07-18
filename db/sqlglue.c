@@ -5195,7 +5195,7 @@ cursor_find_remote(BtCursor *pCur,            /* The cursor to be moved */
                 break;
             case OP_SeekGT:
             case OP_SeekGE:
-            case OP_Seek:
+            case OP_DeferredSeek:
             case OP_NotExists:
                 pCur->next_is_eof = 1;
                 break;
@@ -8381,10 +8381,12 @@ void sqlite3BtreeSkipNext(BtCursor *pCur){
 #endif /* SQLITE_OMIT_WINDOWFUNC */
 
 /*
-** Advance the cursor to the next entry in the database.  If
-** successful then set *pRes=0.  If the cursor
-** was already pointing to the last entry in the database before
-** this routine was called, then set *pRes=1.
+** Advance the cursor to the next entry in the database. 
+** Return value:
+**
+**    SQLITE_OK        success
+**    SQLITE_DONE      cursor is already pointing at the last element
+**    otherwise        some kind of error occurred
 **
 ** The main entry point is sqlite3BtreeNext().  That routine is optimized
 ** for the common case of merely incrementing the cell counter BtCursor.aiIdx
@@ -8392,16 +8394,13 @@ void sqlite3BtreeSkipNext(BtCursor *pCur){
 ** routine is called when it is necessary to move to a different page or
 ** to restore the cursor.
 **
-** The calling function will set *pRes to 0 or 1.  The initial *pRes value
-** will be 1 if the cursor being stepped corresponds to an SQL index and
-** if this routine could have been skipped if that SQL index had been
-** a unique index.  Otherwise the caller will have set *pRes to zero.
-** Zero is the common case. The btree implementation is free to use the
-** initial *pRes value as a hint to improve performance, but the current
-** SQLite btree implementation does not. (Note that the comdb2 btree
-** implementation does use this hint, however.)
+** If bit 0x01 of the F argument in sqlite3BtreeNext(C,F) is 1, then the
+** cursor corresponds to an SQL index and this routine could have been
+** skipped if the SQL index had been a unique index.  The F argument
+** is a hint to the implement.  SQLite btree implementation does not use
+** this hint, but COMDB2 does.
 */
-int sqlite3BtreeNext(BtCursor *pCur, int *pRes)
+int sqlite3BtreeNext(BtCursor *pCur, int flags)
 {
     int rc = SQLITE_OK;
     int fndlen;
@@ -8409,10 +8408,10 @@ int sqlite3BtreeNext(BtCursor *pCur, int *pRes)
 
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
+    int *pRes = &flags;
 
     if (pCur->empty) {
-        *pRes = 1;
-        return rc;
+        return SQLITE_OK;
     }
 
     if (move_is_nop(pCur, pRes)) {
