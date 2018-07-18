@@ -757,9 +757,6 @@ static int codeTriggerProgram(
           sqlite3ExprListDup(db, pStep->pExprList, 0), 
           sqlite3ExprDup(db, pStep->pWhere, 0), 
           pParse->eOrconf, 0, 0, 0
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-          , 0, 0, 0
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         );
         break;
       }
@@ -777,9 +774,6 @@ static int codeTriggerProgram(
         sqlite3DeleteFrom(pParse, 
           targetSrcList(pParse, pStep),
           sqlite3ExprDup(db, pStep->pWhere, 0), 0, 0
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-          , 0, 0, 0
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         );
         break;
       }
