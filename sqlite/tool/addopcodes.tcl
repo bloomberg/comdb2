@@ -22,6 +22,19 @@ close $in
 # ILLEGAL *must* be the last two token codes and they must be in that order.
 #
 set extras {
+  TO_TEXT
+  TO_DATETIME
+  TO_INTERVAL_YE
+  TO_INTERVAL_MO
+  TO_INTERVAL_DY
+  TO_INTERVAL_HO
+  TO_INTERVAL_MI
+  TO_INTERVAL_SE
+  TO_BLOB
+  TO_NUMERIC
+  TO_INT
+  TO_REAL
+  TO_DECIMAL
   TRUEFALSE
   ISNOT
   COLUMN
