@@ -550,6 +550,223 @@ __lock_locker_pagelockcount_pp(dbenv, id, nlocks)
 	return (ret);
 }
 
+static char *mode_to_str(int lpmode)
+{
+    char *mode = NULL;
+	switch (lpmode) {
+	case DB_LOCK_DIRTY:
+		mode = "DIRTY_READ";
+		break;
+	case DB_LOCK_IREAD:
+		mode = "IREAD";
+		break;
+	case DB_LOCK_IWR:
+		mode = "IWR";
+		break;
+	case DB_LOCK_IWRITE:
+		mode = "IWRITE";
+		break;
+	case DB_LOCK_NG:
+		mode = "NG";
+		break;
+	case DB_LOCK_READ:
+		mode = "READ";
+		break;
+	case DB_LOCK_WRITE:
+		mode = "WRITE";
+		break;
+	case DB_LOCK_WRITEADD:
+		mode = "WRITEADD";
+		break;
+	case DB_LOCK_WRITEDEL:
+		mode = "WRITEDEL";
+		break;
+	case DB_LOCK_WWRITE:
+		mode = "WAS_WRITE";
+		break;
+	case DB_LOCK_WAIT:
+		mode = "WAIT";
+		break;
+	default:
+		mode = "UNKNOWN";
+		break;
+	}
+    return mode;
+}
+
+static char *status_to_str(int lpstatus)
+{
+    char *status;
+	switch (lpstatus) {
+	case DB_LSTAT_ABORTED:
+		status = "ABORT";
+		break;
+	case DB_LSTAT_ERR:
+		status = "ERROR";
+		break;
+	case DB_LSTAT_FREE:
+		status = "FREE";
+		break;
+	case DB_LSTAT_HELD:
+		status = "HELD";
+		break;
+	case DB_LSTAT_WAITING:
+		status = "WAIT";
+		break;
+	case DB_LSTAT_PENDING:
+		status = "PENDING";
+		break;
+	case DB_LSTAT_EXPIRED:
+		status = "EXPIRED";
+		break;
+	default:
+		status = "UNKNOWN";
+		break;
+	}
+    return status;
+}
+
+static int
+__collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp, collect_locks_func *func, void *arg)
+{
+	DB_LOCKOBJ *lockobj;
+	db_pgno_t pgno = 0;
+	u_int32_t *fidp, type;
+	u_int8_t *ptr;
+	char *namep = NULL;
+    char rectype[80]='\0';
+    unsigned long long genid;
+    char fileid[DB_FILE_ID_LEN];
+    char tablename[64] = {0};
+	const char *mode, *status;
+
+    mode = mode_to_str(lp->mode);
+    status = status_to_str(lp->status);
+
+    lockobj = lp->lockobj;
+    ptr = lockobj->lockobj.data;
+
+    switch(lockobj->lockobj.size) {
+        case(sizeof(struct __db_ilock)):
+            memcpy(&pgno, ptr, sizeof(db_pgno_t));
+            fidp = (u_int32_t *)(ptr + sizeof(db_pgno_t));
+            type = *(u_int32_t *)(ptr + sizeof(db_pgno_t) + DB_FILE_ID_LEN);
+            if (__dbreg_get_name(lt->dbenv, (u_int8_t *) fidp, &namep) != 0)
+                namep = NULL;
+            switch(type) {
+                case (DB_PAGE_LOCK):
+                    snprintf(rectype, sizeof(rectype), "PAGE %u", pgno);
+                    break;
+                case (DB_HANDLE_LOCK):
+                    snprintf(rectype, sizeof(rectype), "HANDLE");
+                    break;
+                default:
+                    snprintf(rectype, sizeof(rectype), "UNKNOWN");
+                    break;
+            }
+            break;
+
+        /* row or keyhash lock*/
+        case (30):
+            memcpy(fileid, ptr, DB_FILE_ID_LEN);
+            memcpy(&genid, ptr + DB_FILE_ID_LEN + sizeof(short),
+                    sizeof(unsigned long long));
+            fidp = (u_int32_t*) fileid;
+            if (__dbreg_get_name(lt->dbenv, (u_int8_t *)fidp, &namep) != 0)
+                namep = NULL;
+			int l=strlen(namep);
+			logmsgf(LOGMSG_USER, fp, "%-25s", namep);
+			if (l >= 5 && !strncmp(&namep[l-5], "index", 5)) {
+                snprintf(rectype, sizeof(rectype), "KEYHASH %llx", genid);
+            } else {
+                snprintf(rectype, sizeof(rectype), "ROWLOCK %llx", genid);
+            }
+            break;
+
+        case (31):
+            char minmax = 0;
+            memcpy(fileid, ptr, DB_FILE_ID_LEN);
+            memcpy(&minmax, ((char *)ptr)+30, sizeof(char));
+            fidp = (u_int32_t *) fileid;
+            if (__dbreg_get_name(lt->dbenv, (u_int8_t *) fidp, &namep) != 0)
+                namep = NULL;
+            snprintf(rectype, sizeof(rectype), "MINMAX %s", minmax == 0 ? "MIN" : "MAX");
+            break;
+
+        case (32):
+            memcpy(tablename, ptr, 28);
+            snprintf(rectype, sizeof(rectype), "TABLELOCK %s", tablename);
+            break;
+
+        case (20):
+            memcpy(fileid, ptr, DB_FILE_ID_LEN);
+            fidp = (u_int32_t *) fileid;
+            if (__dbreg_get_name(lt->dbenv, (u_int8_t *) fidp, &namep) != 0)
+                namep = NULL;
+            snprintf(rectype, sizeof(rectype), "STRIPELOCK %s", namep ? namep :
+                    "(UNKNOWN)");
+            break;
+
+        /* LSN LOCK .. REALLY?? */
+        case (8):
+            DB_LSN lsn;
+            memcpy(&lsn, ptr, sizeof(DB_LSN));
+            snprintf(rectype, sizeof(rectype), "LSN %u:%u", lsn.file, lsn.offset);
+            break;
+
+        default:
+            snprintf(rectype, sizeof(rectype), "UNKNOWN-TYPE SZ %d:",lockobj->lockobj.size);
+            break;
+    }
+    (*func)(arg, lip->tid, lip->id, mode, status, namep, rectype);
+    return 0;
+}
+
+static int
+__collect_locker(DB_LOCKTAB *lt, DB_LOCKER *lip, collect_locks_func *func, void *arg)
+{
+	int have_waiters = 0;
+	struct __db_lock *lp;
+
+	lp = SH_LIST_FIRST(&lip->heldby, __db_lock);
+	if (lp !=NULL) {
+		for (; lp !=NULL;
+		    lp = SH_LIST_NEXT(lp, locker_links, __db_lock))
+			 __collect_lock(lt, lip, lp, func, arg);
+	}
+}
+
+int
+__collect_all_locks(DB_ENV *dbenv, collect_locks_func *func, void *arg)
+{
+	DB_LOCKER *lip;
+	DB_LOCKOBJ *op;
+	DB_LOCKREGION *lrp;
+    int i, j;
+
+	lt = dbenv->lk_handle;
+	lrp = lt->reginfo.primary;
+	LOCKREGION(dbenv, lt);
+    lock_lockers(lrp);
+
+    for (i = 0; i < gbl_lkr_parts; ++i) {
+        lock_locker_partition(lrp, i);
+
+        for (j = 0; j < lrp->locker_p_size; j++) {
+            for (lip = SH_TAILQ_FIRST(&lrp->locker_tab[i][j], __db_locker);
+                    lip != NULL; lip = SH_TAILQ_NEXT(lip, links, __db_locker)) {
+                __collect_locker(lt, lip, func, arg);
+            }
+        }
+        unlock_locker_partition(lrp, i);
+    }
+
+    unlock_lockers(lrp);
+	UNLOCKREGION(dbenv, lt);
+    return (0);
+}
+
+
 
 /*
  * COMDB2 MODIFICATION
@@ -732,75 +949,13 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 	if (fp == NULL)
 		fp = stderr;
 
-	switch (lp->mode) {
-	case DB_LOCK_DIRTY:
-		mode = "DIRTY_READ";
-		break;
-	case DB_LOCK_IREAD:
-		mode = "IREAD";
-		break;
-	case DB_LOCK_IWR:
-		mode = "IWR";
-		break;
-	case DB_LOCK_IWRITE:
-		mode = "IWRITE";
-		break;
-	case DB_LOCK_NG:
-		mode = "NG";
-		break;
-	case DB_LOCK_READ:
-		mode = "READ";
-		break;
-	case DB_LOCK_WRITE:
-		mode = "WRITE";
-		break;
-	case DB_LOCK_WRITEADD:
-		mode = "WRITEADD";
-		break;
-	case DB_LOCK_WRITEDEL:
-		mode = "WRITEDEL";
-		break;
-	case DB_LOCK_WWRITE:
-		mode = "WAS_WRITE";
-		break;
-	case DB_LOCK_WAIT:
-		mode = "WAIT";
-		break;
-	default:
-		mode = "UNKNOWN";
-		break;
-	}
-	switch (lp->status) {
-	case DB_LSTAT_ABORTED:
-		status = "ABORT";
-		break;
-	case DB_LSTAT_ERR:
-		status = "ERROR";
-		break;
-	case DB_LSTAT_FREE:
-		status = "FREE";
-		break;
-	case DB_LSTAT_HELD:
-		status = "HELD";
-		break;
-	case DB_LSTAT_WAITING:
-		status = "WAIT";
-		break;
-	case DB_LSTAT_PENDING:
-		status = "PENDING";
-		break;
-	case DB_LSTAT_EXPIRED:
-		status = "EXPIRED";
-		break;
-	default:
-		status = "UNKNOWN";
-		break;
-	}
+    mode = mode_to_str(lp->mode);
+    status = status_to_str(lp->status);
 
     /* peek at type, skip if handle, if asked */ 
     if (just_active_locks) {
         lockobj = lp->lockobj;
-        ptr = lockobj->lockobj.data;
+	    ptr = lockobj->lockobj.data;
         if (ispgno && lockobj->lockobj.size == sizeof(struct __db_ilock)) {
             /* Assume this is a DBT lock. */
             memcpy(&pgno, ptr, sizeof(db_pgno_t));
@@ -907,7 +1062,6 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 	/* see if its a comdb2 table lock */
 	else if (lockobj->lockobj.size == 32) {
 		char fileid[DB_FILE_ID_LEN];
-		unsigned long long genid;
 		char tablename[64];
 
 		bzero(tablename, 64);
@@ -921,35 +1075,6 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 		DB_LSN lsn;
 		memcpy(&lsn, ptr, sizeof(DB_LSN));
 		logmsg(LOGMSG_USER, "lsn %u:%u\n", lsn.file, lsn.offset);
-	}
-
-	/* see if it's a comdb2 key lock */
-	else if (lockobj->lockobj.size >32) {
-		char fileid[DB_FILE_ID_LEN];
-		unsigned long long genid;
-
-		memcpy(fileid, ptr, DB_FILE_ID_LEN);
-		memcpy(&genid, ptr +DB_FILE_ID_LEN + sizeof(short),
-		    sizeof(unsigned long long));
-
-		fidp = (u_int32_t *) fileid;
-
-		if (__dbreg_get_name(lt->dbenv, (u_int8_t *) fidp, &namep) != 0)
-			namep = NULL;
-
-		if (namep == NULL)
-			logmsgf(LOGMSG_USER, fp, "(%lx %lx %lx %lx %lx)",
-			    (u_long)fidp[0], (u_long)fidp[1], (u_long)fidp[2],
-			    (u_long)fidp[3], (u_long)fidp[4]);
-		else
-			logmsgf(LOGMSG_USER, fp, "%-25s", namep);
-
-		logmsgf(LOGMSG_USER, fp, " keylock ");
-
-		__db_pr(ptr +DB_FILE_ID_LEN + 10,
-		    lockobj->lockobj.size -DB_FILE_ID_LEN - 10, fp);
-
-		/*fprintf(fp, "\n"); */
 	}
 
 	else if (lockobj->lockobj.size == 20) {
