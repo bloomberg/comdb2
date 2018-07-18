@@ -117,7 +117,7 @@ char *sqlite3_temp_directory = 0;
 char *sqlite3_data_directory = 0;
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-void sqlite3PCacheBufferSetup(void *, int sz, int n){ return; }
+void sqlite3PCacheBufferSetup(void *p, int sz, int n){ return; }
 int sqlite3PcacheInitialize(void){ return 0; }
 void sqlite3PcacheShutdown(void){ return; }
 void sqlite3PCacheSetDefault(void){ return; }
