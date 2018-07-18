@@ -213,7 +213,6 @@ static void fingerprintSelectInt(sqlite3 *db, MD5Context *c, Select *p) {
     fingerprintExprList(db, c, p->pOrderBy);
     fingerprintSelectInt(db, c, p->pNext);
     fingerprintExpr(db, c, p->pLimit);
-    fingerprintExpr(db, c, p->pOffset);
     fingerprintWith(db, c, p->pWith);
 }
 
@@ -5490,88 +5489,6 @@ static void explainSimpleCount(
 #endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#ifdef SQLITE_COUNTOFVIEW_OPTIMIZATION
-/*
-** Attempt to transform a query of the form
-**
-**    SELECT count(*) FROM (SELECT x FROM t1 UNION ALL SELECT y FROM t2)
-**
-** Into this:
-**
-**    SELECT (SELECT count(*) FROM t1)+(SELECT count(*) FROM t2)
-**
-** The transformation only works if all of the following are true:
-**
-**   *  The subquery is a UNION ALL of two or more terms
-**   *  There is no WHERE or GROUP BY or HAVING clauses on the subqueries
-**   *  The outer query is a simple count(*)
-**
-** Return TRUE if the optimization is undertaken.
-*/
-static int countOfViewOptimization(Parse *pParse, Select *p){
-  Select *pSub, *pPrior;
-  Expr *pExpr;
-  Expr *pCount;
-  sqlite3 *db;
-  if( (p->selFlags & SF_Aggregate)==0 ) return 0;   /* This is an aggregate query */
-  if( p->pEList->nExpr!=1 ) return 0;               /* Single result column */
-  pExpr = p->pEList->a[0].pExpr;
-  if( pExpr->op!=TK_AGG_FUNCTION ) return 0;        /* Result is an aggregate */
-  if( sqlite3_stricmp(pExpr->u.zToken,"count") ) return 0;  /* Must be count() */
-  if( pExpr->x.pList!=0 ) return 0;                 /* Must be count(*) */
-  if( p->pSrc->nSrc!=1 ) return 0;                  /* One table in the FROM clause */
-  pSub = p->pSrc->a[0].pSelect;
-  if( pSub==0 ) return 0;                           /* The FROM is a subquery */
-  if( pSub->pPrior==0 ) return 0;                   /* Must be a compound subquery */
-  do{
-    if( pSub->op!=TK_ALL && pSub->pPrior ) return 0;  /* Must be UNION ALL */
-    if( pSub->pWhere ) return 0;                      /* No WHERE clause */
-    if( pSub->selFlags & SF_Aggregate ) return 0;     /* Not an aggregate */
-    pSub = pSub->pPrior;                              /* Repeat over compound terms */
-  }while( pSub );
-
-  /* If we reach this point, that means it is OK to perform the transformation */
-
-  db = pParse->db;
-  pCount = pExpr;
-  pExpr = 0;
-  pSub = p->pSrc->a[0].pSelect;
-  p->pSrc->a[0].pSelect = 0;
-  sqlite3SrcListDelete(db, p->pSrc);
-  p->pSrc = sqlite3DbMallocZero(pParse->db, sizeof(*p->pSrc));
-  while( pSub ){
-    Expr *pTerm;
-    pPrior = pSub->pPrior;
-    pSub->pPrior = 0;
-    pSub->pNext = 0;
-    pSub->selFlags |= SF_Aggregate;
-    pSub->selFlags &= ~SF_Compound;
-    pSub->nSelectRow = 0;
-    sqlite3ExprListDelete(db, pSub->pEList);
-    pTerm = pPrior ? sqlite3ExprDup(db, pCount, 0) : pCount;
-    pSub->pEList = sqlite3ExprListAppend(pParse, 0, pTerm);
-    pTerm = sqlite3PExpr(pParse, TK_SELECT, 0, 0, 0);
-    sqlite3PExprAddSelect(pParse, pTerm, pSub);
-    if( pExpr==0 ){
-      pExpr = pTerm;
-    }else{
-      pExpr = sqlite3PExpr(pParse, TK_PLUS, pTerm, pExpr, 0);
-    }
-    pSub = pPrior;
-  }
-  p->pEList->a[0].pExpr = pExpr;
-  p->selFlags &= ~SF_Aggregate;
-
-#if SELECTTRACE_ENABLED
-  if( sqlite3SelectTrace & 0x400 ){
-    SELECTTRACE(0x400,pParse,p,("After count-of-view optimization:\n"));
-    sqlite3TreeViewSelect(0, p, 0);
-  }
-#endif
-  return 1;
-}
-#endif /* SQLITE_COUNTOFVIEW_OPTIMIZATION */
-
 /*
 **
 ** Check list of identified source tables and check to see any of them is remote
