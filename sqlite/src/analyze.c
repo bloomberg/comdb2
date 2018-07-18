@@ -1326,6 +1326,18 @@ static void analyzeOneTable(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     int *aGotoChng;               /* Array of jump instruction addresses */
     int addrGotoChng0;            /* Address of "Goto addr_chng_0" */
+    int regTabname2;
+    int regIdxname2;
+    int regSampleno;
+    int regCol2;
+    int regRec;
+    int regTemp2;
+    int regRowid2;
+    int regTemp3;
+    int regSamplerecno;
+    int regRecno;
+    int regLast;
+    int regFirst;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     int nColTest;                 /* Number of columns to test for changes */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -1420,18 +1432,18 @@ static void analyzeOneTable(
 
     {
       /* stat2 registers (order is important - don't change) */
-      int regTabname2 = iMem++;
-      int regIdxname2 = iMem++;
-      int regSampleno = iMem++;
-      int regCol2 = iMem++;
-      int regRec = iMem++;
-      int regTemp2 = iMem++;
-      int regRowid2 = iMem++;
-      int regTemp3 = iMem++;
-      int regSamplerecno = iMem++;
-      int regRecno = iMem++;
-      int regLast = iMem++;
-      int regFirst = iMem++;
+      regTabname2 = iMem++;
+      regIdxname2 = iMem++;
+      regSampleno = iMem++;
+      regCol2 = iMem++;
+      regRec = iMem++;
+      regTemp2 = iMem++;
+      regRowid2 = iMem++;
+      regTemp3 = iMem++;
+      regSamplerecno = iMem++;
+      regRecno = iMem++;
+      regLast = iMem++;
+      regFirst = iMem++;
       if( iMem+1+(nCol*2)>pParse->nMem ){
         pParse->nMem = iMem+1+(nCol*2);
       }
