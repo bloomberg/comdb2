@@ -1008,4 +1008,19 @@ response_func read_response;
 int sql_writer(SBUF2 *, const char *, int);
 int typestr_to_type(const char *ctype);
 
+struct query_stats {
+    int64_t nfstrap;
+    int64_t nsql;
+    int64_t nsteps;
+    int64_t ncommits;
+    int64_t nretries;
+    int64_t ndeadlocks;
+    int64_t nlockwaits;
+    int64_t nbpoolhits;
+    int64_t nbpoolmisses;
+    int64_t npreads;
+    int64_t npwrites;
+};
+int get_query_stats(struct query_stats *stats);
+
 #endif

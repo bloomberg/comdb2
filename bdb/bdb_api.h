@@ -1759,8 +1759,8 @@ void bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum);
 
 void bdb_replace_handle(bdb_state_type *parent, int ix, bdb_state_type *handle);
 
-int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
-                          int64_t *waits);
+int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks, int64_t *waits, 
+                          int64_t *requests);
 
 int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
                            int64_t *bpool_misses);
@@ -2035,5 +2035,33 @@ int bdb_process_each_table_idx_entry(bdb_state_type *bdb_state, tran_type *tran,
 
 int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                             int *bdberr);
+
+/* Return per-node replication wait and net usage. */
+#ifndef HOST_NAME_MAX
+#define HOST_NAME_MAX 64
+#endif
+typedef struct repl_wait_and_net_use {
+    char host[HOST_NAME_MAX];
+    unsigned long long bytes_written;
+    unsigned long long bytes_read;
+    unsigned long long throttle_waits;
+    unsigned long long reorders;
+    double avg_wait_over_10secs;
+    double max_wait_over_10secs;
+    double avg_wait_over_1min;
+    double max_wait_over_1min;
+} repl_wait_and_net_use_t;
+repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(bdb_state_type *bdb_state, int *pnnodes);
+
+
+struct cluster_info {
+    char *host;
+    int64_t port;
+    char *is_master;
+    char *coherent_state;
+};
+
+int bdb_fill_cluster_info(void **data, int *num_nodes);
+
 
 #endif

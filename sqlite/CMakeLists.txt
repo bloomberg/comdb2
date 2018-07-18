@@ -19,10 +19,12 @@ add_library(sqlite
   ext/comdb2/appsock_handlers.c
   ext/comdb2/columns.c
   ext/comdb2/constraints.c
+  ext/comdb2/cluster.c
   ext/comdb2/keycomponents.c
   ext/comdb2/keys.c
   ext/comdb2/keywords.c
   ext/comdb2/limits.c
+  ext/comdb2/metrics.c
   ext/comdb2/opcode_handlers.c
   ext/comdb2/plugins.c
   ext/comdb2/procedures.c
@@ -40,6 +42,8 @@ add_library(sqlite
   ext/comdb2/typesamples.c 
   ext/comdb2/repnetqueue.c
   ext/comdb2/netuserfunc.c
+  ext/comdb2/timeseries.c
+  ext/comdb2/repl_stats.c
   ext/misc/completion.c
   ext/misc/json1.c
   ext/expert/sqlite3expert.c

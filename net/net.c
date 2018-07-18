@@ -3468,6 +3468,16 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
     }
     netinfo_ptr->hellofd = -1;
 
+    netinfo_ptr->conntime_all = quantize_new(1, 100, "ms");
+    netinfo_ptr->conntime_periodic = quantize_new(1, 100, "ms");
+    netinfo_ptr->num_accepts = 0;
+    netinfo_ptr->num_accept_timeouts = 0;
+    netinfo_ptr->conntime_dump_period = 10 * 60;
+    netinfo_ptr->num_current_non_appsock_accepts = 0;
+
+    netinfo_ptr->num_accepts = 0;
+    netinfo_ptr->num_accept_timeouts = 0;
+
     return netinfo_ptr;
 
 fail:
@@ -5755,6 +5765,8 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
             host_node_printf(LOGMSG_USER, host_node_ptr, "becomming connect thread\n");
         connect_thread(host_node_ptr);
     }
+
+    ++netinfo_ptr->num_current_non_appsock_accepts;
 }
 
 
@@ -5894,6 +5906,7 @@ static void *accept_thread(void *arg)
     SBUF2 *sb;
     portmux_fd_t *portmux_fds = NULL;
     watchlist_node_type *watchlist_node;
+    unsigned int last_stat_dump_time = comdb2_time_epochms();
 
     thread_started("net accept");
 
@@ -6060,7 +6073,23 @@ static void *accept_thread(void *arg)
         pol.events = POLLIN;
 
         /* poll */
+        unsigned pollstart, pollend;
+        pollstart = comdb2_time_epochms();
         rc = poll(&pol, 1, polltm);
+        pollend = comdb2_time_epochms();
+
+        quantize(netinfo_ptr->conntime_all, pollend - pollstart);
+        quantize(netinfo_ptr->conntime_periodic, pollend - pollstart);
+        netinfo_ptr->num_accepts++;
+
+        if (netinfo_ptr->conntime_dump_period && ((pollend - last_stat_dump_time) / 1000) > netinfo_ptr->conntime_dump_period ) {
+            quantize_ctrace(netinfo_ptr->conntime_all, "Accept poll times, overall:");
+            quantize_ctrace(netinfo_ptr->conntime_periodic, "Accept poll times, last period:");
+            quantize_clear(netinfo_ptr->conntime_periodic);
+            last_stat_dump_time = pollend;
+        }
+
+        netinfo_ptr->num_accepts++;
 
         /* drop connection on poll error */
         if (rc < 0) {
@@ -6077,6 +6106,7 @@ static void *accept_thread(void *arg)
             logmsg(LOGMSG_ERROR, "%s: timeout reading from socket, peeraddr=%s\n",
                     __func__, paddr);
             sbuf2close(sb);
+            netinfo_ptr->num_accept_timeouts++;
             continue;
         }
 
@@ -7151,4 +7181,12 @@ int net_listen(int port)
     }
 
     return listenfd;
+}
+
+void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value)  {
+    netinfo_ptr->conntime_dump_period = value;
+}
+
+int net_get_conntime_dump_period(netinfo_type *netinfo_ptr) {
+    return netinfo_ptr->conntime_dump_period;
 }

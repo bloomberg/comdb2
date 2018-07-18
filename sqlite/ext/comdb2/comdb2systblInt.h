@@ -27,10 +27,16 @@ const sqlite3_module systblTimepartModule;
 const sqlite3_module systblTimepartShardsModule;
 const sqlite3_module systblTimepartEventsModule;
 const sqlite3_module systblTransactionLogsModule;
+const sqlite3_module systblMetricsModule;
+const sqlite3_module systblFingerprintsModule;
+const sqlite3_module systblTimeseriesModule;
+const sqlite3_module systblReplStatsModule;
+
 
 int systblTypeSamplesInit(sqlite3 *db);
 int systblRepNetQueueStatInit(sqlite3 *db);
 int systblNetUserfuncsInit(sqlite3 *db);
+int systblClusterInit(sqlite3 *db);
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")

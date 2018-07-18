@@ -258,11 +258,21 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_transaction_logs", &systblTransactionLogsModule, 0);
   if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_metrics", &systblMetricsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_fingerprints", &systblFingerprintsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_timeseries", &systblTimeseriesModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_repl_stats", &systblReplStatsModule, 0);
+  if (rc == SQLITE_OK)
     rc = systblTypeSamplesInit(db);
   if (rc == SQLITE_OK)
     rc = systblRepNetQueueStatInit(db);
   if (rc == SQLITE_OK)
     rc = systblNetUserfuncsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblClusterInit(db);
 #endif
   return rc;
 }

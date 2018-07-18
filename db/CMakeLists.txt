@@ -7,6 +7,7 @@ set(src
   comdb2uuid.c
   config.c
   constraints.c
+  db_metrics.c
   db_tunables.c
   db_util.c
   dbglog_iface.c
@@ -49,7 +50,6 @@ set(src
   printlog.c
   process_message.c
   pushlogs.c
-  quantize.c
   record.c
   repl_wait.c
   reqdebug.c

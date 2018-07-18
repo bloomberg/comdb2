@@ -162,7 +162,7 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
      */
 
     int64_t ndeadlocks = 0, nlockwaits = 0;
-    bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
+    bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits, NULL);
 
     int64_t diff_deadlocks = ndeadlocks - data->cmembers->ndeadlocks;
     int64_t diff_lockwaits = nlockwaits - data->cmembers->nlockwaits;

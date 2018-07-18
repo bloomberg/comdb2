@@ -23,10 +23,12 @@ set(src
   misc.c
   nodemap.c
   object_pool.c
+  perf.c
   plhash.c
   pool.c
   pooltest.c
   portmuxusr.c
+  quantize.c
   queue.c
   queuetest.c
   roll_file.c

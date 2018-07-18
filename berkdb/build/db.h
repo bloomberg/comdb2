@@ -470,31 +470,33 @@ typedef enum  {
 
 /* Lock statistics structure. */
 struct __db_lock_stat {
+    /* locker ID can't be larger than DB_LOCK_MAXID (2^31 -1),
+       so keep st_id and st_cur_maxid int32. */
 	u_int32_t st_id;		/* Last allocated locker ID. */
 	u_int32_t st_cur_maxid;		/* Current maximum unused ID. */
-	u_int32_t st_maxlocks;		/* Maximum number of locks in table. */
-	u_int32_t st_maxlockers;	/* Maximum num of lockers in table. */
+	u_int64_t st_maxlocks;		/* Maximum number of locks in table. */
+	u_int64_t st_maxlockers;	/* Maximum num of lockers in table. */
 	u_int32_t st_maxobjects;	/* Maximum num of objects in table. */
 	u_int32_t st_nmodes;		/* Number of lock modes. */
-	u_int32_t st_nlocks;		/* Current number of locks. */
-	u_int32_t st_maxnlocks;		/* Maximum number of locks so far. */
-	u_int32_t st_nlockers;		/* Current number of lockers. */
-	u_int32_t st_maxnlockers;	/* Maximum number of lockers so far. */
-	u_int32_t st_nobjects;		/* Current number of objects. */
-	u_int32_t st_maxnobjects;	/* Maximum number of objects so far. */
-	u_int32_t st_nconflicts;	/* Number of lock conflicts. */
-	u_int32_t st_nrequests;		/* Number of lock gets. */
-	u_int32_t st_nreleases;		/* Number of lock puts. */
-	u_int32_t st_nnowaits;		/* Number of requests that would have
+	u_int64_t st_nlocks;		/* Current number of locks. */
+	u_int64_t st_maxnlocks;		/* Maximum number of locks so far. */
+	u_int64_t st_nlockers;		/* Current number of lockers. */
+	u_int64_t st_maxnlockers;	/* Maximum number of lockers so far. */
+	u_int64_t st_nobjects;		/* Current number of objects. */
+	u_int64_t st_maxnobjects;	/* Maximum number of objects so far. */
+	u_int64_t st_nconflicts;	/* Number of lock conflicts. */
+	u_int64_t st_nrequests;		/* Number of lock gets. */
+	u_int64_t st_nreleases;		/* Number of lock puts. */
+	u_int64_t st_nnowaits;		/* Number of requests that would have
 					   waited, but NOWAIT was set. */
-	u_int32_t st_ndeadlocks;	/* Number of lock deadlocks. */
+	u_int64_t st_ndeadlocks;	/* Number of lock deadlocks. */
 	db_timeout_t st_locktimeout;	/* Lock timeout. */
-	u_int32_t st_nlocktimeouts;	/* Number of lock timeouts. */
+	u_int64_t st_nlocktimeouts;	/* Number of lock timeouts. */
 	db_timeout_t st_txntimeout;	/* Transaction timeout. */
-	u_int32_t st_ntxntimeouts;	/* Number of transaction timeouts. */
-	u_int32_t st_region_wait;	/* Region lock granted after wait. */
-	u_int32_t st_region_nowait;	/* Region lock granted without wait. */
-	u_int32_t st_regsize;		/* Region size. */
+	u_int64_t st_ntxntimeouts;	/* Number of transaction timeouts. */
+	u_int64_t st_region_wait;	/* Region lock granted after wait. */
+	u_int64_t st_region_nowait;	/* Region lock granted without wait. */
+	u_int64_t st_regsize;		/* Region size. */
 };
 
 /*
@@ -834,68 +836,68 @@ struct __db_mpoolfile {
  * Mpool statistics structure.
  */
 struct __db_mpool_stat {
-	u_int32_t st_gbytes;		/* Total cache size: GB. */
-	u_int32_t st_bytes;		/* Total cache size: B. */
-	u_int32_t st_ncache;		/* Number of caches. */
-	u_int32_t st_regsize;		/* Cache size. */
-	u_int32_t st_map;		/* Pages from mapped files. */
-	u_int32_t st_cache_hit;		/* Pages found in the cache. */
-	u_int32_t st_cache_miss;	/* Pages not found in the cache. */
-	u_int32_t st_cache_ihit;	/* Internal found in the cache. */
-	u_int32_t st_cache_imiss;	/* Internal not found in the cache. */
-	u_int32_t st_cache_lhit;	/* Leaves found in the cache. */
-	u_int32_t st_cache_lmiss;	/* Leaves not found in the cache. */
-	u_int32_t st_page_create;	/* Pages created in the cache. */
-	u_int32_t st_page_pf_in;	/* Pages read in by prefault */
-	u_int32_t st_page_pf_in_late;/* Unaffective prefault requests */
-	u_int32_t st_page_in;		/* Pages read in. */
-	u_int32_t st_page_out;		/* Pages written out. */
-	u_int32_t st_ro_merges;		/* Read merges performed. */
-	u_int32_t st_rw_merges;		/* Write merges performed. */
-	u_int32_t st_ro_evict;		/* Clean pages forced from the cache. */
-	u_int32_t st_rw_evict;		/* Dirty pages forced from the cache. */
-	u_int32_t st_ro_levict;		/* Clean leaf pages forced from cache.*/
-	u_int32_t st_rw_levict;		/* Dirty leaf pages forced from cache.*/
-	u_int32_t st_pf_evict;		/* Prefault pages forced from  cache. */
-	u_int32_t st_rw_evict_skip;	/* Dirty pages skipped during evict. */
-	u_int32_t st_page_trickle;	/* Pages written by memp_trickle. */
-	u_int32_t st_pages;		/* Total number of pages. */
-	u_int32_t st_page_clean;	/* Clean pages. */
+	u_int64_t st_gbytes;		/* Total cache size: GB. */
+	u_int64_t st_bytes;		/* Total cache size: B. */
+	u_int64_t st_ncache;		/* Number of caches. */
+	u_int64_t st_regsize;		/* Cache size. */
+	u_int64_t st_map;		/* Pages from mapped files. */
+	u_int64_t st_cache_hit;		/* Pages found in the cache. */
+	u_int64_t st_cache_miss;	/* Pages not found in the cache. */
+	u_int64_t st_cache_ihit;	/* Internal found in the cache. */
+	u_int64_t st_cache_imiss;	/* Internal not found in the cache. */
+	u_int64_t st_cache_lhit;	/* Leaves found in the cache. */
+	u_int64_t st_cache_lmiss;	/* Leaves not found in the cache. */
+	u_int64_t st_page_create;	/* Pages created in the cache. */
+	u_int64_t st_page_pf_in;	/* Pages read in by prefault */
+	u_int64_t st_page_pf_in_late;/* Unaffective prefault requests */
+	u_int64_t st_page_in;		/* Pages read in. */
+	u_int64_t st_page_out;		/* Pages written out. */
+	u_int64_t st_ro_merges;		/* Read merges performed. */
+	u_int64_t st_rw_merges;		/* Write merges performed. */
+	u_int64_t st_ro_evict;		/* Clean pages forced from the cache. */
+	u_int64_t st_rw_evict;		/* Dirty pages forced from the cache. */
+	u_int64_t st_ro_levict;		/* Clean leaf pages forced from cache.*/
+	u_int64_t st_rw_levict;		/* Dirty leaf pages forced from cache.*/
+	u_int64_t st_pf_evict;		/* Prefault pages forced from  cache. */
+	u_int64_t st_rw_evict_skip;	/* Dirty pages skipped during evict. */
+	u_int64_t st_page_trickle;	/* Pages written by memp_trickle. */
+	u_int64_t st_pages;		/* Total number of pages. */
+	u_int64_t st_page_clean;	/* Clean pages. */
 	int32_t   st_page_dirty;	/* Dirty pages. */
-	u_int32_t st_hash_buckets;	/* Number of hash buckets. */
-	u_int32_t st_hash_searches;	/* Total hash chain searches. */
-	u_int32_t st_hash_longest;	/* Longest hash chain searched. */
-	u_int32_t st_hash_examined;	/* Total hash entries searched. */
-	u_int32_t st_hash_nowait;	/* Hash lock granted with nowait. */
-	u_int32_t st_hash_wait;		/* Hash lock granted after wait. */
-	u_int32_t st_hash_max_wait;	/* Max hash lock granted after wait. */
-	u_int32_t st_region_nowait;	/* Region lock granted with nowait. */
-	u_int32_t st_region_wait;	/* Region lock granted after wait. */
-	u_int32_t st_alloc;		/* Number of page allocations. */
-	u_int32_t st_alloc_buckets;	/* Buckets checked during allocation. */
-	u_int32_t st_alloc_max_buckets;	/* Max checked during allocation. */
-	u_int32_t st_alloc_pages;	/* Pages checked during allocation. */
-	u_int32_t st_alloc_max_pages;	/* Max checked during allocation. */
-	u_int32_t st_ckp_pages_sync;	/* Number of pages sync'd using perfect ckp. */
-	u_int32_t st_ckp_pages_skip;	/* Number of pages skipped using perfect ckp. */
+	u_int64_t st_hash_buckets;	/* Number of hash buckets. */
+	u_int64_t st_hash_searches;	/* Total hash chain searches. */
+	u_int64_t st_hash_longest;	/* Longest hash chain searched. */
+	u_int64_t st_hash_examined;	/* Total hash entries searched. */
+	u_int64_t st_hash_nowait;	/* Hash lock granted with nowait. */
+	u_int64_t st_hash_wait;		/* Hash lock granted after wait. */
+	u_int64_t st_hash_max_wait;	/* Max hash lock granted after wait. */
+	u_int64_t st_region_nowait;	/* Region lock granted with nowait. */
+	u_int64_t st_region_wait;	/* Region lock granted after wait. */
+	u_int64_t st_alloc;		/* Number of page allocations. */
+	u_int64_t st_alloc_buckets;	/* Buckets checked during allocation. */
+	u_int64_t st_alloc_max_buckets;	/* Max checked during allocation. */
+	u_int64_t st_alloc_pages;	/* Pages checked during allocation. */
+	u_int64_t st_alloc_max_pages;	/* Max checked during allocation. */
+	u_int64_t st_ckp_pages_sync;	/* Number of pages sync'd using perfect ckp. */
+	u_int64_t st_ckp_pages_skip;	/* Number of pages skipped using perfect ckp. */
 };
 
 /* Mpool file statistics structure. */
 struct __db_mpool_fstat {
 	char *file_name;		/* File name. */
 	size_t st_pagesize;		/* Page size. */
-	u_int32_t st_map;		/* Pages from mapped files. */
-	u_int32_t st_cache_hit;		/* Pages found in the cache. */
-	u_int32_t st_cache_miss;	/* Pages not found in the cache. */
-	u_int32_t st_cache_ihit;	/* Internal found in the cache. */
-	u_int32_t st_cache_imiss;	/* Internal not found in the cache. */
-	u_int32_t st_cache_lhit;	/* Leaves found in the cache. */
-	u_int32_t st_cache_lmiss;	/* Leaves not found in the cache. */
-	u_int32_t st_page_create;	/* Pages created in the cache. */
-	u_int32_t st_page_in;		/* Pages read in. */
-	u_int32_t st_page_out;		/* Pages written out. */
-	u_int32_t st_ro_merges;		/* Read merges performed. */
-	u_int32_t st_rw_merges;		/* Write merges performed. */
+	u_int64_t st_map;		/* Pages from mapped files. */
+	u_int64_t st_cache_hit;		/* Pages found in the cache. */
+	u_int64_t st_cache_miss;	/* Pages not found in the cache. */
+	u_int64_t st_cache_ihit;	/* Internal found in the cache. */
+	u_int64_t st_cache_imiss;	/* Internal not found in the cache. */
+	u_int64_t st_cache_lhit;	/* Leaves found in the cache. */
+	u_int64_t st_cache_lmiss;	/* Leaves not found in the cache. */
+	u_int64_t st_page_create;	/* Pages created in the cache. */
+	u_int64_t st_page_in;		/* Pages read in. */
+	u_int64_t st_page_out;		/* Pages written out. */
+	u_int64_t st_ro_merges;		/* Read merges performed. */
+	u_int64_t st_rw_merges;		/* Write merges performed. */
 };
 
 /*******************************************************

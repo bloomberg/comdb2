@@ -33,6 +33,7 @@
 #include "net_types.h"
 #include "cdb2_constants.h"
 #include "logmsg.h"
+#include "quantize.h"
 
 enum {
     /* Flags for write_list() */
@@ -337,6 +338,17 @@ struct netinfo_struct {
     QSTATENQUEFP *qstat_enque_rtn;
     QSTATCLEARFP *qstat_clear_rtn;
     QSTATFREEFP *qstat_free_rtn;
+
+    struct quantize *conntime_all;
+    struct quantize *conntime_periodic;
+    int64_t num_accepts;
+    int64_t num_accept_timeouts;
+    int conntime_dump_period;
+
+
+    /* An appsock routine may or may not close the connection.
+       Therefore we can only reliably keep track of non-appsock connections. */
+    int num_current_non_appsock_accepts;
 };
 
 typedef struct ack_state_struct {

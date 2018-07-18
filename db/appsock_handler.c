@@ -30,6 +30,7 @@
 #include "comdb2_appsock.h"
 #include "plhash.h"
 #include "comdb2_atomic.h"
+#include "perf.h"
 
 #ifdef DEBUG
 // was crashing because of the small stack size when debug was on
@@ -306,6 +307,8 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb)
     time_t now;
 
     now = time(NULL);
+
+    time_metric_add(dbenv->connections, thdpool_get_nthds(gbl_appsock_thdpool));
 
     maxconns = thdpool_get_maxthds(gbl_appsock_thdpool);
     nconns = thdpool_get_nthds(gbl_appsock_thdpool);
