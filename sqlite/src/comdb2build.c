@@ -1580,13 +1580,13 @@ int comdb2genidcontainstime(void)
 
 int producekw(OpFunc *f)
 {
-
     for (int i=0; i < SQLITE_N_KEYWORD; i++)
     {
-        if ((f->int_arg == KW_ALL) ||
-            (f->int_arg == KW_RES && f_keywords[i].reserved) ||
-            (f->int_arg == KW_FB && !f_keywords[i].reserved))
-                opFuncPrintf(f, "%s", f_keywords[i].name );
+        const char *zName = 0;
+        int nName = 0;
+        if( sqlite3_keyword_name(i, &zName, &nName)==SQLITE_OK ){
+            opFuncPrintf(f, "%.*s", nName, zName);
+        }
     }
     f->rc = SQLITE_OK;
     f->errorMsg = NULL;
@@ -1598,7 +1598,7 @@ void comdb2getkw(Parse* pParse, int arg)
     Vdbe *v  = sqlite3GetVdbe(pParse);
     const char* colname[] = {"Keyword"};
     const int coltype = OPFUNC_STRING_TYPE;
-    OpFuncSetup stp = {1, colname, &coltype, SQLITE_KEYWORD_LEN};
+    OpFuncSetup stp = {1, colname, &coltype, SQLITE_N_KEYWORD};
     comdb2prepareOpFunc(v, pParse, arg, NULL, &producekw, (vdbeFuncArgFree)  &free, &stp);
 
 }
@@ -2797,7 +2797,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
             ExprList idx_cols;
 
             idx_cols.nExpr = listc_size(&constraint->child_idx_col_list);
-            idx_cols.a = comdb2_calloc(
+            idx_cols.a = (struct ExprList_item *)comdb2_calloc(
                 ctx->mem, listc_size(&constraint->child_idx_col_list),
                 sizeof(struct ExprList_item));
             if (idx_cols.a == 0)
