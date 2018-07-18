@@ -3750,19 +3750,6 @@ int sqlite3_prepare16_v3(
   const void **pzTail     /* OUT: Pointer to unused portion of zSql */
 );
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-enum { SQLITE3_ENABLE_QUERY_PLAN = 1 };
-
-int sqlite3_prepare_flags(
-  sqlite3 *db,
-  const char *zSql,
-  int nBytes,
-  sqlite3_stmt **ppStmt,
-  const char** pzTail,
-  int flags
-);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 /*
 ** CAPI3REF: Retrieving Statement SQL
 ** METHOD: sqlite3_stmt

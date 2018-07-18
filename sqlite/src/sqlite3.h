@@ -125,7 +125,7 @@ extern "C" {
 */
 #define SQLITE_VERSION        "3.25.0"
 #define SQLITE_VERSION_NUMBER 3025000
-#define SQLITE_SOURCE_ID      "2018-07-18 20:03:56 858d963fff3dca18cd42bf7afbffdfafcbbc74207617591411a0eabbafa2alt1"
+#define SQLITE_SOURCE_ID      "2018-07-18 21:24:24 a4a1aa379c94a98db67e769b8e90205b479d20fae734b8218e2b75d85ef6f639"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -3749,19 +3749,6 @@ SQLITE_API int sqlite3_prepare16_v3(
   sqlite3_stmt **ppStmt,  /* OUT: Statement handle */
   const void **pzTail     /* OUT: Pointer to unused portion of zSql */
 );
-
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-enum { SQLITE3_ENABLE_QUERY_PLAN = 1 };
-
-SQLITE_API int sqlite3_prepare_flags(
-  sqlite3 *db,
-  const char *zSql,
-  int nBytes,
-  sqlite3_stmt **ppStmt,
-  const char** pzTail,
-  int flags
-);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Retrieving Statement SQL
