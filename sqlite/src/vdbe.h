@@ -161,7 +161,7 @@ typedef struct VdbeOpList VdbeOpList;
 #define P4_DYNBLOB    (-17) /* Pointer to memory from sqliteMalloc() */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define P4_OPFUNC  (-22)  /* P4 is a Comdb2 custom function */
+#define P4_OPFUNC     (-22)  /* P4 is a Comdb2 custom function */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* Error message codes for OP_Halt */
@@ -306,6 +306,9 @@ void sqlite3VdbeSetVarmask(Vdbe*, int);
 static inline
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 int sqlite3MemCompare(const Mem*, const Mem*, const CollSeq*);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+static inline
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 int sqlite3BlobCompare(const Mem*, const Mem*);
 
 void sqlite3VdbeRecordUnpack(KeyInfo*,int,const void*,UnpackedRecord*);
