@@ -2852,10 +2852,9 @@ static inline int sqlite3VdbeCompareRecordPacked(KeyInfo *pKeyInfo, int k1len,
         return i64cmp(key1, key2);
     }
 
-    char *pFree = 0;
     UnpackedRecord *rec;
 
-    rec = sqlite3VdbeAllocUnpackedRecord(pKeyInfo, NULL, 0, &pFree);
+    rec = sqlite3VdbeAllocUnpackedRecord(pKeyInfo);
     if (rec == 0) {
         logmsg(LOGMSG_ERROR, "Error rec is zero, returned from "
                         "sqlite3VdbeAllocUnpackedRecord()\n");
@@ -2864,9 +2863,7 @@ static inline int sqlite3VdbeCompareRecordPacked(KeyInfo *pKeyInfo, int k1len,
     sqlite3VdbeRecordUnpack(pKeyInfo, k2len, key2, rec);
 
     int cmp = sqlite3VdbeRecordCompare(k1len, key1, rec);
-    if (pFree) {
-        sqlite3DbFree(pKeyInfo->db, pFree);
-    }
+    sqlite3DbFree(pKeyInfo->db, rec);
     return cmp;
 }
 
@@ -8212,11 +8209,9 @@ int sqlite3BtreeInsert(
     if (pCur->bt->is_temporary) {
         /* data: nKey is 'rrn', pData is record, nData is size of record
          * index: pKey is key, nKey is size of key (no data) */
-        char *pFree = 0;
         UnpackedRecord *rec = NULL;
         if (pKey) {
-            rec =
-                sqlite3VdbeAllocUnpackedRecord(pCur->pKeyInfo, NULL, 0, &pFree);
+            rec = sqlite3VdbeAllocUnpackedRecord(pCur->pKeyInfo);
             if (rec == 0) {
                 logmsg(LOGMSG_ERROR, "Error rec is zero, returned from "
                                 "sqlite3VdbeAllocUnpackedRecord()\n");
@@ -8236,9 +8231,7 @@ int sqlite3BtreeInsert(
                                   (void *)pKey, nKey, (void *)pData, nData, rec,
                                   &bdberr, pCur);
         }
-        if (pFree) {
-            sqlite3DbFree(pCur->pKeyInfo->db, pFree);
-        }
+        sqlite3DbFree(pCur->pKeyInfo->db, rec);
 
         if (rc) {
             logmsg(LOGMSG_ERROR, 
