@@ -7862,10 +7862,21 @@ void init_cursor(BtCursor *cur, Vdbe *vdbe, Btree *bt)
     assert(cur->clnt);
 }
 
+/*
+** Return a pointer to a fake BtCursor object that will always answer
+** false to the sqlite3BtreeCursorHasMoved() routine above.  The fake
+** cursor returned must not be used with any other Btree interface.
+*/
+BtCursor *sqlite3BtreeFakeValidCursor(void){
+  /* TODO: Do something here. */
+  return 0;
+}
+
 int sqlite3BtreeCursor(
     Vdbe *vdbe,               /* Vdbe running the show */
     Btree *pBt,               /* BTree containing table to open */
     int iTable,               /* Index of root page */
+    int wrFlag,               /* 1 for writing.  0 for read-only */
     struct KeyInfo *pKeyInfo, /* First argument to compare function */
     BtCursor *cur,            /* Space to write cursor structure */
     int flags)
@@ -8357,6 +8368,17 @@ done:
                 pCur->cursorid, sqlite3ErrStr(rc));
     return rc;
 }
+
+/*
+** This function is a no-op if cursor pCur does not point to a valid row.
+** Otherwise, if pCur is valid, configure it so that the next call to
+** sqlite3BtreeNext() is a no-op.
+*/
+#ifndef SQLITE_OMIT_WINDOWFUNC
+void sqlite3BtreeSkipNext(BtCursor *pCur){
+  /* TODO: Do something here. */
+}
+#endif /* SQLITE_OMIT_WINDOWFUNC */
 
 /*
 ** Advance the cursor to the next entry in the database.  If
@@ -10125,6 +10147,13 @@ int sqlite3BtreeIncrVacuum(Btree *p) { return SQLITE_DONE; }
 Pager *sqlite3BtreePager(Btree *p) { return NULL; }
 
 /*
+** Return an estimate for the number of rows in the table that pCur is
+** pointing to.  Return a negative number if no estimate is currently 
+** available.
+*/
+i64 sqlite3BtreeRowCountEst(BtCursor *pCur){ return -1; }
+
+/*
  ** Return the file handle for the database file associated
  ** with the pager.  This might return NULL if the file has
  ** not yet been opened.
@@ -10173,6 +10202,12 @@ int sqlite3PagerFlush(Pager *pPager) { return SQLITE_OK; }
  ** This is a verification routine is used only within assert() statements.
  */
 int sqlite3BtreeCursorIsValid(BtCursor *pCur) { return pCur != NULL; }
+
+int sqlite3BtreeCursorIsValidNN(BtCursor *pCur){
+  assert( pCur!=0 );
+  /* TODO: This is not right. */
+  return 1;
+}
 
 /*
  ** Return TRUE if the pager is in a state where it is OK to change the

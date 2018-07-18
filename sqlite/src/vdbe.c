@@ -732,7 +732,9 @@ static void registerTrace(int iReg, Mem *p){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   printf("\n");
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#if !defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG)
   sqlite3VdbeCheckMemInvariants(p);
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG) */
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG) */
 
@@ -4184,7 +4186,7 @@ case OP_OpenWrite:
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   pCur->nCookFields = -1;
-  rc = sqlite3BtreeCursor(p, pX, p2, pKeyInfo, pCur->uc.pCursor, flag);
+  rc = sqlite3BtreeCursor(p, pX, p2, wrFlag, pKeyInfo, pCur->uc.pCursor);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = sqlite3BtreeCursor(pX, p2, wrFlag, pKeyInfo, pCur->uc.pCursor);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -4326,12 +4328,11 @@ case OP_OpenEphemeral: {
         assert( pKeyInfo->db==db );
         assert( pKeyInfo->enc==ENC(db) );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        rc = sqlite3BtreeCursor(p, pCx->pBtx, pgno, pKeyInfo,
-                                pCx->uc.pCursor, BTREE_CUR_WR|BTREE_WRCSR);
+        rc = sqlite3BtreeCursor(p, pCx->pBtx, pgno, BTREE_CUR_WR|BTREE_WRCSR,
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         rc = sqlite3BtreeCursor(pCx->pBtx, pgno, BTREE_WRCSR,
-                                pKeyInfo, pCx->uc.pCursor);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+                                pKeyInfo, pCx->uc.pCursor);
       }
       pCx->isTable = 0;
     }else{
@@ -4339,8 +4340,8 @@ case OP_OpenEphemeral: {
       int pgno;
       rc = sqlite3BtreeCreateTable(pCx->pBtx, &pgno, BTREE_INTKEY);
       if( rc==SQLITE_OK ){
-        rc = sqlite3BtreeCursor(p, pCx->pBtx, pgno, pKeyInfo,
-                                pCx->uc.pCursor, BTREE_CUR_WR|BTREE_WRCSR);
+        rc = sqlite3BtreeCursor(p, pCx->pBtx, pgno, BTREE_CUR_WR|BTREE_WRCSR,
+                                pKeyInfo, pCx->uc.pCursor);
       }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       rc = sqlite3BtreeCursor(pCx->pBtx, MASTER_ROOT, BTREE_WRCSR,

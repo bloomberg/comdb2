@@ -232,18 +232,19 @@ int sqlite3BtreeNewDb(Btree *p);
 void sqlite3BtreeCursorHint(BtCursor*, int, ...);
 #endif
 
+#define BTREE_CUR_RD 0x00000001
+#define BTREE_CUR_WR 0x00000002
+
 int sqlite3BtreeCursor(
   Vdbe*,                               /* COMDB2 MODIFICATION */
   Btree*,                              /* BTree containing table to open */
   int iTable,                          /* Index of root page */
+  int wrFlag,                          /* 1 for writing.  0 for read-only */
   struct KeyInfo*,                     /* First argument to compare function */
-  BtCursor *pCursor,                   /* Space to write cursor structure */
-
-#define BTREE_CUR_RD 0x00000001
-#define BTREE_CUR_WR 0x00000002
-  int curFlag
+  BtCursor *pCursor                    /* Space to write cursor structure */
 );
 
+BtCursor *sqlite3BtreeFakeValidCursor(void);
 int sqlite3BtreeCursorSize(void);
 void sqlite3BtreeCursorZero(BtCursor*);
 
@@ -285,6 +286,8 @@ struct BtreePayload {
   const void *pKey;       /* Key content for indexes.  NULL for tables */
   sqlite3_int64 nKey;     /* Size of pKey for indexes.  PRIMARY KEY for tabs */
   const void *pData;      /* Data for tables.  NULL for indexes */
+  sqlite3_value *aMem;    /* First of nMem value in the unpacked pKey */
+  u16 nMem;               /* Number of aMem[] value.  Might be zero */
   int nData;              /* Size of pData.  0 if none. */
   int nZero;              /* Extra zero data appended after pData,nData */
 };
@@ -292,6 +295,9 @@ struct BtreePayload {
 int sqlite3BtreeInsert(BtCursor*, const BtreePayload *pPayload,
                        int bias, int seekResult);
 int sqlite3BtreeFirst(BtCursor*, int *pRes);
+#ifndef SQLITE_OMIT_WINDOWFUNC
+void sqlite3BtreeSkipNext(BtCursor*);
+#endif
 int sqlite3BtreeLast(BtCursor*, int *pRes);
 int sqlite3BtreeNext(BtCursor*, int *pRes);
 int sqlite3BtreeEof(BtCursor*);
@@ -314,6 +320,7 @@ int sqlite3BtreeRecordIDString(BtCursor *,
 
 char *sqlite3BtreeIntegrityCheck(Btree*, int *aRoot, int nRoot, int, int*);
 struct Pager *sqlite3BtreePager(Btree*);
+i64 sqlite3BtreeRowCountEst(BtCursor*);
 
 #ifndef SQLITE_OMIT_INCRBLOB
 int sqlite3BtreePutData(BtCursor*, u32 offset, u32 amt, void*);
@@ -332,6 +339,7 @@ int sqlite3HeaderSizeBtree(void);
 #ifndef NDEBUG
 int sqlite3BtreeCursorIsValid(BtCursor*);
 #endif
+int sqlite3BtreeCursorIsValidNN(BtCursor*);
 
 #ifndef SQLITE_OMIT_BTREECOUNT
 int sqlite3BtreeCount(BtCursor *, i64 *);
