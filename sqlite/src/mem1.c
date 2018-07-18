@@ -126,10 +126,12 @@ static malloc_zone_t* _sqliteZone_;
 ** routines.
 */
 static void *sqlite3MemMalloc(int nByte){
-#ifdef SQLITE_MALLOCSIZE
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   extern unsigned gbl_blob_sz_thresh_bytes;
   extern comdb2bma blobmem;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#ifdef SQLITE_MALLOCSIZE
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   void *p;
   testcase( ROUND8(nByte)==nByte );
   if( nByte>gbl_blob_sz_thresh_bytes ){
