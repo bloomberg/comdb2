@@ -4482,7 +4482,7 @@ done:
  ** when it is created..
  */
 
-int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
+int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersion)
 {
     int rc = SQLITE_OK;
     struct sql_thread *thd = pthread_getspecific(query_info_key);

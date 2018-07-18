@@ -73,7 +73,7 @@ int sqlite3BtreeGetReserveNoMutex(Btree *p);
 int sqlite3BtreeSetAutoVacuum(Btree *, int);
 int sqlite3BtreeGetAutoVacuum(Btree *);
 struct Vdbe; /* COMDB2 */
-int sqlite3BtreeBeginTrans(struct Vdbe*,Btree*,int); /* COMDB2 */
+int sqlite3BtreeBeginTrans(struct Vdbe*,Btree*,int,int*); /* COMDB2 */
 int sqlite3BtreeCommitPhaseOne(Btree*, const char *zMaster);
 int sqlite3BtreeCommitPhaseTwo(Btree*, int);
 int sqlite3BtreeCommit(Btree*);
