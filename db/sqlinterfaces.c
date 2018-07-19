@@ -352,6 +352,11 @@ static int log_context(struct sqlclntstate *clnt, struct reqlogger *logger)
     return clnt->plugin.log_context(clnt, logger);
 }
 
+static int send_intrans_response(struct sqlclntstate *clnt)
+{
+    return clnt->plugin.send_intrans_response(clnt);
+}
+
 void handle_failed_dispatch(struct sqlclntstate *clnt, char *errstr)
 {
     pthread_mutex_lock(&clnt->wait_mutex);
@@ -2885,10 +2890,9 @@ static int skip_response_int(struct sqlclntstate *clnt, int from_error)
     if (clnt->in_client_trans) {
         if (from_error && !clnt->had_errors) /* send on first error */
             return 0;
-        if (clnt->plugin.skip_intrans_response(clnt))
-            return 1;
-        if (clnt->send_intrans_results)
+        if (send_intrans_response(clnt)) {
             return 0;
+        }
         return 1;
     }
     return 0; /* single stmt by itself (read or write) */
@@ -4068,8 +4072,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->num_retry = 0;
     clnt->early_retry = 0;
     clnt_reset_cursor_hints(clnt);
-
-    clnt->send_intrans_results = 1;
 
     bzero(clnt->dirty, sizeof(clnt->dirty));
 
@@ -5370,9 +5372,9 @@ static int internal_get_client_retries(struct sqlclntstate *a)
 {
     return 0;
 }
-static int internal_skip_intrans_response(struct sqlclntstate *a)
+static int internal_send_intrans_response(struct sqlclntstate *a)
 {
-    return 0;
+    return 1;
 }
 void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {

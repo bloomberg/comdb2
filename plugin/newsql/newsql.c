@@ -69,7 +69,51 @@ struct newsql_postponed_data {
     uint8_t *row;
 };
 
+/*
+**                (SERVER)
+**  Default --> (val: 1)
+**                  |
+**                  +--> Client has SKIP feature?
+**                               |    |
+**                            NO |    | YES
+**                               |    |
+**  SET INTRANSRESULTS OFF ------)--->+--> (val: 0) --+
+**                               |                    |
+**                               |  +-----------------+
+**                               |  |
+**                               |  +---> Send server SKIP feature;
+**                               |        Don't send intrans results
+**                               |
+**  SET INTRANSRESULTS ON        +-------> (val: 1) --+
+**            |                                       |
+**            | (val: -1)           +-----------------+
+**            |                     |
+**            +---------------------+--> Don't send server SKIP feature;
+**                                       Send intrans results
+**
+**                (CLIENT)
+**  CDB2_READ_INTRANS_RESULTS is ON?
+**                 /\
+**   NO (default) /  \ YES
+**               /    \
+**   Send Client       \
+**   SKIP feature       \
+**            /          \
+**   Server has           \
+**        SKIP feature?    \
+**         /          \     \
+**      Y /            \ N   \
+**       /              \     \
+**   Don't read         Read intrans results
+**   intrans results    for writes
+**   for writes
+**
+**  --
+**  Rivers
+*/
+
 struct newsql_appdata {
+    int8_t send_intrans_response;
     CDB2QUERY* query;
     CDB2SQLQUERY *sqlquery;
     struct newsql_postponed_data *postponed;
@@ -200,7 +244,8 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
 #define _has_features(clnt, sql_response)                                      \
     CDB2ServerFeatures features[10];                                           \
     int n_features = 0;                                                        \
-    if (clnt->send_intrans_results == 0) {                                     \
+    struct newsql_appdata *appdata = clnt->appdata;                            \
+    if (appdata->send_intrans_response == 0) {                                  \
         features[n_features] = CDB2_SERVER_FEATURES__SKIP_INTRANS_RESULTS;     \
         n_features++;                                                          \
     }                                                                          \
@@ -399,6 +444,7 @@ static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt,
         appdata = calloc(1, sizeof(struct newsql_appdata) + types_sz);
         clnt->appdata = appdata;
         appdata->capacity = ncols;
+        appdata->send_intrans_response = 1;
     } else if (appdata->capacity < ncols) {
         size_t n = ncols + 32;
         size_t types_sz = n * sizeof(appdata->type[0]);
@@ -1168,17 +1214,17 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
     extern int gbl_disable_skip_rows;
-    /* We need to restore send_intrans_results
+    /* We need to restore send_intrans_response
        on clnt even if the snapshot info has been populated.
        However, dont't attempt to restore if client overrides
-       send_intrans_results by setting INTRANSRESULTS to ON. */
-    if (clnt->send_intrans_results != -1 && sqlquery->n_features > 0 &&
+       send_intrans_response by setting INTRANSRESULTS to ON. */
+    if (appdata->send_intrans_response != -1 && sqlquery->n_features > 0 &&
         gbl_disable_skip_rows == 0) {
         for (int ii = 0; ii < sqlquery->n_features; ii++) {
             if (CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS !=
                 sqlquery->features[ii])
                 continue;
-            clnt->send_intrans_results = 0;
+            appdata->send_intrans_response = 0;
         }
     }
 
@@ -1319,15 +1365,17 @@ static int newsql_get_client_retries(struct sqlclntstate *clnt)
     return 0;
 }
 
-static int newsql_skip_intrans_response(struct sqlclntstate *clnt)
+static int newsql_send_intrans_response(struct sqlclntstate *clnt)
 {
-    return 0;
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->send_intrans_response;
 }
 
 /* Process sql query if it is a set command. */
 static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                                 CDB2SQLQUERY *sql_query)
 {
+    struct newsql_appdata *appdata = clnt->appdata;
     int num_commands = 0;
     char *sqlstr = NULL;
     char *endp;
@@ -1618,9 +1666,9 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 sqlstr += 14;
                 sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
-                    clnt->send_intrans_results = 0;
+                    appdata->send_intrans_response = 0;
                 } else {
-                    clnt->send_intrans_results = -1;
+                    appdata->send_intrans_response = -1;
                 }
             } else {
                 rc = ii + 1;
