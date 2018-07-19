@@ -502,7 +502,7 @@ int static dbqueue_add_consumer_int(struct dbtable *db, int consumern,
             consumer->bbhost_tag = strdup(hosttag);
         } else {
             if (strcmp(machstr, "multi") != 0 &&
-                comdb2_gethostbyname(machstr) == NULL) {
+                comdb2_gethostbyname(machstr, NULL) != 0) {
                 logmsg(LOGMSG_ERROR, "%s:%d consumer %d: unknown host %s\n",
                         __FILE__, __LINE__, consumern, machstr);
                 consumer_destroy(consumer);

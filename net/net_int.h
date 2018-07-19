@@ -172,7 +172,6 @@ struct host_node_tag {
     unsigned dedupe_count;
 
     struct in_addr addr;
-    int addr_len;
     int distress; /* if this is set, do not report any errors, we know we're
                     looping trying to get a successful read_message_header
 

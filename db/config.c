@@ -378,15 +378,10 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
 
 void getmyaddr()
 {
-    struct hostent *h;
-
-    h = comdb2_gethostbyname(gbl_mynode);
-    if (h == NULL || h->h_addrtype != AF_INET) {
-        /* default to localhost */
-        gbl_myaddr.s_addr = INADDR_LOOPBACK;
+    if (comdb2_gethostbyname(gbl_mynode, &gbl_myaddr) != 0) {
+        gbl_myaddr.s_addr = INADDR_LOOPBACK; /* default to localhost */
         return;
     }
-    memcpy(&gbl_myaddr.s_addr, h->h_addr, h->h_length);
 }
 
 static int pre_read_option(char *line, int llen)
@@ -689,8 +684,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             /*create replication group. only me by default*/
             while (1) {
                 char nodename[512];
-                struct hostent *h;
-
                 tok = segtok(line, len, &st, &ltok);
                 if (ltok == 0) break;
                 if (ltok > sizeof(nodename)) {
@@ -710,9 +703,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 }
 
                 /* Check to see if this name is another name for me. */
-                h = comdb2_gethostbyname(nodename);
-                if (h && h->h_addrtype == AF_INET &&
-                    memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length) == 0) {
+                struct in_addr addr;
+                if (comdb2_gethostbyname(nodename, &addr) == 0 && addr.s_addr == gbl_myaddr.s_addr) {
                     /* Assume I am better known by this name. */
                     gbl_mynode = intern(nodename);
                     gbl_mynodeid = machine_num(gbl_mynode);
