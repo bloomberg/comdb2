@@ -2885,6 +2885,8 @@ static int skip_response_int(struct sqlclntstate *clnt, int from_error)
     if (clnt->in_client_trans) {
         if (from_error && !clnt->had_errors) /* send on first error */
             return 0;
+        if (clnt->plugin.skip_intrans_response(clnt))
+            return 1;
         if (clnt->send_intrans_results)
             return 0;
         return 1;
@@ -3025,7 +3027,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         if (!skip_response(clnt)) {
             if (postponed_write)
                 send_row(clnt, NULL, row_id, 0, NULL);
-            write_response(clnt, RESPONSE_EFFECTS, 0, 0);
+            write_response(clnt, RESPONSE_EFFECTS, 0, 1);
             write_response(clnt, RESPONSE_ROW_LAST, 0, 0);
         }
     }
@@ -5365,6 +5367,10 @@ static uint64_t internal_get_client_starttime(struct sqlclntstate *a)
     return 0;
 }
 static int internal_get_client_retries(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int internal_skip_intrans_response(struct sqlclntstate *a)
 {
     return 0;
 }

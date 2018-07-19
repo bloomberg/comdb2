@@ -1319,6 +1319,11 @@ static int newsql_get_client_retries(struct sqlclntstate *clnt)
     return 0;
 }
 
+static int newsql_skip_intrans_response(struct sqlclntstate *clnt)
+{
+    return 0;
+}
+
 /* Process sql query if it is a set command. */
 static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                                 CDB2SQLQUERY *sql_query)
