@@ -3074,9 +3074,8 @@ static int dbstmt_emit(Lua L)
     int cols = sqlite3_column_count(stmt);
     int rc;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        rc = l_send_back_row(L, stmt, cols);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s failed with rc %d\n", __func__, rc);
+        if (l_send_back_row(L, stmt, cols) != 0) {
+            rc = -1;
             break;
         }
     }
