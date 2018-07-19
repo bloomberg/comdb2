@@ -78,8 +78,8 @@ struct logicalops_cursor {
   void *unpackedprev;
   void *packed;
   void *unpacked;
-  dynstr_t jsonrec;
-  dynstr_t oldjsonrec;
+  strbuf *jsonrec;
+  strbuf *oldjsonrec;
   struct dbtable *db;
   struct odh odh;
   struct odh oldodh;
@@ -152,10 +152,10 @@ static int logicalopsClose(sqlite3_vtab_cursor *cur){
       sqlite3_free(pCur->packedprev);
   if (pCur->unpackedprev)
       sqlite3_free(pCur->unpackedprev);
-  if (pCur->jsonrec.buf)
-      free(pCur->jsonrec.buf);
-  if (pCur->oldjsonrec.buf)
-      free(pCur->oldjsonrec.buf);
+  if (pCur->jsonrec)
+      strbuf_free(pCur->jsonrec);
+  if (pCur->oldjsonrec)
+      strbuf_free(pCur->oldjsonrec);
   if (pCur->table)
       free(pCur->table);
   sqlite3_free(pCur);
@@ -400,100 +400,25 @@ static int decompress_and_upgrade(logicalops_cursor *pCur, char *table,
     return 0;
 }
 
-static void dynstr_reset(dynstr_t *dynstr)
-{
-    dynstr->len = 0;
-    if (dynstr->alloced > 0)
-        dynstr->buf[0]='\0';
-}
-
-static int dynstr_append(dynstr_t *dynstr, const char *str, int len)
-{
-    if (dynstr->len + len >= dynstr->alloced) {
-        if (dynstr->alloced == 0) {
-            dynstr->alloced = MAXRECSZ + len;
-        } else {
-            dynstr->alloced *= 2;
-        }
-        if ((dynstr->buf = realloc(dynstr->buf, dynstr->alloced)) == NULL) {
-            logmsg(LOGMSG_ERROR,
-                   "%s line %d realloc returns NULL\n", __func__, __LINE__);
-            return -1;
-        }
-    }
-    memcpy(&dynstr->buf[dynstr->len], str, len);
-    dynstr->len+=len;
-    dynstr->buf[dynstr->len] = '\0';
-    return 0;
-}
-
-static int dynstr_hx(dynstr_t *dynstr, const char *buf, int len)
-{
-    int strsz = (2 * len);
-    char *mem = alloca(strsz + 1);
-    char *output = util_tohex(mem, buf, len);
-    return dynstr_append(dynstr, output, strsz);
-}
-
-static int dynstr_pr_i(dynstr_t *dynstr, const char *fmt, va_list args)
-{
-    char *s;
-    int len;
-    int nchars;
-    va_list args_c;
-
-    len = 256;
-    if ((s = alloca(len)) == NULL) {
-        logmsg(LOGMSG_ERROR, "%s line %d alloca failed\n", __func__, __LINE__);
-        return -1;
-    }
-
-    va_copy(args_c, args);
-    nchars = vsnprintf(s, len, fmt, args);
-    if (nchars >= len) {
-        len = nchars + 1;
-        if ((s = alloca(len)) == NULL) {
-            logmsg(LOGMSG_ERROR, "%s line %d alloca failed\n", __func__, __LINE__);
-            return -1;
-        }
-        len = vsnprintf(s, len, fmt, args_c);
-    } else {
-        len = nchars;
-    }
-    return dynstr_append(dynstr, s, len);
-}
-
-static int dynstr_pr(dynstr_t *dynstr, const char *fmt, ...)
-{
-    int rc;
-    va_list args;
-    va_start(args, fmt);
-    rc = dynstr_pr_i(dynstr, fmt, args);
-    va_end(args);
-    return rc;
-
-}
-
 static int json_blob(char *buf, int len, struct schema *sc, int ix,
-        dynstr_t *ds) 
+        strbuf *ds) 
 {
     struct field *f;
     struct field_conv_opts opts = {0};
-    int rc = 0;
     assert(ix < sc->nmembers && ix >= 0);
-    rc += dynstr_pr(ds, "{");
+    strbuf_appendf(ds, "{");
     f = &sc->member[ix];
-    rc += dynstr_pr(ds, "\"%s\":x", f->name);
-    rc += dynstr_hx(ds, (void *)buf, len);
-    rc += dynstr_pr(ds, "}");
-    return rc;
+    strbuf_appendf(ds, "\"%s\":x", f->name);
+    strbuf_hex(ds, (void *)buf, len);
+    strbuf_appendf(ds, "}");
+    return 0;
 }
 
 extern pthread_key_t query_info_key;
 
 /* Copied & revised from printrecord */
 static int json_record(logicalops_cursor *pCur, char *buf, int len,
-        struct schema *sc, dynstr_t *ds) 
+        struct schema *sc, strbuf *ds) 
 {
     int field;
     struct field *f;
@@ -507,7 +432,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
     int printed = 0;
     int null = 0;
     int flen = 0;
-    int rc, ret = 0;
+    int rc;
     void *in;
 
 #ifdef _LINUX_SOURCE
@@ -519,7 +444,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
     else
         snprintf(tzopts.tzname, sizeof(tzopts.tzname), "US/Eastern");
 
-    ret += dynstr_pr(ds, "{");
+    strbuf_appendf(ds, "{");
     for (field = 0; field < sc->nmembers; field++) {
         int outdtsz = 0;
         null = 0;
@@ -539,11 +464,11 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/,
                 &uival, 8, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (null)
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else
-                ret += dynstr_pr(ds, "\"%s\"=%llu", f->name, uival);
+                strbuf_appendf(ds, "\"%s\"=%llu", f->name, uival);
             printed=1;
             break;
         case SERVER_BINT:
@@ -551,11 +476,11 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, &ival,
                 8, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (null)
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else
-                ret += dynstr_pr(ds, "\"%s\":%lld", f->name, ival);
+                strbuf_appendf(ds, "\"%s\":%lld", f->name, ival);
             printed=1;
             break;
         case SERVER_BREAL:
@@ -563,11 +488,11 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, &dval,
                 8, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (null)
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else
-                ret += dynstr_pr(ds, "\"%s\":%f", f->name, dval);
+                strbuf_appendf(ds, "\"%s\":%f", f->name, dval);
             printed=1;
             break;
         case SERVER_BCSTR:
@@ -576,22 +501,22 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 flen + 1, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (null)
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else
-                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+                strbuf_appendf(ds, "\"%s\":\"%s\"", f->name, sval);
             printed=1;
             break;
         case SERVER_BYTEARRAY:
             in = (buf + f->offset);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (null)
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else {
-                ret += dynstr_pr(ds, "\"%s\":x", f->name);
-                ret += dynstr_hx(ds, in + 1, flen - 1);
+                strbuf_appendf(ds, "\"%s\":x", f->name);
+                strbuf_hex(ds, in + 1, flen - 1);
             }
             printed=1;
             break;
@@ -601,11 +526,11 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (null)
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else {
-                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+                strbuf_appendf(ds, "\"%s\":\"%s\"", f->name, sval);
             }
             printed=1;
             break;
@@ -615,11 +540,11 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (null)
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else {
-                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+                strbuf_appendf(ds, "\"%s\":\"%s\"", f->name, sval);
             }
             printed=1;
             break;
@@ -629,11 +554,11 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (null)
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else {
-                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+                strbuf_appendf(ds, "\"%s\":\"%s\"", f->name, sval);
             }
             printed=1;
             break;
@@ -643,11 +568,11 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (null)
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else {
-                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+                strbuf_appendf(ds, "\"%s\":\"%s\"", f->name, sval);
             }
             printed=1;
             break;
@@ -657,11 +582,11 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (null)
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else {
-                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+                strbuf_appendf(ds, "\"%s\":\"%s\"", f->name, sval);
             }
             printed=1;
             break;
@@ -671,44 +596,44 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (null)
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else {
-                ret += dynstr_pr(ds, "\"%s\":\"%s\"", f->name, sval);
+                strbuf_appendf(ds, "\"%s\":\"%s\"", f->name, sval);
             }
             printed=1;
             break;
         case SERVER_BLOB2:
             in = (buf + f->offset);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (stype_is_null(in))
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else {
-                ret += dynstr_pr(ds, "\"%s\":x", f->name);
-                ret += dynstr_hx(ds, (void *)in + 5, flen - 5);
+                strbuf_appendf(ds, "\"%s\":x", f->name);
+                strbuf_hex(ds, (void *)in + 5, flen - 5);
             }
             break;
         case SERVER_VUTF8:
             in = (buf + f->offset);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (stype_is_null(in))
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             else {
-                ret += dynstr_pr(ds, "\"%s\":x", f->name);
-                ret += dynstr_hx(ds, (void *)in + 5, flen - 5);
+                strbuf_appendf(ds, "\"%s\":x", f->name);
+                strbuf_hex(ds, (void *)in + 5, flen - 5);
             }
             break;
         case SERVER_BLOB:
             in = (buf + f->offset);
             if (printed)
-                ret += dynstr_pr(ds, ",");
+                strbuf_appendf(ds, ",");
             if (stype_is_null(in)) {
-                ret += dynstr_pr(ds, "\"%s\":NULL", f->name);
+                strbuf_appendf(ds, "\"%s\":NULL", f->name);
             } else {
-                ret += dynstr_pr(ds, "\"%s\":@", f->name);
+                strbuf_appendf(ds, "\"%s\":\"\"", f->name);
             }
             break;
         default:
@@ -716,10 +641,10 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
                     __LINE__, f->type);
         }
     }
-    ret += dynstr_pr(ds, "}");
+    strbuf_appendf(ds, "}");
     if (sval)
         free(sval);
-    return ret;
+    return 0;
 }
 
 static void genid_format(logicalops_cursor *pCur, unsigned long long genid, char *stgenid, int sz)
@@ -734,8 +659,14 @@ static void reset_record_state(logicalops_cursor *pCur)
         pCur->table = NULL;
     }
     pCur->record = pCur->oldrecord = NULL;
-    dynstr_reset(&pCur->jsonrec);
-    dynstr_reset(&pCur->oldjsonrec);
+    if (pCur->jsonrec == NULL)
+        pCur->jsonrec = strbuf_new();
+    else
+        strbuf_clear(pCur->jsonrec);
+    if (pCur->oldjsonrec == NULL)
+        pCur->oldjsonrec = strbuf_new();
+    else
+        strbuf_clear(pCur->oldjsonrec);
     pCur->genid[0] = pCur->oldgenid[0] = '\0';
 }
 
@@ -863,13 +794,13 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
 
     if (dtafile == 0) {
         if ((rc = json_record(pCur, pCur->record, pCur->reclen, pCur->db->schema,
-                        &pCur->jsonrec)) != 0) {
+                        pCur->jsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_record returns %d\n", __func__,
                     __LINE__, rc);
             goto done;
         }
         if ((rc = json_record(pCur, pCur->oldrecord, pCur->oldreclen, pCur->db->schema,
-                        &pCur->oldjsonrec)) != 0) {
+                        pCur->oldjsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_record returns %d\n", __func__,
                     __LINE__, rc);
             goto done;
@@ -877,13 +808,13 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
     } else {
         int ix = get_schema_blob_field_idx((char *) pCur->table, ".ONDISK", dtafile - 1);
         if ((rc = json_blob(pCur->record, pCur->reclen, pCur->db->schema,
-                        ix, &pCur->jsonrec)) != 0) {
+                        ix, pCur->jsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_blob returns %d\n", __func__,
                     __LINE__, rc);
             goto done;
         }
         if ((rc = json_blob(pCur->oldrecord, pCur->oldreclen, pCur->db->schema,
-                        ix, &pCur->oldjsonrec)) != 0) {
+                        ix, pCur->oldjsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_blob returns %d\n", __func__,
                     __LINE__, rc);
             goto done;
@@ -982,7 +913,7 @@ static int produce_add_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
 
     if (dtafile == 0) {
         if ((rc = json_record(pCur, pCur->record, pCur->reclen, pCur->db->schema,
-                        &pCur->jsonrec)) != 0) {
+                        pCur->jsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_record returns %d\n", __func__,
                     __LINE__, rc);
             goto done;
@@ -990,7 +921,7 @@ static int produce_add_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
     } else {
         int ix = get_schema_blob_field_idx((char *) pCur->table, ".ONDISK", dtafile - 1);
         if ((rc = json_blob(pCur->record, pCur->reclen, pCur->db->schema,
-                        ix, &pCur->jsonrec)) != 0) {
+                        ix, pCur->jsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_blob returns %d\n", __func__,
                     __LINE__, rc);
             goto done;
@@ -1093,7 +1024,7 @@ static int produce_delete_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
 
     if (dtafile == 0) {
         if ((rc = json_record(pCur, pCur->oldrecord, pCur->oldreclen, pCur->db->schema,
-                        &pCur->oldjsonrec)) != 0) {
+                        pCur->oldjsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_record returns %d\n", __func__,
                     __LINE__, rc);
             goto done;
@@ -1101,7 +1032,7 @@ static int produce_delete_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
     } else {
         int ix = get_schema_blob_field_idx((char *) pCur->table, ".ONDISK", dtafile - 1);
         if ((rc = json_blob(pCur->oldrecord, pCur->oldreclen, pCur->db->schema,
-                        ix, &pCur->oldjsonrec)) != 0) {
+                        ix, pCur->oldjsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_blob returns %d\n", __func__,
                     __LINE__, rc);
             goto done;
@@ -1132,8 +1063,6 @@ static int unpack_logical_record(logicalops_cursor *pCur)
                 __func__, __LINE__, rc);
         return SQLITE_INTERNAL;
     }
-
-    dynstr_reset(&pCur->jsonrec);
 
     while (produced_row == 0 && (rec = listc_rtl(&pCur->log->impl->recs)) != NULL) {
 
@@ -1366,16 +1295,16 @@ static int logicalopsColumn(
         sqlite3_result_text(ctx, pCur->table, -1, NULL);
         break;
     case LOGICALOPS_COLUMN_OLDRECORD:
-        if (pCur->oldjsonrec.len == 0)
+        if (strbuf_len(pCur->oldjsonrec) == 0)
             sqlite3_result_null(ctx);
         else
-            sqlite3_result_text(ctx, pCur->oldjsonrec.buf, pCur->oldjsonrec.len, NULL);
+            sqlite3_result_text(ctx, strbuf_buf(pCur->oldjsonrec), strbuf_len(pCur->oldjsonrec), NULL);
         break;
     case LOGICALOPS_COLUMN_RECORD:
-        if (pCur->jsonrec.len == 0)
+        if (strbuf_len(pCur->jsonrec) == 0)
             sqlite3_result_null(ctx);
         else
-            sqlite3_result_text(ctx, pCur->jsonrec.buf, pCur->jsonrec.len, NULL);
+            sqlite3_result_text(ctx, strbuf_buf(pCur->jsonrec), strbuf_len(pCur->jsonrec), NULL);
         break;
   }
   return SQLITE_OK;

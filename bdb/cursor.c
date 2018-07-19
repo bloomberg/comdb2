@@ -92,6 +92,7 @@ as long as there was a successful move in the past
 #include <plhash.h>
 #include "logmsg.h"
 #include "util.h"
+#include "tohex.h"
 
 #include "genid.h"
 #define MERGE_DEBUG (0)

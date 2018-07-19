@@ -92,7 +92,7 @@
 #include "bdb_osqlcur.h"
 #include "bdb_osqllog.h"
 #include "logmsg.h"
-#include "util.h"
+#include "tohex.h"
 
 static unsigned int berkdb_counter = 0;
 

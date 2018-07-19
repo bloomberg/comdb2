@@ -52,6 +52,7 @@
 #include "debug_switches.h"
 #include "logmsg.h"
 #include "util.h"
+#include "tohex.h"
 
 struct thr_handle;
 struct reqlogger *thrman_get_reqlogger(struct thr_handle *thr);

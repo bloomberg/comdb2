@@ -66,6 +66,7 @@
 #include "nodemap.h"
 #include "intern_strings.h"
 #include "util.h"
+#include "tohex.h"
 #include "logmsg.h"
 #include "comdb2uuid.h"
 #include "strbuf.h"

@@ -35,7 +35,7 @@
 #include <locks.h>
 
 #include <logmsg.h>
-#include <util.h>
+#include <tohex.h>
 
 #include <build/db.h>
 #include <build/db_int.h>
@@ -3760,12 +3760,12 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
             bdb_state, &rec->lsn, NULL, NULL, keybuf, keylen, dtabuf,
             dtalen + 4 * bdb_state->ixcollattr[ix], &outdatalen);
         if (rc) {
+
             if (gbl_abort_on_reconstruct_failure)
                 abort();
 
             if (rc == BDBERR_NO_LOG) {
                 *bdberr = rc;
-                abort();
             }
 
             logmsg(LOGMSG_ERROR, "%s:%d Failed to reconstruct delete ix\n", __FILE__,

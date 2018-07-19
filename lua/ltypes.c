@@ -37,7 +37,7 @@
 #include <flibc.h>
 #include <luaglue.h>
 #include <sp.h>
-#include "util.h"
+#include "tohex.h"
 
 dbtypes_t dbtypes;
 

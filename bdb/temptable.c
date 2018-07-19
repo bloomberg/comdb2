@@ -37,7 +37,7 @@
 #include <execinfo.h>
 #endif
 #include <logmsg.h>
-#include <util.h>
+#include <tohex.h>
 #include "comdb2_atomic.h"
 
 /* One of the difference between using b-tree and hash is that in using hash, we
