@@ -53,13 +53,12 @@ struct comdb2_metrics_store {
     double concurrent_sql;
     double concurrent_connections;
     int64_t ismaster;
-<<<<<<< HEAD
     uint64_t num_sc_done;
-=======
     int64_t last_checkpoint_ms;
     int64_t total_checkpoint_ms;
     int64_t checkpoint_count;
->>>>>>> Checkpoint time
+    int64_t rcache_hits;
+    int64_t rcache_misses;
 };
 
 static struct comdb2_metrics_store stats;
@@ -127,56 +126,16 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.threads, NULL},
     {"num_sc_done", "Number of schema changes done", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.num_sc_done, NULL},
-=======
-    {"connections", "Total connections", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.connections, NULL},
-    {"connection_timeouts", "Timed out connection attempts", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.connection_timeouts, NULL},
-    {"cpu_percent", "Database CPU time over last 5 seconds", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.cpu_percent, NULL},
-    {"current_connections", "Number of current connections", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.current_connections, NULL},
-    {"deadlocks", "Number of deadlocks", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.deadlocks, NULL},
-    {"diskspace", "Disk space used (bytes)",  STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.diskspace, NULL},
-    {"fstraps", "Number of socket requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.fstraps, NULL}, 
-    {"ismaster", "Is this machine the current master", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.ismaster, NULL},
-    {"lockrequests", "Total lock requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     &stats.lockrequests, NULL},
-    {"lockwaits", "Number of lock waits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.lockwaits, NULL},
-    {"memory_ulimit", "Virtual address space ulimit", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.memory_ulimit, NULL},
-    {"memory_usage", "Address space size",  STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.memory_usage, NULL},
-    {"preads", "Number of pread()'s", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,  &stats.preads,
-     NULL},
-    {"pwrites", "Number of pwrite()'s", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.pwrites,
-     NULL},
-    {"queue_depth", "Request queue depth",  STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.queue_depth, NULL},
-    {"retries", "Number of retries", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.retries,
-     NULL},
-    {"service_time", "Service time",  STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.service_time, NULL},
-    {"sql_cost", "Number of sql steps executed (cost)", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     &stats.sql_cost, NULL},
-    {"sql_count", "Number of sql queries executed", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     &stats.sql_count, NULL},
-    {"start_time", "Server start time", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.start_time, NULL},
-    {"threads", "Number of threads",  STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.threads, NULL},
-    {"checkpoint_ms", "Time taken for last checkpoint", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-        &stats.last_checkpoint_ms},
+    {"checkpoint_ms", "Time taken for last checkpoint", STATISTIC_INTEGER,
+        STATISTIC_COLLECTION_TYPE_LATEST, &stats.last_checkpoint_ms},
     {"checkpoint_total_ms", "Total time taken for checkpoints", STATISTIC_INTEGER,
         STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.total_checkpoint_ms},
     {"checkpoint_count", "Total number of checkpoints taken", STATISTIC_INTEGER,
-        STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.checkpoint_count}
->>>>>>> Checkpoint time
+        STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.checkpoint_count},
+    {"rcache_hits", "Count of root-page cache hits", STATISTIC_INTEGER,
+        STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rcache_hits},
+    {"rcache_misses", "Count of root-page cache misses", STATISTIC_INTEGER,
+        STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rcache_misses},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -316,6 +275,8 @@ int refresh_metrics(void)
     stats.last_checkpoint_ms = gbl_last_checkpoint_ms;
     stats.total_checkpoint_ms = gbl_total_checkpoint_ms;
     stats.checkpoint_count = gbl_checkpoint_count;
+    stats.rcache_hits = gbl_rcache_hits;
+    stats.rcache_misses = gbl_rcache_misses;
 
     return 0;
 }
