@@ -632,7 +632,6 @@ static void append_field(struct byte_buffer *bytes, struct field *f,
 
             outopts.flags = FLD_CONV_TZONE;
             strcpy(outopts.tzname, record->trans->iq->tzname);
-            strcpy(outopts.tzname, "America/New_York");
 
             rc = SERVER_DATETIME_to_CLIENT_DATETIME(
                 (uint8_t *)rec + f->offset, sizeof(server_datetime_t), NULL,

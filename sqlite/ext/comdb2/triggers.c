@@ -20,7 +20,7 @@
 #include "comdb2systblInt.h"
 #include <schema_lk.h>
 #include <comdb2.h>
-#include <dbqueue.h>
+
 #include <translistener.h>
 
 typedef struct trigger trigger;
@@ -105,7 +105,7 @@ static int triggerOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
     t->name = strdup(thedb->qdbs[i]->tablename);
     t->type = -1;
     if(thedb->qdbs[i]->consumers[0] )
-      t->type = thedb->qdbs[i]->consumers[0]->type;
+      t->type = consumer_type(thedb->qdbs[i]->consumers[0]);
     listc_abl(&cur->trgs, t);
   }
   unlock_schema_lk();

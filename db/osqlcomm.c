@@ -4900,11 +4900,11 @@ void *osql_create_request(const char *sql, int sqlen, int type,
         req.rqlen = rqlen;
         req.sqlqlen = sqlen;
 
-        if (tzname)
-            strncpy(r_ptr->tzname, tzname, sizeof(r_ptr->tzname));
-
         p_buf = osqlcomm_req_type_put(&req, p_buf, p_buf_end);
         r_ptr->rqlen = rqlen;
+
+        if (tzname)
+            strncpy(r_ptr->tzname, tzname, sizeof(r_ptr->tzname));
     }
 
     p_buf = buf_no_net_put(sql, sqlen, p_buf, p_buf_end);

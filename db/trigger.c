@@ -17,7 +17,6 @@
 #include <bdb_queue.h>
 #include <thread_malloc.h>
 #include <net_types.h>
-#include <dbqueue.h>
 #include <trigger.h>
 #include <compat.h>
 #include "intern_strings.h"
