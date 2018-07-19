@@ -33,6 +33,7 @@
 
 #include <logmsg.h>
 #include "util.h"
+#include "tohex.h"
 
 static int bdb_blkseq_update_lsn_locked(bdb_state_type *bdb_state,
                                         int timestamp, DB_LSN lsn, int stripe);

@@ -1398,6 +1398,11 @@ REGISTER_TUNABLE("queuedb_genid_filename",
 REGISTER_TUNABLE("legacy_defaults", "Configure server with legacy defaults",
                  TUNABLE_BOOLEAN, NULL, NOARG | INTERNAL | READONLY | READEARLY,
                  NULL, NULL, pre_read_legacy_defaults, NULL);
+REGISTER_TUNABLE("abort_on_reconstruct_failure",
+                 "Abort database if snapshot fails to reconstruct a record.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_reconstruct_failure,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("netconndumptime",
                  "Dump connection statistics to ctrace this often.",

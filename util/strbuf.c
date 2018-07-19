@@ -26,6 +26,7 @@
 #include "mem_override.h"
 #endif
 #include "logmsg.h"
+#include "tohex.h"
 
 #define STRBUF_INC 64
 
@@ -163,4 +164,13 @@ void strbuf_appendf(strbuf *buf, const char *fmt, ...)
     va_end(args);
     strbuf_append(buf, out);
     free(out);
+}
+
+void strbuf_hex(strbuf *buf, void *tohex, int len)
+{
+    int strsz = (2 * len);
+    char *hexst = malloc(strsz + 1);
+    char *output = util_tohex(hexst, tohex, len);
+    strbuf_appendf(buf, output, strsz);
+    free(hexst);
 }

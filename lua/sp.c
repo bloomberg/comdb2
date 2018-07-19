@@ -61,7 +61,7 @@
 #include <luaglue.h>
 #include <luautil.h>
 #include <logmsg.h>
-#include <util.h>
+#include <tohex.h>
 
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;

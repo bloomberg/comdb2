@@ -45,6 +45,7 @@ set(src
   thread_malloc.c
   thread_util.c
   timers.c
+  tohex.c
   utilmisc.c
   walkback.c
   xstring.c

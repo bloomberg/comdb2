@@ -70,11 +70,4 @@ char *comdb2_filev(char *fmt, va_list args);
 char *comdb2_file(char *fmt, ...);
 void init_file_locations(char *);
 void cleanup_file_locations();
-
-char *util_tohex(char *out, const char *in, size_t len);
-void hexdumpbuf(char *key, int keylen, char **buf);
-void hexdump(loglvl lvl, unsigned char *key, int keylen);
-void hexdumpdbt(DBT *dbt);
-void hexdumpfp(FILE *fp, unsigned char *key, int keylen);
-
 #endif

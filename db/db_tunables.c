@@ -187,6 +187,7 @@ extern int gbl_master_req_waitms;
 extern int gbl_print_net_queue_size;
 extern int gbl_commit_delay_trace;
 extern int gbl_elect_priority_bias;
+extern int gbl_abort_on_reconstruct_failure;
 
 extern long long sampling_threshold;
 

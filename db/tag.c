@@ -40,6 +40,7 @@
 
 #include <netinet/in.h>
 #include "util.h"
+#include "tohex.h"
 #include <plhash.h>
 #include "tag.h"
 #include "types.h"
