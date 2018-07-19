@@ -408,9 +408,9 @@ static int json_blob(char *buf, int len, struct schema *sc, int ix,
     assert(ix < sc->nmembers && ix >= 0);
     strbuf_appendf(ds, "{");
     f = &sc->member[ix];
-    strbuf_appendf(ds, "\"%s\":x", f->name);
+    strbuf_appendf(ds, "\"%s\":\"x", f->name);
     strbuf_hex(ds, (void *)buf, len);
-    strbuf_appendf(ds, "}");
+    strbuf_appendf(ds, "\"}");
     return 0;
 }
 
@@ -652,13 +652,8 @@ static void genid_format(logicalops_cursor *pCur, unsigned long long genid, char
     snprintf(stgenid, sz, "x%016llx", genid);
 }
 
-static void reset_record_state(logicalops_cursor *pCur)
+static void reset_json_cursors(logicalops_cursor *pCur)
 {
-    if (pCur->table) {
-        free(pCur->table);
-        pCur->table = NULL;
-    }
-    pCur->record = pCur->oldrecord = NULL;
     if (pCur->jsonrec == NULL)
         pCur->jsonrec = strbuf_new();
     else
@@ -667,7 +662,17 @@ static void reset_record_state(logicalops_cursor *pCur)
         pCur->oldjsonrec = strbuf_new();
     else
         strbuf_clear(pCur->oldjsonrec);
+}
+
+static void reset_record_state(logicalops_cursor *pCur)
+{
+    if (pCur->table) {
+        free(pCur->table);
+        pCur->table = NULL;
+    }
+    pCur->record = pCur->oldrecord = NULL;
     pCur->genid[0] = pCur->oldgenid[0] = '\0';
+    reset_json_cursors(pCur);
 }
 
 static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc, 
@@ -1066,6 +1071,7 @@ static int unpack_logical_record(logicalops_cursor *pCur)
 
     while (produced_row == 0 && (rec = listc_rtl(&pCur->log->impl->recs)) != NULL) {
 
+        reset_json_cursors(pCur);
         logdta.flags = DB_DBT_REALLOC;
         if ((rc = logc->get(logc, &rec->lsn, &logdta, DB_SET)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d error %d retrieving lsn %d:%d\n",
@@ -1134,7 +1140,7 @@ static int unpack_logical_record(logicalops_cursor *pCur)
         pCur->log = NULL;
     }
 
-    return (produced_row && rc != 0) ? -1 : 0;
+    return (produced_row && rc != 0) ? -1 : !produced_row;
 }
 
 /*
@@ -1156,7 +1162,7 @@ again:
       rc = unpack_logical_record(pCur);
       switch(rc) {
           case 1:
-              logmsg(LOGMSG_ERROR, "%s line %d unpacking record: continuing\n",
+              logmsg(LOGMSG_DEBUG, "%s line %d unpacking record: continuing\n",
                       __func__, __LINE__);
               goto again;
               break;
@@ -1166,9 +1172,9 @@ again:
               return SQLITE_INTERNAL;
               break;
       }
+      pCur->iRowid++;
   }
 
-  pCur->iRowid++;
   return SQLITE_OK;
 }
 
