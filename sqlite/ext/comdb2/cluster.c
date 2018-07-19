@@ -24,9 +24,9 @@ static void free_cluster(void *data, int num_points) {
 
 int systblClusterInit(sqlite3 *db) {
     return create_system_table(db, "comdb2_cluster", get_cluster, free_cluster, sizeof(struct cluster_info),
-            CDB2_CSTRING, "host", offsetof(struct cluster_info, host),
-            CDB2_INTEGER, "port",  offsetof(struct cluster_info, port),
-            CDB2_CSTRING, "is_master",  offsetof(struct cluster_info, is_master),
-            CDB2_CSTRING, "coherent_state",  offsetof(struct cluster_info, coherent_state),
+            CDB2_CSTRING, "host", -1, offsetof(struct cluster_info, host),
+            CDB2_INTEGER, "port",  -1, offsetof(struct cluster_info, port),
+            CDB2_CSTRING, "is_master",  -1, offsetof(struct cluster_info, is_master),
+            CDB2_CSTRING, "coherent_state",  -1, offsetof(struct cluster_info, coherent_state),
             SYSTABLE_END_OF_FIELDS);
 }
