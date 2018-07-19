@@ -5618,9 +5618,9 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     } else if (is_machine_list(type)) {
         rc = configure_from_literal(hndl, type);
         if (rc && hndl->debug_trace) {
-            fprintf(stderr, "td %u %s:%d configure_from_literal %s returns "
-                    "%d\n", (uint32_t)pthread_self(), __func__, __LINE__, type,
-                    rc);
+            fprintf(stderr,
+                    "td %u %s:%d configure_from_literal %s returns %d\n",
+                    (uint32_t)pthread_self(), __func__, __LINE__, type, rc);
         }
     } else {
         rc = cdb2_get_dbhosts(hndl);
