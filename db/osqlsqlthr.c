@@ -772,7 +772,7 @@ retry:
                 /* lets check to see if a master swing happened and we need to
                  * retry */
                 sql_debug_logf(clnt, __func__, __LINE__,
-                        "returns xerr.errval=%d\n", osql->xerr.errval);
+                               "returns xerr.errval=%d\n", osql->xerr.errval);
                 if (osql->xerr.errval == ERR_NOMASTER ||
                     osql->xerr.errval == ERR_NOT_DURABLE ||
                     osql->xerr.errval == 999) {

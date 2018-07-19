@@ -5092,7 +5092,8 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
                 osqlcomm_done_xerr_uuid_type_put(&(rpl_xerr), p_buf, p_buf_end);
                 logmsg(LOGMSG_DEBUG,
                        "%s line %d master signaling %s uuid %s with rc=%d "
-                       "xerr=%d\n", __func__, __LINE__, sorese->host,
+                       "xerr=%d\n",
+                       __func__, __LINE__, sorese->host,
                        comdb2uuidstr(sorese->uuid, uuid), rc, xerr->errval);
 
                 msglen = OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
@@ -5110,7 +5111,8 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
 
                 logmsg(LOGMSG_DEBUG,
                        "%s line %d master signaling %s uuid %s with rc=%d "
-                       "xerr=%d\n", __func__, __LINE__, sorese->host,
+                       "xerr=%d\n",
+                       __func__, __LINE__, sorese->host,
                        comdb2uuidstr(sorese->uuid, uuid), rc, xerr->errval);
 
                 msglen = OSQLCOMM_DONE_RPL_LEN;
@@ -5129,8 +5131,9 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
 
                 logmsg(LOGMSG_DEBUG,
                        "%s line %d master signaling %s rqid %llu with rc=%d "
-                       "xerr=%d\n", __func__, __LINE__, sorese->host,
-                       sorese->rqid, rc, xerr->errval);
+                       "xerr=%d\n",
+                       __func__, __LINE__, sorese->host, sorese->rqid, rc,
+                       xerr->errval);
 
                 osqlcomm_done_xerr_type_put(&(rpl_xerr), p_buf, p_buf_end);
 
@@ -5147,8 +5150,9 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
 
                 logmsg(LOGMSG_DEBUG,
                        "%s line %d master signaling %s rqid %llu with rc=%d "
-                       "xerr=%d\n", __func__, __LINE__, sorese->host,
-                       sorese->rqid, rc, xerr->errval);
+                       "xerr=%d\n",
+                       __func__, __LINE__, sorese->host, sorese->rqid, rc,
+                       xerr->errval);
 
                 osqlcomm_done_rpl_put(&(rpl_ok), p_buf, p_buf_end);
 
