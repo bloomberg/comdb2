@@ -2617,7 +2617,11 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
 void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                        struct sql_state *rec, int outrc)
 {
-    int rc = put_prepared_stmt_int(thd, clnt, rec, outrc);
+    int rc;
+    
+    dohsql_wait_for_master((rec)?rec->stmt:NULL, clnt);
+
+    rc = put_prepared_stmt_int(thd, clnt, rec, outrc);
     if (rc != 0 && rec->stmt) {
         sqlite3_finalize(rec->stmt);
         rec->stmt = NULL;
@@ -3394,6 +3398,9 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
        the next read in sqlite master will find them and try to use them
      */
     clearClientSideRow(clnt);
+    
+    if (clnt->conns)
+        dohsql_end_distribute(clnt);
 }
 
 static void handle_stored_proc(struct sqlthdstate *thd,

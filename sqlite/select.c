@@ -2096,6 +2096,11 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
   if( p->pLimit ){
     p->iLimit = iLimit = ++pParse->nMem;
     v = sqlite3GetVdbe(pParse);
+    {
+        /* COMDB2 MODIFICATION */
+        extern void comdb2_register_limit(Select*);
+        comdb2_register_limit(p);
+    }
     assert( v!=0 );
     if( sqlite3ExprIsInteger(p->pLimit, &n) ){
       sqlite3VdbeAddOp2(v, OP_Integer, n, iLimit);

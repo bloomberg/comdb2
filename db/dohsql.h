@@ -36,8 +36,22 @@ typedef struct dohsql_node dohsql_node_t;
 int dohsql_distribute(dohsql_node_t *node);
 
 /**
+ * Terminate a parallel execution
+ *
+ */
+int dohsql_end_distribute(struct sqlclntstate *clnt);
+
+
+/**
  * Get sql for a certain parallel engine
  *
  */
 const char* dohsql_get_sql(struct sqlclntstate *clnt, int index);
+
+/**
+ * Synchronize parallel execution
+ *
+ */
+void dohsql_wait_for_master(sqlite3_stmt* stmt, struct sqlclntstate *clnt);
+
 #endif

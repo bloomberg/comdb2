@@ -5307,7 +5307,7 @@ Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem **ppMem)
         pMem = sqlite3Malloc(sizeof(Mem)*ncols);
     if (!pMem)
         return NULL;
-    bzero(pMem, sizeof(*pMem));
+    bzero(pMem, sizeof(*pMem)*ncols);
 
     for(i=0;i<ncols;i++) {
         rc = sqlite3VdbeMemCopy(&pMem[i], &cols[i]);
