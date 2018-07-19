@@ -317,9 +317,6 @@ timeval_add(struct timeval *tvp, struct timeval *uvp, struct timeval *vvp)
 	}
 }
 
-int64_t gbl_rcache_hits;
-int64_t gbl_rcache_misses;
-
 /*
  * __bam_search --
  *	Search a btree for a key.
@@ -410,10 +407,8 @@ try_again:
 		if (rcache_find(
 		    dbp, &cached_pg, &bfpool_pg, &gen, &slot) == 0) {
 			h = cached_pg;
-            gbl_rcache_hits++;
 			goto got_pg;
 		}
-        gbl_rcache_misses++;
 	}
 
 	/*

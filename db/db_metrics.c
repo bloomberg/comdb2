@@ -275,8 +275,8 @@ int refresh_metrics(void)
     stats.last_checkpoint_ms = gbl_last_checkpoint_ms;
     stats.total_checkpoint_ms = gbl_total_checkpoint_ms;
     stats.checkpoint_count = gbl_checkpoint_count;
-    stats.rcache_hits = gbl_rcache_hits;
-    stats.rcache_misses = gbl_rcache_misses;
+    stats.rcache_hits = rcache_hits;
+    stats.rcache_misses = rcache_miss;
 
     return 0;
 }
