@@ -5069,7 +5069,7 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
                          host_node_ptr->host);
 #endif
         pthread_mutex_unlock(&subnet_mtx);
-        return comdb2_gethostbyname(host_node_ptr->host, addr);
+        return comdb2_gethostbyname(&host_node_ptr->host, addr);
     }
 
     if (counter == 0xffff) // start with a random subnet
@@ -5109,7 +5109,8 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
                 "Connecting to NON dedicated hostname/subnet '%s' counter=%d\n",
                 rephostname, counter);
 #endif
-        rc = comdb2_gethostbyname(rephostname, addr);
+        char *name = rephostname;
+        rc = comdb2_gethostbyname(&name, addr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%d) %s(): ERROR gethostbyname '%s' FAILED\n",
                     __func__, ii, rephostname);

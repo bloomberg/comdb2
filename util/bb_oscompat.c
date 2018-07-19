@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <stdio.h>
 #include <stddef.h>
 #include <string.h>
 #include <errno.h>
@@ -23,14 +24,14 @@
 
 #include <bb_oscompat.h>
 
-int comdb2_gethostbyname(const char *name, struct in_addr *addr)
+static int os_gethostbyname(char **name_ptr, struct in_addr *addr)
 {
-    int rc;
+    const char *name = *name_ptr;
     struct addrinfo *res = NULL, hints = {0};
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
-    if ((rc = getaddrinfo(name, NULL, &hints, &res)) != 0 || res == NULL) {
-        return rc;
+    if (getaddrinfo(name, NULL, &hints, &res) != 0 || res == NULL) {
+        return -1;
     }
     if (addr) {
         *addr = ((struct sockaddr_in*)res->ai_addr)->sin_addr;
@@ -39,16 +40,48 @@ int comdb2_gethostbyname(const char *name, struct in_addr *addr)
     return 0;
 }
 
-int comdb2_getservbyname(const char *name, const char *proto, short *port)
+static hostbyname *hostbyname_impl = os_gethostbyname;
+
+int comdb2_gethostbyname(char **name, struct in_addr *addr)
 {
-    struct servent result_buf, *result;
+    return hostbyname_impl(name, addr);
+}
+
+hostbyname *get_os_hostbyname(void)
+{
+    return os_gethostbyname;
+}
+
+void set_hostbyname(hostbyname *impl)
+{
+    hostbyname_impl = impl;
+}
+
+#ifdef _IBM_SOURCE
+#include <pthread.h>
+static pthread_mutex_t servbyname_lk = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
+void comdb2_getservbyname(const char *name, const char *proto, short *port)
+{
+    struct servent result_buf, *result = NULL;
     char buf[1024];
-    int rc;
-    rc = getservbyname_r(name, proto, &result_buf, buf, sizeof(buf), &result);
-    if (rc == 0 && result) {
+#   if defined(_LINUX_SOURCE)
+    getservbyname_r(name, proto, &result_buf, buf, sizeof(buf), &result);
+#   elif defined(_SUN_SOURCE)
+    result = getservbyname_r(name, proto, &result_buf, buf, sizeof(buf));
+#   elif defined(_IBM_SOURCE)
+    pthread_mutex_lock(&servbyname_lk);
+    result = getservbyname(name, proto);
+    if (result) {
+        result_buf = *result;
+        result = &result_buf;
+    }
+    pthread_mutex_unlock(&servbyname_lk);
+#   endif
+    if (result) {
         *port = result->s_port;
     }
-    return rc;
 }
 
 int bb_readdir(DIR *d, void *buf, struct dirent **dent) {
