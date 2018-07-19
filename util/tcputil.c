@@ -202,7 +202,8 @@ int tcpresolve(const char *host, struct in_addr *in, int *port)
         /* it's dotted-decimal */
         memcpy(&in->s_addr, &inaddr, sizeof(inaddr));
     } else {
-        if (comdb2_gethostbyname(tok, in) != 0) {
+        char *name = tok;
+        if (comdb2_gethostbyname(&name, in) != 0) {
             return -1;
         }
     }
