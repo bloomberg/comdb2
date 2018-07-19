@@ -24,12 +24,15 @@ extern "C" {
 #endif
 
 struct in_addr;
-struct servent;
 
-int comdb2_gethostbyname(const char *, struct in_addr *);
-int comdb2_getservbyname(const char *, const char *, short *);
+typedef int(hostbyname)(char **, struct in_addr *);
+
+hostbyname *get_os_hostbyname();
+void set_hostbyname(hostbyname *);
+
+hostbyname comdb2_gethostbyname;
+void comdb2_getservbyname(const char *, const char *, short *);
 int bb_readdir(DIR *d, void *buf, struct dirent **dent);
-
 
 #ifdef __cplusplus
 }

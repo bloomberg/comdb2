@@ -378,7 +378,7 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
 
 void getmyaddr()
 {
-    if (comdb2_gethostbyname(gbl_mynode, &gbl_myaddr) != 0) {
+    if (comdb2_gethostbyname(&gbl_mynode, &gbl_myaddr) != 0) {
         gbl_myaddr.s_addr = INADDR_LOOPBACK; /* default to localhost */
         return;
     }
@@ -704,12 +704,14 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
 
                 /* Check to see if this name is another name for me. */
                 struct in_addr addr;
-                if (comdb2_gethostbyname(nodename, &addr) == 0 && addr.s_addr == gbl_myaddr.s_addr) {
+                char *name = nodename;
+                if (comdb2_gethostbyname(&name, &addr) == 0 &&
+                    addr.s_addr == gbl_myaddr.s_addr) {
                     /* Assume I am better known by this name. */
-                    gbl_mynode = intern(nodename);
+                    gbl_mynode = intern(name);
                     gbl_mynodeid = machine_num(gbl_mynode);
                 }
-                if (strcmp(gbl_mynode, nodename) == 0 &&
+                if (strcmp(gbl_mynode, name) == 0 &&
                     gbl_rep_node_pri == 0) {
                     /* assign the priority of current node according to its
                      * sequence in nodes list. */
@@ -719,13 +721,13 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 /* lets ignore duplicate for now and make a list out of what is
                  * given in lrl */
                 for (kk = 1; kk < dbenv->nsiblings &&
-                             strcmp(dbenv->sibling_hostname[kk], nodename);
+                             strcmp(dbenv->sibling_hostname[kk], name);
                      kk++)
                     ; /*look for dupes*/
                 if (kk == dbenv->nsiblings) {
                     /*not a dupe.*/
                     dbenv->sibling_hostname[dbenv->nsiblings] =
-                        intern(nodename);
+                        intern(name);
                     for (int netnum = 0; netnum < MAXNETS; netnum++)
                         dbenv->sibling_port[dbenv->nsiblings][netnum] = 0;
                     dbenv->nsiblings++;
