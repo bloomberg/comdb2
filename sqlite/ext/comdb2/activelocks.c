@@ -12,8 +12,8 @@ typedef struct systable_activelocks {
     uint32_t                lockerid;
     const char              *mode;
     const char              *status;
-    char                    table_str[64];
-    char                    *table;
+    char                    component_str[64];
+    char                    *component;
     char                    type_str[80];
     char                    *type;
     int64_t                 page;
@@ -26,7 +26,7 @@ typedef struct getactivelocks {
 } getactivelocks_t;
 
 static int collect(void *args, int64_t threadid, int32_t lockerid,
-        const char *mode, const char *status, const char *table,
+        const char *mode, const char *status, const char *component,
         int64_t page, const char *rectype)
 {
     getactivelocks_t *a = (getactivelocks_t *)args;
@@ -43,11 +43,11 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
     l->mode = mode;
     l->status = status;
     l->page = page;
-    if (table)
-        strncpy(l->table_str, table, sizeof(l->table_str));
+    if (component)
+        strncpy(l->component_str, component, sizeof(l->component_str));
     else
-        l->table_str[0] = '\0';
-    l->table = l->table_str;
+        l->component_str[0] = '\0';
+    l->component = l->component_str;
 
     if (rectype)
         strncpy(l->type_str, rectype, sizeof(l->type_str));
@@ -80,7 +80,7 @@ int systblActivelocksInit(sqlite3 *db) {
             CDB2_INTEGER, "lockerid", offsetof(systable_activelocks_t, lockerid),
             CDB2_CSTRING, "mode", offsetof(systable_activelocks_t, mode),
             CDB2_CSTRING, "status", offsetof(systable_activelocks_t, status),
-            CDB2_CSTRING, "table", offsetof(systable_activelocks_t, table),
+            CDB2_CSTRING, "component", offsetof(systable_activelocks_t, component),
             CDB2_CSTRING, "locktype", offsetof(systable_activelocks_t, type),
             CDB2_INTEGER, "page", offsetof(systable_activelocks_t, page),
             SYSTABLE_END_OF_FIELDS);
