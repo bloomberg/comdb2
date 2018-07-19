@@ -46,6 +46,7 @@ static void __lock_dump_locker __P((DB_LOCKTAB *, DB_LOCKER *, FILE *));
 static void __lock_dump_object __P((DB_LOCKTAB *, DB_LOCKOBJ *, FILE *, int));
 static void __lock_printheader __P((FILE *));
 static int __lock_stat __P((DB_ENV *, DB_LOCK_STAT **, u_int32_t));
+static int __lock_collect __P((DB_ENV *, collect_locks_f, void *));
 
 void __lock_dump_locker_int __P((DB_LOCKTAB *, DB_LOCKER *, FILE *, int));
 int __lock_printlock_int __P((DB_LOCKTAB *, struct __db_lock *, int, FILE *,
@@ -627,14 +628,18 @@ static char *status_to_str(int lpstatus)
 }
 
 static int
-__collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp, collect_locks_func *func, void *arg)
+__collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
+        collect_locks_f func, void *arg)
 {
 	DB_LOCKOBJ *lockobj;
 	db_pgno_t pgno = 0;
+    DB_LSN lsn;
+    int64_t page = -1;
 	u_int32_t *fidp, type;
 	u_int8_t *ptr;
+    char minmax = 0;
 	char *namep = NULL;
-    char rectype[80]='\0';
+    char rectype[80]={0};
     unsigned long long genid;
     char fileid[DB_FILE_ID_LEN];
     char tablename[64] = {0};
@@ -655,7 +660,8 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp, collect_loc
                 namep = NULL;
             switch(type) {
                 case (DB_PAGE_LOCK):
-                    snprintf(rectype, sizeof(rectype), "PAGE %u", pgno);
+                    snprintf(rectype, sizeof(rectype), "PAGE");
+                    page = pgno;
                     break;
                 case (DB_HANDLE_LOCK):
                     snprintf(rectype, sizeof(rectype), "HANDLE");
@@ -675,7 +681,6 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp, collect_loc
             if (__dbreg_get_name(lt->dbenv, (u_int8_t *)fidp, &namep) != 0)
                 namep = NULL;
 			int l=strlen(namep);
-			logmsgf(LOGMSG_USER, fp, "%-25s", namep);
 			if (l >= 5 && !strncmp(&namep[l-5], "index", 5)) {
                 snprintf(rectype, sizeof(rectype), "KEYHASH %llx", genid);
             } else {
@@ -684,18 +689,19 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp, collect_loc
             break;
 
         case (31):
-            char minmax = 0;
             memcpy(fileid, ptr, DB_FILE_ID_LEN);
             memcpy(&minmax, ((char *)ptr)+30, sizeof(char));
             fidp = (u_int32_t *) fileid;
             if (__dbreg_get_name(lt->dbenv, (u_int8_t *) fidp, &namep) != 0)
                 namep = NULL;
-            snprintf(rectype, sizeof(rectype), "MINMAX %s", minmax == 0 ? "MIN" : "MAX");
+            snprintf(rectype, sizeof(rectype), "MINMAX %s", minmax == 0 ?
+                    "MIN" : "MAX");
             break;
 
         case (32):
             memcpy(tablename, ptr, 28);
-            snprintf(rectype, sizeof(rectype), "TABLELOCK %s", tablename);
+            snprintf(rectype, sizeof(rectype), "TABLELOCK", tablename);
+            namep = tablename;
             break;
 
         case (20):
@@ -703,27 +709,26 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp, collect_loc
             fidp = (u_int32_t *) fileid;
             if (__dbreg_get_name(lt->dbenv, (u_int8_t *) fidp, &namep) != 0)
                 namep = NULL;
-            snprintf(rectype, sizeof(rectype), "STRIPELOCK %s", namep ? namep :
-                    "(UNKNOWN)");
+            snprintf(rectype, sizeof(rectype), "STRIPELOCK");
             break;
 
         /* LSN LOCK .. REALLY?? */
         case (8):
-            DB_LSN lsn;
             memcpy(&lsn, ptr, sizeof(DB_LSN));
-            snprintf(rectype, sizeof(rectype), "LSN %u:%u", lsn.file, lsn.offset);
+            snprintf(rectype, sizeof(rectype), "LSN %u:%u", lsn.file,lsn.offset);
             break;
 
         default:
-            snprintf(rectype, sizeof(rectype), "UNKNOWN-TYPE SZ %d:",lockobj->lockobj.size);
+            snprintf(rectype, sizeof(rectype), "UNKNOWN-TYPE SIZE %d:",
+                    lockobj->lockobj.size);
             break;
     }
-    (*func)(arg, lip->tid, lip->id, mode, status, namep, rectype);
+    (*func)(arg, lip->tid, lip->id, mode, status, namep, page, rectype);
     return 0;
 }
 
 static int
-__collect_locker(DB_LOCKTAB *lt, DB_LOCKER *lip, collect_locks_func *func, void *arg)
+__collect_locker(DB_LOCKTAB *lt, DB_LOCKER *lip, collect_locks_f func, void *arg)
 {
 	int have_waiters = 0;
 	struct __db_lock *lp;
@@ -734,11 +739,13 @@ __collect_locker(DB_LOCKTAB *lt, DB_LOCKER *lip, collect_locks_func *func, void 
 		    lp = SH_LIST_NEXT(lp, locker_links, __db_lock))
 			 __collect_lock(lt, lip, lp, func, arg);
 	}
+    return 0;
 }
 
-int
-__collect_all_locks(DB_ENV *dbenv, collect_locks_func *func, void *arg)
+static int
+__lock_collect(DB_ENV *dbenv, collect_locks_f func, void *arg)
 {
+	DB_LOCKTAB *lt;
 	DB_LOCKER *lip;
 	DB_LOCKOBJ *op;
 	DB_LOCKREGION *lrp;
@@ -766,6 +773,36 @@ __collect_all_locks(DB_ENV *dbenv, collect_locks_func *func, void *arg)
     return (0);
 }
 
+
+/*
+ * __lock_collect_pp --
+ *	DB_ENV->lock_collect pre/post processing.
+ *
+ * PUBLIC: int __lock_collect_pp __P((DB_ENV *, collect_locks_f, void *));
+ */
+int
+__lock_collect_pp(dbenv, func, arg)
+	DB_ENV *dbenv;
+    collect_locks_f func;
+    void *arg;
+{
+	int rep_check, ret;
+
+	PANIC_CHECK(dbenv);
+	ENV_REQUIRES_CONFIG(dbenv,
+	    dbenv->lk_handle, "DB_ENV->lock_collect", DB_INIT_LOCK);
+
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+
+	if (rep_check)
+		__env_rep_enter(dbenv);
+	ret = __lock_collect(dbenv, func, arg);
+
+	if (rep_check)
+		__env_rep_exit(dbenv);
+
+	return (ret);
+}
 
 
 /*

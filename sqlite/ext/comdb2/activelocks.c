@@ -1,17 +1,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include "comdb2.h"
+#include "bdb_int.h"
+#include "comdb2systblInt.h"
 #include "ezsystables.h"
-#include <activelocks.h>
 #include "cdb2api.h"
 
 typedef struct systable_activelocks {
     int64_t                 threadid;
     uint32_t                lockerid;
-    char                    *mode;
-    char                    *status;
+    const char              *mode;
+    const char              *status;
+    char                    table_str[64];
     char                    *table;
+    char                    type_str[80];
     char                    *type;
+    int64_t                 page;
 } systable_activelocks_t;
 
 typedef struct getactivelocks {
@@ -20,9 +25,47 @@ typedef struct getactivelocks {
     systable_activelocks_t *records;
 } getactivelocks_t;
 
+static int collect(void *args, int64_t threadid, int32_t lockerid,
+        const char *mode, const char *status, const char *table,
+        int64_t page, const char *rectype)
+{
+    getactivelocks_t *a = (getactivelocks_t *)args;
+    systable_activelocks_t *l;
+    a->count++;
+    if (a->count >= a->alloc) {
+        if (a->alloc == 0) a->alloc = 16;
+        else a->alloc = a->alloc * 2;
+        a->records = realloc(a->records, a->alloc * sizeof(systable_activelocks_t));
+    }
+    l = &a->records[a->count - 1];
+    l->threadid = threadid;
+    l->lockerid = lockerid;
+    l->mode = mode;
+    l->status = status;
+    l->page = page;
+    if (table)
+        strncpy(l->table_str, table, sizeof(l->table_str));
+    else
+        l->table_str[0] = '\0';
+    l->table = l->table_str;
+
+    if (rectype)
+        strncpy(l->type_str, rectype, sizeof(l->type_str));
+    else 
+        l->type_str[0] = '\0';
+    l->type = l->type_str;
+
+    return 0;
+}
+
 static int get_activelocks(void **data, int *records)
 {
+    bdb_state_type *bdb_state = thedb->bdb_env;
     getactivelocks_t a = {0};
+    bdb_state->dbenv->collect_locks(bdb_state->dbenv, collect, &a);
+    *data = a.records;
+    *records = a.count;
+    return 0;
 }
 
 static void free_activelocks(void *p, int n)
@@ -30,79 +73,15 @@ static void free_activelocks(void *p, int n)
     free(p);
 }
 
-static int collect(void *args, int64_t threadid, int32_t lockerid,
-        char *mode, char *status, char *table, char *rectype)
-{
-    getactivelocks_t *a = (getactivelocks_t *)args;
-    a->count++;
-    if (a->count >= a->alloc) {
-        if (a->alloc == 0) a->alloc = 16;
-        else a->alloc = a->alloc * 2;
-        a->records = realloc(a->records, a->alloc * sizeof(systable_activelocks_t));
-    }
-}
-
-static int get_activelocks(void **date, int *records)
-{
-}
-
-static int get_rep_net_queues(void **data, int *records) 
-{
-    net_get_records_t gr = {0};
-    bdb_state_type *bdb_state = thedb->bdb_env;
-    net_queue_stat_iterate(bdb_state->repinfo->netinfo, net_to_systable, &gr);
-    *data = gr.records;
-    *records = gr.count;
-    return 0;
-}
-
-static void free_rep_net_queues(void *p, int n)
-{
-    systable_rep_qstat_t *s = (systable_rep_qstat_t *)p;
-    for(int i=0; i<n;i++) {
-        free(s[i].machine);
-        free(s[i].min_lsn);
-        free(s[i].max_lsn);
-    }
-    free(p);
-}
-
-int systblRepNetQueueStatInit(sqlite3 *db) {
-    return create_system_table(db, "comdb2_locks", get_rep_net_queues,
-            free_rep_net_queues, sizeof(systable_rep_qstat_t),
-            CDB2_CSTRING, "machine", offsetof(systable_rep_qstat_t, machine),
-            CDB2_INTEGER, "total", offsetof(systable_rep_qstat_t, total),
-            CDB2_CSTRING, "min_lsn", offsetof(systable_rep_qstat_t, min_lsn),
-            CDB2_CSTRING, "max_lsn", offsetof(systable_rep_qstat_t, max_lsn),
-            CDB2_INTEGER, "alive", offsetof(systable_rep_qstat_t, alive),
-            CDB2_INTEGER, "alive_req", offsetof(systable_rep_qstat_t, alive_req),
-            CDB2_INTEGER, "all_req", offsetof(systable_rep_qstat_t, all_req),
-            CDB2_INTEGER, "dupmaster", offsetof(systable_rep_qstat_t, dupmaster),
-            CDB2_INTEGER, "file", offsetof(systable_rep_qstat_t, file),
-            CDB2_INTEGER, "file_req", offsetof(systable_rep_qstat_t, file_req),
-            CDB2_INTEGER, "log", offsetof(systable_rep_qstat_t, log),
-            CDB2_INTEGER, "log_more", offsetof(systable_rep_qstat_t, log_more),
-            CDB2_INTEGER, "log_req", offsetof(systable_rep_qstat_t, log_req),
-            CDB2_INTEGER, "master_req", offsetof(systable_rep_qstat_t, master_req),
-            CDB2_INTEGER, "newclient", offsetof(systable_rep_qstat_t, newclient),
-            CDB2_INTEGER, "newfile", offsetof(systable_rep_qstat_t, newfile),
-            CDB2_INTEGER, "newmaster", offsetof(systable_rep_qstat_t, newmaster),
-            CDB2_INTEGER, "newsite", offsetof(systable_rep_qstat_t, newsite),
-            CDB2_INTEGER, "page", offsetof(systable_rep_qstat_t, page),
-            CDB2_INTEGER, "page_req", offsetof(systable_rep_qstat_t, page_req),
-            CDB2_INTEGER, "plist", offsetof(systable_rep_qstat_t, plist),
-            CDB2_INTEGER, "plist_req", offsetof(systable_rep_qstat_t, plist_req),
-            CDB2_INTEGER, "verify", offsetof(systable_rep_qstat_t, verify),
-            CDB2_INTEGER, "verify_fail", offsetof(systable_rep_qstat_t, verify_fail),
-            CDB2_INTEGER, "verify_req", offsetof(systable_rep_qstat_t, verify_req),
-            CDB2_INTEGER, "vote1", offsetof(systable_rep_qstat_t, vote1),
-            CDB2_INTEGER, "vote2", offsetof(systable_rep_qstat_t, vote2),
-            CDB2_INTEGER, "log_logput", offsetof(systable_rep_qstat_t, log_logput),
-            CDB2_INTEGER, "pgdump_req", offsetof(systable_rep_qstat_t, pgdump_req),
-            CDB2_INTEGER, "gen_vote1", offsetof(systable_rep_qstat_t, gen_vote1),
-            CDB2_INTEGER, "gen_vote2", offsetof(systable_rep_qstat_t, gen_vote2),
-            CDB2_INTEGER, "log_fill", offsetof(systable_rep_qstat_t, log_fill),
-            CDB2_INTEGER, "uncategorized", offsetof(systable_rep_qstat_t, uncategorized),
-            CDB2_INTEGER, "unknown", offsetof(systable_rep_qstat_t, unknown),
+int systblActivelocksInit(sqlite3 *db) {
+    return create_system_table(db, "comdb2_locks", get_activelocks,
+            free_activelocks, sizeof(systable_activelocks_t),
+            CDB2_INTEGER, "thread", offsetof(systable_activelocks_t, threadid),
+            CDB2_INTEGER, "lockerid", offsetof(systable_activelocks_t, lockerid),
+            CDB2_CSTRING, "mode", offsetof(systable_activelocks_t, mode),
+            CDB2_CSTRING, "status", offsetof(systable_activelocks_t, status),
+            CDB2_CSTRING, "table", offsetof(systable_activelocks_t, table),
+            CDB2_CSTRING, "locktype", offsetof(systable_activelocks_t, type),
+            CDB2_INTEGER, "page", offsetof(systable_activelocks_t, page),
             SYSTABLE_END_OF_FIELDS);
 }

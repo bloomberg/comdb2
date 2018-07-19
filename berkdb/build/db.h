@@ -2006,6 +2006,10 @@ struct __lc_cache {
 	pthread_mutex_t lk;
 };
 
+typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
+        const char *mode, const char *status, const char *table,
+        int64_t page, const char *rectype);
+
 /* Database Environment handle. */
 struct __db_env {
 	/*******************************************************
@@ -2257,6 +2261,7 @@ struct __db_env {
 	int  (*lock_id_has_waiters) __P((DB_ENV *, u_int32_t));
 	int  (*lock_id_set_logical_abort) __P((DB_ENV *, u_int32_t));
 	int  (*lock_stat) __P((DB_ENV *, DB_LOCK_STAT **, u_int32_t));
+    int  (*collect_locks) __P((DB_ENV *, collect_locks_f, void *arg));
 	int  (*lock_locker_lockcount)
 		__P((DB_ENV *, u_int32_t id, u_int32_t *nlocks));
 	int  (*lock_locker_pagelockcount)
