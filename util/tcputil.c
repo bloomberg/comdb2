@@ -202,10 +202,9 @@ int tcpresolve(const char *host, struct in_addr *in, int *port)
         /* it's dotted-decimal */
         memcpy(&in->s_addr, &inaddr, sizeof(inaddr));
     } else {
-        struct hostent *hp = comdb2_gethostbyname(tok);
-        if (hp == NULL)
+        if (comdb2_gethostbyname(tok, in) != 0) {
             return -1;
-        memcpy(&in->s_addr, hp->h_addr, hp->h_length);
+        }
     }
     return 0;
 }
@@ -673,8 +672,9 @@ int main(int argc, char **argv)
     int bytes_read;
     int rc;
 
-    sent = comdb2_getservbyname("ftp", "tcp");
-    if (sent == NULL) {
+    short s_port = 0;
+    comdb2_getservbyname("ftp", "tcp", &s_port);
+    if (s_port == 0) {
         perror("getservbyname");
         return -1;
     }
@@ -682,7 +682,7 @@ int main(int argc, char **argv)
     /* port comes back in network order from getservbyname;
      * tcpconnecth expects it in host order so it can convert it back to network
      * order */
-    port = ntohs(sent->s_port);
+    port = ntohs(s_port);
     printf("THE SERVICE IS AT PORT %d\n", port);
 
     fd = tcpconnecth("ibm1", port, 0);
