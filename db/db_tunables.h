@@ -1400,9 +1400,9 @@ REGISTER_TUNABLE("legacy_defaults", "Configure server with legacy defaults",
                  NULL, NULL, pre_read_legacy_defaults, NULL);
 REGISTER_TUNABLE("abort_on_reconstruct_failure",
                  "Abort database if snapshot fails to reconstruct a record.  "
-                 "(Default: off)", TUNABLE_BOOLEAN,
-                 &gbl_abort_on_reconstruct_failure, EXPERIMENTAL | INTERNAL, NULL,
-                 NULL, NULL, NULL);
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_reconstruct_failure,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("netconndumptime",
                  "Dump connection statistics to ctrace this often.",

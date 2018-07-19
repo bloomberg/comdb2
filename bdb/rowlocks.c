@@ -617,16 +617,17 @@ int bdb_reconstruct_delete(bdb_state_type *bdb_state, DB_LSN *startlsn,
 }
 
 enum {
-    PREVIOUS_DATA_IX            = 0,
-    PREVIOUS_KEY_IX             = 1,
-    NEW_DATA_IX                 = 2,
-    NEW_KEY_IX                  = 3
+    PREVIOUS_DATA_IX = 0,
+    PREVIOUS_KEY_IX = 1,
+    NEW_DATA_IX = 2,
+    NEW_KEY_IX = 3
 };
 
 int bdb_reconstruct_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
-                           int *page, int *index, void *prevkey, int *prevkeylen,
-                           void *prevdata, int *prevdatalen, void *newkey,
-                           int *newkeylen, void *newdata, int *newdatalen)
+                           int *page, int *index, void *prevkey,
+                           int *prevkeylen, void *prevdata, int *prevdatalen,
+                           void *newkey, int *newkeylen, void *newdata,
+                           int *newdatalen)
 {
     DB_LSN savedlsn = *startlsn;
     int outlen;
@@ -640,12 +641,13 @@ int bdb_reconstruct_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
     int maxfill;
     int pvlen;
 
-    /* Get prev data */
+/* Get prev data */
 again1:
     pvlen = prevdatalen ? *prevdatalen : 0;
     do {
         rc = get_next_addrem_buffer(bdb_state, &lsn, pvlen ? prevdata : NULL,
-                pvlen, &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
+                                    pvlen, &outlen, &tmp_page, &tmp_index,
+                                    &haveit, &nextlsn);
     } while (rc == 0 && nextlsn.file != 0 && haveit == 0);
 
     if (rc == BDBERR_NO_LOG || nextlsn.file == 0 || haveit == 0)
@@ -656,8 +658,9 @@ again1:
 
     /* Get prev index */
     pvlen = prevkeylen ? *prevkeylen : 0;
-    rc = get_next_addrem_buffer(bdb_state, &lsn, pvlen ? prevkey : NULL,
-            pvlen, &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
+    rc = get_next_addrem_buffer(bdb_state, &lsn, pvlen ? prevkey : NULL, pvlen,
+                                &outlen, &tmp_page, &tmp_index, &haveit,
+                                &nextlsn);
 
     if (rc == BDBERR_NO_LOG || nextlsn.file == 0)
         return rc;
@@ -668,8 +671,10 @@ again1:
     if (prevkeylen)
         *prevkeylen = outlen;
 
-    if (page) *page = tmp_page;
-    if (index) *index = tmp_index;
+    if (page)
+        *page = tmp_page;
+    if (index)
+        *index = tmp_index;
 
     if (!newkey && !newdata)
         return 0;
@@ -678,7 +683,8 @@ again2:
     pvlen = newdatalen ? *newdatalen : 0;
     do {
         rc = get_next_addrem_buffer(bdb_state, &lsn, pvlen ? newdata : NULL,
-                pvlen, &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
+                                    pvlen, &outlen, &tmp_page, &tmp_index,
+                                    &haveit, &nextlsn);
     } while (rc == 0 && nextlsn.file != 0 && haveit == 0);
 
     if (rc == BDBERR_NO_LOG || nextlsn.file == 0 || haveit == 0)
@@ -689,8 +695,9 @@ again2:
 
     /* Get newdata */
     pvlen = newkeylen ? *newkeylen : 0;
-    rc = get_next_addrem_buffer(bdb_state, &lsn, pvlen ? newkey : NULL,
-            pvlen, &outlen, &tmp_page, &tmp_index, &haveit, &nextlsn);
+    rc = get_next_addrem_buffer(bdb_state, &lsn, pvlen ? newkey : NULL, pvlen,
+                                &outlen, &tmp_page, &tmp_index, &haveit,
+                                &nextlsn);
 
     if (rc == BDBERR_NO_LOG || nextlsn.file == 0)
         return rc;
@@ -791,8 +798,9 @@ done:
 
 /* Unlike reconstruct-key update, the memory has already been allocated. */
 int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
-                                   void *origd, int *origd_sz, void *newd, int *newd_sz,
-                                   int *offset, int *outpage, int *outidx)
+                                   void *origd, int *origd_sz, void *newd,
+                                   int *newd_sz, int *offset, int *outpage,
+                                   int *outidx)
 {
     int rc = 0, foundit = 0, off = 0;
     DB_LSN lsn = *startlsn, prevlsn;
@@ -860,8 +868,8 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
                 /* Make sure that our sizes agree. */
                 if (origd_sz && *origd_sz > 0 && *origd_sz != repl->orig.size) {
                     logmsg(LOGMSG_FATAL, "%s line %d origd-sz %d != orig-sz "
-                            "%d\n", __func__, __LINE__, origd_sz,
-                            repl->orig.size);
+                                         "%d\n",
+                           __func__, __LINE__, origd_sz, repl->orig.size);
                     abort();
                 }
 
@@ -875,8 +883,8 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
             if (newd) {
                 if (newd_sz && *newd_sz > 0 && *newd_sz != repl->repl.size) {
                     logmsg(LOGMSG_FATAL, "%s line %d newd-sz %d != repl-sz "
-                            "%d\n", __func__, __LINE__, newd_sz,
-                            repl->repl.size);
+                                         "%d\n",
+                           __func__, __LINE__, newd_sz, repl->repl.size);
                     abort();
                 }
 
@@ -3294,8 +3302,8 @@ int handle_undo_upd_dta(DB_ENV *dbenv, u_int32_t rectype,
                                             updop->newgenid)) {
                 if (updop->old_dta_len > 0)
                     irc = bdb_reconstruct_inplace_update(
-                        bdb_state, &lll, llldta, &updop->old_dta_len, 
-                        NULL, NULL, &offset, NULL, NULL);
+                        bdb_state, &lll, llldta, &updop->old_dta_len, NULL,
+                        NULL, &offset, NULL, NULL);
                 // else
             } else {
                 int lllen = sizeof(unsigned long long);
@@ -3449,8 +3457,9 @@ static int undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
         inplace = 1;
     } else {
         int cklen = olddta_len;
-        rc = bdb_reconstruct_update(bdb_state, undolsn, NULL, NULL, NULL, 0,
-                                    olddta, &olddta_len, NULL, NULL, NULL, NULL);
+        rc =
+            bdb_reconstruct_update(bdb_state, undolsn, NULL, NULL, NULL, 0,
+                                   olddta, &olddta_len, NULL, NULL, NULL, NULL);
         assert(cklen == olddta_len);
     }
 
@@ -3975,8 +3984,8 @@ int handle_undo_upd_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
             if (0 == bdb_inplace_cmp_genids(bdb_state, updop->oldgenid,
                                             updop->newgenid)) {
                 irc = bdb_reconstruct_inplace_update(bdb_state, &lll, llldta,
-                                                     &updop->old_dta_len, NULL, NULL, 
-                                                     &offset, NULL, NULL);
+                                                     &updop->old_dta_len, NULL,
+                                                     NULL, &offset, NULL, NULL);
             } else {
                 int cklen = updop->old_dta_len;
                 int lllsz = sizeof(unsigned long long);

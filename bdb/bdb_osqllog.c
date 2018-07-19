@@ -3024,9 +3024,9 @@ static int bdb_osql_log_try_run_optimized(bdb_cursor_impl_t *cur,
             if (0 == bdb_inplace_cmp_genids(cur->state, upd_dta->oldgenid,
                                             upd_dta->newgenid)) {
                 /* Retrieve the page and index for an inplace update. */
-                rc = bdb_reconstruct_inplace_update(
-                    cur->state, &rec->lsn, NULL, NULL, NULL, NULL, &offset,
-                    &page, &index);
+                rc = bdb_reconstruct_inplace_update(cur->state, &rec->lsn, NULL,
+                                                    NULL, NULL, NULL, &offset,
+                                                    &page, &index);
             } else {
                 /* Retrieve the page and index for a normal (addrem) update. */
                 rc = bdb_reconstruct_update(cur->state, &rec->lsn, &page,
@@ -3969,7 +3969,7 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
         if (inplace && old_dta_len > 0) {
             updlen = old_dta_len;
             rc = bdb_reconstruct_inplace_update(bdb_state, &rec->lsn, dtabuf,
-                                                &updlen, NULL, NULL,  &offset,
+                                                &updlen, NULL, NULL, &offset,
                                                 &page, &index);
 
             /* Sanity check results. */
@@ -3986,8 +3986,8 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
             /* Only reconstruct previously existing records */
             if (old_len > 0) {
                 rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index,
-                        NULL, 0, dtabuf, &old_dta_len, NULL, NULL,
-                        NULL, NULL);
+                                            NULL, 0, dtabuf, &old_dta_len, NULL,
+                                            NULL, NULL, NULL);
             }
             assert(old_dta_len == old_len);
         }
@@ -4296,9 +4296,8 @@ static int bdb_osql_log_get_optim_data_int(bdb_state_type *bdb_state,
 
         if (inplace) {
             updlen = upd_dta->old_dta_len;
-            rc = bdb_reconstruct_inplace_update(bdb_state, lsn, ptr,
-                                                &updlen, NULL, NULL, &offset,
-                                                NULL, NULL);
+            rc = bdb_reconstruct_inplace_update(
+                bdb_state, lsn, ptr, &updlen, NULL, NULL, &offset, NULL, NULL);
 
         } else {
             rc = bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL, 0,

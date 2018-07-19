@@ -1886,11 +1886,11 @@ int SERVER_INTVYM_to_CLIENT_INTVYM(const void *in, int inlen,
                                    const struct field_conv_opts *outopts,
                                    blob_buffer_t *outblob);
 int SERVER_INTVYM_to_CLIENT_CSTR(const void *in, int inlen,
-                                   const struct field_conv_opts *inopts,
-                                   blob_buffer_t *inblob, void *out, int outlen,
-                                   int *outnull, int *outdtsz,
-                                   const struct field_conv_opts *outopts,
-                                   blob_buffer_t *outblob);
+                                 const struct field_conv_opts *inopts,
+                                 blob_buffer_t *inblob, void *out, int outlen,
+                                 int *outnull, int *outdtsz,
+                                 const struct field_conv_opts *outopts,
+                                 blob_buffer_t *outblob);
 int SERVER_INTVDS_to_CLIENT_INTVDS(const void *in, int inlen,
                                    const struct field_conv_opts *inopts,
                                    blob_buffer_t *inblob, void *out, int outlen,
@@ -1898,11 +1898,11 @@ int SERVER_INTVDS_to_CLIENT_INTVDS(const void *in, int inlen,
                                    const struct field_conv_opts *outopts,
                                    blob_buffer_t *outblob);
 int SERVER_INTVDS_to_CLIENT_CSTR(const void *in, int inlen,
-                                   const struct field_conv_opts *inopts,
-                                   blob_buffer_t *inblob, void *out, int outlen,
-                                   int *outnull, int *outdtsz,
-                                   const struct field_conv_opts *outopts,
-                                   blob_buffer_t *outblob);
+                                 const struct field_conv_opts *inopts,
+                                 blob_buffer_t *inblob, void *out, int outlen,
+                                 int *outnull, int *outdtsz,
+                                 const struct field_conv_opts *outopts,
+                                 blob_buffer_t *outblob);
 int SERVER_INTVDSUS_to_CLIENT_INTVDSUS(const void *in, int inlen,
                                        const struct field_conv_opts *inopts,
                                        blob_buffer_t *inblob, void *out,
@@ -1911,11 +1911,11 @@ int SERVER_INTVDSUS_to_CLIENT_INTVDSUS(const void *in, int inlen,
                                        blob_buffer_t *outblob);
 
 int SERVER_INTVDSUS_to_CLIENT_CSTR(const void *in, int inlen,
-                                       const struct field_conv_opts *inopts,
-                                       blob_buffer_t *inblob, void *out,
-                                       int outlen, int *outnull, int *outdtsz,
-                                       const struct field_conv_opts *outopts,
-                                       blob_buffer_t *outblob);
+                                   const struct field_conv_opts *inopts,
+                                   blob_buffer_t *inblob, void *out, int outlen,
+                                   int *outnull, int *outdtsz,
+                                   const struct field_conv_opts *outopts,
+                                   blob_buffer_t *outblob);
 int CLIENT_DATETIME_to_SERVER_DATETIME(const void *in, int inlen, int isnull,
                                        const struct field_conv_opts *inopts,
                                        blob_buffer_t *inblob, void *out,

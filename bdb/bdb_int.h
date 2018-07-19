@@ -1651,8 +1651,9 @@ int bdb_reconstruct_key_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
                                void **diff, int *offset, int *difflen);
 
 int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
-                                   void *origd, int *origd_sz, void *newd, int *newd_sz,
-                                   int *offset, int *outpage, int *outidx);
+                                   void *origd, int *origd_sz, void *newd,
+                                   int *newd_sz, int *offset, int *outpage,
+                                   int *outidx);
 
 unsigned long long get_id(bdb_state_type *bdb_state);
 
@@ -1732,9 +1733,11 @@ int release_locks_for_logical_transaction_object(bdb_state_type *bdb_state,
                                                  tran_type *tran, int *bdberr);
 
 extern int bdb_reconstruct_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
-                                  int *page, int *index, void *prevkey, int *prevkeylen,
-                                  void *prevdata, int *prevdatalen, void *newkey,
-                                  int *newkeylen, void *newdata, int *newdatalen);
+                                  int *page, int *index, void *prevkey,
+                                  int *prevkeylen, void *prevdata,
+                                  int *prevdatalen, void *newkey,
+                                  int *newkeylen, void *newdata,
+                                  int *newdatalen);
 
 int tran_allocate_rlptr(tran_type *tran, DBT **ptr, DB_LOCK **lptr);
 int tran_deallocate_pop(tran_type *tran, int count);
