@@ -1,0 +1,41 @@
+done
+done
+(rows inserted=1)
+done
+(rows inserted=1)
+done
+done
+done
+(rows updated=1)
+done
+done
+(i=1, j=3)
+done
+done
+done
+(rows updated=1)
+done
+done
+[commit] failed with rc 2 find old record failed unable to update record rc = 4
+done
+(i=1, j=4)
+done
+(i=1, j=1)
+done
+done
+done
+(rows updated=1)
+done
+done
+(i=1, j=6)
+done
+done
+done
+done
+done
+[commit] failed with rc 240 stale version for table:test2 master:1 replicant:0
+done
+(i=1, j=6)
+done
+(i=1, j=1)
+done

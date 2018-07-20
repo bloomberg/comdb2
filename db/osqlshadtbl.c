@@ -3144,6 +3144,7 @@ static int osql_create_schemachange_temptbl(bdb_state_type *bdb_state,
                                             int *bdberr)
 {
     osqlstate_t *osql = &clnt->osql;
+    osql->running_ddl = 1;
     return osql_create_temptbl(bdb_state, &osql->sc_tbl, &osql->sc_cur, bdberr);
 }
 
@@ -3151,6 +3152,7 @@ static int osql_destroy_schemachange_temptbl(bdb_state_type *bdb_state,
                                              struct sqlclntstate *clnt)
 {
     osqlstate_t *osql = &clnt->osql;
+    osql->running_ddl = 0;
     return osql_destroy_temptbl(bdb_state, &osql->sc_tbl, &osql->sc_cur);
 }
 

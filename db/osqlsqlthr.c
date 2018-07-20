@@ -906,6 +906,14 @@ err:
        }
    }
 
+   /* DDLs are also non-retriable */
+   if (osql->xerr.errval == (ERR_BLOCK_FAILED + ERR_VERIFY) &&
+       osql->running_ddl) {
+       logmsg(LOGMSG_DEBUG, "%s: marking DDL transaction as non-retriable\n",
+              __func__);
+       osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
+   }
+
    osql_shadtbl_close(clnt);
 
    if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
