@@ -185,7 +185,6 @@ include_directories(
   ${PROJECT_BINARY_DIR}/bdb
   ${PROJECT_SOURCE_DIR}/build/berkdb
   ${PROJECT_SOURCE_DIR}/build/bdb
-  ${PROJECT_BINARY_DIR}/build/bdb
   ${PROJECT_SOURCE_DIR}/berkdb
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}
