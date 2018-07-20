@@ -2136,9 +2136,7 @@ cmd ::= REVOKE userschema(P) nm(U1) TO nm(U2). {
 
 /////////////////////////////// TRUNCATE TABLE ////////////////////////////////
 
-cmd ::= truncate.
-truncate ::= TRUNCATE table_opt nm(T) dbnm(Y).
-{
+cmd ::= TRUNCATE table_opt nm(T) dbnm(Y). {
     comdb2Truncate(pParse, &T, &Y);
 }
 
