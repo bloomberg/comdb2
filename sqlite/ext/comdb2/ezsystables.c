@@ -69,6 +69,14 @@ static int systbl_connect(
 
     for (int i = 0; i < t->nfields; i++) {
         strbuf_appendf(sql, "%s\"%s\"", comma, t->fields[i].name);
+        switch(t->fields[i].type) {
+            case CDB2_INTEGER:
+                strbuf_appendf(sql, " integer");
+                break;
+            case CDB2_REAL:
+                strbuf_appendf(sql, " number");
+                break;
+        }
         comma = ", ";
     }
     strbuf_append(sql, ");");
