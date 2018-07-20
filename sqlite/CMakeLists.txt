@@ -123,7 +123,7 @@ add_custom_command(
   COMMAND mkkeywordhash > keywordhash.h
 )
 
-find_program(tclsh NAMES tclsh tclsh8.5)
+find_program(tclsh NAMES tclsh8.5 tclsh)
 add_executable(lemon lemon.c)
 add_custom_command(
   OUTPUT parse.c parse.h
