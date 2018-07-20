@@ -23,6 +23,7 @@ static const char revid[] = "$Id: rep_method.c,v 1.134 2003/11/13 15:41:51 sue E
 #endif
 
 #include "db_int.h"
+#include "dbinc/db_swap.h"
 #include "dbinc/db_page.h"
 #include "dbinc/btree.h"
 #include "dbinc/log.h"
@@ -346,11 +347,11 @@ __rep_start(dbenv, dbt, gen, flags)
                 __rep_set_gen(dbenv, __func__, __LINE__, rep->recover_gen + 1);
             }
 			if (F_ISSET(rep, REP_F_MASTERELECT)) {
-				__rep_elect_done(dbenv, rep, 0);
+				__rep_elect_done(dbenv, rep, 0, __func__, __LINE__);
 				F_CLR(rep, REP_F_MASTERELECT);
 			}
 			if (rep->egen <= rep->gen)
-				rep->egen = rep->gen + 1;
+                __rep_set_egen(dbenv, __func__, __LINE__, rep->gen + 1);
 
             logmsg(LOGMSG_DEBUG, "%s line %d upgrading to gen %d egen %d\n",
                     __func__, __LINE__, rep->gen, rep->egen);
@@ -892,6 +893,92 @@ __rep_set_rep_transport(dbenv, eid, f_send)
 extern pthread_mutex_t rep_queue_lock;
 extern void send_master_req(DB_ENV *dbenv, const char *func, int line);
 
+static int
+__retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
+	DB_ENV *dbenv;
+	DB_LSN *lsn;
+	u_int32_t *gen;
+{
+	DBT rec;
+	DB_LOGC *logc;
+	DB_LOG *dblp;
+	DB_REP *db_rep;
+	DB_LSN lastlsn, curlsn;
+	REP *rep;
+	u_int32_t rectype;
+	int ret;
+
+	PANIC_CHECK(dbenv);
+	ENV_REQUIRES_CONFIG(dbenv, dbenv->rep_handle,
+			"retrieve_logged_generation_commitlsn", DB_INIT_REP);
+
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+	dblp = dbenv->lg_handle;
+
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	*lsn = rep->committed_lsn;
+	*gen = rep->committed_gen;
+	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+
+	/* Return immediately */
+	if (lsn->file != 0)
+		return 0;
+
+	if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		return (ret);
+
+	memset(&rec, 0, sizeof(rec));
+	memset(lsn, 0, sizeof(lsn));
+
+	if ((ret = __log_c_get(logc, &lastlsn, &rec, DB_LAST)) != 0)
+		goto err;
+
+	curlsn = lastlsn;
+
+	LOGCOPY_32(&rectype, rec.data);
+
+	while (ret == 0 && rectype != DB___txn_regop_gen && rectype !=
+			DB___txn_regop_rowlocks) {
+		if ((ret = __log_c_get(logc, &curlsn, &rec, DB_PREV)) == 0)
+			LOGCOPY_32(&rectype, rec.data);
+	}
+
+	if (rectype == DB___txn_regop_gen) {
+		__txn_regop_gen_args *txn_gen_args = NULL;
+		if ((ret = __txn_regop_gen_read(dbenv, rec.data,
+						&txn_gen_args)) != 0)
+			goto err;
+		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+		rep->committed_lsn = *lsn = curlsn;
+		rep->committed_gen = *gen = txn_gen_args->generation;
+		if (rep->gen < rep->committed_gen)
+			__rep_set_gen(dbenv, __func__, __LINE__, rep->committed_gen);
+		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+		__os_free(dbenv, txn_gen_args);
+	} else if (rectype == DB___txn_regop_rowlocks) {
+		__txn_regop_rowlocks_args *txn_rl_args = NULL;
+		if ((ret = __txn_regop_rowlocks_read(dbenv, rec.data,
+						&txn_rl_args)) != 0)
+			goto err;
+		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+		rep->committed_lsn = *lsn = curlsn;
+		rep->committed_gen = *gen = txn_rl_args->generation;
+		if (rep->gen < rep->committed_gen)
+			__rep_set_gen(dbenv, __func__, __LINE__, rep->committed_gen);
+		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+		__os_free(dbenv, txn_rl_args);
+	} else if (rectype == DB___txn_regop) {
+		logmsg(LOGMSG_ERROR, "%s returning -1 on regop-record / "
+				"recent-upgrade.\n", __func__);
+		ret = -1;
+	}
+
+err:
+	__log_c_close(logc);
+	return ret;
+}
+
 /*
  * __rep_elect --
  *	Called after master failure to hold/participate in an election for
@@ -902,31 +989,31 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 	DB_ENV *dbenv;
 	int nsites, priority;
 	u_int32_t timeout;
-    u_int32_t *newgen;
+	u_int32_t *newgen;
 	char **eidp;
 {
 	DB_LOG *dblp;
-	DB_LSN lsn;
+	DB_LSN lsn = {0};
 	DB_REP *db_rep;
 	REP *rep;
-	int done, in_progress, ret, tiebreaker, vtype, use_committed_gen;
-	u_int32_t egen, committed_gen, orig_tally, pid, sec, usec;
+	int done, in_progress, ret, tiebreaker, vtype, use_committed_gen, cnt, send_vote2;
+	u_int32_t egen, committed_gen = 0, orig_tally, pid, sec, usec;
 	char *send_vote;
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv, dbenv->rep_handle, "rep_elect", DB_INIT_REP);
 
-    *newgen = 0;
+	*newgen = 0;
 
 	/* Error checking. */
 	if (nsites <= 0) {
 		__db_err(dbenv,
-		    "DB_ENV->rep_elect: nsites must be greater than 0");
+			"DB_ENV->rep_elect: nsites must be greater than 0");
 		return (EINVAL);
 	}
 	if (priority < 0) {
 		__db_err(dbenv,
-		    "DB_ENV->rep_elect: priority may not be negative");
+			"DB_ENV->rep_elect: priority may not be negative");
 		return (EINVAL);
 	}
 
@@ -935,11 +1022,11 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 	dblp = dbenv->lg_handle;
 
 	/* This sets 'use_committed_gen' and feature-tests simultaneously */
-	if ((use_committed_gen = dbenv->attr.elect_highest_committed_gen)) {
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-		lsn = rep->committed_lsn;
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-	} else {
+	if ((use_committed_gen = dbenv->attr.elect_highest_committed_gen))
+		__retrieve_logged_generation_commitlsn(dbenv, &lsn, &committed_gen);
+
+	if (lsn.file == 0)
+	{
 		R_LOCK(dbenv, &dblp->reginfo);
 		lsn = ((LOG *)dblp->reginfo.primary)->lsn;
 		R_UNLOCK(dbenv, &dblp->reginfo);
@@ -947,7 +1034,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 
 	orig_tally = 0;
 	if ((ret = __rep_elect_init(dbenv,
-	    &lsn, nsites, priority, &in_progress, &orig_tally)) != 0) {
+		&lsn, nsites, priority, &in_progress, &orig_tally)) != 0) {
 		if (ret == DB_REP_NEWMASTER) {
 			ret = 0;
 			*eidp = dbenv->rep_eid;
@@ -960,15 +1047,15 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 	 */
 	if (in_progress) {
 		*eidp = dbenv->rep_eid;
-        logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
-                __func__, __LINE__, ret, *eidp, *newgen);
+		logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
+				__func__, __LINE__, ret, *eidp, *newgen);
 		return (0);
 	}
 #if 0
 	fprintf(stderr, "%s:%d broadcasting REP_MASTER_REQ\n",
-	    __FILE__, __LINE__);
+		__FILE__, __LINE__);
 #endif
-    send_master_req(dbenv, __func__, __LINE__);
+	send_master_req(dbenv, __func__, __LINE__);
 	ret = __rep_wait(dbenv, timeout / 4, eidp, newgen, 0, REP_F_EPHASE1);
 	switch (ret) {
 	case 0:
@@ -978,8 +1065,8 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 				__db_err(dbenv, "Found master %d", *eidp);
 #endif
-            logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
-                    __func__, __LINE__, ret, *eidp, *newgen);
+			logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
+					__func__, __LINE__, ret, *eidp, *newgen);
 			return (0);
 		}
 		/*
@@ -1003,31 +1090,31 @@ restart:
 		return (ret);
 	tiebreaker = pid ^ sec ^ usec ^ (u_int) rand() ^ P_TO_UINT32(&pid);
 
-    pthread_mutex_lock(&rep_candidate_lock);
+	pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 
-    /* WAITSTART pushes us past point of no-return */
+	/* WAITSTART pushes us past point of no-return */
 	F_SET(rep, REP_F_EPHASE1 | REP_F_WAITSTART | REP_F_NOARCHIVE);
 	F_CLR(rep, REP_F_TALLY);
 
-    /* Grab lsn again now that we are a candidate.  The candidate-lock prevents
-     * Our log from being applied until we have resolved this election.  Just
-     * use 'current' lsn for the non-committed-gen case as it's broken anyway.*/
+	/* Grab lsn again now that we are a candidate.  The candidate-lock prevents
+	 * Our log from being applied until we have resolved this election.  Just
+	 * use 'current' lsn for the non-committed-gen case as it's broken anyway.*/
 
 	if (use_committed_gen)
 		lsn = rep->committed_lsn;
 
-    static uint32_t last_egen = 0;
-    if(last_egen && last_egen >= rep->egen)
-        abort();
-    last_egen = rep->egen;
+	static uint32_t last_egen = 0;
+	if(last_egen && last_egen >= rep->egen)
+		abort();
+	last_egen = rep->egen;
 
 	/* Tally our own vote */
 	if (__rep_tally(dbenv, rep, rep->eid, &rep->sites, rep->egen,
-	    rep->tally_off) != 0)
+		rep->tally_off, __func__, __LINE__) != 0)
 		goto lockdone;
 	__rep_cmp_vote(dbenv, rep, &rep->eid, rep->egen, &lsn, priority, 
-            rep->gen, rep->committed_gen, tiebreaker);
+			rep->gen, rep->committed_gen, tiebreaker);
 
 #ifdef DIAGNOSTIC
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
@@ -1038,9 +1125,22 @@ restart:
 	send_vote = db_eid_invalid;
 	egen = rep->egen;
 	committed_gen = rep->committed_gen;
+	send_vote2 = (rep->sites >= rep->nsites && rep->w_priority != 0);
+	logmsg(LOGMSG_DEBUG, "%s line %d send_vote2 is %d, rep->sites is %d, rep->nsites is %d\n",
+			__func__, __LINE__, send_vote2, rep->sites, rep->nsites);
+
+	/* If we have all vote1, change to PHASE2 immediately */
+	if (send_vote2) {
+		F_SET(rep, REP_F_EPHASE2);
+		F_CLR(rep, REP_F_EPHASE1);
+		if (rep->winner == rep->eid) {
+			(void)__rep_tally(dbenv, rep, rep->eid,
+					&rep->votes, egen, rep->v2tally_off, __func__, __LINE__);
+		}
+	}
 
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-    pthread_mutex_unlock(&rep_candidate_lock);
+	pthread_mutex_unlock(&rep_candidate_lock);
 
 	if (use_committed_gen) {
 		logmsg(LOGMSG_DEBUG, "%s line %d broadcasting REP_GEN_VOTE1 to all with committed-gen=%d gen=%d egen=%d\n",
@@ -1061,16 +1161,16 @@ restart:
 			if (*eidp != db_eid_invalid) {
 #ifdef DIAGNOSTIC
 				if (FLD_ISSET(dbenv->verbose,
-				    DB_VERB_REPLICATION))
+					DB_VERB_REPLICATION))
 					__db_err(dbenv,
-					    "Ended election phase 1 %d", ret);
+						"Ended election phase 1 %d", ret);
 #endif
-                logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
-                        __func__, __LINE__, ret, *eidp, *newgen);
+				logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
+						__func__, __LINE__, ret, *eidp, *newgen);
 				return (0);
 			}
 			goto phase2;
-        case DB_ELECTION_GENCHG:
+		case DB_ELECTION_GENCHG:
 		case DB_TIMEOUT:
 			break;
 		default:
@@ -1082,7 +1182,7 @@ restart:
 	 * votes to pick a winner and if so, to send out a vote to
 	 * the winner.
 	 */
-    pthread_mutex_lock(&rep_candidate_lock);
+	pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	/*
 	 * If our egen changed while we were waiting.  We need to
@@ -1090,16 +1190,16 @@ restart:
 	 */
 	if (egen != rep->egen) {
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-        pthread_mutex_unlock(&rep_candidate_lock);
+		pthread_mutex_unlock(&rep_candidate_lock);
 #ifdef DIAGNOSTIC
 		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 			__db_err(dbenv, "Egen changed from %lu to %lu",
-			    (u_long)egen, (u_long)rep->egen);
+				(u_long)egen, (u_long)rep->egen);
 #endif
 		goto restart;
 	}
 
-    *newgen = egen;
+	*newgen = egen;
 
 	if (rep->sites > rep->nsites / 2) {
 
@@ -1112,25 +1212,25 @@ restart:
 		 */
 		if (rep->winner == rep->eid) {
 			(void)__rep_tally(dbenv, rep, rep->eid, &rep->votes,
-			    egen, rep->v2tally_off);
+				egen, rep->v2tally_off, __func__, __LINE__);
 #ifdef DIAGNOSTIC
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 				__db_err(dbenv,
-				    "Counted my vote %d", rep->votes);
+					"Counted my vote %d", rep->votes);
 #endif
 		}
 		F_SET(rep, REP_F_EPHASE2);
 		F_CLR(rep, REP_F_EPHASE1);
 	}
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-    pthread_mutex_unlock(&rep_candidate_lock);
+	pthread_mutex_unlock(&rep_candidate_lock);
 	if (send_vote == db_eid_invalid) {
 		/* We do not have enough votes to elect. */
 #ifdef DIAGNOSTIC
 		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 			__db_err(dbenv,
-			    "Not enough votes to elect: received %d of %d",
-			    rep->sites, rep->nsites);
+				"Not enough votes to elect: received %d of %d",
+				rep->sites, rep->nsites);
 #endif
 		ret = DB_REP_UNAVAIL;
 		goto err;
@@ -1143,19 +1243,19 @@ restart:
 		if (send_vote != rep->eid) {
 #ifdef DIAGNOSTIC
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION) &&
-			    send_vote != rep->eid)
+				send_vote != rep->eid)
 				__db_err(dbenv, "Sending vote");
 #endif
 			if (use_committed_gen) {
 				logmsg(LOGMSG_DEBUG, "%s line %d sending REP_GEN_VOTE2 to %s "
 						"with committed-gen=%d gen=%d egen=%d\n", __func__, __LINE__,
-                        send_vote, committed_gen, rep->gen, egen);
+						send_vote, committed_gen, rep->gen, egen);
 				__rep_send_gen_vote(dbenv, NULL, 0, 0, 0, egen,
 					committed_gen, send_vote, REP_GEN_VOTE2);
 			} else {
 				logmsg(LOGMSG_DEBUG, "%s line %d sending REP_VOTE2 to %s "
 						"(committed-gen=0) gen=%d egen=%d\n", __func__, __LINE__,
-                        send_vote, rep->gen, egen);
+						send_vote, rep->gen, egen);
 				__rep_send_vote(dbenv, NULL, 0, 0, 0, egen,
 					send_vote, REP_VOTE2);
 			}
@@ -1164,14 +1264,14 @@ phase2:
 		ret = __rep_wait(dbenv, timeout, eidp, newgen, 0, REP_F_EPHASE2);
 #ifdef DIAGNOSTIC
 				if (FLD_ISSET(dbenv->verbose,
-				    DB_VERB_REPLICATION))
+					DB_VERB_REPLICATION))
 					__db_err(dbenv,
-					    "Ended election phase 2 %d", ret);
+						"Ended election phase 2 %d", ret);
 #endif
 		switch (ret) {
 			case 0:
-                logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
-                        __func__, __LINE__, ret, *eidp, *newgen);
+				logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
+						__func__, __LINE__, ret, *eidp, *newgen);
 				return (0);
 			case DB_TIMEOUT:
 				ret = DB_REP_UNAVAIL;
@@ -1184,12 +1284,12 @@ phase2:
 #ifdef DIAGNOSTIC
 		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 			__db_err(dbenv,
-			    "After phase 2: done %d, votes %d, nsites %d",
-			    done, rep->votes, rep->nsites);
+				"After phase 2: done %d, votes %d, nsites %d",
+				done, rep->votes, rep->nsites);
 #endif
 		if (send_vote == rep->eid && done) {
-            logmsg(LOGMSG_DEBUG, "%s line %d elected master %s current-egen "
-                    "%d\n", __func__, __LINE__, rep->eid, rep->egen);
+			logmsg(LOGMSG_DEBUG, "%s line %d elected master %s current-egen "
+					"%d\n", __func__, __LINE__, rep->eid, rep->egen);
 			ret = 0;
 			goto lockdone;
 		}
@@ -1197,8 +1297,8 @@ phase2:
 	}
 
 err:	
-    pthread_mutex_lock(&rep_candidate_lock);
-    MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	pthread_mutex_lock(&rep_candidate_lock);
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 lockdone:
 	/*
 	 * If we get here because of a non-election error, then we
@@ -1206,15 +1306,17 @@ lockdone:
 	 * from elect_init where we were unable to grow_sites.  In
 	 * that case we do not want to discard all known election info.
 	 */
-	if (ret == 0 || ret == DB_REP_UNAVAIL)
-		__rep_elect_done(dbenv, rep, 0);
-	else if (orig_tally)
+	logmsg(LOGMSG_DEBUG, "%s line %d ret is %d\n", __func__, __LINE__, ret);
+	if (ret == 0 || ret == DB_REP_UNAVAIL) {
+		__rep_elect_done(dbenv, rep, 0, __func__, __LINE__);
+	} else if (orig_tally) {
 		F_SET(rep, orig_tally);
+	}
 
-    pthread_mutex_unlock(&rep_candidate_lock);
+	pthread_mutex_unlock(&rep_candidate_lock);
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-    logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
-            __func__, __LINE__, ret, *eidp, *newgen);
+	logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
+			__func__, __LINE__, ret, *eidp, *newgen);
 	return (ret);
 }
 

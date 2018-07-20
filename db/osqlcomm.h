@@ -362,7 +362,7 @@ int osql_disable_net_test(void);
  * Check if we need the bdb lock to stop long term sql sessions
  *
  */
-int osql_comm_check_bdb_lock(void);
+int osql_comm_check_bdb_lock(const char *func, int line);
 
 int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
                       unsigned long long seq, char *pData, int nData, int nStat,

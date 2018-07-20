@@ -188,6 +188,9 @@ extern int gbl_print_net_queue_size;
 extern int gbl_commit_delay_trace;
 extern int gbl_elect_priority_bias;
 extern int gbl_abort_on_reconstruct_failure;
+extern int gbl_rand_elect_timeout;
+extern int gbl_rand_elect_min_ms;
+extern int gbl_rand_elect_max_ms;
 
 extern long long sampling_threshold;
 

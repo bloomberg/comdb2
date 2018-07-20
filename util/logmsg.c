@@ -15,6 +15,7 @@
 static loglvl level = LOGMSG_WARN;
 static int do_syslog = 0;
 static int do_time = 1;
+static int do_thread = 0;
 static int ended_with_newline = 1;
 
 /* from io_override.c */
@@ -32,6 +33,11 @@ FILE *io_override_get_std(void) {
 
 void logmsg_set_level(loglvl lvl) {
     level = lvl;
+}
+
+void logmsg_set_thd(int onoff)
+{
+    do_thread = onoff;
 }
 
 void logmsg_set_time(int onoff) {
@@ -114,8 +120,17 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
         time_t t = time(NULL);
         struct tm tm;
         localtime_r(&t, &tm);
-        snprintf(timestamp, sizeof(timestamp), "%04d/%02d/%02d %02d:%02d:%02d ", 
-                tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+        if (do_thread) {
+            snprintf(timestamp, sizeof(timestamp),
+                     "%04d/%02d/%02d %02d:%02d:%02d 0x%lx ", tm.tm_year + 1900,
+                     tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,
+                     tm.tm_sec, pthread_self());
+        } else {
+            snprintf(timestamp, sizeof(timestamp),
+                     "%04d/%02d/%02d %02d:%02d:%02d ", tm.tm_year + 1900,
+                     tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,
+                     tm.tm_sec);
+        }
     }
     char *savmsg = msg;
     while (do_time && ! override && ended_with_newline && *msg != 0) {
@@ -227,6 +242,12 @@ int logmsg_process_message(char *line, int llen) {
     } else if (tokcmp(tok, ltok, "level") == 0) {
         tok = segtok(line, llen, &st, &ltok);
         logmsg_level_update(0, tok);
+    } else if (tokcmp(tok, ltok, "thread") == 0) {
+        logmsg_set_thd(1);
+        logmsg(LOGMSG_USER, "threadids on\n");
+    } else if (tokcmp(tok, ltok, "nothread") == 0) {
+        logmsg_set_thd(1);
+        logmsg(LOGMSG_USER, "threadids off\n");
     } else if (tokcmp(tok, ltok, "timestamp") == 0) {
         logmsg_set_time(1);
         logmsg(LOGMSG_USER, "timestamps on\n");
