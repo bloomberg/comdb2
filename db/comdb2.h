@@ -90,6 +90,7 @@ typedef long long tranid_t;
 #include "comdb2uuid.h"
 #include "machclass.h"
 #include "tunables.h"
+#include "comdb2_plugin.h"
 
 #ifndef LUASP
 #include <mem_uncategorized.h>
@@ -815,6 +816,16 @@ struct lrlfile {
     LINKC_T(struct lrlfile) lnk;
 };
 
+struct lrl_handler {
+    int (*handle)(struct dbenv*, const char *line);
+    LINKC_T(struct lrl_handler) lnk;
+};
+
+struct message_handler {
+    int (*handle)(struct dbenv*, const char *line);
+    LINKC_T(struct message_handler) lnk;
+};
+
 struct dbenv {
     char *basedir;
     char *envname;
@@ -977,6 +988,8 @@ struct dbenv {
     struct time_metric* connections;
     struct time_metric *sql_queue_time;
     struct time_metric *handle_buf_queue_time;
+    LISTC_T(struct lrl_handler) lrl_handlers;
+    LISTC_T(struct message_handler) message_handlers;
 };
 
 extern struct dbenv *thedb;
@@ -3547,5 +3560,6 @@ int comdb2_get_verify_remote_schemas(void);
 void comdb2_set_verify_remote_schemas(void);
 
 int repopulate_lrl(const char *p_lrl_fname_out);
+void plugin_post_dbenv_hook(struct dbenv *dbenv);
 
 #endif /* !INCLUDED_COMDB2_H */

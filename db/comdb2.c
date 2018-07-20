@@ -2400,6 +2400,11 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
         exit(1);
     }
 
+    listc_init(&dbenv->lrl_handlers, offsetof(struct lrl_handler, lnk));
+    listc_init(&dbenv->message_handlers, offsetof(struct message_handler, lnk));
+
+    plugin_post_dbenv_hook(dbenv);
+
     if (read_lrl_files(dbenv, lrlname)) {
         logmsg(LOGMSG_FATAL, "Failure in reading lrl file(s)\n");
         exit(1);
@@ -2457,6 +2462,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     listc_init(&dbenv->sql_threads, offsetof(struct sql_thread, lnk));
     listc_init(&dbenv->sqlhist, offsetof(struct sql_hist, lnk));
+
     dbenv->master = NULL; /*no known master at this point.*/
     dbenv->errstaton = 1; /* ON */
 

@@ -325,3 +325,50 @@ int run_init_plugins()
     }
     return 0;
 }
+
+static LISTC_T(struct lrl_handler) lrl_handlers;
+static LISTC_T(struct message_handler) message_handlers;
+
+void plugin_register_lrl_handler(struct dbenv *dbenv, int (*callback)(struct dbenv*, const char *line)) {
+    struct lrl_handler *l = malloc(sizeof(struct lrl_handler));
+    static int once = 1;
+    if (once) {
+        listc_init(&lrl_handlers, offsetof(struct lrl_handler, lnk));
+        once = 0;
+    }
+    l->handle = callback;
+    if (dbenv)
+        listc_abl(&dbenv->lrl_handlers, l);
+    else
+        listc_abl(&lrl_handlers, l);
+}
+
+void plugin_register_message_handler(struct dbenv *dbenv, int (*callback)(struct dbenv*, const char *line)) {
+    struct message_handler *msg = malloc(sizeof(struct message_handler));
+    static int once = 1;
+    if (once) {
+        listc_init(&message_handlers, offsetof(struct message_handler, lnk));
+        once = 0;
+    }
+    msg->handle = callback;
+    if (dbenv)
+        listc_abl(&dbenv->message_handlers, msg);
+    else
+        listc_abl(&message_handlers, msg);
+}
+
+void plugin_post_dbenv_hook(struct dbenv *dbenv) {
+    struct lrl_handler *l;
+    struct message_handler *m;
+
+    l = listc_rtl(&lrl_handlers);
+    while (l) {
+        listc_abl(&dbenv->lrl_handlers, l);
+        l = listc_rtl(&lrl_handlers);
+    }
+    m = listc_rtl(&message_handlers);
+    while (m) {
+        listc_abl(&dbenv->message_handlers, m);
+        m = listc_rtl(&message_handlers);
+    }
+}

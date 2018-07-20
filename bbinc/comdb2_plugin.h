@@ -47,4 +47,11 @@ const char *comdb2_plugin_type_to_str(int type);
 
 extern comdb2_plugin_t *gbl_plugins[];
 
+struct dbenv;
+/* register handlers for lrl lines and messages.  These will be called if the core code doesn't
+ * know how to handle an entry.  Handler should return 0 if it handled the entry, or non-zero to
+ * have it passed to the next handler in the chain. */
+void plugin_register_lrl_handler(struct dbenv *dbenv, int (*)(struct dbenv*, const char *)); 
+void plugin_register_message_handler(struct dbenv *dbenv, int (*)(struct dbenv*, const char *)); 
+
 #endif /* ! __INCLUDED_COMDB2_PLUGIN_H */
