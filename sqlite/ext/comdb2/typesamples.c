@@ -87,14 +87,14 @@ void free_type_samples(void *p, int n) {
 
 int systblTypeSamplesInit(sqlite3 *db) {
     return create_system_table(db, "comdb2_type_samples", get_type_samples, free_type_samples, sizeof(struct typesamples),
-            CDB2_INTEGER, "integer", offsetof(struct typesamples, integer),
-            CDB2_REAL, "real", offsetof(struct typesamples, real),
-            CDB2_CSTRING, "cstring", offsetof(struct typesamples, cstring),
-            CDB2_BLOB    , "blob", offsetof(struct typesamples, blob),
-            CDB2_DATETIME, "datetime", offsetof(struct typesamples, datetime),
-            CDB2_INTERVALYM, "intervalym", offsetof(struct typesamples, intervalym),
-            CDB2_INTERVALDS, "intervalds", offsetof(struct typesamples, intervalds),
-            CDB2_DATETIMEUS, "datetimeus", offsetof(struct typesamples, datetimeus),
-            CDB2_INTERVALDSUS, "intervaldsus", offsetof(struct typesamples, intervaldsus),
+            CDB2_INTEGER, "integer", -1, offsetof(struct typesamples, integer),
+            CDB2_REAL, "real", -1, offsetof(struct typesamples, real),
+            CDB2_CSTRING, "cstring", -1, offsetof(struct typesamples, cstring),
+            CDB2_BLOB    , "blob", -1, offsetof(struct typesamples, blob),
+            CDB2_DATETIME, "datetime", -1, offsetof(struct typesamples, datetime),
+            CDB2_INTERVALYM, "intervalym", -1, offsetof(struct typesamples, intervalym),
+            CDB2_INTERVALDS, "intervalds", -1, offsetof(struct typesamples, intervalds),
+            CDB2_DATETIMEUS, "datetimeus", -1, offsetof(struct typesamples, datetimeus),
+            CDB2_INTERVALDSUS, "intervaldsus", -1, offsetof(struct typesamples, intervaldsus),
             SYSTABLE_END_OF_FIELDS);
 }

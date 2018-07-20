@@ -64,9 +64,9 @@ static void free_net_userfuncs(void *p, int n)
 int systblNetUserfuncsInit(sqlite3 *db) {
     return create_system_table(db, "comdb2_net_userfuncs", get_net_userfuncs,
             free_net_userfuncs, sizeof(systable_net_userfunc_t),
-            CDB2_CSTRING, "service", offsetof(systable_net_userfunc_t, service),
-            CDB2_CSTRING, "userfunc", offsetof(systable_net_userfunc_t, userfunc),
-            CDB2_INTEGER, "count", offsetof(systable_net_userfunc_t, count),
-            CDB2_INTEGER, "totalus", offsetof(systable_net_userfunc_t, totus),
+            CDB2_CSTRING, "service", -1, offsetof(systable_net_userfunc_t, service),
+            CDB2_CSTRING, "userfunc", -1, offsetof(systable_net_userfunc_t, userfunc),
+            CDB2_INTEGER, "count", -1, offsetof(systable_net_userfunc_t, count),
+            CDB2_INTEGER, "totalus", -1, offsetof(systable_net_userfunc_t, totus),
             SYSTABLE_END_OF_FIELDS);
 }

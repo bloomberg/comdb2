@@ -65,7 +65,7 @@ static int tranlogConnect(
   sqlite3_vtab *pNew;
   int rc;
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE x(minlsn hidden,maxlsn hidden, flags hidden,lsn,rectype,generation,timestamp,payload)");
+     "CREATE TABLE x(minlsn hidden,maxlsn hidden, flags hidden,lsn,rectype integer,generation integer,timestamp integer,payload)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;

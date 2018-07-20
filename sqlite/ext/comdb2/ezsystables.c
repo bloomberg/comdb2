@@ -23,6 +23,7 @@ enum {
 struct sysfield {
     char *name;
     cdb2_coltype type;
+    int nulloffset;
     int offset;
 };
 
@@ -68,6 +69,14 @@ static int systbl_connect(
 
     for (int i = 0; i < t->nfields; i++) {
         strbuf_appendf(sql, "%s\"%s\"", comma, t->fields[i].name);
+        switch(t->fields[i].type) {
+            case CDB2_INTEGER:
+                strbuf_appendf(sql, " integer");
+                break;
+            case CDB2_REAL:
+                strbuf_appendf(sql, " number");
+                break;
+        }
         comma = ", ";
     }
     strbuf_append(sql, ");");
@@ -128,6 +137,11 @@ static int systbl_next(sqlite3_vtab_cursor *cur){
 
 static void* get_field_ptr(struct systable *t, char *rec, int column) {
     void *out;
+
+    if (t->fields[column].nulloffset >= 0) {
+        int *isnull = (int *)(&rec[t->fields[column].nulloffset]);
+        if (*isnull) return NULL;
+    }
 
     switch (t->fields[column].type & FIELD_TYPE_MASK) {
         case CDB2_INTEGER:
@@ -314,6 +328,7 @@ int create_system_table(sqlite3 *db, char *name,
     int type = va_arg(args, int);
     while (type != SYSTABLE_END_OF_FIELDS) {
         char *name = va_arg(args, char*);
+        int nulloffset = va_arg(args, size_t);
         int offset = va_arg(args, size_t);
 
         if (sys->nfields >= nalloc) {
@@ -323,6 +338,7 @@ int create_system_table(sqlite3 *db, char *name,
 
         sys->fields[sys->nfields].name = strdup(name);
         sys->fields[sys->nfields].type = type;
+        sys->fields[sys->nfields].nulloffset = nulloffset;
         sys->fields[sys->nfields++].offset = offset;
 
         type = va_arg(args, int);
