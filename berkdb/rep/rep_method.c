@@ -52,7 +52,7 @@ static int __rep_set_limit __P((DB_ENV *, u_int32_t, u_int32_t));
 int __rep_set_request __P((DB_ENV *, u_int32_t, u_int32_t));
 static int __rep_set_rep_transport __P((DB_ENV *, char *,
 	int (*)(DB_ENV *, const DBT *, const DBT *, const DB_LSN *,
-	    char *, int, void *)));
+		char *, int, void *)));
 static int __rep_set_check_standalone __P((DB_ENV *, int (*)(DB_ENV *)));
 static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
@@ -62,12 +62,12 @@ static int __rep_wait __P((DB_ENV *, u_int32_t, char **, u_int32_t *, u_int32_t,
 
 #ifndef TESTSUITE
 void bdb_get_writelock(void *bdb_state,
-    const char *idstr, const char *funcname, int line);
+	const char *idstr, const char *funcname, int line);
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
 
-#define BDB_WRITELOCK(idstr)    bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
-#define BDB_RELLOCK()           bdb_rellock(bdb_state, __func__, __LINE__)
+#define BDB_WRITELOCK(idstr)	bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
+#define BDB_RELLOCK()		   bdb_rellock(bdb_state, __func__, __LINE__)
 
 #else
 
@@ -174,7 +174,7 @@ static int
 __rep_start(dbenv, dbt, gen, flags)
 	DB_ENV *dbenv;
 	DBT *dbt;
-    u_int32_t gen;
+	u_int32_t gen;
 	u_int32_t flags;
 {
 	DB_LOG *dblp;
@@ -194,12 +194,12 @@ __rep_start(dbenv, dbt, gen, flags)
 	rep = db_rep->region;
 
 	if ((ret = __db_fchk(dbenv, "DB_ENV->rep_start", flags,
-	    DB_REP_CLIENT | DB_REP_LOGSONLY | DB_REP_MASTER)) != 0)
+		DB_REP_CLIENT | DB_REP_LOGSONLY | DB_REP_MASTER)) != 0)
 		return (ret);
 
 	/* Exactly one of CLIENT and MASTER must be specified. */
 	if ((ret = __db_fcchk(dbenv,
-	    "DB_ENV->rep_start", flags, DB_REP_CLIENT, DB_REP_MASTER)) != 0)
+		"DB_ENV->rep_start", flags, DB_REP_CLIENT, DB_REP_MASTER)) != 0)
 		return (ret);
 	if (!LF_ISSET(DB_REP_CLIENT | DB_REP_MASTER | DB_REP_LOGSONLY)) {
 		__db_err(dbenv,
@@ -209,13 +209,13 @@ __rep_start(dbenv, dbt, gen, flags)
 
 	/* Masters can't be logs-only. */
 	if ((ret = __db_fcchk(dbenv,
-	    "DB_ENV->rep_start", flags, DB_REP_LOGSONLY, DB_REP_MASTER)) != 0)
+		"DB_ENV->rep_start", flags, DB_REP_LOGSONLY, DB_REP_MASTER)) != 0)
 		return (ret);
 
 	/* We need a transport function. */
 	if (dbenv->rep_send == NULL) {
 		__db_err(dbenv,
-    "DB_ENV->set_rep_transport must be called before DB_ENV->rep_start");
+	"DB_ENV->set_rep_transport must be called before DB_ENV->rep_start");
 		return (EINVAL);
 	}
 
@@ -231,7 +231,7 @@ __rep_start(dbenv, dbt, gen, flags)
 		return (ret);
 	}
 
-    pthread_mutex_lock(&rep_candidate_lock);
+	pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	/*
 	 * We only need one thread to start-up replication, so if
@@ -251,7 +251,7 @@ __rep_start(dbenv, dbt, gen, flags)
 		rep->start_th = 1;
 
 	role_chg = (!F_ISSET(rep, REP_F_MASTER) && LF_ISSET(DB_REP_MASTER)) ||
-	    (!F_ISSET(rep, REP_F_UPGRADE) && LF_ISSET(DB_REP_CLIENT));
+		(!F_ISSET(rep, REP_F_UPGRADE) && LF_ISSET(DB_REP_CLIENT));
 
 	/*
 	 * Wait for any active txns or mpool ops to complete, and
@@ -260,7 +260,7 @@ __rep_start(dbenv, dbt, gen, flags)
 	 * only need to coordinate with msg_th.
 	 */
 	if (role_chg) {
-    }
+	}
 	else {
 		pid_t pid;
 		char cmd[32];
@@ -268,25 +268,25 @@ __rep_start(dbenv, dbt, gen, flags)
 		for (sleep_cnt = 0; rep->msg_th != 0;) {
 			if (++sleep_cnt % 60 == 0)
 				__db_err(dbenv,
-				    "DB_ENV->rep_start waiting %d minutes for replication message thread",
-				    sleep_cnt / 60);
+					"DB_ENV->rep_start waiting %d minutes for replication message thread",
+					sleep_cnt / 60);
 
 			if (sleep_cnt > gbl_rep_method_max_sleep_cnt &&
-			    gbl_rep_method_max_sleep_cnt > 0) {
+				gbl_rep_method_max_sleep_cnt > 0) {
 				int rc;
 
 				logmsg(LOGMSG_FATAL, "%s:%d:%s: Exiting after waiting too long for replication message thread.\n",
-				    __FILE__, __LINE__, __func__);
+					__FILE__, __LINE__, __func__);
 				pid = getpid();
 				snprintf(cmd, sizeof(cmd), "pstack %d",
-				    (int)pid);
+					(int)pid);
 				rc = system(cmd);
 				abort();
 			}
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-            pthread_mutex_unlock(&rep_candidate_lock);
+			pthread_mutex_unlock(&rep_candidate_lock);
 			(void)__os_sleep(dbenv, 1, 0);
-            pthread_mutex_lock(&rep_candidate_lock);
+			pthread_mutex_lock(&rep_candidate_lock);
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		}
 	}
@@ -318,46 +318,46 @@ __rep_start(dbenv, dbt, gen, flags)
 			if (role_chg) {
 				if (rep->w_gen > rep->recover_gen) {
 					++rep->w_gen;
-                    __rep_set_gen(dbenv, __func__, __LINE__, rep->w_gen);
-                } else if (rep->gen > rep->recover_gen) {
+					__rep_set_gen(dbenv, __func__, __LINE__, rep->w_gen);
+				} else if (rep->gen > rep->recover_gen) {
 					__rep_set_gen(dbenv, __func__, __LINE__, rep->gen + 1);
-                } else {
-                    __rep_set_gen(dbenv, __func__, __LINE__, 
-                            rep->recover_gen + 1);
-                }
+				} else {
+					__rep_set_gen(dbenv, __func__, __LINE__, 
+							rep->recover_gen + 1);
+				}
 				/*
 				 * There could have been any number of failed
 				 * elections, so jump the gen if we need to now.
 				 */
-                if (gen != 0) {
-                    logmsg(LOGMSG_DEBUG, "%s line %d setting gen to arg %d "
-                            "current egen is %d\n", __func__, __LINE__, gen, 
-                            rep->egen);
-                    __rep_set_gen(dbenv, __func__, __LINE__, gen);
-                } else if (rep->egen > rep->gen) {
-                    logmsg(LOGMSG_DEBUG, "%s line %d setting gen to rep->egen "
-                            "%d\n", __func__, __LINE__, rep->egen);
-                    __rep_set_gen(dbenv, __func__, __LINE__, rep->egen);
-                }
+				if (gen != 0) {
+					logmsg(LOGMSG_DEBUG, "%s line %d setting gen to arg %d "
+							"current egen is %d\n", __func__, __LINE__, gen, 
+							rep->egen);
+					__rep_set_gen(dbenv, __func__, __LINE__, gen);
+				} else if (rep->egen > rep->gen) {
+					logmsg(LOGMSG_DEBUG, "%s line %d setting gen to rep->egen "
+							"%d\n", __func__, __LINE__, rep->egen);
+					__rep_set_gen(dbenv, __func__, __LINE__, rep->egen);
+				}
 
 				redo_prepared = 1;
 			} else if (rep->gen == 0) {
-                logmsg(LOGMSG_DEBUG, "%s line %d setting gen to recover_gen + 1 "
-                        "%d\n", __func__, __LINE__, rep->recover_gen + 1);
-                __rep_set_gen(dbenv, __func__, __LINE__, rep->recover_gen + 1);
-            }
+				logmsg(LOGMSG_DEBUG, "%s line %d setting gen to recover_gen + 1 "
+						"%d\n", __func__, __LINE__, rep->recover_gen + 1);
+				__rep_set_gen(dbenv, __func__, __LINE__, rep->recover_gen + 1);
+			}
 			if (F_ISSET(rep, REP_F_MASTERELECT)) {
 				__rep_elect_done(dbenv, rep, 0, __func__, __LINE__);
 				F_CLR(rep, REP_F_MASTERELECT);
 			}
 			if (rep->egen <= rep->gen)
-                __rep_set_egen(dbenv, __func__, __LINE__, rep->gen + 1);
+				__rep_set_egen(dbenv, __func__, __LINE__, rep->gen + 1);
 
-            logmsg(LOGMSG_DEBUG, "%s line %d upgrading to gen %d egen %d\n",
-                    __func__, __LINE__, rep->gen, rep->egen);
+			logmsg(LOGMSG_DEBUG, "%s line %d upgrading to gen %d egen %d\n",
+					__func__, __LINE__, rep->gen, rep->egen);
 		}
-        F_CLR(rep, REP_F_WAITSTART);
-        pthread_mutex_unlock(&rep_candidate_lock);
+		F_CLR(rep, REP_F_WAITSTART);
+		pthread_mutex_unlock(&rep_candidate_lock);
 		rep->master_id = rep->eid;
 		/*
 		 * Note, setting flags below implicitly clears out
@@ -939,7 +939,7 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 	LOGCOPY_32(&rectype, rec.data);
 
 	while (ret == 0 && rectype != DB___txn_regop_gen && rectype !=
-			DB___txn_regop_rowlocks) {
+			DB___txn_regop_rowlocks && rectype != DB___txn_regop) {
 		if ((ret = __log_c_get(logc, &curlsn, &rec, DB_PREV)) == 0)
 			LOGCOPY_32(&rectype, rec.data);
 	}
