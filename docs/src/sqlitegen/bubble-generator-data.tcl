@@ -573,7 +573,7 @@ set all_graphs {
       {line UNIQUE }
       {line KEY }
       {line {opt CONSTRAINT constraint-name } foreign-key-def }
-      {line WITH DBPAD = signed-number }
+      {line OPTION DBPAD = signed-number }
   }
 
   table-constraint {
@@ -582,7 +582,7 @@ set all_graphs {
           {stack
               {line {or {line UNIQUE } {line KEY } }
                   {opt index-name } ( index-column-list ) }
-              {line {opt WITH DATACOPY } {opt WHERE expr } }
+              {line {opt OPTION DATACOPY } {opt WHERE expr } }
           }
       }
       {line PRIMARY KEY ( index-column-list ) }
@@ -632,7 +632,7 @@ set all_graphs {
                       {stack
                           {line ADD {opt UNIQUE } INDEX index-name
                               ( index-column-list ) }
-                          {line {opt WITH DATACOPY } {opt WHERE expr } }
+                          {line {opt OPTION DATACOPY } {opt WHERE expr } }
                       }
                       {line DROP INDEX index-name }
                       {line ADD PRIMARY KEY ( index-column-list ) }
@@ -653,7 +653,7 @@ set all_graphs {
       stack
       {line CREATE {opt UNIQUE } INDEX {opt IF NOT EXISTS } }
       {line {opt db-name } index-name ON table-name ( index-column-list ) }
-      {line {opt WITH DATACOPY } {opt WHERE expr } }
+      {line {opt OPTION DATACOPY } {opt WHERE expr } }
   }
 
   drop-index {

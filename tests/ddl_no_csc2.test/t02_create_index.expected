@@ -2,7 +2,7 @@
 [CREATE UNIQUE INDEX idx1 ON t1(i)] failed with rc -3 Index 'idx1' already exists.
 [CREATE INDEX idx3 ON t2(i,j)] failed with rc -3 Index 'idx3' already exists.
 [CREATE INDEX idx3 ON t2(i)] failed with rc -3 Index 'idx3' already exists.
-[CREATE INDEX idx3 ON t3(i COLLATE DATACOPY)] failed with rc -3 Support for 'COLLATE DATACOPY' syntax has been removed; use WITH DATACOPY.
+[CREATE INDEX idx3 ON t3(i COLLATE DATACOPY)] failed with rc -3 Support for 'COLLATE DATACOPY' syntax has been removed; use OPTION DATACOPY.
 [DROP INDEX 'uniqueidxnameXXX'] failed with rc -3 Index 'uniqueidxnameXXX' not found.
 [DROP INDEX 'sameidxname'] failed with rc -3 Multiple indexes with same name 'sameidxname'.
 (tablename='t1')
