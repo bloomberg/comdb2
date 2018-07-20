@@ -311,7 +311,6 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
         sqlite3VdbeAddTable(v, t);
     }
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    thd->clnt->verifyretry_off = 1;
     return comdb2prepareNoRows(v, pParse, int_arg, arg, func, freeFunc);
 }
 
