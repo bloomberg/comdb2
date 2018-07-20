@@ -427,7 +427,7 @@ static int tranlogColumn(
         }
         break;
     case TRANLOG_COLUMN_LOG:
-        sqlite3_result_blob(ctx, &pCur->data.data, pCur->data.size, NULL);
+        sqlite3_result_blob(ctx, pCur->data.data, pCur->data.size, NULL);
         break;
   }
   return SQLITE_OK;
