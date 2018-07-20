@@ -268,7 +268,7 @@ static int create_logical_payload(logicalops_cursor *pCur, DB_LSN regop_lsn,
     }
 
     if ((pCur->log = parse_log_for_shadows(bdb_state, logc, &lsn, 0, &bdberr)) == NULL) {
-        logmsg(LOGMSG_DEBUG, "%d line %d parse_log_for_shadows failed for "
+        logmsg(LOGMSG_DEBUG, "%s line %d parse_log_for_shadows failed for "
                 "%d:%d\n", __func__, __LINE__, lsn.file, lsn.offset);
         logc->close(logc, 0);
         return 1;

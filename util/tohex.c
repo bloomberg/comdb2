@@ -16,6 +16,7 @@
 
 #include <tohex.h>
 #include <stdlib.h>
+#include <alloca.h>
 
 static inline char hex(unsigned char a)
 {
@@ -54,14 +55,22 @@ char *util_tohex(char *out, const char *in, size_t len)
 
 void hexdump(loglvl lvl, unsigned char *key, int keylen)
 {
+    char *mem;
+    char *output;
+
     if (key == NULL || keylen == 0) {
         logmsg(LOGMSG_ERROR, "NULL(%d)\n", keylen);
         return;
     }
-    char *mem = alloca((2 * keylen) + 2);
-    char *output = util_tohex(mem, key, keylen);
-
+    if (keylen > 1000)
+        mem = (char *)malloc((2 * keylen) + 2);
+    else
+        mem = (char *)alloca((2 * keylen) + 2);
+    output = util_tohex(mem, key, keylen);
     logmsg(lvl, "%s\n", output);
+
+    if (keylen > 1000)
+        free(mem);
 }
 
 /* printf directly (for printlog) */

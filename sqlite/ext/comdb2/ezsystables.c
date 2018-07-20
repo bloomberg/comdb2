@@ -255,7 +255,7 @@ static int systbl_column(
     }
 
     return rc;
-};
+}
 
 static int systbl_rowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
     struct ez_systable_cursor *pCur = (struct ez_systable_cursor*) cur;
