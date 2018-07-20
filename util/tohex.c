@@ -55,7 +55,7 @@ char *util_tohex(char *out, const char *in, size_t len)
 
 void hexdump(loglvl lvl, unsigned char *key, int keylen)
 {
-    char *mem; 
+    char *mem;
     char *output;
 
     if (key == NULL || keylen == 0) {
