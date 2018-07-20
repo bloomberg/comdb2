@@ -640,7 +640,7 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
 	u_int32_t *fidp, type;
 	u_int8_t *ptr;
 	char minmax = 0;
-    char *hexdump = NULL;
+	char *hexdump = NULL;
 	char *namep = NULL;
 	char rectype[80]={0};
 	unsigned long long genid;
@@ -721,27 +721,27 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
 			snprintf(rectype, sizeof(rectype), "LSN %u:%u", lsn.file,lsn.offset);
 			break;
 
-        case (4):
-            if (*((int *)ptr) == 1) {
-                namep = "ENVLOCK";
-                snprintf(rectype, sizeof(rectype), "ENVLOCK");
-                break;
-            }
+		case (4):
+			if (*((int *)ptr) == 1) {
+				namep = "ENVLOCK";
+				snprintf(rectype, sizeof(rectype), "ENVLOCK");
+				break;
+			}
 
 		default:
-            hexdumpbuf(lockobj->lockobj.data, lockobj->lockobj.size, &hexdump);
+			hexdumpbuf(lockobj->lockobj.data, lockobj->lockobj.size, &hexdump);
 			snprintf(rectype, sizeof(rectype), "UNKNOWN-TYPE SIZE %d",
 					lockobj->lockobj.size);
-            namep = hexdump;
+			namep = hexdump;
 			break;
 	}
 
-    if (namep && memcmp(namep, "XXX.", 4) == 0)
-        namep += 4;
+	if (namep && memcmp(namep, "XXX.", 4) == 0)
+		namep += 4;
 
 	(*func)(arg, lip->tid, lip->id, mode, status, namep, page, rectype);
-    if (hexdump)
-        free(hexdump);
+	if (hexdump)
+		free(hexdump);
 	return 0;
 }
 
