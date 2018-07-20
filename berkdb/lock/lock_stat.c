@@ -627,7 +627,7 @@ static char *status_to_str(int lpstatus)
 	return status;
 }
 
-#include "util.h"
+#include "tohex.h"
 
 static int
 __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
