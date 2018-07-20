@@ -3903,6 +3903,7 @@ int sqlite3BtreePrevious(BtCursor *pCur, int flags)
     }
 
     rc = pCur->cursor_move(pCur, pRes, CPREV);
+    if( *pRes==1 ) rc = SQLITE_DONE;
 
     if (pCur->range && pCur->db && !pCur->range->islocked) {
         if (pCur->ixnum == -1) {
@@ -8502,6 +8503,7 @@ int sqlite3BtreeNext(BtCursor *pCur, int flags)
     }
 
     rc = pCur->cursor_move(pCur, pRes, CNEXT);
+    if( *pRes==1 ) rc = SQLITE_DONE;
 
     if (pCur->range && pCur->db && !pCur->range->islocked) {
         if (pCur->ixnum == -1) {
