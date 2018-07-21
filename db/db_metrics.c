@@ -59,6 +59,10 @@ struct comdb2_metrics_store {
     int64_t checkpoint_count;
     int64_t rcache_hits;
     int64_t rcache_misses;
+    int64_t last_election_ms;
+    int64_t total_election_ms;
+    int64_t election_count;
+    int64_t last_election_time;
 };
 
 static struct comdb2_metrics_store stats;
@@ -136,6 +140,16 @@ comdb2_metric gbl_metrics[] = {
         STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rcache_hits},
     {"rcache_misses", "Count of root-page cache misses", STATISTIC_INTEGER,
         STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rcache_misses},
+    {"last_election_ms", "Time taken to resolve last election", STATISTIC_INTEGER,
+        STATISTIC_COLLECTION_TYPE_LATEST, &stats.last_election_ms, NULL},
+    {"total_election_ms", "Total time taken to resolve elections", STATISTIC_INTEGER,
+        STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.total_election_ms, NULL},
+    {"election_count", "Total number of elections", STATISTIC_INTEGER,
+        STATISTIC_COLLECTION_TYPE_LATEST, &stats.election_count, NULL},
+    {"last_election_time", "Wallclock time last election completed",
+        STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+        &stats.last_election_time, NULL},
+
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -277,6 +291,10 @@ int refresh_metrics(void)
     stats.checkpoint_count = gbl_checkpoint_count;
     stats.rcache_hits = rcache_hits;
     stats.rcache_misses = rcache_miss;
+    stats.last_election_ms = gbl_last_election_time_ms;
+    stats.total_election_ms = gbl_total_election_time_ms;
+    stats.election_count = gbl_election_count;
+    stats.last_election_time = gbl_election_time_completed;
 
     return 0;
 }

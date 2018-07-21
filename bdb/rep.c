@@ -1213,12 +1213,18 @@ static int elect_random_timeout(void)
     return (timeout_ms * 1000);
 }
 
+time_t gbl_election_time_completed;
+uint64_t gbl_last_election_time_ms;
+uint64_t gbl_total_election_time_ms;
+uint64_t gbl_election_count;
+
 static void *elect_thread(void *args)
 {
     int rc, count, i;
     bdb_state_type *bdb_state;
     char *master_host, *old_master;
     int num;
+    int end, start;
     int num_connected;
     int node_not_up = 0;
     uint32_t newgen;
@@ -1265,6 +1271,7 @@ static void *elect_thread(void *args)
     logmsg(LOGMSG_INFO, "thread 0x%lx in election\n", pthread_self());
 
     bdb_state->repinfo->in_election = 1;
+    start = comdb2_time_epochms();
 
     Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
 
@@ -1418,6 +1425,11 @@ elect_again:
 #endif
 
 give_up:
+    end = comdb2_time_epochms();
+    gbl_election_time_completed = time(NULL);
+    gbl_last_election_time_ms = (end - start);
+    gbl_total_election_time_ms += gbl_last_election_time_ms;
+    gbl_election_count++;
 
     Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
     bdb_state->repinfo->in_election = 0;
