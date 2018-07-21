@@ -835,7 +835,7 @@ void sqlite3Insert(
         comdb2SetReplace(v);
         break;
       case OE_Update:
-        comdb2SetUpsert(v);
+        comdb2SetUpdate(v);
         break;
       case OE_Ignore:
         comdb2SetIgnore(v);

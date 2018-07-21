@@ -5387,7 +5387,7 @@ void comdb2SetReplace(Vdbe *v)
   v->oe_flag = OE_Replace;
 }
 
-void comdb2SetUpsert(Vdbe *v)
+void comdb2SetUpdate(Vdbe *v)
 {
   v->oe_flag = OE_Update;
 }

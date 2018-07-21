@@ -1063,7 +1063,7 @@ typedef struct Cdb2TrigTables Cdb2TrigTables;
 typedef struct comdb2_ddl_context Cdb2DDL;
 
 void comdb2SetReplace(Vdbe *v);
-void comdb2SetUpsert(Vdbe *v);
+void comdb2SetUpdate(Vdbe *v);
 void comdb2SetIgnore(Vdbe *v);
 int comdb2ForceVerify(Vdbe *v);
 int comdb2IgnoreFailure(Vdbe *v);

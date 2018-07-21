@@ -4567,6 +4567,20 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
     clnt->intrans = 1;
     bzero(clnt->dirty, sizeof(clnt->dirty));
 
+    /* UPSERT: If we were asked to perform some action on conflict
+     * (ON CONFLICT DO UPDATE/REPLACE and not DO NOTHING), then its a good
+     * idea to switch at least to READ COMMITTED if we are running in some
+     * lower isolation level in a non-user (autocommit) transaction.
+     */
+    if ((clnt->dbtran.mode < TRANLEVEL_RECOM) &&
+        (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) &&
+        (vdbe && comdb2ForceVerify(vdbe) == 1)) {
+        logmsg(LOGMSG_DEBUG, "%s: switched to %s from %s\n", __func__,
+               tranlevel_tostr(TRANLEVEL_RECOM),
+               tranlevel_tostr(clnt->dbtran.mode));
+        clnt->dbtran.mode = TRANLEVEL_RECOM;
+    }
+
 #ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
         logmsg(LOGMSG_ERROR, "%p starts transaction tid=%d mode=%d intrans=%d\n",
