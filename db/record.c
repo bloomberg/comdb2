@@ -401,7 +401,9 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if ((rec_flags & OSQL_IGNORE_FAILURE) != 0) {
-        for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum ++) {
+        int upsert_target = rec_flags >> 8;
+        for (int i = 0; i <= iq->usedb->nix; i ++) {
+            int ixnum = i;
             int ixkeylen;
             char ixtag[MAXTAGLEN];
             char key[MAXKEYLEN];
@@ -409,6 +411,28 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             int failcode = 0;
             int fndrrn = 0;
             unsigned long long fndgenid = 0LL;
+
+            /* If a specific index has been used in the ON CONFLICT clause (aka
+             * upsert target), then we must move the check for that index to the
+             * very end so that errors from other (non-ignorable) unique indexes
+             * have already been verified before we check and ignore error from
+             * the upsert target index.
+             * We do that by keeping the last index (= iq->usedb->nix) as slot
+             * to perform the check for upsert target index.
+             */
+            if (ixnum == iq->usedb->nix) {
+                if (upsert_target == MAXINDEX + 1) {
+                    /* No erroros! */
+                    break;
+                }
+                /* Set ixnum to upsert target index. */
+                ixnum = upsert_target;
+            }
+            /* Ignore dup keys and defer check for upsert target to be done at
+             * the end. (see comment above) */
+            if ((iq->usedb->ix_dupes[ixnum] != 0) || (i == upsert_target)) {
+                continue;
+            }
 
             ixkeylen = getkeysize(iq->usedb, ixnum);
             if (ixkeylen < 0) {
@@ -521,7 +545,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (!(flags & RECFLAGS_NEW_SCHEMA)) {
             /* enqueue the add of the key for constaint checking purposes */
             rc = insert_add_op(iq, iq->blkstate, iq->usedb, NULL, NULL, opcode,
-                               *rrn, -1, *genid, ins_keys, blkpos, rec_flags);
+                               *rrn, -1, *genid, ins_keys, blkpos);
             if (rc != 0) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO PUSH KEYOP");
@@ -733,7 +757,7 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
         const uint8_t *p_buf_req_end = NULL;
         rc = insert_add_op(iq, iq->blkstate, iq->usedb, p_buf_req_start,
                            p_buf_req_end, opcode, rrn, ixnum, genid, ins_keys,
-                           blkpos, rec_flags);
+                           blkpos);
         if (iq->debug)
             reqprintf(iq, "insert_add_op IX %d RRN %d RC %d", ixnum, rrn, rc);
         if (rc != 0) {

@@ -207,7 +207,7 @@ static inline void free_cached_delayed_indexes(struct ireq *iq)
 int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *usedb,
                   const uint8_t *p_buf_req_start, const uint8_t *p_buf_req_end,
                   int optype, int rrn, int ixnum, unsigned long long genid,
-                  unsigned long long ins_keys, int blkpos, int rec_flags)
+                  unsigned long long ins_keys, int blkpos)
 {
     void *cur = NULL;
     int type = CTE_ADD, rc = 0;
@@ -242,7 +242,6 @@ int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *used
     cte_record.ctop.fwdct.ixnum = ixnum;
     cte_record.ctop.fwdct.rrn = rrn;
     cte_record.ctop.fwdct.optype = optype;
-    cte_record.ctop.fwdct.flags = rec_flags;
 
     rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
                                sizeof(int) + sizeof(long long), &cte_record,

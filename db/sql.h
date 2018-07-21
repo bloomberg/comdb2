@@ -626,7 +626,7 @@ struct sqlclntstate {
     char *argv0;
     char *stack;
 
-    /* Ignore these indexes ON CONFLICT. */
+    /* Ignore DUP error for this index (from ON CONFLICT(idx) clause). */
     uint8_t oc_ignore_idx;
 };
 

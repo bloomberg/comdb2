@@ -8301,10 +8301,16 @@ int sqlite3BtreeInsert(
 
             int rec_flags = 0;
             if (flags != 0) {
-                rec_flags |= ((flags & OPFLAG_FORCE_VERIFY) ?
-                               OSQL_FORCE_VERIFY : 0);
-
+                /* Set the UPSERT related flags. */
                 if (flags & OPFLAG_IGNORE_FAILURE) {
+                    /* For ON CONFLICT(opt-target-index) DO NOTHING, the lower
+                     * 8 bits of the rec_flags store the OSQL_IGNORE_FAILURE
+                     * (signifying DO NOTHING), and higher bits store the index
+                     * number specified in the ON CONFLICT target. Use of no
+                     * target implies the implicit inclusion of all unique
+                     * indexes. This is represented by storing MAXINDEX+1 in
+                     * the higher bits instead.
+                     */
                     if (clnt->oc_ignore_idx) {
                         rec_flags = (((clnt->oc_ignore_idx - 1) << 8) |
                                      OSQL_IGNORE_FAILURE);
@@ -8312,6 +8318,8 @@ int sqlite3BtreeInsert(
                         rec_flags = (((MAXINDEX+1) << 8) |
                                      OSQL_IGNORE_FAILURE);
                     }
+                } else if (flags & OPFLAG_FORCE_VERIFY) {
+                    rec_flags = OSQL_FORCE_VERIFY;
                 }
             }
 

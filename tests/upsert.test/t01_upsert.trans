@@ -47,16 +47,16 @@
 1 INSERT INTO t1(a) VALUES('one'),('two'),('three');
 1 BEGIN
 1 INSERT INTO t1(a) VALUES('one'),('one'),('three'),('four') ON CONFLICT(a) DO UPDATE SET b=b+1;
-1 SELECT * FROM t1;
+1 SELECT * FROM t1 ORDER BY a;
 1 COMMIT
-1 SELECT * FROM t1;
+1 SELECT * FROM t1 ORDER BY a;
 # READ COMMITTED Isolation level
 1 SET TRANSACTION READ COMMITTED
 1 BEGIN
 1 INSERT INTO t1(a) VALUES('one'),('one'),('three'),('four') ON CONFLICT(a) DO UPDATE SET b=b+1;
-1 SELECT * FROM t1;
+1 SELECT * FROM t1 ORDER BY a;
 1 COMMIT
-1 SELECT * FROM t1;
+1 SELECT * FROM t1 ORDER BY a;
 
 # Test upsert1-400 from upstream
 1 SELECT a, b FROM t1 ORDER BY a;

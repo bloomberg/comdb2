@@ -52,3 +52,20 @@
 (a=7, b=8, c=0)
 [INSERT INTO t1(a,b) VALUES(8,7),(9,6) ON CONFLICT(a) DO NOTHING] failed with rc 299 add key constraint duplicate key 'IDX1' on table 't1' index 1
 (a=7, b=8, c=0)
+(rows inserted=1)
+[INSERT INTO t1 VALUES(1,1,1,1)] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't1' index 0
+[INSERT INTO t1 VALUES(1,1,1,1) ON CONFLICT DO NOTHING] failed with rc 299 add key constraint duplicate key '$KEY_C783966A' on table 't1' index 1
+[INSERT INTO t1 VALUES(1,1,1,1) ON CONFLICT(i) DO NOTHING] failed with rc 299 add key constraint duplicate key '$KEY_C783966A' on table 't1' index 1
+[INSERT INTO t1 VALUES(1,1,1,1) ON CONFLICT(j) DO NOTHING] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't1' index 0
+[INSERT INTO t1 VALUES(1,1,1,1) ON CONFLICT(k) DO NOTHING] failed with rc -3 ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
+[INSERT INTO t1 VALUES(1,1,1,1) ON CONFLICT(l) DO NOTHING] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't1' index 0
+[INSERT INTO t1 VALUES(1,1,1,1) ON CONFLICT(m) DO NOTHING] failed with rc -3 no such column: m
+(i=1, j=1, k=1, l=1)
+[INSERT INTO t1 VALUES(2,1,1,1) ON CONFLICT(j) DO NOTHING] failed with rc 299 add key constraint duplicate key '$KEY_2EE0335F' on table 't1' index 3
+(rows inserted=1)
+(i=1, j=1, k=1, l=1)
+(rows inserted=1)
+(i=1, j=1, k=1, l=1)
+(rows inserted=1)
+(i=1, j=1, k=1, l=1)
+(i=99, j=99, k=1, l=99)

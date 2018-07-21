@@ -1655,12 +1655,14 @@ void sqlite3GenerateConstraintChecks(
     if( aRegIdx[ix]==0 ) continue;  /* Skip indices that do not change */
 
     /* COMDB2 MODIFICATION */
-    if( pUpIdx && pUpIdx!=pIdx) {
-        if ( (gbl_partial_indexes && pTab->hasPartIdx) ||
-             (gbl_expressions_indexes && pTab->hasExprIdx) ) {
-        } else {
-            continue;
-        }
+    /* Only proceed if either no conflicting index is specified (which implies
+     * ignore failures for all unique indices) or if the current index is the
+     * one explicitly specified in the ON CONFLICT clause.
+     */
+    if( pUpIdx && pUpIdx!=pIdx &&
+        ((!gbl_partial_indexes || !pTab->hasPartIdx) &&
+         (!gbl_expressions_indexes || !pTab->hasExprIdx)) ) {
+        continue;
     }
 
     if( pUpsert && pUpIdx==pIdx && overrideError!=OE_Ignore ){
@@ -1733,7 +1735,8 @@ void sqlite3GenerateConstraintChecks(
          (is_comdb2_index_unique(pIdx->pTable->zName, pIdx->zName)) ) {
       onError = OE_Abort;
     }
-
+    /* We do not need to proceed further for ON CONFLICT DO NOTHING, as this
+     * this will be handled on the master. */
     if ( overrideError==OE_Ignore ) {
         onError = OE_None;
     }
@@ -1743,7 +1746,6 @@ void sqlite3GenerateConstraintChecks(
       sqlite3VdbeResolveLabel(v, addrUniqueOk);
       continue;  /* pIdx is not a UNIQUE index */
     }
-
     if(overrideError!=OE_Default ){
       onError = overrideError;
     }else if( onError==OE_Default ){
@@ -1866,6 +1868,7 @@ void sqlite3GenerateConstraintChecks(
         break;
       }
     }
+    /* COMDB2 MODIFICATION */
     if( pUpIdx==pIdx && overrideError!=OE_Ignore ){
       sqlite3VdbeJumpHere(v, upsertBypass);
     }else{
