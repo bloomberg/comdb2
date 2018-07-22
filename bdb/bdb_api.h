@@ -2008,6 +2008,10 @@ int bdb_latest_commit_is_durable(void *bdb_state);
 int bdb_is_standalone(void *dbenv, void *in_bdb_state);
 int bdb_valid_lease(void *bdb_state);
 
+void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
+        int64_t *maxactive, int64_t *commits, int64_t *aborts);
+
+
 uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
 
 typedef struct bias_info bias_info;

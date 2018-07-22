@@ -66,6 +66,10 @@ struct comdb2_metrics_store {
     int64_t udp_sent;
     int64_t udp_failed_send;
     int64_t udp_received;
+    int64_t active_transactions;
+    int64_t maxactive_transactions;
+    int64_t total_commits;
+    int64_t total_aborts;
 };
 
 static struct comdb2_metrics_store stats;
@@ -158,6 +162,15 @@ comdb2_metric gbl_metrics[] = {
         STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.udp_failed_send, NULL},
     {"udp_received", "Number of udp receives", STATISTIC_INTEGER,
         STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.udp_received, NULL},
+    {"active_transactions", "Number of active transactions", STATISTIC_INTEGER,
+        STATISTIC_COLLECTION_TYPE_LATEST, &stats.active_transactions, NULL},
+    {"max_active_transactions", "Maximum number of active transactions",
+        STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+        &stats.maxactive_transactions, NULL},
+    {"total_commits", "Number of transaction commits", STATISTIC_INTEGER,
+        STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.total_commits, NULL},
+    {"total_aborts", "Number of transaction aborts", STATISTIC_INTEGER,
+        STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.total_aborts, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -308,7 +321,9 @@ int refresh_metrics(void)
     stats.udp_sent = sent;
     stats.udp_failed_send = failed_send;
     stats.udp_received = received;
-
+    bdb_get_txn_stats(thedb->bdb_env, &stats.active_transactions,
+            &stats.maxactive_transactions, &stats.total_commits,
+            &stats.total_aborts);
     return 0;
 }
 
