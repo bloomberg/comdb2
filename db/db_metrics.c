@@ -63,6 +63,9 @@ struct comdb2_metrics_store {
     int64_t total_election_ms;
     int64_t election_count;
     int64_t last_election_time;
+    int64_t udp_sent;
+    int64_t udp_failed_send;
+    int64_t udp_received;
 };
 
 static struct comdb2_metrics_store stats;
@@ -149,7 +152,12 @@ comdb2_metric gbl_metrics[] = {
     {"last_election_time", "Wallclock time last election completed",
         STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
         &stats.last_election_time, NULL},
-
+    {"udp_sent", "Number of udp packets sent", STATISTIC_INTEGER,
+        STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.udp_sent, NULL},
+    {"udp_failed_send", "Number of failed udp sends", STATISTIC_INTEGER,
+        STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.udp_failed_send, NULL},
+    {"udp_received", "Number of udp receives", STATISTIC_INTEGER,
+        STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.udp_received, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -295,6 +303,11 @@ int refresh_metrics(void)
     stats.total_election_ms = gbl_total_election_time_ms;
     stats.election_count = gbl_election_count;
     stats.last_election_time = gbl_election_time_completed;
+    unsigned int sent, failed_send, received;
+    udp_stats(&sent, &failed_send, &received);
+    stats.udp_sent = sent;
+    stats.udp_failed_send = failed_send;
+    stats.udp_received = received;
 
     return 0;
 }

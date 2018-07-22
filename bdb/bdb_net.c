@@ -678,6 +678,14 @@ void udp_summary(void)
            sent_udp, fail_udp, recd_udp, recl_udp, rect_udp);
 }
 
+void udp_stats(unsigned int *in_sent_udp, unsigned int *in_fail_udp,
+        unsigned int *in_recd_udp)
+{
+    *in_sent_udp = sent_udp;
+    *in_fail_udp = fail_udp;
+    *in_recd_udp = recd_udp;
+}
+
 // Zero out all counters
 void udp_reset(netinfo_type *netinfo)
 {

@@ -1724,6 +1724,9 @@ netinfo_type *get_rep_netinfo(bdb_state_type *);
 
 void udp_summary(void);
 void udp_reset(netinfo_type *);
+void udp_stats(unsigned int *sent_udp, unsigned int *fail_udp,
+        unsigned int *recd_udp);
+
 
 extern struct thdpool *gbl_udppfault_thdpool;
 int udppfault_thdpool_init(void);
