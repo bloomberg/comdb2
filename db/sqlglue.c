@@ -5373,16 +5373,9 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
                                        NULL, 0, pIdxKey, &bdberr, pCur);
             }
         } else {
-            void *k = malloc(sizeof(intKey));
-            if (k == NULL) {
-                return SQLITE_NOMEM;
-            }
-            *(i64 *)k = intKey;
-            rc = pCur->cursor_find(thedb->bdb_env, pCur->tmptable->cursor, k,
-                                   sizeof(intKey), NULL, &bdberr, pCur);
-            if (rc != IX_FND) {
-                free(k);
-            }
+            rc =
+                pCur->cursor_find(thedb->bdb_env, pCur->tmptable->cursor,
+                                  &intKey, sizeof(intKey), NULL, &bdberr, pCur);
         }
         if (!is_good_ix_find_rc(rc)) {
             if (rc == IX_EMPTY) {
