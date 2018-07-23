@@ -4570,7 +4570,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
     /* UPSERT: If we were asked to perform some action on conflict
      * (ON CONFLICT DO UPDATE/REPLACE and not DO NOTHING), then its a good
      * idea to switch at least to READ COMMITTED if we are running in some
-     * lower isolation level in a non-user (autocommit) transaction.
+     * lower isolation level in a standalone (autocommit) transaction.
      */
     if ((clnt->dbtran.mode < TRANLEVEL_RECOM) &&
         (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) &&
@@ -4578,6 +4578,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
         logmsg(LOGMSG_DEBUG, "%s: switched to %s from %s\n", __func__,
                tranlevel_tostr(TRANLEVEL_RECOM),
                tranlevel_tostr(clnt->dbtran.mode));
+        clnt->translevel_changed = 1;
         clnt->dbtran.mode = TRANLEVEL_RECOM;
     }
 
@@ -4692,6 +4693,15 @@ int sqlite3BtreeCommit(Btree *pBt)
                         irc, bdberr);
             }
         }
+
+        /* UPSERT: Restore the isolation level back to what it was. */
+        if (clnt->translevel_changed) {
+            clnt->dbtran.mode = TRANLEVEL_SOSQL;
+            clnt->translevel_changed = 0;
+            logmsg(LOGMSG_DEBUG, "%s: switched back to %s\n", __func__,
+                   tranlevel_tostr(clnt->dbtran.mode));
+        }
+
         break;
 
     case TRANLEVEL_SNAPISOL:
@@ -4852,6 +4862,15 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
             if (rc)
                 logmsg(LOGMSG_ERROR, "%s: recom abort rc=%d??\n", __func__, rc);
         }
+
+        /* UPSERT: Restore the isolation level back to what it was. */
+        if (clnt->translevel_changed) {
+            clnt->dbtran.mode = TRANLEVEL_SOSQL;
+            clnt->translevel_changed = 0;
+            logmsg(LOGMSG_DEBUG, "%s: switched back to %s\n", __func__,
+                   tranlevel_tostr(clnt->dbtran.mode));
+        }
+
         break;
 
     case TRANLEVEL_SNAPISOL:

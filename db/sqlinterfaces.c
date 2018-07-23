@@ -4122,7 +4122,6 @@ void reset_clnt_flags(struct sqlclntstate *clnt)
 {
     clnt->writeTransaction = 0;
     clnt->has_recording = 0;
-    clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
 }
 
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
