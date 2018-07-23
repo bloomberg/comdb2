@@ -33,7 +33,7 @@
 ** The generate_series "function" is really a virtual table with the
 ** following schema:
 **
-**     CREATE FUNCTION generate_series(
+**     CREATE TABLE generate_series(
 **       value,
 **       start HIDDEN,
 **       stop HIDDEN,
@@ -69,19 +69,18 @@
 ** series are well-defined.
 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2) && !defined(SQLITE_CORE)
-# define SQLITE_CORE 1
-#endif
+#define SQLITE_CORE 1
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) && !defined(SQLITE_CORE) */
 
 #include "sqlite3ext.h"
-#ifndef SQLITE_BUILDING_FOR_COMDB2
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 SQLITE_EXTENSION_INIT1
-#endif
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #include <assert.h>
 #include <string.h>
 
 #ifndef SQLITE_OMIT_VIRTUALTABLE
-
 
 
 /* series_cursor is a subclass of sqlite3_vtab_cursor which will
@@ -203,8 +202,9 @@ static int seriesColumn(
 }
 
 /*
-** Return the rowid for the current row.  In this implementation, the
-** rowid is the same as the output value.
+** Return the rowid for the current row. In this implementation, the
+** first row returned is assigned rowid value 1, and each subsequent
+** row a value 1 more than that of the previous.
 */
 static int seriesRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
   series_cursor *pCur = (series_cursor*)cur;
@@ -225,10 +225,18 @@ static int seriesEof(sqlite3_vtab_cursor *cur){
   }
 }
 
+/* True to cause run-time checking of the start=, stop=, and/or step= 
+** parameters.  The only reason to do this is for testing the
+** constraint checking logic for virtual tables in the SQLite core.
+*/
+#ifndef SQLITE_SERIES_CONSTRAINT_VERIFY
+# define SQLITE_SERIES_CONSTRAINT_VERIFY 0
+#endif
+
 /*
 ** This method is called to "rewind" the series_cursor object back
 ** to the first row of output.  This method is always called at least
-** once prior to any call to seriesColumn() or seriesRowid() or
+** once prior to any call to seriesColumn() or seriesRowid() or 
 ** seriesEof().
 **
 ** The query plan selected by seriesBestIndex is passed in the idxNum
@@ -268,6 +276,15 @@ static int seriesFilter(
     if( pCur->iStep<1 ) pCur->iStep = 1;
   }else{
     pCur->iStep = 1;
+  }
+  for(i=0; i<argc; i++){
+    if( sqlite3_value_type(argv[i])==SQLITE_NULL ){
+      /* If any of the constraints have a NULL value, then return no rows.
+      ** See ticket https://www.sqlite.org/src/info/fac496b61722daf2 */
+      pCur->mnValue = 1;
+      pCur->mxValue = 0;
+      break;
+    }
   }
   if( idxNum & 8 ){
     pCur->isDesc = 1;
@@ -332,29 +349,31 @@ static int seriesBestIndex(
   }
   if( startIdx>=0 ){
     pIdxInfo->aConstraintUsage[startIdx].argvIndex = ++nArg;
-    pIdxInfo->aConstraintUsage[startIdx].omit = 1;
+    pIdxInfo->aConstraintUsage[startIdx].omit= !SQLITE_SERIES_CONSTRAINT_VERIFY;
   }
   if( stopIdx>=0 ){
     pIdxInfo->aConstraintUsage[stopIdx].argvIndex = ++nArg;
-    pIdxInfo->aConstraintUsage[stopIdx].omit = 1;
+    pIdxInfo->aConstraintUsage[stopIdx].omit = !SQLITE_SERIES_CONSTRAINT_VERIFY;
   }
   if( stepIdx>=0 ){
     pIdxInfo->aConstraintUsage[stepIdx].argvIndex = ++nArg;
-    pIdxInfo->aConstraintUsage[stepIdx].omit = 1;
-  }
-  if( pIdxInfo->nOrderBy==1 ){
-    if( pIdxInfo->aOrderBy[0].desc ) idxNum |= 8;
-    pIdxInfo->orderByConsumed = 1;
+    pIdxInfo->aConstraintUsage[stepIdx].omit = !SQLITE_SERIES_CONSTRAINT_VERIFY;
   }
   if( (idxNum & 3)==3 ){
     /* Both start= and stop= boundaries are available.  This is the 
     ** the preferred case */
-    pIdxInfo->estimatedCost = (double)1;
+    pIdxInfo->estimatedCost = (double)(2 - ((idxNum&4)!=0));
+    pIdxInfo->estimatedRows = 1000;
+    if( pIdxInfo->nOrderBy==1 ){
+      if( pIdxInfo->aOrderBy[0].desc ) idxNum |= 8;
+      pIdxInfo->orderByConsumed = 1;
+    }
   }else{
     /* If either boundary is missing, we have to generate a huge span
     ** of numbers.  Make this case very expensive so that the query
     ** planner will work hard to avoid it. */
-    pIdxInfo->estimatedCost = (double)2000000000;
+    pIdxInfo->estimatedCost = (double)2147483647;
+    pIdxInfo->estimatedRows = 2147483647;
   }
   pIdxInfo->idxNum = idxNum;
   return SQLITE_OK;
@@ -410,18 +429,16 @@ int sqlite3_series_init(
   return rc;
 }
 
-/* Comdb2 does not allow run-time linking for sqlite3 modules, so
-** We must link this staticaly as we do with system tables.
+#if defined(SQLITE_BUILDING_FOR_COMDB2) && defined(SQLITE_ENABLE_SERIES)
+/*
+** Comdb2 does not allow run-time linking for sqlite3 modules, so we must
+** link this staticaly as we do with system tables.
 */
-#ifdef SQLITE_BUILDING_FOR_COMDB2
-# ifdef SQLITE_ENABLE_SERIES
 int sqlite3SeriesInit(
   sqlite3 *db
 ){
-  int rc = SQLITE_OK;
+  int rc;
   rc = sqlite3_create_module(db, "generate_series", &seriesModule, 0);
   return rc;
 }
-# endif
-#endif
-  
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) && defined(SQLITE_ENABLE_SERIES) */
