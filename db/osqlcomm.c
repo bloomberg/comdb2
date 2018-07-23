@@ -2746,7 +2746,7 @@ osqlcomm_recgenid_uuid_rpl_type_get(osql_recgenid_uuid_rpl_t *p_recgenid,
     return p_buf;
 }
 
-static int osql_nettype_is_uuid(int type)
+static inline int osql_nettype_is_uuid(int type)
 {
     return type >= NET_OSQL_UUID_REQUEST_MIN &&
            type < NET_OSQL_UUID_REQUEST_MAX;
@@ -5450,8 +5450,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
         return;
     }
 
-    if (usertype > NET_OSQL_UUID_REQUEST_MIN ||
-        usertype < NET_OSQL_UUID_REQUEST_MAX) {
+    if (osql_nettype_is_uuid(usertype)) {
         if (!osqlcomm_poke_uuid_type_get(&pokeuuid, p_buf, p_buf_end)) {
             logmsg(LOGMSG_ERROR, "%s: can't unpack %d request\n", __func__,
                     usertype);
@@ -6016,8 +6015,7 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
 
     stats[netrpl2req(usertype)].rcv++;
 
-    if (usertype >= NET_OSQL_UUID_REQUEST_MIN &&
-        usertype < NET_OSQL_UUID_REQUEST_MAX) {
+    if (osql_nettype_is_uuid(usertype)) {
         osql_uuid_rpl_t p_osql_uuid_rpl;
 
         rqid = OSQL_RQID_USE_UUID;
@@ -6116,8 +6114,7 @@ static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
 
         p_buf = (uint8_t *)dup;
         p_buf_end = p_buf + dtalen;
-        if (usertype >= NET_OSQL_UUID_REQUEST_MIN &&
-            usertype < NET_OSQL_UUID_REQUEST_MAX) {
+        if (osql_nettype_is_uuid(usertype)) {
             osql_uuid_rpl_t p_osql_rpl;
             unsigned long long rqid;
 
@@ -7392,8 +7389,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     int replaced = 0;
 
     /* grab the request */
-    if (nettype >= NET_OSQL_UUID_REQUEST_MIN &&
-        nettype < NET_OSQL_UUID_REQUEST_MAX) {
+    if (osql_nettype_is_uuid(nettype)) {
         osql_uuid_req_t uuid_req;
         sql = (char *)osqlcomm_req_uuid_type_get(&uuid_req, p_req_buf,
                                                  p_req_buf_end);
@@ -7577,8 +7573,7 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
     unsigned long long rqid;
     int type;
 
-    if (usertype >= NET_OSQL_UUID_REQUEST_MIN &&
-        usertype < NET_OSQL_UUID_REQUEST_MAX) {
+    if (osql_nettype_is_uuid(usertype)) {
         osql_uuid_rpl_t uuid_hdr;
         /* unpack */
         osqlcomm_uuid_rpl_type_get(&uuid_hdr, p_buf, p_buf_end);
