@@ -10306,6 +10306,11 @@ int sqlite3PagerOkToChangeJournalMode(Pager *pPager) { return 0; }
 int sqlite3PagerGetJournalMode(Pager *pPager) { return 0; }
 
 /*
+** Return the pPager->iDataVersion value
+*/
+u32 sqlite3PagerDataVersion(Pager *pPager){ return 0; }
+
+/*
  ** Set the journal-mode for this pager. Parameter eMode must be one of:
  **
  **    PAGER_JOURNALMODE_DELETE
