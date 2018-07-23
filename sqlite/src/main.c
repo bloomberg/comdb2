@@ -1328,7 +1328,7 @@ void sqlite3RollbackAll(sqlite3 *db, int tripCode){
   sqlite3VtabRollback(db);
   sqlite3EndBenignMalloc();
 
-  if( (db->mDbFlags&DBFLAG_SchemaChange)!=0 && db->init.busy==0 ){
+  if( schemaChange ){
     sqlite3ExpirePreparedStatements(db);
     sqlite3ResetAllSchemasOfConnection(db);
   }
@@ -3851,6 +3851,9 @@ int sqlite3_file_control(sqlite3 *db, const char *zDbName, int op, void *pArg){
       rc = SQLITE_OK;
     }else if( op==SQLITE_FCNTL_JOURNAL_POINTER ){
       *(sqlite3_file**)pArg = sqlite3PagerJrnlFile(pPager);
+      rc = SQLITE_OK;
+    }else if( op==SQLITE_FCNTL_DATA_VERSION ){
+      *(unsigned int*)pArg = sqlite3PagerDataVersion(pPager);
       rc = SQLITE_OK;
     }else{
       rc = sqlite3OsFileControl(fd, op, pArg);
