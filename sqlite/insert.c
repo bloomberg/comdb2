@@ -14,8 +14,10 @@
 */
 #include "sqliteInt.h"
 
+/* COMDB2 MODIFICATION */
+#include "cdb2_constants.h"
+
 int is_comdb2_index_unique(const char *tbl, char *idx);
-void comdb2_set_ignore_index_all(void);
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
@@ -828,7 +830,7 @@ void sqlite3Insert(
     if( pUpsert->pUpsertTarget ){
       sqlite3UpsertAnalyzeTarget(pParse, pTabList, pUpsert);
     } else {
-        comdb2_set_ignore_index_all();
+        comdb2SetUpsertIdx(v, MAXINDEX+1);
     }
   }
 

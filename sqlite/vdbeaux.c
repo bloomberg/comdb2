@@ -5397,6 +5397,14 @@ void comdb2SetIgnore(Vdbe *v)
   v->oe_flag = OE_Ignore;
 }
 
+void comdb2SetUpsertIdx(Vdbe *v, int idx) {
+  v->upsert_idx = idx;
+}
+
+int comdb2UpsertIdx(Vdbe *v) {
+  return v->upsert_idx;
+}
+
 int comdb2ForceVerify(Vdbe *v)
 {
   switch(v->oe_flag) {

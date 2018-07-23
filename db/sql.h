@@ -625,9 +625,6 @@ struct sqlclntstate {
     int verify_remote_schemas;
     char *argv0;
     char *stack;
-
-    /* Ignore DUP error for this index (from ON CONFLICT(idx) clause). */
-    uint8_t upsert_idx;
 };
 
 /* Query stats. */

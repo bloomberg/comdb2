@@ -521,6 +521,7 @@ struct Vdbe {
   int dtprec;             /* datetime precision - make it u32 to silence compiler */
   struct timespec tspec;  /* time of prepare, used for stable now() */
   u8 oe_flag;             /* ON CONFLICT action */
+  u8 upsert_idx;          /* ON CONFLICT target */
 };
 
 /*

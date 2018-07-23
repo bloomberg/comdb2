@@ -1067,6 +1067,8 @@ void comdb2SetUpdate(Vdbe *v);
 void comdb2SetIgnore(Vdbe *v);
 int comdb2ForceVerify(Vdbe *v);
 int comdb2IgnoreFailure(Vdbe *v);
+void comdb2SetUpsertIdx(Vdbe *v, int idx);
+int comdb2UpsertIdx(Vdbe *v);
 
 /*
 ** Defer sourcing vdbe.h and btree.h until after the "u8" and

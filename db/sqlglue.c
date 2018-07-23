@@ -8330,7 +8330,8 @@ int sqlite3BtreeInsert(
                      * indexes. This is represented by storing MAXINDEX+1 in
                      * the higher bits instead.
                      */
-                    rec_flags = ((clnt->upsert_idx << 8) | OSQL_IGNORE_FAILURE);
+                    rec_flags = ((comdb2UpsertIdx(pCur->vdbe) << 8) |
+                                 OSQL_IGNORE_FAILURE);
                 } else if (flags & OPFLAG_FORCE_VERIFY) {
                     rec_flags = OSQL_FORCE_VERIFY;
                 }
@@ -10484,33 +10485,23 @@ int comdb2_get_planner_effort()
     return clnt->planner_effort;
 }
 
-void comdb2_set_ignore_index(const char *dbname, char *idx)
+/* Return the index number. */
+int comdb2_get_index(const char *dbname, char *idx)
 {
     struct dbtable *db = get_dbtable_by_name(dbname);
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->clnt;
 
     if (db) {
         int i;
         for (i = 0; i < db->nix; ++i) {
             struct schema *s = db->ixschema[i];
             if (s->sqlitetag && strcmp(s->sqlitetag, idx) == 0) {
-                clnt->upsert_idx = i;
-                return;
+                return i;
             }
         }
     }
 
     assert(0);
-    return;
-}
-
-void comdb2_set_ignore_index_all()
-{
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->clnt;
-    clnt->upsert_idx = MAXINDEX + 1;
-    return;
+    return -1;
 }
 
 static void sqlite3BtreeCursorHint_Flags(BtCursor *pCur, unsigned int mask)

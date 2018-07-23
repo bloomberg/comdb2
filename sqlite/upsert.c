@@ -17,7 +17,7 @@
 #ifndef SQLITE_OMIT_UPSERT
 
 int is_comdb2_index_unique(const char *tbl, char *idx);
-int comdb2_set_ignore_index(const char *tbl, char *idx);
+int comdb2_get_index(const char *dbname, char *idx);
 
 /*
 ** Free a list of Upsert objects
@@ -188,7 +188,10 @@ int sqlite3UpsertAnalyzeTarget(
     }
     pUpsert->pUpsertIdx = pIdx;
 
-    comdb2_set_ignore_index(pIdx->pTable->zName, pIdx->zName);
+    /* COMDB2 MOFIFICATION */
+    Vdbe *v = pParse->pVdbe;
+    int idx = comdb2_get_index(pIdx->pTable->zName, pIdx->zName);
+    comdb2SetUpsertIdx(v, idx);
 
     return SQLITE_OK;
   }
