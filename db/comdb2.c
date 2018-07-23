@@ -1121,11 +1121,6 @@ static void *purge_old_blkseq_thread(void *arg)
         purge_old_cached_blobs();
         thrman_where(thr_self, NULL);
 
-        /* queue consumer thread admin */
-        thrman_where(thr_self, "dbqueue_admin");
-        dbqueue_admin(dbenv);
-        thrman_where(thr_self, NULL);
-
         /* update per node stats */
         process_nodestats();
 
@@ -1949,7 +1944,7 @@ static int llmeta_load_queues(struct dbenv *dbenv)
             return -1;
         }
 
-        rc = dbqueue_add_consumer(tbl, 0, dests[0], 0);
+        rc = dbqueuedb_add_consumer(tbl, 0, dests[0], 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, "can't add consumer for queue \"%s\"\n", qnames[i]);
             return -1;
@@ -4605,13 +4600,6 @@ static void register_all_int_switches()
                         &gbl_default_livesc);
     register_int_switch("dflt_plansc", "Use planned schema change by default",
                         &gbl_default_plannedsc);
-    register_int_switch("consumer_rtcpu",
-                        "Don't send update broadcasts to rtcpu'd machines",
-                        &gbl_consumer_rtcpu_check);
-    register_int_switch(
-        "node1_rtcpuable",
-        "If off then consumer code won't do rtcpu checks on node 1",
-        &gbl_node1rtcpuable);
     register_int_switch("sqlite3openserial",
                         "Serialise calls to sqlite3_open to prevent excess CPU",
                         &gbl_serialise_sqlite3_open);
@@ -4637,9 +4625,6 @@ static void register_all_int_switches()
     register_int_switch("allow_mismatched_tag_size",
                         "Allow variants in padding in static tag struct sizes",
                         &gbl_allow_mismatched_tag_size);
-    register_int_switch("reset_queue_cursor_mode",
-                        "Reset queue consumeer read cursor after each consume",
-                        &gbl_reset_queue_cursor);
     register_int_switch("key_updates",
                         "Update non-dupe keys instead of delete/add",
                         &gbl_key_updates);

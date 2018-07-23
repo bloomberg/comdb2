@@ -2555,9 +2555,9 @@ void diagnostics_dump_rrn(struct dbtable *tbl, int rrn);
 void diagnostics_dump_dta(struct dbtable *db, int dtanum);
 
 /* queue stuff */
-void dbqueue_coalesce(struct dbenv *dbenv);
-void dbqueue_admin(struct dbenv *dbenv);
-int dbqueue_add_consumer(struct dbtable *db, int consumer, const char *method,
+void dbqueuedb_coalesce(struct dbenv *dbenv);
+void dbqueuedb_admin(struct dbenv *dbenv);
+int dbqueuedb_add_consumer(struct dbtable *db, int consumer, const char *method,
                          int noremove);
 int dbqueue_set_consumern_options(struct dbtable *db, int consumer,
                                   const char *opts);
@@ -2566,12 +2566,12 @@ void dbqueue_stat(struct dbtable *db, int fullstat, int walk_queue, int blocking
 void dbqueue_flush_in_thread(struct dbtable *db, int consumern);
 void dbqueue_flush_abort(void);
 int consumer_change(const char *queuename, int consumern, const char *method);
-void dbqueue_wake_all_consumers(struct dbtable *db, int force);
-void dbqueue_wake_all_consumers_all_queues(struct dbenv *dbenv, int force);
+void dbqueuedb_wake_all_consumers(struct dbtable *db, int force);
+void dbqueuedb_wake_all_consumers_all_queues(struct dbenv *dbenv, int force);
 void dbqueue_goose(struct dbtable *db, int force);
-void dbqueue_stop_consumers(struct dbtable *db);
-void dbqueue_restart_consumers(struct dbtable *db);
-int dbqueue_check_consumer(const char *method);
+void dbqueuedb_stop_consumers(struct dbtable *db);
+void dbqueuedb_restart_consumers(struct dbtable *db);
+int dbqueuedb_check_consumer(const char *method);
 
 /* Resource manager */
 void initresourceman(const char *newlrlname);

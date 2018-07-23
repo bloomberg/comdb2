@@ -582,7 +582,8 @@ void stop_threads(struct dbenv *dbenv)
     thrman_stop_sql_connections();
 
     /* Wake up the queue consumer threads */
-    dbqueue_coalesce(dbenv);
+    /* QHERE - also need to db queue threads */
+    dbqueuedb_coalesce(dbenv);
 
     /* Wait until the regular request threads are idle with no queue.  Note
      * that they still continue regardless. */

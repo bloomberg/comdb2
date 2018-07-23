@@ -28,7 +28,7 @@ typedef struct trigger_reg {
 } trigger_reg_t;
 
 struct consumer;
-enum consumer_t consumer_type(struct consumer *c);
+enum consumer_t qconsumer_type(struct consumer *c);
 int trigger_register(trigger_reg_t *);
 int trigger_unregister(trigger_reg_t *);
 void trigger_start(const char *);
