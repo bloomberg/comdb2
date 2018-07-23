@@ -4427,43 +4427,42 @@ done:
     return rc;
 }
 
-
-int bdb_get_num_sc_done(bdb_state_type *bdb_state, tran_type *tran, unsigned long long *num,
-                        int *bdberr)
+int bdb_get_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
+                        unsigned long long *num, int *bdberr)
 {
     int rc;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_file_type_key file_type_key;
     int fndlen;
     *num = 0;
-    uint8_t *p_buf=(uint8_t *)key,
-        *p_buf_end=(p_buf + LLMETA_IXLEN);
+    uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
     unsigned long long tmpnum;
 
     *bdberr = BDBERR_NOERROR;
 
     file_type_key.file_type = LLMETA_TABLE_NUM_SC_DONE;
 
-    if(!(llmeta_file_type_key_put(&(file_type_key),p_buf, p_buf_end)))
-    {
-        fprintf( stderr, "%s: llmeta_file_type_key_put returns NULL\n",__func__);
+    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
+               __func__);
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
 
     rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, &tmpnum,
-            sizeof(tmpnum), &fndlen, bdberr);
+                                   sizeof(tmpnum), &fndlen, bdberr);
 
     tmpnum = flibc_ntohll(tmpnum);
 
-    if(rc == 0)
+    if (rc == 0)
         *num = tmpnum;
     else
         *num = 0;
     return 0;
 }
 
-int bdb_increment_num_sc_done(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
+int bdb_increment_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
+                              int *bdberr)
 {
     int rc;
     int started_our_own_transaction = 0;
@@ -4471,8 +4470,7 @@ int bdb_increment_num_sc_done(bdb_state_type *bdb_state, tran_type *tran, int *b
     unsigned long long num = 0;
 
     struct llmeta_file_type_key file_type_key;
-    uint8_t *p_buf=(uint8_t *)key,
-        *p_buf_end=(p_buf + LLMETA_IXLEN);
+    uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
 
     *bdberr = BDBERR_NOERROR;
 
@@ -4483,9 +4481,9 @@ int bdb_increment_num_sc_done(bdb_state_type *bdb_state, tran_type *tran, int *b
 
     file_type_key.file_type = LLMETA_TABLE_NUM_SC_DONE;
 
-    if(!(llmeta_file_type_key_put(&(file_type_key),p_buf, p_buf_end)))
-    {
-        fprintf( stderr, "%s: llmeta_file_type_key_put returns NULL\n",__func__);
+    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
+               __func__);
         *bdberr = BDBERR_BADARGS;
         rc = -1;
         goto done;
@@ -4496,10 +4494,10 @@ int bdb_increment_num_sc_done(bdb_state_type *bdb_state, tran_type *tran, int *b
         if (*bdberr == BDBERR_FETCH_DTA) {
             num = 1;
             num = flibc_htonll(num);
-            rc = bdb_lite_add(llmeta_bdb_state, tran, &num, sizeof(unsigned long long), key, bdberr);
+            rc = bdb_lite_add(llmeta_bdb_state, tran, &num,
+                              sizeof(unsigned long long), key, bdberr);
             goto done;
-        }
-        else
+        } else
             goto done;
     }
 
@@ -4511,7 +4509,8 @@ int bdb_increment_num_sc_done(bdb_state_type *bdb_state, tran_type *tran, int *b
 
     num = flibc_htonll(num);
 
-    rc = bdb_lite_add(llmeta_bdb_state, tran, &num, sizeof(unsigned long long), key, bdberr);
+    rc = bdb_lite_add(llmeta_bdb_state, tran, &num, sizeof(unsigned long long),
+                      key, bdberr);
 
 done:
     return rc;
