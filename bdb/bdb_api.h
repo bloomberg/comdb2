@@ -1706,6 +1706,11 @@ void bdb_set_commit_genid(bdb_state_type *bdb_state, unsigned long long context,
 unsigned long long bdb_gen_commit_genid(bdb_state_type *bdb_state,
                                         const void *plsn, uint32_t generation);
 
+int bdb_increment_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
+                              int *bdberr);
+int bdb_get_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
+                        unsigned long long *num, int *bdberr);
+
 void udp_ping_ip(bdb_state_type *, char *ip);
 void udp_ping_all(bdb_state_type *);
 void udp_ping(bdb_state_type *, char *to);

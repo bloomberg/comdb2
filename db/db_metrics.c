@@ -53,6 +53,7 @@ struct comdb2_metrics_store {
     double concurrent_sql;
     double concurrent_connections;
     int64_t ismaster;
+    uint64_t num_sc_done;
 };
 
 static struct comdb2_metrics_store stats;
@@ -62,60 +63,63 @@ static struct comdb2_metrics_store stats;
   Please keep'em sorted.
 */
 comdb2_metric gbl_metrics[] = {
-    {"bpool_hits", "Buffer pool hits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.bpool_hits,
-     NULL},
-    {"bpool_misses", "Buffer pool misses", STATISTIC_COLLECTION_TYPE_CUMULATIVE, STATISTIC_INTEGER,
-     &stats.bpool_misses, NULL},
-    {"cache_hit_rate", "Buffer pool request hit rate", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.cache_hit_rate, NULL},
-    {"commits", "Number of commits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.commits,
-     NULL},
-    {"concurrent_sql", "Concurrent SQL queries",  STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.concurrent_sql, NULL},
-    {"concurrent_connections", "Number of concurrent connections ",  STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
+    {"bpool_hits", "Buffer pool hits", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.bpool_hits, NULL},
+    {"bpool_misses", "Buffer pool misses", STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     STATISTIC_INTEGER, &stats.bpool_misses, NULL},
+    {"cache_hit_rate", "Buffer pool request hit rate", STATISTIC_DOUBLE,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.cache_hit_rate, NULL},
+    {"commits", "Number of commits", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.commits, NULL},
+    {"concurrent_sql", "Concurrent SQL queries", STATISTIC_DOUBLE,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.concurrent_sql, NULL},
+    {"concurrent_connections", "Number of concurrent connections ",
+     STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.concurrent_connections, NULL},
-    {"connections", "Total connections", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.connections, NULL},
-    {"connection_timeouts", "Timed out connection attempts", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.connection_timeouts, NULL},
-    {"cpu_percent", "Database CPU time over last 5 seconds", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.cpu_percent, NULL},
-    {"current_connections", "Number of current connections", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.current_connections, NULL},
-    {"deadlocks", "Number of deadlocks", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.deadlocks, NULL},
-    {"diskspace", "Disk space used (bytes)",  STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.diskspace, NULL},
-    {"fstraps", "Number of socket requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.fstraps, NULL}, 
-    {"ismaster", "Is this machine the current master", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.ismaster, NULL},
-    {"lockrequests", "Total lock requests", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     &stats.lockrequests, NULL},
-    {"lockwaits", "Number of lock waits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.lockwaits, NULL},
-    {"memory_ulimit", "Virtual address space ulimit", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.memory_ulimit, NULL},
-    {"memory_usage", "Address space size",  STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.memory_usage, NULL},
-    {"preads", "Number of pread()'s", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,  &stats.preads,
-     NULL},
-    {"pwrites", "Number of pwrite()'s", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.pwrites,
-     NULL},
-    {"queue_depth", "Request queue depth",  STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.queue_depth, NULL},
-    {"retries", "Number of retries", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.retries,
-     NULL},
-    {"service_time", "Service time",  STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.service_time, NULL},
-    {"sql_cost", "Number of sql steps executed (cost)", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     &stats.sql_cost, NULL},
-    {"sql_count", "Number of sql queries executed", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     &stats.sql_count, NULL},
-    {"start_time", "Server start time", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.start_time, NULL},
-    {"threads", "Number of threads",  STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.threads, NULL},
+    {"connections", "Total connections", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connections, NULL},
+    {"connection_timeouts", "Timed out connection attempts", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connection_timeouts, NULL},
+    {"cpu_percent", "Database CPU time over last 5 seconds", STATISTIC_DOUBLE,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.cpu_percent, NULL},
+    {"current_connections", "Number of current connections", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.current_connections, NULL},
+    {"deadlocks", "Number of deadlocks", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.deadlocks, NULL},
+    {"diskspace", "Disk space used (bytes)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.diskspace, NULL},
+    {"fstraps", "Number of socket requests", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.fstraps, NULL},
+    {"ismaster", "Is this machine the current master", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.ismaster, NULL},
+    {"lockrequests", "Total lock requests", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockrequests, NULL},
+    {"lockwaits", "Number of lock waits", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockwaits, NULL},
+    {"memory_ulimit", "Virtual address space ulimit", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.memory_ulimit, NULL},
+    {"memory_usage", "Address space size", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.memory_usage, NULL},
+    {"preads", "Number of pread()'s", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.preads, NULL},
+    {"pwrites", "Number of pwrite()'s", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.pwrites, NULL},
+    {"queue_depth", "Request queue depth", STATISTIC_DOUBLE,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.queue_depth, NULL},
+    {"retries", "Number of retries", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.retries, NULL},
+    {"service_time", "Service time", STATISTIC_DOUBLE,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.service_time, NULL},
+    {"sql_cost", "Number of sql steps executed (cost)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sql_cost, NULL},
+    {"sql_count", "Number of sql queries executed", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sql_count, NULL},
+    {"start_time", "Server start time", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.start_time, NULL},
+    {"threads", "Number of threads", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.threads, NULL},
+    {"num_sc_done", "Number of schema changes done", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.num_sc_done, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -165,6 +169,7 @@ int refresh_metrics(void)
     int rc;
     const struct bdb_thread_stats *pstats;
     extern int active_appsock_conns;
+    int bdberr;
 
     /* Check whether the server is exiting. */
     if (thedb->exiting || thedb->stopped)
@@ -244,6 +249,13 @@ int refresh_metrics(void)
     stats.concurrent_connections = time_metric_average(thedb->connections);
     int master = bdb_whoismaster((bdb_state_type*) thedb->bdb_env) == gbl_mynode ? 1 : 0; 
     stats.ismaster = master;
+    rc = bdb_get_num_sc_done(((bdb_state_type *)thedb->bdb_env), NULL,
+                             (unsigned long long *)&stats.num_sc_done, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
+               __LINE__);
+        return 1;
+    }
 
     return 0;
 }
