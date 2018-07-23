@@ -585,7 +585,8 @@ static int bdb_verify_ll(
 
                 rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_SET);
                 if (!(has_keys & (1ULL << ix))) {
-                    if (!rc) {
+                    if (!rc &&
+                        (bdb_state->ixdups[ix] || genid == verify_genid)) {
                         ret = 1;
                         locprint(
                             sb, lua_callback, lua_params,
