@@ -975,6 +975,7 @@ struct dbenv {
     struct time_metric* queue_depth;
     struct time_metric* concurrent_queries;
     struct time_metric* connections;
+    struct time_metric* sql_queue_time;
 };
 
 extern struct dbenv *thedb;

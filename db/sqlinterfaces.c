@@ -3914,6 +3914,11 @@ static void thdpool_sqlengine_end(struct thdpool *pool, void *thd)
     sqlengine_thd_end(pool, (struct sqlthdstate *) thd);
 }
 
+static void thdpool_sqlengine_dque(struct thdpool *pool, struct workitem *item, int timeout)
+{
+    time_metric_add(thedb->sql_queue_time, comdb2_time_epochms() - item->queue_time_ms);
+}
+
 int tdef_to_tranlevel(int tdef)
 {
     switch (tdef) {
@@ -4812,6 +4817,7 @@ int sqlpool_init(void)
     thdpool_set_linger(gbl_sqlengine_thdpool, 30);
     thdpool_set_maxqueueoverride(gbl_sqlengine_thdpool, 500);
     thdpool_set_maxqueueagems(gbl_sqlengine_thdpool, 5 * 60 * 1000);
+    thdpool_set_dque_fn(gbl_sqlengine_thdpool, thdpool_sqlengine_dque);
     thdpool_set_dump_on_full(gbl_sqlengine_thdpool, 1);
 
     return 0;

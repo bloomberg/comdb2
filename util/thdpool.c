@@ -95,6 +95,7 @@ struct thdpool {
 
     thdpool_thdinit_fn init_fn;
     thdpool_thddelt_fn delt_fn;
+    thdpool_thddque_fn dque_fn;
 
     unsigned minnthd;   /* desired number of threads */
     unsigned maxnthd;   /* max threads - queue after this point */
@@ -342,6 +343,11 @@ void thdpool_set_delt_fn(struct thdpool *pool, thdpool_thddelt_fn delt_fn)
     pool->delt_fn = delt_fn;
 }
 
+void thdpool_set_dque_fn(struct thdpool *pool, thdpool_thddque_fn dque_fn)
+{
+    pool->dque_fn = dque_fn;
+}
+
 void thdpool_set_wait(struct thdpool *pool, int wait) { pool->wait = wait; }
 
 void thdpool_set_dump_on_full(struct thdpool *pool, int onoff)
@@ -569,6 +575,8 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
             if (thd->pool->maxqueueagems > 0 &&
                 comdb2_time_epochms() - work->queue_time_ms >
                     thd->pool->maxqueueagems) {
+                if (thd->pool->dque_fn)
+                    thd->pool->dque_fn(thd->pool, next, 1);
                 if (next->persistent_info) {
                     free(next->persistent_info);
                     next->persistent_info = NULL;
@@ -579,13 +587,14 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
                 continue;
             }
 
+            if (thd->pool->dque_fn)
+                thd->pool->dque_fn(thd->pool, next, 0);
             memcpy(work, next, sizeof(*work));
             pool_relablk(thd->pool->pool, next);
             thd->pool->num_dequeued++;
             thd->work.persistent_info = next->persistent_info;
             return 1;
         }
-
         return 0;
     }
 }

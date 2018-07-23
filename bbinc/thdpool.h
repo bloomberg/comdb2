@@ -67,6 +67,7 @@ struct workitem {
 
 typedef void (*thdpool_thdinit_fn)(struct thdpool *pool, void *thddata);
 typedef void (*thdpool_thddelt_fn)(struct thdpool *pool, void *thddata);
+typedef void (*thdpool_thddque_fn)(struct thdpool *pool, struct workitem *item, int timeout);
 
 typedef void (*thdpool_foreach_fn)(struct thdpool *pool, struct workitem *item, void *user);
 void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn, void *user);
@@ -75,6 +76,7 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz);
 void thdpool_set_stack_size(struct thdpool *pool, size_t sz_bytes);
 void thdpool_set_init_fn(struct thdpool *pool, thdpool_thdinit_fn init_fn);
 void thdpool_set_delt_fn(struct thdpool *pool, thdpool_thddelt_fn delt_fn);
+void thdpool_set_dque_fn(struct thdpool *pool, thdpool_thddque_fn dque_fn);
 void thdpool_set_linger(struct thdpool *pool, unsigned lingersecs);
 void thdpool_set_minthds(struct thdpool *pool, unsigned minnthd);
 void thdpool_set_maxthds(struct thdpool *pool, unsigned minnthd);

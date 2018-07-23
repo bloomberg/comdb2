@@ -70,6 +70,8 @@ struct comdb2_metrics_store {
     int64_t maxactive_transactions;
     int64_t total_commits;
     int64_t total_aborts;
+    double sql_queue_time;
+    int64_t sql_queue_timeouts;
 };
 
 static struct comdb2_metrics_store stats;
@@ -171,6 +173,14 @@ comdb2_metric gbl_metrics[] = {
         STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.total_commits, NULL},
     {"total_aborts", "Number of transaction aborts", STATISTIC_INTEGER,
         STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.total_aborts, NULL},
+    {"sql_queue_time", "Average ms spent waiting on sql-queue",
+        STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
+        &stats.sql_queue_time, NULL},
+    {"sql_queue_timeouts", "Number of sql items timed-out waiting on queue",
+        STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+        &stats.sql_queue_timeouts, NULL},
+
+
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -297,6 +307,8 @@ int refresh_metrics(void)
     stats.service_time = time_metric_average(thedb->service_time);
     stats.queue_depth = time_metric_average(thedb->queue_depth);
     stats.concurrent_sql = time_metric_average(thedb->concurrent_queries);
+    stats.sql_queue_time = time_metric_average(thedb->sql_queue_time);
+    stats.sql_queue_timeouts = thdpool_get_timeouts(gbl_sqlengine_thdpool);
     stats.concurrent_connections = time_metric_average(thedb->connections);
     int master = bdb_whoismaster((bdb_state_type*) thedb->bdb_env) == gbl_mynode ? 1 : 0; 
     stats.ismaster = master;
