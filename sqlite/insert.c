@@ -15,6 +15,7 @@
 #include "sqliteInt.h"
 
 int is_comdb2_index_unique(const char *tbl, char *idx);
+void comdb2_set_ignore_index_all(void);
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
@@ -826,6 +827,8 @@ void sqlite3Insert(
     pUpsert->regData = regData;
     if( pUpsert->pUpsertTarget ){
       sqlite3UpsertAnalyzeTarget(pParse, pTabList, pUpsert);
+    } else {
+        comdb2_set_ignore_index_all();
     }
   }
 
@@ -1736,8 +1739,10 @@ void sqlite3GenerateConstraintChecks(
       onError = OE_Abort;
     }
     /* We do not need to proceed further for ON CONFLICT DO NOTHING, as this
-     * this will be handled on the master. */
-    if ( overrideError==OE_Ignore ) {
+     * this will be handled on the master. Also continue, if the current index
+     * is not an upsert target. */
+    if ( overrideError==OE_Ignore ||
+         (overrideError==OE_Update && pUpIdx!=pIdx) ) {
         onError = OE_None;
     }
 

@@ -102,6 +102,77 @@ void free_cached_idx(uint8_t * *cached_idx);
 
 int gbl_max_wr_rows_per_txn = 0;
 
+
+/* Check whether the key for the specified record is already present in
+ * the index.
+ *
+ * @return 1 : yes/error
+ *         0 : no
+ */
+int check_index(struct ireq *iq, void *trans, int ixnum,
+                struct schema *ondisktagsc, blob_buffer_t *blobs,
+                size_t maxblobs, int *opfailcode, int *ixfailnum,
+                int *retrc, const char *ondisktag, void *od_dta,
+                size_t od_len, unsigned long long ins_keys) {
+    int ixkeylen;
+    int rc;
+    char ixtag[MAXTAGLEN];
+    char key[MAXKEYLEN];
+    char mangled_key[MAXKEYLEN];
+    char *od_dta_tail = NULL;
+    int od_len_tail;
+    int fndrrn = 0;
+    unsigned long long fndgenid = 0LL;
+
+    ixkeylen = getkeysize(iq->usedb, ixnum);
+    if (ixkeylen < 0) {
+        if (iq->debug)
+            reqprintf(iq, "BAD INDEX %d OR KEYLENGTH %d", ixnum,
+                      ixkeylen);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY,
+                  "bad index %d or keylength %d", ixnum, ixkeylen);
+        *ixfailnum = ixnum;
+        *opfailcode = OP_FAILED_BAD_REQUEST;
+        *retrc = ERR_BADREQ;
+        return 1;
+    }
+
+    snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
+
+    if (iq->idxInsert)
+        rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail,
+                                  &od_len_tail, mangled_key, od_dta,
+                                  od_len, key);
+    else
+        rc = create_key_from_ondisk_sch_blobs(
+            iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_len_tail,
+            mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL,
+            blobs, maxblobs, iq->tzname);
+    if (rc == -1) {
+        if (iq->debug)
+            reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstr(iq, COMDB2_ADD_RC_INVL_IDX, "cannot form index %d",
+                  ixnum);
+        *ixfailnum = ixnum;
+        *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
+        *retrc = rc;
+        return 1;
+    }
+
+    rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, key,
+                             &fndrrn, &fndgenid, NULL, NULL, 0, trans);
+    if (rc == IX_FND) {
+        *ixfailnum = ixnum;
+        /* If following changes, update OSQL_INSREC in osqlcomm.c */
+        *opfailcode = OP_FAILED_UNIQ; /* really? */
+        *retrc = IX_DUP;
+        return 1;
+    }
+    return 0;
+}
+
 int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                const uint8_t *p_buf_tag_name_end, uint8_t *p_buf_rec,
                const uint8_t *p_buf_rec_end, const unsigned char fldnullmap[32],
@@ -401,84 +472,56 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if ((rec_flags & OSQL_IGNORE_FAILURE) != 0) {
-        int upsert_target = rec_flags >> 8;
-        for (int i = 0; i <= iq->usedb->nix; i ++) {
-            int ixnum = i;
-            int ixkeylen;
-            char ixtag[MAXTAGLEN];
-            char key[MAXKEYLEN];
-            char mangled_key[MAXKEYLEN];
-            int failcode = 0;
-            int fndrrn = 0;
-            unsigned long long fndgenid = 0LL;
+        int upsert_idx = rec_flags >> 8;
 
-            /* If a specific index has been used in the ON CONFLICT clause (aka
-             * upsert target), then we must move the check for that index to the
-             * very end so that errors from other (non-ignorable) unique indexes
-             * have already been verified before we check and ignore error from
-             * the upsert target index.
-             * We do that by keeping the last index (= iq->usedb->nix) as slot
-             * to perform the check for upsert target index.
-             */
-            if (ixnum == iq->usedb->nix) {
-                if (upsert_target == MAXINDEX + 1) {
-                    /* No erroros! */
-                    break;
-                }
-                /* Set ixnum to upsert target index. */
-                ixnum = upsert_target;
-            }
-            /* Ignore dup keys and defer check for upsert target to be done at
-             * the end. (see comment above) */
-            if ((iq->usedb->ix_dupes[ixnum] != 0) || (i == upsert_target)) {
+        /* If a specific index has been used in the ON CONFLICT clause (aka
+         * upsert target/index), then we must move the check for that particular
+         * index to the very end so that errors from other (non-ignorable)
+         * unique indexes have already been verified before we check and ignore
+         * the error (if any) from the upsert index.
+         */
+        for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum ++) {
+            /* Skip check for upsert index, we'll do it after this loop. */
+            if (ixnum == upsert_idx) {
                 continue;
             }
 
-            ixkeylen = getkeysize(iq->usedb, ixnum);
-            if (ixkeylen < 0) {
-                if (iq->debug)
-                    reqprintf(iq, "BAD INDEX %d OR KEYLENGTH %d", ixnum,
-                              ixkeylen);
-                reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
-                reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY,
-                          "bad index %d or keylength %d", ixnum, ixkeylen);
-                *ixfailnum = ixnum;
-                *opfailcode = OP_FAILED_BAD_REQUEST;
-                retrc = ERR_BADREQ;
-                ERR;
+            /* Ignore dup keys */
+            if (iq->usedb->ix_dupes[ixnum] != 0) {
+                continue;
             }
 
-            snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
+            /* Check for partial keys only when needed. */
+            if (gbl_partial_indexes && iq->usedb->ix_partial &&
+                !(ins_keys & (1ULL << ixnum))) {
+                continue;
+            }
 
-            if (iq->idxInsert)
-                rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail,
-                                          &od_len_tail, mangled_key, od_dta,
-                                          od_len, key);
-            else
-                rc = create_key_from_ondisk_sch_blobs(
-                    iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_len_tail,
-                    mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL,
-                    blobs, maxblobs, iq->tzname);
-            if (rc == -1) {
-                if (iq->debug)
-                    reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
-                reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
-                reqerrstr(iq, COMDB2_ADD_RC_INVL_IDX, "cannot form index %d",
-                          ixnum);
-                *ixfailnum = ixnum;
-                *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
-                retrc = rc;
-                ERR;
-			}
-
-            rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, key,
-                                     &fndrrn, &fndgenid, NULL, NULL, 0, trans);
-            if (rc == IX_FND) {
-                retrc = IX_DUP;
-                *ixfailnum = ixnum;
-                /* If following changes, update OSQL_INSREC in osqlcomm.c */
-                *opfailcode = OP_FAILED_UNIQ; /* really? */
+            rc = check_index(iq, trans, ixnum, ondisktagsc, blobs, maxblobs,
+                             opfailcode, ixfailnum, &retrc, ondisktag, od_dta,
+                             od_len, ins_keys);
+            if (rc) {
                 ERR
+            }
+        }
+
+        /* Perform the check for upsert index that we skipped above. */
+        if (upsert_idx != MAXINDEX+1) {
+
+            /* It must be a unique key. */
+            assert(iq->usedb->ix_dupes[upsert_idx] == 0);
+
+            /* Check for partial keys only when needed. */
+            if (gbl_partial_indexes && iq->usedb->ix_partial &&
+                !(ins_keys & (1ULL << upsert_idx))) {
+                /* NOOP */
+            } else {
+                rc = check_index(iq, trans, upsert_idx, ondisktagsc, blobs,
+                                 maxblobs, opfailcode, ixfailnum, &retrc,
+                                 ondisktag, od_dta, od_len, ins_keys);
+                if (rc) {
+                    ERR
+                }
             }
         }
     }

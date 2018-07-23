@@ -8303,6 +8303,11 @@ int sqlite3BtreeInsert(
         else if (0 == pCur->genid)
             is_update = 0;
         else if (!bias)
+            /* For ON CONFLICT DO REPLACE, the conflicting record could
+             * have already been deleted before we reach here, and hence
+             * pCur->genid != 0. Thus, we rely on bias to force an insert
+             * and not update.
+             */
             is_update = 0;
         else
             is_update = 1;
@@ -8325,13 +8330,7 @@ int sqlite3BtreeInsert(
                      * indexes. This is represented by storing MAXINDEX+1 in
                      * the higher bits instead.
                      */
-                    if (clnt->oc_ignore_idx) {
-                        rec_flags = (((clnt->oc_ignore_idx - 1) << 8) |
-                                     OSQL_IGNORE_FAILURE);
-                    } else {
-                        rec_flags = (((MAXINDEX+1) << 8) |
-                                     OSQL_IGNORE_FAILURE);
-                    }
+                    rec_flags = ((clnt->upsert_idx << 8) | OSQL_IGNORE_FAILURE);
                 } else if (flags & OPFLAG_FORCE_VERIFY) {
                     rec_flags = OSQL_FORCE_VERIFY;
                 }
@@ -10496,13 +10495,21 @@ void comdb2_set_ignore_index(const char *dbname, char *idx)
         for (i = 0; i < db->nix; ++i) {
             struct schema *s = db->ixschema[i];
             if (s->sqlitetag && strcmp(s->sqlitetag, idx) == 0) {
-                clnt->oc_ignore_idx = i + 1;
+                clnt->upsert_idx = i;
                 return;
             }
         }
     }
 
     assert(0);
+    return;
+}
+
+void comdb2_set_ignore_index_all()
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->clnt;
+    clnt->upsert_idx = MAXINDEX + 1;
     return;
 }
 
