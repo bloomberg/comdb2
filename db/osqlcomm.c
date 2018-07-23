@@ -2803,7 +2803,7 @@ static void net_stopthread_rtn(void *arg);
 static void *osql_heartbeat_thread(void *arg);
 static void signal_rtoff(void);
 
-static int check_master(char *tohost);
+static int check_master(const char *tohost);
 static int offload_net_send(const char *tohost, int usertype, void *data,
                             int datalen, int nodelay);
 static int offload_net_send_tail(const char *tohost, int usertype, void *data,
@@ -5050,6 +5050,7 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
 
     int irc = 0;
     int msglen = 0;
+    char uuid[37];
     int type;
 
     /* slightly kludgy - we're constructing one of 4 message types - get a
@@ -5089,6 +5090,11 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
                 rpl_xerr.dt = *xerr;
 
                 osqlcomm_done_xerr_uuid_type_put(&(rpl_xerr), p_buf, p_buf_end);
+                logmsg(LOGMSG_DEBUG,
+                       "%s line %d master signaling %s uuid %s with rc=%d "
+                       "xerr=%d\n",
+                       __func__, __LINE__, sorese->host,
+                       comdb2uuidstr(sorese->uuid, uuid), rc, xerr->errval);
 
                 msglen = OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
 
@@ -5102,6 +5108,12 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
                 rpl_ok.dt.nops = sorese->nops;
 
                 osqlcomm_done_uuid_rpl_put(&(rpl_ok), p_buf, p_buf_end);
+
+                logmsg(LOGMSG_DEBUG,
+                       "%s line %d master signaling %s uuid %s with rc=%d "
+                       "xerr=%d\n",
+                       __func__, __LINE__, sorese->host,
+                       comdb2uuidstr(sorese->uuid, uuid), rc, xerr->errval);
 
                 msglen = OSQLCOMM_DONE_RPL_LEN;
             }
@@ -5117,6 +5129,12 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
                 rpl_xerr.hd.sid = sorese->rqid;
                 rpl_xerr.dt = *xerr;
 
+                logmsg(LOGMSG_DEBUG,
+                       "%s line %d master signaling %s rqid %llu with rc=%d "
+                       "xerr=%d\n",
+                       __func__, __LINE__, sorese->host, sorese->rqid, rc,
+                       xerr->errval);
+
                 osqlcomm_done_xerr_type_put(&(rpl_xerr), p_buf, p_buf_end);
 
                 msglen = OSQLCOMM_DONE_XERR_RPL_LEN;
@@ -5129,6 +5147,12 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
                 rpl_ok.hd.sid = sorese->rqid;
                 rpl_ok.dt.rc = 0;
                 rpl_ok.dt.nops = sorese->nops;
+
+                logmsg(LOGMSG_DEBUG,
+                       "%s line %d master signaling %s rqid %llu with rc=%d "
+                       "xerr=%d\n",
+                       __func__, __LINE__, sorese->host, sorese->rqid, rc,
+                       xerr->errval);
 
                 osqlcomm_done_rpl_put(&(rpl_ok), p_buf, p_buf_end);
 
@@ -5706,12 +5730,15 @@ static int net_local_route_packet_tails(int usertype, void *data, int datalen,
     return 0;
 }
 
-int osql_comm_check_bdb_lock(void)
+int osql_comm_check_bdb_lock(const char *func, int line)
 {
     int rc = 0;
+    int start;
+    int end;
 
     /* check here if we need to wait for the lock, so we don't prevent this from
      * happening */
+    start = time(NULL);
     if (bdb_lock_desired(thedb->bdb_env)) {
         struct sql_thread *thd = pthread_getspecific(query_info_key);
         if (!thd) return 0;
@@ -5732,16 +5759,26 @@ int osql_comm_check_bdb_lock(void)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s recover_deadlock returned %d\n",
                     __func__, rc);
-            return -1;
+            rc = -1;
+            goto out;
         }
         logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
 
         clnt->deadlock_recovered++;
 
-        if (clnt->deadlock_recovered > 100)
-            return -1;
+        if (clnt->deadlock_recovered > 100) {
+            logmsg(LOGMSG_ERROR, "%s called recover_deadlock 100 times\n",
+                   __func__);
+            rc = -1;
+            goto out;
+        }
     }
-    return 0;
+out:
+    if ((end = time(NULL)) - start > 2) {
+        logmsg(LOGMSG_DEBUG, "%s line %d: %s took %d seconds\n", func, line,
+               __func__, end - start);
+    }
+    return rc;
 }
 
 /* this wrapper tries to provide a reliable net_send that will prevent loosing
@@ -5772,6 +5809,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
     int total_wait = backoff;
     int unknownerror_retry = 0;
     int rc = -1;
+    int count = 0;
 
     /* remote send */
     while (rc) {
@@ -5779,6 +5817,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
      printf("NET SEND %d tmp=%llu\n", usertype, osql_log_time());
 #endif
         rc = net_send(netinfo_ptr, host, usertype, data, datalen, nodelay);
+        count++;
 
         if (NET_SEND_FAIL_QUEUE_FULL == rc || NET_SEND_FAIL_MALLOC_FAIL == rc ||
             NET_SEND_FAIL_NOSOCK == rc) {
@@ -5789,12 +5828,23 @@ static int offload_net_send(const char *host, int usertype, void *data,
                 return -1;
             }
 
-            if (osql_comm_check_bdb_lock() != 0) {
+            if (osql_comm_check_bdb_lock(__func__, __LINE__) != 0) {
                 logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
                        __FILE__, __LINE__, host);
                 return rc;
             }
 
+            if (rc == NET_SEND_FAIL_NOSOCK && check_master(host)) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d giving up sending to %s on master-swing\n",
+                       __FILE__, __LINE__, host);
+                return OSQL_SEND_ERROR_WRONGMASTER;
+            }
+
+            logmsg(LOGMSG_DEBUG,
+                   "%s line %d polling for %d on rc %d host is %s master is"
+                   " %s\n",
+                   __func__, __LINE__, backoff, rc, host, thedb->master);
             poll(NULL, 0, backoff);
             /*backoff *= 2; */
             total_wait += backoff;
@@ -5867,7 +5917,7 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
                 return -1;
             }
 
-            if ((rc = osql_comm_check_bdb_lock())) {
+            if ((rc = osql_comm_check_bdb_lock(__func__, __LINE__))) {
                 logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
                        __FILE__, __LINE__, host ? host : gbl_mynode);
                 return rc;
@@ -6013,10 +6063,10 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
         stats[netrpl2req(usertype)].rcv_rdndt++;
 }
 
-static int check_master(char *tohost)
+static int check_master(const char *tohost)
 {
 
-    char *destnode = (!tohost) ? gbl_mynode : tohost;
+    const char *destnode = (tohost == NULL) ? gbl_mynode : tohost;
     char *master = thedb->master;
 
     if (destnode != master) {

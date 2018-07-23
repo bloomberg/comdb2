@@ -37,6 +37,8 @@ add_library(sqlite
   ext/comdb2/tunables.c
   ext/comdb2/users.c
   ext/comdb2/tranlog.c
+  ext/comdb2/activelocks.c
+  ext/comdb2/logicalops.c
   ext/comdb2/clientstats.c
   ext/comdb2/ezsystables.c
   ext/comdb2/typesamples.c 
@@ -121,7 +123,7 @@ add_custom_command(
   COMMAND mkkeywordhash > keywordhash.h
 )
 
-find_program(tclsh NAMES tclsh tclsh8.5)
+find_program(tclsh NAMES tclsh8.5 tclsh)
 add_executable(lemon lemon.c)
 add_custom_command(
   OUTPUT parse.c parse.h
@@ -187,4 +189,4 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}
 )
-add_dependencies(sqlite mem protobuf)
+add_dependencies(sqlite mem protobuf bdb)

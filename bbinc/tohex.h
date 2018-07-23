@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -14,21 +14,13 @@
    limitations under the License.
  */
 
-#ifndef STRBUF_H
-#define STRBUF_H
-#include <stdarg.h>
-
-typedef struct strbuf strbuf;
-strbuf *strbuf_new(void);
-void strbuf_append(strbuf *, const char *);
-void strbuf_appendf(strbuf *, const char *, ...);
-void strbuf_vappendf(strbuf *, const char *, va_list args);
-void strbuf_clear(strbuf *);
-void strbuf_free(strbuf *);
-void strbuf_hex(strbuf *, void *buf, int len);
-const char *strbuf_buf(const strbuf *);
-int strbuf_len(const strbuf *buf);
-char *strbuf_disown(strbuf *);
-void strbuf_del(strbuf *buf, int n);
-
+#ifndef __TOHEX_H__
+#define __TOHEX_H__
+#include <logmsg.h>
+#include <build/db_dbt.h>
+char *util_tohex(char *out, const char *in, size_t len);
+void hexdumpbuf(char *key, int keylen, char **buf);
+void hexdump(loglvl lvl, unsigned char *key, int keylen);
+void hexdumpdbt(DBT *dbt);
+void hexdumpfp(FILE *fp, unsigned char *key, int keylen);
 #endif

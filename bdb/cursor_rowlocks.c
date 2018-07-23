@@ -64,7 +64,7 @@
 #include "bdb_osqllog.h"
 #include <thread_malloc.h>
 #include "locks.h"
-#include "util.h"
+#include "tohex.h"
 
 /* For pthread self debug trace */
 #include <pthread.h>

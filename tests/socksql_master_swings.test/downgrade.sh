@@ -9,5 +9,5 @@ while true; do
     for node in $CLUSTER ; do
         cdb2sql ${CDB2_OPTIONS} --host $node $dbname "exec procedure sys.cmd.send('downgrade')"
     done
-    sleep 20
+    sleep 10
 done

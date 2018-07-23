@@ -86,22 +86,26 @@ fi
 if [[ $debug -eq 1 ]]; then
     set +x
     export PATH="$paths:${PATH}"
+    SETENV="${PWD}/setenv.sh "
     RUNTEST="${PWD}/runtest.sh "
     echo "Once db is ready, please run: $RUNTEST"
     echo "#!/usr/bin/env bash" > $RUNTEST
+    echo "#!/usr/bin/env bash" > $SETENV
     #echo "set +x"  >> $RUNTEST
     for env in $vars; do
-        echo "export $env=\"${!env}\"" >> $RUNTEST
+        echo "export $env=\"${!env}\"" >> $SETENV
     done
-    echo "export PATH=${paths}"':${PATH}' >> $RUNTEST
-    [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $RUNTEST
-    [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $RUNTEST
+    echo "export PATH=${paths}"':${PATH}' >> $SETENV
+    [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $SETENV
+    [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $SETENV
+    echo ". $SETENV" >> $RUNTEST
     echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/" >> $RUNTEST
     echo "./runit ${DBNAME} \$1 " >> $RUNTEST
     echo "echo; echo; echo;" >> $RUNTEST
     echo "${TESTSROOTDIR}/unsetup" >> $RUNTEST
     echo
     echo
+    chmod +x $SETENV
     chmod +x $RUNTEST
 fi
 

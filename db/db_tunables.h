@@ -1395,9 +1395,26 @@ REGISTER_TUNABLE("queuedb_genid_filename",
                  "Use genid in queuedb filenames.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_queuedb_genid_filename, READONLY, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("random_election_timeout",
+                 "Use a random timeout in election.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_rand_elect_timeout,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("random_elect_min_ms",
+                 "Minimum election timeout.  (Default: 1000)", TUNABLE_INTEGER,
+                 &gbl_rand_elect_min_ms, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("random_elect_max_ms",
+                 "Maximum election timeout.  (Default: 7000)", TUNABLE_INTEGER,
+                 &gbl_rand_elect_max_ms, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("legacy_defaults", "Configure server with legacy defaults",
                  TUNABLE_BOOLEAN, NULL, NOARG | INTERNAL | READONLY | READEARLY,
                  NULL, NULL, pre_read_legacy_defaults, NULL);
+REGISTER_TUNABLE("abort_on_reconstruct_failure",
+                 "Abort database if snapshot fails to reconstruct a record.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_reconstruct_failure,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("netconndumptime",
                  "Dump connection statistics to ctrace this often.",

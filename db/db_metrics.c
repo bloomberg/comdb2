@@ -283,6 +283,7 @@ const char *metric_type(comdb2_metric_type type)
 }
 
 void update_cpu_percent(void) {
+#if _LINUX_SOURCE
    static time_t last_time = 0;
    static int64_t last_counter = 0;
    int hz = sysconf(_SC_CLK_TCK);
@@ -317,6 +318,7 @@ void update_cpu_percent(void) {
    }
 
    gbl_cpupercent = cpu_percent;
+#endif
 }
 
 

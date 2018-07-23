@@ -31,10 +31,12 @@ const sqlite3_module systblMetricsModule;
 const sqlite3_module systblFingerprintsModule;
 const sqlite3_module systblTimeseriesModule;
 const sqlite3_module systblReplStatsModule;
-
+const sqlite3_module systblActivelocksModule;
+const sqlite3_module systblLogicalOpsModule;
 
 int systblTypeSamplesInit(sqlite3 *db);
 int systblRepNetQueueStatInit(sqlite3 *db);
+int systblActivelocksInit(sqlite3 *db);
 int systblNetUserfuncsInit(sqlite3 *db);
 int systblClusterInit(sqlite3 *db);
 

@@ -601,8 +601,9 @@ again:
             return SQLITE_INTERNAL;
     } else {
         if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "0x%lu Restarting clnt->osql.rqid=%llx\n",
-                   pthread_self(), clnt->osql.rqid);
+            logmsg(LOGMSG_USER,
+                   "0x%lu Restarting clnt->osql.rqid=%llx against %s\n",
+                   pthread_self(), clnt->osql.rqid, thedb->master);
         /* we should reset this ! */
         rc = osql_reuse_sqlthr(clnt, thedb->master);
         if (rc)
@@ -770,6 +771,8 @@ retry:
             if (osql->xerr.errval) {
                 /* lets check to see if a master swing happened and we need to
                  * retry */
+                sql_debug_logf(clnt, __func__, __LINE__,
+                               "returns xerr.errval=%d\n", osql->xerr.errval);
                 if (osql->xerr.errval == ERR_NOMASTER ||
                     osql->xerr.errval == ERR_NOT_DURABLE ||
                     osql->xerr.errval == 999) {
@@ -904,6 +907,14 @@ err:
            }
            osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
        }
+   }
+
+   /* DDLs are also non-retriable */
+   if (osql->xerr.errval == (ERR_BLOCK_FAILED + ERR_VERIFY) &&
+       osql->running_ddl) {
+       logmsg(LOGMSG_DEBUG, "%s: marking DDL transaction as non-retriable\n",
+              __func__);
+       osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
    }
 
    osql_shadtbl_close(clnt);
