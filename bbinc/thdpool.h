@@ -56,8 +56,20 @@ enum {
 
 typedef void (*thdpool_work_fn)(struct thdpool *pool, void *work, void *thddata,
                                 int op);
+struct workitem {
+    void *work;
+    thdpool_work_fn work_fn;
+    int queue_time_ms;
+    LINKC_T(struct workitem) linkv;
+    int available;
+    char *persistent_info;
+};
+
 typedef void (*thdpool_thdinit_fn)(struct thdpool *pool, void *thddata);
 typedef void (*thdpool_thddelt_fn)(struct thdpool *pool, void *thddata);
+
+typedef void (*thdpool_foreach_fn)(struct thdpool *pool, struct workitem *item, void *user);
+void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn, void *user);
 
 struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz);
 void thdpool_set_stack_size(struct thdpool *pool, size_t sz_bytes);

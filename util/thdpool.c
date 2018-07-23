@@ -57,15 +57,6 @@ extern int gbl_throttle_sql_overload_dump_sec;
 extern int thdpool_alarm_on_queing(int len);
 extern int gbl_disable_exit_on_thread_error;
 
-struct workitem {
-    void *work;
-    thdpool_work_fn work_fn;
-    int queue_time_ms;
-    LINKC_T(struct workitem) linkv;
-    int available;
-    char *persistent_info;
-};
-
 struct thd {
     pthread_t tid;
     arch_tid archtid;
@@ -274,6 +265,18 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     register_thdpool_tunables((char *)name, pool);
 
     return pool;
+}
+
+void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn foreach_fn, void *user)
+{
+    LOCK(&pool->mutex)
+    {
+        struct workitem *item;
+        LISTC_FOR_EACH(&pool->queue, item, linkv) {
+            (foreach_fn)(pool, item, user);
+        }
+    }
+    UNLOCK(&pool->mutex);
 }
 
 void thdpool_set_exit(struct thdpool *pool) { pool->exit_on_create_fail = 1; }
