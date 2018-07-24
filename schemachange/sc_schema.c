@@ -396,7 +396,7 @@ int mark_schemachange_over_tran(const char *table, tran_type *tran)
     /* mark the schema change over */
     int bdberr;
 
-    if (bdb_increment_num_sc_done(thedb->bdb_env, tran, &bdberr)) {
+    if (tran && bdb_increment_num_sc_done(thedb->bdb_env, tran, &bdberr)) {
         logmsg(LOGMSG_WARN, "could not increment num_sc_done\n");
         return SC_BDB_ERROR;
     }
