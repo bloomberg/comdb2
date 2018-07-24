@@ -4,7 +4,7 @@ set -e
 
 CDB2SQL_EXE="cdb2sql -tabs $@ default "
 WORK_COUNT=50
-WORKER_COUNT=50
+WORKER_COUNT=20
 RESULT=
 
 # prepare
