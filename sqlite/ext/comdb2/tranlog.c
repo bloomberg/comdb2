@@ -142,8 +142,14 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
           pCur->curLsn = pCur->minLsn;
           getflags = DB_SET;
       }
+
+      if (pCur->maxLsn.file == 0) {
+          if (pCur->flags & TRANLOG_FLAGS_DESCENDING) {
+              getflags = DB_LAST;
+          }
+      }
   } else {
-      getflags = DB_NEXT;
+      getflags = (pCur->flags & TRANLOG_FLAGS_DESCENDING) ? DB_PREV : DB_NEXT;
   }
 
   /* Special case for durable first requests: we need to know the lsn */
@@ -190,10 +196,12 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
   }
 
   if (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, getflags) != 0) {
-      if (getflags != DB_NEXT) {
+      if (getflags != DB_NEXT && getflags != DB_PREV) {
           return SQLITE_INTERNAL;
       }
-      if (pCur->flags & TRANLOG_FLAGS_BLOCK) {
+
+      if (pCur->flags & TRANLOG_FLAGS_BLOCK &&
+              !(pCur->flags & TRANLOG_FLAGS_DESCENDING)) {
           do {
               struct timespec ts;
               clock_gettime(CLOCK_REALTIME, &ts);
