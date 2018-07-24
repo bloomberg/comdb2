@@ -6011,8 +6011,6 @@ case OP_Next:          /* jump */
   assert( pC!=0 );
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  assert( res==0 || (res==1 && pC->isTable==0) );
-  testcase( res==1 );
   if( pC->nullRow ) break;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
