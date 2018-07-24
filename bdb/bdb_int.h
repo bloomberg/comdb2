@@ -1819,10 +1819,10 @@ void add_dummy(bdb_state_type *);
 int bdb_add_dummy_llmeta(void);
 int bdb_have_ipu(bdb_state_type *bdb_state);
 
-typedef struct ack_info_t ack_info;
-void handle_tcp_timestamp(bdb_state_type *, ack_info *, char *to);
-void handle_tcp_timestamp_ack(bdb_state_type *, ack_info *);
-void handle_ping_timestamp(bdb_state_type *, ack_info *, char *to);
+struct ack_info_t;
+void handle_tcp_timestamp(bdb_state_type *, struct ack_info_t *, char *to);
+void handle_tcp_timestamp_ack(bdb_state_type *, struct ack_info_t *);
+void handle_ping_timestamp(bdb_state_type *, struct ack_info_t *, char *to);
 
 unsigned long long bdb_logical_tranid(void *tran);
 
