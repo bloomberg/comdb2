@@ -887,7 +887,7 @@ static int dohsql_dist_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
                     &((Vdbe*)stmt)->aMem[conns->limit-1])+1;
             if (verbose)
                 logmsg(LOGMSG_DEBUG, "XXX: found limit, set to %d\n", conns->limit);
-            assert(rc!=SQLITE_ROW || conns->limit>1); /* sqlite planning */
+            assert(rc!=SQLITE_ROW || conns->limit!=1); /* sqlite planning */
         }
 
         if (rc == SQLITE_DONE)
