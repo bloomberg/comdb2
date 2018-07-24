@@ -8391,7 +8391,7 @@ case OP_OpFuncString: {          /* out2-prerelease */
   break;
 }
 
-/* Opcode:  NextOpFunc P1 P2 * * *
+/* Opcode:  OpFuncNext P1 P2 * * *
 ** Synopsis: if Mem[P1] has not been fully read jump to P2
 **
 ** Check if the buffer in Mem[P1] has been fully read.  If yes, continue 
