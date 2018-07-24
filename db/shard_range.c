@@ -1239,6 +1239,34 @@ static void _shard_disconnect(dohsql_connector_t *conn)
     free(clnt);
 }
 
+static void _master_clnt_set(struct sqlclntstate *clnt)
+{
+    clnt->plugin.column_count = dohsql_dist_column_count;
+    clnt->plugin.next_row = dohsql_dist_next_row;
+    clnt->plugin.column_type = dohsql_dist_column_type;
+    clnt->plugin.column_int64 = dohsql_dist_column_int64;
+    clnt->plugin.column_double = dohsql_dist_column_double;
+    clnt->plugin.column_text = dohsql_dist_column_text;
+    clnt->plugin.column_bytes = dohsql_dist_column_bytes;
+    clnt->plugin.column_blob = dohsql_dist_column_blob;
+    clnt->plugin.column_datetime = dohsql_dist_column_datetime;
+    clnt->plugin.column_interval = dohsql_dist_column_interval;
+}
+
+static void _master_clnt_reset(struct sqlclntstate *clnt)
+{
+    clnt->plugin.column_count = NULL;
+    clnt->plugin.next_row = NULL;
+    clnt->plugin.column_type = NULL;
+    clnt->plugin.column_int64 = NULL;
+    clnt->plugin.column_double = NULL;
+    clnt->plugin.column_text = NULL;
+    clnt->plugin.column_bytes = NULL;
+    clnt->plugin.column_blob = NULL;
+    clnt->plugin.column_datetime = NULL;
+    clnt->plugin.column_interval = NULL;
+}
+
 int dohsql_distribute(dohsql_node_t *node)
 {
     GET_CLNT;
@@ -1256,16 +1284,7 @@ int dohsql_distribute(dohsql_node_t *node)
     conns->ncols = node->ncols;
     clnt->conns = conns;
     /* augment interface */
-    clnt->plugin.column_count = dohsql_dist_column_count;
-    clnt->plugin.next_row = dohsql_dist_next_row;
-    clnt->plugin.column_type = dohsql_dist_column_type;
-    clnt->plugin.column_int64 = dohsql_dist_column_int64;
-    clnt->plugin.column_double = dohsql_dist_column_double;
-    clnt->plugin.column_text = dohsql_dist_column_text;
-    clnt->plugin.column_bytes = dohsql_dist_column_bytes;
-    clnt->plugin.column_blob = dohsql_dist_column_blob;
-    clnt->plugin.column_datetime = dohsql_dist_column_datetime;
-    clnt->plugin.column_interval = dohsql_dist_column_interval;
+    _master_clnt_set(clnt);
 
     /* start peers */
     for(i=0;i<conns->nconns;i++)
@@ -1311,6 +1330,7 @@ int dohsql_end_distribute(struct sqlclntstate *clnt)
     }
 
     free(clnt->conns);
+    _master_clnt_reset(clnt);
     clnt->conns = NULL;
 
     return SHARD_NOERR;
