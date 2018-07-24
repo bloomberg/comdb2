@@ -21,7 +21,7 @@ function runstepper
     # teststepper
     typeset stp=${TESTSBUILDDIR}/stepper
 
-    echo "> $stp $db $tcs > $log 2>&1"
+    #echo "> $stp $db $tcs > $log 3>&1"
 
     # execute
     $stp $db $tcs > $log 2>&1
@@ -48,7 +48,7 @@ function verify
 
 }
 
-# run simple tests
+# 1) run simple tests
 for testreq in `ls t*.sql` ; do
     testname=`echo $testreq | cut -d "." -f 1`
     cmd="cdb2sql -s -f $testreq ${CDB2_OPTIONS} $dbname default "
@@ -58,7 +58,7 @@ for testreq in `ls t*.sql` ; do
     verify $testname
 done
 
-# run trans tests
+# 2) run trans tests
 for transtest in `ls t*.trans` ; do
     testname=`echo $transtest | cut -d "." -f 1`
     output=$testname.output
@@ -69,6 +69,16 @@ for transtest in `ls t*.trans` ; do
 
     verify $testname
 done
+
+# 3) run stress test
+upsert_stress.sh ${CDB2_OPTIONS} $dbname > upsert_stress.output
+if [[  $? -eq 0 ]]; then
+    echo "passed upsert_stress.sh"
+else
+    echo "failed upsert_stress.sh"
+    cat upsert_stress.output
+    exit 1
+fi
 
 echo "Testcase passed."
 exit 0
