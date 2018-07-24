@@ -36,8 +36,9 @@ void dbqueuedb_restart_consumers(struct dbtable *db) {
 void dbqueuedb_stop_consumers(struct dbtable *db) {
 }
 
-
+void dbqueue_wake_all_consumers(struct dbtable *db, int force);
 void dbqueuedb_wake_all_consumers(struct dbtable *db, int force) {
+    dbqueue_wake_all_consumers(db, force);
 }
 
 void dbqueuedb_wake_all_consumers_all_queues(struct dbenv *dbenv, int force) {
