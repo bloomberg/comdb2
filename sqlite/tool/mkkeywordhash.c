@@ -258,7 +258,11 @@ static Keyword aKeywordTable[] = {
   { "ORDER",            "TK_ORDER",        ALWAYS                 },
   { "OUTER",            "TK_JOIN_KW",      ALWAYS                 },
   { "OVER",             "TK_OVER",         WINDOWFUNC             },
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  { "PARTITION",        "TK_PARTITION",    ALWAYS                 },
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   { "PARTITION",        "TK_PARTITION",    WINDOWFUNC             },
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   { "PLAN",             "TK_PLAN",         EXPLAIN                },
   { "PRAGMA",           "TK_PRAGMA",       PRAGMA                 },
   { "PRECEDING",        "TK_PRECEDING",    WINDOWFUNC             },
@@ -344,7 +348,6 @@ static Keyword aKeywordTable[] = {
   { "ODH",              "TK_ODH",            ALWAYS               },
   { "OFF",              "TK_OFF",            ALWAYS               },
   { "PAGEORDER",        "TK_PAGEORDER",      ALWAYS               },
-  { "PARTITION",        "TK_PARTITION",      ALWAYS               },
   { "PASSWORD",         "TK_PASSWORD",       ALWAYS               },
   { "PERIOD",           "TK_PERIOD",         ALWAYS               },
   { "PROCEDURE",        "TK_PROCEDURE",      ALWAYS               },
