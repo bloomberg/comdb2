@@ -180,6 +180,18 @@ for {set i 0} {$i<$nOp} {incr i} {
   if {$jump($name) && $op($name)>$mxJump} {set mxJump $op($name)}
 }
 
+# Generate the numeric values for opcodes that have associated tokens
+#
+for {set i 0} {$i<$nOp} {incr i} {
+  set name $order($i)
+  if {$op($name)>=0} continue
+  if {![info exists sameas($name)]} continue
+  incr cnt
+  while {[info exists used($cnt)]} {incr cnt}
+  set op($name) $cnt
+  set used($cnt) 1
+  set def($cnt) $name
+}
 
 # Generate the numeric values for all remaining opcodes
 #
@@ -203,7 +215,7 @@ for {set i 0} {$i<=$max} {incr i} {
   set name $def($i)
   puts -nonewline [format {#define %-16s %3d} $name $i]
   set com {}
-  if {$jump($name)} {
+  if {[info exists jump($name)] && $jump($name)} {
     lappend com "jump"
   }
   if {[info exists sameas($i)]} {
