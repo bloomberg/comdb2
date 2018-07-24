@@ -71,7 +71,7 @@ for transtest in `ls t*.trans` ; do
 done
 
 # 3) run stress test
-upsert_stress.sh ${CDB2_OPTIONS} $dbname > upsert_stress.output
+./upsert_stress.sh ${CDB2_OPTIONS} $dbname > upsert_stress.output
 if [[  $? -eq 0 ]]; then
     echo "passed upsert_stress.sh"
 else
