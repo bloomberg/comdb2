@@ -1145,6 +1145,10 @@ int sqlite3VdbeMemTooBig(Mem *p){
 }
 
 #ifdef SQLITE_DEBUG
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#include <memcompare.c>
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** This routine prepares a memory cell for modification by breaking
 ** its link to a shallow copy and by marking any current shallow
