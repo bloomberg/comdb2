@@ -21,7 +21,7 @@
 #include "dohsql.h"
 
 
-static int ast_verbouse = 1;
+static int ast_verbose = 0;
 
 char *generate_columns(sqlite3 *db, ExprList *c, const char **tbl)
 {
@@ -295,7 +295,7 @@ int ast_push(ast_t *ast, enum ast_type op, Vdbe *v, void* obj)
     }
     }
 
-    if(ast_verbouse && !ignore) {
+    if(ast_verbose && !ignore) {
         ast_print(ast);
     }
 

@@ -23,7 +23,8 @@ limitations under the License.
 #include "dohsql.h"
 #include "sqlinterfaces.h"
 
-static int gbl_plugin_api_debug = 1;
+static int gbl_plugin_api_debug = 0;
+static int verbose = 0;
 
 struct col {
     int type;
@@ -728,7 +729,8 @@ static void trimQue(sqlite3_stmt *stmt, queue_type* que, int limit)
     return;
     while (queue_count(que)>limit) {
         row = queue_next(que);
-        logmsg(LOGMSG_ERROR, "XXX: %p freed older row limit %d\n", que, limit);
+        if (verbose)
+            logmsg(LOGMSG_DEBUG, "XXX: %p freed older row limit %d\n", que, limit);
         sqlite3CloneResultFree(stmt, &row);
     }
 }
@@ -746,9 +748,10 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp, int 
     pthread_mutex_lock(&conn->mtx);
     
     if(conn->master_done) {
-        fprintf(stderr, "%s: %d master done q %d qf %d\n", 
-            __func__, pthread_self(), queue_count(conn->que),
-            queue_count(conn->que_free));
+        if (verbose)
+            logmsg(LOGMSG_DEBUG, "%s: %d master done q %d qf %d\n", 
+                    __func__, pthread_self(), queue_count(conn->que),
+                    queue_count(conn->que_free));
         /* work is done, need to clean-up */
         trimQue(stmt, conn->que, 0);
         trimQue(stmt, conn->que_free, 0);
@@ -772,7 +775,8 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp, int 
     pthread_mutex_lock(&conn->mtx);
     conn->rc = SQLITE_ROW;
     queue_add(conn->que, row);
-    logmsg(LOGMSG_ERROR, "XXX: %p added new row\n", conn);
+    if(verbose)
+        logmsg(LOGMSG_DEBUG, "XXX: %p added new row\n", conn);
 
     /* inline cleanup */
     if (queue_count(conn->que_free)>10) {
@@ -865,7 +869,6 @@ static void add_row(dohsql_t *conns, int i, row_t *row)
  */
 static int dohsql_dist_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
-    fprintf(stderr, "%s!!!!\n", __func__);
     dohsql_t *conns = clnt->conns;
     row_t *row;
     int rc;
@@ -876,12 +879,14 @@ static int dohsql_dist_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     if(conns->nrows == 0) {
         rc = sqlite3_step(stmt);
 
-        fprintf(stderr, "%s: sqlite3_step rc %d\n", __func__, rc);
+        if (verbose)
+            logmsg(LOGMSG_DEBUG, "%s: sqlite3_step rc %d\n", __func__, rc);
 
         if(conns->limit>0) {
             conns->limit = sqlite3_value_int64(
                     &((Vdbe*)stmt)->aMem[conns->limit-1])+1;
-            fprintf(stderr, "XXX: found limit, set to %d\n", conns->limit);
+            if (verbose)
+                logmsg(LOGMSG_DEBUG, "XXX: found limit, set to %d\n", conns->limit);
             assert(rc!=SQLITE_ROW || conns->limit>1); /* sqlite planning */
         }
 
@@ -932,7 +937,8 @@ wait_for_others:
         empty = 0;
         if (queue_count(conns->conns[child_num].que)>0) {
             row = queue_next(conns->conns[child_num].que);
-            logmsg(LOGMSG_ERROR, "XXX: %p retrieved row\n", &conns->conns[child_num]);
+            if (verbose)
+                logmsg(LOGMSG_DEBUG, "XXX: %p retrieved row\n", &conns->conns[child_num]);
             add_row(conns, child_num, row);
             rc = SQLITE_ROW;
             pthread_mutex_unlock(&conns->conns[child_num].mtx);
@@ -944,8 +950,9 @@ wait_for_others:
     /* no row in others (yet) */
     if (conns->conns[0].rc != SQLITE_DONE) {
         rc = sqlite3_step(stmt);
-
-        fprintf(stderr, "%s: rc =%d\n", __func__, rc);
+        
+        if( verbose)
+            logmsg(LOGMSG_DEBUG, "%s: rc =%d\n", __func__, rc);
 
         if (rc == SQLITE_DONE)
             conns->conns[0].rc = SQLITE_DONE;

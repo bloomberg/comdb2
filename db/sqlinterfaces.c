@@ -3341,9 +3341,10 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     /* whatever sqlite returns in sqlite3_step is only used to step out of the
      * loop, otherwise ignored; we are gonna get it from sqlite (or osql.xerr)
      */
-    
+#if 0    
     logmsg(LOGMSG_ERROR, "XXX: %p Out of run_stmt rc=%d\n",
            (clnt->plugin.state)?clnt->plugin.state:"(NA)", rc);
+#endif
 
 postprocessing:
     /* closing: error codes, postponed write result and so on*/
