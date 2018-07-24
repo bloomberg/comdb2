@@ -250,8 +250,8 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         return rc;
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_send_insrec_logic(pCur, thd, pData, nData,
-                                    NET_OSQL_SOCK_RPL, flags);
+        rc = osql_send_insrec_logic(pCur, thd, pData, nData, NET_OSQL_SOCK_RPL,
+                                    flags);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,

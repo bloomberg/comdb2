@@ -102,7 +102,6 @@ void free_cached_idx(uint8_t * *cached_idx);
 
 int gbl_max_wr_rows_per_txn = 0;
 
-
 /* Check whether the key for the specified record is already present in
  * the index.
  *
@@ -111,9 +110,10 @@ int gbl_max_wr_rows_per_txn = 0;
  */
 int check_index(struct ireq *iq, void *trans, int ixnum,
                 struct schema *ondisktagsc, blob_buffer_t *blobs,
-                size_t maxblobs, int *opfailcode, int *ixfailnum,
-                int *retrc, const char *ondisktag, void *od_dta,
-                size_t od_len, unsigned long long ins_keys) {
+                size_t maxblobs, int *opfailcode, int *ixfailnum, int *retrc,
+                const char *ondisktag, void *od_dta, size_t od_len,
+                unsigned long long ins_keys)
+{
     int ixkeylen;
     int rc;
     char ixtag[MAXTAGLEN];
@@ -127,11 +127,10 @@ int check_index(struct ireq *iq, void *trans, int ixnum,
     ixkeylen = getkeysize(iq->usedb, ixnum);
     if (ixkeylen < 0) {
         if (iq->debug)
-            reqprintf(iq, "BAD INDEX %d OR KEYLENGTH %d", ixnum,
-                      ixkeylen);
+            reqprintf(iq, "BAD INDEX %d OR KEYLENGTH %d", ixnum, ixkeylen);
         reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
-        reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY,
-                  "bad index %d or keylength %d", ixnum, ixkeylen);
+        reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY, "bad index %d or keylength %d",
+                  ixnum, ixkeylen);
         *ixfailnum = ixnum;
         *opfailcode = OP_FAILED_BAD_REQUEST;
         *retrc = ERR_BADREQ;
@@ -141,28 +140,26 @@ int check_index(struct ireq *iq, void *trans, int ixnum,
     snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
 
     if (iq->idxInsert)
-        rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail,
-                                  &od_len_tail, mangled_key, od_dta,
-                                  od_len, key);
+        rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail, &od_len_tail,
+                                  mangled_key, od_dta, od_len, key);
     else
         rc = create_key_from_ondisk_sch_blobs(
             iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_len_tail,
-            mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL,
-            blobs, maxblobs, iq->tzname);
+            mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL, blobs,
+            maxblobs, iq->tzname);
     if (rc == -1) {
         if (iq->debug)
             reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
         reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
-        reqerrstr(iq, COMDB2_ADD_RC_INVL_IDX, "cannot form index %d",
-                  ixnum);
+        reqerrstr(iq, COMDB2_ADD_RC_INVL_IDX, "cannot form index %d", ixnum);
         *ixfailnum = ixnum;
         *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
         *retrc = rc;
         return 1;
     }
 
-    rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, key,
-                             &fndrrn, &fndgenid, NULL, NULL, 0, trans);
+    rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, key, &fndrrn, &fndgenid,
+                             NULL, NULL, 0, trans);
     if (rc == IX_FND) {
         *ixfailnum = ixnum;
         /* If following changes, update OSQL_INSREC in osqlcomm.c */
@@ -480,7 +477,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
          * unique indexes have already been verified before we check and ignore
          * the error (if any) from the upsert index.
          */
-        for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum ++) {
+        for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
             /* Skip check for upsert index, we'll do it after this loop. */
             if (ixnum == upsert_idx) {
                 continue;
@@ -506,7 +503,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
 
         /* Perform the check for upsert index that we skipped above. */
-        if (upsert_idx != MAXINDEX+1) {
+        if (upsert_idx != MAXINDEX + 1) {
 
             /* It must be a unique key. */
             assert(iq->usedb->ix_dupes[upsert_idx] == 0);

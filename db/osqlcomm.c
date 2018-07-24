@@ -1737,12 +1737,12 @@ osqlcomm_index_uuid_rpl_type_get(osql_index_uuid_rpl_t *p_osql_index_uuid_rpl,
 typedef struct osql_ins {
     unsigned long long seq;
     unsigned long long dk; /* flag to indicate which keys to modify */
-    unsigned long long flags;     /* Some additional information */
+    unsigned long long flags; /* Some additional information */
     int nData;
     char pData[4]; /* alignment! - pass some useful data instead of padding */
 } osql_ins_t;
 
-enum { OSQLCOMM_INS_TYPE_LEN = 8 + 8 + 8 + 4 + 4};
+enum { OSQLCOMM_INS_TYPE_LEN = 8 + 8 + 8 + 4 + 4 };
 
 BB_COMPILE_TIME_ASSERT(osqlcomm_ins_type_len,
                        sizeof(osql_ins_t) == OSQLCOMM_INS_TYPE_LEN);
@@ -4081,8 +4081,7 @@ int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
  */
 int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long dirty_keys,
-                     char *pData, int nData, int type, SBUF2 *logsb,
-                     int flags)
+                     char *pData, int nData, int type, SBUF2 *logsb, int flags)
 {
     netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
     int msglen;
@@ -6878,8 +6877,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                            ctag2stag is called */
                         blobs, MAXBLOBS, /*blobs*/
                         &err->errcode, &err->ixnum, &rrn, &genid, /*new id*/
-                        dt.dk, BLOCK2_ADDKL, step,
-                        addflags, dt.flags); /* do I need this?*/
+                        dt.dk, BLOCK2_ADDKL, step, addflags,
+                        dt.flags); /* do I need this?*/
         free_blob_buffers(blobs, MAXBLOBS);
         if (iq->idxInsert || iq->idxDelete) {
             free_cached_idx(iq->idxInsert);

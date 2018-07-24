@@ -495,10 +495,10 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
     tbl->delidx_hash = hash_init_o(offsetof(struct rec_dirty_keys, seq),
                                    sizeof(unsigned long long));
 
-    tbl->ins_rec_hash = hash_init_o(offsetof(rec_flags_t, seq),
-                                    sizeof(unsigned long long));
-    tbl->upd_rec_hash = hash_init_o(offsetof(rec_flags_t, seq),
-                                    sizeof(unsigned long long));
+    tbl->ins_rec_hash =
+        hash_init_o(offsetof(rec_flags_t, seq), sizeof(unsigned long long));
+    tbl->upd_rec_hash =
+        hash_init_o(offsetof(rec_flags_t, seq), sizeof(unsigned long long));
 
     listc_abl(&clnt->osql.shadtbls, tbl);
     pCur->shadtbl = tbl;
@@ -868,7 +868,6 @@ static unsigned long long get_del_keys(struct sqlclntstate *clnt,
 {
     return get_dirty_keys(clnt, tbl, seq, 0);
 }
-
 
 static int save_rec_flags(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                           unsigned long long seq, int flags,

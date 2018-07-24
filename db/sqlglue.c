@@ -7801,10 +7801,9 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     }
     cur->bdbcur = bdb_cursor_open(
         cur->db->handle, clnt->dbtran.cursor_tran, shadow_tran, cur->ixnum,
-        open_type,
-        (clnt->dbtran.mode == TRANLEVEL_SOSQL)
-            ? NULL
-            : osql_get_shadtbl_addtbl_newcursor(cur),
+        open_type, (clnt->dbtran.mode == TRANLEVEL_SOSQL)
+                       ? NULL
+                       : osql_get_shadtbl_addtbl_newcursor(cur),
         clnt->pageordertablescan, rowlocks,
         rowlocks ? &clnt->holding_pagelocks_flag : NULL,
         rowlocks ? pause_pagelock_cursors : NULL, rowlocks ? (void *)thd : NULL,
@@ -7952,10 +7951,9 @@ int sqlite3BtreeCursor(
     }
     /* real table */
     else {
-        rc = sqlite3BtreeCursor_cursor(pBt, iTable,
-                                       (flags & BTREE_CUR_WR) ? 1 : 0,
-                                       sqlite3VdbeCompareRecordPacked, pKeyInfo,
-                                       cur, thd);
+        rc = sqlite3BtreeCursor_cursor(
+            pBt, iTable, (flags & BTREE_CUR_WR) ? 1 : 0,
+            sqlite3VdbeCompareRecordPacked, pKeyInfo, cur, thd);
         /* treat sqlite_stat1 as free */
         if (is_sqlite_stat(cur->db->tablename)) {
             cur->find_cost = 0.0;
