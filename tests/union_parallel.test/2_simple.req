@@ -1,0 +1,2 @@
+select c from t2 union all select e from t3
+select * from t4 union all select * from t3
