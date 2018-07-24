@@ -3005,6 +3005,7 @@ case OP_Column: {
   assert( pC->eCurType!=CURTYPE_SORTER );
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  pCrsr = pC->uc.pCursor;
   if( pC->eCurType == CURTYPE_BTREE && cur_is_raw(pCrsr) && !pC->nullRow ) {
     if(cur_is_remote(pCrsr)) {
       goto cooked_access;
