@@ -37,9 +37,6 @@ int consumer_change(const char *queuename, int consumern, const char *method)
     extern int dbqueue_add_consumer(struct dbtable *db, int consumern, const char *method,
             int noremove);
 
-    /* QHERE - look at methods, if we don't know it, try to hand off to plugin */
-    rc = dbqueue_add_consumer(db, consumern, method, 0);
-
     /* Do the change.  If it works locally then assume that it will work
      * globally. */
     rc = dbqueuedb_add_consumer(db, consumern, method, 0);

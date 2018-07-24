@@ -22,6 +22,7 @@ enum comdb2_plugin_type {
     COMDB2_PLUGIN_OPCODE,
     COMDB2_PLUGIN_MACHINE_INFO,
     COMDB2_PLUGIN_INITIALIZER,
+    COMDB2_PLUGIN_QUEUE_CONSUMER,
     COMDB2_PLUGIN_LAST
 };
 
@@ -48,6 +49,7 @@ const char *comdb2_plugin_type_to_str(int type);
 extern comdb2_plugin_t *gbl_plugins[];
 
 struct dbenv;
+
 /* register handlers for lrl lines and messages.  These will be called if the core code doesn't
  * know how to handle an entry.  Handler should return 0 if it handled the entry, or non-zero to
  * have it passed to the next handler in the chain. */

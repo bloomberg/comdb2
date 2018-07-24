@@ -990,6 +990,8 @@ struct dbenv {
     struct time_metric *handle_buf_queue_time;
     LISTC_T(struct lrl_handler) lrl_handlers;
     LISTC_T(struct message_handler) message_handlers;
+
+    comdb2_queue_consumer_t *queue_consumer_handlers[CONSUMER_TYPE_LAST];
 };
 
 extern struct dbenv *thedb;

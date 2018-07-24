@@ -1115,6 +1115,11 @@ static void *purge_old_blkseq_thread(void *arg)
             thrman_where(thr_self, NULL);
         }
 
+        /* queue consumer thread admin */
+        thrman_where(thr_self, "dbqueue_admin");
+        dbqueuedb_admin(dbenv);
+        thrman_where(thr_self, NULL);
+
         /* purge old blobs.  i didn't want to make a whole new thread just
          * for this -- SJ */
         thrman_where(thr_self, "purge_old_cached_blobs");

@@ -105,7 +105,7 @@ static int triggerOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
     t->name = strdup(thedb->qdbs[i]->tablename);
     t->type = -1;
     if(thedb->qdbs[i]->consumers[0] )
-      t->type = qconsumer_type(thedb->qdbs[i]->consumers[0]);
+      t->type = dbqueue_consumer_type(thedb->qdbs[i]->consumers[0]);
     listc_abl(&cur->trgs, t);
   }
   unlock_schema_lk();

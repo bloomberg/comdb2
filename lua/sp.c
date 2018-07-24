@@ -829,7 +829,7 @@ static int dbconsumer_consume_int(Lua L, dbconsumer_t *q)
     if (q->genid == 0) {
         return -1;
     }
-    enum consumer_t type = qconsumer_type(q->consumer);
+    enum consumer_t type = dbqueue_consumer_type(q->consumer);
     int rc = (type == CONSUMER_TYPE_LUA) ? lua_trigger_impl(L, q)
                                          : lua_consumer_impl(L, q);
     q->genid = 0;
@@ -4089,7 +4089,7 @@ static int db_consumer(Lua L)
         return luaL_error(L, "consumer not found for sp:%s", spname);
     }
 
-    enum consumer_t type = qconsumer_type(consumer);
+    enum consumer_t type = dbqueue_consumer_type(consumer);
     trigger_reg_t *t;
     if (type == CONSUMER_TYPE_DYNLUA) {
         // will block until registration completes

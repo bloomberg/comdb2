@@ -3,12 +3,38 @@
 
 #include "genid.h"
 
+struct dbtable;
+struct dbenv;
+struct consumer;
+
+struct consumer_base {
+    int type;
+};
+
+struct comdb2_queue_consumer {
+    int type;
+    int (*add_consumer)(struct dbtable *db, int consumern, const char *method, int noremove);
+    void (*admin)(struct dbenv *dbenv);
+    int (*check_consumer)(const char *method);
+    enum consumer_t (*consumer_type)(struct consumer *c);
+    void (*coalesce)(struct dbenv *dbenv);
+    void (*restart_consumers)(struct dbtable *db);
+    void (*stop_consumers)(struct dbtable *db);
+    void (*wake_all_consumers)(struct dbtable *db, int force);
+    void (*wake_all_consumers_all_queues)(struct dbenv *dbenv, int force);
+    int (*handles_method)(const char *method);
+};
+typedef struct comdb2_queue_consumer comdb2_queue_consumer_t;
+
+
 enum consumer_t {
     CONSUMER_TYPE_API = 0,
     CONSUMER_TYPE_FSTSND = 1,
     CONSUMER_TYPE_JAVASP = 2,
     CONSUMER_TYPE_LUA,
     CONSUMER_TYPE_DYNLUA,
+
+    CONSUMER_TYPE_LAST
 };
 
 enum {
@@ -28,7 +54,7 @@ typedef struct trigger_reg {
 } trigger_reg_t;
 
 struct consumer;
-enum consumer_t qconsumer_type(struct consumer *c);
+enum consumer_t dbqueue_consumer_type(struct consumer *c);
 int trigger_register(trigger_reg_t *);
 int trigger_unregister(trigger_reg_t *);
 void trigger_start(const char *);
