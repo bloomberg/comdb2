@@ -1743,6 +1743,8 @@ cmd ::= ANALYZE nm(X) dbnm(Y).  {sqlite3Analyze(pParse, &X, &Y);}
 %ifndef SQLITE_OMIT_ALTERTABLE
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 %type dryrun {int}
+%type columntype {Token}
+%type fknm {Token}
 dryrun(D) ::= DRYRUN.  {D=1;}
 dryrun(D) ::= . {D=0;}
 cmd ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
