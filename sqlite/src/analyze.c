@@ -208,6 +208,7 @@ static void openStatTable(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     { "sqlite_stat2", "tbl,idx,sampleno,sample" },
     { "sqlite_stat4", "tbl,idx,neq,nlt,ndlt,sample" },
+    { "sqlite_stat3", 0 },
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if defined(SQLITE_ENABLE_STAT4)
     { "sqlite_stat4", "tbl,idx,neq,nlt,ndlt,sample" },
@@ -243,7 +244,7 @@ static void openStatTable(
       const char *zTab = aTable[i].zName;
       Table *pStat;
       if( (pStat = sqlite3FindTable(db, zTab, NULL))==0 ){
-        if( zTab[11]=='1' ){
+        if( zTab[11]=='1' || zTab[11]=='3' ){
           /* do nothing */
         }else if( zTab[11]=='2' ){
           skip2 = 1;
@@ -253,6 +254,7 @@ static void openStatTable(
       }else{
         aRoot[i] = pStat->tnum;
         sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
+        VdbeComment((v, zTab));
       }
     }
   } else {
@@ -296,19 +298,12 @@ static void openStatTable(
   }
 
   /* Open the sqlite_stat[134] tables for writing. */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  for(i=0; i < ArraySize(aTable); i++){
-    sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
-    sqlite3VdbeChangeP5(v, aCreateTbl[i]);
-  }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   for(i=0; aTable[i].zCols; i++){
     assert( i<ArraySize(aTable) );
     sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
     sqlite3VdbeChangeP5(v, aCreateTbl[i]);
     VdbeComment((v, aTable[i].zName));
   }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
