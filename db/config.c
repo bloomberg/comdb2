@@ -34,6 +34,7 @@
 #include "translistener.h"
 #include "rtcpu.h"
 #include "config.h"
+#include "phys_rep.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -1325,6 +1326,43 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         /* Process here because can't pass to handle_lrl_tunable (where it is
          * marked as READEARLY) */
         read_legacy_defaults(dbenv, options);
+
+    } else if (tokcmp(tok, ltok, "replicate_from") == 0) {
+        /* replicate_from <db_name> [dbs to query] */
+        logmsg(LOGMSG_WARN, "I'm a replicator\n");
+        gbl_is_physical_replicant = 1;
+
+        tok = segtok(line, len, &st, &ltok);
+
+        /* need to replicate a database */
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Must specify a database to replicate to\n");
+            return -1;
+        }
+        /* setup a host db connection */
+        if (set_repl_db_name(tokdup(tok, ltok))) 
+        {
+            logmsg(LOGMSG_ERROR, "Couldn't open a db connection\n");
+            return -1;
+        }
+
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Must specify at least one db to query from\n");
+            return -1;
+        }
+
+        /* open db connections */
+        while (ltok) {
+            if (add_replicant_host(tokdup(tok, ltok)) != 0)
+            {
+                logmsg(LOGMSG_ERROR, "Failed to insert hostname %.*s\n", ltok, tok);
+            }
+            tok = segtok(line, len, &st, &ltok);
+        }
+
+        start_replication(); 
+
     } else {
         /* Handle tunables registered under tunables sub-system. */
         rc = handle_lrl_tunable(tok, ltok, line + st, len - st, 0);

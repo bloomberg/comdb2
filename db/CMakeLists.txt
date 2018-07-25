@@ -41,6 +41,7 @@ set(src
   osqlsession.c
   osqlshadtbl.c
   osqlsqlthr.c
+  phys_rep.c
   plugin_handler.c
   prefault.c
   prefault_helper.c

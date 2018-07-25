@@ -7,6 +7,7 @@
 
 #include "db_config.h"
 #include "dbinc/db_swap.h"
+#include "rep_record.h"
 
 #ifndef lint
 static const char revid[] =
@@ -70,6 +71,7 @@ extern int gbl_optimize_truncate_repdb;
 extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
+extern int gbl_is_physical_replicant;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_max_apply_dequeue = 100000;
@@ -3051,6 +3053,12 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	 * That said, I really don't want to do db operations holding the
 	 * log mutex, so the synchronization here is tricky.
 	 */
+    if (gbl_is_physical_replicant && cmp != 0)
+    {
+        fprintf(stderr, "error in local repl\n");
+        abort();
+    }
+    
 	if (cmp == 0) {
 		/* We got the log record that we are expecting. */
 		if (rp->rectype == REP_NEWFILE) {
@@ -3429,6 +3437,13 @@ gap_check:		max_lsn_dbtp = NULL;
 #endif
 		/* Only add less than the oldest */
 		if (inmem_repdb) {
+            /* TODO: Hack to check if local replicant */
+            if (gbl_is_physical_replicant && decoupled == 2)
+            {
+                logmsg(LOGMSG_ERROR, "Cannot enqueue anymore on local replicants\n");
+                abort();
+            }
+
 			repdb_enqueue(rp, rec, decoupled);
 			ret = 0;
 		} else {
@@ -3796,6 +3811,50 @@ __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	return rc;
 }
 
+int __dbenv_apply_log(DB_ENV* dbenv, int file, int offset, int64_t rectype,
+        void* blob, int blob_len)
+{
+
+    REP_CONTROL rp;
+
+    DBT rec = {0};
+    DB_LSN ret_lsnp;
+    uint32_t *commit_gen;
+    int rc, decoupled;
+    DB_REP* db_rep; 
+    REP* rep; 
+
+    rec.data = blob;
+    rec.size = blob_len;
+
+    ret_lsnp.file = file;
+    ret_lsnp.offset = offset;
+
+    rp.rep_version = 0;
+    rp.log_version = 0;
+    rp.lsn = ret_lsnp;
+    db_rep = dbenv->rep_handle;
+    rep = db_rep->region;
+    rp.rectype = rectype;
+    rp.gen = rep->gen; 
+    rp.flags = 0;
+
+
+    /* call 1 when not new file, call 0 when new file */
+    return __rep_apply(dbenv, &rp, &rec, &ret_lsnp, &rep->gen, 2);
+
+}
+
+size_t log_header_size(DB_ENV* dbenv)
+{
+	size_t hdrsize = HDR_NORMAL_SZ;
+
+	if (CRYPTO_ON(dbenv)) {
+		hdrsize = HDR_CRYPTO_SZ;
+	}
+
+    return hdrsize;
+}
 
 u_int32_t gbl_rep_lockid;
 
