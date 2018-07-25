@@ -39,6 +39,7 @@ add_library(bdb
   odh.c
   os_namemangle.c
   phys.c
+  phys_rep_lsn.c
   queue.c
   queuedb.c
   read.c

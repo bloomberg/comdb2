@@ -71,6 +71,8 @@ static int  __db_testdocopy __P((DB_ENV *, const char *));
 static int  __qam_testdocopy __P((DB *, const char *));
 #endif
 
+extern int gbl_is_physical_replicant;
+
 /*
  * DB.C --
  *	This file contains the utility functions for the DBP layer.
@@ -1075,8 +1077,9 @@ __db_backup_name(dbenv, name, txn, backup)
 			 * a valid dbp, and we aren't guaranteed to be able
 			 * to pass one in here.
 			 */
-			if ((ret = __db_debug_log(dbenv, txn, &lsn, 0,
-			    NULL, 0, NULL, NULL, 0)) != 0)
+            if (!gbl_is_physical_replicant && 
+                    ((ret = __db_debug_log(dbenv, txn, &lsn, 0,
+                                           NULL, 0, NULL, NULL, 0)) != 0))
 				return (ret);
 		} else
 			lsn = txn->last_lsn;
