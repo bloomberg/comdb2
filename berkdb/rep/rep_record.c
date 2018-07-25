@@ -7,7 +7,6 @@
 
 #include "db_config.h"
 #include "dbinc/db_swap.h"
-#include "rep_record.h"
 
 #ifndef lint
 static const char revid[] =
@@ -3839,13 +3838,12 @@ int __dbenv_apply_log(DB_ENV* dbenv, int file, int offset, int64_t rectype,
     rp.gen = rep->gen; 
     rp.flags = 0;
 
-
-    /* call 1 when not new file, call 0 when new file */
+    /* call of 2 to differentiate from true master */
     return __rep_apply(dbenv, &rp, &rec, &ret_lsnp, &rep->gen, 2);
 
 }
 
-size_t log_header_size(DB_ENV* dbenv)
+size_t __dbenv_get_log_header_size(DB_ENV* dbenv)
 {
 	size_t hdrsize = HDR_NORMAL_SZ;
 
@@ -7263,6 +7261,28 @@ __rep_truncate_repdb(dbenv)
  * everything else has exited the library.  If not, set up the world
  * correctly and move forward.
  */
+int __dbenv_rep_verify_match(DB_ENV* dbenv, int file, int offset, int64_t rectype)
+{
+    REP_CONTROL rp;
+	DB_LSN lsnp;
+    DB_REP* db_rep; 
+    REP* rep; 
+
+    lsnp.file = file;
+    lsnp.offset = offset;
+
+    rp.rep_version = 0;
+    rp.log_version = 0;
+    rp.lsn = lsnp;
+    db_rep = dbenv->rep_handle;
+    rep = db_rep->region;
+    rp.rectype = rectype;
+    rp.gen = rep->gen; 
+    rp.flags = 0;
+
+    return __rep_verify_match(dbenv, &rp, rep->timestamp);
+}
+
 static int
 __rep_verify_match(dbenv, rp, savetime)
 	DB_ENV *dbenv;

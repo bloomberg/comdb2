@@ -153,7 +153,7 @@ void* keep_in_sync(void* args)
         {
             fprintf(stderr, "Can't find the next record\n");
         }
-        // TODO: check the record
+        // TODO: check the record. This is important for truncation
 
         while((rc = cdb2_next_record(repl_db)) == CDB2_OK)
         {
@@ -245,13 +245,9 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
         offset = -1;
     }
     
-    fprintf(stdout, ": %d:%d, rectype: %ld\n", file, offset, rectype);
-    
+    fprintf(stdout, ": %d:%d, rectype: %ld\n", file, offset, rectype);    
 
-    // TODO: implement this to use __rep_apply for one log record
-    // Change it later
-    printf("I'm expecting offset at: %u\n", 
-            get_next_offset(thedb->bdb_env->dbenv, prev_info)); 
+    /* check if we need to call new file flag */
     if (prev_info.file < file)
     {
         rc = apply_log(thedb->bdb_env->dbenv, prev_info.file, 
