@@ -96,8 +96,6 @@ comdb2_metric gbl_metrics[] = {
     {"concurrent_connections", "Number of concurrent connections ",
      STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.concurrent_connections, NULL},
-<<<<<<< HEAD
-<<<<<<< HEAD
     {"connections", "Total connections", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connections, NULL},
     {"connection_timeouts", "Timed out connection attempts", STATISTIC_INTEGER,
