@@ -527,21 +527,12 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
     }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     case CC_LB: {
-      /*
-      ** NOTE: This code assumes that a closing curly brace will be the
-      **       final non-NUL character (i.e. sets of curly braces will
-      **       not appear at arbitrary locations within the string.  No
-      **       attempt is made to verify curly brace nesting levels at
-      **       this level.
-      */
-      for(i=1; z[i]; i++){}
-      testcase( z[i-1]=='}' );  testcase( z[i-1]!='}' );
-      if( z[i-1]=='}' ){
-        *tokenType = TK_NOSQL;
-      }else{
-        *tokenType = TK_ILLEGAL;
-      }
-      return i;
+      *tokenType = TK_LB;
+      return 1;
+    }
+    case CC_RB: {
+      *tokenType = TK_RB;
+      return 1;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     case CC_X: {

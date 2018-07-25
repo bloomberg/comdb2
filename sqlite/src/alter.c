@@ -386,6 +386,7 @@ static int isSystemTable(Parse *pParse, const char *zName){
 ** Generate code to implement the "ALTER TABLE xxx RENAME TO yyy" 
 ** command. 
 */
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 void sqlite3AlterRenameTable(
   Parse *pParse,            /* Parser context. */
   SrcList *pSrc,            /* The table to rename. */
@@ -805,4 +806,5 @@ exit_begin_add_column:
   sqlite3SrcListDelete(db, pSrc);
   return;
 }
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif  /* SQLITE_ALTER_TABLE */

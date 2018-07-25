@@ -174,7 +174,7 @@ create_table ::= createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z). {
 }
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= comdb2_create_table_csc2.
-comdb2_create_table_csc2 ::= createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
+comdb2_create_table_csc2 ::= createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z) comdb2opt(O) LB NOSQL(C) RB. {
   comdb2CreateTableCSC2(pParse,&Y,&Z,O,&C,T,E);
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
@@ -1743,23 +1743,21 @@ cmd ::= ANALYZE nm(X) dbnm(Y).  {sqlite3Analyze(pParse, &X, &Y);}
 %ifndef SQLITE_OMIT_ALTERTABLE
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 %type dryrun {int}
-%type columntype {Token}
-%type fknm {Token}
 dryrun(D) ::= DRYRUN.  {D=1;}
 dryrun(D) ::= . {D=0;}
 cmd ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
   comdb2WriteTransaction(pParse);
   sqlite3AlterRenameTable(pParse,&X,&Y,D);
 }
-cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
+cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) LB NOSQL(C) RB. {
   comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,D);
 }
-cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) ADD COLUMN columnname(X) columntype(W). {
+cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) ADD COLUMNKW nm(X) typetoken(W). {
   comdb2AlterTableStart(pParse,&Y,&Z,D);
   comdb2AddColumn(pParse, &X, &W);
   comdb2AlterTableEnd(pParse);
 }
-cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) DROP COLUMN columnname(X). {
+cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) DROP COLUMNKW nm(X). {
   comdb2AlterTableStart(pParse,&Y,&Z,D);
   comdb2DropColumn(pParse, &X);
   comdb2AlterTableEnd(pParse);
@@ -1779,7 +1777,7 @@ cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) ADD FOREIGN KEY nm_opt LP eidlist(FA
   comdb2CreateForeignKey(pParse, FA, &T, TA, R);
   comdb2DeferForeignKey(pParse, DS);
 }
-cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) DROP FOREIGN KEY fknm(X). {
+cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) DROP FOREIGN KEY nm(X). {
   comdb2AlterTableStart(pParse,&Y,&Z,D);
   comdb2DropForeignKey(pParse, &X);
   comdb2AlterTableEnd(pParse);
@@ -2162,10 +2160,10 @@ rle_compress_type(A) ::= LZ4. {A = REC_LZ4;}
 
 ////////////////////////////// CREATE PROCEDURE ///////////////////////////////
 
-cmd ::= createkw PROCEDURE nm(N) NOSQL(X). {
+cmd ::= createkw PROCEDURE nm(N) LB NOSQL(X) RB. {
     comdb2CreateProcedure(pParse, &N, NULL, &X);
 }
-cmd ::= createkw PROCEDURE nm(N) VERSION STRING(V) NOSQL(X). {
+cmd ::= createkw PROCEDURE nm(N) VERSION STRING(V) LB NOSQL(X) RB. {
     comdb2CreateProcedure(pParse, &N, &V, &X);
 
 /////////////////////////////// DROP PROCEDURE ////////////////////////////////

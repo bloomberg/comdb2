@@ -3083,12 +3083,6 @@ void sqlite3AlterBeginAddColumn(Parse *pParse, SrcList *pSrc)
     exit(1);
 }
 
-void sqlite3AlterFunctions(void)
-{
-    logmsg(LOGMSG_FATAL, "STUB sqlite3AlterFunctions called\n");
-    exit(1);
-}
-
 /*
  ** This call is a no-op if no write-transaction is currently active on pBt.
  **
