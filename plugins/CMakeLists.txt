@@ -19,6 +19,11 @@ add_subdirectory(newsql)
 add_subdirectory(remsql)
 add_subdirectory(repopnewlrl)
 
+set(COMDB2_EXTRA_PLUGINS ${EXTRA_PLUGINS} CACHE PATH "Path to additional plugins")
+if (COMDB2_EXTRA_PLUGINS)
+  include(${COMDB2_EXTRA_PLUGINS}/CMakeLists.txt)
+endif()
+
 # Generate the all_static plugins.h header file. It contains the necessary
 # code to list & install all the statically linked plugins.
 set(PLUGIN_INCLUDE_FILE "${PROJECT_BINARY_DIR}/plugins/all_static_plugins.h")
