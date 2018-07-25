@@ -131,7 +131,7 @@ if(WITH_TCL)
   add_subdirectory(tcl)
 endif()
 add_subdirectory(tools)
-add_subdirectory(plugin)
+add_subdirectory(plugins)
 add_subdirectory(db)
 add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
 

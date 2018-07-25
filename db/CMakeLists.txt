@@ -135,7 +135,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
-  ${PROJECT_BINARY_DIR}/plugin
+  ${PROJECT_BINARY_DIR}/plugins
   ${PROJECT_SOURCE_DIR}/protobuf
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/schemachange
