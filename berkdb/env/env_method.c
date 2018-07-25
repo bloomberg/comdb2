@@ -48,8 +48,6 @@ static const char revid[] =
 #include "logmsg.h"
 #include "locks_wrap.h"
 
-#include "rep/rep_record.h"
-
 static int __dbenv_init __P((DB_ENV *));
 static void __dbenv_err __P((const DB_ENV *, int, const char *, ...));
 static void __dbenv_errx __P((const DB_ENV *, const char *, ...));
@@ -94,8 +92,10 @@ static int __dbenv_trigger_subscribe __P((DB_ENV *, const char *,
 static int __dbenv_trigger_unsubscribe __P((DB_ENV *, const char *));
 static int __dbenv_trigger_open __P((DB_ENV *, const char *));
 static int __dbenv_trigger_close __P((DB_ENV *, const char *));
-int apply_log __P((DB_ENV *, int, int, int64_t,
+int __dbenv_apply_log __P((DB_ENV *, int, int, int64_t,
             void*, int));
+size_t __dbenv_get_log_header_size __P((DB_ENV*)); 
+int __dbenv_rep_verify_match __P((DB_ENV*, int, int));
 
 /*
  * db_env_create --
@@ -268,6 +268,9 @@ __dbenv_init(dbenv)
 		dbenv->get_rep_verify_lsn = __dbenv_get_rep_verify_lsn;
 		dbenv->set_durable_lsn = __dbenv_set_durable_lsn;
 		dbenv->get_durable_lsn = __dbenv_get_durable_lsn;
+
+        dbenv->get_log_header_size = __dbenv_get_log_header_size;
+        dbenv->rep_verify_match = __dbenv_rep_verify_match;
 #ifdef	HAVE_RPC
 	}
 #endif
