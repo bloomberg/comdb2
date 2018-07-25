@@ -1092,7 +1092,12 @@ static void statGet(
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   {
-    int iGet = p->iGet;
+    int iGet;
+    if( p->iGet<0 ){
+      samplePushPrevious(p, 0);
+      p->iGet = 0;
+    }
+    iGet = p->iGet;
     Stat4Sample *pS = NULL;
     tRowcnt *aCnt = NULL;
     int scale = 1;
