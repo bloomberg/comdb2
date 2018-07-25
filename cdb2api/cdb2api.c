@@ -111,7 +111,6 @@ int cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
 static int cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
 
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t cdb2_cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct cdb2_ssl_sess_list cdb2_ssl_sess_list;
 static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *sessions);
@@ -119,6 +118,8 @@ static cdb2_ssl_sess_list *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl);
 static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
                                  cdb2_ssl_sess_list *sessions);
 #endif
+
+static pthread_mutex_t cdb2_cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #define CDB2_ALLOW_PMUX_ROUTE_DEFAULT 0
 static int cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
