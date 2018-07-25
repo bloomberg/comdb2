@@ -86,6 +86,7 @@ add_library(sqlite
   treeview.c
   trigger.c
   update.c
+  upsert.c
   utf.c
   util.c
   vdbe.c

@@ -845,7 +845,7 @@ static int convert_record(struct convert_record_data *data)
             (gbl_partial_indexes && data->to->ix_partial) ? dirty_keys : -1ULL,
             BLOCK2_ADDKL, /* opcode */
             0,            /* blkpos */
-            addflags);
+            addflags, 0);
 
         if (rc) goto err;
     }

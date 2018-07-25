@@ -98,7 +98,8 @@ void sqlite3Update(
   int onError,           /* How to handle constraint errors */
   ExprList *pOrderBy,    /* ORDER BY clause. May be null */
   Expr *pLimit,          /* LIMIT clause. May be null */
-  Expr *pOffset          /* OFFSET clause. May be null */
+  Expr *pOffset,         /* OFFSET clause. May be null */
+  Upsert *pUpsert        /* ON CONFLICT clause, or null */
 ){
   int i, j;              /* Loop counters */
   Table *pTab;           /* The table to be updated */
@@ -226,6 +227,8 @@ void sqlite3Update(
   memset(&sNC, 0, sizeof(sNC));
   sNC.pParse = pParse;
   sNC.pSrcList = pTabList;
+  sNC.uNC.pUpsert = pUpsert;
+  sNC.ncFlags = NC_UUpsert;
 
   /* Resolve the column names in all the expressions of the
   ** of the UPDATE statement.  Also find the column index
@@ -470,7 +473,7 @@ void sqlite3Update(
     /* COMDB2 MODIFICATION */
     /* AZ: if i dont call, i get a segfault */
     sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, iBaseCur, aToOpen,
-                               0, 0);
+                               0, 0, 0);
   }
 
   /* Top of the update loop */
@@ -504,8 +507,8 @@ void sqlite3Update(
     VdbeCoverage(v);
   }
 
-  /* If the record number will change, set register regNewRowid to
-  ** contain the new value. If the record number is not being modified,
+  /* If the rowid value will change, set register regNewRowid to
+  ** contain the new value. If the rowid is not being modified,
   ** then regNewRowid is the same register as regOldRowid, which is
   ** already populated.  */
   assert( chngKey || pTrigger || hasFK || regOldRowid==regNewRowid );
@@ -617,7 +620,7 @@ void sqlite3Update(
     assert( regOldRowid>0 );
     sqlite3GenerateConstraintChecks(pParse, pTab, aRegIdx, iDataCur, iIdxCur,
         regNewRowid, regOldRowid, chngKey, onError, labelContinue, &bReplace,
-        aXRef);
+        aXRef, 0);
 
     /* Do FK constraint checks. */
     if( hasFK ){

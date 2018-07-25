@@ -1720,6 +1720,15 @@ static int exprNodeIsConstant(Walker *pWalker, Expr *pExpr){
         pWalker->eCode = 0;
         return WRC_Abort;
       }
+    /* COMDB2 MODIFICATION */
+#if 0
+    case TK_IF_NULL_ROW:
+#endif
+    case TK_REGISTER:
+      testcase( pExpr->op==TK_REGISTER );
+      testcase( pExpr->op==TK_IF_NULL_ROW );
+      pWalker->eCode = 0;
+      return WRC_Abort;
     case TK_VARIABLE:
       if( pWalker->eCode==5 ){
         /* Silently convert bound parameters that appear inside of CREATE
@@ -1734,10 +1743,10 @@ static int exprNodeIsConstant(Walker *pWalker, Expr *pExpr){
       }
       /* Fall through */
     default:
-      testcase( pExpr->op==TK_SELECT ); /* selectNodeIsConstant will disallow */
-      testcase( pExpr->op==TK_EXISTS ); /* selectNodeIsConstant will disallow */
+      testcase( pExpr->op==TK_SELECT ); /* sqlite3SelectWalkFail() disallows */
+      testcase( pExpr->op==TK_EXISTS ); /* sqlite3SelectWalkFail() disallows */
       /* COMDB2 MODIFICATION */
-      testcase( pExpr->op==TK_SELECTV ); /* selectNodeIsConstant will disallow */
+      testcase( pExpr->op==TK_SELECTV ); /* sqlite3SelectWalkFail() disallows */
       return WRC_Continue;
   }
 }
@@ -4588,8 +4597,10 @@ int sqlite3ExprCompare(Expr *pA, Expr *pB, int iTab){
   if( pA->op!=TK_COLUMN && pA->op!=TK_AGG_COLUMN && pA->u.zToken ){
     if( pA->op==TK_FUNCTION ){
       if( sqlite3StrICmp(pA->u.zToken,pB->u.zToken)!=0 ) return 2;
+    }else if( pA->op==TK_COLLATE ){
+      if( sqlite3_stricmp(pA->u.zToken,pB->u.zToken)!=0 ) return 2;
     }else if( strcmp(pA->u.zToken,pB->u.zToken)!=0 ){
-      return pA->op==TK_COLLATE ? 1 : 2;
+      return 2;
     }
   }
   if( (pA->flags & EP_Distinct)!=(pB->flags & EP_Distinct) ) return 2;
@@ -4830,8 +4841,9 @@ static int analyzeAggregate(Walker *pWalker, Expr *pExpr){
   NameContext *pNC = pWalker->u.pNC;
   Parse *pParse = pNC->pParse;
   SrcList *pSrcList = pNC->pSrcList;
-  AggInfo *pAggInfo = pNC->pAggInfo;
+  AggInfo *pAggInfo = pNC->uNC.pAggInfo;
 
+  assert( pNC->ncFlags & NC_UAggInfo );
   switch( pExpr->op ){
     case TK_AGG_COLUMN:
     case TK_COLUMN: {

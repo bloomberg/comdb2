@@ -707,7 +707,8 @@ bdb_cursor_ifn_t *bdb_cursor_open(
         }
     }
 
-    if (type == BDB_OPEN_REAL || type == BDB_OPEN_BOTH) {
+    if (type == BDB_OPEN_REAL || type == BDB_OPEN_BOTH ||
+        type == BDB_OPEN_BOTH_CREATE) {
         cur->rl = bdb_berkdb_open(cur, BERKDB_REAL, maxdta, maxkey, bdberr);
         if (!cur->rl) {
             logmsg(LOGMSG_ERROR, "%s: fail to create index berkdb\n", __func__);
@@ -723,14 +724,16 @@ bdb_cursor_ifn_t *bdb_cursor_open(
 
     /* we only open if there is already one (we'll open when we insert, if any)
      */
-    if (type == BDB_OPEN_SHAD || type == BDB_OPEN_BOTH) {
+    if (type == BDB_OPEN_SHAD || type == BDB_OPEN_BOTH ||
+        type == BDB_OPEN_BOTH_CREATE) {
         int openhow = BERKDB_SHAD;
 
         /* Always create cur->sd for non-page order snapisol or you can lose
          * data in cursor_move_merge. */
         if (cur->shadow_tran &&
             (cur->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-             cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE))
+             cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE ||
+             type == BDB_OPEN_BOTH_CREATE))
             openhow = BERKDB_SHAD_CREATE;
 
         /* open the cursor now */
@@ -4191,6 +4194,7 @@ static int bdb_cursor_find_last_dup(bdb_cursor_ifn_t *pcur_ifn, void *key,
 
         if (rc == IX_EMPTY)
             return IX_EMPTY;
+
     } else if (rc == IX_FND) {
         if (!dirLeft) {
             /* we are going Right because we got here from SeekGT,

@@ -625,6 +625,8 @@ struct sqlclntstate {
     int verify_remote_schemas;
     char *argv0;
     char *stack;
+
+    int translevel_changed;
 };
 
 /* Query stats. */
