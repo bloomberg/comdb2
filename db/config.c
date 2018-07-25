@@ -332,6 +332,7 @@ static char *legacy_options[] = {
     "setattr SC_DONE_SAME_TRAN 0",
     "logmsg notimestamp",
     "queuedb_genid_filename off",
+    "decoupled_logputs off",
 };
 
 int pre_read_legacy_defaults(void *_, void *__)
