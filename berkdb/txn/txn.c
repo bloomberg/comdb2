@@ -91,6 +91,7 @@ int bdb_is_open(void *bdb_state);
 int comdb2_time_epoch(void);
 void ctrace(char *format, ...);
 
+extern int gbl_is_physical_replicant;
 
 #define BDB_WRITELOCK(idstr)    bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
 #define BDB_RELLOCK()           bdb_rellock(bdb_state, __func__, __LINE__)
@@ -2224,7 +2225,7 @@ do_ckp:	/*
 	 * recovery (somewhat unusually) calls txn_checkpoint and expects
 	 * it to write a log message, LOGGING_ON is the correct macro here.
 	 */
-	if (LOGGING_ON(dbenv)) {
+	if (LOGGING_ON(dbenv) && !gbl_is_physical_replicant) {
 		DB_LSN debuglsn;
 		DBT op = { 0 };
 		int debugtype;
@@ -2492,6 +2493,10 @@ __txn_reset(dbenv)
 {
 	DB_LSN scrap;
 	DB_TXNREGION *region;
+
+    /* physical replicants cannot log the reset */
+    if (gbl_is_physical_replicant)
+        return 0;
 
 	region = ((DB_TXNMGR *)dbenv->tx_handle)->reginfo.primary;
 	region->last_txnid = TXN_MINIMUM;

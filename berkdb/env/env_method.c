@@ -48,6 +48,8 @@ static const char revid[] =
 #include "logmsg.h"
 #include "locks_wrap.h"
 
+#include "rep/rep_record.h"
+
 static int __dbenv_init __P((DB_ENV *));
 static void __dbenv_err __P((const DB_ENV *, int, const char *, ...));
 static void __dbenv_errx __P((const DB_ENV *, const char *, ...));
@@ -92,6 +94,8 @@ static int __dbenv_trigger_subscribe __P((DB_ENV *, const char *,
 static int __dbenv_trigger_unsubscribe __P((DB_ENV *, const char *));
 static int __dbenv_trigger_open __P((DB_ENV *, const char *));
 static int __dbenv_trigger_close __P((DB_ENV *, const char *));
+int apply_log __P((DB_ENV *, int, int, int64_t,
+            void*, int));
 
 /*
  * db_env_create --
@@ -210,6 +214,7 @@ __dbenv_init(dbenv)
 		dbenv->set_verbose = __dbcl_set_verbose;
 	} else {
 #endif
+        dbenv->apply_log = __dbenv_apply_log;
 		dbenv->close = __dbenv_close_pp;
 		dbenv->dbremove = __dbenv_dbremove_pp;
 		dbenv->dbrename = __dbenv_dbrename_pp;
