@@ -2030,6 +2030,8 @@ struct __db_env {
     /* expose logging rep_apply */
     int (*apply_log) __P((DB_ENV *, int, int, int64_t,
                 void*, int));
+    size_t (*get_log_header_size) __P((DB_ENV*)); 
+    int (*rep_verify_match) __P((DB_ENV *, int, int, int64_t));
 
 	/*
 	 * Currently, the verbose list is a bit field with room for 32
