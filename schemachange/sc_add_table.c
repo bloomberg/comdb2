@@ -25,6 +25,8 @@
 #include "sc_logic.h"
 #include "sc_csc2.h"
 
+extern int gbl_is_physical_replicant;
+
 static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
                                        struct ireq *iq, void *trans)
 {
@@ -165,7 +167,8 @@ int add_table_to_environment(char *table, const char *csc2,
 
     if ((rc = get_db_handle(newdb, trans))) goto err;
 
-    if (newdb->dbenv->master != gbl_mynode) {
+    /* must re add the dbs if you're a physical replicant */
+    if (newdb->dbenv->master != gbl_mynode || gbl_is_physical_replicant) {
         /* This is a replicant calling scdone_callback */
         add_db(newdb);
     }

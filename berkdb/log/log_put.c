@@ -78,6 +78,9 @@ extern int gbl_inflate_log;
 pthread_cond_t gbl_logput_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t gbl_logput_lk = PTHREAD_MUTEX_INITIALIZER;
 
+/* TODO: Delete once finished with testing on local reps */
+extern int gbl_is_physical_replicant;
+
 /*
  * __log_put_pp --
  *	DB_ENV->log_put pre/post processing.
@@ -176,6 +179,14 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 		pp = udbt->data;
 		LOGCOPY_32(&rectype, pp);
 	}
+
+    /* prevent local replicant from generating logs */
+    if (gbl_is_physical_replicant)
+    {
+        logmsg(LOGMSG_USER, "I'm a local replicant, stop me!");
+        logmsg(LOGMSG_FATAL, "%s line %d invalid logput for physical replicant\n", __func__, __LINE__);
+        abort();
+    }
 
 	if (!IS_REP_MASTER(dbenv) && !(dblp->flags & DBLOG_RECOVER)) {
 
