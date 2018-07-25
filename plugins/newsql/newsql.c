@@ -1670,6 +1670,14 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 } else {
                     appdata->send_intrans_response = -1;
                 }
+            } else if (strncasecmp(sqlstr, "admin", 5) == 0) {
+                sqlstr += 7;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->admin = 0;
+                } else {
+                    clnt->admin = 1;
+                }
             } else {
                 rc = ii + 1;
             }
@@ -1992,6 +2000,8 @@ retry_read:
 
 extern int gbl_allow_incoherent_sql;
 
+int64_t gbl_denied_appsock_connection_count = 0;
+
 static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 {
     CDB2QUERY *query = NULL;
@@ -2024,7 +2034,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         return APPSOCK_RETURN_ERR;
     }
 
-    if (!bdb_am_i_coherent(dbenv->bdb_env) && !gbl_allow_incoherent_sql) {
+    if (!arg->admin && !bdb_am_i_coherent(dbenv->bdb_env) && !gbl_allow_incoherent_sql) {
         return APPSOCK_RETURN_OK;
     }
 
@@ -2038,7 +2048,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
       should return an error at this point rather than proceed with potentially
       incoherent data.
     */
-    if (dbenv->rep_sync == REP_SYNC_NONE && dbenv->master != gbl_mynode) {
+    if (!arg->admin && dbenv->rep_sync == REP_SYNC_NONE && dbenv->master != gbl_mynode) {
         return APPSOCK_RETURN_OK;
     }
 
@@ -2050,6 +2060,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     thrman_change_type(thr_self, THRTYPE_APPSOCK_SQL);
 
     reset_clnt(&clnt, sb, 1);
+    clnt.admin = arg->admin;
     get_newsql_appdata(&clnt, 32);
     plugin_set_callbacks(&clnt, newsql);
     clnt.tzname[0] = '\0';
@@ -2059,18 +2070,28 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     pthread_mutex_init(&clnt.write_lock, NULL);
     pthread_mutex_init(&clnt.dtran_mtx, NULL);
 
-    if (active_appsock_conns >
+    if (!clnt.admin && active_appsock_conns >
         bdb_attr_get(dbenv->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT)) {
-        logmsg(LOGMSG_WARN,
-               "%s: Exhausted appsock connections, total %d connections \n",
-               __func__, active_appsock_conns);
+        static time_t pr = 0;
+        time_t now;
+
+        gbl_denied_appsock_connection_count++;
+        if ((now = time(NULL)) - pr) {
+            logmsg(LOGMSG_WARN,
+                   "%s: Exhausted appsock connections, total %d connections "
+                   "denied-connection count=%llu\n",
+                   __func__, active_appsock_conns,
+                   gbl_denied_appsock_connection_count);
+            pr = now;
+        }
         newsql_error(&clnt, "Exhausted appsock connections.",
-                   CDB2__ERROR_CODE__APPSOCK_LIMIT);
+                CDB2__ERROR_CODE__APPSOCK_LIMIT);
         goto done;
     }
 
     extern int gbl_allow_incoherent_sql;
-    if (!gbl_allow_incoherent_sql && !bdb_am_i_coherent(thedb->bdb_env)) {
+    if (!clnt.admin && !gbl_allow_incoherent_sql &&
+            !bdb_am_i_coherent(thedb->bdb_env)) {
         logmsg(LOGMSG_ERROR,
                "%s:%d td %u new query on incoherent node, dropping socket\n",
                __func__, __LINE__, (uint32_t)pthread_self());
@@ -2086,7 +2107,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
 
-    if (do_query_on_master_check(dbenv, &clnt, sql_query))
+    if (!clnt.admin && do_query_on_master_check(dbenv, &clnt, sql_query))
         goto done;
 
     clnt.osql.count_changes = 1;

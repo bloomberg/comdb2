@@ -72,6 +72,8 @@ struct comdb2_metrics_store {
     int64_t total_aborts;
     double sql_queue_time;
     int64_t sql_queue_timeouts;
+    double handle_buf_queue_time;
+    int64_t denied_appsock_connections;
 };
 
 static struct comdb2_metrics_store stats;
@@ -94,6 +96,7 @@ comdb2_metric gbl_metrics[] = {
     {"concurrent_connections", "Number of concurrent connections ",
      STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.concurrent_connections, NULL},
+<<<<<<< HEAD
 <<<<<<< HEAD
     {"connections", "Total connections", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connections, NULL},
@@ -173,14 +176,18 @@ comdb2_metric gbl_metrics[] = {
         STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.total_commits, NULL},
     {"total_aborts", "Number of transaction aborts", STATISTIC_INTEGER,
         STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.total_aborts, NULL},
-    {"sql_queue_time", "Average ms spent waiting on sql-queue",
+    {"sql_queue_time", "Average ms spent waiting in sql queue",
         STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
         &stats.sql_queue_time, NULL},
     {"sql_queue_timeouts", "Number of sql items timed-out waiting on queue",
         STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
         &stats.sql_queue_timeouts, NULL},
-
-
+    {"handle_buf_queue_time", "Average ms spent waiting in handle-buf queue",
+        STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
+        &stats.handle_buf_queue_time, NULL},
+    {"denied_appsocks", "Number of denied appsock connections",
+        STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+        &stats.denied_appsock_connections, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -309,6 +316,8 @@ int refresh_metrics(void)
     stats.concurrent_sql = time_metric_average(thedb->concurrent_queries);
     stats.sql_queue_time = time_metric_average(thedb->sql_queue_time);
     stats.sql_queue_timeouts = thdpool_get_timeouts(gbl_sqlengine_thdpool);
+    stats.handle_buf_queue_time =
+        time_metric_average(thedb->handle_buf_queue_time);
     stats.concurrent_connections = time_metric_average(thedb->connections);
     int master = bdb_whoismaster((bdb_state_type*) thedb->bdb_env) == gbl_mynode ? 1 : 0; 
     stats.ismaster = master;
@@ -336,6 +345,7 @@ int refresh_metrics(void)
     bdb_get_txn_stats(thedb->bdb_env, &stats.active_transactions,
             &stats.maxactive_transactions, &stats.total_commits,
             &stats.total_aborts);
+    stats.denied_appsock_connections = gbl_denied_appsock_connection_count;
     return 0;
 }
 

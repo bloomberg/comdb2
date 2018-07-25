@@ -80,6 +80,7 @@ static FILE *redirect = NULL;
 static int hold_stdout = -1;
 static char *history_file = NULL;
 static int istty = 0;
+static int isadmin = 0;
 static char *gensql_tbl = NULL;
 static char *prompt = main_prompt;
 
@@ -216,11 +217,18 @@ char *db_generator (int state, const char *sql)
 
         list_index = 0;
         int rc;
-        if (dbhostname) {
-            rc = cdb2_open(&cdb2h_2, dbname, dbhostname, CDB2_DIRECT_CPU);
-        } else {
-            rc = cdb2_open(&cdb2h_2, dbname, dbtype, 0);
+        int flags = 0;
+        char *type = dbtype;
+
+        if (dbhostname)  {
+            type = dbhostname;
+            flags |= CDB2_DIRECT_CPU;
         }
+
+        if (isadmin)
+            flags |= CDB2_ADMIN;
+
+        rc = cdb2_open(&cdb2h_2, dbname, type, flags);
         if (rc) {
             if (debug_trace)
                 fprintf(stderr, "cdb2_open rc %d %s\n", rc, cdb2_errstr(cdb2h));
@@ -990,11 +998,18 @@ static int run_statement(const char *sql, int ntypes, int *types,
 
         verbose_print("calling cdb2_open\n");
 
-        if (dbhostname) {
-            rc = cdb2_open(&cdb2h, dbname, dbhostname, CDB2_DIRECT_CPU);
-        } else {
-            rc = cdb2_open(&cdb2h, dbname, dbtype, 0);
+        int flags = 0;
+        char *type = dbtype;
+
+        if (dbhostname)  {
+            flags |= CDB2_DIRECT_CPU;
+            type = dbhostname;
         }
+
+        if (isadmin)
+            flags |= CDB2_ADMIN;
+
+        rc = cdb2_open(&cdb2h, dbname, type, flags);
 
         cdb2_push_context(cdb2h, "cdb2sql");
         if (rc) {
@@ -1383,11 +1398,18 @@ void send_cancel_cnonce(const char *cnonce)
     if (!gbl_in_stmt) return;
     cdb2_hndl_tp *cdb2h_2 = NULL; // use a new db handle
     int rc;
+    int flags = 0;
+    char *type = dbtype;
+
     if (dbhostname) {
-        rc = cdb2_open(&cdb2h_2, dbname, dbhostname, CDB2_DIRECT_CPU);
-    } else {
-        rc = cdb2_open(&cdb2h_2, dbname, dbtype, 0);
+        flags |= CDB2_DIRECT_CPU;
+        type = dbhostname;
     }
+
+    if (isadmin)
+        flags |= CDB2_ADMIN;
+    
+    rc = cdb2_open(&cdb2h_2, dbname, type, flags);
     if (rc) {
         if (debug_trace)
             fprintf(stderr, "cdb2_open rc %d %s\n", rc, cdb2_errstr(cdb2h));
@@ -1458,6 +1480,7 @@ int main(int argc, char *argv[])
         {"exponent",   no_argument,       &exponent,          1},
         {"isatty",     no_argument,       &isttyarg,          1},
         {"isnotatty",  no_argument,       &isttyarg,          2},
+        {"admin",      no_argument,       &isadmin,           1},
         {"help",       no_argument,       NULL,               'h'},
         {"script",     no_argument,       NULL,               's'},
         {"maxretries", required_argument, NULL,               'r'},

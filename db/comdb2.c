@@ -2434,6 +2434,7 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     dbenv->master = NULL; /*no known master at this point.*/
     dbenv->errstaton = 1; /* ON */
 
+    dbenv->handle_buf_queue_time = time_metric_new("handle_buf_time_in_queue");
     dbenv->sql_queue_time = time_metric_new("sql_time_in_queue");
     dbenv->service_time = time_metric_new("service_time");
     dbenv->queue_depth = time_metric_new("queue_depth");
@@ -4426,6 +4427,7 @@ void *statthd(void *p)
 
 
         /* Push out old metrics */
+        time_metric_purge_old(thedb->handle_buf_queue_time);
         time_metric_purge_old(thedb->sql_queue_time);
         time_metric_purge_old(thedb->service_time);
         time_metric_purge_old(thedb->queue_depth);

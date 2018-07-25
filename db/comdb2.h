@@ -976,6 +976,7 @@ struct dbenv {
     struct time_metric* concurrent_queries;
     struct time_metric* connections;
     struct time_metric* sql_queue_time;
+    struct time_metric* handle_buf_queue_time;
 };
 
 extern struct dbenv *thedb;
@@ -1787,7 +1788,7 @@ const char *req2a(int opcode);
 int a2req(const char *s);
 
 /* request processing */
-void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb);
+void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int is_admin);
 void appsock_coalesce(struct dbenv *dbenv);
 void close_appsock(SBUF2 *sb);
 void thd_stats(void);

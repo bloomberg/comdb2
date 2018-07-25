@@ -3746,14 +3746,15 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     time_metric_add(thedb->queue_depth, q_depth_tag_and_sql);
 
     sqlcpy = strdup(msg);
+    uint32_t flags = (clnt->admin ? THDPOOL_FORCE_DISPATCH : 0);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
                               clnt, clnt->queue_me,
-                              sqlcpy)) != 0) {
+                              sqlcpy, flags)) != 0) {
         if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool,
-                                 sqlengine_work_appsock_pp, clnt, 1, sqlcpy);
+                                 sqlengine_work_appsock_pp, clnt, 1, sqlcpy, flags);
         }
 
         if (rc) {
@@ -4049,6 +4050,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     clnt->is_readonly = 0;
     clnt->ignore_coherency = 0;
+    clnt->admin = 0;
 
     /* reset page-order. */
     clnt->pageordertablescan =

@@ -1433,4 +1433,11 @@ REGISTER_TUNABLE("timeseries_metrics",
                  "Keep time series data for some metrics",
                  TUNABLE_BOOLEAN, &gbl_timeseries_metrics, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("handle_buf_latency_ms",
+                 "Add up to this much artificial latency to handle-buf.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_handle_buf_add_latency_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+
 #endif /* _DB_TUNABLES_H */

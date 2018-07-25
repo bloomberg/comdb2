@@ -1966,6 +1966,15 @@ static void print_ourlsn(bdb_state_type *bdb_state)
 }
 */
 
+static void bdb_admin_appsock(netinfo_type *netinfo, SBUF2 *sb)
+{
+    bdb_state_type *bdb_state;
+    bdb_state = net_get_usrptr(netinfo);
+
+    if (bdb_state->callback->admin_appsock_rtn)
+        (bdb_state->callback->admin_appsock_rtn)(bdb_state, sb);
+}
+
 static void bdb_appsock(netinfo_type *netinfo, SBUF2 *sb)
 {
     bdb_state_type *bdb_state;
@@ -2514,6 +2523,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
        the usr ptr containing the bdb state to the caller instead
        of the netinfo pointer */
     net_register_appsock(bdb_state->repinfo->netinfo, bdb_appsock);
+    net_register_admin_appsock(bdb_state->repinfo->netinfo, bdb_admin_appsock);
 
     /* register the routine that will be called when a sock closes*/
     net_register_hostdown(bdb_state->repinfo->netinfo, net_hostdown_rtn);

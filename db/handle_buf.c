@@ -48,6 +48,7 @@
 #include "osqlblockproc.h"
 #include "intern_strings.h"
 #include "logmsg.h"
+#include <poll.h>
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
@@ -64,6 +65,7 @@ static pool_t *p_reqs; /* request pool */
 struct dbq_entry_t {
     LINKC_T(struct dbq_entry_t) qlnk;
     LINKC_T(struct dbq_entry_t) rqlnk;
+    time_t queue_time_ms;
     void *obj;
 };
 
@@ -960,6 +962,8 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     return 0;
 }
 
+int gbl_handle_buf_add_latency_ms = 0;
+
 int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
                      char *frommach, int frompid, char *fromtask,
@@ -968,6 +972,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      intptr_t curswap)
 {
     int rc, nowms, num, ndispatch, iamwriter = 0;
+    int add_latency = gbl_handle_buf_add_latency_ms;
     struct thd *thd;
     int numwriterthreads;
     struct dbq_entry_t *newent = NULL;
@@ -1023,6 +1028,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         }
         newent->obj = (void *)iq;
         iamwriter = is_req_write(iq->opcode) ? 1 : 0;
+        newent->queue_time_ms = comdb2_time_epochms();
         if (!iamwriter) {
             (void)listc_abl(&rq_reqs, newent);
         }
@@ -1055,6 +1061,11 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                 iq = nextrq->obj;
                 /* remove from global list, and release link block of reader*/
                 listc_rfl(&q_reqs, nextrq);
+                if (add_latency > 0) {
+                    poll(0, 0, rand() % add_latency);
+                }
+                time_metric_add(thedb->handle_buf_queue_time,
+                        comdb2_time_epochms() - nextrq->queue_time_ms);
                 pool_relablk(pq_reqs, nextrq);
                 if (!iq)
                     /* this should never be hit */
@@ -1067,6 +1078,11 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     /* remove reader from read queue */
                     listc_rfl(&rq_reqs, nextrq);
                 }
+                if (add_latency > 0) {
+                    poll(0, 0, rand() % add_latency);
+                }
+                time_metric_add(thedb->handle_buf_queue_time,
+                        comdb2_time_epochms() - nextrq->queue_time_ms);
                 /* release link block */
                 pool_relablk(pq_reqs, nextrq);
                 if (!iq) {

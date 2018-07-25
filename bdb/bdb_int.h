@@ -682,6 +682,7 @@ struct bdb_callback_tag {
     GETROOMFP getroom_rtn;
     REPFAILFP repfail_rtn;
     BDBAPPSOCKFP appsock_rtn;
+    BDBAPPSOCKFP admin_appsock_rtn;
     PRINTFP print_rtn;
     BDBELECTSETTINGSFP electsettings_rtn;
     BDBCATCHUPFP catchup_rtn;

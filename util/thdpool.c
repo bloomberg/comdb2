@@ -746,9 +746,11 @@ thread_exit:
 }
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info)
+                    int queue_override, char *persistent_info, uint32_t flags)
 {
     static time_t last_dump = 0;
+    int enqueue_front = (flags & THDPOOL_ENQUEUE_FRONT);
+    int force_dispatch = (flags & THDPOOL_FORCE_DISPATCH);
     time_t crt_dump;
     size_t mem_sz;
     extern comdb2bma blobmem;
@@ -798,7 +800,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
      * work item to the new thread. */
     again:
         thd = listc_rtl(&pool->freelist);
-        if (!thd && (pool->maxnthd == 0 ||
+        if (!thd && (force_dispatch || pool->maxnthd == 0 ||
                      listc_size(&pool->thdlist) < pool->maxnthd)) {
             int rc;
 
@@ -868,10 +870,9 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             thd->on_freelist = 0;
             pool->num_passed++;
         } else {
-            /* queue work */
             if (listc_size(&pool->queue) >= pool->maxqueue) {
                 if (queue_override &&
-                    (!pool->maxqueueoverride ||
+                    (enqueue_front || !pool->maxqueueoverride ||
                      listc_size(&pool->queue) <
                          (pool->maxqueue + pool->maxqueueoverride))) {
                     if (thdpool_alarm_on_queing(listc_size(&pool->queue))) {
@@ -946,7 +947,10 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                 return -1;
             }
             pool->num_enqueued++;
-            listc_abl(&pool->queue, item);
+            if (enqueue_front)
+                listc_atl(&pool->queue, item);
+            else
+                listc_abl(&pool->queue, item);
 
             if (listc_size(&pool->queue) > pool->peakqueue) {
                 pool->peakqueue = listc_size(&pool->queue);

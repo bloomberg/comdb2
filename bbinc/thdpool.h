@@ -28,6 +28,7 @@ extern "C" {
 #endif
 
 #include <stdio.h>
+#include <inttypes.h>
 
 struct thdpool;
 
@@ -91,9 +92,12 @@ int thdpool_get_queue_depth(struct thdpool *pool);
 
 void thdpool_print_stats(FILE *fh, struct thdpool *pool);
 
+enum { 
+    THDPOOL_ENQUEUE_FRONT = 0x1,
+    THDPOOL_FORCE_DISPATCH = 0x2
+};
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info);
-
+                    int queue_override, char *persistent_info, uint32_t flags);
 void thdpool_stop(struct thdpool *pool);
 void thdpool_resume(struct thdpool *pool);
 void thdpool_set_exit(struct thdpool *pool);

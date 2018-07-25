@@ -280,6 +280,7 @@ struct netinfo_struct {
     NEWNODEFP *new_node_rtn;
     pthread_attr_t pthread_attr_detach;
     APPSOCKFP *appsock_rtn;
+    APPSOCKFP *admin_appsock_rtn;
     HELLOFP *hello_rtn;
     int accept_thread_created;
     int heartbeat_send_time;
