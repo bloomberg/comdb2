@@ -5056,10 +5056,9 @@ void net_cleanup_subnets()
  * When trying to connect, if the subnet is down
  * we will try to connect to the next one until we succeed.
  */
-static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
+static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *addr)
 {
     static unsigned int counter = 0xffff;
-    struct hostent *phe = NULL;
     uint8_t ii = 0; // do the loop no more that max subnets
 
     pthread_mutex_lock(&subnet_mtx);
@@ -5070,13 +5069,14 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
                          host_node_ptr->host);
 #endif
         pthread_mutex_unlock(&subnet_mtx);
-        return comdb2_gethostbyname(host_node_ptr->host);
+        return comdb2_gethostbyname(&host_node_ptr->host, addr);
     }
 
     if (counter == 0xffff) // start with a random subnet
         counter = rand() % num_dedicated_subnets;
 
-    while (NULL == phe && ii < num_dedicated_subnets) {
+    int rc;
+    while (ii < num_dedicated_subnets) {
         counter++;
         ii++;
 
@@ -5109,26 +5109,29 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
                 "Connecting to NON dedicated hostname/subnet '%s' counter=%d\n",
                 rephostname, counter);
 #endif
-        phe = comdb2_gethostbyname(rephostname);
-        if (!phe)
-            logmsg(LOGMSG_ERROR, "%d) get_dedicated_conhost(): ERROR gethostbyname "
-                            "'%s' FAILED \n",
-                    ii, rephostname);
-        else if (gbl_verbose_net)
-            host_node_printf(LOGMSG_USER, host_node_ptr,
-                             "'%s': gethostbyname '%s' addr %d \n", __func__,
-                             rephostname, *phe->h_addr);
+        char *name = rephostname;
+        rc = comdb2_gethostbyname(&name, addr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%d) %s(): ERROR gethostbyname '%s' FAILED\n",
+                    __func__, ii, rephostname);
+        } else {
+            if (gbl_verbose_net) {
+                host_node_printf(LOGMSG_USER, host_node_ptr,
+                                 "'%s': gethostbyname '%s' addr %d\n", __func__,
+                                 rephostname, *addr);
+            }
+            break;
+        }
     }
     pthread_mutex_unlock(&subnet_mtx);
-    return phe;
+    return rc;
 }
 
 int net_get_port_by_service(const char *dbname)
 {
-    struct servent *serv = comdb2_getservbyname(dbname, "tcp");
-    if (serv == NULL)
-        return 0;
-    return ntohs(serv->s_port);
+    short port = 0;
+    comdb2_getservbyname(dbname, "tcp", &port);
+    return ntohs(port);
 }
 
 
@@ -5168,17 +5171,13 @@ static void *connect_thread(void *arg)
             goto again;
         }
 
-        struct hostent *h = get_dedicated_conhost(host_node_ptr);
-        if (!h) {
+        if (get_dedicated_conhost(host_node_ptr, &host_node_ptr->addr) != 0) {
             if (gbl_verbose_net)
                 host_node_printf(LOGMSG_USER, host_node_ptr,
                                  "%s: couldnt connect to dedicated host\n",
                                  __func__);
             goto again;
         }
-
-        memcpy(&(host_node_ptr->addr), h->h_addr, h->h_length);
-        host_node_ptr->addr_len = h->h_length;
 
         /* *always* check portmux before connecting.  The
          * correct port may have changed since last time. */
@@ -5679,7 +5678,6 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
      * it will refresh the addr (and that's ok).
      */
     host_node_ptr->addr = addr;
-    host_node_ptr->addr_len = sizeof(addr);
     memset(host_node_ptr->subnet, 0, HOSTNAME_LEN);
 
     host_node_ptr->timestamp = time(NULL);

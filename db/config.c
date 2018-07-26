@@ -332,6 +332,7 @@ static char *legacy_options[] = {
     "setattr SC_DONE_SAME_TRAN 0",
     "logmsg notimestamp",
     "queuedb_genid_filename off",
+    "decoupled_logputs off",
 };
 
 int pre_read_legacy_defaults(void *_, void *__)
@@ -378,15 +379,10 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
 
 void getmyaddr()
 {
-    struct hostent *h;
-
-    h = comdb2_gethostbyname(gbl_mynode);
-    if (h == NULL || h->h_addrtype != AF_INET) {
-        /* default to localhost */
-        gbl_myaddr.s_addr = INADDR_LOOPBACK;
+    if (comdb2_gethostbyname(&gbl_mynode, &gbl_myaddr) != 0) {
+        gbl_myaddr.s_addr = INADDR_LOOPBACK; /* default to localhost */
         return;
     }
-    memcpy(&gbl_myaddr.s_addr, h->h_addr, h->h_length);
 }
 
 static int pre_read_option(char *line, int llen)
@@ -689,8 +685,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             /*create replication group. only me by default*/
             while (1) {
                 char nodename[512];
-                struct hostent *h;
-
                 tok = segtok(line, len, &st, &ltok);
                 if (ltok == 0) break;
                 if (ltok > sizeof(nodename)) {
@@ -710,14 +704,15 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 }
 
                 /* Check to see if this name is another name for me. */
-                h = comdb2_gethostbyname(nodename);
-                if (h && h->h_addrtype == AF_INET &&
-                    memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length) == 0) {
+                struct in_addr addr;
+                char *name = nodename;
+                if (comdb2_gethostbyname(&name, &addr) == 0 &&
+                    addr.s_addr == gbl_myaddr.s_addr) {
                     /* Assume I am better known by this name. */
-                    gbl_mynode = intern(nodename);
+                    gbl_mynode = intern(name);
                     gbl_mynodeid = machine_num(gbl_mynode);
                 }
-                if (strcmp(gbl_mynode, nodename) == 0 &&
+                if (strcmp(gbl_mynode, name) == 0 &&
                     gbl_rep_node_pri == 0) {
                     /* assign the priority of current node according to its
                      * sequence in nodes list. */
@@ -727,13 +722,13 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 /* lets ignore duplicate for now and make a list out of what is
                  * given in lrl */
                 for (kk = 1; kk < dbenv->nsiblings &&
-                             strcmp(dbenv->sibling_hostname[kk], nodename);
+                             strcmp(dbenv->sibling_hostname[kk], name);
                      kk++)
                     ; /*look for dupes*/
                 if (kk == dbenv->nsiblings) {
                     /*not a dupe.*/
                     dbenv->sibling_hostname[dbenv->nsiblings] =
-                        intern(nodename);
+                        intern(name);
                     for (int netnum = 0; netnum < MAXNETS; netnum++)
                         dbenv->sibling_port[dbenv->nsiblings][netnum] = 0;
                     dbenv->nsiblings++;

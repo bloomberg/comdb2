@@ -501,14 +501,15 @@ int static dbqueue_add_consumer_int(struct dbtable *db, int consumern,
             }
             consumer->bbhost_tag = strdup(hosttag);
         } else {
+            char *name = machstr;
             if (strcmp(machstr, "multi") != 0 &&
-                comdb2_gethostbyname(machstr) == NULL) {
+                comdb2_gethostbyname(&name, NULL) != 0) {
                 logmsg(LOGMSG_ERROR, "%s:%d consumer %d: unknown host %s\n",
                         __FILE__, __LINE__, consumern, machstr);
                 consumer_destroy(consumer);
                 return -1;
             }
-            consumer->rmtmach = intern(machstr);
+            consumer->rmtmach = intern(name);
         }
 
         if (consumer->dbnum <= 0) {
