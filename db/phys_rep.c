@@ -11,6 +11,10 @@
 
 #include "comdb2.h"
 #include "phys_rep.h"
+#include "truncate_log.h"
+
+#include <parse_lsn.h>
+#include <logmsg.h>
 
 /* for replication */
 static cdb2_hndl_tp* repl_db;
@@ -123,6 +127,8 @@ void* keep_in_sync(void* args)
     // char* sql_cmd = "select * from comdb2_transaction_logs('{@file:@offset}')"; 
     size_t sql_cmd_len = 100;
     char sql_cmd[sql_cmd_len];
+    LOG_INFO info;
+    LOG_INFO prev_info;
 
 
     do_repl = 1;
@@ -137,8 +143,8 @@ void* keep_in_sync(void* args)
 
     while(do_repl)
     {
-        LOG_INFO info = get_last_lsn(thedb->bdb_env);
-        LOG_INFO prev_info = info;
+        info = get_last_lsn(thedb->bdb_env);
+        prev_info = info;
 
         rc = snprintf(sql_cmd, sql_cmd_len, 
                 "select * from comdb2_transaction_logs('{%u:%u}')", 
@@ -152,6 +158,11 @@ void* keep_in_sync(void* args)
         if ((rc = cdb2_next_record(repl_db)) != CDB2_OK)
         {
             fprintf(stderr, "Can't find the next record\n");
+
+            if (rc == CDB2_OK_DONE)
+            {
+                fprintf(stderr, "Let's do truncation");
+            }
         }
         // TODO: check the record. This is important for truncation
 
@@ -211,7 +222,8 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     char* lsn, *gen, *timestamp, *token;
     const char delim[2] = ":";
     int64_t rectype; 
-    int rc, file, offset;
+    int rc; 
+    unsigned int file, offset;
 
     lsn = (char *) cdb2_column_value(repl_db, 0);
     rectype = *(int64_t *) cdb2_column_value(repl_db, 1);
@@ -227,7 +239,7 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     if (token)
     {
         /* assuming it's {#### */
-        file = atoi(token + 1);
+        file = (unsigned int) strtoul(token + 1, NULL, 0);
     }
     else
     {
@@ -238,14 +250,14 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     if (token)
     {
         token[strlen(token) - 1] = '\0';
-        offset = atoi(token);
+        offset = (unsigned int) strtoul(token, NULL, 0);
     }
     else
     {
         offset = -1;
     }
     
-    fprintf(stdout, ": %d:%d, rectype: %ld\n", file, offset, rectype);    
+    fprintf(stdout, ": %u:%u, rectype: %ld\n", file, offset, rectype);    
 
     /* check if we need to call new file flag */
     if (prev_info.file < file)

@@ -170,7 +170,7 @@ __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery)
 
 	if ((rc = __checkpoint_get(dbenv, NULL))) {
 		__db_err(dbenv,
-		    "__checkpoint_save, couln't fetch last checkpoint rc %d\n",
+		    "__checkpoint_save, couldn't fetch last checkpoint rc %d\n",
 		    rc);
 		return EINVAL;
 	}

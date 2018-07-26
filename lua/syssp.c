@@ -13,6 +13,8 @@
 #include <sql.h>
 
 #include <logmsg.h>
+#include <parse_lsn.h>
+#include <truncate_log.h>
 
 
 /* Wishes for anyone who wants to clean this up one day:
@@ -250,6 +252,32 @@ static int db_comdb_verify(Lua L) {
 }
 
 
+static int db_comdb_truncate_log(Lua L) {
+    SP sp = getsp(L);
+    sp->max_num_instructions = 1000000; //allow large number of steps
+    char *lsnstr = NULL;
+    if (lua_isstring(L, 1)) {
+        lsnstr = (char *) lua_tostring(L, -1);
+    }
+    else {
+        return luaL_error(L, "Require a string for the lsn");
+    }
+
+    int rc, file, offset; 
+  
+    if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
+        // db_verify_table_callback(L, "Usage: truncate_log(\"{<file>:<offset>}\")");
+        return luaL_error(L, 
+                "Usage: truncate_log(\"{<file>:<offset>}\"). Input not valid.");
+    }
+    logmsg(LOGMSG_USER, "truncating from lsn {%u:%u}\n", file, offset);
+
+    truncate_log(file, offset);
+
+    return 1;
+}
+
+
 static int db_send(Lua L) {
     FILE *f;
     char buf[1024];
@@ -312,6 +340,7 @@ static const luaL_Reg sys_funcs[] = {
     { "load", db_csvcopy},
     { "comdb_analyze", db_comdb_analyze },
     { "comdb_verify", db_comdb_verify },
+    { "truncate_log", db_comdb_truncate_log },
     { NULL, NULL }
 }; 
 
@@ -416,6 +445,12 @@ static struct sp_source syssps[] = {
         "sys.cmd.load",
         "local function main(csv,tbl,seperator, header)\n"
         "sys.load(db,csv,tbl,seperator,header)\n"
+        "end\n"
+    }
+    ,{
+        "sys.cmd.truncate_log",
+        "local function main(lsn)\n"
+        "sys.truncate_log(lsn)\n"
         "end\n"
     }
 };
