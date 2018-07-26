@@ -527,12 +527,25 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
     }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     case CC_LB: {
-      *tokenType = TK_LB;
-      return 1;
-    }
-    case CC_RB: {
-      *tokenType = TK_RB;
-      return 1;
+      /*
+      ** NOTE: This code assumes that the curly braced block represents the
+      **       last token in the string.
+      */
+      int n = 0;
+      *tokenType = TK_NOSQL;
+      for(i=1; (c=z[i])!=0; i++){
+        if( c=='{' ){
+          n++;
+        }else if( c=='}' ){
+          if( n==0 ){
+            *tokenType = TK_ILLEGAL;
+            break;
+          }else{
+            n--;
+          }
+        }
+      }
+      return i;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     case CC_X: {

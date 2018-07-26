@@ -190,28 +190,27 @@ static inline int create_string_from_token(Vdbe* v, Parse* pParse, char** dst, T
     return SQLITE_OK;
 }
 
-static inline int copyNosqlToken(Vdbe* v, Parse *pParse, char** buf,
-    Token *t)
-{
-    if (*buf == NULL)    
-        *buf = (char*) malloc((t->n));
-
-    if (*buf == NULL)
-    {
-        setError(pParse, SQLITE_NOMEM, "System out of memory");
-        return SQLITE_NOMEM;
-    }
-
-    if (t->n < 3)
-    {
-        **buf = '\0';
-    } else
-    {
-        strncpy(*buf, t->z + 1,t->n - 2);
-        (*buf)[t->n - 2] = '\0';
-    }
-    
-    return SQLITE_OK;
+static inline int copyNoSqlToken(
+  Vdbe* v,
+  Parse *pParse,
+  char** buf,
+  Token *t
+){
+  size_t nByte = sizeof(char) * (t->n + 1);
+  assert( *buf==NULL );
+  *buf = (char *)malloc(nByte);
+  if( *buf==NULL ){
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+    return SQLITE_NOMEM;
+  }
+  memset(*buf, 0, nByte);
+  if( t->n>=3 ){
+    const char *z = t->z;
+    size_t n = (size_t)t->n;
+    if( z[0]=='{' && z[n-1]=='}' ){ z++; n -= 2; }
+    strncpy(*buf, z, n);
+  }
+  return SQLITE_OK;
 }
 
 static inline int chkAndCopyTableTokens(Vdbe *v, Parse *pParse, char *dst,
@@ -576,7 +575,7 @@ void comdb2CreateTableCSC2(
     sc->nothrevent = 1;
     sc->live = 1;
     fillTableOption(sc, opt);
-    copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
+    copyNoSqlToken(v, pParse, &sc->newcsc2, csc2);
     comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
                     (vdbeFuncArgFree)&free_schema_change_type);
     return;
@@ -615,7 +614,7 @@ void comdb2AlterTableCSC2(
     sc->scanmode = SCAN_PARALLEL;
     sc->dryrun = dryrun;
     fillTableOption(sc, opt);
-    copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
+    copyNoSqlToken(v, pParse, &sc->newcsc2, csc2);
     if(dryrun)
         comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
                             (vdbeFuncArgFree)  &free_schema_change_type);
@@ -866,7 +865,7 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
         }
         strcpy(sc->fname, version);
     }
-    copyNosqlToken(v, pParse, &sc->newcsc2, proc);
+    copyNoSqlToken(v, pParse, &sc->newcsc2, proc);
     const char* colname[] = {"version"};
     const int coltype = OPFUNC_STRING_TYPE;
     OpFuncSetup stp = {1, colname, &coltype, 256};
