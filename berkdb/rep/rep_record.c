@@ -3794,8 +3794,8 @@ __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	return rc;
 }
 
-int __dbenv_apply_log(DB_ENV* dbenv, int file, int offset, int64_t rectype,
-        void* blob, int blob_len)
+int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset, 
+        int64_t rectype, void* blob, int blob_len)
 {
 
     REP_CONTROL rp;
@@ -7246,7 +7246,7 @@ __rep_truncate_repdb(dbenv)
  * everything else has exited the library.  If not, set up the world
  * correctly and move forward.
  */
-int __dbenv_rep_verify_match(DB_ENV* dbenv, int file, int offset, int64_t rectype)
+int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offset)
 {
     REP_CONTROL rp;
 	DB_LSN lsnp;
@@ -7261,7 +7261,6 @@ int __dbenv_rep_verify_match(DB_ENV* dbenv, int file, int offset, int64_t rectyp
     rp.lsn = lsnp;
     db_rep = dbenv->rep_handle;
     rep = db_rep->region;
-    rp.rectype = rectype;
     rp.gen = rep->gen; 
     rp.flags = 0;
 
@@ -7430,16 +7429,19 @@ finish:ZERO_LSN(lp->waiting_lsn);
 	 * deadlock.
 	 */
 
-	F_SET(db_rep->rep_db, DB_AM_RECOVER);
-	MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
+    if (db_rep->rep_db)
+    {
+        F_SET(db_rep->rep_db, DB_AM_RECOVER);
+        MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 
-	if ((ret = __truncate_repdb(dbenv)) != 0) {
-		abort();
-		goto err;
-	}
+        if ((ret = __truncate_repdb(dbenv)) != 0) {
+            abort();
+            goto err;
+        }
 
-	MUTEX_LOCK(dbenv, db_rep->db_mutexp);
-	F_CLR(db_rep->rep_db, DB_AM_RECOVER);
+        MUTEX_LOCK(dbenv, db_rep->db_mutexp);
+        F_CLR(db_rep->rep_db, DB_AM_RECOVER);
+    }
 
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	rep->stat.st_log_queued = 0;

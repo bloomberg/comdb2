@@ -24,6 +24,7 @@ set(src
   misc.c
   nodemap.c
   object_pool.c
+  parse_lsn.c
   perf.c
   plhash.c
   pool.c

@@ -57,19 +57,20 @@ u_int32_t get_next_offset(DB_ENV* dbenv, LOG_INFO log_info)
     return log_info.offset + log_info.size + dbenv->get_log_header_size(dbenv);
 }
 
-int apply_log(DB_ENV* dbenv, int file, int offset, int64_t rectype, 
-        void* blob, int blob_len)
+int apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset, 
+        int64_t rectype, void* blob, int blob_len)
 {
     return dbenv->apply_log(dbenv, file, offset, rectype, blob, blob_len);
 }
 
-int truncate_log(bdb_state_type* bdb_state, int file, int offset, int64_t rectype)
+int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file, 
+        unsigned int offset)
 {
-    char* msg = "replication_truncation";
+    char* msg = "truncate log";
     /* have to get lock for recovery */
     BDB_WRITELOCK(msg);
 
-    bdb_state->dbenv->rep_verify_match(bdb_state->dbenv, file, offset, rectype);
+    bdb_state->dbenv->rep_verify_match(bdb_state->dbenv, file, offset);
 
     BDB_RELLOCK();
 

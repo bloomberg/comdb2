@@ -13,7 +13,9 @@ struct LOG_INFO
 LOG_INFO get_last_lsn(bdb_state_type* bdb_state);
 u_int32_t get_next_offset(DB_ENV* dbenv, LOG_INFO log_info);
 
-int apply_log(DB_ENV* dbenv, int file, int offset, int64_t rectype, 
-        void* blob, int blob_len);
+int apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset, 
+        int64_t rectype, void* blob, int blob_len);
+int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file, 
+        unsigned int offset);
 
 #endif
