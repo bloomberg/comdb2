@@ -4855,9 +4855,10 @@ static void register_all_int_switches()
                         &gbl_extended_sql_debug_trace);
     register_int_switch("dump_fsql_response", "Dump fsql out messages",
                         &gbl_dump_fsql_response);
-    register_int_switch("large_str_idx_find",
-                        "Allow index search using out or range strings",
-                        &gbl_large_str_idx_find);
+    register_int_switch(
+        "large_str_idx_find",
+        "Allow index search using out-of-range strings or bytearrays",
+        &gbl_large_str_idx_find);
     register_int_switch("fingerprint_queries",
                         "Compute fingerprint for SQL queries",
                         &gbl_fingerprint_queries);
