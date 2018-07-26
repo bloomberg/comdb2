@@ -700,8 +700,6 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         add_new_db = (db == NULL);
     }
 
-    assert(type != add || add_new_db == 1);
-
     if (type == setcompr) {
         logmsg(LOGMSG_INFO,
                "Replicant setting compression flags for table:%s\n", table);

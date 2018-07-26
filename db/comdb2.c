@@ -737,13 +737,13 @@ int gbl_mifid2_datetime_range = 1;
 int gbl_early_verify = 1;
 
 int gbl_bbenv;
+extern int gbl_legacy_defaults;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
 int free_gbl_tunables();
 int register_db_tunables(struct dbenv *tbl);
 
-int init_plugins(void);
 int destroy_plugins(void);
 void register_plugin_tunables(void);
 int install_static_plugins(void);
@@ -3018,7 +3018,7 @@ static void load_dbstore_tableversion(struct dbenv *dbenv)
     }
 }
 
-int init_sqlite_tables(struct dbenv *dbenv)
+static int init_sqlite_tables(struct dbenv *dbenv)
 {
     int rc;
     rc = init_sqlite_table(dbenv, "sqlite_stat1");
@@ -3535,22 +3535,19 @@ static int init(int argc, char **argv)
 
     /* get/set the table names from llmeta */
     if (gbl_create_mode) {
-       if (init_sqlite_tables(thedb))
-          return -1;
-
-        /* schemas are stored in the meta table after the backend is fully
-         * opened below */
-    }
-    /* if we are using low level meta table and this isn't the create pass,
-     * we shouldn't see any table definitions in the lrl. they should have
-     * been removed during initialization */
-    else if (thedb->num_dbs != 0) {
-        logmsg(LOGMSG_FATAL, "lrl contains table definitions, they should not be "
-                        "present after the database has been created\n");
+        if (!gbl_legacy_defaults)
+            if (init_sqlite_tables(thedb))
+                return -1;
+    } else if (thedb->num_dbs != 0) {
+        /* if we are using low level meta table and this isn't the create
+         * pass, we shouldn't see any table definitions in the lrl. they
+         * should have been removed during initialization */
+        logmsg(LOGMSG_FATAL, "lrl contains table definitions, they should not "
+                             "be present after the database has been "
+                             "created\n");
         return -1;
-    }
-    /* we will load the tables from the llmeta table */
-    else {
+    } else {
+        /* we will load the tables from the llmeta table */
         int waitfileopen =
             bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAY_FILE_OPEN);
         if (waitfileopen) {
@@ -5043,12 +5040,6 @@ int main(int argc, char **argv)
     }
 
     init_debug_switches();
-
-    /* Initialize the plugin sub-system. */
-    if ((init_plugins())) {
-        logmsg(LOGMSG_FATAL, "Failed to initialize plugin sub-system");
-        exit(1);
-    }
 
     /* Initialize plugin tunables. */
     register_plugin_tunables();

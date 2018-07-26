@@ -299,8 +299,6 @@ static char *legacy_options[] = {
     "nullsort high",
     "dont_sort_nulls_with_header",
     "nochecksums",
-    "sql_tranlevel_default comdb2",	  /* check this one*/
-    "sql_tranlevel_default prefer_oldblock", /* and this one */
     "off fix_cstr",
     "no_null_blob_fix",
     "no_static_tag_blob_fix",
@@ -332,10 +330,12 @@ static char *legacy_options[] = {
     "setattr SC_DONE_SAME_TRAN 0",
     "logmsg notimestamp",
     "queuedb_genid_filename off",
+    "decoupled_logputs off",
 };
-
+int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {
+    gbl_legacy_defaults = 1;
     for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++) {
         pre_read_option(legacy_options[i], strlen(legacy_options[i]));
     }
