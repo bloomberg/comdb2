@@ -34,7 +34,7 @@
 #include "all_static_plugins.h"
 
 /* All registered plugins */
-comdb2_plugin_t **gbl_plugins;
+comdb2_plugin_t *gbl_plugins[MAXPLUGINS];
 
 /* If specified, the plugins will be loaded from this directory. */
 static char *plugindir;
@@ -280,25 +280,9 @@ void register_plugin_tunables(void)
         TUNABLE_STRING, &plugindir, READONLY, NULL, NULL, NULL, NULL);
 }
 
-/* Initialize the plugin sub-system. */
-int init_plugins(void)
-{
-    gbl_plugins =
-        (comdb2_plugin_t **)calloc(MAXPLUGINS + 1, sizeof(comdb2_plugin_t *));
-    if (!gbl_plugins) {
-        logmsg(LOGMSG_ERROR, "System out of memory.\n");
-        return 1;
-    }
-
-    return 0;
-}
-
 /* Destroy all plugins. */
 int destroy_plugins(void)
 {
-    /*
-      Initialize the plugin and add it to the global list of installed plugins.
-    */
     for (int i = 0; gbl_plugins[i]; ++i) {
         if (gbl_plugins[i]->destroy_cb && gbl_plugins[i]->destroy_cb()) {
             logmsg(LOGMSG_ERROR, "Plugin de-initialization failed (%s).\n",
@@ -306,8 +290,6 @@ int destroy_plugins(void)
             return 1;
         }
     }
-
-    free(gbl_plugins);
     return 0;
 }
 
