@@ -58,7 +58,7 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
 static inline int get_db_handle(struct dbtable *newdb, void *trans)
 {
     int bdberr;
-    if (newdb->dbenv->master == gbl_mynode) {
+    if (newdb->dbenv->master == gbl_mynode && !gbl_is_physical_replicant) {
         /* I am master: create new db */
         newdb->handle = bdb_create_tran(
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,

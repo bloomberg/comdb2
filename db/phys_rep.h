@@ -1,5 +1,5 @@
 #ifndef PHYS_REP_H
-#define PHYS_REP_H_
+#define PHYS_REP_H
 
 // extern variable defn
 int gbl_is_physical_replicant;

@@ -23,6 +23,7 @@
 #include "build/db.h"
 #include "dbinc/db_swap.h"
 #include "dbinc_auto/txn_auto.h"
+#include "parse_lsn.h"
 
 /* Column numbers */
 #define TRANLOG_COLUMN_START        0
@@ -242,46 +243,11 @@ static inline void tranlog_lsn_to_str(char *st, DB_LSN *lsn)
 
 static inline int parse_lsn(const char *lsnstr, DB_LSN *lsn)
 {
-    const char *p = lsnstr;
     int file, offset;
-    while (*p != '\0' && *p == ' ') p++;
-    skipws(p);
 
-    /* Parse opening '{' */
-    if (*p != '{')
+    if (char_to_lsn(lsnstr, &file, &offset)) {
         return -1;
-    p++;
-    skipws(p);
-    if ( !isnum(p) )
-        return -1;
-
-    /* Parse file */
-    file = atoi(p);
-    while( isnum(p) )
-        p++;
-    skipws(p);
-    if ( *p != ':' )
-        return -1;
-    p++;
-    skipws(p);
-    if ( !isnum(p) )
-        return -1;
-
-    /* Parse offset */
-    offset = atoi(p);
-    while( isnum(p) )
-        p++;
-
-    skipws(p);
-
-    /* Parse closing '}' */
-    if (*p != '}')
-        return -1;
-    p++;
-
-    skipws(p);
-    if (*p != '\0')
-        return -1;
+    }
 
     lsn->file = file;
     lsn->offset = offset;
