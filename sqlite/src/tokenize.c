@@ -545,6 +545,8 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
           }
         }
       }
+      testcase( n<0 );  testcase( n==0 );  testcase( n>0 );
+      testcase( z[i-1]=='}' );  testcase( z[i-1]!='}' );
       return i;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
