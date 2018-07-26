@@ -31,7 +31,7 @@
 [INSERT INTO t1 VALUEs(0,1,2)] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't1' index 0
 [INSERT INTO t1 VALUEs(0,1,2) ON CONFLICT (i) DO UPDATE SET z=z+1] failed with rc -3 no such column: z
 [INSERT INTO t1 VALUEs(0,1,2) ON CONFLICT (i) DO UPDATE SET k=z+1] failed with rc -3 no such column: z
-[INSERT INTO t1 VALUEs(0,1,2) ON CONFLICT (i) DO UPDATE SET k=k+1] failed with rc 299 add key constraint duplicate key '$KEY_B084A6FC' on table 't1' index 1
+[INSERT INTO t1 VALUEs(0,1,2) ON CONFLICT (i) DO UPDATE SET k=k+1] failed with rc 299 add key constraint duplicate key '$KEY_697548A5' on table 't1' index 1
 (rows inserted=0)
 (rows inserted=1)
 (i=0, j=2, k=0)
@@ -55,13 +55,13 @@
 (rows inserted=1)
 [INSERT INTO t1 VALUES(1,1,1,1)] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't1' index 0
 (rows inserted=1)
-[INSERT INTO t1 VALUES(1,1,1,1) ON CONFLICT(i) DO NOTHING] failed with rc 299 add key constraint duplicate key '$KEY_C783966A' on table 't1' index 1
+[INSERT INTO t1 VALUES(1,1,1,1) ON CONFLICT(i) DO NOTHING] failed with rc 299 add key constraint duplicate key '$KEY_1E727833' on table 't1' index 1
 [INSERT INTO t1 VALUES(1,1,1,1) ON CONFLICT(j) DO NOTHING] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't1' index 0
 [INSERT INTO t1 VALUES(1,1,1,1) ON CONFLICT(k) DO NOTHING] failed with rc -3 ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
 [INSERT INTO t1 VALUES(1,1,1,1) ON CONFLICT(l) DO NOTHING] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't1' index 0
 [INSERT INTO t1 VALUES(1,1,1,1) ON CONFLICT(m) DO NOTHING] failed with rc -3 no such column: m
 (i=1, j=1, k=1, l=1)
-[INSERT INTO t1 VALUES(2,1,1,1) ON CONFLICT(j) DO NOTHING] failed with rc 299 add key constraint duplicate key '$KEY_2EE0335F' on table 't1' index 3
+[INSERT INTO t1 VALUES(2,1,1,1) ON CONFLICT(j) DO NOTHING] failed with rc 299 add key constraint duplicate key '$KEY_F711DD06' on table 't1' index 3
 (rows inserted=1)
 (i=1, j=1, k=1, l=1)
 (rows inserted=1)
