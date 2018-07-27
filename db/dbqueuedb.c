@@ -1,6 +1,9 @@
 #include "comdb2.h"
 #include "trigger.h"
 
+#include <unistd.h>
+#include <poll.h>
+
 int dbqueuedb_add_consumer(struct dbtable *db, int consumern, const char *method,
                            int noremove) {
 
@@ -88,5 +91,74 @@ void dbqueuedb_wake_all_consumers_all_queues(struct dbenv *dbenv, int force) {
         handler = thedb->queue_consumer_handlers[i];
         if (handler)
             handler->wake_all_consumers_all_queues(dbenv, force);
+    }
+}
+
+int 
+queue_consume(struct ireq *iq, const void *fnd, int consumern)
+{
+    const int sleeptime = 1;
+    int gotlk = 0;
+
+    /* Outer loop - long sleep between retries */
+    while(1)
+    {
+        int retries;
+
+        /* Inner loop - short delay between retries */
+        for(retries = 0; retries < gbl_maxretries; retries++)
+        {
+            tran_type *trans;
+            int rc;
+            int startms, diffms;
+
+            if(retries > 10)
+                poll(0,0,(rand()%25+1));
+
+            if (gbl_exclusive_blockop_qconsume) {
+                pthread_rwlock_wrlock(&gbl_block_qconsume_lock);
+                gotlk = 1;
+            }
+
+            rc = trans_start(iq, NULL, &trans);
+            if(rc != 0)
+            {
+                if (gotlk)
+                    pthread_rwlock_unlock(&gbl_block_qconsume_lock);
+                return -1;
+            }
+
+            rc = dbq_consume(iq, trans, consumern, fnd);
+            if(rc != 0)
+            {
+                trans_abort(iq, trans);
+                if (gotlk)
+                    pthread_rwlock_unlock(&gbl_block_qconsume_lock);
+                if(rc == RC_INTERNAL_RETRY)
+                    continue;
+                else if(rc == IX_NOTFND)
+                    return 0;
+                else
+                    break;
+            }
+
+            rc = trans_commit(iq, trans, 0);
+            if (gotlk)
+                pthread_rwlock_unlock(&gbl_block_qconsume_lock);
+            if(rc == 0)
+                return 0;
+            else if(rc == RC_INTERNAL_RETRY)
+                continue;
+            else if(rc == ERR_NOMASTER)
+                return -1;
+            else
+                break;
+        }
+
+        printf("difficulty consuming key from queue '%s' consumer %d\n",
+                iq->usedb->tablename, consumern);
+        if(thedb->stopped || thedb->exiting || thedb->master != gbl_mynode)
+            return -1;
+        sleep(sleeptime);
     }
 }
