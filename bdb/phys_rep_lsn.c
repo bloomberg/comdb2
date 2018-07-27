@@ -48,6 +48,12 @@ LOG_INFO get_last_lsn(bdb_state_type* bdb_state)
     return log_info;
 }
 
+int get_log(bdb_state_type* bdb_state, void** blob, unsigned int blob_len)
+{
+    /* TODO: like get_last_lsn, but need to expose the data this time */
+    return 0;
+}
+
 u_int32_t get_next_offset(DB_ENV* dbenv, LOG_INFO log_info)
 {
     return log_info.offset + log_info.size + dbenv->get_log_header_size(dbenv);
