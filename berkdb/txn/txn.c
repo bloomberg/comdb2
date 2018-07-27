@@ -2211,6 +2211,7 @@ do_ckp:	/*
 	if (unlikely(gbl_ckp_sleep_before_sync > 0))
 		usleep(gbl_ckp_sleep_before_sync * 1000LL);
 
+	ckp_lsn_sav = ckp_lsn;
 	/* If flag is DB_FORCE, don't run perfect checkpoints. */
 	if (MPOOL_ON(dbenv) &&
 			(ret = __memp_sync_restartable(dbenv,
@@ -2220,6 +2221,9 @@ do_ckp:	/*
 		    db_strerror(ret));
 		return (ret);
 	}
+
+	if (log_compare(&ckp_lsn_sav, &ckp_lsn)<0)
+		ckp_lsn = ckp_lsn_sav;
 
 	/*
 	 * Because we can't be a replication client here, and because
