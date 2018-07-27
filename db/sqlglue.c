@@ -3894,7 +3894,7 @@ int sqlite3BtreePrevious(BtCursor *pCur, int flags)
 
     if (move_is_nop(pCur, pRes)) {
         if( *pRes==1 ) rc = SQLITE_DONE;
-        return SQLITE_OK;
+        return rc;
     }
 
     rc = pCur->cursor_move(pCur, pRes, CPREV);
@@ -8474,7 +8474,7 @@ int sqlite3BtreeNext(BtCursor *pCur, int flags)
 
     if (move_is_nop(pCur, pRes)) {
         if( *pRes==1 ) rc = SQLITE_DONE;
-        return SQLITE_OK;
+        return rc;
     }
 
     rc = pCur->cursor_move(pCur, pRes, CNEXT);
