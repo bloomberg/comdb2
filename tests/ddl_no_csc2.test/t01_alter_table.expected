@@ -484,3 +484,107 @@ tag "tag2"
 		u_longlong j 
 	}
 ')
+(csc2='
+    schema
+    {
+        short        alltypes_short
+        u_short      alltypes_ushort
+        int          alltypes_int
+        u_int        alltypes_uint
+        longlong     alltypes_longlong
+        float        alltypes_float
+        double       alltypes_double
+        byte         alltypes_byte_1
+        byte         alltypes_byte_2[16]
+        cstring      alltypes_cstring[16]
+        datetime     alltypes_datetime
+        datetimeus   alltypes_datetimeus
+        intervalym   alltypes_intervalym
+        intervalds   alltypes_intervalds
+        intervaldsus alltypes_intervaldsus
+        decimal32    alltypes_decimal32
+        decimal64    alltypes_decimal64
+        decimal128   alltypes_decimal128
+        blob         alltypes_blob_1
+        blob         alltypes_blob_2[16]
+        vutf8        alltypes_vutf8_1
+        vutf8        alltypes_vutf8_2[16]
+    }
+    tag "tag1"
+    {
+        short        alltypes_short
+        u_short      alltypes_ushort
+        int          alltypes_int
+        u_int        alltypes_uint
+        longlong     alltypes_longlong
+        float        alltypes_float
+        double       alltypes_double
+        byte         alltypes_byte_1
+        byte         alltypes_byte_2[16]
+        cstring      alltypes_cstring[16]
+        datetime     alltypes_datetime
+        datetimeus   alltypes_datetimeus
+        intervalym   alltypes_intervalym
+        intervalds   alltypes_intervalds
+        intervaldsus alltypes_intervaldsus
+        decimal32    alltypes_decimal32
+        decimal64    alltypes_decimal64
+        decimal128   alltypes_decimal128
+        blob         alltypes_blob_1
+        blob         alltypes_blob_2[16]
+        vutf8        alltypes_vutf8_1
+        vutf8        alltypes_vutf8_2[16]
+    }
+')
+(csc2='schema
+	{
+		short alltypes_short 
+		u_short alltypes_ushort 
+		int alltypes_int 
+		u_int alltypes_uint 
+		longlong alltypes_longlong 
+		float alltypes_float 
+		double alltypes_double 
+		byte alltypes_byte_1[1] 
+		byte alltypes_byte_2[16] 
+		cstring alltypes_cstring[16] 
+		datetime alltypes_datetime 
+		datetimeus alltypes_datetimeus 
+		intervalym alltypes_intervalym 
+		intervalds alltypes_intervalds 
+		intervaldsus alltypes_intervaldsus 
+		decimal32 alltypes_decimal32 
+		decimal64 alltypes_decimal64 
+		decimal128 alltypes_decimal128 
+		blob alltypes_blob_1 
+		blob alltypes_blob_2[16] 
+		vutf8 alltypes_vutf8_1 
+		vutf8 alltypes_vutf8_2[16] 
+		int i null = yes 
+	}
+tag "tag1"
+	{
+		short alltypes_short 
+		u_short alltypes_ushort 
+		int alltypes_int 
+		u_int alltypes_uint 
+		longlong alltypes_longlong 
+		float alltypes_float 
+		double alltypes_double 
+		byte alltypes_byte_1[1] 
+		byte alltypes_byte_2[16] 
+		cstring alltypes_cstring[16] 
+		datetime alltypes_datetime 
+		datetimeus alltypes_datetimeus 
+		intervalym alltypes_intervalym 
+		intervalds alltypes_intervalds 
+		intervaldsus alltypes_intervaldsus 
+		cstring alltypes_decimal32[14] 
+		cstring alltypes_decimal64[24] 
+		cstring alltypes_decimal128[43] 
+		blob alltypes_blob_1 
+		blob alltypes_blob_2 
+		vutf8 alltypes_vutf8_1 
+		vutf8 alltypes_vutf8_2[16] 
+	}
+')

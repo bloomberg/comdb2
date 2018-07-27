@@ -182,3 +182,61 @@ ALTER TABLE t1 DROP COLUMN j $$
 ALTER TABLE t1 DROP COLUMN l $$
 SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
 DROP TABLE t1;
+
+# https://github.com/bloomberg/comdb2/issues/1003
+CREATE TABLE t1 {
+    schema
+    {
+        short        alltypes_short
+        u_short      alltypes_ushort
+        int          alltypes_int
+        u_int        alltypes_uint
+        longlong     alltypes_longlong
+        float        alltypes_float
+        double       alltypes_double
+        byte         alltypes_byte_1
+        byte         alltypes_byte_2[16]
+        cstring      alltypes_cstring[16]
+        datetime     alltypes_datetime
+        datetimeus   alltypes_datetimeus
+        intervalym   alltypes_intervalym
+        intervalds   alltypes_intervalds
+        intervaldsus alltypes_intervaldsus
+        decimal32    alltypes_decimal32
+        decimal64    alltypes_decimal64
+        decimal128   alltypes_decimal128
+        blob         alltypes_blob_1
+        blob         alltypes_blob_2[16]
+        vutf8        alltypes_vutf8_1
+        vutf8        alltypes_vutf8_2[16]
+    }
+    tag "tag1"
+    {
+        short        alltypes_short
+        u_short      alltypes_ushort
+        int          alltypes_int
+        u_int        alltypes_uint
+        longlong     alltypes_longlong
+        float        alltypes_float
+        double       alltypes_double
+        byte         alltypes_byte_1
+        byte         alltypes_byte_2[16]
+        cstring      alltypes_cstring[16]
+        datetime     alltypes_datetime
+        datetimeus   alltypes_datetimeus
+        intervalym   alltypes_intervalym
+        intervalds   alltypes_intervalds
+        intervaldsus alltypes_intervaldsus
+        decimal32    alltypes_decimal32
+        decimal64    alltypes_decimal64
+        decimal128   alltypes_decimal128
+        blob         alltypes_blob_1
+        blob         alltypes_blob_2[16]
+        vutf8        alltypes_vutf8_1
+        vutf8        alltypes_vutf8_2[16]
+    }
+} $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+ALTER TABLE t1 ADD COLUMN i int$$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+DROP TABLE t1;

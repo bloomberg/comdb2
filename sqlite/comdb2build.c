@@ -2150,11 +2150,13 @@ static int comdb2_parse_sql_type(const char *type, int *size)
 }
 
 /*
-  Convert the type and length into one that can be used directly
-  in type_mapping array.
+  Convert the type and length of the retrieved fields so they can be added
+  to the new generated csc2.
 */
-static int fix_type_and_len(uint8_t *type, uint32_t *len)
+static int prepare_column_for_csc2(struct comdb2_column *column)
 {
+    uint8_t *type = &column->type;
+    uint32_t *len = &column->len;
     int in_len;
 
     assert(type && len);
@@ -2245,10 +2247,13 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
         *type = SQL_TYPE_CSTRING;
         *len = in_len;
         break;
-    case SERVER_BYTEARRAY: /* fallthrough */
-    case CLIENT_BYTEARRAY:
+    case SERVER_BYTEARRAY:
         *type = SQL_TYPE_BYTE;
         *len = in_len - 1;
+        break;
+    case CLIENT_BYTEARRAY:
+        *type = SQL_TYPE_BYTE;
+        *len = in_len;
         break;
     case SERVER_DATETIME: /* fallthrough */
     case CLIENT_DATETIME:
@@ -2262,10 +2267,13 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
     case CLIENT_INTVDS:
         *type = SQL_TYPE_INTERVALDS;
         break;
-    case SERVER_VUTF8: /* fallthrough */
-    case CLIENT_VUTF8:
+    case SERVER_VUTF8:
         *type = SQL_TYPE_VUTF8;
         *len = in_len - 5;
+        break;
+    case CLIENT_VUTF8:
+        *type = SQL_TYPE_VUTF8;
+        *len = in_len;
         break;
     case SERVER_DECIMAL:
         switch (in_len) {
@@ -2282,12 +2290,14 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
             goto err;
         }
         break;
-    case SERVER_BLOB:  /* fallthrough */
-    case SERVER_BLOB2: /* fallthrough */
-    case CLIENT_BLOB:  /* fallthrough */
-    case CLIENT_BLOB2:
+    case SERVER_BLOB: /* fallthrough */
+    case SERVER_BLOB2:
         *type = SQL_TYPE_BLOB;
         *len = in_len - 5;
+        break;
+    case CLIENT_BLOB: /* fallthrough */
+    case CLIENT_BLOB2:
+        *type = SQL_TYPE_BLOB;
         break;
     case SERVER_DATETIMEUS: /* fallthrough */
     case CLIENT_DATETIMEUS:
@@ -2950,7 +2960,7 @@ static int retrieve_columns(Parse *pParse, struct comdb2_ddl_context *ctx,
         column->convopts = src_schema->member[i].convopts;
 
         /* Convert type and length */
-        fix_type_and_len(&column->type, (int *)&column->len);
+        prepare_column_for_csc2(column);
 
         /* Add it to the list */
         listc_abl(&dst_schema->column_list, column);
@@ -3217,7 +3227,6 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
         struct schema *old_tag;
         LISTC_FOR_EACH(&tag->taglist, old_tag, lnk)
         {
-
             /* Skip internal tags. */
             if (old_tag->tag[0] != '.' &&
                 (old_tag->flags & SCHEMA_INDEX) == 0) {
