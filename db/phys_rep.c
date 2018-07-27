@@ -99,22 +99,22 @@ const char* start_replication()
         if ((rc = cdb2_open(&repl_db, repl_db_name, 
                         cnct->hostname, CDB2_DIRECT_CPU)) == 0)
         {
-            fprintf(stdout, "Attached to %s and db %s for replication\n", 
+            logmsg(LOGMSG_INFO, "Attached to %s and db %s for replication\n", 
                     cnct->hostname,
                     repl_db_name);
             if (pthread_create(&sync_thread, NULL, keep_in_sync, NULL))
             {
-                fprintf(stderr, "Couldn't create thread to sync\n");
+                logmsg(LOGMSG_ERROR, "Couldn't create thread to sync\n");
                 cdb2_close(repl_db);
             }
 
             return cnct->hostname;
         }
 
-        fprintf(stdout, "%s\n", cnct->hostname);
+        logmsg(LOGMSG_WARN, "Couldn't connect to %s\n", cnct->hostname);
     }
 
-    fprintf(stderr, "Couldn't find any remote dbs to connect to\n");
+    logmsg(LOGMSG_ERROR, "Couldn't find any remote dbs to connect to\n");
     return NULL;
 }
 
@@ -150,32 +150,24 @@ void* keep_in_sync(void* args)
                 "select * from comdb2_transaction_logs('{%u:%u}')", 
                 info.file, info.offset);
         if (rc < 0 || rc >= sql_cmd_len)
-            fprintf(stderr, "sql_cmd buffer is not long enough!\n");
+            logmsg(LOGMSG_ERROR, "sql_cmd buffer is not long enough!\n");
 
         rc = cdb2_run_statement(repl_db, sql_cmd);
 
         /* should verify that this is the record we want */
         if ((rc = cdb2_next_record(repl_db)) != CDB2_OK)
         {
-            fprintf(stderr, "Can't find the next record\n");
+            logmsg(LOGMSG_WARN, "Can't find the next record\n");
 
             if (rc == CDB2_OK_DONE)
             {
-                fprintf(stderr, "Let's do truncation");
+                fprintf(stderr, "Let's do truncation\n");
             }
         }
         // TODO: check the record. This is important for truncation
 
         while((rc = cdb2_next_record(repl_db)) == CDB2_OK)
         {
-            /* should have ncols as 5 
-            for(col = 0; col < 5; col++)
-            {
-                val = cdb2_column_value(repl_db, col); 
-                fprintf(stderr, "%s, type: %d", 
-                        cdb2_column_name(repl_db, col),
-                        cdb2_column_type(repl_db, col));
-            } */
 
             prev_info = handle_record(prev_info);
 
@@ -188,10 +180,9 @@ void* keep_in_sync(void* args)
         }
         else
         {
-            fprintf(stderr, "Had an error %d\n", rc);
+            logmsg(LOGMSG_ERROR, "Had an error %d\n", rc);
         }
 
-        //fprintf(stdout, "I sleep for 1 second\n");
         nanosleep(&wait_spec, &remain_spec);
     }
 
@@ -208,7 +199,7 @@ void stop_sync()
 
     if (pthread_join(sync_thread, NULL)) 
     {
-        fprintf(stderr, "sync thread didn't join back :(\n");
+        logmsg(LOGMSG_ERROR, "sync thread didn't join back :(\n");
     }
 
 }
@@ -232,7 +223,7 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     blob = cdb2_column_value(repl_db, 4);
     blob_len = cdb2_column_size(repl_db, 4);
 
-    fprintf(stdout, "lsn: %s", lsn);
+    logmsg(LOGMSG_WARN, "lsn: %s", lsn);
 
     /* TODO: consider using sqlite/ext/comdb2/tranlog.c */
     token = strtok(lsn, delim);    
@@ -257,7 +248,7 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
         offset = -1;
     }
     
-    fprintf(stdout, ": %u:%u, rectype: %ld\n", file, offset, rectype);    
+    logmsg(LOGMSG_WARN, ": %u:%u, rectype: %ld\n", file, offset, rectype);    
 
     /* check if we need to call new file flag */
     if (prev_info.file < file)
@@ -271,7 +262,7 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
 
     if (rc != 0)
     {
-        fprintf(stderr, "Something went wrong with applying the logs\n");
+        logmsg(LOGMSG_ERROR, "Something went wrong with applying the logs\n");
     }
 
     LOG_INFO next_info;
@@ -322,7 +313,7 @@ static int insert_connect(char* hostname)
             }
             else 
             {
-                fprintf(stderr, "Failed to realloc hostnames");
+                logmsg(LOGMSG_ERROR, "Failed to realloc hostnames");
                 return -1;
             }
         }
