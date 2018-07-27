@@ -1639,6 +1639,12 @@ int sqlite3VListNameToNum(VList *pIn, const char *zName, int nName){
   if( pIn==0 ) return 0;
   mx = pIn[1];
   i = 2;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( zName && zName[0]=='@' ){
+    zName++; nName--;
+    assert( nName>=0 );
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   do{
     const char *z = (const char*)&pIn[i+2];
     if( strncmp(z,zName,nName)==0 && z[nName]==0 ) return pIn[i];
