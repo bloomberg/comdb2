@@ -3897,6 +3897,7 @@ int sqlite3BtreePrevious(BtCursor *pCur, int flags)
     }
 
     rc = pCur->cursor_move(pCur, pRes, CPREV);
+    if( *pRes==1 ) rc = SQLITE_DONE;
 
     if (pCur->range && pCur->db && !pCur->range->islocked) {
         if (pCur->ixnum == -1) {
@@ -3913,7 +3914,7 @@ int sqlite3BtreePrevious(BtCursor *pCur, int flags)
             }
             pCur->range->lkeylen = 0;
             pCur->range->rkeylen = 0;
-        } else if (*pRes == 1 || rc != IX_OK) {
+        } else if (*pRes == 1 || rc != SQLITE_OK) {
             pCur->range->lflag = 1;
             if (pCur->range->lkey) {
                 free(pCur->range->lkey);
@@ -3934,8 +3935,6 @@ int sqlite3BtreePrevious(BtCursor *pCur, int flags)
         if (pCur->range->lflag && pCur->range->rflag)
             pCur->range->islocked = 1;
     }
-
-    if( *pRes==1 ) rc = SQLITE_DONE;
 
     reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                 "Previous(pCur %d, valid %s)      = %s\n", pCur->cursorid,
@@ -8477,6 +8476,7 @@ int sqlite3BtreeNext(BtCursor *pCur, int flags)
     }
 
     rc = pCur->cursor_move(pCur, pRes, CNEXT);
+    if( *pRes==1 ) rc = SQLITE_DONE;
 
     if (pCur->range && pCur->db && !pCur->range->islocked) {
         if (pCur->ixnum == -1) {
@@ -8493,7 +8493,7 @@ int sqlite3BtreeNext(BtCursor *pCur, int flags)
             }
             pCur->range->lkeylen = 0;
             pCur->range->rkeylen = 0;
-        } else if (*pRes == 1 || rc != IX_OK) {
+        } else if (*pRes == 1 || rc != SQLITE_OK) {
             pCur->range->rflag = 1;
             if (pCur->range->rkey) {
                 free(pCur->range->rkey);
@@ -8514,8 +8514,6 @@ int sqlite3BtreeNext(BtCursor *pCur, int flags)
         if (pCur->range->lflag && pCur->range->rflag)
             pCur->range->islocked = 1;
     }
-
-    if( *pRes==1 ) rc = SQLITE_DONE;
 
     reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                 "Next(pCur %d, valid %s)      = %s\n", pCur->cursorid,
