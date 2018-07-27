@@ -43,6 +43,5 @@ list(APPEND SQLITE_FLAGS
 
 if(${CMAKE_BUILD_TYPE} STREQUAL Debug)
   add_definitions(-DSQLITE_DEBUG)
+  add_definitions(-DSQLITE_MEMDEBUG)
 endif()
-
-
