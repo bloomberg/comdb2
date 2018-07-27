@@ -3897,7 +3897,6 @@ int sqlite3BtreePrevious(BtCursor *pCur, int flags)
     }
 
     rc = pCur->cursor_move(pCur, pRes, CPREV);
-    if( *pRes==1 ) rc = SQLITE_DONE;
 
     if (pCur->range && pCur->db && !pCur->range->islocked) {
         if (pCur->ixnum == -1) {
@@ -3935,6 +3934,8 @@ int sqlite3BtreePrevious(BtCursor *pCur, int flags)
         if (pCur->range->lflag && pCur->range->rflag)
             pCur->range->islocked = 1;
     }
+
+    if( *pRes==1 ) rc = SQLITE_DONE;
 
     reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                 "Previous(pCur %d, valid %s)      = %s\n", pCur->cursorid,
@@ -4024,27 +4025,6 @@ int sqlite3BtreeEof(BtCursor *pCur)
     reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                 " sqlite3BtreeEof(pCur %d)       = %d\n", pCur->cursorid, rc);
     return rc;
-}
-
-/*
- ** Return the flag byte at the beginning of the page that the cursor
- ** is currently pointing to.
- */
-int sqlite3BtreeFlags(BtCursor *pCur)
-{
-    int rc;
-
-    if (pCur->rootpage == RTPAGE_SQLITE_MASTER ||
-        pCur->ixnum == -1) /* special table or data */
-        rc = BTREE_INTKEY;
-    else
-        rc = BTREE_BLOBKEY;
-
-    reqlog_logf(pCur->bt->reqlogger, REQL_TRACE, "Flags(pCur %d)        = %d\n",
-                pCur->cursorid,
-                rc + 8); /* TODO: what's 8? (sqlite seems to add this
-                          * can't find corresponding flag) */
-    return rc + 8;
 }
 
 /*
@@ -8497,7 +8477,6 @@ int sqlite3BtreeNext(BtCursor *pCur, int flags)
     }
 
     rc = pCur->cursor_move(pCur, pRes, CNEXT);
-    if( *pRes==1 ) rc = SQLITE_DONE;
 
     if (pCur->range && pCur->db && !pCur->range->islocked) {
         if (pCur->ixnum == -1) {
@@ -8535,6 +8514,8 @@ int sqlite3BtreeNext(BtCursor *pCur, int flags)
         if (pCur->range->lflag && pCur->range->rflag)
             pCur->range->islocked = 1;
     }
+
+    if( *pRes==1 ) rc = SQLITE_DONE;
 
     reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                 "Next(pCur %d, valid %s)      = %s\n", pCur->cursorid,
