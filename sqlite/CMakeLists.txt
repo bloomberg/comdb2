@@ -60,6 +60,7 @@ add_library(sqlite
   src/malloc.c
   src/md5.c
   src/mem1.c
+  src/mem2.c
   src/memjournal.c
   src/mutex.c
   src/mutex_noop.c
