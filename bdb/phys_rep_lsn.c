@@ -1,5 +1,6 @@
 #include <build/db.h>
 #include <strings.h>
+#include <logmsg.h>
 
 #include "bdb_int.h"
 #include "phys_rep_lsn.h"
@@ -33,12 +34,7 @@ LOG_INFO get_last_lsn(bdb_state_type* bdb_state)
         return log_info;
     }
 
-    /*
-    fprintf(stdout, "Data: %.*s", logrec.size, (char *) logrec.data); 
-    fprintf(stdout, " size: %u ", logrec.size);
-    fprintf(stdout, "ulen %u, dlen %u, doff %u\n", logrec.ulen, logrec.dlen, logrec.doff);
-    */
-    fprintf(stdout, "LSN %u:%u\n", last_log_lsn.file, last_log_lsn.offset);
+    logmsg(LOGMSG_WARN, "LSN %u:%u\n", last_log_lsn.file, last_log_lsn.offset);
 
     log_info.file = last_log_lsn.file;
     log_info.offset =  last_log_lsn.offset; 
