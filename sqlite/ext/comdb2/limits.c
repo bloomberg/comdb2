@@ -25,7 +25,7 @@
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
 #include "cdb2_constants.h"
-#include "csc2/dynschemaload.h"  //MAXIDXNAMELEN
+#include "csc2/dynschemaload.h" //MAXIDXNAMELEN
 
 #define COMDB2_LIMIT(LIMIT, DESCR)                                             \
     {                                                                          \
@@ -46,11 +46,13 @@ struct limit_t {
     COMDB2_LIMIT(MAXCONSUMERS, "Maximum queue consumers"),
     COMDB2_LIMIT(MAXCUSTOPNAME, "Maximum length of a custom operation name"),
     COMDB2_LIMIT(MAX_DBNAME_LENGTH, "Maximum length of database name"),
-    COMDB2_LIMIT(MAXDTASTRIPE, "Maximum number of data stripes"),
+    COMDB2_LIMIT(MAXDTAFILES, "Maximum number of data files per table"),
+    COMDB2_LIMIT(MAXDTASTRIPE, "Maximum number of data stripes per table"),
     COMDB2_LIMIT(MAXDYNTAGCOLUMNS,
                  "Maximum number of bounded parameters per prepared statement"),
-    COMDB2_LIMIT(MAXINDEX, "Maximum number of keys (indices)"),
+    COMDB2_LIMIT(MAXINDEX, "Maximum number of indexes per table"),
     COMDB2_LIMIT(MAXKEYLEN, "Maximum key length"),
+    COMDB2_LIMIT(MAXKEYSZ, "Maximum key size"),
     {"MAXIDXNAMELEN", "Maximum keyname length", MAXIDXNAMELEN - 1},
     COMDB2_LIMIT(MAXNETS, "Maximum number of networks"),
     COMDB2_LIMIT(MAXNODES, "Maximum number of nodes"),
@@ -58,13 +60,16 @@ struct limit_t {
     COMDB2_LIMIT(MAX_QUEUE_HITS_PER_TRANS, "Maximum number of queues that "
                                            "Comdb2 efficiently remember per "
                                            "transaction"),
+    COMDB2_LIMIT(MAXRECSZ, "Maximum record size"),
     COMDB2_LIMIT(MAXSIBLINGS, "Maximum number of sibling nodes"),
     COMDB2_LIMIT(MAX_SPNAME, "Maximum length of stored procedure"),
     COMDB2_LIMIT(MAX_SPVERSION_LEN,
                  "Maximum length of stored procedure version"),
     {"MAXTABLELEN", "Maximum table name length", MAXTABLELEN - 1},
+    COMDB2_LIMIT(MAXTABLES, "Maximum number of tables"),
     COMDB2_LIMIT(MAXTAGLEN, "Maximum tag name length"),
-    COMDB2_LIMIT(REPMAX, "Maximum number of replicants")};
+    COMDB2_LIMIT(REPMAX, "Maximum number of replicants"),
+};
 
 /*
   comdb2_limits: Comdb2 hard limits.

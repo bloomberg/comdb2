@@ -1313,7 +1313,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
     }
 
     for (dtanum = 0; dtanum < MAXDTAFILES; dtanum++) {
-        for (strnum = 0; strnum < MAXSTRIPE; strnum++) {
+        for (strnum = 0; strnum < MAXDTASTRIPE; strnum++) {
             if (bdb_state->dbp_data[dtanum][strnum]) {
                 rc = bdb_state->dbp_data[dtanum][strnum]->close(
                     bdb_state->dbp_data[dtanum][strnum], flags);
@@ -5183,7 +5183,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
 
     iammaster = 0;
 
-    if (numix > MAXIX) {
+    if (numix > MAXINDEX) {
         *bdberr = BDBERR_MISC;
         return NULL;
     }
@@ -6271,7 +6271,7 @@ static int bdb_reinit_int(bdb_state_type *bdb_state, tran_type *tran,
     int dtanum;
     u_int32_t nrecs = 0;
     int rc;
-    u_int32_t nrecs_ix[MAXIX];
+    u_int32_t nrecs_ix[MAXINDEX];
 
     *bdberr = 0;
 

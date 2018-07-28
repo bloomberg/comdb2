@@ -244,7 +244,7 @@ void set_table_info_from_filename(DB_ENV *dbenv, struct fname *newname,
             stripe = 0;
         else {
             stripe = atoi(type + 5);
-            if (stripe > MAXSTRIPE)
+            if (stripe > MAXDTASTRIPE)
                 return;
         }
 
