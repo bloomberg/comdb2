@@ -1153,6 +1153,7 @@ static void *purge_old_blkseq_thread(void *arg)
 
 static void *purge_old_files_thread(void *arg)
 {
+    extern int gbl_is_physical_replicant;
     struct dbenv *dbenv = (struct dbenv *)arg;
     int rc;
     tran_type *trans;
@@ -1176,6 +1177,9 @@ static void *purge_old_files_thread(void *arg)
             continue;
         }
         if (db_is_stopped())
+            continue;
+
+        if (gbl_is_physical_replicant)
             continue;
 
         if (!bdb_have_unused_files() && gbl_master_changed_oldfiles) {

@@ -62,6 +62,7 @@ void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
 int rep_qstat_has_fills(void);
 
+int gbl_online_recovery = 1;
 extern int gbl_rep_printlock;
 extern int gbl_dispatch_rowlocks_bench;
 extern int gbl_rowlocks_bench_logical_rectype;
@@ -114,10 +115,10 @@ extern int gbl_berkdb_verify_skip_skipables;
 
 static int __rep_apply __P((DB_ENV *, REP_CONTROL *, DBT *, DB_LSN *,
 	uint32_t *, int));
-static int __rep_dorecovery __P((DB_ENV *, DB_LSN *, DB_LSN *));
+static int __rep_dorecovery __P((DB_ENV *, DB_LSN *, DB_LSN *, int));
 static int __rep_lsn_cmp __P((const void *, const void *));
 static int __rep_newfile __P((DB_ENV *, REP_CONTROL *, DB_LSN *));
-static int __rep_verify_match __P((DB_ENV *, REP_CONTROL *, time_t));
+static int __rep_verify_match __P((DB_ENV *, REP_CONTROL *, time_t, int));
 void send_master_req(DB_ENV *dbenv, const char *func, int line);
 static inline void send_dupmaster(DB_ENV *dbenv, const char *func, int line);
 
@@ -947,16 +948,17 @@ done:
  *	(respectively).
  *
  * PUBLIC: int __rep_process_message __P((DB_ENV *, DBT *, DBT *, char**,
- * PUBLIC:	 DB_LSN *, uint32_t *));
+ * PUBLIC:	 DB_LSN *, uint32_t *,int));
  */
 
 int
-__rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
+__rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
 	DB_ENV *dbenv;
 	DBT *control, *rec;
 	char **eidp;
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
+    int online;
 {
 	int fromline;
 	DB_LOG *dblp;
@@ -2119,7 +2121,7 @@ notfound:
 				verify_match_print = now;
 			}
 
-			ret = __rep_verify_match(dbenv, rp, savetime);
+			ret = __rep_verify_match(dbenv, rp, savetime, online);
 		}
 
 rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
@@ -4455,6 +4457,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	void *pglogs = NULL;
 	u_int32_t keycnt = 0;
 
+
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
@@ -6276,15 +6279,49 @@ __rep_cmp_vote2(dbenv, rep, eid, egen)
 }
 
 static int
-__rep_dorecovery(dbenv, lsnp, trunclsnp)
+recovery_getlocks(dbenv, lockid, lock_dbt, lsn)
+	DB_ENV *dbenv;
+    u_int32_t lockid;
+    DBT *lock_dbt;
+    DB_LSN lsn;
+{
+    int ret;
+    int t_ret;
+    void *pglogs = NULL;
+    unsigned long long context;
+    u_int32_t keycnt;
+
+    ret = __lock_get_list_context(dbenv, lockid, LOCK_GET_LIST_GETLOCK,
+            DB_LOCK_WRITE, lock_dbt, &context, &lsn, &pglogs, &keycnt);
+    if (pglogs)
+        __os_free(dbenv, pglogs);
+
+    if (ret) {
+        DB_LOCKREQ req = {0};
+        req.op = DB_LOCK_PUT_ALL;
+        if ((t_ret = __lock_vec(dbenv, lockid, 0, &req, 1, NULL)) != 0 && ret == 0)
+            ret = t_ret;
+        if ((t_ret = __lock_id_free(dbenv, lockid)) != 0 && ret == 0)
+            ret = t_ret;
+    }
+    return ret;
+}
+
+static int
+__rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	DB_ENV *dbenv;
 	DB_LSN *lsnp, *trunclsnp;
+    int online;
 {
 	DB_LSN lsn;
 	DBT mylog;
 	DB_LOGC *logc;
-	int ret, t_ret, undo;
+    DBT *lock_dbt = NULL;
+	int ret, t_ret, undo, count=0;
 	u_int32_t rectype;
+	u_int32_t keycnt = 0;
+	u_int32_t logflags = DB_LAST;
+    u_int32_t lockid = DB_LOCK_INVALIDID;
 	__txn_regop_args *txnrec;
 	__txn_regop_gen_args *txngenrec;
 	__txn_regop_rowlocks_args *txnrlrec;
@@ -6296,11 +6333,21 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp)
 	if (dbenv->recovery_start_callback)
 		dbenv->recovery_start_callback(dbenv);
 
+deadlock_retry:
+    logflags = DB_LAST;
+
+    count++;
+    if (online && ((ret = __lock_id(dbenv, &lockid)) != 0)) {
+        logmsg(LOGMSG_FATAL, "%s could not acquire lockid\n");
+        abort();
+    }
+
 	memset(&mylog, 0, sizeof(mylog));
 	undo = 0;
-	while (undo == 0 &&
-		(ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) == 0 &&
+	while ((undo == 0 || online) &&
+		(ret = __log_c_get(logc, &lsn, &mylog, logflags)) == 0 &&
 		log_compare(&lsn, lsnp) > 0) {
+        logflags = DB_PREV;
 		LOGCOPY_32(&rectype, mylog.data);
 		if (rectype == DB___txn_regop_rowlocks) {
 			if ((ret =
@@ -6310,7 +6357,19 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp)
 			if (txnrlrec->opcode != TXN_ABORT) {
 				undo = 1;
 			}
-			__os_free(dbenv, txnrlrec);
+
+            if (online)
+                ret = recovery_getlocks(dbenv, lockid, &txnrlrec->locks, lsn);
+
+            __os_free(dbenv, txnrlrec);
+
+            if (ret == DB_LOCK_DEADLOCK) {
+			    gbl_rep_trans_deadlocked++;
+                goto deadlock_retry;
+            }
+
+            if (ret)
+                goto err;
 		}
 		if (rectype == DB___txn_regop_gen) {
 			if ((ret =
@@ -6320,7 +6379,18 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp)
 			if (txngenrec->opcode != TXN_ABORT) {
 				undo = 1;
 			}
+            if (online)
+                ret = recovery_getlocks(dbenv, lockid, &txngenrec->locks, lsn);
+
 			__os_free(dbenv, txngenrec);
+
+            if (ret == DB_LOCK_DEADLOCK) {
+			    gbl_rep_trans_deadlocked++;
+                goto deadlock_retry;
+            }
+
+            if (ret)
+                goto err;
 		}
 		if (rectype == DB___txn_regop) {
 			if ((ret =
@@ -6330,13 +6400,35 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp)
 			if (txnrec->opcode != TXN_ABORT) {
 				undo = 1;
 			}
+            if (online)
+                ret = recovery_getlocks(dbenv, lockid, &txnrec->locks, lsn);
+
 			__os_free(dbenv, txnrec);
+
+            if (ret == DB_LOCK_DEADLOCK) {
+			    gbl_rep_trans_deadlocked++;
+                goto deadlock_retry;
+            }
+
+            if (ret)
+                goto err;
 		}
 	}
 
 	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, 0);
 
-err:	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
+    if (online) {
+        DB_LOCKREQ req = {0};
+        req.op = DB_LOCK_PUT_ALL;
+        if ((t_ret = __lock_vec(dbenv, lockid, 0, &req, 1, NULL)) != 0 &&
+                ret == 0)
+            ret = t_ret;
+        if ((t_ret = __lock_id_free(dbenv, lockid)) != 0 && ret == 0)
+            ret = t_ret;
+    }
+
+err:
+    if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
 
 	if (dbenv->recovery_done_callback)
@@ -6344,6 +6436,7 @@ err:	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 
 	return (ret);
 }
+
 
 extern int gbl_extended_sql_debug_trace;
 
@@ -7215,7 +7308,6 @@ __rep_truncate_repdb(dbenv)
 }
 
 
-
 /*
  * __rep_verify_match --
  *	We have just received a matching log record during verification.
@@ -7223,7 +7315,7 @@ __rep_truncate_repdb(dbenv)
  * everything else has exited the library.  If not, set up the world
  * correctly and move forward.
  */
-int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offset)
+int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offset, int online)
 {
     REP_CONTROL rp;
 	DB_LSN lsnp;
@@ -7241,14 +7333,15 @@ int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offs
     rp.gen = rep->gen; 
     rp.flags = 0;
 
-    return __rep_verify_match(dbenv, &rp, rep->timestamp);
+    return __rep_verify_match(dbenv, &rp, rep->timestamp, online);
 }
 
 static int
-__rep_verify_match(dbenv, rp, savetime)
+__rep_verify_match(dbenv, rp, savetime, online)
 	DB_ENV *dbenv;
 	REP_CONTROL *rp;
 	time_t savetime;
+    int online;
 {
 	DB_LOG *dblp;
 	DB_LSN trunclsn, prevlsn, purge_lsn;
@@ -7314,18 +7407,19 @@ __rep_verify_match(dbenv, rp, savetime)
 
 	/* Parallel rep threads could still be working- wait for them to complete
 	 * before grabbing the rep_mutex. */
-	wait_for_running_transactions(dbenv);
+    if (!online) {
+        wait_for_running_transactions(dbenv);
 
-	/*
-	 * Make sure the world hasn't changed while we tried to get
-	 * the lock.  If it hasn't then it's time for us to kick all
-	 * operations out of DB and run recovery.
-	 */
-	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	if (F_ISSET(rep, REP_F_READY) || rep->in_recovery != 0) {
-		rep->stat.st_msgs_recover++;
-		goto errunlock;
-	}
+        /*
+         * Make sure the world hasn't changed while we tried to get
+         * the lock.  If it hasn't then it's time for us to kick all
+         * operations out of DB and run recovery.
+         */
+        MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+        if (F_ISSET(rep, REP_F_READY) || rep->in_recovery != 0) {
+            rep->stat.st_msgs_recover++;
+            goto errunlock;
+        }
 
 	/* Phase 1: set REP_F_READY and wait for op_cnt to go to 0. */
 	/* This doesn't do anything anymore, but we should have gotten the 
@@ -7338,13 +7432,13 @@ __rep_verify_match(dbenv, rp, savetime)
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		__os_sleep(dbenv, 1, 0);
 #ifdef DIAGNOSTIC
-		if (++wait_cnt % 60 == 0)
-			__db_err(dbenv,
-				"Waiting for txn_cnt to run replication recovery for %d minutes",
-				wait_cnt / 60);
+            if (++wait_cnt % 60 == 0)
+                __db_err(dbenv,
+                        "Waiting for txn_cnt to run replication recovery for %d minutes",
+                        wait_cnt / 60);
 #endif
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	}
+            MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+        }
 
 
 
@@ -7361,18 +7455,19 @@ __rep_verify_match(dbenv, rp, savetime)
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		__os_sleep(dbenv, 1, 0);
 #ifdef DIAGNOSTIC
-		if (++wait_cnt % 60 == 0)
-			__db_err(dbenv,
-				"Waiting for handle/thread count to run replication recovery for %d minutes",
-				wait_cnt / 60);
+            if (++wait_cnt % 60 == 0)
+                __db_err(dbenv,
+                        "Waiting for handle/thread count to run replication recovery for %d minutes",
+                        wait_cnt / 60);
 #endif
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	}
+            MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+        }
 
-	/* OK, everyone is out, we can now run recovery. */
-	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+        /* OK, everyone is out, we can now run recovery. */
+        MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+    }
 
-	if ((ret = __rep_dorecovery(dbenv, &rp->lsn, &trunclsn)) != 0) {
+	if ((ret = __rep_dorecovery(dbenv, &rp->lsn, &trunclsn, online)) != 0) {
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->in_recovery = 0;
 		F_CLR(rep, REP_F_READY);
