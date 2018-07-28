@@ -3706,6 +3706,8 @@ void bdb_set_seqnum(void *in_bdb_state)
     }
 }
 
+extern int gbl_online_recovery;
+
 static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
                           DBT *rec)
 {
@@ -3717,6 +3719,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     uint32_t generation, commit_generation;
     int outrc;
     int time1, time2;
+    int online = gbl_online_recovery;
     char *oldmaster = NULL;
     int force_election = 0;
     int rectype;
@@ -3757,8 +3760,9 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
        locks.
        Grab the bdb_writelock here rather than inside of berkdb so that we avoid
        racing against a rep_start. */
-    if (rectype == REP_VERIFY && bdb_state->dbenv->rep_verify_will_recover(
-                                     bdb_state->dbenv, control, rec)) {
+    if (!online && rectype == REP_VERIFY && 
+        bdb_state->dbenv->rep_verify_will_recover(
+        bdb_state->dbenv, control, rec)) {
         BDB_WRITELOCK_REP("bdb_rep_verify");
         got_writelock = 1;
     }
@@ -3779,7 +3783,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         sleep(2);
 
     r = bdb_state->dbenv->rep_process_message(
-        bdb_state->dbenv, control, rec, &host, &permlsn, &commit_generation);
+        bdb_state->dbenv, control, rec, &host, &permlsn, &commit_generation,
+        online);
 
     if (got_vote2lock) {
         if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {

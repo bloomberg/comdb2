@@ -2031,7 +2031,7 @@ struct __db_env {
     int (*apply_log) __P((DB_ENV *, unsigned int, unsigned int, int64_t,
                 void*, int));
     size_t (*get_log_header_size) __P((DB_ENV*)); 
-    int (*rep_verify_match) __P((DB_ENV *, unsigned int, unsigned int));
+    int (*rep_verify_match) __P((DB_ENV *, unsigned int, unsigned int, int));
 
 	/*
 	 * Currently, the verbose list is a bit field with room for 32
@@ -2303,7 +2303,7 @@ struct __db_env {
 	int  (*rep_elect) __P((DB_ENV *, int, int, u_int32_t, u_int32_t *, char **));
 	int  (*rep_flush) __P((DB_ENV *));
 	int  (*rep_process_message) __P((DB_ENV *, DBT *, DBT *,
-	    char **, DB_LSN *, uint32_t *));
+	    char **, DB_LSN *, uint32_t *, int));
 	int  (*rep_verify_will_recover) __P((DB_ENV *, DBT *, DBT *));
 	int  (*rep_truncate_repdb) __P((DB_ENV *));
 	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
