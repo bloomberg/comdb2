@@ -176,14 +176,20 @@ int apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset,
     return dbenv->apply_log(dbenv, file, offset, rectype, blob, blob_len);
 }
 
+extern int gbl_online_recovery;
 int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file, 
         unsigned int offset)
 {
     char* msg = "truncate log";
+    int online = gbl_online_recovery;
     /* have to get lock for recovery */
-    BDB_WRITELOCK(msg);
+    if (online) {
+        BDB_READLOCK(msg);
+    } else {
+        BDB_WRITELOCK(msg);
+    }
 
-    bdb_state->dbenv->rep_verify_match(bdb_state->dbenv, file, offset);
+    bdb_state->dbenv->rep_verify_match(bdb_state->dbenv, file, offset, online);
 
     BDB_RELLOCK();
 
