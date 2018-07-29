@@ -810,7 +810,7 @@ struct bdb_state_tag {
                                      aka the blobs.  in blobstripe mode the
                                      blob files are striped too, otherwise
                                      they are not. */
-    DB *dbp_ix[MAXINDEX];            /* handle for the ixN files */
+    DB *dbp_ix[MAXINDEX];                    /* handle for the ixN files */
 
     pthread_key_t tid_key;
 
@@ -823,7 +823,7 @@ struct bdb_state_tag {
     char *dir;          /* directory the files go in (/bb/data /bb/data2) */
     int lrl;            /* Logical Record Length (0 = variable) */
     short numix;        /* number of indexes */
-    short ixlen[MAXINDEX]; /* size of each index */
+    short ixlen[MAXINDEX];            /* size of each index */
     signed char ixdta[MAXINDEX];      /* does this index contain the dta? */
     signed char ixcollattr[MAXINDEX]; /* does this index contain the column
                                          attributes? */
