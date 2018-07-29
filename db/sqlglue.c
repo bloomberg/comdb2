@@ -2485,10 +2485,12 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
             pCur->bdbcur->get_found_data(pCur->bdbcur, &pCur->rrn, &pCur->genid,
                                          &sz, &buf, &_);
 
+#if 0
             if (sz > getkeysize(pCur->db, pCur->ixnum)) {
                 logmsg(LOGMSG_ERROR, "%s: incorrect size %d\n", __func__, sz);
                 return SQLITE_INTERNAL;
             }
+#endif
 
             if (pCur->writeTransaction) {
                 memcpy(pCur->ondisk_key, buf, sz);
