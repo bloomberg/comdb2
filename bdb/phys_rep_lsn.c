@@ -75,7 +75,7 @@ int compare_log(bdb_state_type* bdb_state, unsigned int file, unsigned int offse
     }
     bzero(&logrec, sizeof(DBT));
     logrec.flags = DB_DBT_MALLOC;
-    rc = logc->get(logc, &match_lsn, &logrec, 0);
+    rc = logc->get(logc, &match_lsn, &logrec, DB_SET);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n", __func__,
                 rc);
@@ -131,8 +131,6 @@ int get_next_matchable(LOG_INFO* info)
             logc->close(logc, 0);
             return 1;
         }
-
-        logmsg(LOGMSG_WARN, "? LSN %u:%u\n", match_lsn.file, match_lsn.offset);
 
         LOGCOPY_32(&rectype, logrec.data);
 
