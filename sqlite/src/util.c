@@ -1636,12 +1636,24 @@ const char *sqlite3VListNumToName(VList *pIn, int iVal){
 */
 int sqlite3VListNameToNum(VList *pIn, const char *zName, int nName){
   int i, mx;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int off = 0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pIn==0 ) return 0;
   mx = pIn[1];
   i = 2;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( zName[0]!='@' ) off++;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   do{
     const char *z = (const char*)&pIn[i+2];
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( z && strncmp(z+off,zName,nName)==0 && z[nName+off]==0 ){
+      return pIn[i];
+    }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( strncmp(z,zName,nName)==0 && z[nName]==0 ) return pIn[i];
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     i += pIn[i+1];
   }while( i<mx );
   return 0;

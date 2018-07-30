@@ -21,38 +21,62 @@ close $in
 # The following are the extra token codes to be added.  SPACE and 
 # ILLEGAL *must* be the last two token codes and they must be in that order.
 #
-set extras {
-  TO_TEXT
-  TO_DATETIME
-  TO_INTERVAL_YE
-  TO_INTERVAL_MO
-  TO_INTERVAL_DY
-  TO_INTERVAL_HO
-  TO_INTERVAL_MI
-  TO_INTERVAL_SE
-  TO_BLOB
-  TO_NUMERIC
-  TO_INT
-  TO_REAL
-  TO_DECIMAL
-  TRUEFALSE
-  ISNOT
-  COLUMN
-  AGG_FUNCTION
-  AGG_COLUMN
-  UMINUS
-  UPLUS
-  TRUTH
-  REGISTER
-  VECTOR
-  SELECT_COLUMN
-  IF_NULL_ROW
-  ASTERISK
-  SPAN
-  END_OF_FILE
-  UNCLOSED_STRING
-  SPACE
-  ILLEGAL
+if {[info exists env(SQLITE_BUILDING_FOR_COMDB2)]} {
+  set extras {
+    TO_TEXT
+    TO_DATETIME
+    TO_INTERVAL_YE
+    TO_INTERVAL_MO
+    TO_INTERVAL_DY
+    TO_INTERVAL_HO
+    TO_INTERVAL_MI
+    TO_INTERVAL_SE
+    TO_BLOB
+    TO_NUMERIC
+    TO_INT
+    TO_REAL
+    TO_DECIMAL
+    TRUEFALSE
+    ISNOT
+    COLUMN
+    AGG_FUNCTION
+    AGG_COLUMN
+    UMINUS
+    UPLUS
+    TRUTH
+    REGISTER
+    VECTOR
+    SELECT_COLUMN
+    IF_NULL_ROW
+    ASTERISK
+    SPAN
+    END_OF_FILE
+    UNCLOSED_STRING
+    SPACE
+    ILLEGAL
+  }
+} else {
+  set extras {
+    TRUEFALSE
+    ISNOT
+    FUNCTION
+    COLUMN
+    AGG_FUNCTION
+    AGG_COLUMN
+    UMINUS
+    UPLUS
+    TRUTH
+    REGISTER
+    VECTOR
+    SELECT_COLUMN
+    IF_NULL_ROW
+    ASTERISK
+    SPAN
+    END_OF_FILE
+    UNCLOSED_STRING
+    SPACE
+    ILLEGAL
+  }
 }
 if {[lrange $extras end-1 end]!="SPACE ILLEGAL"} {
   error "SPACE and ILLEGAL must be the last two token codes and they\

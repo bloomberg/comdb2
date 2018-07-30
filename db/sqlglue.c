@@ -3893,7 +3893,8 @@ int sqlite3BtreePrevious(BtCursor *pCur, int flags)
     }
 
     if (move_is_nop(pCur, pRes)) {
-        return SQLITE_OK;
+        if( *pRes==1 ) rc = SQLITE_DONE;
+        return rc;
     }
 
     rc = pCur->cursor_move(pCur, pRes, CPREV);
@@ -3914,7 +3915,7 @@ int sqlite3BtreePrevious(BtCursor *pCur, int flags)
             }
             pCur->range->lkeylen = 0;
             pCur->range->rkeylen = 0;
-        } else if (*pRes == 1 || rc != IX_OK) {
+        } else if (*pRes == 1 || rc != SQLITE_OK) {
             pCur->range->lflag = 1;
             if (pCur->range->lkey) {
                 free(pCur->range->lkey);
@@ -4024,27 +4025,6 @@ int sqlite3BtreeEof(BtCursor *pCur)
     reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                 " sqlite3BtreeEof(pCur %d)       = %d\n", pCur->cursorid, rc);
     return rc;
-}
-
-/*
- ** Return the flag byte at the beginning of the page that the cursor
- ** is currently pointing to.
- */
-int sqlite3BtreeFlags(BtCursor *pCur)
-{
-    int rc;
-
-    if (pCur->rootpage == RTPAGE_SQLITE_MASTER ||
-        pCur->ixnum == -1) /* special table or data */
-        rc = BTREE_INTKEY;
-    else
-        rc = BTREE_BLOBKEY;
-
-    reqlog_logf(pCur->bt->reqlogger, REQL_TRACE, "Flags(pCur %d)        = %d\n",
-                pCur->cursorid,
-                rc + 8); /* TODO: what's 8? (sqlite seems to add this
-                          * can't find corresponding flag) */
-    return rc + 8;
 }
 
 /*
@@ -8225,7 +8205,7 @@ int sqlite3BtreeInsert(
                                   (void *)pKey, nKey, (void *)pData, nData, rec,
                                   &bdberr, pCur);
         }
-        sqlite3DbFree(pCur->pKeyInfo->db, rec);
+        if (rec != NULL) sqlite3DbFree(pCur->pKeyInfo->db, rec);
 
         if (rc) {
             logmsg(LOGMSG_ERROR, 
@@ -8493,7 +8473,8 @@ int sqlite3BtreeNext(BtCursor *pCur, int flags)
     }
 
     if (move_is_nop(pCur, pRes)) {
-        return SQLITE_OK;
+        if( *pRes==1 ) rc = SQLITE_DONE;
+        return rc;
     }
 
     rc = pCur->cursor_move(pCur, pRes, CNEXT);
@@ -8514,7 +8495,7 @@ int sqlite3BtreeNext(BtCursor *pCur, int flags)
             }
             pCur->range->lkeylen = 0;
             pCur->range->rkeylen = 0;
-        } else if (*pRes == 1 || rc != IX_OK) {
+        } else if (*pRes == 1 || rc != SQLITE_OK) {
             pCur->range->rflag = 1;
             if (pCur->range->rkey) {
                 free(pCur->range->rkey);

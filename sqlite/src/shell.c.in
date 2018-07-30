@@ -8375,6 +8375,9 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
     exit(1);
   }
 #endif
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  sqlite3_tunables_init();
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   main_init(&data);
 
   /* On Windows, we must translate command-line arguments into UTF-8.

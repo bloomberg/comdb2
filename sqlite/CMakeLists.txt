@@ -60,6 +60,7 @@ add_library(sqlite
   src/malloc.c
   src/md5.c
   src/mem1.c
+  src/mem2.c
   src/memjournal.c
   src/mutex.c
   src/mutex_noop.c
@@ -126,7 +127,7 @@ add_custom_command(
   DEPENDS lemon tool/lempar.c src/parse.y
   COMMAND lemon ${SQLITE_FLAGS} parse.y
   COMMAND ${CMAKE_COMMAND} -E copy parse.h parse.h.temp
-  COMMAND ${tclsh} addopcodes.tcl parse.h.temp > parse.h
+  COMMAND SQLITE_BUILDING_FOR_COMDB2=1 ${tclsh} addopcodes.tcl parse.h.temp > parse.h
 )
 
 add_custom_command(

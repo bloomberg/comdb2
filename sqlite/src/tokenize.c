@@ -531,7 +531,7 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
       ** NOTE: This code assumes that the curly braced block represents the
       **       last token in the string.
       */
-      int n = 0;
+      int n = 1;
       *tokenType = TK_NOSQL;
       for(i=1; (c=z[i])!=0; i++){
         if( c=='{' ){
