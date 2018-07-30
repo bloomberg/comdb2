@@ -391,12 +391,11 @@ static void sampleClear(sqlite3 *db, Stat4Sample *p){
 */
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-static void sampleSetPackedRow(sqlite3 *db, Stat4Sample *p,
- int nPackedRow, const void *packedRow){
+static void sampleSetPackedRow(sqlite3 *db, Stat4Sample *p, int n, const u8 *pData){
   assert( db!=0 );
-  assert( nPackedRow < PACKEDROWSIZE );
-  p->nPackedRow = nPackedRow;
-  memcpy(p->packedRow, packedRow, nPackedRow);
+  assert( n<PACKEDROWSIZE );
+  p->nPackedRow = n;
+  memcpy(p->packedRow, pData, n);
 }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 static void sampleSetRowid(sqlite3 *db, Stat4Sample *p, int n, const u8 *pData){
@@ -1343,8 +1342,8 @@ static void analyzeOneTable(
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
     if( pOnlyIdx && pOnlyIdx!=pIdx ) continue;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( pIdx->pPartIdxWhere==0 ) needTableCnt = 0;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
     VdbeNoopComment((v, "Begin analysis of %s", pIdx->zName));
     nCol = pIdx->nKeyCol;
     for(i=0; i < nCol; ++i){
@@ -1361,7 +1360,6 @@ static void analyzeOneTable(
       zIdxName = pIdx->zName;
     }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    if( pIdx->pPartIdxWhere==0 ) needTableCnt = 0;
     if( !HasRowid(pTab) && IsPrimaryKeyIndex(pIdx) ){
       nCol = pIdx->nKeyCol;
       zIdxName = pTab->zName;
