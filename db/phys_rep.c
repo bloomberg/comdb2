@@ -168,7 +168,7 @@ void* keep_in_sync(void* args)
             if (rc == CDB2_OK_DONE)
             {
                 fprintf(stderr, "Let's do truncation\n");
-                prev_info = handle_truncation(repl_db, prev_info);
+                prev_info = handle_truncation(repl_db, info);
             }
         }
         else
