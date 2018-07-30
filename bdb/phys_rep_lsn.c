@@ -4,10 +4,13 @@
 #include <string.h>
 
 #include "bdb_int.h"
+#include <dbinc/db_swap.h>
 #include "phys_rep_lsn.h"
 #include "locks.h"
 
 extern bdb_state_type *bdb_state;
+
+int matchable_log_type(int rectype);
 
 LOG_INFO get_last_lsn(bdb_state_type* bdb_state)
 {
@@ -97,6 +100,71 @@ int compare_log(bdb_state_type* bdb_state, unsigned int file, unsigned int offse
     logc->close(logc, 0);
 
     return rc;
+}
+
+/* hacky way to create a generator */
+static DB_LOGC* logc;
+
+int get_next_matchable(LOG_INFO* info)
+{
+    /* TODO: like get_last_lsn, but need to expose the data this time */
+    int rc; 
+    u_int32_t rectype;
+
+    /* get db internals */
+    DBT logrec;
+    DB_LSN match_lsn;
+    LOG_INFO log_info;
+    log_info.file = log_info.offset = log_info.size = 0;
+
+    match_lsn.file = info->file;
+    match_lsn.offset = info->offset;
+    
+    do
+    { 
+        bzero(&logrec, sizeof(DBT));
+        logrec.flags = DB_DBT_MALLOC;
+        rc = logc->get(logc, &match_lsn, &logrec, DB_PREV);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n", __func__,
+                    rc);
+            logc->close(logc, 0);
+            return 1;
+        }
+
+        logmsg(LOGMSG_WARN, "? LSN %u:%u\n", match_lsn.file, match_lsn.offset);
+
+        LOGCOPY_32(&rectype, logrec.data);
+
+        if (logrec.data)
+            free(logrec.data);
+
+    }
+    while(!matchable_log_type(rectype));
+
+    info->file = match_lsn.file;
+    info->offset = match_lsn.offset;
+    info->size = logrec.size;
+
+    logmsg(LOGMSG_WARN, "Found matchable {%u:%u}\n", info->file, info->offset);
+
+    return rc;
+}
+
+int open_db_cursor(bdb_state_type* bdb_state)
+{
+    int rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: can't get log cursor rc %d\n", __func__, rc);
+        return 1;
+    }
+
+    return 0;
+}
+
+void close_db_cursor()
+{ 
+    logc->close(logc, 0);
 }
 
 u_int32_t get_next_offset(DB_ENV* dbenv, LOG_INFO log_info)
