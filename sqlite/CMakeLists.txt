@@ -4,6 +4,7 @@ add_library(sqlite
   opcodes.c
   parse.c
   serialget.c
+  vdbeaux.c
   vdbecompare.c
   ext/comdb2/appsock_handlers.c
   ext/comdb2/columns.c
@@ -86,7 +87,6 @@ add_library(sqlite
   src/util.c
   src/vdbe.c
   src/vdbeapi.c
-  src/vdbeaux.c
   src/vdbeblob.c
   src/vdbemem.c
   src/vdbesort.c
@@ -137,7 +137,7 @@ add_custom_command(
   COMMAND sort -n -b -k 3 opcodes.h | ${tclsh} mkopcodec.tcl opcodes.h > opcodes.c
 )
 add_custom_command(
-  OUTPUT serialget.c memcompare.c vdbecompare.c
+  OUTPUT serialget.c memcompare.c vdbecompare.c vdbeaux.c
   DEPENDS parse.c src/vdbeaux.c
   COMMAND ${tclsh} mkvdbeauxinlines.tcl ${CMAKE_CURRENT_SOURCE_DIR}/src/vdbeaux.c .
 )

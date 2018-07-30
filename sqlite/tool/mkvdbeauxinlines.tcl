@@ -232,3 +232,6 @@ foreach outputFileName $outputFileNames {
         [appendArgs "\n\n#endif /* " $outputDefineName " */\n"]
   }
 }
+
+writeNormalizedFile [lindex $outputFileNames 0] \
+    [string map [list "SQLITE_NOINLINE " ""] $data]
