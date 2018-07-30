@@ -2630,6 +2630,7 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
      && strncasecmp(db->init.zTblName,
               pIdx->pTable->zName, strlen(db->init.zTblName)) == 0)
     ){
+       pIdx->hasStat1 = 0;
        sqlite3DefaultRowEst(pIdx);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pIdx->hasStat1 = 0;
@@ -2688,8 +2689,8 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
     initAvgEq(pIdx);
     if( pIdx->pKeyInfo ){
       int nRef = pIdx->pKeyInfo->nRef;
-        sqlite3KeyInfoUnref(pIdx->pKeyInfo);
-      if( nRef == 1 ){ // was just us -- no one else using
+      sqlite3KeyInfoUnref(pIdx->pKeyInfo);
+      if( nRef==1 ){ /* was just us -- no one else using */
         pIdx->pKeyInfo = NULL;
       }
     }
