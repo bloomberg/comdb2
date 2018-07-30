@@ -1737,17 +1737,11 @@ static void analyzeOneTable(
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
       int addrNext;
       int addrIsNull;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      u8 seekOp = HasRowid(pTab) ? OP_NotExists : OP_NotFound;
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       u8 seekOp = HasRowid(pTab) ? OP_NotExists : OP_NotFound;
 
       pParse->nMem = MAX(pParse->nMem, regCol+nCol);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      pParse->nMem = MAX(pParse->nMem, regCol+nCol+1);
-
       if( sqlite3_gbl_tunables.analyze_empty_tables ){
         addrRewind = sqlite3VdbeAddOp1(v, OP_Rewind, iIdxCur);
         VdbeCoverage(v);
