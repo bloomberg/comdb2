@@ -1,6 +1,7 @@
 #include <build/db.h>
 #include <strings.h>
 #include <logmsg.h>
+#include <string.h>
 
 #include "bdb_int.h"
 #include "phys_rep_lsn.h"
@@ -48,10 +49,54 @@ LOG_INFO get_last_lsn(bdb_state_type* bdb_state)
     return log_info;
 }
 
-int get_log(bdb_state_type* bdb_state, void** blob, unsigned int blob_len)
+int compare_log(bdb_state_type* bdb_state, unsigned int file, unsigned int offset,
+        void* blob, unsigned int blob_len)
 {
     /* TODO: like get_last_lsn, but need to expose the data this time */
-    return 0;
+    int rc; 
+
+    /* get db internals */
+    DB_LOGC* logc;
+    DBT logrec;
+    DB_LSN match_lsn;
+    LOG_INFO log_info;
+    log_info.file = log_info.offset = log_info.size = 0;
+
+    match_lsn.file = file;
+    match_lsn.offset = offset;
+
+    rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: can't get log cursor rc %d\n", __func__, rc);
+        return 1;
+    }
+    bzero(&logrec, sizeof(DBT));
+    logrec.flags = DB_DBT_MALLOC;
+    rc = logc->get(logc, &match_lsn, &logrec, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n", __func__,
+                rc);
+        logc->close(logc, 0);
+        return 1;
+    }
+
+    logmsg(LOGMSG_WARN, "LSN %u:%u\n", match_lsn.file, match_lsn.offset);
+
+    if (logrec.size != blob_len)
+    {
+        rc = 1;
+    }
+    else
+    {
+        rc = memcmp(blob, logrec.data, blob_len);
+    }
+
+    if (logrec.data)
+        free(logrec.data);
+
+    logc->close(logc, 0);
+
+    return rc;
 }
 
 u_int32_t get_next_offset(DB_ENV* dbenv, LOG_INFO log_info)
