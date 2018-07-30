@@ -22,4 +22,8 @@ int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file,
 int compare_log(bdb_state_type* bdb_state, unsigned int file, unsigned int offset,
         void* blob, unsigned int blob_len);
 
+int get_next_matchable(LOG_INFO* info);
+int open_db_cursor(bdb_state_type* bdb_state);
+void close_db_cursor();
+
 #endif
