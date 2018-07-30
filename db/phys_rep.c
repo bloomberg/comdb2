@@ -99,7 +99,7 @@ const char* start_replication()
         if ((rc = cdb2_open(&repl_db, repl_db_name, 
                         cnct->hostname, CDB2_DIRECT_CPU)) == 0)
         {
-            logmsg(LOGMSG_INFO, "Attached to %s and db %s for replication\n", 
+            logmsg(LOGMSG_WARN, "Attached to '%s' and db '%s' for replication\n", 
                     cnct->hostname,
                     repl_db_name);
             if (pthread_create(&sync_thread, NULL, keep_in_sync, NULL))
@@ -152,35 +152,39 @@ void* keep_in_sync(void* args)
         if (rc < 0 || rc >= sql_cmd_len)
             logmsg(LOGMSG_ERROR, "sql_cmd buffer is not long enough!\n");
 
-        rc = cdb2_run_statement(repl_db, sql_cmd);
+        if ((rc = cdb2_run_statement(repl_db, sql_cmd)) != CDB2_OK)
+        {
+            logmsg(LOGMSG_ERROR, "Couldn't query the database, retrying\n");
+            nanosleep(&wait_spec, &remain_spec);
+            continue;
+        }
 
         /* should verify that this is the record we want */
         if ((rc = cdb2_next_record(repl_db)) != CDB2_OK)
         {
             logmsg(LOGMSG_WARN, "Can't find the next record\n");
+            fprintf(stderr, "rc=%d\n", rc);
 
             if (rc == CDB2_OK_DONE)
             {
                 fprintf(stderr, "Let's do truncation\n");
+                prev_info = handle_truncation(repl_db, prev_info);
             }
-        }
-        // TODO: check the record. This is important for truncation
-
-        while((rc = cdb2_next_record(repl_db)) == CDB2_OK)
-        {
-
-            prev_info = handle_record(prev_info);
-
-        }
-
-        /* check we finished correctly */
-        if (rc == CDB2_OK_DONE)
-        {
-            //fprintf(stdout, "Finished reading from xsaction logs\n");
         }
         else
         {
-            logmsg(LOGMSG_ERROR, "Had an error %d\n", rc);
+            while((rc = cdb2_next_record(repl_db)) == CDB2_OK)
+            {
+                prev_info = handle_record(prev_info);
+
+            }
+
+            /* check we finished correctly */
+            if (rc != CDB2_OK_DONE)
+            {
+                logmsg(LOGMSG_ERROR, "Had an error %d\n", rc);
+            }
+
         }
 
         nanosleep(&wait_spec, &remain_spec);
@@ -234,7 +238,7 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     }
     else
     {
-        file = -1;
+        file = 0;
     }
 
     token = strtok(NULL, delim);
@@ -245,7 +249,7 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     }
     else
     {
-        offset = -1;
+        offset = 0;
     }
     
     logmsg(LOGMSG_WARN, ": %u:%u, rectype: %ld\n", file, offset, rectype);    
