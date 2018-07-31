@@ -141,12 +141,6 @@
 */
 #ifndef SQLITE_OMIT_ANALYZE
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-#include <assert.h>
-#include <pthread.h>
-#include <math.h>
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #include "sqliteInt.h"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -176,7 +170,7 @@ int is_comdb2_index_disableskipscan(const char *);
 */
 #define SQLITE_INDEX_SAMPLES 10
 
-static __thread int skip2, skip4;
+static __thread int skip4;
 int analyze_get_nrecs( int iTable );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -206,7 +200,6 @@ static void openStatTable(
   } aTable[] = {
     { "sqlite_stat1", "tbl,idx,stat" },
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    { "sqlite_stat2", "tbl,idx,sampleno,sample" },
     { "sqlite_stat4", "tbl,idx,neq,nlt,ndlt,sample" },
     { "sqlite_stat3", 0 },
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -238,27 +231,23 @@ static void openStatTable(
   ** if they do already exist.
   */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( pParse->db->isExpert==0 ){
-    skip2 = skip4 = 0;
-    for(i=0; i<ArraySize(aTable); i++){
-      const char *zTab = aTable[i].zName;
-      Table *pStat;
-      if( (pStat = sqlite3FindTable(db, zTab, NULL))==0 ){
-        if( zTab[11]=='1' || zTab[11]=='3' ){
-          /* do nothing */
-        }else if( zTab[11]=='2' ){
-          skip2 = 1;
-        }else if( zTab[11]=='4' ){
-          skip4 = 1;
-        }
-      }else{
-        aRoot[i] = pStat->tnum;
-        sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
-        VdbeComment((v, zTab));
+  skip4 = 0; /* TODO: Flag on connection? */
+  for(i=0; i<ArraySize(aTable); i++){
+    const char *zTab = aTable[i].zName;
+    Table *pStat;
+    if( (pStat = sqlite3FindTable(db, zTab, NULL))==0 ){
+      if( zTab[11]=='1' || zTab[11]=='3' ){
+        /* do nothing */
+      }else if( zTab[11]=='4' ){
+        skip4 = 1;
       }
+    }else{
+      aRoot[i] = pStat->tnum;
+      sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
+      VdbeComment((v, zTab));
     }
-  } else {
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   for(i=0; i<ArraySize(aTable); i++){
     const char *zTab = aTable[i].zName;
     Table *pStat;
@@ -303,8 +292,6 @@ static void openStatTable(
     sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
     sqlite3VdbeChangeP5(v, aCreateTbl[i]);
     VdbeComment((v, aTable[i].zName));
-  }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
@@ -527,9 +514,6 @@ static void statInit(
   if( sqlite3_gbl_tunables.stat4_extra_samples > 0 ){
       mxSample += sqlite3_gbl_tunables.stat4_extra_samples;
   }
-#ifdef DEBUG
-  printf("Analyze mxSample=%d\n", mxSample);
-#endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
 
@@ -537,7 +521,7 @@ static void statInit(
   UNUSED_PARAMETER(argc);
   nCol = sqlite3_value_int(argv[0]);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  assert( nCol>1 );               /* >1 because it includes the rowid column */
+  assert( nCol>1 ); /* >1 because it includes the rowid column */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( nCol>0 );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -568,7 +552,7 @@ static void statInit(
   p->db = db;
   p->nRow = 0;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  p->nActualRow = sqlite3_value_int(argv[2]);
+  p->nActualRow = (tRowcnt)sqlite3_value_int64(argv[2]);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   p->nCol = nCol;
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -1042,7 +1026,7 @@ static void statGet(
     int i;
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    char *zRet = sqlite3MallocZero(p->nCol * 25);
+    char *zRet = sqlite3MallocZero( p->nCol*25 );
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     char *zRet = sqlite3MallocZero( (p->nKeyCol+1)*25 );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -1080,21 +1064,21 @@ static void statGet(
 
     sqlite3_result_text(context, zRet, -1, sqlite3_free);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    return; // end sqlite_stat1
+    return; /* end of sqlite_stat1 */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   {
+    Stat4Sample *pS = NULL;
+    tRowcnt *aCnt = NULL;
+    int scale = 1;
     int iGet;
     if( p->iGet<0 ){
       samplePushPrevious(p, 0);
       p->iGet = 0;
     }
     iGet = p->iGet;
-    Stat4Sample *pS = NULL;
-    tRowcnt *aCnt = NULL;
-    int scale = 1;
     if( iGet>=p->nSample ){
       sqlite3_result_null(context);
       return;
@@ -1120,10 +1104,10 @@ static void statGet(
         break;
     }
     if( p->nActualRow>0 ){
-      scale = round(p->nActualRow / (double) p->nRow);
+      scale = (int)((p->nActualRow / (double)p->nRow) + 0.5);
     }
     if( eCall!=STAT_GET_ROW ){
-      char *zRet = sqlite3MallocZero(p->nCol * 25);
+      char *zRet = sqlite3MallocZero( p->nCol*25 );
       if( zRet==0 ){
         sqlite3_result_error_nomem(context);
       }else{
@@ -1175,7 +1159,7 @@ static void statGet(
     if( IsStat3 ){
       sqlite3_result_int64(context, (i64)aCnt[0]);
     }else{
-      char *zRet = sqlite3MallocZero(p->nCol * 25);
+      char *zRet = sqlite3MallocZero( p->nCol*25 );
       if( zRet==0 ){
         sqlite3_result_error_nomem(context);
       }else{
@@ -1325,18 +1309,6 @@ static void analyzeOneTable(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     int *aGotoChng;               /* Array of jump instruction addresses */
     int addrGotoChng0;            /* Address of "Goto addr_chng_0" */
-    int regTabname2;
-    int regIdxname2;
-    int regSampleno;
-    int regCol2;
-    int regRec;
-    int regTemp2;
-    int regRowid2;
-    int regTemp3;
-    int regSamplerecno;
-    int regRecno;
-    int regLast;
-    int regFirst;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     int nColTest;                 /* Number of columns to test for changes */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -1344,7 +1316,6 @@ static void analyzeOneTable(
     if( pOnlyIdx && pOnlyIdx!=pIdx ) continue;
     if( pIdx->pPartIdxWhere==0 ) needTableCnt = 0;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    VdbeNoopComment((v, "Begin analysis of %s", pIdx->zName));
     nCol = pIdx->nKeyCol;
     for(i=0; i < nCol; ++i){
       if( strcmp(pIdx->azColl[i], "DATACOPY")==0 ){
@@ -1354,7 +1325,7 @@ static void analyzeOneTable(
     }
     aGotoChng = sqlite3DbMallocRaw(db, sizeof(int)*(nCol+1));
     if( aGotoChng==0 ) continue;
-    if( IsPrimaryKeyIndex(pIdx) && !HasRowid(pTab) ){
+    if( !HasRowid(pTab) && IsPrimaryKeyIndex(pIdx) ){
       zIdxName = pTab->zName;
     }else{
       zIdxName = pIdx->zName;
@@ -1373,9 +1344,7 @@ static void analyzeOneTable(
 
     /* Populate the register containing the index name. */
     sqlite3VdbeLoadString(v, regIdxname, zIdxName);
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
     VdbeComment((v, "Analysis for %s.%s", pTab->zName, zIdxName));
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 
     /*
     ** Pseudo-code for loop that calls stat_push():
@@ -1424,74 +1393,6 @@ static void analyzeOneTable(
     sqlite3VdbeAddOp3(v, OP_OpenRead, iIdxCur, pIdx->tnum, iDb);
     sqlite3VdbeSetP4KeyInfo(pParse, pIdx);
     VdbeComment((v, "%s", pIdx->zName));
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    sqlite3VdbeAddOp2(v, OP_Count, iIdxCur, regCount);
-    iMem = regPrev + nCol + 4;
-
-    {
-      /* stat2 registers (order is important - don't change) */
-      regTabname2 = iMem++;
-      regIdxname2 = iMem++;
-      regSampleno = iMem++;
-      regCol2 = iMem++;
-      regRec = iMem++;
-      regTemp2 = iMem++;
-      regRowid2 = iMem++;
-      regTemp3 = iMem++;
-      regSamplerecno = iMem++;
-      regRecno = iMem++;
-      regLast = iMem++;
-      regFirst = iMem++;
-      if( iMem+1+(nCol*2)>pParse->nMem ){
-        pParse->nMem = iMem+1+(nCol*2);
-      }
-      sqlite3VdbeAddOp4(v, OP_String8, 0, regTabname2, 0, pTab->zName, 0);
-      sqlite3VdbeAddOp4(v, OP_String8, 0, regIdxname2, 0, zIdxName, 0);
-
-      if( skip2==0 ){
-        int addr;
-        /* Compute intervals where stat2 samples must be collected */
-        sqlite3VdbeAddOp2(v, OP_Integer, SQLITE_INDEX_SAMPLES, regSamplerecno);
-        sqlite3VdbeAddOp2(v, OP_Integer, SQLITE_INDEX_SAMPLES*2-1, regTemp2);
-        sqlite3VdbeAddOp2(v, OP_Integer, SQLITE_INDEX_SAMPLES*2, regTemp3);
-        sqlite3VdbeAddOp2(v, OP_Copy, regCount, regLast);
-        sqlite3VdbeAddOp2(v, OP_Null, 0, regFirst);
-        addr = sqlite3VdbeAddOp3(v, OP_Lt, regSamplerecno, 0, regLast);
-        sqlite3VdbeAddOp3(v, OP_Divide, regTemp3, regLast, regFirst);
-        sqlite3VdbeAddOp3(v, OP_Multiply, regLast, regTemp2, regLast);
-        sqlite3VdbeAddOp2(v, OP_AddImm, regLast, SQLITE_INDEX_SAMPLES*2-2);
-        sqlite3VdbeAddOp3(v, OP_Divide,  regTemp3, regLast, regLast);
-        sqlite3VdbeJumpHere(v, addr);
-        /* Zero the regSampleno and regRecno registers. */
-        sqlite3VdbeAddOp2(v, OP_Integer, 0, regSampleno);
-        sqlite3VdbeAddOp2(v, OP_Integer, 1, regRecno);
-        sqlite3VdbeAddOp2(v, OP_Copy, regFirst, regSamplerecno);
-
-        /* The block of memory cells initialized here is used as follows.
-        **
-        **    iMem:
-        **        The total number of rows in the table.
-        **
-        **    iMem+1 .. iMem+nCol:
-        **        Number of distinct entries in index considering the
-        **        left-most N columns only, where N is between 1 and nCol,
-        **        inclusive.
-        **
-        **    iMem+nCol+1 .. Mem+2*nCol:
-        **        Previous value of indexed columns, from left to right.
-        **
-        ** Cells iMem through iMem+nCol are initialized to 0. The others are
-        ** initialized to contain an SQL NULL.
-        */
-        for(i=0; i<=nCol; i++){
-          sqlite3VdbeAddOp2(v, OP_Integer, 0, iMem+i);
-        }
-        for(i=0; i<nCol; i++){
-          sqlite3VdbeAddOp2(v, OP_Null, 0, iMem+nCol+i+1);
-        }
-      }
-    }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
     /* Invoke the stat_init() function. The arguments are:
     ** 
@@ -1555,38 +1456,6 @@ static void analyzeOneTable(
     */
     addrNextRow = sqlite3VdbeCurrentAddr(v);
     for(i=0; i<nCol; i++){
-      if( i == 0 && skip2 == 0 ){
-        /* Check if the record that cursor iIdxCur points to contains a
-        ** value that should be stored in the sqlite_stat2 table. If so,
-        ** store it.  */
-        int ne = sqlite3VdbeAddOp3(v, OP_Ne, regRecno, 0, regSamplerecno);
-        assert( regTabname2+1==regIdxname2
-             && regTabname2+2==regSampleno
-             && regTabname2+3==regCol2
-        );
-        sqlite3VdbeChangeP5(v, SQLITE_JUMPIFNULL);
-        sqlite3VdbeAddOp3(v, OP_Column, iIdxCur, i, regCol2);
-        /* Hardcoded affinity types for (TEXT, TEXT, TEXT, NONE). */
-        sqlite3VdbeAddOp4(v, OP_MakeRecord, regTabname2, 4, regRec, "BBBA", 0);
-        sqlite3VdbeAddOp2(v, OP_NewRowid, iStatCur+1, regRowid2);
-        sqlite3VdbeAddOp3(v, OP_Insert, iStatCur+1, regRec, regRowid2);
-
-        /* Calculate new values for regSamplerecno and regSampleno.
-        **
-        **   sampleno = sampleno + 1
-        **   samplerecno = samplerecno+(remaining records)/(remaining samples)
-        */
-        sqlite3VdbeAddOp2(v, OP_AddImm, regSampleno, 1);
-        sqlite3VdbeAddOp3(v, OP_Subtract, regRecno, regLast, regTemp2);
-        sqlite3VdbeAddOp2(v, OP_AddImm, regTemp2, -1);
-        sqlite3VdbeAddOp2(v, OP_Integer, SQLITE_INDEX_SAMPLES, regTemp3);
-        sqlite3VdbeAddOp3(v, OP_Subtract, regSampleno, regTemp3, regTemp3);
-        sqlite3VdbeAddOp3(v, OP_Divide, regTemp3, regTemp2, regTemp2);
-        sqlite3VdbeAddOp3(v, OP_Add, regSamplerecno, regTemp2, regSamplerecno);
-
-        sqlite3VdbeJumpHere(v, ne);
-        sqlite3VdbeAddOp2(v, OP_AddImm, regRecno, 1);
-      }
       char *pColl = (char*)sqlite3LocateCollSeq(pParse, pIdx->azColl[i]);
       sqlite3VdbeAddOp2(v, OP_Integer, i, regChng);
       sqlite3VdbeAddOp3(v, OP_Column, iIdxCur, i, regTemp);
@@ -1672,7 +1541,6 @@ static void analyzeOneTable(
     **   Next csr
     **   if !eof(csr) goto next_row;
     */
-
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
     assert( regRowid==(regStat4+2) );
@@ -1693,7 +1561,6 @@ static void analyzeOneTable(
     }
 #endif
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     assert( regChng==(regStat4+1) );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
@@ -1707,8 +1574,9 @@ static void analyzeOneTable(
 
     /* Add the entry to the stat1 table. */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( sqlite3_gbl_tunables.analyze_empty_tables )
+    if( sqlite3_gbl_tunables.analyze_empty_tables ){
       sqlite3VdbeJumpHere(v, addrRewind);
+    }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     callStatGet(v, regStat4, STAT_GET_STAT1, regStat1);
     assert( "BBB"[0]==SQLITE_AFF_TEXT );
@@ -1786,19 +1654,18 @@ static void analyzeOneTable(
       sqlite3VdbeAddOp2(v, OP_Goto, 1, addrNext); /* P1==1 for end-of-loop */
       sqlite3VdbeJumpHere(v, addrIsNull);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if( sqlite3_gbl_tunables.analyze_empty_tables )
+      if( sqlite3_gbl_tunables.analyze_empty_tables ){
         sqlite3VdbeJumpHere(v, addrRewind);
+      }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
 #endif /* SQLITE_ENABLE_STAT3_OR_STAT4 */
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( !sqlite3_gbl_tunables.analyze_empty_tables )
-      sqlite3VdbeJumpHere(v, addrRewind);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     /* End of analysis */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( !sqlite3_gbl_tunables.analyze_empty_tables ){
+      sqlite3VdbeJumpHere(v, addrRewind);
+    }
     sqlite3DbFree(db, aGotoChng);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3VdbeJumpHere(v, addrRewind);
@@ -2017,16 +1884,13 @@ static void decodeIntArray(
   if( pIndex ){
 #endif
     pIndex->bUnordered = 0;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( strcmp(z, "unordered")==0 ){
-      pIndex->bUnordered = 1;
-    }else if( sqlite3_strglob("sz=[0-9]*", z)==0 ){
-      int v32 = 0;
-      sqlite3GetInt32(z+3, &v32);
-      pIndex->szIdxRow = sqlite3LogEst(v32);
-    }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pIndex->noSkipScan = 0;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    /* assign noSkipScan, only if not foreign table */ 
+    if( pIndex->pTable && pIndex->pTable->iDb==0 ){
+      pIndex->noSkipScan = is_comdb2_index_disableskipscan(pTable->zName);
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     while( z[0] ){
       if( sqlite3_strglob("unordered*", z)==0 ){
         pIndex->bUnordered = 1;
@@ -2043,7 +1907,6 @@ static void decodeIntArray(
       while( z[0]!=0 && z[0]!=' ' ) z++;
       while( z[0]==' ' ) z++;
     }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
 }
 
@@ -2109,16 +1972,12 @@ static int analysisLoader(void *pData, int argc, char **argv, char **NotUsed){
     }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    /* assign noskipscan, only if not foreign table */ 
-    if( pIndex->pTable->iDb == 0){
-      pIndex->noSkipScan = is_comdb2_index_disableskipscan(pTable->zName);
-    }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /*
    * stale entries in sqlite_stat1 will have pIndex null
    * and result in a potential bad estimate for table
    * if stale index entry was processed last
    */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }else{
     Index fakeIdx;
     fakeIdx.szIdxRow = pTable->szTabRow;
