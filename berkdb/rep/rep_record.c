@@ -6436,7 +6436,7 @@ deadlock_retry:
 		}
 	}
 
-	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, 0);
+	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
 
     if (online) {
         DB_LOCKREQ req = {0};
@@ -7344,6 +7344,7 @@ int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offs
 	DB_LSN lsnp;
     DB_REP* db_rep; 
     REP* rep; 
+    int ret;
 
     lsnp.file = file;
     lsnp.offset = offset;
@@ -7355,8 +7356,13 @@ int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offs
     rep = db_rep->region;
     rp.gen = rep->gen; 
     rp.flags = 0;
-
-    return __rep_verify_match(dbenv, &rp, rep->timestamp, online);
+    if ((ret = pthread_rwlock_wrlock(&dbenv->recoverlk)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
+        abort();
+    }
+    ret = __rep_verify_match(dbenv, &rp, rep->timestamp, online);
+    pthread_rwlock_unlock(&dbenv->recoverlk);
+    return ret;
 }
 
 static int
