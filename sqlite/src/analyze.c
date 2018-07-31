@@ -1412,7 +1412,7 @@ static void analyzeOneTable(
       sqlite3VdbeAddOp2(v, OP_Integer, 0, regStat4+3);
     }
 #endif
-    sqlite3VdbeAddOp2(v, OP_Integer, nCol, regStat4+1);
+    sqlite3VdbeAddOp2(v, OP_Integer, nCol+1, regStat4+1);
     sqlite3VdbeAddOp2(v, OP_Count, iIdxCur, regStat4+2);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
