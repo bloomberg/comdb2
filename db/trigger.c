@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <poll.h>
 #include <pthread.h>
+#include <netdb.h>
 
 #include <flibc.h>
 #include <translistener.h>
@@ -49,16 +50,53 @@ static hash_t *trigger_hash;
 
 #define GET_BDB_STATE(x) GET_BDB_STATE_CAST(x, int)
 
+static trigger_reg_t *trigger_send_hostname(uint8_t *b, trigger_reg_t *t, size_t *s)
+{
+    *s = trigger_reg_sz((t)->spname);
+    return memcpy(b, t, *s);
+}
+
+static trigger_sender *trigger_send_impl = trigger_send_hostname;
+void set_trigger_sender(trigger_sender *s)
+{
+    trigger_send_impl = s;
+}
+
+static trigger_reg_t *trigger_send(uint8_t *b, trigger_reg_t *t, size_t *s)
+{
+    return trigger_send_impl(b, t, s);
+}
+
+static trigger_reg_t *trigger_recv_hostname(trigger_reg_t *t, uint8_t *buf)
+{
+    trigger_reg_to_cpu(t);
+    return t;
+}
+
+static trigger_receiver *trigger_recv_impl = trigger_recv_hostname;
+void set_trigger_receiver(trigger_receiver *r)
+{
+    trigger_recv_impl = r;
+}
+
+static trigger_reg_t *trigger_recv(trigger_reg_t *t, uint8_t *b)
+{
+    return trigger_recv_impl(t, b);
+}
+
+#define TRIGGER_REG_MAX (sizeof(trigger_reg_t) + MAX_SPNAME + NI_MAXHOST)
 static inline int trigger_register_int(trigger_reg_t *t)
 {
     GET_BDB_STATE(bdb_state);
-    if (!bdb_amimaster(bdb_state))
+    if (!bdb_amimaster(bdb_state)) {
         return CDB2_TRIG_NOT_MASTER;
+    }
     if (trigger_hash == NULL) {
         printf("setting up trigger registry\n");
         trigger_hash = hash_init_str(offsetof(trigger_info_t, spname));
     }
-    trigger_reg_to_cpu(t);
+    uint8_t buf[TRIGGER_REG_MAX];
+    t = trigger_recv(t, buf);
     trigger_info_t *info;
     if ((info = hash_find(trigger_hash, &t->spname)) == NULL) {
         info = malloc(sizeof(trigger_info_t) + t->spname_len + 1);
@@ -101,11 +139,12 @@ static void trigger_hash_del(trigger_info_t *info)
 
 static int trigger_unregister_int(trigger_reg_t *t)
 {
-    GET_BDB_STATE(bdb_state);
     if (trigger_hash == NULL)
         return 0;
+    GET_BDB_STATE(bdb_state);
+    uint8_t buf[TRIGGER_REG_MAX];
+    t = trigger_recv(t, buf);
     trigger_info_t *info;
-    trigger_reg_to_cpu(t);
     if ((info = hash_find(trigger_hash, &t->spname)) != NULL &&
         strcmp(info->host, trigger_hostname(t)) == 0 &&
         info->trigger_cookie == t->trigger_cookie) {
@@ -311,8 +350,8 @@ int trigger_register_req(trigger_reg_t *reg)
     GET_BDB_STATE(bdb_state);
     reg->elect_cookie = htonl(gbl_master_changes);
     size_t sz;
-    trigger_reg_t *t;
-    trigger_reg_clone(t, sz, reg);
+    uint8_t buf[TRIGGER_REG_MAX];
+    trigger_reg_t *t = trigger_send(buf, reg, &sz);
     if (bdb_amimaster(bdb_state)) {
         return trigger_register(t);
     }
@@ -328,9 +367,8 @@ int trigger_unregister_req(trigger_reg_t *reg)
 {
     GET_BDB_STATE(bdb_state);
     size_t sz;
-    trigger_reg_t *t;
-    trigger_reg_clone(t, sz, reg);
-
+    uint8_t buf[TRIGGER_REG_MAX];
+    trigger_reg_t *t = trigger_send(buf, reg, &sz);
     if (bdb_amimaster(bdb_state)) {
         return trigger_unregister(t);
     }
