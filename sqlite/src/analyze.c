@@ -1888,7 +1888,9 @@ static void decodeIntArray(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     /* assign noSkipScan, only if not foreign table */ 
     if( pIndex->pTable && pIndex->pTable->iDb==0 ){
-      pIndex->noSkipScan = is_comdb2_index_disableskipscan(pTable->zName);
+      pIndex->noSkipScan = is_comdb2_index_disableskipscan(
+        pIndex->pTable->zName
+      );
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     while( z[0] ){
