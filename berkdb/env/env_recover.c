@@ -1191,19 +1191,17 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	}
 
 	/* Take a checkpoint here to force any dirty data pages to disk. */
-    if (!gbl_is_physical_replicant && !LF_ISSET(DB_RECOVER_NOCKP))
-    {
-        if ((ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE)) != 0)
-            goto err;
+    int ckpflags = DB_FORCE | (flags & DB_RECOVER_NOCKP);
+    if ((ret = __txn_checkpoint(dbenv, 0, 0, ckpflags)) != 0)
+        goto err;
 
-    }
 
 	/* Close all the db files that are open. */
 	if ((ret = __dbreg_close_files(dbenv)) != 0)
 		goto err;
 
 done:
-	if (max_lsn != NULL) {
+	if (max_lsn != NULL || gbl_is_physical_replicant) {
 
             /*
              * When I truncate, I am running replicated recovery.
@@ -1211,6 +1209,8 @@ done:
              * dropping the all the checkpoints in the truncation
              * log phase does not make me bad
              */
+        if (max_lsn != NULL) {
+
             DB_LSN last_valid_checkpoint = { 0 };
 
             /*
@@ -1277,6 +1277,7 @@ done:
 
             logmsg(LOGMSG_WARN, "TRUNCATED TO is %u:%u \n", trunclsn->file,
                 trunclsn->offset);
+        }
 
 
 		/*
@@ -1312,7 +1313,7 @@ done:
 		if ((ret = __env_openfiles(dbenv, logc,
 			    txninfo, &data, &first_lsn, NULL, nfiles, 1)) != 0)
 			goto err;
-	} else if (region->stat.st_nrestores == 0)
+	} else if (region->stat.st_nrestores == 0) 
 		/*
 		 * If there are no prepared transactions that need resolution,
 		 * we need to reset the transaction ID space and log this fact.
