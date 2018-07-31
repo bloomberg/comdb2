@@ -3688,6 +3688,7 @@ gap_check:		max_lsn_dbtp = NULL;
 		if (ret != 0) {
 			__db_err(dbenv, "Error processing txn [%lu][%lu]",
 				(u_long)rp->lsn.file, (u_long)rp->lsn.offset);
+            __log_flush(dbenv, NULL);
 			__db_panic(dbenv, ret);
 		}
 		break;
