@@ -19,6 +19,7 @@ enum {
 
 /* trigger registration info */
 typedef struct trigger_reg {
+    int node;
     int elect_cookie;
     genid_t trigger_cookie;
     int spname_len;
@@ -39,6 +40,12 @@ void trigger_clear_hash(void);
 void trigger_stat(void);
 void trigger_reg_to_cpu(trigger_reg_t *);
 
+typedef trigger_reg_t *(trigger_sender)(uint8_t *, trigger_reg_t *, size_t *);
+void set_trigger_sender(trigger_sender *);
+
+typedef trigger_reg_t *(trigger_receiver)(trigger_reg_t *, uint8_t *);
+void set_trigger_receiver(trigger_receiver *);
+
 #define trigger_reg_to_net trigger_reg_to_cpu
 
 #define trigger_hostname(t) ((t)->spname + (t)->spname_len + 1)
@@ -49,19 +56,13 @@ void trigger_reg_to_cpu(trigger_reg_t *);
 #define trigger_reg_init(dest, sp_name)                                        \
     do {                                                                       \
         dest = alloca(trigger_reg_sz(sp_name));                                \
+        dest->node = 0;                                                        \
         dest->elect_cookie = gbl_master_changes;                               \
         dest->trigger_cookie = get_id(thedb->bdb_env);                         \
         dest->spname_len = strlen(sp_name);                                    \
         strcpy(dest->spname, sp_name);                                         \
         strcpy(trigger_hostname(dest), gbl_mynode);                            \
         trigger_reg_to_net(dest);                                              \
-    } while (0)
-
-#define trigger_reg_clone(dest, sz, src)                                       \
-    do {                                                                       \
-        sz = trigger_reg_sz((src)->spname);                                    \
-        dest = alloca(sz);                                                     \
-        memcpy(dest, src, sz);                                                 \
     } while (0)
 
 #define Q4SP(var, spname)                                                      \
