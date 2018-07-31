@@ -2247,7 +2247,8 @@ do_ckp:
 	 * recovery (somewhat unusually) calls txn_checkpoint and expects
 	 * it to write a log message, LOGGING_ON is the correct macro here.
 	 */
-	if (LOGGING_ON(dbenv) && !gbl_is_physical_replicant) {
+	if (LOGGING_ON(dbenv) && !gbl_is_physical_replicant &&
+            !LF_ISSET(DB_RECOVER_NOCKP)) {
 		DB_LSN debuglsn;
 		DBT op = { 0 };
 		int debugtype;
