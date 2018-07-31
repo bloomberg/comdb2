@@ -60,7 +60,8 @@ const char *help_text[] = {
 "  -D           turn off directio",
 "  -E <db name> Creates a physical replicant with given db name",
 "               Only valid in create mode",
-"  -a '<remote>'If -P is selected, links replication to that remote db",
+"  -a '<remote>'If -E is selected, links replication to that remote db.",
+"               Delimit with whitespace.",
 NULL
 };
 
