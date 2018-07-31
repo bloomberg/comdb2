@@ -1238,18 +1238,7 @@ __log_zero(dbenv, from_lsn, to_lsn)
 
 	memset(buf, 0, sizeof(buf));
 
-	/* Initialize the write position. */
-	if ((ret = __os_seek(dbenv,
-	    dblp->lfhp, 0, 0, from_lsn->offset, 0, DB_OS_SEEK_SET)) != 0)
-		goto err;
-
-	while (len > 0) {
-		nbytes = len > sizeof(buf) ? sizeof(buf) : len;
-		if ((ret =
-		    __os_write(dbenv, dblp->lfhp, buf, nbytes, &nw)) != 0)
-			goto err;
-		len -= nbytes;
-	}
+    __os_truncate(dbenv, dblp->lfhp, from_lsn->offset);
 
 err:	(void)__os_closehandle(dbenv, dblp->lfhp);
 	dblp->lfhp = NULL;
