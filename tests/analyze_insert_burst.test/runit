@@ -26,8 +26,8 @@ keep_inserting=$!
 
 for i in `seq 1 500`; do
   echo iteration $i
-  cdb2sql ${CDB2_OPTIONS} $dbnm 'truncate table t' >/dev/null || { kill -9 $keep_inserting; exit 1; }
-  cdb2sql ${CDB2_OPTIONS} $dbnm 'analyze t' >/dev/null || { kill -9 $keep_inserting; exit 1; }
+  cdb2sql ${CDB2_OPTIONS} $dbnm default 'truncate table t' >/dev/null || { kill -9 $keep_inserting; exit 1; }
+  cdb2sql ${CDB2_OPTIONS} $dbnm default 'analyze t' >/dev/null || { kill -9 $keep_inserting; exit 1; }
 done
 
 kill -9 $keep_inserting || true
