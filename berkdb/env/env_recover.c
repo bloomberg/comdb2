@@ -1191,7 +1191,7 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	}
 
 	/* Take a checkpoint here to force any dirty data pages to disk. */
-    if (!gbl_is_physical_replicant)
+    if (!gbl_is_physical_replicant && !LF_ISSET(DB_RECOVER_NOCKP))
     {
         if ((ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE)) != 0)
             goto err;
@@ -1203,10 +1203,8 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		goto err;
 
 done:
-	if (max_lsn != NULL || gbl_is_physical_replicant) {
+	if (max_lsn != NULL) {
 
-        if (!gbl_is_physical_replicant)
-        {
             /*
              * When I truncate, I am running replicated recovery.
              * I am synced all the way to the last checkpoint, so
@@ -1280,8 +1278,6 @@ done:
             logmsg(LOGMSG_WARN, "TRUNCATED TO is %u:%u \n", trunclsn->file,
                 trunclsn->offset);
 
-            /* don't do above for physical replicant */
-        }
 
 		/*
 		 * Now we need to open files that should be open in order for

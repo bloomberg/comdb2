@@ -488,6 +488,11 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 	if (we_start_at_this_lsn)
 		*we_start_at_this_lsn = begin_lsn;
 
+    if ((ret = pthread_rwlock_rdlock(&dbenv->recoverlk)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
+        abort();
+    }
+
 	R_LOCK(dbenv, &mgr->reginfo);
 	if (!F_ISSET(txn, TXN_COMPENSATE) && F_ISSET(region, TXN_IN_RECOVERY)) {
 		__db_err(dbenv, "operation not permitted during recovery");
@@ -596,9 +601,12 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 		MUTEX_THREAD_UNLOCK(dbenv, mgr->mutexp);
 	}
 
+    pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (0);
 
-err:	R_UNLOCK(dbenv, &mgr->reginfo);
+err:
+	R_UNLOCK(dbenv, &mgr->reginfo);
+	pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (ret);
 }
 
@@ -2187,7 +2195,16 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 			return (0);
 	}
 
-do_ckp:	/*
+do_ckp:	
+    if ((ret = pthread_rwlock_rdlock(&dbenv->recoverlk)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
+        abort();
+    }
+
+    /* Retrieve lsn again after locking */
+	__log_txn_lsn(dbenv, &ckp_lsn, &mbytes, &bytes);
+
+    /*
 	 * Find the oldest active transaction and figure out its "begin" LSN.
 	 * This is the lowest LSN we can checkpoint, since any record written
 	 * after it may be involved in a transaction and may therefore need
@@ -2219,6 +2236,7 @@ do_ckp:	/*
 		__db_err(dbenv,
 		    "txn_checkpoint: failed to flush the buffer cache %s",
 		    db_strerror(ret));
+        pthread_rwlock_unlock(&dbenv->recoverlk);
 		return (ret);
 	}
 
@@ -2262,8 +2280,10 @@ do_ckp:	/*
 		 * However, it does break the assumption that every successful
 		 * __txn_checkpoint() writes a checkpoint in the log.
 		 */
-		if (dbenv->tx_perfect_ckp && log_compare(&ckp_lsn, &last_ckp) <= 0)
+		if (dbenv->tx_perfect_ckp && log_compare(&ckp_lsn, &last_ckp) <= 0) {
+            pthread_rwlock_unlock(&dbenv->recoverlk);
 			return (0);
+        }
 
 		if (REP_ON(dbenv))
 			__rep_get_gen(dbenv, &gen);
@@ -2275,7 +2295,11 @@ do_ckp:	/*
 
 		/* Put out a special debug record.  Recovery will look for it
 		 * to know where to start. */
-		pthread_rwlock_wrlock(&dbenv->dbreglk);
+		if ((ret = pthread_rwlock_wrlock(&dbenv->dbreglk)) != 0) {
+            logmsg(LOGMSG_FATAL, "%s pthtread_rwlock_wrlock returns %d\n",
+                    __func__, ret);
+            abort();
+        }
 		op.data = &debugtype;
 		op.size = sizeof(int);
 		debugtype = htonl(2);
@@ -2285,6 +2309,7 @@ do_ckp:	/*
 		if (ret) {
 			pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
+            pthread_rwlock_unlock(&dbenv->recoverlk);
 			return ret;
 		}
 
@@ -2311,6 +2336,7 @@ do_ckp:	/*
 			    db_strerror(ret));
 			pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
+            pthread_rwlock_unlock(&dbenv->recoverlk);
 			return (ret);
 		}
 		pthread_rwlock_unlock(&dbenv->dbreglk);
@@ -2321,6 +2347,7 @@ do_ckp:	/*
 			logmsg(LOGMSG_ERROR, 
                 "%s: failed to push to checkpoint list, ret %d\n",
 			    __func__, ret);
+            pthread_rwlock_unlock(&dbenv->recoverlk);
 			return ret;
 		}
 
@@ -2328,6 +2355,7 @@ do_ckp:	/*
 		if (ret == 0)
 			__txn_updateckp(dbenv, &ckp_lsn);	/* this is the output lsn from txn_ckp_log */
 	}
+    pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (ret);
 }
 

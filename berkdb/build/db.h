@@ -245,6 +245,7 @@ struct __db_trigger_subscription;
 #define	DB_LOCKDOWN	      0x0080000	/* Lock memory into physical core. */
 #define	DB_PRIVATE	      0x0100000	/* DB_ENV is process local. */
 #define	DB_RECOVER_FATAL      0x0200000	/* Run catastrophic recovery. */
+#define	DB_RECOVER_NOCKP      0x0400000	/* Do not write a checkpoint. */
 #define	DB_SYSTEM_MEM	      0x0400000	/* Use system-backed memory. */
 
 /*
@@ -2455,6 +2456,7 @@ struct __db_env {
 	struct fileid_track fileid_track;
 	db_recops recovery_pass;
 	pthread_rwlock_t dbreglk;
+	pthread_rwlock_t recoverlk;
 	DB_LSN recovery_start_lsn;
 	int (*get_recovery_lsn) __P((DB_ENV*, DB_LSN*));
 	int (*set_recovery_lsn) __P((DB_ENV*, DB_LSN*));
