@@ -1230,9 +1230,6 @@ static void analyzeOneTable(
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   int iDb;                     /* Index of database containing pTab */
   u8 needTableCnt = 1;         /* True to count the table */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  int regCount = iMem++;       /* select count(*) from pTab */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   int regNewRowid = iMem++;    /* Rowid for the inserted record */
   int regStat4 = iMem++;       /* Register to hold Stat4Accum object */
   int regChng = iMem++;        /* Index of changed index field */
@@ -1406,16 +1403,17 @@ static void analyzeOneTable(
     */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
-    sqlite3VdbeAddOp2(v, OP_Copy, regCount, regStat4+2);
     /* we only care about our shared tables */
     if( iDb==0 ){
       int actualCount = analyze_get_nrecs(pIdx->tnum);
       sqlite3VdbeAddOp2(v, OP_Integer, actualCount, regStat4+3);
+    }else{
+      /* TODO: Is there a better default value here? */
+      sqlite3VdbeAddOp2(v, OP_Integer, 0, regStat4+3);
     }
-    sqlite3VdbeAddOp2(v, OP_Integer, nCol+1, regStat4+1);
-#else
-    sqlite3VdbeAddOp2(v, OP_Integer, nCol, regStat4+1);
 #endif
+    sqlite3VdbeAddOp2(v, OP_Integer, nCol, regStat4+1);
+    sqlite3VdbeAddOp2(v, OP_Count, iIdxCur, regStat4+2);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
     sqlite3VdbeAddOp2(v, OP_Count, iIdxCur, regStat4+3);
