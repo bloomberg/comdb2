@@ -1191,8 +1191,13 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	}
 
 	/* Take a checkpoint here to force any dirty data pages to disk. */
-    int ckpflags = DB_FORCE | (flags & DB_RECOVER_NOCKP);
-    if ((ret = __txn_checkpoint(dbenv, 0, 0, ckpflags)) != 0)
+    if (gbl_is_physical_replicant || LF_ISSET(DB_RECOVER_NOCKP)) {
+        if (MPOOL_ON(dbenv) && (ret = __memp_sync_restartable(dbenv,
+                        NULL, 0, 0)) != 0) {
+            logmsg(LOGMSG_ERROR, "memp_sync returned %d\n", ret);
+            goto err;
+        }
+    } else if ((ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE)) != 0)
         goto err;
 
 
