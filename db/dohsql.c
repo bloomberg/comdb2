@@ -911,7 +911,7 @@ void comdb2_handle_offset(Vdbe *v, Mem *m)
         }
         if (conns->skipped < conns->offset) {
             conns->skipped++;
-            while (conns->skipped <= conns->offset) {
+            while (conns->skipped < conns->offset) {
                 /* try to see if we got a row */
                 rc = _get_a_parallel_row(conns, &row);
                 /* skip it */
