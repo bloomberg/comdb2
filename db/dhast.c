@@ -36,12 +36,14 @@ char *generate_columns(sqlite3 *db, ExprList *c, const char **tbl)
             return NULL;
         }
         if (!cols)
-            cols = sqlite3_mprintf("%s.\"%s\"",
-                    expr->pTab->zName, c->a[i].pExpr->u.zToken);
+            cols = sqlite3_mprintf("%s.\"%s\"%s%s%s",
+                    expr->pTab->zName, c->a[i].pExpr->u.zToken,
+                    (c->a[i].zName)?" AS \"":"", (c->a[i].zName)?c->a[i].zName:"", (c->a[i].zName)?"\" ":"");
         else
-            cols = sqlite3_mprintf("%s, %s.\"%s\"",
+            cols = sqlite3_mprintf("%s, %s.\"%s\"%s%s%s",
                     cols, expr->pTab->zName, 
-                    c->a[i].pExpr->u.zToken);
+                    c->a[i].pExpr->u.zToken,
+                    (c->a[i].zName)?" AS \"":"", (c->a[i].zName)?c->a[i].zName:"", (c->a[i].zName)?"\" ":"");
         if (!cols) return NULL;
         if(tbl) *tbl = expr->pTab->zName;
     }
@@ -219,6 +221,11 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
 
     crt = p;
     psub = node->nodes;
+    /* go from left to right */
+    if (crt) {
+      while (crt->pPrior)
+        crt = crt->pPrior;
+    }
     while(crt) {
         *psub = gen_oneselect(v, crt);
         if(!(*psub)) {
@@ -238,7 +245,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
             node->sql = sqlite3_mprintf("%s", (*psub)->sql);
         }
 
-        crt = crt->pPrior;
+        crt = crt->pNext;
         psub++;
     }
 
