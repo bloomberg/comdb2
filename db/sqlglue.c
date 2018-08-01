@@ -3337,9 +3337,6 @@ int sqlite3BtreeOpen(
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
     } else if (!zFilename || strcmp(zFilename, ":memory:") == 0) {
         /* temporary connection (for temp tables and such) */
-        if (flags & BTREE_UNORDERED) {
-            bt->is_hashtable = 1;
-        }
         bt->reqlogger = thrman_get_reqlogger(thrman_self());
         bt->btreeid = id++;
         bt->is_temporary = 1;
@@ -3347,6 +3344,12 @@ int sqlite3BtreeOpen(
         *ppBtree = bt;
         thd->bttmp = bt;
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
+        if (flags & BTREE_UNORDERED) {
+            bt->is_hashtable = 1;
+        } else {
+            int num_tables = 0;
+            sqlite3BtreeCreateTable(bt, &num_tables, BTREE_INTKEY);
+        }
     } else if (zFilename) {
         /* TODO: maybe we should enforce unicity ? when attaching same dbs from
          * multiple sql threads */
@@ -7034,9 +7037,6 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
                 __func__);
         return SQLITE_INTERNAL;
     }
-
-    int num_tables = 0;
-    sqlite3BtreeCreateTable(pBt, &num_tables, BTREE_INTKEY);
 
     struct temptable *src = &pBt->temp_tables[iTable];
     cur->tmptable->tbl = src->tbl;
