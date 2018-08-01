@@ -7,7 +7,7 @@ if [[ -z $dbname ]] ; then
     exit 1
 fi
 
-maxrecords=20000
+maxrecords=100000
 maxselectfail=20
 
 cdb2sql ${CDB2_OPTIONS} $dbname default "truncate jobs"
