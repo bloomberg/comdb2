@@ -34,6 +34,7 @@ extern pthread_mutex_t log_write_lk;
 
 static int __log_c_close_pp __P((DB_LOGC *, u_int32_t));
 static int __log_c_get_pp __P((DB_LOGC *, DB_LSN *, DBT *, u_int32_t));
+static int __log_c_setflags_pp __P((DB_LOGC *, u_int32_t));
 static int __log_c_stat_pp __P((DB_LOGC *, DB_LOGC_STAT **));
 static int __log_c_get_int __P((DB_LOGC *, DB_LSN *, DBT *, u_int32_t));
 static int __log_c_hdrchk __P((DB_LOGC *, DB_LSN *, HDR *, int *));
@@ -141,6 +142,7 @@ __log_cursor_complete(dbenv, logcp, bpsize, maxrec)
         logc->dbenv = dbenv;
         logc->close = __log_c_close_pp;
         logc->get = __log_c_get_pp;
+        logc->setflags = __log_c_setflags_pp;
         logc->stat = __log_c_stat_pp;
     }
     logc->incursor_count = 0;
@@ -283,6 +285,19 @@ __log_c_stat_pp(logc, stats)
 	*stats = st;
 
 	return 0;
+}
+
+/*
+ * __log_c_setflags_pp --
+ *	DB_LOGC->setflags
+ */
+static int
+__log_c_setflags_pp(logc, flags)
+	DB_LOGC *logc;
+	u_int32_t flags;
+{
+    logc->flags = flags;
+    return 0;
 }
 
 /*
