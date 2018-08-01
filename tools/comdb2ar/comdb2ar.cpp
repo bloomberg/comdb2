@@ -59,9 +59,11 @@ const char *help_text[] = {
 "  -O           legacy mode, does not delete old format files",
 "  -D           turn off directio",
 "  -E <db name> Creates a physical replicant with given db name",
-"               Only valid in create mode",
-"  -a '<remote>'If -E is selected, links replication to that remote db.",
-"               Delimit with whitespace.",
+"               Only valid in create mode. -C strip flag is automatically applied",
+"  -a '<remote>'If -E is selected, links replication to that remote db",
+"               Delimit each machine name with whitespace",
+"               Note: comdb2ar will fail if no cluster line specified from",
+"               and -a was not specified",
 NULL
 };
 

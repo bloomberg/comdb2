@@ -83,7 +83,7 @@ int compare_log(bdb_state_type* bdb_state, unsigned int file, unsigned int offse
         return 1;
     }
 
-    logmsg(LOGMSG_WARN, "LSN %u:%u\n", match_lsn.file, match_lsn.offset);
+    logmsg(LOGMSG_WARN, "cmp: LSN %u:%u\n", match_lsn.file, match_lsn.offset);
 
     if (logrec.size != blob_len)
     {

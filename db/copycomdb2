@@ -80,7 +80,11 @@ Other options:
     -b          Serialize a backup of a database to stdout
     -r          Restore a backup of a database from stdin
     -p          Copy only the incremental differences
+    -H          Creates a physical replicant. Automatically calls -C strip flag.
+    -y          Specify which machines a physical replicant will copy from.
+                This flag must be specified if the copied db does not have a cluster.
 \n"
+
    exit 1
 }
 
@@ -128,6 +132,9 @@ max_du_percent=95
 partial=no
 partialopts=
 outmode=x
+phys_rep=no
+phys_copy_from=
+
 [ -z "$comdb2ar" ] && comdb2ar="${PREFIX}/bin/comdb2ar"
 [ -z "$lz4" ] && lz4="${PREFIX}/bin/lz4"
 
@@ -150,7 +157,7 @@ if [[ ! -x $lz4 ]]; then
    fi
 fi
 
-set - `getopt "LC:ht:l:rdsSx:fmaZu:bp" "$@"` || die
+set - `getopt "LC:ht:l:rdsSx:fmaZu:bpHy:" "$@"` || die
 for arg in "$@" ; do
     case "$arg" in
         -h)
@@ -222,6 +229,14 @@ for arg in "$@" ; do
 
         -p) partial=yes
             shift
+            ;;
+
+        -H) phys_rep=yes
+            shift
+            ;;
+
+        -y) phys_copy_from="$2"
+            shift 2
             ;;
 
         --)

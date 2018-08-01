@@ -614,7 +614,8 @@ void create_lrl_file(std::string& lrlpath,
     /* still no hosts to replicate from */
     if (repl_from_hostnames.empty())
     {
-        repl_from_hostnames = "default";
+        /* We need a cluster to replicate from, so we quit */
+        errexit();
     }
     phys_lrl << "replicate_from " << master_name << " " << repl_from_hostnames; 
 }
