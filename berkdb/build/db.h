@@ -638,6 +638,7 @@ struct __db_log_cursor {
 	int (*close) __P((DB_LOGC *, u_int32_t));
 	int (*get) __P((DB_LOGC *, DB_LSN *, DBT *, u_int32_t));
     int (*stat) __P((DB_LOGC *, DB_LOGC_STAT **));
+    int (*setflags) __P((DB_LOGC*, u_int32_t));
 
     /* Instrumentation for log stats */
     int incursor_count;
