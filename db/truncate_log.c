@@ -19,7 +19,7 @@ LOG_INFO handle_truncation(cdb2_hndl_tp* repl_db, LOG_INFO latest_info)
         return latest_info;
     }
 
-    logmsg(LOGMSG_WARN, "Rewind to lsn: {%u:%u}", match_lsn.file, match_lsn.offset);
+    logmsg(LOGMSG_WARN, "Rewind to lsn: {%u:%u}\n", match_lsn.file, match_lsn.offset);
 
     /* TODO: Actually call truncation */
     truncate_log(match_lsn.file, match_lsn.offset);
@@ -108,6 +108,8 @@ LOG_INFO find_match_lsn(cdb2_hndl_tp* repl_db, LOG_INFO start_info)
             info.file = match_file;
             info.offset = match_offset;
             info.size = blob_len;
+            info.gen = *(int64_t *) cdb2_column_value(repl_db, 2);
+
             return info;
         } 
         
