@@ -831,7 +831,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 backout:
     live_sc_off(db);
     backout_constraint_pointers(newdb, db);
-    delete_temp_table(iq, newdb);
     change_schemas_recover(/*s->table*/ db->tablename);
 
     logmsg(LOGMSG_WARN,
