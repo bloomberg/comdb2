@@ -123,7 +123,7 @@ struct temp_table {
     int tblid;
     unsigned long long rowid;
 
-    int num_mem_entries;
+    unsigned long long num_mem_entries;
     int max_mem_entries;
     LISTC_T(struct temp_cursor) cursors;
     void *next;
