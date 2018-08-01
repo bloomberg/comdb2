@@ -134,6 +134,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
                   __func__, __LINE__, rc);
           return SQLITE_INTERNAL;
       }
+      pCur->logc->setflags(pCur->logc, DB_LOG_SILENT_ERR);
       pCur->openCursor = 1;
       pCur->data.flags = DB_DBT_REALLOC;
 
