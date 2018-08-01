@@ -2119,6 +2119,11 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
     }
     if( p->pOffset ){
       p->iOffset = iOffset = ++pParse->nMem;
+      {
+          /* COMDB2 MODIFICATION */
+          extern void comdb2_register_offset(Select*);
+          comdb2_register_offset(p);
+      }
       pParse->nMem++;   /* Allocate an extra register for limit+offset */
       sqlite3ExprCode(pParse, p->pOffset, iOffset);
       sqlite3VdbeAddOp1(v, OP_MustBeInt, iOffset); VdbeCoverage(v);

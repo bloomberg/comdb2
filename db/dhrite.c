@@ -58,10 +58,10 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p)
     char *where = NULL;
     sqlite3 *db = v->db;
     char *limit = NULL;
+    char *offset = NULL;
 
     if (p->recording) return NULL; /* no selectv */
     if (p->pWith) return NULL; /* no CTE */
-    if (p->pOffset) return NULL; /* no Offset */
     if (p->pOrderBy) return NULL; /* no order by */
     if (p->pHaving) return NULL; /* no having */
     if (p->pGroupBy) return NULL; /* no group by */
@@ -85,13 +85,28 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p)
 
     if (p->pLimit) {
         limit = sqlite3ExprDescribe(v, p->pLimit);
+        if (!limit) {
+            sqlite3DbFree(db, where);
+            sqlite3DbFree(db, cols);
+            return NULL;
+        }
+        if (p->pOffset) {
+            offset = sqlite3ExprDescribe(v, p->pOffset);
+            if (!offset ) {
+                sqlite3DbFree(db, limit);
+                sqlite3DbFree(db, where);
+                sqlite3DbFree(db, cols);
+                return NULL;
+            }
+        }
     }
 
-    select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s%s%s",
+    select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s%s%s%s%s",
             (selectPrior)?selectPrior:"", (selectPrior)?" uNioN aLL ":"",
             cols, tbl,
             (where)?" WHeRe ":"", (where)?where:"",
-            (limit)?" LiMiT ":"", (limit)?limit:"");
+            (limit)?" LiMiT ":"", (limit)?limit:"",
+            (offset)?" oFFSeT ":"", (offset)?offset:"");
 
     sqlite3DbFree(db, cols);
     if (limit) sqlite3DbFree(db, limit);

@@ -24,13 +24,19 @@ limitations under the License.
 #include "sqlinterfaces.h"
 
 static int gbl_plugin_api_debug = 0;
-static int verbose = 0;
+static int verbose = 1;
 
 struct col {
     int type;
     char *name;
 };
 typedef struct col col_t;
+
+enum doh_status {
+    DOH_RUNNING = 0
+    ,DOH_MASTER_DONE = 1
+    ,DOH_CLIENT_DONE = 2
+};
 
 struct dohsql_connector {
     struct sqlclntstate *clnt;
@@ -42,7 +48,7 @@ struct dohsql_connector {
     int ncols;  /* number of columns */
     int rc;
     int nrows; /* current total queued rows */
-    int master_done; /* caller is done */
+    enum doh_status status; /* caller is done */
 };
 
 typedef struct dohsql_connector dohsql_connector_t;
@@ -58,10 +64,12 @@ struct dohsql {
     int row_src;
     int rc;
     /* LIMIT support */
-    int offset; /* any offset */
-    int skipped; /* how many rows where skipped so far */
+    int limitMem; /* limit address */
     int limit; /* any limit */
     int nrows; /* sent rows so far */
+    int offsetMem; /* offset address */
+    int offset; /* any offset */
+    int skipped; /* how many rows where skipped so far */
 };
 typedef struct dohsql dohsql_t;
 
@@ -363,266 +371,6 @@ int comdb2_shard_table_constraints(Parse *pParser,
     return SHARD_NOERR_DONE;
 }
 
-#if 0
-
-#define _has_snapshot(clnt, sql_response)               \
-    CDB2SQLRESPONSE__Snapshotinfo snapshotinfo = CDB2__SQLRESPONSE__SNAPSHOTINFO__INIT; \
-                                                        \
-    if (clnt->high_availability) {                      \
-        int file = 0, offset = 0;                       \
-        bdb_tran_get_start_file_offset(thedb->bdb_env, clnt->dbtran.shadow_tran, \
-                                       &file, &offset); \
-        if (file) {                                     \
-            snapshotinfo.file = file;                   \
-            snapshotinfo.offset = offset;               \
-            sql_response.snapshot_info = &snapshotinfo; \
-        }                                               \
-    }
-
-
-static int form_new_row(struct sqlclntstate *clnt, int type,
-        CDB2SQLRESPONSE *sql_response,
-        void *(*alloc)(size_t size), 
-        const char *func, int line,
-        dohsql_connector_t *con);
-
-
-static int cache_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                        int ncols, int row_id,
-                        CDB2SQLRESPONSE__Column **columns, dohsql_connector_t *con)
-{
-    CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
-    int rc = 0;
-    int i;
-
-    for (i = 0; i < ncols; i++) {
-        cdb2__sqlresponse__column__init(columns[i]);
-        columns[i]->has_type = 0;
-        if (thd->offsets[i].len == -1) {
-            columns[i]->has_isnull = 1;
-            columns[i]->isnull = 1;
-            columns[i]->value.len = 0;
-            columns[i]->value.data = NULL;
-        } else {
-            columns[i]->value.len = thd->offsets[i].len;
-            columns[i]->value.data = thd->buf + thd->offsets[i].offset;
-        }
-    }
-
-    if (clnt->num_retry) {
-        sql_response.has_row_id = 1;
-        sql_response.row_id = row_id;
-    }
-
-    _has_snapshot(clnt, sql_response);
-
-    if (gbl_extended_sql_debug_trace) {
-        int sz = clnt->sql_query->cnonce.len;
-        char cnonce[256];
-        snprintf(cnonce, 256, "%s", clnt->sql_query->cnonce.data);
-        fprintf(stderr, "%s: cnonce '%s' snapshot is [%d][%d]\n", __func__,
-                cnonce, sql_response.snapshot_info->file, 
-                sql_response.snapshot_info->offset);
-    }
-
-    sql_response.value = columns;
-    /*
-    return _push_row_new(clnt, RESPONSE_TYPE__COLUMN_VALUES, &sql_response, 
-                         columns, ncols, 
-                         ((cdb2__sqlresponse__get_packed_size(&sql_response)+1)
-                            > gbl_blob_sz_thresh_bytes) 
-                            ?  blob_alloc_override: malloc,
-                         0);
-     */
-    sql_response.response_type = RESPONSE_TYPE__COLUMN_VALUES;
-    sql_response.n_value = ncols;
-    sql_response.value = columns;
-    sql_response.error_code = 0;
-
-    /* cache the response */
-    form_new_row(clnt, RESPONSE_HEADER__SQL_RESPONSE, &sql_response, malloc, 
-            __func__, __LINE__, con);
-
-    return SHARD_NOERR;
-}
-
-extern int gbl_dump_fsql_response;
-#endif
-typedef struct cached_row {
-    void *buf;
-    int len;
-} cached_row_t;
-
-#if 0
-static int form_new_row(struct sqlclntstate *clnt, int type,
-        CDB2SQLRESPONSE *sql_response,
-        void *(*alloc)(size_t size), 
-        const char *func, int line,
-        dohsql_connector_t *con)
-{
-    struct newsqlheader *phdr;
-    cached_row_t *row;
-    int len;
-
-    if (clnt->in_client_trans && clnt->sql_query &&
-        clnt->sql_query->skip_rows == -1 && (clnt->isselect != 0)) {
-        // Client doesn't expect any response at this point.
-        printf("sending nothing back to client \n");
-        return 0;
-    }
-
-
-    /* payload */
-    if (sql_response) {
-        len = cdb2__sqlresponse__get_packed_size(sql_response);
-    } else {
-        len = 0;
-    }
-
-    /* header */
-    row = (cached_row_t*)(*alloc)(sizeof(*row)+sizeof(*phdr)+len+1);
-    if(!row)
-        return SHARD_ERR_MALLOC;
-    row->buf = phdr = (struct newsqlheader*)(row+1);
-    row->len = sizeof(*phdr)+len;
-
-    phdr->type = ntohl(type);
-    phdr->compression = 0;
-    phdr->dummy = 0;
-    phdr->length = ntohl(len);
-
-    if(len)
-        cdb2__sqlresponse__pack(sql_response, (uint8_t *)(phdr+1));
-
-
-    if (gbl_dump_fsql_response) {
-        printf("Caching response=%d dta length %d to %s for sql %s"
-               " from %s line %d\n",
-               type, len, clnt->origin, clnt->sql, func ? func : "(NULL)",
-               line);
-        hexdump(row->buf, sizeof(*phdr));
-        printf("\n");
-        hexdump(row->buf+sizeof(*phdr), row->len-sizeof(*phdr));
-        printf("\n");
-    }
-
-    pthread_mutex_lock(&con->mtx);
-
-    queue_add(con->que, row);
-
-    pthread_mutex_unlock(&con->mtx);
-
-    return SHARD_NOERR;
-}
-
-static int cache_row_old(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                        int new_row_data_type, dohsql_connector_t *con)
-{
-    struct fsqlresp resp;
-    cached_row_t *row;
-
-    if (new_row_data_type) {
-        resp.response = FSQL_NEW_ROW_DATA;
-    } else {
-        resp.response = FSQL_ROW_DATA;
-    }
-    resp.flags = 0;
-    resp.rcode = FSQL_OK;
-    resp.parm = 0;
-
-    row = (cached_row_t*)malloc(sizeof(cached_row_t) + sizeof(resp) + thd->buflen);
-    row->len = thd->buflen;
-    row->buf = (char*)(row+1);
-    resp.followlen = thd->buflen;
-    fsqlresp_put(&resp, row->buf, ((char*)row->buf) + sizeof(resp));
-    memcpy(((char*)row->buf) + sizeof(resp), thd->buf, thd->buflen);
-
-    /*
-    return fsql_write_response(clnt, &resp, thd->buf, thd->buflen, 0, __func__,
-                               __LINE__);
-     */
-
-    /* queue row */
-    pthread_mutex_lock(&con->mtx);
-
-    queue_add(con->que, row);
-
-    pthread_mutex_unlock(&con->mtx);
-
-    return SHARD_NOERR;
-
-}
-
-static int cache_row(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                    int new_row_data_type, int ncols, int row_id, int rc,
-                    CDB2SQLRESPONSE__Column **columns)
-{
-    dohsql_connector_t *con;
-    if (!clnt->conns)
-        return SHARD_ERR_GENERIC;
-    if(clnt->conns_idx<=1 || !(con=&clnt->conns[clnt->conns_idx-2]))
-        return SHARD_ERR_GENERIC;
-    if(clnt != con->clnt)
-        return SHARD_ERR_GENERIC;
-
-    int irc = 0;
-    if (clnt->is_newsql) {
-        if (!rc && (clnt->num_retry == clnt->sql_query->retry) &&
-                (clnt->num_retry == 0 || clnt->sql_query->has_skip_rows == 0 ||
-                 (clnt->sql_query->skip_rows < row_id)))
-            irc = cache_row_new(thd, clnt, ncols, row_id, columns, con);
-    } else {
-        irc = cache_row_old(thd, clnt, new_row_data_type, con);
-    }
-    return irc;
-}
-
-void shard_flush_conns(struct sqlclntstate *clnt, int waitfordone)
-{
-    int leftovers;
-    int i;
-
-    do {
-        leftovers = 0;
-        for(i=0;i<clnt->nconns;i++) {
-            cached_row_t *row;
-            if(waitfordone) {
-                if(!clnt->conns[i].done)
-                    leftovers = 1;
-            }
-            pthread_mutex_lock(&clnt->conns[i].mtx);
-            while(row = queue_next(clnt->conns[i].que)) {
-                pthread_mutex_unlock(&clnt->conns[i].mtx);
-                /* shard slicing */
-                if(clnt->shard_slice <= 0 || clnt->shard_slice == i+2) {
-                    if (gbl_dump_fsql_response) {
-                        struct newsqlheader *hdr = (struct newsqlheader*)row->buf;
-
-                        printf("Sending shard response=%d dta length %d to node %s for sql "
-                                "%s newsql-flag %d\n",
-                                ntohl(hdr->type), ntohl(hdr->length), clnt->origin, clnt->sql, 
-                                clnt->is_newsql);
-                        hexdump(row->buf, sizeof(*hdr));
-                        printf("\n");
-                        hexdump(row->buf+sizeof(*hdr), row->len-sizeof(*hdr));
-                        printf("\n");
-                    }
-                    pthread_mutex_lock(&clnt->write_lock);
-                    sbuf2write(row->buf, row->len, clnt->sb); 
-                    pthread_mutex_unlock(&clnt->write_lock);
-                }
-
-                pthread_mutex_lock(&clnt->conns[i].mtx);
-
-                free(row);
-            }
-            pthread_mutex_unlock(&clnt->conns[i].mtx);
-        }
-    } while(leftovers);
-}
-
-#endif
-
 static int _colIndex(Table *pTab, const char *zCol) 
 {
     int j;
@@ -730,7 +478,7 @@ static void trimQue(sqlite3_stmt *stmt, queue_type* que, int limit)
     while (queue_count(que)>limit) {
         row = queue_next(que);
         if (verbose)
-            logmsg(LOGMSG_DEBUG, "XXX: %p freed older row limit %d\n", que, limit);
+            logmsg(LOGMSG_ERROR, "XXX: %p freed older row limit %d\n", que, limit);
         sqlite3CloneResultFree(stmt, &row);
     }
 }
@@ -747,9 +495,9 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp, int 
     oldrow = NULL;
     pthread_mutex_lock(&conn->mtx);
     
-    if(conn->master_done) {
+    if(conn->status == DOH_MASTER_DONE) {
         if (verbose)
-            logmsg(LOGMSG_DEBUG, "%s: %d master done q %d qf %d\n", 
+            logmsg(LOGMSG_ERROR, "%s: %d master done q %d qf %d\n", 
                     __func__, pthread_self(), queue_count(conn->que),
                     queue_count(conn->que_free));
         /* work is done, need to clean-up */
@@ -776,7 +524,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp, int 
     conn->rc = SQLITE_ROW;
     queue_add(conn->que, row);
     if(verbose)
-        logmsg(LOGMSG_DEBUG, "XXX: %p added new row\n", conn);
+        logmsg(LOGMSG_ERROR, "XXX: %p added new row\n", conn);
 
     /* inline cleanup */
     if (queue_count(conn->que_free)>10) {
@@ -855,7 +603,6 @@ static void add_row(dohsql_t *conns, int i, row_t *row)
     /* new row */
     conns->row = row;
     conns->row_src = i;
-    conns->nrows++;
 }
 
 #define CHILD_DONE(kid) (queue_count(conns->conns[(kid)].que) == 0 && \
@@ -863,60 +610,26 @@ static void add_row(dohsql_t *conns, int i, row_t *row)
 #define CHILD_ERROR(kid) (conns->conns[(kid)].rc != SQLITE_ROW && \
                 conns->conns[(kid)].rc != SQLITE_DONE)
 
-/**
- * this is a non-ordered merge of N engine outputs 
- *
- */
-static int dohsql_dist_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+
+static void _signal_children_master_is_done(dohsql_t *conns)
 {
-    dohsql_t *conns = clnt->conns;
-    row_t *row;
-    int rc;
-    int child_num, err_child_num;
-    int empty;
+    int child_num;
 
-
-    if(conns->nrows == 0) {
-        rc = sqlite3_step(stmt);
-
-        if (verbose)
-            logmsg(LOGMSG_DEBUG, "%s: sqlite3_step rc %d\n", __func__, rc);
-
-        if(conns->limit>0) {
-            conns->limit = sqlite3_value_int64(
-                    &((Vdbe*)stmt)->aMem[conns->limit-1])+1;
-            if (verbose)
-                logmsg(LOGMSG_DEBUG, "XXX: found limit, set to %d\n", conns->limit);
-            assert(rc!=SQLITE_ROW || conns->limit!=1); /* sqlite planning */
-        }
-
-        if (rc == SQLITE_DONE)
-            conns->conns[0].rc = SQLITE_DONE;
-        else {
-            if (rc == SQLITE_ROW) {
-                add_row(conns, 0, NULL);
-                goto got_row;
-            }
-
-            goto signal_children_master_is_done;
-        }
+    for(child_num=1;child_num<conns->nconns;child_num++) {
+        pthread_mutex_lock(&conns->conns[child_num].mtx);
+        conns->conns[child_num].status = DOH_MASTER_DONE;
+        pthread_mutex_unlock(&conns->conns[child_num].mtx);
     }
+}
 
+static int _get_a_parallel_row(dohsql_t *conns, row_t **prow)
+{
+    int child_num;
+    int rc = SQLITE_DONE;
 
-    if (conns->limit>0 && conns->nrows >= conns->limit-1) {
-        if(conns->conns[0].rc != SQLITE_DONE) {
-            sqlite3_reset(stmt);
-        }
+    *prow = NULL;
 
-        rc = SQLITE_DONE;
-        goto signal_children_master_is_done;
-    }
-
-wait_for_others:
-    rc = 0;
-    row = NULL;
-    empty = 1;
-    for(child_num=1;child_num<conns->nconns && row == NULL;child_num++) {
+    for(child_num=1;child_num<conns->nconns && (*prow) == NULL;child_num++) {
         pthread_mutex_lock(&conns->conns[child_num].mtx);
         /* done */
         if (CHILD_DONE(child_num)) {
@@ -928,43 +641,113 @@ wait_for_others:
             /* debatable if we wanna clear cached rows before check for error */
             rc = conns->conns[child_num].rc;
             pthread_mutex_unlock(&conns->conns[child_num].mtx);
-            err_child_num = child_num;
             /* we could envision a case when child is retried for cut 2*/
             /* for now, signal all children that we are done and pass error
                to caller */
-            goto signal_children_master_is_done;
+            _signal_children_master_is_done(conns);
+            return rc;
         }
-        empty = 0;
+        rc = SQLITE_OK;
         if (queue_count(conns->conns[child_num].que)>0) {
-            row = queue_next(conns->conns[child_num].que);
+            *prow = queue_next(conns->conns[child_num].que);
             if (verbose)
-                logmsg(LOGMSG_DEBUG, "XXX: %p retrieved row\n", &conns->conns[child_num]);
-            add_row(conns, child_num, row);
-            rc = SQLITE_ROW;
-            pthread_mutex_unlock(&conns->conns[child_num].mtx);
-            goto got_row;
+                logmsg(LOGMSG_ERROR, "XXX: %p retrieved row\n", &conns->conns[child_num]);
+            add_row(conns, child_num, *prow);
+            rc =  SQLITE_ROW;
         }
         pthread_mutex_unlock(&conns->conns[child_num].mtx);
     }
+
+    if (verbose)
+        logmsg(LOGMSG_ERROR, "XXX: parallel row rc = %d\n", rc);
+
+    return rc;
+}
+
+/**
+ * this is a non-ordered merge of N engine outputs 
+ *
+ */
+static int dohsql_dist_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    dohsql_t *conns = clnt->conns;
+    row_t *row;
+    int empty;
+    int rc;
+
+    if (verbose)
+        logmsg(LOGMSG_ERROR, "%s: start\n", __func__);
+    if(conns->nrows == 0) {
+        rc = sqlite3_step(stmt);
+
+        if (verbose)
+            logmsg(LOGMSG_ERROR, "%s: sqlite3_step rc %d\n", __func__, rc);
+
+        if(conns->limitMem>0 && (!conns->offsetMem || !conns->offset)) {
+            conns->limit = sqlite3_value_int64(
+                    &((Vdbe*)stmt)->aMem[conns->limitMem-1]);
+
+            if (verbose)
+                logmsg(LOGMSG_ERROR, "XXX: found limit %d\n", conns->limit);
+            assert(rc!=SQLITE_ROW || conns->limit!=0); /* sqlite planning */
+        }
+
+        if (rc == SQLITE_DONE)
+            conns->conns[0].rc = SQLITE_DONE;
+        else {
+            if (rc == SQLITE_ROW) {
+                add_row(conns, 0, NULL);
+                goto got_row;
+            }
+
+            _signal_children_master_is_done(conns);
+            return rc;
+        }
+    }
+
+
+    if (conns->limitMem>0 && conns->nrows >= conns->limit) {
+        fprintf(stderr, "REACHED LIMIT rc =%d!\n",
+                conns->conns[0].rc);
+        if(conns->conns[0].rc != SQLITE_DONE) {
+            fprintf(stderr, "RESET STMT!\n");
+            sqlite3_reset(stmt);
+        }
+
+        _signal_children_master_is_done(conns);
+        return SQLITE_DONE;
+    }
+
+wait_for_others:
+    rc = 0;
+    empty = 1;
+    rc = _get_a_parallel_row(conns, &row);
+    if (rc == SQLITE_ROW) {
+        assert(row);
+        goto got_row;
+    }
+    if (rc == SQLITE_OK)
+        empty = 0;
+    else if (rc != SQLITE_DONE)
+        return rc;
 
     /* no row in others (yet) */
     if (conns->conns[0].rc != SQLITE_DONE) {
         rc = sqlite3_step(stmt);
         
         if( verbose)
-            logmsg(LOGMSG_DEBUG, "%s: rc =%d\n", __func__, rc);
+            logmsg(LOGMSG_ERROR, "%s: rc =%d\n", __func__, rc);
 
         if (rc == SQLITE_DONE)
             conns->conns[0].rc = SQLITE_DONE;
         else {
             if (rc == SQLITE_ROW) {
-                /*if(conns->limit>0)
-                    conns->limit++;*/
                 add_row(conns, 0, NULL);
                 goto got_row;
             }
 
-            goto signal_children_master_is_done;
+            _signal_children_master_is_done(conns);
+            return rc;
         }
     }
     if (!empty) {
@@ -977,20 +760,13 @@ wait_for_others:
 
 got_row:
     /* limit support */
-    if (conns->offset && conns->skipped < conns->offset) {
+    if (conns->offsetMem && conns->skipped < conns->offset) {
         conns->skipped++;
         /* skip it */
         goto wait_for_others;
     }
+    conns->nrows++;
     return SQLITE_ROW;
-
-signal_children_master_is_done:
-    for(child_num=1;child_num<conns->nconns;child_num++) {
-        pthread_mutex_lock(&conns->conns[child_num].mtx);
-        conns->conns[child_num].master_done = 1;
-        pthread_mutex_unlock(&conns->conns[child_num].mtx);
-    }
-    return rc;
 }
 
 static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
@@ -1317,7 +1093,7 @@ int dohsql_end_distribute(struct sqlclntstate *clnt)
 
     for(i=1; i<conns->nconns; i++) {
         pthread_mutex_lock(&conns->conns[i].mtx);
-        while(conns->conns[i].rc) {
+        while(conns->conns[i].status != DOH_CLIENT_DONE) {
             pthread_mutex_unlock(&conns->conns[i].mtx);
             poll(NULL, 0, 10);
             pthread_mutex_lock(&conns->conns[i].mtx);
@@ -1352,7 +1128,7 @@ void dohsql_wait_for_master(sqlite3_stmt* stmt, struct sqlclntstate *clnt)
 
     /* wait if run ended ok, master is not done, and there are cached rows */
     if (!clnt->query_rc) {
-        while(!conn->master_done && queue_count(conn->que)>0) {
+        while(conn->status = DOH_RUNNING && queue_count(conn->que)>0) {
             pthread_mutex_unlock(&conn->mtx);
             poll(NULL, 0, 10);
             pthread_mutex_lock(&conn->mtx);
@@ -1362,7 +1138,7 @@ void dohsql_wait_for_master(sqlite3_stmt* stmt, struct sqlclntstate *clnt)
     trimQue(stmt, conn->que, 0);
     trimQue(stmt, conn->que_free, 0);
 
-    conn->rc = 0;
+    conn->status = DOH_CLIENT_DONE;
 
     pthread_mutex_unlock(&conn->mtx);
 }
@@ -1377,6 +1153,63 @@ void comdb2_register_limit(Select *p)
     GET_CLNT;
 
     if (unlikely(clnt->conns)) {
-        clnt->conns->limit = p->iLimit+1;
+        clnt->conns->limitMem = p->iLimit+1;
     }
 }
+
+void comdb2_register_offset(Select *p)
+{
+    GET_CLNT;
+
+    if (unlikely(clnt->conns)) {
+        clnt->conns->offsetMem = p->iOffset+1;
+    }
+}
+
+
+#define DOHSQL_MASTER (clnt->plugin.next_row == dohsql_dist_next_row)
+/*
+ * sqlite calls this every time we skip a row
+ * offset is > 0
+ *
+ */
+void comdb2_handle_offset(Vdbe *v, Mem *m)
+{
+    GET_CLNT;
+    dohsql_t *conns = clnt->conns;
+    row_t *row = NULL;
+    int rc;
+
+    if(!DOHSQL_MASTER) return;
+    if (m != &v->aMem[clnt->conns->offsetMem-1]) return;
+
+    if (conns->offsetMem) {
+        if (!conns->skipped) {
+            conns->limit = sqlite3_value_int64(
+                    &v->aMem[conns->limitMem-1]);
+            conns->offset = sqlite3_value_int64(
+                    &v->aMem[conns->offsetMem-1])+1;
+            if (verbose)
+                logmsg(LOGMSG_ERROR, "XXX: found limit %d offset %d\n",
+                        conns->limit, conns->offset);
+        }
+        if (conns->skipped < conns->offset) {
+            conns->skipped++;
+            while (conns->skipped <= conns->offset) {
+                /* try to see if we got a row */
+                rc = _get_a_parallel_row(conns, &row);
+                /* skip it */
+                if (rc == SQLITE_ROW) {
+                    conns->skipped++;
+                    m->u.i --;
+                    if (m->u.i <= 0)
+                        break;
+                    continue;
+                }
+                break;
+            }
+        }
+    }
+}
+
+

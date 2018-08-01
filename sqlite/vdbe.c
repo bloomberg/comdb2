@@ -6618,7 +6618,12 @@ case OP_IfPos: {        /* jump, in1 */
   assert( pIn1->flags&MEM_Int );
   VdbeBranchTaken( pIn1->u.i>0, 2);
   if( pIn1->u.i>0 ){
-    pIn1->u.i -= pOp->p3;
+      pIn1->u.i -= pOp->p3;
+      /* COMDB2 MODIFICATION */
+      if (pOp->p3 == 1) {
+          extern void comdb2_handle_offset(Vdbe*,Mem*);
+          comdb2_handle_offset(p, pIn1);
+      }
     goto jump_to_p2;
   }
   break;
