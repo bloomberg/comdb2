@@ -10,6 +10,7 @@ struct LOG_INFO
     u_int32_t file;
     u_int32_t offset;
     u_int32_t size;
+    u_int32_t gen;
 };
 
 LOG_INFO get_last_lsn(bdb_state_type* bdb_state);
