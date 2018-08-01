@@ -122,6 +122,7 @@ void* keep_in_sync(void* args)
 {
     /* vars for syncing */
     int rc;
+    int64_t gen;
     struct timespec wait_spec;
     struct timespec remain_spec;
     // char* sql_cmd = "select * from comdb2_transaction_logs('{@file:@offset}')"; 
@@ -140,6 +141,12 @@ void* keep_in_sync(void* args)
         nanosleep(&wait_spec, &remain_spec);
 
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+
+    /* do truncation to start fresh */
+    info = get_last_lsn(thedb->bdb_env);
+    prev_info = handle_truncation(repl_db, info);
+    gen = prev_info.gen;
+    fprintf(stderr, "gen: %ld\n", gen);
 
     while(do_repl)
     {
@@ -163,7 +170,6 @@ void* keep_in_sync(void* args)
         if ((rc = cdb2_next_record(repl_db)) != CDB2_OK)
         {
             logmsg(LOGMSG_WARN, "Can't find the next record\n");
-            fprintf(stderr, "rc=%d\n", rc);
 
             if (rc == CDB2_OK_DONE)
             {
@@ -173,16 +179,31 @@ void* keep_in_sync(void* args)
         }
         else
         {
+            int broke_early = 0;
+
             while((rc = cdb2_next_record(repl_db)) == CDB2_OK)
             {
+                int64_t* rec_gen =  (int64_t *) cdb2_column_value(repl_db, 2);
+                if (rec_gen && *rec_gen > gen)
+                {
+                    logmsg(LOGMSG_WARN, "My master changed, do truncation!\n");
+                    fprintf(stderr, "gen: %ld, rec_gen: %ld\n", gen, *rec_gen);
+                    prev_info = handle_truncation(repl_db, info);
+                    gen = *rec_gen;
+
+                    broke_early = 1;
+                    break;
+                }
                 prev_info = handle_record(prev_info);
 
             }
 
             /* check we finished correctly */
-            if (rc != CDB2_OK_DONE)
+            if ((!broke_early && rc != CDB2_OK_DONE ) || 
+                    (broke_early && rc != CDB2_OK))
             {
                 logmsg(LOGMSG_ERROR, "Had an error %d\n", rc);
+                fprintf(stderr, "rc=%d\n", rc);
             }
 
         }
@@ -214,7 +235,8 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     /* vars for 1 record */
     void* blob;
     int blob_len;
-    char* lsn, *gen, *timestamp, *token;
+    unsigned int gen;
+    char* lsn, *timestamp, *token;
     const char delim[2] = ":";
     int64_t rectype; 
     int rc; 
@@ -222,7 +244,7 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
 
     lsn = (char *) cdb2_column_value(repl_db, 0);
     rectype = *(int64_t *) cdb2_column_value(repl_db, 1);
-    gen = (char *) cdb2_column_value(repl_db, 2);
+    gen = *(unsigned int *) cdb2_column_value(repl_db, 2);
     timestamp = (char *) cdb2_column_value(repl_db, 3);
     blob = cdb2_column_value(repl_db, 4);
     blob_len = cdb2_column_size(repl_db, 4);
