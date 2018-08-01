@@ -768,6 +768,7 @@ static void osql_scdone_commit_callback(struct ireq *iq)
         iq->sc_seed = 0;
         iq->sc_should_abort = 0;
     }
+    iq->tranddl = 0;
 }
 
 static void osql_scdone_abort_callback(struct ireq *iq)
@@ -787,6 +788,7 @@ static void osql_scdone_abort_callback(struct ireq *iq)
         iq->sc_seed = 0;
         iq->sc_should_abort = 0;
     }
+    iq->tranddl = 0;
 }
 
 void osql_postcommit_handle(struct ireq *iq)

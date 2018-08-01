@@ -444,7 +444,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
     pthread_mutex_unlock(&csc2_subsystem_mtx);
 
-    if (verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
+    if ((iq == NULL || iq->tranddl <= 1) &&
+        verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
         backout(newdb);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
@@ -628,6 +629,12 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     int olddb_bthashsz;
 
     iq->usedb = db;
+
+    if (iq && iq->tranddl > 1 &&
+        verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
+        sc_errf(s, "error verifying constraints\n");
+        goto backout;
+    }
 
     if (get_db_bthash_tran(db, &olddb_bthashsz, transac) != 0)
         olddb_bthashsz = 0;

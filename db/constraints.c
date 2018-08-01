@@ -1922,26 +1922,21 @@ static struct dbtable *get_newer_db(struct dbtable *db, struct dbtable *new_db)
     }
 }
 
-static void constraint_err(void *s, struct dbtable *db, constraint_t *ct, int rule,
-                           const char *err)
+static void constraint_err(struct schema_change_type *s, struct dbtable *db,
+                           constraint_t *ct, int rule, const char *err)
 {
-    // I am temporarily changing this in the attempt of removing the cyclic
-    // dependancy with
-    // schemachange.h for a single print statement
-    /*
-       if(s)
-          sc_errf(s, "constraint error for table \"%s\" key \"%s\" ->
-       <\"%s\":\"%s\">: %s\n",
-             db->tablename,
-             ct->lclkeyname,
-             ct->table[rule],
-             ct->keynm[rule],
-             err);
-       else */
-    logmsg(
-        LOGMSG_ERROR,
-        "constraint error for table \"%s\" key \"%s\" -> <\"%s\":\"%s\">: %s\n",
-        db->tablename, ct->lclkeyname, ct->table[rule], ct->keynm[rule], err);
+    if (s && s->iq) {
+        reqerrstr(s->iq, ERR_SC,
+                  "constraint error for table \"%s\" key \"%s\" -> "
+                  "<\"%s\":\"%s\">: %s ",
+                  db->tablename, ct->lclkeyname, ct->table[rule],
+                  ct->keynm[rule], err);
+    } else
+        logmsg(LOGMSG_ERROR,
+               "constraint error for table \"%s\" key \"%s\" -> "
+               "<\"%s\":\"%s\">: %s\n",
+               db->tablename, ct->lclkeyname, ct->table[rule], ct->keynm[rule],
+               err);
 }
 
 static inline int key_has_expressions_members(struct schema *key)
@@ -1958,7 +1953,8 @@ static inline int key_has_expressions_members(struct schema *key)
  * exist & have the correct column count.  If they don't it's a bit of a show
  * stopper. */
 int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
-                             struct dbtable *new_db, void *s)
+                             struct dbtable *new_db,
+                             struct schema_change_type *s)
 {
     int ii, jj;
     char keytag[MAXTAGLEN];
