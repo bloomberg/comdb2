@@ -1065,7 +1065,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     poll(0, 0, rand() % add_latency);
                 }
                 time_metric_add(thedb->handle_buf_queue_time,
-                        comdb2_time_epochms() - nextrq->queue_time_ms);
+                                comdb2_time_epochms() - nextrq->queue_time_ms);
                 pool_relablk(pq_reqs, nextrq);
                 if (!iq)
                     /* this should never be hit */
@@ -1082,7 +1082,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     poll(0, 0, rand() % add_latency);
                 }
                 time_metric_add(thedb->handle_buf_queue_time,
-                        comdb2_time_epochms() - nextrq->queue_time_ms);
+                                comdb2_time_epochms() - nextrq->queue_time_ms);
                 /* release link block */
                 pool_relablk(pq_reqs, nextrq);
                 if (!iq) {

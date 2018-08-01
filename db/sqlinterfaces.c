@@ -3748,13 +3748,13 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     sqlcpy = strdup(msg);
     uint32_t flags = (clnt->admin ? THDPOOL_FORCE_DISPATCH : 0);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
-                              clnt, clnt->queue_me,
-                              sqlcpy, flags)) != 0) {
+                              clnt, clnt->queue_me, sqlcpy, flags)) != 0) {
         if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool,
-                                 sqlengine_work_appsock_pp, clnt, 1, sqlcpy, flags);
+                                 sqlengine_work_appsock_pp, clnt, 1, sqlcpy,
+                                 flags);
         }
 
         if (rc) {
@@ -3915,9 +3915,11 @@ static void thdpool_sqlengine_end(struct thdpool *pool, void *thd)
     sqlengine_thd_end(pool, (struct sqlthdstate *) thd);
 }
 
-static void thdpool_sqlengine_dque(struct thdpool *pool, struct workitem *item, int timeout)
+static void thdpool_sqlengine_dque(struct thdpool *pool, struct workitem *item,
+                                   int timeout)
 {
-    time_metric_add(thedb->sql_queue_time, comdb2_time_epochms() - item->queue_time_ms);
+    time_metric_add(thedb->sql_queue_time,
+                    comdb2_time_epochms() - item->queue_time_ms);
 }
 
 int tdef_to_tranlevel(int tdef)

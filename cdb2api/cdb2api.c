@@ -1858,7 +1858,8 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
                 hndl->dbname, hndl->type, hndl->policy, hndl->newsql_typestr);
     }
 
-    while (!hndl->is_admin && (fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum,
+    while (!hndl->is_admin &&
+           (fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum,
                                       NULL)) > 0) {
         if ((sb = sbuf2open(fd, 0)) == 0) {
             close(fd);
@@ -1917,7 +1918,8 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     int fd = sbuf2fileno(sb);
 
     int timeoutms = 10 * 1000;
-    if (hndl->is_admin || (hndl->firstresponse &&
+    if (hndl->is_admin ||
+        (hndl->firstresponse &&
          (!hndl->lastresponse ||
           (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) ||
         (!hndl->firstresponse) || hndl->in_trans) {

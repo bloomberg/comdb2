@@ -1439,5 +1439,4 @@ REGISTER_TUNABLE("handle_buf_latency_ms",
                  TUNABLE_INTEGER, &gbl_handle_buf_add_latency_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-
 #endif /* _DB_TUNABLES_H */

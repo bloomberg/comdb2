@@ -1726,8 +1726,7 @@ netinfo_type *get_rep_netinfo(bdb_state_type *);
 void udp_summary(void);
 void udp_reset(netinfo_type *);
 void udp_stats(unsigned int *sent_udp, unsigned int *fail_udp,
-        unsigned int *recd_udp);
-
+               unsigned int *recd_udp);
 
 extern struct thdpool *gbl_udppfault_thdpool;
 int udppfault_thdpool_init(void);
@@ -2010,8 +2009,7 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state);
 int bdb_valid_lease(void *bdb_state);
 
 void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
-        int64_t *maxactive, int64_t *commits, int64_t *aborts);
-
+                       int64_t *maxactive, int64_t *commits, int64_t *aborts);
 
 uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
 

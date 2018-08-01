@@ -4701,7 +4701,8 @@ int enqueue_touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
     touch_pg *work = (touch_pg *)malloc(sizeof(touch_pg));
     work->mpf = mpf;
     work->pgno = pgno;
-    rc = thdpool_enqueue(gbl_udppfault_thdpool, touch_page_pp, work, 0, NULL, 0);
+    rc =
+        thdpool_enqueue(gbl_udppfault_thdpool, touch_page_pp, work, 0, NULL, 0);
     return rc;
 }
 

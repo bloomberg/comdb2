@@ -220,7 +220,7 @@ char *db_generator (int state, const char *sql)
         int flags = 0;
         char *type = dbtype;
 
-        if (dbhostname)  {
+        if (dbhostname) {
             type = dbhostname;
             flags |= CDB2_DIRECT_CPU;
         }
@@ -1001,7 +1001,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
         int flags = 0;
         char *type = dbtype;
 
-        if (dbhostname)  {
+        if (dbhostname) {
             flags |= CDB2_DIRECT_CPU;
             type = dbhostname;
         }
@@ -1408,7 +1408,7 @@ void send_cancel_cnonce(const char *cnonce)
 
     if (isadmin)
         flags |= CDB2_ADMIN;
-    
+
     rc = cdb2_open(&cdb2h_2, dbname, type, flags);
     if (rc) {
         if (debug_trace)
@@ -1467,32 +1467,31 @@ int main(int argc, char *argv[])
     sighold(SIGPIPE);
 
     static struct option long_options[] = {
-        {"pause",      no_argument,       &pausemode,         1},
-        {"binary",     no_argument,       &printmode,         DISP_BINARY},
-        {"tabs",       no_argument,       &printmode,         DISP_TABS},
-        {"tabular",    no_argument,       &printmode,         DISP_TABULAR},
-        {"verbose",    no_argument,       &verbose,           1},
-        {"strblobs",   no_argument,       &string_blobs,      1},
-        {"debugtrace", no_argument,       &debug_trace,       1},
-        {"showports",  no_argument,       &show_ports,        1},
-        {"showeffects",no_argument,       &show_effects,      1},
-        {"cost",       no_argument,       &docost,            1},
-        {"exponent",   no_argument,       &exponent,          1},
-        {"isatty",     no_argument,       &isttyarg,          1},
-        {"isnotatty",  no_argument,       &isttyarg,          2},
-        {"admin",      no_argument,       &isadmin,           1},
-        {"help",       no_argument,       NULL,               'h'},
-        {"script",     no_argument,       NULL,               's'},
-        {"maxretries", required_argument, NULL,               'r'},
-        {"precision",  required_argument, NULL,               'p'},
-        {"cdb2cfg",    required_argument, NULL,               'c'},
-        {"file",       required_argument, NULL,               'f'},
-        {"gensql",     required_argument, NULL,               'g'},
-        {"type",       required_argument, NULL,               't'},
-        {"host",       required_argument, NULL,               'n'},
-        {"minretries", required_argument, NULL,               'R'},
-        {0, 0, 0, 0}
-    };
+        {"pause", no_argument, &pausemode, 1},
+        {"binary", no_argument, &printmode, DISP_BINARY},
+        {"tabs", no_argument, &printmode, DISP_TABS},
+        {"tabular", no_argument, &printmode, DISP_TABULAR},
+        {"verbose", no_argument, &verbose, 1},
+        {"strblobs", no_argument, &string_blobs, 1},
+        {"debugtrace", no_argument, &debug_trace, 1},
+        {"showports", no_argument, &show_ports, 1},
+        {"showeffects", no_argument, &show_effects, 1},
+        {"cost", no_argument, &docost, 1},
+        {"exponent", no_argument, &exponent, 1},
+        {"isatty", no_argument, &isttyarg, 1},
+        {"isnotatty", no_argument, &isttyarg, 2},
+        {"admin", no_argument, &isadmin, 1},
+        {"help", no_argument, NULL, 'h'},
+        {"script", no_argument, NULL, 's'},
+        {"maxretries", required_argument, NULL, 'r'},
+        {"precision", required_argument, NULL, 'p'},
+        {"cdb2cfg", required_argument, NULL, 'c'},
+        {"file", required_argument, NULL, 'f'},
+        {"gensql", required_argument, NULL, 'g'},
+        {"type", required_argument, NULL, 't'},
+        {"host", required_argument, NULL, 'n'},
+        {"minretries", required_argument, NULL, 'R'},
+        {0, 0, 0, 0}};
 
     while ((c = bb_getopt_long(argc, argv, (char *) "hsvr:p:c:f:g:t:n:R:",
                                long_options, &opt_indx)) != -1) {

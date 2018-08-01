@@ -68,9 +68,11 @@ struct workitem {
 
 typedef void (*thdpool_thdinit_fn)(struct thdpool *pool, void *thddata);
 typedef void (*thdpool_thddelt_fn)(struct thdpool *pool, void *thddata);
-typedef void (*thdpool_thddque_fn)(struct thdpool *pool, struct workitem *item, int timeout);
+typedef void (*thdpool_thddque_fn)(struct thdpool *pool, struct workitem *item,
+                                   int timeout);
 
-typedef void (*thdpool_foreach_fn)(struct thdpool *pool, struct workitem *item, void *user);
+typedef void (*thdpool_foreach_fn)(struct thdpool *pool, struct workitem *item,
+                                   void *user);
 void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn, void *user);
 
 struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz);
@@ -92,10 +94,7 @@ int thdpool_get_queue_depth(struct thdpool *pool);
 
 void thdpool_print_stats(FILE *fh, struct thdpool *pool);
 
-enum { 
-    THDPOOL_ENQUEUE_FRONT = 0x1,
-    THDPOOL_FORCE_DISPATCH = 0x2
-};
+enum { THDPOOL_ENQUEUE_FRONT = 0x1, THDPOOL_FORCE_DISPATCH = 0x2 };
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                     int queue_override, char *persistent_info, uint32_t flags);
 void thdpool_stop(struct thdpool *pool);

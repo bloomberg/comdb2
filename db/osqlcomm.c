@@ -6907,10 +6907,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     return 0;
                 } else {
                     /* this can happen if we're skipping delayed key adds */
-                    reqerrstr(iq, COMDB2_CSTRT_RC_DUP,
-                              "add key constraint "
-                              "duplicate key '%s' on "
-                              "table '%s' index %d",
+                    reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint "
+                                                       "duplicate key '%s' on "
+                                                       "table '%s' index %d",
                               get_keynm_from_db_idx(iq->usedb, err->ixnum),
                               iq->usedb->tablename, err->ixnum);
                 }

@@ -268,12 +268,14 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     return pool;
 }
 
-void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn foreach_fn, void *user)
+void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn foreach_fn,
+                     void *user)
 {
     LOCK(&pool->mutex)
     {
         struct workitem *item;
-        LISTC_FOR_EACH(&pool->queue, item, linkv) {
+        LISTC_FOR_EACH(&pool->queue, item, linkv)
+        {
             (foreach_fn)(pool, item, user);
         }
     }

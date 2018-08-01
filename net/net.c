@@ -6150,8 +6150,7 @@ static void *accept_thread(void *arg)
             /* call user specified app routine */
             if (admin && netinfo_ptr->admin_appsock_rtn) {
                 rtn = netinfo_ptr->admin_appsock_rtn;
-            }
-            else if (netinfo_ptr->appsock_rtn) {
+            } else if (netinfo_ptr->appsock_rtn) {
                 rtn = netinfo_ptr->appsock_rtn;
             }
 

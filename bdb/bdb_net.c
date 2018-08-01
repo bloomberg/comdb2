@@ -679,7 +679,7 @@ void udp_summary(void)
 }
 
 void udp_stats(unsigned int *in_sent_udp, unsigned int *in_fail_udp,
-        unsigned int *in_recd_udp)
+               unsigned int *in_recd_udp)
 {
     *in_sent_udp = sent_udp;
     *in_fail_udp = fail_udp;

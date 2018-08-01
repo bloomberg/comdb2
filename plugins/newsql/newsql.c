@@ -114,7 +114,7 @@ struct newsql_postponed_data {
 
 struct newsql_appdata {
     int8_t send_intrans_response;
-    CDB2QUERY* query;
+    CDB2QUERY *query;
     CDB2SQLQUERY *sqlquery;
     struct newsql_postponed_data *postponed;
 
@@ -166,13 +166,12 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
         *file = clnt->snapshot_file;
         *offset = clnt->snapshot_offset;
         logmsg(LOGMSG_USER,
-                "%s line %d setting newsql snapinfo retry info is [%d][%d]\n",
-                __func__, __LINE__, *file, *offset);
+               "%s line %d setting newsql snapinfo retry info is [%d][%d]\n",
+               __func__, __LINE__, *file, *offset);
         return 0;
     }
 
-    if (*file == 0 && sql_query &&
-        clnt->ctrl_sqlengine == SQLENG_STRT_STATE) {
+    if (*file == 0 && sql_query && clnt->ctrl_sqlengine == SQLENG_STRT_STATE) {
 
         int rc;
         uint32_t snapinfo_file, snapinfo_offset;
@@ -245,7 +244,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     CDB2ServerFeatures features[10];                                           \
     int n_features = 0;                                                        \
     struct newsql_appdata *appdata = clnt->appdata;                            \
-    if (appdata->send_intrans_response == 0) {                                  \
+    if (appdata->send_intrans_response == 0) {                                 \
         features[n_features] = CDB2_SERVER_FEATURES__SKIP_INTRANS_RESULTS;     \
         n_features++;                                                          \
     }                                                                          \
@@ -343,16 +342,26 @@ static int is_snap_uid_retry(struct sqlclntstate *clnt)
 static inline int newsql_to_client_type(int newsql_type)
 {
     switch (newsql_type) {
-    case CDB2_INTEGER: return CLIENT_INT;
-    case CDB2_REAL: return CLIENT_REAL;
-    case CDB2_CSTRING: return CLIENT_CSTR;
-    case CDB2_BLOB: return CLIENT_BLOB;
-    case CDB2_DATETIME: return CLIENT_DATETIME;
-    case CDB2_DATETIMEUS: return CLIENT_DATETIMEUS;
-    case CDB2_INTERVALYM: return CLIENT_INTVYM;
-    case CDB2_INTERVALDS: return CLIENT_INTVDS;
-    case CDB2_INTERVALDSUS: return CLIENT_INTVDSUS;
-    default: return -1;
+    case CDB2_INTEGER:
+        return CLIENT_INT;
+    case CDB2_REAL:
+        return CLIENT_REAL;
+    case CDB2_CSTRING:
+        return CLIENT_CSTR;
+    case CDB2_BLOB:
+        return CLIENT_BLOB;
+    case CDB2_DATETIME:
+        return CLIENT_DATETIME;
+    case CDB2_DATETIMEUS:
+        return CLIENT_DATETIMEUS;
+    case CDB2_INTERVALYM:
+        return CLIENT_INTVYM;
+    case CDB2_INTERVALDS:
+        return CLIENT_INTVDS;
+    case CDB2_INTERVALDSUS:
+        return CLIENT_INTVDSUS;
+    default:
+        return -1;
     }
 }
 
@@ -709,7 +718,7 @@ done:
 #include <arpa/nameser_compat.h>
 #endif
 #ifndef BYTE_ORDER
-#   error "Missing BYTE_ORDER"
+#error "Missing BYTE_ORDER"
 #endif
 
 static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
@@ -723,11 +732,11 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
     assert(ncols == appdata->count);
     int flip = 0;
-#   if BYTE_ORDER == BIG_ENDIAN
+#if BYTE_ORDER == BIG_ENDIAN
     if (appdata->sqlquery->little_endian)
-#   elif BYTE_ORDER == LITTLE_ENDIAN
+#elif BYTE_ORDER == LITTLE_ENDIAN
     if (!appdata->sqlquery->little_endian)
-#   endif
+#endif
         flip = 1;
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
@@ -765,7 +774,8 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
             const dttz_t *d = sqlite3_column_datetime(stmt, i);
             cdb2_client_datetime_t *c = alloca(sizeof(*c));
             if (convDttz2ClientDatetime(d, stmt_tzname(stmt), c, type) != 0) {
-                char *e = "failed to convert sqlite to client datetime for field";
+                char *e =
+                    "failed to convert sqlite to client datetime for field";
                 errstat_set_rcstrf(arg->err, ERR_CONVERSION_DT, "%s \"%s\"", e,
                                    sqlite3_column_name(stmt, i));
                 return -1;
@@ -800,7 +810,8 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
             break;
         }
         case SQLITE_DECIMAL:
-        default: return -1;
+        default:
+            return -1;
         }
     }
     CDB2SQLRESPONSE r = CDB2__SQLRESPONSE__INIT;
@@ -814,7 +825,8 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     if (postpone) {
         return newsql_save_postponed_row(clnt, &r);
     } else if (arg->pingpong) {
-        return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_PING, 1);
+        return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_PING,
+                                   1);
     }
     return newsql_response(clnt, &r, 0);
 }
@@ -846,11 +858,11 @@ static int newsql_row_lua(struct sqlclntstate *clnt, struct response_data *arg)
     int ncols = arg->ncols;
     assert(ncols == appdata->count);
     int flip = 0;
-#   if BYTE_ORDER == BIG_ENDIAN
+#if BYTE_ORDER == BIG_ENDIAN
     if (appdata->sqlquery->little_endian)
-#   elif BYTE_ORDER == LITTLE_ENDIAN
+#elif BYTE_ORDER == LITTLE_ENDIAN
     if (!appdata->sqlquery->little_endian)
-#   endif
+#endif
         flip = 1;
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
@@ -938,7 +950,8 @@ static int newsql_row_lua(struct sqlclntstate *clnt, struct response_data *arg)
             newsql_ds(cols, i, val, flip);
             break;
         }
-        default: return -1;
+        default:
+            return -1;
         }
     }
     CDB2SQLRESPONSE r = CDB2__SQLRESPONSE__INIT;
@@ -946,7 +959,8 @@ static int newsql_row_lua(struct sqlclntstate *clnt, struct response_data *arg)
     r.n_value = ncols;
     r.value = value;
     if (arg->pingpong) {
-        return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_PING, 1);
+        return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_PING,
+                                   1);
     }
     return newsql_response(clnt, &r, 0);
 }
@@ -980,34 +994,54 @@ static int newsql_trace(struct sqlclntstate *clnt, char *info)
     CDB2SQLRESPONSE r = CDB2__SQLRESPONSE__INIT;
     r.response_type = RESPONSE_TYPE__SP_TRACE;
     r.info_string = info;
-    return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_TRACE, 1);
+    return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_TRACE,
+                               1);
 }
 
 static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 {
     switch (t) {
-    case RESPONSE_COLUMNS: return newsql_columns(c, a);
-    case RESPONSE_COLUMNS_LUA: return newsql_columns_lua(c, a);
-    case RESPONSE_COLUMNS_STR: return newsql_columns_str(c, a, i);
-    case RESPONSE_DEBUG: return newsql_debug(c, a);
-    case RESPONSE_ERROR: return newsql_error(c, a, i);
-    case RESPONSE_ERROR_ACCESS: return newsql_error(c, a, CDB2ERR_ACCESS);
-    case RESPONSE_ERROR_BAD_STATE: return newsql_error(c, a, CDB2ERR_BADSTATE);
-    case RESPONSE_ERROR_PREPARE: return newsql_error(c, a, CDB2ERR_PREPARE_ERROR);
-    case RESPONSE_ERROR_REJECT: return newsql_error(c, a, CDB2ERR_REJECTED);
-    case RESPONSE_FLUSH: return newsql_flush(c);
-    case RESPONSE_HEARTBEAT: return newsql_heartbeat(c);
-    case RESPONSE_ROW: return newsql_row(c, a, i);
-    case RESPONSE_ROW_LAST: return newsql_row_last(c);
-    case RESPONSE_ROW_LAST_DUMMY: return newsql_row_last_dummy(c);
-    case RESPONSE_ROW_LUA: return newsql_row_lua(c, a);
-    case RESPONSE_ROW_STR: return newsql_row_str(c, a, i);
-    case RESPONSE_TRACE: return newsql_trace(c, a);
+    case RESPONSE_COLUMNS:
+        return newsql_columns(c, a);
+    case RESPONSE_COLUMNS_LUA:
+        return newsql_columns_lua(c, a);
+    case RESPONSE_COLUMNS_STR:
+        return newsql_columns_str(c, a, i);
+    case RESPONSE_DEBUG:
+        return newsql_debug(c, a);
+    case RESPONSE_ERROR:
+        return newsql_error(c, a, i);
+    case RESPONSE_ERROR_ACCESS:
+        return newsql_error(c, a, CDB2ERR_ACCESS);
+    case RESPONSE_ERROR_BAD_STATE:
+        return newsql_error(c, a, CDB2ERR_BADSTATE);
+    case RESPONSE_ERROR_PREPARE:
+        return newsql_error(c, a, CDB2ERR_PREPARE_ERROR);
+    case RESPONSE_ERROR_REJECT:
+        return newsql_error(c, a, CDB2ERR_REJECTED);
+    case RESPONSE_FLUSH:
+        return newsql_flush(c);
+    case RESPONSE_HEARTBEAT:
+        return newsql_heartbeat(c);
+    case RESPONSE_ROW:
+        return newsql_row(c, a, i);
+    case RESPONSE_ROW_LAST:
+        return newsql_row_last(c);
+    case RESPONSE_ROW_LAST_DUMMY:
+        return newsql_row_last_dummy(c);
+    case RESPONSE_ROW_LUA:
+        return newsql_row_lua(c, a);
+    case RESPONSE_ROW_STR:
+        return newsql_row_str(c, a, i);
+    case RESPONSE_TRACE:
+        return newsql_trace(c, a);
     /* fastsql only messages */
     case RESPONSE_COST:
     case RESPONSE_EFFECTS:
-    case RESPONSE_ERROR_PREPARE_RETRY: return 0;
-    default: abort();
+    case RESPONSE_ERROR_PREPARE_RETRY:
+        return 0;
+    default:
+        abort();
     }
 }
 
@@ -1052,9 +1086,12 @@ static int newsql_sp_cmd(struct sqlclntstate *clnt, void *cmd, size_t sz)
 static int newsql_read_response(struct sqlclntstate *c, int t, void *r, int e)
 {
     switch (t) {
-    case RESPONSE_PING_PONG: return newsql_ping_pong(c);
-    case RESPONSE_SP_CMD: return newsql_sp_cmd(c, r, e);
-    default: abort();
+    case RESPONSE_PING_PONG:
+        return newsql_ping_pong(c);
+    case RESPONSE_SP_CMD:
+        return newsql_sp_cmd(c, r, e);
+    default:
+        abort();
     }
 }
 
@@ -1181,8 +1218,7 @@ static int newsql_get_cnonce(struct sqlclntstate *clnt, snap_uid_t *snap)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
-    if (!sqlquery->has_cnonce ||
-        sqlquery->cnonce.len > MAX_SNAP_KEY_LEN) {
+    if (!sqlquery->has_cnonce || sqlquery->cnonce.len > MAX_SNAP_KEY_LEN) {
         return -1;
     }
     snap->keylen = sqlquery->cnonce.len;
@@ -1198,7 +1234,8 @@ static int newsql_clr_snapshot(struct sqlclntstate *clnt)
     return 0;
 }
 
-static int newsql_get_snapshot(struct sqlclntstate *clnt, int *file, int *offset)
+static int newsql_get_snapshot(struct sqlclntstate *clnt, int *file,
+                               int *offset)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
@@ -1295,7 +1332,8 @@ static void newsql_setup_client_info(struct sqlclntstate *clnt,
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
     CDB2SQLQUERY__Cinfo *cinfo = sqlquery->client_info;
-    if (cinfo == NULL) return;
+    if (cinfo == NULL)
+        return;
     thrman_wheref(thd->thr_self,
                   "%s pid: %d host_id: %d argv0: %s open-stack: %s sql: %s",
                   replay, cinfo->pid, cinfo->host_id,
@@ -1469,8 +1507,8 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     sqlite3Dequote(sqlstr);
                     if (strlen(sqlstr) >= sizeof(clnt->user)) {
                         snprintf(err, sizeof(err),
-                                 "set user: '%s' exceeds %zu characters", sqlstr,
-                                 sizeof(clnt->user) - 1);
+                                 "set user: '%s' exceeds %zu characters",
+                                 sqlstr, sizeof(clnt->user) - 1);
                         rc = ii + 1;
                     } else {
                         clnt->have_user = 1;
@@ -1954,7 +1992,8 @@ retry_read:
                 sql_response.error_string = "Get effects not supported in "
                                             "transaction with verifyretry on";
             }
-            newsql_response_int(clnt, &sql_response, RESPONSE_HEADER__SQL_EFFECTS, 1);
+            newsql_response_int(clnt, &sql_response,
+                                RESPONSE_HEADER__SQL_EFFECTS, 1);
         } else {
             send_dbinforesponse(dbenv, sb);
         }
@@ -1989,7 +2028,7 @@ retry_read:
             goto retry_read;
         } else {
             newsql_error(clnt, "The database requires SSL connections.",
-                       CDB2ERR_CONNECT_ERROR);
+                         CDB2ERR_CONNECT_ERROR);
         }
         cdb2__query__free_unpacked(query, &pb_alloc);
         return NULL;
@@ -2034,7 +2073,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         return APPSOCK_RETURN_ERR;
     }
 
-    if (!arg->admin && !bdb_am_i_coherent(dbenv->bdb_env) && !gbl_allow_incoherent_sql) {
+    if (!arg->admin && !bdb_am_i_coherent(dbenv->bdb_env) &&
+        !gbl_allow_incoherent_sql) {
         return APPSOCK_RETURN_OK;
     }
 
@@ -2048,7 +2088,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
       should return an error at this point rather than proceed with potentially
       incoherent data.
     */
-    if (!arg->admin && dbenv->rep_sync == REP_SYNC_NONE && dbenv->master != gbl_mynode) {
+    if (!arg->admin && dbenv->rep_sync == REP_SYNC_NONE &&
+        dbenv->master != gbl_mynode) {
         return APPSOCK_RETURN_OK;
     }
 
@@ -2070,8 +2111,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     pthread_mutex_init(&clnt.write_lock, NULL);
     pthread_mutex_init(&clnt.dtran_mtx, NULL);
 
-    if (!clnt.admin && active_appsock_conns >
-        bdb_attr_get(dbenv->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT)) {
+    if (!clnt.admin &&
+        active_appsock_conns >
+            bdb_attr_get(dbenv->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT)) {
         static time_t pr = 0;
         time_t now;
 
@@ -2085,13 +2127,13 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             pr = now;
         }
         newsql_error(&clnt, "Exhausted appsock connections.",
-                CDB2__ERROR_CODE__APPSOCK_LIMIT);
+                     CDB2__ERROR_CODE__APPSOCK_LIMIT);
         goto done;
     }
 
     extern int gbl_allow_incoherent_sql;
     if (!clnt.admin && !gbl_allow_incoherent_sql &&
-            !bdb_am_i_coherent(thedb->bdb_env)) {
+        !bdb_am_i_coherent(thedb->bdb_env)) {
         logmsg(LOGMSG_ERROR,
                "%s:%d td %u new query on incoherent node, dropping socket\n",
                __func__, __LINE__, (uint32_t)pthread_self());

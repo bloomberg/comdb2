@@ -243,7 +243,7 @@ void bdb_make_seqnum(seqnum_type *seqnum, uint32_t logfile, uint32_t logbyte)
 }
 
 void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
-        int64_t *maxactive, int64_t *commits, int64_t *aborts)
+                       int64_t *maxactive, int64_t *commits, int64_t *aborts)
 {
     DB_TXN_STAT *txn_stats;
 
@@ -251,7 +251,7 @@ void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
 
     bdb_state->dbenv->txn_stat(bdb_state->dbenv, &txn_stats, 0);
     if (active)
-        *active = txn_stats->st_nactive; 
+        *active = txn_stats->st_nactive;
     if (maxactive)
         *maxactive = txn_stats->st_maxnactive;
     if (commits)
