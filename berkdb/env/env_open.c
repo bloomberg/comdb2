@@ -519,9 +519,12 @@ foundlsn:
 		int i;
 		DB *db;
 
-		for (i = 1; i < dbenv->maxdb; i++) {
+		for (i = 1; i <= dbenv->maxdb; i++) {
 			db = listc_rtl(&dbenv->dbs[i]);
 			while (db) {
+                logmsg(LOGMSG_DEBUG, "%s removing db %p adj_fileid %u from "
+                        "list %p\n", __func__, db, db->adj_fileid, &dbenv->dbs[
+                        db->adj_fileid]);
 				db->inadjlist = 0;
 				db = listc_rtl(&dbenv->dbs[i]);
 			}

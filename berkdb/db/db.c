@@ -61,6 +61,7 @@ static const char revid[] = "$Id: db.c,v 11.283 2003/11/14 05:32:29 ubell Exp $"
 #include "dbinc/mp.h"
 #include "dbinc/qam.h"
 #include "dbinc/txn.h"
+#include "logmsg.h"
 
 static int __db_dbenv_mpool __P((DB *, const char *, u_int32_t));
 static int __db_disassociate __P((DB *));
@@ -525,6 +526,8 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	}
 	dbp->inadjlist = 1;
 	listc_abl(&dbenv->dbs[dbp->adj_fileid], dbp);
+    logmsg(LOGMSG_DEBUG, "%s putting dbp %p adj_fileid %u in list %p\n",
+            __func__, dbp, dbp->adj_fileid, &dbenv->dbs[dbp->adj_fileid]);
 
 	MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
 
@@ -945,6 +948,9 @@ never_opened:
 		if (dbp->inadjlist) {
 			listc_rfl(&dbenv->dbs[dbp->adj_fileid], dbp);
 			dbp->inadjlist = 0;
+            logmsg(LOGMSG_DEBUG, "%s removing dbp %p adj_fileid %u from list "
+                    "%p\n", __func__, dbp, dbp->adj_fileid, &dbenv->dbs[
+                    dbp->adj_fileid]);
 		}
 		dbp->dblistlinks.le_prev = NULL;
 	}
