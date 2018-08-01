@@ -6319,14 +6319,20 @@ recovery_getlocks(dbenv, lockid, lock_dbt, lsn)
     if (pglogs)
         __os_free(dbenv, pglogs);
 
-    if (ret) {
-        DB_LOCKREQ req = {0};
-        req.op = DB_LOCK_PUT_ALL;
-        if ((t_ret = __lock_vec(dbenv, lockid, 0, &req, 1, NULL)) != 0 && ret == 0)
-            ret = t_ret;
-        if ((t_ret = __lock_id_free(dbenv, lockid)) != 0 && ret == 0)
-            ret = t_ret;
-    }
+    return ret;
+}
+
+static int
+recovery_release_locks(dbenv, lockid)
+{
+    int ret, t_ret;
+
+    DB_LOCKREQ req = {0};
+    req.op = DB_LOCK_PUT_ALL;
+    if ((t_ret = __lock_vec(dbenv, lockid, 0, &req, 1, NULL)) != 0 && ret == 0)
+        ret = t_ret;
+    if ((t_ret = __lock_id_free(dbenv, lockid)) != 0 && ret == 0)
+        ret = t_ret;
     return ret;
 }
 
@@ -6341,6 +6347,9 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	DB_LOGC *logc;
     DBT *lock_dbt = NULL;
 	int ret, t_ret, undo, count=0;
+    int found_scdone = 0;
+    int recover_at_commit = 1;
+    int got_schema_lk = 0;
 	u_int32_t rectype;
 	u_int32_t keycnt = 0;
 	u_int32_t logflags = DB_LAST;
@@ -6356,7 +6365,10 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	if (dbenv->recovery_start_callback)
 		dbenv->recovery_start_callback(dbenv);
 
-deadlock_retry:
+restart:
+    lockid = DB_LOCK_INVALIDID;
+    count = 0;
+    have_schema_lock = 0;
     logflags = DB_LAST;
 
     count++;
@@ -6381,18 +6393,40 @@ deadlock_retry:
 				undo = 1;
 			}
 
-            if (online)
+            if (online) {
+                if (txnrlrec->flags & DB_TXN_SCHEMA_LOCK) {
+                    wrlock_schema_lk();
+                    got_schema_lk = 1;
+                }
                 ret = recovery_getlocks(dbenv, lockid, &txnrlrec->locks, lsn);
+            }
 
             __os_free(dbenv, txnrlrec);
 
             if (ret == DB_LOCK_DEADLOCK) {
 			    gbl_rep_trans_deadlocked++;
-                goto deadlock_retry;
+                if (got_schema_lk) {
+                    unlock_schema_lk();
+                    got_schema_lk = 0;
+                }
+                recovery_release_locks(dbenv, lockid);
+                goto restart;
             }
 
             if (ret)
                 goto err;
+
+            if (online) {
+                ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
+                if (got_schema_lk) {
+                    unlock_schema_lk();
+                    got_schema_lk = 0;
+                }
+                recovery_release_locks(dbenv, lockid);
+                if (ret)
+                    goto err;
+                goto restart;
+            }
 		}
 		if (rectype == DB___txn_regop_gen) {
 			if ((ret =
@@ -6409,11 +6443,19 @@ deadlock_retry:
 
             if (ret == DB_LOCK_DEADLOCK) {
 			    gbl_rep_trans_deadlocked++;
-                goto deadlock_retry;
+                recovery_release_locks(dbenv, lockid);
+                goto restart;
             }
 
             if (ret)
                 goto err;
+
+            if (online) {
+                ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
+                recovery_release_locks(dbenv, lockid);
+                if (ret) goto err;
+                goto restart;
+            }
 		}
 		if (rectype == DB___txn_regop) {
 			if ((ret =
@@ -6430,29 +6472,44 @@ deadlock_retry:
 
             if (ret == DB_LOCK_DEADLOCK) {
 			    gbl_rep_trans_deadlocked++;
-                goto deadlock_retry;
+                recovery_release_locks(dbenv, lockid);
+                goto restart;
             }
 
             if (ret)
                 goto err;
+
+            if (online) {
+                ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
+                recovery_release_locks(dbenv, lockid);
+                if (ret) goto err;
+                goto restart;
+            }
 		}
 	}
 
 	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
 
     if (online) {
-        DB_LOCKREQ req = {0};
-        req.op = DB_LOCK_PUT_ALL;
-        if ((t_ret = __lock_vec(dbenv, lockid, 0, &req, 1, NULL)) != 0 &&
-                ret == 0)
-            ret = t_ret;
-        if ((t_ret = __lock_id_free(dbenv, lockid)) != 0 && ret == 0)
-            ret = t_ret;
+        recovery_release_locks(dbenv, lockid);
+        lockid = DB_LOCK_INVALIDID;
     }
 
 err:
+
     if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
+
+    if (got_schema_lk) {
+        unlock_schema_lk();
+        got_schema_lk = 0;
+    }
+
+    if (lockid != DB_LOCK_INVALIDID) {
+        recovery_release_locks(dbenv, lockid);
+        lockid = DB_LOCK_INVALIDID;
+
+    }
 
 	if (dbenv->recovery_done_callback)
 		dbenv->recovery_done_callback(dbenv);
