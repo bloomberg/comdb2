@@ -85,7 +85,7 @@ set(src
   watchdog.c
   shard_range.c
   dohsql.c
-  dhast.c
+  dohast.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/cdb2_printlog.c
