@@ -2736,6 +2736,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
             if (key->flags & KEY_DUP) {
                 pParse->rc = SQLITE_ERROR;
                 sqlite3ErrorMsg(pParse, "A primary key must be UNIQUE.");
+                goto cleanup;
             }
 
             /* Also make sure none of its columns allow NULLs. (n^2) */
