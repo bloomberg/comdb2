@@ -26,7 +26,7 @@ int bdb_queuedb_check_goose(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_queuedb_consume_goose(bdb_state_type *bdb_state, tran_type *tran,
                               int *bdberr);
 
-int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void **lastitem,
+int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
                      bdb_queue_walk_callback_t callback, void *userptr,
                      int *bdberr);
 

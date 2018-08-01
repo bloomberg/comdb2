@@ -12,6 +12,7 @@ const sqlite3_module systblConstraintsModule;
 const sqlite3_module systblTblSizeModule;
 const sqlite3_module systblSPsModule;
 const sqlite3_module systblUsersModule;
+const sqlite3_module systblQueuesModule;
 const sqlite3_module systblTablePermissionsModule;
 const sqlite3_module systblTriggersModule;
 const sqlite3_module systblKeywordsModule;

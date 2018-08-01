@@ -950,12 +950,6 @@ void dbqueue_goose(struct dbtable *db, int force)
     logmsg(LOGMSG_WARN, "dbqueue_goose: too much contention %d\n", retries);
 }
 
-struct consumer_stat {
-    int has_stuff;
-    size_t first_item_length;
-    time_t epoch;
-    int depth;
-};
 
 static int dbqueue_stat_callback(int consumern, size_t length,
                                  unsigned int epoch, void *userptr)
@@ -977,30 +971,39 @@ static int dbqueue_stat_callback(int consumern, size_t length,
     return BDB_QUEUE_WALK_CONTINUE;
 }
 
+void dbqueue_get_stats(struct dbtable *db, int fullstat, int walk_queue, const struct bdb_queue_stats **bdbstats, struct consumer_stat *stats) {
+    struct ireq iq;
+    int flags;
+    *bdbstats = bdb_queue_get_stats(db->handle);
+    init_fake_ireq(db->dbenv, &iq);
+    iq.usedb = db;
+    logmsg(LOGMSG_USER, "(scanning queue '%s' for stats, please wait...)\n",
+           db->tablename);    
+    if (!walk_queue)
+        flags = BDB_QUEUE_WALK_FIRST_ONLY;
+    if(fullstat)
+        flags |= BDB_QUEUE_WALK_KNOWN_CONSUMERS_ONLY;
+    dbq_walk(&iq, flags, dbqueue_stat_callback, stats);
+    return;
+}
+
+
 static void dbqueue_stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
 {
     if (db->dbtype != DBTYPE_QUEUE && db->dbtype != DBTYPE_QUEUEDB)
         logmsg(LOGMSG_ERROR, "'%s' is not a queue\n", db->tablename);
     else {
         int ii, rc;
-        struct ireq iq;
-        struct consumer_stat stats[MAXCONSUMERS];
-        int flags = 0;
         const struct bdb_queue_stats *bdbstats;
+        int maxconsumers = MAXCONSUMERS;
+        struct consumer_stat stats[MAXCONSUMERS];
+        bzero(stats, sizeof(stats));
 
-        bdbstats = bdb_queue_get_stats(db->handle);
-
-        init_fake_ireq(db->dbenv, &iq);
-        iq.usedb = db;
+        dbqueue_get_stats(db, fullstat, walk_queue, &bdbstats, stats);        
 
         bzero(stats, sizeof(stats));
         logmsg(LOGMSG_USER, "(scanning queue '%s' for stats, please wait...)\n",
                db->tablename);
-        if (!walk_queue)
-            flags = BDB_QUEUE_WALK_FIRST_ONLY;
-        if (fullstat)
-            flags |= BDB_QUEUE_WALK_KNOWN_CONSUMERS_ONLY;
-        rc = dbq_walk(&iq, flags, dbqueue_stat_callback, stats);
 
         logmsg(LOGMSG_USER, "queue '%s':-\n", db->tablename);
         logmsg(LOGMSG_USER, "  geese added     %u\n", db->num_goose_adds);
@@ -1017,9 +1020,12 @@ static void dbqueue_stat_thread_int(struct dbtable *db, int fullstat, int walk_q
                bdbstats->n_new_way_geese_consumed,
                bdbstats->n_old_way_frags_consumed);
 
-        if (db->dbtype == DBTYPE_QUEUEDB)
+        if (db->dbtype == DBTYPE_QUEUEDB) {
             pthread_rwlock_rdlock(&db->consumer_lk);
-        for (ii = 0; ii < MAXCONSUMERS; ii++) {
+            maxconsumers = 1;
+        }
+
+        for (ii = 0; ii < maxconsumers; ii++) {
             struct consumer *consumer = db->consumers[ii];
 
             if (!fullstat && !consumer && !stats[ii].has_stuff)
@@ -1062,7 +1068,7 @@ static void dbqueue_stat_thread_int(struct dbtable *db, int fullstat, int walk_q
                            consumer->n_bad_rtcpu_fstsnds,
                            consumer->n_rejected_fstsnds);
                     break;
-
+                case CONSUMER_TYPE_DYNLUA:
                 case CONSUMER_TYPE_JAVASP:
                     logmsg(LOGMSG_USER, "stored procedure %s\n", consumer->procedure_name);
                     logmsg(LOGMSG_USER, "    %u commits, %u aborts, %u retries\n",

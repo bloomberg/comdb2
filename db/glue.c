@@ -5582,7 +5582,7 @@ retry:
         } else if (bdberr == BDBERR_FETCH_DTA) {
             return IX_NOTFND;
         }
-        return map_unhandled_bdb_rcode("bdb_queue_get", bdberr, 0);
+        return map_unhandled_bdb_rcode("bdb_queue_walk", bdberr, 0);
     }
     return rc;
 }

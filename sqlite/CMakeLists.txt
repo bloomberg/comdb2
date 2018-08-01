@@ -36,6 +36,7 @@ add_library(sqlite
   ext/comdb2/triggers.c
   ext/comdb2/tunables.c
   ext/comdb2/users.c
+  ext/comdb2/queues.c
   ext/comdb2/tranlog.c
   ext/comdb2/activelocks.c
   ext/comdb2/logicalops.c
