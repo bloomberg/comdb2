@@ -62,8 +62,8 @@ const char *help_text[] = {
 "               Only valid in create mode. -C strip flag is automatically applied",
 "  -a '<remote>'If -E is selected, links replication to that remote db",
 "               Delimit each machine name with whitespace",
-"               Note: comdb2ar will fail if no cluster line specified from",
-"               and -a was not specified",
+"               Note: comdb2ar will fail if no cluster line was specified from",
+"               the lrl file and -a was not specified",
 NULL
 };
 
