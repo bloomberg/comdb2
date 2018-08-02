@@ -1439,8 +1439,15 @@ REGISTER_TUNABLE("handle_buf_latency_ms",
                  TUNABLE_INTEGER, &gbl_handle_buf_add_latency_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("online_replicated_recovery",
+REGISTER_TUNABLE("online_recovery",
                  "Allow requests while recovering to an LSN.  (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_online_recovery, 0, NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_online_recovery, 0, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("online_recovery_maxlocks",
+                 "Truncate after acquiring more than this many locks.  "
+                 "(Default: 20000)", TUNABLE_INTEGER, 
+                 &gbl_online_recovery_maxlocks, 0, NULL, NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */
