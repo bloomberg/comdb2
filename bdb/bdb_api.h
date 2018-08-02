@@ -38,7 +38,6 @@
 #include "bdb_net.h"
 
 #include <assert.h>
-/*#include "protobuf/sqlresponse.pb-c.h"*/
 
 #define SIZEOF_SEQNUM (10 * sizeof(int))
 struct seqnum_t;

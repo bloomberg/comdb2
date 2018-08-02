@@ -1860,4 +1860,8 @@ int deadlock_policy_max();
 
 char *coherent_state_to_str(int state);
 
+char *bdb_coherent_state_string(const char *);
+typedef void(netinfo_dumper)(FILE *, bdb_state_type *);
+void set_netinfo_dumper(netinfo_dumper *);
+
 #endif /* __bdb_int_h__ */
