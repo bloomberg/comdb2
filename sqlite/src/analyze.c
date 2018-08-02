@@ -1606,7 +1606,9 @@ static void analyzeOneTable(
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
       int addrNext;
       int addrIsNull;
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
       u8 seekOp = HasRowid(pTab) ? OP_NotExists : OP_NotFound;
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 
       pParse->nMem = MAX(pParse->nMem, regCol+nCol);
 
