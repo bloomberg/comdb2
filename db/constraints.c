@@ -1928,7 +1928,7 @@ static void constraint_err(struct schema_change_type *s, struct dbtable *db,
     if (s && s->iq) {
         reqerrstr(s->iq, ERR_SC,
                   "constraint error for table \"%s\" key \"%s\" -> "
-                  "<\"%s\":\"%s\">: %s ",
+                  "<\"%s\":\"%s\">: %s",
                   db->tablename, ct->lclkeyname, ct->table[rule],
                   ct->keynm[rule], err);
     } else

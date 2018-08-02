@@ -1,7 +1,7 @@
 [begin] rc 0
 [create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
 [create table m {schema{int i} keys{"pk" = i}}] rc 0
-[commit] failed with rc 203 constraint error for table "c" key "key" -> <"m":"pk">: foreign table not found 
+[commit] failed with rc 203 constraint error for table "c" key "key" -> <"m":"pk">: foreign table not found
 [begin] rc 0
 [create table m {schema{int i} keys{"pk" = i}}] rc 0
 [create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
@@ -84,20 +84,20 @@
 [create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
 [create table d {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
 [commit] rc 0
-[alter table m {schema{int i}}] failed with rc 240 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found 
+[alter table m {schema{int i}}] failed with rc 240 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found
 [begin] rc 0
 [alter table m {schema{int i}}] rc 0
 [alter table c {schema{int i} keys{dup "key" = i}}] rc 0
-[commit] failed with rc 203 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found 
+[commit] failed with rc 203 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found
 [begin] rc 0
 [alter table c {schema{int i} keys{dup "key" = i}}] rc 0
 [alter table m {schema{int i}}] rc 0
-[commit] failed with rc 203 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found 
+[commit] failed with rc 203 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found
 [begin] rc 0
 [alter table c {schema{int i} keys{dup "key" = i}}] rc 0
 [alter table m {schema{int i}}] rc 0
 [alter table d {schema{int i} keys{dup "key" = i}}] rc 0
-[commit] failed with rc 203 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found 
+[commit] failed with rc 203 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found
 [begin] rc 0
 [alter table c {schema{int i} keys{dup "key" = i}}] rc 0
 [alter table d {schema{int i} keys{dup "key" = i}}] rc 0
@@ -114,7 +114,7 @@
 [drop table d] rc 0
 [alter table m {schema{int i}}] rc 0
 [drop table e] rc 0
-[commit] failed with rc 203 constraint error for table "e" key "key" -> <"m":"pk">: foreign key not found 
+[commit] failed with rc 203 constraint error for table "e" key "key" -> <"m":"pk">: foreign key not found
 [begin] rc 0
 [drop table c] rc 0
 [drop table d] rc 0
