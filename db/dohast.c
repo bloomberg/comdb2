@@ -222,27 +222,27 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     node->ncols = p->pEList->nExpr;
 
     psub = node->nodes;
+
     pLimit = p->pLimit;
     pOffset = p->pOffset;
-    p->pLimit = NULL;
-    p->pOffset = NULL;
-    /* go from left to right */
     crt = p;
-    while (crt->pPrior)
-        crt = crt->pPrior;
+    if (crt->pPrior) {
+        /* go from left to right */
+        while (crt->pPrior) {
+            crt->pLimit = pLimit;
+            crt = crt->pPrior;
+        }
+        crt->pLimit = pLimit;
+        crt->pOffset = pOffset;
+        p->pOffset = NULL;
+    }
+
     /* generate queries */
     while(crt) {
-        if (!crt->pPrior) {
-            /* prepare */
-            crt->pLimit = pLimit;
-            crt->pOffset = pOffset;
-        }
         *psub = gen_oneselect(v, crt);
-        if (!crt->pPrior) {
-            /* restore */
-            crt->pLimit = NULL;
-            crt->pOffset = NULL;
-        }
+        crt->pLimit = NULL;
+        crt->pOffset = NULL;
+
         if(!(*psub)) {
             node_free(v, &node);
             return NULL;
@@ -259,13 +259,6 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
         } else {
             node->sql = sqlite3_mprintf("%s", (*psub)->sql);
         }
-
-        if(!crt->pNext){
-            /* restore */
-            crt->pLimit = pLimit;
-            crt->pOffset = pOffset;
-        }
-
         crt = crt->pNext;
         psub++;
     }
