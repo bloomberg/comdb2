@@ -14,4 +14,8 @@ const char* start_replication();
 void* keep_in_sync(void* args);
 void stop_sync();
 
+/* expose as a hook for apply_log */
+int apply_log_procedure(unsigned int file, unsigned int offset,
+        void* blob, int blob_len, int newfile);
+
 #endif

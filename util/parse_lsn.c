@@ -19,7 +19,7 @@ int char_to_lsn(const char *lsnstr, unsigned int* file, unsigned int* offset)
         return -1;
 
     /* Parse file */
-    *file = atoi(p);
+    *file = (unsigned int) atol(p);
     while( isnum(p) )
         p++;
     skipws(p);
@@ -31,7 +31,7 @@ int char_to_lsn(const char *lsnstr, unsigned int* file, unsigned int* offset)
         return -1;
 
     /* Parse offset */
-    *offset = atoi(p);
+    *offset = (unsigned int) atol(p);
     while( isnum(p) )
         p++;
 
