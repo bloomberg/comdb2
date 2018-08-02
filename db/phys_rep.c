@@ -229,6 +229,29 @@ void stop_sync()
 
 }
 
+int is_valid_lsn(unsigned int file, unsigned int offset)
+{
+    LOG_INFO info = get_last_lsn(thedb->bdb_env);
+
+    return file == info.file && 
+        offset == get_next_offset(thedb->bdb_env->dbenv, info);
+}
+
+
+int apply_log_procedure(unsigned int file, unsigned int offset,
+        void* blob, int blob_len, int newfile)
+{
+    int64_t rectype;
+    if (!is_valid_lsn(file, offset))
+    {
+        return 1;
+    }
+    rectype = newfile ? REP_NEWFILE : REP_LOG;
+
+    return apply_log(thedb->bdb_env->dbenv, file, offset, 
+            rectype, blob, blob_len); 
+}
+
 /* privates */
 static LOG_INFO handle_record(LOG_INFO prev_info)
 {
