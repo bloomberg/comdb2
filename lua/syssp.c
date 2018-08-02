@@ -15,6 +15,7 @@
 #include <logmsg.h>
 #include <parse_lsn.h>
 #include <truncate_log.h>
+#include <phys_rep.h>
 
 
 /* Wishes for anyone who wants to clean this up one day:
@@ -248,7 +249,7 @@ static int db_comdb_truncate_log(Lua L) {
     sp->max_num_instructions = 1000000; //allow large number of steps
     char *lsnstr = NULL;
     if (lua_isstring(L, 1)) {
-        lsnstr = (char *) lua_tostring(L, -1);
+        lsnstr = (char *) lua_tostring(L, 1);
     }
     else {
         return luaL_error(L, "Require a string for the lsn");
@@ -261,9 +262,51 @@ static int db_comdb_truncate_log(Lua L) {
         return luaL_error(L, 
                 "Usage: truncate_log(\"{<file>:<offset>}\"). Input not valid.");
     }
-    logmsg(LOGMSG_USER, "truncating from lsn {%u:%u}\n", file, offset);
+    logmsg(LOGMSG_USER, "applying log from lsn {%u:%u}\n", file, offset);
 
     truncate_log(file, offset);
+
+    return 1;
+}
+
+
+static int db_comdb_apply_log(Lua L) {
+    SP sp = getsp(L);
+    sp->max_num_instructions = 1000000; //allow large number of steps
+    char *lsnstr = NULL;
+    int rc;
+    blob_t blob; 
+
+    if ((rc = lua_gettop(L)) != 3) {
+        fprintf(stderr, "rc=%d", rc);
+        return luaL_error(L, 
+                "Usage: apply_log(\"{<file>:<offset>}\", 'blob', is_newfile). " 
+                "Need 3 params.");
+    }
+    if (lua_isstring(L, 1)) {
+        lsnstr = (char *) lua_tostring(L, 1);
+    }
+    else {
+        return luaL_error(L, 
+                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
+                "1st param not string.");
+    }
+
+    luabb_toblob(L, 2, &blob);
+
+    unsigned int file, offset; 
+  
+    if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
+        return luaL_error(L, 
+                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
+                "LSN not valid.");
+    }
+    logmsg(LOGMSG_USER, "applying log lsn {%u:%u}\n", file, offset);
+
+    /* if ((rc = apply_log_procedure(file, offset, blob.data, blob.length)) != 0) */
+    /* { */
+    /*     return luaL_error(L, "Log apply failed."); */
+    /* } */
 
     return 1;
 }
@@ -331,6 +374,7 @@ static const luaL_Reg sys_funcs[] = {
     { "comdb_analyze", db_comdb_analyze },
     { "comdb_verify", db_comdb_verify },
     { "truncate_log", db_comdb_truncate_log },
+    { "apply_log", db_comdb_apply_log },
     { NULL, NULL }
 }; 
 
@@ -441,6 +485,12 @@ static struct sp_source syssps[] = {
         "sys.cmd.truncate_log",
         "local function main(lsn)\n"
         "sys.truncate_log(lsn)\n"
+        "end\n"
+    }
+    ,{
+        "sys.cmd.apply_log",
+        "local function main(lsn)\n"
+        "sys.apply_log(lsn)\n"
         "end\n"
     }
 };
