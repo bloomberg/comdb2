@@ -1,0 +1,123 @@
+[begin] rc 0
+[create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
+[create table m {schema{int i} keys{"pk" = i}}] rc 0
+[commit] failed with rc 203 constraint error for table "c" key "key" -> <"m":"pk">: foreign table not found 
+[begin] rc 0
+[create table m {schema{int i} keys{"pk" = i}}] rc 0
+[create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
+[commit] rc 0
+[insert into c values (1)] failed with rc 3 verify key constraint cannot resolve constraint table 'm' index 'pk'
+(rows inserted=1)
+[insert into m values (1)] rc 0
+(rows inserted=1)
+[insert into c values (1)] rc 0
+(rows inserted=1)
+[insert into c values (1)] rc 0
+(rows inserted=1)
+[insert into c values (1)] rc 0
+(i=1)
+[select * from m] rc 0
+(i=1)
+(i=1)
+(i=1)
+[select * from c] rc 0
+[truncate m] failed with rc 240 Can't fastinit tables with foreign constraints
+[drop table m] failed with rc 240 Can't drop tables with foreign constraints
+(i=1)
+[select * from m] rc 0
+(i=1)
+(i=1)
+(i=1)
+[select * from c] rc 0
+[begin] rc 0
+[truncate c] rc 0
+[truncate m] rc 0
+[commit] rc 0
+[select * from m] rc 0
+[select * from c] rc 0
+(rows inserted=1)
+[insert into m values (1)] rc 0
+(rows inserted=1)
+[insert into c values (1)] rc 0
+(rows inserted=1)
+[insert into c values (1)] rc 0
+(rows inserted=1)
+[insert into c values (1)] rc 0
+[begin] rc 0
+[truncate c] rc 0
+[drop table m] rc 0
+[commit] failed with rc 240 Can't drop tables with foreign constraints
+(i=1)
+[select * from m] rc 0
+(i=1)
+(i=1)
+(i=1)
+[select * from c] rc 0
+[begin] rc 0
+[drop table c] rc 0
+[truncate m] rc 0
+[commit] rc 0
+[select * from m] rc 0
+[select * from c] failed with rc -3 no such table: c
+[begin] rc 0
+[drop table if exists c] rc 0
+[drop table if exists m] rc 0
+[commit] rc 0
+[begin] rc 0
+[create table m {schema{int i} keys{"pk" = i}}] rc 0
+[create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
+[commit] rc 0
+[begin] rc 0
+[drop table m] rc 0
+[drop table c] rc 0
+[commit] rc 0
+[select * from m] failed with rc 240 Can't drop tables with foreign constraints
+[select * from c] rc 0
+[begin] rc 0
+[drop table c] rc 0
+[drop table m] rc 0
+[commit] rc 0
+[select * from m] failed with rc -3 no such table: m
+[select * from c] failed with rc -3 no such table: c
+[begin] rc 0
+[create table m {schema{int i} keys{"pk" = i}}] rc 0
+[create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
+[create table d {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
+[commit] rc 0
+[alter table m {schema{int i}}] failed with rc 240 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found 
+[begin] rc 0
+[alter table m {schema{int i}}] rc 0
+[alter table c {schema{int i} keys{dup "key" = i}}] rc 0
+[commit] failed with rc 203 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found 
+[begin] rc 0
+[alter table c {schema{int i} keys{dup "key" = i}}] rc 0
+[alter table m {schema{int i}}] rc 0
+[commit] failed with rc 203 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found 
+[begin] rc 0
+[alter table c {schema{int i} keys{dup "key" = i}}] rc 0
+[alter table m {schema{int i}}] rc 0
+[alter table d {schema{int i} keys{dup "key" = i}}] rc 0
+[commit] failed with rc 203 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found 
+[begin] rc 0
+[alter table c {schema{int i} keys{dup "key" = i}}] rc 0
+[alter table d {schema{int i} keys{dup "key" = i}}] rc 0
+[alter table m {schema{int i}}] rc 0
+[commit] rc 0
+[begin] rc 0
+[alter table m {schema{int i} keys{"pk" = i}}] rc 0
+[alter table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
+[alter table d {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
+[create table e {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
+[commit] rc 0
+[begin] rc 0
+[drop table c] rc 0
+[drop table d] rc 0
+[alter table m {schema{int i}}] rc 0
+[drop table e] rc 0
+[commit] failed with rc 203 constraint error for table "e" key "key" -> <"m":"pk">: foreign key not found 
+[begin] rc 0
+[drop table c] rc 0
+[drop table d] rc 0
+[drop table e] rc 0
+[alter table m {schema{int i}}] rc 0
+[commit] rc 0

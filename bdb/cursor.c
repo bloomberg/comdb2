@@ -3363,7 +3363,7 @@ static int bdb_remove_logfile_fileid_pglogs(bdb_state_type *bdb_state,
     filenum = last_logfile;
     Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
-    for (; filenum >= first_filenum; --filenum) {
+    for (; filenum && filenum >= first_filenum; --filenum) {
         struct logfile_pglogs_entry *l_entry;
         Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
         l_entry = retrieve_logfile_pglogs(filenum, 0);
@@ -7555,7 +7555,7 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
     buf = NULL;
 #endif
 
-    for (; filenum >= first_filenum; --filenum) {
+    for (; filenum && filenum >= first_filenum; --filenum) {
         struct logfile_pglogs_entry *l_entry;
         Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
         l_entry = retrieve_logfile_pglogs(filenum, 0);
