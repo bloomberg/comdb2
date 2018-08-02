@@ -372,7 +372,7 @@ retry_after_fdb_creation:
     for(i=OMIT_TEMPDB; i<db->nDb; i++){
       int j = (i<2) ? i^1 : i;   /* Search TEMP before MAIN */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if( zDatabase==0 || sqlite3StrICmp(dbName, db->aDb[j].zDbSName)==0 ){
+      if( dbName==0 || sqlite3StrICmp(dbName, db->aDb[j].zDbSName)==0 ){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( zDatabase==0 || sqlite3StrICmp(zDatabase, db->aDb[j].zDbSName)==0 ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

@@ -1564,6 +1564,7 @@ static void analyzeOneTable(
     assert( regChng==(regStat4+1) );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
+    assert( regSampleRow==(regStat4+2) );
     sqlite3VdbeAddOp3(v, OP_MakeRecord, regPrev, nCol, regSampleRow);
 #endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
