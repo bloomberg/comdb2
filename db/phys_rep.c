@@ -244,7 +244,6 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
 
     lsn = (char *) cdb2_column_value(repl_db, 0);
     rectype = *(int64_t *) cdb2_column_value(repl_db, 1);
-    gen = *(unsigned int *) cdb2_column_value(repl_db, 2);
     timestamp = (char *) cdb2_column_value(repl_db, 3);
     blob = cdb2_column_value(repl_db, 4);
     blob_len = cdb2_column_size(repl_db, 4);

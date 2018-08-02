@@ -5,6 +5,7 @@ PREFIX=@CMAKE_INSTALL_PREFIX@
 
 arch=`uname`
 rsh=ssh
+recovery_opts=""
 
 scriptname=${0##*/}
 [ -z "$TMPDIR" ] && TMPDIR=/tmp
@@ -80,12 +81,8 @@ Other options:
     -b          Serialize a backup of a database to stdout
     -r          Restore a backup of a database from stdin
     -p          Copy only the incremental differences
-    -H <db name>  Creates a physical replicant. Automatically calls -C strip flag.
-    -y '<remote>' Specify which machines a physical replicant will copy from.
-                  This flag must be specified if the copied db does not have a cluster.
-                  Delimit each machine name with whitespace
-                  Note: comdb2ar will fail if no cluster line was specified from 
-                  the lrl file and -a was not specified
+    -H db       Creates a physical replicant with name 'db'.
+    -y 'machs'  Sets physical replicant machines (defaults to cluster).
 \n"
 
    exit 1
@@ -167,6 +164,10 @@ for arg in "$@" ; do
     case "$arg" in
         -h)
             usage
+            ;;
+        -x)
+            recovery_opts="-x $2"
+            shift 2
             ;;
         -C)
             cluster_info="$2"
@@ -436,7 +437,7 @@ exstatus="$TMPDIR/comdb2ar_ex.$$.txt"
 touch $arstatus $exstatus
 
 aropts="-C $cluster_info"
-exopts="-C $cluster_info -u $max_du_percent "
+exopts="-C $cluster_info -u $max_du_percent $recovery_opts"
 
 [ $copy_data = no ]             && aropts="$aropts -s"
 [ $disable_log_delete = no ]    && aropts="$aropts -L"
