@@ -744,7 +744,7 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
     fill_ssl_info(dbinfo_response);
 }
 
-static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
+static void netinfo_dump_hostname(FILE *out, bdb_state_type *bdb_state)
 {
     struct host_node_info nodes[REPMAX];
     int num_nodes, ii, iammaster;
@@ -792,6 +792,15 @@ static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
                 bdb_state->seqnum_info->filenum[nodeix(nodes[ii].host)],
                 coherent_state);
     }
+}
+netinfo_dumper *netinfo_dump_impl = netinfo_dump_hostname;
+void set_netinfo_dumper(netinfo_dumper *d)
+{
+    netinfo_dump_impl = d;
+}
+static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
+{
+    netinfo_dump_impl(out, bdb_state);
 }
 
 /* This is public (called by db layer) and used for the incoherent
