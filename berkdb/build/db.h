@@ -260,6 +260,8 @@ struct __db_trigger_subscription;
 /*
  * Flags private to DB_ENV->txn_begin.
  *	   Shared flags up to 0x0000800 */
+#define DB_TXN_INTERNAL       0x0000001
+#define DB_TXN_RECOVERY       0x0000002
 #define	DB_TXN_NOWAIT	      0x0001000	/* Do not wait for locks in this TXN. */
 #define	DB_TXN_SYNC	      0x0002000	/* Always sync log on commit. */
 #define DB_TXN_REP_ACK        0x0010000 /* Rep should send an ACK */

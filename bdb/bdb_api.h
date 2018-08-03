@@ -613,7 +613,12 @@ unsigned long long bdb_mask_updateid(bdb_state_type *bdb_state,
 unsigned long long bdb_normalise_genid(bdb_state_type *bdb_state,
                                        unsigned long long genid);
 
+#define BDB_TRAN_RECOVERY 0x00000001
+
 /* return a new tran handle, begin a transaction */
+tran_type *bdb_tran_begin_flags(bdb_state_type *bdb_handle, tran_type *parent_tran,
+                          int *bdberr, u_int32_t flags);
+
 tran_type *bdb_tran_begin(bdb_state_type *bdb_handle, tran_type *parent_tran,
                           int *bdberr);
 
