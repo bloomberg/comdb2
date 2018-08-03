@@ -306,6 +306,38 @@ static u_int32_t get_generation_from_ckp_record(char *data)
     return generation;
 }
 
+u_int64_t get_timestamp_from_matchable_record(char *data)
+{
+    int64_t rectype = 0;
+    if (data)
+    {
+        LOGCOPY_32(&rectype, data); 
+    }
+    else
+    {
+        logmsg(LOGMSG_WARN, "No data, so can't get rectype!\n");
+    }
+
+    if (rectype == DB___txn_regop_gen){
+        return get_timestamp_from_regop_gen_record(data);
+    }
+
+    if (rectype == DB___txn_regop_rowlocks) {
+        return get_timestamp_from_regop_rowlocks_record(data);
+    }
+
+    if (rectype == DB___txn_regop) {
+        return get_timestamp_from_regop_record(data);
+    }
+
+    if (rectype == DB___txn_ckp) {
+        return get_timestamp_from_ckp_record(data);
+    }
+
+    logmsg(LOGMSG_WARN, "Timestamp is completely wrong!\n");
+    return -1;
+}
+
 /*
 ** Return values of columns for the row at which the series_cursor
 ** is currently pointing.
