@@ -201,7 +201,7 @@ static void openStatTable(
     { "sqlite_stat1", "tbl,idx,stat" },
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     { "sqlite_stat3", 0 },
-    { "sqlite_stat4", "tbl,idx,neq,nlt,ndlt,sample" },
+    { "sqlite_stat4", 0 },
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if defined(SQLITE_ENABLE_STAT4)
     { "sqlite_stat4", "tbl,idx,neq,nlt,ndlt,sample" },
@@ -319,13 +319,13 @@ struct Stat4Sample {
   tRowcnt *anDLt;                 /* sqlite_stat4.nDLt */
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
   tRowcnt *anLt;                  /* sqlite_stat4.nLt */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   union {
     i64 iRowid;                     /* Rowid in main table of the key */
     u8 *aRowid;                     /* Key for WITHOUT ROWID tables */
   } u;
   u32 nRowid;                     /* Sizeof aRowid[] */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   u8 isPSample;                   /* True if a periodic sample */
   int iCol;                       /* If !isPSample, the reason for inclusion */
   u32 iHash;                      /* Tiebreaker hash */
