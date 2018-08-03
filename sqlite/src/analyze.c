@@ -488,9 +488,6 @@ static inline int numRowsToNumSamplesEst(u64 n)
 ** return value is BLOB, but it is really just a pointer to the Stat4Accum
 ** object.
 */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-static int initnum;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 static void statInit(
   sqlite3_context *context,
   int argc,
@@ -569,9 +566,9 @@ static void statInit(
     p->iGet = -1;
     p->mxSample = mxSample;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    p->nPSample = (tRowcnt)(sqlite3_value_int64(argv[2])/(mxSample/3+1) + 1);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     p->nPSample = (tRowcnt)(nRows/(mxSample/3+1) + 1);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+    p->nPSample = (tRowcnt)(sqlite3_value_int64(argv[2])/(mxSample/3+1) + 1);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     p->current.anLt = &p->current.anEq[nColUp];
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -1082,15 +1079,6 @@ static void statGet(
     if( iGet>=p->nSample ){
       sqlite3_result_null(context);
       return;
-    }
-    if( p->iGet<p->nSample ){
-      Stat4Sample *pS = p->a + p->iGet;
-      if( pS->nRowid==0 ){
-        sqlite3_result_int64(context, pS->u.iRowid);
-      }else{
-        sqlite3_result_blob(context, pS->u.aRowid, pS->nRowid,
-                            SQLITE_TRANSIENT);
-      }
     }
     switch( eCall ){
       case STAT_GET_NEQ:  aCnt = p->a[iGet].anEq; break;
