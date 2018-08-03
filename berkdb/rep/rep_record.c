@@ -6285,60 +6285,60 @@ int gbl_online_recovery_maxlocks = 20000;
 static int
 recovery_getlocks(dbenv, lockid, lock_dbt, lsn)
 	DB_ENV *dbenv;
-    u_int32_t lockid;
-    DBT *lock_dbt;
-    DB_LSN lsn;
+	u_int32_t lockid;
+	DBT *lock_dbt;
+	DB_LSN lsn;
 {
-    int ret;
-    int t_ret;
-    void *pglogs = NULL;
-    unsigned long long context;
-    u_int32_t keycnt;
+	int ret;
+	int t_ret;
+	void *pglogs = NULL;
+	unsigned long long context;
+	u_int32_t keycnt;
 
-    ret = __lock_get_list_context(dbenv, lockid, LOCK_GET_LIST_GETLOCK,
-            DB_LOCK_WRITE, lock_dbt, &context, &lsn, &pglogs, &keycnt);
-    if (pglogs)
-        __os_free(dbenv, pglogs);
+	ret = __lock_get_list_context(dbenv, lockid, LOCK_GET_LIST_GETLOCK,
+			DB_LOCK_WRITE, lock_dbt, &context, &lsn, &pglogs, &keycnt);
+	if (pglogs)
+		__os_free(dbenv, pglogs);
 
-    return ret;
+	return ret;
 }
 
 static int
 recovery_release_locks(dbenv, lockid)
 	DB_ENV *dbenv;
-    u_int32_t lockid;
+	u_int32_t lockid;
 {
-    int ret, t_ret;
-    DB_LOCKREQ req = {0};
-    req.op = DB_LOCK_PUT_ALL;
-    if ((t_ret = __lock_vec(dbenv, lockid, 0, &req, 1, NULL)) != 0 && ret == 0)
-        ret = t_ret;
-    if ((t_ret = __lock_id_free(dbenv, lockid)) != 0 && ret == 0)
-        ret = t_ret;
-    return ret;
+	int ret, t_ret;
+	DB_LOCKREQ req = {0};
+	req.op = DB_LOCK_PUT_ALL;
+	if ((t_ret = __lock_vec(dbenv, lockid, 0, &req, 1, NULL)) != 0 && ret == 0)
+		ret = t_ret;
+	if ((t_ret = __lock_id_free(dbenv, lockid)) != 0 && ret == 0)
+		ret = t_ret;
+	return ret;
 }
 
 static int
 __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	DB_ENV *dbenv;
 	DB_LSN *lsnp, *trunclsnp;
-    int online;
+	int online;
 {
 	DB_LSN lsn;
 	DBT mylog;
 	DB_LOGC *logc;
-    DBT *lock_dbt = NULL;
+	DBT *lock_dbt = NULL;
 	int ret, t_ret, undo, count=0;
-    int found_scdone = 0;
-    int recover_at_commit = 1;
-    int got_schema_lk;
-    int maxlocks = gbl_online_recovery_maxlocks;
+	int found_scdone = 0;
+	int recover_at_commit = 1;
+	int got_schema_lk;
+	int maxlocks = gbl_online_recovery_maxlocks;
 	u_int32_t rectype;
 	u_int32_t keycnt = 0;
 	u_int32_t logflags = DB_LAST;
 	u_int32_t lockcnt = 0;
-    int do_truncate = 0;
-    u_int32_t lockid = DB_LOCK_INVALIDID;
+	int do_truncate = 0;
+	u_int32_t lockid = DB_LOCK_INVALIDID;
 	__txn_regop_args *txnrec;
 	__txn_regop_gen_args *txngenrec;
 	__txn_regop_rowlocks_args *txnrlrec;
@@ -6351,23 +6351,23 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 		dbenv->recovery_start_callback(dbenv);
 
 restart:
-    lockid = DB_LOCK_INVALIDID;
-    count = 0;
-    got_schema_lk = 0;
-    logflags = DB_LAST;
+	lockid = DB_LOCK_INVALIDID;
+	count = 0;
+	got_schema_lk = 0;
+	logflags = DB_LAST;
 
-    count++;
-    if (online && ((ret = __lock_id(dbenv, &lockid)) != 0)) {
-        logmsg(LOGMSG_FATAL, "%s could not acquire lockid\n");
-        abort();
-    }
+	count++;
+	if (online && ((ret = __lock_id(dbenv, &lockid)) != 0)) {
+		logmsg(LOGMSG_FATAL, "%s could not acquire lockid\n");
+		abort();
+	}
 
 	memset(&mylog, 0, sizeof(mylog));
 	undo = 0;
 	while ((undo == 0 || online) &&
 		(ret = __log_c_get(logc, &lsn, &mylog, logflags)) == 0 &&
 		log_compare(&lsn, lsnp) > 0) {
-        logflags = DB_PREV;
+		logflags = DB_PREV;
 		LOGCOPY_32(&rectype, mylog.data);
 		if (rectype == DB___txn_regop_rowlocks) {
 			if ((ret =
@@ -6378,75 +6378,75 @@ restart:
 				undo = 1;
 			}
 
-            if (online) {
-                if (txnrlrec->lflags & DB_TXN_SCHEMA_LOCK) {
-                    if ((ret = dbenv->lock_locker_lockcount(
-                                    dbenv, lockid, &lockcnt)) != 0) {
-                        logmsg(LOGMSG_ERROR, "%s lockcount failed, ret=%d\n",
-                                __func__, ret);
-                        goto err;
-                    }
-                    if (lockcnt > 0) {
-                        ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
-                        recovery_release_locks(dbenv, lockid);
-                        if (ret) goto err;
-                        goto restart;
-                    }
-                    wrlock_schema_lk();
-                    got_schema_lk = 1;
-                }
-                ret = recovery_getlocks(dbenv, lockid, &txnrlrec->locks, lsn);
-            }
+			if (online) {
+				if (txnrlrec->lflags & DB_TXN_SCHEMA_LOCK) {
+					if ((ret = dbenv->lock_locker_lockcount(
+									dbenv, lockid, &lockcnt)) != 0) {
+						logmsg(LOGMSG_ERROR, "%s lockcount failed, ret=%d\n",
+								__func__, ret);
+						goto err;
+					}
+					if (lockcnt > 0) {
+						ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
+						recovery_release_locks(dbenv, lockid);
+						if (ret) goto err;
+						goto restart;
+					}
+					wrlock_schema_lk();
+					got_schema_lk = 1;
+				}
+				ret = recovery_getlocks(dbenv, lockid, &txnrlrec->locks, lsn);
+			}
 
-            __os_free(dbenv, txnrlrec);
+			__os_free(dbenv, txnrlrec);
 
-            if (ret == DB_LOCK_DEADLOCK) {
-			    gbl_rep_trans_deadlocked++;
-                if (got_schema_lk) {
-                    unlock_schema_lk();
-                    got_schema_lk = 0;
-                }
-                recovery_release_locks(dbenv, lockid);
-                goto restart;
-            }
+			if (ret == DB_LOCK_DEADLOCK) {
+				gbl_rep_trans_deadlocked++;
+				if (got_schema_lk) {
+					unlock_schema_lk();
+					got_schema_lk = 0;
+				}
+				recovery_release_locks(dbenv, lockid);
+				goto restart;
+			}
 
-            if (ret)
-                goto err;
+			if (ret)
+				goto err;
 
-            if (online) {
-                do_truncate = got_schema_lk;
-                if (!do_truncate && maxlocks > 0) {
-                    if ((ret = dbenv->lock_locker_lockcount(
-                                    dbenv, lockid, &lockcnt)) != 0) {
-                        logmsg(LOGMSG_ERROR, "%s lockcount failed, ret=%d\n",
-                                __func__, ret);
-                        goto err;
-                    }
-                    do_truncate = (lockcnt > maxlocks);
-                }
+			if (online) {
+				do_truncate = got_schema_lk;
+				if (!do_truncate && maxlocks > 0) {
+					if ((ret = dbenv->lock_locker_lockcount(
+									dbenv, lockid, &lockcnt)) != 0) {
+						logmsg(LOGMSG_ERROR, "%s lockcount failed, ret=%d\n",
+								__func__, ret);
+						goto err;
+					}
+					do_truncate = (lockcnt > maxlocks);
+				}
 
-                if (do_truncate) {
+				if (do_truncate) {
 
-                    /* Go to previous record */
-                    if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
-                        goto err;
+					/* Go to previous record */
+					if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
+						goto err;
 
-                    ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
-                    if (got_schema_lk) {
-                        /* Do stuff here to fix schema change */
-                        /*
-                        reload_db_tran(XXX, XXX);
-                        gbl_dbopen_gen++;
-                        */
-                        unlock_schema_lk();
-                        got_schema_lk = 0;
-                    }
-                    recovery_release_locks(dbenv, lockid);
-                    if (ret)
-                        goto err;
-                    goto restart;
-                }
-            }
+					ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
+					if (got_schema_lk) {
+						/* Do stuff here to fix schema change */
+						/*
+						reload_db_tran(XXX, XXX);
+						gbl_dbopen_gen++;
+						*/
+						unlock_schema_lk();
+						got_schema_lk = 0;
+					}
+					recovery_release_locks(dbenv, lockid);
+					if (ret)
+						goto err;
+					goto restart;
+				}
+			}
 		}
 		if (rectype == DB___txn_regop_gen) {
 			if ((ret =
@@ -6456,40 +6456,40 @@ restart:
 			if (txngenrec->opcode != TXN_ABORT) {
 				undo = 1;
 			}
-            if (online)
-                ret = recovery_getlocks(dbenv, lockid, &txngenrec->locks, lsn);
+			if (online)
+				ret = recovery_getlocks(dbenv, lockid, &txngenrec->locks, lsn);
 
 			__os_free(dbenv, txngenrec);
 
-            if (ret == DB_LOCK_DEADLOCK) {
-			    gbl_rep_trans_deadlocked++;
-                recovery_release_locks(dbenv, lockid);
-                goto restart;
-            }
+			if (ret == DB_LOCK_DEADLOCK) {
+				gbl_rep_trans_deadlocked++;
+				recovery_release_locks(dbenv, lockid);
+				goto restart;
+			}
 
-            if (ret)
-                goto err;
+			if (ret)
+				goto err;
 
-            if (online) {
-                do_truncate = 0;
-                if (maxlocks > 0) {
-                    if ((ret = dbenv->lock_locker_lockcount(
-                                    dbenv, lockid, &lockcnt)) != 0) {
-                        logmsg(LOGMSG_ERROR, "%s lockcount failed, ret=%d\n",
-                                __func__, ret);
-                        goto err;
-                    }
-                    do_truncate = (lockcnt > maxlocks);
-                }
-                if (do_truncate) {
-                    if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
-                        goto err;
-                    ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
-                    recovery_release_locks(dbenv, lockid);
-                    if (ret) goto err;
-                    goto restart;
-                }
-            }
+			if (online) {
+				do_truncate = 0;
+				if (maxlocks > 0) {
+					if ((ret = dbenv->lock_locker_lockcount(
+									dbenv, lockid, &lockcnt)) != 0) {
+						logmsg(LOGMSG_ERROR, "%s lockcount failed, ret=%d\n",
+								__func__, ret);
+						goto err;
+					}
+					do_truncate = (lockcnt > maxlocks);
+				}
+				if (do_truncate) {
+					if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
+						goto err;
+					ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
+					recovery_release_locks(dbenv, lockid);
+					if (ret) goto err;
+					goto restart;
+				}
+			}
 		}
 		if (rectype == DB___txn_regop) {
 			if ((ret =
@@ -6499,64 +6499,64 @@ restart:
 			if (txnrec->opcode != TXN_ABORT) {
 				undo = 1;
 			}
-            if (online)
-                ret = recovery_getlocks(dbenv, lockid, &txnrec->locks, lsn);
+			if (online)
+				ret = recovery_getlocks(dbenv, lockid, &txnrec->locks, lsn);
 
 			__os_free(dbenv, txnrec);
 
-            if (ret == DB_LOCK_DEADLOCK) {
-			    gbl_rep_trans_deadlocked++;
-                recovery_release_locks(dbenv, lockid);
-                goto restart;
-            }
+			if (ret == DB_LOCK_DEADLOCK) {
+				gbl_rep_trans_deadlocked++;
+				recovery_release_locks(dbenv, lockid);
+				goto restart;
+			}
 
-            if (ret)
-                goto err;
+			if (ret)
+				goto err;
 
-            if (online) {
-                do_truncate = 0;
-                if (maxlocks > 0) {
-                    if ((ret = dbenv->lock_locker_lockcount(
-                                    dbenv, lockid, &lockcnt)) != 0) {
-                        logmsg(LOGMSG_ERROR, "%s lockcount failed, ret=%d\n",
-                                __func__, ret);
-                        goto err;
-                    }
-                    do_truncate = (lockcnt > maxlocks);
-                }
-                if (do_truncate) {
-                    if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
-                        goto err;
-                    ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
-                    recovery_release_locks(dbenv, lockid);
-                    if (ret) goto err;
-                    goto restart;
-                }
-            }
+			if (online) {
+				do_truncate = 0;
+				if (maxlocks > 0) {
+					if ((ret = dbenv->lock_locker_lockcount(
+									dbenv, lockid, &lockcnt)) != 0) {
+						logmsg(LOGMSG_ERROR, "%s lockcount failed, ret=%d\n",
+								__func__, ret);
+						goto err;
+					}
+					do_truncate = (lockcnt > maxlocks);
+				}
+				if (do_truncate) {
+					if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
+						goto err;
+					ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
+					recovery_release_locks(dbenv, lockid);
+					if (ret) goto err;
+					goto restart;
+				}
+			}
 		}
 	}
 
 	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
 
-    if (online) {
-        recovery_release_locks(dbenv, lockid);
-        lockid = DB_LOCK_INVALIDID;
-    }
+	if (online) {
+		recovery_release_locks(dbenv, lockid);
+		lockid = DB_LOCK_INVALIDID;
+	}
 
 err:
 
-    if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
+	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
 
-    if (got_schema_lk) {
-        unlock_schema_lk();
-        got_schema_lk = 0;
-    }
+	if (got_schema_lk) {
+		unlock_schema_lk();
+		got_schema_lk = 0;
+	}
 
-    if (lockid != DB_LOCK_INVALIDID) {
-        recovery_release_locks(dbenv, lockid);
-        lockid = DB_LOCK_INVALIDID;
-    }
+	if (lockid != DB_LOCK_INVALIDID) {
+		recovery_release_locks(dbenv, lockid);
+		lockid = DB_LOCK_INVALIDID;
+	}
 
 	if (dbenv->recovery_done_callback)
 		dbenv->recovery_done_callback(dbenv);
