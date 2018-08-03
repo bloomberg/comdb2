@@ -6594,7 +6594,7 @@ int bdb_close_only_sc(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 
     BDB_READLOCK("bdb_close_only_sc");
 
-    rc = bdb_close_only_int(bdb_state, tran->tid, bdberr);
+    rc = bdb_close_only_int(bdb_state, tran ? tran->tid : NULL, bdberr);
 
     BDB_RELLOCK();
 
