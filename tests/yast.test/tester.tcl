@@ -79,19 +79,50 @@
 # the code that handles that special case can be tested without creating
 # very large database files.
 #
+set tester_script [info script]
+set tester_cfg ${tester_script}.cfg
+
+if {[file exists $tester_cfg]} {
+  puts stdout "Loading \"$tester_script\" configuration file \"$tester_cfg\"..."
+  uplevel #0 [list source $tester_cfg]
+}
+
 set tcl_precision 15
 #sqlite3_test_control_pending_byte 0x0010000
 
 set test_name [string map {".test" ""} $argv0]
 set comdb2_name [lindex $argv 0]
 set file_path [lindex $argv 1]
-set cdb2_tcl [lindex $argv 2]
-set cdb2_config [lindex $argv 3]
-set cdb2_log_file [lindex $argv 4]
-set cdb2_debug [string is true -strict [lindex $argv 5]]
-set cdb2_trace [string is true -strict [lindex $argv 6]]
-set cdb2_trace_to_log [string is true -strict [lindex $argv 7]]
-set cdb2_trace_raw_values [string is true -strict [lindex $argv 8]]
+
+# process the optional arguments (these can also be set in the cfg file)
+if {[llength $argv] >= 3} {
+  set cdb2_tcl [lindex $argv 2]
+}
+
+if {[llength $argv] >= 4} {
+  set cdb2_config [lindex $argv 3]
+}
+
+if {[llength $argv] >= 5} {
+  set cdb2_log_file [lindex $argv 4]
+}
+
+if {[llength $argv] >= 6} {
+  set cdb2_debug [string is true -strict [lindex $argv 5]]
+}
+
+if {[llength $argv] >= 7} {
+  set cdb2_trace [string is true -strict [lindex $argv 6]]
+}
+
+if {[llength $argv] >= 8} {
+  set cdb2_trace_to_log [string is true -strict [lindex $argv 7]]
+}
+
+if {[llength $argv] >= 9} {
+  set cdb2_trace_raw_values [string is true -strict [lindex $argv 8]]
+}
+
 set current_test_name ""
 set cluster ""
 set gbl_scan -99
@@ -101,9 +132,11 @@ set gbl_find -99
 set gbl_schemachange_delay 10
 
 proc try_for_tclcdb2_package {} {
-    set directory $::cdb2_tcl
-    if {![info exists ::auto_path] || [lsearch -exact $::auto_path $directory] == -1} {
-        lappend ::auto_path $directory
+    if {[info exists ::cdb2_tcl]} {
+        set directory $::cdb2_tcl
+        if {![info exists ::auto_path] || [lsearch -exact $::auto_path $directory] == -1} {
+            lappend ::auto_path $directory
+        }
     }
     package require tclcdb2
 }
@@ -128,7 +161,7 @@ proc maybe_quote_value { db index format } {
         error $value; # FAIL: Unknown error.
     }
     set type [cdb2 coltype $db $index]
-    if {$::cdb2_trace_raw_values} {
+    if {[info exists ::cdb2_trace_raw_values] && $::cdb2_trace_raw_values} {
         maybe_trace "\{[info level [info level]]\} has type \{$type\} and [expr {$null ? {NULL } : {}}]value \{$value\}..."
     }
     switch -exact $type {
@@ -204,6 +237,7 @@ proc isBinary { value } {
 }
 
 proc maybe_append_to_log_file { message } {
+    if {![info exists ::cdb2_log_file]} {return}
     set fileName $::cdb2_log_file
     if {[string length $fileName] > 0} {
         set channel [open $fileName {WRONLY APPEND CREAT}]
@@ -227,9 +261,9 @@ proc maybe_append_query_to_log_file { sql dbName tier } {
 }
 
 proc maybe_trace { message } {
-    if {$::cdb2_trace} {
+    if {[info exists ::cdb2_trace] && $::cdb2_trace} {
         set formatted "\[TCL_CDB2_TRACE\]: $message\n"
-        if {$::cdb2_trace_to_log} {
+        if {[info exists ::cdb2_trace_to_log] && $::cdb2_trace_to_log} {
             maybe_append_to_log_file $formatted
         } else {
             puts -nonewline stdout $formatted
@@ -283,9 +317,12 @@ proc do_cdb2_query { dbName sql {tier default} {format csv} {costVarName ""} } {
     maybe_append_query_to_log_file $sql $dbName $tier
     set doCost [expr {[string length $costVarName] > 0}]
 
-    cdb2 configure $::cdb2_config true
+    if {[info exists ::cdb2_config]} then {
+      cdb2 configure $::cdb2_config true
+    }
+
     set db [cdb2 open $dbName $tier]
-    if {$::cdb2_debug} {cdb2 debug $db}
+    if {[info exists ::cdb2_debug] && $::cdb2_debug} {cdb2 debug $db}
     if {$doCost} {cdb2 run $db "SET GETCOST ON"}
 
     set sql [string map [list \r\n \n] [string trim $sql]]
@@ -299,7 +336,7 @@ proc do_cdb2_query { dbName sql {tier default} {format csv} {costVarName ""} } {
         grab_cdb2_results $db cost tabs
     }
 
-    if {$::cdb2_trace} {
+    if {[info exists ::cdb2_trace] && $::cdb2_trace} {
         if {[isBinary $result]} {set trace_result <binary>} else {set trace_result $result}
         maybe_trace "\{[info level [info level]]\} had effects \{$effects\}, returning \{$trace_result\}..."
     }
