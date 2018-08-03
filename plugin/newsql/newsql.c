@@ -1857,7 +1857,9 @@ retry_read:
         pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
-    if (!query || errno != 0) {
+    if (!query) return NULL;
+    if (errno != 0) {
+        cdb2__query__free_unpacked(query, &pb_alloc);
         return NULL;
     }
 
