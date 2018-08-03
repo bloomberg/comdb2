@@ -3248,7 +3248,7 @@ int sqlite3VdbeFinalize(Vdbe *p){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     /* this needs to called when we finalize, not on reset */
     if( p->updCols){
-      sqlite3_free( p->updCols );
+      sqlite3DbFree(p->db, p->updCols);
       p->updCols = 0;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
