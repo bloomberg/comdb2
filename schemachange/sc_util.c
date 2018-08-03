@@ -18,14 +18,14 @@
 #include "sc_util.h"
 #include "logmsg.h"
 
-int close_all_dbs(void)
+int close_all_dbs_tran(tran_type *tran)
 {
     int ii, rc, bdberr;
     struct dbtable *db;
     logmsg(LOGMSG_DEBUG, "Closing all tables...\n");
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         db = thedb->dbs[ii];
-        rc = bdb_close_only(db->handle, &bdberr);
+        rc = bdb_close_only_sc(db->handle, tran, &bdberr);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "failed closing table '%s': %d\n",
                    db->tablename, bdberr);
@@ -34,6 +34,11 @@ int close_all_dbs(void)
     }
     logmsg(LOGMSG_DEBUG, "Closed all tables OK\n");
     return 0;
+}
+
+int close_all_dbs(void)
+{
+    return close_all_dbs_tran(NULL);
 }
 
 int open_all_dbs(void)

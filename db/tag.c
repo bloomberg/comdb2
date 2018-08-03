@@ -7180,6 +7180,25 @@ int reload_db_tran(struct dbtable *db, tran_type *tran)
     return 0;
 }
 
+int reload_all_dbtran(uint32_t lockid)
+{
+    void *tran = NULL;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    int bdberr;
+    uint32_t oldlockid = 0;
+    tran = bdb_tran_begin_flags(thedb->bdb_env, NULL, &bdberr, BDB_TRAN_RECOVERY);
+    if (tran == NULL) {
+        logmsg(LOGMSG_FATAL, "%s:%d can't begin transaction rc %d\n", __FILE__,
+               __LINE__, bdberr);
+        abort();
+    }
+    bdb_get_tran_lockerid(tran, &oldlockid);
+    bdb_set_tran_lockerid(tran, lockid);
+
+    ++gbl_dbopen_gen;
+    return 0;
+}
+
 extern int null_bit;
 void err_print_rec(strbuf *buf, void *rec, char *table, char *tag)
 {
