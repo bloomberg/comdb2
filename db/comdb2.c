@@ -921,6 +921,8 @@ void no_new_requests(struct dbenv *dbenv)
 
 int db_is_stopped(void) { return (thedb->stopped || thedb->exiting); }
 
+int db_is_exiting(void) { return (thedb->exiting); }
+
 void print_dbsize(void);
 
 static void init_q_vars()
