@@ -250,7 +250,7 @@ do_test index7-2.2 {
     EXPLAIN QUERY PLAN
     SELECT * FROM t2 WHERE a=5;
   }
-} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A1_49F2A39 (a=?) (10 rows)}}
+} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A1_49F2A39 (a=?) (~10 rows)}}
 #{/.* TABLE t2 USING COVERING INDEX t2a1 .*/}
 #ifcapable stat4||stat3 {
 #  do_test index7-2.3stat4 {
@@ -279,7 +279,7 @@ do_test index7-2.4 {
     EXPLAIN QUERY PLAN
     SELECT * FROM t2 WHERE a IS NULL;
   }
-} {0 0 0 {SCAN TABLE t2 (896 rows)}}
+} {0 0 0 {SCAN TABLE t2 (~896 rows)}}
 #{~/.*INDEX t2a1.*/}
 
 do_execsql_test index7-2.101 {
@@ -296,7 +296,7 @@ do_execsql_test index7-2.102 {
 do_execsql_test index7-2.102eqp {
   EXPLAIN QUERY PLAN
   SELECT b FROM t2 WHERE a=15;
-} {0 0 0 {SCAN TABLE t2 (240 rows)}}
+} {0 0 0 {SCAN TABLE t2 (~240 rows)}}
 #{~/.*INDEX t2a2.*/}
 do_execsql_test index7-2.103 {
   SELECT b FROM t2 WHERE a=15 AND a<100;
@@ -304,7 +304,7 @@ do_execsql_test index7-2.103 {
 do_execsql_test index7-2.103eqp {
   EXPLAIN QUERY PLAN
   SELECT b FROM t2 WHERE a=15 AND a<100;
-} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (9 rows)}}
+} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (~9 rows)}}
 #{/.*INDEX t2a2.*/}
 do_execsql_test index7-2.104 {
   SELECT b FROM t2 WHERE a=515 AND a>200;
@@ -312,7 +312,7 @@ do_execsql_test index7-2.104 {
 do_execsql_test index7-2.104eqp {
   EXPLAIN QUERY PLAN
   SELECT b FROM t2 WHERE a=515 AND a>200;
-} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (9 rows)}}
+} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (~9 rows)}}
 #{/.*INDEX t2a2.*/}
 
 # Partial UNIQUE indices
@@ -405,7 +405,7 @@ comdb2_omit_test do_execsql_test index7-6.3 {
 }
 comdb2_omit_test do_eqp_test index7-6.4 {
   SELECT * FROM v4 WHERE d='xyz' AND c='def'
-} {0 0 0 {SEARCH TABLE t4 USING INDEX $I4_65D1BEB5 (c=?) (9 rows)}}
+} {0 0 0 {SEARCH TABLE t4 USING INDEX $I4_65D1BEB5 (c=?) (~9 rows)}}
 #{0 0 0 {SEARCH TABLE t4 USING INDEX i4 (c=?)}}
 do_catchsql_test index7-6.5 {
   CREATE INDEX t5a ON t5(a) WHERE a=#1;

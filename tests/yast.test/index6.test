@@ -200,7 +200,7 @@ do_test index6-2.2 {
     EXPLAIN QUERY PLAN
     SELECT * FROM t2 WHERE a=5;
   }
-} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A1_49F2A39 (a=?) (10 rows)}}
+} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A1_49F2A39 (a=?) (~10 rows)}}
 #{/.* TABLE t2 USING INDEX t2a1 .*/}
 #ifcapable stat4||stat3 {
 #  execsql ANALYZE
@@ -224,14 +224,14 @@ execsql {
   EXPLAIN QUERY PLAN
   SELECT * FROM t2 WHERE a IS NOT NULL;
 }
-} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A1_49F2A39 (a>?) (416 rows)}}
+} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A1_49F2A39 (a>?) (~416 rows)}}
 #{/.* TABLE t2 USING INDEX t2a1 .*/}
 do_test index6-2.4 {
   execsql {
     EXPLAIN QUERY PLAN
     SELECT * FROM t2 WHERE a IS NULL;
   }
-} {0 0 0 {SCAN TABLE t2 (983040 rows)}}
+} {0 0 0 {SCAN TABLE t2 (~983040 rows)}}
 #{~/.*INDEX t2a1.*/}
 
 do_execsql_test index6-2.101 {
@@ -248,7 +248,7 @@ do_execsql_test index6-2.102 {
 do_execsql_test index6-2.102eqp {
   EXPLAIN QUERY PLAN
   SELECT b FROM t2 WHERE a=15;
-} {0 0 0 {SCAN TABLE t2 (262144 rows)}}
+} {0 0 0 {SCAN TABLE t2 (~262144 rows)}}
 #{~/.*INDEX t2a2.*/}
 do_execsql_test index6-2.103 {
   SELECT b FROM t2 WHERE a=15 AND a<100;
@@ -256,7 +256,7 @@ do_execsql_test index6-2.103 {
 do_execsql_test index6-2.103eqp {
   EXPLAIN QUERY PLAN
   SELECT b FROM t2 WHERE a=15 AND a<100;
-} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (9 rows)}}
+} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (~9 rows)}}
 #{/.*INDEX t2a2.*/}
 do_execsql_test index6-2.104 {
   SELECT b FROM t2 WHERE a=515 AND a>200;
@@ -264,7 +264,7 @@ do_execsql_test index6-2.104 {
 do_execsql_test index6-2.104eqp {
   EXPLAIN QUERY PLAN
   SELECT b FROM t2 WHERE a=515 AND a>200;
-} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (9 rows)}}
+} {0 0 0 {SEARCH TABLE t2 USING INDEX $T2A2_49F2A39 (a=?) (~9 rows)}}
 #{/.*INDEX t2a2.*/}
 
 # Partial UNIQUE indices
@@ -369,8 +369,8 @@ do_execsql_test index6-7.3 {
 do_execsql_test index6-7.4 {
   EXPLAIN QUERY PLAN
   SELECT * FROM t7a JOIN t7b ON (x=99) ORDER BY x;
-} {0 0 0 {SEARCH TABLE t7a USING COVERING INDEX $T7AX_A202C5C5 (x=?) (10 rows)}
-   0 1 1 {SCAN TABLE t7b (1048576 rows)}
+} {0 0 0 {SEARCH TABLE t7a USING COVERING INDEX $T7AX_A202C5C5 (x=?) (~10 rows)}
+   0 1 1 {SCAN TABLE t7b (~1048576 rows)}
 }
 #{/USING COVERING INDEX t7ax/}
 
@@ -392,8 +392,8 @@ do_execsql_test index6-8.0 {
 
 do_eqp_test index6-8.1 {
   SELECT * FROM t8a LEFT JOIN t8b ON (x = 'value' AND y = a)
-} {0 0 0 {SCAN TABLE t8a (1048576 rows)}
-   0 1 1 {SEARCH TABLE t8b USING INDEX $I8C_63F33D56 (y=?) (9 rows)}
+} {0 0 0 {SCAN TABLE t8a (~1048576 rows)}
+   0 1 1 {SEARCH TABLE t8b USING INDEX $I8C_63F33D56 (y=?) (~9 rows)}
 }
 #{
 #  0 0 0 {SCAN TABLE t8a} 
