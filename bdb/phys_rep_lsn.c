@@ -6,6 +6,7 @@
 #include "bdb_int.h"
 #include <dbinc/db_swap.h>
 #include "phys_rep_lsn.h"
+#include "ext/comdb2/tranlog.h"
 #include "locks.h"
 
 extern bdb_state_type *bdb_state;
@@ -55,7 +56,6 @@ LOG_INFO get_last_lsn(bdb_state_type* bdb_state)
 int compare_log(bdb_state_type* bdb_state, unsigned int file, unsigned int offset,
         void* blob, unsigned int blob_len)
 {
-    /* TODO: like get_last_lsn, but need to expose the data this time */
     int rc; 
 
     /* get db internals */
@@ -100,6 +100,60 @@ int compare_log(bdb_state_type* bdb_state, unsigned int file, unsigned int offse
     logc->close(logc, 0);
 
     return rc;
+}
+
+int find_log_timestamp(bdb_state_type* bdb_state, time_t time, 
+        unsigned int* file, unsigned int* offset) 
+{
+    int rc; 
+    u_int64_t my_time;
+
+    /* get db internals */
+    DB_LOGC* logc;
+    DBT logrec;
+    DB_LSN rec_lsn;
+    u_int32_t rectype;
+
+    /* get last record then iterate */
+    rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: can't get log cursor rc %d\n", __func__, rc);
+        return 1;
+    }
+
+    do
+    { 
+        do
+        {
+            bzero(&logrec, sizeof(DBT));
+            logrec.flags = DB_DBT_MALLOC;
+            rc = logc->get(logc, &rec_lsn, &logrec, DB_PREV);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n", __func__,
+                        rc);
+                logc->close(logc, 0);
+                return 1;
+            }
+
+            LOGCOPY_32(&rectype, logrec.data);        
+
+        } while(!matchable_log_type(rectype));
+
+        my_time = get_timestamp_from_matchable_record(logrec.data);
+        logmsg(LOGMSG_USER, "My ts is %ld, {%u:%u}\n", my_time,
+                rec_lsn.file, rec_lsn.offset); 
+
+        if (logrec.data)
+            free(logrec.data);
+    } while(time < my_time);
+
+    logmsg(LOGMSG_USER, "My ts is %ld, {%u:%u}\n", my_time,
+            rec_lsn.file, rec_lsn.offset); 
+
+    *file = rec_lsn.file;
+    *offset = rec_lsn.offset;
+    
+    return 0;
 }
 
 /* hacky way to create a generator */
@@ -163,7 +217,9 @@ int open_db_cursor(bdb_state_type* bdb_state)
 void close_db_cursor()
 { 
     logc->close(logc, 0);
+    logc = NULL;
 }
+/* generator code */
 
 u_int32_t get_next_offset(DB_ENV* dbenv, LOG_INFO log_info)
 {
