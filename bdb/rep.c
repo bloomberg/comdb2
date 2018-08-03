@@ -70,6 +70,7 @@
 #include "printformats.h"
 #include <llog_auto.h>
 #include "logmsg.h"
+#include <compat.h>
 
 #define REP_PRI 100     /* we are all equal in the eyes of god */
 #define REPTIME 3000000 /* default 3 second timeout on election */
@@ -4416,8 +4417,8 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         p_buf_end = ((uint8_t *)dta + dtalen);
         buf_get(&node, sizeof(int), p_buf, p_buf_end);
 
-        print(bdb_state, "not adding node %d to sanctioned list\n", node);
-        // net_add_to_sanctioned(bdb_state->repinfo->netinfo, "", 0);
+        print(bdb_state, "adding node %d to sanctioned list\n", node);
+        net_add_to_sanctioned(bdb_state->repinfo->netinfo, hostname(node), 0);
         net_ack_message(ack_handle, 0);
         break;
 
@@ -4433,8 +4434,8 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         p_buf_end = ((uint8_t *)dta + dtalen);
         buf_get(&node, sizeof(int), p_buf, p_buf_end);
 
-        print(bdb_state, "not removing node %d from sanctioned list\n", node);
-        // net_del_from_sanctioned(bdb_state->repinfo->netinfo, node);
+        print(bdb_state, "removing node %d from sanctioned list\n", node);
+        net_del_from_sanctioned(bdb_state->repinfo->netinfo, hostname(node));
         net_ack_message(ack_handle, 0);
         break;
 
@@ -4446,16 +4447,26 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         net_ack_message(ack_handle, 0);
         break;
 
+    case USER_TYPE_DECOM: {
+        char *host;
+        p_buf = (uint8_t *)dta;
+        p_buf_end = ((uint8_t *)dta + dtalen);
+        buf_get(&node, sizeof(int), p_buf, p_buf_end);
+        logmsg(LOGMSG_DEBUG, "--- got decom for node %d\n", node);
+        logmsg(LOGMSG_DEBUG, "acking message\n");
+        net_ack_message(ack_handle, 0);
+        host = hostname(node);
+        osql_decom_node(host);
+        net_decom_node(bdb_state->repinfo->netinfo, host);
+        break;
+    }
+
     case USER_TYPE_DECOM_NAME: {
         char *host;
         logmsg(LOGMSG_DEBUG, "--- got decom for node %s\n", (char *)dta);
-
-        logmsg(LOGMSG_DEBUG, "--- got decom for node %s\n", (char *)dta);
         logmsg(LOGMSG_DEBUG, "acking message\n");
-
         net_ack_message(ack_handle, 0);
         host = intern((char *)dta);
-
         osql_decom_node(host);
         net_decom_node(bdb_state->repinfo->netinfo, host);
         break;

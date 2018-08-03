@@ -11,6 +11,7 @@ set(src
   cheapstub.c
   comdb2_pthread_create.c
   comdb2file.c
+  compat.c
   ctrace.c
   debug_switches.c
   flibc.c

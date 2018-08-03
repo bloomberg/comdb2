@@ -63,6 +63,7 @@
 #include <poll.h>
 
 #include <bb_oscompat.h>
+#include <compat.h>
 
 #include <pool.h>
 #include <dlmalloc.h>
@@ -1332,7 +1333,7 @@ static int write_message_nohello(netinfo_type *netinfo_ptr,
                              WRITE_MSG_NODELAY | WRITE_MSG_NOHELLOCHECK);
 }
 
-static int write_message(netinfo_type *netinfo_ptr,
+int write_message(netinfo_type *netinfo_ptr,
                          host_node_type *host_node_ptr, int type,
                          const void *data, size_t datalen)
 {
@@ -4091,9 +4092,7 @@ static int run_net_decom_node_delayed(netinfo_type *netinfo_ptr,
     return 0;
 }
 
-
-/* write decom message to to_host */
-static int write_decom(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
+static int write_decom_hostname(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
                        const char *decom_host, int decom_hostlen,
                        const char *to_host)
 {
@@ -4120,6 +4119,21 @@ static int write_decom(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
         return -1;
     }
     return 0;
+}
+
+static decom_writer *write_decom_impl = write_decom_hostname;
+void set_decom_writer(decom_writer *impl)
+{
+    write_decom_impl = impl;
+}
+
+/* write decom message to to_host */
+static int write_decom(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
+                       const char *decom_host, int decom_hostlen,
+                       const char *to_host)
+{
+    return write_decom_impl(netinfo_ptr, host_node_ptr, decom_host,
+                            decom_hostlen, to_host);
 }
 
 
@@ -4284,6 +4298,26 @@ int net_send_decom_me_all(netinfo_type *netinfo_ptr)
     return outrc;
 }
 
+static int process_decom_int(netinfo_type *netinfo_ptr, char *host)
+{
+    net_decom_node(netinfo_ptr, host);
+    run_net_decom_node_delayed(netinfo_ptr, host);
+    return 0;
+}
+
+static int process_decom(netinfo_type *net, host_node_type *host)
+{
+    int node, rc;
+    rc = read_stream(net, host, host->sb, &node, sizeof(int));
+    if (rc != sizeof(int)) {
+        logmsg(LOGMSG_ERROR,
+               "%s:err from read_stream attempting to read host, rc=%d",
+               __func__, rc);
+        return -1;
+    }
+    node = ntohl(node);
+    return process_decom_int(net, hostname(node));
+}
 
 static int process_decom_name(netinfo_type *netinfo_ptr,
                               host_node_type *host_node_ptr)
@@ -4291,37 +4325,33 @@ static int process_decom_name(netinfo_type *netinfo_ptr,
     int hostlen;
     char *host, *ihost;
     int rc;
-
     rc = read_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb, &hostlen,
                      sizeof(int));
     if (rc != sizeof(int)) {
-        logmsg(LOGMSG_ERROR, "%s:err from read_stream "
-                        "attempting to read host length, rc=%d",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s:err from read_stream attempting to read host length, rc=%d",
+               __func__, rc);
         return -1;
     }
     hostlen = ntohl(hostlen);
     host = malloc(hostlen);
     if (host == NULL) {
         logmsg(LOGMSG_ERROR, "%s:err can't allocate %d bytes for hostname\n",
-                __func__, hostlen);
+               __func__, hostlen);
         return -1;
     }
     rc = read_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb, host,
                      hostlen);
     if (rc != hostlen) {
-        logmsg(LOGMSG_ERROR, "%s:err from read_stream "
-                        "attempting to read host, rc=%d",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s:err from read_stream attempting to read host, rc=%d",
+               __func__, rc);
         free(host);
         return -1;
     }
     ihost = intern(host);
     free(host);
-    net_decom_node(netinfo_ptr, ihost);
-    run_net_decom_node_delayed(netinfo_ptr, ihost);
-
-    return 0;
+    return process_decom_int(netinfo_ptr, ihost);
 }
 
 
@@ -4816,10 +4846,19 @@ static void *reader_thread(void *arg)
             }
             break;
 
+        case WIRE_HEADER_DECOM:
+            rc = process_decom(netinfo_ptr, host_node_ptr);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "reader thread: decom error from host %s\n",
+                        host_node_ptr->host);
+                goto done;
+            }
+            break;
+
         case WIRE_HEADER_DECOM_NAME:
             rc = process_decom_name(netinfo_ptr, host_node_ptr);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "reader thread: decom error from host %s\n",
+                logmsg(LOGMSG_ERROR, "reader thread: decom name error from host %s\n",
                         host_node_ptr->host);
                 goto done;
             }

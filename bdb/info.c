@@ -41,6 +41,7 @@
 #include "nodemap.h"
 #include "sqlresponse.pb-c.h"
 #include "logmsg.h"
+#include <compat.h>
 
 char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
 
@@ -626,7 +627,7 @@ static void sanc_dump(FILE *out, bdb_state_type *bdb_state)
 
     logmsgf(LOGMSG_USER, out, "sanc dump:\n");
     for (ii = 0; ii < numnodes && ii < REPMAX; ii++)
-        logmsgf(LOGMSG_USER, out, "node %s\n", nodes[ii]);
+        logmsgf(LOGMSG_USER, out, "node %s\n", nodenum_str((char *)nodes[ii]));
 
     if (net_sanctioned_list_ok(bdb_state->repinfo->netinfo))
         logmsgf(LOGMSG_USER, out, "sanc is intact\n");
@@ -874,11 +875,6 @@ void bdb_get_cur_lsn_str(bdb_state_type *bdb_state, uint64_t *lsnbytes,
                              net_get_mynode(bdb_state->repinfo->netinfo));
 }
 
-void bdb_get_cur_lsn_str_master(bdb_state_type *bdb_state, uint64_t *lsnbytes,
-                                char *lsnstr, size_t len)
-{
-}
-
 static void test_send(bdb_state_type *bdb_state)
 {
     int count;
@@ -902,44 +898,63 @@ static void test_send(bdb_state_type *bdb_state)
     }
 }
 
+static int write_hostname(netinfo_type *net, const char *to, char *host, int type)
+{
+    int len = strlen(host) + 1;
+    return net_send_message(net, to, type, host, len, 1, 5 * 1000);
+}
+
+static int write_add_hostname(netinfo_type *netinfo, const char *to, char *host)
+{
+    return write_hostname(netinfo, to, host, USER_TYPE_ADD_NAME);
+}
+static add_writer *write_add_impl = write_add_hostname;
+void set_add_writer(add_writer *impl)
+{
+    write_add_impl = impl;
+}
+int write_add(netinfo_type *n, const char *t, char *a)
+{
+    return write_add_impl(n, t, a);
+}
+
+static int write_del_hostname(netinfo_type *netinfo, const char *to, char *host)
+{
+    return write_hostname(netinfo, to, host, USER_TYPE_DEL_NAME);
+}
+static del_writer *write_del_impl = write_del_hostname;
+void set_del_writer(del_writer *impl)
+{
+    write_del_impl = impl;
+}
+int write_del(netinfo_type *n, const char *t, char *a)
+{
+    return write_del_impl(n, t, a);
+}
+
 static void process_add(bdb_state_type *bdb_state, char *host)
 {
-    int count;
     const char *hostlist[REPMAX];
-    int i;
-    int rc;
-    int hostlen;
-
-    net_add_to_sanctioned(bdb_state->repinfo->netinfo, host, 0);
-    hostlen = strlen(host) + 1;
-
-    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-    for (i = 0; i < count; i++) {
+    netinfo_type *netinfo = bdb_state->repinfo->netinfo;
+    net_add_to_sanctioned(netinfo, host, 0);
+    int count = net_get_all_nodes_connected(netinfo, hostlist);
+    for (int i = 0; i < count; i++) {
         int tmp;
         uint8_t *p_buf, *p_buf_end;
         int node = 0;
-
-        rc = net_send_message(bdb_state->repinfo->netinfo, hostlist[i],
-                              USER_TYPE_ADD_NAME, host, hostlen, 1, 5 * 1000);
+        int rc = write_add(netinfo, hostlist[i], host);
         if (rc != 0)
             logmsg(LOGMSG_ERROR, "got bad rc %d in process_add\n", rc);
     }
 }
-
 static void process_del(bdb_state_type *bdb_state, char *host)
 {
-    int count;
     const char *hostlist[REPMAX];
-    int i;
-    int rc;
-    int hostlen = strlen(host) + 1;
-
-    net_del_from_sanctioned(bdb_state->repinfo->netinfo, host);
-
-    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-    for (i = 0; i < count; i++) {
-        rc = net_send_message(bdb_state->repinfo->netinfo, hostlist[i],
-                              USER_TYPE_DEL_NAME, host, hostlen, 1, 5 * 1000);
+    netinfo_type *netinfo = bdb_state->repinfo->netinfo;
+    net_del_from_sanctioned(netinfo, host);
+    int count = net_get_all_nodes_connected(netinfo, hostlist);
+    for (int i = 0; i < count; i++) {
+        int rc = write_del(netinfo, hostlist[i], host);
         if (rc != 0)
             logmsg(LOGMSG_ERROR, "got bad rc %d in process_del\n", rc);
     }
@@ -1217,6 +1232,15 @@ const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host)
         fnd = NULL;
 
     return fnd;
+}
+
+/* return interned hostname */
+static char *tokdup_hostname(char *tok, int ltok)
+{
+    tok = tokdup(tok, ltok);
+    char *host = intern(hostname_str(tok));
+    free(tok);
+    return host;
 }
 
 void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
@@ -1619,9 +1643,8 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             logmsg(LOGMSG_USER, "expected hostname\n");
             return;
         }
-        host = tokdup(host, ltok);
-        process_add(bdb_state, intern(host));
-        free(host);
+        host = tokdup_hostname(host, ltok);
+        process_add(bdb_state, host);
     }
 
     else if (tokcmp(tok, ltok, "del") == 0) {
@@ -1631,31 +1654,28 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             logmsg(LOGMSG_USER, "expected hostname\n");
             return;
         }
-        host = tokdup(host, ltok);
-        process_del(bdb_state, intern(host));
-        free(host);
+        host = tokdup_hostname(host, ltok);
+        process_del(bdb_state, host);
     }
-
-    else if (tokcmp(tok, ltok, "rem") == 0) {
+    else if (tokcmp(tok, ltok, "rem") == 0 || tokcmp(tok, ltok, "bdbrem") == 0) {
+        char cmd[ltok+1];
+        tokcpy(tok, ltok, cmd);
         char *host;
         host = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_USER, "expected hostname\n");
             return;
         }
-        host = tokdup(host, ltok);
-        const char *realhost = bdb_find_net_host(bdb_state, host);
+        host = tokdup_hostname(host, ltok);
+        char *realhost = (char *)bdb_find_net_host(bdb_state, host);
         if (realhost == NULL) {
             logmsg(LOGMSG_USER, "WARNING: don't know about %s.\n", host);
-            free(host);
             return;
         }
-        free(host);
-
-        net_send_decom_all(bdb_state->repinfo->netinfo, intern(realhost));
-        osql_process_message_decom(intern(realhost));
+        realhost = intern(realhost);
+        net_send_decom_all(bdb_state->repinfo->netinfo, realhost);
+        osql_process_message_decom(realhost);
     }
-
     else if (tokcmp(tok, ltok, "bdbstat") == 0) {
         logmsgf(LOGMSG_USER, out, "rep_process_message %d\n",
                 bdb_state->repinfo->repstats.rep_process_message);
