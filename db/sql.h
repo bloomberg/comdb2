@@ -418,6 +418,15 @@ int clr_high_availability(struct sqlclntstate *);
 uint64_t get_client_starttime(struct sqlclntstate *);
 int get_client_retries(struct sqlclntstate *);
 
+struct clnt_ddl_context {
+    /* Name of the table */
+    char *name;
+    /* Pointer to a comdb2_ddl_context */
+    void *ctx;
+    /* Memory allocator of the comdb2_ddl_context */
+    comdb2ma mem;
+};
+
 /* Client specific sql state */
 struct sqlclntstate {
     /* appsock plugin specific data */
@@ -618,6 +627,7 @@ struct sqlclntstate {
 
     hash_t *ddl_tables;
     hash_t *dml_tables;
+    hash_t *ddl_contexts;
 
     int ignore_coherency;
     int statement_query_effects;

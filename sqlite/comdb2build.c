@@ -2860,12 +2860,18 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
     /* Generate CSC2 for the new/existing table. */
     csc2 = format_csc2(ctx);
 
-    /*
-      Now that we have the generated csc2 in a separate buffer, it
-      is safe to teardown the parser context. The csc2 buffer will
-      be reclaimed later in free_schema_change_type().
-    */
-    free_ddl_context(pParse);
+    int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
+    /* save context to client */
+    if (comdb2_save_ddl_context(ctx->schema->name, ctx, ctx->mem) != 0) {
+        /* We get here if we are not in client transaction or it failed to save
+         */
+        /*
+          Now that we have the generated csc2 in a separate buffer, it
+          is safe to teardown the parser context. The csc2 buffer will
+          be reclaimed later in free_schema_change_type().
+        */
+        free_ddl_context(pParse);
+    }
 
     return csc2;
 
@@ -4249,6 +4255,62 @@ static int check_constraint_action(Parse *pParse, int *flags)
     return 0;
 }
 
+/* search matching key in parent table using saved client context:
+ * return 1 if found 0 otherwise
+ */
+static int
+find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
+                                  struct comdb2_constraint *constraint)
+{
+    void *comdb2_get_ddl_context(char *name);
+    struct comdb2_ddl_context *clnt_ctx = NULL;
+    struct comdb2_key *key;
+    struct comdb2_index_column *idx_col;
+    struct comdb2_index_column *key_col;
+    int key_found = 0;
+    clnt_ctx = comdb2_get_ddl_context(constraint->parent_table);
+    if (clnt_ctx == NULL)
+        return 0;
+
+    LISTC_FOR_EACH(&clnt_ctx->schema->key_list, key, lnk)
+    {
+        if (key->flags & KEY_DELETED)
+            continue;
+        if (listc_size(&key->idx_col_list) <
+            listc_size(&constraint->parent_idx_col_list))
+            continue;
+        /* Lets start by assuming that we have found the matching key. */
+        key_found = 1;
+        key_col = key->idx_col_list.top;
+        LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_col, lnk)
+        {
+            int sort_order =
+                (key_col->flags & INDEX_ORDER_DESC) ? INDEX_ORDER_DESC : 0;
+            if ((strcasecmp(idx_col->name, key_col->name) != 0) ||
+                idx_col->flags != key_col->flags) {
+                key_found = 0;
+                break;
+            }
+            key_col = key_col->lnk.next;
+        }
+        if (key_found == 1) {
+            constraint->parent_key = comdb2_strdup(ctx->mem, key->name);
+            if (constraint->parent_key == 0)
+                setError(pParse, SQLITE_NOMEM, "System out of memory");
+            /* Matching key found */
+            break;
+        }
+    }
+    if (key_found == 0) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse,
+                        "A matching key for the FOREIGN KEY was not "
+                        "found in the parent (referenced) table '%s'.",
+                        constraint->parent_table);
+    }
+    return key_found;
+}
+
 void comdb2CreateForeignKey(
     Parse *pParse,      /* Parsing context */
     ExprList *pFromCol, /* Columns in this table that point to other table */
@@ -4380,6 +4442,12 @@ void comdb2CreateForeignKey(
         goto oom;
     sqlite3Dequote(constraint->parent_table);
 
+    key_found = find_parent_key_in_client_context(pParse, ctx, constraint);
+    if (pParse->rc)
+        goto cleanup;
+    else if (key_found)
+        goto parent_key_found;
+
     /* Determine an appropriate key in the parent table. */
     parent_table = get_dbtable_by_name(constraint->parent_table);
     if (parent_table == 0) {
@@ -4434,6 +4502,7 @@ void comdb2CreateForeignKey(
         goto cleanup;
     }
 
+parent_key_found:
     /* Verify the conststraint action. */
     if ((check_constraint_action(pParse, &flags))) {
         goto cleanup;
