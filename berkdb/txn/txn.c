@@ -105,8 +105,8 @@ extern int gbl_is_physical_replicant;
 
 static int
 
-__txn_begin_int_set_retries(DB_TXN *txn, int internal, u_int32_t retries,
-    DB_LSN *we_start_at_this_lsn);
+__txn_begin_int_set_retries(DB_TXN *txn, u_int32_t retries,
+    DB_LSN *we_start_at_this_lsn, u_int32_t flags);
 
 extern int __lock_locker_getpriority(DB_LOCKTAB *lt, u_int32_t locker,
     int *priority);
@@ -159,7 +159,7 @@ typedef enum {
 } txnop_t;
 
 static int __txn_abort_pp __P((DB_TXN *));
-static int __txn_begin_int __P((DB_TXN *, int));
+static int __txn_begin_int __P((DB_TXN *, u_int32_t));
 static int __txn_commit_pp __P((DB_TXN *, u_int32_t));
 static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, DB_LSN *, void *));
 static int __txn_commit_rl_pp __P((DB_TXN *, u_int32_t, u_int64_t, u_int32_t,
@@ -192,7 +192,8 @@ __txn_begin_pp_int(dbenv, parent, txnpp, flags, retries)
 	if ((ret = __db_fchk(dbenv,
 	    "txn_begin", flags,
 	    DB_DIRTY_READ | DB_TXN_NOWAIT |
-	    DB_TXN_NOSYNC | DB_TXN_SYNC)) != 0)
+	    DB_TXN_NOSYNC | DB_TXN_SYNC | DB_TXN_RECOVERY |
+        DB_TXN_INTERNAL)) != 0)
 		return (ret);
 	if ((ret = __db_fcchk(dbenv,
 	    "txn_begin", flags, DB_TXN_NOSYNC, DB_TXN_SYNC)) != 0)
@@ -292,8 +293,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		F_SET(txn, TXN_NOWAIT);
 
 	if ((ret =
-		__txn_begin_int_set_retries(txn, 0, retries,
-		    &we_start_at_this_lsn)) != 0)
+		__txn_begin_int_set_retries(txn, retries,
+		    &we_start_at_this_lsn, flags)) != 0)
 		goto err;
 
 	if (!parent) {
@@ -431,7 +432,7 @@ __txn_compensate_begin(dbenv, txnpp)
 	txn->flags = TXN_COMPENSATE | TXN_MALLOC;
 
 	*txnpp = txn;
-	return (__txn_begin_int(txn, 1));
+	return (__txn_begin_int(txn, DB_TXN_INTERNAL));
 }
 
 /*
@@ -439,11 +440,11 @@ __txn_compensate_begin(dbenv, txnpp)
  *	Normal DB version of txn_begin.
  */
 static int
-__txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
+__txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	DB_TXN *txn;
-	int internal;
 	u_int32_t retries;
 	DB_LSN *we_start_at_this_lsn;
+	u_int32_t flags;
 {
 	DB_ENV *dbenv;
 	DB_LSN begin_lsn, null_lsn;
@@ -453,6 +454,8 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 	size_t off;
 	u_int32_t id, *ids;
 	int nids, ret;
+    int internal = LF_ISSET(DB_TXN_INTERNAL);
+    int recovery = LF_ISSET(DB_TXN_RECOVERY);
 
 
 	/*
@@ -488,7 +491,7 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 	if (we_start_at_this_lsn)
 		*we_start_at_this_lsn = begin_lsn;
 
-    if ((ret = pthread_rwlock_rdlock(&dbenv->recoverlk)) != 0) {
+    if (!recovery && (ret = pthread_rwlock_rdlock(&dbenv->recoverlk)) != 0) {
         logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
         abort();
     }
@@ -601,33 +604,35 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 		MUTEX_THREAD_UNLOCK(dbenv, mgr->mutexp);
 	}
 
-    pthread_rwlock_unlock(&dbenv->recoverlk);
+    if (!recovery)
+        pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (0);
 
 err:
 	R_UNLOCK(dbenv, &mgr->reginfo);
-	pthread_rwlock_unlock(&dbenv->recoverlk);
+    if (!recovery)
+        pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (ret);
 }
 
 
 static int
-__txn_begin_int(txn, internal)
+__txn_begin_int(txn, flags)
 	DB_TXN *txn;
-	int internal;
+	u_int32_t flags;
 {
-	return __txn_begin_int_int(txn, internal, 0, NULL);
+	return __txn_begin_int_int(txn, 0, NULL, flags);
 }
 
 static int
-__txn_begin_int_set_retries(txn, internal, retries, we_start_at_this_lsn)
+__txn_begin_int_set_retries(txn, retries, we_start_at_this_lsn, flags)
 	DB_TXN *txn;
-	int internal;
 	u_int32_t retries;
 	DB_LSN *we_start_at_this_lsn;
+	u_int32_t flags;
 {
-	return __txn_begin_int_int(txn, internal, retries,
-	    we_start_at_this_lsn);
+	return __txn_begin_int_int(txn, retries,
+	    we_start_at_this_lsn, flags);
 }
 
 int

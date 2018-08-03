@@ -6319,6 +6319,22 @@ recovery_release_locks(dbenv, lockid)
 }
 
 static int
+online_apprec(dbenv, lsn, trunclsnp)
+	DB_ENV *dbenv;
+	DB_LSN lsn, *trunclsnp;
+{
+    int ret;
+    if ((ret = pthread_rwlock_wrlock(&dbenv->recoverlk)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
+        abort();
+    }
+
+    ret = __db_apprec(dbenv, &lsn, trunclsnp, 1, DB_RECOVER_NOCKP);
+    pthread_rwlock_unlock(&dbenv->recoverlk);
+    return ret;
+}
+
+static int
 __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	DB_ENV *dbenv;
 	DB_LSN *lsnp, *trunclsnp;
@@ -6386,8 +6402,9 @@ restart:
 								__func__, ret);
 						goto err;
 					}
+                    /* We need the schema lock: truncate here & restart loop */
 					if (lockcnt > 0) {
-						ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
+						ret = online_apprec(dbenv, lsn, trunclsnp);
 						recovery_release_locks(dbenv, lockid);
 						if (ret) goto err;
 						goto restart;
@@ -6431,7 +6448,7 @@ restart:
 					if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
 						goto err;
 
-					ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
+					ret = online_apprec(dbenv, lsn, trunclsnp);
 					if (got_schema_lk) {
 						/* Do stuff here to fix schema change */
 						/*
@@ -6484,7 +6501,7 @@ restart:
 				if (do_truncate) {
 					if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
 						goto err;
-					ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
+					ret = online_apprec(dbenv, lsn, trunclsnp);
 					recovery_release_locks(dbenv, lockid);
 					if (ret) goto err;
 					goto restart;
@@ -6527,7 +6544,7 @@ restart:
 				if (do_truncate) {
 					if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
 						goto err;
-					ret = __db_apprec(dbenv, &lsn, trunclsnp, undo, DB_RECOVER_NOCKP);
+					ret = online_apprec(dbenv, lsn, trunclsnp);
 					recovery_release_locks(dbenv, lockid);
 					if (ret) goto err;
 					goto restart;
@@ -7460,12 +7477,7 @@ int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offs
     rep = db_rep->region;
     rp.gen = rep->gen; 
     rp.flags = 0;
-    if ((ret = pthread_rwlock_wrlock(&dbenv->recoverlk)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
-        abort();
-    }
     ret = __rep_verify_match(dbenv, &rp, rep->timestamp, online);
-    pthread_rwlock_unlock(&dbenv->recoverlk);
     return ret;
 }
 
@@ -7580,6 +7592,9 @@ __rep_verify_match(dbenv, rp, savetime, online)
 	 * to 0 and for the number of threads in __rep_process_message
 	 * to go to 1 (us).
 	 */
+    if (!online)
+        rep->in_recovery = 1;
+
 	rep->in_recovery = 1;
 #ifdef DIAGNOSTIC
 	wait_cnt = 0;
@@ -7602,7 +7617,8 @@ __rep_verify_match(dbenv, rp, savetime, online)
 
 	if ((ret = __rep_dorecovery(dbenv, &rp->lsn, &trunclsn, online)) != 0) {
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-		rep->in_recovery = 0;
+        if (!online)
+            rep->in_recovery = 0;
 		F_CLR(rep, REP_F_READY);
 		goto errunlock;
 	}
