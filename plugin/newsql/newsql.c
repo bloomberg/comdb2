@@ -1787,12 +1787,12 @@ retry_read:
         return NULL;
     }
 
-    assert(errno == 0);
     char *p;
     if (bytes <= gbl_blob_sz_thresh_bytes)
         p = malloc(bytes);
     else
         while (1) { // big buffer. most certainly it is a huge blob.
+            errno = 0; /* precondition: well-defined before call that may set */
             p = comdb2_timedmalloc(blobmem, bytes, 1000);
 
             if (p != NULL || errno != ETIMEDOUT)
@@ -1829,8 +1829,8 @@ retry_read:
     }
 
     CDB2QUERY *query;
-    assert(errno == 0); // precondition for the while loop
     while (1) {
+        errno = 0; /* precondition: well-defined before call that may set */
         query = cdb2__query__unpack(&pb_alloc, bytes, (uint8_t *)p);
         // errno can be set by cdb2__query__unpack
         // we retry malloc on out of memory condition
@@ -1950,7 +1950,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     struct dbtable *tab;
     char *cmdline;
 
-    errno = 0; /* must have well-defined value due to later assert(). */
     thr_self = arg->thr_self;
     dbenv = arg->dbenv;
     tab = arg->tab;
