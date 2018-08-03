@@ -40,12 +40,6 @@ void trigger_clear_hash(void);
 void trigger_stat(void);
 void trigger_reg_to_cpu(trigger_reg_t *);
 
-typedef trigger_reg_t *(trigger_sender)(uint8_t *, trigger_reg_t *, size_t *);
-void set_trigger_sender(trigger_sender *);
-
-typedef trigger_reg_t *(trigger_receiver)(trigger_reg_t *, uint8_t *);
-void set_trigger_receiver(trigger_receiver *);
-
 #define trigger_reg_to_net trigger_reg_to_cpu
 
 #define trigger_hostname(t) ((t)->spname + (t)->spname_len + 1)

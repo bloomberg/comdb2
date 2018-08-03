@@ -2258,29 +2258,7 @@ clipper_usage:
         if (rc != 0)
             return -1;
     } else if (tokcmp(tok, ltok, "bdbrem") == 0) {
-        int num;
-        char *host;
-        char *s;
-        const char *realhost;
-
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_USER, "Expected host name\n");
-            return -1;
-        }
-        host = tokdup(tok, ltok);
-
-        realhost = bdb_find_net_host(thedb->bdb_env, host);
-        if (realhost == NULL) {
-            logmsg(LOGMSG_ERROR, "WARNING: don't know about %s.\n", host);
-            free(host);
-            return -1;
-        }
-        free(host);
-
-        host = intern(realhost);
-        net_send_decom_all(thedb->handle_sibling, host);
-        osql_process_message_decom(host);
+        backend_cmd(dbenv, line, llinesav, stsav);
     } else if (tokcmp(tok, ltok, "electtime") == 0) {
         int num;
 

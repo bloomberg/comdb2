@@ -35,6 +35,7 @@
 #include <util.h>
 #include <gettimeofday_ms.h>
 
+#include <compat.h>
 #include "nodemap.h"
 #include "endian_core.h"
 #include "printformats.h"
@@ -67,8 +68,6 @@ static unsigned int fail_udp = 0;
 static unsigned int recd_udp = 0;
 static unsigned int recl_udp = 0; /* problem with recv'd len */
 static unsigned int rect_udp = 0; /* problem with recv'd to */
-
-#include <ack_info.h>
 
 int bdb_udp_send(bdb_state_type *bdb_state, const char *to, size_t len,
                  void *data)

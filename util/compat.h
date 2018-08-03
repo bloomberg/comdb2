@@ -14,9 +14,10 @@
    limitations under the License.
  */
 
-#ifndef ACK_INFO_H
-#define ACK_INFO_H
+#ifndef INCLUDED_COMPAT_H
+#define INCLUDED_COMPAT_H
 
+#include <stdio.h>
 #include <stdint.h>
 #include <alloca.h>
 #include <arpa/inet.h>
@@ -78,12 +79,51 @@ typedef struct ack_info_t {
     } while (0)
 
 struct bdb_state_tag;
-typedef int(udp_sender)(struct bdb_state_tag *, ack_info *, const char *);
+struct trigger_reg;
+struct netinfo_struct;
+struct host_node_tag;
 
-void set_udp_sender(udp_sender *);
 int bdb_udp_send(struct bdb_state_tag *, const char *, size_t, void *);
+int write_message(struct netinfo_struct *, struct host_node_tag *, int , const void *, size_t );
+
+typedef void(netinfo_dumper)(FILE *, struct bdb_state_tag *);
+void set_netinfo_dumper(netinfo_dumper *);
+
+typedef int(udp_sender)(struct bdb_state_tag *, ack_info *, const char *);
+void set_udp_sender(udp_sender *);
 
 typedef int(udp_receiver)(ack_info *, ssize_t *);
 void set_udp_receiver(udp_receiver *);
+
+typedef struct trigger_reg *(trigger_sender)(uint8_t *, struct trigger_reg *, size_t *);
+void set_trigger_sender(trigger_sender *);
+
+typedef struct trigger_reg *(trigger_receiver)(struct trigger_reg *, uint8_t *);
+void set_trigger_receiver(trigger_receiver *);
+
+typedef int(del_writer)(struct netinfo_struct *, const char *, char *);
+void set_del_writer(del_writer *);
+
+typedef int(add_writer)(struct netinfo_struct *, const char *, char *);
+void set_add_writer(add_writer *);
+
+typedef int(decom_writer)(struct netinfo_struct *, struct host_node_tag *, const char *, int, const char *);
+void set_decom_writer(decom_writer *);
+
+typedef int(nodenum_mapper)(char *);
+void set_nodenum_mapper(nodenum_mapper *);
+nodenum_mapper nodenum;
+
+typedef char *(hostname_mapper)(int);
+void set_hostname_mapper(hostname_mapper *);
+hostname_mapper hostname;
+
+typedef char *(nodenum_str_mapper)(char *);
+void set_nodenum_str_mapper(nodenum_str_mapper *);
+nodenum_str_mapper nodenum_str;
+
+typedef char *(hostname_str_mapper)(char *);
+void set_hostname_str_mapper(hostname_str_mapper *);
+hostname_str_mapper hostname_str;
 
 #endif
