@@ -2111,7 +2111,13 @@ static int comdb2_parse_sql_type(const char *type, int *size)
                 return i;
             }
 
-            if (type[type_sql_str_len[i]] != '(') {
+            const char *ptr = type + type_sql_str_len[i];
+
+            /* Move past whitespaces (if any). */
+            while (isspace(*ptr))
+                ptr++;
+
+            if (*ptr != '(') {
                 /* Malformed size. */
                 return -1;
             }
@@ -2124,7 +2130,7 @@ static int comdb2_parse_sql_type(const char *type, int *size)
             }
 
             errno = 0;
-            *size = strtol(type + type_sql_str_len[i] + 1, &endptr, 10);
+            *size = strtol(ptr + 1, &endptr, 10);
 
             /* Correction: cstring types require an additional byte. */
             if ((type_flags[i] & FLAG_EXTRA_BYTE) != 0) {

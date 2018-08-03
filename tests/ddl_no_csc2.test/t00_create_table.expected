@@ -1026,3 +1026,14 @@ constraints
 (name='mycons2', tablename='t3', keyname='$KEY_37248BBB', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (rows inserted=1)
 [CREATE TABLE t2 AS SELECT * FROM t1] failed with rc -3 near "AS": syntax error
+[CREATE TABLE t1(i INT (100))] failed with rc -3 Invalid type specified.
+(csc2='schema
+	{
+		cstring v[101] null = yes 
+	}
+')
+(csc2='schema
+	{
+		cstring v[101] null = yes 
+	}
+')
