@@ -283,11 +283,11 @@ static int db_comdb_apply_log(Lua L) {
     SP sp = getsp(L);
     sp->max_num_instructions = 1000000; //allow large number of steps
     char *lsnstr = NULL;
-    int rc;
+    int rc, newfile;
     blob_t blob; 
 
     if ((rc = lua_gettop(L)) != 3) {
-        fprintf(stderr, "rc=%d", rc);
+        fprintf(stderr, "rc=%d\n", rc);
         return luaL_error(L, 
                 "Usage: apply_log(\"{<file>:<offset>}\", 'blob', is_newfile). " 
                 "Need 3 params.");
@@ -303,6 +303,11 @@ static int db_comdb_apply_log(Lua L) {
 
     luabb_toblob(L, 2, &blob);
 
+    if (lua_isnumber(L, 3))
+    {
+        newfile = (int) lua_tonumber(L, 1);
+    }
+
     unsigned int file, offset; 
   
     if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
@@ -312,10 +317,11 @@ static int db_comdb_apply_log(Lua L) {
     }
     logmsg(LOGMSG_USER, "applying log lsn {%u:%u}\n", file, offset);
 
-    /* if ((rc = apply_log_procedure(file, offset, blob.data, blob.length)) != 0) */
-    /* { */
-    /*     return luaL_error(L, "Log apply failed."); */
-    /* } */
+    if ((rc = apply_log_procedure(file, offset, blob.data, 
+                    blob.length, newfile)) != 0)
+    {
+        return luaL_error(L, "Log apply failed.");
+    }
 
     return 1;
 }
@@ -499,8 +505,8 @@ static struct sp_source syssps[] = {
     }
     ,{
         "sys.cmd.apply_log",
-        "local function main(lsn)\n"
-        "sys.apply_log(lsn)\n"
+        "local function main(lsn, blob, newfile)\n"
+        "sys.apply_log(lsn, blob, newfile)\n"
         "end\n"
     }
 };
