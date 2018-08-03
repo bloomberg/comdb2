@@ -1,5 +1,6 @@
 #include "comdb2.h"
 #include "bdb_int.h"
+#include <time.h>
 #include "truncate_log.h"
 #include <phys_rep_lsn.h>
 
@@ -121,7 +122,19 @@ LOG_INFO find_match_lsn(cdb2_hndl_tp* repl_db, LOG_INFO start_info)
     return info;
 }
 
+int truncate_timestamp(time_t timestamp) 
+{
+    int rc;
+    unsigned int file, offset;
+    if ((rc = find_log_timestamp(thedb->bdb_env, timestamp, &file, &offset)) != 0)
+    {
+        logmsg(LOGMSG_ERROR, "Couldn't find a record older than %ld\n", timestamp);
+        return 1;
+    }
+    logmsg(LOGMSG_USER, "Found lsn that works {%u:%u}", file, offset);
 
+    return truncate_log(file, offset);
+}
 
 int truncate_log(unsigned int file, unsigned int offset)
 {

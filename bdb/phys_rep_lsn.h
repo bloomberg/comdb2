@@ -3,6 +3,7 @@
 
 #include <build/db.h>
 #include "bdb_int.h"
+#include <time.h>
 
 typedef struct LOG_INFO LOG_INFO;
 struct LOG_INFO 
@@ -22,6 +23,8 @@ int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file,
         unsigned int offset);
 int compare_log(bdb_state_type* bdb_state, unsigned int file, unsigned int offset,
         void* blob, unsigned int blob_len);
+int find_log_timestamp(bdb_state_type* bdb_state, time_t time, 
+        unsigned int* file, unsigned int* offset);
 
 int get_next_matchable(LOG_INFO* info);
 int open_db_cursor(bdb_state_type* bdb_state);

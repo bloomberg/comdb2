@@ -273,7 +273,34 @@ static int db_comdb_truncate_log(Lua L) {
     }
     logmsg(LOGMSG_USER, "applying log from lsn {%u:%u}\n", file, offset);
 
-    truncate_log(file, offset);
+    if ((rc = truncate_log(file, offset)) != 0)
+    {
+        return luaL_error(L, "Couldn't truncate to lsn %s", lsnstr);
+    }
+
+    return 1;
+}
+
+static int db_comdb_truncate_time(Lua L) {
+    SP sp = getsp(L);
+    sp->max_num_instructions = 1000000; //allow large number of steps
+    time_t time;
+    int rc;
+    if (lua_isnumber(L, 1))
+    {
+        time = (time_t) lua_tointeger(L, 1);
+    }
+    else
+    {
+        return luaL_error(L, "Usage: truncate_time(<time>), "
+                "where time is epoch time");
+    }
+    logmsg(LOGMSG_USER, "Finding earliest log before stated time: %ld.\n", time);
+
+    if ((rc = truncate_timestamp(time)) != 0)
+    {
+        return luaL_error(L, "Couldn't truncate to timestamp %ld", time);
+    }
 
     return 1;
 }
@@ -286,12 +313,6 @@ static int db_comdb_apply_log(Lua L) {
     int rc, newfile;
     blob_t blob; 
 
-    if ((rc = lua_gettop(L)) != 3) {
-        fprintf(stderr, "rc=%d\n", rc);
-        return luaL_error(L, 
-                "Usage: apply_log(\"{<file>:<offset>}\", 'blob', is_newfile). " 
-                "Need 3 params.");
-    }
     if (lua_isstring(L, 1)) {
         lsnstr = (char *) lua_tostring(L, 1);
     }
@@ -305,7 +326,12 @@ static int db_comdb_apply_log(Lua L) {
 
     if (lua_isnumber(L, 3))
     {
-        newfile = (int) lua_tonumber(L, 1);
+        newfile = (int) lua_tointeger(L, 1);
+    }
+    else {
+        return luaL_error(L, 
+                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
+                "3rd param not int flag.");
     }
 
     unsigned int file, offset; 
@@ -390,6 +416,7 @@ static const luaL_Reg sys_funcs[] = {
     { "comdb_analyze", db_comdb_analyze },
     { "comdb_verify", db_comdb_verify },
     { "truncate_log", db_comdb_truncate_log },
+    { "truncate_time", db_comdb_truncate_time },
     { "apply_log", db_comdb_apply_log },
     { NULL, NULL }
 }; 
@@ -501,6 +528,12 @@ static struct sp_source syssps[] = {
         "sys.cmd.truncate_log",
         "local function main(lsn)\n"
         "sys.truncate_log(lsn)\n"
+        "end\n"
+    }
+    ,{
+        "sys.cmd.truncate_time",
+        "local function main(time)\n"
+        "sys.truncate_time(time)\n"
         "end\n"
     }
     ,{
