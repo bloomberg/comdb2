@@ -1950,6 +1950,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     struct dbtable *tab;
     char *cmdline;
 
+    errno = 0; /* must have well-defined value due to later assert(). */
     thr_self = arg->thr_self;
     dbenv = arg->dbenv;
     tab = arg->tab;
