@@ -1092,7 +1092,8 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     cdb2_tcpbufsz = atoi(tok);
-            } else if (strcasecmp("dnssufix", tok) == 0 || strcasecmp("dnssuffix", tok) == 0) {
+            } else if (strcasecmp("dnssufix", tok) == 0 ||
+                       strcasecmp("dnssuffix", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     strcpy(cdb2_dnssuffix, tok);
