@@ -104,7 +104,8 @@ public class DatabaseDiscovery {
                         } catch (NumberFormatException e) {
                             logger.log(Level.WARNING, "Invalid tcp buffer size.", e);
                         }
-                    else if (tokens[1].equalsIgnoreCase("dnssufix")
+                    else if ((tokens[1].equalsIgnoreCase("dnssufix") ||
+                                tokens[1].equalsIgnoreCase("dnssuffix"))
                             && hndl.dnssuffix == null)
                         hndl.dnssuffix = tokens[2];
                     else if (tokens[1].equalsIgnoreCase("connect_timeout")
