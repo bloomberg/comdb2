@@ -2208,6 +2208,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             clnt.added_to_hist = 0;
         } else if (appdata->query) {
             cdb2__query__free_unpacked(appdata->query, &pb_alloc);
+            appdata->query = NULL;
         }
         query = read_newsql_query(dbenv, &clnt, sb);
     }
