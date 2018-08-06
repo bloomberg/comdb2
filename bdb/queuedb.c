@@ -113,7 +113,7 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
     qfnd.genid = get_genid(bdb_state, 0);
     qfnd.data_len = dtalen;
     qfnd.data_offset = sizeof(struct bdb_queue_found);
-    qfnd.num_fragments = 1;
+    qfnd.trans.tid = tran->tid->txnid;
     qfnd.epoch = comdb2_time_epoch();
     p_buf = databuf;
     p_buf_end = p_buf + dtalen + sizeof(struct bdb_queue_found);
