@@ -1697,6 +1697,7 @@ static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
                                     struct sqlclntstate *clnt, SBUF2 *sb)
 {
     struct newsqlheader hdr;
+    CDB2QUERY *query = NULL;
     int rc;
     int pre_enabled = 0;
     int was_timeout = 0;
@@ -1828,7 +1829,6 @@ retry_read:
         return NULL;
     }
 
-    CDB2QUERY *query;
     while (1) {
         errno = 0; /* precondition: well-defined before call that may set */
         query = cdb2__query__unpack(&pb_alloc, bytes, (uint8_t *)p);
@@ -1866,6 +1866,7 @@ retry_read:
     // one of dbinfo or sqlquery must be non-NULL
     if (unlikely(!query->dbinfo && !query->sqlquery)) {
         cdb2__query__free_unpacked(query, &pb_alloc);
+        query = NULL;
         goto retry_read;
     }
 
@@ -1900,6 +1901,7 @@ retry_read:
             send_dbinforesponse(dbenv, sb);
         }
         cdb2__query__free_unpacked(query, &pb_alloc);
+        query = NULL;
         goto retry_read;
     }
 
@@ -1927,6 +1929,7 @@ retry_read:
         if (client_supports_ssl) {
             newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL);
             cdb2__query__free_unpacked(query, &pb_alloc);
+            query = NULL;
             goto retry_read;
         } else {
             newsql_error(clnt, "The database requires SSL connections.",
