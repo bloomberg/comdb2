@@ -1279,12 +1279,12 @@ int sqlite3_column_type(sqlite3_stmt *pStmt, int i){
 }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 const dttz_t *sqlite3_column_datetime(sqlite3_stmt *pStmt, int i){
-  dttz_t *dt = sqlite3_value_datetime( columnMem(pStmt,i) );
+  const dttz_t *dt = sqlite3_value_datetime( columnMem(pStmt,i) );
   columnMallocFailure(pStmt);
   return dt;
 }
 const intv_t *sqlite3_column_interval(sqlite3_stmt *pStmt, int i, int type){
-  intv_t *intv = sqlite3_value_interval( columnMem(pStmt,i), type );
+  const intv_t *intv = sqlite3_value_interval( columnMem(pStmt,i), type );
   columnMallocFailure(pStmt);
   return intv;
 }
