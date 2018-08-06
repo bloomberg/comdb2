@@ -1174,9 +1174,6 @@ static Mem *columnMem(sqlite3_stmt *pStmt, int i){
   return pOut;
 }
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define columnMallocFailure(pStmt) ((void)0)
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /*
 ** This function is called after invoking an sqlite3_value_XXX function on a 
 ** column value (i.e. a value returned by evaluating an SQL expression in the
@@ -1210,7 +1207,6 @@ static void columnMallocFailure(sqlite3_stmt *pStmt)
     sqlite3_mutex_leave(p->db->mutex);
   }
 }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /**************************** sqlite3_column_  *******************************
 ** The following routines are used to access elements of the current row
