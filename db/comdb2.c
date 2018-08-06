@@ -5482,6 +5482,11 @@ int thdpool_alarm_on_queing(int len)
 
 int gbl_hostname_refresh_time = 60;
 
+int comdb2_reload_schemas(void *dbenv, void *lsn)
+{
+    return 0;
+}
+
 int comdb2_is_standalone(void *dbenv)
 {
     return bdb_is_standalone(dbenv, thedb->bdb_env);
