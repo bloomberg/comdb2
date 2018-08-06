@@ -1033,12 +1033,17 @@ int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
 {
     int rc;
 
+    BDB_READLOCK("bdb_queue_walk");
     /* don't pass this to bdb_queuedb_walk - it needs more than an uint32_t
      * worth of state,
      * caller needs to call it correctly. */
-    BDB_READLOCK("bdb_queue_walk");
-    rc = bdb_queue_walk_int(bdb_state, flags, lastitem, callback, userptr,
-                            bdberr);
+    if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
+        rc = bdb_queuedb_walk(bdb_state, flags, lastitem, callback, userptr,
+                              bdberr);
+    } else {
+        rc = bdb_queue_walk_int(bdb_state, flags, lastitem, callback, userptr,
+                                bdberr);
+    }
     BDB_RELLOCK();
 
     return rc;
