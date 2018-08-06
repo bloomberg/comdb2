@@ -971,22 +971,24 @@ static int dbqueue_stat_callback(int consumern, size_t length,
     return BDB_QUEUE_WALK_CONTINUE;
 }
 
-void dbqueue_get_stats(struct dbtable *db, int fullstat, int walk_queue, const struct bdb_queue_stats **bdbstats, struct consumer_stat *stats) {
+void dbqueue_get_stats(struct dbtable *db, int fullstat, int walk_queue,
+                       const struct bdb_queue_stats **bdbstats,
+                       struct consumer_stat *stats)
+{
     struct ireq iq;
     int flags;
     *bdbstats = bdb_queue_get_stats(db->handle);
     init_fake_ireq(db->dbenv, &iq);
     iq.usedb = db;
     logmsg(LOGMSG_USER, "(scanning queue '%s' for stats, please wait...)\n",
-           db->tablename);    
+           db->tablename);
     if (!walk_queue)
         flags = BDB_QUEUE_WALK_FIRST_ONLY;
-    if(fullstat)
+    if (fullstat)
         flags |= BDB_QUEUE_WALK_KNOWN_CONSUMERS_ONLY;
     dbq_walk(&iq, flags, dbqueue_stat_callback, stats);
     return;
 }
-
 
 static void dbqueue_stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
 {
@@ -999,7 +1001,7 @@ static void dbqueue_stat_thread_int(struct dbtable *db, int fullstat, int walk_q
         struct consumer_stat stats[MAXCONSUMERS];
         bzero(stats, sizeof(stats));
 
-        dbqueue_get_stats(db, fullstat, walk_queue, &bdbstats, stats);        
+        dbqueue_get_stats(db, fullstat, walk_queue, &bdbstats, stats);
 
         bzero(stats, sizeof(stats));
         logmsg(LOGMSG_USER, "(scanning queue '%s' for stats, please wait...)\n",

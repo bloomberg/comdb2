@@ -198,7 +198,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
 {
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
-    //struct queuedb_key *k;
+    // struct queuedb_key *k;
     struct bdb_queue_found qfnd;
     int rc;
 
@@ -476,9 +476,9 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
     /* what endianness is this? */
     *fnd = dbt_data.data;
     if (fnddtalen)
-      *fnddtalen = dbt_data.size;
+        *fnddtalen = dbt_data.size;
     if (fnddtaoff)
-      *fnddtaoff = sizeof(struct bdb_queue_found);
+        *fnddtaoff = sizeof(struct bdb_queue_found);
     if (fndcursor) {
         uint64_t g;
         memcpy(fndcursor->genid, &qfnd.genid, sizeof(qfnd.genid));

@@ -16,14 +16,12 @@ enum rtcpu_mode { NO_RTCPU, USE_RTCPU, DFLT_RTCPU };
 
 struct dbtable;
 
-struct consumer_stat
-{
+struct consumer_stat {
     int has_stuff;
     size_t first_item_length;
     time_t epoch;
     int depth;
 };
-
 
 /* a queue consumer */
 struct consumer {
@@ -98,6 +96,8 @@ struct consumer {
     int stopped;
 };
 
-void dbqueue_get_stats(struct dbtable *db, int fullstat, int walk_queue, const struct bdb_queue_stats **bdbstats, struct consumer_stat *stats);
+void dbqueue_get_stats(struct dbtable *db, int fullstat, int walk_queue,
+                       const struct bdb_queue_stats **bdbstats,
+                       struct consumer_stat *stats);
 
 #endif
