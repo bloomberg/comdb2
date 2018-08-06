@@ -62,7 +62,6 @@ void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
 int rep_qstat_has_fills(void);
 
-int gbl_online_recovery = 1;
 extern int gbl_rep_printlock;
 extern int gbl_dispatch_rowlocks_bench;
 extern int gbl_rowlocks_bench_logical_rectype;
@@ -6476,18 +6475,20 @@ restart:
 				}
 
 				if (do_truncate) {
-
+                    DB_LSN sc_lsn = lsn;
 					/* Go to previous record */
 					if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
 						goto err;
-
 					ret = online_apprec(dbenv, lsn, trunclsnp);
 					if (got_schema_lk) {
-						/* Do stuff here to fix schema change */
-						/*
-						reload_db_tran(XXX, XXX);
-						gbl_dbopen_gen++;
-						*/
+                        if (dbenv->recovery_sc_callback) {
+                            /* Do stuff here to fix schema change */
+                            /*
+                            reload_db_tran(XXX, XXX);
+                            gbl_dbopen_gen++;
+                            */
+                            dbenv->recovery_sc_callback(dbenv, &sc_lsn);
+                        }
 						unlock_schema_lk();
 						got_schema_lk = 0;
 					}
