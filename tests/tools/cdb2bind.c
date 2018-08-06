@@ -136,35 +136,34 @@ void test_01()
     test_close(hndl);
 }
 
+// https://github.com/bloomberg/comdb2/issues/963
 void test_02()
 {
     int rc;
     cdb2_hndl_tp *hndl = NULL;
-    const char *drop_table = "DROP TABLE IF EXISTS t1";
-    const char *create_table = "CREATE TABLE t1 {schema {cstring a[20]}}";
+    char str_buf[] = {'h', 'e', 'l', 'l', 'o', '\0', 'f', 'o', 'o'};
     const char *hello = "hello";
+    const char *drop_table = "DROP TABLE IF EXISTS t1";
+    const char *create_table_cstring = "CREATE TABLE t1 {schema {cstring a[20]}}";
+    const char *create_table_vutf8 = "CREATE TABLE t1 {schema {vutf8 a}}";
     const char *insert_cmd = "INSERT INTO t1 (a) VALUES (@val);";
     const char *select_cmd = "SELECT * FROM t1 WHERE a=@val;";
+    size_t value_size;
+    void *buffer;
 
     test_open(&hndl, db);
+
+    /* Test with CSTRING */
     test_exec(hndl, drop_table);
-    test_exec(hndl, create_table);
-    test_bind_param(hndl, "val", CDB2_CSTRING, hello, strlen(hello) + 1);
+    test_exec(hndl, create_table_cstring);
+    test_bind_param(hndl, "val", CDB2_CSTRING, str_buf, sizeof(str_buf));
     test_exec(hndl, insert_cmd);
     test_exec(hndl, select_cmd);
     test_next_record(hndl);
 
-    /* Check column name */
-    const char *col = cdb2_column_name(hndl, 0);
-    if ((strcmp(col, "a") != 0)) {
-        fprintf(stderr, "column name didn't match got:%s expected:%s\n", col,
-                "a");
-        exit(1);
-    }
-
     /* Check the column value */
-    const size_t value_size = cdb2_column_size(hndl, 0);
-    void *buffer = malloc(value_size);
+    value_size = cdb2_column_size(hndl, 0);
+    buffer = malloc(value_size);
     memcpy(buffer, cdb2_column_value(hndl, 0), value_size);
     if ((strncmp((char *)buffer, hello, value_size) != 0)) {
         fprintf(stderr, "column value didn't match got:%s expected:%s\n",
@@ -172,7 +171,30 @@ void test_02()
         exit(1);
     }
     free(buffer);
+    cdb2_clearbindings(hndl);
+    test_exec(hndl, drop_table);
 
+    /* Test with VUTF */
+    test_exec(hndl, create_table_vutf8);
+    test_bind_param(hndl, "val", CDB2_CSTRING, str_buf, sizeof(str_buf));
+    test_exec(hndl, insert_cmd);
+    test_exec(hndl, select_cmd);
+    test_next_record(hndl);
+
+    /* Check the column value */
+    value_size = cdb2_column_size(hndl, 0);
+    buffer = malloc(value_size);
+    memcpy(buffer, cdb2_column_value(hndl, 0), value_size);
+    if ((strncmp((char *)buffer, hello, value_size) != 0)) {
+        fprintf(stderr, "column value didn't match got:%s expected:%s\n",
+                (char *)buffer, hello);
+        exit(1);
+    }
+    free(buffer);
+    cdb2_clearbindings(hndl);
+    test_exec(hndl, drop_table);
+
+    /* Close the handle */
     test_close(hndl);
 }
 
