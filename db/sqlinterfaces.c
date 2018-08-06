@@ -2662,6 +2662,19 @@ int get_prepared_stmt_try_lock(struct sqlthdstate *thd,
     return rc;
 }
 
+static void fix_cstr_len(void *str /* IN */, int *len /* INOUT */)
+{
+    char *tmp = str;
+    int out_len = 0;
+
+    while (*tmp != '\0' && out_len < *len) {
+        ++tmp;
+        ++out_len;
+    }
+
+    *len = out_len;
+}
+
 static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                            struct sqlclntstate *clnt, char **err)
 {
@@ -2699,6 +2712,7 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         case CLIENT_CSTR:
         case CLIENT_PSTR:
         case CLIENT_PSTR2:
+            fix_cstr_len((char *)p.u.p, &p.len);
             rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
             eventlog_bind_text(arr, p.name, p.u.p, p.len);
             break;
@@ -3739,7 +3753,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
         q_depth_tag_and_sql += thdpool_get_queue_depth(gbl_sqlengine_thdpool) + 1;
 
     time_metric_add(thedb->concurrent_queries, thdpool_get_nthds(gbl_sqlengine_thdpool));
-    time_metric_add(thedb->concurrent_queries, q_depth_tag_and_sql);
+    time_metric_add(thedb->queue_depth, q_depth_tag_and_sql);
 
     sqlcpy = strdup(msg);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,

@@ -27,10 +27,8 @@
 #define MAXCONSUMERS 32 /* to match bdblib limit */
 #define MAXCUSTOPNAME 32
 #define MAX_DBNAME_LENGTH 64
-#define MAXDTASTRIPE 16
 #define MAXDYNTAGCOLUMNS 2048
-#define MAXINDEX 50
-#define MAXKEYLEN 512 
+#define MAXKEYLEN 512
 #define MAXLRL 65536
 #define MAXNETS 3
 #define MAXNODES 32768
@@ -51,6 +49,13 @@
 #define MAXCONSLEN 64
 #define MAXQUERYLEN 262144
 #define MAXCUR 100
+#define MAXRECSZ (17 * 1024)
+#define MAXKEYSZ 1024
+#define MAXTABLES 4096
+#define MAXINDEX 50
+/* Primary data file + 15 blobs files */
+#define MAXDTAFILES 16
+#define MAXDTASTRIPE 16
 
 /*
   Print at the given offset, detect overflow and update offset

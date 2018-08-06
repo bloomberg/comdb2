@@ -1404,10 +1404,10 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
                                            sizeof(genid), dta, dtalen, bdberr);
             }
         } else {
-            /* indexes have genid as payload, and genid prefixed to key to avoid
-               dups;
-               We are getting here ONLY for del_ix!!!! (TODO:Maybe move this up
-               one level?)
+            /* Indexes have genid as payload, and genid post-fixed to the key
+             * to avoid dups;
+             * We are getting here ONLY for del_ix!!!! (TODO:Maybe move this
+             * up one level?)
              */
             char newkey[MAXKEYSZ];
             int newkeylen = dtalen + sizeof(genid);
@@ -1423,9 +1423,10 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
                 return -1;
             }
 
-            /* Note: dup keys already have the genid inthere, don't add it again
+            /* Note: dup & uniqnulls keys already have the genid in there,
+             * don't add it again.
              */
-            if (bdb_state->ixdups[tableid]) {
+            if (bdb_keycontainsgenid(bdb_state, tableid)) {
                 newkeylen -= sizeof(genid);
                 dtalen -= sizeof(genid);
 
@@ -1451,10 +1452,7 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
 
             assert(newkeylen <= MAXKEYSZ && newkeylen > 0);
             memcpy(newkey, dta, dtalen);
-            /* if (!bdb_state->ixdups[tableid]) */
-            {
-                memcpy(newkey + dtalen, &genid, sizeof(genid));
-            }
+            memcpy(newkey + dtalen, &genid, sizeof(genid));
 
             /* we need to add besides genid, also the datacopy/tail */
             if (collattr != NULL && collattrlen > sizeof(unsigned long long)) {

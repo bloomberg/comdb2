@@ -213,7 +213,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
               int sleepms = 100;
               while (bdb_the_lock_desired()) {
                   if (thd == NULL) {
-                      pthread_getspecific(query_info_key);
+                      thd = pthread_getspecific(query_info_key);
                   }
                   recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
                   sleepms*=2;

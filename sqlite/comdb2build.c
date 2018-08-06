@@ -2111,7 +2111,13 @@ static int comdb2_parse_sql_type(const char *type, int *size)
                 return i;
             }
 
-            if (type[type_sql_str_len[i]] != '(') {
+            const char *ptr = type + type_sql_str_len[i];
+
+            /* Move past whitespaces (if any). */
+            while (isspace(*ptr))
+                ptr++;
+
+            if (*ptr != '(') {
                 /* Malformed size. */
                 return -1;
             }
@@ -2124,7 +2130,7 @@ static int comdb2_parse_sql_type(const char *type, int *size)
             }
 
             errno = 0;
-            *size = strtol(type + type_sql_str_len[i] + 1, &endptr, 10);
+            *size = strtol(ptr + 1, &endptr, 10);
 
             /* Correction: cstring types require an additional byte. */
             if ((type_flags[i] & FLAG_EXTRA_BYTE) != 0) {
@@ -2723,18 +2729,18 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
         goto cleanup;
     }
 
+    /*
+      Check the properties of PRIMARY KEYs:
+      * Unique
+      * Columns must not allow NULLs
+      * Must be only one per table
+    */
     int pk_count = 0;
     LISTC_FOR_EACH(&ctx->schema->key_list, key, lnk)
     {
         if (key->flags & KEY_DELETED)
             continue;
 
-        /*
-          Check the properties of primary keys:
-          * Unique
-          * Columns must not allow NULLs
-          * Must be only one per table
-        */
         if (is_pk(key->name)) {
             if (++pk_count > 1) {
                 pParse->rc = SQLITE_ERROR;
@@ -2743,7 +2749,11 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
             }
 
             /* Primary keys mustn't be dup. */
-            assert((key->flags & KEY_DUP) == 0);
+            if (key->flags & KEY_DUP) {
+                pParse->rc = SQLITE_ERROR;
+                sqlite3ErrorMsg(pParse, "A primary key must be UNIQUE.");
+                goto cleanup;
+            }
 
             /* Also make sure none of its columns allow NULLs. (n^2) */
             struct comdb2_index_column *idx_column;
@@ -2751,7 +2761,12 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
             {
                 /* There must not be a dropped column in the key. */
                 assert((idx_column->column->flags & COLUMN_DELETED) == 0);
-                idx_column->column->flags |= COLUMN_NO_NULL;
+                if ((idx_column->column->flags & COLUMN_NO_NULL) == 0) {
+                    pParse->rc = SQLITE_ERROR;
+                    sqlite3ErrorMsg(pParse, "A primary key column must be "
+                                            "NOT NULL.");
+                    goto cleanup;
+                }
             }
         }
     }
@@ -3823,15 +3838,25 @@ static void comdb2AddIndexInt(
 
     key->name = keyname;
 
-    if (idxType == SQLITE_IDXTYPE_DUPKEY) {
-        key->flags |= KEY_DUP;
-    } else if (idxType == SQLITE_IDXTYPE_APPDEF) {
+    switch (idxType) {
+    case SQLITE_IDXTYPE_APPDEF:
         /* For CREATE INDEX, we need to check onError */
         if (onError != OE_Abort) {
             key->flags |= KEY_DUP;
         } else {
             key->flags |= KEY_UNIQNULLS;
         }
+        break;
+    case SQLITE_IDXTYPE_UNIQUE:
+        /* fallthrough */
+    case SQLITE_IDXTYPE_PRIMARYKEY:
+        key->flags |= KEY_UNIQNULLS;
+        break;
+    case SQLITE_IDXTYPE_DUPKEY:
+        key->flags |= KEY_DUP;
+        break;
+    default:
+        assert(0);
     }
 
     if (withOpts == 1) {
@@ -3864,6 +3889,12 @@ static void comdb2AddIndexInt(
 
         /* Add the index column to the list. */
         listc_abl(&key->idx_col_list, idx_column);
+
+        /* For a PRIMARY KEY, force its column to be NOT NULL. */
+        if (idxType == SQLITE_IDXTYPE_PRIMARYKEY) {
+            column->flags |= COLUMN_NO_NULL;
+        }
+
     } else {
         for (int i = 0; i < pList->nExpr; i++) {
             idx_column =
@@ -3887,6 +3918,11 @@ static void comdb2AddIndexInt(
 
             /* Add the index column to the list. */
             listc_abl(&key->idx_col_list, idx_column);
+
+            /* For a PRIMARY KEY, force all its columns to be NOT NULL. */
+            if (idxType == SQLITE_IDXTYPE_PRIMARYKEY) {
+                column->flags |= COLUMN_NO_NULL;
+            }
         }
     }
 
