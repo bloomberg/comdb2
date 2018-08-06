@@ -63,8 +63,13 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX ${prefix} CACHE PATH ${helpstring} FORCE)
 endif()
 
+if(DEFINED COMDB2_ROOT)
+    add_definitions(-DCOMDB2_ROOT=${COMDB2_ROOT})
+else()
+    add_definitions(-DCOMDB2_ROOT=${CMAKE_INSTALL_PREFIX})
+endif()
+
 add_definitions(
-  -DCOMDB2_ROOT=${CMAKE_INSTALL_PREFIX}
   -DCOMDB2_VERSION="2"
   -D_FILE_OFFSET_BITS=64
 )
