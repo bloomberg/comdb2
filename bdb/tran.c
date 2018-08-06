@@ -1098,7 +1098,7 @@ int bdb_tran_abort_phys(bdb_state_type *bdb_state, tran_type *tran)
 
 static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
                                         tran_type *parent, int retries,
-                                        int tranclass, int *bdberr, 
+                                        int tranclass, int *bdberr,
                                         u_int32_t inflags)
 {
     tran_type *tran;
