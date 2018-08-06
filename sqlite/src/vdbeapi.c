@@ -1536,16 +1536,17 @@ static int bindDatetime(
   int rc;
 
   rc = vdbeUnbind(p, i);
-  pVar = &p->aVar[i-1];
-  pVar->flags &= ~(MEM_Str|MEM_Static|MEM_Dyn|MEM_Ephem);
-  pVar->flags = MEM_Datetime;
-  pVar->du.dt = *dt;
-  pVar->xDel = NULL;
-  pVar->enc = 0;
-  pVar->tz = tz;
-
-  sqlite3Error(((Vdbe *)pStmt)->db, rc);
-  return sqlite3ApiExit(((Vdbe *)pStmt)->db, rc);
+  if( rc==SQLITE_OK ){
+    pVar = &p->aVar[i-1];
+    pVar->flags &= ~(MEM_Str|MEM_Static|MEM_Dyn|MEM_Ephem);
+    pVar->flags = MEM_Datetime;
+    pVar->du.dt = *dt;
+    pVar->xDel = NULL;
+    pVar->enc = 0;
+    pVar->tz = tz;
+    sqlite3_mutex_leave(p->db->mutex);
+  }
+  return rc;
 }
 
 static int bindInterval(
@@ -1557,16 +1558,17 @@ static int bindInterval(
   int rc;
 
   rc = vdbeUnbind(p, i);
-  pVar = &p->aVar[i-1];
-  pVar->flags = MEM_Interval;
-  pVar->flags &= ~(MEM_Str|MEM_Static|MEM_Dyn|MEM_Ephem);
-  pVar->du.tv = *it;
-  pVar->xDel = NULL;
-  pVar->enc = 0;
-  pVar->tz = NULL;
-
-  sqlite3Error(((Vdbe *)pStmt)->db, rc);
-  return sqlite3ApiExit(((Vdbe *)pStmt)->db, rc);
+  if( rc==SQLITE_OK ){
+    pVar = &p->aVar[i-1];
+    pVar->flags = MEM_Interval;
+    pVar->flags &= ~(MEM_Str|MEM_Static|MEM_Dyn|MEM_Ephem);
+    pVar->du.tv = *it;
+    pVar->xDel = NULL;
+    pVar->enc = 0;
+    pVar->tz = NULL;
+    sqlite3_mutex_leave(p->db->mutex);
+  }
+  return rc;
 }
 
 int sqlite3_bind_datetime(
