@@ -5,6 +5,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <time.h>
 
 #include "phys_rep_lsn.h"
 #include "dbinc/rep_types.h"
@@ -16,30 +17,38 @@
 #include <parse_lsn.h>
 #include <logmsg.h>
 
-/* for replication */
-static cdb2_hndl_tp* repl_db;
-static char* repl_db_name;
-
-static int do_repl;
-
 /* internal implementation */
 typedef struct DB_Connection {
     char *hostname;
-    int is_up;
-    time_t last_cnct;
+    int is_up;            // was the db available for connection. Default nonzero if not connected before 
+    time_t last_cnct;     // when was the last time we connected
+    time_t last_failed;   // when was the last time a connection failed
 } DB_Connection;
 
 static DB_Connection **local_rep_dbs = NULL;
 static int cnct_len = 0;
 static int idx = 0;
+static time_t retry_time = 3;
 
 static DB_Connection* get_connect(char* hostname);
 static int insert_connect(char* hostname);
 static void delete_connect(DB_Connection* cnct);
 static LOG_INFO handle_record();
+static void failed_connect();
+static void find_new_repl_db();
+static DB_Connection* get_rand_connect();
+static void* keep_in_sync(void* args);
 
 static pthread_t sync_thread;
 /* internal implementation */
+
+/* for replication */
+static cdb2_hndl_tp* repl_db;
+static DB_Connection* curr_cnct;
+static char* repl_db_name;
+
+static int do_repl;
+
 
 /* externs here */
 extern struct dbenv* thedb;
@@ -87,38 +96,21 @@ void cleanup_hosts()
     cdb2_close(repl_db);
 }
 
-const char* start_replication()
+const int start_replication()
 {
-    int rc;
-    DB_Connection* cnct;
+    /* initialize a random seed for db connections */
+    srand(time(NULL));
 
-    for (int i = 0; i < idx; i++)
+    if (pthread_create(&sync_thread, NULL, keep_in_sync, NULL))
     {
-        cnct = local_rep_dbs[i];
-
-        if ((rc = cdb2_open(&repl_db, repl_db_name, 
-                        cnct->hostname, CDB2_DIRECT_CPU)) == 0)
-        {
-            logmsg(LOGMSG_WARN, "Attached to '%s' and db '%s' for replication\n", 
-                    cnct->hostname,
-                    repl_db_name);
-            if (pthread_create(&sync_thread, NULL, keep_in_sync, NULL))
-            {
-                logmsg(LOGMSG_ERROR, "Couldn't create thread to sync\n");
-                cdb2_close(repl_db);
-            }
-
-            return cnct->hostname;
-        }
-
-        logmsg(LOGMSG_WARN, "Couldn't connect to %s\n", cnct->hostname);
+        logmsg(LOGMSG_ERROR, "Couldn't create thread to sync\n");
+        return 1;
     }
 
-    logmsg(LOGMSG_ERROR, "Couldn't find any remote dbs to connect to\n");
-    return NULL;
+    return 0;
 }
 
-void* keep_in_sync(void* args)
+static void* keep_in_sync(void* args)
 {
     /* vars for syncing */
     int rc;
@@ -142,6 +134,9 @@ void* keep_in_sync(void* args)
 
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
 
+    /* get a fresh db connection */
+    find_new_repl_db();
+
     /* do truncation to start fresh */
     info = get_last_lsn(thedb->bdb_env);
     prev_info = handle_truncation(repl_db, info);
@@ -162,11 +157,11 @@ void* keep_in_sync(void* args)
         if ((rc = cdb2_run_statement(repl_db, sql_cmd)) != CDB2_OK)
         {
             logmsg(LOGMSG_ERROR, "Couldn't query the database, retrying\n");
-            nanosleep(&wait_spec, &remain_spec);
+            failed_connect();
             continue;
         }
 
-        /* should verify that this is the record we want */
+        /* queries one extra record: our last record, so skip this record */
         if ((rc = cdb2_next_record(repl_db)) != CDB2_OK)
         {
             logmsg(LOGMSG_WARN, "Can't find the next record\n");
@@ -181,8 +176,10 @@ void* keep_in_sync(void* args)
         {
             int broke_early = 0;
 
+            /* our log matches, so apply each record log received */
             while((rc = cdb2_next_record(repl_db)) == CDB2_OK)
             {
+                /* check the generation id to make sure the master hasn't switched */
                 int64_t* rec_gen =  (int64_t *) cdb2_column_value(repl_db, 2);
                 if (rec_gen && *rec_gen > gen)
                 {
@@ -229,6 +226,7 @@ void stop_sync()
 
 }
 
+/* stored procedure functions */
 int is_valid_lsn(unsigned int file, unsigned int offset)
 {
     LOG_INFO info = get_last_lsn(thedb->bdb_env);
@@ -259,41 +257,21 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     void* blob;
     int blob_len;
     unsigned int gen;
-    char* lsn, *timestamp, *token;
-    const char delim[2] = ":";
+    char* lsn, *token;
     int64_t rectype; 
     int rc; 
     unsigned int file, offset;
 
     lsn = (char *) cdb2_column_value(repl_db, 0);
     rectype = *(int64_t *) cdb2_column_value(repl_db, 1);
-    timestamp = (char *) cdb2_column_value(repl_db, 3);
     blob = cdb2_column_value(repl_db, 4);
     blob_len = cdb2_column_size(repl_db, 4);
 
     logmsg(LOGMSG_WARN, "lsn: %s", lsn);
 
-    /* TODO: consider using sqlite/ext/comdb2/tranlog.c */
-    token = strtok(lsn, delim);    
-    if (token)
+    if ((rc = char_to_lsn(lsn, &file, &offset)) != 0)
     {
-        /* assuming it's {#### */
-        file = (unsigned int) strtoul(token + 1, NULL, 0);
-    }
-    else
-    {
-        file = 0;
-    }
-
-    token = strtok(NULL, delim);
-    if (token)
-    {
-        token[strlen(token) - 1] = '\0';
-        offset = (unsigned int) strtoul(token, NULL, 0);
-    }
-    else
-    {
-        offset = 0;
+        logmsg(LOGMSG_ERROR, "Could not parse lsn:%s\n", lsn);
     }
     
     logmsg(LOGMSG_WARN, ": %u:%u, rectype: %ld\n", file, offset, rectype);    
@@ -319,6 +297,73 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     next_info.size = blob_len;
 
     return next_info;
+}
+
+
+static void find_new_repl_db()
+{
+    int rc;
+    DB_Connection* cnct;
+
+    while(do_repl)
+    {
+        cnct = get_rand_connect();
+
+        if ((rc = cdb2_open(&repl_db, repl_db_name, 
+                        cnct->hostname, CDB2_DIRECT_CPU)) == 0)
+        {
+            logmsg(LOGMSG_WARN, "Attached to '%s' and db '%s' for replication\n", 
+                    cnct->hostname,
+                    repl_db_name);
+
+            cnct->last_cnct = time(NULL);
+            cnct->is_up = 1;
+            curr_cnct = cnct;
+
+            break;
+        }
+
+        logmsg(LOGMSG_WARN, "Couldn't connect to %s\n", cnct->hostname);
+    }
+
+}
+
+static void failed_connect()
+{
+    curr_cnct->last_failed = time(NULL);
+    curr_cnct->is_up = 0;
+    cdb2_close(repl_db);
+
+    find_new_repl_db();
+}
+
+static DB_Connection* get_rand_connect()
+{
+    DB_Connection* cnct;
+    size_t rand_idx;
+
+    /* wait period */
+    long ratio = 1000000000;
+    long ns = retry_time * ratio / idx;
+    struct timespec wait_spec;
+    struct timespec remain_spec;
+
+    wait_spec.tv_sec = ns / ratio;
+    wait_spec.tv_nsec = ns % ratio;
+
+    rand_idx = rand() % idx;
+    cnct = local_rep_dbs[rand_idx];
+
+    while(cnct->last_failed + retry_time > time(NULL))
+    {
+        logmsg(LOGMSG_WARN, "Timeout for %s\n", cnct->hostname);
+        nanosleep(&wait_spec, &remain_spec);
+
+        rand_idx = rand() % idx;
+        cnct = local_rep_dbs[rand_idx];
+    }
+
+    return local_rep_dbs[rand_idx];
 }
 
 /* data struct implementation */
@@ -371,6 +416,7 @@ static int insert_connect(char* hostname)
     DB_Connection* cnct = malloc(sizeof(DB_Connection));
     cnct->hostname = hostname;
     cnct->last_cnct = 0;
+    cnct->last_failed = 0;
     cnct->is_up = 1;
 
     local_rep_dbs[idx++] = cnct;
@@ -383,4 +429,3 @@ static void delete_connect(DB_Connection* cnct)
     free(cnct->hostname);
     free(cnct);
 }
-
