@@ -158,8 +158,9 @@ const uint8_t *queue_found_get(struct bdb_queue_found *p_queue_found,
                     p_buf, p_buf_end);
     p_buf = buf_get(&(p_queue_found->data_offset),
                     sizeof(p_queue_found->data_offset), p_buf, p_buf_end);
-    p_buf = buf_get(&(p_queue_found->trans.num_fragments),
-            sizeof(p_queue_found->trans.num_fragments), p_buf, p_buf_end);
+    p_buf =
+        buf_get(&(p_queue_found->trans.num_fragments),
+                sizeof(p_queue_found->trans.num_fragments), p_buf, p_buf_end);
     p_buf = buf_get(&(p_queue_found->epoch), sizeof(p_queue_found->epoch),
                     p_buf, p_buf_end);
 
@@ -178,8 +179,9 @@ uint8_t *queue_found_put(const struct bdb_queue_found *p_queue_found,
                     p_buf, p_buf_end);
     p_buf = buf_put(&(p_queue_found->data_offset),
                     sizeof(p_queue_found->data_offset), p_buf, p_buf_end);
-    p_buf = buf_put(&(p_queue_found->trans.num_fragments),
-            sizeof(p_queue_found->trans.num_fragments), p_buf, p_buf_end);
+    p_buf =
+        buf_put(&(p_queue_found->trans.num_fragments),
+                sizeof(p_queue_found->trans.num_fragments), p_buf, p_buf_end);
     p_buf = buf_put(&(p_queue_found->epoch), sizeof(p_queue_found->epoch),
                     p_buf, p_buf_end);
 
