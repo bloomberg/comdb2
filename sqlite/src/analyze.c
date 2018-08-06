@@ -2458,6 +2458,7 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   assert( db->aDb[iDb].pBt!=0 );
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  sqlite3_mutex_enter(db->mutex);
   /* AZ: put disabler loader here */
   void get_disable_skipscan_all();
   get_disable_skipscan_all();
@@ -2555,6 +2556,9 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   if( rc==SQLITE_NOMEM ){
     sqlite3OomFault(db);
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  sqlite3_mutex_leave(db->mutex);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return rc;
 }
 
