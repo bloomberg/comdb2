@@ -387,8 +387,9 @@ int osql_bplog_schemachange(struct ireq *iq)
             rc = ERR_NOMASTER;
         } else {
             sc_set_running(sc->table, 0, iq->sc_seed, NULL, 0);
+            int sc_rc = sc->sc_rc;
             free_schema_change_type(sc);
-            if (sc->sc_rc)
+            if (sc_rc)
                 rc = ERR_SC;
         }
         sc = iq->sc;
