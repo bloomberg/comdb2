@@ -881,7 +881,7 @@ void comdb2_cheapstack(FILE *f)
 int comdb2_cheapstack_char_array(char *str, int maxln)
 {
     void *stack[MAXFRAMES];
-    unsigned int nframe = 0;
+    unsigned int nframes = 0;
     char *p;
     int i, ccount, first = 1;
 
