@@ -16,7 +16,6 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <assert.h>
 #include <pthread.h>
 #include <walkback.h>
 #include <inttypes.h>
@@ -885,8 +884,7 @@ int comdb2_cheapstack_char_array(char *str, int maxln)
     char *p;
     int i, ccount, first = 1;
 
-    assert( sizeof(stack)==sizeof(void*)*MAXFRAMES );
-    memset(stack, 0, sizeof(stack));
+    memset(stack, 0, MAXFRAMES * sizeof(void*));
 
     if (maxln <= 0 || stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
         return -1;
