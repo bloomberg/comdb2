@@ -154,8 +154,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             return SQLITE_ERROR;
         }
 
-        if (timepart_is_shard(dst, 1))
-        {
+        if (timepart_is_shard(dst, 1, NULL)) {
             setError(pParse, SQLITE_ERROR, "Shards cannot be schema changed independently");
             return SQLITE_ERROR;
         }

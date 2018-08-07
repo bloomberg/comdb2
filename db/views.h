@@ -291,7 +291,7 @@ int views_validate_view(timepart_views_t *views, timepart_view_t *view, struct e
  * Check if a name is a shard 
  *
  */
-int timepart_is_shard(const char *name, int lock);
+int timepart_is_shard(const char *name, int lock, char **viewname);
 
 /** 
  * Check if a name is a timepart

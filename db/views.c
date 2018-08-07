@@ -163,7 +163,7 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
  * Check if a name is a shard 
  *
  */
-int timepart_is_shard(const char *name, int lock)
+int timepart_is_shard(const char *name, int lock, char **viewname)
 {
    timepart_views_t  *views = thedb->timepart_views;
    timepart_view_t   *view;
@@ -180,6 +180,9 @@ int timepart_is_shard(const char *name, int lock)
    if(view)
    {  
       rc = 1;
+      if (viewname) {
+          *viewname = view->name;
+      }
    }
 
    if(lock)

@@ -7653,7 +7653,7 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                   ent->d_name);
             goto done;
         } else {
-            logmsg(LOGMSG_INFO, "%s: requeued file %s\n", __func__,
+            logmsg(LOGMSG_DEBUG, "%s: requeued file %s\n", __func__,
                    ent->d_name);
             print(bdb_state, "requeued old file %s\n", ent->d_name);
         }
