@@ -2571,6 +2571,9 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE) {
         return 1;
     }
+    if (clnt->conns) {
+        return 1;
+    }
     sqlite3_stmt *stmt = rec->stmt;
     if (stmt == NULL) {
         return 1;

@@ -76,7 +76,11 @@ for testcase in $files ; do
     fi
 
     # be verbose
-    cmd="cdb2sql -s ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
+    if [ -f  $testcase.sort ] ; then
+        cmd="cdb2sql -s ${CDB2_OPTIONS} $a_dbn default - < $testcase |sort > $output 2>&1"
+    else 
+        cmd="cdb2sql -s ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
+    fi
     echo $cmd
     # run command
     eval $cmd

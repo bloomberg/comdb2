@@ -223,6 +223,8 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp, int 
                 
         conn->rc = SQLITE_DONE; /* signal master this is clear */
 
+        pthread_mutex_unlock(&conn->mtx);
+
         return  SQLITE_DONE;    /* any != 0 will do, this impersonates a normal end */
     }
 
@@ -333,7 +335,11 @@ static void _signal_children_master_is_done(dohsql_t *conns)
 
     for(child_num=1;child_num<conns->nconns;child_num++) {
         pthread_mutex_lock(&conns->conns[child_num].mtx);
-        conns->conns[child_num].status = DOH_MASTER_DONE;
+        if (conns->conns[child_num].status != DOH_CLIENT_DONE) {
+            if (verbose)
+                logmsg(LOGMSG_ERROR, "%s: signalling client done, ignoring\n", __func__);
+            conns->conns[child_num].status = DOH_MASTER_DONE;
+        }
         pthread_mutex_unlock(&conns->conns[child_num].mtx);
     }
 }
@@ -399,6 +405,9 @@ static int dohsql_dist_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
         if (verbose)
             logmsg(LOGMSG_ERROR, "%s: sqlite3_step rc %d\n", __func__, rc);
 
+
+        fprintf(stderr, "checking clnt %p for conns %p limit %d offsetMem %d offset %d\n",
+            clnt, conns, conns->limitMem, conns->offsetMem, conns->offset);
         if(conns->limitMem>0 && (!conns->offsetMem || !conns->offset)) {
             conns->limit = sqlite3_value_int64(
                     &((Vdbe*)stmt)->aMem[conns->limitMem-1]);
@@ -775,6 +784,7 @@ int dohsql_distribute(dohsql_node_t *node)
     conns->nconns = node->nnodes;
     conns->ncols = node->ncols;
     clnt->conns = conns;
+    fprintf(stderr, "SET clnt=%p to conns=%p\n", clnt, clnt->conns);
     /* augment interface */
     _master_clnt_set(clnt);
 
@@ -867,6 +877,9 @@ const char* dohsql_get_sql(struct sqlclntstate *clnt, int index)
 void comdb2_register_limit(Select *p)
 {
     GET_CLNT;
+
+    fprintf(stderr, "checking clnt %p for conns %p\n", 
+            clnt, clnt->conns);
 
     if (unlikely(clnt->conns)) {
         clnt->conns->limitMem = p->iLimit+1;
