@@ -16,6 +16,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 #include <pthread.h>
 #include <walkback.h>
 #include <inttypes.h>
