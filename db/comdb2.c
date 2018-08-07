@@ -1831,7 +1831,7 @@ void check_access_controls(struct dbenv *dbenv)
     logmsg(LOGMSG_INFO, "access control tableXnode enabled\n");
 }
 
-int llmeta_load_tables_older_versions(struct dbenv *dbenv)
+int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
 {
     int rc = 0, bdberr, dbnums[MAX_NUM_TABLES], fndnumtbls, i;
     char *tblnames[MAX_NUM_TABLES];
@@ -1842,7 +1842,7 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
         return 0;
 
     /* re-load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(NULL, tblnames, dbnums, sizeof(tblnames),
+    if (bdb_llmeta_get_tables(tran, tblnames, dbnums, sizeof(tblnames),
                               &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
@@ -1980,14 +1980,14 @@ static int llmeta_load_queues(struct dbenv *dbenv)
 
 /* gets the table names and dbnums from the low level meta table and sets up the
  * dbenv accordingly.  returns 0 on success and anything else otherwise */
-static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
+static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
 {
     int rc = 0, bdberr, dbnums[MAX_NUM_TABLES], fndnumtbls, i;
     char *tblnames[MAX_NUM_TABLES];
     struct dbtable *tbl;
 
     /* load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(NULL, tblnames, dbnums, sizeof(tblnames),
+    if (bdb_llmeta_get_tables(tran, tblnames, dbnums, sizeof(tblnames),
                               &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
@@ -3599,7 +3599,7 @@ static int init(int argc, char **argv)
            environment is opened, but files are not !*/
         pthread_rwlock_wrlock(&schema_lk);
 
-        if (llmeta_load_tables(thedb, dbname)) {
+        if (llmeta_load_tables(thedb, dbname, NULL)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
                             "table\n");
             pthread_rwlock_unlock(&schema_lk);
@@ -3704,7 +3704,7 @@ static int init(int argc, char **argv)
         return -1;
     }
 
-    if (llmeta_load_tables_older_versions(thedb)) {
+    if (llmeta_load_tables_older_versions(thedb, NULL)) {
         logmsg(LOGMSG_FATAL, "llmeta_load_tables_older_versions failed\n");
         return -1;
     }
@@ -5455,13 +5455,79 @@ int thdpool_alarm_on_queing(int len)
 
 int gbl_hostname_refresh_time = 60;
 
-int comdb2_close_schemas(void *dbenv, void *lsn)
+int close_all_dbs_tran(tran_type *tran);
+
+int comdb2_close_schemas(void *dbenv, void *lsn, uint32_t lockid)
 {
+    uint32_t tranlid = 0;
+    int bdberr = 0;
+    int rc;
+    tran_type *tran;
+
+    tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
+    if (tran == NULL) {
+        logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
+        abort();
+    }
+
+    bdb_get_tran_lockerid(tran, &tranlid);
+    bdb_set_tran_lockerid(tran, lockid);
+
+    /* Test this incrementally with all schema-change types */
+    if ((rc = close_all_dbs_tran(tran)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s: close_all_dbs_tran returns %d\n", __func__,
+                rc);
+        abort();
+    }
+
+    free_sqlite_table(thedb);
+    thedb->dbs = NULL;
+
+    if ((rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort returns %d\n", __func__,
+                rc);
+        abort();
+    }
+
     return 0;
 }
 
-int comdb2_reload_schemas(void *dbenv, void *lsn)
+int reload_all_db_tran(tran_type *tran);
+
+int comdb2_reload_schemas(void *dbenv, void *lsn, uint32_t lockid)
 {
+    uint32_t tranlid = 0;
+    int bdberr = 0;
+    int rc;
+    int table;
+    tran_type *tran;
+
+    tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
+    if (tran == NULL) {
+        logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
+        abort();
+    }
+
+    bdb_get_tran_lockerid(tran, &tranlid);
+    bdb_set_tran_lockerid(tran, lockid);
+
+    if (llmeta_load_tables(thedb, gbl_dbname, tran)) {
+        logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
+                "table\n");
+        abort();
+    }
+
+    if ((rc = reload_all_db_tran(tran)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s error reloading dbs, %d\n", __func__, rc);
+        abort();
+    }
+
+    if ((rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort returns %d\n", __func__,
+                rc);
+        abort();
+    }
+
     return 0;
 }
 
