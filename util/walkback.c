@@ -880,9 +880,12 @@ void comdb2_cheapstack(FILE *f)
 int comdb2_cheapstack_char_array(char *str, int maxln)
 {
     void *stack[MAXFRAMES];
-    unsigned int nframes;
+    unsigned int nframe = 0;
     char *p;
     int i, ccount, first = 1;
+
+    assert( sizeof(stack)==sizeof(void*)*MAXFRAMES );
+    memset(stack, 0, sizeof(stack));
 
     if (maxln <= 0 || stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
         return -1;
