@@ -6464,18 +6464,20 @@ restart:
 
 				if (do_truncate) {
                     DB_LSN sc_lsn = lsn;
-					/* Go to previous record */
+                    if (got_schema_lk && dbenv->recovery_pre_sc_callback)
+                        dbenv->recovery_pre_sc_callback(dbenv, &sc_lsn);
 					if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
 						goto err;
 					ret = online_apprec(dbenv, lsn, trunclsnp);
 					if (got_schema_lk) {
-                        if (dbenv->recovery_sc_callback) {
+                            if (dbenv->recovery_post_sc_callback) {
+
                             /* Do stuff here to fix schema change */
                             /*
                             reload_db_tran(XXX, XXX);
                             gbl_dbopen_gen++;
                             */
-                            dbenv->recovery_sc_callback(dbenv, &sc_lsn);
+                            dbenv->recovery_post_sc_callback(dbenv, &sc_lsn);
                         }
 						unlock_schema_lk();
 						got_schema_lk = 0;
