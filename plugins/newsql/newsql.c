@@ -2120,10 +2120,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     }
 
     while (query) {
-        struct newsql_appdata *appdata = clnt.appdata;
         sql_query = query->sqlquery;
-        appdata->query = query;
-        appdata->sqlquery = sql_query;
+        ((struct newsql_appdata *)clnt.appdata)->query = query;
+        ((struct newsql_appdata *)clnt.appdata)->sqlquery = sql_query;
         clnt.sql = sql_query->sql_query;
         if (!clnt.in_client_trans) {
             bzero(&clnt.effects, sizeof(clnt.effects));
@@ -2254,8 +2253,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         if (clnt.added_to_hist) {
             clnt.added_to_hist = 0;
-        } else if (appdata->query) {
-            cdb2__query__free_unpacked(appdata->query, &pb_alloc);
+        } else if (((struct newsql_appdata *)clnt.appdata)->query) {
+            cdb2__query__free_unpacked(((struct newsql_appdata *)clnt.appdata)->query, &pb_alloc);
+            ((struct newsql_appdata *)clnt.appdata)->query = NULL;
         }
         query = read_newsql_query(dbenv, &clnt, sb);
     }
