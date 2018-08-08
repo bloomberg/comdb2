@@ -97,10 +97,15 @@ static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
     }
 }
 
-int handle_setup_error(struct sqlclntstate *clnt)
+void handle_child_error(struct sqlclntstate *clnt, int errcode)
 {
-    /* possible way to communicate this */
-    return 0;
+    dohsql_connector_t *conn = (dohsql_connector_t*)clnt->plugin.state;
+
+    if (conn){
+        pthread_mutex_lock(&conn->mtx);
+        conn->rc = -1;
+        pthread_mutex_unlock(&conn->mtx);
+    }
 }
 
 static void sqlengine_work_shard(struct thdpool *pool, void *work,
@@ -124,7 +129,7 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
 
     rc = get_curtran(thedb->bdb_env, clnt);
     if (rc) {
-        handle_setup_error(clnt);
+        handle_child_error(clnt, rc);
         return;
     }
 
@@ -143,10 +148,17 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
 
     clnt->query_rc = handle_sqlite_requests(thd, clnt);
 
+    if (clnt->query_rc != SQLITE_OK) {
+        if (verbose)
+            logmsg(LOGMSG_ERROR, "XXX: client %p returned error %d\n",
+                    clnt->plugin.state, clnt->query_rc);
+        handle_child_error(clnt, clnt->query_rc); 
+    }
+
     sql_reset_sqlthread(thd->sqldb, thd->sqlthd);
 
     if (put_curtran(thedb->bdb_env, clnt)) {
-        fprintf(stderr, "%s: unable to destroy a CURSOR transaction!\n",
+        logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
                 __func__);
     }
 
@@ -487,8 +499,14 @@ got_row:
     /* limit support */
     if (conns->offsetMem && conns->skipped < conns->offset) {
         conns->skipped++;
+        if (verbose)
+            logmsg(LOGMSG_ERROR, "XXX: skipped client %d row skipped %d, offset =%d\n",
+                    conns->row_src, conns->skipped, conns->offset);
         /* skip it */
         goto wait_for_others;
+    } else {
+        logmsg(LOGMSG_ERROR, "XXX: returned source %d row\n",
+                conns->row_src);
     }
     conns->nrows++;
     return SQLITE_ROW;
@@ -924,12 +942,18 @@ void comdb2_handle_offset(Vdbe *v, Mem *m)
         }
         if (conns->skipped < conns->offset) {
             conns->skipped++;
+            if(verbose) 
+                logmsg(LOGMSG_ERROR, "XXX: skipped coordinator row skipped %d, offset =%d\n",
+                    conns->skipped, conns->offset);
             while (conns->skipped < conns->offset) {
                 /* try to see if we got a row */
                 rc = _get_a_parallel_row(conns, &row);
                 /* skip it */
                 if (rc == SQLITE_ROW) {
                     conns->skipped++;
+                    if(verbose) 
+                        logmsg(LOGMSG_ERROR, "XXX: skipped client %d row skipped %d, offset =%d\n",
+                                conns->row_src, conns->skipped, conns->offset);
                     m->u.i --;
                     if (m->u.i <= 0)
                         break;

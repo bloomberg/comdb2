@@ -51,7 +51,7 @@ char *generate_columns(sqlite3 *db, ExprList *c, const char **tbl)
     return cols;
 }
 
-char* sqlite_struct_to_string(Vdbe *v, Select *p)
+char* sqlite_struct_to_string(Vdbe *v, Select *p, Expr* extraRows)
 {
     char *cols = NULL;
     const char *tbl = NULL;
@@ -61,6 +61,7 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p)
     sqlite3 *db = v->db;
     char *limit = NULL;
     char *offset = NULL;
+    char *extra = NULL;
 
     if (p->recording) return NULL; /* no selectv */
     if (p->pWith) return NULL; /* no CTE */
@@ -69,10 +70,6 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p)
     if (p->pGroupBy) return NULL; /* no group by */
     if (p->pSrc->nSrc>1) return NULL; /* no joins */
     if (p->pPrior &&  p->op != TK_ALL) return NULL; /* only union all */
-
-    if (p->pPrior) {
-        selectPrior = sqlite_struct_to_string(v, p->pPrior);
-    }
 
     if (p->pWhere) {
         where = sqlite3ExprDescribe(v, p->pWhere);
@@ -85,7 +82,12 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p)
         return NULL;
     }
 
-    if (p->pLimit) {
+    if (!p->pLimit) {
+        select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s",
+                (selectPrior)?selectPrior:"", (selectPrior)?" uNioN aLL ":"",
+                cols, tbl,
+                (where)?" WHeRe ":"", (where)?where:"");
+    } else {
         limit = sqlite3ExprDescribe(v, p->pLimit);
         if (!limit) {
             sqlite3DbFree(db, where);
@@ -100,17 +102,34 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p)
                 sqlite3DbFree(db, cols);
                 return NULL;
             }
+            select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s LiMit %s oFFSeT %s",
+                    (selectPrior)?selectPrior:"", (selectPrior)?" uNioN aLL ":"",
+                    cols, tbl,
+                    (where)?" WHeRe ":"", (where)?where:"", limit, offset);
+        } else if (!extraRows) {
+            select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s LiMit %s", 
+                    (selectPrior)?selectPrior:"", (selectPrior)?" uNioN aLL ":"",
+                    cols, tbl,
+                    (where)?" WHeRe ":"", (where)?where:"", limit);
+        } else {
+            extra = sqlite3ExprDescribe(v, extraRows);
+            if (!extra) {
+                sqlite3DbFree(db, limit);
+                sqlite3DbFree(db, where);
+                sqlite3DbFree(db, cols);
+                return NULL;
+            }
+            select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s LiMit (CaSe wHeN (%s)<0 THeN %s eLSe ((%s) + (%s)) eND)",
+                    (selectPrior)?selectPrior:"", (selectPrior)?" uNioN aLL ":"",
+                    cols, tbl,
+                    (where)?" WHeRe ":"", (where)?where:"",
+                    limit, limit, limit, extra);
         }
     }
 
-    select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s%s%s%s%s",
-            (selectPrior)?selectPrior:"", (selectPrior)?" uNioN aLL ":"",
-            cols, tbl,
-            (where)?" WHeRe ":"", (where)?where:"",
-            (limit)?" LiMiT ":"", (limit)?limit:"",
-            (offset)?" oFFSeT ":"", (offset)?offset:"");
-
     sqlite3DbFree(db, cols);
+    if (extra) sqlite3DbFree(db, extra);
+    if (offset) sqlite3DbFree(db, offset);
     if (limit) sqlite3DbFree(db, limit);
     if (where) sqlite3DbFree(db, where);
     if (selectPrior) sqlite3DbFree(db, where);
@@ -156,7 +175,7 @@ void ast_destroy(ast_t **ast)
     *ast = NULL;
 }
 
-static dohsql_node_t* gen_oneselect(Vdbe *v, Select *p)
+static dohsql_node_t* gen_oneselect(Vdbe *v, Select *p, Expr *extraRows)
 {
     dohsql_node_t *node;
     Select *prior = p->pPrior;
@@ -171,7 +190,7 @@ static dohsql_node_t* gen_oneselect(Vdbe *v, Select *p)
 
     node->type = AST_TYPE_SELECT;
     p->pPrior = p->pNext = NULL;
-    node->sql = sqlite_struct_to_string(v, p);
+    node->sql = sqlite_struct_to_string(v, p, extraRows);
     p->pPrior = prior;
     p->pNext = next;
 
@@ -239,7 +258,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
 
     /* generate queries */
     while(crt) {
-        *psub = gen_oneselect(v, crt);
+        *psub = gen_oneselect(v, crt, (pOffset!=p->pOffset)?pOffset:NULL);
         crt->pLimit = NULL;
         crt->pOffset = NULL;
 
@@ -290,7 +309,7 @@ static dohsql_node_t* gen_select(Vdbe* v, Select *p)
     }
 
     if (p->op == TK_SELECT)
-        return gen_oneselect(v, p);
+        return gen_oneselect(v, p, NULL);
 
     return gen_union(v, p, span);  
 }
