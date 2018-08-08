@@ -6042,10 +6042,10 @@ next_tail:
 #endif
     goto jump_to_p2_and_check_for_interrupt;
   }
+  if( rc!=SQLITE_DONE ) goto abort_due_to_error;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   setCookCol(pC, 0);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  if( rc!=SQLITE_DONE ) goto abort_due_to_error;
   rc = SQLITE_OK;
   pC->nullRow = 1;
   goto check_for_interrupt;

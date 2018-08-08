@@ -189,17 +189,21 @@ static inline uint32_t crc32c_8s(const uint8_t *buf, uint32_t sz, uint32_t crc)
  */
 static uint32_t crc32c_sse(const uint8_t *buf, uint32_t sz, uint32_t crc)
 {
-	crc = crc32c_until_aligned(&buf, &sz, crc);
-	uint32_t i = sz % 1024;
-	if (i) {
-		sz -= i;
-		crc = crc32c_8s(buf, i, crc);
-		buf += i;
-		i = 0;
-	}
-	while (i < sz) {
-		crc = crc32c_1024_sse_int(&buf[i], crc);
-		i += 1024;
+	if (sz >= 1024) {
+		crc = crc32c_until_aligned(&buf, &sz, crc);
+		uint32_t i = sz % 1024;
+		if (i) {
+			sz -= i;
+			crc = crc32c_8s(buf, i, crc);
+			buf += i;
+			i = 0;
+		}
+		while (i < sz) {
+			crc = crc32c_1024_sse_int(&buf[i], crc);
+			i += 1024;
+		}
+	} else {
+		crc = crc32c_8s(buf, 0, crc);
 	}
 	return crc;
 }

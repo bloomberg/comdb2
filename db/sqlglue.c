@@ -10037,7 +10037,7 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
         pCur->nCookFields = 0;    /* Don't do ondisk -> sqlite */
         pCur->is_btree_count = 1; /* Don't do ondisk -> sqlite */
         rc = pCur->cursor_move(pCur, &res, CFIRST);
-        while (res == 0 && rc == 0) {
+        while (rc == 0 && res == 0) {
             if (!gbl_selectv_rangechk) {
                 if (pCur->is_recording &&
                     thd->clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
