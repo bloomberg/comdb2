@@ -48,7 +48,7 @@ static cdb2_hndl_tp* repl_db;
 static DB_Connection* curr_cnct;
 static char* repl_db_name;
 
-static int do_repl;
+static volatile int do_repl;
 
 int gbl_deferred_phys_flag = 0;
 
@@ -98,11 +98,8 @@ void cleanup_hosts()
     cdb2_close(repl_db);
 }
 
-const int start_replication()
+int start_replication()
 {
-    /* initialize a random seed for db connections */
-    srand(time(NULL));
-
     if (running)
     {
         logmsg(LOGMSG_ERROR, "Please call stop_replication before "
@@ -110,10 +107,13 @@ const int start_replication()
         return 1;
     }
 
+    /* initialize a random seed for db connections */
+    srand(time(NULL));
+
     if (pthread_create(&sync_thread, NULL, keep_in_sync, NULL))
     {
         logmsg(LOGMSG_ERROR, "Couldn't create thread to sync\n");
-        return 1;
+        return -1;
     }
 
     running = 1;
@@ -225,16 +225,18 @@ static void* keep_in_sync(void* args)
     return NULL;
 }
 
-void stop_replication()
+int stop_replication()
 {
     do_repl = 0;
 
     if (pthread_join(sync_thread, NULL)) 
     {
         logmsg(LOGMSG_ERROR, "sync thread didn't join back :(\n");
+        return 1;
     }
 
     running = 0;
+    return 0;
 }
 
 /* stored procedure functions */
