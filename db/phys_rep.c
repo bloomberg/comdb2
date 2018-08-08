@@ -40,6 +40,7 @@ static DB_Connection* get_rand_connect();
 static void* keep_in_sync(void* args);
 
 static pthread_t sync_thread;
+static volatile sig_atomic_t running;
 /* internal implementation */
 
 /* for replication */
@@ -101,12 +102,20 @@ const int start_replication()
     /* initialize a random seed for db connections */
     srand(time(NULL));
 
+    if (running)
+    {
+        logmsg(LOGMSG_ERROR, "Please call stop_replication before "
+                "starting a new thread!\n");
+        return 1;
+    }
+
     if (pthread_create(&sync_thread, NULL, keep_in_sync, NULL))
     {
         logmsg(LOGMSG_ERROR, "Couldn't create thread to sync\n");
         return 1;
     }
 
+    running = 1;
     return 0;
 }
 
@@ -215,7 +224,7 @@ static void* keep_in_sync(void* args)
     return NULL;
 }
 
-void stop_sync()
+void stop_replication()
 {
     do_repl = 0;
 
@@ -224,6 +233,7 @@ void stop_sync()
         logmsg(LOGMSG_ERROR, "sync thread didn't join back :(\n");
     }
 
+    running = 0;
 }
 
 /* stored procedure functions */

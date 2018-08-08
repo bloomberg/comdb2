@@ -1273,6 +1273,21 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
 
         start_replication(); 
 
+    } else if (tokcmp(tok, ltok, "replicate_wait") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+
+        /* need to replicate a database */
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Must specify # of seconds to wait for timestamp\n");
+            return -1;
+        }
+        
+        char* wait = tokdup(tok, ltok);
+        gbl_deferred_phys_update = atol(wait);
+        logmsg(LOGMSG_USER, "Waiting for %u seconds for replication\n",
+                gbl_deferred_phys_update);
+        free(wait);
+
     } else {
         // see if any plugins know how to handle this
         struct lrl_handler *h;
