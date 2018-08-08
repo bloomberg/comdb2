@@ -1280,6 +1280,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             logmsg(LOGMSG_ERROR, "Must specify # of seconds to wait for timestamp\n");
             return -1;
         }
+        gbl_deferred_phys_flag = 1;
         
         char* wait = tokdup(tok, ltok);
         gbl_deferred_phys_update = atol(wait);

@@ -50,6 +50,7 @@ static char* repl_db_name;
 
 static int do_repl;
 
+int gbl_deferred_phys_flag = 0;
 
 /* externs here */
 extern struct dbenv* thedb;
@@ -269,11 +270,13 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     unsigned int gen;
     char* lsn, *token;
     int64_t rectype; 
+    int64_t* timestamp;
     int rc; 
     unsigned int file, offset;
 
     lsn = (char *) cdb2_column_value(repl_db, 0);
     rectype = *(int64_t *) cdb2_column_value(repl_db, 1);
+    timestamp = (int64_t *) cdb2_column_value(repl_db, 3);
     blob = cdb2_column_value(repl_db, 4);
     blob_len = cdb2_column_size(repl_db, 4);
 
@@ -293,6 +296,25 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
                 get_next_offset(thedb->bdb_env->dbenv, prev_info), 
                 REP_NEWFILE, NULL, 0); 
     }
+
+    /* sleep while not ready to apply this log */
+    if (gbl_deferred_phys_flag && timestamp)
+    {
+        time_t curr_time = time(NULL);
+        if (*timestamp + gbl_deferred_phys_update > curr_time)
+        {
+            struct timespec wait_spec;
+            struct timespec remain_spec;
+            wait_spec.tv_sec = (*timestamp + gbl_deferred_phys_update) - curr_time;
+            wait_spec.tv_nsec = 0;
+
+            logmsg(LOGMSG_WARN, "Deferring log update for %ld seconds\n", 
+                    wait_spec.tv_sec);
+
+            nanosleep(&wait_spec, &remain_spec);
+        }
+    }
+    
     rc = apply_log(thedb->bdb_env->dbenv, file, offset, 
             REP_LOG, blob, blob_len); 
 
