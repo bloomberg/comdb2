@@ -981,7 +981,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 
     pthread_mutex_lock(&lock);
     if (iq == NULL) {
-        iq = (struct ireq *)pool_getablk(p_reqs);
+        iq = (struct ireq *)pool_getzblk(p_reqs);
 #if 0
         fprintf(stderr, "%s:%d: THD=%d getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
@@ -1221,7 +1221,7 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
 
     LOCK(&lock)
     {
-        iq = (struct ireq *)pool_getablk(p_reqs);
+        iq = (struct ireq *)pool_getzblk(p_reqs);
 #if 0
         fprintf(stderr, "%s:%d: THD=%d getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
