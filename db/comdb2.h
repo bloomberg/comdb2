@@ -1356,6 +1356,7 @@ struct ireq {
     int osql_flags;
     int priority;
     int sqlhistory_len;
+    int tranddl;
 
     /* Client endian flags. */
     uint8_t client_endian;
@@ -1374,7 +1375,6 @@ struct ireq {
 
     bool sc_locked : 1;
     bool have_snap_info : 1;
-    bool tranddl : 1;
     bool sc_should_abort : 1;
 
     int written_row_count;

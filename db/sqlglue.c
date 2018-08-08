@@ -11950,3 +11950,38 @@ uint16_t stmt_num_tbls(sqlite3_stmt *stmt)
     Vdbe *v = (Vdbe *)stmt;
     return v->numTables;
 }
+
+int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->clnt;
+    struct clnt_ddl_context *clnt_ddl_ctx = NULL;
+
+    if (!clnt->ddl_contexts)
+        return 1;
+
+    clnt_ddl_ctx = calloc(1, sizeof(struct clnt_ddl_context));
+    if (clnt_ddl_ctx == NULL) {
+        logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__, __LINE__);
+        return -1;
+    }
+    clnt_ddl_ctx->name = name;
+    clnt_ddl_ctx->ctx = ctx;
+    clnt_ddl_ctx->mem = mem;
+    hash_add(clnt->ddl_contexts, clnt_ddl_ctx);
+    return 0;
+}
+
+void *comdb2_get_ddl_context(char *name)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->clnt;
+    struct clnt_ddl_context *clnt_ddl_ctx = NULL;
+    void *ctx = NULL;
+    if (clnt->ddl_contexts) {
+        clnt_ddl_ctx = hash_find_readonly(clnt->ddl_contexts, &name);
+        if (clnt_ddl_ctx)
+            ctx = clnt_ddl_ctx->ctx;
+    }
+    return ctx;
+}

@@ -949,6 +949,9 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             assert(clnt->ddl_tables == NULL && clnt->dml_tables == NULL);
             clnt->ddl_tables = hash_init_strcase(0);
             clnt->dml_tables = hash_init_strcase(0);
+            clnt->ddl_contexts = hash_init_user(
+                (hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
+                offsetof(struct clnt_ddl_context, name), 0);
 
             upd_snapshot(clnt);
             snapshot_as_of(clnt);
@@ -1108,16 +1111,24 @@ inline int replicant_can_retry(struct sqlclntstate *clnt)
            clnt->verifyretry_off == 0;
 }
 
+static int free_clnt_ddl_context(void *obj, void *arg)
+{
+    struct clnt_ddl_context *ctx = obj;
+    comdb2ma_destroy(ctx->mem);
+    free(ctx->ctx);
+    free(ctx);
+    return 0;
+}
 static int free_it(void *obj, void *arg)
 {
     free(obj);
     return 0;
 }
-static inline void destroy_hash(hash_t *h)
+static inline void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
 {
     if (!h)
         return;
-    hash_for(h, free_it, NULL);
+    hash_for(h, free_func, NULL);
     hash_clear(h);
     hash_free(h);
 }
@@ -1425,10 +1436,12 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         clnt->selectv_arr = NULL;
     }
 
-    destroy_hash(clnt->ddl_tables);
-    destroy_hash(clnt->dml_tables);
+    destroy_hash(clnt->ddl_tables, free_it);
+    destroy_hash(clnt->dml_tables, free_it);
     clnt->ddl_tables = NULL;
     clnt->dml_tables = NULL;
+    destroy_hash(clnt->ddl_contexts, free_clnt_ddl_context);
+    clnt->ddl_contexts = NULL;
 
     /* reset the state after send_done; we use ctrl_sqlengine to know
        if this is a user rollback or an sqlite engine error */
@@ -3989,10 +4002,12 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->idxInsert = clnt->idxDelete = NULL;
     }
 
-    destroy_hash(clnt->ddl_tables);
-    destroy_hash(clnt->dml_tables);
+    destroy_hash(clnt->ddl_tables, free_it);
+    destroy_hash(clnt->dml_tables, free_it);
     clnt->ddl_tables = NULL;
     clnt->dml_tables = NULL;
+    destroy_hash(clnt->ddl_contexts, free_clnt_ddl_context);
+    clnt->ddl_contexts = NULL;
 }
 
 void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)

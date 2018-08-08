@@ -1363,6 +1363,26 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
     }
 }
 
+/* return 1 if the table is only referenced by foreign key in the same table or
+ * it is not referenced at all, 0 otherwise
+ */
+int self_referenced_only(struct dbtable *db)
+{
+    int i, rc;
+    if (db->n_rev_constraints == 0)
+        return 1;
+
+    rc = 1;
+    for (i = 0; i < db->n_rev_constraints; i++) {
+        constraint_t *ct = db->rev_constraints[i];
+        if (strcasecmp(ct->lcltable->tablename, db->tablename)) {
+            rc = 0;
+            break;
+        }
+    }
+    return rc;
+}
+
 void change_schemas_recover(char *table)
 {
     struct dbtable *db = get_dbtable_by_name(table);

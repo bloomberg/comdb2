@@ -235,7 +235,7 @@ keys
 	}
 ')
 (type='index', name='$COMDB2_PK_FA6CEBB6', tbl_name='t3', rootpage=9, sql='create index "$COMDB2_PK_FA6CEBB6" on "t3" ("i", "j");', csc2=NULL)
-[ALTER TABLE t1 DROP INDEX 'idx'] failed with rc 240 
+[ALTER TABLE t1 DROP INDEX 'idx'] failed with rc 240 constraint error for table "t2" key "IDX" -> <"t1":"IDX">: foreign key not found
 (tablename='t1')
 (tablename='t2')
 (tablename='t3')

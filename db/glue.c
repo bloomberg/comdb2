@@ -262,6 +262,7 @@ void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
 
     /* Make it fake */
     iq->dbenv = dbenv;
+    iq->use_handle = dbenv->bdb_env;
     iq->is_fake = 1;
     iq->helper_thread = -1;
 }
