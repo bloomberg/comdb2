@@ -2473,7 +2473,6 @@ struct __db_env {
 	/* Stable LSN: must be acked by majority of cluster. */
 	DB_LSN durable_lsn;
 	uint32_t durable_generation;
-	pthread_mutex_t durable_lsn_lk;
 
 	void (*set_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t));
 	void (*get_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t *));

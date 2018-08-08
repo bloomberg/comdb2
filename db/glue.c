@@ -304,15 +304,10 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
                 tran_type * *outtran, int force_commit);
             rc = get_physical_transaction(bdb_handle, *out_trans,
                                           &physical_tran, 0);
-            if (rc == BDBERR_READONLY) {
+            if (rc) {
                 trans_abort_logical(iq, *out_trans, NULL, 0, NULL, 0);
                 *out_trans = NULL;
                 bdberr = rc;
-            }
-            if (rc) {
-                logmsg(LOGMSG_FATAL, "%s :failed to get physical_tran\n",
-                       __func__);
-                abort();
             }
         }
     }
@@ -4001,59 +3996,61 @@ int open_bdb_env(struct dbenv *dbenv)
 
         /* callbacks for schema changes */
         if (net_register_handler(dbenv->handle_sibling, NET_QUIESCE_THREADS,
-                                 net_quiesce_threads))
+                                 "quiesce_threads", net_quiesce_threads))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_RESUME_THREADS,
-                                 net_resume_threads))
+                                 "resume_threads", net_resume_threads))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_NEW_QUEUE,
-                                 net_new_queue))
+                                 "new_queue", net_new_queue))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_ADD_CONSUMER,
-                                 net_add_consumer))
+                                 "add_consumer", net_add_consumer))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_JAVASP_OP,
-                                 net_javasp_op))
+                                 "javasp_op", net_javasp_op))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_PREFAULT_OPS,
-                                 net_prefault_ops))
+                                 "prefault_ops", net_prefault_ops))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_PREFAULT2_OPS,
-                                 net_prefault2_ops))
+                                 "prefault2_ops", net_prefault2_ops))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_CLOSE_ALL_DBS,
-                                 net_close_all_dbs))
+                                 "close_all_dbs", net_close_all_dbs))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_MORESTRIPE_OPEN_DBS,
+                                 "morestripe_and_open_all_dbs",
                                  net_morestripe_and_open_all_dbs))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_CHECK_SC_OK,
-                                 net_check_sc_ok))
+                                 "check_sc_ok", net_check_sc_ok))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_START_SC,
-                                 net_start_sc))
+                                 "start_sc", net_start_sc))
             return -1;
-        if (net_register_handler(dbenv->handle_sibling, NET_STOP_SC,
+        if (net_register_handler(dbenv->handle_sibling, NET_STOP_SC, "stop_sc",
                                  net_stop_sc))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_FLUSH_ALL,
-                                 net_flush_all))
+                                 "flush_all", net_flush_all))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_FORGETMENOT,
-                                 net_forgetmenot))
+                                 "forgetmenot", net_forgetmenot))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_TRIGGER_REGISTER,
-                                 net_trigger_register))
+                                 "trigger_register", net_trigger_register))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_TRIGGER_UNREGISTER,
-                                 net_trigger_unregister))
+                                 "trigger_unregister", net_trigger_unregister))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_TRIGGER_START,
-                                 net_trigger_start))
+                                 "trigger_start", net_trigger_start))
             return -1;
         /* Authentication Check */
-        if (net_register_handler(dbenv->handle_sibling, NET_AUTHENTICATION_CHECK,
-                                 net_authentication_check))
+        if (net_register_handler(
+                dbenv->handle_sibling, NET_AUTHENTICATION_CHECK,
+                "authentication_check", net_authentication_check))
             return -1;
         if (net_register_allow(dbenv->handle_sibling, net_allow_node))
             return -1;

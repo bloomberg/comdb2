@@ -2121,8 +2121,9 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
             *parent_trans = NULL;
     }
     if (irc != 0) {
-        logmsg(LOGMSG_FATAL, "trans_start failed rc %d\n", irc);
-        comdb2_die(0);
+        logmsg(LOGMSG_ERROR, "%s:%d trans_start failed rc %d\n", __func__,
+               __LINE__, irc);
+        return irc;
     }
 
     if (iq->debug && iq->usedb) {
@@ -2490,12 +2491,14 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent)
         unlock_schema_lk();
         iq->sc_locked = 0;
     }
-    rc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_mynode, 0, 1, NULL,
-                              0, NULL, 0);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
-               __LINE__, rc);
-        comdb2_die(1);
+    if (iq->sc_logical_tran) {
+        rc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_mynode, 0, 1,
+                                  NULL, 0, NULL, 0);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
+                   __LINE__, rc);
+            comdb2_die(1);
+        }
     }
     iq->sc_logical_tran = NULL;
 }
@@ -2838,8 +2841,11 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     }
 
     if (irc != 0) {
-        logmsg(LOGMSG_FATAL, "trans_start failed rc %d\n", irc);
-        comdb2_die(0);
+        logmsg(LOGMSG_ERROR, "%s:%d trans_start failed rc %d\n", __func__,
+               __LINE__, irc);
+        numerrs = 1;
+        rc = irc;
+        BACKOUT;
     }
 
     if (iq->debug) {
@@ -5184,8 +5190,17 @@ backout:
 
                 iq->priority = priority;
             }
-        } else
+        } else {
             assert(trans == NULL);
+            if (iq->tranddl) {
+                bdb_get_readlock(thedb->bdb_env, "sc_downgrade", __func__,
+                                 __LINE__);
+                if (thedb->master != gbl_mynode) {
+                    backout_schema_changes(iq, NULL);
+                }
+                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+            }
+        }
 
         if (rc == ERR_UNCOMMITABLE_TXN /*&& is_block2sqlmode_blocksql*/) {
             logmsg(

@@ -2409,100 +2409,105 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     /* register the routine that will delivered data from the
        network to berkeley db */
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_BERKDB_REP,
-                         berkdb_receive_rtn);
+                         "berkdb_replication", berkdb_receive_rtn);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_BERKDB_NEWSEQ,
-                         berkdb_receive_rtn);
+                         "berkdb_newseq", berkdb_receive_rtn);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_COMMITDELAYMORE,
-                         berkdb_receive_rtn);
+                         "commitdelaymore", berkdb_receive_rtn);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_COMMITDELAYNONE,
-                         berkdb_receive_rtn);
+                         "commitdelaynone", berkdb_receive_rtn);
 
     net_register_handler(bdb_state->repinfo->netinfo,
-                         USER_TYPE_MASTERCMPCONTEXTLIST, berkdb_receive_rtn);
+                         USER_TYPE_MASTERCMPCONTEXTLIST, "mastercmpcontextlist",
+                         berkdb_receive_rtn);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_GBLCONTEXT,
-                         berkdb_receive_rtn);
+                         "globalcontext", berkdb_receive_rtn);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_BERKDB_FILENUM,
-                         berkdb_receive_rtn);
+                         "berkdbfilenum", berkdb_receive_rtn);
 
-    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_TEST,
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_TEST, "test",
                          berkdb_receive_test);
 
-    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ADD,
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ADD, "add",
                          berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ADD_NAME,
-                         berkdb_receive_msg);
+                         "add_name", berkdb_receive_msg);
 
-    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DEL,
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DEL, "del",
                          berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DEL_NAME,
-                         berkdb_receive_msg);
+                         "del_name", berkdb_receive_msg);
 
-    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DECOM,
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DECOM, "decom",
                          berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DECOM_NAME,
-                         berkdb_receive_msg);
+                         "decom_name", berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ADD_DUMMY,
-                         berkdb_receive_msg);
+                         "add_dummy", berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_LSNCMP,
-                         berkdb_receive_msg);
+                         "lsncmp", berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_TRANSFERMASTER,
-                         berkdb_receive_msg);
+                         "transfermaster", berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo,
-                         USER_TYPE_TRANSFERMASTER_NAME, berkdb_receive_msg);
+                         USER_TYPE_TRANSFERMASTER_NAME, "tranfermaster_name",
+                         berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_REPTRC,
-                         berkdb_receive_msg);
+                         "reptrc", berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo,
-                         USER_TYPE_DOWNGRADEANDLOSE, berkdb_receive_msg);
+                         USER_TYPE_DOWNGRADEANDLOSE, "downgradeandlose",
+                         berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_INPROCMSG,
-                         berkdb_receive_msg);
+                         "inprocmsg", berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_GETCONTEXT,
-                         berkdb_receive_rtn);
+                         "getcontext", berkdb_receive_rtn);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_HEREISCONTEXT,
-                         berkdb_receive_rtn);
+                         "hereiscontext", berkdb_receive_rtn);
 
     net_register_handler(bdb_state->repinfo->netinfo,
-                         USER_TYPE_YOUARENOTCOHERENT, berkdb_receive_msg);
+                         USER_TYPE_YOUARENOTCOHERENT, "youarenotcoherent",
+                         berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_YOUARECOHERENT,
-                         berkdb_receive_msg);
+                         "youarecoherent", berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_TCP_TIMESTAMP,
-                         berkdb_receive_msg);
+                         "tcp_timestamp", berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo,
-                         USER_TYPE_TCP_TIMESTAMP_ACK, berkdb_receive_msg);
+                         USER_TYPE_TCP_TIMESTAMP_ACK, "tcp_timestamp_ack",
+                         berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_PING_TIMESTAMP,
-                         berkdb_receive_msg);
+                         "ping_timestamp", berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ANALYZED_TBL,
-                         berkdb_receive_msg);
+                         "analyzed_tbl", berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_COHERENCY_LEASE,
-                         receive_coherency_lease);
+                         "coherency_lease", receive_coherency_lease);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_REQ_START_LSN,
-                         receive_start_lsn_request);
+                         "req_start_lsn", receive_start_lsn_request);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_PAGE_COMPACT,
-                         berkdb_receive_msg);
+                         "page_compact", berkdb_receive_msg);
 
     /* register our net library appsock wedge.  this lets us return
        the usr ptr containing the bdb state to the caller instead

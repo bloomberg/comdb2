@@ -4405,7 +4405,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         p_buf_end = ((uint8_t *)dta + dtalen);
         buf_get(&node, sizeof(int), p_buf, p_buf_end);
 
-        print(bdb_state, "removing node %d from sanctioned list\n", node);
+        print(bdb_state, "not removing node %d from sanctioned list\n", node);
         // net_del_from_sanctioned(bdb_state->repinfo->netinfo, node);
         net_ack_message(ack_handle, 0);
         break;

@@ -21,4 +21,7 @@
 #define PARM_LSN(l) l.file, l.offset
 #define PARM_LSNP(l) l->file, l->offset
 
+#define PR_TM "%04d-%02d-%02dT%02d:%02d:%02d"
+#define PARM_TMP(t) t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec
+
 #endif

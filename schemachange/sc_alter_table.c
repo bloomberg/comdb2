@@ -534,6 +534,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
     db->sc_abort = 0;
+    db->sc_downgrading = 0;
     pthread_rwlock_unlock(&sc_live_rwlock);
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race && !stopsc) {
@@ -541,21 +542,16 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                    __func__, __LINE__);
             sleep(5);
         }
-        ATOMIC_ADD(gbl_sc_resume_start, -1);
+        if (gbl_sc_resume_start > 0)
+            ATOMIC_ADD(gbl_sc_resume_start, -1);
     }
     MEMORY_SYNC;
 
-    /* give a chance for sc to stop */
-    if (stopsc) {
-        sc_errf(s, "master downgrading\n");
-        change_schemas_recover(s->table);
-        return SC_MASTER_DOWNGRADE;
-    }
     reset_sc_stat();
     rc = wait_to_resume(s);
-    if (rc) {
-        change_schemas_recover(s->table);
-        return rc;
+    if (rc || stopsc) {
+        sc_errf(s, "master downgrading\n");
+        return SC_MASTER_DOWNGRADE;
     }
 
     /* skip converting records for fastinit and planned schema change

@@ -2005,7 +2005,8 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
     struct sql_state rec_lcl = {0};
     struct sql_state *rec_ptr = rec ? rec : &rec_lcl;
     rec_ptr->sql = sql;
-    sp->rc = get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, sp->initial);
+    sp->rc = sp->initial ? get_prepared_stmt(sp->thd, sp->clnt, rec_ptr, &err)
+                         : get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err);
     sp->initial = 0;
     if (sp->rc == 0) {
         *stmt = rec_ptr->stmt;

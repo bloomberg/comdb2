@@ -934,25 +934,28 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
 
 
 /* this is called twice so putting here to avoid mess */
-#define LIVE_SC_DELAYED_KEY_ADDS(LAST) do {                                  \
-        /* its ok to fail adding to newbtree indices -- SC will abort */     \
-        int lrc = live_sc_delayed_key_adds(                                  \
-            iq, trans, genid, od_dta, ins_keys, ondisk_size);                \
-        if (lrc == RC_INTERNAL_RETRY) {                                      \
-            logmsg(LOGMSG_ERROR, "%s: deadlock add2idx genid 0x%llx\n", __func__, \
-                    genid);                                                  \
-            /* if we failed to add due to deadlock, need to redo */          \
-            *errout = OP_FAILED_INTERNAL;                                    \
-            if (!LAST)                                                       \
-                close_constraint_table_cursor(cur);                          \
-            return lrc;                                                      \
-        }                                                                    \
-        else if (lrc)                                                        \
-            logmsg(LOGMSG_USER, "%s:%d: ERROR: failed add2idx rc %d genid 0x%llx\n",     \
-                    __func__, __LINE__, lrc, genid);                         \
-    } while(0); 
-
-
+#define LIVE_SC_DELAYED_KEY_ADDS(LAST)                                         \
+    do {                                                                       \
+        /* its ok to fail adding to newbtree indices -- SC will abort */       \
+        int lrc = live_sc_delayed_key_adds(iq, trans, genid, od_dta, ins_keys, \
+                                           ondisk_size);                       \
+        if (lrc == RC_INTERNAL_RETRY) {                                        \
+            logmsg(LOGMSG_ERROR, "%s: deadlock add2idx genid 0x%llx\n",        \
+                   __func__, genid);                                           \
+            /* if we failed to add due to deadlock, need to redo */            \
+            *errout = OP_FAILED_INTERNAL;                                      \
+            if (!LAST)                                                         \
+                close_constraint_table_cursor(cur);                            \
+            return lrc;                                                        \
+        } else if (lrc == ERR_NOMASTER) {                                      \
+            logmsg(LOGMSG_ERROR, "%s:%d: live sc downgrading\n", __func__,     \
+                   __LINE__);                                                  \
+            return ERR_NOMASTER;                                               \
+        } else if (lrc)                                                        \
+            logmsg(LOGMSG_USER,                                                \
+                   "%s:%d: ERROR: failed add2idx rc %d genid 0x%llx\n",        \
+                   __func__, __LINE__, lrc, genid);                            \
+    } while (0);
 
 int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                      int *blkpos, int *ixout, int *errout)
