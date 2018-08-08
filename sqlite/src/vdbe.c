@@ -366,6 +366,9 @@ static VdbeCursor *allocateCursor(
           &pMem->z[ROUND8(sizeof(VdbeCursor))+2*sizeof(u32)*nField];
       sqlite3BtreeCursorZero(pCx->uc.pCursor);
     }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    pCx->nCookFields = -1;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
   return pCx;
 }
@@ -4186,7 +4189,6 @@ case OP_OpenWrite:
   pCur->wrFlag = wrFlag;
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  pCur->nCookFields = -1;
   rc = sqlite3BtreeCursor(p, pX, p2, wrFlag, pKeyInfo, pCur->uc.pCursor);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = sqlite3BtreeCursor(pX, p2, wrFlag, pKeyInfo, pCur->uc.pCursor);
