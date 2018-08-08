@@ -80,6 +80,7 @@ add_library(sqlite
   src/sqlite_tunables.c
   src/status.c
   src/table.c
+  src/threads.c
   src/tokenize.c
   src/treeview.c
   src/trigger.c
