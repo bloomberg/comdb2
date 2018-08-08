@@ -1999,6 +1999,8 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
             rdb = get_dbtable_by_name(ct->table[jj]);
             if (rdb)
                 rdb = get_newer_db(rdb, new_db);
+            else if (strcasecmp(ct->table[jj], from_db->tablename) == 0)
+                rdb = from_db;
             if (!rdb) {
                 /* Referencing a non-existent table */
                 constraint_err(s, from_db, ct, jj, "foreign table not found");
@@ -2063,6 +2065,9 @@ int populate_reverse_constraints(struct dbtable *db)
             struct schema *sckey = NULL;
             int rcidx = 0, dupadd = 0;
             cttbl = get_dbtable_by_name(cnstrt->table[jj]);
+            if (cttbl == NULL &&
+                strcasecmp(cnstrt->table[jj], db->tablename) == 0)
+                cttbl = db;
 
             if (cttbl == NULL) {
                 ++n_errors;

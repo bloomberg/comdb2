@@ -96,3 +96,27 @@ select name, csc2 from sqlite_master where name = "c"
 select name, csc2 from sqlite_master where name = "d"
 select name, csc2 from sqlite_master where name = "e"
 select name, csc2 from sqlite_master where name = "m"
+
+select "add self-referenced bad 1"
+create table s (i int key, j int key, constraint sfk foreign key (k) references s(i)) $$
+select "add self-referenced bad 2"
+create table s (i int key, j int key, constraint sfk foreign key (j) references s(k)) $$
+select "add self-referenced good"
+create table s (i int key, j int key, constraint sfk foreign key (j) references s(i)) $$
+select name, csc2 from sqlite_master where name = "s"
+select "truncate self-referenced"
+truncate s
+select name, csc2 from sqlite_master where name = "s"
+select "alter self-referenced drop constraints"
+alter table s drop foreign key sfk $$
+select name, csc2 from sqlite_master where name = "s"
+select "alter self-referenced bad 1"
+alter table s add constraint sfk foreign key (k) references s(i) $$
+select "alter self-referenced bad 2"
+alter table s add constraint sfk foreign key (j) references s(k) $$
+select "alter self-referenced good"
+alter table s add constraint sfk foreign key (j) references s(i) $$
+select name, csc2 from sqlite_master where name = "s"
+select "drop self-referenced table"
+drop table s
+select name, csc2 from sqlite_master where name = "s"

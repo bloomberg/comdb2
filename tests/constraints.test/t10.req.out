@@ -121,3 +121,12 @@
 [drop table e] rc 0
 [alter table m {schema{int i}}] rc 0
 [commit] rc 0
+[create table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"k" -> <"s" : "i">}}] failed with rc 240 constraint error for table "s" key "k" -> <"s":"i">: local key not found
+[create table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"j" -> <"s" : "k">}}] failed with rc 240 constraint error for table "s" key "j" -> <"s":"k">: foreign key not found
+[create table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"j" -> <"s" : "i">}}] rc 0
+[truncate s] rc 0
+[alter table s {schema{int i int j}}] rc 0
+[alter table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"k" -> <"s" : "i">}}] failed with rc 240 constraint error for table "s" key "k" -> <"s":"i">: local key not found
+[alter table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"j" -> <"s" : "k">}}] failed with rc 240 constraint error for table "s" key "j" -> <"s":"k">: foreign key not found
+[alter table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"j" -> <"s" : "i">}}] rc 0
+[drop table s] rc 0

@@ -130,3 +130,23 @@ drop table d
 drop table e
 alter table m {schema{int i}} $$
 commit
+
+# tests for self referenced schema
+# add self-referenced bad 1
+create table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"k" -> <"s" : "i">}} $$
+# add self-referenced bad 2
+create table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"j" -> <"s" : "k">}} $$
+# add self-referenced good
+create table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"j" -> <"s" : "i">}} $$
+# truncate self-referenced
+truncate s
+# alter self-referenced drop constraints
+alter table s {schema{int i int j}} $$
+# alter self-referenced bad 1
+alter table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"k" -> <"s" : "i">}} $$
+# alter self-referenced bad 2
+alter table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"j" -> <"s" : "k">}} $$
+# alter self-referenced good
+alter table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"j" -> <"s" : "i">}} $$
+# drop self-referenced table
+drop table s

@@ -48,7 +48,8 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
         return SC_TABLE_DOESNOT_EXIST;
     }
 
-    if ((!iq || iq->tranddl <= 1) && db->n_rev_constraints > 0) {
+    if ((!iq || iq->tranddl <= 1) && db->n_rev_constraints > 0 &&
+        !self_referenced_only(db)) {
         sc_errf(s, "Can't fastinit tables with foreign constraints\n");
         reqerrstr(iq, ERR_SC, "Can't fastinit tables with foreign constraints");
         return -1;
@@ -137,7 +138,7 @@ int finalize_fastinit_table(struct ireq *iq, struct schema_change_type *s,
 {
     int rc = 0;
     struct dbtable *db = s->db;
-    if (db->n_rev_constraints > 0) {
+    if (db->n_rev_constraints > 0 && !self_referenced_only(db)) {
         int i;
         struct schema_change_type *sc_pending;
         for (i = 0; i < db->n_rev_constraints; i++) {

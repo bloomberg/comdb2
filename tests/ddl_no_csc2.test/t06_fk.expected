@@ -234,3 +234,72 @@ keys
 		int i 
 	}
 ')
+("add self-referenced bad 1"='add self-referenced bad 1')
+[create table s (i int key, j int key, constraint sfk foreign key (k) references s(i))] failed with rc -3 Unknown column 'k'.
+("add self-referenced bad 2"='add self-referenced bad 2')
+[create table s (i int key, j int key, constraint sfk foreign key (j) references s(k))] failed with rc -3 A matching key for the FOREIGN KEY was not found in the parent (referenced) table 's'.
+("add self-referenced good"='add self-referenced good')
+(name='s', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		dup "$KEY_8884CA9B" = i 
+		dup "$KEY_118D9B21" = j 
+	}
+constraints
+	{
+		"sfk" = "$KEY_118D9B21" -> <"s":"$KEY_8884CA9B"> 
+	}
+')
+("truncate self-referenced"='truncate self-referenced')
+(name='s', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		dup "$KEY_8884CA9B" = i 
+		dup "$KEY_118D9B21" = j 
+	}
+constraints
+	{
+		"sfk" = "$KEY_118D9B21" -> <"s":"$KEY_8884CA9B"> 
+	}
+')
+("alter self-referenced drop constraints"='alter self-referenced drop constraints')
+(name='s', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		dup "$KEY_8884CA9B" = i 
+		dup "$KEY_118D9B21" = j 
+	}
+')
+("alter self-referenced bad 1"='alter self-referenced bad 1')
+[alter table s add constraint sfk foreign key (k) references s(i)] failed with rc -3 Unknown column 'k'.
+("alter self-referenced bad 2"='alter self-referenced bad 2')
+[alter table s add constraint sfk foreign key (j) references s(k)] failed with rc -3 A matching key for the FOREIGN KEY was not found in the parent (referenced) table 's'.
+("alter self-referenced good"='alter self-referenced good')
+(name='s', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		dup "$KEY_8884CA9B" = i 
+		dup "$KEY_118D9B21" = j 
+	}
+constraints
+	{
+		"sfk" = "$KEY_118D9B21" -> <"s":"$KEY_8884CA9B"> 
+	}
+')
+("drop self-referenced table"='drop self-referenced table')

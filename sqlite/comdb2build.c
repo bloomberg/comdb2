@@ -4269,6 +4269,9 @@ find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
     struct comdb2_index_column *key_col;
     int key_found = 0;
     clnt_ctx = comdb2_get_ddl_context(constraint->parent_table);
+    if (clnt_ctx == NULL &&
+        strcasecmp(ctx->schema->name, constraint->parent_table) == 0)
+        clnt_ctx = ctx;
     if (clnt_ctx == NULL)
         return 0;
 
