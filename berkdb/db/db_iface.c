@@ -624,7 +624,7 @@ int
 __db_cursor_real(dbp, txn, txn_clone, dbcp_old, lid_clone, dbcs, dbcp, flags,
     countmein)
 	DB *dbp;
-	DB_TXN *txn = 0;
+	DB_TXN *txn;
 	DB_TXN *txn_clone;
 	DBC *dbcp_old;
 	u_int32_t lid_clone;
