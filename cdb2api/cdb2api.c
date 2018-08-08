@@ -487,6 +487,8 @@ static int send_fd_to(int sockfd, const void *data, size_t nbytes,
     struct cmsghdr *cmsgptr;
 #endif
 
+    memset(&control_un, 0, sizeof(control_un));
+
     bytesleft = nbytes;
     cdata = data;
 

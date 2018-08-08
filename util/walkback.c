@@ -495,6 +495,7 @@ static int __linux_stack_walkback(ucontext_t *context, unsigned maxframes,
 
     if (context == 0) {
         context = &uc;
+        memset(context, 0, sizeof(ucontext_t));
         unw_getcontext(context);
     }
     memset(&cursor, 0, sizeof(unw_cursor_t));

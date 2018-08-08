@@ -1249,6 +1249,8 @@ static const uint8_t *snap_uid_get(snap_uid_t *snap_info, const uint8_t *p_buf,
     if (p_buf_end < p_buf || SNAP_UID_LENGTH > (p_buf_end - p_buf))
         return NULL;
 
+    snap_info->unused = 0;
+
     p_buf = buf_no_net_get(snap_info->uuid, sizeof(snap_info->uuid), p_buf,
                            p_buf_end);
     p_buf = buf_get(&(snap_info->rqtype), sizeof(snap_info->rqtype), p_buf,
