@@ -71,13 +71,6 @@ echo Flushing...
 sleep 20
 cdb2sql $CDB2_OPTIONS $dbnm $HOST $master 'exec procedure sys.cmd.send("flush")'
 
-###### Push forward LSN just a little bit ######
-# In order to reproduce the bug with R7, it is necessary to push the LSN a bit forward,
-# and get a new checkpoint afterwards. Reason is that R7 looks at last_ckp of the latest
-# checkpoint to determine recovery start, whereas R6 looks at ckp_lsn instead.
-cdb2sql $CDB2_OPTIONS $dbnm $DEFAULT "INSERT INTO t VALUES ('1')" >/dev/null
-cdb2sql $CDB2_OPTIONS $dbnm $HOST $master 'exec procedure sys.cmd.send("flush")'
-
 ###### Get a list of log files that can be safely deleted. ######
 echo Sleep 10 seconds to process replication messages.
 sleep 10
