@@ -6589,7 +6589,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             if (!gbl_disable_cnonce_blkseq)
                 assert(iq->have_snap_info == 1); // was assigned in fast pass
             snap_uid_t snap_info;
-            memset(&snap_info, 0, sizeof(snap_uid_t));
             p_buf_end = (const uint8_t *)msg + msglen;
             p_buf = snap_uid_get(&snap_info, p_buf, p_buf_end);
 

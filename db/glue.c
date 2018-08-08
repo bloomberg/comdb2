@@ -255,6 +255,7 @@ void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
     iq->debug_buf[0] = '\0';
     iq->tzname[0] = '\0';
     iq->sqlhistory[0] = '\0';
+    bzero(&iq->snap_info, sizeof(snap_uid_t));
 
     /* region 3 */
     const size_t len3 = sizeof(*iq) - offsetof(struct ireq, region3);

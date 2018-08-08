@@ -1313,9 +1313,11 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	   This way we are able to save memory and reduce allocation calls. */
 	if ((ret = __os_malloc(dbenv, ar_cnt * sizeof(BH *), &bhparray)) != 0)
 		goto err;
+	memset(bhparray, 0, ar_cnt * sizeof(BH *));
 	if ((ret = __os_malloc(dbenv,
 	                       ar_cnt * sizeof(DB_MPOOL_HASH *), &hparray)) != 0)
 		goto err;
+	memset(hparray, 0, ar_cnt * sizeof(DB_MPOOL_HASH *));
 
 	/*
 	 * If writing in LRU, do so. Otherwise, write the buffers in
