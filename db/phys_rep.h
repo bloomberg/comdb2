@@ -10,9 +10,9 @@ int set_repl_db_name(char* host_db);
 int add_replicant_host(char *hostname);
 int remove_replicant_host(char *hostname);
 void cleanup_hosts();
-const int start_replication();
+int start_replication();
 
-void stop_replication();
+int stop_replication();
 
 /* expose as a hook for apply_log */
 int apply_log_procedure(unsigned int file, unsigned int offset,

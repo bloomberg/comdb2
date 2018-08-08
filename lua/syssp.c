@@ -408,6 +408,42 @@ static int db_send(Lua L) {
     return 1;
 }
 
+static int db_comdb_start_replication(Lua L)
+{
+    int rc;
+
+    if (!gbl_is_physical_replicant)
+    {
+        return luaL_error(L, "Database is not a physical replicant, cannot replicate");
+    }
+
+    if ((rc = start_replication()) != 0)
+    {
+        if (rc > 0)
+        {
+            return luaL_error(L, "DB is already replicating");
+        }
+        return luaL_error(L, "Couldn't start replicating");
+    }
+
+    return 1;
+}
+
+static int db_comdb_stop_replication(Lua L)
+{
+    if (!gbl_is_physical_replicant)
+    {
+        return luaL_error(L, "Database is not a physical replicant, cannot replicate");
+    }
+
+    if (stop_replication() != 0)
+    {
+        return luaL_error(L, "Something went horribly wrong. Replicating thread wouldn't stop");
+    }
+
+    return 1;
+}
+
 static const luaL_Reg sys_funcs[] = {
     { "cluster", db_cluster },
     { "comdbg_tables", db_comdbg_tables },
@@ -418,6 +454,8 @@ static const luaL_Reg sys_funcs[] = {
     { "truncate_log", db_comdb_truncate_log },
     { "truncate_time", db_comdb_truncate_time },
     { "apply_log", db_comdb_apply_log },
+    { "start_replication", db_comdb_start_replication },
+    { "stop_replication", db_comdb_stop_replication },
     { NULL, NULL }
 }; 
 
@@ -540,6 +578,19 @@ static struct sp_source syssps[] = {
         "sys.cmd.apply_log",
         "local function main(lsn, blob, newfile)\n"
         "sys.apply_log(lsn, blob, newfile)\n"
+        "end\n"
+    }
+    /* starts and stop replication*/
+    ,{
+        "sys.cmd.start_replication",
+        "local function main()\n"
+        "sys.start_replication()\n"
+        "end\n"
+    }
+    ,{
+        "sys.cmd.stop_replication",
+        "local function main()\n"
+        "sys.stop_replication()\n"
         "end\n"
     }
 };
