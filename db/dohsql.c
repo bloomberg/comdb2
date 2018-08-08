@@ -431,7 +431,7 @@ static int dohsql_dist_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     }
 
 
-    if (conns->limitMem>0 && conns->nrows >= conns->limit) {
+    if (conns->limitMem>0 && conns->limit>=0 && conns->nrows >= conns->limit) {
         fprintf(stderr, "REACHED LIMIT rc =%d!\n",
                 conns->conns[0].rc);
         if(conns->conns[0].rc != SQLITE_DONE) {
