@@ -1683,30 +1683,33 @@ clean:
     free(tablename);
 }
 
-//holymoly!!
-void resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName)
+void resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
+                      size_t len)
 {
    struct sql_thread *thd = pthread_getspecific(query_info_key);
    if ((zDB && (!strcasecmp(zDB, "main") || !strcasecmp(zDB, "temp"))))
    {
-       sprintf(tableName, "%s", p->zName);
-   } else if (thd->clnt && (thd->clnt->user[0] != '\0') && !strstr(p->zName, "@")
-          && strncasecmp(p->zName, "sqlite_", 7) && strncasecmp(p->zName, "comdb2", 6))
+       snprintf(tableName, len, "%s", p->zName);
+   } else if (thd->clnt && (thd->clnt->user[0] != '\0') &&
+              !strchr(p->zName, '@') &&
+              strncasecmp(p->zName, "sqlite_", 7) &&
+              strncasecmp(p->zName, "comdb2", 6))
    {
        char userschema[MAXTABLELEN];
-       int bdberr; 
+       int bdberr;
        bdb_state_type *bdb_state = thedb->bdb_env;
-       if (bdb_tbl_access_userschema_get(bdb_state, NULL, thd->clnt->user, userschema, &bdberr) == 0) {
+       if (bdb_tbl_access_userschema_get(bdb_state, NULL, thd->clnt->user,
+                                         userschema, &bdberr) == 0) {
          if (userschema[0] == '\0') {
-           snprintf(tableName, MAXTABLELEN, "%s", p->zName);
+           snprintf(tableName, len, "%s", p->zName);
          } else {
-           snprintf(tableName, MAXTABLELEN, "%s@%s", p->zName, userschema);
+           snprintf(tableName, len, "%s@%s", p->zName, userschema);
          }
        } else {
-         snprintf(tableName, MAXTABLELEN, "%s@%s", p->zName, thd->clnt->user);
+         snprintf(tableName, len, "%s@%s", p->zName, thd->clnt->user);
        }
    } else {
-       sprintf(tableName, "%s", p->zName);
+       snprintf(tableName, len, "%s", p->zName);
    }
 }
 
