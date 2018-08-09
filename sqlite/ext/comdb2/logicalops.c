@@ -61,18 +61,10 @@ typedef struct logicalops_cursor logicalops_cursor;
 struct logicalops_cursor {
   sqlite3_vtab_cursor base;  /* Base class - must be first */
   sqlite3_int64 iRowid;      /* The rowid */
-  DB_LSN curLsn;             /* Current LSN */
-  DB_LSN minLsn;             /* Minimum LSN */
-  DB_LSN maxLsn;             /* Maximum LSN */
+  bdb_llog_cursor llog_cur;
   char *minLsnStr;
   char *maxLsnStr;
   char *curLsnStr;
-  int hitLast;
-  int openCursor;
-  int subop;
-  DB_LOGC *logc;             /* Log Cursor */
-  DBT data;
-  bdb_osql_log_t *log;
   char *tz;
   char *table;
   void *packedprev;
@@ -132,13 +124,7 @@ static int logicalopsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
 
 static int logicalopsClose(sqlite3_vtab_cursor *cur){
   logicalops_cursor *pCur = (logicalops_cursor*)cur;
-  if (pCur->openCursor) {
-      assert(pCur->logc);
-      pCur->logc->close(pCur->logc, 0);
-      pCur->openCursor = 0;
-  }
-  if (pCur->data.data)
-      free(pCur->data.data);
+  bdb_llog_cursor_close(&pCur->llog_cur);
   if (pCur->minLsnStr)
       sqlite3_free(pCur->minLsnStr);
   if (pCur->maxLsnStr)
@@ -161,185 +147,6 @@ static int logicalopsClose(sqlite3_vtab_cursor *cur){
       free(pCur->table);
   sqlite3_free(pCur);
   return SQLITE_OK;
-}
-
-static int is_commit(u_int32_t rectype)
-{
-    switch(rectype) {
-        case DB___txn_regop:
-        case DB___txn_regop_gen:
-        case DB___txn_regop_rowlocks:
-            return 1;
-        default:
-            return 0;
-    }
-}
-
-static inline int retrieve_start_lsn(DBT *data, u_int32_t rectype, DB_LSN *lsn)
-{
-    bdb_state_type *bdb_state = thedb->bdb_env;
-    DB_ENV *dbenv = bdb_state->dbenv;
-	__txn_regop_args *txn_args;
-	__txn_regop_gen_args *txn_gen_args;
-	__txn_regop_rowlocks_args *txn_rl_args;
-    int rc;
-
-    switch(rectype) {
-        case DB___txn_regop:
-            if ((rc = __txn_regop_read(dbenv, data->data,
-                            &txn_args)) != 0) {
-                logmsg(LOGMSG_ERROR, "%s line %d regop read returns %d for "
-                        "%d:%d\n", __func__, __LINE__, rc, lsn->file,
-                        lsn->offset);
-                return 1;
-            }
-            if (txn_args->opcode != TXN_COMMIT) {
-                logmsg(LOGMSG_ERROR, "%s line %d regop opcode not commit, %d "
-                        "for %d:%d\n", __func__, __LINE__, txn_args->opcode,
-                        lsn->file, lsn->offset);
-                free(txn_args);
-                return 1;
-            }
-            *lsn = txn_args->prev_lsn;
-            free(txn_args);
-            break;
-
-        case DB___txn_regop_gen:
-            if ((rc = __txn_regop_gen_read(dbenv, data->data,
-                            &txn_gen_args)) != 0) {
-                logmsg(LOGMSG_ERROR, "%s line %d regop_gen read returns %d for "
-                        "%d:%d\n", __func__, __LINE__, rc, lsn->file,
-                        lsn->offset);
-                return 1;
-            }
-            if (txn_gen_args->opcode != TXN_COMMIT) {
-                logmsg(LOGMSG_ERROR, "%s line %d regop_gen opcode not commit, "
-                        "%d for %d:%d\n", __func__, __LINE__,
-                        txn_gen_args->opcode, lsn->file, lsn->offset);
-                free(txn_gen_args);
-                return 1;
-            }
-            *lsn = txn_gen_args->prev_lsn;
-            free(txn_gen_args);
-            break;
-
-        case DB___txn_regop_rowlocks:
-            if ((rc = __txn_regop_rowlocks_read(dbenv, data->data,
-                            &txn_rl_args)) != 0) {
-                logmsg(LOGMSG_ERROR, "%s line %d regop_rl opcode failed read, "
-                        "%d for %d:%d\n",
-                        __func__, __LINE__, rc, lsn->file, lsn->offset);
-                free(txn_rl_args);
-                return 1;
-            }
-
-            if (txn_rl_args->opcode != TXN_COMMIT ||
-                    !(txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)) {
-                logmsg(LOGMSG_ERROR, "%s line %d regop_rl opcode not commit, %d"
-                        "for %d:%d\n", __func__, __LINE__, txn_rl_args->opcode,
-                        lsn->file, lsn->offset);
-                free(txn_rl_args);
-                return 1;
-            }
-            *lsn = txn_rl_args->prev_lsn;
-            free(txn_rl_args);
-            break;
-
-        default:
-            abort();
-    }
-    return 0;
-}
-
-static int create_logical_payload(logicalops_cursor *pCur, DB_LSN regop_lsn,
-        DBT *data, u_int32_t rectype)
-{
-    bdb_state_type *bdb_state = thedb->bdb_env;
-    int rc, bdberr=0;
-    DB_LOGC *logc;
-    DB_LSN lsn;
-
-    if ((rc = retrieve_start_lsn(data, rectype, &lsn)))
-        return rc;
-
-    if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s line %d cannot allocate log-cursor\n",
-                __func__, __LINE__);
-        return SQLITE_NOMEM;
-    }
-
-    if ((pCur->log = parse_log_for_shadows(bdb_state, logc, &lsn, 0, &bdberr)) == NULL) {
-        logmsg(LOGMSG_DEBUG, "%s line %d parse_log_for_shadows failed for "
-                "%d:%d\n", __func__, __LINE__, lsn.file, lsn.offset);
-        logc->close(logc, 0);
-        return 1;
-    }
-
-    logc->close(logc, 0);
-    pCur->subop = -1;
-    return 0;
-}
-
-static int advance_to_next_commit(logicalops_cursor *pCur)
-{
-    bdb_state_type *bdb_state = thedb->bdb_env;
-    u_int32_t rectype = 0;
-    int rc, getflags = 0;
-    if (!pCur->openCursor) {
-        if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &pCur->logc,
-                        0)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s line %d error getting log-cursor rc=%d\n",
-                    __func__, __LINE__, rc);
-            return SQLITE_INTERNAL;
-        }
-        pCur->openCursor = 1;
-        pCur->data.flags = DB_DBT_REALLOC;
-
-        if (pCur->minLsn.file == 0) {
-            getflags = DB_FIRST;
-        } else {
-            pCur->curLsn = pCur->minLsn;
-            getflags = DB_SET;
-        }
-    } else {
-        getflags = DB_NEXT;
-    }
-
-again:
-    do {
-        if ((rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data,
-                    getflags)) != 0) {
-            pCur->hitLast = 1;
-        }
-        getflags = DB_NEXT;
-        if (pCur->data.data)
-            LOGCOPY_32(&rectype, pCur->data.data); 
-        else 
-            rectype = 0;
-    } while(!pCur->hitLast && !is_commit(rectype));
-
-
-    if (!pCur->hitLast) {
-        /* Can happen if we're missing the beginning of the transaction */
-        switch (rc = create_logical_payload(pCur, pCur->curLsn, &pCur->data, rectype)){
-            /* Reconstructed logical log */
-            case 0:
-                logmsg(LOGMSG_INFO, "%s line %d couldn't create payload for %d:%d\n",
-                        __func__, __LINE__, pCur->curLsn.file, pCur->curLsn.offset);
-                assert(pCur->log != NULL);
-                break;
-             /* Go to next */
-            case 1:
-                getflags = DB_NEXT;
-                goto again;
-                break;
-            /* Other error */
-            default:
-                pCur->hitLast = 1;
-                break;
-        }
-    }
-    return 0;
 }
 
 static void *retrieve_packed_memory_prev(logicalops_cursor *pCur)
@@ -1057,7 +864,8 @@ static int unpack_logical_record(logicalops_cursor *pCur)
         return SQLITE_INTERNAL;
     }
 
-    while (produced_row == 0 && (rec = listc_rtl(&pCur->log->impl->recs)) != NULL) {
+    while (produced_row == 0 &&
+           (rec = listc_rtl(&pCur->llog_cur.log->impl->recs)) != NULL) {
 
         reset_json_cursors(pCur);
         logdta.flags = DB_DBT_REALLOC;
@@ -1074,7 +882,7 @@ static int unpack_logical_record(logicalops_cursor *pCur)
             case DB_llog_undo_del_dta:
             case DB_llog_undo_del_dta_lk:
                 if ((rc = produce_delete_data_record(pCur, logc, rec, &logdta)) == 0) {
-                    pCur->subop++;
+                    pCur->llog_cur.subop++;
                     produced_row=1;
                 }
                 break;
@@ -1088,7 +896,7 @@ static int unpack_logical_record(logicalops_cursor *pCur)
             case DB_llog_undo_add_dta:
             case DB_llog_undo_add_dta_lk:
                 if ((rc = produce_add_data_record(pCur, logc, rec, &logdta)) == 0) {
-                    pCur->subop++;
+                    pCur->llog_cur.subop++;
                     produced_row=1;
                 }
                 break;
@@ -1101,7 +909,7 @@ static int unpack_logical_record(logicalops_cursor *pCur)
             case DB_llog_undo_upd_dta:
             case DB_llog_undo_upd_dta_lk:
                 if ((rc = produce_update_data_record(pCur, logc, rec, &logdta)) == 0) {
-                    pCur->subop++;
+                    pCur->llog_cur.subop++;
                     produced_row=1;
                 }
                 break;
@@ -1123,9 +931,9 @@ static int unpack_logical_record(logicalops_cursor *pCur)
     }
     logc->close(logc, 0);
 
-    if (listc_size(&pCur->log->impl->recs) == 0) {
-        bdb_osql_log_destroy(pCur->log);
-        pCur->log = NULL;
+    if (listc_size(&pCur->llog_cur.log->impl->recs) == 0) {
+        bdb_osql_log_destroy(pCur->llog_cur.log);
+        pCur->llog_cur.log = NULL;
     }
 
     return (produced_row && rc != 0) ? -1 : !produced_row;
@@ -1138,28 +946,29 @@ static int logicalopsNext(sqlite3_vtab_cursor *cur){
   logicalops_cursor *pCur = (logicalops_cursor*)cur;
   int rc;
 
-  if (pCur->hitLast)
+  if (pCur->llog_cur.hitLast)
       return SQLITE_OK;
 
 again:
-  if (pCur->log == NULL && (advance_to_next_commit(pCur) != 0))
-      return SQLITE_INTERNAL;
+    if (pCur->llog_cur.log == NULL &&
+        (bdb_llog_cursor_next(&pCur->llog_cur) != 0))
+        return SQLITE_INTERNAL;
 
-  if (pCur->log && !pCur->hitLast) {
-      rc = unpack_logical_record(pCur);
-      switch(rc) {
-          case 1:
-              logmsg(LOGMSG_DEBUG, "%s line %d unpacking record: continuing\n",
-                      __func__, __LINE__);
-              goto again;
-              break;
-          case 0:
-              break;
-          default:
-              return SQLITE_INTERNAL;
-              break;
-      }
-      pCur->iRowid++;
+    if (pCur->llog_cur.log && !pCur->llog_cur.hitLast) {
+        rc = unpack_logical_record(pCur);
+        switch (rc) {
+        case 1:
+            logmsg(LOGMSG_DEBUG, "%s line %d unpacking record: continuing\n",
+                   __func__, __LINE__);
+            goto again;
+            break;
+        case 0:
+            break;
+        default:
+            return SQLITE_INTERNAL;
+            break;
+        }
+        pCur->iRowid++;
   }
 
   return SQLITE_OK;
@@ -1246,7 +1055,7 @@ static int logicalopsColumn(
     case LOGICALOPS_COLUMN_START:
         if (!pCur->minLsnStr) {
             pCur->minLsnStr = sqlite3_malloc(32);
-            logicalops_lsn_to_str(pCur->minLsnStr, &pCur->minLsn);
+            logicalops_lsn_to_str(pCur->minLsnStr, &pCur->llog_cur.minLsn);
         }
         sqlite3_result_text(ctx, pCur->minLsnStr, -1, NULL);
         break;
@@ -1254,7 +1063,7 @@ static int logicalopsColumn(
     case LOGICALOPS_COLUMN_STOP:
         if (!pCur->maxLsnStr) {
             pCur->maxLsnStr = sqlite3_malloc(32);
-            logicalops_lsn_to_str(pCur->maxLsnStr, &pCur->maxLsn);
+            logicalops_lsn_to_str(pCur->maxLsnStr, &pCur->llog_cur.maxLsn);
         }
         sqlite3_result_text(ctx, pCur->maxLsnStr, -1, NULL);
         break;
@@ -1263,11 +1072,11 @@ static int logicalopsColumn(
         if (!pCur->curLsnStr) {
             pCur->curLsnStr = sqlite3_malloc(32);
         }
-        logicalops_lsn_to_str(pCur->curLsnStr, &pCur->curLsn);
+        logicalops_lsn_to_str(pCur->curLsnStr, &pCur->llog_cur.curLsn);
         sqlite3_result_text(ctx, pCur->curLsnStr, -1, NULL);
         break;
     case LOGICALOPS_COLUMN_OPNUM:
-        sqlite3_result_int64(ctx, pCur->subop);
+        sqlite3_result_int64(ctx, pCur->llog_cur.subop);
         break;
     case LOGICALOPS_COLUMN_GENID:
         if (pCur->genid[0] == '\0')
@@ -1314,13 +1123,14 @@ static int logicalopsEof(sqlite3_vtab_cursor *cur){
   int rc;
 
   /* If we are not positioned, position now */
-  if (pCur->openCursor == 0) {
+  if (pCur->llog_cur.openCursor == 0) {
       if ((rc=logicalopsNext(cur)) != SQLITE_OK)
           return rc;
   }
-  if (pCur->hitLast)
+  if (pCur->llog_cur.hitLast)
       return 1;
-  if (pCur->maxLsn.file > 0 && log_compare(&pCur->curLsn, &pCur->maxLsn) > 0)
+  if (pCur->llog_cur.maxLsn.file > 0 &&
+      log_compare(&pCur->llog_cur.curLsn, &pCur->llog_cur.maxLsn) > 0)
       return 1;
   return 0;
 }
@@ -1333,17 +1143,17 @@ static int logicalopsFilter(
   logicalops_cursor *pCur = (logicalops_cursor *)pVtabCursor;
   int i = 0;
 
-  bzero(&pCur->minLsn, sizeof(pCur->minLsn));
+  bzero(&pCur->llog_cur.minLsn, sizeof(pCur->llog_cur.minLsn));
   if( idxNum & 1 ){
     const unsigned char *minLsn = sqlite3_value_text(argv[i++]);
-    if (minLsn && parse_lsn(minLsn, &pCur->minLsn)) {
+    if (minLsn && parse_lsn(minLsn, &pCur->llog_cur.minLsn)) {
         return SQLITE_CONV_ERROR;
     }
   }
-  bzero(&pCur->maxLsn, sizeof(pCur->maxLsn));
+  bzero(&pCur->llog_cur.maxLsn, sizeof(pCur->llog_cur.maxLsn));
   if( idxNum & 2 ){
     const unsigned char *maxLsn = sqlite3_value_text(argv[i++]);
-    if (maxLsn && parse_lsn(maxLsn, &pCur->maxLsn)) {
+    if (maxLsn && parse_lsn(maxLsn, &pCur->llog_cur.maxLsn)) {
         return SQLITE_CONV_ERROR;
     }
   }
