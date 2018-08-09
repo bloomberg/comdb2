@@ -2,8 +2,8 @@
 
 env
 dbname=$1
-NRECS=1000
-NRUNS=10000
+NRECS=10
+NRUNS=100
 
 set -x
 
@@ -26,6 +26,7 @@ if [ -n "$PMUXPORT" ] ; then
     echo "portmux_port $PMUXPORT" >> $DEST_DBDIR/${destdb}.lrl
     echo "portmux_bind_path $pmux_socket" >> $DEST_DBDIR/${destdb}.lrl
 fi
+comdb2 $destdb -lrl $DEST_DBDIR/${destdb}.lrl -pidfile $DEST_DBDIR/${destdb}.pid &
 
 out=
 while [[ "$out" != "1" ]]; do
@@ -35,27 +36,37 @@ done
 
 # requires $1 and $2
 equal_queries() {
-    lhs = $1 | sort 
-    rhs = $2 | sort
+    lhs="$1" 
+    rhs="$2"
 
-    return lhs == rhs
+    [ "$lhs" = "$rhs" ]
 }
+
+failure() {
+    kill -9 $(cat $DEST_DBDIR/${destdb}.pid)
+}
+
+# generate our tests that we will use
+set +x
+source ./generate_tests.sh
+set -x
 
 # iterate over each test
 for sql in `ls *.src.sql | sort -V`; do
-    src_update=$(cdb2sql -s --tabs -f $sql ${CDB2_OPTIONS} $dbnme default 2>&1) 
+    $(cdb2sql -s --tabs -f $sql ${CDB2_OPTIONS} $dbname default 2>&1 > /dev/null) 
     query_cmd=$(echo $sql | sed 's/\.src\.sql//').query.sql
-    src=$(cdb2sql -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbnme default 2>&1) 
-    dest=$(cdb2sql -s --tabs -f $query_cmd ${CDB2_OPTIONS} $destdb localhost 2>&1)
+
+    src=$(cdb2sql -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
+    dest=$(cdb2sql -s --tabs -f $query_cmd ${CDB2_OPTIONS} $destdb local 2>&1 | md5sum)
 
     failed=1
-    for i in `seq 1 10`;
+    for i in `seq 1 5`;
     do
-        if [ ! equal_queries src dest -eq 0 ]; then
+        if ! $(equal_queries "$src" "$dest"); then
             echo 'Replicant not updated'
             sleep 1
-            src=$(cdb2sql -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbnme default 2>&1) 
-            dest=$(cdb2sql -s --tabs -f $query_cmd ${CDB2_OPTIONS} $destdb localhost 2>&1)
+            src=$(cdb2sql -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
+            dest=$(cdb2sql -s --tabs -f $query_cmd ${CDB2_OPTIONS} $destdb local 2>&1 | md5sum)
             continue
         fi
         
@@ -63,9 +74,9 @@ for sql in `ls *.src.sql | sort -V`; do
         break
     done
 
-
-    if [ $failed -eq 1  ]; then
-        echo 'Failed.'
+    if ! [ $failed -eq 0 ]; then
+        echo "Failed on $sql test."
+        $(failure)
         exit 1
     fi
 done
@@ -109,5 +120,6 @@ done
 # echo deregister from pmux ${destdb}
 # ${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${destdb} " ${pmux_port}
 
+kill -9 $(cat $DEST_DBDIR/${destdb}.pid)
 
 exit 0
