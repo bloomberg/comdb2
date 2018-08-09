@@ -2391,11 +2391,6 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                        offsetof(struct dbtable, tablename), 0);
 
-    if ((rc = pthread_mutex_init(&dbenv->dbqueue_admin_lk, NULL)) != 0) {
-        logmsg(LOGMSG_FATAL, "can't init lock %d %s\n", rc, strerror(errno));
-        return NULL;
-    }
-
     /* Register all db tunables. */
     if ((register_db_tunables(dbenv))) {
         logmsg(LOGMSG_FATAL, "Failed to initialize tunables\n");

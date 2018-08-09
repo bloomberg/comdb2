@@ -357,6 +357,9 @@ int set_consumer_options(struct consumer *consumer, const char *opts)
     return nerrors;
 }
 
+static pthread_mutex_t dbqueuedb_admin_lk = PTHREAD_MUTEX_INITIALIZER;
+static int dbqueuedb_admin_running = 0;
+
 /* This gets called once a second from purge_old_blkseq_thread().
  * If we have become master we make sure that we have threads in place
  * for each consumer. */
@@ -364,13 +367,13 @@ static void admin(struct dbenv *dbenv)
 {
     int iammaster = (dbenv->master == gbl_mynode) ? 1 : 0;
 
-    pthread_mutex_lock(&dbenv->dbqueue_admin_lk);
-    if (dbenv->dbqueue_admin_running) {
-        pthread_mutex_unlock(&dbenv->dbqueue_admin_lk);
+    pthread_mutex_lock(&dbqueuedb_admin_lk);
+    if (dbqueuedb_admin_running) {
+        pthread_mutex_unlock(&dbqueuedb_admin_lk);
         return;
     }
-    dbenv->dbqueue_admin_running = 1;
-    pthread_mutex_unlock(&dbenv->dbqueue_admin_lk);
+    dbqueuedb_admin_running = 1;
+    pthread_mutex_unlock(&dbqueuedb_admin_lk);
 
     /* if we are master then make sure all the queues are running */
     if (iammaster && !dbenv->stopped && !dbenv->exiting) {
@@ -406,9 +409,9 @@ static void admin(struct dbenv *dbenv)
         }
     }
 
-    pthread_mutex_lock(&dbenv->dbqueue_admin_lk);
-    dbenv->dbqueue_admin_running = 0;
-    pthread_mutex_unlock(&dbenv->dbqueue_admin_lk);
+    pthread_mutex_lock(&dbqueuedb_admin_lk);
+    dbqueuedb_admin_running = 0;
+    pthread_mutex_unlock(&dbqueuedb_admin_lk);
 }
 
 struct consumer_stat {

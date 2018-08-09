@@ -978,10 +978,6 @@ struct dbenv {
     uint32_t incoh_file, incoh_offset;
     timepart_views_t *timepart_views;
 
-    /* locking for the queue system */
-    pthread_mutex_t dbqueue_admin_lk;
-    int dbqueue_admin_running;
-
     struct time_metric* service_time;
     struct time_metric* queue_depth;
     struct time_metric* concurrent_queries;
