@@ -1558,7 +1558,7 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 sqlstr = skipws(sqlstr);
                 int ver = strtol(sqlstr, &endp, 10);
                 if (*sqlstr == '\'' || *sqlstr == '"') { // looks like a str
-                    if (strlen(sqlstr) < MAX_SPVERSION_LEN) {
+                    if (strlen(sqlstr) <= MAX_SPVERSION_LEN) {
                         clnt->spversion.version_str = strdup(sqlstr);
                         sqlite3Dequote(clnt->spversion.version_str);
                     } else {

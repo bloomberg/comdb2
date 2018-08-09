@@ -866,7 +866,7 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
     if (ver) {
         TokenStr(version, ver);
         size_t len = strlen(version);
-        if (len == 0 || len >= MAX_SPVERSION_LEN) {
+        if (len == 0 || len > MAX_SPVERSION_LEN) {
             sqlite3ErrorMsg(pParse, "bad procedure version:%s", version);
             free_schema_change_type(sc);
             return;
@@ -895,7 +895,7 @@ void comdb2DefaultProcedure(Parse* pParse, Token* nm, Token* ver, int str)
     if (str) {
         TokenStr(version, ver);
         size_t len = strlen(version);
-        if (len == 0 || len >= MAX_SPVERSION_LEN) {
+        if (len == 0 || len > MAX_SPVERSION_LEN) {
             sqlite3ErrorMsg(pParse, "bad procedure version:%s", version);
             free_schema_change_type(sc);
             return;

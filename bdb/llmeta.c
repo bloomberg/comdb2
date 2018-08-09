@@ -8379,8 +8379,8 @@ int bdb_llmeta_del_lua_afunc(char *name, int *bdberr)
 */
 struct versioned_sp {
     int32_t key; // LLMETA_VERSIONED_SP
-    char name[LLMETA_TBLLEN];
-    char version[MAX_SPVERSION_LEN];
+    char name[LLMETA_SPLEN + 1];
+    char version[MAX_SPVERSION_LEN + 1];
 };
 int bdb_add_versioned_sp(tran_type *t, char *name, char *version, char *src)
 {
