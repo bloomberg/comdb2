@@ -4604,7 +4604,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
 
     case USER_TYPE_ANALYZED_TBL: {
         char tblname[256] = {0};
-        memcpy(tblname, dta, dtalen);
+        memcpy(tblname, dta, MIN(dtalen, (sizeof(tblname) - 1)));
         ctrace("MASTER received notification, tbl %s was analyzed\n", tblname);
         void reset_aa_counter(char *tblname);
         reset_aa_counter(tblname);
