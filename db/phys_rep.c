@@ -282,14 +282,10 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     blob = cdb2_column_value(repl_db, 4);
     blob_len = cdb2_column_size(repl_db, 4);
 
-    logmsg(LOGMSG_WARN, "lsn: %s", lsn);
-
     if ((rc = char_to_lsn(lsn, &file, &offset)) != 0)
     {
         logmsg(LOGMSG_ERROR, "Could not parse lsn:%s\n", lsn);
-    }
-    
-    logmsg(LOGMSG_WARN, ": %u:%u, rectype: %ld\n", file, offset, rectype);    
+    }    
 
     /* check if we need to call new file flag */
     if (prev_info.file < file)
