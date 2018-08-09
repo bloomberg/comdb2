@@ -855,7 +855,7 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
     if (comdb2AuthenticateUserOp(v, pParse))
         return;     
     TokenStr(name, nm);
-    if (strlen(name) >= MAX_SPNAME) {
+    if (strlen(name) > MAX_SPNAME) {
         sqlite3ErrorMsg(pParse, "bad procedure name:%s", name);
         return;
     }
@@ -886,7 +886,7 @@ void comdb2DefaultProcedure(Parse* pParse, Token* nm, Token* ver, int str)
     if (comdb2AuthenticateUserOp(v, pParse))
         return;     
     TokenStr(name, nm);
-    if (strlen(name) >= MAX_SPNAME) {
+    if (strlen(name) > MAX_SPNAME) {
         sqlite3ErrorMsg(pParse, "bad procedure name:%s", name);
         return;
     }

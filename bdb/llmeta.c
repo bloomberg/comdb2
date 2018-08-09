@@ -38,7 +38,7 @@ enum {
     ,
     LLMETA_TBLLEN = MAXTABLELEN /* maximum table name length */
     ,
-    LLMETA_SPLEN = MAXTABLELEN /* maximum SP length. see also */
+    LLMETA_SPLEN = MAX_SPNAME /* maximum SP length. see also */
     ,
     LLMETA_STATS_IXLEN =
         64 /* maximum index name length for sqlite_stat1 & 2. */

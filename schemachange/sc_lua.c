@@ -256,8 +256,8 @@ static int default_versioned_sp(struct schema_change_type *sc, struct ireq *iq)
 static int show_all_sps(struct schema_change_type *sc)
 {
     SBUF2 *sb = sc->sb;
-    char old_sp[MAX_SPNAME];
-    char new_sp[MAX_SPNAME];
+    char old_sp[MAX_SPNAME + 1];
+    char new_sp[MAX_SPNAME + 1];
     old_sp[0] = 127;
     while (1) {
         int bdberr;

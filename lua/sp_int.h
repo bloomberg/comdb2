@@ -36,7 +36,7 @@ struct stored_proc {
     Lua lua;
     int lua_version;
     comdb2ma mspace;
-    char spname[MAX_SPNAME];
+    char spname[MAX_SPNAME + 1];
     struct spversion_t spversion;
     char *src;
     struct sqlclntstate *clnt;

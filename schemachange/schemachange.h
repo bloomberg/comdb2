@@ -130,7 +130,7 @@ struct schema_change_type {
     LISTC_T(struct dest) dests;
 
     size_t spname_len;
-    char spname[MAX_SPNAME];
+    char spname[MAX_SPNAME + 1];
     int addsp;
     int delsp;
     int defaultsp;

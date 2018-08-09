@@ -1547,9 +1547,9 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     ++sqlstr;
                 }
                 *sqlstr = 0;
-                if ((sqlstr - spname) < MAX_SPNAME) {
-                    strncpy(clnt->spname, spname, MAX_SPNAME);
-                    clnt->spname[MAX_SPNAME] = '\0';
+                if ((sqlstr - spname) <= MAX_SPNAME) {
+                    strncpy(clnt->spname, spname, MAX_SPNAME + 1);
+                    clnt->spname[MAX_SPNAME + 1] = '\0';
                 } else {
                     rc = ii + 1;
                 }

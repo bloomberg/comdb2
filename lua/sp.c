@@ -5997,7 +5997,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, char **err)
 {
     const char *s = clnt->sql;
-    char spname[MAX_SPNAME];
+    char spname[MAX_SPNAME + 1];
     long long sprc = 0;
     int rc, args, new_vm;
     *err = NULL;
