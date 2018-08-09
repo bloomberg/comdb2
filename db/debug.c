@@ -80,7 +80,7 @@ static void nettest_usage(void)
 /* parse debug trap */
 void debug_trap(char *line, int lline)
 {
-    char table[MAXTABLELEN];
+    char table[MAXTABLELEN + 1];
     char tag[MAXTAGLEN];
     int i;
     int rc;

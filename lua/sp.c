@@ -1040,7 +1040,7 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     int rc = -1;
     strbuf *sql = NULL;
     SP sp = getsp(lua);
-    char n1[MAXTABLELEN], n2[MAXTABLELEN];
+    char n1[MAXTABLELEN + 1], n2[MAXTABLELEN + 1];
     *name = lua_tostring(lua, 1);
     if (two_part_tbl_name(*name, n1, n2) != 0) {
         luabb_error(lua, sp, "bad table name:%s", *name);
@@ -1115,7 +1115,7 @@ static int comdb2_table(Lua lua)
     const char *table_name = lua_tostring(lua, 1);
     while (isspace(*table_name))
         ++table_name;
-    char n1[MAXTABLELEN], n2[MAXTABLELEN];
+    char n1[MAXTABLELEN + 1], n2[MAXTABLELEN + 1];
     if (two_part_tbl_name(table_name, n1, n2) != 0) {
         return luabb_error(lua, getsp(lua), "bad argument to 'table'");
     }
@@ -1134,7 +1134,7 @@ static int comdb2_table(Lua lua)
         tmptbl_info_t *tbl;
         LIST_FOREACH(tbl, &sp->tmptbls, entries)
         {
-            char n3[MAXTABLELEN], n4[MAXTABLELEN];
+            char n3[MAXTABLELEN + 1], n4[MAXTABLELEN + 1];
             two_part_tbl_name(tbl->name, n3, n4);
             if (strcasecmp(n2, n4) == 0) {
                 dbtable->is_temp_tbl = 1;
@@ -2126,7 +2126,7 @@ static int dbtable_insert(Lua lua)
     strbuf_append(columns, ")");
     strbuf_append(params, ")");
 
-    char n1[MAXTABLELEN], separator[2], n2[MAXTABLELEN];
+    char n1[MAXTABLELEN + 1], separator[2], n2[MAXTABLELEN + 1];
     query_tbl_name(table->table_name, n1, separator, n2);
     sql = strbuf_new();
     strbuf_appendf(sql, "INSERT INTO %s%s\"%s\" %s VALUES %s", n1, separator,
@@ -2188,10 +2188,10 @@ static int dbtable_copyfrom(Lua lua)
 
     if (lua_isstring(lua, 3)) where_clause = (const char *)lua_tostring(lua, 3);
 
-    char t1n1[MAXTABLELEN], t1sep[2], t1n2[MAXTABLELEN];
+    char t1n1[MAXTABLELEN + 1], t1sep[2], t1n2[MAXTABLELEN + 1];
     query_tbl_name(tbl1->table_name, t1n1, t1sep, t1n2);
 
-    char t2n1[MAXTABLELEN], t2sep[2], t2n2[MAXTABLELEN];
+    char t2n1[MAXTABLELEN + 1], t2sep[2], t2n2[MAXTABLELEN + 1];
     query_tbl_name(tbl2->table_name, t2n1, t2sep, t2n2);
 
     strbuf *sql = strbuf_new();
@@ -2231,7 +2231,7 @@ static int dbtable_name(Lua L)
 // dbtable_emit = db_exec + dbstmt_emit
 static int dbtable_emit_int(Lua L, dbtable_t *table)
 {
-    char n1[MAXTABLELEN], separator[2], n2[MAXTABLELEN];
+    char n1[MAXTABLELEN + 1], separator[2], n2[MAXTABLELEN + 1];
     query_tbl_name(table->table_name, n1, separator, n2);
 
     char sql[128];
@@ -2291,7 +2291,7 @@ static int dbtable_where(lua_State *lua)
     luaL_checkudata(lua, 1, dbtypes.dbtable);
 
     const dbtable_t *tbl = lua_topointer(lua, 1);
-    char n1[MAXTABLELEN], separator[2], n2[MAXTABLELEN];
+    char n1[MAXTABLELEN + 1], separator[2], n2[MAXTABLELEN + 1];
     query_tbl_name(tbl->table_name, n1, separator, n2);
     const char *condition = lua_tostring(lua, 2);
     strbuf *sql = strbuf_new();
@@ -2540,7 +2540,7 @@ int mycallback(void *arg_, int cols, char **text, char **name)
     tmptbl_info_t *tmp1;
     LIST_FOREACH(tmp1, &sp1->tmptbls, entries)
     {
-        char n1[MAXTABLELEN], n2[MAXTABLELEN];
+        char n1[MAXTABLELEN + 1], n2[MAXTABLELEN + 1];
         two_part_tbl_name(tmp1->name, n1, n2);
         if (strcmp(text[0], n2) == 0) {
             tmptbl_info_t *tmp2 = malloc(sizeof(tmptbl_info_t));
@@ -2557,7 +2557,7 @@ int mycallback(void *arg_, int cols, char **text, char **name)
 
 static int copy_tmptbl_info(dbtable_t *t, SP sp1, SP sp2)
 {
-    char n1[MAXTABLELEN], n2[MAXTABLELEN];
+    char n1[MAXTABLELEN + 1], n2[MAXTABLELEN + 1];
     two_part_tbl_name(t->table_name, n1, n2);
     char sql[512];
     sprintf(sql, "select name,rootpage,sql from sqlite_temp_master "
@@ -2826,7 +2826,7 @@ static void drop_temp_tables(SP sp)
     tmptbl_info_t *tbl;
     LIST_FOREACH(tbl, &sp->tmptbls, entries)
     {
-        char n1[MAXTABLELEN], n2[MAXTABLELEN];
+        char n1[MAXTABLELEN + 1], n2[MAXTABLELEN + 1];
         two_part_tbl_name(tbl->name, n1, n2);
         char drop_sql[128];
         sprintf(drop_sql, "DROP TABLE temp.\"%s\"", n2);
@@ -3211,7 +3211,7 @@ int db_csvcopy(Lua lua)
     strbuf_append(columns, ")");
     strbuf_append(params, ")");
 
-    char n1[MAXTABLELEN], separator[2], n2[MAXTABLELEN];
+    char n1[MAXTABLELEN + 1], separator[2], n2[MAXTABLELEN + 1];
     query_tbl_name(tablename, n1, separator, n2);
     sql = strbuf_new();
     strbuf_appendf(sql, "INSERT INTO %s%s\"%s\" %s VALUES %s", n1, separator,

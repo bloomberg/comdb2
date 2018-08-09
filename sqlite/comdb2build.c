@@ -98,70 +98,76 @@ static inline int isRemote(Parse *pParse, Token **t1, Token **t2)
                     "DDL commands operate on local schema only.");
 }
 
-static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
-                                  size_t max_length, int mustexist)
+static inline
+int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
+                    size_t name_len, int mustexist)
 {
-    char tmp_dst[MAXTABLELEN];
+    int rc = 0;
+    char *table_name;
     struct sql_thread *thd =pthread_getspecific(query_info_key);
-    /* Remove quotes if any. */
-    if ((name[0] == '\'') && (name[max_length-2] == '\'')) {
-      strncpy(tmp_dst, name+1, max_length-2);
-      /* Guarantee null termination. */
-      tmp_dst[max_length - 3] = '\0';
-    } else {
-      strncpy(tmp_dst, name, max_length);
-      /* Guarantee null termination. */
-      tmp_dst[max_length - 1] = '\0';
+
+    table_name = strndup(name, name_len);
+    if (table_name ==  NULL) {
+        return setError(pParse, SQLITE_NOMEM, "System out of memory");
     }
 
-    if(gbl_allow_user_schema && thd->clnt->user[0] != '\0' && strcasecmp(thd->clnt->user,DEFAULT_USER) != 0) {
-        char* username = strstr(tmp_dst, "@");
+    /* Remove quotes (if any). */
+    sqlite3Dequote(table_name);
+
+    /* Check whether table name length is valid. */
+    if (strlen(table_name) > MAXTABLELEN) {
+        rc = setError(pParse, SQLITE_MISUSE, "Table name is too long");
+        goto cleanup;
+    }
+
+    if(gbl_allow_user_schema && thd->clnt->user[0] != '\0' &&
+       strcasecmp(thd->clnt->user,DEFAULT_USER) != 0) {
+        /* Check whether table_name contains user name. */
+        char* username = strchr(table_name, '@');
         if (username) {
             /* Do nothing. */
-            strncpy(dst, tmp_dst, MAXTABLELEN);
-        } else { /* Add usernmame. */
+            strncpy(dst, table_name, MAXTABLELEN + 1);
+        } else { /* Add user nmame. */
             /* Make it part of user schema. */
             char userschema[MAXTABLELEN];
-            int bdberr; 
+            int bdberr;
             bdb_state_type *bdb_state = thedb->bdb_env;
             if (bdb_tbl_access_userschema_get(bdb_state, NULL, thd->clnt->user, userschema, &bdberr) == 0) {
               if (userschema[0] == '\0') {
-                snprintf(dst, MAXTABLELEN, "%s", tmp_dst);
+                snprintf(dst, MAXTABLELEN + 1, "%s", table_name);
               } else {
-                snprintf(dst, MAXTABLELEN, "%s@%s", tmp_dst, userschema);
+                snprintf(dst, MAXTABLELEN + 1, "%s@%s", table_name, userschema);
               }
             } else {
-              snprintf(dst, MAXTABLELEN, "%s@%s",tmp_dst, thd->clnt->user);
+              snprintf(dst, MAXTABLELEN + 1, "%s@%s", table_name, thd->clnt->user);
             }
         }
     } else {
-       strncpy(dst, tmp_dst, MAXTABLELEN);
+       strncpy(dst, table_name, MAXTABLELEN);
     }
-    
+
     if(!timepart_is_timepart(dst, 1))
     {
         struct dbtable *db = get_dbtable_by_name(dst);
 
-        if (db == NULL && mustexist)
-        {
-            setError(pParse, SQLITE_ERROR, "Table not found");
-            return SQLITE_ERROR;
+        if (db == NULL && mustexist) {
+            rc = setError(pParse, SQLITE_ERROR, "Table not found");
+            goto cleanup;
         }
 
-        if (db != NULL && !mustexist)
-        {
-            setError(pParse, SQLITE_ERROR, "Table already exists");
-            return SQLITE_ERROR;
+        if (db != NULL && !mustexist) {
+            rc = setError(pParse, SQLITE_ERROR, "Table already exists");
+            goto cleanup;
         }
 
         if (timepart_is_shard(dst, 1, NULL)) {
-            setError(pParse, SQLITE_ERROR, "Shards cannot be schema changed independently");
-            return SQLITE_ERROR;
+            rc = setError(pParse, SQLITE_ERROR, "Shards cannot be schema changed independently");
+            goto cleanup;
         }
 
         if (db) {
             /* use original tablename */
-            strncpy(dst, db->tablename, MAXTABLELEN);
+            strncpy(dst, db->tablename, MAXTABLELEN + 1);
         }
     }
     else
@@ -169,7 +175,11 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
         /* maybe mark it */
     }
 
-    return SQLITE_OK;
+    rc = SQLITE_OK;
+
+cleanup:
+    free(table_name);
+    return rc;
 }
 
 static inline int create_string_from_token(Vdbe* v, Parse* pParse, char** dst, Token* t)
@@ -221,7 +231,6 @@ static inline int chkAndCopyTableTokens(Vdbe *v, Parse *pParse, char *dst,
                                         Token *t1, Token *t2, int mustexist)
 {
     int rc;
-    int max_size;
 
     if (t1 == NULL)
     {
@@ -233,13 +242,9 @@ static inline int chkAndCopyTableTokens(Vdbe *v, Parse *pParse, char *dst,
         return rc;
     }
 
-    if (t1->n + 1 <= MAXTABLELEN)
-        max_size = t1->n + 1;
-    else
-        return setError(pParse, SQLITE_MISUSE, "Tablename is too long");
-
-    if ((rc = chkAndCopyTable(pParse, dst, t1->z, max_size, mustexist)))
+    if ((rc = chkAndCopyTable(pParse, dst, t1->z, t1->n, mustexist))) {
         return rc;
+    }
 
     return SQLITE_OK;
 }
@@ -632,7 +637,6 @@ out:
 
 void comdb2DropTable(Parse *pParse, SrcList *pName)
 {
-
     sqlite3 *db = pParse->db;
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
@@ -642,7 +646,8 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
         return;
     }
 
-    if (chkAndCopyTable(pParse, sc->table, pName->a[0].zName, MAXTABLELEN, 1))
+    if (chkAndCopyTable(pParse, sc->table, pName->a[0].zName,
+                        strlen(pName->a[0].zName), 1))
         goto out;
 
     if (authenticateSC(sc->table, pParse))
@@ -3340,8 +3345,8 @@ cleanup:
 void comdb2AlterTableEnd(Parse *pParse)
 {
     Vdbe *v;
-    int max_size;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+
     if (ctx == 0) {
         /* An error must have been set. */
         assert(pParse->rc != 0);
@@ -3354,14 +3359,8 @@ void comdb2AlterTableEnd(Parse *pParse)
     if (sc == 0)
         goto oom;
 
-    if (strlen(ctx->schema->name) + 1 <= MAXTABLELEN) {
-        max_size = strlen(ctx->schema->name) + 1;
-    } else {
-        setError(pParse, SQLITE_MISUSE, "Tablename is too long.");
-        goto cleanup;
-    }
-
-    if ((chkAndCopyTable(pParse, sc->table, ctx->schema->name, max_size, 1)))
+    if ((chkAndCopyTable(pParse, sc->table, ctx->schema->name,
+                         strlen(ctx->schema->name), 1)))
         goto cleanup;
 
     if (authenticateSC(sc->table, pParse))
@@ -3458,7 +3457,7 @@ void comdb2CreateTableEnd(
     struct schema_change_type *sc = 0;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     Vdbe *v;
-    int max_size;
+
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3EndTable(pParse, pCons, pEnd, tabOpts, 0);
@@ -3481,14 +3480,8 @@ void comdb2CreateTableEnd(
     if (sc == 0)
         goto oom;
 
-    if (strlen(ctx->schema->name) + 1 <= MAXTABLELEN) {
-        max_size = strlen(ctx->schema->name) + 1;
-    } else {
-        setError(pParse, SQLITE_MISUSE, "Tablename is too long.");
-        goto cleanup;
-    }
-
-    if ((chkAndCopyTable(pParse, sc->table, ctx->schema->name, max_size, 0)))
+    if ((chkAndCopyTable(pParse, sc->table, ctx->schema->name,
+                         strlen(ctx->schema->name), 0)))
         goto cleanup;
 
     if (authenticateSC(sc->table, pParse))
@@ -4114,7 +4107,6 @@ void comdb2CreateIndex(
     Vdbe *v;
     struct schema_change_type *sc;
     struct comdb2_ddl_context *ctx;
-    int max_size;
     char *keyname;
 
     if (temp || pParse->db->init.busy || pParse->db->isExpert ||
@@ -4181,14 +4173,8 @@ void comdb2CreateIndex(
     if (pParse->rc)
         goto cleanup;
 
-    if (strlen(ctx->schema->name) + 1 <= MAXTABLELEN) {
-        max_size = strlen(ctx->schema->name) + 1;
-    } else {
-        setError(pParse, SQLITE_MISUSE, "Tablename is too long.");
-        goto cleanup;
-    }
-
-    if ((chkAndCopyTable(pParse, sc->table, ctx->schema->name, max_size, 1)))
+    if ((chkAndCopyTable(pParse, sc->table, ctx->schema->name,
+                         strlen(ctx->schema->name), 1)))
         goto cleanup;
 
     if (authenticateSC(sc->table, pParse))
@@ -4784,7 +4770,6 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
     struct comdb2_schema *key;
     char *idx_name;
     char *tbl_name = 0;
-    int max_size;
     int index_count = 0;
 
     assert(pParse->comdb2_ddl_ctx == 0);
@@ -4887,14 +4872,8 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
     if (pParse->rc)
         goto cleanup;
 
-    if (strlen(ctx->schema->name) + 1 <= MAXTABLELEN) {
-        max_size = strlen(ctx->schema->name) + 1;
-    } else {
-        setError(pParse, SQLITE_MISUSE, "Table name is too long.");
-        goto cleanup;
-    }
-
-    if ((chkAndCopyTable(pParse, sc->table, ctx->schema->name, max_size, 1)))
+    if ((chkAndCopyTable(pParse, sc->table, ctx->schema->name,
+                         strlen(ctx->schema->name), 1)))
         goto cleanup;
 
     if (authenticateSC(sc->table, pParse))

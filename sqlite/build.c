@@ -588,7 +588,7 @@ Table *sqlite3LocateTableItem(
   }
   /* COMDB2 MODIFICATION */
   if (gbl_allow_user_schema) {
-    char tblName[MAXTABLELEN];
+    char tblName[MAXTABLELEN + 1];
     resolveTableName(p, zDb, tblName);
     return sqlite3LocateTable(pParse, flags, tblName, zDb);
   } else {

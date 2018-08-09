@@ -63,7 +63,7 @@ enum {
 
 typedef struct
 {
-  char         name[MAXTABLELEN]; /* name of field as a \0 terminated string */
+  char         name[MAXTABLELEN + 1]; /* name of field as a \0 terminated string */
   int          type;              /* one of the types in dynschematypes.h    */
   unsigned int len;               /* length of field in bytes                */
   unsigned int off;               /* offset of field in record structure     */
@@ -349,7 +349,7 @@ int bind_value(cdb2_hndl_tp *db, void *opsp, int opsz, comdb2_field_type *fld, v
 
 #undef ASSIGN
 struct delop {
-    char table[MAXTABLELEN];
+    char table[MAXTABLELEN + 1];
     long long id;
 };
 

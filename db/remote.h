@@ -39,7 +39,7 @@ union find {
         int internal[12];
         int ixnum;
         int keylen;
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         char dta[1]; /* key */
     } req;
 
@@ -60,7 +60,7 @@ union findrrn {
         short opcode;
         int opcode2;
         int internal[12];
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         int rrn;
         unsigned long long genid;
     } req;
@@ -79,7 +79,7 @@ union findnext {
         short opcode;
         int opcode2;
         int internal[12];
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         int ixnum;
         int keylen;
         int lastrrn;

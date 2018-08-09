@@ -211,7 +211,7 @@ typedef dbtran_type trans_t;
 
 /* analyze sampled (previously misnamed compressed) idx */
 typedef struct {
-    char name[MAXTABLELEN];
+    char name[MAXTABLELEN + 1];
     int ixnum;
     struct temp_table *sampled_table;
     int sampling_pct;
@@ -642,7 +642,7 @@ struct sqlclntstate {
 
 /* Query stats. */
 struct query_path_component {
-    char lcl_tbl_name[MAXTABLELEN];
+    char lcl_tbl_name[MAXTABLELEN + 1];
     char rmt_db[MAX_DBNAME_LENGTH];
     int ix;
     int nfind;

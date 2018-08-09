@@ -69,9 +69,9 @@ struct schema_change_type {
     int type; /* DBTYPE_TAGGED_TABLE or DBTYPE_QUEUE or DBTYPE_QUEUEDB
                  or DBTYPE_MORESTRIPE */
     size_t table_len;
-    char table[MAXTABLELEN]; /* name of table/queue */
-    int rename;              /* new table name */
-    char newtable[MAXTABLELEN]; /* rename table */
+    char table[MAXTABLELEN + 1];    /* name of table/queue */
+    int rename;                     /* rename table */
+    char newtable[MAXTABLELEN + 1]; /* new table name */
     size_t fname_len;
     char fname[256];         /* name of schema file for table schema change
                                 or client provided SP version */

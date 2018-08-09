@@ -755,7 +755,7 @@ clipper_usage:
      * freelist
      */
     else if (tokcmp(tok, ltok, "freelist") == 0) {
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         struct ireq iq;
         int datafile = -1;
         int stripe = -1;
@@ -1021,7 +1021,7 @@ clipper_usage:
         /* maintenance command: purge records/ index items/ blobs by genid
            These will typically be reported by e.g. the verify feature. */
 
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         struct dbtable *db;
 
         /* expect table first */
@@ -1144,7 +1144,7 @@ clipper_usage:
            logmsg(LOGMSG_USER, "pageorder trace disabled\n");
         }
     } else if (tokcmp(tok, ltok, "delfiles") == 0) {
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         int rc;
         int bdberr;
         struct dbtable *db;
@@ -1629,7 +1629,7 @@ clipper_usage:
             logmsg(LOGMSG_USER, "diag rrn <tablename> #  - dump record with given rrn\n");
             logmsg(LOGMSG_USER, "diag dump <tablename> # - dump .dta# file of table\n");
         } else if (tokcmp(tok, ltok, "dump") == 0) {
-            char table[MAXTABLELEN];
+            char table[MAXTABLELEN + 1];
             int dtanum;
             struct dbtable *db;
             tok = segtok(line, lline, &st, &ltok);
@@ -1637,8 +1637,9 @@ clipper_usage:
                 logmsg(LOGMSG_ERROR, "Expected table\n");
                 return -1;
             }
-            if (ltok >= MAXTABLELEN) {
-                logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            if (ltok > MAXTABLELEN) {
+                logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                       MAXTABLELEN);
                 return -1;
             }
             tokcpy(tok, ltok, table);
@@ -1682,7 +1683,7 @@ clipper_usage:
        pagesize getall <data|blob|index> <pagesize>
      */
     else if (tokcmp(tok, ltok, "pagesize") == 0) {
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         int n;
         int rc;
         int bdberr;
@@ -2261,7 +2262,7 @@ clipper_usage:
                gbl_ckp_sleep_before_sync);
     } else if (tokcmp(tok, ltok, "load") == 0) {
         char fname[128];
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         int odh = -1, compress = -1, compress_blobs = -1;
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
@@ -2273,8 +2274,9 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "Expected db name\n");
             return -1;
         }
-        if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+        if (ltok > MAXTABLELEN) {
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN);
             return -1;
         }
         tokcpy(tok, ltok, table);
@@ -2382,7 +2384,7 @@ clipper_usage:
             logmsg(LOGMSG_USER, "Init with bthash %dkb per stripe\n", gbl_init_with_bthash);
         }
     } else if (tokcmp(tok, ltok, "bthash") == 0) {
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         int szkb;
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
@@ -2394,8 +2396,9 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "Expected db name\n");
             return -1;
         }
-        if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+        if (ltok > MAXTABLELEN) {
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN);
             return -1;
         }
 
@@ -2434,7 +2437,7 @@ clipper_usage:
         }
 
     } else if (tokcmp(tok, ltok, "delbthash") == 0) {
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         int szkb;
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
@@ -2446,8 +2449,9 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "Expected db name\n");
             return -1;
         }
-        if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+        if (ltok > MAXTABLELEN) {
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN);
             return -1;
         }
 
@@ -2472,7 +2476,7 @@ clipper_usage:
         }
 
     } else if (tokcmp(tok, ltok, "bthashstat") == 0) {
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         int szkb;
 
         tok = segtok(line, lline, &st, &ltok);
@@ -2480,8 +2484,9 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "Expected db name\n");
             return -1;
         }
-        if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+        if (ltok > MAXTABLELEN) {
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN);
             return -1;
         }
 
@@ -2489,7 +2494,7 @@ clipper_usage:
 
         stat_bt_hash_table(table);
     } else if (tokcmp(tok, ltok, "clearbthashstat") == 0) {
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         int szkb;
 
         tok = segtok(line, lline, &st, &ltok);
@@ -2497,8 +2502,9 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "Expected db name\n");
             return -1;
         }
-        if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+        if (ltok > MAXTABLELEN) {
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN);
             return -1;
         }
 
@@ -2507,7 +2513,7 @@ clipper_usage:
         stat_bt_hash_table_reset(table);
     } else if (tokcmp(tok, ltok, "fastinit") == 0) {
         char fname[128];
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
@@ -2518,8 +2524,9 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "Expected db name\n");
             return -1;
         }
-        if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+        if (ltok > MAXTABLELEN) {
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN);
             return -1;
         }
 
@@ -2604,7 +2611,7 @@ clipper_usage:
        access get tableXnode
      */
     else if (tokcmp(tok, ltok, "access") == 0) {
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         char user[17];
         char password[17];
         int rc;
@@ -2768,7 +2775,7 @@ clipper_usage:
     }
 
     else if (tokcmp(tok, ltok, "llmeta") == 0) {
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         char user[17];
         char password[17];
         int rc;

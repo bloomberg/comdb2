@@ -113,7 +113,7 @@ typedef struct index_descriptor {
 typedef struct table_descriptor {
     pthread_t thread_id;
     int table_state;
-    char table[MAXTABLELEN];
+    char table[MAXTABLELEN + 1];
     SBUF2 *sb;
     int scale;
     int override_llmeta;
