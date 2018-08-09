@@ -1,4 +1,3 @@
-
 #!/usr/bin/env bash
 
 env
@@ -14,9 +13,14 @@ mkdir -p $DEST_DBDIR
 
 # use copycomdb2 to create a physical replicant
 
-$COPYCOMDB2_EXE -H ${destdb} -y localhost $DEST_DBDIR/${destdb}.lrl
+$COPYCOMDB2_EXE -H ${destdb} -y localhost ${DBDIR}/$dbname.lrl $DEST_DBDIR
 
-df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DBDIR/${destdb}.lrl
+if [ ! $? -eq 0 ]; then
+    echo "copycomdb2 failed"
+    exit 1
+fi
+
+df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DEST_DBDIR/${destdb}.lrl
 
 if [ -n "$PMUXPORT" ] ; then
     echo "portmux_port $PMUXPORT" >> $DEST_DBDIR/${destdb}.lrl
@@ -29,83 +33,81 @@ while [[ "$out" != "1" ]]; do
     sleep 1
 done
 
+# requires $1 and $2
+equal_queries() {
+    lhs = $1 | sort 
+    rhs = $2 | sort
+
+    return lhs == rhs
+}
+
 # iterate over each test
-for sql in `ls *.sql | sort -V`; do
-    src=$(cdb2sql -s --tabs -f $sql ${CDB2_OPTIONS} $dbnme default 2>&1) 
-    dest=$(cdb2sql -s --tabs -f $sql ${CDB2_OPTIONS} $destdb localhost 2>&1)
-    if [ "$?" != "0" ]; then
+for sql in `ls *.src.sql | sort -V`; do
+    src_update=$(cdb2sql -s --tabs -f $sql ${CDB2_OPTIONS} $dbnme default 2>&1) 
+    query_cmd=$(echo $sql | sed 's/\.src\.sql//').query.sql
+    src=$(cdb2sql -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbnme default 2>&1) 
+    dest=$(cdb2sql -s --tabs -f $query_cmd ${CDB2_OPTIONS} $destdb localhost 2>&1)
+
+    failed=1
+    for i in `seq 1 10`;
+    do
+        if [ ! equal_queries src dest -eq 0 ]; then
+            echo 'Replicant not updated'
+            sleep 1
+            src=$(cdb2sql -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbnme default 2>&1) 
+            dest=$(cdb2sql -s --tabs -f $query_cmd ${CDB2_OPTIONS} $destdb localhost 2>&1)
+            continue
+        fi
+        
+        failed=0
+        break
+    done
+
+
+    if [ $failed -eq 1  ]; then
         echo 'Failed.'
         exit 1
     fi
 done
 
-# check add, insert, update
-cdb2sql ${CDB2_OPTIONS} $dbname default 'create table t1 {
-schema {
-    int id
 
-    short a null=yes
-    int b null=yes
-    u_short c null=yes
-    u_int d null=yes
-    longlong e null=yes
-    float f null=yes
-    double g null=yes
-    cstring h[10] null=yes
-    blob i null=yes
-    datetime j null=yes
+# src_add_table=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select * from t1" | sort | md5sum)
+# dest_add_table=$(cdb2sql ${CDB2_OPTIONS} $destdb local "select * from t1" | sort | md5sum)
+# echo "src $src dest $dest"
 
-}
-}
-'
+# for i in $(seq 1 $NRECS); do
+#     echo "insert into t1 (id, a, b, c, d, e, f, g, h, i, j) values ($i, 1, 2, 3, 4, 5, 6.000000, 7.000000, 'eight', x'99', now());"
+# done | cdb2sql -s ${CDB2_OPTIONS} $dbname default - >/dev/null
 
+# for i in $(seq 1 $NRUNS); do
+#     what=$(($RANDOM % 3))
+#     id=$(($RANDOM % $NRECS))
+#     case $what in
+#         0)  echo "insert into t1 (id, a, b, c, d, e, f, g, h, i, j) values ($id, 1, 2, 3, 4, 5, 6.000000, 7.000000, 'eight', x'99', now());"
+#         ;;
+#         1)  echo "delete from t1 where id = $id limit 1"
+#         ;;
+#         2)  echo "update t1 set a=a+1, b=b+2 where id=$id"
+#         ;;
+#     esac
+# done | cdb2sql -s ${CDB2_OPTIONS} $dbname default - >/dev/null
 
-src_add_table=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select * from t1" | sort | md5sum)
-dest_add_table=$(cdb2sql ${CDB2_OPTIONS} $destdb local "select * from t1" | sort | md5sum)
-echo "src $src dest $dest"
+# src_rand=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select * from t1" | sort | md5sum)
+# dest_rand=$(cdb2sql ${CDB2_OPTIONS} $destdb local "select * from t1" | sort | md5sum)
+# echo "src $src dest $dest"
 
-for i in $(seq 1 $NRECS); do
-    echo "insert into t1 (id, a, b, c, d, e, f, g, h, i, j) values ($i, 1, 2, 3, 4, 5, 6.000000, 7.000000, 'eight', x'99', now());"
-done | cdb2sql -s ${CDB2_OPTIONS} $dbname default - >/dev/null
-
-for i in $(seq 1 $NRUNS); do
-    what=$(($RANDOM % 3))
-    id=$(($RANDOM % $NRECS))
-    case $what in
-        0)  echo "insert into t1 (id, a, b, c, d, e, f, g, h, i, j) values ($id, 1, 2, 3, 4, 5, 6.000000, 7.000000, 'eight', x'99', now());"
-        ;;
-        1)  echo "delete from t1 where id = $id limit 1"
-        ;;
-        2)  echo "update t1 set a=a+1, b=b+2 where id=$id"
-        ;;
-    esac
-done | cdb2sql -s ${CDB2_OPTIONS} $dbname default - >/dev/null
-
-src_rand=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select * from t1" | sort | md5sum)
-dest_rand=$(cdb2sql ${CDB2_OPTIONS} $destdb local "select * from t1" | sort | md5sum)
-echo "src $src dest $dest"
-
-echo "Testing truncate table"
-cdb2sql ${CDB2_OPTIONS} $dbname default "truncate t1"
-# run the replication step
-${TESTSBUILDDIR}/localrep $dbname $destdb 2>&1
-src2=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select * from t1" | sort | md5sum)
-dest2=$(cdb2sql ${CDB2_OPTIONS} $destdb local "select * from t1" | sort | md5sum)
-echo "src2 $src2 dest2 $dest2"
+# echo "Testing truncate table"
+# cdb2sql ${CDB2_OPTIONS} $dbname default "truncate t1"
+# # run the replication step
+# ${TESTSBUILDDIR}/localrep $dbname $destdb 2>&1
+# src2=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select * from t1" | sort | md5sum)
+# dest2=$(cdb2sql ${CDB2_OPTIONS} $destdb local "select * from t1" | sort | md5sum)
+# echo "src2 $src2 dest2 $dest2"
 
 # cleanup
 # kill -9 $(cat $DBDIR/${destdb}.pid)
 # echo deregister from pmux ${destdb}
 # ${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${destdb} " ${pmux_port}
 
-if [[ "$src" != "$dest" ]]; then
-    exit 1
-fi
-
-if [[ "$src2" != "$dest2" ]]; then
-    echo "truncate failed"
-    exit 1
-fi
 
 exit 0
-xit 0
