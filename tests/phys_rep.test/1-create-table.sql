@@ -1,4 +1,3 @@
-/* create a table t1 */
 create table t1 {
 schema {
     int id
@@ -15,5 +14,5 @@ schema {
     datetime j null=yes
 
 }
-}
+} $$
 
