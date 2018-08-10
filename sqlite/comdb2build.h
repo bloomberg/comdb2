@@ -124,11 +124,6 @@ enum
 };
 
 void comdb2getkw(Parse* pParse, int reserved);
-
-#define TokenStr(out, in)                                                      \
-    char out[in->n + 1];                                                       \
-    memcpy(out, in->z, in->n);                                                 \
-    out[in->n] = '\0';                                                         \
-    sqlite3Dequote(out)
+int comdb2TokenToStr(Token *nm, char *buf, char len);
 
 #endif // COMDB2BUILD_H

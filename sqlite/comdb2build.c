@@ -555,10 +555,13 @@ void comdb2CreateTableCSC2(
 )
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
+    char table[MAXTABLELEN + 1];
+
     if (temp) {
         setError(pParse, SQLITE_MISUSE, "Can't create temporary csc2 table");
         return;
     }
+
     struct schema_change_type *sc = new_schemachange_type();
     if (sc == NULL) {
         setError(pParse, SQLITE_NOMEM, "System out of memory");
@@ -566,10 +569,14 @@ void comdb2CreateTableCSC2(
     }
 
     if ((isRemote(pParse, &pName1, &pName2))) {
-        return;
+        goto out;
     }
 
-    TokenStr(table, pName1);
+    if (comdb2TokenToStr(pName1, table, sizeof(table))) {
+        setError(pParse, SQLITE_MISUSE, "Table name is too long");
+        goto out;
+    }
+
     if (noErr && get_dbtable_by_name(table))
         goto out;
 
@@ -590,6 +597,7 @@ void comdb2CreateTableCSC2(
 
 out:
     free_schema_change_type(sc);
+    return;
 }
 
 void comdb2AlterTableCSC2(
@@ -851,56 +859,68 @@ out:
 
 void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
 {
+    char spname[MAX_SPNAME + 1];
+    char sp_version[MAX_SPVERSION_LEN + 1];
+
     Vdbe *v  = sqlite3GetVdbe(pParse);
     if (comdb2AuthenticateUserOp(v, pParse))
-        return;     
-    TokenStr(name, nm);
-    if (strlen(name) > MAX_SPNAME) {
-        sqlite3ErrorMsg(pParse, "bad procedure name:%s", name);
+        return;
+
+    if (comdb2TokenToStr(nm, spname, sizeof(spname))) {
+        setError(pParse, SQLITE_MISUSE, "Procedure name is too long");
         return;
     }
-    struct schema_change_type* sc = new_schemachange_type();
-    strcpy(sc->table, name);
+
+    struct schema_change_type *sc = new_schemachange_type();
+    strcpy(sc->table, spname);
     sc->newcsc2 = malloc(proc->n);
     sc->addsp = 1;
+
     if (ver) {
-        TokenStr(version, ver);
-        size_t len = strlen(version);
-        if (len == 0 || len > MAX_SPVERSION_LEN) {
-            sqlite3ErrorMsg(pParse, "bad procedure version:%s", version);
-            free_schema_change_type(sc);
-            return;
+        if (comdb2TokenToStr(ver, sp_version, sizeof(sp_version))) {
+            setError(pParse, SQLITE_MISUSE, "Procedure version is too long");
+            goto cleanup;
         }
-        strcpy(sc->fname, version);
+        strcpy(sc->fname, sp_version);
     }
+
     copyNosqlToken(v, pParse, &sc->newcsc2, proc);
     const char* colname[] = {"version"};
     const int coltype = OPFUNC_STRING_TYPE;
     OpFuncSetup stp = {1, colname, &coltype, 256};
-    comdb2prepareOpFunc(v, pParse, 1, sc, &comdb2ProcSchemaChange, (vdbeFuncArgFree)&free_schema_change_type, &stp);
+    comdb2prepareOpFunc(v, pParse, 1, sc, &comdb2ProcSchemaChange,
+                        (vdbeFuncArgFree)&free_schema_change_type, &stp);
+    return;
+
+cleanup:
+    free_schema_change_type(sc);
+    return;
 }
 
-void comdb2DefaultProcedure(Parse* pParse, Token* nm, Token* ver, int str)
+void comdb2DefaultProcedure(Parse *pParse, Token *nm, Token *ver, int str)
 {
-    Vdbe *v  = sqlite3GetVdbe(pParse);
+    char spname[MAX_SPNAME + 1];
+    char sp_version[MAX_SPVERSION_LEN + 1];
+
+    Vdbe *v = sqlite3GetVdbe(pParse);
+
     if (comdb2AuthenticateUserOp(v, pParse))
-        return;     
-    TokenStr(name, nm);
-    if (strlen(name) > MAX_SPNAME) {
-        sqlite3ErrorMsg(pParse, "bad procedure name:%s", name);
+        return;
+
+    if (comdb2TokenToStr(nm, spname, sizeof(spname))) {
+        setError(pParse, SQLITE_MISUSE, "Procedure name is too long");
         return;
     }
-    struct schema_change_type* sc = new_schemachange_type();
-    strcpy(sc->table, name);
+
+    struct schema_change_type *sc = new_schemachange_type();
+    strcpy(sc->table, spname);
+
     if (str) {
-        TokenStr(version, ver);
-        size_t len = strlen(version);
-        if (len == 0 || len > MAX_SPVERSION_LEN) {
-            sqlite3ErrorMsg(pParse, "bad procedure version:%s", version);
-            free_schema_change_type(sc);
-            return;
+        if (comdb2TokenToStr(ver, sp_version, sizeof(sp_version))) {
+            setError(pParse, SQLITE_MISUSE, "Procedure version is too long");
+            goto cleanup;
         }
-        strcpy(sc->fname, version);
+        strcpy(sc->fname, sp_version);
     } else {
         sc->newcsc2 = malloc(ver->n + 1);
         strncpy(sc->newcsc2, ver->z, ver->n);
@@ -908,44 +928,60 @@ void comdb2DefaultProcedure(Parse* pParse, Token* nm, Token* ver, int str)
     }
     sc->defaultsp = 1;
 
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, 
-                        (vdbeFuncArgFree)  &free_schema_change_type);
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                        (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+cleanup:
+    free_schema_change_type(sc);
+    return;
 }
 
-void comdb2DropProcedure(Parse* pParse, Token* nm, Token* ver, int str)
+void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
 {
-    Vdbe *v  = sqlite3GetVdbe(pParse);
-    int rc;   
-    struct schema_change_type* sc = new_schemachange_type();
+    char spname[MAX_SPNAME + 1];
+    char sp_version[MAX_SPVERSION_LEN + 1];
+
+    Vdbe *v = sqlite3GetVdbe(pParse);
+
+    if (comdb2AuthenticateUserOp(v, pParse))
+        return;
+
+    if (comdb2TokenToStr(nm, spname, sizeof(spname))) {
+        setError(pParse, SQLITE_MISUSE, "Procedure name is too long");
+        return;
+    }
+
+    struct schema_change_type *sc = new_schemachange_type();
     if (sc == NULL) {
         setError(pParse, SQLITE_NOMEM, "System out of memory");
         return;
     }
-    int max_length = nm->n < MAXTABLELEN ? nm->n : MAXTABLELEN;
+    strcpy(sc->table, spname);
 
-    if (comdb2AuthenticateUserOp(v, pParse)) {
-        free_schema_change_type(sc);
-        return;       
-    }
-
-    strncpy(sc->table, nm->z, max_length);
-    
-    
     if (str) {
-        TokenStr(version, ver);
-        strcpy(sc->fname, version);
+        if (comdb2TokenToStr(ver, sp_version, sizeof(sp_version))) {
+            setError(pParse, SQLITE_MISUSE, "Procedure version is too long");
+            goto cleanup;
+        }
+        strcpy(sc->fname, sp_version);
     } else {
         sc->newcsc2 = malloc(ver->n + 1);
         strncpy(sc->newcsc2, ver->z, ver->n);
         sc->newcsc2[ver->n] = '\0';
     }
     sc->delsp = 1;
-  
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran, 
-                        (vdbeFuncArgFree)  &free_schema_change_type);
-}
-/********************* PARTITIONS  **********************************************/
 
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran,
+                        (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+cleanup:
+    free_schema_change_type(sc);
+    return;
+}
+
+/********************* PARTITIONS  **********************************************/
 
 void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_name, Token* period, Token* retention, Token* start)
 {
@@ -1769,15 +1805,25 @@ clean_arg:
 void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
         int dryrun)
 {
+    char table[MAXTABLELEN + 1];
+    char newTable[MAXTABLELEN + 1];
+
     sqlite3 *db = pParse->db;
-    Vdbe *v  = sqlite3GetVdbe(pParse);
+    Vdbe *v = sqlite3GetVdbe(pParse);
     struct schema_change_type *sc;
 
-    TokenStr(table, pSrcName);
-    TokenStr(newtable, pName);
+    if (comdb2TokenToStr(pSrcName, table, sizeof(table))) {
+        setError(pParse, SQLITE_MISUSE, "Table name is too long");
+        return;
+    }
 
-    if(get_dbtable_by_name(newtable)) {
-        setError(pParse, SQLITE_ERROR, "New table name exists");
+    if (comdb2TokenToStr(pName, newTable, sizeof(newTable))) {
+        setError(pParse, SQLITE_MISUSE, "Table name is too long");
+        return;
+    }
+
+    if (get_dbtable_by_name(newTable)) {
+        setError(pParse, SQLITE_ERROR, "New table name already exists");
         return;
     }
 
@@ -1798,9 +1844,10 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
     sc->nothrevent = 1;
     sc->live = 1;
     sc->rename = 1;
-    strncpy(sc->newtable, newtable, sizeof(sc->newtable));
+    strncpy(sc->newtable, newTable, sizeof(sc->newtable));
 
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb, (vdbeFuncArgFree) &free_schema_change_type);
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                        (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 out:
@@ -4973,4 +5020,15 @@ cleanup:
     free(t_name);
     free(t_value);
     return;
+}
+
+int comdb2TokenToStr(Token *nm, char *buf, char len)
+{
+    if (nm->n > len)
+        return 1;
+
+    memcpy(buf, nm->z, nm->n);
+    buf[nm->n] = '\0';
+    sqlite3Dequote(buf);
+    return 0;
 }
