@@ -19,6 +19,8 @@
 #include <poll.h>
 
 #include <bdb_fetch.h>
+#include "bdb_osqllog.h"
+#include "bdb_osql_log_rec.h"
 
 #include "schemachange.h"
 #include "sc_records.h"
@@ -1210,6 +1212,34 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         data.to->schema /*tbl .NEW..ONDISK schema */); // free tagmap only once
     int outrc = 0;
 
+    if (BDB_ATTR_GET(thedb->bdb_attr, SNAPISOL)) {
+        int rc = 0;
+        struct convert_record_data *thdData =
+            calloc(1, sizeof(struct convert_record_data));
+        if (!thdData) {
+            logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__, __LINE__);
+            return -1;
+        }
+        *thdData = data;
+        bdb_get_commit_genid(thedb->bdb_env, &(thdData->start_lsn));
+        thdData->stripe = -1;
+        sc_printf(s, "[%s] starting thread for logical live schema change\n",
+                  s->table);
+        thdData->isThread = 1;
+        s->logical_livesc = 1;
+        rc = pthread_create(&thdData->tid, &gbl_pthread_attr_detached,
+                            (void *(*)(void *))live_sc_logical_redo_thd,
+                            thdData);
+        if (rc) {
+            sc_errf(s, "[%s] starting thread failed for logical redo\n",
+                    s->table);
+            s->logical_livesc = 0;
+            return -1;
+        }
+    } else {
+        s->logical_livesc = 0;
+    }
+
     /* if were not in parallel, dont start any threads */
     if (data.scanmode != SCAN_PARALLEL && data.scanmode != SCAN_PAGEORDER) {
         convert_records_thd(&data);
@@ -1709,4 +1739,92 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
     convert_record_data_cleanup(&data);
 
     return outrc;
+}
+
+int live_sc_redo_logical_log(struct convert_record_data *data,
+                             bdb_llog_cursor *pCur)
+{
+    bdb_osql_log_rec_t *rec = NULL;
+    while ((rec = listc_rtl(&pCur->log->impl->recs)) != NULL) {
+        if (strcasecmp(data->s->table, rec->table) != 0)
+            continue;
+        logmsg(LOGMSG_INFO, "[%s] redo lsn[%u:%u] table[%s] type[%d]\n",
+               data->s->table, rec->lsn.file, rec->lsn.offset, rec->table,
+               rec->type);
+    }
+    bdb_osql_log_destroy(pCur->log);
+    pCur->log = NULL;
+    return 0;
+}
+
+void *live_sc_logical_redo_thd(struct convert_record_data *data)
+{
+    struct thr_handle *thr_self = thrman_self();
+    enum thrtype oldtype = THRTYPE_UNKNOWN;
+    int rc = 0;
+    bdb_llog_cursor llog_cur = {0};
+    bdb_llog_cursor *pCur = &llog_cur;
+
+    if (data->isThread)
+        thread_started("logical redo thread");
+
+    if (thr_self) {
+        oldtype = thrman_get_type(thr_self);
+        thrman_change_type(thr_self, THRTYPE_SCHEMACHANGE);
+    } else {
+        thr_self = thrman_register(THRTYPE_SCHEMACHANGE);
+    }
+
+    if (data->isThread) {
+        backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+    }
+
+    sc_printf(data->s, "[%s] logical redo starts at [%u:%u]\n", data->s->table,
+              data->start_lsn.file, data->start_lsn.offset);
+again:
+    bdb_llog_cursor_reset(pCur);
+    pCur->minLsn = data->start_lsn;
+
+    while (1) {
+        if (pCur->log == NULL && bdb_llog_cursor_next(pCur) != 0) {
+            sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",
+                      data->s->table, pCur->curLsn.file, pCur->curLsn.offset);
+            data->s->iq->sc_should_abort = 1;
+            goto cleanup;
+        }
+        if (pCur->log && !pCur->hitLast) {
+            rc = live_sc_redo_logical_log(data, pCur);
+            if (rc) {
+                sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",
+                          data->s->table, pCur->curLsn.file,
+                          pCur->curLsn.offset);
+                data->s->iq->sc_should_abort = 1;
+                goto cleanup;
+            }
+        }
+        if (pCur->hitLast) {
+            if (data->s->got_tablelock)
+                break;
+            data->start_lsn = pCur->curLsn;
+            goto again;
+        }
+    }
+
+cleanup:
+    convert_record_data_cleanup(data);
+
+    if (data->isThread)
+        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+
+    /* restore our  thread type to what it was before */
+    if (oldtype != THRTYPE_UNKNOWN)
+        thrman_change_type(thr_self, oldtype);
+
+    sc_printf(data->s,
+              "[%s] logical redo thread exiting, log cursor at [%u:%u]\n",
+              data->s->table, pCur->curLsn.file, pCur->curLsn.offset);
+    data->s->logical_livesc = 0;
+    bdb_llog_cursor_close(pCur);
+    free(data);
+    return NULL;
 }

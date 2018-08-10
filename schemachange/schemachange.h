@@ -193,6 +193,9 @@ struct schema_change_type {
      * *****************************/
 
     size_t packed_len;
+
+    int got_tablelock;
+    int logical_livesc;
 };
 
 struct ireq;

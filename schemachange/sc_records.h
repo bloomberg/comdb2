@@ -17,6 +17,8 @@
 #ifndef INCLUDE_SC_RECORDS_H
 #define INCLUDE_SC_RECORDS_H
 
+#include <build/db.h>
+
 struct common_members {
     int64_t ndeadlocks;
     int64_t nlockwaits;
@@ -58,6 +60,7 @@ struct convert_record_data {
     /* all the data objects point to the same single cmembers object */
     struct common_members *cmembers;
     unsigned int write_count; // saved write counter to this tbl
+    DB_LSN start_lsn;
 };
 
 int convert_all_records(struct dbtable *from, struct dbtable *to,
@@ -74,4 +77,6 @@ void convert_record_data_cleanup(struct convert_record_data *data);
 int init_sc_genids(struct dbtable *db, struct schema_change_type *s);
 
 void live_sc_enter_exclusive_all(bdb_state_type *, tran_type *);
+
+void *live_sc_logical_redo_thd(struct convert_record_data *data);
 #endif

@@ -635,6 +635,13 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     bdb_lock_table_write(db->handle, transac);
 
+    s->got_tablelock = 1;
+
+    /* wait for logical redo thread to stop */
+    while (s->logical_livesc) {
+        usleep(200);
+    }
+
     db->sc_to = newdb;
 
     if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort) {

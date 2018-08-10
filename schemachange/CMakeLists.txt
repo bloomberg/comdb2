@@ -42,6 +42,8 @@ include_directories(
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_SOURCE_DIR}/berkdb
+  ${PROJECT_SOURCE_DIR}/build/berkdb
+  ${PROJECT_SOURCE_DIR}/build/bdb
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}
 )
