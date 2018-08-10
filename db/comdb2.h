@@ -771,7 +771,13 @@ struct dbtable {
 
     struct dbtable *sc_from; /* point to the source db, replace global sc_from */
     struct dbtable *sc_to; /* point to the new db, replace global sc_to */
+
+    int sc_live_logical;
     unsigned long long *sc_genids; /* schemachange stripe pointers */
+
+    /* All writer threads have to grab the lock in read/write mode.  If a live
+     * schema change is in progress then they have to do extra stuff. */
+    pthread_rwlock_t sc_live_lk;
 
     /* count the number of updates and deletes done by schemachange
      * when behind the cursor.  This helps us know how many

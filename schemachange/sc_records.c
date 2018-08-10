@@ -1227,6 +1227,9 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                   s->table);
         thdData->isThread = 1;
         s->logical_livesc = 1;
+        pthread_rwlock_wrlock(&s->db->sc_live_lk);
+        s->db->sc_live_logical = 1;
+        pthread_rwlock_unlock(&s->db->sc_live_lk);
         rc = pthread_create(&thdData->tid, &gbl_pthread_attr_detached,
                             (void *(*)(void *))live_sc_logical_redo_thd,
                             thdData);

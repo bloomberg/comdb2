@@ -76,10 +76,6 @@ int log_sync_time_save;
 
 int gbl_sc_thd_failed = 0;
 
-/* All writer threads have to grab the lock in read/write mode.  If a live
- * schema change is in progress then they have to do extra stuff. */
-pthread_rwlock_t sc_live_rwlock = PTHREAD_RWLOCK_INITIALIZER;
-
 int schema_change = SC_NO_CHANGE; /*static int schema_change_doomed = 0;*/
 
 int stopsc = 0; /* stop schemachange, so it can resume */
@@ -314,7 +310,7 @@ void reset_sc_stat()
  * change (removing temp tables etc). */
 void live_sc_off(struct dbtable *db)
 {
-    Pthread_rwlock_wrlock(&sc_live_rwlock);
+    Pthread_rwlock_wrlock(&db->sc_live_lk);
     db->sc_to = NULL;
     db->sc_from = NULL;
     db->sc_abort = 0;
@@ -324,7 +320,7 @@ void live_sc_off(struct dbtable *db)
     db->sc_deletes = 0;
     db->sc_nrecs = 0;
     db->sc_prev_nrecs = 0;
-    Pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&db->sc_live_lk);
 }
 
 void sc_set_downgrading(struct schema_change_type *s)
@@ -342,13 +338,13 @@ void sc_set_downgrading(struct schema_change_type *s)
     /* make sure no one writes to the table */
     bdb_lock_table_write(s->db->handle, tran);
 
-    Pthread_rwlock_wrlock(&sc_live_rwlock);
+    Pthread_rwlock_wrlock(&s->db->sc_live_lk);
     /* live_sc_post* code will look at this and return errors properly */
     s->db->sc_downgrading = 1;
     s->db->sc_to = NULL;
     s->db->sc_from = NULL;
     s->db->sc_abort = 0;
-    Pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&s->db->sc_live_lk);
 
     trans_abort(&iq, tran);
 }
