@@ -975,6 +975,7 @@ int bdb_osql_log_destroy(bdb_osql_log_t *log)
 
     LISTC_FOR_EACH_SAFE(&log->impl->recs, rec, tmp, lnk)
     {
+        listc_rfl(&log->impl->recs, rec);
         if (rec->comprec) {
             if (rec->comprec->table)
                 free(rec->comprec->table);

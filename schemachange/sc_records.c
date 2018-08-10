@@ -1833,7 +1833,8 @@ static int live_sc_redo_logical_log(struct convert_record_data *data,
                __LINE__, rc);
         return -1;
     }
-    while ((rec = listc_rtl(&pCur->log->impl->recs)) != NULL) {
+    LISTC_FOR_EACH(&pCur->log->impl->recs, rec, lnk)
+    {
         if (strcasecmp(data->s->table, rec->table) != 0)
             continue;
         if (data->s->sc_thd_failed) {
