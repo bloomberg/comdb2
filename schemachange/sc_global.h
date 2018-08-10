@@ -61,8 +61,6 @@ extern int rep_sync_save;
 extern int log_sync_save;
 extern int log_sync_time_save;
 
-extern int gbl_sc_thd_failed;
-
 extern int schema_change; /*static int schema_change_doomed = 0;*/
 extern int stopsc;        /* stop schemachange, so it can resume */
 

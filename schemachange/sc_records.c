@@ -432,11 +432,12 @@ static int convert_record(struct convert_record_data *data)
     void *dta = NULL;
     int no_wait_rowlock = 0;
 
-    if (gbl_sc_thd_failed) {
+    if (data->s->sc_thd_failed) {
         if (!data->s->retry_bad_genids)
-            sc_errf(data->s, "Stoping work on stripe %d because the thread for "
-                             "stripe %d failed\n",
-                    data->stripe, gbl_sc_thd_failed - 1);
+            sc_errf(data->s,
+                    "Stoping work on stripe %d because the thread for "
+                    "stripe %d failed\n",
+                    data->stripe, data->s->sc_thd_failed - 1);
         return -1;
     }
     if (gbl_sc_abort || data->from->sc_abort ||
@@ -1107,7 +1108,7 @@ cleanup:
                     data->nrecs, data->stripe, data->totnretries);
         }
 
-        gbl_sc_thd_failed = data->stripe + 1;
+        data->s->sc_thd_failed = data->stripe + 1;
     }
 
 cleanup_no_msg:
@@ -1127,7 +1128,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 {
     struct convert_record_data data = {0};
     int ii;
-    gbl_sc_thd_failed = 0;
+    s->sc_thd_failed = 0;
 
     data.curkey = data.key1;
     data.lastkey = data.key2;
@@ -1641,7 +1642,7 @@ cleanup:
                              "while working on stripe %d\n",
                     data->nrecs, data->nrecskip, data->stripe);
         }
-        gbl_sc_thd_failed = data->stripe + 1;
+        data->s->sc_thd_failed = data->stripe + 1;
     }
 
     convert_record_data_cleanup(data);
@@ -1661,7 +1662,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
 
     struct convert_record_data data = {0};
 
-    gbl_sc_thd_failed = 0;
+    s->sc_thd_failed = 0;
 
     data.from = db;
     data.to = db;
@@ -1744,16 +1745,45 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
     return outrc;
 }
 
-int live_sc_redo_logical_log(struct convert_record_data *data,
-                             bdb_llog_cursor *pCur)
+static int live_sc_redo_logical_rec(struct convert_record_data *data,
+                                    bdb_osql_log_rec_t *rec)
 {
+    logmsg(LOGMSG_INFO, "[%s] redo lsn[%u:%u] table[%s] type[%d]\n",
+           data->s->table, rec->lsn.file, rec->lsn.offset, rec->table,
+           rec->type);
+    return 0;
+}
+
+static int live_sc_redo_logical_log(struct convert_record_data *data,
+                                    bdb_llog_cursor *pCur)
+{
+    int rc = 0;
     bdb_osql_log_rec_t *rec = NULL;
     while ((rec = listc_rtl(&pCur->log->impl->recs)) != NULL) {
         if (strcasecmp(data->s->table, rec->table) != 0)
             continue;
-        logmsg(LOGMSG_INFO, "[%s] redo lsn[%u:%u] table[%s] type[%d]\n",
-               data->s->table, rec->lsn.file, rec->lsn.offset, rec->table,
-               rec->type);
+        if (data->s->sc_thd_failed) {
+            if (!data->s->retry_bad_genids)
+                sc_errf(data->s,
+                        "Stoping work on logical redo because the thread for "
+                        "stripe %d failed\n",
+                        data->s->sc_thd_failed - 1);
+            return -1;
+        }
+        if (gbl_sc_abort || data->from->sc_abort ||
+            (data->s->iq && data->s->iq->sc_should_abort)) {
+            sc_errf(data->s, "[%s] Logical redo aborted\n", data->s->table);
+            return -1;
+        }
+        rc = live_sc_redo_logical_rec(data, rec);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "[%s] redo failed at record lsn[%u:%u] table[%s] type[%d]\n",
+                   data->s->table, rec->lsn.file, rec->lsn.offset, rec->table,
+                   rec->type);
+            data->s->sc_thd_failed = -1;
+            return -1;
+        }
     }
     bdb_osql_log_destroy(pCur->log);
     pCur->log = NULL;
