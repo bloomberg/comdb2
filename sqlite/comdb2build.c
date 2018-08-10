@@ -182,7 +182,8 @@ cleanup:
     return rc;
 }
 
-static inline int create_string_from_token(Vdbe* v, Parse* pParse, char** dst, Token* t)
+static inline
+int create_string_from_token(Vdbe* v, Parse* pParse, char** dst, Token* t)
 {
     *dst = (char*) malloc (t->n + 1);
 
@@ -203,8 +204,8 @@ static inline int create_string_from_token(Vdbe* v, Parse* pParse, char** dst, T
     return SQLITE_OK;
 }
 
-static inline int copyNosqlToken(Vdbe* v, Parse *pParse, char** buf,
-    Token *t)
+static inline
+int copyNosqlToken(Vdbe* v, Parse *pParse, char** buf, Token *t)
 {
     if (*buf == NULL)
         *buf = (char*) malloc((t->n));
@@ -822,7 +823,7 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     }
 
     if (create_string_from_token(v, pParse, &indexname, index))
-        goto out; // TODO RETURN ERROR
+        goto out;
 
     int rc = getidxnumbyname(sc->table, indexname, &index_num );
     if( rc ){
@@ -1513,36 +1514,50 @@ clean_arg:
 
 void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
 {
-    Vdbe *v  = sqlite3GetVdbe(pParse);
-    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    char username[MAX_USERNAME_LEN + 1];
+    char passwd[MAX_PASSWORD_LEN + 1];
 
-    if (arg)
-    {
-        bpfunc_arg__init(arg);
-    }else
-    {
-        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+    Vdbe *v  = sqlite3GetVdbe(pParse);
+
+    if (comdb2TokenToStr(pwd, passwd, sizeof(passwd))) {
+        setError(pParse, SQLITE_MISUSE, "Password is too long");
         return;
     }
 
-    BpfuncPassword * password = (BpfuncPassword*) malloc(sizeof(BpfuncPassword));
+    if (comdb2TokenToStr(pwd, username, sizeof(username))) {
+        setError(pParse, SQLITE_MISUSE, "User name is too long");
+        return;
+    }
 
-    if (password)
-    {
-        bpfunc_password__init(password);
-    } else
-    {
+    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    if (arg == NULL) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        return;
+    }
+    bpfunc_arg__init(arg);
+
+    BpfuncPassword *password = (BpfuncPassword*) malloc(sizeof(BpfuncPassword));
+    if (password == NULL) {
         setError(pParse, SQLITE_NOMEM, "Out of Memory");
         goto clean_arg;
     }
+    bpfunc_password__init(password);
 
     arg->pwd = password;
     arg->type = BPFUNC_PASSWORD;
     password->disable = 0;
 
-    if (create_string_from_token(v, pParse, &password->user, nm) ||
-        create_string_from_token(v, pParse, &password->password, pwd))
-            goto clean_arg;
+    password->user = strdup(username);
+    if (password->user == NULL) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto clean_arg;
+    }
+
+    password->password = strdup(passwd);
+    if (password->password == NULL) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto clean_arg;
+    }
 
     if (comdb2AuthenticateUserDDL(v, "", pParse))
     {
@@ -1551,7 +1566,7 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
         if (!(thd && thd->clnt &&
                    strcmp(thd->clnt->user, password->user) == 0 )) {
             setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
-            return;
+            goto clean_arg;
         }
     }
 
@@ -5022,6 +5037,7 @@ cleanup:
     return;
 }
 
+// Use create_string_from_token() to store the string on heap.
 int comdb2TokenToStr(Token *nm, char *buf, char len)
 {
     if (nm->n > len)
