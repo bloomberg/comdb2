@@ -7990,6 +7990,12 @@ int bdb_llmeta_add_queue(bdb_state_type *bdb_state, tran_type *tran,
     p_buf_end = p_buf + LLMETA_IXLEN;
     qk.file_type = LLMETA_TRIGGER;
     /* TODO: range check? assume sanitized at this point? */
+
+    if (strlen(queue) > LLMETA_TBLLEN) {
+        *bdberr = BDBERR_MISC;
+        logmsg(LOGMSG_ERROR, "%s: queue name length is too long\n", __func__);
+        return -1;
+    }
     strcpy(qk.dbname, queue);
 
     p_buf = llmeta_queue_key_put(&qk, p_buf, p_buf_end);
