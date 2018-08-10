@@ -185,7 +185,7 @@ cleanup:
 static inline int create_string_from_token(Vdbe* v, Parse* pParse, char** dst, Token* t)
 {
     *dst = (char*) malloc (t->n + 1);
-    
+
     if (*dst == NULL)
     {
         setError(pParse, SQLITE_NOMEM, "System out of memory");
@@ -206,7 +206,7 @@ static inline int create_string_from_token(Vdbe* v, Parse* pParse, char** dst, T
 static inline int copyNosqlToken(Vdbe* v, Parse *pParse, char** buf,
     Token *t)
 {
-    if (*buf == NULL)    
+    if (*buf == NULL)
         *buf = (char*) malloc((t->n));
 
     if (*buf == NULL)
@@ -223,7 +223,7 @@ static inline int copyNosqlToken(Vdbe* v, Parse *pParse, char** buf,
         strncpy(*buf, t->z + 1,t->n - 2);
         (*buf)[t->n - 2] = '\0';
     }
-    
+
     return SQLITE_OK;
 }
 
@@ -253,7 +253,7 @@ static void fillTableOption(struct schema_change_type* sc, int opt)
 {
     if (OPT_ON(opt, ODH_OFF))
         sc->headers = 0;
-    else 
+    else
         sc->headers = 1;
 
     if (OPT_ON(opt, IPU_OFF))
@@ -322,15 +322,15 @@ int comdb2AuthenticateUserDDL(Vdbe* v, const char *tablename, Parse* pParse)
 {
      struct sql_thread *thd = pthread_getspecific(query_info_key);
      bdb_state_type *bdb_state = thedb->bdb_env;
-     int bdberr; 
-     int authOn = bdb_authentication_get(bdb_state, NULL, &bdberr); 
-    
+     int bdberr;
+     int authOn = bdb_authentication_get(bdb_state, NULL, &bdberr);
+
      if (authOn != 0)
         return SQLITE_OK;
 
      if (thd->clnt && tablename)
      {
-        if (bdb_tbl_op_access_get(bdb_state, NULL, 0, 
+        if (bdb_tbl_op_access_get(bdb_state, NULL, 0,
             tablename, thd->clnt->user, &bdberr))
           return SQLITE_AUTH;
         else
@@ -359,7 +359,7 @@ static int comdb2AuthenticateOpPassword(Vdbe* v, Parse* pParse)
 
      struct sql_thread *thd = pthread_getspecific(query_info_key);
      bdb_state_type *bdb_state = thedb->bdb_env;
-     int bdberr; 
+     int bdberr;
 
      if (thd->clnt)
      {
@@ -369,9 +369,9 @@ static int comdb2AuthenticateOpPassword(Vdbe* v, Parse* pParse)
          {
             return SQLITE_AUTH;
          }
-         
+
          /* Check if the user is OP user. */
-         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, 
+         if (bdb_tbl_op_access_get(bdb_state, NULL, 0,
              tablename, thd->clnt->user, &bdberr))
              return SQLITE_AUTH;
          else
@@ -495,7 +495,7 @@ void free_rstMsg(struct rstMsg* rec)
     }
 }
 
-/* 
+/*
 * Send a BPFUNC to the master
 * Returns SQLITE_OK if successful.
 *
@@ -507,7 +507,7 @@ int comdb2SendBpfunc(OpFunc *f)
    BpfuncArg *arg = (BpfuncArg*)f->arg;
 
    rc = osql_bpfunc_logic(thd, arg);
-    
+
    if (rc) {
        f->rc = rc;
        f->errorMsg = "FAIL"; // TODO This must be translated to a description
@@ -529,7 +529,7 @@ static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, int opt);
 
 /************************** Function definitions ****************************/
 
-int authenticateSC(const char * table,  Parse *pParse) 
+int authenticateSC(const char * table,  Parse *pParse)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
     char *username = strstr(table, "@");
@@ -665,7 +665,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     sc->drop_table = 1;
     sc->fastinit = 1;
     sc->nothrevent = 1;
-    
+
     if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL )) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->table);
@@ -701,13 +701,13 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     sc->nothrevent = 1;
     sc->live = 1;
     sc->scanmode = gbl_default_sc_scanmode;
-    
+
     if (OPT_ON(opt, REBUILD_ALL))
         sc->force_rebuild = 1;
 
     if (OPT_ON(opt, REBUILD_DATA))
         sc->force_dta_rebuild = 1;
-    
+
     if (OPT_ON(opt, REBUILD_BLOB)) {
         sc->force_dta_rebuild = 1;
         sc->force_blob_rebuild = 1;
@@ -990,18 +990,18 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     int max_length;
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    if (!arg) goto err; 
+    if (!arg) goto err;
     bpfunc_arg__init(arg);
 
     BpfuncCreateTimepart *tp = malloc(sizeof(BpfuncCreateTimepart));
     if (!tp) goto err;
     bpfunc_create_timepart__init(tp);
-    
+
     arg->crt_tp = tp;
     arg->type = BPFUNC_CREATE_TIMEPART;
     tp->tablename = (char*) malloc(MAXTABLELEN);
     memset(tp->tablename, '\0', MAXTABLELEN);
-    if (table && chkAndCopyTableTokens(v, pParse, tp->tablename, table, NULL, 1)) 
+    if (table && chkAndCopyTableTokens(v, pParse, tp->tablename, table, NULL, 1))
         goto err;
 
 
@@ -1016,11 +1016,11 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     assert (*period->z == '\'' || *period->z == '\"');
     period->z++;
     period->n -= 2;
-    
+
     max_length = period->n < 50 ? period->n : 50;
     strncpy(period_str, period->z, max_length);
     tp->period = name_to_period(period_str);
-    
+
     if (tp->period == VIEW_TIMEPART_INVALID) {
         setError(pParse, SQLITE_ERROR, "Invalid period name");
         goto clean_arg;
@@ -1034,7 +1034,7 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
 
     char start_str[200];
     memset(start_str,0, sizeof(start_str));
-    
+
     assert (*start->z == '\'' || *start->z == '\"');
     start->z++;
     start->n -= 2;
@@ -1048,7 +1048,7 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
         goto clean_arg;
     }
 
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
                         (vdbeFuncArgFree) &free_bpfunc_arg);
     return;
 
@@ -1056,7 +1056,7 @@ err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
     if (arg)
-        free_bpfunc_arg(arg);   
+        free_bpfunc_arg(arg);
 }
 
 
@@ -1066,13 +1066,13 @@ void comdb2DropTimePartition(Parse* pParse, Token* partition_name)
     int max_length;
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    if (!arg) goto err; 
+    if (!arg) goto err;
     bpfunc_arg__init(arg);
-    
+
     BpfuncDropTimepart *tp = malloc(sizeof(BpfuncDropTimepart));
     if (!tp) goto err;
     bpfunc_drop_timepart__init(tp);
-    
+
     arg->drop_tp = tp;
     arg->type = BPFUNC_DROP_TIMEPART;
     max_length = partition_name->n < MAXTABLELEN ? partition_name->n : MAXTABLELEN;
@@ -1080,7 +1080,7 @@ void comdb2DropTimePartition(Parse* pParse, Token* partition_name)
     memset(tp->partition_name, '\0', MAXTABLELEN);
     strncpy(tp->partition_name, partition_name->z, max_length);
 
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
                         (vdbeFuncArgFree) &free_bpfunc_arg);
 
     return;
@@ -1119,17 +1119,17 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
     int percentage = pc;
     int threads = GET_ANALYZE_THREAD(opt);
     int sum_threads = GET_ANALYZE_SUMTHREAD(opt);
-  
+
     if (comdb2AuthenticateUserOp(v, pParse))
-        return;       
-  
+        return;
+
     if (threads > 0)
         analyze_set_max_table_threads(NULL, &threads);
     if (sum_threads)
         analyze_set_max_sampling_threads(NULL, &sum_threads);
 
     if (nm == NULL) {
-        comdb2prepareNoRows(v, pParse, pc, NULL, &comdb2vdbeAnalyze, 
+        comdb2prepareNoRows(v, pParse, pc, NULL, &comdb2vdbeAnalyze,
                             (vdbeFuncArgFree) &free);
     } else {
         char *tablename = (char*) malloc(MAXTABLELEN);
@@ -1141,8 +1141,8 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
             goto err;
         }
         else
-            comdb2prepareNoRows(v, pParse, pc, tablename, &comdb2vdbeAnalyze, 
-                                (vdbeFuncArgFree) &free); 
+            comdb2prepareNoRows(v, pParse, pc, tablename, &comdb2vdbeAnalyze,
+                                (vdbeFuncArgFree) &free);
     }
 
     return;
@@ -1174,12 +1174,12 @@ void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
     arg->type = BPFUNC_ANALYZE_COVERAGE;
     ancov_f->tablename = (char*) malloc(MAXTABLELEN);
     if (!ancov_f->tablename) goto err;
-        
-    if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1)) 
-        goto clean_arg;  
-    
+
+    if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1))
+        goto clean_arg;
+
     ancov_f->newvalue = newscale;
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
                         (vdbeFuncArgFree) &free_bpfunc_arg);
     return;
 
@@ -1213,12 +1213,12 @@ void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable)
     arg->type = BPFUNC_SET_SKIPSCAN;
     ancov_f->tablename = (char*) malloc(MAXTABLELEN);
     if (!ancov_f->tablename) goto err;
-        
-    if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1)) 
-        goto clean_arg;  
-    
+
+    if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1))
+        goto clean_arg;
+
     ancov_f->newvalue = enable;
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
                         (vdbeFuncArgFree) &free_bpfunc_arg);
     return;
 
@@ -1237,10 +1237,10 @@ void comdb2enableGenid48(Parse* pParse, int enable)
     if (arg)
         bpfunc_arg__init(arg);
     else
-        goto err; 
+        goto err;
 
     BpfuncGenid48Enable *gn = malloc(sizeof(BpfuncGenid48Enable));
-    
+
     if (gn)
         bpfunc_genid48_enable__init(gn);
     else
@@ -1249,7 +1249,7 @@ void comdb2enableGenid48(Parse* pParse, int enable)
     arg->gn_enable = gn;
     arg->type = BPFUNC_GENID48_ENABLE;
     gn->enable = enable;
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
                         (vdbeFuncArgFree) &free_bpfunc_arg);
     return;
 
@@ -1257,7 +1257,7 @@ err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
     if (arg)
-        free_bpfunc_arg(arg);   
+        free_bpfunc_arg(arg);
 }
 
 void comdb2enableRowlocks(Parse* pParse, int enable)
@@ -1268,10 +1268,10 @@ void comdb2enableRowlocks(Parse* pParse, int enable)
     if (arg)
         bpfunc_arg__init(arg);
     else
-        goto err; 
+        goto err;
 
     BpfuncRowlocksEnable *rl = malloc(sizeof(BpfuncRowlocksEnable));
-    
+
     if (rl)
         bpfunc_rowlocks_enable__init(rl);
     else
@@ -1280,7 +1280,7 @@ void comdb2enableRowlocks(Parse* pParse, int enable)
     arg->rl_enable = rl;
     arg->type = BPFUNC_ROWLOCKS_ENABLE;
     rl->enable = enable;
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
                         (vdbeFuncArgFree) &free_bpfunc_arg);
     return;
 
@@ -1288,7 +1288,7 @@ err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
     if (arg)
-        free_bpfunc_arg(arg);   
+        free_bpfunc_arg(arg);
 }
 
 void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthreshold)
@@ -1301,7 +1301,7 @@ void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthresho
         setError(pParse, SQLITE_ERROR, "Threshold must be between 0 and 100");
         return;
     }
-    
+
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
     if (!arg) goto err;
     bpfunc_arg__init(arg);
@@ -1316,12 +1316,12 @@ void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthresho
 
     if (!anthr_f->tablename)
         goto err;
-        
-    if (chkAndCopyTableTokens(v, pParse, anthr_f->tablename, nm, lnm, 1)) 
-        return;  
-    
+
+    if (chkAndCopyTableTokens(v, pParse, anthr_f->tablename, nm, lnm, 1))
+        return;
+
     anthr_f->newvalue = newthreshold;
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
                         (vdbeFuncArgFree) &free_bpfunc_arg);
 
     return;
@@ -1339,10 +1339,10 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     if (comdb2AuthenticateUserOp(v, pParse))
-        return;       
+        return;
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
+
     if (arg)
     {
         bpfunc_arg__init(arg);
@@ -1354,7 +1354,7 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
 
 
     BpfuncAlias *alias_f = (BpfuncAlias*) malloc(sizeof(BpfuncAlias));
-    
+
     if (alias_f)
     {
         bpfunc_alias__init(alias_f);
@@ -1378,7 +1378,7 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
     if (create_string_from_token(v, pParse, &alias_f->remote, url))
         goto clean_arg;
 
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
                         (vdbeFuncArgFree) &free_bpfunc_arg);
 
     return;
@@ -1392,10 +1392,10 @@ void comdb2getAlias(Parse* pParse, Token* t1)
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     if (comdb2AuthenticateUserOp(v, pParse))
-        return;       
+        return;
 
     setError(pParse, SQLITE_INTERNAL, "Not Implemented");
-    logmsg(LOGMSG_INFO, "Getting alias %.*s", t1->n, t1->z); 
+    logmsg(LOGMSG_INFO, "Getting alias %.*s", t1->n, t1->z);
 }
 
 /********************* GRANT AUTHORIZAZIONS ************************************/
@@ -1405,10 +1405,10 @@ void comdb2grant(Parse* pParse, int revoke, int permission, Token* nm,Token* lnm
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     if (comdb2AuthenticateUserOp(v, pParse))
-        return;  
+        return;
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
+
     if (arg)
     {
         bpfunc_arg__init(arg);
@@ -1420,7 +1420,7 @@ void comdb2grant(Parse* pParse, int revoke, int permission, Token* nm,Token* lnm
 
 
     BpfuncGrant *grant = (BpfuncGrant*) malloc(sizeof(BpfuncGrant));
-    
+
     if (grant)
     {
         bpfunc_grant__init(grant);
@@ -1436,7 +1436,7 @@ void comdb2grant(Parse* pParse, int revoke, int permission, Token* nm,Token* lnm
     grant->perm = permission;
     grant->table = (char*) malloc(MAXTABLELEN);
     grant->table[0] = '\0';
-     
+
     if (permission == AUTH_USERSCHEMA) {
       if (create_string_from_token(v, pParse, &grant->userschema, nm))
         goto clean_arg;
@@ -1447,7 +1447,7 @@ void comdb2grant(Parse* pParse, int revoke, int permission, Token* nm,Token* lnm
     if (create_string_from_token(v, pParse, &grant->username, u))
         goto clean_arg;
 
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
                         (vdbeFuncArgFree) &free_bpfunc_arg);
 
     return;
@@ -1464,15 +1464,15 @@ void comdb2enableAuth(Parse* pParse, int on)
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     int rc = SQLITE_OK;
- 
-    if (comdb2AuthenticateOpPassword(v, pParse)) 
+
+    if (comdb2AuthenticateOpPassword(v, pParse))
     {
         setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
         return;
     }
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
+
     if (arg)
     {
         bpfunc_arg__init(arg);
@@ -1480,11 +1480,11 @@ void comdb2enableAuth(Parse* pParse, int on)
     {
         setError(pParse, SQLITE_NOMEM, "Out of Memory");
         return;
-    }   
+    }
 
 
     BpfuncAuthentication *auth = (BpfuncAuthentication*) malloc(sizeof(BpfuncAuthentication));
-    
+
     if (auth)
     {
         bpfunc_authentication__init(auth);
@@ -1499,7 +1499,7 @@ void comdb2enableAuth(Parse* pParse, int on)
     auth->enabled = on;
     gbl_check_access_controls = 1;
 
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
         (vdbeFuncArgFree) &free_bpfunc_arg);
 
     return;
@@ -1515,7 +1515,7 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
+
     if (arg)
     {
         bpfunc_arg__init(arg);
@@ -1523,10 +1523,10 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
     {
         setError(pParse, SQLITE_NOMEM, "Out of Memory");
         return;
-    }  
-  
+    }
+
     BpfuncPassword * password = (BpfuncPassword*) malloc(sizeof(BpfuncPassword));
-    
+
     if (password)
     {
         bpfunc_password__init(password);
@@ -1539,7 +1539,7 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
     arg->pwd = password;
     arg->type = BPFUNC_PASSWORD;
     password->disable = 0;
-  
+
     if (create_string_from_token(v, pParse, &password->user, nm) ||
         create_string_from_token(v, pParse, &password->password, pwd))
             goto clean_arg;
@@ -1555,13 +1555,13 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
         }
     }
 
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
         (vdbeFuncArgFree) &free_bpfunc_arg);
-    
+
     return;
 
 clean_arg:
-    free_bpfunc_arg(arg);  
+    free_bpfunc_arg(arg);
 }
 
 void comdb2deletePassword(Parse* pParse, Token* nm)
@@ -1576,7 +1576,7 @@ void comdb2deletePassword(Parse* pParse, Token* nm)
 
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
+
     if (arg)
     {
         bpfunc_arg__init(arg);
@@ -1584,10 +1584,10 @@ void comdb2deletePassword(Parse* pParse, Token* nm)
     {
         setError(pParse, SQLITE_NOMEM, "Out of Memory");
         return;
-    }  
-  
+    }
+
     BpfuncPassword * pwd = (BpfuncPassword*) malloc(sizeof(BpfuncPassword));
-    
+
     if (pwd)
     {
         bpfunc_password__init(pwd);
@@ -1600,17 +1600,17 @@ void comdb2deletePassword(Parse* pParse, Token* nm)
     arg->pwd = pwd;
     arg->type = BPFUNC_PASSWORD;
     pwd->disable = 1;
-  
+
     if (create_string_from_token(v, pParse, &pwd->user, nm))
         goto clean_arg;
 
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
         (vdbeFuncArgFree) &free_bpfunc_arg);
-    
+
     return;
 
 clean_arg:
-    free_bpfunc_arg(arg);  
+    free_bpfunc_arg(arg);
 }
 
 int comdb2genidcontainstime(void)
@@ -1649,15 +1649,15 @@ static int produceAnalyzeCoverage(OpFunc *f)
 
     char  *tablename = (char*) f->arg;
     int rst;
-    int bdberr; 
+    int bdberr;
     int rc = bdb_get_analyzecoverage_table(NULL, tablename, &rst, &bdberr);
-    
+
     if (!rc)
     {
         opFuncWriteInteger(f, (int) rst );
         f->rc = SQLITE_OK;
         f->errorMsg = NULL;
-    } else 
+    } else
     {
         f->rc = SQLITE_INTERNAL;
         f->errorMsg = "Could not read value";
@@ -1673,10 +1673,10 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
     OpFuncSetup stp = {1, colname, &coltype, 256};
     char *tablename = (char*) malloc (MAXTABLELEN);
 
-    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1)) 
+    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1))
         free(tablename);
     else
-        comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeCoverage, 
+        comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeCoverage,
                             (vdbeFuncArgFree)  &free, &stp);
 }
 
@@ -1685,15 +1685,15 @@ static int produceAnalyzeThreshold(OpFunc *f)
 
     char  *tablename = (char*) f->arg;
     long long int rst;
-    int bdberr; 
+    int bdberr;
     int rc = bdb_get_analyzethreshold_table(NULL, tablename, &rst, &bdberr);
-    
+
     if (!rc)
     {
         opFuncWriteInteger(f, (int) rst );
         f->rc = SQLITE_OK;
         f->errorMsg = NULL;
-    } else 
+    } else
     {
         f->rc = SQLITE_INTERNAL;
         f->errorMsg = "Could not read value";
@@ -1710,7 +1710,7 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
     char *tablename = (char*) malloc (MAXTABLELEN);
 
     if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1)) goto clean;
-    
+
     comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeThreshold, (vdbeFuncArgFree)  &free, &stp);
 
     return;
@@ -1756,7 +1756,7 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
 
 
     if (comdb2AuthenticateUserOp(v, pParse))
-        goto err;       
+        goto err;
 
     if (retention < 2)
     {
@@ -1765,12 +1765,12 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
     }
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
+
     if (arg)
         bpfunc_arg__init(arg);
     else
         goto err;
-    BpfuncTimepartRetention *tp_retention = (BpfuncTimepartRetention*) 
+    BpfuncTimepartRetention *tp_retention = (BpfuncTimepartRetention*)
         malloc(sizeof(BpfuncTimepartRetention));
 
     if (tp_retention)
@@ -1781,16 +1781,16 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
     arg->tp_ret = tp_retention;
     arg->type = BPFUNC_TIMEPART_RETENTION;
     tp_retention->timepartname = (char*) malloc(MAXTABLELEN);
-    
+
     if (!tp_retention->timepartname)
         goto err;
-        
-    if (chkAndCopyTableTokens(v, pParse, tp_retention->timepartname, nm, lnm, 1)) 
-        return;  
-    
+
+    if (chkAndCopyTableTokens(v, pParse, tp_retention->timepartname, nm, lnm, 1))
+        return;
+
     tp_retention->newvalue = retention;
 
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
                         (vdbeFuncArgFree)&free_bpfunc_arg);
 
     return;
