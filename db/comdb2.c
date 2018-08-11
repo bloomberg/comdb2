@@ -2022,12 +2022,12 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         }
 
         /* get schema version from llmeta */
-        rc = bdb_get_csc2_highest(NULL, tblnames[i], &ver, &bdberr);
+        rc = bdb_get_csc2_highest(tran, tblnames[i], &ver, &bdberr);
         if (rc)
             break;
 
         /* create latest version of db */
-        rc = get_csc2_file(tblnames[i], ver, &csc2text, NULL);
+        rc = get_csc2_file_tran(tblnames[i], ver, &csc2text, NULL, tran);
         if (rc) {
             logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);
             break;
@@ -5459,10 +5459,53 @@ int close_all_dbs_tran(tran_type *tran);
 
 int comdb2_close_schemas(void *dbenv, void *lsn, uint32_t lockid)
 {
+    /*
     uint32_t tranlid = 0;
     int bdberr = 0;
     int rc;
     tran_type *tran;
+
+    tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
+    if (tran == NULL) {
+        logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
+        abort();
+    }
+
+    bdb_get_tran_lockerid(tran, &tranlid);
+    bdb_set_tran_lockerid(tran, lockid);
+
+    if ((rc = close_all_dbs_tran(tran)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s: close_all_dbs_tran returns %d\n", __func__,
+                rc);
+        abort();
+    }
+
+    free_sqlite_table(thedb);
+    thedb->dbs = NULL;
+
+    bdb_set_tran_lockerid(tran, tranlid);
+    if ((rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort returns %d\n", __func__,
+                rc);
+        abort();
+    }
+    */
+
+    return 0;
+}
+
+int reload_all_db_tran(tran_type *tran);
+int open_all_dbs_tran(void *tran);
+
+int comdb2_reload_schemas(void *dbenv, void *lsn, uint32_t lockid)
+{
+    uint32_t tranlid = 0;
+    int bdberr = 0;
+    int rc;
+    int table;
+    tran_type *tran;
+    struct sql_thread *sqlthd;
+    struct sqlthdstate *thd;
 
     tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
     if (tran == NULL) {
@@ -5483,33 +5526,8 @@ int comdb2_close_schemas(void *dbenv, void *lsn, uint32_t lockid)
     free_sqlite_table(thedb);
     thedb->dbs = NULL;
 
-    if ((rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort returns %d\n", __func__,
-                rc);
-        abort();
-    }
-
-    return 0;
-}
-
-int reload_all_db_tran(tran_type *tran);
-
-int comdb2_reload_schemas(void *dbenv, void *lsn, uint32_t lockid)
-{
-    uint32_t tranlid = 0;
-    int bdberr = 0;
-    int rc;
-    int table;
-    tran_type *tran;
-
-    tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
-    if (tran == NULL) {
-        logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
-        abort();
-    }
-
-    bdb_get_tran_lockerid(tran, &tranlid);
-    bdb_set_tran_lockerid(tran, lockid);
+    if (thedb->db_hash) 
+        hash_clear(thedb->db_hash);
 
     if (llmeta_load_tables(thedb, gbl_dbname, tran)) {
         logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
@@ -5517,11 +5535,24 @@ int comdb2_reload_schemas(void *dbenv, void *lsn, uint32_t lockid)
         abort();
     }
 
-    if ((rc = reload_all_db_tran(tran)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s error reloading dbs, %d\n", __func__, rc);
+    if ((rc = backend_open_tran(thedb, tran, 1)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s: backend_open_tran returns %d\n", __func__,
+                rc);
         abort();
     }
 
+    /* Seems wrong: this is running in the context of an sql thread */
+    create_sqlmaster_records(tran);
+    create_sqlite_master();
+
+    /* Clean up */
+    sqlthd = pthread_getspecific(query_info_key);
+    thd = sqlthd->clnt->thd;
+    thd->stmt_caching_table = NULL;
+
+    gbl_dbopen_gen++;
+
+    bdb_set_tran_lockerid(tran, tranlid);
     if ((rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort returns %d\n", __func__,
                 rc);

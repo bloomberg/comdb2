@@ -306,8 +306,12 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
 {
     int i;
     int rc;
+    static int started = 0;
     prefault_helper_thread_arg_type *prefault_helper_thread_arg;
     pthread_attr_t attr;
+
+    if (started != 0)
+        return 0;
 
     dbenv->prefault_helper.numthreads = 0;
 
@@ -374,6 +378,7 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
 
         dbenv->prefault_helper.numthreads++;
     }
+    started = 1;
 
     rc = pthread_attr_destroy(&attr);
     if (rc)

@@ -3646,6 +3646,8 @@ void sqlengine_work_appsock(void *thddata, void *work)
         abort();
     }
 
+    clnt->thd = thd;
+
     thr_set_user(clnt->appsock_id);
 
     clnt->added_to_hist = clnt->isselect = 0;

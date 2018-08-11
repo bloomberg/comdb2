@@ -589,6 +589,9 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	txn->prepare = __txn_prepare;
 	txn->set_timeout = __txn_set_timeout;
 
+	if (!recovery)
+		F_SET(txn, TXN_RECOVER_LOCK);
+
 	/*
 	 * If this is a transaction family, we must link the child to the
 	 * maximal grandparent in the lock table for deadlock detection.
