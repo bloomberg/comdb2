@@ -3705,7 +3705,7 @@ void bdb_set_seqnum(void *in_bdb_state)
     }
 }
 
-int gbl_online_recovery;
+int gbl_online_recovery = 1;
 
 static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
                           DBT *rec)

@@ -644,6 +644,7 @@ struct sqlclntstate {
     int admin;
 
     uint32_t start_gen;
+    struct sqlthdstate *thd;
 };
 
 /* Query stats. */

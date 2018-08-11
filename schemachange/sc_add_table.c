@@ -72,7 +72,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-            newdb->numblobs + 1, thedb->bdb_env, trans, &bdberr);
+            newdb->numblobs + 1, thedb->bdb_env, trans, 0, &bdberr);
         open_auxdbs(newdb, 0);
     }
 
