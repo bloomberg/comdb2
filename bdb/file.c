@@ -132,6 +132,7 @@ int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
 
 static int bdb_reopen_int(bdb_state_type *bdb_state);
 static int open_dbs(bdb_state_type *, int, int, int, DB_TXN *);
+static int open_dbs_flags(bdb_state_type *, int, int, int, DB_TXN *, uint32_t);
 static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid);
 static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid);
 static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir);
@@ -3878,8 +3879,8 @@ int calc_pagesize(int recsize)
     return pagesize;
 }
 
-static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                    int create, DB_TXN *tid)
+static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
+                        int create, DB_TXN *tid, uint32_t flags)
 {
     int rc;
     char tmpname[PATH_MAX];
@@ -3893,6 +3894,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
     bdbtype_t bdbtype = bdb_state->bdbtype;
     int tmp_tid;
     tran_type tran;
+    DB_TXN *open_tid = NULL;
 
 deadlock_again:
     tmp_tid = 0;
@@ -3911,6 +3913,15 @@ deadlock_again:
     if (tid == NULL) {
         tmp_tid = 1;
         rc = bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "open_dbs: begin transaction failed\n");
+            exit(1);
+        }
+    }
+
+    /* If flags is set, open & commit under a different txn */
+    if (flags) {
+        rc = bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &open_tid, 0);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "open_dbs: begin transaction failed\n");
             exit(1);
@@ -3953,9 +3964,13 @@ deadlock_again:
                        bdberr);
                 if (tid)
                     tid->abort(tid);
+                if (open_tid)
+                    open_tid->abort(open_tid);
+
                 tid = NULL;
                 if (tmp_tid && bdberr == BDBERR_DEADLOCK)
                     goto deadlock_again;
+
                 return -1;
             }
         }
@@ -4042,11 +4057,16 @@ deadlock_again:
                         && strncasecmp(bdb_state->name, "sqlite_stat", 11) != 0)
                         /* don't compact sqlite_stat tables */
                         db_flags |= DB_OLCOMPACT;
-                    rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags,
-                                   db_mode);
+                    if (open_tid)
+                        rc = dbp->open(dbp, open_tid, tmpname, NULL, dta_type, db_flags,
+                                db_mode);
+                    else
+                        rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags,
+                                db_mode);
                     logmsg(LOGMSG_DEBUG, "dbp->open %s type=%d rc %d\n",
                            tmpname, dbp->type, rc);
-                } while (tid == NULL && iter++ < 100 && rc == DB_LOCK_DEADLOCK);
+                } while ((tid == NULL && open_tid == NULL) && iter++ < 100 &&
+                        rc == DB_LOCK_DEADLOCK);
 
                 if (rc != 0) {
                     if (rc == DB_LOCK_DEADLOCK) {
@@ -4062,6 +4082,8 @@ deadlock_again:
                                 tmpname, rc, db_strerror(rc));
                     if (tid)
                         tid->abort(tid);
+                    if (open_tid)
+                        open_tid->abort(open_tid);
                     return -1;
                 }
 
@@ -4103,9 +4125,10 @@ deadlock_again:
             break;
         }
         if (rc) {
-            if (tid) {
+            if (tid)
                 tid->abort(tid);
-            }
+            if (open_tid)
+                open_tid->abort(open_tid);
             return rc;
         }
 
@@ -4152,7 +4175,10 @@ deadlock_again:
         }
 
         print(bdb_state, "opening %s\n", tmpname);
-        rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags, db_mode);
+        if (open_tid)
+            rc = dbp->open(dbp, open_tid, tmpname, NULL, dta_type, db_flags, db_mode);
+        else
+            rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags, db_mode);
         if (rc != 0) {
             if (rc == DB_LOCK_DEADLOCK) {
                 logmsg(LOGMSG_FATAL, "deadlock in open\n");
@@ -4168,7 +4194,8 @@ deadlock_again:
 
             if (tid)
                 tid->abort(tid);
-
+            if (open_tid)
+                open_tid->abort(open_tid);
             return -1;
         }
 
@@ -4229,6 +4256,8 @@ deadlock_again:
                     logmsg(LOGMSG_ERROR, "couldnt set recnum mode\n");
                     if (tid)
                         tid->abort(tid);
+                    if (open_tid)
+                        open_tid->abort(open_tid);
                     return -1;
                 }
             }
@@ -4302,7 +4331,8 @@ deadlock_again:
 
                 if (tid)
                     tid->abort(tid);
-
+                if (open_tid)
+                    open_tid->abort(open_tid);
                 return -1;
             }
 
@@ -4319,6 +4349,14 @@ deadlock_again:
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "open_dbs: commit %d\n", rc);
             return -1;
+        }
+    }
+
+    if (open_tid) {
+        rc = open_tid->commit(open_tid, 0);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "open_dbs: open_tid commit %d\n", rc);
+            abort();
         }
     }
 
@@ -4403,6 +4441,25 @@ deadlock_again:
 
     return 0;
 }
+
+static pthread_mutex_t open_dbs_mtx = PTHREAD_MUTEX_INITIALIZER;
+static int open_dbs_flags(bdb_state_type *bdb_state, int iammaster, int upgrade,
+                    int create, DB_TXN *tid, uint32_t flags)
+{
+    int rc = 0;
+    Pthread_mutex_lock(&open_dbs_mtx);
+    rc = open_dbs_int(bdb_state, iammaster, upgrade, create, tid, flags);
+    Pthread_mutex_unlock(&open_dbs_mtx);
+    return rc;
+}
+
+
+static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
+                    int create, DB_TXN *tid)
+{
+    return open_dbs_flags(bdb_state, iammaster, upgrade, create, tid, 0);
+}
+
 
 int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
                            int newblobstripe, int *bdberr)
@@ -4494,6 +4551,7 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
                             rc, db_strerror(rc));
                 if (tid)
                     tid->abort(tid);
+
                 return -1;
             }
 
@@ -5128,7 +5186,8 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
              bdb_callback_type *bdb_callback, void *usr_ptr,
              netinfo_type *netinfo, int upgrade, int create, int *bdberr,
              bdb_state_type *parent_bdb_state, int pagesize_override,
-             bdbtype_t bdbtype, DB_TXN *tid, int temp, char *recoverylsn)
+             bdbtype_t bdbtype, DB_TXN *tid, int temp, char *recoverylsn,
+             uint32_t flags)
 {
     bdb_state_type *bdb_state;
     int rc;
@@ -5672,7 +5731,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         /* open our databases as either a client or master */
         bdb_state->bdbtype = bdbtype;
         bdb_state->pagesize_override = pagesize_override;
-        rc = open_dbs(bdb_state, iammaster, upgrade, create, tid);
+        rc = open_dbs_flags(bdb_state, iammaster, upgrade, create, tid, flags);
         if (rc != 0) {
             if (bdb_state->parent) {
                 free(bdb_state);
@@ -5773,7 +5832,7 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
         0,              /* upgrade */
         bdb_attr->createdbs, /* create */
         bdberr, NULL,        /* parent_bdb_handle */
-        0, BDBTYPE_ENV, NULL, 0, recoverlsn);
+        0, BDBTYPE_ENV, NULL, 0, recoverlsn, 0);
 }
 
 bdb_state_type *
@@ -5804,7 +5863,8 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                          0,    /* upgrade */
                          1,    /* create */
                          bdberr, parent_bdb_handle, 0, BDBTYPE_TABLE, tid, 0,
-                         NULL /* open lite options */
+                         NULL, /* open lite options */
+                         0
                          );
 
         BDB_RELLOCK();
@@ -5819,7 +5879,8 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                          0,    /* upgrade */
                          1,    /* create */
                          bdberr, parent_bdb_handle, 0, BDBTYPE_TABLE, NULL, 1,
-                         NULL /* open lite options */
+                         NULL, /* open lite options */
+                         0
                          );
     }
 
@@ -5849,7 +5910,7 @@ bdb_open_more_int(const char name[], const char dir[], int lrl, short numix,
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
                        bdberr, parent_bdb_handle, 0, /* pagesize override */
-                       BDBTYPE_TABLE, NULL, 0, NULL);
+                       BDBTYPE_TABLE, NULL, 0, NULL, 0);
 
     return ret;
 }
@@ -5892,7 +5953,7 @@ bdb_open_more(const char name[], const char dir[], int lrl, short numix,
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
                        bdberr, parent_bdb_handle, 0, /* pagesize override */
-                       BDBTYPE_TABLE, NULL, 0, NULL);
+                       BDBTYPE_TABLE, NULL, 0, NULL, 0);
 
     BDB_RELLOCK();
 
@@ -5907,7 +5968,7 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                    const signed char ixrecnum[], const signed char ixdta[],
                    const signed char ixcollattr[], const signed char ixnulls[],
                    int numdtafiles, bdb_state_type *parent_bdb_handle,
-                   tran_type *tran, int *bdberr)
+                   tran_type *tran, uint32_t flags, int *bdberr)
 {
     bdb_state_type *bdb_state, *ret;
 
@@ -5926,7 +5987,7 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                        parent_bdb_handle->attr->createdbs, /* create */
 
                        bdberr, parent_bdb_handle, 0, /* pagesize override */
-                       BDBTYPE_TABLE, tran ? tran->tid : NULL, 0, NULL);
+                       BDBTYPE_TABLE, tran ? tran->tid : NULL, 0, NULL, flags);
 
     BDB_RELLOCK();
 
@@ -5939,7 +6000,7 @@ bdb_state_type *bdb_open_more_tran_int(
     const signed char ixrecnum[], const signed char ixdta[],
     const signed char ixcollattr[], const signed char ixnulls[],
     int numdtafiles, bdb_state_type *parent_bdb_handle, DB_TXN *tid,
-    int *bdberr)
+    uint32_t flags, int *bdberr)
 {
     bdb_state_type *ret;
 
@@ -5955,7 +6016,7 @@ bdb_state_type *bdb_open_more_tran_int(
                        parent_bdb_handle->attr->createdbs, /* create */
 
                        bdberr, parent_bdb_handle, 0, /* pagesize override */
-                       BDBTYPE_TABLE, tid, 0, NULL);
+                       BDBTYPE_TABLE, tid, 0, NULL, flags);
 
     return ret;
 }
@@ -6005,7 +6066,7 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
                        bdberr, parent_bdb_handle, pagesize, BDBTYPE_LITE, NULL,
-                       0, NULL);
+                       0, NULL, 0);
 
     BDB_RELLOCK();
 
@@ -6015,7 +6076,8 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
 bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
                                     int item_size, int pagesize,
                                     bdb_state_type *parent_bdb_state,
-                                    int isqueuedb, int *bdberr)
+                                    int isqueuedb, tran_type *tran,
+                                    int *bdberr)
 {
     bdb_state_type *bdb_state, *ret = NULL;
 
@@ -6042,7 +6104,8 @@ bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
         0,                                 /* upgrade */
         parent_bdb_state->attr->createdbs, /* create */
         bdberr, parent_bdb_state, pagesize, /* pagesize override */
-        isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, NULL, 0, NULL);
+        isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE,
+        tran ? tran->tid : NULL, 0, NULL, 0);
 
     BDB_RELLOCK();
 
@@ -6081,7 +6144,7 @@ bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
                      0,                    /* upgrade */
                      1,                    /* create */
                      bdberr, parent_bdb_state, pagesize, /* pagesize override */
-                     isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, tid, 0, NULL);
+                     isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, tid, 0, NULL, 0);
 
     BDB_RELLOCK();
 
@@ -6133,7 +6196,7 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
             NULL,                       /* netinfo */
             0,                          /* upgrade */
             1,                          /* create */
-            bdberr, parent_bdb_handle, pagesize, BDBTYPE_LITE, NULL, 0, NULL);
+            bdberr, parent_bdb_handle, pagesize, BDBTYPE_LITE, NULL, 0, NULL, 0);
     }
 
     BDB_RELLOCK();
@@ -6609,7 +6672,7 @@ int bdb_close_only(bdb_state_type *bdb_state, int *bdberr)
 {
     int rc;
 
-    if (bdb_state->envonly) return 0;
+    if (!bdb_state || bdb_state->envonly) return 0;
 
     BDB_READLOCK("bdb_close_only");
 

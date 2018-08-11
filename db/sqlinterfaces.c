@@ -4096,6 +4096,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
 
     assert(sqlthd);
     sqlthd->clnt = clnt;
+    clnt->thd = thd;
 
     thr_set_user("appsock", clnt->appsock_id);
 

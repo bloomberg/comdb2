@@ -712,6 +712,7 @@ struct sqlclntstate {
     pthread_t recover_deadlock_thd;
     char recover_deadlock_stack[RECOVER_DEADLOCK_MAX_STACK];
 #endif
+    struct sqlthdstate *thd;
 };
 
 /* Query stats. */
