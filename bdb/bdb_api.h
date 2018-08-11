@@ -480,7 +480,7 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                    const signed char ixrecnum[], const signed char ixdta[],
                    const signed char ixcollattr[], const signed char ixnulls[],
                    int numdtafiles, bdb_state_type *parent_bdb_handle,
-                   tran_type *tran, int *bdberr);
+                   tran_type *tran, uint32_t flags, int *bdberr);
 
 /* open an existing lite table */
 bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
@@ -492,7 +492,7 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
 bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
                                     int item_size, int pagesize,
                                     bdb_state_type *parent_bdb_state,
-                                    int isqueuedb, int *bdberr);
+                                    int isqueuedb, tran_type *, int *bdberr);
 
 /* create a new queue */
 bdb_state_type *bdb_create_queue(const char name[], const char dir[],
@@ -1846,7 +1846,7 @@ enum {
     LLMETA_GENID_FORMAT_MAX = 2
 };
 
-int bdb_get_rowlocks_state(int *rlstate, int *bdberr);
+int bdb_get_rowlocks_state(int *rlstate, tran_type *tran, int *bdberr);
 int bdb_set_rowlocks_state(tran_type *input_trans, int rlstate, int *bdberr);
 int bdb_get_genid_format(uint64_t *genid_format, int *bdberr);
 int bdb_set_genid_format(uint64_t genid_format, int *bdberr);
@@ -1860,6 +1860,8 @@ int bdb_clear_table_parameter(void *parent_tran, const char *table,
                               const char *parameter);
 int bdb_get_table_parameter(const char *table, const char *parameter,
                             char **value);
+int bdb_get_table_parameter_tran(const char *table, const char *parameter,
+                            char **value, tran_type *tran);
 int bdb_set_table_parameter(void *parent_tran, const char *table,
                             const char *parameter, const char *value);
 

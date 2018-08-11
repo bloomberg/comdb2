@@ -1895,6 +1895,7 @@ int llmeta_dump_mapping_table(struct dbenv *dbenv, const char *table, int err);
 int llmeta_load_lua_sfuncs();
 int llmeta_load_lua_afuncs();
 int backend_open(struct dbenv *dbenv);
+int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags);
 int open_bdb_env(struct dbenv *dbenv);
 int backend_close(struct dbenv *dbenv);
 void backend_cleanup(struct dbenv *dbenv);
@@ -2336,7 +2337,7 @@ int get_csc2_file_tran(const char *table, int version, char **text, int *len,
 int put_csc2_file(const char *table, void *tran, int version, const char *text);
 int put_csc2_stuff(struct dbtable *db, void *trans, void *stuff, size_t lenstuff);
 int put_blobstripe_genid(struct dbtable *db, void *tran, unsigned long long genid);
-int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid);
+int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid, tran_type *tran);
 
 int load_new_table_schema_file(struct dbenv *dbenv, const char *table,
                                const char *csc2file);
@@ -2444,6 +2445,7 @@ int dbq_consume_goose(struct ireq *iq, void *trans);
 
 /* sql stuff */
 int create_sqlmaster_records(void *tran);
+int create_sqlmaster_records_flags(void *tran, uint32_t flags);
 void form_new_style_name(char *namebuf, int len, struct schema *schema,
                          const char *csctag, const char *dbname);
 
