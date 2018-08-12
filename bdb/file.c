@@ -6134,7 +6134,7 @@ int get_seqnum(bdb_state_type *bdb_state, const char *host)
 bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
                                    int ixlen_in, int pagesize,
                                    bdb_state_type *parent_bdb_handle,
-                                   int *bdberr)
+                                   tran_type *tran, uint32_t flags, int *bdberr)
 {
     int numdtafiles = 1;
     short numix = 1;
@@ -6161,8 +6161,8 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
                        NULL,                               /* netinfo */
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
-                       bdberr, parent_bdb_handle, pagesize, BDBTYPE_LITE, NULL,
-                       0, NULL, 0);
+                       bdberr, parent_bdb_handle, pagesize, BDBTYPE_LITE,
+                       tran ? tran->tid : NULL, 0, NULL, flags);
 
     BDB_RELLOCK();
 

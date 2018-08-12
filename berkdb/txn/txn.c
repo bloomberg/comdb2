@@ -190,13 +190,13 @@ __txn_begin_pp_int(dbenv, parent, txnpp, flags, retries)
 	ENV_REQUIRES_CONFIG(dbenv, dbenv->tx_handle, "txn_begin", DB_INIT_TXN);
 
 	if ((ret = __db_fchk(dbenv,
-	    "txn_begin", flags,
-	    DB_DIRTY_READ | DB_TXN_NOWAIT |
-	    DB_TXN_NOSYNC | DB_TXN_SYNC | DB_TXN_RECOVERY |
-        DB_TXN_INTERNAL)) != 0)
+		"txn_begin", flags,
+		DB_DIRTY_READ | DB_TXN_NOWAIT |
+		DB_TXN_NOSYNC | DB_TXN_SYNC | DB_TXN_RECOVERY |
+		DB_TXN_INTERNAL | DB_TXN_RELEASE_READLOCKS)) != 0)
 		return (ret);
 	if ((ret = __db_fcchk(dbenv,
-	    "txn_begin", flags, DB_TXN_NOSYNC, DB_TXN_SYNC)) != 0)
+		"txn_begin", flags, DB_TXN_NOSYNC, DB_TXN_SYNC)) != 0)
 		return (ret);
 
 	if (parent == NULL) {
@@ -291,6 +291,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		F_SET(txn, TXN_SYNC);
 	if (LF_ISSET(DB_TXN_NOWAIT))
 		F_SET(txn, TXN_NOWAIT);
+	if (LF_ISSET(DB_TXN_RELEASE_READLOCKS))
+		F_SET(txn, TXN_RELEASE_READLOCKS);
 
 	if ((ret =
 		__txn_begin_int_set_retries(txn, retries,
@@ -607,14 +609,14 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 		MUTEX_THREAD_UNLOCK(dbenv, mgr->mutexp);
 	}
 
-    if (!recovery)
-        pthread_rwlock_unlock(&dbenv->recoverlk);
+//    if (!recovery)
+//        pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (0);
 
 err:
 	R_UNLOCK(dbenv, &mgr->reginfo);
-    if (!recovery)
-        pthread_rwlock_unlock(&dbenv->recoverlk);
+	if (!recovery)
+		pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (ret);
 }
 
@@ -1262,6 +1264,11 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		goto err;
 	}
 
+	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
+		pthread_rwlock_unlock(&dbenv->recoverlk);
+		F_CLR(txnp, TXN_RECOVER_LOCK);
+	}
+
 	/* This is OK because __txn_end can only fail with a panic. */
 	return (__txn_end(txnp, 1));
 
@@ -1480,6 +1487,11 @@ __txn_abort(txnp)
 	    (ret = __txn_regop_log(dbenv, txnp, &txnp->last_lsn, NULL,
 		    lflags, TXN_ABORT, (int32_t)comdb2_time_epoch(), NULL)) != 0)
 		 return (__db_panic(dbenv, ret));
+
+	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
+		pthread_rwlock_unlock(&dbenv->recoverlk);
+		F_CLR(txnp, TXN_RECOVER_LOCK);
+	}
 
 	/* __txn_end always panics if it errors, so pass the return along. */
 	return (__txn_end(txnp, 0));

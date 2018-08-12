@@ -5496,6 +5496,7 @@ int comdb2_close_schemas(void *dbenv, void *lsn, uint32_t lockid)
 
 int reload_all_db_tran(tran_type *tran);
 int open_all_dbs_tran(void *tran);
+void delete_prepared_stmts(struct sqlthdstate *thd);
 
 int comdb2_reload_schemas(void *dbenv, void *lsn, uint32_t lockid)
 {
@@ -5507,7 +5508,8 @@ int comdb2_reload_schemas(void *dbenv, void *lsn, uint32_t lockid)
     struct sql_thread *sqlthd;
     struct sqlthdstate *thd;
 
-    tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
+    //tran = bdb_tran_begin_flags(thedb->bdb_env, NULL, &bdberr, BDB_TRAN_RELEASE_READLOCKS);
+    tran = bdb_tran_begin_flags(thedb->bdb_env, NULL, &bdberr, 0);
     if (tran == NULL) {
         logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
         abort();
@@ -5535,25 +5537,27 @@ int comdb2_reload_schemas(void *dbenv, void *lsn, uint32_t lockid)
         abort();
     }
 
-    if ((rc = backend_open_tran(thedb, tran, 1)) != 0) {
+    if ((rc = backend_open_tran(thedb, tran, 0)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: backend_open_tran returns %d\n", __func__,
                 rc);
         abort();
     }
 
-    /* Seems wrong: this is running in the context of an sql thread */
-    create_sqlmaster_records(tran);
-    create_sqlite_master();
-
     /* Clean up */
     sqlthd = pthread_getspecific(query_info_key);
     thd = sqlthd->clnt->thd;
-    thd->stmt_caching_table = NULL;
+    
+    delete_prepared_stmts(thd);
+    sqlite3_close(thd->sqldb);
+    thd->sqldb = NULL;
+
+    create_sqlmaster_records(tran);
+    create_sqlite_master();
 
     gbl_dbopen_gen++;
 
     bdb_set_tran_lockerid(tran, tranlid);
-    if ((rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr)) != 0) {
+    if ((rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort returns %d\n", __func__,
                 rc);
         abort();
