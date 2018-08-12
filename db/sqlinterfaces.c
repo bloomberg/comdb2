@@ -2146,7 +2146,7 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     return rc;
 }
 
-static inline void delete_prepared_stmts(struct sqlthdstate *thd)
+void delete_prepared_stmts(struct sqlthdstate *thd)
 {
     if (thd->stmt_caching_table) {
         delete_stmt_caching_table(thd->stmt_caching_table);

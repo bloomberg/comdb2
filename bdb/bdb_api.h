@@ -486,7 +486,7 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
 bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
                                    int ixlen, int pagesize,
                                    bdb_state_type *parent_bdb_handle,
-                                   int *bdberr);
+                                   tran_type *tran, uint32_t flags, int *bdberr);
 
 /* open an existing queue */
 bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
@@ -614,6 +614,7 @@ unsigned long long bdb_normalise_genid(bdb_state_type *bdb_state,
                                        unsigned long long genid);
 
 #define BDB_TRAN_RECOVERY 0x00000001
+#define BDB_TRAN_RELEASE_READLOCKS 0x00000002
 
 /* return a new tran handle, begin a transaction */
 tran_type *bdb_tran_begin_flags(bdb_state_type *bdb_handle, tran_type *parent_tran,
