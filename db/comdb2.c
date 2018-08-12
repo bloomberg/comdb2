@@ -5535,7 +5535,6 @@ int comdb2_reload_schemas(void *dbenv, void *lsn, uint32_t lockid)
     struct sql_thread *sqlthd;
     struct sqlthdstate *thd;
 
-    //tran = bdb_tran_begin_flags(thedb->bdb_env, NULL, &bdberr, BDB_TRAN_RELEASE_READLOCKS);
     tran = bdb_tran_begin_flags(thedb->bdb_env, NULL, &bdberr, 0);
     if (tran == NULL) {
         logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
