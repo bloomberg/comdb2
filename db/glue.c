@@ -3818,7 +3818,7 @@ int open_auxdbs(struct dbtable *db, int force_create)
         /* see if we have a lite meta table - if so use that.  otherwise
          * fallback on a heavy meta table. */
         db->meta = bdb_open_more_lite(litename, db->dbenv->basedir, 0, ixlen[0],
-                                      0, db->dbenv->bdb_env, &bdberr);
+                                      0, db->dbenv->bdb_env, NULL, 0, &bdberr);
         if (!db->meta) {
             if (gbl_meta_lite)
                 ctrace("bdb_open_more(meta) cannot open lite meta %d\n",
@@ -4236,7 +4236,8 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
 
         dbenv->meta = bdb_open_more_lite(metadbname, dbenv->basedir, 0,
                                          sizeof(struct metahdr2), 0,
-                                         dbenv->bdb_env, &bdberr);
+                                         dbenv->bdb_env, tran, flags,
+                                         &bdberr);
     }
 
     if (!dbenv->meta) {
