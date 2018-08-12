@@ -270,7 +270,6 @@ struct __db_trigger_subscription;
 #define DB_TXN_DONT_GET_REPO_MTX   0x0080000 /* Get the repo mutex on this commit */
 #define DB_TXN_SCHEMA_LOCK         0x0100000 /* Get the schema-lock */
 #define DB_TXN_LOGICAL_GEN         0x0200000 /* Contains generation info (txn_regop_rl) */
-#define DB_TXN_RELEASE_READLOCKS   0x0400000 /* Contains generation info (txn_regop_rl) */
 /*
  * Flags private to DB_ENV->set_encrypt.
  */
@@ -1033,7 +1032,6 @@ struct __db_txn {
 #define	TXN_RESTORED	0x080		/* Transaction has been restored. */
 #define	TXN_SYNC	0x100		/* Sync on prepare and commit. */
 #define	TXN_RECOVER_LOCK	0x200 /* Transaction holds the recovery lock */
-#define	TXN_RELEASE_READLOCKS 0x400 /* Transaction holds the recovery lock */
 	u_int32_t	flags;
 
 	void     *app_private;		/* pointer to bdb transaction object */

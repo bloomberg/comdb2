@@ -869,7 +869,7 @@ __db_lprint(dbc)
 #define	DB_PUT_ACTION(dbc, action, lockp)				\
 	    (((action == LCK_COUPLE || action == LCK_COUPLE_ALWAYS) &&	\
 	    LOCK_ISSET(*lockp)) ?					\
-	    (dbc->txn == NULL || F_ISSET(dbc->txn, TXN_RELEASE_READLOCKS) || action == LCK_COUPLE_ALWAYS || \
+	    (dbc->txn == NULL || action == LCK_COUPLE_ALWAYS ||		\
 	    (F_ISSET(dbc, DBC_DIRTY_READ) &&				\
 	    (lockp)->mode == DB_LOCK_DIRTY)) ? LCK_COUPLE :		\
 	    (F_ISSET((dbc)->dbp, DB_AM_DIRTY) &&			\
