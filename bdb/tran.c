@@ -1156,6 +1156,9 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     if (!bdb_state->attr->synctransactions)
         flags |= DB_TXN_NOSYNC;
 
+    if (inflags & BDB_TRAN_RELEASE_READLOCKS)
+        flags |= DB_TXN_RELEASE_READLOCKS;
+
     if (inflags & BDB_TRAN_RECOVERY)
         flags |= DB_TXN_RECOVERY;
 
