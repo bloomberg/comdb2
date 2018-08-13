@@ -5547,14 +5547,16 @@ int comdb2_reload_schemas(void *dbenv, void *lsn, uint32_t lockid)
 
     /* Clean up */
     sqlthd = pthread_getspecific(query_info_key);
-    thd = sqlthd->clnt->thd;
-    
-    delete_prepared_stmts(thd);
-    sqlite3_close(thd->sqldb);
-    thd->sqldb = NULL;
+    if (sqlthd) {
+        thd = sqlthd->clnt->thd;
 
-    create_sqlmaster_records(tran);
-    create_sqlite_master();
+        delete_prepared_stmts(thd);
+        sqlite3_close(thd->sqldb);
+        thd->sqldb = NULL;
+
+        create_sqlmaster_records(tran);
+        create_sqlite_master();
+    }
 
     gbl_dbopen_gen++;
 
