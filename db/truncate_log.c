@@ -134,7 +134,7 @@ int truncate_timestamp(time_t timestamp)
     }
     logmsg(LOGMSG_USER, "Found lsn that works {%u:%u}", file, offset);
 
-    return truncate_log(file, offset);
+    return truncate_log(file, offset, 1);
 }
 
 int truncate_log(unsigned int file, unsigned int offset, uint32_t flags)
