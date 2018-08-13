@@ -8,8 +8,6 @@
 
 #include <cdb2api.h>
 
-#include "strbuf.h"
-
 int sync(cdb2_hndl_tp *from, int64_t maxfrom, cdb2_hndl_tp *to, int64_t maxto) {
     int64_t nops;
     int rc;
@@ -46,7 +44,7 @@ int apply(char *fromdb, char *todb) {
     }
     maxfrom = query_int(from, "select max(seqno) from comdb2_oplog");
     maxto = query_int(to, "select max(seqno) from comdb2_oplog");
-    // printf("from %lld to %lld\n", (long long) maxfrom, (long long) maxto);
+
     return sync(from, maxfrom, to, maxto);
 }
 
