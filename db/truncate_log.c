@@ -23,7 +23,8 @@ LOG_INFO handle_truncation(cdb2_hndl_tp* repl_db, LOG_INFO latest_info)
     logmsg(LOGMSG_WARN, "Rewind to lsn: {%u:%u}\n", match_lsn.file, match_lsn.offset);
 
     /* TODO: Actually call truncation */
-    truncate_log(match_lsn.file, match_lsn.offset);
+    truncate_log(match_lsn.file, match_lsn.offset, 1);
+
     return match_lsn;
 }
 
@@ -136,7 +137,7 @@ int truncate_timestamp(time_t timestamp)
     return truncate_log(file, offset);
 }
 
-int truncate_log(unsigned int file, unsigned int offset)
+int truncate_log(unsigned int file, unsigned int offset, uint32_t flags)
 {
-    return truncate_log_lock(thedb->bdb_env, file, offset);
+    return truncate_log_lock(thedb->bdb_env, file, offset, flags);
 }
