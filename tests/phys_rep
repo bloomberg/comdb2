@@ -1,8 +1,0 @@
-#!/bin/bash
-
-NRECS=1000
-
-for i in $(seq 1 $NRECS); do
-    echo "delete from t1 where id=$i"
-done | cdb2sql master local - > /dev/null
-
