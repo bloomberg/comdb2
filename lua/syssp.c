@@ -264,9 +264,12 @@ static int db_comdb_truncate_log(Lua L) {
     }
     logmsg(LOGMSG_USER, "applying log from lsn {%u:%u}\n", file, offset);
 
-    if ((rc = truncate_log(file, offset)) != 0)
+    if ((rc = truncate_log(file, offset, 1)) != 0)
     {
-        return luaL_error(L, "Couldn't truncate to lsn %s", lsnstr);
+        if (rc == -1)
+            return luaL_error(L, "Can only truncate from master node");
+        else
+            return luaL_error(L, "Couldn't truncate to timestamp %ld", time);
     }
 
     return 1;
@@ -290,7 +293,10 @@ static int db_comdb_truncate_time(Lua L) {
 
     if ((rc = truncate_timestamp(time)) != 0)
     {
-        return luaL_error(L, "Couldn't truncate to timestamp %ld", time);
+        if (rc == -1)
+            return luaL_error(L, "Can only truncate from master node");
+        else
+            return luaL_error(L, "Couldn't truncate to timestamp %ld", time);
     }
 
     return 1;

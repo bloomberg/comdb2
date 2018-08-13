@@ -1075,7 +1075,8 @@ enum {
     USER_TYPE_ADD_NAME,
     USER_TYPE_DEL_NAME,
     USER_TYPE_TRANSFERMASTER_NAME,
-    USER_TYPE_REQ_START_LSN
+    USER_TYPE_REQ_START_LSN,
+    USER_TYPE_TRUNCATE_LOG
 };
 
 void print(bdb_state_type *bdb_state, char *format, ...);
@@ -1782,6 +1783,8 @@ uint8_t *rep_berkdb_seqnum_type_put(const seqnum_type *p_seqnum_type,
                                     uint8_t *p_buf, const uint8_t *p_buf_end);
 uint8_t *rep_udp_filepage_type_put(const filepage_type *p_filepage_type,
                                    uint8_t *p_buf, const uint8_t *p_buf_end);
+const uint8_t *db_lsn_type_put(const DB_LSN *p_db_lsn, uint8_t *p_buf,
+                                   const uint8_t *p_buf_end);
 void poke_updateid(void *buf, int updateid);
 
 void bdb_genid_sanity_check(bdb_state_type *bdb_state, unsigned long long genid,

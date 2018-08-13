@@ -11,6 +11,7 @@
 
 extern bdb_state_type *bdb_state;
 
+int send_truncate_log_msg(bdb_state_type *bdb_state, int file, int offset);
 int matchable_log_type(int rectype);
 
 LOG_INFO get_last_lsn(bdb_state_type* bdb_state)
@@ -234,10 +235,17 @@ int apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset,
 
 extern int gbl_online_recovery;
 int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file, 
-        unsigned int offset)
+        unsigned int offset, uint32_t flags)
 {
+    DB_LSN trunc_lsn;
     char* msg = "truncate log";
     int online = gbl_online_recovery;
+
+    if (flags && bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
+        logmsg(LOGMSG_ERROR, "Can only issue truncate from master node\n");
+        return -1;
+    }
+
     /* have to get lock for recovery */
     if (online) {
         BDB_READLOCK(msg);
@@ -246,6 +254,9 @@ int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file,
     }
 
     bdb_state->dbenv->rep_verify_match(bdb_state->dbenv, file, offset, online);
+
+    if (flags && bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
+        send_truncate_log_msg(bdb_state, file, offset);
 
     BDB_RELLOCK();
 
