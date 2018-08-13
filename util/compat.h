@@ -84,7 +84,8 @@ struct netinfo_struct;
 struct host_node_tag;
 
 int bdb_udp_send(struct bdb_state_tag *, const char *, size_t, void *);
-int write_message(struct netinfo_struct *, struct host_node_tag *, int , const void *, size_t );
+int write_decom_msg(struct netinfo_struct *, struct host_node_tag *, int,
+                    void *, int, void *, int);
 
 typedef void(netinfo_dumper)(FILE *, struct bdb_state_tag *);
 void set_netinfo_dumper(netinfo_dumper *);

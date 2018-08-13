@@ -2067,4 +2067,7 @@ struct cluster_info {
 
 int bdb_fill_cluster_info(void **data, int *num_nodes);
 
+void wait_for_sc_to_stop(void);
+void allow_sc_to_run(void);
+
 #endif

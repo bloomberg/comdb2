@@ -1038,7 +1038,7 @@ enum {
     USER_TYPE_TEST = 4,
     USER_TYPE_ADD = 5,
     USER_TYPE_DEL = 6,
-    USER_TYPE_DECOM = 7,
+    USER_TYPE_DECOM_DEPRECATED = 7,
     USER_TYPE_ADD_DUMMY = 8,
     USER_TYPE_REPTRC = 9,
     USER_TYPE_RECONNECT = 10,
@@ -1069,7 +1069,7 @@ enum {
     USER_TYPE_PAGE_COMPACT,
 
     /* by hostname messages */
-    USER_TYPE_DECOM_NAME,
+    USER_TYPE_DECOM_NAME_DEPRECATED,
     USER_TYPE_ADD_NAME,
     USER_TYPE_DEL_NAME,
     USER_TYPE_TRANSFERMASTER_NAME,
@@ -1837,8 +1837,6 @@ int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_temp_table_destroy_lru(struct temp_table *tbl,
                                bdb_state_type *bdb_state, int *last,
                                int *bdberr);
-void wait_for_sc_to_stop(void);
-void allow_sc_to_run(void);
 int is_table_in_schema_change(const char *tbname, tran_type *tran);
 
 void bdb_temp_table_init(bdb_state_type *bdb_state);
@@ -1861,5 +1859,9 @@ int deadlock_policy_max();
 char *coherent_state_to_str(int state);
 
 char *bdb_coherent_state_string(const char *);
+
+/* ugly, but need to signal shutdown */
+int osql_process_message_decom(char *);
+void osql_net_exiting(void);
 
 #endif /* __bdb_int_h__ */

@@ -65,8 +65,6 @@ int dump_llmeta(bdb_state_type *, int *bdberr);
 void bdb_show_reptimes(bdb_state_type *bdb_state);
 void bdb_lc_cache_trap(bdb_state_type *bdb_state, char *line, int lline);
 
-extern int osql_process_message_decom(char *host);
-
 int __lock_dump_region __P((DB_ENV *, const char *, FILE *));
 int __latch_dump_region __P((DB_ENV *, FILE *));
 void __dbenv_heap_dump __P((DB_ENV * dbenv));

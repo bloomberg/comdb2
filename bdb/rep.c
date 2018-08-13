@@ -3632,6 +3632,7 @@ void send_myseqnum_to_all(bdb_state_type *bdb_state, int nodelay)
 
 void bdb_exiting(bdb_state_type *bdb_state)
 {
+    if (!bdb_state) return;
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -4447,7 +4448,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         net_ack_message(ack_handle, 0);
         break;
 
-    case USER_TYPE_DECOM: {
+    case USER_TYPE_DECOM_DEPRECATED: {
         char *host;
         p_buf = (uint8_t *)dta;
         p_buf_end = ((uint8_t *)dta + dtalen);
@@ -4461,7 +4462,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         break;
     }
 
-    case USER_TYPE_DECOM_NAME: {
+    case USER_TYPE_DECOM_NAME_DEPRECATED: {
         char *host;
         logmsg(LOGMSG_DEBUG, "--- got decom for node %s\n", (char *)dta);
         logmsg(LOGMSG_DEBUG, "acking message\n");

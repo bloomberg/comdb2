@@ -102,9 +102,6 @@
 
 #include "debug_switches.h"
 
-#define TYPE_DECOM -1
-#define TYPE_DECOM_NAME -2
-
 #ifdef UDP_DEBUG
 static int curr_udp_cnt = 0;
 #endif
@@ -113,6 +110,7 @@ static int curr_udp_cnt = 0;
 #define BILLION 1000000000
 
 extern int gbl_pmux_route_enabled;
+extern int gbl_exit;
 
 int gbl_verbose_net = 0;
 int subnet_blackout_timems = 5000;
@@ -1333,7 +1331,7 @@ static int write_message_nohello(netinfo_type *netinfo_ptr,
                              WRITE_MSG_NODELAY | WRITE_MSG_NOHELLOCHECK);
 }
 
-int write_message(netinfo_type *netinfo_ptr,
+static int write_message(netinfo_type *netinfo_ptr,
                          host_node_type *host_node_ptr, int type,
                          const void *data, size_t datalen)
 {
@@ -2888,24 +2886,13 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
                                 host_node_type *host_node_ptr)
 {
     host_node_type *tmp = netinfo_ptr->head;
-
     if (host_node_ptr == tmp) {
         netinfo_ptr->head = host_node_ptr->next;
     } else {
         while (tmp && tmp->next != host_node_ptr)
             tmp = tmp->next;
-
-        if (!tmp) {
-            logmsg(LOGMSG_WARN,
-                   "%s: failed to find host_node in %s netinfo list!"
-                   "(probably removed from net_decom_node)\n",
-                   __func__, netinfo_ptr->service);
-        } else {
-            logmsg(LOGMSG_INFO, "%s: found host_node in %s netinfo list\n",
-                   __func__, netinfo_ptr->service);
-
+        if (tmp)
             tmp->next = host_node_ptr->next;
-        }
     }
 
     /* Call qstat free routine if its set */
@@ -3175,7 +3162,10 @@ void net_setbufsz(netinfo_type *netinfo_ptr, int bufsz)
     netinfo_ptr->bufsz = bufsz;
 }
 
-void net_exiting(netinfo_type *netinfo_ptr) { netinfo_ptr->exiting = 1; }
+void net_exiting(netinfo_type *netinfo_ptr)
+{
+    netinfo_ptr->exiting = 1;
+}
 
 typedef struct netinfo_node {
     LINKC_T(struct netinfo_node) lnk;
@@ -3924,9 +3914,8 @@ static int process_user_message(netinfo_type *netinfo_ptr,
     if (rc != 0)
         return -1; /* not sure ... exit the reader thread??? */
 
-    if (usertype == TYPE_DECOM_NAME ||
-        (usertype >= 0 && usertype <= MAX_USER_TYPE &&
-         netinfo_ptr->userfuncs[usertype].func != NULL)) {
+    if (usertype >= 0 && usertype <= MAX_USER_TYPE &&
+         netinfo_ptr->userfuncs[usertype].func != NULL) {
         if (needack) {
             ack_state = malloc(sizeof(ack_state_type));
             ack_state->seqnum = seqnum;
@@ -3937,43 +3926,24 @@ static int process_user_message(netinfo_type *netinfo_ptr,
             ack_state = NULL;
         }
 
-        /* pick off internal user types */
-        switch (usertype) {
-        case TYPE_DECOM_NAME:
-            logmsg(LOGMSG_DEBUG, "process_user_decom: decom for node %s\n",
-                    (char *)data);
+        Pthread_mutex_lock(&(host_node_ptr->timestamp_lock));
+        host_node_ptr->running_user_func = 1;
+        Pthread_mutex_unlock(&(host_node_ptr->timestamp_lock));
 
-            net_decom_node(netinfo_ptr, (const char *)data);
-            logmsg(LOGMSG_DEBUG, "process_user_decom: "
-                            "calling net_ack_message\n");
-            net_ack_message(ack_state, 0);
-            logmsg(LOGMSG_DEBUG, "process_user_decom: back "
-                            "from net_ack_message\n");
-            break;
+        int64_t start_us = comdb2_time_epochus();
+        /* run the user's function */
+        netinfo_ptr->userfuncs[usertype].func(
+            ack_state, netinfo_ptr->usrptr, host_node_ptr->host, usertype,
+            data, datalen, 1);
+        netinfo_ptr->userfuncs[usertype].count++;
+        netinfo_ptr->userfuncs[usertype].totus +=
+            (comdb2_time_epochus() - start_us);
 
-        default:
-
-            Pthread_mutex_lock(&(host_node_ptr->timestamp_lock));
-            host_node_ptr->running_user_func = 1;
-            Pthread_mutex_unlock(&(host_node_ptr->timestamp_lock));
-
-            int64_t start_us = comdb2_time_epochus();
-            /* run the user's function */
-            netinfo_ptr->userfuncs[usertype].func(
-                ack_state, netinfo_ptr->usrptr, host_node_ptr->host, usertype,
-                data, datalen, 1);
-            netinfo_ptr->userfuncs[usertype].count++;
-            netinfo_ptr->userfuncs[usertype].totus +=
-                (comdb2_time_epochus() - start_us);
-
-            /* update timestamp before checking it */
-            Pthread_mutex_lock(&(host_node_ptr->timestamp_lock));
-            host_node_ptr->timestamp = time(NULL);
-            host_node_ptr->running_user_func = 0;
-            Pthread_mutex_unlock(&(host_node_ptr->timestamp_lock));
-
-            break;
-        }
+        /* update timestamp before checking it */
+        Pthread_mutex_lock(&(host_node_ptr->timestamp_lock));
+        host_node_ptr->timestamp = time(NULL);
+        host_node_ptr->running_user_func = 0;
+        Pthread_mutex_unlock(&(host_node_ptr->timestamp_lock));
     } else {
         logmsg(LOGMSG_INFO, "%s: got an unexpected usertype from %s, ut=%d\n",
                __func__, host_node_ptr->host, usertype);
@@ -3988,41 +3958,17 @@ static int process_user_message(netinfo_type *netinfo_ptr,
     return 0;
 }
 
-static void net_decom_self(netinfo_type *netinfo_ptr)
-{
-    host_node_type *ptr;
-    int decomed = 0;
-
-    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-    if (netinfo_ptr->exiting) {
-        for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next)
-            ptr->decom_flag = 1;
-        decomed = 1;
-    }
-    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-    if (decomed) {
-        logmsg(LOGMSG_WARN, "*** I AM DECOMISSIONED ***\n");
-    } else {
-        logmsg(LOGMSG_WARN, "Not exiting, ignoring self-decommisioning\n");
-    }
-}
-
 /* remove node from the netinfo list */
 void net_decom_node(netinfo_type *netinfo_ptr, const char *host)
 {
-    host_node_type *host_ptr, *host_back;
-
     if (host && netinfo_ptr->myhostname == host) {
-        net_decom_self(netinfo_ptr);
         return;
     }
-
-    logmsg(LOGMSG_DEBUG, "net_decom_node [%s] for %s\n", netinfo_ptr->service, host);
 
     Pthread_rwlock_wrlock(&(netinfo_ptr->lock));
 
     /* remove the host node from the netinfo list */
+    host_node_type *host_ptr, *host_back;
     host_back = host_ptr = netinfo_ptr->head;
     while (host_ptr != NULL && host_ptr->host != host) {
         host_back = host_ptr;
@@ -4036,18 +3982,9 @@ void net_decom_node(netinfo_type *netinfo_ptr, const char *host)
 
         host_ptr->decom_flag = 1;
 
-        logmsg(LOGMSG_DEBUG, "net_decom_node %s for %s setting decom_flag\n",
-                netinfo_ptr->service, host);
-
         if (host_ptr == netinfo_ptr->last_used_node_ptr)
             netinfo_ptr->last_used_node_ptr = NULL; // clear last_used_node_ptr
     }
-#ifdef DEBUG
-    else {
-        fprintf(stderr, "net_decom_node [%s] not found %s\n",
-                netinfo_ptr->service, host);
-    }
-#endif
 
     /* we can't free the host node pointer memory -
        let the connect thread do that */
@@ -4073,6 +4010,10 @@ static void *net_decom_node_delayed(void *p)
 static int run_net_decom_node_delayed(netinfo_type *netinfo_ptr,
                                       const char *host)
 {
+    /* dangerous to run this later as things are getting shutdown */
+    if (gbl_exit) {
+        return 0;
+    }
     pthread_t tid;
     struct net_decom_node_arg *args;
     args = malloc(sizeof(struct net_decom_node_arg));
@@ -4092,33 +4033,24 @@ static int run_net_decom_node_delayed(netinfo_type *netinfo_ptr,
     return 0;
 }
 
-static int write_decom_hostname(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
-                       const char *decom_host, int decom_hostlen,
-                       const char *to_host)
+int write_decom_msg(struct netinfo_struct *n, struct host_node_tag *h, int type,
+                    void *a, int alen, void *b, int blen)
 {
-    int tmp;
-    uint8_t *p_buf, *p_buf_end;
+    struct iovec iov[] = {{.iov_base = a, .iov_len = alen},
+                          {.iov_base = b, .iov_len = blen}};
+    return write_message_int(n, h, type, iov, b ? 2 : 1,
+                             WRITE_MSG_NOLIMIT | WRITE_MSG_NOHELLOCHECK |
+                                 WRITE_MSG_NODELAY | WRITE_MSG_HEAD);
+}
 
-    p_buf = (uint8_t *)&tmp;
-    p_buf_end = (uint8_t *)&tmp + sizeof(int);
-
-    buf_put(&decom_hostlen, sizeof(int), p_buf, p_buf_end);
-
-    int rc = write_message(netinfo_ptr, host_node_ptr, WIRE_HEADER_DECOM_NAME,
-                           &tmp, sizeof(int));
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: rc=%d writing hostname len to %s\n", __func__,
-                rc, to_host);
-        return -1;
-    }
-    rc = write_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb,
-                      (void *)decom_host, decom_hostlen);
-    if (rc != decom_hostlen) {
-        logmsg(LOGMSG_ERROR, "%s: rc=%d writing hostname to %s\n", __func__, rc,
-                to_host);
-        return -1;
-    }
-    return 0;
+static int write_decom_hostname(netinfo_type *netinfo_ptr,
+                                host_node_type *host_node_ptr,
+                                const char *decom_host, int decom_hostlen,
+                                const char *to_host)
+{
+    int a = htonl(decom_hostlen);
+    return write_decom_msg(netinfo_ptr, host_node_ptr, WIRE_HEADER_DECOM_NAME,
+                           &a, sizeof(a), (void *)decom_host, decom_hostlen);
 }
 
 static decom_writer *write_decom_impl = write_decom_hostname;
@@ -4171,55 +4103,29 @@ static int net_send_decom(netinfo_type *netinfo_ptr, const char *decom_host,
     return rc;
 }
 
-/* 0 == sent to all good */
-int net_send_decom_all(netinfo_type *netinfo_ptr, const char *decom_host)
+static int process_decom_int(netinfo_type *netinfo_ptr, char *host)
 {
-    int rc, count = 0, i;
-    const char *nodes[REPMAX];
+    net_decom_node(netinfo_ptr, host);
+    run_net_decom_node_delayed(netinfo_ptr, host);
+    return 0;
+}
+
+int net_send_decom_all(netinfo_type *netinfo_ptr, char *decom_host)
+{
     int outrc = 0;
-    int hostlen = strlen(decom_host) + 1;
-
-    count = net_get_all_nodes(netinfo_ptr, nodes);
-    logmsg(LOGMSG_DEBUG, "%s: [%s] send decom to all %d nodes to rem %s\n", __func__,
-            netinfo_ptr->service, count, decom_host);
-
-    count = net_get_all_nodes(netinfo_ptr, nodes);
-    logmsg(LOGMSG_DEBUG, "%s: [%s] send decom to all %d nodes to rem %s\n", __func__,
-            netinfo_ptr->service, count, decom_host);
-
-    if (decom_host == netinfo_ptr->myhostname) {
-        for (i = 0; i < count; i++) {
-            rc = net_send_message(netinfo_ptr, nodes[i], TYPE_DECOM_NAME,
-                                  (void *)decom_host, hostlen, 1, 5000);
-            if (rc < 0) {
-                outrc++;
-                logmsg(LOGMSG_ERROR, "error sending decom to %s rc=%d\n", nodes[i],
-                        rc);
-            }
-        }
-        net_decom_self(netinfo_ptr);
-        return outrc;
-    }
-
-    /* net_decom_node grabs the write-lock */
-    /* decomission it locally if it isn't us */
-    net_decom_node(netinfo_ptr, decom_host);
-
-    /* then let everyone else know */
-    for (i = 0; i < count; i++) {
-        rc = net_send_decom(netinfo_ptr, decom_host, nodes[i]);
+    const char *nodes[REPMAX];
+    int count = net_get_all_nodes(netinfo_ptr, nodes);
+    for (int i = 0; i < count; i++) {
+        logmsg(LOGMSG_INFO, "%s: [%s] decom:%s to:%s\n", __func__,
+               netinfo_ptr->service, decom_host, nodes[i]);
+        int rc = net_send_decom(netinfo_ptr, decom_host, nodes[i]);
         if (rc != 0) {
             outrc++;
-            logmsg(LOGMSG_ERROR,
-                   "error rc=%d sending decom message to node %s\n", rc,
+            logmsg(LOGMSG_ERROR, "rc=%d sending decom to node %s\n", rc,
                    nodes[i]);
         }
     }
-
-    /* then put a thread on a timer to remove it again in case it was
-     * added by a hello message */
-    run_net_decom_node_delayed(netinfo_ptr, decom_host);
-
+    process_decom_int(netinfo_ptr, decom_host);
     return outrc;
 }
 
@@ -4258,51 +4164,6 @@ int net_send_hello(netinfo_type *netinfo_ptr, const char *tohost)
     int rc = write_hello(netinfo_ptr, host_node_ptr);
 
     return rc;
-}
-
-
-int net_send_decom_me_all(netinfo_type *netinfo_ptr)
-{
-    int rc, count = 0, i;
-    const char *hosts[REPMAX];
-    int outrc = 0;
-    int hostlen;
-    host_node_type *host_node_ptr;
-
-    count = net_get_all_nodes(netinfo_ptr, hosts);
-
-    const char *decom_host = netinfo_ptr->myhostname;
-    hostlen = strlen(decom_host) + 1;
-
-    for (i = 0; i < count; i++) {
-        Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-        host_node_ptr = netinfo_ptr->head;
-        while (host_node_ptr != NULL && host_node_ptr->host != hosts[i])
-            host_node_ptr = host_node_ptr->next;
-        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-        rc = net_send_message(netinfo_ptr, hosts[i], TYPE_DECOM_NAME,
-                              (void *)decom_host, hostlen, 1, 5000);
-        if (host_node_ptr)
-            host_node_ptr->decom_flag = 1;
-        if (rc < 0) {
-            outrc++;
-            logmsg(LOGMSG_ERROR, "error sending decom to %s rc=%d\n", hosts[i], rc);
-        }
-    }
-    sleep(1);
-
-    /* now decomission myself locally */
-    net_decom_self(netinfo_ptr);
-
-    return outrc;
-}
-
-static int process_decom_int(netinfo_type *netinfo_ptr, char *host)
-{
-    net_decom_node(netinfo_ptr, host);
-    run_net_decom_node_delayed(netinfo_ptr, host);
-    return 0;
 }
 
 static int process_decom(netinfo_type *net, host_node_type *host)
@@ -5471,8 +5332,6 @@ static void *connect_thread(void *arg)
         pthread_cond_signal(&(host_node_ptr->write_wakeup));
         poll(NULL, 0, 1000);
     }
-
-    poll(NULL, 0, 1000);
 
     if (!netinfo_ptr->exiting) {
         /* lock, unlink, free, damn it */
@@ -6785,8 +6644,6 @@ void destroy_netinfo(netinfo_type *netinfo_ptr)
     }
 
     Pthread_mutex_unlock(&nets_list_lk);
-
-    /*net_send_decom_me_all(netinfo_ptr);*/
 
     /*Pthread_mutex_lock(&(netinfo_ptr->lock));*/
 
