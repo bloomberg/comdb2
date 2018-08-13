@@ -616,50 +616,19 @@ void bdb_clear_logfile_pglogs_stat();
 void bdb_osql_trn_clients_status();
 void bdb_newsi_mempool_stat();
 
-static void *handle_exit_thd(void *arg)
+static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
+static void *clean_exit_thd(void *unused)
 {
-    static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&exiting_lock);
-    if( gbl_exit ) {
+    if (gbl_exit) {
         pthread_mutex_unlock(&exiting_lock);
         return NULL;
     }
     gbl_exit = 1;
     pthread_mutex_unlock(&exiting_lock);
 
-    struct dbenv *dbenv = arg;
-    int qid, alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
-
-    /* this defaults to 5 minutes */
-    alarm(alarmtime);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
-
-    if (bdb_is_an_unconnected_master(dbenv->dbs[0]->handle)) {
-        logmsg(LOGMSG_INFO, "This was standalone\n");
-        wait_for_sc_to_stop(); /* single node, need to stop SC */
-    }
-    else {
-        /* hand over masterness to a new candidate if we're the master. */
-        bdb_transfermaster(dbenv->dbs[0]->handle);
-    }
-
-    /* dont let any new requests come in.  we're going to go non-coherent
-       here in a second, so letting new reads in would be bad. */
-    no_new_requests(dbenv);
-
-    /* let the lower level start advertising high lsns to go non-coherent
-       - dont hang the master waiting for sync replication to an exiting
-       node. */
-    bdb_exiting(dbenv->dbs[0]->handle);
-
-    /* XXX this should probably have a timeout */
-    stop_threads(thedb);
-    allow_sc_to_run();
-
-    flush_db();
     clean_exit();
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
-
     return NULL;
 }
 
@@ -697,8 +666,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
-        int rc = pthread_create(&thread_id, &thd_attr, handle_exit_thd,
-                                (void *)dbenv);
+        int rc = pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
         if (rc != 0) {
             logmsgperror("create exit thread: pthread_create");
             exit(1);

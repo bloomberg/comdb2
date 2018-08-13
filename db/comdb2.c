@@ -1359,17 +1359,42 @@ static void free_sqlite_table(struct dbenv *dbenv)
  */
 void clean_exit(void)
 {
-    int rc;
+    int alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
 
-    thedb->exiting = 1;
+    /* this defaults to 5 minutes */
+    alarm(alarmtime);
+
+    /* dont let any new requests come in.  we're going to go non-coherent
+       here in a second, so letting new reads in would be bad. */
+    no_new_requests(thedb);
+
+    wait_for_sc_to_stop();
+
+#   if 0
+    if (bdb_is_an_unconnected_master(thedb->dbs[0]->handle)) {
+        wait_for_sc_to_stop(); /* single node, need to stop SC */
+        logmsg(LOGMSG_INFO, "This was standalone\n");
+    } else {
+        /* hand over masterness to a new candidate if we're the master. */
+        bdb_transfermaster(thedb->dbs[0]->handle);
+    }
+#   endif
+
+    /* let the lower level start advertising high lsns to go non-coherent
+       - dont hang the master waiting for sync replication to an exiting
+       node. */
+    bdb_exiting(thedb->dbs[0]->handle);
+
     stop_threads(thedb);
-    logmsg(LOGMSG_INFO, "stopping db engine...\n");
+    flush_db();
 
+#   if 0
     /* TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
       them to quit.
     */
     if (!gbl_create_mode)
         sleep(4);
+#   endif
 
     cleanup_q_vars();
     cleanup_switches();
@@ -1384,7 +1409,7 @@ void clean_exit(void)
         logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
     }
 
-    rc = backend_close(thedb);
+    int rc = backend_close(thedb);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
     }

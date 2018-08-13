@@ -1265,30 +1265,6 @@ static void net_stopthread_rtn(void *arg)
     bdb_thread_event((bdb_state_type *)arg, 0);
 }
 
-static void send_decom_all(bdb_state_type *bdb_state, char *decom_node)
-{
-    int count;
-    const char *hostlist[REPMAX];
-    int i;
-    int rc;
-    int len;
-#ifdef DEBUG
-    printf("send_decom_all() entering...");
-#endif
-
-    len = strlen(decom_node);
-    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-
-    for (i = 0; i < count; i++) {
-        rc = net_send_message(bdb_state->repinfo->netinfo, hostlist[i],
-                              USER_TYPE_DECOM_NAME, decom_node, len, 1,
-                              2 * 1000);
-        if (rc != 0)
-            logmsg(LOGMSG_ERROR, "got bad rc %d in send_decom_all, node=%s\n", rc,
-                    hostlist[i]);
-    }
-}
-
 /* According to the berkdb docs, after the DB/DBENV close() functions have
  * been called the handle can no longer be used regardless of the outcome.
  * Hence this function will now never fail - although it may spit out errors.
@@ -1465,23 +1441,22 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     BDB_WRITELOCK("bdb_close_int");
 
     if (is_real_netinfo(netinfo_ptr)) {
+        /* get me off the network */
+        net_send_decom_all(netinfo_ptr, gbl_mynode);
+        osql_process_message_decom(gbl_mynode);
+
+        /* kludge -- need something like net_send_message_payload_ack */
+        sleep(2);
+
         net_exiting(netinfo_ptr);
+        osql_net_exiting();
 
         sleep(1);
-
-        /* shutdown network */
-        /*destroy_netinfo(bdb_state->repinfo->netinfo); */
     }
 
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
-
-    /* so other threads see that they should exit if they live on
-       past us */
-    bdb_state->exiting = 1;
-
-    sleep(1);
 
     Pthread_mutex_lock(&(bdb_state->children_lock));
     for (i = 0; i < bdb_state->numchildren; i++) {
@@ -1492,6 +1467,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     }
     Pthread_mutex_unlock(&(bdb_state->children_lock));
 
+#   if 0
     /* Wait for ongoing election to abort. */
     while (1) {
         Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
@@ -1502,6 +1478,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
         logmsg(LOGMSG_WARN, "%s: Election in progress.\n", __func__);
         sleep(1);
     }
+#   endif
 
     bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
 
@@ -1584,10 +1561,6 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     free(bdb_state);
      */
 
-    if (is_real_netinfo(netinfo_ptr)) {
-        /* get me off the network */
-        send_decom_all(bdb_state, net_get_mynode(netinfo_ptr));
-    }
     net_cleanup_netinfo(netinfo_ptr);
 
     /* DO NOT RELEASE the write lock.  just let it be. */
@@ -2017,9 +1990,6 @@ static void panic_func(DB_ENV *dbenv, int errval)
 
     alarm(0);
 
-    /* get me off the network */
-    send_decom_all(bdb_state, net_get_mynode(bdb_state->repinfo->netinfo));
-
     abort();
 }
 
@@ -2446,10 +2416,10 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DEL_NAME,
                          "del_name", berkdb_receive_msg);
 
-    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DECOM, "decom",
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DECOM_DEPRECATED, "decom",
                          berkdb_receive_msg);
 
-    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DECOM_NAME,
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DECOM_NAME_DEPRECATED,
                          "decom_name", berkdb_receive_msg);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ADD_DUMMY,

@@ -4439,9 +4439,6 @@ int backend_close(struct dbenv *dbenv)
         views_signal(dbenv->timepart_views);
     }
 
-    /* offloading sql goes here */
-    osql_net_exiting();
-
     return bdb_close_env(dbenv->bdb_env);
 }
 

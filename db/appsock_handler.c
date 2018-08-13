@@ -189,7 +189,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
 
         st = 0;
 
-        logmsg(LOGMSG_DEBUG, "thd_apsock_int(): '%s'\n", line);
+        logmsg(LOGMSG_DEBUG, "%s:%s", __func__, line);
 
         tok = segtok(line, rc, &st, &ltok);
         if (ltok == 0)
