@@ -125,6 +125,7 @@ typedef struct {
     struct ireq iq;
     struct consumer *consumer;
     genid_t genid;
+    int push_tid;
 
     /* signaling from libdb on qdb insert */
     pthread_mutex_t *lock;
@@ -712,6 +713,29 @@ static int dbconsumer_get_int(Lua L, dbconsumer_t *q)
     while ((rc = dbq_poll(L, q, dbq_delay)) == 0)
         ;
     return rc;
+}
+
+static int dbconsumer_pushtid(Lua L, int arg) {
+    int push_tid = 0;
+    if (lua_gettop(L) == arg) {
+      luaL_checktype(L, arg, LUA_TTABLE);
+      lua_pushnil(L);
+      while (lua_next(L, -2)) {
+          const char *key, *value;
+          switch (luabb_type(L, -2)) {
+          case DBTYPES_LSTRING:
+          case DBTYPES_CSTRING:
+              key = luabb_tostring(L, -2);
+              if (strcmp(key, "with_tid") == 0) {
+                  if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
+                      push_tid = lua_toboolean(L, -1);
+                  }
+              }
+              lua_pop(L, 1);
+          }
+      }
+    }
+    return push_tid;
 }
 
 static int dbconsumer_get(Lua L)
@@ -4045,6 +4069,7 @@ static int db_error(lua_State *lua)
 static int db_consumer(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
+    int push_tid = dbconsumer_pushtid(L, 2);
 
     SP sp = getsp(L);
     if (sp->parent->have_consumer) {
@@ -4085,6 +4110,7 @@ static int db_consumer(Lua L)
         lua_pushnil(L);
         return 1;
     }
+    q->push_tid = push_tid;
     sp->parent->have_consumer = 1;
     return 1;
 }
@@ -5610,6 +5636,11 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
     blob_t id = {.length = sizeof(genid_t), .data = &f->item->genid};
     luabb_pushblob(L, &id);
     lua_setfield(L, -2, "id");
+
+    if (q->push_tid) {
+        luabb_pushinteger(L, f->item->trans.tid);
+        lua_setfield (L, -2, "tid");
+    }
 
     if (flags & TYPE_TAGGED_ADD) {
         lua_newtable(L);
