@@ -955,6 +955,36 @@ out:
     return rc;
 }
 
+int send_truncate_log_msg(bdb_state_type *bdb_state, int file, int offset)
+{
+    int rc;
+    int i;
+    const char *hostlist[REPMAX];
+    int count = 0;
+    DB_LSN trunc_lsn;
+    char buf[sizeof(DB_LSN)];
+    uint8_t *p_buf;
+    uint8_t *p_buf_end;
+
+    if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
+        return 0;
+
+    trunc_lsn.file = file;
+    trunc_lsn.offset = offset;
+
+    p_buf = buf;
+    p_buf_end = buf + sizeof(DB_LSN);
+
+    db_lsn_type_put(&trunc_lsn, p_buf, p_buf_end);
+
+    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
+    for (i = 0; i < count; i++) {
+        net_send(bdb_state->repinfo->netinfo, hostlist[i],
+                USER_TYPE_TRUNCATE_LOG, p_buf, sizeof(DB_LSN), 0);
+    }
+    return 0;
+}
+
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash)
 {

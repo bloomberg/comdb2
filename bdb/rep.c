@@ -68,6 +68,7 @@
 #include <trigger.h>
 #include "printformats.h"
 #include <llog_auto.h>
+#include "phys_rep_lsn.h"
 #include "logmsg.h"
 #include <compat.h>
 
@@ -309,15 +310,15 @@ const uint8_t *rep_udp_filepage_type_get(filepage_type *p_filepage_type,
     return p_buf;
 }
 
-enum { REP_DB_LSN_TYPE_SIZE = 4 + 4 };
+enum { DB_LSN_TYPE_SIZE = 4 + 4 };
 
-BB_COMPILE_TIME_ASSERT(rep_db_lsn_type, sizeof(DB_LSN) == REP_DB_LSN_TYPE_SIZE);
+BB_COMPILE_TIME_ASSERT(db_lsn_type, sizeof(DB_LSN) == DB_LSN_TYPE_SIZE);
 
-static const uint8_t *rep_db_lsn_type_get(DB_LSN *p_db_lsn,
+const uint8_t *db_lsn_type_get(DB_LSN *p_db_lsn,
                                           const uint8_t *p_buf,
                                           const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf || REP_DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
+    if (p_buf_end < p_buf || DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
         return NULL;
 
     p_buf =
@@ -328,11 +329,10 @@ static const uint8_t *rep_db_lsn_type_get(DB_LSN *p_db_lsn,
     return p_buf;
 }
 
-static const uint8_t *rep_db_lsn_type_put(const DB_LSN *p_db_lsn,
-                                          uint8_t *p_buf,
+const uint8_t *db_lsn_type_put(const DB_LSN *p_db_lsn, uint8_t *p_buf,
                                           const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf || REP_DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
+    if (p_buf_end < p_buf || DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
         return NULL;
 
     p_buf =
@@ -949,7 +949,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
 
                     p_buf = (uint8_t *)lsnp;
                     p_buf_end = (uint8_t *)lsnp + sizeof(DB_LSN);
-                    rep_db_lsn_type_get(&(tran->savelsn), p_buf, p_buf_end);
+                    db_lsn_type_get(&(tran->savelsn), p_buf, p_buf_end);
 
                     /*
                        char str[80];
@@ -4410,6 +4410,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     lsn_cmp_type lsn_cmp;
     int in_rep_process_message;
     DB_LSN cur_lsn;
+    DB_LSN trunc_lsn;
     uint8_t *p_buf;
     uint8_t *p_buf_end;
     pgcomp_snd_t pgsnd;
@@ -4630,6 +4631,20 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         pgsnd_pl_pos = pgcomp_snd_type_get(&pgsnd, p_buf, p_buf_end);
         enqueue_pg_compact_work(bdb_state, pgsnd.id, pgsnd.size, pgsnd_pl_pos);
         break;
+
+    case USER_TYPE_TRUNCATE_LOG:
+        p_buf = (uint8_t *)dta;
+        p_buf_end = ((uint8_t *)dta + dtalen);
+        if ((db_lsn_type_get(&trunc_lsn, p_buf, p_buf_end)) == NULL) {
+            logmsg(LOGMSG_ERROR, "%s %d: failed to get trunc-lsn\n", __func__,
+                    __LINE__);
+        } else {
+            logmsg(LOGMSG_INFO, "Truncating log to %d:%d\n", trunc_lsn.file,
+                    trunc_lsn.offset);
+            truncate_log_lock(bdb_state, trunc_lsn.file, trunc_lsn.offset, 0);
+        }
+        break;
+
 
     default:
 #if 0 
