@@ -1881,7 +1881,7 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
             goto cleanup;
         }
 
-        rc = bdb_get_csc2_highest(NULL, tblnames[i], &ver, &bdberr);
+        rc = bdb_get_csc2_highest(tran, tblnames[i], &ver, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "couldn't get highest version number for %s\n",
                     tblnames[i]);
@@ -1890,12 +1890,12 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
         }
 
         int isc = 0;
-        get_db_instant_schema_change(tbl, &isc);
+        get_db_instant_schema_change_tran(tbl, &isc, tran);
         if (isc) {
             /* load schema for older versions */
             for (int v = 1; v <= ver; ++v) {
                 char *csc2text;
-                if (get_csc2_file(tbl->tablename, v, &csc2text, NULL)) {
+                if (get_csc2_file_tran(tbl->tablename, v, &csc2text, NULL, tran)) {
                     logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__,
                             __LINE__);
                     continue;
@@ -3082,14 +3082,14 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     return 0;
 }
 
-static void load_dbstore_tableversion(struct dbenv *dbenv)
+static void load_dbstore_tableversion(struct dbenv *dbenv, tran_type *tran)
 {
     int i;
     for (i = 0; i < dbenv->num_dbs; i++) {
         struct dbtable *tbl = dbenv->dbs[i];
         update_dbstore(tbl);
 
-        tbl->tableversion = table_version_select(tbl, NULL);
+        tbl->tableversion = table_version_select(tbl, tran);
         if (tbl->tableversion == -1) {
             logmsg(LOGMSG_ERROR, "Failed reading table version\n");
         }
@@ -3742,7 +3742,7 @@ static int init(int argc, char **argv)
         return -1;
     }
 
-    load_dbstore_tableversion(thedb);
+    load_dbstore_tableversion(thedb, NULL);
 
     gbl_backend_opened = 1;
     unlock_schema_lk();
@@ -5563,9 +5563,22 @@ int comdb2_reload_schemas(void *dbenv, void *lsn, uint32_t lockid)
         abort();
     }
 
+    if (llmeta_load_tables_older_versions(thedb, tran)) {
+        logmsg(LOGMSG_FATAL, "llmeta_load_tables_older_versions failed\n");
+        return -1;
+    }
+
+    load_dbstore_tableversion(thedb, tran);
+
     if ((rc = backend_open_tran(thedb, tran, 0)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: backend_open_tran returns %d\n", __func__,
                 rc);
+        abort();
+    }
+
+    if ((rc = db_finalize_and_sanity_checks(thedb)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s: db_finalize_and_sanity_checks returns %d\n",
+                __func__, rc);
         abort();
     }
 

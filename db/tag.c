@@ -7112,8 +7112,10 @@ int reload_all_db_tran(tran_type *tran)
     }
 
     /* Seems like this should be outside of the loop */
+    /*
     create_sqlmaster_records(tran);
     create_sqlite_master();
+    */
 
     /*
     for (table = 0; table < thedb->num_dbs && rc == 0; table++) {
