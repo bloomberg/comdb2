@@ -23,6 +23,12 @@ for i in $(seq 1 $NRUNS); do
     esac
 done > 2-update.src.sql
 
-for i in $(seq 1 $NRECS); do
-    echo "delete from t1 where id=$i"
-done > 3-delete.src.sql
+# TEST 3: Truncate
+echo 'truncate t1' > 3-2-truncate.src.sql
+
+# create queries
+
+echo 'select * from t1' | tee 1-create-table.query.sql 2-1-insert.query.sql 2-2-update.query.sql 3-1-truncate.query.sql \
+    3-2-truncate.query.sql 
+
+printf 'select * from t2' | tee 5-1-create-alltypes.query.sql 5-2-alter.query.sql
