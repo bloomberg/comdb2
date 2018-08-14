@@ -6045,11 +6045,11 @@ next_tail:
     goto jump_to_p2_and_check_for_interrupt;
   }
   if( rc!=SQLITE_DONE ) goto abort_due_to_error;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  setCookCol(pC, 0);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = SQLITE_OK;
   pC->nullRow = 1;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( pC->eCurType==CURTYPE_BTREE ) setCookCol(pC, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   goto check_for_interrupt;
 }
 
