@@ -3640,28 +3640,15 @@ void sqlengine_work_appsock(void *thddata, void *work)
 static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
                                       void *thddata, int op)
 {
-    struct sqlthdstate *thd = thddata;
     struct sqlclntstate *clnt = work;
     int rc = 0;
 
     switch (op) {
     case THD_RUN:
-        sqlite3 *db = thd->sqldb;
-        int locked = 0;
-        if (db) {
-          sqlite3_mutex_enter(sqlite3_db_mutex(db));
-          locked++;
-        }
         if (clnt->exec_lua_thread)
             sqlengine_work_lua_thread(thddata, work);
         else
             sqlengine_work_appsock(thddata, work);
-        assert( db==0 || db==thd->sqldb );
-        if (locked > 0) {
-          assert( sqlite3_mutex_held(sqlite3_db_mutex(db)) );
-          sqlite3_mutex_leave(sqlite3_db_mutex(db));
-          locked--;
-        }
         break;
     case THD_FREE:
         /* we just mark the client done here, with error */
