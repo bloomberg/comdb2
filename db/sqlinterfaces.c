@@ -2082,11 +2082,13 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
         got_curtran = 1;
     }
+    sqlite3_mutex_enter(sqlite3_db_mutex(thd->sqldb));
     if ((rc = sqlite3AnalysisLoad(thd->sqldb, 0)) == SQLITE_OK) {
         thd->analyze_gen = analyze_gen;
     } else {
         logmsg(LOGMSG_ERROR, "%s sqlite3AnalysisLoad rc:%d\n", __func__, rc);
     }
+    sqlite3_mutex_leave(sqlite3_db_mutex(thd->sqldb));
     if (got_curtran && put_curtran(thedb->bdb_env, clnt)) {
         logmsg(LOGMSG_ERROR, "%s failed to put_curtran\n", __func__);
     }
