@@ -13,7 +13,7 @@ mkdir -p $DEST_DBDIR
 
 # use copycomdb2 to create a physical replicant
 
-$COPYCOMDB2_EXE -H ${destdb} -y localhost ${DBDIR}/$dbname.lrl $DEST_DBDIR
+${COPYCOMDB2_EXE} -H ${destdb} -y localhost ${DBDIR}/$dbname.lrl $DEST_DBDIR
 
 if [ ! $? -eq 0 ]; then
     echo "copycomdb2 failed"
@@ -29,9 +29,16 @@ fi
 $COMDB2_EXE $destdb -lrl $DEST_DBDIR/${destdb}.lrl -pidfile $DEST_DBDIR/${destdb}.pid &
 
 out=
+retries=0
 while [[ "$out" != "1" ]]; do
-    out=$(CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $destdb local 'select 1' 2>/dev/null)
+    out=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $destdb local 'select 1' 2>/dev/null)
     sleep 1
+
+    let retries=retries+1
+
+    if [ $retries -eq 10 ]; then
+        exit 1
+    fi
 done
 
 # requires $1 and $2
@@ -55,7 +62,7 @@ set -x
 for file in `ls *.src.sql *.sh | sort -V`; do
     # for each sql test execute it
     if [ ${file: -3} == "sql" ]; then
-        $(CDB2SQL_EXE -s --tabs -f $file ${CDB2_OPTIONS} $dbname default 2>&1 > /dev/null) 
+        $(${CDB2SQL_EXE} -s --tabs -f $file ${CDB2_OPTIONS} $dbname default 2>&1 > /dev/null) 
         query_cmd=$(echo $file | sed 's/\.src\.sql//').query.sql
 
     else
@@ -64,16 +71,16 @@ for file in `ls *.src.sql *.sh | sort -V`; do
         query_cmd=$(echo $file | sed 's/\.sh//').query.sql
     fi
 
-    src=$(CDB2SQL_EXE -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
-    dest=$(CDB2SQL_EXE -s --tabs -f $query_cmd ${CDB2_OPTIONS} $destdb local 2>&1 | md5sum)
+    src=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
+    dest=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${CDB2_OPTIONS} $destdb local 2>&1 | md5sum)
     failed=1
     for i in `seq 1 5`;
     do
         if ! $(equal_queries "$src" "$dest"); then
             echo 'Replicant not updated'
             sleep 1
-            src=$(CDB2SQL_EXE -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
-            dest=$(CDB2SQL_EXE -s --tabs -f $query_cmd ${CDB2_OPTIONS} $destdb local 2>&1 | md5sum)
+            src=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
+            dest=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${CDB2_OPTIONS} $destdb local 2>&1 | md5sum)
             continue
         fi
         
@@ -90,11 +97,11 @@ done
 
 
 # echo "Testing truncate table"
-# CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default "truncate t1"
+# ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "truncate t1"
 # # run the replication step
 # ${TESTSBUILDDIR}/localrep $dbname $destdb 2>&1
-# src2=$(CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default "select * from t1" | sort | md5sum)
-# dest2=$(CDB2SQL_EXE ${CDB2_OPTIONS} $destdb local "select * from t1" | sort | md5sum)
+# src2=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "select * from t1" | sort | md5sum)
+# dest2=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} $destdb local "select * from t1" | sort | md5sum)
 # echo "src2 $src2 dest2 $dest2"
 
 # cleanup
