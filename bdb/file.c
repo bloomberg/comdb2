@@ -2374,8 +2374,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
                              berkdb_send_rtn);
 
     dbenv->set_check_standalone(dbenv, comdb2_is_standalone);
-    dbenv->set_recovery_pre_sc_callback(dbenv, comdb2_close_schemas);
-    dbenv->set_recovery_post_sc_callback(dbenv, comdb2_reload_schemas);
+    dbenv->set_truncate_sc_callback(dbenv, comdb2_reload_schemas);
 
     /* Register logical start and commit functions */
     dbenv->set_logical_start(dbenv, berkdb_start_logical);
