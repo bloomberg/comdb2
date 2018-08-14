@@ -5498,7 +5498,7 @@ int reload_all_db_tran(tran_type *tran);
 int open_all_dbs_tran(void *tran);
 void delete_prepared_stmts(struct sqlthdstate *thd);
 
-int comdb2_reload_schemas(void *dbenv, void *lsn, uint32_t lockid)
+int comdb2_reload_schemas(void *dbenv, void *inlsn, uint32_t lockid)
 {
     uint32_t tranlid = 0;
     int bdberr = 0;
@@ -5514,8 +5514,10 @@ int comdb2_reload_schemas(void *dbenv, void *lsn, uint32_t lockid)
         abort();
     }
 
-    bdb_get_tran_lockerid(tran, &tranlid);
-    bdb_set_tran_lockerid(tran, lockid);
+    if (lockid) {
+        bdb_get_tran_lockerid(tran, &tranlid);
+        bdb_set_tran_lockerid(tran, lockid);
+    }
 
     /* Test this incrementally with all schema-change types */
     if ((rc = close_all_dbs_tran(tran)) != 0) {
@@ -5570,7 +5572,9 @@ int comdb2_reload_schemas(void *dbenv, void *lsn, uint32_t lockid)
 
     gbl_dbopen_gen++;
 
-    bdb_set_tran_lockerid(tran, tranlid);
+    if (lockid)
+        bdb_set_tran_lockerid(tran, tranlid);
+
     if ((rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort returns %d\n", __func__,
                 rc);
