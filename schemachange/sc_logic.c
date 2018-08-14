@@ -669,6 +669,8 @@ static int verify_sc_resumed_for_shard(const char *shardname,
     new_sc->sc_next = arg->s;
     arg->s = new_sc;
 
+    logmsg(LOGMSG_INFO, "Restarting schema change for view '%s' shard '%s'\n",
+           arg->view_name, new_sc->table);
     rc = start_schema_change(new_sc);
     if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
         logmsg(LOGMSG_ERROR, "%s: failed to restart shard '%s', rc %d\n",
@@ -689,6 +691,7 @@ static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
         return 0;
 
     timepart_sc_arg_t sc_arg = {0};
+    sc_arg.view_name = tpt_sc->viewname;
     sc_arg.s = tpt_sc->s;
     /* start new sc for shards that were not resumed */
     timepart_foreach_shard(tpt_sc->viewname, verify_sc_resumed_for_shard,
