@@ -2380,6 +2380,7 @@ static int loadStat4(sqlite3 *db, const char *zDb){
         pIdx->aSample[iPos] = tmp;
       }
     }
+    assert( iPos>=0 && iPos<pIdx->nSample );
     pSample = &pIdx->aSample[iPos];
     decodeIntArray((char*)sqlite3_column_text(pStmt,1),nCol,pSample->anEq,0,0);
     decodeIntArray((char*)sqlite3_column_text(pStmt,2),nCol,pSample->anLt,0,0);
