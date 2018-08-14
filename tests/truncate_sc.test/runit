@@ -34,6 +34,7 @@ function assert_notable
 {
     [[ $debug == "1" ]] && set -x
     typeset tbl=$1
+
     echo "> Assert $tbl does not exist"
     chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl")
     [[ $? != 0 ]] || failexit "table $tbl still exists"
@@ -44,28 +45,27 @@ function assert_count
     [[ $debug == "1" ]] && set -x
     typeset tbl=$1
     typeset cnt=$2
-    echo "> Assert count $tbl is $cnt"
 
+    echo "> Assert count $tbl is $cnt"
     chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl")
     [[ "$chk" == "$cnt" ]] || failexit "count for $tbl is not $cnt"
 }
 
-# Back to the start
+# Get begin-lsn and master
 begin_lsn=$(get_current_lsn)
+master=$(get_master)
 
 function truncate_add_tables
 {
     [[ $debug == "1" ]] && set -x
-    echo "> Creating t1"
+
+    echo "> Creating t1 and inserting three records"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
-
     after_1_lsn=$(get_current_lsn)
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(2)"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(3)"
-
     assert_count t1 3
-    master=$(get_master)
 
     echo "> Truncating t1 to one record"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$after_1_lsn\")"
@@ -118,5 +118,49 @@ function truncate_drop_tables
     assert_notable t3
 }
 
+function truncate_truncate_table
+{
+    [[ $debug == "1" ]] && set -x
+
+    echo "> Creating t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
+
+    echo "> Creating t2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t2(a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t2 values(1)"
+
+    echo "> Creating t3"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t3(a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t3 values(1)"
+    assert_count t1 1
+    assert_count t2 1
+    assert_count t3 1
+    before_truncate_lsn=$(get_current_lsn)
+
+    echo "> Truncating tables"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate table t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate table t2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate table t3"
+    assert_count t1 0
+    assert_count t2 0
+    assert_count t3 0
+
+    echo "> Truncating logs to before table truncates"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$before_truncate_lsn\")"
+    sleep $sleeptime
+    assert_count t1 1
+    assert_count t2 1
+    assert_count t3 1
+
+    echo "> Truncating to before table creates"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$begin_lsn\")"
+    sleep $sleeptime
+    assert_notable t1
+    assert_notable t2
+    assert_notable t3
+}
+
 truncate_add_tables
 truncate_drop_tables
+truncate_truncate_table
