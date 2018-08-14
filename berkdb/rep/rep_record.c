@@ -6523,7 +6523,12 @@ restart:
 		}
 	}
 
-	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
+    if ((ret = pthread_rwlock_wrlock(&dbenv->recoverlk)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
+        abort();
+    }
+    ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
+    pthread_rwlock_unlock(&dbenv->recoverlk);
 
 	if (online) {
 		recovery_release_locks(dbenv, lockid);
