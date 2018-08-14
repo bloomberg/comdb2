@@ -24,7 +24,6 @@ insert_records()
             continue
         fi
 
-        # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
         let j=j+1
         let retries=0
     done
