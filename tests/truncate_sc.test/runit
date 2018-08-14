@@ -9,7 +9,7 @@ bash -n "$0" | exit 1
 # Grab my database name.
 dbnm=$1
 
-sleeptime=5
+sleeptime=10
 
 function failexit
 {
@@ -52,59 +52,71 @@ function assert_count
 
 # Back to the start
 begin_lsn=$(get_current_lsn)
-echo "> Creating t1"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
 
-after_1_lsn=$(get_current_lsn)
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(2)"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(3)"
+function truncate_add_tables
+{
+    [[ $debug == "1" ]] && set -x
+    echo "> Creating t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
 
-assert_count t1 3
-master=$(get_master)
+    after_1_lsn=$(get_current_lsn)
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(2)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(3)"
 
-echo "> Truncating t1 to one record"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$after_1_lsn\")"
-sleep $sleeptime
-assert_count t1 1
+    assert_count t1 3
+    master=$(get_master)
 
-echo "> Truncating to before t1"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$begin_lsn\")"
-sleep $sleeptime
-assert_notable t1
+    echo "> Truncating t1 to one record"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$after_1_lsn\")"
+    sleep $sleeptime
+    assert_count t1 1
 
-echo "> Creating t1"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
-echo "> Creating t2"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t2(a int)"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t2 values(1)"
-echo "> Creating t3"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t3(a int)"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t3 values(1)"
-assert_count t1 1
-assert_count t2 1
-assert_count t3 1
+    echo "> Truncating to before t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$begin_lsn\")"
+    sleep $sleeptime
+    assert_notable t1
+}
 
-after_3_lsn=$(get_current_lsn)
-echo "> Dropping t1"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
-echo "> Dropping t2"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t2"
-echo "> Dropping t3"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t3"
+function truncate_drop_tables
+{
+    [[ $debug == "1" ]] && set -x
+    echo "> Creating t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
+    echo "> Creating t2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t2(a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t2 values(1)"
+    echo "> Creating t3"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t3(a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t3 values(1)"
+    assert_count t1 1
+    assert_count t2 1
+    assert_count t3 1
 
-echo "> Truncating to before table drops"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$after_3_lsn\")"
-sleep $sleeptime
-assert_count t1 1
-assert_count t2 1
-assert_count t3 1
+    after_3_lsn=$(get_current_lsn)
+    echo "> Dropping t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+    echo "> Dropping t2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t2"
+    echo "> Dropping t3"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t3"
 
-echo "> Truncating to before table creates"
-$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$begin_lsn\")"
-sleep $sleeptime
-assert_notable t1
-assert_notable t2
-assert_notable t3
+    echo "> Truncating to before table drops"
+    master=$(get_master)
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$after_3_lsn\")"
+    sleep $sleeptime
+    assert_count t1 1
+    assert_count t2 1
+    assert_count t3 1
 
+    echo "> Truncating to before table creates"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$begin_lsn\")"
+    sleep $sleeptime
+    assert_notable t1
+    assert_notable t2
+    assert_notable t3
+}
+
+truncate_add_tables
+truncate_drop_tables
