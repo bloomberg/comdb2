@@ -2790,6 +2790,31 @@ int timepart_get_num_views(void)
 }
 
 /**
+ * Get number of shards
+ *
+ */
+int timepart_get_num_shards(const char *view_name)
+{
+    timepart_views_t *views;
+    timepart_view_t *view;
+    int nshards;
+
+    pthread_rwlock_rdlock(&views_lk);
+
+    views = thedb->timepart_views;
+
+    view = _get_view(views, view_name);
+    if (view)
+        nshards = view->nshards;
+    else
+        nshards = -1;
+
+    pthread_rwlock_unlock(&views_lk);
+
+    return nshards;
+}
+
+/**
  *  Move iRowid to point to the next shard, switching shards in the process
  *  NOTE: this is called with a read lock in views structure
  */

@@ -626,6 +626,7 @@ void *sc_resuming_watchdog(void *p)
 struct timepart_sc_resuming {
     char *viewname;
     struct schema_change_type *s;
+    int nshards;
 };
 
 void *osql_commit_timepart_resuming_sc(void *p);
@@ -638,6 +639,62 @@ static int process_tpt_sc_hash(void *obj, void *arg)
     pthread_create(&tid, &gbl_pthread_attr_detached,
                    osql_commit_timepart_resuming_sc, tpt_sc->s);
     free(tpt_sc);
+    return 0;
+}
+
+static int verify_sc_resumed_for_shard(const char *shardname,
+                                       timepart_sc_arg_t *arg)
+{
+    struct schema_change_type *sc = NULL;
+    int rc;
+    assert(arg->s);
+    sc = arg->s;
+    while (sc) {
+        /* already resumed */
+        if (strcasecmp(shardname, sc->table) == 0)
+            return 0;
+        sc = sc->sc_next;
+    }
+
+    /* start a new sc for shard that was not already resumed */
+    struct schema_change_type *new_sc = clone_schemachange_type(arg->s);
+    strncpy0(new_sc->table, shardname, sizeof(new_sc->table));
+    new_sc->iq = NULL;
+    new_sc->tran = NULL;
+    new_sc->resume = 0;
+    new_sc->nothrevent = 0;
+    new_sc->finalize = 0;
+
+    /* put new_sc to linked list */
+    new_sc->sc_next = arg->s;
+    arg->s = new_sc;
+
+    rc = start_schema_change(new_sc);
+    if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
+        logmsg(LOGMSG_ERROR, "%s: failed to restart shard '%s', rc %d\n",
+               __func__, shardname, rc);
+        /* osql_commit_timepart_resuming_sc will check rc */
+        new_sc->sc_rc = rc;
+    }
+    return 0;
+}
+
+static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
+{
+    int rc = 0;
+    struct timepart_sc_resuming *tpt_sc = (struct timepart_sc_resuming *)obj;
+
+    /* all shards resumed */
+    if (tpt_sc->nshards >= timepart_get_num_shards(tpt_sc->viewname))
+        return 0;
+
+    timepart_sc_arg_t sc_arg = {0};
+    sc_arg.s = tpt_sc->s;
+    /* start new sc for shards that were not resumed */
+    timepart_foreach_shard(tpt_sc->viewname, verify_sc_resumed_for_shard,
+                           &sc_arg, 0);
+    assert(sc.arg.s != tpt_sc->s);
+    tpt_sc->s = sc_arg.s;
     return 0;
 }
 
@@ -797,11 +854,13 @@ int resume_schema_change(void)
                     }
                     tpt_sc->viewname = viewname;
                     tpt_sc->s = s;
+                    tpt_sc->nshards = 1;
                     hash_add(tpt_sc_hash, tpt_sc);
                 } else {
                     /* linked list of all shards for the same view */
                     s->sc_next = tpt_sc->s;
                     tpt_sc->s = s;
+                    tpt_sc->nshards++;
                 }
             } else if (s->finalize == 0) {
                 s->sc_next = sc_resuming;
@@ -818,7 +877,9 @@ int resume_schema_change(void)
             logmsg(LOGMSG_ERROR, "%s: failed to start sc_resuming_watchdog\n",
                    __FILE__);
     }
+    pthread_mutex_unlock(&sc_resuming_mtx);
 
+    hash_for(tpt_sc_hash, verify_sc_resumed_for_all_shards, NULL);
     hash_for(tpt_sc_hash, process_tpt_sc_hash, NULL);
     hash_free(tpt_sc_hash);
 
@@ -833,11 +894,9 @@ int resume_schema_change(void)
                    "future sc may abort\n",
                    abort_filename);
         free(abort_filename);
-        pthread_mutex_unlock(&sc_resuming_mtx);
         return 0;
     }
 
-    pthread_mutex_unlock(&sc_resuming_mtx);
     return 0;
 }
 

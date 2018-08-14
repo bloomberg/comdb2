@@ -386,6 +386,12 @@ void timepart_systable_next_shard(int *piTimepartId, int *piRowid);
 int timepart_get_num_views(void);
 
 /**
+ * Get number of shards
+ *
+ */
+int timepart_get_num_shards(const char *view_name);
+
+/**
  * Open/close the event queue
  */
 int timepart_events_open(int *num);
