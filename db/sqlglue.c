@@ -10615,7 +10615,7 @@ void sqlite3BtreeCursorHint(BtCursor *pCur, int eHintType, ...)
 
     case BTREE_HINT_RANGE: {
         Expr *expr = va_arg(ap, Expr *);
-        Mem *mem = va_arg(ap, struct Mem *);
+        Mem *mem = va_arg(ap, Mem *);
 
         sqlite3BtreeCursorHint_Range(pCur, expr);
 
