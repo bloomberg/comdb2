@@ -5511,6 +5511,8 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn, uint32_t lockid)
     struct sql_thread *sqlthd;
     struct sqlthdstate *thd;
 
+    logmsg(LOGMSG_INFO, "%s starting\n", __func__);
+
     tran = bdb_tran_begin_flags(thedb->bdb_env, NULL, &bdberr, 0);
     if (tran == NULL) {
         logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
@@ -5560,6 +5562,8 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn, uint32_t lockid)
         abort();
     }
 
+    fix_lrl_ixlen_tran(tran);
+
     /* Clean up */
     sqlthd = pthread_getspecific(query_info_key);
     if (sqlthd) {
@@ -5568,10 +5572,10 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn, uint32_t lockid)
         delete_prepared_stmts(thd);
         sqlite3_close(thd->sqldb);
         thd->sqldb = NULL;
-
-        create_sqlmaster_records(tran);
-        create_sqlite_master();
     }
+
+    create_sqlmaster_records(tran);
+    create_sqlite_master();
 
     gbl_dbopen_gen++;
 
