@@ -3706,8 +3706,12 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             free_cached_idx(clnt->idxDelete);
         }
         if (rc == SQLITE_DDL_MISUSE)
+        {
+            sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
             sqlite3VdbeError(pCur->vdbe,
                              "Transactional DDL Error: Overlapping Tables");
+            sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
+        }
     }
 
 done:
@@ -4491,8 +4495,10 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
 
     if (wrflag && clnt->origin) {
         if (gbl_check_sql_source && !allow_write_from_remote(clnt->origin)) {
+            sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
             sqlite3VdbeError(vdbe, "write from node %d not allowed",
                              clnt->conninfo.node);
+            sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
             rc = SQLITE_ACCESS;
             goto done;
         }
@@ -5630,7 +5636,9 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
             reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                         "Moveto: sqlite_unpacked_to_ondisk failed [%s]\n",
                         errs);
+            sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
             sqlite3VdbeError(pCur->vdbe, errs, (char *)0);
+            sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
             rc = SQLITE_ERROR;
             goto done;
         }
@@ -7313,8 +7321,10 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             if (after_recovery && !fdb_table_exists(iTable)) {
                 logmsg(LOGMSG_ERROR, "%s: no such table: %s\n", __func__,
                        tab->zName);
+                sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
                 sqlite3VdbeError(p, "table \"%s\" was schema changed",
                                  tab->zName);
+                sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
                 return SQLITE_SCHEMA;
             }
             nRemoteTables++;
@@ -7374,9 +7384,11 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
                 /* fprintf(stderr, "bdb_osql_check_table_version failed rc=%d
                    bdberr=%d\n",
                    rc, bdberr);*/
+                sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
                 sqlite3VdbeError(p, "table \"%s\" was schema changed",
                                  db->tablename);
                 sqlite3VdbeTransferError(p);
+                sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
 
                 return SQLITE_SCHEMA;
             }
@@ -7392,10 +7404,12 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
                longer term sql
                processing is still protected after the recovery */
             if (0) {
+                sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
                 sqlite3VdbeError(
                     p, "table \"%s\" was schema changed during recovery",
                     db->tablename);
                 sqlite3VdbeTransferError(p);
+                sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
 
                 return SQLITE_SCHEMA;
             }
@@ -7456,11 +7470,13 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
                        "Failed to lock remote table cache for \"%s\" rootp %d\n",
                        tab->zName, iTable);
 
+                sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
                 sqlite3VdbeError(
                     p,
                     "Failed to lock remote table cache for \"%s\" rootp %d\n",
                     tab->zName, iTable);
                 sqlite3VdbeTransferError(p);
+                sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
 
                 return SQLITE_ABORT;
             }
@@ -8298,7 +8314,9 @@ int sqlite3BtreeInsert(
                         "SQLite format", ".ONDISK_ix", errs, sizeof(errs));
                     reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                                 "Moveto: sqlite_to_ondisk failed [%s]\n", errs);
+                    sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
                     sqlite3VdbeError(pCur->vdbe, errs, (char *)0);
+                    sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
 
                     rc = SQLITE_ERROR;
                     goto done;
@@ -8347,7 +8365,9 @@ int sqlite3BtreeInsert(
                                            ".ONDISK", errs, sizeof(errs));
                 reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                             "Moveto: sqlite_to_ondisk failed [%s]\n", errs);
+                sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
                 sqlite3VdbeError(pCur->vdbe, errs, (char *)0);
+                sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
 
                 rc = SQLITE_ERROR;
                 goto done;
@@ -8416,8 +8436,12 @@ int sqlite3BtreeInsert(
             free_cached_idx(clnt->idxDelete);
         }
         if (rc == SQLITE_DDL_MISUSE)
+        {
+            sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
             sqlite3VdbeError(pCur->vdbe,
                              "Transactional DDL Error: Overlapping Tables");
+            sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
+        }
     }
 
 done:
@@ -9254,8 +9278,10 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
                        "%s: table version for %s changed from %d to %lld\n",
                        __func__, cur->db->tablename, cur->tableversion,
                        cur->db->tableversion);
+                sqlite3_mutex_enter(sqlite3_db_mutex(cur->vdbe->db));
                 sqlite3VdbeError(cur->vdbe, "table \"%s\" was schema changed",
                                  cur->db->tablename);
+                sqlite3_mutex_leave(sqlite3_db_mutex(cur->vdbe->db));
                 recover_deadlock_sc_cleanup(thd);
                 return SQLITE_COMDB2SCHEMA;
             } else if (!cur->bt->is_remote && cur->db) {
