@@ -578,6 +578,19 @@ int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
     return rc;
 }
 
+int sqlite3_close_serial(sqlite3 **ppDb)
+{
+    int rc = SQLITE_ERROR;
+    int serial = gbl_serialise_sqlite3_open;
+    if( serial ) pthread_mutex_lock(&open_serial_lock);
+    if( ppDb && *ppDb ){
+        rc = sqlite3_close(*ppDb);
+        if( rc==SQLITE_OK ) *ppDb = NULL;
+    }
+    if( serial ) pthread_mutex_unlock(&open_serial_lock);
+    return rc;
+}
+
 /* We'll probably play around with this formula quite a bit. The
    idea is that reads/writes to/from temp tables are cheap, since
    they are in memory, writes to real tables are really expensive
@@ -3350,8 +3363,7 @@ check_version:
                 return rc;
             }
             delete_prepared_stmts(thd);
-            sqlite3_close(thd->sqldb);
-            thd->sqldb = NULL;
+            sqlite3_close_serial(&thd->sqldb);
         }
     }
     if (gbl_enable_sql_stmt_caching && (thd->stmt_caching_table == NULL)) {
@@ -3877,8 +3889,7 @@ void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
 
     if (thd->stmt_caching_table)
         delete_stmt_caching_table(thd->stmt_caching_table);
-    if (thd->sqldb)
-        sqlite3_close(thd->sqldb);
+    sqlite3_close_serial(&thd->sqldb);
 
     /* AZ moved after the close which uses thd for rollbackall */
     done_sql_thread();
