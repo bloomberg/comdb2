@@ -22,9 +22,13 @@ sleep 10
 # Run the executable
 exe=${TESTSBUILDDIR}/selectv
 
-$exe -d $dbname -D -t 5 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> test.log &
+$exe -d $dbname -D -t 5 > test.log 2>&1 &
 tpid=$!
 echo "Test Thread PID $tpid"
+
+strace -tt -o test.strace -p $tpid &
+spid=$!
+echo "Strace Thread PID $spid"
 
 ./downgrade.sh $dbname > downgrade.log 2>&1 &
 dgpid=$!
@@ -108,7 +112,9 @@ while [[ $selecterror -lt $maxselectfail ]]; do
 done
 
 kill -9 $tpid
+echo "Killed Test Thread PID $tpid"
 kill -9 $dgpid
+echo "Killed Downgrade Thread PID $dgpid"
 
 # Remove trap-command.
 trap - INT EXIT

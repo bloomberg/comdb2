@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include <cdb2api.h>
 
@@ -364,6 +365,8 @@ int main(int argc, char *argv[])
     cdb2_hndl_tp *sqlh;
     config_t *c;
     int err = 0, opt, maxretries = 32, debug = 0;
+
+    signal(SIGPIPE, SIG_IGN);
 
     argv0 = argv[0];
     c = default_config();
