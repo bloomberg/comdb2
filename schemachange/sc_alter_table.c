@@ -176,9 +176,8 @@ static void adjust_version(int changed, struct scinfo *scinfo,
         ++newdb->version;
     } else if (ondisk_changed == SC_NO_CHANGE /* nothing changed ondisk */
                && changed == SC_TAG_CHANGE    /* plan says it did change */
-               && newdb->version == 0 && newdb->plan
-               && newdb->plan->dta_plan == -1
-               && newdb->plan->plan_convert == 1) {
+               && newdb->version == 0 && newdb->plan &&
+               newdb->plan->dta_plan == -1 && newdb->plan->plan_convert == 1) {
         ++newdb->version;
     }
 }
