@@ -45,11 +45,13 @@ enum {
     WRITE_MSG_INORDER = 32
 };
 
+#define HOSTNAME_LEN 16
+
 typedef struct {
-    char fromhost[16];
+    char fromhost[HOSTNAME_LEN];
     int fromport;
     int fromnode;
-    char tohost[16];
+    char tohost[HOSTNAME_LEN];
     int toport;
     int tonode;
     int type;
@@ -121,8 +123,6 @@ typedef struct {
     unsigned long long throttle_waits;
     unsigned long long reorders;
 } stats_type;
-
-#define HOSTNAME_LEN 16
 
 struct host_node_tag {
     int fd;

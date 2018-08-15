@@ -656,9 +656,9 @@ static int write_list(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
         if (iov[ii].iov_base)
             datasz += iov[ii].iov_len;
     }
-    if (netinfo_ptr->myhostname_len >= HOSTNAME_LEN)
+    if (netinfo_ptr->myhostname_len > HOSTNAME_LEN)
         datasz += netinfo_ptr->myhostname_len;
-    if (host_node_ptr->hostname_len >= HOSTNAME_LEN)
+    if (host_node_ptr->hostname_len > HOSTNAME_LEN)
         datasz += host_node_ptr->hostname_len;
 
     /* Malloc space for the list item struct (which includes the net message
@@ -716,11 +716,11 @@ fprintf(stderr, "[%s] using malloc for %d bytes\n",
     // start = insert->payload.raw;
 
     /* if we have long hostnames, account for them here */
-    if (netinfo_ptr->myhostname_len >= HOSTNAME_LEN) {
+    if (netinfo_ptr->myhostname_len > HOSTNAME_LEN) {
         memcpy(ptr, netinfo_ptr->myhostname, netinfo_ptr->myhostname_len);
         ptr += netinfo_ptr->myhostname_len;
     }
-    if (host_node_ptr->hostname_len >= HOSTNAME_LEN) {
+    if (host_node_ptr->hostname_len > HOSTNAME_LEN) {
         memcpy(ptr, host_node_ptr->host, host_node_ptr->hostname_len);
         ptr += host_node_ptr->hostname_len;
     }
@@ -1179,7 +1179,7 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
 
     memset(&connect_message, 0, sizeof(connect_message_type));
 
-    if (host_node_ptr->hostname_len >= HOSTNAME_LEN) {
+    if (host_node_ptr->hostname_len > HOSTNAME_LEN) {
         snprintf(connect_message.to_hostname,
                  sizeof(connect_message.to_hostname), ".%d",
                  host_node_ptr->hostname_len);
@@ -1196,7 +1196,7 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
         connect_message.flags |= CONNECT_MSG_SSL;
 #endif
 
-    if (netinfo_ptr->myhostname_len >= HOSTNAME_LEN) {
+    if (netinfo_ptr->myhostname_len > HOSTNAME_LEN) {
         snprintf(connect_message.my_hostname,
                  sizeof(connect_message.my_hostname), ".%d",
                  netinfo_ptr->myhostname_len);
@@ -1436,7 +1436,7 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
     /* write long hostnames */
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
-        if (tmp_host_ptr->hostname_len >= HOSTNAME_LEN)
+        if (tmp_host_ptr->hostname_len > HOSTNAME_LEN)
             datasz += tmp_host_ptr->hostname_len;
     }
     data = malloc(datasz);
@@ -1453,7 +1453,7 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
     /* fill in hostnames */
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
-        if (tmp_host_ptr->hostname_len >= HOSTNAME_LEN) {
+        if (tmp_host_ptr->hostname_len > HOSTNAME_LEN) {
             char lenstr[HOSTNAME_LEN];
             bzero(lenstr, sizeof(lenstr));
             snprintf(lenstr, sizeof(lenstr), ".%d", tmp_host_ptr->hostname_len);
@@ -1481,7 +1481,7 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
     /* write long hostnames */
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
-        if (tmp_host_ptr->hostname_len >= HOSTNAME_LEN)
+        if (tmp_host_ptr->hostname_len > HOSTNAME_LEN)
             p_buf =
                 buf_no_net_put(tmp_host_ptr->host, tmp_host_ptr->hostname_len,
                                p_buf, p_buf_end);
@@ -1524,7 +1524,7 @@ static int write_hello_reply(netinfo_type *netinfo_ptr,
     /* write long hostnames */
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
-        if (tmp_host_ptr->hostname_len >= HOSTNAME_LEN)
+        if (tmp_host_ptr->hostname_len > HOSTNAME_LEN)
             datasz += tmp_host_ptr->hostname_len;
     }
     data = malloc(datasz);
@@ -1542,7 +1542,7 @@ static int write_hello_reply(netinfo_type *netinfo_ptr,
     /* fill in hostnames */
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
-        if (tmp_host_ptr->hostname_len >= HOSTNAME_LEN) {
+        if (tmp_host_ptr->hostname_len > HOSTNAME_LEN) {
             char lenstr[HOSTNAME_LEN];
             bzero(lenstr, sizeof(lenstr));
             snprintf(lenstr, sizeof(lenstr), ".%d", tmp_host_ptr->hostname_len);
@@ -1572,7 +1572,7 @@ static int write_hello_reply(netinfo_type *netinfo_ptr,
     /* write long hostnames */
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
-        if (tmp_host_ptr->hostname_len >= HOSTNAME_LEN)
+        if (tmp_host_ptr->hostname_len > HOSTNAME_LEN)
             p_buf =
                 buf_no_net_put(tmp_host_ptr->host, tmp_host_ptr->hostname_len,
                                p_buf, p_buf_end);
@@ -4506,7 +4506,7 @@ static void *writer_thread(void *args)
                      * current connection. */
 
                     wire_header = &write_list_ptr->payload.header;
-                    if (netinfo_ptr->myhostname_len >= HOSTNAME_LEN) {
+                    if (netinfo_ptr->myhostname_len > HOSTNAME_LEN) {
                         snprintf(tmp_wire_hdr.fromhost,
                                  sizeof(tmp_wire_hdr.fromhost), ".%d",
                                  netinfo_ptr->myhostname_len);
@@ -4516,7 +4516,7 @@ static void *writer_thread(void *args)
                     }
                     tmp_wire_hdr.fromport = netinfo_ptr->myport;
                     tmp_wire_hdr.fromnode = 0;
-                    if (host_node_ptr->hostname_len >= HOSTNAME_LEN) {
+                    if (host_node_ptr->hostname_len > HOSTNAME_LEN) {
                         snprintf(tmp_wire_hdr.tohost,
                                  sizeof(tmp_wire_hdr.tohost), ".%d",
                                  host_node_ptr->hostname_len);
