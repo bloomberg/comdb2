@@ -535,6 +535,11 @@ void** mspace_independent_comalloc(mspace msp, size_t n_elements,
 */
 size_t mspace_footprint(mspace msp);
 
+/*
+  Traverse allocated chunks in the mspace
+  with a callback to be executed on each chunk.
+*/
+void mspace_for_each_chunk(mspace msp, void (*cb) (void*, void *), void *arg);
 
 #if !NO_MALLINFO
 /*
