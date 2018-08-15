@@ -9,7 +9,7 @@ bash -n "$0" | exit 1
 # Grab my database name.
 dbnm=$1
 
-sleeptime=10
+sleeptime=5
 
 function failexit
 {
@@ -34,7 +34,6 @@ function assert_notable
 {
     [[ $debug == "1" ]] && set -x
     typeset tbl=$1
-
     echo "> Assert $tbl does not exist"
     chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl")
     [[ $? != 0 ]] || failexit "table $tbl still exists"
@@ -42,10 +41,8 @@ function assert_notable
 
 function assert_stat_compr
 {
-    #[[ $debug == "1" ]] && set -x
-    set -x
+    [[ $debug == "1" ]] && set -x
     typeset prev_sc="$1"
-
     echo "> Assert stat compr is the same"
     typeset curr_sc=$(stat_compr)
     [[ "$prev_sc" != "$curr_sc" ]] && failexit "stat compr changed"
@@ -57,12 +54,43 @@ function stat_compr
     $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send('stat compr')"
 }
 
+function select_sp
+{
+    [[ $debug == "1" ]] && set -x
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from comdb2_procedures"
+}
+
+function assert_select_sp
+{
+    [[ $debug == "1" ]] && set -x
+    typeset prev_sp="$1"
+    echo "> Assert select_sp is the same"
+    typeset curr_sp=$(select_sp)
+    [[ "$prev_sp" != "$curr_sp" ]] && failexit "select_sp changed"
+}
+
+function select_all
+{
+    [[ $debug == "1" ]] && set -x
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t3"
+}
+
+function assert_select_all
+{
+    [[ $debug == "1" ]] && set -x
+    typeset prev_sa="$1"
+    echo "> Assert select_all is the same"
+    typeset curr_sa=$(select_all)
+    [[ "$prev_sa" != "$curr_sa" ]] && failexit "select_all changed"
+}
+
 function assert_count
 {
     [[ $debug == "1" ]] && set -x
     typeset tbl=$1
     typeset cnt=$2
-
     echo "> Assert count $tbl is $cnt"
     chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl")
     [[ "$chk" == "$cnt" ]] || failexit "count for $tbl is not $cnt"
@@ -80,6 +108,7 @@ function add_tables
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
     after_1_lsn=$(get_current_lsn)
+    after_t_sa=$(select_all)
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(2)"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(3)"
     assert_count t1 3
@@ -88,6 +117,7 @@ function add_tables
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$after_1_lsn\")"
     sleep $sleeptime
     assert_count t1 1
+    assert_select_all "$after_t_sa"
 
     echo "> Truncating to before t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$begin_lsn\")"
@@ -196,6 +226,7 @@ function alter_table_options
     assert_count t2 1
     assert_count t3 1
     before_alter_options_lsn_1=$(get_current_lsn)
+    before_alter_options_sal_1=$(select_all)
     before_alter_options_stc_1=$(stat_compr)
 
     echo "> Altering tables adding ODH"
@@ -203,6 +234,7 @@ function alter_table_options
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t2 options rebuild, ipu off, isc off, rec none, blobfield none { schema { int a } }"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t3 options rebuild, ipu off, isc off, rec none, blobfield none { schema { int a } }"
     added_odh_lsn_2=$(get_current_lsn)
+    added_odh_sal_2=$(select_all)
     added_odh_stc_2=$(stat_compr)
 
     echo "> Altering tables adding compression"
@@ -210,6 +242,7 @@ function alter_table_options
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t2 options rebuild, ipu off, isc off { schema { int a } }"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t3 options rebuild, ipu off, isc off { schema { int a } }"
     added_comp_lsn_3=$(get_current_lsn)
+    added_comp_sal_3=$(select_all)
     added_comp_stc_3=$(stat_compr)
 
     echo "> Altering tables adding ipu/isc"
@@ -217,7 +250,16 @@ function alter_table_options
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t2 { schema { int a } }"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t3 { schema { int a } }"
     added_all_lsn_4=$(get_current_lsn)
+    added_all_sal_4=$(select_all)
     added_all_stc_4=$(stat_compr)
+
+    echo "> Altering tables adding blobs"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 add b blob"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t2 add b blob"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t3 add b blob"
+    added_blob_lsn_5=$(get_current_lsn)
+    added_blob_sal_5=$(select_all)
+    added_blob_stc_5=$(stat_compr)
 
     echo "> Dropping tables"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
@@ -227,25 +269,35 @@ function alter_table_options
     assert_notable t2
     assert_notable t3
 
+    echo "> Truncating to added blobs"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$added_blob_lsn_5\")"
+    sleep $sleeptime
+    assert_stat_compr "$added_blob_stc_5"
+    assert_select_all "$added_blob_sal_5"
+
     echo "> Truncating to added ipu/isc"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$added_all_lsn_4\")"
     sleep $sleeptime
     assert_stat_compr "$added_all_stc_4"
+    assert_select_all "$added_all_sal_4"
 
     echo "> Truncating to added compression"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$added_comp_lsn_3\")"
     sleep $sleeptime
     assert_stat_compr "$added_comp_stc_3"
+    assert_select_all "$added_comp_sal_3"
 
     echo "> Truncating to added ODH"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$added_odh_lsn_2\")"
     sleep $sleeptime
     assert_stat_compr "$added_odh_stc_2"
+    assert_select_all "$added_odh_sal_2"
 
     echo "> Truncating to old options"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$before_alter_options_lsn_1\")"
     sleep $sleeptime
     assert_stat_compr "$before_alter_options_stc_1"
+    assert_select_all "$before_alter_options_sal_1"
     assert_count t1 1
     assert_count t2 1
     assert_count t3 1
@@ -258,7 +310,70 @@ function alter_table_options
     assert_notable t3
 }
 
+function luasp
+{
+    [[ $debug == "1" ]] && set -x
+    echo "> Creating t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int, b blob)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1, x'12')"
+    created_tables_lsn_1=$(get_current_lsn)
+    created_tables_sal_1=$(select_all)
+    created_tables_ssp_1=$(select_sp)
+
+    echo "> Creating sp"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF1'
+create procedure select_t1 version 'v1' {
+local function main()
+	local stmt1 = db:prepare("select * from t1")
+    for i = 1, 5 do
+        db:emit(stmt1:fetch())
+    end
+end
+}$$
+EOF1
+    created_procedure_lsn_2=$(get_current_lsn)
+    created_procedure_sal_2=$(select_all)
+    created_procedure_ssp_2=$(select_sp)
+
+    echo "> Creating sp2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF2'
+create procedure select_t2 version 'v1' {
+local function main()
+	local stmt1 = db:prepare("select * from t1")
+    for i = 1, 5 do
+        db:emit(stmt1:fetch())
+    end
+end
+}$$
+EOF2
+    created_procedure2_lsn_3=$(get_current_lsn)
+    created_procedure2_sal_3=$(select_all)
+    created_procedure2_ssp_3=$(select_sp)
+
+    echo "> Creating sp1-v2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF3'
+create procedure select_t1 version 'v2' {
+local function main()
+	local stmt1 = db:prepare("select * from t1")
+    for i = 1, 5 do
+        db:emit(stmt1:fetch())
+    end
+end
+}$$
+EOF3
+    created_procedure1v2_lsn_4=$(get_current_lsn)
+    created_procedure1v2_sal_4=$(select_all)
+    created_procedure1v2_ssp_4=$(select_sp)
+
+
+
+#    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create procedure
+
+
+}
+
 add_tables
 drop_tables
 truncate_tables
 alter_table_options
+#luasp

@@ -5567,18 +5567,28 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn, uint32_t lockid)
         abort();
     }
 
-    if (llmeta_load_tables_older_versions(thedb, tran)) {
-        logmsg(LOGMSG_FATAL, "llmeta_load_tables_older_versions failed\n");
-        return -1;
-    }
-
-    load_dbstore_tableversion(thedb, tran);
-
-    if ((rc = backend_open_tran(thedb, tran, 0)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: backend_open_tran returns %d\n", __func__,
-                rc);
+    /*
+    if (llmeta_load_timepart(thedb)) {
+        logmsg(LOGMSG_FATAL, "could not load time partitions\n");
         abort();
     }
+
+    if (llmeta_load_queues(thedb)) {
+        logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
+                "table\n");
+        abort();
+    }
+
+    if (llmeta_load_lua_sfuncs()) {
+        logmsg(LOGMSG_FATAL, "could not load lua funcs from llmeta\n");
+        abort();
+    }
+
+    if (llmeta_load_lua_afuncs()) {
+        logmsg(LOGMSG_FATAL, "could not load lua aggs from llmeta\n");
+        abort();
+    }
+    */
 
     if ((rc = db_finalize_and_sanity_checks(thedb)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: db_finalize_and_sanity_checks returns %d\n",
@@ -5587,6 +5597,19 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn, uint32_t lockid)
     }
 
     fix_lrl_ixlen_tran(tran);
+
+    if ((rc = backend_open_tran(thedb, tran, 0)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s: backend_open_tran returns %d\n", __func__,
+                rc);
+        abort();
+    }
+
+    if (llmeta_load_tables_older_versions(thedb, tran)) {
+        logmsg(LOGMSG_FATAL, "llmeta_load_tables_older_versions failed\n");
+        return -1;
+    }
+
+    load_dbstore_tableversion(thedb, tran);
 
     /* Clean up */
     sqlthd = pthread_getspecific(query_info_key);
