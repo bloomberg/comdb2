@@ -68,12 +68,15 @@ undone.
 ### INSERT/REPLACE
 
 **Insert:**
+
 ![INSERT](images/insert-stmt.gif)
 
 **Replace:**
+
 ![REPLACE](images/replace-stmt.gif)
 
 **Upsert clause:**
+
 ![UPSERT CLAUSE](images/upsert-clause.gif)
 
 
