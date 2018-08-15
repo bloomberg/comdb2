@@ -1594,7 +1594,7 @@ struct __db {
 	 * so that we can undo an associate.
 	 */
 	int  (*stored_get) __P((DB *, DB_TXN *, DBT *, DBT *, u_int32_t));
-	int  (*stored_close) __P((DB *, DB_TXN *, u_int32_t));
+	int  (*stored_close) __P((DB *, u_int32_t));
 
 #define	DB_OK_BTREE	0x01
 #define	DB_OK_HASH	0x02
