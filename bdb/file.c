@@ -1313,7 +1313,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
     }
 
     for (dtanum = 0; dtanum < MAXDTAFILES; dtanum++) {
-        for (strnum = 0; strnum < MAXSTRIPE; strnum++) {
+        for (strnum = 0; strnum < MAXDTASTRIPE; strnum++) {
             if (bdb_state->dbp_data[dtanum][strnum]) {
                 rc = bdb_state->dbp_data[dtanum][strnum]->close(
                     bdb_state->dbp_data[dtanum][strnum], flags);
@@ -3894,8 +3894,8 @@ int calc_pagesize(int recsize)
     return pagesize;
 }
 
-static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                        int create, DB_TXN *tid)
+static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
+                    int create, DB_TXN *tid)
 {
     int rc;
     char tmpname[PATH_MAX];
@@ -4414,17 +4414,6 @@ static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
     }
 
     return 0;
-}
-
-static pthread_mutex_t open_dbs_mtx = PTHREAD_MUTEX_INITIALIZER;
-static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                    int create, DB_TXN *tid)
-{
-    int rc = 0;
-    Pthread_mutex_lock(&open_dbs_mtx);
-    rc = open_dbs_int(bdb_state, iammaster, upgrade, create, tid);
-    Pthread_mutex_unlock(&open_dbs_mtx);
-    return rc;
 }
 
 int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
@@ -5183,7 +5172,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
 
     iammaster = 0;
 
-    if (numix > MAXIX) {
+    if (numix > MAXINDEX) {
         *bdberr = BDBERR_MISC;
         return NULL;
     }
@@ -6271,7 +6260,7 @@ static int bdb_reinit_int(bdb_state_type *bdb_state, tran_type *tran,
     int dtanum;
     u_int32_t nrecs = 0;
     int rc;
-    u_int32_t nrecs_ix[MAXIX];
+    u_int32_t nrecs_ix[MAXINDEX];
 
     *bdberr = 0;
 
@@ -7304,16 +7293,22 @@ struct unused_file {
 
 #define OF_LIST_MAX 16384
 static struct unused_file of_list[OF_LIST_MAX];
-static int list_hd, list_tl;
+static int list_hd = 0, list_tl = 0;
 static pthread_mutex_t of_list_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 /* return 1 if oldfilelist contains filename */
 int oldfile_list_contains(char *filename)
 {
     int contains = 0;
+    int list_end;
     Pthread_mutex_lock(&of_list_mtx);
-    for (int i = list_tl; i < list_hd; i++) {
-        if (strncmp(filename, of_list[i].fname, FILENAMELEN) == 0) {
+    if (list_tl <= list_hd)
+        list_end = list_hd;
+    else
+        list_end = OF_LIST_MAX + list_hd;
+    for (int i = list_tl; i < list_end; i++) {
+        if (strncmp(filename, of_list[i % OF_LIST_MAX].fname, FILENAMELEN) ==
+            0) {
             contains = 1;
             break;
         }
@@ -7328,7 +7323,8 @@ int oldfile_list_contains(char *filename)
 
     return contains;
 }
-int oldfile_list_add(char *filename, unsigned lognum)
+int oldfile_list_add(char *filename, unsigned lognum, const char *func,
+                     int line)
 {
     int rc = 0;
 
@@ -7341,6 +7337,8 @@ int oldfile_list_add(char *filename, unsigned lognum)
         of_list[list_hd].fname = filename;
         of_list[list_hd++].lognum = lognum;
         list_hd %= OF_LIST_MAX;
+        logmsg(LOGMSG_DEBUG, "%s:%d [%s] list_hd %d, list_tl %d from %s:%d\n",
+               __func__, __LINE__, filename, list_hd, list_tl, func, line);
     }
     Pthread_mutex_unlock(&of_list_mtx);
 
@@ -7357,6 +7355,8 @@ char *oldfile_list_rem(int *lognum)
         *lognum = of_list[list_tl].lognum;
         of_list[list_tl].fname = NULL;
         list_tl = (list_tl + 1) % OF_LIST_MAX;
+        logmsg(LOGMSG_DEBUG, "%s:%d [%s] list_hd %d, list_tl %d\n", __func__,
+               __LINE__, ret, list_hd, list_tl);
     }
     Pthread_mutex_unlock(&of_list_mtx);
 
@@ -7648,7 +7648,7 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
         if (oldfile_list_contains(munged_name))
             continue;
 
-        if (oldfile_list_add(strdup(munged_name), lognum)) {
+        if (oldfile_list_add(strdup(munged_name), lognum, __func__, __LINE__)) {
             print(bdb_state, "failed to collect old file (list full) %s\n",
                   ent->d_name);
             goto done;
@@ -7883,7 +7883,8 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
             if (oldfile_list_contains(munged_name))
                 continue;
 
-            if (oldfile_list_add(strdup(munged_name), lognum)) {
+            if (oldfile_list_add(strdup(munged_name), lognum, __func__,
+                                 __LINE__)) {
                 print(bdb_state, "failed to collect old file (list full) %s\n",
                       ent->d_name);
             } else {
@@ -7999,7 +8000,7 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
         return 0;
 
     if (lognum && lowfilenum && lognum >= lowfilenum) {
-        oldfile_list_add(munged_name, lognum);
+        oldfile_list_add(munged_name, lognum, __func__, __LINE__);
         return 1;
     }
 
@@ -8011,7 +8012,7 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                 __func__, rc, *bdberr, munged_name);
 
         if (*bdberr != BDBERR_DELNOTFOUND) {
-            if (oldfile_list_add(munged_name, lognum)) {
+            if (oldfile_list_add(munged_name, lognum, __func__, __LINE__)) {
                 print(bdb_state, "bdb_del_file failed bdberr=%d and failed to "
                                  "requeue \"%s\"\n",
                       *bdberr, munged_name);

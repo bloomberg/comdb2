@@ -92,7 +92,7 @@
 #include "bdb_osqlcur.h"
 #include "bdb_osqllog.h"
 #include "logmsg.h"
-#include "util.h"
+#include "tohex.h"
 
 static unsigned int berkdb_counter = 0;
 
@@ -949,12 +949,12 @@ int bdb_berkdb_firstlast_shad(bdb_berkdb_t *pberkdb,
     return 0;
 }
 
-int inline bdb_berkdb_first_shad(bdb_berkdb_t *pberkdb, int *bdberr)
+static int bdb_berkdb_first_shad(bdb_berkdb_t *pberkdb, int *bdberr)
 {
     return bdb_berkdb_firstlast_shad(pberkdb, bdb_temp_table_first, bdberr);
 }
 
-int inline bdb_berkdb_last_shad(bdb_berkdb_t *pberkdb, int *bdberr)
+static int bdb_berkdb_last_shad(bdb_berkdb_t *pberkdb, int *bdberr)
 {
     return bdb_berkdb_firstlast_shad(pberkdb, bdb_temp_table_last, bdberr);
 }

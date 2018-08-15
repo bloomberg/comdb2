@@ -324,6 +324,8 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
                 "transaction %llx %s failed %d times with verify errors\n",
                 clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
                 clnt->verify_retries);
+        /* Set to NONE to suppress the error from srs_tran_destroy(). */
+        osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
     }
 
     /* replayed, free the session */

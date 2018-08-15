@@ -600,7 +600,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
 
             /* this call could wait for a bdb read lock; in the meantime,
                someone might try to signal us */
-            if (osql_comm_check_bdb_lock()) {
+            if (osql_comm_check_bdb_lock(__func__, __LINE__)) {
                 rc = pthread_mutex_unlock(&entry->mtx);
                 if (rc)
                     logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n",

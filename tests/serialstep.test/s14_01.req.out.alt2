@@ -5,5 +5,5 @@ done
 done
 (rows updated=1)
 done
-[commit] failed with rc 2 unable to update record rc = 4
+[commit] failed with rc 2 find old record failed unable to update record rc = 4
 done

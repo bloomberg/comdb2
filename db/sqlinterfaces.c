@@ -109,6 +109,7 @@
 #include "logmsg.h"
 #include <str0.h>
 #include <eventlog.h>
+#include "perf.h"
 
 /* delete this after comdb2_api.h changes makes it through */
 #define SQLHERR_MASTER_QUEUE_FULL -108
@@ -349,6 +350,11 @@ static int skip_row(struct sqlclntstate *clnt, uint64_t rowid)
 static int log_context(struct sqlclntstate *clnt, struct reqlogger *logger)
 {
     return clnt->plugin.log_context(clnt, logger);
+}
+
+static int send_intrans_response(struct sqlclntstate *clnt)
+{
+    return clnt->plugin.send_intrans_response(clnt);
 }
 
 void handle_failed_dispatch(struct sqlclntstate *clnt, char *errstr)
@@ -692,6 +698,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     h->when = thd->stime;
     h->txnid = rqid;
 
+    time_metric_add(thedb->service_time, h->time);
+
     /* request logging framework takes care of logging long sql requests */
     reqlog_set_cost(logger, h->cost);
     if (rqid) {
@@ -941,6 +949,9 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             assert(clnt->ddl_tables == NULL && clnt->dml_tables == NULL);
             clnt->ddl_tables = hash_init_strcase(0);
             clnt->dml_tables = hash_init_strcase(0);
+            clnt->ddl_contexts = hash_init_user(
+                (hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
+                offsetof(struct clnt_ddl_context, name), 0);
 
             upd_snapshot(clnt);
             snapshot_as_of(clnt);
@@ -1100,16 +1111,24 @@ inline int replicant_can_retry(struct sqlclntstate *clnt)
            clnt->verifyretry_off == 0;
 }
 
+static int free_clnt_ddl_context(void *obj, void *arg)
+{
+    struct clnt_ddl_context *ctx = obj;
+    comdb2ma_destroy(ctx->mem);
+    free(ctx->ctx);
+    free(ctx);
+    return 0;
+}
 static int free_it(void *obj, void *arg)
 {
     free(obj);
     return 0;
 }
-static inline void destroy_hash(hash_t *h)
+static inline void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
 {
     if (!h)
         return;
-    hash_for(h, free_it, NULL);
+    hash_for(h, free_func, NULL);
     hash_clear(h);
     hash_free(h);
 }
@@ -1417,10 +1436,12 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         clnt->selectv_arr = NULL;
     }
 
-    destroy_hash(clnt->ddl_tables);
-    destroy_hash(clnt->dml_tables);
+    destroy_hash(clnt->ddl_tables, free_it);
+    destroy_hash(clnt->dml_tables, free_it);
     clnt->ddl_tables = NULL;
     clnt->dml_tables = NULL;
+    destroy_hash(clnt->ddl_contexts, free_clnt_ddl_context);
+    clnt->ddl_contexts = NULL;
 
     /* reset the state after send_done; we use ctrl_sqlengine to know
        if this is a user rollback or an sqlite engine error */
@@ -2691,6 +2712,10 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         case CLIENT_CSTR:
         case CLIENT_PSTR:
         case CLIENT_PSTR2:
+            /* Keeping with the R6 behavior, we need to 'silently' truncate
+             * the string on first '\0'.
+             */
+            p.len = strnlen((char *)p.u.p, p.len);
             rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
             eventlog_bind_text(arr, p.name, p.u.p, p.len);
             break;
@@ -2882,8 +2907,9 @@ static int skip_response_int(struct sqlclntstate *clnt, int from_error)
     if (clnt->in_client_trans) {
         if (from_error && !clnt->had_errors) /* send on first error */
             return 0;
-        if (clnt->send_intrans_results)
+        if (send_intrans_response(clnt)) {
             return 0;
+        }
         return 1;
     }
     return 0; /* single stmt by itself (read or write) */
@@ -2953,6 +2979,11 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
     if (!irc) {
         irc = errstat_get_rc(&clnt->osql.xerr);
         if (irc) {
+            /* Do not retry on ERR_UNCOMMITABLE_TXN. */
+            if (clnt->osql.xerr.errval == ERR_UNCOMMITABLE_TXN) {
+                osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
+            }
+
             *perrstr = (char *)errstat_get_str(&clnt->osql.xerr);
             /* convert this to a user code */
             irc = (clnt->osql.error_is_remote)
@@ -3022,7 +3053,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         if (!skip_response(clnt)) {
             if (postponed_write)
                 send_row(clnt, NULL, row_id, 0, NULL);
-            write_response(clnt, RESPONSE_EFFECTS, 0, 0);
+            write_response(clnt, RESPONSE_EFFECTS, 0, 1);
             write_response(clnt, RESPONSE_ROW_LAST, 0, 0);
         }
     }
@@ -3279,11 +3310,13 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         gbl_check_access_controls = 0;
     }
 
+#   if WITH_SSL
     /* If 1) this is an SSL connection, 2) and client sends a certificate,
        3) and client does not override the user, let it through. */
     if (sslio_has_x509(clnt->sb) && clnt->is_x509_user)
         rc = 0;
     else
+#   endif
         rc = check_user_password(clnt);
 
     if (rc == 0) {
@@ -3692,6 +3725,8 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     char thdinfo[40];
     int rc;
     struct thr_handle *self = thrman_self();
+    int q_depth_tag_and_sql;
+
     if (self) {
         if (clnt->exec_lua_thread)
             thrman_set_subtype(self, THRSUBTYPE_LUA_SQL);
@@ -3715,6 +3750,13 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
 
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
     clnt->enque_timeus = comdb2_time_epochus();
+
+    q_depth_tag_and_sql = thd_queue_depth();
+    if (thdpool_get_nthds(gbl_sqlengine_thdpool) == thdpool_get_maxthds(gbl_sqlengine_thdpool))
+        q_depth_tag_and_sql += thdpool_get_queue_depth(gbl_sqlengine_thdpool) + 1;
+
+    time_metric_add(thedb->concurrent_queries, thdpool_get_nthds(gbl_sqlengine_thdpool));
+    time_metric_add(thedb->queue_depth, q_depth_tag_and_sql);
 
     sqlcpy = strdup(msg);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
@@ -3960,10 +4002,12 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->idxInsert = clnt->idxDelete = NULL;
     }
 
-    destroy_hash(clnt->ddl_tables);
-    destroy_hash(clnt->dml_tables);
+    destroy_hash(clnt->ddl_tables, free_it);
+    destroy_hash(clnt->dml_tables, free_it);
     clnt->ddl_tables = NULL;
     clnt->dml_tables = NULL;
+    destroy_hash(clnt->ddl_contexts, free_clnt_ddl_context);
+    clnt->ddl_contexts = NULL;
 }
 
 void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
@@ -4052,8 +4096,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->num_retry = 0;
     clnt->early_retry = 0;
     clnt_reset_cursor_hints(clnt);
-
-    clnt->send_intrans_results = 1;
 
     bzero(clnt->dirty, sizeof(clnt->dirty));
 
@@ -5353,6 +5395,10 @@ static uint64_t internal_get_client_starttime(struct sqlclntstate *a)
 static int internal_get_client_retries(struct sqlclntstate *a)
 {
     return 0;
+}
+static int internal_send_intrans_response(struct sqlclntstate *a)
+{
+    return 1;
 }
 void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {

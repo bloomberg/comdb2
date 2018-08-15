@@ -135,7 +135,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     unsigned char metabuf[512];
     int pgsz;
     int created_temp_table = 0;
-    int nrecs = 0;
+    unsigned long long nrecs = 0;
     unsigned long long recs_looked_at = 0;
     int have_checksums = 0;
     unsigned int pgno = 0;
@@ -350,7 +350,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         rc = -1;
         goto done;
     }
-    logmsg(LOGMSG_INFO, "summarize added %d records, traversed %lld\n", nrecs,
+    logmsg(LOGMSG_INFO, "summarize added %llu records, traversed %llu\n", nrecs,
            recs_looked_at);
 done:
     if (fd != -1)

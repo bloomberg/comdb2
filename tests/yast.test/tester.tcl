@@ -1065,15 +1065,13 @@ proc create_table {origquery} {
 
     set name [lindex $field 0]
     set type [lindex $field 1]
+
     set strlen ""
+    set dbstore ""
 
     switch [string toupper $type] {
       "" {
-        switch $name {
-          default {
-            set type "int"
-          }
-        }
+        set type "int"
       }
       "INTEGER" {
         set type "int"
@@ -1103,6 +1101,10 @@ proc create_table {origquery} {
         set type "cstring"
         set strlen "\[64\]"
       }
+      "DEFAULT" {
+        set type "int"
+        set field [linsert $field 1 ""]
+      }
       default {
         set type [string tolower $type]
       }
@@ -1124,8 +1126,11 @@ proc create_table {origquery} {
       "UNIQUE" {
         lappend unique $name
       }
+      "DEFAULT" {
+        set dbstore "dbstore=${extra1}"
+      }
     }
-    set line "    $type $name$strlen $null"
+    set line "    $type $name$strlen $dbstore $null"
     append csc2schema $line "\n"
   }
   append csc2schema "\}"
@@ -1229,6 +1234,13 @@ proc create_index {origquery} {
   }
   puts $csc2 $csc2schema
   close $csc2
+
+  # Print the generate ALTER TABLE command.
+  #set filename "index.csc2"
+  #set fileId [open $filename "a"]
+  #set data "ALTER TABLE $table \{$csc2schema\}"
+  #puts $fileId $data
+  #close $fileId
 
   return [do_cdb2_defquery "ALTER TABLE $table \{$csc2schema\}"]
   # set rc [catch {do_cdb2_defquery "ALTER TABLE $table \{$csc2schema\}"} output]

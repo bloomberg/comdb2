@@ -52,7 +52,9 @@ int do_drop_table(struct ireq *iq, struct schema_change_type *s,
         reqerrstr(iq, ERR_SC, "Table doesn't exists");
         return SC_TABLE_DOESNOT_EXIST;
     }
-    if (db->n_rev_constraints > 0) {
+
+    if ((!iq || iq->tranddl <= 1) && db->n_rev_constraints > 0 &&
+        !self_referenced_only(db)) {
         sc_errf(s, "Can't drop tables with foreign constraints\n");
         reqerrstr(iq, ERR_SC, "Can't drop tables with foreign constraints");
         return -1;
@@ -68,6 +70,12 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     struct dbtable *db = s->db;
     int rc = 0;
     int bdberr = 0;
+
+    if (db->n_rev_constraints > 0 && !self_referenced_only(db)) {
+        sc_errf(s, "Can't drop tables with foreign constraints\n");
+        reqerrstr(iq, ERR_SC, "Can't drop tables with foreign constraints");
+        return ERR_SC;
+    }
 
     /* Before this handle is closed, lets wait for all the db reads to finish*/
     bdb_lock_table_write(db->handle, tran);

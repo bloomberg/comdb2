@@ -400,9 +400,28 @@ void sqlite3VdbeResolveLabel(Vdbe *v, int x){
   assert( j<p->nLabel );
   assert( j>=0 );
   if( p->aLabel ){
+#ifdef SQLITE_DEBUG
+    if( p->db->flags & SQLITE_VdbeAddopTrace ){
+      printf("RESOLVE LABEL %d to %d\n", x, v->nOp);
+    }
+#endif
+    assert( p->aLabel[j]==(-1) ); /* Labels may only be resolved once */
     p->aLabel[j] = v->nOp;
   }
 }
+
+#ifdef SQLITE_COVERAGE_TEST
+/*
+** Return TRUE if and only if the label x has already been resolved.
+** Return FALSE (zero) if label x is still unresolved.
+**
+** This routine is only used inside of testcase() macros, and so it
+** only exists when measuring test coverage.
+*/
+int sqlite3VdbeLabelHasBeenResolved(Vdbe *v, int x){
+  return v->pParse->aLabel && v->pParse->aLabel[ADDR(x)]>=0;
+}
+#endif /* SQLITE_COVERAGE_TEST */
 
 /*
 ** Mark the VDBE as one that can only be run one time.
@@ -5361,4 +5380,42 @@ void sqlite3VdbePreUpdateHook(
 void comdb2SetRecording(Vdbe *v)
 {
   v->recording = 1;
+}
+
+void comdb2SetReplace(Vdbe *v)
+{
+  v->oe_flag = OE_Replace;
+}
+
+void comdb2SetUpdate(Vdbe *v)
+{
+  v->oe_flag = OE_Update;
+}
+
+void comdb2SetIgnore(Vdbe *v)
+{
+  v->oe_flag = OE_Ignore;
+}
+
+void comdb2SetUpsertIdx(Vdbe *v, int idx) {
+  v->upsert_idx = idx;
+}
+
+int comdb2UpsertIdx(Vdbe *v) {
+  return v->upsert_idx;
+}
+
+int comdb2ForceVerify(Vdbe *v)
+{
+  switch(v->oe_flag) {
+  case OE_Replace: /* fallthrough */
+  case OE_Update:
+    return 1;
+  }
+  return 0;
+}
+
+int comdb2IgnoreFailure(Vdbe *v)
+{
+  return (v->oe_flag == OE_Ignore) ? 1 : 0;
 }

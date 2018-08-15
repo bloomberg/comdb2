@@ -99,6 +99,7 @@ typedef long long tranid_t;
 #include <trigger.h>
 #include <cdb2_constants.h>
 #include <schema_lk.h>
+#include "perf.h"
 
 /* buffer offset, given base ptr & right ptr */
 #define BUFOFF(base, right) ((int)(((char *)right) - ((char *)base)))
@@ -970,6 +971,11 @@ struct dbenv {
     /* locking for the queue system */
     pthread_mutex_t dbqueue_admin_lk;
     int dbqueue_admin_running;
+
+    struct time_metric* service_time;
+    struct time_metric* queue_depth;
+    struct time_metric* concurrent_queries;
+    struct time_metric* connections;
 };
 
 extern struct dbenv *thedb;
@@ -1351,6 +1357,7 @@ struct ireq {
     int osql_flags;
     int priority;
     int sqlhistory_len;
+    int tranddl;
 
     /* Client endian flags. */
     uint8_t client_endian;
@@ -1369,7 +1376,6 @@ struct ireq {
 
     bool sc_locked : 1;
     bool have_snap_info : 1;
-    bool tranddl : 1;
     bool sc_should_abort : 1;
 
     int written_row_count;
@@ -1750,6 +1756,8 @@ extern int gbl_compress_page_compact_log;
 extern unsigned int gbl_max_num_compact_pages_per_txn;
 extern char *gbl_dbdir;
 
+extern double gbl_cpupercent;
+
 /* init routines */
 int appsock_init(void);
 int thd_init(void);
@@ -1788,6 +1796,7 @@ void thd_coalesce(struct dbenv *dbenv);
 void unlock_swapin(void);
 char *getorigin(struct ireq *iq);
 void thd_dump(void);
+int thd_queue_depth(void);
 
 enum comdb2_queue_types {
     REQ_WAITFT = 0,
@@ -2625,7 +2634,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                const uint8_t *p_buf_rec_end, const unsigned char fldnullmap[32],
                blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
                int *ixfailnum, int *rrn, unsigned long long *genid,
-               unsigned long long ins_keys, int opcode, int blkpos, int flags);
+               unsigned long long ins_keys, int opcode, int blkpos, int flags,
+               int rec_flags);
 
 int upgrade_record(struct ireq *iq, void *trans, unsigned long long vgenid,
                    uint8_t *p_buf_rec, const uint8_t *p_buf_rec_end,

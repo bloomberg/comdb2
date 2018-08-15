@@ -113,7 +113,7 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
     qfnd.genid = get_genid(bdb_state, 0);
     qfnd.data_len = dtalen;
     qfnd.data_offset = sizeof(struct bdb_queue_found);
-    qfnd.num_fragments = 1;
+    qfnd.trans.tid = tran->tid->txnid;
     qfnd.epoch = comdb2_time_epoch();
     p_buf = databuf;
     p_buf_end = p_buf + dtalen + sizeof(struct bdb_queue_found);
@@ -192,13 +192,13 @@ done:
     return rc;
 }
 
-int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void **lastitem,
+int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
                      bdb_queue_walk_callback_t callback, void *userptr,
                      int *bdberr)
 {
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
-    struct queuedb_key *k;
+    // struct queuedb_key *k;
     struct bdb_queue_found qfnd;
     int rc;
 
@@ -218,7 +218,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void **lastitem,
     if (flags & BDB_QUEUE_WALK_RESTART) {
         /* this is a restart, and lastitem containts a copy of the last key when
          * we stopped */
-        dbt_key.data = *lastitem;
+        dbt_key.data = lastitem;
         dbt_key.size = sizeof(struct queuedb_key);
         rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_FIRST);
     } else {
@@ -226,11 +226,10 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void **lastitem,
     }
     while (rc == 0) {
         struct bdb_queue_found qfnd;
-        int consumern;
+        int consumern = 0;
         uint8_t *p_buf, *p_buf_end;
 
-        *lastitem = (void *)dbt_key.data;
-        consumern = ntohl(k->consumer);
+        lastitem = (void *)dbt_key.data;
 
         p_buf = dbt_data.data;
         p_buf_end = p_buf + dbt_data.size;
@@ -476,8 +475,10 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
 
     /* what endianness is this? */
     *fnd = dbt_data.data;
-    *fnddtalen = dbt_data.size;
-    *fnddtaoff = sizeof(struct bdb_queue_found);
+    if (fnddtalen)
+        *fnddtalen = dbt_data.size;
+    if (fnddtaoff)
+        *fnddtaoff = sizeof(struct bdb_queue_found);
     if (fndcursor) {
         uint64_t g;
         memcpy(fndcursor->genid, &qfnd.genid, sizeof(qfnd.genid));

@@ -1,0 +1,11 @@
+This is a ongoing work to have every function in cdb2api unit tested.
+One part of the test is in tests/tools/cdb2api_unit.c 
+the other parts are ment to be partial executables in this tests directory.
+
+To run this test you need to have a build directory (ex. /tmp/build/) where you have run 
+  cmake /.../comdb2/
+
+in which you need to run `make cdb2api` then come back to tests/ and run 
+  make cdb2api_unit BULDDIR=/tmp/build/
+
+

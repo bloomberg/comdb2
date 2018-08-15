@@ -87,6 +87,10 @@ static inline void loc_print_date(const time_t *timep)
 void *auto_analyze_table(void *arg)
 {
     char *tblname = (char *)arg;
+    if (is_sqlite_stat(tblname)) {
+        free(tblname);
+        return NULL;
+    }
     int rc;
 
     for (int retries = 0; gbl_schema_change_in_progress && retries < 10;
@@ -437,4 +441,14 @@ void *auto_analyze_main(void *unused)
 
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
     return NULL;
+}
+
+void autoanalyze_after_fastinit(char *table)
+{
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AUTOANALYZE) == 0)
+        return;
+    pthread_t analyze;
+    char *tblname = strdup(table); // will be freed in auto_analyze_table()
+    pthread_create(&analyze, &gbl_pthread_attr_detached, auto_analyze_table,
+                   tblname);
 }

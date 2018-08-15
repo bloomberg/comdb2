@@ -34,7 +34,12 @@ typedef struct temp_table tmptable_t;
    but it allows us opening only one side (real or shadow)
    and be faster since we know what we are doing in sqlglue.c
  */
-enum bdb_open_type { BDB_OPEN_BOTH = 0, BDB_OPEN_REAL = 1, BDB_OPEN_SHAD = 2 };
+enum bdb_open_type {
+    BDB_OPEN_BOTH = 0,
+    BDB_OPEN_BOTH_CREATE = 1,
+    BDB_OPEN_REAL = 2,
+    BDB_OPEN_SHAD = 3,
+};
 
 /**
  * - BDB_SET: try to position to exact row, return IX_NOTFND if not possible

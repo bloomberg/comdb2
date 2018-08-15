@@ -262,6 +262,7 @@ void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
 
     /* Make it fake */
     iq->dbenv = dbenv;
+    iq->use_handle = dbenv->bdb_env;
     iq->is_fake = 1;
     iq->helper_thread = -1;
 }
@@ -5582,7 +5583,7 @@ retry:
         } else if (bdberr == BDBERR_FETCH_DTA) {
             return IX_NOTFND;
         }
-        return map_unhandled_bdb_rcode("bdb_queue_get", bdberr, 0);
+        return map_unhandled_bdb_rcode("bdb_queue_walk", bdberr, 0);
     }
     return rc;
 }

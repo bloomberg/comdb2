@@ -10,6 +10,7 @@ add_executable(cdb2sockpool
   ${PROJECT_SOURCE_DIR}/util/safestrerror.c
   ${PROJECT_SOURCE_DIR}/util/segstring.c
   ${PROJECT_SOURCE_DIR}/util/strbuf.c
+  ${PROJECT_SOURCE_DIR}/util/tohex.c
 )
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}

@@ -955,7 +955,7 @@ int delete_temp_table(struct ireq *iq, struct dbtable *newdb)
     struct dbtable *usedb_sav;
 
     usedb_sav = iq->usedb;
-    iq->usedb = newdb;
+    iq->usedb = NULL;
     rc = trans_start(iq, NULL, &tran);
     if (rc) {
         sc_errf(s, "%d: trans_start rc %d\n", __LINE__, rc);

@@ -245,6 +245,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     tran->dowait = 1;
 
     iq->timings.req_received = osql_log_time();
+    iq->tranddl = 0;
     /*printf("Set req_received=%llu\n", iq->timings.req_received);*/
 
     tran->num++;
@@ -692,7 +693,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     int type = 0;
     buf_get(&type, sizeof(type), rpl, rpl + rplen);
-    if (type == OSQL_SCHEMACHANGE) iq->tranddl = 1;
+    if (type == OSQL_SCHEMACHANGE)
+        iq->tranddl++;
 
 #if 0
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",

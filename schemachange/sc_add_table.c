@@ -143,13 +143,15 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
     }
 
-    if (verify_constraints_exist(newdb, NULL, NULL, s) != 0) {
+    if ((iq == NULL || iq->tranddl <= 1) &&
+        verify_constraints_exist(newdb, NULL, NULL, s) != 0) {
         logmsg(LOGMSG_ERROR, "%s: Verify constraints failed \n", __func__);
         rc = -1;
         goto err;
     }
 
-    if (populate_reverse_constraints(newdb)) {
+    if ((iq == NULL || iq->tranddl <= 1) &&
+        populate_reverse_constraints(newdb)) {
         logmsg(LOGMSG_ERROR, "%s: populating reverse constraints failed\n",
                __func__);
         rc = -1;
@@ -248,6 +250,16 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
 {
     int rc, bdberr;
     struct dbtable *db = s->db;
+
+    if (iq && iq->tranddl > 1 &&
+        verify_constraints_exist(db, NULL, NULL, s) != 0) {
+        sc_errf(s, "error verifying constraints\n");
+        return -1;
+    }
+    if (iq && iq->tranddl > 1 && populate_reverse_constraints(db)) {
+        sc_errf(s, "error populating reverse constraints\n");
+        return -1;
+    }
 
     sc_printf(s, "Start add table transaction ok\n");
     rc = load_new_table_schema_tran(thedb, tran, s->table, s->newcsc2);

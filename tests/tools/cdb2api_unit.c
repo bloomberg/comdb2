@@ -18,6 +18,9 @@
  * Unit Tests for cdb2api.h/c
  */
 
+#undef NDEBUG
+
+#include <assert.h>
 #include <bb_oscompat.h>
 #include <cdb2api.c>
 
@@ -64,6 +67,12 @@ void test_cdb2_set_min_retries()
 
     cdb2_set_min_retries(-30);
     assert(MIN_RETRIES == 20);
+
+    cdb2_set_min_retries(0);
+    assert(MIN_RETRIES == 20);
+
+    cdb2_set_min_retries(1);
+    assert(MIN_RETRIES == 1);
 }
 
 void test_cdb2_set_max_retries()
@@ -73,6 +82,12 @@ void test_cdb2_set_max_retries()
 
     cdb2_set_max_retries(-30);
     assert(MAX_RETRIES == 20);
+
+    cdb2_set_max_retries(0);
+    assert(MAX_RETRIES == 20);
+
+    cdb2_set_max_retries(1);
+    assert(MAX_RETRIES == 1);
 }
 
 void test_cdb2_hndl_set_min_retries()
@@ -83,6 +98,12 @@ void test_cdb2_hndl_set_min_retries()
 
     cdb2_hndl_set_min_retries(&hndl, -30);
     assert(hndl.min_retries == 20);
+
+    cdb2_hndl_set_min_retries(&hndl, 0);
+    assert(hndl.min_retries == 20);
+
+    cdb2_hndl_set_min_retries(&hndl, 1);
+    assert(hndl.min_retries == 1);
 }
 
 void test_cdb2_hndl_set_max_retries()
@@ -93,13 +114,67 @@ void test_cdb2_hndl_set_max_retries()
 
     cdb2_hndl_set_max_retries(&hndl, -30);
     assert(hndl.max_retries == 20);
+
+    cdb2_hndl_set_max_retries(&hndl, 0);
+    assert(hndl.max_retries == 20);
+
+    cdb2_hndl_set_max_retries(&hndl, 1);
+    assert(hndl.max_retries == 1);
 }
+
+
+void test_reset_sockpool()
+{
+    assert(sockpool_fail_time == SOCKPOOL_FAIL_TIME_DEFAULT);
+    assert(sockpool_fd == -1);
+    assert(sockpool_enabled == SOCKPOOL_ENABLED_DEFAULT);
+}
+
+
+void test_reset_the_configuration()
+{
+    assert(strcmp(CDB2DBCONFIG_NOBBENV, CDB2DBCONFIG_NOBBENV_DEFAULT) == 0);
+    assert(strcmp(CDB2DBCONFIG_TEMP_BB_BIN, CDB2DBCONFIG_TEMP_BB_BIN_DEFAULT) == 0);
+    assert(CDB2DBCONFIG_BUF == NULL);
+    assert(cdb2_default_cluster[0] == 0);
+    assert(cdb2_comdb2dbname[0] == 0);
+    assert(cdb2_machine_room[0] == 0);
+
+    assert(CDB2_PORTMUXPORT == CDB2_PORTMUXPORT_DEFAULT);
+    assert(MAX_RETRIES == MAX_RETRIES_DEFAULT);
+    assert(MIN_RETRIES == MIN_RETRIES_DEFAULT);
+    assert(CDB2_CONNECT_TIMEOUT == CDB2_CONNECT_TIMEOUT_DEFAULT);
+    assert(CDB2_AUTO_CONSUME_TIMEOUT_MS == CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT);
+    assert(COMDB2DB_TIMEOUT == COMDB2DB_TIMEOUT_DEFAULT);
+    assert(cdb2_tcpbufsz == CDB2_TCPBUFSZ_DEFAULT);
+
+    cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
+
+#if WITH_SSL
+    assert(cdb2_c_ssl_mode == SSL_ALLOW);
+
+    assert(cdb2_sslcertpath[0] == 0);
+    assert(cdb2_sslcert[0] == 0);
+    assert(cdb2_sslkey[0] == 0);
+    assert(cdb2_sslca[0] == 0);
+    assert(cdb2_sslcrl[0] == 0);
+
+    assert(cdb2_nid_dbname == CDB2_NID_DBNAME_DEFAULT);
+    assert(cdb2_cache_ssl_sess == CDB2_CACHE_SSL_SESS_DEFAULT);
+#endif
+
+}
+
 
 void test_cdb2_set_comdb2db_config()
 {
     cdb2_set_comdb2db_config("anotherconfigfile");
     assert(strcmp(CDB2DBCONFIG_NOBBENV, "anotherconfigfile") == 0);
+
+    cdb2_set_comdb2db_config(NULL);
+    test_reset_the_configuration();
 }
+
 
 
 void test_read_comdb2db_cfg()

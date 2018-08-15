@@ -325,6 +325,11 @@ static void thd_dump_nolock(void)
         logmsg(LOGMSG_USER, "no active threads\n");
 }
 
+int thd_queue_depth(void)
+{
+    return q_reqs.count;
+}
+
 void thd_coalesce(struct dbenv *dbenv)
 {
     LOCK(&lock)
@@ -1237,6 +1242,7 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
 
         iq->sorese = *sorese;
         iq->is_sorese = 1;
+        iq->use_handle = thedb->bdb_env;
 
 #if 0
         printf("Mapping sorese %llu\n", osql_log_time());

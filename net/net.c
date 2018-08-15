@@ -3468,6 +3468,16 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
     }
     netinfo_ptr->hellofd = -1;
 
+    netinfo_ptr->conntime_all = quantize_new(1, 100, "ms");
+    netinfo_ptr->conntime_periodic = quantize_new(1, 100, "ms");
+    netinfo_ptr->num_accepts = 0;
+    netinfo_ptr->num_accept_timeouts = 0;
+    netinfo_ptr->conntime_dump_period = 10 * 60;
+    netinfo_ptr->num_current_non_appsock_accepts = 0;
+
+    netinfo_ptr->num_accepts = 0;
+    netinfo_ptr->num_accept_timeouts = 0;
+
     return netinfo_ptr;
 
 fail:
@@ -4359,7 +4369,7 @@ static int create_reader_writer_threads(host_node_type *host_node_ptr,
     return 0;
 }
 
-void kill_subnet(char *subnet)
+void kill_subnet(const char *subnet)
 {
     host_node_type *ptr;
     int len = strlen(subnet) + 1;
@@ -4916,15 +4926,15 @@ out:
     return rc;
 }
 
-void net_subnet_status(FILE *out)
+void net_subnet_status()
 {
     int i = 0;
     pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
-        fprintf(out, "Subnet %s %s%s%s", subnet_suffices[i],
-                subnet_disabled[i] ? "disabled" : "enabled\n",
-                subnet_disabled[i] ? " at " : "",
-                subnet_disabled[i] ? ctime(&subnet_disabled[i]) : "");
+        logmsg(LOGMSG_USER, "Subnet %s %s%s%s", subnet_suffices[i],
+               subnet_disabled[i] ? "disabled" : "enabled\n",
+               subnet_disabled[i] ? " at " : "",
+               subnet_disabled[i] ? ctime(&subnet_disabled[i]) : "");
     }
     pthread_mutex_unlock(&subnet_mtx);
 }
@@ -4934,7 +4944,8 @@ void net_set_bad_subnet(const char *subnet)
     int i = 0;
     pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
-        if (strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
+        if (subnet_suffices[i][0] &&
+            strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
             last_bad_subnet_time = comdb2_time_epochms();
             last_bad_subnet_idx = i;
             if (gbl_verbose_net)
@@ -4948,12 +4959,58 @@ void net_set_bad_subnet(const char *subnet)
     pthread_mutex_unlock(&subnet_mtx);
 }
 
+void net_clipper(const char *subnet, int is_disable)
+{
+    int i = 0;
+    time_t now;
+    pthread_mutex_lock(&subnet_mtx);
+    for (i = 0; i < num_dedicated_subnets; i++) {
+        if (subnet_suffices[i][0] &&
+            strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
+            extern int gbl_ready;
+            if (gbl_ready)
+                now = comdb2_time_epoch();
+            else
+                time(&now);
+            if (gbl_verbose_net)
+                logmsg(LOGMSG_USER, "%x %s subnet %s time %d\n", pthread_self(),
+                       (is_disable) ? "Disabling" : "Enabling",
+                       subnet_suffices[i], now);
+
+            if (is_disable == 0) {
+                subnet_disabled[i] = 0;
+            } else {
+                subnet_disabled[i] = now;
+                kill_subnet(subnet);
+            }
+        }
+    }
+    pthread_mutex_unlock(&subnet_mtx);
+}
+
+int net_subnet_disabled(const char *subnet)
+{
+    int i = 0;
+    int rc = 0;
+    pthread_mutex_lock(&subnet_mtx);
+    for (i = 0; i < num_dedicated_subnets; i++) {
+        if (subnet_suffices[i][0] &&
+            strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
+            rc = (subnet_disabled[i] != 0);
+            break;
+        }
+    }
+    pthread_mutex_unlock(&subnet_mtx);
+    return rc;
+}
+
 int net_add_nondedicated_subnet(void *context, void *value)
 {
     // increment num_dedicated_subnets only once for non dedicated subnet
     if (0 == _non_dedicated_subnet) {
         _non_dedicated_subnet = 1;
         pthread_mutex_lock(&subnet_mtx);
+        subnet_suffices[num_dedicated_subnets] = strdup("");
         num_dedicated_subnets++;
         pthread_mutex_unlock(&subnet_mtx);
     }
@@ -4991,7 +5048,6 @@ void net_cleanup_subnets()
     }
     pthread_mutex_unlock(&subnet_mtx);
 }
-
 
 /* Dedicated subnets are specified in the lrl file:
  * If option is left out, we use the normal subnet.
@@ -5034,7 +5090,7 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
 
         char rephostname[HOSTNAME_LEN * 2 + 1];
         strncpy(rephostname, host_node_ptr->host, HOSTNAME_LEN);
-        if (subnet) {
+        if (subnet[0]) {
             strncat(rephostname, subnet, HOSTNAME_LEN);
             strncpy(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
 
@@ -5438,7 +5494,7 @@ static int connect_to_host(netinfo_type *netinfo_ptr,
     return 0;
 }
 
-static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
+static int get_subnet_incomming_syn(host_node_type *host_node_ptr)
 {
     struct sockaddr_in lcl_addr_inet;
     size_t lcl_len = sizeof(lcl_addr_inet);
@@ -5450,7 +5506,7 @@ static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
     if (ret != 0) {
         logmsg(LOGMSG_ERROR, "Failed to getsockname() for fd=%d\n",
                host_node_ptr->fd);
-        return;
+        return 0;
     }
 
     char host[NI_MAXHOST], service[NI_MAXSERV];
@@ -5462,7 +5518,7 @@ static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
         logmsg(LOGMSG_WARN, "Incoming connection into unknown (%s:%u): %s\n",
                inet_ntoa(lcl_addr_inet.sin_addr),
                (unsigned)ntohs(lcl_addr_inet.sin_port), gai_strerror(s));
-        return;
+        return 0;
     }
 
     logmsg(LOGMSG_WARN, "Incoming connection into name: %s (%s:%u)\n", host,
@@ -5477,6 +5533,12 @@ static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
         if (subnet[0])
             strncpy0(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
     }
+
+    /* check if the net is disabled */
+    if (net_subnet_disabled(host_node_ptr->subnet))
+        return 1;
+
+    return 0;
 }
 
 static void accept_handle_new_host(netinfo_type *netinfo_ptr,
@@ -5627,7 +5689,17 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
     host_node_ptr->sb = sb;
     Pthread_mutex_unlock(&(host_node_ptr->write_lock));
 
-    get_subnet_incomming_syn(host_node_ptr);
+    int rc = get_subnet_incomming_syn(host_node_ptr);
+    if (rc) {
+        host_node_printf(LOGMSG_INFO, host_node_ptr,
+                         "%s: Clipping connect from %s on disabled subnet %s\n",
+                         __func__, host_node_ptr->host,
+                         (host_node_ptr->subnet) ? host_node_ptr->subnet
+                                                 : "UNKNOWN");
+        Pthread_mutex_unlock(&(host_node_ptr->lock));
+        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+        return;
+    }
 
     if (gbl_verbose_net)
         host_node_errf(LOGMSG_USER, host_node_ptr, "%s: accepting connection on new_fd %d\n",
@@ -5638,7 +5710,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
     host_node_ptr->rej_up_cnt = 0;
 
     /* create reader & writer threads */
-    int rc = create_reader_writer_threads(host_node_ptr, __func__);
+    rc = create_reader_writer_threads(host_node_ptr, __func__);
     if (rc != 0) {
         close_hostnode_ll(host_node_ptr);
         Pthread_mutex_unlock(&(host_node_ptr->lock));
@@ -5693,6 +5765,8 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
             host_node_printf(LOGMSG_USER, host_node_ptr, "becomming connect thread\n");
         connect_thread(host_node_ptr);
     }
+
+    ++netinfo_ptr->num_current_non_appsock_accepts;
 }
 
 
@@ -5832,6 +5906,7 @@ static void *accept_thread(void *arg)
     SBUF2 *sb;
     portmux_fd_t *portmux_fds = NULL;
     watchlist_node_type *watchlist_node;
+    unsigned int last_stat_dump_time = comdb2_time_epochms();
 
     thread_started("net accept");
 
@@ -5998,7 +6073,23 @@ static void *accept_thread(void *arg)
         pol.events = POLLIN;
 
         /* poll */
+        unsigned pollstart, pollend;
+        pollstart = comdb2_time_epochms();
         rc = poll(&pol, 1, polltm);
+        pollend = comdb2_time_epochms();
+
+        quantize(netinfo_ptr->conntime_all, pollend - pollstart);
+        quantize(netinfo_ptr->conntime_periodic, pollend - pollstart);
+        netinfo_ptr->num_accepts++;
+
+        if (netinfo_ptr->conntime_dump_period && ((pollend - last_stat_dump_time) / 1000) > netinfo_ptr->conntime_dump_period ) {
+            quantize_ctrace(netinfo_ptr->conntime_all, "Accept poll times, overall:");
+            quantize_ctrace(netinfo_ptr->conntime_periodic, "Accept poll times, last period:");
+            quantize_clear(netinfo_ptr->conntime_periodic);
+            last_stat_dump_time = pollend;
+        }
+
+        netinfo_ptr->num_accepts++;
 
         /* drop connection on poll error */
         if (rc < 0) {
@@ -6015,6 +6106,7 @@ static void *accept_thread(void *arg)
             logmsg(LOGMSG_ERROR, "%s: timeout reading from socket, peeraddr=%s\n",
                     __func__, paddr);
             sbuf2close(sb);
+            netinfo_ptr->num_accept_timeouts++;
             continue;
         }
 
@@ -7089,4 +7181,12 @@ int net_listen(int port)
     }
 
     return listenfd;
+}
+
+void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value)  {
+    netinfo_ptr->conntime_dump_period = value;
+}
+
+int net_get_conntime_dump_period(netinfo_type *netinfo_ptr) {
+    return netinfo_ptr->conntime_dump_period;
 }

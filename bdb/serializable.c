@@ -121,7 +121,7 @@ int serial_check_this_txn(bdb_state_type *bdb_state, DB_LSN lsn, void *ranges)
             key = malloc(add_ix->keylen);
             undolsn = add_ix->prev_lsn;
             rc = bdb_reconstruct_add(bdb_state, &undolsn, key, add_ix->keylen,
-                                     NULL, add_ix->dtalen, NULL);
+                                     NULL, add_ix->dtalen, NULL, NULL);
             rc = bdb_state->callback->serialcheck_rtn(
                 add_ix->table.data, add_ix->ix, key, add_ix->keylen, ranges);
             free(key);

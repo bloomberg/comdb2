@@ -24,6 +24,7 @@
 #include <netinet/in.h>
 #include <sbuf2.h>
 #include <cdb2_constants.h>
+#include <quantize.h>
 
 /*
   we have an int, but we only need a short for real ports.
@@ -445,7 +446,9 @@ int net_throttle_wait(netinfo_type *netinfo_ptr);
 void net_enable_explicit_flush_trace(void);
 void net_disable_explicit_flush_trace(void);
 
-void kill_subnet(char *subnet);
+void kill_subnet(const char *subnet);
+void net_clipper(const char *subnet, int onoff);
+void net_subnet_status();
 
 void net_register_child_net(netinfo_type *netinfo_ptr,
                             netinfo_type *netinfo_child, int netnum,
@@ -453,4 +456,11 @@ void net_register_child_net(netinfo_type *netinfo_ptr,
 
 void net_disable_getservbyname(netinfo_type *netinfo_ptr);
 int net_get_port_by_service(const char *dbname);
+
+int64_t net_get_num_accepts(netinfo_type *netinfo_ptr);
+int64_t net_get_num_current_non_appsock_accepts(netinfo_type *netinfo_ptr);
+int64_t net_get_num_accept_timeouts(netinfo_type *netinfo_ptr);
+void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value);
+int net_get_conntime_dump_period(netinfo_type *netinfo_ptr);
+
 #endif

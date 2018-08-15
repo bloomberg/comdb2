@@ -311,7 +311,6 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
         sqlite3VdbeAddTable(v, t);
     }
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    thd->clnt->verifyretry_off = 1;
     return comdb2prepareNoRows(v, pParse, int_arg, arg, func, freeFunc);
 }
 
@@ -2112,7 +2111,13 @@ static int comdb2_parse_sql_type(const char *type, int *size)
                 return i;
             }
 
-            if (type[type_sql_str_len[i]] != '(') {
+            const char *ptr = type + type_sql_str_len[i];
+
+            /* Move past whitespaces (if any). */
+            while (isspace(*ptr))
+                ptr++;
+
+            if (*ptr != '(') {
                 /* Malformed size. */
                 return -1;
             }
@@ -2125,7 +2130,7 @@ static int comdb2_parse_sql_type(const char *type, int *size)
             }
 
             errno = 0;
-            *size = strtol(type + type_sql_str_len[i] + 1, &endptr, 10);
+            *size = strtol(ptr + 1, &endptr, 10);
 
             /* Correction: cstring types require an additional byte. */
             if ((type_flags[i] & FLAG_EXTRA_BYTE) != 0) {
@@ -2150,11 +2155,13 @@ static int comdb2_parse_sql_type(const char *type, int *size)
 }
 
 /*
-  Convert the type and length into one that can be used directly
-  in type_mapping array.
+  Convert the type and length of the retrieved fields so they can be added
+  to the new generated csc2.
 */
-static int fix_type_and_len(uint8_t *type, uint32_t *len)
+static int prepare_column_for_csc2(struct comdb2_column *column)
 {
+    uint8_t *type = &column->type;
+    uint32_t *len = &column->len;
     int in_len;
 
     assert(type && len);
@@ -2245,10 +2252,13 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
         *type = SQL_TYPE_CSTRING;
         *len = in_len;
         break;
-    case SERVER_BYTEARRAY: /* fallthrough */
-    case CLIENT_BYTEARRAY:
+    case SERVER_BYTEARRAY:
         *type = SQL_TYPE_BYTE;
         *len = in_len - 1;
+        break;
+    case CLIENT_BYTEARRAY:
+        *type = SQL_TYPE_BYTE;
+        *len = in_len;
         break;
     case SERVER_DATETIME: /* fallthrough */
     case CLIENT_DATETIME:
@@ -2262,10 +2272,13 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
     case CLIENT_INTVDS:
         *type = SQL_TYPE_INTERVALDS;
         break;
-    case SERVER_VUTF8: /* fallthrough */
-    case CLIENT_VUTF8:
+    case SERVER_VUTF8:
         *type = SQL_TYPE_VUTF8;
         *len = in_len - 5;
+        break;
+    case CLIENT_VUTF8:
+        *type = SQL_TYPE_VUTF8;
+        *len = in_len;
         break;
     case SERVER_DECIMAL:
         switch (in_len) {
@@ -2282,12 +2295,14 @@ static int fix_type_and_len(uint8_t *type, uint32_t *len)
             goto err;
         }
         break;
-    case SERVER_BLOB:  /* fallthrough */
-    case SERVER_BLOB2: /* fallthrough */
-    case CLIENT_BLOB:  /* fallthrough */
-    case CLIENT_BLOB2:
+    case SERVER_BLOB: /* fallthrough */
+    case SERVER_BLOB2:
         *type = SQL_TYPE_BLOB;
         *len = in_len - 5;
+        break;
+    case CLIENT_BLOB: /* fallthrough */
+    case CLIENT_BLOB2:
+        *type = SQL_TYPE_BLOB;
         break;
     case SERVER_DATETIMEUS: /* fallthrough */
     case CLIENT_DATETIMEUS:
@@ -2714,18 +2729,18 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
         goto cleanup;
     }
 
+    /*
+      Check the properties of PRIMARY KEYs:
+      * Unique
+      * Columns must not allow NULLs
+      * Must be only one per table
+    */
     int pk_count = 0;
     LISTC_FOR_EACH(&ctx->schema->key_list, key, lnk)
     {
         if (key->flags & KEY_DELETED)
             continue;
 
-        /*
-          Check the properties of primary keys:
-          * Unique
-          * Columns must not allow NULLs
-          * Must be only one per table
-        */
         if (is_pk(key->name)) {
             if (++pk_count > 1) {
                 pParse->rc = SQLITE_ERROR;
@@ -2734,7 +2749,11 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
             }
 
             /* Primary keys mustn't be dup. */
-            assert((key->flags & KEY_DUP) == 0);
+            if (key->flags & KEY_DUP) {
+                pParse->rc = SQLITE_ERROR;
+                sqlite3ErrorMsg(pParse, "A primary key must be UNIQUE.");
+                goto cleanup;
+            }
 
             /* Also make sure none of its columns allow NULLs. (n^2) */
             struct comdb2_index_column *idx_column;
@@ -2742,7 +2761,12 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
             {
                 /* There must not be a dropped column in the key. */
                 assert((idx_column->column->flags & COLUMN_DELETED) == 0);
-                idx_column->column->flags |= COLUMN_NO_NULL;
+                if ((idx_column->column->flags & COLUMN_NO_NULL) == 0) {
+                    pParse->rc = SQLITE_ERROR;
+                    sqlite3ErrorMsg(pParse, "A primary key column must be "
+                                            "NOT NULL.");
+                    goto cleanup;
+                }
             }
         }
     }
@@ -2836,12 +2860,18 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
     /* Generate CSC2 for the new/existing table. */
     csc2 = format_csc2(ctx);
 
-    /*
-      Now that we have the generated csc2 in a separate buffer, it
-      is safe to teardown the parser context. The csc2 buffer will
-      be reclaimed later in free_schema_change_type().
-    */
-    free_ddl_context(pParse);
+    int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
+    /* save context to client */
+    if (comdb2_save_ddl_context(ctx->schema->name, ctx, ctx->mem) != 0) {
+        /* We get here if we are not in client transaction or it failed to save
+         */
+        /*
+          Now that we have the generated csc2 in a separate buffer, it
+          is safe to teardown the parser context. The csc2 buffer will
+          be reclaimed later in free_schema_change_type().
+        */
+        free_ddl_context(pParse);
+    }
 
     return csc2;
 
@@ -2950,7 +2980,7 @@ static int retrieve_columns(Parse *pParse, struct comdb2_ddl_context *ctx,
         column->convopts = src_schema->member[i].convopts;
 
         /* Convert type and length */
-        fix_type_and_len(&column->type, (int *)&column->len);
+        prepare_column_for_csc2(column);
 
         /* Add it to the list */
         listc_abl(&dst_schema->column_list, column);
@@ -3217,7 +3247,6 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
         struct schema *old_tag;
         LISTC_FOR_EACH(&tag->taglist, old_tag, lnk)
         {
-
             /* Skip internal tags. */
             if (old_tag->tag[0] != '.' &&
                 (old_tag->flags & SCHEMA_INDEX) == 0) {
@@ -3815,15 +3844,25 @@ static void comdb2AddIndexInt(
 
     key->name = keyname;
 
-    if (idxType == SQLITE_IDXTYPE_DUPKEY) {
-        key->flags |= KEY_DUP;
-    } else if (idxType == SQLITE_IDXTYPE_APPDEF) {
+    switch (idxType) {
+    case SQLITE_IDXTYPE_APPDEF:
         /* For CREATE INDEX, we need to check onError */
         if (onError != OE_Abort) {
             key->flags |= KEY_DUP;
         } else {
             key->flags |= KEY_UNIQNULLS;
         }
+        break;
+    case SQLITE_IDXTYPE_UNIQUE:
+        /* fallthrough */
+    case SQLITE_IDXTYPE_PRIMARYKEY:
+        key->flags |= KEY_UNIQNULLS;
+        break;
+    case SQLITE_IDXTYPE_DUPKEY:
+        key->flags |= KEY_DUP;
+        break;
+    default:
+        assert(0);
     }
 
     if (withOpts == 1) {
@@ -3856,6 +3895,12 @@ static void comdb2AddIndexInt(
 
         /* Add the index column to the list. */
         listc_abl(&key->idx_col_list, idx_column);
+
+        /* For a PRIMARY KEY, force its column to be NOT NULL. */
+        if (idxType == SQLITE_IDXTYPE_PRIMARYKEY) {
+            column->flags |= COLUMN_NO_NULL;
+        }
+
     } else {
         for (int i = 0; i < pList->nExpr; i++) {
             idx_column =
@@ -3879,6 +3924,11 @@ static void comdb2AddIndexInt(
 
             /* Add the index column to the list. */
             listc_abl(&key->idx_col_list, idx_column);
+
+            /* For a PRIMARY KEY, force all its columns to be NOT NULL. */
+            if (idxType == SQLITE_IDXTYPE_PRIMARYKEY) {
+                column->flags |= COLUMN_NO_NULL;
+            }
         }
     }
 
@@ -4205,6 +4255,65 @@ static int check_constraint_action(Parse *pParse, int *flags)
     return 0;
 }
 
+/* search matching key in parent table using saved client context:
+ * return 1 if found 0 otherwise
+ */
+static int
+find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
+                                  struct comdb2_constraint *constraint)
+{
+    void *comdb2_get_ddl_context(char *name);
+    struct comdb2_ddl_context *clnt_ctx = NULL;
+    struct comdb2_key *key;
+    struct comdb2_index_column *idx_col;
+    struct comdb2_index_column *key_col;
+    int key_found = 0;
+    clnt_ctx = comdb2_get_ddl_context(constraint->parent_table);
+    if (clnt_ctx == NULL &&
+        strcasecmp(ctx->schema->name, constraint->parent_table) == 0)
+        clnt_ctx = ctx;
+    if (clnt_ctx == NULL)
+        return 0;
+
+    LISTC_FOR_EACH(&clnt_ctx->schema->key_list, key, lnk)
+    {
+        if (key->flags & KEY_DELETED)
+            continue;
+        if (listc_size(&key->idx_col_list) <
+            listc_size(&constraint->parent_idx_col_list))
+            continue;
+        /* Lets start by assuming that we have found the matching key. */
+        key_found = 1;
+        key_col = key->idx_col_list.top;
+        LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_col, lnk)
+        {
+            int sort_order =
+                (key_col->flags & INDEX_ORDER_DESC) ? INDEX_ORDER_DESC : 0;
+            if ((strcasecmp(idx_col->name, key_col->name) != 0) ||
+                idx_col->flags != key_col->flags) {
+                key_found = 0;
+                break;
+            }
+            key_col = key_col->lnk.next;
+        }
+        if (key_found == 1) {
+            constraint->parent_key = comdb2_strdup(ctx->mem, key->name);
+            if (constraint->parent_key == 0)
+                setError(pParse, SQLITE_NOMEM, "System out of memory");
+            /* Matching key found */
+            break;
+        }
+    }
+    if (key_found == 0) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse,
+                        "A matching key for the FOREIGN KEY was not "
+                        "found in the parent (referenced) table '%s'.",
+                        constraint->parent_table);
+    }
+    return key_found;
+}
+
 void comdb2CreateForeignKey(
     Parse *pParse,      /* Parsing context */
     ExprList *pFromCol, /* Columns in this table that point to other table */
@@ -4336,6 +4445,12 @@ void comdb2CreateForeignKey(
         goto oom;
     sqlite3Dequote(constraint->parent_table);
 
+    key_found = find_parent_key_in_client_context(pParse, ctx, constraint);
+    if (pParse->rc)
+        goto cleanup;
+    else if (key_found)
+        goto parent_key_found;
+
     /* Determine an appropriate key in the parent table. */
     parent_table = get_dbtable_by_name(constraint->parent_table);
     if (parent_table == 0) {
@@ -4390,6 +4505,7 @@ void comdb2CreateForeignKey(
         goto cleanup;
     }
 
+parent_key_found:
     /* Verify the conststraint action. */
     if ((check_constraint_action(pParse, &flags))) {
         goto cleanup;

@@ -69,11 +69,13 @@ static int osql_send_delrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
 int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                            int nettype);
 static int osql_send_insrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
-                                  char *pData, int nData, int nettype);
+                                  char *pData, int nData, int nettype,
+                                  int flags);
 int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                            int nettype);
 static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
-                                  char *pData, int nData, int nettype);
+                                  char *pData, int nData, int nettype,
+                                  int flags);
 static int osql_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
                        int *updCols, blob_buffer_t *blobs, int maxblobs,
                        int is_update);
@@ -244,7 +246,7 @@ int osql_insidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
  *
  */
 int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-                int nData, blob_buffer_t *blobs, int maxblobs)
+                int nData, blob_buffer_t *blobs, int maxblobs, int flags)
 {
     int rc = 0;
 
@@ -275,7 +277,8 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK) return rc;
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_send_insrec_logic(pCur, thd, pData, nData, NET_OSQL_SOCK_RPL);
+        rc = osql_send_insrec_logic(pCur, thd, pData, nData, NET_OSQL_SOCK_RPL,
+                                    flags);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
@@ -283,7 +286,7 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
             return rc;
         }
     }
-    return osql_save_insrec(pCur, thd, pData, nData);
+    return osql_save_insrec(pCur, thd, pData, nData, flags);
 }
 
 /**
@@ -294,7 +297,8 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
  *
  */
 int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-                int nData, int *updCols, blob_buffer_t *blobs, int maxblobs)
+                int nData, int *updCols, blob_buffer_t *blobs, int maxblobs,
+                int flags)
 {
     int rc = 0;
 
@@ -328,7 +332,8 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     }
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_send_updrec_logic(pCur, thd, pData, nData, NET_OSQL_SOCK_RPL);
+        rc = osql_send_updrec_logic(pCur, thd, pData, nData, NET_OSQL_SOCK_RPL,
+                                    flags);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
@@ -336,7 +341,7 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
             return rc;
         }
     }
-    return osql_save_updrec(pCur, thd, pData, nData);
+    return osql_save_updrec(pCur, thd, pData, nData, flags);
 }
 
 /**
@@ -524,7 +529,7 @@ retry:
 
     if ((type == OSQL_SOCK_REQ || type == OSQL_SOCK_REQ_COST) &&
         clnt->verify_retries > gbl_osql_verify_ext_chk)
-        bset(&flags, OSQL_FLAGS_CHECK_SELFLOCK);
+        flags |= OSQL_FLAGS_CHECK_SELFLOCK;
     else
         flags = 0;
 
@@ -639,8 +644,9 @@ again:
             return SQLITE_INTERNAL;
     } else {
         if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "0x%lu Restarting clnt->osql.rqid=%llx\n",
-                   pthread_self(), clnt->osql.rqid);
+            logmsg(LOGMSG_USER,
+                   "0x%lu Restarting clnt->osql.rqid=%llx against %s\n",
+                   pthread_self(), clnt->osql.rqid, thedb->master);
         /* we should reset this ! */
         rc = osql_reuse_sqlthr(clnt, thedb->master);
         if (rc)
@@ -808,6 +814,8 @@ retry:
             if (osql->xerr.errval) {
                 /* lets check to see if a master swing happened and we need to
                  * retry */
+                sql_debug_logf(clnt, __func__, __LINE__,
+                               "returns xerr.errval=%d\n", osql->xerr.errval);
                 if (osql->xerr.errval == ERR_NOMASTER ||
                     osql->xerr.errval == ERR_NOT_DURABLE ||
                     osql->xerr.errval == 999) {
@@ -942,6 +950,14 @@ err:
            }
            osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
        }
+   }
+
+   /* DDLs are also non-retriable */
+   if (osql->xerr.errval == (ERR_BLOCK_FAILED + ERR_VERIFY) &&
+       osql->running_ddl) {
+       logmsg(LOGMSG_DEBUG, "%s: marking DDL transaction as non-retriable\n",
+              __func__);
+       osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
    }
 
    osql_shadtbl_close(clnt);
@@ -1218,7 +1234,8 @@ restart:
 }
 
 static int osql_send_insrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
-                                  char *pData, int nData, int nettype)
+                                  char *pData, int nData, int nettype,
+                                  int flags)
 {
 
     struct sqlclntstate *clnt = thd->clnt;
@@ -1236,7 +1253,7 @@ static int osql_send_insrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
                 osql->host, osql->rqid, osql->uuid, pCur->genid,
                 (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->ins_keys
                                                               : -1ULL,
-                pData, nData, nettype, osql->logsb);
+                pData, nData, nettype, osql->logsb, flags);
         }
         RESTART_SOCKSQL;
     } while (restarted && rc == 0);
@@ -1358,7 +1375,8 @@ static int osql_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
 }
 
 static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
-                                  char *pData, int nData, int nettype)
+                                  char *pData, int nData, int nettype,
+                                  int flags)
 {
 
     struct sqlclntstate *clnt = thd->clnt;

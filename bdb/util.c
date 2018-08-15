@@ -44,8 +44,7 @@
 
 int bdb_keycontainsgenid(bdb_state_type *bdb_state, int ixnum)
 {
-    return ((bdb_state->ixdups[ixnum]) ||
-            ((!bdb_state->ixdups[ixnum] && bdb_state->ixnulls[ixnum])));
+    return (bdb_state->ixdups[ixnum] || bdb_state->ixnulls[ixnum]);
 }
 
 int bdb_maybe_use_genid_for_key(

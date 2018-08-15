@@ -666,6 +666,19 @@ static void sampleInsert(Stat4Accum *p, Stat4Sample *pNew, int nEqZero){
         iMin = i;
       }
     }
+    /* >>>>>> COMDB2 MODIFICATION */
+    if( iMin==-1 ){
+      /* Number of records has increased N times (N > ~200%) since statInit(),
+         however we don't know what N is. Assume that N is 2. It takes log3(N)
+         iterations to get the right sample frequency. Note that This approach
+         will make the sampling distribution more left skewed. */
+      p->nPSample *= 3;
+      for(i=0; i<p->mxSample; i+=3){
+        p->a[i].isPSample = 0;
+      }
+      goto find_new_min;
+    }
+    /* <<<<<< COMDB2 MODIFICATION */
     assert( iMin>=0 );
     p->iMin = iMin;
   }

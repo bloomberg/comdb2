@@ -83,11 +83,11 @@ static inline int trigger_register_int(trigger_reg_t *t)
 int trigger_register(trigger_reg_t *t)
 {
     GET_BDB_STATE(bdb_state);
-    pthread_mutex_lock(&trighash_lk);
     BDB_READLOCK("register trigger");
+    pthread_mutex_lock(&trighash_lk);
     int rc = trigger_register_int(t);
-    BDB_RELLOCK();
     pthread_mutex_unlock(&trighash_lk);
+    BDB_RELLOCK();
     return rc;
 }
 

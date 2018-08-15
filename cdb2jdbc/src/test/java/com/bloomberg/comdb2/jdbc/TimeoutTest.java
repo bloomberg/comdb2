@@ -17,8 +17,10 @@ public class TimeoutTest {
         Connection conn = DriverManager.getConnection(String.format(
                     "jdbc:comdb2://%s/%s?maxquerytime=1", cluster, db));
         Statement stmt = conn.createStatement();
+        long then = System.currentTimeMillis();
         ResultSet rs = stmt.executeQuery("SELECT SLEEP(5)");
-        Assert.assertEquals("Should get 1 from server", 1, rs.getInt(1));
+        long duration = System.currentTimeMillis() - then;
+        Assert.assertTrue("The query should take 1 to 2 seconds", duration >= 1000 && duration < 3000);
         rs.close();
         stmt.close();
         conn.close();

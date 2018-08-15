@@ -799,7 +799,7 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, char *tblname,
 
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
-    rc = osql_insrec(&bCur, thd, row, rowlen, rowblobs, MAXBLOBS);
+    rc = osql_insrec(&bCur, thd, row, rowlen, rowblobs, MAXBLOBS, 0);
 
     pthread_mutex_unlock(&clnt->dtran_mtx);
 
@@ -938,7 +938,7 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     rc = osql_updrec(&bCur, thd, row, rowlen, NULL /*TODO : review updCols*/,
-                     rowblobs, MAXBLOBS);
+                     rowblobs, MAXBLOBS, 0);
 
     pthread_mutex_unlock(&clnt->dtran_mtx);
 

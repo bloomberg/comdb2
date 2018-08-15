@@ -1203,6 +1203,15 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
                 return rc;
             }
         }
+
+        if (m->n >= f->len && f->type == SERVER_BYTEARRAY &&
+            (convopts->flags & FLD_CONV_TRUNCATE)) {
+            /* if the SQLite BLOB is longer than the bytearray field
+               and find-by-truncate is enabled. */
+            convopts->step = (f->flags & INDEX_DESCEND) ? 0 : 1;
+            bias_info->truncated = 1;
+        }
+
         rc =
             CLIENT_to_SERVER(m->z, m->n, CLIENT_BYTEARRAY, null,
                              (struct field_conv_opts *)convopts, NULL /*blob */,
@@ -1683,15 +1692,8 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
             abort();
         }
 
-#if 0
-      if (schema->flags & SCHEMA_DUP) {
-         strbuf_append(sql, "create index ");
-      } else {
-         strbuf_append(sql, "create unique index ");
-      }
-#else
+        /* We lie to sqlite about the uniqueness of the indexes. */
         strbuf_append(sql, "create index ");
-#endif
 
         strbuf_appendf(sql, "\"%s\" on \"%s\" (", namebuf, tbl->tablename);
         for (field = 0; field < schema->nmembers; field++) {
@@ -3337,9 +3339,6 @@ int sqlite3BtreeOpen(
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
     } else if (!zFilename || strcmp(zFilename, ":memory:") == 0) {
         /* temporary connection (for temp tables and such) */
-        if (flags & BTREE_UNORDERED) {
-            bt->is_hashtable = 1;
-        }
         bt->reqlogger = thrman_get_reqlogger(thrman_self());
         bt->btreeid = id++;
         bt->is_temporary = 1;
@@ -3347,6 +3346,12 @@ int sqlite3BtreeOpen(
         *ppBtree = bt;
         thd->bttmp = bt;
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
+        if (flags & BTREE_UNORDERED) {
+            bt->is_hashtable = 1;
+        } else {
+            int num_tables = 0;
+            sqlite3BtreeCreateTable(bt, &num_tables, BTREE_INTKEY);
+        }
     } else if (zFilename) {
         /* TODO: maybe we should enforce unicity ? when attaching same dbs from
          * multiple sql threads */
@@ -3617,7 +3622,11 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             goto done;
         }
 
-        if (queryOverlapsCursors(clnt, pCur) == 1) {
+        if ((queryOverlapsCursors(clnt, pCur) == 1) ||
+            /* We ignore the failure for REPLACE as same record could conflict
+             * for more that one unique indexes.
+             */
+            pCur->vdbe->oe_flag == OE_Replace) {
             rc = bdb_tran_deltbl_isdeleted_dedup(pCur->bdbcur, pCur->genid, 0,
                                                  &bdberr);
             if (rc == 1) {
@@ -4570,6 +4579,21 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
     clnt->intrans = 1;
     bzero(clnt->dirty, sizeof(clnt->dirty));
 
+    /* UPSERT: If we were asked to perform some action on conflict
+     * (ON CONFLICT DO UPDATE/REPLACE and not DO NOTHING), then its a good
+     * idea to switch at least to READ COMMITTED if we are running in some
+     * lower isolation level in a standalone (autocommit) transaction.
+     */
+    if ((clnt->dbtran.mode < TRANLEVEL_RECOM) &&
+        (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) &&
+        (vdbe && comdb2ForceVerify(vdbe) == 1)) {
+        logmsg(LOGMSG_DEBUG, "%s: switched to %s from %s\n", __func__,
+               tranlevel_tostr(TRANLEVEL_RECOM),
+               tranlevel_tostr(clnt->dbtran.mode));
+        clnt->translevel_changed = 1;
+        clnt->dbtran.mode = TRANLEVEL_RECOM;
+    }
+
 #ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
         logmsg(LOGMSG_ERROR, "%p starts transaction tid=%d mode=%d intrans=%d\n",
@@ -4681,6 +4705,15 @@ int sqlite3BtreeCommit(Btree *pBt)
                         irc, bdberr);
             }
         }
+
+        /* UPSERT: Restore the isolation level back to what it was. */
+        if (clnt->translevel_changed) {
+            clnt->dbtran.mode = TRANLEVEL_SOSQL;
+            clnt->translevel_changed = 0;
+            logmsg(LOGMSG_DEBUG, "%s: switched back to %s\n", __func__,
+                   tranlevel_tostr(clnt->dbtran.mode));
+        }
+
         break;
 
     case TRANLEVEL_SNAPISOL:
@@ -4841,6 +4874,15 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
             if (rc)
                 logmsg(LOGMSG_ERROR, "%s: recom abort rc=%d??\n", __func__, rc);
         }
+
+        /* UPSERT: Restore the isolation level back to what it was. */
+        if (clnt->translevel_changed) {
+            clnt->dbtran.mode = TRANLEVEL_SOSQL;
+            clnt->translevel_changed = 0;
+            logmsg(LOGMSG_DEBUG, "%s: switched back to %s\n", __func__,
+                   tranlevel_tostr(clnt->dbtran.mode));
+        }
+
         break;
 
     case TRANLEVEL_SNAPISOL:
@@ -5373,16 +5415,9 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
                                        NULL, 0, pIdxKey, &bdberr, pCur);
             }
         } else {
-            void *k = malloc(sizeof(intKey));
-            if (k == NULL) {
-                return SQLITE_NOMEM;
-            }
-            *(i64 *)k = intKey;
-            rc = pCur->cursor_find(thedb->bdb_env, pCur->tmptable->cursor, k,
-                                   sizeof(intKey), NULL, &bdberr, pCur);
-            if (rc != IX_FND) {
-                free(k);
-            }
+            rc =
+                pCur->cursor_find(thedb->bdb_env, pCur->tmptable->cursor,
+                                  &intKey, sizeof(intKey), NULL, &bdberr, pCur);
         }
         if (!is_good_ix_find_rc(rc)) {
             if (rc == IX_EMPTY) {
@@ -7042,9 +7077,6 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
         return SQLITE_INTERNAL;
     }
 
-    int num_tables = 0;
-    sqlite3BtreeCreateTable(pBt, &num_tables, BTREE_INTKEY);
-
     struct temptable *src = &pBt->temp_tables[iTable];
     cur->tmptable->tbl = src->tbl;
     if (src->lk) {
@@ -7770,10 +7802,15 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         shadow_tran = clnt->dbtran.shadow_tran;
     }
 
+    enum bdb_open_type open_type;
+    if (shadow_tran && (clnt->dbtran.mode != TRANLEVEL_SOSQL)) {
+        open_type = (wrFlag) ? BDB_OPEN_BOTH_CREATE : BDB_OPEN_BOTH;
+    } else {
+        open_type = BDB_OPEN_REAL;
+    }
     cur->bdbcur = bdb_cursor_open(
         cur->db->handle, clnt->dbtran.cursor_tran, shadow_tran, cur->ixnum,
-        (shadow_tran && (clnt->dbtran.mode != TRANLEVEL_SOSQL)) ? BDB_OPEN_BOTH
-                                                                : BDB_OPEN_REAL,
+        open_type,
         (clnt->dbtran.mode == TRANLEVEL_SOSQL)
             ? NULL
             : osql_get_shadtbl_addtbl_newcursor(cur),
@@ -7924,9 +7961,9 @@ int sqlite3BtreeCursor(
     }
     /* real table */
     else {
-        rc = sqlite3BtreeCursor_cursor(pBt, iTable, flags & BTREE_CUR_WR,
-                                       sqlite3VdbeCompareRecordPacked, pKeyInfo,
-                                       cur, thd);
+        rc = sqlite3BtreeCursor_cursor(
+            pBt, iTable, (flags & BTREE_CUR_WR) ? 1 : 0,
+            sqlite3VdbeCompareRecordPacked, pKeyInfo, cur, thd);
         /* treat sqlite_stat1 as free */
         if (is_sqlite_stat(cur->db->tablename)) {
             cur->find_cost = 0.0;
@@ -8057,7 +8094,7 @@ int sqlite3BtreeBeginStmt(Btree *pBt, int iStatement)
 int sqlite3BtreeInsert(
     BtCursor *pCur, /* Insert data into the table of this cursor */
     const BtreePayload *pPayload, /* The key and data of the new record */
-    int bias, int seekResult)
+    int bias, int seekResult, int flags)
 {
     const void *pKey = pPayload->pKey;
     sqlite3_int64 nKey = pPayload->nKey;
@@ -8292,6 +8329,13 @@ int sqlite3BtreeInsert(
             is_update = 0;
         else if (0 == pCur->genid)
             is_update = 0;
+        else if (!bias)
+            /* For ON CONFLICT DO REPLACE, the conflicting record could
+             * have already been deleted before we reach here, and hence
+             * pCur->genid != 0. Thus, we rely on bias to force an insert
+             * and not update.
+             */
+            is_update = 0;
         else
             is_update = 1;
 
@@ -8300,15 +8344,36 @@ int sqlite3BtreeInsert(
                 clnt->ins_keys = -1ULL;
                 clnt->del_keys = -1ULL;
             }
+
+            int rec_flags = 0;
+            if (flags != 0) {
+                /* Set the UPSERT related flags. */
+                if (flags & OPFLAG_IGNORE_FAILURE) {
+                    /* For ON CONFLICT(opt-target-index) DO NOTHING, the lower
+                     * 8 bits of the rec_flags store the OSQL_IGNORE_FAILURE
+                     * (signifying DO NOTHING), and higher bits store the index
+                     * number specified in the ON CONFLICT target. Use of no
+                     * target implies the implicit inclusion of all unique
+                     * indexes. This is represented by storing MAXINDEX+1 in
+                     * the higher bits instead.
+                     */
+                    rec_flags = ((comdb2UpsertIdx(pCur->vdbe) << 8) |
+                                 OSQL_IGNORE_FAILURE);
+                } else if (flags & OPFLAG_FORCE_VERIFY) {
+                    rec_flags = OSQL_FORCE_VERIFY;
+                }
+            }
+
             if (is_update) { /* Updating an existing record. */
                 rc = osql_updrec(pCur, thd, pCur->ondisk_buf,
                                  getdatsize(pCur->db), pCur->vdbe->updCols,
-                                 blobs, MAXBLOBS);
+                                 blobs, MAXBLOBS, rec_flags);
                 clnt->effects.num_updated++;
                 clnt->log_effects.num_updated++;
             } else {
                 rc = osql_insrec(pCur, thd, pCur->ondisk_buf,
-                                 getdatsize(pCur->db), blobs, MAXBLOBS);
+                                 getdatsize(pCur->db), blobs, MAXBLOBS,
+                                 rec_flags);
                 clnt->effects.num_inserted++;
                 clnt->log_effects.num_inserted++;
             }
@@ -10447,6 +10512,25 @@ int comdb2_get_planner_effort()
     return clnt->planner_effort;
 }
 
+/* Return the index number. */
+int comdb2_get_index(const char *dbname, char *idx)
+{
+    struct dbtable *db = get_dbtable_by_name(dbname);
+
+    if (db) {
+        int i;
+        for (i = 0; i < db->nix; ++i) {
+            struct schema *s = db->ixschema[i];
+            if (s->sqlitetag && strcmp(s->sqlitetag, idx) == 0) {
+                return i;
+            }
+        }
+    }
+
+    assert(0);
+    return -1;
+}
+
 static void sqlite3BtreeCursorHint_Flags(BtCursor *pCur, unsigned int mask)
 {
     if (mask & OPFLAG_SEEKEQ)
@@ -11865,4 +11949,39 @@ uint16_t stmt_num_tbls(sqlite3_stmt *stmt)
 {
     Vdbe *v = (Vdbe *)stmt;
     return v->numTables;
+}
+
+int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->clnt;
+    struct clnt_ddl_context *clnt_ddl_ctx = NULL;
+
+    if (!clnt->ddl_contexts)
+        return 1;
+
+    clnt_ddl_ctx = calloc(1, sizeof(struct clnt_ddl_context));
+    if (clnt_ddl_ctx == NULL) {
+        logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__, __LINE__);
+        return -1;
+    }
+    clnt_ddl_ctx->name = name;
+    clnt_ddl_ctx->ctx = ctx;
+    clnt_ddl_ctx->mem = mem;
+    hash_add(clnt->ddl_contexts, clnt_ddl_ctx);
+    return 0;
+}
+
+void *comdb2_get_ddl_context(char *name)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->clnt;
+    struct clnt_ddl_context *clnt_ddl_ctx = NULL;
+    void *ctx = NULL;
+    if (clnt->ddl_contexts) {
+        clnt_ddl_ctx = hash_find_readonly(clnt->ddl_contexts, &name);
+        if (clnt_ddl_ctx)
+            ctx = clnt_ddl_ctx->ctx;
+    }
+    return ctx;
 }

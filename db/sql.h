@@ -319,21 +319,6 @@ int sp_column_nil(struct response_data *, int);
 int sp_column_val(struct response_data *, int, int, void *);
 void *sp_column_ptr(struct response_data *, int, int, size_t *);
 
-struct param_data {
-    char *name;
-    int type;
-    int null;
-    int pos;
-    int len;
-    union {
-        int64_t i;
-        double r;
-        void *p;
-        dttz_t dt;
-        intv_t tv;
-    } u;
-};
-
 typedef int(plugin_func)(struct sqlclntstate *);
 typedef int(response_func)(struct sqlclntstate *, int, void *, int);
 typedef void *(replay_func)(struct sqlclntstate *, void *);
@@ -384,6 +369,7 @@ struct plugin_callbacks {
     log_context_func *log_context; /* newsql_log_context */
     ret_uint64_func *get_client_starttime; /* newsql_get_client_starttime */
     plugin_func *get_client_retries;       /* newsql_get_client_retries */
+    plugin_func *send_intrans_response; /* newsql_send_intrans_response */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
@@ -418,6 +404,7 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, log_context);                         \
         make_plugin_callback(clnt, name, get_client_starttime);                \
         make_plugin_callback(clnt, name, get_client_retries);                  \
+        make_plugin_callback(clnt, name, send_intrans_response);               \
     } while (0)
 
 int param_count(struct sqlclntstate *);
@@ -430,6 +417,15 @@ int set_high_availability(struct sqlclntstate *);
 int clr_high_availability(struct sqlclntstate *);
 uint64_t get_client_starttime(struct sqlclntstate *);
 int get_client_retries(struct sqlclntstate *);
+
+struct clnt_ddl_context {
+    /* Name of the table */
+    char *name;
+    /* Pointer to a comdb2_ddl_context */
+    void *ctx;
+    /* Memory allocator of the comdb2_ddl_context */
+    comdb2ma mem;
+};
 
 /* Client specific sql state */
 struct sqlclntstate {
@@ -610,46 +606,6 @@ struct sqlclntstate {
     int8_t wrong_db;
     int8_t is_lua_sql_thread;
 
-    /*              (SERVER)
-      Default --> (val: 1)
-                      |
-                      +--> Client has SKIP feature?
-                                   |    |
-                                NO |    | YES
-                                   |    |
-      SET INTRANSRESULTS OFF ------)--->+--> (val: 0) --+
-                                   |                    |
-                                   |  +-----------------+
-                                   |  |
-                                   |  +---> Send server SKIP feature;
-                                   |        Don't send intrans results
-                                   |
-      SET INTRANSRESULTS ON        +-------> (val: 1) --+
-                |                                       |
-                | (val: -1)           +-----------------+
-                |                     |
-                +---------------------+--> Don't send server SKIP feature;
-                                           Send intrans results
-
-                    (CLIENT)
-      CDB2_READ_INTRANS_RESULTS is ON?
-                     /\
-       NO (default) /  \ YES
-                   /    \
-       Send Client       \
-       SKIP feature       \
-                /          \
-       Server has           \
-            SKIP feature?    \
-             /          \     \
-          Y /            \ N   \
-           /              \     \
-       Don't read         Read intrans results
-       intrans results    for writes
-       for writes
-
-     */
-    int8_t send_intrans_results;
     int8_t high_availability_flag;
     int8_t hasql_on;
 
@@ -671,6 +627,7 @@ struct sqlclntstate {
 
     hash_t *ddl_tables;
     hash_t *dml_tables;
+    hash_t *ddl_contexts;
 
     int ignore_coherency;
     int statement_query_effects;
@@ -678,6 +635,8 @@ struct sqlclntstate {
     int verify_remote_schemas;
     char *argv0;
     char *stack;
+
+    int translevel_changed;
 };
 
 /* Query stats. */
@@ -1022,5 +981,20 @@ response_func write_response;
 response_func read_response;
 int sql_writer(SBUF2 *, const char *, int);
 int typestr_to_type(const char *ctype);
+
+struct query_stats {
+    int64_t nfstrap;
+    int64_t nsql;
+    int64_t nsteps;
+    int64_t ncommits;
+    int64_t nretries;
+    int64_t ndeadlocks;
+    int64_t nlockwaits;
+    int64_t nbpoolhits;
+    int64_t nbpoolmisses;
+    int64_t npreads;
+    int64_t npwrites;
+};
+int get_query_stats(struct query_stats *stats);
 
 #endif

@@ -7,6 +7,7 @@ set(src
   comdb2uuid.c
   config.c
   constraints.c
+  db_metrics.c
   db_tunables.c
   db_util.c
   dbglog_iface.c
@@ -49,7 +50,6 @@ set(src
   printlog.c
   process_message.c
   pushlogs.c
-  quantize.c
   record.c
   repl_wait.c
   reqdebug.c
@@ -97,12 +97,10 @@ if(WITH_SSL)
   list(APPEND src ssl_bend.c)
 endif()
 
-if(WITH_PLINK_TIMESTAMP)
-  list(APPEND src ${CMAKE_CURRENT_BINARY_DIR}/plink_timestamp.c)
-  set_source_files_properties(
-    ${CMAKE_CURRENT_BINARY_DIR}/plink_timestamp.c
-    PROPERTIES GENERATED TRUE
-  )
+option(DEBUG_TYPES "Build types.c independent of sqlglue.c" OFF)
+if(DEBUG_TYPES)
+  list(APPEND src types.c)
+  add_definitions(-DDEBUG_TYPES)
 endif()
 
 add_executable(comdb2 ${src})
@@ -137,7 +135,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
-  ${PROJECT_BINARY_DIR}/plugin
+  ${PROJECT_BINARY_DIR}/plugins
   ${PROJECT_SOURCE_DIR}/protobuf
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/schemachange

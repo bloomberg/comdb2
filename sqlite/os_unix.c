@@ -7596,10 +7596,7 @@ int sqlite3_os_init(void){
 
   /* Double-check that the aSyscall[] array has been constructed
   ** correctly.  See ticket [bb3a86e890c8e96ab] */
-/* COMDB2 */
-#ifndef _IBM_SOURCE
-  assert( ArraySize(aSyscall)==28 );
-#else
+#ifndef SQLITE_BUILDING_FOR_COMDB2
   assert( ArraySize(aSyscall)==24 );
 #endif
 

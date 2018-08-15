@@ -30,6 +30,7 @@
 #include "comdb2_appsock.h"
 #include "plhash.h"
 #include "comdb2_atomic.h"
+#include "perf.h"
 
 #ifdef DEBUG
 // was crashing because of the small stack size when debug was on
@@ -164,7 +165,6 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
 {
     comdb2_appsock_t *appsock;
     comdb2_appsock_arg_t arg;
-    struct dbtable *tab;
     char line[128];
     char command[128];
     char *ptr;
@@ -175,7 +175,8 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
 
     sbuf2settimeout(sb, IOTIMEOUTMS, IOTIMEOUTMS);
 
-    tab = thedb->dbs[0];
+    arg.tab = thedb->dbs[0];
+    arg.conv_flags = 0;
 
     while (1) {
         thrman_where(thr_self, NULL);
@@ -215,7 +216,6 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
         /* Prepare the argument to be passed to the handler. */
         arg.thr_self = thr_self;
         arg.dbenv = thedb;
-        arg.tab = tab;
         arg.sb = sb;
         arg.cmdline = line;
         arg.keepsocket = keepsocket;
@@ -307,6 +307,8 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb)
     time_t now;
 
     now = time(NULL);
+
+    time_metric_add(dbenv->connections, thdpool_get_nthds(gbl_appsock_thdpool));
 
     maxconns = thdpool_get_maxthds(gbl_appsock_thdpool);
     nconns = thdpool_get_nthds(gbl_appsock_thdpool);

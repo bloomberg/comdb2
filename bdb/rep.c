@@ -1199,6 +1199,20 @@ static void abort_election_on_exit(bdb_state_type *bdb_state)
 
 int gbl_elect_priority_bias = 0;
 
+int gbl_rand_elect_timeout = 1;
+int gbl_rand_elect_min_ms = 1000;
+int gbl_rand_elect_max_ms = 7000;
+
+static int elect_random_timeout(void)
+{
+    int range = (gbl_rand_elect_max_ms - gbl_rand_elect_min_ms), timeout_ms;
+    range = range > 0 ? range : 2000;
+    timeout_ms = gbl_rand_elect_min_ms + (rand() % range);
+    if (timeout_ms <= 0)
+        timeout_ms = 2000;
+    return (timeout_ms * 1000);
+}
+
 static void *elect_thread(void *args)
 {
     int rc, count, i;
@@ -1289,6 +1303,11 @@ elect_again:
             elect_time = elect_time_max;
     }
 
+    /* Ignore that completely if rand-elect-time is set */
+    if (gbl_rand_elect_timeout) {
+        elect_time = elect_random_timeout();
+    }
+
     if (!is_electable(bdb_state, &num, &num_connected)) {
         print(bdb_state,
               "election will not be held, connected to %d of %d nodes\n",
@@ -1374,6 +1393,7 @@ elect_again:
         else
             logmsg(LOGMSG_ERROR, "got %d from rep_elect\n", rc);
 
+        /* ignored if rand_elect_timeout is set */
         elect_time *= 2;
         elect_again++;
         if (elect_again > 30) {
@@ -3715,7 +3735,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     static pthread_mutex_t vote2_lock = PTHREAD_MUTEX_INITIALIZER;
 
-    if (rectype == REP_VOTE2 || rectype == REP_GEN_VOTE2) {
+    if (rectype == REP_VOTE2 || rectype == REP_GEN_VOTE2 ||
+        rectype == REP_NEWMASTER) {
         pthread_mutex_lock(&vote2_lock);
         got_vote2lock = 1;
     }
@@ -3826,6 +3847,13 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     case DB_REP_NEWMASTER:
         bdb_state->repinfo->repstats.rep_newmaster++;
+
+        if (!got_vote2lock) {
+            logmsg(LOGMSG_WARN,
+                   "process_berkdb: got NEWMASTER with no votelock2\n");
+            abort();
+            bdb_get_rep_master(bdb_state, &master, &gen, &egen);
+        }
 
         logmsg(LOGMSG_WARN,
                "process_berkdb: DB_REP_NEWMASTER %s time=%ld upgraded to "
