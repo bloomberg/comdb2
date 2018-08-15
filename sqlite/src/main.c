@@ -1147,6 +1147,15 @@ static int sqlite3Close(sqlite3 *db, int forceZombie){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3ErrorWithMsg(db, SQLITE_BUSY, "unable to close due to unfinalized "
        "statements or unfinished backups");
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    {
+      sqlite3_stmt *pStmt = 0;
+      while( (pStmt = sqlite3_next_stmt(db,pStmt))!=0 ){
+        logmsg(LOGMSG_USER, "%s:%d NOT FINALIZED: %p ==> {%s}\n",
+               __FILE__, __LINE__, db, sqlite3_sql(pStmt));
+      }
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3_mutex_leave(db->mutex);
     return SQLITE_BUSY;
   }
