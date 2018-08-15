@@ -551,6 +551,8 @@ char *os_strdup(const char *);
 */
 typedef struct comdb2bmspace *comdb2bma;
 
+#ifndef USE_SYS_ALLOC
+
 /* constructor/destructor */
 
 /*
@@ -650,6 +652,43 @@ void *comdb2_timedrealloc_nl(comdb2bma ma, void *ptr, size_t n,
 void comdb2_bfree(comdb2bma ma, void *ptr);
 void comdb2_bfree_nl(comdb2bma ma, void *ptr);
 /* } free */
+#else
+#define comdb2bma_create(init, cap, name, plock) ((void *)1)
+#define comdb2bma_create_trace(init, cap, name, lock, file, func, line) ((void *)1)
+#define comdb2bma_destroy(ma) 0
+#define comdb2bma_pass_priority_back(ma) 0
+#define comdb2bma_transfer_priority(ma, tid) 0
+#define comdb2bma_yield(ma) 0
+#define comdb2bma_yield_all() 0
+#define comdb2bma_mark_locked(ma) 0
+#define comdb2bma_mark_unlocked(ma) 0
+#define comdb2bma_nblocks(ma) 0
+#define comdb2bma_priotid(ma) 0
 
+#define comdb2_bmalloc(ma, n) malloc(n)
+#define comdb2_trymalloc(ma, n) malloc(n)
+#define comdb2_timedmalloc(ma, n, ms) malloc(n)
+#define comdb2_bmalloc_nl(ma, n) malloc(n)
+#define comdb2_trymalloc_nl(ma, n) malloc(n)
+#define comdb2_timedmalloc_nl(ma, n, ms) malloc(n)
+
+#define comdb2_bcalloc(ma, n, size) calloc(n, size)
+#define comdb2_trycalloc(ma, n, size) calloc(n, size)
+#define comdb2_timedcalloc(ma, n, size, ms) calloc(n, size)
+#define comdb2_bcalloc_nl(ma, n, size) calloc(n, size)
+#define comdb2_trycalloc_nl(ma, n, size) calloc(n, size)
+#define comdb2_timedcalloc_nl(ma, n, size, ms) calloc(n, size)
+
+#define comdb2_brealloc(ma, ptr, n) realloc(ptr, n)
+#define comdb2_tryrealloc(ma, ptr, n) realloc(ptr, n)
+#define comdb2_timedrealloc(ma, ptr, n, ms) realloc(ptr, n)
+#define comdb2_brealloc_nl(ma, ptr, n) realloc(ptr, n)
+#define comdb2_tryrealloc_nl(ma, ptr, n) realloc(ptr, n)
+#define comdb2_timedrealloc_nl(ma, ptr, n, ms) realloc(ptr, n)
+
+#define comdb2_bfree(ma, ptr) free(ptr)
+#define comdb2_bfree_nl(ma, ptr) free(ptr)
+
+#endif /* USE_SYS_ALLOC */
 #endif /* COMDB2_OMIT_BMEM */
 #endif /* INCLUDED_MEM_H */
