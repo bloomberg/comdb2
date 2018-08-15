@@ -3554,8 +3554,11 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
     run_stmt_setup(clnt, stmt);
     if ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         clnt->has_sqliterow = 1;
-        return verify_indexes_column_value(stmt, clnt->schema_mems);
+        rc = verify_indexes_column_value(stmt, clnt->schema_mems);
+        sqlite3_finalize(stmt);
+        return rc;
     }
+    sqlite3_finalize(stmt);
     clnt->has_sqliterow = 0;
     if (rc == SQLITE_DONE) {
         return 0;
