@@ -5647,7 +5647,7 @@ next_tail:
   }
 
   /* COMDB2 MODIFICATION */
-  setCookCol(pC, 0);
+  if( pC->eCurType==CURTYPE_BTREE ) setCookCol(pC, 0);
   goto check_for_interrupt;
 }
 
