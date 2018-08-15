@@ -27,6 +27,7 @@
 #include "sc_records.h"
 #include "sc_global.h"
 #include "sc_schema.h"
+#include "sc_callbacks.h"
 #include "comdb2_atomic.h"
 #include "logmsg.h"
 
@@ -1746,6 +1747,17 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
     return outrc;
 }
 
+static int live_sc_redo_add(struct convert_record_data *data,
+                            bdb_osql_log_rec_t *rec, DBT *logdta)
+{
+    logmsg(LOGMSG_INFO,
+           "%s: [%s] redo lsn[%u:%u] type[ADD_DTA] rec->dtafile %d, "
+           "rec->datastripe %d, rec->genid %llx\n",
+           __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
+           rec->dtafile, rec->dtastripe, rec->genid);
+    return 0;
+}
+
 static int live_sc_redo_delete(struct convert_record_data *data,
                                bdb_osql_log_rec_t *rec)
 {
@@ -1777,16 +1789,53 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
     int rc = 0;
     logdta.flags = DB_DBT_REALLOC;
 
+    if (rec->dtastripe < 0 || rec->dtastripe >= gbl_dtastripe) {
+        logmsg(LOGMSG_ERROR, "%s:%d rec->dtastripe %d out of range\n", __func__,
+               __LINE__, rc, rec->dtastripe);
+        return 0;
+    }
+    if (!data->sc_genids[rec->dtastripe]) {
+        /* A genid of zero is invalid.  So, if the schema change cursor is
+         * at genid zero it means pretty conclusively that it hasn't done
+         * anything yet so we cannot possibly be behind the cursor. */
+        return 0;
+    }
+    if (is_genid_right_of_stripe_pointer(data->to->handle, rec->genid,
+                                         data->sc_genids[rec->dtastripe])) {
+        return 0;
+    }
     switch (rec->type) {
+    case DB_llog_undo_add_dta:
+    case DB_llog_undo_add_dta_lk:
+        if ((rc = logc->get(logc, &rec->lsn, &logdta, DB_SET)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d rc %d retrieving lsn %d:%d\n", __func__,
+                   __LINE__, rc, rec->lsn.file, rec->lsn.offset);
+            if (logdta.data)
+                free(logdta.data);
+            return -1;
+        }
+        LOGCOPY_32(&rectype, logdta.data);
+        assert(rectype == rec->type);
+        rc = live_sc_redo_add(data, rec, &logdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: [%s] failed to redo add lsn[%u:%u] rc=%d\n", __func__,
+                   data->s->table, rec->lsn.file, rec->lsn.offset, rc);
+            if (logdta.data)
+                free(logdta.data);
+            return rc;
+        }
     case DB_llog_undo_del_dta:
     case DB_llog_undo_del_dta_lk:
         rc = live_sc_redo_delete(data, rec);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: [%s] failed to redo delete lsn[%u:%u]\n",
-                   __func__, data->s->table, rec->lsn.file, rec->lsn.offset);
+            logmsg(LOGMSG_ERROR,
+                   "%s: [%s] failed to redo delete lsn[%u:%u] rc=%d\n",
+                   __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
+                   rc);
             if (logdta.data)
                 free(logdta.data);
-            return -1;
+            return rc;
         }
         break;
     case DB_llog_undo_upd_dta:
@@ -1802,16 +1851,15 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
         assert(rectype == rec->type);
         rc = live_sc_redo_update(data, rec, &logdta);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: [%s] failed to redo update lsn[%u:%u]\n",
-                   __func__, data->s->table, rec->lsn.file, rec->lsn.offset);
+            logmsg(LOGMSG_ERROR,
+                   "%s: [%s] failed to redo update lsn[%u:%u] rc=%d\n",
+                   __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
+                   rc);
             if (logdta.data)
                 free(logdta.data);
-            return -1;
+            return rc;
         }
         break;
-    case DB_llog_undo_add_dta:
-    case DB_llog_undo_add_dta_lk:
-        /* Convert record threads already take care of inserts */
     default:
         break;
     }
@@ -1833,6 +1881,20 @@ static int live_sc_redo_logical_log(struct convert_record_data *data,
                __LINE__, rc);
         return -1;
     }
+
+again:
+    assert(data->trans == NULL);
+    /* Schema-change writes are always page-lock, not rowlock */
+    rc = trans_start_sc(&data->iq, NULL, &data->trans);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s:%d error %d starting transaction\n", __func__,
+               __LINE__, rc);
+        rc = -2;
+        goto done;
+    }
+    set_tran_lowpri(&data->iq, data->trans);
+    data->iq.timeoutms = gbl_sc_timeoutms;
+
     LISTC_FOR_EACH(&pCur->log->impl->recs, rec, lnk)
     {
         if (strcasecmp(data->s->table, rec->table) != 0)
@@ -1843,30 +1905,51 @@ static int live_sc_redo_logical_log(struct convert_record_data *data,
                         "Stoping work on logical redo because the thread for "
                         "stripe %d failed\n",
                         data->s->sc_thd_failed - 1);
-            logc->close(logc, 0);
-            return -1;
+            rc = -1;
+            goto done;
         }
         if (gbl_sc_abort || data->from->sc_abort ||
             (data->s->iq && data->s->iq->sc_should_abort)) {
             sc_errf(data->s, "[%s] Logical redo aborted\n", data->s->table);
-            logc->close(logc, 0);
-            return -1;
+            rc = -1;
+            goto done;
         }
         rc = live_sc_redo_logical_rec(data, logc, rec);
         if (rc) {
             logmsg(LOGMSG_ERROR,
-                   "[%s] redo failed at record lsn[%u:%u] table[%s] type[%d]\n",
+                   "[%s] redo failed at record lsn[%u:%u] table[%s] type[%d] "
+                   "rc=%d\n",
                    data->s->table, rec->lsn.file, rec->lsn.offset, rec->table,
-                   rec->type);
-            data->s->sc_thd_failed = -1;
-            logc->close(logc, 0);
-            return -1;
+                   rec->type, rc);
+            goto done;
         }
     }
+
+done:
+    if (data->trans) {
+        db_seqnum_type ss;
+        if (rc) {
+            trans_abort(&data->iq, data->trans);
+            if (rc == RC_INTERNAL_RETRY) {
+                data->trans = NULL;
+                data->num_retry_errors++;
+                data->totnretries++;
+                poll(0, 0, (rand() % 500 + 10));
+                goto again;
+            }
+        } else if (data->live)
+            rc = trans_commit_seqnum(&data->iq, data->trans, &ss);
+        else
+            rc = trans_commit(&data->iq, data->trans, gbl_mynode);
+    }
+
+    data->trans = NULL;
+    if (rc && !data->s->sc_thd_failed)
+        data->s->sc_thd_failed = -1;
     logc->close(logc, 0);
     bdb_osql_log_destroy(pCur->log);
     pCur->log = NULL;
-    return 0;
+    return rc;
 }
 
 void *live_sc_logical_redo_thd(struct convert_record_data *data)
@@ -1894,6 +1977,8 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     sc_printf(data->s, "[%s] logical redo starts at [%u:%u]\n", data->s->table,
               data->start_lsn.file, data->start_lsn.offset);
     pCur->minLsn = data->start_lsn;
+
+    data->iq.usedb = data->to;
 
     while (1) {
         if (bdb_llog_cursor_next(pCur) != 0) {
