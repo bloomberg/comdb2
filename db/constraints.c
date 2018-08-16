@@ -2007,7 +2007,7 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
                 n_errors++;
                 continue;
             } else {
-                if (timepart_is_shard(rdb->tablename, 1)) {
+                if (timepart_is_shard(rdb->tablename, 1, NULL)) {
                     constraint_err(s, from_db, ct, jj,
                                    "foreign table is a shard");
                     n_errors++;
