@@ -729,6 +729,13 @@ int resume_schema_change(void)
         abort();
     }
 
+    /* Give operators a chance to prevent a schema change from resuming. */
+    abort_filename = comdb2_location("marker", "%s.scabort", thedb->envname);
+    if (access(abort_filename, F_OK) == 0) {
+        scabort = 1;
+        logmsg(LOGMSG_INFO, "%s: found '%s'\n", __func__, abort_filename);
+    }
+
     pthread_mutex_lock(&sc_resuming_mtx);
     sc_resuming = NULL;
     for (i = 0; i < thedb->num_dbs; ++i) {
@@ -771,24 +778,16 @@ int resume_schema_change(void)
 
             free(packed_sc_data);
 
-            /* Give operators a chance to prevent a schema change from resuming.
-             */
-            abort_filename =
-                comdb2_location("marker", "%s.scabort", thedb->envname);
-            if (access(abort_filename, F_OK) == 0) {
+            if (scabort) {
                 rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename,
                                               NULL, 0, &bdberr);
                 if (rc)
                     logmsg(LOGMSG_ERROR,
                            "Failed to cancel resuming schema change %d %d\n",
                            rc, bdberr);
-                else
-                    scabort = 1;
-                free(abort_filename);
                 free(s);
                 continue; /* unmark all ongoing schema changes */
             }
-            free(abort_filename);
 
             if (s->fulluprecs || s->partialuprecs) {
                 logmsg(LOGMSG_DEBUG,
@@ -888,17 +887,14 @@ int resume_schema_change(void)
 
     if (scabort) {
         logmsg(LOGMSG_WARN, "Cancelling schema change\n");
-        abort_filename =
-            comdb2_location("marker", "%s.scabort", thedb->envname);
         rc = unlink(abort_filename);
         if (rc)
             logmsg(LOGMSG_ERROR,
-                   "Can't delete abort marker file %s - "
-                   "future sc may abort\n",
+                   "Can't delete abort marker file %s - future sc may abort\n",
                    abort_filename);
-        free(abort_filename);
-        return 0;
     }
+
+    free(abort_filename);
 
     return 0;
 }
