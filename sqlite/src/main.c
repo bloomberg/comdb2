@@ -1151,7 +1151,7 @@ static int sqlite3Close(sqlite3 *db, int forceZombie){
     {
       sqlite3_stmt *pStmt = 0;
       while( (pStmt = sqlite3_next_stmt(db,pStmt))!=0 ){
-        logmsg(LOGMSG_USER, "%s:%d NOT FINALIZED: %p ==> {%s}\n",
+        logmsg(LOGMSG_DEBUG, "%s:%d NOT FINALIZED: %p ==> {%s}\n",
                __FILE__, __LINE__, db, sqlite3_sql(pStmt));
       }
     }
