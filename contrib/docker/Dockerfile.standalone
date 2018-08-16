@@ -15,7 +15,6 @@ RUN apt-get update && \
     libssl1.0.0 \
     libz1 \
     libunwind8 \
-    gdb \
     tzdata && \
   rm -rf /var/lib/apt/lists/*
 
