@@ -617,7 +617,7 @@ unsigned long long bdb_normalise_genid(bdb_state_type *bdb_state,
 
 /* return a new tran handle, begin a transaction */
 tran_type *bdb_tran_begin_flags(bdb_state_type *bdb_handle, tran_type *parent_tran,
-                          int *bdberr, u_int32_t flags);
+                          int *bdberr, uint32_t flags);
 
 tran_type *bdb_tran_begin(bdb_state_type *bdb_handle, tran_type *parent_tran,
                           int *bdberr);
