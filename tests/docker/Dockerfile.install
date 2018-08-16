@@ -35,6 +35,7 @@ RUN apt-get update && \
     socat \
     time \
     strace \
+    gdb \
     openssh-server
 
 COPY . /comdb2
