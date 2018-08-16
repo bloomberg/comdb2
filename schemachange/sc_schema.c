@@ -595,6 +595,9 @@ void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
     if (!currdb->sc_to)
         goto done;
 
+    if (currdb->sc_live_logical)
+        goto done;
+
     /* if (is_schema_change_doomed()) */
     if (gbl_sc_abort || currdb->sc_abort || iq->sc_should_abort)
         goto done;

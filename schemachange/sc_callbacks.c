@@ -276,6 +276,10 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         return 0;
     }
 
+    if (usedb->sc_live_logical) {
+        return 0;
+    }
+
 #ifdef DEBUG_SC
     printf("live_sc_post_update_delayed_key_adds_int: looking at genid %llx\n",
            newgenid);

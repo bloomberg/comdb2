@@ -586,6 +586,10 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
         return 0;
     }
 
+    if (iq->usedb->sc_live_logical) {
+        return 0;
+    }
+
     int stripe = get_dtafile_from_genid(genid);
     if (stripe < 0 || stripe >= gbl_dtastripe) {
         logmsg(LOGMSG_ERROR, "%s: genid 0x%llx stripe %d out of range!\n",
@@ -635,6 +639,10 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
         return ERR_NOMASTER;
 
     if (iq->usedb->sc_from != iq->usedb) {
+        return 0;
+    }
+
+    if (iq->usedb->sc_live_logical) {
         return 0;
     }
 
@@ -730,6 +738,10 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
         return ERR_NOMASTER;
 
     if (iq->usedb->sc_from != iq->usedb) {
+        return 0;
+    }
+
+    if (iq->usedb->sc_live_logical) {
         return 0;
     }
 
