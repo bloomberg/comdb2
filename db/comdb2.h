@@ -2343,7 +2343,8 @@ int get_csc2_file_tran(const char *table, int version, char **text, int *len,
 int put_csc2_file(const char *table, void *tran, int version, const char *text);
 int put_csc2_stuff(struct dbtable *db, void *trans, void *stuff, size_t lenstuff);
 int put_blobstripe_genid(struct dbtable *db, void *tran, unsigned long long genid);
-int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid, tran_type *tran);
+int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid);
+int get_blobstripe_genid_tran(struct dbtable *db, unsigned long long *genid, tran_type *tran);
 
 int load_new_table_schema_file(struct dbenv *dbenv, const char *table,
                                const char *csc2file);
