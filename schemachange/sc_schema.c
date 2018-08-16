@@ -586,12 +586,18 @@ void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
                                      void *trans, void *od_dta,
                                      unsigned long long ins_keys)
 {
+    if (!currdb)
+        return;
+
+    pthread_rwlock_rdlock(&currdb->sc_live_lk);
+
     /* if there's no schema change in progress, nothing to verify */
-    if (!currdb || !currdb->sc_to) return;
+    if (!currdb->sc_to)
+        goto done;
 
     /* if (is_schema_change_doomed()) */
     if (gbl_sc_abort || currdb->sc_abort || iq->sc_should_abort)
-        return;
+        goto done;
 
     int rebuild = currdb->sc_to->plan && currdb->sc_to->plan->dta_plan;
     if (verify_record_constraint(iq, currdb->sc_to, trans, od_dta, ins_keys,
@@ -599,6 +605,9 @@ void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
         currdb->sc_abort = 1;
         MEMORY_SYNC;
     }
+
+done:
+    pthread_rwlock_unlock(&currdb->sc_live_lk);
 }
 
 /* After loading new schema file, should call this routine to see if ondisk

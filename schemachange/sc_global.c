@@ -318,6 +318,7 @@ void live_sc_off(struct dbtable *db)
     db->sc_deletes = 0;
     db->sc_nrecs = 0;
     db->sc_prev_nrecs = 0;
+    db->sc_live_logical = 0;
     Pthread_rwlock_unlock(&db->sc_live_lk);
 }
 
