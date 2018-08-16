@@ -102,7 +102,10 @@ find_cores() {
     fi
 
 
-    for node in ${CLUSTER/$HOSTNAME/} ; do
+    for node in ${CLUSTER} ; do
+        if [ $node == $HOSTNAME ] ; then
+            continue
+        fi
         if [ $has_pattern -eq 1 ] ; then
             PIDFL=${TMPDIR}/${DBNAME}.pid
             local PID=`ssh -o StrictHostKeyChecking=no $node "cat ${PIDFL} 2> /dev/null" </dev/null`
