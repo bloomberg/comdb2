@@ -284,13 +284,19 @@ else
 
     i=0
     declare -a pids
-    for node in ${CLUSTER/$HOSTNAME/}; do
+    for node in ${CLUSTER}; do
+        if [ $node == $HOSTNAME ] ; then
+            continue
+        fi
         cat $ARFILE | ssh $SSH_OPT $node "cd ${DBDIR}; $COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $TESTDIR/logs/${DBNAME}.${node}.copy &
         pids[$i]=$!
         let i=i+1
     done
     i=0
-    for node in ${CLUSTER/$HOSTNAME/}; do
+    for node in ${CLUSTER}; do
+        if [ $node == $HOSTNAME ] ; then
+            continue
+        fi
         wait ${pids[$i]}
         if [[ $? -ne 0 ]]; then
             echo "FAILED: copying ${LRL} ${node}: see $TESTDIR/logs/${DBNAME}.${node}.copy"

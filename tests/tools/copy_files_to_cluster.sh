@@ -65,17 +65,19 @@ copy_files_to_cluster()
     local node
     local i=0
     declare -a pids
-    for node in ${CLUSTER/$HOSTNAME/}; do
+    for node in ${CLUSTER}; do
         if [ $node == $HOSTNAME ] ; then
-            echo "Error: hostname is in the CLUSTER list -HOSTNAME"
-            exit 1
+            continue
         fi
         copy_files_to_node $node &
         pids[$i]=$!
         let i=i+1
     done
     i=0
-    for node in ${CLUSTER/$HOSTNAME/}; do
+    for node in ${CLUSTER}; do
+        if [ $node == $HOSTNAME ] ; then
+            continue
+        fi
         wait ${pids[$i]}
         let i=i+1
     done
