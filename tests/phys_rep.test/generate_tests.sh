@@ -42,6 +42,10 @@ printf "alter table t2 options rec none, blobfield none, ipu off, isc off, \
     rebuild { $(cat alltypes_full.csc2) } \$\$\n" > 5-4-alter-opts.src.sql
 printf "insert into t2(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )" >> 5-4-alter-opts.src.sql
 
+let j=j+1
+printf "alter table t2 options rebuild { $(cat alltypes_full.csc2) } \$\$\n" > 5-5-alter-opts.src.sql
+printf "insert into t2(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )" >> 5-5-alter-opts.src.sql
+
 #
 # create queries
 #
@@ -51,7 +55,7 @@ echo 'select * from t1' | tee 1-create-table.query.sql 2-1-insert.query.sql \
     2-2-update.query.sql 3-1-truncate.query.sql 3-2-truncate.query.sql 
 
 printf 'select * from t2' | tee 5-1-create-alltypes.query.sql 5-2-alter.query.sql \
-    5-3-alter-opts.query.sql 5-4-alter-opts.query.sql
+    5-3-alter-opts.query.sql 5-4-alter-opts.query.sql 5-5-alter-opts.src.sql
 
 # TEST 4
 printf 'select * from comdb2_procedures' | tee 4-1-sp-create.query.sql 4-2-sp-version.query.sql
