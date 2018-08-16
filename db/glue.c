@@ -4410,7 +4410,7 @@ static void fix_blobstripe_genids(tran_type *tran)
     if (gbl_blobstripe) {
         for (ii = 0; ii < dbenv->num_dbs; ii++) {
             db = dbenv->dbs[ii];
-            rc = get_blobstripe_genid(db, &db->blobstripe_genid, tran);
+            rc = get_blobstripe_genid_tran(db, &db->blobstripe_genid, tran);
             if (rc == 0) {
                 bdb_set_blobstripe_genid(db->handle, db->blobstripe_genid);
                 ctrace("blobstripe genid 0x%llx for table %s\n",
@@ -4744,7 +4744,7 @@ int put_blobstripe_genid(struct dbtable *db, void *tran, unsigned long long geni
     return rc;
 }
 
-int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid,
+int get_blobstripe_genid_tran(struct dbtable *db, unsigned long long *genid,
         tran_type *tran)
 {
     struct metahdr hdr;
@@ -4753,6 +4753,12 @@ int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid,
     hdr.attr = 0;
     rc = meta_get_tran(tran, db, &hdr, (void *)genid, sizeof(*genid));
     return rc;
+}
+
+
+int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid)
+{
+    return get_blobstripe_genid_tran(db, genid, NULL);
 }
 
 #define get_put_db(x, y)                                                       \
