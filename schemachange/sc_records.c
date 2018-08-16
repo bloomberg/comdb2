@@ -1747,47 +1747,138 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
     return outrc;
 }
 
-static int live_sc_redo_add(struct convert_record_data *data,
+struct blob_recs {
+    unsigned long long genid;
+    LISTC_T(bdb_osql_log_rec_t) recs; /* list of undo records */
+};
+
+static int free_blob_recs(void *obj, void *arg)
+{
+    struct blob_recs *pbrecs = obj;
+    bdb_osql_log_rec_t *rec = NULL, *tmp = NULL;
+    LISTC_FOR_EACH_SAFE(&pbrecs->recs, rec, tmp, lnk)
+    {
+        listc_rfl(&pbrecs->recs, rec);
+        if (rec->comprec) {
+            if (rec->comprec->table)
+                free(rec->comprec->table);
+            free(rec->comprec);
+        }
+        if (rec->table)
+            free(rec->table);
+        free(rec);
+    }
+    free(pbrecs);
+    return 0;
+}
+
+static void clear_blob_hash(hash_t *h)
+{
+    if (!h)
+        return;
+    hash_for(h, free_blob_recs, NULL);
+    hash_clear(h);
+}
+
+static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
                             bdb_osql_log_rec_t *rec, DBT *logdta)
 {
+    struct blob_recs brecs = {0};
+    struct blob_recs *pbrecs = NULL;
+    bdb_osql_log_rec_t *brec = NULL;
     logmsg(LOGMSG_INFO,
            "%s: [%s] redo lsn[%u:%u] type[ADD_DTA] rec->dtafile %d, "
            "rec->datastripe %d, rec->genid %llx\n",
            __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
            rec->dtafile, rec->dtastripe, rec->genid);
+    brecs.genid = rec->genid;
+    pbrecs = hash_find(data->blob_hash, &brecs);
+    if (pbrecs) {
+        LISTC_FOR_EACH(&pbrecs->recs, brec, lnk)
+        {
+            logmsg(LOGMSG_INFO,
+                   "%s: [%s] redo lsn[%u:%u] type[%d] dtafile %d, "
+                   "datastripe %d, genid %llx\n",
+                   __func__, data->s->table, brec->lsn.file, brec->lsn.offset,
+                   brec->type, brec->dtafile, brec->dtastripe, brec->genid);
+        }
+    }
+
     return 0;
 }
 
-static int live_sc_redo_delete(struct convert_record_data *data,
-                               bdb_osql_log_rec_t *rec)
+static int live_sc_redo_delete(struct convert_record_data *data, DB_LOGC *logc,
+                               bdb_osql_log_rec_t *rec, DBT *logdta)
 {
+    struct blob_recs brecs = {0};
+    struct blob_recs *pbrecs = NULL;
+    bdb_osql_log_rec_t *brec = NULL;
     logmsg(LOGMSG_INFO,
            "%s: [%s] redo lsn[%u:%u] type[DEL_DTA] rec->dtafile %d, "
            "rec->datastripe %d, rec->genid %llx\n",
            __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
            rec->dtafile, rec->dtastripe, rec->genid);
+    brecs.genid = rec->genid;
+    pbrecs = hash_find(data->blob_hash, &brecs);
+    if (pbrecs) {
+        LISTC_FOR_EACH(&pbrecs->recs, brec, lnk)
+        {
+            logmsg(LOGMSG_INFO,
+                   "%s: [%s] redo lsn[%u:%u] type[%d] dtafile %d, "
+                   "datastripe %d, genid %llx\n",
+                   __func__, data->s->table, brec->lsn.file, brec->lsn.offset,
+                   brec->type, brec->dtafile, brec->dtastripe, brec->genid);
+        }
+    }
 
     return 0;
 }
 
-static int live_sc_redo_update(struct convert_record_data *data,
+static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
                                bdb_osql_log_rec_t *rec, DBT *logdta)
 {
+    u_int32_t rectype;
+    int rc = 0;
+
+    struct blob_recs brecs = {0};
+    struct blob_recs *pbrecs = NULL;
+    bdb_osql_log_rec_t *brec = NULL;
+
+    if ((rc = logc->get(logc, &rec->lsn, logdta, DB_SET)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d rc %d retrieving lsn %d:%d\n", __func__,
+               __LINE__, rc, rec->lsn.file, rec->lsn.offset);
+        return -1;
+    }
+    LOGCOPY_32(&rectype, logdta->data);
+    assert(rectype == rec->type);
+
     logmsg(LOGMSG_INFO,
            "%s: [%s] redo lsn[%u:%u] type[UPD_DTA] rec->dtafile %d, "
            "rec->datastripe %d, rec->genid %llx\n",
            __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
            rec->dtafile, rec->dtastripe, rec->genid);
+    brecs.genid = rec->genid;
+    pbrecs = hash_find(data->blob_hash, &brecs);
+    if (pbrecs) {
+        LISTC_FOR_EACH(&pbrecs->recs, brec, lnk)
+        {
+            logmsg(LOGMSG_INFO,
+                   "%s: [%s] redo lsn[%u:%u] type[%d] dtafile %d, "
+                   "datastripe %d, genid %llx\n",
+                   __func__, data->s->table, brec->lsn.file, brec->lsn.offset,
+                   brec->type, brec->dtafile, brec->dtastripe, brec->genid);
+        }
+    }
+
     return 0;
 }
 
 static int live_sc_redo_logical_rec(struct convert_record_data *data,
-                                    DB_LOGC *logc, bdb_osql_log_rec_t *rec)
+                                    DB_LOGC *logc, bdb_osql_log_rec_t *rec,
+                                    DBT *logdta)
 {
     u_int32_t rectype;
-    DBT logdta = {0};
     int rc = 0;
-    logdta.flags = DB_DBT_REALLOC;
 
     if (rec->dtastripe < 0 || rec->dtastripe >= gbl_dtastripe) {
         logmsg(LOGMSG_ERROR, "%s:%d rec->dtastripe %d out of range\n", __func__,
@@ -1807,56 +1898,33 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
     switch (rec->type) {
     case DB_llog_undo_add_dta:
     case DB_llog_undo_add_dta_lk:
-        if ((rc = logc->get(logc, &rec->lsn, &logdta, DB_SET)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d rc %d retrieving lsn %d:%d\n", __func__,
-                   __LINE__, rc, rec->lsn.file, rec->lsn.offset);
-            if (logdta.data)
-                free(logdta.data);
-            return -1;
-        }
-        LOGCOPY_32(&rectype, logdta.data);
-        assert(rectype == rec->type);
-        rc = live_sc_redo_add(data, rec, &logdta);
+        rc = live_sc_redo_add(data, logc, rec, logdta);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: [%s] failed to redo add lsn[%u:%u] rc=%d\n", __func__,
                    data->s->table, rec->lsn.file, rec->lsn.offset, rc);
-            if (logdta.data)
-                free(logdta.data);
             return rc;
         }
+        break;
     case DB_llog_undo_del_dta:
     case DB_llog_undo_del_dta_lk:
-        rc = live_sc_redo_delete(data, rec);
+        rc = live_sc_redo_delete(data, logc, rec, logdta);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: [%s] failed to redo delete lsn[%u:%u] rc=%d\n",
                    __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
                    rc);
-            if (logdta.data)
-                free(logdta.data);
             return rc;
         }
         break;
     case DB_llog_undo_upd_dta:
     case DB_llog_undo_upd_dta_lk:
-        if ((rc = logc->get(logc, &rec->lsn, &logdta, DB_SET)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d rc %d retrieving lsn %d:%d\n", __func__,
-                   __LINE__, rc, rec->lsn.file, rec->lsn.offset);
-            if (logdta.data)
-                free(logdta.data);
-            return -1;
-        }
-        LOGCOPY_32(&rectype, logdta.data);
-        assert(rectype == rec->type);
-        rc = live_sc_redo_update(data, rec, &logdta);
+        rc = live_sc_redo_update(data, logc, rec, logdta);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: [%s] failed to redo update lsn[%u:%u] rc=%d\n",
                    __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
                    rc);
-            if (logdta.data)
-                free(logdta.data);
             return rc;
         }
         break;
@@ -1864,8 +1932,6 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
         break;
     }
 
-    if (logdta.data)
-        free(logdta.data);
     return 0;
 }
 
@@ -1874,12 +1940,67 @@ static int live_sc_redo_logical_log(struct convert_record_data *data,
 {
     int rc = 0;
     bdb_state_type *bdb_state = thedb->bdb_env;
-    bdb_osql_log_rec_t *rec = NULL;
-    DB_LOGC *logc;
+    bdb_osql_log_rec_t *rec = NULL, *tmp = NULL;
+    DB_LOGC *logc = NULL;
+    int interested = 0;
+    DBT logdta = {0};
+    logdta.flags = DB_DBT_REALLOC;
+
+    /* pre process blob recs */
+    LISTC_FOR_EACH_SAFE(&pCur->log->impl->recs, rec, tmp, lnk)
+    {
+        if (strcasecmp(data->s->table, rec->table) != 0)
+            continue;
+
+        switch (rec->type) {
+        case DB_llog_undo_add_dta:
+        case DB_llog_undo_add_dta_lk:
+        case DB_llog_undo_del_dta:
+        case DB_llog_undo_del_dta_lk:
+        case DB_llog_undo_upd_dta:
+        case DB_llog_undo_upd_dta_lk:
+            interested = 1;
+            if (rec->dtafile >= 1) {
+                struct blob_recs brecs = {0};
+                struct blob_recs *pbrecs = NULL;
+                listc_rfl(&pCur->log->impl->recs, rec);
+                brecs.genid = rec->genid;
+                pbrecs = hash_find(data->blob_hash, &brecs);
+                if (pbrecs) {
+                    listc_abl(&pbrecs->recs, rec);
+                } else {
+                    pbrecs = calloc(1, sizeof(struct blob_recs));
+                    if (pbrecs == NULL) {
+                        logmsg(LOGMSG_ERROR,
+                               "%s:%d failed to malloc blob rec\n", __func__,
+                               __LINE__);
+                        rc = -1;
+                        goto done;
+                    }
+                    pbrecs->genid = rec->genid;
+                    listc_init(&pbrecs->recs,
+                               offsetof(bdb_osql_log_rec_t, lnk));
+                    listc_abl(&pbrecs->recs, rec);
+                    hash_add(data->blob_hash, pbrecs);
+                }
+            }
+            break;
+        default:
+            break;
+        }
+    }
+
     if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0)) != 0) {
         logmsg(LOGMSG_ERROR, "%s:%d failed to get log-cursor %d\n", __func__,
                __LINE__, rc);
-        return -1;
+        rc = -1;
+        goto done;
+    }
+
+    if (!interested) {
+        /* nothing to do */
+        rc = 0;
+        goto done;
     }
 
 again:
@@ -1914,7 +2035,7 @@ again:
             rc = -1;
             goto done;
         }
-        rc = live_sc_redo_logical_rec(data, logc, rec);
+        rc = live_sc_redo_logical_rec(data, logc, rec, &logdta);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "[%s] redo failed at record lsn[%u:%u] table[%s] type[%d] "
@@ -1943,10 +2064,14 @@ done:
             rc = trans_commit(&data->iq, data->trans, gbl_mynode);
     }
 
+    clear_blob_hash(data->blob_hash);
     data->trans = NULL;
     if (rc && !data->s->sc_thd_failed)
         data->s->sc_thd_failed = -1;
-    logc->close(logc, 0);
+    if (logc)
+        logc->close(logc, 0);
+    if (logdta.data)
+        free(logdta.data);
     bdb_osql_log_destroy(pCur->log);
     pCur->log = NULL;
     return rc;
@@ -1979,6 +2104,14 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     pCur->minLsn = data->start_lsn;
 
     data->iq.usedb = data->to;
+
+    data->blob_hash = hash_init_o(offsetof(struct blob_recs, genid),
+                                  sizeof(unsigned long long));
+    if (!data->blob_hash) {
+        logmsg(LOGMSG_ERROR, "%s: failed to init blob hash\n", __func__);
+        data->s->iq->sc_should_abort = 1;
+        goto cleanup;
+    }
 
     while (1) {
         if (bdb_llog_cursor_next(pCur) != 0) {
@@ -2015,6 +2148,9 @@ cleanup:
     /* restore our  thread type to what it was before */
     if (oldtype != THRTYPE_UNKNOWN)
         thrman_change_type(thr_self, oldtype);
+
+    if (data->blob_hash)
+        hash_free(data->blob_hash);
 
     sc_printf(data->s,
               "[%s] logical redo thread exiting, log cursor at [%u:%u]\n",

@@ -61,6 +61,7 @@ struct convert_record_data {
     struct common_members *cmembers;
     unsigned int write_count; // saved write counter to this tbl
     DB_LSN start_lsn;
+    hash_t *blob_hash;
 };
 
 int convert_all_records(struct dbtable *from, struct dbtable *to,

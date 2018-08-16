@@ -923,8 +923,8 @@ static int unpack_logical_record(logicalops_cursor *pCur)
                    break;
                    */
             default:
-                logmsg(LOGMSG_INFO, "%s line %d skipping %d\n", __func__, __LINE__,
-                        rec->type);
+                logmsg(LOGMSG_DEBUG, "%s line %d skipping %d\n", __func__,
+                       __LINE__, rec->type);
                 break;
         }
         free(rec);
