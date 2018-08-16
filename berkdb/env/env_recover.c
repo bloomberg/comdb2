@@ -2153,5 +2153,6 @@ __env_find_verify_recover_start(dbenv, lsnp)
 err:
 	if (logc)
 		(void)__log_c_close(logc);
+	__os_ufree(dbenv, rec.data);
 	return (ret);
 }
