@@ -30,6 +30,14 @@ function get_master
     $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
 }
 
+function truncate_log
+{
+    [[ $debug == "1" ]] && set -x
+    typeset lsn="$1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$lsn\")"
+    sleep $sleeptime
+}
+
 function assert_notable
 {
     [[ $debug == "1" ]] && set -x
@@ -67,6 +75,21 @@ function assert_select_sp
     echo "> Assert select_sp is the same"
     typeset curr_sp=$(select_sp)
     [[ "$prev_sp" != "$curr_sp" ]] && failexit "select_sp changed"
+}
+
+function select_t1
+{
+    [[ $debug == "1" ]] && set -x
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "exec procedure select_t1()"
+}
+
+function assert_select_t1
+{
+    [[ $debug == "1" ]] && set -x
+    typeset prev_rn="$1"
+    echo "> Assert select_t1 procedure is the same"
+    typeset curr_rn=$(select_t1)
+    [[ "$prev_rn" != "$curr_rn" ]] && failexit "return_number sp changed"
 }
 
 function return_number
@@ -122,21 +145,19 @@ function add_tables
     echo "> Creating t1 and inserting three records"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
-    after_1_lsn=$(get_current_lsn)
-    after_t_sa=$(select_all)
+    add_tables_lsn_1=$(get_current_lsn)
+    add_tables_sal_1=$(select_all)
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(2)"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(3)"
     assert_count t1 3
 
     echo "> Truncating t1 to one record"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$after_1_lsn\")"
-    sleep $sleeptime
+    truncate_log "$add_tables_lsn_1"
     assert_count t1 1
-    assert_select_all "$after_t_sa"
+    assert_select_all "$add_tables_sal_1"
 
     echo "> Truncating to before t1"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$begin_lsn\")"
-    sleep $sleeptime
+    truncate_log "$begin_lsn"
     assert_notable t1
 }
 
@@ -156,7 +177,7 @@ function drop_tables
     assert_count t2 1
     assert_count t3 1
 
-    after_3_lsn=$(get_current_lsn)
+    drop_tables_lsn=$(get_current_lsn)
     echo "> Dropping t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
     echo "> Dropping t2"
@@ -166,8 +187,7 @@ function drop_tables
 
     echo "> Truncating to before table drops"
     master=$(get_master)
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$after_3_lsn\")"
-    sleep $sleeptime
+    truncate_log "$drop_tables_lsn"
     assert_count t1 1
     assert_count t2 1
     assert_count t3 1
@@ -198,7 +218,7 @@ function truncate_tables
     assert_count t1 1
     assert_count t2 1
     assert_count t3 1
-    before_truncate_lsn=$(get_current_lsn)
+    truncate_tables_lsn=$(get_current_lsn)
 
     echo "> Truncating tables"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate table t1"
@@ -209,15 +229,13 @@ function truncate_tables
     assert_count t3 0
 
     echo "> Truncating logs to before table truncates"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$before_truncate_lsn\")"
-    sleep $sleeptime
+    truncate_log "$truncate_tables_lsn"
     assert_count t1 1
     assert_count t2 1
     assert_count t3 1
 
     echo "> Truncating to before table creates"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$begin_lsn\")"
-    sleep $sleeptime
+    truncate_log "$begin_lsn"
     assert_notable t1
     assert_notable t2
     assert_notable t3
@@ -240,41 +258,41 @@ function alter_table_options
     assert_count t1 1
     assert_count t2 1
     assert_count t3 1
-    before_alter_options_lsn_1=$(get_current_lsn)
-    before_alter_options_sal_1=$(select_all)
-    before_alter_options_stc_1=$(stat_compr)
+    alter_table_lsn_1=$(get_current_lsn)
+    alter_table_sal_1=$(select_all)
+    alter_table_stc_1=$(stat_compr)
 
     echo "> Altering tables adding ODH"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 options rebuild, ipu off, isc off, rec none, blobfield none { schema { int a } }"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t2 options rebuild, ipu off, isc off, rec none, blobfield none { schema { int a } }"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t3 options rebuild, ipu off, isc off, rec none, blobfield none { schema { int a } }"
-    added_odh_lsn_2=$(get_current_lsn)
-    added_odh_sal_2=$(select_all)
-    added_odh_stc_2=$(stat_compr)
+    alter_table_lsn_2=$(get_current_lsn)
+    alter_table_sal_2=$(select_all)
+    alter_table_stc_2=$(stat_compr)
 
     echo "> Altering tables adding compression"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 options rebuild, ipu off, isc off { schema { int a } }"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t2 options rebuild, ipu off, isc off { schema { int a } }"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t3 options rebuild, ipu off, isc off { schema { int a } }"
-    added_comp_lsn_3=$(get_current_lsn)
-    added_comp_sal_3=$(select_all)
-    added_comp_stc_3=$(stat_compr)
+    alter_table_lsn_3=$(get_current_lsn)
+    alter_table_sal_3=$(select_all)
+    alter_table_stc_3=$(stat_compr)
 
     echo "> Altering tables adding ipu/isc"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 { schema { int a } }"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t2 { schema { int a } }"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t3 { schema { int a } }"
-    added_all_lsn_4=$(get_current_lsn)
-    added_all_sal_4=$(select_all)
-    added_all_stc_4=$(stat_compr)
+    alter_table_lsn_4=$(get_current_lsn)
+    alter_table_sal_4=$(select_all)
+    alter_table_stc_4=$(stat_compr)
 
     echo "> Altering tables adding blobs"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 add b blob"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t2 add b blob"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t3 add b blob"
-    added_blob_lsn_5=$(get_current_lsn)
-    added_blob_sal_5=$(select_all)
-    added_blob_stc_5=$(stat_compr)
+    alter_table_lsn_5=$(get_current_lsn)
+    alter_table_sal_5=$(select_all)
+    alter_table_stc_5=$(stat_compr)
 
     echo "> Dropping tables"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
@@ -285,41 +303,35 @@ function alter_table_options
     assert_notable t3
 
     echo "> Truncating to added blobs"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$added_blob_lsn_5\")"
-    sleep $sleeptime
-    assert_stat_compr "$added_blob_stc_5"
-    assert_select_all "$added_blob_sal_5"
+    truncate_log "$alter_table_lsn_5"
+    assert_stat_compr "$alter_table_stc_5"
+    assert_select_all "$alter_table_sal_5"
 
     echo "> Truncating to added ipu/isc"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$added_all_lsn_4\")"
-    sleep $sleeptime
-    assert_stat_compr "$added_all_stc_4"
-    assert_select_all "$added_all_sal_4"
+    truncate_log "$alter_table_lsn_4"
+    assert_stat_compr "$alter_table_stc_4"
+    assert_select_all "$alter_table_sal_4"
 
     echo "> Truncating to added compression"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$added_comp_lsn_3\")"
-    sleep $sleeptime
-    assert_stat_compr "$added_comp_stc_3"
-    assert_select_all "$added_comp_sal_3"
+    truncate_log "$alter_table_lsn_3"
+    assert_stat_compr "$alter_table_stc_3"
+    assert_select_all "$alter_table_sal_3"
 
     echo "> Truncating to added ODH"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$added_odh_lsn_2\")"
-    sleep $sleeptime
-    assert_stat_compr "$added_odh_stc_2"
-    assert_select_all "$added_odh_sal_2"
+    truncate_log "$alter_table_lsn_2"
+    assert_stat_compr "$alter_table_stc_2"
+    assert_select_all "$alter_table_sal_2"
 
     echo "> Truncating to old options"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$before_alter_options_lsn_1\")"
-    sleep $sleeptime
-    assert_stat_compr "$before_alter_options_stc_1"
-    assert_select_all "$before_alter_options_sal_1"
+    truncate_log "$alter_table_lsn_1"
+    assert_stat_compr "$alter_table_stc_1"
+    assert_select_all "$alter_table_sal_1"
     assert_count t1 1
     assert_count t2 1
     assert_count t3 1
 
     echo "> Truncating to before table creates"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$begin_lsn\")"
-    sleep $sleeptime
+    truncate_log "$begin_lsn"
     assert_notable t1
     assert_notable t2
     assert_notable t3
@@ -332,9 +344,9 @@ function luasp
     echo "> Creating t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int, b blob)"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1, x'12')"
-    created_procedure_lsn_1=$(get_current_lsn)
-    created_procedure_sal_1=$(select_all)
-    created_procedure_rtn_1=$(select_sp)
+    luasp_lsn_1=$(get_current_lsn)
+    luasp_sal_1=$(select_all)
+    luasp_rtn_1=$(select_sp)
 
     echo "> Creating return_number:v1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF'
@@ -344,10 +356,10 @@ local function main()
 end
 }$$
 EOF
-    created_procedure_lsn_2=$(get_current_lsn)
-    created_procedure_sal_2=$(select_all)
-    created_procedure_ssp_2=$(select_sp)
-    created_procedure_rtn_2=$(return_number)
+    luasp_lsn_2=$(get_current_lsn)
+    luasp_sal_2=$(select_all)
+    luasp_ssp_2=$(select_sp)
+    luasp_rtn_2=$(return_number)
 
     echo "> Creating return_number:v2"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF'
@@ -357,34 +369,101 @@ local function main()
 end
 }$$
 EOF
-    created_procedure_lsn_3=$(get_current_lsn)
-    created_procedure_sal_3=$(select_all)
-    created_procedure_ssp_3=$(select_sp)
-    created_procedure_rtn_3=$(return_number)
+    luasp_lsn_3=$(get_current_lsn)
+    luasp_sal_3=$(select_all)
+    luasp_ssp_3=$(select_sp)
+    luasp_rtn_3=$(return_number)
 
     echo "> Making v2 default sp"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - "put default procedure return_number 'v2'"
-    created_procedure_lsn_4=$(get_current_lsn)
-    created_procedure_sal_4=$(select_all)
-    created_procedure_ssp_4=$(select_sp)
-    created_procedure_rtn_4=$(return_number)
+    luasp_lsn_4=$(get_current_lsn)
+    luasp_sal_4=$(select_all)
+    luasp_ssp_4=$(select_sp)
+    luasp_rtn_4=$(return_number)
 
-    echo "> Creating sp1-v2"
+    echo "> Dropping v1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - "drop procedure return_number 'v1'"
+    luasp_lsn_5=$(get_current_lsn)
+    luasp_sal_5=$(select_all)
+    luasp_ssp_5=$(select_sp)
+    luasp_rtn_5=$(return_number)
+
+    echo "> Creating select_t1:v1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF'
-create procedure select_t1 version 'v2' {
+create procedure select_t1 version 'v1' {
 local function main()
-    for i = 1, 5 do
-        local stmt1 = db:prepare("select * from t1")
-        db:emit(stmt1:fetch())
-    end
+    local t1 = db:table("t1")
+    t1:where(1)
+    t1:emit()
 end
 }$$
 EOF
-    created_procedure1v2_lsn_4=$(get_current_lsn)
-    created_procedure1v2_sal_4=$(select_all)
-    created_procedure1v2_ssp_4=$(select_sp)
+    luasp_lsn_6=$(get_current_lsn)
+    luasp_sal_6=$(select_all)
+    luasp_ssp_6=$(select_sp)
+    luasp_rtn_6=$(return_number)
+    luasp_st1_6=$(select_t1)
 
+    echo "> Altering t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 add b blob"
+    luasp_lsn_7=$(get_current_lsn)
+    luasp_sal_7=$(select_all)
+    luasp_ssp_7=$(select_sp)
+    luasp_rtn_7=$(return_number)
+    luasp_st1_7=$(select_t1)
 
+    echo "> Dropping t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+    assert_notable t1
+
+    echo "> Truncating to altered t1"
+    truncate_log "$luasp_lsn_7"
+    assert_select_t1 "$luasp_st1_7"
+    assert_return_number "$luasp_rtn_7"
+    assert_select_sp "$luasp_ssp_7"
+    assert_select_all "$luasp_sal_7"
+
+    echo "> Truncating to created select_t1"
+    truncate_log "$luasp_lsn_6"
+    assert_select_t1 "$luasp_st1_6"
+    assert_return_number "$luasp_rtn_6"
+    assert_select_sp "$luasp_ssp_6"
+    assert_select_all "$luasp_sal_6"
+
+    echo "> Truncating to existing return_number:v1"
+    truncate_log "$luasp_lsn_5"
+    assert_return_number "$luasp_rtn_5"
+    assert_select_sp "$luasp_ssp_5"
+    assert_select_all "$luasp_sal_5"
+
+    echo "> Truncating to make return_number:v2 default"
+    truncate_log "$luasp_lsn_4"
+    assert_return_number "$luasp_rtn_4"
+    assert_select_sp "$luasp_ssp_4"
+    assert_select_all "$luasp_sal_4"
+
+    echo "> Truncating to create return_number:v2"
+    truncate_log "$luasp_lsn_3"
+    assert_return_number "$luasp_rtn_3"
+    assert_select_sp "$luasp_ssp_3"
+    assert_select_all "$luasp_sal_3"
+
+    echo "> Truncating to create return_number:v1"
+    truncate_log "$luasp_lsn_2"
+    assert_return_number "$luasp_rtn_2"
+    assert_select_sp "$luasp_ssp_2"
+    assert_select_all "$luasp_sal_2"
+
+    echo "> Truncating to created table t1"
+    truncate_log "$luasp_lsn_1"
+    assert_select_sp "$luasp_ssp_1"
+    assert_select_all "$luasp_sal_1"
+
+    echo "> Truncating to before table create"
+    truncate_log "$begin_lsn"
+    assert_notable t1
+    assert_notable t2
+    assert_notable t3
 }
 
 add_tables
