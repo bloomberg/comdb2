@@ -22,6 +22,7 @@ limitations under the License.
 #include "queue.h"
 #include "dohsql.h"
 #include "sqlinterfaces.h"
+#include "memcompare.c"
 
 static int gbl_plugin_api_debug = 0;
 static int verbose = 1;
@@ -67,9 +68,15 @@ struct dohsql {
     int limitMem; /* limit address */
     int limit; /* any limit */
     int nrows; /* sent rows so far */
+    /* OFFSET support */
     int offsetMem; /* offset address */
     int offset; /* any offset */
     int skipped; /* how many rows where skipped so far */
+    /* ORDER BY support */
+    int filling;
+    int active;
+    int *order;
+    int top_idx;
 };
 typedef struct dohsql dohsql_t;
 
@@ -77,6 +84,9 @@ static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
                                       void *thddata, int op);
 static void sqlengine_work_shard(struct thdpool *pool, void *work,
                                    void *thddata);
+static int order_init(dohsql_t *conns);
+static int dohsql_dist_next_row_ordered(struct sqlclntstate *clnt,
+        sqlite3_stmt *stmt);
 
 #define GET_CLNT \
     struct sql_thread *thd = pthread_getspecific(query_info_key); \
@@ -323,7 +333,7 @@ static sqlite3_value* dohsql_dist_column_value(struct sqlclntstate *clnt, sqlite
 
 static void add_row(dohsql_t *conns, int i, row_t *row)
 {
-    if (conns->row) {
+    if (conns->row && conns->row_src) {
         /* put the used row in the free list */
         if (i != conns->row_src)
             pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
@@ -398,6 +408,73 @@ static int _get_a_parallel_row(dohsql_t *conns, row_t **prow)
     return rc;
 }
 
+static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    dohsql_t *conns = clnt->conns;
+    int rc;
+
+    rc = sqlite3_step(stmt);
+
+    if (verbose)
+        logmsg(LOGMSG_ERROR, "%s: sqlite3_step rc %d\n", __func__, rc);
+
+
+    fprintf(stderr, "checking clnt %p for conns %p limit %d offsetMem %d offset %d\n",
+            clnt, conns, conns->limitMem, conns->offsetMem, conns->offset);
+    if(conns->limitMem>0 && (!conns->offsetMem || !conns->offset)) {
+        conns->limit = sqlite3_value_int64(
+                &((Vdbe*)stmt)->aMem[conns->limitMem-1]);
+
+        if (verbose)
+            logmsg(LOGMSG_ERROR, "XXX: found limit %d\n", conns->limit);
+        assert(rc!=SQLITE_ROW || conns->limit!=0); /* sqlite planning */
+    }
+
+    if (rc == SQLITE_ROW)
+        return rc;
+
+    if (rc == SQLITE_DONE) {
+        conns->conns[0].rc = SQLITE_DONE;
+        return SQLITE_DONE;
+    }
+
+    _signal_children_master_is_done(conns);
+    return rc;
+}
+
+static int _check_limit(sqlite3_stmt *stmt, dohsql_t *conns)
+{
+    if (conns->limitMem>0 && conns->limit>=0 && conns->nrows >= conns->limit) {
+        fprintf(stderr, "REACHED LIMIT rc =%d!\n",
+                conns->conns[0].rc);
+        if(conns->conns[0].rc != SQLITE_DONE) {
+            fprintf(stderr, "RESET STMT!\n");
+            sqlite3_reset(stmt);
+        }
+
+        _signal_children_master_is_done(conns);
+        return SQLITE_DONE;
+    }
+
+    return SQLITE_OK;
+}
+
+static int _check_offset(dohsql_t *conns)
+{
+    if (conns->offsetMem && conns->skipped < conns->offset) {
+        conns->skipped++;
+        if (verbose)
+            logmsg(LOGMSG_ERROR, "XXX: skipped client %d row skipped %d, offset =%d\n",
+                    conns->row_src, conns->skipped, conns->offset);
+        /* skip it */
+        return SQLITE_OK;
+    } 
+
+    logmsg(LOGMSG_ERROR, "XXX: returned source %d row\n",
+            conns->row_src);
+    return SQLITE_ROW;
+}
+
 /**
  * this is a non-ordered merge of N engine outputs 
  *
@@ -412,48 +489,18 @@ static int dohsql_dist_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     if (verbose)
         logmsg(LOGMSG_ERROR, "%s: start\n", __func__);
     if(conns->nrows == 0) {
-        rc = sqlite3_step(stmt);
-
-        if (verbose)
-            logmsg(LOGMSG_ERROR, "%s: sqlite3_step rc %d\n", __func__, rc);
-
-
-        fprintf(stderr, "checking clnt %p for conns %p limit %d offsetMem %d offset %d\n",
-            clnt, conns, conns->limitMem, conns->offsetMem, conns->offset);
-        if(conns->limitMem>0 && (!conns->offsetMem || !conns->offset)) {
-            conns->limit = sqlite3_value_int64(
-                    &((Vdbe*)stmt)->aMem[conns->limitMem-1]);
-
-            if (verbose)
-                logmsg(LOGMSG_ERROR, "XXX: found limit %d\n", conns->limit);
-            assert(rc!=SQLITE_ROW || conns->limit!=0); /* sqlite planning */
+        rc = init_next_row(clnt, stmt);
+        if (rc == SQLITE_ROW) {
+            add_row(conns, 0, NULL);
+            goto got_row;
         }
-
-        if (rc == SQLITE_DONE)
-            conns->conns[0].rc = SQLITE_DONE;
-        else {
-            if (rc == SQLITE_ROW) {
-                add_row(conns, 0, NULL);
-                goto got_row;
-            }
-
-            _signal_children_master_is_done(conns);
+        if (rc != SQLITE_DONE)
             return rc;
-        }
     }
 
-
-    if (conns->limitMem>0 && conns->limit>=0 && conns->nrows >= conns->limit) {
-        fprintf(stderr, "REACHED LIMIT rc =%d!\n",
-                conns->conns[0].rc);
-        if(conns->conns[0].rc != SQLITE_DONE) {
-            fprintf(stderr, "RESET STMT!\n");
-            sqlite3_reset(stmt);
-        }
-
-        _signal_children_master_is_done(conns);
-        return SQLITE_DONE;
-    }
+    rc = _check_limit(stmt, conns);
+    if (rc != SQLITE_OK)
+        return rc;
 
 wait_for_others:
     rc = 0;
@@ -497,17 +544,10 @@ wait_for_others:
 
 got_row:
     /* limit support */
-    if (conns->offsetMem && conns->skipped < conns->offset) {
-        conns->skipped++;
-        if (verbose)
-            logmsg(LOGMSG_ERROR, "XXX: skipped client %d row skipped %d, offset =%d\n",
-                    conns->row_src, conns->skipped, conns->offset);
-        /* skip it */
+    rc = _check_offset(conns);
+    if (rc != SQLITE_ROW)
         goto wait_for_others;
-    } else {
-        logmsg(LOGMSG_ERROR, "XXX: returned source %d row\n",
-                conns->row_src);
-    }
+
     conns->nrows++;
     return SQLITE_ROW;
 }
@@ -761,7 +801,8 @@ static void _shard_disconnect(dohsql_connector_t *conn)
 static void _master_clnt_set(struct sqlclntstate *clnt)
 {
     clnt->plugin.column_count = dohsql_dist_column_count;
-    clnt->plugin.next_row = dohsql_dist_next_row;
+    clnt->plugin.next_row = (clnt->conns->order)?
+        dohsql_dist_next_row_ordered:dohsql_dist_next_row;
     clnt->plugin.column_type = dohsql_dist_column_type;
     clnt->plugin.column_int64 = dohsql_dist_column_int64;
     clnt->plugin.column_double = dohsql_dist_column_double;
@@ -801,6 +842,12 @@ int dohsql_distribute(dohsql_node_t *node)
     conns->conns = (dohsql_connector_t*)(conns+1);
     conns->nconns = node->nnodes;
     conns->ncols = node->ncols;
+    if (node->has_order) {
+        if (order_init(conns)) {
+            free(conns);
+            return SHARD_ERR_MALLOC;
+        }
+    }
     clnt->conns = conns;
     fprintf(stderr, "SET clnt=%p to conns=%p\n", clnt, clnt->conns);
     /* augment interface */
@@ -849,6 +896,8 @@ int dohsql_end_distribute(struct sqlclntstate *clnt)
         _shard_disconnect(&conns->conns[i]);
     }
 
+    if (clnt->conns->order)
+        free(clnt->conns->order);
     free(clnt->conns);
     _master_clnt_reset(clnt);
     clnt->conns = NULL;
@@ -896,11 +945,11 @@ void comdb2_register_limit(Select *p)
 {
     GET_CLNT;
 
-    fprintf(stderr, "checking clnt %p for conns %p\n", 
-            clnt, clnt->conns);
 
     if (unlikely(clnt->conns)) {
         clnt->conns->limitMem = p->iLimit+1;
+        fprintf(stderr, "checking clnt %p for conns %p limit register %d\n", 
+                clnt, clnt->conns, p->iLimit);
     }
 }
 
@@ -914,7 +963,8 @@ void comdb2_register_offset(Select *p)
 }
 
 
-#define DOHSQL_MASTER (clnt->plugin.next_row == dohsql_dist_next_row)
+#define DOHSQL_MASTER (clnt->plugin.next_row == dohsql_dist_next_row || \
+        clnt->plugin.next_row == dohsql_dist_next_row_ordered)
 /*
  * sqlite calls this every time we skip a row
  * offset is > 0
@@ -966,3 +1016,277 @@ void comdb2_handle_offset(Vdbe *v, Mem *m)
 }
 
 
+static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
+{
+    int *order  = conns->order;
+    row_t *a,*b;
+    int i;
+    int ret;
+   
+    if (idx_a == idx_b)
+        return 0;  
+    
+    a = conns->conns[order[idx_a]].que->lst.top->obj;
+    b = conns->conns[order[idx_b]].que->lst.top->obj;
+
+    for(i=0; i< conns->ncols; i++) {
+        ret = sqlite3MemCompare(&a[i], &b[i], NULL);
+        if (ret)
+            return ret;
+    }
+    return 0;
+}
+
+int _pos(dohsql_t *conns, int index)
+{
+    int left;
+    int right;
+    int pivot;
+/*
+    if (conns->filling == 0)
+        return conns->top_idx;
+*/
+    left = conns->top_idx;
+    right = (conns->top_idx+conns->filling/*-1*/)%conns->nconns;
+
+    if (left> right) {
+        if (_cmp(conns, index, conns->nconns-1)<0) {
+            right = conns->nconns-1;
+        } else {
+            left = 0;
+        }
+    }
+
+    while (left<right) {
+        pivot = left + (right-left)/2;
+        if (_cmp (conns, index, pivot) < 0 ) {
+            right = pivot;
+            continue;
+        }
+        left = pivot+1;
+    }
+
+    return left;
+}
+
+static int q_top(dohsql_t *conns)
+{
+    int *order = conns->order;
+    int ret = conns->top_idx;
+    int ret_val = order[ret];
+    int last;
+
+    assert(conns->filling>0);
+
+    conns->top_idx = (conns->top_idx+1)%conns->nconns;
+    conns->filling--;
+   
+    if (conns->active < conns->nconns) {
+        last = (conns->top_idx+conns->active-1)%conns->nconns;
+        order[last] = order[ret];
+        order[ret] = -1;
+    }
+    if(verbose)  {
+        int i;
+        logmsg(LOGMSG_ERROR, "Order Free: top_idx=%d filling=%d active=%d nconns=%d\n[",
+                conns->top_idx, conns->filling, conns->active, conns->nconns);
+        for(i=0;i<conns->nconns;i++) {
+            logmsg(LOGMSG_ERROR, "(%d, %d, %d) ",
+                    order[i], (order[i]>=0)?conns->conns[order[i]].rc:-1,
+                    (order[i]>=0)?queue_count(conns->conns[order[i]].que):-1);
+        }
+        logmsg(LOGMSG_ERROR, "]\n");
+    }
+
+
+    return ret_val;
+}
+
+static int q_insert(dohsql_t *conns, int indx)
+{
+    int* order = conns->order;
+    int pos = _pos(conns, indx);
+    int last = (conns->top_idx+conns->filling)%conns->nconns;
+    int saved = order[indx];
+    
+    if (pos > last) {
+        if (last > 0) {
+            memmove(&order[1], &order[0], last);
+        }
+        last = conns->nconns-1;
+        order[0] = order[last];
+    } 
+    if (pos < last) {
+        memmove(&conns->order[pos+1], &conns->order[pos], last-pos);
+    }
+    conns->order[pos] = saved;
+    conns->filling++;
+
+    if(verbose)  {
+        int i;
+        logmsg(LOGMSG_ERROR, "Order: top_idx=%d filling=%d active=%d nconns=%d\n[",
+                conns->top_idx, conns->filling, conns->active, conns->nconns);
+        for(i=0;i<conns->nconns;i++) {
+            logmsg(LOGMSG_ERROR, "(%d, %d, %d) ",
+                    order[i], (order[i]>=0)?conns->conns[order[i]].rc:-1,
+                    (order[i]>=0)?queue_count(conns->conns[order[i]].que):-1);
+        }
+        logmsg(LOGMSG_ERROR, "]\n");
+    }
+
+
+    return SHARD_NOERR;
+}
+
+#define Q_LOCK(x) pthread_mutex_lock(&conns->conns[x].mtx)
+#define Q_UNLOCK(x) pthread_mutex_unlock(&conns->conns[x].mtx)
+
+static void _move_client_done(dohsql_t *conns, int idx)
+{
+    int *order = conns->order;
+    int last;
+
+    last = (conns->top_idx+conns->active-1)%conns->nconns;
+    if (last!=idx)
+        order[idx] = order[last];
+    order[last] = -1;
+    conns->active--;
+}
+
+static void _move_client_row(dohsql_t *conns, int idx)
+{
+    int *order = conns->order;
+    int last;
+    /* flip to the non-ready pole-position */
+    last = (conns->top_idx+conns->filling)%conns->nconns;
+    if (last!=idx) 
+        order[idx] = order[last];
+    q_insert(conns, idx);
+}
+
+static int _local_step(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
+        int crt_idx)
+{
+    dohsql_t *conns = clnt->conns;
+
+    conns->conns[0].rc = init_next_row(clnt, stmt);
+    if (conns->conns[0].rc == SQLITE_ROW) {
+        queue_add(conns->conns[0].que, ((Vdbe*)stmt)->pResultSet);
+        _move_client_row(conns, crt_idx);
+    } else if (conns->conns[0].rc == SQLITE_DONE) {
+        _move_client_done(conns, crt_idx);
+    }  else {
+        return conns->conns[0].rc;
+    }
+    return SQLITE_OK;
+}
+
+static int dohsql_dist_next_row_ordered(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    dohsql_t *conns = clnt->conns;
+    int *order = conns->order;
+    int i;
+    int idx;
+    int found;
+    row_t *ret_row;
+    int rc = SQLITE_OK;
+    int que_idx;
+
+    if (verbose)
+        logmsg(LOGMSG_ERROR, "%s: start\n", __func__);
+    if(conns->nrows == 0) {
+        rc = _local_step(clnt, stmt, 0);
+        if(rc != SQLITE_OK)
+            return rc;
+    }
+
+    /* fast path: all channels ready, get the top; if there is 
+       another row ready, order that, return */
+retry_row:
+    if (conns->active == 0)
+        return SQLITE_DONE;
+
+    if (conns->filling == conns->active) {
+        /* merge-sort primed */
+        rc = _check_limit(stmt, conns);
+        if (rc != SQLITE_OK)
+            return rc;
+    
+        /* get the top */
+        found = q_top(conns);
+
+        Q_LOCK(found);
+        ret_row = queue_next(conns->conns[found].que);    
+        Q_UNLOCK(found);
+
+        if(verbose)
+            logmsg(LOGMSG_ERROR, "Retrieved client %d row %p\n",
+                    found, ret_row);
+
+        add_row(conns, found, ret_row);
+
+        rc = _check_offset(conns);
+        if (rc != SQLITE_ROW) {
+            goto retry_row;
+        }
+
+        conns->nrows++;
+
+        return SQLITE_ROW;
+    }
+
+
+    /* slow path: go through all the channels, if some are not ready, 
+       check to see if they have rows ready or done, if rows,
+       order them */
+    assert(conns->active>conns->filling);
+
+    int unready = conns->active-conns->filling;
+    int unready_start = conns->filling;
+    for(i=0; i<unready && rc==SQLITE_OK; i++) {
+        idx = (conns->top_idx+unready_start+i)%conns->nconns;
+        que_idx = order[idx];
+        assert(que_idx>=0);
+
+        if (que_idx) {
+            Q_LOCK(que_idx);
+            if (queue_count(conns->conns[que_idx].que) > 0) {
+                _move_client_row(conns, idx);
+            } else {
+                if (conns->conns[que_idx].rc == SQLITE_DONE) {
+                    _move_client_done(conns, idx);
+                } else if (conns->conns[que_idx].rc != SQLITE_ROW) {
+                    rc = conns->conns[que_idx].rc;    
+                    continue;
+                }
+            }
+            Q_UNLOCK(que_idx);
+        } else {
+            rc = _local_step(clnt, stmt, idx);
+            if (rc != SQLITE_OK)  {
+                continue;
+            }
+
+        }
+    }
+    if (rc != SQLITE_OK) return rc;
+    goto retry_row;
+}
+
+int order_init(dohsql_t *conns)
+{
+    int i;
+    conns->order =  (int*)calloc(sizeof(int), conns->nrows);
+
+    if (!conns->order)
+        return SHARD_ERR_MALLOC;
+
+    conns->active = conns->nconns;
+    conns->filling = 0;
+    conns->top_idx = 0;
+    for(i=0;i<conns->active; i++) {
+        conns->order[i] = i;
+    }
+   
+    return SHARD_NOERR;
+}

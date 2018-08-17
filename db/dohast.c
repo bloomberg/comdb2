@@ -51,21 +51,45 @@ char *generate_columns(sqlite3 *db, ExprList *c, const char **tbl)
     return cols;
 }
 
-char* sqlite_struct_to_string(Vdbe *v, Select *p, Expr* extraRows)
+static char* describeExprList(Vdbe *v, const ExprList *lst)
+{
+    char *ret;
+    char *tmp;
+    char *newterm;
+    int i;
+
+    ret = sqlite3ExprDescribe(v, lst->a[0].pExpr);
+    if (!ret)
+        return NULL;
+    for(i=1; i<lst->nExpr; i++) {
+        newterm = sqlite3ExprDescribe(v, lst->a[i].pExpr);
+        if (!newterm) {
+            sqlite3DbFree(v->db, ret);
+            return NULL;
+        }
+        tmp = sqlite3_mprintf("%s, %s", ret, newterm);
+        sqlite3DbFree(v->db, newterm);
+        sqlite3DbFree(v->db, ret);
+        ret = tmp;
+    }
+    
+    return ret;
+}
+
+char* sqlite_struct_to_string(Vdbe *v, Select *p, Expr* extraRows, int *has_order)
 {
     char *cols = NULL;
     const char *tbl = NULL;
     char *select = NULL;
-    char *selectPrior = NULL;
     char *where = NULL;
     sqlite3 *db = v->db;
     char *limit = NULL;
     char *offset = NULL;
     char *extra = NULL;
+    char *orderby = NULL;
 
     if (p->recording) return NULL; /* no selectv */
     if (p->pWith) return NULL; /* no CTE */
-    if (p->pOrderBy) return NULL; /* no order by */
     if (p->pHaving) return NULL; /* no having */
     if (p->pGroupBy) return NULL; /* no group by */
     if (p->pSrc->nSrc>1) return NULL; /* no joins */
@@ -76,20 +100,31 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p, Expr* extraRows)
         if (!where) return NULL;
     }
 
+    if (p->pOrderBy) {
+        orderby = describeExprList(v, p->pOrderBy);
+        if(!orderby) {
+            sqlite3DbFree(db, where);
+            return NULL;
+        }
+        *has_order = 1;
+    }
+
     cols = generate_columns(db, p->pEList, &tbl);
     if(!cols) {
-        if (where) sqlite3DbFree(db, where);
+        sqlite3DbFree(db, orderby);
+        sqlite3DbFree(db, where);
         return NULL;
     }
 
     if (!p->pLimit) {
-        select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s",
-                (selectPrior)?selectPrior:"", (selectPrior)?" uNioN aLL ":"",
+        select = sqlite3_mprintf("SeLeCT %s FRoM %s%s%s%s%s",
                 cols, tbl,
-                (where)?" WHeRe ":"", (where)?where:"");
+                (where)?" WHeRe ":"", (where)?where:"",
+                (orderby)?" oRDeR By ":"", (orderby)?orderby:"");
     } else {
         limit = sqlite3ExprDescribe(v, p->pLimit);
         if (!limit) {
+            sqlite3DbFree(db, orderby);
             sqlite3DbFree(db, where);
             sqlite3DbFree(db, cols);
             return NULL;
@@ -98,31 +133,36 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p, Expr* extraRows)
             offset = sqlite3ExprDescribe(v, p->pOffset);
             if (!offset ) {
                 sqlite3DbFree(db, limit);
+                sqlite3DbFree(db, orderby);
                 sqlite3DbFree(db, where);
                 sqlite3DbFree(db, cols);
                 return NULL;
             }
-            select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s LiMit %s oFFSeT %s",
-                    (selectPrior)?selectPrior:"", (selectPrior)?" uNioN aLL ":"",
+            select = sqlite3_mprintf("SeLeCT %s FRoM %s%s%s%s%s LiMit %s oFFSeT %s",
                     cols, tbl,
-                    (where)?" WHeRe ":"", (where)?where:"", limit, offset);
+                    (where)?" WHeRe ":"", (where)?where:"",
+                    (orderby)?" oRDeR By ":"", (orderby)?orderby:"",
+                    limit, offset);
         } else if (!extraRows) {
-            select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s LiMit %s", 
-                    (selectPrior)?selectPrior:"", (selectPrior)?" uNioN aLL ":"",
+            select = sqlite3_mprintf("SeLeCT %s FRoM %s%s%s%s%s LiMit %s", 
                     cols, tbl,
-                    (where)?" WHeRe ":"", (where)?where:"", limit);
+                    (where)?" WHeRe ":"", (where)?where:"",
+                    (orderby)?" oRDeR By ":"", (orderby)?orderby:"",
+                    limit);
         } else {
             extra = sqlite3ExprDescribe(v, extraRows);
             if (!extra) {
                 sqlite3DbFree(db, limit);
+                sqlite3DbFree(db, orderby);
                 sqlite3DbFree(db, where);
                 sqlite3DbFree(db, cols);
                 return NULL;
             }
-            select = sqlite3_mprintf("%s%sSeLeCT %s FRoM %s%s%s LiMit (CaSe wHeN (%s)<0 THeN %s eLSe ((%s) + (%s)) eND)",
-                    (selectPrior)?selectPrior:"", (selectPrior)?" uNioN aLL ":"",
+            select = sqlite3_mprintf(
+                    "SeLeCT %s FRoM %s%s%s%s%s LiMit (CaSe wHeN (%s)<0 THeN %s eLSe ((%s) + (%s)) eND)",
                     cols, tbl,
                     (where)?" WHeRe ":"", (where)?where:"",
+                    (orderby)?" oRDeR By ":"", (orderby)?orderby:"",
                     limit, limit, limit, extra);
         }
     }
@@ -131,8 +171,8 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p, Expr* extraRows)
     if (extra) sqlite3DbFree(db, extra);
     if (offset) sqlite3DbFree(db, offset);
     if (limit) sqlite3DbFree(db, limit);
+    if (orderby) sqlite3DbFree(db, orderby);
     if (where) sqlite3DbFree(db, where);
-    if (selectPrior) sqlite3DbFree(db, where);
 
     return select;
 }
@@ -154,7 +194,7 @@ ast_t* ast_init(void)
 {
     ast_t *ast;
 
-    ast = malloc(sizeof(ast_t));
+    ast = calloc(1, sizeof(ast_t));
     if(!ast) return NULL;
 
     ast->nused = 0;
@@ -190,7 +230,7 @@ static dohsql_node_t* gen_oneselect(Vdbe *v, Select *p, Expr *extraRows)
 
     node->type = AST_TYPE_SELECT;
     p->pPrior = p->pNext = NULL;
-    node->sql = sqlite_struct_to_string(v, p, extraRows);
+    node->sql = sqlite_struct_to_string(v, p, extraRows, &node->has_order);
     p->pPrior = prior;
     p->pNext = next;
 
@@ -239,6 +279,8 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     node->nodes = (dohsql_node_t**)(node+1);
     node->nnodes = span;
     node->ncols = p->pEList->nExpr;
+    if(p->pOrderBy) 
+        node->has_order = 1;
 
     psub = node->nodes;
 
@@ -258,9 +300,12 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
 
     /* generate queries */
     while(crt) {
+        crt->pOrderBy = p->pOrderBy;
         *psub = gen_oneselect(v, crt, (pOffset!=p->pOffset)?pOffset:NULL);
         crt->pLimit = NULL;
         crt->pOffset = NULL;
+        if (crt!=p)
+            crt->pOrderBy = NULL;
 
         if(!(*psub)) {
             node_free(v, &node);
@@ -323,6 +368,8 @@ int ast_push(ast_t *ast, enum ast_type op, Vdbe *v, void* obj)
                 (ast->nalloc+AST_STACK_INIT)*sizeof(ast->stack[0]));
         if (!ast->stack)
             return -1;
+        bzero(&ast->stack[ast->nalloc],
+                AST_STACK_INIT*sizeof(ast->stack[0]));
         ast->nalloc += AST_STACK_INIT;
     }
 

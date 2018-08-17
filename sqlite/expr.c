@@ -5656,7 +5656,57 @@ static char* sqlite3ExprDescribe_inner(
 
       return print_mem(m);
     }
-    case TK_CASE:
+    case TK_CASE: {
+      char *ret = NULL;
+      char *tmp = NULL;
+      int i = 0;
+      int nelem = pExpr->x.pList->nExpr;
+      if (pExpr->pLeft) {
+        tmp = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+        if (!tmp)
+            return NULL;
+        ret = sqlite3_mprintf("case %s ", tmp);
+        sqlite3DbFree(v->db, tmp);
+      } else {
+        ret = sqlite3_mprintf("case ");
+      }
+      if (!ret) 
+        return NULL;
+
+      do { 
+        char *c = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i++].pExpr, atRuntime);
+        if (!c) {
+          sqlite3DbFree(v->db, ret);
+          return NULL;
+        }
+        if (i == nelem) {
+            assert(i>1);
+            tmp = sqlite3_mprintf("%s else %s", ret, c);
+            sqlite3DbFree(v->db, c);
+            sqlite3DbFree(v->db, ret);
+            ret = tmp;
+            break;
+        } else {
+          char *d = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i++].pExpr, atRuntime);
+          if (!d) {
+            sqlite3DbFree(v->db, c);
+            sqlite3DbFree(v->db, ret);
+            return NULL;
+          }
+          tmp = sqlite3_mprintf("%s when %s then %s", ret, c, d);
+          sqlite3DbFree(v->db, ret);
+          sqlite3DbFree(v->db, c);
+          sqlite3DbFree(v->db, d);
+          if(!tmp)
+            return NULL;
+
+          ret = tmp;
+          if (i == nelem) break;
+        }
+      } while(1);
+
+      return ret;
+    }
     case TK_WHEN:
     case TK_THEN:
     case TK_ELSE:
