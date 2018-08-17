@@ -3,6 +3,7 @@
 
 #include <phys_rep_lsn.h>
 #include <time.h>
+#include <comdb2.h>
 
 int truncate_log(unsigned int file, unsigned int offset, uint32_t flags);
 int truncate_timestamp(time_t timestamp);
