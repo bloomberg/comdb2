@@ -184,6 +184,7 @@ struct schema_change_type {
     int got_tablelock;
     int logical_livesc;
     int sc_thd_failed;
+    int schema_change;
 
     /*********************** temporary fields for table upgrade
      * ************************/

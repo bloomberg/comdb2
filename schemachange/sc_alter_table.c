@@ -447,7 +447,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
-    schema_change = changed = prepare_changes(s, db, newdb, &s->plan, &scinfo);
+    s->schema_change = changed =
+        prepare_changes(s, db, newdb, &s->plan, &scinfo);
     if (changed == SC_UNKNOWN_ERROR) {
         backout(newdb);
         cleanup_newdb(newdb);
@@ -456,7 +457,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     adjust_version(changed, &scinfo, s, db, newdb);
-    schema_change = changed = prepare_sc_plan(s, changed, db, newdb, &s->plan);
+    s->schema_change = changed =
+        prepare_sc_plan(s, changed, db, newdb, &s->plan);
     print_schemachange_info(s, db, newdb);
 
     /*************** open  tables ********************************************/

@@ -74,8 +74,6 @@ int rep_sync_save;
 int log_sync_save;
 int log_sync_time_save;
 
-int schema_change = SC_NO_CHANGE; /*static int schema_change_doomed = 0;*/
-
 int stopsc = 0; /* stop schemachange, so it can resume */
 
 inline int is_dta_being_rebuilt(struct scplan *plan)

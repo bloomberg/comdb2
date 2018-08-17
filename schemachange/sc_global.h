@@ -61,7 +61,6 @@ extern int rep_sync_save;
 extern int log_sync_save;
 extern int log_sync_time_save;
 
-extern int schema_change; /*static int schema_change_doomed = 0;*/
 extern int stopsc;        /* stop schemachange, so it can resume */
 
 int is_dta_being_rebuilt(struct scplan *plan);
