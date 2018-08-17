@@ -4927,6 +4927,7 @@ clipper_usage:
             if (ltok != 0)
                 gbl_memstat_freq = toknum(tok, ltok);
            logmsg(LOGMSG_USER, "auto report memstat every %d seconds\n", gbl_memstat_freq);
+#ifndef COMDB2MA_OMIT_DEBUG
         } else if (tokcmp(tok, ltok, "debug") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             if (ltok <= 0) {
@@ -4970,6 +4971,7 @@ clipper_usage:
             } else if (tokcmp(tok, ltok, "stop") == 0) {
                 comdb2ma_debug_stop();
             }
+#endif
         } else {
             while (ltok != 0) {
                 if (tokcmp(tok, ltok, "verbose") == 0)
