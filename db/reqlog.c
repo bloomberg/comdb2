@@ -1012,6 +1012,7 @@ static void reqlog_free_all(struct reqlogger *logger)
     struct logevent *event;
     struct print_event *pevent;
     struct tablelist *table;
+    int i, len;
 
     if (logger->error) {
         free(logger->error);
@@ -1037,6 +1038,11 @@ static void reqlog_free_all(struct reqlogger *logger)
         free(table);
     }
     assert(logger->tables == NULL);
+
+    for (i = 0, len = logger->ntables; i != len; ++i) {
+        free(logger->sqltables[i]);
+    }
+    free(logger->sqltables);
 }
 
 void reqlog_free(struct reqlogger *logger)
