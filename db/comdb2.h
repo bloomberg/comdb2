@@ -2717,7 +2717,7 @@ int add_key(struct ireq *iq, void *trans,
 
 int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
                    unsigned long long del_keys, const void *old_dta,
-                   blob_buffer_t *idx_blobs);
+                   blob_buffer_t *idx_blobs, int verify_retry);
 
 int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
                    const void *old_dta, unsigned long long newgenid,

@@ -188,7 +188,7 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
        " behind cursor - DELETE\n", genid, sc_genids[stripe]);
      */
 
-    int rc = del_new_record(iq, trans, genid, del_keys, old_dta, oldblobs);
+    int rc = del_new_record(iq, trans, genid, del_keys, old_dta, oldblobs, 1);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         /* Leave this trace in.  We want to know if live schema change

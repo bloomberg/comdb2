@@ -18,6 +18,7 @@
 #define INCLUDE_SC_RECORDS_H
 
 #include <build/db.h>
+#include <bdb/bdb_int.h>
 
 struct common_members {
     int64_t ndeadlocks;
@@ -35,6 +36,8 @@ struct convert_record_data {
     int isThread;
     struct schema_change_type *s;
     void *dta_buf;
+    void *old_dta_buf;
+    void *unpack_dta_buf;
     tran_type *trans;
     enum convert_scan_mode scanmode;
     int live, lastrrn, lasttime, outrc;
@@ -62,6 +65,8 @@ struct convert_record_data {
     unsigned int write_count; // saved write counter to this tbl
     DB_LSN start_lsn;
     hash_t *blob_hash;
+    struct odh odh;
+    struct odh oldodh;
 };
 
 int convert_all_records(struct dbtable *from, struct dbtable *to,

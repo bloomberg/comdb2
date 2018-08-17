@@ -19,9 +19,12 @@
 #include <poll.h>
 
 #include <bdb_fetch.h>
+#include "build/db.h"
+#include "dbinc/db_swap.h"
+#include "llog_auto.h"
+#include "llog_ext.h"
 #include "bdb_osqllog.h"
 #include "bdb_osql_log_rec.h"
-#include "dbinc/db_swap.h"
 
 #include "schemachange.h"
 #include "sc_records.h"
@@ -312,21 +315,25 @@ void convert_record_data_cleanup(struct convert_record_data *data)
         trans_abort(&data->iq, data->trans);
         data->trans = NULL;
     }
-
     if (data->dmp) {
         bdb_dtadump_done(data->from->handle, data->dmp);
         data->dmp = NULL;
     }
-
     free_blob_status_data(&data->blb);
     free_blob_buffers(data->freeblb,
                       sizeof(data->freeblb) / sizeof(data->freeblb[0]));
-
     if (data->dta_buf) {
         free(data->dta_buf);
         data->dta_buf = NULL;
     }
-
+    if (data->old_dta_buf) {
+        free(data->old_dta_buf);
+        data->old_dta_buf = NULL;
+    }
+    if (data->unpack_dta_buf) {
+        free(data->unpack_dta_buf);
+        data->unpack_dta_buf = NULL;
+    }
     if (data->rec) {
         free_db_record(data->rec);
         data->rec = NULL;
@@ -1780,12 +1787,149 @@ static void clear_blob_hash(hash_t *h)
     hash_clear(h);
 }
 
+static int reconstruct_blob_records(struct convert_record_data *data,
+                                    DB_LOGC *logc, struct blob_recs *pbrecs,
+                                    DBT *logdta)
+{
+    bdb_state_type *bdb_state = thedb->bdb_env;
+
+    u_int32_t rectype;
+    int rc, dtalen, page, index;
+    unsigned long long genid;
+    short dtafile, dtastripe;
+    llog_undo_del_dta_args *del_dta = NULL;
+    llog_undo_del_dta_lk_args *del_dta_lk = NULL;
+    llog_undo_add_dta_args *add_dta = NULL;
+    llog_undo_add_dta_lk_args *add_dta_lk = NULL;
+    llog_undo_upd_dta_args *upd_dta = NULL;
+    llog_undo_upd_dta_lk_args *upd_dta_lk = NULL;
+    void *free_ptr = NULL;
+
+    void *dtabuf = NULL;
+    int dtabuf_malloced = 0;
+    void *unpackbuf = NULL;
+
+    bdb_osql_log_rec_t *rec = NULL;
+    int blbix = 0;
+
+    free_blob_status_data(&data->blb);
+
+    LISTC_FOR_EACH(&pbrecs->recs, rec, lnk)
+    {
+        if ((rc = logc->get(logc, &rec->lsn, logdta, DB_SET)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d rc %d retrieving lsn %d:%d\n", __func__,
+                   __LINE__, rc, rec->lsn.file, rec->lsn.offset);
+            goto error;
+        }
+        LOGCOPY_32(&rectype, logdta->data);
+        assert(rectype == rec->type);
+
+        assert(rec->dtafile >= 1);
+        blbix = rec->dtafile - 1;
+        switch (rec->type) {
+        case DB_llog_undo_add_dta:
+        case DB_llog_undo_add_dta_lk:
+            break;
+        case DB_llog_undo_del_dta:
+        case DB_llog_undo_del_dta_lk:
+            if (rec->type == DB_llog_undo_del_dta_lk) {
+                if ((rc = llog_undo_del_dta_lk_read(
+                         bdb_state->dbenv, logdta->data, &del_dta_lk)) != 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n",
+                           __func__, __LINE__, rc);
+                    goto error;
+                }
+                genid = del_dta_lk->genid;
+                dtafile = del_dta_lk->dtafile;
+                dtastripe = del_dta_lk->dtastripe;
+                dtalen = del_dta_lk->dtalen;
+                free_ptr = del_dta_lk;
+            } else {
+                if ((rc = llog_undo_del_dta_read(bdb_state->dbenv, logdta->data,
+                                                 &del_dta)) != 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n",
+                           __func__, __LINE__, rc);
+                    goto error;
+                }
+                genid = del_dta->genid;
+                dtafile = del_dta->dtafile;
+                dtastripe = del_dta->dtastripe;
+                dtalen = del_dta->dtalen;
+                free_ptr = del_dta;
+            }
+            if (dtabuf && dtabuf_malloced < dtalen) {
+                free(dtabuf);
+                dtabuf_malloced = 0;
+            }
+            if (!dtabuf) {
+                dtabuf = malloc(dtalen);
+                if (!dtabuf) {
+                    logmsg(LOGMSG_ERROR, "%s:%d failed to malloc data buffer\n",
+                           __func__, __LINE__);
+                    goto error;
+                }
+            }
+            /* Reconstruct the delete. */
+            rc = bdb_reconstruct_delete(bdb_state, &rec->lsn, &page, &index,
+                                        NULL, 0, dtabuf, dtalen, &dtalen);
+
+            if ((rc = bdb_unpack(data->from->handle, dtabuf, dtalen, NULL, 0,
+                                 &data->odh, &unpackbuf)) != 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d error unpacking buf rc=%d\n",
+                       __func__, __LINE__, rc);
+                goto error;
+            }
+
+            data->blb.bloblens[blbix] = data->odh.length;
+            data->blb.bloboffs[blbix] = 0;
+            data->blb.blobptrs[blbix] = NULL;
+            if (unpackbuf) {
+                data->blb.blobptrs[blbix] = data->odh.recptr;
+            } else if (data->odh.length) {
+                data->blb.blobptrs[blbix] = malloc(data->odh.length);
+                if (!data->blb.blobptrs[blbix]) {
+                    logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob buffer\n",
+                           __func__, __LINE__);
+                    goto error;
+                }
+                memcpy(data->blb.blobptrs[blbix], data->odh.recptr,
+                       data->odh.length);
+            }
+            break;
+        case DB_llog_undo_upd_dta:
+        case DB_llog_undo_upd_dta_lk:
+            break;
+        default:
+            logmsg(LOGMSG_FATAL, "%s: unhandle logical record type %d\n",
+                   __func__, rec->type);
+            abort();
+        }
+        if (free_ptr) {
+            free(free_ptr);
+            free_ptr = NULL;
+        }
+        logmsg(LOGMSG_INFO,
+               "%s: [%s] redo lsn[%u:%u] type[%d] dtafile %d, "
+               "datastripe %d, genid %llx\n",
+               __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
+               rec->type, rec->dtafile, rec->dtastripe, rec->genid);
+    }
+    return 0;
+
+error:
+    if (free_ptr)
+        free(free_ptr);
+    if (dtabuf)
+        free(dtabuf);
+    return rc;
+}
+
 static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
                             bdb_osql_log_rec_t *rec, DBT *logdta)
 {
+    int rc = 0;
     struct blob_recs brecs = {0};
     struct blob_recs *pbrecs = NULL;
-    bdb_osql_log_rec_t *brec = NULL;
     logmsg(LOGMSG_INFO,
            "%s: [%s] redo lsn[%u:%u] type[ADD_DTA] rec->dtafile %d, "
            "rec->datastripe %d, rec->genid %llx\n",
@@ -1794,14 +1938,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     brecs.genid = rec->genid;
     pbrecs = hash_find(data->blob_hash, &brecs);
     if (pbrecs) {
-        LISTC_FOR_EACH(&pbrecs->recs, brec, lnk)
-        {
-            logmsg(LOGMSG_INFO,
-                   "%s: [%s] redo lsn[%u:%u] type[%d] dtafile %d, "
-                   "datastripe %d, genid %llx\n",
-                   __func__, data->s->table, brec->lsn.file, brec->lsn.offset,
-                   brec->type, brec->dtafile, brec->dtastripe, brec->genid);
-        }
+        rc = reconstruct_blob_records(data, logc, pbrecs, logdta);
     }
 
     return 0;
@@ -1810,47 +1947,120 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
 static int live_sc_redo_delete(struct convert_record_data *data, DB_LOGC *logc,
                                bdb_osql_log_rec_t *rec, DBT *logdta)
 {
+    bdb_state_type *bdb_state = thedb->bdb_env;
     struct blob_recs brecs = {0};
     struct blob_recs *pbrecs = NULL;
-    bdb_osql_log_rec_t *brec = NULL;
+
+    u_int32_t rectype;
+    int rc, dtalen, page, index;
+    unsigned long long genid;
+    short dtafile, dtastripe;
+    llog_undo_del_dta_args *del_dta = NULL;
+    llog_undo_del_dta_lk_args *del_dta_lk = NULL;
+
+    brecs.genid = rec->genid;
+    pbrecs = hash_find(data->blob_hash, &brecs);
+    if (pbrecs) {
+        rc = reconstruct_blob_records(data, logc, pbrecs, logdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d failed to reconstruct blob records rc %d\n", __func__,
+                   __LINE__, rc);
+            goto done;
+        }
+        bzero(data->freeblb, sizeof(data->freeblb));
+        blob_status_to_blob_buffer(&data->blb, data->freeblb);
+    }
+
+    if ((rc = logc->get(logc, &rec->lsn, logdta, DB_SET)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d rc %d retrieving lsn %d:%d\n", __func__,
+               __LINE__, rc, rec->lsn.file, rec->lsn.offset);
+        goto done;
+    }
+    LOGCOPY_32(&rectype, logdta->data);
+    assert(rectype == rec->type);
+    if (rec->type == DB_llog_undo_del_dta_lk) {
+        if ((rc = llog_undo_del_dta_lk_read(bdb_state->dbenv, logdta->data,
+                                            &del_dta_lk)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n", __func__,
+                   __LINE__, rc);
+            goto done;
+        }
+        genid = del_dta_lk->genid;
+        dtafile = del_dta_lk->dtafile;
+        dtastripe = del_dta_lk->dtastripe;
+        dtalen = del_dta_lk->dtalen;
+    } else {
+        if ((rc = llog_undo_del_dta_read(bdb_state->dbenv, logdta->data,
+                                         &del_dta)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n", __func__,
+                   __LINE__, rc);
+            goto done;
+        }
+        genid = del_dta->genid;
+        dtafile = del_dta->dtafile;
+        dtastripe = del_dta->dtastripe;
+        dtalen = del_dta->dtalen;
+    }
+
+    /* Reconstruct the delete. */
+    rc = bdb_reconstruct_delete(bdb_state, &rec->lsn, &page, &index, NULL, 0,
+                                data->dta_buf, dtalen, &dtalen);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to reconstruct delete rc=%d\n",
+               __func__, __LINE__, rc);
+        goto done;
+    }
+
+    if ((rc = bdb_unpack(data->from->handle, data->dta_buf, dtalen,
+                         data->unpack_dta_buf, data->from->lrl, &data->odh,
+                         NULL)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d error unpacking buf rc=%d\n", __func__,
+               __LINE__, rc);
+        goto done;
+    }
+
+    if ((rc = vtag_to_ondisk_vermap(data->from, data->odh.recptr, &dtalen,
+                                    data->odh.csc2vers)) <= 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d vtag-to-ondisk error rc=%d\n", __func__,
+               __LINE__, rc);
+        goto done;
+    }
+    printf("dtalen %d\n", dtalen);
+    fsnapf(stdout, data->odh.recptr, dtalen);
+
+    data->iq.usedb = data->to;
+    rc = del_new_record(&data->iq, data->trans, genid, -1ULL, data->odh.recptr,
+                        data->freeblb, 0);
+    if (rc == ERR_VERIFY) {
+        /* not an error if we dont find it */
+        rc = 0;
+    }
+    data->iq.usedb = data->from;
+done:
     logmsg(LOGMSG_INFO,
            "%s: [%s] redo lsn[%u:%u] type[DEL_DTA] rec->dtafile %d, "
            "rec->datastripe %d, rec->genid %llx\n",
            __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
            rec->dtafile, rec->dtastripe, rec->genid);
-    brecs.genid = rec->genid;
-    pbrecs = hash_find(data->blob_hash, &brecs);
-    if (pbrecs) {
-        LISTC_FOR_EACH(&pbrecs->recs, brec, lnk)
-        {
-            logmsg(LOGMSG_INFO,
-                   "%s: [%s] redo lsn[%u:%u] type[%d] dtafile %d, "
-                   "datastripe %d, genid %llx\n",
-                   __func__, data->s->table, brec->lsn.file, brec->lsn.offset,
-                   brec->type, brec->dtafile, brec->dtastripe, brec->genid);
-        }
-    }
 
-    return 0;
+    free_blob_status_data(&data->blb);
+
+    if (del_dta)
+        free(del_dta);
+    if (del_dta_lk)
+        free(del_dta_lk);
+
+    return rc;
 }
 
 static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
                                bdb_osql_log_rec_t *rec, DBT *logdta)
 {
-    u_int32_t rectype;
     int rc = 0;
 
     struct blob_recs brecs = {0};
     struct blob_recs *pbrecs = NULL;
-    bdb_osql_log_rec_t *brec = NULL;
-
-    if ((rc = logc->get(logc, &rec->lsn, logdta, DB_SET)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s:%d rc %d retrieving lsn %d:%d\n", __func__,
-               __LINE__, rc, rec->lsn.file, rec->lsn.offset);
-        return -1;
-    }
-    LOGCOPY_32(&rectype, logdta->data);
-    assert(rectype == rec->type);
 
     logmsg(LOGMSG_INFO,
            "%s: [%s] redo lsn[%u:%u] type[UPD_DTA] rec->dtafile %d, "
@@ -1860,14 +2070,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
     brecs.genid = rec->genid;
     pbrecs = hash_find(data->blob_hash, &brecs);
     if (pbrecs) {
-        LISTC_FOR_EACH(&pbrecs->recs, brec, lnk)
-        {
-            logmsg(LOGMSG_INFO,
-                   "%s: [%s] redo lsn[%u:%u] type[%d] dtafile %d, "
-                   "datastripe %d, genid %llx\n",
-                   __func__, data->s->table, brec->lsn.file, brec->lsn.offset,
-                   brec->type, brec->dtafile, brec->dtastripe, brec->genid);
-        }
+        rc = reconstruct_blob_records(data, logc, pbrecs, logdta);
     }
 
     return 0;
@@ -2109,6 +2312,14 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                                   sizeof(unsigned long long));
     if (!data->blob_hash) {
         logmsg(LOGMSG_ERROR, "%s: failed to init blob hash\n", __func__);
+        data->s->iq->sc_should_abort = 1;
+        goto cleanup;
+    }
+    data->dta_buf = malloc(data->from->lrl + ODH_SIZE);
+    data->old_dta_buf = malloc(data->from->lrl + ODH_SIZE);
+    data->unpack_dta_buf = malloc(data->from->lrl + ODH_SIZE);
+    if (!data->dta_buf || !data->old_dta_buf || !data->unpack_dta_buf) {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc buffer\n", __func__);
         data->s->iq->sc_should_abort = 1;
         goto cleanup;
     }

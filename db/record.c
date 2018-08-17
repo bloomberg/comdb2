@@ -2722,7 +2722,7 @@ err:
  */
 int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
                    unsigned long long del_keys, const void *old_dta,
-                   blob_buffer_t *del_idx_blobs)
+                   blob_buffer_t *del_idx_blobs, int verify_retry)
 {
     int retrc = 0;
     void *sc_old = NULL;
@@ -2828,7 +2828,7 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
 
         /* workaround a bug in current schema change; if we somehow
            fail to find the row in the new btree, try again */
-        if (rc == ERR_VERIFY)
+        if (rc == ERR_VERIFY && verify_retry)
             rc = RC_INTERNAL_RETRY;
 
         if (rc != 0) {
