@@ -337,7 +337,7 @@ struct Stat4Sample {
 };                                                    
 struct Stat4Accum {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  tRowcnt nActualRow;       /* Number of rows in ??? */
+  i64 nActualRow;           /* Number of rows in ??? */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   tRowcnt nRow;             /* Number of rows in the entire table */
   tRowcnt nPSample;         /* How often to do a periodic sample */
@@ -549,7 +549,7 @@ static void statInit(
   p->db = db;
   p->nRow = 0;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  p->nActualRow = (tRowcnt)sqlite3_value_int64(argv[2]);
+  p->nActualRow = sqlite3_value_int64(argv[2]);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   p->nCol = nCol;
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
