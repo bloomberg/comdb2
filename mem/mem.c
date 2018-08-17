@@ -149,7 +149,7 @@ struct comdb2mspace {
     const char *thr_type; /* thread type.
                              we do not write it to name because an allocator
                              may be reused by another type of thread later on */
-    unsigned char debug : 1; /* Debugging flag. */
+    unsigned int debug : 1; /* Debugging flag. */
 
     size_t len;   /* length of name */
     char name[1]; /* name of the mspace */
