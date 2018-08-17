@@ -200,8 +200,9 @@ static void openStatTable(
   } aTable[] = {
     { "sqlite_stat1", "tbl,idx,stat" },
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    { "sqlite_stat4", "tbl,idx,neq,nlt,ndlt,sample" },
     { "sqlite_stat3", 0 },
+    { "sqlite_stat4", "tbl,idx,neq,nlt,ndlt,sample" },
+    { "sqlite_stat_NOT_USED", 0 }, /* DO NOT REMOVE */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if defined(SQLITE_ENABLE_STAT4)
     { "sqlite_stat4", "tbl,idx,neq,nlt,ndlt,sample" },
