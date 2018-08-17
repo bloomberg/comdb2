@@ -405,7 +405,7 @@ EOF
     luasp_st1_6=$(select_t1)
 
     echo "> Altering t1"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 add b blob"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 add c blob"
     luasp_lsn_7=$(get_current_lsn)
     luasp_sal_7=$(select_all)
     luasp_ssp_7=$(select_sp)
@@ -470,4 +470,4 @@ add_tables
 drop_tables
 truncate_tables
 alter_table_options
-#luasp
+luasp
