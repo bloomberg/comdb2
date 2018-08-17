@@ -1,7 +1,7 @@
+#include "truncate_log.h"
 #include "comdb2.h"
 #include "bdb_int.h"
 #include <time.h>
-#include "truncate_log.h"
 #include <phys_rep_lsn.h>
 
 #include <parse_lsn.h>
@@ -22,7 +22,6 @@ LOG_INFO handle_truncation(cdb2_hndl_tp* repl_db, LOG_INFO latest_info)
 
     logmsg(LOGMSG_WARN, "Rewind to lsn: {%u:%u}\n", match_lsn.file, match_lsn.offset);
 
-    /* TODO: Actually call truncation */
     truncate_log(match_lsn.file, match_lsn.offset, 1);
 
     return match_lsn;

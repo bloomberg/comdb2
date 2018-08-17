@@ -387,10 +387,47 @@ reopen:
         free(pagebuf);
 }
 
+std::string replace_dbname(const std::string& replaceWith, const std::string& dbname, 
+        std::string filepath)
+{
+    size_t pos = filepath.find(dbname);
+    if (pos == std::string::npos)
+    {
+        return filepath;
+    }
+    return filepath.replace(pos, dbname.length(), replaceWith);
+}
+
+bool is_changeable_file(const std::string& filepath)
+{
+    std::string changeable[] = {
+        ".llmeta.dta",
+        ".metadata.dta",
+        ".service",
+        ".txn",
+        "_file_vers_map",
+        ".fstblk.dta",
+        ".blkseq.dta",
+        ".blkseq.freerec",
+        ".blkseq.ix0"
+    };
+
+    for (auto chg : changeable)
+    {
+        if (filepath.find(chg) != std::string::npos)
+            return true;
+    }
+    return false;
+
+}
+
 
 static void serialise_log_files(
         const std::string& dbtxndir,
         const std::string& dbdir,
+        const std::string& dbname,
+        const std::string& repl_name,
+        bool rename,
         long long& log_number, bool complete_only)
 // Scan the dbtxndir directory for log files that we can archive, starting with
 // log file log_number.  If complete_only is set then we will only archive
@@ -423,6 +460,19 @@ static void serialise_log_files(
         std::cerr<<"Serializing "<<logfile<<std::endl;
         makeabs(absfile, dbtxndir, logfile);
         FileInfo fi(FileInfo::LOG_FILE, absfile, dbdir);
+
+        if (rename)
+        {
+            if (is_changeable_file(fi.get_filename()))
+            {
+                std::string somename = replace_dbname(repl_name, dbname,  
+                        fi.get_filename());
+                std::cerr << "Replace " << fi.get_filename() <<
+                    " with " << somename << "\n";
+                fi.set_filename(somename);
+            }
+        }
+
         serialise_file(fi);
         log_number++;
     }
@@ -667,6 +717,7 @@ void serialise_database(
     std::string dbname;
     std::string dbdir;
     std::string dbtxndir;
+    std::string phystxndir;
     bool nonames = false;
     bool has_cluster_info = false;
     std::string origlrlname("");
@@ -806,8 +857,10 @@ void serialise_database(
     // Calculate path of .txn directory
     if (nonames) {
         dbtxndir = dbdir + "/logs";
+        phystxndir = dbtxndir;
     } else {
         dbtxndir = dbdir + "/" + dbname + ".txn";
+        phystxndir = dbdir + "/" + repl_name + ".txn";
     }
 
     // We will need to list the files in the data directory and txn dir
@@ -1199,10 +1252,26 @@ void serialise_database(
                 }
             }
             if (islrl && strippedpath != "") {
+                /* never reached if copy physical */
                 FileInfo fi(FileInfo::SUPPORT_FILE, abspath, dbdir);
                 serialise_file(fi, iom, strippedpath);
             } else {
                 FileInfo fi(FileInfo::SUPPORT_FILE, abspath, dbdir);
+
+                /* if copy physical, enable file name swap. Skip lrl file, already done*/
+                if (copy_physical && !nonames)
+                {
+                    if (is_changeable_file(fi.get_filename()))
+                    {
+                        std::string somename = replace_dbname(repl_name, dbname,  
+                                fi.get_filename());
+                        std::cerr << "Replace " << fi.get_filename() <<
+                            " with " << somename << "\n";
+                        fi.set_filename(replace_dbname(repl_name, dbname, 
+                                    fi.get_filename()));
+                    }
+                }
+
                 serialise_file(fi, iom);
             }
             islrl = false;
@@ -1215,6 +1284,20 @@ void serialise_database(
                 abspath = *it;
                 makeabs(abspath, dbdir, *it);
                 FileInfo fi(FileInfo::OPTIONAL_FILE, abspath, dbdir);
+
+                if (copy_physical && !nonames)
+                {
+                    if (is_changeable_file(fi.get_filename()))
+                    {
+                        std::string somename = replace_dbname(repl_name, dbname,  
+                                fi.get_filename());
+                        std::cerr << "Replace optional file " << fi.get_filename() <<
+                            " with " << somename << "\n";
+                        fi.set_filename(replace_dbname(repl_name, dbname, 
+                                    fi.get_filename()));
+                    }
+                }
+
                 serialise_file(fi, iom);
             }
             catch (SerialiseError &err) {
@@ -1229,7 +1312,21 @@ void serialise_database(
             std::string absfile;
             std::cerr<<"Serializing checkpoint"<<std::endl;
             makeabs(absfile, dbtxndir, "checkpoint");
+
             FileInfo fi(FileInfo::LOG_FILE, absfile, dbdir);
+            if (copy_physical && !nonames)
+            {
+                if (is_changeable_file(fi.get_filename()))
+                {
+                    std::string somename = replace_dbname(repl_name, dbname,  
+                            fi.get_filename());
+                    std::cerr << "Replace support file " << fi.get_filename() <<
+                        " with " << somename << "\n";
+                    fi.set_filename(replace_dbname(repl_name, dbname, 
+                                fi.get_filename()));
+                }
+            }
+
             serialise_file(fi);
 
             long long log_number(lowest_log);
@@ -1242,17 +1339,33 @@ void serialise_database(
                 // directory and notify the running database that they can now be
                 // archived.
                 long long old_log_number(log_number);
-                serialise_log_files(dbtxndir, dbdir, log_number, true);
+                serialise_log_files(dbtxndir, dbdir, dbname, repl_name, 
+                        copy_physical && !nonames, log_number, true);
                 if(log_number != old_log_number && log_holder.get()) {
                     log_holder->release_log(log_number - 1);
                 }
 
                 // Ok, now serialise this file.
+                // change names if necessary
+                if (copy_physical && !nonames)
+                {
+                    if (is_changeable_file(it->get_filename()))
+                    {
+                        std::string somename = replace_dbname(repl_name, dbname,  
+                                it->get_filename());
+                        std::cerr << "Replace " << it->get_filename() <<
+                            " with " << somename << "\n";
+                        it->set_filename(replace_dbname(repl_name, dbname, 
+                                    it->get_filename()));
+                    }
+                }
+
                 serialise_file(*it, iom, "", incr_path, incr_create);
             }
 
             // Serialise all remaining log files, including incomplete ones
-            serialise_log_files(dbtxndir, dbdir, log_number, false);
+            serialise_log_files(dbtxndir, dbdir, dbname, repl_name,
+                    copy_physical && !nonames, log_number, false);
         }
 
     // Serialise files for incremental backup
@@ -1281,7 +1394,7 @@ void serialise_database(
         // TODO: Figure out how to serialise logs after each file without
         // disrupting the page data file
         long long old_log_number(log_number);
-        serialise_log_files(dbtxndir, dbdir, log_number, true);
+        serialise_log_files(dbtxndir, dbdir, "", "", false, log_number, true);
         if(log_number != old_log_number && log_holder.get()) {
             log_holder->release_log(log_number - 1);
         }
@@ -1336,7 +1449,7 @@ void serialise_database(
             // directory and notify the running database that they can now be
             // archived.
             long long old_log_number(log_number);
-            serialise_log_files(dbtxndir, dbdir, log_number, true);
+            serialise_log_files(dbtxndir, dbdir, "", "", false, log_number, true);
             if(log_number != old_log_number && log_holder.get()) {
                 log_holder->release_log(log_number - 1);
             }
@@ -1347,7 +1460,7 @@ void serialise_database(
 
 
         // Serialise all remaining log files, including incomplete ones
-        serialise_log_files(dbtxndir, dbdir, log_number, false);
+        serialise_log_files(dbtxndir, dbdir, "", "", false, log_number, false);
     }
 
     // Generate fingerprint SHA file

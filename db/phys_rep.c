@@ -1,3 +1,4 @@
+#include "phys_rep.h"
 #include <cdb2api.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,7 +12,6 @@
 #include "dbinc/rep_types.h"
 
 #include "comdb2.h"
-#include "phys_rep.h"
 #include "truncate_log.h"
 
 #include <parse_lsn.h>
@@ -187,7 +187,7 @@ static void* keep_in_sync(void* args)
             int broke_early = 0;
 
             /* our log matches, so apply each record log received */
-            while((rc = cdb2_next_record(repl_db)) == CDB2_OK)
+            while((rc = cdb2_next_record(repl_db)) == CDB2_OK && do_repl)
             {
                 /* check the generation id to make sure the master hasn't switched */
                 int64_t* rec_gen =  (int64_t *) cdb2_column_value(repl_db, 2);
@@ -209,7 +209,7 @@ static void* keep_in_sync(void* args)
             if ((!broke_early && rc != CDB2_OK_DONE ) || 
                     (broke_early && rc != CDB2_OK))
             {
-                logmsg(LOGMSG_ERROR, "Had an error %d\n", rc);
+                logmsg(LOGMSG_ERROR, "Had an error or broke early %d\n", rc);
                 fprintf(stderr, "rc=%d\n", rc);
             }
 
@@ -287,14 +287,6 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
         logmsg(LOGMSG_ERROR, "Could not parse lsn:%s\n", lsn);
     }    
 
-    /* check if we need to call new file flag */
-    if (prev_info.file < file)
-    {
-        rc = apply_log(thedb->bdb_env->dbenv, prev_info.file, 
-                get_next_offset(thedb->bdb_env->dbenv, prev_info), 
-                REP_NEWFILE, NULL, 0); 
-    }
-
     /* sleep while not ready to apply this log */
     if (gbl_deferred_phys_flag && timestamp)
     {
@@ -313,8 +305,25 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
         }
     }
     
-    rc = apply_log(thedb->bdb_env->dbenv, file, offset, 
-            REP_LOG, blob, blob_len); 
+    if (do_repl)
+    {
+        /* check if we need to call new file flag */
+        if (prev_info.file < file)
+        {
+            rc = apply_log(thedb->bdb_env->dbenv, prev_info.file, 
+                    get_next_offset(thedb->bdb_env->dbenv, prev_info), 
+                    REP_NEWFILE, NULL, 0); 
+        }
+
+        rc = apply_log(thedb->bdb_env->dbenv, file, offset, 
+                REP_LOG, blob, blob_len); 
+    }
+    else
+    {
+        logmsg(LOGMSG_WARN, "Been asked to stop, drop LSN {%u:%u}\n",
+                file, offset);
+        return prev_info;
+    }
 
     if (rc != 0)
     {
