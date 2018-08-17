@@ -848,72 +848,23 @@ static int convert_record(struct convert_record_data *data)
     }
 
     int dta_needs_conversion = 1;
-    if (usellmeta && data->s->rebuild_index) dta_needs_conversion = 0;
+    if (usellmeta && data->s->rebuild_index)
+        dta_needs_conversion = 0;
 
-    if (dta_needs_conversion) {
-        if (!data->s->force_rebuild &&
-            !data->s->use_old_blobs_on_rebuild) /* We have correct blob data in
-                                                   this. */
-            bzero(data->wrblb, sizeof(data->wrblb));
+    /* Write record to destination table */
+    data->iq.usedb = data->to;
 
-        /* convert current.  this converts blob fields, but we need to make sure
-         * we add the right blobs separately. */
-        rc = convert_server_record_cachedmap(
-            data->to->tablename, data->tagmap, dta, data->rec->recbuf, data->s,
-            data->from->schema, data->to->schema, data->wrblb,
-            sizeof(data->wrblb) / sizeof(data->wrblb[0]));
-        if (rc) {
-            sc_errf(data->s, "Convert failed rrn %d genid 0x%llx rc %d\n", rrn,
-                    genid, rc);
-            return -2;
-        }
+    unsigned long long dirty_keys = -1ULL;
 
-        /* TODO do the blobs returned by convert_server_record_blobs() need to
-         * be converted to client blobs? */
-
-        /* we are responsible for freeing any blob data that
-         * convert_server_record_blobs() returns to us with free_blob_buffers().
-         * if the plan calls for a full blob rebuild, data retrieved by
-         * bdb_fetch_blobs_by_rrn_and_genid() may be added into wrblb in the
-         * loop below, this blob data MUST be freed with free_blob_status_data()
-         * so we need to make a copy of what we have right now so we can free it
-         * seperately */
-        free_blob_buffers(data->freeblb,
-                          sizeof(data->freeblb) / sizeof(data->freeblb[0]));
-        memcpy(data->freeblb, data->wrblb, sizeof(data->freeblb));
-    }
-
-    /* map old blobs to new blobs */
-    if (!data->s->force_rebuild && !data->s->use_old_blobs_on_rebuild &&
-        ((gbl_partial_indexes && data->to->ix_partial) || data->to->ix_expr ||
-         !gbl_use_plan || !data->to->plan || !data->to->plan->plan_blobs)) {
-        for (int ii = 0; ii < data->to->numblobs; ii++) {
-            int fromblobix = data->toblobs2fromblobs[ii];
-            if (fromblobix >= 0 && data->blb.blobptrs[fromblobix] != NULL) {
-                if (data->wrblb[ii].data) {
-                    /* this shouldn't happen because only bcstr to vutf8
-                     * conversions should return any blob data from
-                     * convert_server_record_blobs() and if we're createing a
-                     * new vutf8 blob it should not have a fromblobix */
-                    sc_errf(data->s,
-                            "convert_record: attempted to "
-                            "overwrite blob data retrieved from "
-                            "convert_server_record_blobs() with data from "
-                            "bdb_fetch_blobs_by_rrn_and_genid().  This would "
-                            "leak memory and shouldn't ever happen. to blob %d "
-                            "from blob %d\n",
-                            ii, fromblobix);
-                    return -2;
-                }
-
-                data->wrblb[ii].exists = 1;
-                data->wrblb[ii].data =
-                    ((char *)data->blb.blobptrs[fromblobix]) +
-                    data->blb.bloboffs[fromblobix];
-                data->wrblb[ii].length = data->blb.bloblens[fromblobix];
-                data->wrblb[ii].collected = data->wrblb[ii].length;
-            }
-        }
+    rc = prepare_and_verify_newdb_record(data, dta, dtalen, &dirty_keys);
+    if (rc) {
+        sc_errf(data->s,
+                "failed to prepare and verify newdb record rc %d, rrn %d, "
+                "genid 0x%llx\n",
+                rc, rrn, genid);
+        if (rc == -2)
+            return -2; /* convertion failure */
+        goto err;
     }
 
     if (data->s->use_new_genids) {
@@ -922,19 +873,14 @@ static int convert_record(struct convert_record_data *data)
     } else {
         ngenid = check_genid;
     }
-    if (ngenid != genid) data->n_genids_changed++;
-
-    /* Write record to destination table */
-    data->iq.usedb = data->to;
+    if (ngenid != genid)
+        data->n_genids_changed++;
 
     int addflags = RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_CONSTRAINTS |
                    RECFLAGS_NEW_SCHEMA | RECFLAGS_ADD_FROM_SC |
                    RECFLAGS_KEEP_GENID;
 
     if (data->to->plan && gbl_use_plan) addflags |= RECFLAGS_NO_BLOBS;
-
-    int rebuild = (data->to->plan && data->to->plan->dta_plan) ||
-                  data->s->schema_change == SC_CONSTRAINT_CHANGE;
 
     char *tagname = ".NEW..ONDISK";
     uint8_t *p_tagname_buf = (uint8_t *)tagname;
@@ -947,28 +893,7 @@ static int convert_record(struct convert_record_data *data)
         p_buf_data_end = p_buf_data + dtalen;
     }
 
-    unsigned long long dirty_keys = -1ULL;
-    if (gbl_partial_indexes && data->to->ix_partial) {
-        dirty_keys =
-            verify_indexes(data->to, p_buf_data, data->wrblb, MAXBLOBS, 1);
-        if (dirty_keys == -1ULL) {
-            rc = ERR_VERIFY_PI;
-            goto err;
-        }
-    }
-
     assert(data->trans != NULL);
-    rc = verify_record_constraint(&data->iq, data->to, data->trans, p_buf_data,
-                                  dirty_keys, data->wrblb, MAXBLOBS,
-                                  ".NEW..ONDISK", rebuild, 0);
-    if (rc) goto err;
-
-    if (gbl_partial_indexes && data->to->ix_partial) {
-        rc = verify_partial_rev_constraint(data->from, data->to, data->trans,
-                                           p_buf_data, dirty_keys,
-                                           ".NEW..ONDISK");
-        if (rc) goto err;
-    }
 
     if (data->s->schema_change != SC_CONSTRAINT_CHANGE) {
         int nrrn = rrn;
