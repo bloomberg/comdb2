@@ -1011,6 +1011,7 @@ static void reqlog_free_all(struct reqlogger *logger)
 {
     struct logevent *event;
     struct print_event *pevent;
+    struct push_prefix_event *pushevent;
     struct tablelist *table;
     int i, len;
 
@@ -1028,6 +1029,9 @@ static void reqlog_free_all(struct reqlogger *logger)
         if (event->type == EVENT_PRINT) {
             pevent = (struct print_event *)event;
             free(pevent->text);
+        } else if (event->type == EVENT_PUSH_PREFIX) {
+            pushevent = (struct push_prefix_event *)event;
+            free((void *)pushevent->text);
         }
         free(event);
     }
