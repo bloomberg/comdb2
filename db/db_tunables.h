@@ -1541,4 +1541,9 @@ REGISTER_TUNABLE("abort_irregular_set_durable_lsn",
                  TUNABLE_BOOLEAN, &gbl_abort_irregular_set_durable_lsn,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("instrument_dblist",
+                 "Extended dblist-trace in berkley.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_instrument_dblist, READONLY, NULL, NULL,
+                 NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

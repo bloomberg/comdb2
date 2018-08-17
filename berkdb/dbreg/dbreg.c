@@ -261,6 +261,9 @@ __dbreg_get_id(dbp, txn, idp)
 	lp = dblp->reginfo.primary;
 	fnp = dbp->log_filename;
 
+    if (gbl_is_physical_replicant)
+        abort();
+
 	/*
 	 * It's possible that after deciding we needed to call this function,
 	 * someone else allocated an ID before we grabbed the lock.  Check
