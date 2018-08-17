@@ -2828,8 +2828,8 @@ static void print_stack_of_a_chunk(void *p, void *_)
         fp += COMDB2MA_ROUND8(comdb2_malloc_usable_size(out) + (sizeof(void *)));
         frames = (void **)fp;
         nf = (unsigned int)(uintptr_t)frames[0];
-        /* Skip the first 4 frames + counter */
-        for (i = 5; i < nf; ++i) {
+        /* Skip the first 3 frames + counter */
+        for (i = 4; i < nf; ++i) {
             /* Skip empty frames caused by optimization. */
             if (frames[i] != NULL) {
                 logmsg(LOGMSG_USER, "%p ", frames[i]);
