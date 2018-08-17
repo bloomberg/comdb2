@@ -69,6 +69,21 @@ function assert_select_sp
     [[ "$prev_sp" != "$curr_sp" ]] && failexit "select_sp changed"
 }
 
+function return_number
+{
+    [[ $debug == "1" ]] && set -x
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "exec procedure return_number()"
+}
+
+function assert_return_number
+{
+    [[ $debug == "1" ]] && set -x
+    typeset prev_rn="$1"
+    echo "> Assert return_number is the same"
+    typeset curr_rn=$(return_number)
+    [[ "$prev_rn" != "$curr_rn" ]] && failexit "return_number sp changed"
+}
+
 function select_all
 {
     [[ $debug == "1" ]] && set -x
@@ -313,61 +328,61 @@ function alter_table_options
 function luasp
 {
     [[ $debug == "1" ]] && set -x
+
     echo "> Creating t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int, b blob)"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1, x'12')"
-    created_tables_lsn_1=$(get_current_lsn)
-    created_tables_sal_1=$(select_all)
-    created_tables_ssp_1=$(select_sp)
+    created_procedure_lsn_1=$(get_current_lsn)
+    created_procedure_sal_1=$(select_all)
+    created_procedure_rtn_1=$(select_sp)
 
-    echo "> Creating sp"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF1'
-create procedure select_t1 version 'v1' {
+    echo "> Creating return_number:v1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF'
+create procedure return_number version 'v1' {
 local function main()
-	local stmt1 = db:prepare("select * from t1")
-    for i = 1, 5 do
-        db:emit(stmt1:fetch())
-    end
+    db:emit(1)
 end
 }$$
-EOF1
+EOF
     created_procedure_lsn_2=$(get_current_lsn)
     created_procedure_sal_2=$(select_all)
     created_procedure_ssp_2=$(select_sp)
+    created_procedure_rtn_2=$(return_number)
 
-    echo "> Creating sp2"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF2'
-create procedure select_t2 version 'v1' {
+    echo "> Creating return_number:v2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF'
+create procedure return_number version 'v2' {
 local function main()
-	local stmt1 = db:prepare("select * from t1")
-    for i = 1, 5 do
-        db:emit(stmt1:fetch())
-    end
+    db:emit(2)
 end
 }$$
-EOF2
-    created_procedure2_lsn_3=$(get_current_lsn)
-    created_procedure2_sal_3=$(select_all)
-    created_procedure2_ssp_3=$(select_sp)
+EOF
+    created_procedure_lsn_3=$(get_current_lsn)
+    created_procedure_sal_3=$(select_all)
+    created_procedure_ssp_3=$(select_sp)
+    created_procedure_rtn_3=$(return_number)
+
+    echo "> Making v2 default sp"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - "put default procedure return_number 'v2'"
+    created_procedure_lsn_4=$(get_current_lsn)
+    created_procedure_sal_4=$(select_all)
+    created_procedure_ssp_4=$(select_sp)
+    created_procedure_rtn_4=$(return_number)
 
     echo "> Creating sp1-v2"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF3'
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF'
 create procedure select_t1 version 'v2' {
 local function main()
-	local stmt1 = db:prepare("select * from t1")
     for i = 1, 5 do
+        local stmt1 = db:prepare("select * from t1")
         db:emit(stmt1:fetch())
     end
 end
 }$$
-EOF3
+EOF
     created_procedure1v2_lsn_4=$(get_current_lsn)
     created_procedure1v2_sal_4=$(select_all)
     created_procedure1v2_ssp_4=$(select_sp)
-
-
-
-#    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create procedure
 
 
 }

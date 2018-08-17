@@ -1449,5 +1449,9 @@ REGISTER_TUNABLE("online_recovery_maxlocks",
                  "(Default: 20000)", TUNABLE_INTEGER, 
                  &gbl_online_recovery_maxlocks, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("instrument_dblist",
+                 "Extended dblist-trace in berkley.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_instrument_dblist, READONLY, NULL, NULL,
+                 NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

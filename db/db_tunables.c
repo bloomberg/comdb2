@@ -194,6 +194,7 @@ extern int gbl_rand_elect_max_ms;
 extern int gbl_handle_buf_add_latency_ms;
 extern int gbl_online_recovery;
 extern int gbl_online_recovery_maxlocks;
+extern int gbl_instrument_dblist;
 
 extern long long sampling_threshold;
 
