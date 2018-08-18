@@ -143,7 +143,7 @@ int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             }
         }
     } else {
-       strncpy(dst, table_name, MAXTABLELEN);
+       strncpy(dst, table_name, MAXTABLELEN + 1);
     }
 
     if(!timepart_is_timepart(dst, 1))
@@ -988,8 +988,6 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
-    int max_length;
-
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
     if (!arg) goto err;
     bpfunc_arg__init(arg);
@@ -1000,26 +998,22 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
 
     arg->crt_tp = tp;
     arg->type = BPFUNC_CREATE_TIMEPART;
-    tp->tablename = (char*) malloc(MAXTABLELEN);
-    memset(tp->tablename, '\0', MAXTABLELEN);
+    tp->tablename = (char*) malloc(MAXTABLELEN + 1);
+    if (!tp->tablename) goto err;
     if (table && chkAndCopyTableTokens(v, pParse, tp->tablename, table, NULL, 1))
         goto err;
 
 
-    max_length = partition_name->n < MAXTABLELEN ? partition_name->n : MAXTABLELEN;
-    tp->partition_name = (char*) malloc(MAXTABLELEN);
-    memset(tp->partition_name, '\0', MAXTABLELEN);
-    strncpy(tp->partition_name, partition_name->z, max_length);
+    tp->partition_name = (char*) malloc(MAXTABLELEN + 1);
+    strncpy0(tp->partition_name, partition_name->z, MAXTABLELEN + 1);
 
     char period_str[50];
-    memset(period_str, '\0', sizeof(period_str));
 
     assert (*period->z == '\'' || *period->z == '\"');
     period->z++;
     period->n -= 2;
 
-    max_length = period->n < 50 ? period->n : 50;
-    strncpy(period_str, period->z, max_length);
+    strncpy0(period_str, period->z, sizeof(period_str));
     tp->period = name_to_period(period_str);
 
     if (tp->period == VIEW_TIMEPART_INVALID) {
@@ -1028,20 +1022,16 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     }
 
     char retention_str[10];
-    memset(retention_str, '\0', sizeof(retention_str));
-    max_length = retention->n < 10 ? retention->n : 10;
-    strncpy(retention_str, retention->z, max_length);
+    strncpy0(retention_str, retention->z, sizeof(retention_str));
     tp->retention = atoi(retention_str);
 
     char start_str[200];
-    memset(start_str,0, sizeof(start_str));
 
     assert (*start->z == '\'' || *start->z == '\"');
     start->z++;
     start->n -= 2;
 
-    max_length = start->n < 200 ? start->n : 200;
-    strncpy(start_str, start->z, max_length);
+    strncpy0(start_str, start->z, sizeof(start_str));
     tp->start = convert_time_string_to_epoch(start_str);
 
     if (tp->start == -1 ) {
@@ -1064,7 +1054,6 @@ clean_arg:
 void comdb2DropTimePartition(Parse* pParse, Token* partition_name)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
-    int max_length;
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
     if (!arg) goto err;
@@ -1076,10 +1065,10 @@ void comdb2DropTimePartition(Parse* pParse, Token* partition_name)
 
     arg->drop_tp = tp;
     arg->type = BPFUNC_DROP_TIMEPART;
-    max_length = partition_name->n < MAXTABLELEN ? partition_name->n : MAXTABLELEN;
-    tp->partition_name = (char*) malloc(MAXTABLELEN);
-    memset(tp->partition_name, '\0', MAXTABLELEN);
-    strncpy(tp->partition_name, partition_name->z, max_length);
+    tp->partition_name = (char*) malloc(MAXTABLELEN + 1);
+    if (!tp->partition_name)
+        goto err;
+    strncpy0(tp->partition_name, partition_name->z, MAXTABLELEN + 1);
 
     comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
                         (vdbeFuncArgFree) &free_bpfunc_arg);
