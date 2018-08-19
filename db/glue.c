@@ -149,8 +149,6 @@ extern struct dbenv *thedb;
 extern int gbl_lost_master_time;
 extern int gbl_check_access_controls;
 
-static void fix_blobstripe_genids(tran_type *tran);
-
 static int meta_put(struct dbtable *db, void *input_tran, struct metahdr *hdr,
                     void *data, int dtalen);
 static int meta_get(struct dbtable *db, struct metahdr *key, void *dta, int dtalen);
@@ -4403,7 +4401,7 @@ int backend_open(struct dbenv *dbenv)
     return backend_open_tran(dbenv, NULL, 0);
 }
 
-static void fix_blobstripe_genids(tran_type *tran)
+void fix_blobstripe_genids(tran_type *tran)
 {
     int ii, rc;
     struct dbtable *db;

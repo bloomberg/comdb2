@@ -3103,6 +3103,7 @@ static int init(int argc, char **argv)
     int rc;
     int bdberr;
     int cacheszkb_suggestion = 0;
+    int stripes, blobstripe;
 
     if (argc < 2) {
         print_usage_and_exit();
@@ -3555,6 +3556,18 @@ static int init(int argc, char **argv)
     logmsg(LOGMSG_INFO, "Successfully opened low level meta table\n");
 
     gbl_llmeta_open = 1;
+
+    if (gbl_create_mode && bdb_set_global_stripe_info(NULL, gbl_dtastripe,
+                gbl_blobstripe, &bdberr) != 0) {
+        logmsg(LOGMSG_FATAL, "Error writing global stripe info\n");
+        exit(1);
+    }
+
+    if (!gbl_create_mode && bdb_get_global_stripe_info(NULL, &stripes,
+                &blobstripe, &bdberr) == 0 && stripes > 0) {
+        gbl_dtastripe = stripes;
+        gbl_blobstripe = blobstripe;
+    }
 
     if (!gbl_create_mode) {
        uint64_t format;
@@ -5507,6 +5520,7 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn, uint32_t lockid)
     int bdberr = 0;
     int rc;
     int table;
+    int stripes, blobstripe;
     tran_type *tran;
     struct sql_thread *sqlthd;
     struct sqlthdstate *thd;
@@ -5536,6 +5550,12 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn, uint32_t lockid)
 
     if (thedb->db_hash) 
         hash_clear(thedb->db_hash);
+
+    if (bdb_get_global_stripe_info(tran, &stripes, &blobstripe, &bdberr) == 0 &&
+            stripes > 0) {
+        gbl_dtastripe = stripes;
+        gbl_blobstripe = blobstripe;
+    }
 
     if (llmeta_load_tables(thedb, gbl_dbname, tran)) {
         logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "

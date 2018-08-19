@@ -1112,6 +1112,8 @@ int bdb_list_dropped_files(bdb_state_type *bdb_state, int *bdberr);
 /* make new stripes */
 int bdb_create_stripes(bdb_state_type *bdb_state, int newdtastripe,
                        int newblobstripe, int *bdberr);
+int bdb_create_stripes_tran(bdb_state_type *bdb_state, tran_type *tran,
+                            int newdtastripe, int newblobstripe, int *bdberr);
 
 /* re-open bdb handle that has been bdb_close_only'ed
    as master/client depending on how it used to be */
@@ -1570,7 +1572,10 @@ int bdb_delete_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
                              const char *sp_name, int lua_ver, int *bdberr);
 int bdb_set_sp_lua_default(bdb_state_type *bdb_state, tran_type *tran,
                            char *sp_name, int lua_ver, int *bdberr);
-
+int bdb_get_global_stripe_info(tran_type *tran, int *stripes, int *blobstripe,
+                               int *bdberr);
+int bdb_set_global_stripe_info(tran_type *tran, int stripes, int blobstripe,
+                               int *bdberr);
 int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
                     const char *table, unsigned long long genid,
                     unsigned int host, int *bdberr);

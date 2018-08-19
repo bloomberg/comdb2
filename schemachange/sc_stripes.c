@@ -43,31 +43,29 @@ int do_alter_stripes_int(struct schema_change_type *s)
     int newdtastripe = s->newdtastripe;
     int newblobstripe = s->blobstripe;
     struct dbtable *db;
+    struct ireq iq = {0};
+    tran_type *tran = NULL;
 
     /* STOP THREADS */
     stop_threads(thedb);
-    broadcast_quiesce_threads();
 
     /* CLOSE ALL TABLES */
     if (close_all_dbs() != 0) exit(1);
-    broadcast_close_all_dbs();
+
+    init_fake_ireq(thedb, &iq);
+    iq.usedb = thedb->dbs[0];
+
+    rc = trans_start(&iq, NULL, &tran);
+    if (rc) {
+        fprintf(stderr, "morestripe: %d: trans_start rc %d\n", __LINE__,
+                rc);
+        resume_threads(thedb);
+        return SC_FAILED_TRANSACTION;
+    }
 
     /* RENAME BLOB FILES */
     if (newblobstripe && !gbl_blobstripe) {
-        tran_type *tran = NULL;
-        struct ireq iq = {0};
 
-        init_fake_ireq(thedb, &iq);
-        iq.usedb = thedb->dbs[0];
-
-        rc = trans_start(&iq, NULL, &tran);
-        if (rc) {
-            fprintf(stderr, "morestripe: %d: trans_start rc %d\n", __LINE__,
-                    rc);
-            broadcast_resume_threads();
-            resume_threads(thedb);
-            return SC_FAILED_TRANSACTION;
-        }
 
         for (ii = 0; ii < thedb->num_dbs; ii++) {
             unsigned long long genid;
@@ -78,7 +76,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
                                 "'%s' bdberr %d\n",
                         db->tablename, bdberr);
                 trans_abort(&iq, tran);
-                broadcast_resume_threads();
                 resume_threads(thedb);
                 return SC_BDB_ERROR;
             }
@@ -91,7 +88,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
                         "morestripe: couldn't record genid for table '%s'\n",
                         db->tablename);
                 trans_abort(&iq, tran);
-                broadcast_resume_threads();
                 resume_threads(thedb);
                 return SC_INTERNAL_ERROR;
             }
@@ -104,22 +100,15 @@ int do_alter_stripes_int(struct schema_change_type *s)
                    db->tablename, genid);
         }
 
-        rc = trans_commit(&iq, tran, gbl_mynode);
-        if (rc) {
-            fprintf(stderr, "morestripe: couldn't commit rename trans\n");
-            broadcast_resume_threads();
-            resume_threads(thedb);
-            return SC_FAILED_TRANSACTION;
-        }
-        /* After this point there is no backing out */
+        bdb_set_global_stripe_info(tran, newdtastripe, newblobstripe, &bdberr);
     }
 
     /* CREATE ALL NEW FILES */
     printf("Creating new files...\n");
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         db = thedb->dbs[ii];
-        rc = bdb_create_stripes(db->handle, newdtastripe, newblobstripe,
-                                &bdberr);
+        rc = bdb_create_stripes_tran(db->handle, tran, newdtastripe,
+                newblobstripe, &bdberr);
         if (rc != 0) {
             fprintf(
                 stderr,
@@ -130,26 +119,33 @@ int do_alter_stripes_int(struct schema_change_type *s)
     }
     printf("Created new files OK\n");
 
+    if ((rc = bdb_llog_scdone_tran(thedb->bdb_env, change_stripe, tran, NULL,
+                    &bdberr)) != 0) {
+        fprintf(stderr, "morestripe: couldn't write scdone record\n");
+        trans_abort(&iq, tran);
+        resume_threads(thedb);
+        return SC_INTERNAL_ERROR;
+    }
+
+    rc = trans_commit(&iq, tran, gbl_mynode);
+    if (rc) {
+        fprintf(stderr, "morestripe: couldn't commit rename trans\n");
+        resume_threads(thedb);
+        return SC_FAILED_TRANSACTION;
+    }
+
     /* SET NEW STRIPE FACTORS */
     apply_new_stripe_settings(newdtastripe, newblobstripe);
 
     /* OPEN ALL TABLES */
     if (open_all_dbs() != 0) exit(1);
-    broadcast_morestripe_and_open_all_dbs(newdtastripe, newblobstripe);
 
     /* START THREADS */
-    broadcast_resume_threads();
     resume_threads(thedb);
 
     printf("\n");
     printf("MORESTRIPED SUCCESSFULLY\n");
     printf("New settings are: dtastripe %d blobstripe? %s\n", newdtastripe,
            newblobstripe ? "YES" : "NO");
-    printf("**************************************\n");
-    printf("* BE SURE TO FOLLOW UP BY MAKING THE *\n");
-    printf("* APPROPRIATE CHANGE TO THE LRL FILE *\n");
-    printf("* ON EACH CLUSTER NODE               *\n");
-    printf("**************************************\n");
-
     return SC_OK;
 }
