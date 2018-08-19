@@ -4453,8 +4453,8 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
 }
 
 
-int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
-                           int newblobstripe, int *bdberr)
+static int bdb_create_stripes_int(bdb_state_type *bdb_state, tran_type *tran,
+        int newdtastripe, int newblobstripe, int *bdberr)
 {
     int dtanum, strnum;
     int numdtafiles;
@@ -4462,6 +4462,7 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
     int db_flags = DB_THREAD | DB_CREATE;
     int dta_type = DB_BTREE;
     int rc, ii;
+    int created_tid = 0;
     DB_TXN *tid = NULL;
     int dbp_count = 0;
     DB *dbp_array[256];
@@ -4472,11 +4473,16 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
     else
         numdtafiles = 1;
 
-    rc = bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "bdb_create_stripes_int: begin transaction failed\n");
-        return -1;
-    }
+    if (tran) {
+        tid = tran->tid;
+    } else {
+        created_tid = 1;
+        rc = bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "bdb_create_stripes_int: begin transaction failed\n");
+            return -1;
+        }
+    } 
 
     for (dtanum = 0; dtanum < numdtafiles; dtanum++) {
         int numstripes = bdb_get_datafile_num_files(bdb_state, dtanum);
@@ -4554,11 +4560,13 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
         }
     }
 
-    rc = tid->commit(tid, 0);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "bdb_create_stripes_int: commit: %d %s\n", rc,
-                db_strerror(rc));
-        return -1;
+    if (created_tid) {
+        rc = tid->commit(tid, 0);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "bdb_create_stripes_int: commit: %d %s\n", rc,
+                    db_strerror(rc));
+            return -1;
+        }
     }
 
     /* Now go and close all the tables. */
@@ -4573,13 +4581,21 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
     return 0;
 }
 
+int bdb_create_stripes_tran(bdb_state_type *bdb_state, tran_type *tran,
+                            int newdtastripe, int newblobstripe, int *bdberr)
+{
+    int rc;
+    BDB_READLOCK("bdb_create_stripes");
+    rc = bdb_create_stripes_int(bdb_state, tran, newdtastripe, newblobstripe, bdberr);
+    BDB_RELLOCK();
+    return rc;
+}
+
 int bdb_create_stripes(bdb_state_type *bdb_state, int newdtastripe,
                        int newblobstripe, int *bdberr)
 {
     int rc;
-    BDB_READLOCK("bdb_create_stripes");
-    rc = bdb_create_stripes_int(bdb_state, newdtastripe, newblobstripe, bdberr);
-    BDB_RELLOCK();
+    rc = bdb_create_stripes_tran(bdb_state, NULL, newdtastripe, newblobstripe, bdberr);
     return rc;
 }
 

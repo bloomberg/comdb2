@@ -161,7 +161,8 @@ typedef enum {
     LLMETA_TABLE_USER_SCHEMA = 44,
     LLMETA_USER_PASSWORD_HASH = 45,
     LLMETA_FVER_FILE_TYPE_QDB = 46, /* file version for a dbqueue */
-    LLMETA_TABLE_NUM_SC_DONE = 47
+    LLMETA_TABLE_NUM_SC_DONE = 47,
+    LLMETA_GLOBAL_STRIPE_INFO = 48
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -4416,6 +4417,158 @@ done:
         logmsg(LOGMSG_INFO, "Deleted SP %s:%d\n", sp_name, lua_ver);
     else
         logmsg(LOGMSG_ERROR, "%s %s:%d rc:%d\n", __func__, sp_name, lua_ver, rc);
+    return rc;
+}
+
+struct llmeta_global_stripe_info
+{
+    int stripes;
+    int blobstripe;
+};
+
+enum { LLMETA_GLOBAL_STRIPE_INFO_LEN = 8 };
+
+BB_COMPILE_TIME_ASSERT(llmeta_global_stripe_info_len,
+        sizeof(struct llmeta_global_stripe_info) ==
+        LLMETA_GLOBAL_STRIPE_INFO_LEN);
+
+static const uint8_t *llmeta_global_stripe_info_get(
+        struct llmeta_global_stripe_info *p_global_stripe_info, const
+        uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || LLMETA_FILE_TYPE_KEY_LEN > (p_buf_end - p_buf))
+        return NULL;
+    p_buf = buf_get(&(p_global_stripe_info->stripes),
+                sizeof(p_global_stripe_info->stripes), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_global_stripe_info->blobstripe),
+                sizeof(p_global_stripe_info->blobstripe), p_buf, p_buf_end);
+    return p_buf;
+}
+
+static uint8_t *llmeta_global_stripe_info_put(const struct
+        llmeta_global_stripe_info *p_global_stripe_info, uint8_t *p_buf,
+        const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || LLMETA_FILE_TYPE_KEY_LEN > (p_buf_end - p_buf))
+        return NULL;
+    p_buf = buf_put(&(p_global_stripe_info->stripes),
+                sizeof(p_global_stripe_info->stripes), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_global_stripe_info->blobstripe),
+                sizeof(p_global_stripe_info->blobstripe), p_buf, p_buf_end);
+    return p_buf;
+}
+
+int bdb_get_global_stripe_info(tran_type *tran, int *stripes, int *blobstripe,
+        int *bdberr)
+{
+    int rc;
+    char buf[LLMETA_GLOBAL_STRIPE_INFO_LEN];
+    struct llmeta_global_stripe_info stripe_info;
+    char key[LLMETA_IXLEN] = {0};
+    struct llmeta_file_type_key file_type_key;
+    int fndlen;
+    uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
+
+    *bdberr = BDBERR_NOERROR;
+
+    file_type_key.file_type = LLMETA_GLOBAL_STRIPE_INFO;
+
+    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
+               __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, buf,
+                                   LLMETA_GLOBAL_STRIPE_INFO_LEN, &fndlen,
+                                   bdberr);
+
+    p_buf = (uint8_t *)buf;
+    p_buf_end = (uint8_t *)buf + LLMETA_GLOBAL_STRIPE_INFO_LEN;
+
+    if (!(llmeta_global_stripe_info_get(&stripe_info, p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_global_stripe_info_get returns NULL\n",
+               __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    if (rc == 0) {
+        *stripes = stripe_info.stripes;
+        *blobstripe = stripe_info.blobstripe;
+    } else {
+        *stripes = -1;
+        *blobstripe = -1;
+    }
+
+    return 0;
+}
+
+int bdb_set_global_stripe_info(tran_type *tran, int stripes, int blobstripe,
+        int *bdberr)
+{
+    int rc;
+    int started_our_own_transaction = 0;
+    char buf[LLMETA_GLOBAL_STRIPE_INFO_LEN];
+    struct llmeta_global_stripe_info stripe_info;
+    char key[LLMETA_IXLEN] = {0};
+    struct llmeta_file_type_key file_type_key;
+    uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
+
+    *bdberr = BDBERR_NOERROR;
+
+    if (tran == NULL) {
+        started_our_own_transaction = 1;
+        tran = bdb_tran_begin(llmeta_bdb_state->parent, NULL, bdberr);
+        if (tran == NULL)
+            return -1;
+    }
+
+    file_type_key.file_type = LLMETA_GLOBAL_STRIPE_INFO;
+
+    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
+               __func__);
+        *bdberr = BDBERR_BADARGS;
+        rc = -1;
+        goto done;
+    }
+
+    stripe_info.stripes = stripes;
+    stripe_info.blobstripe = blobstripe;
+
+    p_buf = buf;
+    p_buf_end = buf + LLMETA_GLOBAL_STRIPE_INFO_LEN;
+    if (!(llmeta_global_stripe_info_put(&stripe_info, p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_global_stripe_info_put returns NULL\n",
+               __func__);
+        *bdberr = BDBERR_BADARGS;
+        rc = -1;
+        goto done;
+    }
+
+    rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
+    if (rc && *bdberr != BDBERR_DEL_DTA)
+        goto done;
+
+    stripes = htonl(stripes);
+
+    rc = bdb_lite_add(llmeta_bdb_state, tran, buf,
+            LLMETA_GLOBAL_STRIPE_INFO_LEN, key, bdberr);
+
+done:
+    if (started_our_own_transaction) {
+        if (rc == 0)
+            rc = bdb_tran_commit(llmeta_bdb_state->parent, tran, bdberr);
+        else {
+            int arc;
+            arc = bdb_tran_abort(llmeta_bdb_state->parent, tran, bdberr);
+            if (arc)
+                rc = arc;
+        }
+    }
+
     return rc;
 }
 

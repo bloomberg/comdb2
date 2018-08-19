@@ -2348,6 +2348,7 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
                                const char *table, const char *csc2_text);
 int load_new_table_schema(struct dbenv *dbenv, const char *table,
                           const char *csc2_text);
+void fix_blobstripe_genids(tran_type *tran);
 int dump_all_csc2_to_disk();
 int dump_table_csc2_to_disk_fname(struct dbtable *db, const char *csc2_fname);
 int dump_table_csc2_to_disk(const char *table);
