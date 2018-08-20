@@ -109,13 +109,14 @@ static int reload_stripe_info(bdb_state_type *bdb_state)
     }
 
     apply_new_stripe_settings(stripes, blobstripe);
-    if (open_all_dbs() != 0) exit(1);
-    fix_blobstripe_genids(NULL);
 
-    bdb_get_tran_lockerid(tran, &lid);
+    bdb_set_tran_lockerid(tran, lid);
     rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
     if (rc)
         logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__, rc);
+
+    if (open_all_dbs() != 0) exit(1);
+    fix_blobstripe_genids(NULL);
 
     return 0;
 }
