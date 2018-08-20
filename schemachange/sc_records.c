@@ -2002,6 +2002,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
                rec->type, rec->dtafile, rec->dtastripe, rec->genid);
     }
+    data->blb.numcblobs = data->from->numblobs;
     return 0;
 
 error:
@@ -2040,8 +2041,8 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     struct blob_recs *pbrecs = NULL;
 
     u_int32_t rectype;
-    int rc, dtalen, ixlen;
-    unsigned long long genid;
+    int rc = 0, dtalen, ixlen, opfailcode = 0, ixfailnum = 0;
+    unsigned long long genid, ngenid, check_genid;
     short dtafile, dtastripe;
     llog_undo_add_dta_args *add_dta = NULL;
     llog_undo_add_dta_lk_args *add_dta_lk = NULL;
@@ -2051,7 +2052,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     pbrecs = hash_find(data->blob_hash, &brecs);
     if (pbrecs) {
         rc = reconstruct_blob_records(data, logc, pbrecs, logdta);
-        bzero(data->freeblb, sizeof(data->freeblb));
+        bzero(data->wrblb, sizeof(data->wrblb));
         blob_status_to_blob_buffer(&data->blb, data->wrblb);
     }
 
@@ -2104,6 +2105,73 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     fsnapf(stdout, data->odh.recptr, dtalen);
     data->iq.usedb = data->to;
 
+    int usellmeta = 0;
+    if (!data->to->plan) {
+        usellmeta = 1; /* new dta does not have old genids */
+    } else if (data->to->plan->dta_plan) {
+        usellmeta = 0; /* the genid is in new dta */
+    } else {
+        usellmeta = 1; /* dta is not being built */
+    }
+
+    int dta_needs_conversion = 1;
+    if (usellmeta && data->s->rebuild_index)
+        dta_needs_conversion = 0;
+
+    unsigned long long dirty_keys = -1ULL;
+
+    rc = prepare_and_verify_newdb_record(data, data->odh.recptr, dtalen,
+                                         &dirty_keys);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to prepare and verify new record rc=%d\n",
+               __func__, __LINE__, rc);
+        goto done;
+    }
+
+    check_genid = bdb_normalise_genid(data->to->handle, genid);
+    if (data->s->use_new_genids) {
+        assert(!gbl_use_plan);
+        ngenid = get_genid(thedb->bdb_env, get_dtafile_from_genid(check_genid));
+    } else {
+        ngenid = check_genid;
+    }
+    if (ngenid != genid)
+        data->n_genids_changed++;
+
+    int addflags = RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_CONSTRAINTS |
+                   RECFLAGS_NEW_SCHEMA | RECFLAGS_ADD_FROM_SC |
+                   RECFLAGS_KEEP_GENID;
+
+    char *tagname = ".NEW..ONDISK";
+    uint8_t *p_tagname_buf = (uint8_t *)tagname;
+    uint8_t *p_tagname_buf_end = p_tagname_buf + 12;
+    uint8_t *p_buf_data = data->rec->recbuf;
+    uint8_t *p_buf_data_end = p_buf_data + data->rec->bufsize;
+
+    if (!dta_needs_conversion) {
+        p_buf_data = data->odh.recptr;
+        p_buf_data_end = p_buf_data + dtalen;
+    }
+
+    assert(data->trans != NULL);
+    if (data->s->schema_change != SC_CONSTRAINT_CHANGE) {
+        int nrrn = 2;
+        rc = add_record(
+            &data->iq, data->trans, p_tagname_buf, p_tagname_buf_end,
+            p_buf_data, p_buf_data_end, NULL, data->wrblb, MAXBLOBS,
+            &opfailcode, &ixfailnum, &nrrn, &ngenid,
+            (gbl_partial_indexes && data->to->ix_partial) ? dirty_keys : -1ULL,
+            BLOCK2_ADDKL, /* opcode */
+            0,            /* blkpos */
+            addflags, 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to add new record rc=%d %s\n",
+                   __func__, __LINE__, rc,
+                   errstat_get_str(&(data->iq.errstat)));
+        }
+    }
+
 done:
     logmsg(LOGMSG_INFO,
            "%s: [%s] redo lsn[%u:%u] type[ADD_DTA] rec->dtafile %d, "
@@ -2112,6 +2180,8 @@ done:
            rec->dtafile, rec->dtastripe, rec->genid);
 
     free_blob_status_data(&data->blb);
+    bzero(data->wrblb, sizeof(data->wrblb));
+    bzero(data->freeblb, sizeof(data->freeblb));
 
     if (add_dta)
         free(add_dta);
@@ -2214,6 +2284,8 @@ done:
            rec->dtafile, rec->dtastripe, rec->genid);
 
     free_blob_status_data(&data->blb);
+    bzero(data->wrblb, sizeof(data->wrblb));
+    bzero(data->freeblb, sizeof(data->freeblb));
 
     if (del_dta)
         free(del_dta);
@@ -2387,6 +2459,11 @@ again:
     }
     set_tran_lowpri(&data->iq, data->trans);
     data->iq.timeoutms = gbl_sc_timeoutms;
+    data->iq.debug = debug_this_request(gbl_debug_until);
+    if (data->iq.debug) {
+        reqlog_new_request(&data->iq); // TODO: cleanup (reset) logger
+        reqpushprefixf(&data->iq, "0x%llx: LOGICAL REDO ", pthread_self());
+    }
 
     LISTC_FOR_EACH(&pCur->log->impl->recs, rec, lnk)
     {
@@ -2436,6 +2513,8 @@ done:
             rc = trans_commit(&data->iq, data->trans, gbl_mynode);
     }
 
+    reqlog_end_request(data->iq.reqlogger, 0, __func__, __LINE__);
+
     clear_blob_hash(data->blob_hash);
     data->trans = NULL;
     if (rc && !data->s->sc_thd_failed)
@@ -2470,6 +2549,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     if (data->isThread) {
         backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
     }
+    data->iq.reqlogger = thrman_get_reqlogger(thr_self);
 
     sc_printf(data->s, "[%s] logical redo starts at [%u:%u]\n", data->s->table,
               data->start_lsn.file, data->start_lsn.offset);
@@ -2495,6 +2575,9 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         data->s->iq->sc_should_abort = 1;
         goto cleanup;
     }
+    data->tagmap = get_tag_mapping(
+        data->from->schema /*tbl .ONDISK tag schema*/,
+        data->to->schema /*tbl .NEW..ONDISK schema */); // free tagmap only once
 
     while (1) {
         if (bdb_llog_cursor_next(pCur) != 0) {
