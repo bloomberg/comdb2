@@ -38,6 +38,7 @@ struct convert_record_data {
     void *dta_buf;
     void *old_dta_buf;
     void *unpack_dta_buf;
+    void *unpack_old_dta_buf;
     void *blb_buf;
     tran_type *trans;
     enum convert_scan_mode scanmode;

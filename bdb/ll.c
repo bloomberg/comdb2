@@ -159,6 +159,15 @@ static int get_row_lock_dta_minlk(bdb_state_type *bdb_state, DBC *dbcp,
 
 extern int gbl_is_physical_replicant;
 
+extern bdb_state_type *gbl_bdb_state;
+extern int gbl_snapisol;
+int bdb_logical_logging_enabled()
+{
+    if (gbl_bdb_state->attr->snapisol | gbl_snapisol | gbl_rowlocks)
+        return 1;
+    return 0;
+}
+
 int add_snapisol_logging(bdb_state_type *bdb_state)
 {
     /* physical_replicants:
