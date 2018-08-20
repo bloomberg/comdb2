@@ -984,28 +984,46 @@ cleanup:
 
 /********************* PARTITIONS  **********************************************/
 
-void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_name, Token* period, Token* retention, Token* start)
+void comdb2CreateTimePartition(Parse* pParse, Token* table,
+                               Token* partition_name, Token* period,
+                               Token* retention, Token* start)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    if (!arg) goto err;
+    if (!arg) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto clean_arg;
+    }
     bpfunc_arg__init(arg);
 
     BpfuncCreateTimepart *tp = malloc(sizeof(BpfuncCreateTimepart));
-    if (!tp) goto err;
+    if (!tp) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto clean_arg;
+    }
     bpfunc_create_timepart__init(tp);
 
     arg->crt_tp = tp;
     arg->type = BPFUNC_CREATE_TIMEPART;
     tp->tablename = (char*) malloc(MAXTABLELEN + 1);
-    if (!tp->tablename) goto err;
+    if (!tp->tablename) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto clean_arg;
+    }
     if (table && chkAndCopyTableTokens(v, pParse, tp->tablename, table, NULL, 1))
         goto err;
 
-
     tp->partition_name = (char*) malloc(MAXTABLELEN + 1);
-    strncpy0(tp->partition_name, partition_name->z, MAXTABLELEN + 1);
+    if (!tp->partition_name) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto clean_arg;
+    }
+    if (partition_name->n > MAXTABLELEN) {
+        setError(pParse, SQLITE_MISUSE, "Partition name is too long");
+        goto clean_arg;
+    }
+    strncpy0(tp->partition_name, partition_name->z, partition_name->n + 1);
 
     char period_str[50];
 
@@ -1013,7 +1031,11 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     period->z++;
     period->n -= 2;
 
-    strncpy0(period_str, period->z, sizeof(period_str));
+    if (period->n >= sizeof(period_str)) {
+        setError(pParse, SQLITE_MISUSE, "Invalid period name");
+        goto clean_arg;
+    }
+    strncpy0(period_str, period->z, period->n + 1);
     tp->period = name_to_period(period_str);
 
     if (tp->period == VIEW_TIMEPART_INVALID) {
@@ -1022,7 +1044,11 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     }
 
     char retention_str[10];
-    strncpy0(retention_str, retention->z, sizeof(retention_str));
+    if (retention->n >= sizeof(retention_str)) {
+        setError(pParse, SQLITE_MISUSE, "Invalid retention");
+        goto clean_arg;
+    }
+    strncpy0(retention_str, retention->z, retention->n + 1);
     tp->retention = atoi(retention_str);
 
     char start_str[200];
@@ -1031,7 +1057,11 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     start->z++;
     start->n -= 2;
 
-    strncpy0(start_str, start->z, sizeof(start_str));
+    if (start->n >= sizeof(start_str)) {
+        setError(pParse, SQLITE_MISUSE, "Invalid start date");
+        goto clean_arg;
+    }
+    strncpy0(start_str, start->z, start->n + 1);
     tp->start = convert_time_string_to_epoch(start_str);
 
     if (tp->start == -1 ) {
@@ -1056,19 +1086,32 @@ void comdb2DropTimePartition(Parse* pParse, Token* partition_name)
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    if (!arg) goto err;
+    if (!arg) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto clean_arg;
+    }
+
     bpfunc_arg__init(arg);
 
     BpfuncDropTimepart *tp = malloc(sizeof(BpfuncDropTimepart));
-    if (!tp) goto err;
+    if (!tp) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto clean_arg;
+    }
     bpfunc_drop_timepart__init(tp);
 
     arg->drop_tp = tp;
     arg->type = BPFUNC_DROP_TIMEPART;
     tp->partition_name = (char*) malloc(MAXTABLELEN + 1);
-    if (!tp->partition_name)
-        goto err;
-    strncpy0(tp->partition_name, partition_name->z, MAXTABLELEN + 1);
+    if (!tp->partition_name) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto clean_arg;
+    }
+    if (partition_name->n > MAXTABLELEN) {
+        setError(pParse, SQLITE_MISUSE, "Partition name is too long");
+        goto clean_arg;
+    }
+    strncpy0(tp->partition_name, partition_name->z, partition_name->n + 1);
 
     comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
                         (vdbeFuncArgFree) &free_bpfunc_arg);
