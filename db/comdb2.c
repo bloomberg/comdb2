@@ -264,8 +264,7 @@ int gbl_use_sqlthrmark = 1000;
 int gbl_repchecksum = 0;
 int gbl_pfault = 0;
 int gbl_pfaultrmt = 1;
-int gbl_dtastripe = 8;
-int gbl_blobstripe = 1;
+int gbl_dtastripe = 8; int gbl_blobstripe = 1;
 int gbl_rebuild_mode = 0;
 int gbl_dbsizetime = 15 * 60; /* number of seconds for db size calculation */
 int gbl_debug = 0;            /* operation debugging */
@@ -3567,6 +3566,8 @@ static int init(int argc, char **argv)
                 &blobstripe, &bdberr) == 0 && stripes > 0) {
         gbl_dtastripe = stripes;
         gbl_blobstripe = blobstripe;
+        bdb_attr_set(thedb->bdb_attr, BDB_ATTR_DTASTRIPE, gbl_dtastripe);
+        bdb_attr_set(thedb->bdb_attr, BDB_ATTR_BLOBSTRIPE, gbl_blobstripe);
     }
 
     if (!gbl_create_mode) {
