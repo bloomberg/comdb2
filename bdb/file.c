@@ -4552,7 +4552,7 @@ static int bdb_create_stripes_int(bdb_state_type *bdb_state, tran_type *tran,
                 if (0 != rc)
                     logmsg(LOGMSG_ERROR, "DB->close(%s) failed: rc=%d %s\n", tmpname,
                             rc, db_strerror(rc));
-                if (tid)
+                if (tid && created_tid)
                     tid->abort(tid);
 
                 return -1;
@@ -7056,7 +7056,7 @@ int bdb_open_again(bdb_state_type *bdb_state, int *bdberr)
 
 int bdb_open_again_tran(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
-    return bdb_open_again_tran_int(bdb_state, tran->tid, bdberr);
+    return bdb_open_again_tran_int(bdb_state, tran ? tran->tid : NULL, bdberr);
 }
 
 int bdb_rebuild_done(bdb_state_type *bdb_state)
