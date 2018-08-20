@@ -7088,8 +7088,6 @@ int reload_after_bulkimport(struct dbtable *db, tran_type *tran)
         return rc;
     }
     update_dbstore(db);
-    create_sqlmaster_records(tran);
-    create_sqlite_master();
     return 0;
 }
 

@@ -798,7 +798,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         }
     }
 
-    if (type == add || type == drop || type == alter || type == fastinit) {
+    if (type == add || type == drop || type == alter || type == fastinit || 
+        type == bulkimport) {
         if (create_sqlmaster_records(tran)) {
             logmsg(LOGMSG_FATAL,
                    "create_sqlmaster_records: error creating sqlite "
