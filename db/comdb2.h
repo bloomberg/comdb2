@@ -800,7 +800,9 @@ struct dbtable {
     int schema_version; // csc2 schema version increased on instantaneous schemachange
     int instant_schema_change;
     int inplace_updates;
-    unsigned long long tableversion;
+    // tableversion is ever increasing counter which incremented for 
+    // every schema change (alter, drop) but not for fastinit
+    unsigned long long tableversion; 
 
     /* map of tag fields for schema version to curr schema */
     unsigned int * versmap[MAXVER + 1];
