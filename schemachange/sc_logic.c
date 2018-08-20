@@ -405,9 +405,7 @@ int do_alter_stripes(struct schema_change_type *s)
 
     if (!s->resume) set_sc_flgs(s);
 
-    rc = propose_sc(s);
-
-    if (rc == SC_OK) rc = do_alter_stripes_int(s);
+    rc = do_alter_stripes_int(s);
 
     if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
 
