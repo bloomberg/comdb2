@@ -4450,8 +4450,9 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	int32_t timestamp = 0;
 	__txn_xa_regop_args *prep_args;
 	u_int32_t rectype;
-	int i, ret, t_ret;
+	int i, ret, t_ret, line = 0;
 	u_int32_t txnid = 0;
+	int got_txns = 0, free_lc = 0;
 	void *txninfo;
 	unsigned long long context = 0;
 	int had_serializable_records = 0;
@@ -4490,8 +4491,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 
 		if ((ret =
 			__txn_regop_rowlocks_read(dbenv, rec->data,
-				&txn_rl_args)) != 0)
+				&txn_rl_args)) != 0) {
+            logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
 			return (ret);
+        }
 		if (txn_rl_args->opcode != TXN_COMMIT) {
 			__os_free(dbenv, txn_rl_args);
 			return (0);
@@ -4515,8 +4518,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			if ((ret =
 				__txn_allocate_ltrans(dbenv,
 					txn_rl_args->ltranid,
-					&txn_rl_args->begin_lsn, &lt)) != 0)
+					&txn_rl_args->begin_lsn, &lt)) != 0) {
+                line = __LINE__;
 				goto err1;
+            }
 
 			if (NULL == dbenv->txn_logical_start ||
 				(ret =
@@ -4525,6 +4530,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 					&rctl->lsn)) != 0) {
 				logmsg(LOGMSG_ERROR, "%s: txn_logical_start error, %d\n",
 					__func__, ret);
+                line = __LINE__;
 				goto err1;
 			}
 		}
@@ -4558,8 +4564,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		 * We're the end of a transaction.  Make sure this is
 		 * really a commit and not an abort!
 		 */
-		if ((ret = __txn_regop_read(dbenv, rec->data, &txn_args)) != 0)
+		if ((ret = __txn_regop_read(dbenv, rec->data, &txn_args)) != 0) {
+            logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
 			return (ret);
+        }
 		if (txn_args->opcode != TXN_COMMIT) {
 			__os_free(dbenv, txn_args);
 			return (0);
@@ -4577,8 +4585,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		 */
 		if ((ret =
 			__txn_regop_gen_read(dbenv, rec->data,
-				&txn_gen_args)) != 0)
-			return (ret);
+				&txn_gen_args)) != 0) {
+            logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
+            return (ret);
+        }
 		if (txn_gen_args->opcode != TXN_COMMIT) {
 			__os_free(dbenv, txn_gen_args);
 			return (0);
@@ -4608,8 +4618,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		get_locks_and_ack = 0;
 	} else {
 		/* Get locks. */
-		if ((ret = __lock_id(dbenv, &lockid)) != 0)
+		if ((ret = __lock_id(dbenv, &lockid)) != 0) {
+            line = __LINE__;
 			goto err1;
+        }
 		get_locks_and_ack = 1;
 	}
 
@@ -4653,8 +4665,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 				&pglogs, &keycnt);
 			assert(gbl_rep_lock_time_ms != 0);
 			gbl_rep_lock_time_ms = 0;
-			if (ret != 0)
+			if (ret != 0) {
+                line = __LINE__;
 				goto err;
+            }
 
 			if (ret == 0 && context) {
 				set_commit_context(context, commit_gen,
@@ -4671,8 +4685,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 				lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
 			assert(gbl_rep_lock_time_ms != 0);
 			gbl_rep_lock_time_ms = 0;
-			if (ret != 0)
+			if (ret != 0) {
+                line = __LINE__;
 				goto err;
+            }
 
 			if (ret == 0 && context) {
 				set_commit_context(context, commit_gen,
@@ -4680,8 +4696,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			}
 		}
 
-		if (ret != 0)
+		if (ret != 0) {
+            line = __LINE__;
 			goto err;
+        }
 
 		/* Set the last-locked lsn */
 		__rep_set_last_locked(dbenv, &(rctl->lsn));
@@ -4719,12 +4737,16 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			(txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)),
 			(txn_rl_args) ? txn_rl_args->ltranid : 0, rctl->lsn,
 			*commit_gen, timestamp, context);
-		if (ret)
+		if (ret) {
+            line = __LINE__;
 			goto err;
+        }
 	}
 
-	if ((ret = __log_cursor(dbenv, &logc)) != 0)
+	if ((ret = __log_cursor(dbenv, &logc)) != 0) {
+        line = __LINE__;
 		goto err;
+    }
 
 	/* Phase 1.  Get a list of the LSNs in this transaction, and sort it. */
 	if (lcin)
@@ -4732,8 +4754,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	else {
 		/* Phase 1.  Get a list of the LSNs in this transaction, and sort it. */
 		if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &lc,
-				&had_serializable_records, NULL, txnid)) != 0)
+				&had_serializable_records, NULL, txnid)) != 0) {
+            line = __LINE__;
 			goto err;
+        }
 		lcin = &lc;
 		/* here's the bug!!!! ! */
 		qsort(lc.array, lc.nlsns, sizeof(struct logrecord),
@@ -4759,8 +4783,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	 * records.  Create a txnlist so that they can keep track of file
 	 * state between records.
 	 */
-	if ((ret = __db_txnlist_init(dbenv, 0, 0, NULL, &txninfo)) != 0)
+	if ((ret = __db_txnlist_init(dbenv, 0, 0, NULL, &txninfo)) != 0) {
+        line = __LINE__;
 		goto err;
+    }
 
 	/* Phase 2: Apply updates. */
 	for (i = 0; i < lc.nlsns; i++) {
@@ -4779,6 +4805,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 				__db_err(dbenv,
 					"failed to read the log at [%lu][%lu]",
 					(u_long)lsnp->file, (u_long)lsnp->offset);
+                line = __LINE__;
 				goto err;
 			}
 			rectype = 0;
@@ -4810,6 +4837,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 						(u_long)lsnp->offset);
 				if (ret == DB_LOCK_DEADLOCK && rectype >= 10000)
 					ret = DB_LOCK_DEADLOCK_CUSTOM;
+                line = __LINE__;
 				goto err;
 			}
 		} else
@@ -4822,8 +4850,10 @@ err:
 
 	req.op = DB_LOCK_PUT_ALL;
 	if ((t_ret =
-		__lock_vec(dbenv, lockid, 0, &req, 1, &lvp)) != 0 && ret == 0)
+		__lock_vec(dbenv, lockid, 0, &req, 1, &lvp)) != 0 && ret == 0) {
+        line = __LINE__;
 		ret = t_ret;
+    }
 
 	/*
 	 * Pthread_mutex_lock(&dbenv->recover_lk);
@@ -4838,8 +4868,10 @@ err:
 		}
 	}
 
-	if ((t_ret = __lock_id_free(dbenv, lockid)) != 0 && ret == 0)
+	if ((t_ret = __lock_id_free(dbenv, lockid)) != 0 && ret == 0) {
+        line = __LINE__;
 		ret = t_ret;
+    }
 
 	if (ret == 0 && txn_rl_args &&
 		txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT) {
@@ -4851,6 +4883,7 @@ err:
 				txn_rl_args->ltranid, &rctl->lsn)) != 0) {
 			logmsg(LOGMSG_ERROR, "%s: txn_logical_commit error, %d\n",
 				__func__, ret);
+            line = __LINE__;
 			ret = t_ret;
 		}
 	}
@@ -4860,6 +4893,10 @@ err:
 	}
 
 err1:
+    if (ret != 0 && ret != DB_LOCK_DEADLOCK) {
+        logmsg(LOGMSG_ERROR, "%s failed at line %d with %d\n", __func__,
+                line, ret);
+    }
 
 	if (rectype == DB___txn_regop)
 		__os_free(dbenv, txn_args);
