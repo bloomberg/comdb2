@@ -175,6 +175,7 @@ static int master_downgrading(struct schema_change_type *s)
             sbuf2printf(s->sb, "!Master node downgrading - new master will "
                                "resume schemachange\n");
             sbuf2close(s->sb);
+            s->sb = NULL;
         }
         logmsg(
             LOGMSG_WARN,

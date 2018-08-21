@@ -89,7 +89,6 @@ void free_schema_change_type(struct schema_change_type *s)
         if (s->sb && s->must_close_sb) close_appsock(s->sb);
         if (!s->onstack) {
             free(s);
-            s = NULL;
         }
     }
 }
