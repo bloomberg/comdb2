@@ -2,7 +2,7 @@
 bash -n "$0" | exit 1
 
 # Debug variable
-#debug=1
+debug=1
 
 [[ $debug == "1" ]] && set -x
 
@@ -36,6 +36,25 @@ function truncate_log
     typeset lsn="$1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$lsn\")"
     sleep $sleeptime
+}
+
+function morestripe_command
+{
+    [[ $debug == "1" ]] && set -x
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send(\"morestripe $1\")"
+    sleep $sleeptime
+}
+
+function get_dtastripe
+{
+    [[ $debug == "1" ]] && set -x
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_tunables where name='dtastripe'"
+}
+
+function assert_stripe
+{
+    [[ $debug == "1" ]] && set -x
+    [[ "$1" == "$2" ]] || failexit "Was expecting $2 stripes but have $1"
 }
 
 function assert_notable
@@ -340,7 +359,6 @@ function alter_table_options
 function luasp
 {
     [[ $debug == "1" ]] && set -x
-
     echo "> Creating t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int, b blob)"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1, x'12')"
@@ -466,8 +484,39 @@ EOF
     assert_notable t3
 }
 
+function morestripe
+{
+    [[ $debug == "1" ]] && set -x
+    echo "> Creating t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
+    morestripe_lsn_1=$(get_current_lsn)
+    morestripe_sal_1=$(select_all)
+    morestripe_stp_1=$(get_dtastripe)
+    assert_stripe $morestripe_stp_1 8
+
+    echo "> More-striping to 16 stripes"
+    morestripe_command 16
+    morestripe_stp_2=$(get_dtastripe)
+    assert_stripe $morestripe_stp_2 16
+
+    echo "> Truncating to before morestripe"
+    truncate_log "$morestripe_lsn_1"
+    sleep $sleeptime
+    dtastripe=$(get_dtastripe)
+    assert_stripe $dtastripe 8
+
+    echo "> Truncating to before table create"
+    truncate_log "$begin_lsn"
+    assert_notable t1
+    assert_notable t2
+    assert_notable t3
+}
+
+
 add_tables
 drop_tables
 truncate_tables
 alter_table_options
 luasp
+morestripe
