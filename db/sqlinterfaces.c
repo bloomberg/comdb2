@@ -4978,7 +4978,6 @@ enum {
     DB_ERR_TRN_SC = 240, /* should be client side code as well*/
     /* INTERNAL DB ERRORS */
     DB_ERR_INTR_GENERIC = 304,
-    DB_ERR_INTR_READ_ONLY = 305,
 };
 
 /*
@@ -4998,8 +4997,8 @@ int blockproc2sql_error(int rc, const char *func, int line)
         return DB_ERR_TRN_BUF_INVALID;
     case 106:
         return DB_ERR_TRN_BUF_OVERFLOW;
-    case 195:
-        return DB_ERR_INTR_READ_ONLY;
+    case ERR_READONLY: //195
+        return CDB2ERR_READONLY;
     case 199:
         return DB_ERR_BAD_REQUEST;
     case 208:
