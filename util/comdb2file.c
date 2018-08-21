@@ -36,10 +36,7 @@ struct location {
 
 #define LOCATION_SEP " \t\n"
 
-static void add_location(char *type, char *dir);
-static int load_locations_from(char *path);
-
-static void add_location(char *type, char *dir)
+static void add_location(char *type, const char *dir)
 {
     struct location *l;
 
@@ -152,12 +149,23 @@ void init_file_locations(char *lrlname)
     if (strlen(gbl_config_root) == 0)         /* not set */
         gbl_config_root = "/";
 
+    const char *logs, *config, *marker, *tzdata;
+#   ifdef LEGACY_DEFAULTS
+    logs = "data";
+    config = "bin";
+    marker = "bin";
+#   else
+    logs = "var/log/cdb2";
+    config = "etc/cdb2/config";
+    marker = "tmp/cdb2";
+#   endif
+
     /* init defaults */
-    DEFAULT_LOCATION("logs", "var/log/cdb2");
-    DEFAULT_LOCATION("marker", "tmp/cdb2");
+    DEFAULT_LOCATION("logs", logs);
+    DEFAULT_LOCATION("marker", marker);
     DEFAULT_LOCATION("debug", "var/log/cdb2");
     DEFAULT_LOCATION("tmp", "tmp/cdb2");
-    DEFAULT_LOCATION("config", "etc/cdb2/config");
+    DEFAULT_LOCATION("config", config);
     DEFAULT_LOCATION("scripts", "bin");
     DEFAULT_LOCATION("rtcpu", "etc/cdb2/rtcpu");
     DEFAULT_LOCATION("share", "share/cdb2");
@@ -167,14 +175,14 @@ void init_file_locations(char *lrlname)
     else
         DEFAULT_LOCATION("database", "var/cdb2");
 
-
-#if defined(_LINUX_SOURCE)
-    add_location("tzdata", "/usr/share/");
-#elif defined(_IBM_SOURCE)
-    add_location("tzdata", "/usr/share/lib");
-#elif defined(_SUN_SOURCE)
-    add_location("tzdata", "/usr/share/lib");
-#endif
+#   if defined(LEGACY_DEFAULTS)
+    tzdata = "/bb/data/datetime";
+#   elif defined(_IBM_SOURCE) || defined(_SUN_SOURCE)
+    tzdata = "/usr/share/lib";
+#   else
+    tzdata = "/usr/share/";
+#   endif
+    add_location("tzdata", tzdata);
 
     global_config = getenv("COMDB2_GLOBAL_CONFIG");
     if (global_config)

@@ -335,6 +335,7 @@ static char *legacy_options[] = {
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {
+    if (gbl_legacy_defaults != 0) return 0;
     gbl_legacy_defaults = 1;
     for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++) {
         pre_read_option(legacy_options[i], strlen(legacy_options[i]));
@@ -345,6 +346,8 @@ int pre_read_legacy_defaults(void *_, void *__)
 static void read_legacy_defaults(struct dbenv *dbenv,
                                  struct read_lrl_option_type *options)
 {
+    if (gbl_legacy_defaults != 1) return;
+    gbl_legacy_defaults = 2;
     for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++) {
         read_lrl_option(dbenv, legacy_options[i], options, strlen(legacy_options[i]));
     }
@@ -1409,6 +1412,14 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
 
     listc_init(&deferred_options, offsetof(struct deferred_option, lnk));
     listc_init(&dbenv->lrl_files, offsetof(struct lrlfile, lnk));
+
+#   ifdef LEGACY_DEFAULTS
+    struct read_lrl_option_type options = {0};
+    options.lrlname = "legacy_defaults";
+    options.dbname = dbenv->envname;
+    pre_read_legacy_defaults(NULL, NULL);
+    read_legacy_defaults(dbenv, &options);
+#   endif
 
     if (lrlname) pre_read_lrl_file(dbenv, lrlname);
 
