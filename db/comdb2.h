@@ -2399,7 +2399,6 @@ int broadcast_quiesce_threads(void);
 int broadcast_resume_threads(void);
 int broadcast_close_db(char *table);
 int broadcast_close_only_db(char *table);
-int broadcast_morestripe_and_open_all_dbs(int newdtastripe, int newblobstripe);
 int broadcast_close_all_dbs(void);
 int broadcast_sc_end(const char *table, uint64_t seed);
 int broadcast_sc_start(const char *table, uint64_t seed, uint32_t host,
