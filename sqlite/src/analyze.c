@@ -200,9 +200,8 @@ static void openStatTable(
   } aTable[] = {
     { "sqlite_stat1", "tbl,idx,stat" },
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    { "sqlite_stat3", 0 },
     { "sqlite_stat4", "tbl,idx,neq,nlt,ndlt,sample" },
-    { "sqlite_stat_NOT_USED", 0 }, /* DO NOT REMOVE */
+    { "sqlite_stat3", 0 },
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if defined(SQLITE_ENABLE_STAT4)
     { "sqlite_stat4", "tbl,idx,neq,nlt,ndlt,sample" },
@@ -1647,13 +1646,8 @@ static void analyzeOneTable(
 #endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3VdbeAddOp3(v, OP_MakeRecord, regTabname, 6, regTemp);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      sqlite3VdbeAddOp2(v, OP_NewRowid, iStatCur+2, regNewRowid);
-      sqlite3VdbeAddOp3(v, OP_Insert, iStatCur+2, regTemp, regNewRowid);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3VdbeAddOp2(v, OP_NewRowid, iStatCur+1, regNewRowid);
       sqlite3VdbeAddOp3(v, OP_Insert, iStatCur+1, regTemp, regNewRowid);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3VdbeAddOp2(v, OP_Goto, 1, addrNext); /* P1==1 for end-of-loop */
       sqlite3VdbeJumpHere(v, addrIsNull);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
