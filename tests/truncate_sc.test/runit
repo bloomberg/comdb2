@@ -676,3 +676,9 @@ luasp
 morestripe
 genid48
 rowlocks
+
+# Not supported:
+# time-partitions
+# queues
+# lua-sfunc
+# lua-afunc

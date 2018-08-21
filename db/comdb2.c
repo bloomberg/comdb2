@@ -5589,11 +5589,6 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn, uint32_t lockid)
     bdb_genid_set_format(thedb->bdb_env, format);
 
     /*
-    if (llmeta_load_timepart(thedb)) {
-        logmsg(LOGMSG_FATAL, "could not load time partitions\n");
-        abort();
-    }
-
     if (llmeta_load_queues(thedb)) {
         logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
                 "table\n");
