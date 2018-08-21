@@ -171,7 +171,7 @@ int is_comdb2_index_disableskipscan(const char *);
 #define SQLITE_INDEX_SAMPLES 10
 
 static __thread int skip4;
-int analyze_get_nrecs( int iTable );
+int64_t analyze_get_nrecs( int iTable );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -232,23 +232,25 @@ static void openStatTable(
   ** if they do already exist.
   */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  skip4 = 0; /* TODO: Flag on connection? */
-  for(i=0; i<ArraySize(aTable); i++){
-    const char *zTab = aTable[i].zName;
-    Table *pStat;
-    if( (pStat = sqlite3FindTable(db, zTab, NULL))==0 ){
-      if( zTab[11]=='1' || zTab[11]=='3' ){
-        /* do nothing */
-      }else if( zTab[11]=='4' ){
-        skip4 = 1;
+  if( db->isExpert==0 ){
+    skip4 = 0; /* TODO: Flag on connection? */
+    for(i=0; i<ArraySize(aTable); i++){
+      const char *zTab = aTable[i].zName;
+      Table *pStat;
+      if( (pStat = sqlite3FindTable(db, zTab, NULL))==0 ){
+        if( zTab[11]=='1' || zTab[11]=='3' ){
+          /* do nothing */
+        }else if( zTab[11]=='4' ){
+          skip4 = 1;
+        }
+      }else{
+        aRoot[i] = pStat->tnum;
+        sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
+        VdbeComment((v, zTab));
       }
-    }else{
-      aRoot[i] = pStat->tnum;
-      sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
-      VdbeComment((v, zTab));
     }
-  }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  }else{ /* db->isExpert==0 */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   for(i=0; i<ArraySize(aTable); i++){
     const char *zTab = aTable[i].zName;
     Table *pStat;
@@ -294,6 +296,8 @@ static void openStatTable(
     sqlite3VdbeChangeP5(v, aCreateTbl[i]);
     VdbeComment((v, aTable[i].zName));
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  } /* db->isExpert==0 */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
@@ -1394,8 +1398,9 @@ static void analyzeOneTable(
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
     /* we only care about our shared tables */
     if( iDb==0 ){
-      int actualCount = analyze_get_nrecs(pIdx->tnum);
-      sqlite3VdbeAddOp2(v, OP_Integer, actualCount, regStat4+3);
+      i64 actualCount = analyze_get_nrecs(pIdx->tnum);
+      sqlite3VdbeAddOp4Dup8(v, OP_Int64, 0, regStat4+3, 0,
+                            (const u8*)&actualCount, P4_INT64);
     }else{
       /* TODO: Is there a better default value here? */
       sqlite3VdbeAddOp2(v, OP_Integer, 0, regStat4+3);
