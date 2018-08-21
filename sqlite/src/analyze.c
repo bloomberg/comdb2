@@ -199,10 +199,6 @@ static void openStatTable(
     const char *zCols;
   } aTable[] = {
     { "sqlite_stat1", "tbl,idx,stat" },
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    { "sqlite_stat4", "tbl,idx,neq,nlt,ndlt,sample" },
-    { "sqlite_stat3", 0 },
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if defined(SQLITE_ENABLE_STAT4)
     { "sqlite_stat4", "tbl,idx,neq,nlt,ndlt,sample" },
     { "sqlite_stat3", 0 },
@@ -213,7 +209,6 @@ static void openStatTable(
     { "sqlite_stat3", 0 },
     { "sqlite_stat4", 0 },
 #endif
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   };
   int i;
   sqlite3 *db = pParse->db;
