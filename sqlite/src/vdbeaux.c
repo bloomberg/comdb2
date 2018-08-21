@@ -1620,7 +1620,7 @@ static char *displayP4(Op *pOp, char *zTemp, int nTemp){
     }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     case P4_OPFUNC: {
-      Opfunc *pOpFunc = pOp->p4.pOpFunc;
+      OpFunc *pOpFunc = pOp->p4.comdb2func;
       sqlite3_str_appendf(&x, "op(%p,%p)", pOpFunc->func, pOpFunc->destructor);
       break;
     }

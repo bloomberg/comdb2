@@ -2895,7 +2895,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     } else if (is_pragma) {
         /* currently, all PRAGMA requests, when allowed, are handled
         ** by SQLite */
-        logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]", __FILE__,
+        logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
                __LINE__, __func__, clnt->sql);
         return 0;
 #endif
