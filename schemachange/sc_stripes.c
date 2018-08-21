@@ -82,7 +82,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
     }
 
     unlock_schema_lk();
-    bdb_ltran_put_schema_lock(sc_logical_tran);
 
     /* RENAME BLOB FILES */
     if (newblobstripe && !gbl_blobstripe) {
@@ -148,7 +147,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
         }
     }
     printf("Created new files OK\n");
-
 
     bdb_set_global_stripe_info(NULL, newdtastripe, newblobstripe, &bdberr);
     apply_new_stripe_settings(newdtastripe, newblobstripe);
