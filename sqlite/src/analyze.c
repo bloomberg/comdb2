@@ -283,8 +283,12 @@ static void openStatTable(
         sqlite3NestedParse(pParse, "DELETE FROM %Q.%s", pDb->zDbSName, zTab);
 #endif
       }else{
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        sqlite3NestedParse(pParse, "DELETE FROM %Q.%s", pDb->zDbSName, zTab);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         /* The sqlite_stat[134] table already exists.  Delete all rows. */
         sqlite3VdbeAddOp2(v, OP_Clear, aRoot[i], iDb);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }
     }
   }
