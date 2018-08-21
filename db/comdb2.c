@@ -738,13 +738,13 @@ int gbl_mifid2_datetime_range = 1;
 int gbl_early_verify = 1;
 
 int gbl_bbenv;
+extern int gbl_legacy_defaults;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
 int free_gbl_tunables();
 int register_db_tunables(struct dbenv *tbl);
 
-int init_plugins(void);
 int destroy_plugins(void);
 void register_plugin_tunables(void);
 int install_static_plugins(void);
@@ -1360,17 +1360,42 @@ static void free_sqlite_table(struct dbenv *dbenv)
  */
 void clean_exit(void)
 {
-    int rc;
+    int alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
 
-    thedb->exiting = 1;
+    /* this defaults to 5 minutes */
+    alarm(alarmtime);
+
+    /* dont let any new requests come in.  we're going to go non-coherent
+       here in a second, so letting new reads in would be bad. */
+    no_new_requests(thedb);
+
+    wait_for_sc_to_stop();
+
+#   if 0
+    if (bdb_is_an_unconnected_master(thedb->dbs[0]->handle)) {
+        wait_for_sc_to_stop(); /* single node, need to stop SC */
+        logmsg(LOGMSG_INFO, "This was standalone\n");
+    } else {
+        /* hand over masterness to a new candidate if we're the master. */
+        bdb_transfermaster(thedb->dbs[0]->handle);
+    }
+#   endif
+
+    /* let the lower level start advertising high lsns to go non-coherent
+       - dont hang the master waiting for sync replication to an exiting
+       node. */
+    bdb_exiting(thedb->dbs[0]->handle);
+
     stop_threads(thedb);
-    logmsg(LOGMSG_INFO, "stopping db engine...\n");
+    flush_db();
 
+#   if 0
     /* TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
       them to quit.
     */
     if (!gbl_create_mode)
         sleep(4);
+#   endif
 
     cleanup_q_vars();
     cleanup_switches();
@@ -1385,7 +1410,7 @@ void clean_exit(void)
         logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
     }
 
-    rc = backend_close(thedb);
+    int rc = backend_close(thedb);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
     }
@@ -2435,6 +2460,8 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     dbenv->master = NULL; /*no known master at this point.*/
     dbenv->errstaton = 1; /* ON */
 
+    dbenv->handle_buf_queue_time = time_metric_new("handle_buf_time_in_queue");
+    dbenv->sql_queue_time = time_metric_new("sql_time_in_queue");
     dbenv->service_time = time_metric_new("service_time");
     dbenv->queue_depth = time_metric_new("queue_depth");
     dbenv->concurrent_queries = time_metric_new("concurrent_queries");
@@ -3019,7 +3046,7 @@ static void load_dbstore_tableversion(struct dbenv *dbenv)
     }
 }
 
-int init_sqlite_tables(struct dbenv *dbenv)
+static int init_sqlite_tables(struct dbenv *dbenv)
 {
     int rc;
     rc = init_sqlite_table(dbenv, "sqlite_stat1");
@@ -3536,22 +3563,19 @@ static int init(int argc, char **argv)
 
     /* get/set the table names from llmeta */
     if (gbl_create_mode) {
-       if (init_sqlite_tables(thedb))
-          return -1;
-
-        /* schemas are stored in the meta table after the backend is fully
-         * opened below */
-    }
-    /* if we are using low level meta table and this isn't the create pass,
-     * we shouldn't see any table definitions in the lrl. they should have
-     * been removed during initialization */
-    else if (thedb->num_dbs != 0) {
-        logmsg(LOGMSG_FATAL, "lrl contains table definitions, they should not be "
-                        "present after the database has been created\n");
+        if (!gbl_legacy_defaults)
+            if (init_sqlite_tables(thedb))
+                return -1;
+    } else if (thedb->num_dbs != 0) {
+        /* if we are using low level meta table and this isn't the create
+         * pass, we shouldn't see any table definitions in the lrl. they
+         * should have been removed during initialization */
+        logmsg(LOGMSG_FATAL, "lrl contains table definitions, they should not "
+                             "be present after the database has been "
+                             "created\n");
         return -1;
-    }
-    /* we will load the tables from the llmeta table */
-    else {
+    } else {
+        /* we will load the tables from the llmeta table */
         int waitfileopen =
             bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAY_FILE_OPEN);
         if (waitfileopen) {
@@ -4426,6 +4450,8 @@ void *statthd(void *p)
 
 
         /* Push out old metrics */
+        time_metric_purge_old(thedb->handle_buf_queue_time);
+        time_metric_purge_old(thedb->sql_queue_time);
         time_metric_purge_old(thedb->service_time);
         time_metric_purge_old(thedb->queue_depth);
         time_metric_purge_old(thedb->concurrent_queries);
@@ -5044,12 +5070,6 @@ int main(int argc, char **argv)
     }
 
     init_debug_switches();
-
-    /* Initialize the plugin sub-system. */
-    if ((init_plugins())) {
-        logmsg(LOGMSG_FATAL, "Failed to initialize plugin sub-system");
-        exit(1);
-    }
 
     /* Initialize plugin tunables. */
     register_plugin_tunables();

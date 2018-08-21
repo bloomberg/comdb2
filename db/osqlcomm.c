@@ -6935,10 +6935,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     return 0;
                 } else {
                     /* this can happen if we're skipping delayed key adds */
-                    reqerrstr(iq, COMDB2_CSTRT_RC_DUP,
-                              "add key constraint "
-                              "duplicate key '%s' on "
-                              "table '%s' index %d",
+                    reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint "
+                                                       "duplicate key '%s' on "
+                                                       "table '%s' index %d",
                               get_keynm_from_db_idx(iq->usedb, err->ixnum),
                               iq->usedb->tablename, err->ixnum);
                 }
@@ -8428,7 +8427,7 @@ int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum
         memcpy(qdata->key, key, keylen);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL);
+                         0, NULL, 0);
 
     if (rc != 0) {
         free(qdata);
@@ -8463,7 +8462,7 @@ int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum
         memcpy(qdata->key, key, keylen);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL);
+                         0, NULL, 0);
 
     if (rc != 0) {
         free(qdata);
@@ -8498,7 +8497,7 @@ int enque_osqlpfault_olddata_oldkeys(struct dbtable *db, unsigned long long geni
     comdb2uuidcpy(qdata->uuid, uuid);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL);
+                         0, NULL, 0);
 
     if (rc != 0) {
         free(qdata);
@@ -8536,7 +8535,7 @@ int enque_osqlpfault_newdata_newkeys(struct dbtable *db, void *record, int recle
     comdb2uuidcpy(qdata->uuid, uuid);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL);
+                         0, NULL, 0);
 
     if (rc != 0) {
         free(qdata->record);
@@ -8580,7 +8579,7 @@ int enque_osqlpfault_olddata_oldkeys_newkeys(
     comdb2uuidcpy(qdata->uuid, uuid);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL);
+                         0, NULL, 0);
 
     if (rc != 0) {
         free(qdata->record);

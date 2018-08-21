@@ -3019,7 +3019,17 @@ static int appsock_callback(void *bdb_handle, SBUF2 *sb)
     struct dbenv *dbenv;
 
     dbenv = bdb_get_usr_ptr(bdb_handle);
-    appsock_handler_start(dbenv, sb);
+    appsock_handler_start(dbenv, sb, 0);
+
+    return 0;
+}
+
+static int admin_appsock_callback(void *bdb_handle, SBUF2 *sb)
+{
+    struct dbenv *dbenv;
+
+    dbenv = bdb_get_usr_ptr(bdb_handle);
+    appsock_handler_start(dbenv, sb, 1);
 
     return 0;
 }
@@ -3908,6 +3918,8 @@ int open_bdb_env(struct dbenv *dbenv)
                      getroom_callback);
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_APPSOCK,
                      appsock_callback);
+    bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_ADMIN_APPSOCK,
+                     admin_appsock_callback);
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_PRINT,
                      (BDB_CALLBACK_FP)vctrace);
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_ELECTSETTINGS,
@@ -4438,9 +4450,6 @@ int backend_close(struct dbenv *dbenv)
     if (dbenv->timepart_views) {
         views_signal(dbenv->timepart_views);
     }
-
-    /* offloading sql goes here */
-    osql_net_exiting();
 
     return bdb_close_env(dbenv->bdb_env);
 }

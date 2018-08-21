@@ -1404,7 +1404,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 					pthread_mutex_unlock(&pt->lk);
 					
 					t_ret = thdpool_enqueue(trickle_thdpool,
-					    trickle_do_work, range, 0, NULL);
+					    trickle_do_work, range, 0, NULL, 0);
 					if (t_ret) {
 						pt->nwaits++;
 						poll(NULL, 0, 10);
@@ -1446,7 +1446,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 				pthread_mutex_unlock(&pt->lk);
 
 				t_ret = thdpool_enqueue(trickle_thdpool,
-				    trickle_do_work, range, 0, NULL);
+				    trickle_do_work, range, 0, NULL, 0);
 				if (t_ret) {
 					pt->nwaits++;
 					poll(NULL, 0, 10);

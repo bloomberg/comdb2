@@ -46,6 +46,11 @@ struct appsock_thd_state {
     struct thr_handle *thr_self;
 };
 
+typedef struct appsock_work_args {
+    SBUF2 *sb;
+    int admin;
+} appsock_work_args_t;
+
 struct thdpool *gbl_appsock_thdpool = NULL;
 char appsock_unknown_old[] = "-1 #unknown command\n";
 char appsock_unknown[] = "Error: -1 #unknown command\n";
@@ -160,9 +165,10 @@ void appsock_get_dbinfo2_stats(uint32_t *n_appsock, uint32_t *n_sql)
     *n_sql = exec_count;
 }
 
-static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
+static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
                              struct thr_handle *thr_self)
 {
+    SBUF2 *sb = w->sb;
     comdb2_appsock_t *appsock;
     comdb2_appsock_arg_t arg;
     char line[128];
@@ -189,7 +195,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
 
         st = 0;
 
-        logmsg(LOGMSG_DEBUG, "thd_apsock_int(): '%s'\n", line);
+        logmsg(LOGMSG_DEBUG, "%s:%s", __func__, line);
 
         tok = segtok(line, rc, &st, &ltok);
         if (ltok == 0)
@@ -219,6 +225,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
         arg.sb = sb;
         arg.cmdline = line;
         arg.keepsocket = keepsocket;
+        arg.admin = w->admin;
 
         thrman_where(thr_self, appsock->name);
 
@@ -254,11 +261,12 @@ static void appsock_thd_end(struct thdpool *pool, void *thddata)
 static void appsock_work(struct thdpool *pool, void *work, void *thddata)
 {
     struct appsock_thd_state *state = thddata;
-    SBUF2 *sb = work;
+    appsock_work_args_t *w = (appsock_work_args_t *)work;
+    SBUF2 *sb = w->sb;
     int keepsocket = 0;
 
     thrman_setfd(state->thr_self, sbuf2fileno(sb));
-    thd_appsock_int(sb, &keepsocket, state->thr_self);
+    thd_appsock_int(w, &keepsocket, state->thr_self);
     thrman_setfd(state->thr_self, -1);
     thrman_where(state->thr_self, NULL);
     if (keepsocket == 0)
@@ -271,7 +279,8 @@ static void appsock_work(struct thdpool *pool, void *work, void *thddata)
 static void appsock_work_pp(struct thdpool *pool, void *work, void *thddata,
                             int op)
 {
-    SBUF2 *sb = (SBUF2 *)work;
+    appsock_work_args_t *w = (appsock_work_args_t *)work;
+    SBUF2 *sb = w->sb;
 
     switch (op) {
     case THD_RUN:
@@ -285,6 +294,7 @@ static void appsock_work_pp(struct thdpool *pool, void *work, void *thddata,
     default:
         abort();
     }
+    free(w);
 }
 
 int gbl_appsock_connection_warn_threshold = 80;
@@ -295,7 +305,7 @@ void dump_appsock_threads(void)
     thrman_dump();
 }
 
-void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb)
+void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
 {
     /*START HANDLER THREAD*/
     int rc;
@@ -353,7 +363,12 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb)
         }
     }
 
-    if (thdpool_enqueue(gbl_appsock_thdpool, appsock_work_pp, sb, 0, NULL) !=
+    uint32_t flags = admin ? THDPOOL_FORCE_DISPATCH : 0;
+    appsock_work_args_t *work = (appsock_work_args_t *)malloc(sizeof(*work));
+    work->admin = admin;
+    work->sb = sb;
+    if (thdpool_enqueue(gbl_appsock_thdpool, appsock_work_pp, work, 0, NULL,
+                        flags) != 0,
         0) {
         total_appsock_rejections++;
         if ((now - last_thread_dump_time) > 10) {

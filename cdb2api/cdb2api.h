@@ -34,7 +34,8 @@ enum cdb2_hndl_alloc_flags {
     CDB2_DIRECT_CPU = 4,
     CDB2_RANDOM = 8,
     CDB2_RANDOMROOM = 16,
-    CDB2_ROOM = 32
+    CDB2_ROOM = 32,
+    CDB2_ADMIN = 64
 };
 
 enum cdb2_request_type {
@@ -66,7 +67,6 @@ enum cdb2_errors {
     CDB2ERR_DBCREATE_FAILED = -18,
 
     CDB2ERR_THREADPOOL_INTERNAL = -20, /* some error in threadpool code */
-    CDB2ERR_READONLY = -21,
 
     CDB2ERR_NOMASTER = -101,
     CDB2ERR_UNTAGGED_DATABASE = -102,
@@ -90,6 +90,7 @@ enum cdb2_errors {
     CDB2ERR_NOTSUPPORTED = 116,
 
     CDB2ERR_DUPLICATE = 299,
+    CDB2ERR_READONLY = 305,
     CDB2ERR_TZNAME_FAIL = 401,
     CDB2ERR_CHANGENODE = 402,
 

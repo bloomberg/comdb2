@@ -103,6 +103,10 @@ if(DEBUG_TYPES)
   add_definitions(-DDEBUG_TYPES)
 endif()
 
+if(COMDB2_LEGACY_DEFAULTS)
+  add_definitions(-DLEGACY_DEFAULTS)
+endif()
+
 add_executable(comdb2 ${src})
 set(module uncategorized)
 set(MODULE UNCATEGORIZED)

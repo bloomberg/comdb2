@@ -74,6 +74,9 @@ void bdb_callback_set(bdb_callback_type *bdb_callback, int callback_type,
     case BDB_CALLBACK_APPSOCK:
         bdb_callback->appsock_rtn = callback_rtn;
         break;
+    case BDB_CALLBACK_ADMIN_APPSOCK:
+        bdb_callback->admin_appsock_rtn = callback_rtn;
+        break;
     case BDB_CALLBACK_PRINT:
         bdb_callback->print_rtn = (PRINTFP)callback_rtn;
         break;

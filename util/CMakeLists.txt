@@ -11,6 +11,7 @@ set(src
   cheapstub.c
   comdb2_pthread_create.c
   comdb2file.c
+  compat.c
   ctrace.c
   debug_switches.c
   flibc.c
@@ -52,6 +53,9 @@ set(src
 )
 if(WITH_SSL)
   list(APPEND src ssl_support.c)
+endif()
+if(COMDB2_LEGACY_DEFAULTS)
+  add_definitions(-DLEGACY_DEFAULTS)
 endif()
 add_library(util ${src})
 include_directories(

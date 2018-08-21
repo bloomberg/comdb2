@@ -163,7 +163,7 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
  * Check if a name is a shard 
  *
  */
-int timepart_is_shard(const char *name, int lock)
+int timepart_is_shard(const char *name, int lock, char **viewname)
 {
    timepart_views_t  *views = thedb->timepart_views;
    timepart_view_t   *view;
@@ -180,6 +180,9 @@ int timepart_is_shard(const char *name, int lock)
    if(view)
    {  
       rc = 1;
+      if (viewname) {
+          *viewname = view->name;
+      }
    }
 
    if(lock)
@@ -2784,6 +2787,31 @@ void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId,
 int timepart_get_num_views(void)
 {
     return thedb->timepart_views->nviews;
+}
+
+/**
+ * Get number of shards
+ *
+ */
+int timepart_get_num_shards(const char *view_name)
+{
+    timepart_views_t *views;
+    timepart_view_t *view;
+    int nshards;
+
+    pthread_rwlock_rdlock(&views_lk);
+
+    views = thedb->timepart_views;
+
+    view = _get_view(views, view_name);
+    if (view)
+        nshards = view->nshards;
+    else
+        nshards = -1;
+
+    pthread_rwlock_unlock(&views_lk);
+
+    return nshards;
 }
 
 /**

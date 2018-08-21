@@ -79,10 +79,6 @@ find_cores() {
 
 
     # always check localhost because thats where we create db
-    if [[ -n "$CLUSTER" ]] ; then
-        PIDFL=${TMPDIR}/${DBNAME}.$HOSTNAME.pid
-    fi
-
     if [ $has_pattern -eq 1 ] ; then
         local PID=$(cat ${PIDFL} 2> /dev/null)
         COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g; s/\.\./\./;"`
@@ -102,7 +98,32 @@ find_cores() {
     fi
 
 
-    for node in ${CLUSTER/$HOSTNAME/} ; do
+    if [[ -n "$CLUSTER" ]] ; then
+        #check again for clustered local crash
+        PIDFL=${TMPDIR}/${DBNAME}.$HOSTNAME.pid
+        if [ $has_pattern -eq 1 ] ; then
+            local PID=$(cat ${PIDFL} 2> /dev/null)
+            COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g; s/\.\./\./;"`
+            COREFL=$COREDIR/$COREFL
+            CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*' 2> /dev/null"
+            if [ "x$PID" == "x" ] ; then
+                CORECMD="echo ''"
+            fi
+        fi
+
+        eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
+        if [[ -n "$cr" ]] ; then
+            echo "Core file $HOSTNAME:${cr} copied to $DBDIR" > core_stacktrace.$HOSTNAME.txt
+            cp ${cr} $DBDIR
+            which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> core_stacktrace.$HOSTNAME.txt
+            echo $cr # this is the return value of the function
+        fi
+    fi
+
+    for node in ${CLUSTER} ; do
+        if [ $node == $HOSTNAME ] ; then
+            continue
+        fi
         if [ $has_pattern -eq 1 ] ; then
             PIDFL=${TMPDIR}/${DBNAME}.pid
             local PID=`ssh -o StrictHostKeyChecking=no $node "cat ${PIDFL} 2> /dev/null" </dev/null`

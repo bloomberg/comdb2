@@ -1978,6 +1978,7 @@ static void pfx_ctrace(const char *format, ...)
 
 // static functions$
 
+#if !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM)
 /* COMDB2 BLOCKING MEMORY ALLOCATOR { */
 static void privileged_init(void)
 {
@@ -2690,6 +2691,7 @@ void comdb2_bfree(comdb2bma ma, void *ptr) { comdb2_bfree_int(ma, ptr, 1); }
 void comdb2_bfree_nl(comdb2bma ma, void *ptr) { comdb2_bfree_int(ma, ptr, 0); }
 /* } free */
 /* } COMDB2 BLOCKING MEMORY ALLOCATOR */
+#endif /* !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM) */
 
 /* COMDB2 GLOBAL BLOB MEMORY ALLOCATOR { */
 /* blob allocator limit */

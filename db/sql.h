@@ -637,6 +637,7 @@ struct sqlclntstate {
     char *stack;
 
     int translevel_changed;
+    int admin;
 };
 
 /* Query stats. */

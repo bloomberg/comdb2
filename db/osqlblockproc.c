@@ -403,9 +403,9 @@ int osql_bplog_schemachange(struct ireq *iq)
             rc = ERR_NOMASTER;
         } else {
             sc_set_running(sc->table, 0, iq->sc_seed, NULL, 0);
-            free_schema_change_type(sc);
             if (sc->sc_rc)
                 rc = ERR_SC;
+            free_schema_change_type(sc);
         }
         sc = iq->sc;
     }
@@ -1568,4 +1568,131 @@ int sql_cancelled_transaction(struct ireq *iq)
     destroy_ireq(thedb, iq);
 
     return rc;
+}
+
+int backout_schema_changes(struct ireq *iq, tran_type *tran);
+void *osql_commit_timepart_resuming_sc(void *p)
+{
+    struct ireq iq;
+    struct schema_change_type *sc_pending = (struct schema_change_type *)p;
+    struct schema_change_type *sc;
+    tran_type *parent_trans = NULL;
+    int error = 0;
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    init_fake_ireq(thedb, &iq);
+    iq.tranddl = 1;
+    iq.sc = sc = sc_pending;
+    sc_pending = NULL;
+    while (sc != NULL) {
+        pthread_mutex_lock(&sc->mtx);
+        sc->nothrevent = 1;
+        pthread_mutex_unlock(&sc->mtx);
+        iq.sc = sc->sc_next;
+        if (sc->sc_rc == SC_COMMIT_PENDING) {
+            sc->sc_next = sc_pending;
+            sc_pending = sc;
+        } else {
+            logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__, sc->table,
+                   sc->sc_rc);
+            sc_set_running(sc->table, 0, 0, NULL, 0);
+            free_schema_change_type(sc);
+            error = 1;
+        }
+        sc = iq.sc;
+    }
+    iq.sc_pending = sc_pending;
+    iq.sc_locked = 0;
+    iq.osql_flags |= OSQL_FLAGS_SCDONE;
+    iq.sc_tran = NULL;
+    iq.sc_logical_tran = NULL;
+
+    if (error) {
+        logmsg(LOGMSG_ERROR, "%s: Aborting schema change because of errors\n",
+               __func__);
+        goto abort_sc;
+    }
+
+    if (trans_start_logical_sc(&iq, &(iq.sc_logical_tran))) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to start schema change transaction\n", __func__,
+               __LINE__);
+        goto abort_sc;
+    }
+
+    if ((parent_trans = bdb_get_physical_tran(iq.sc_logical_tran)) == NULL) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to start schema change transaction\n", __func__,
+               __LINE__);
+        goto abort_sc;
+    }
+
+    if (trans_start(&iq, parent_trans, &(iq.sc_tran))) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to start schema change transaction\n", __func__,
+               __LINE__);
+        goto abort_sc;
+    }
+
+    iq.sc = iq.sc_pending;
+    while (iq.sc != NULL) {
+        if (!iq.sc_locked) {
+            /* Lock schema from now on before we finalize any schema changes
+             * and hold on to the lock until the transaction commits/aborts.
+             */
+            wrlock_schema_lk();
+            iq.sc_locked = 1;
+        }
+        if (iq.sc->db)
+            iq.usedb = iq.sc->db;
+        if (finalize_schema_change(&iq, iq.sc_tran)) {
+            logmsg(LOGMSG_ERROR, "%s: failed to finalize '%s'\n", __func__,
+                   iq.sc->table);
+            goto abort_sc;
+        }
+        iq.usedb = NULL;
+        iq.sc = iq.sc->sc_next;
+    }
+
+    if (iq.sc_pending) {
+        create_sqlmaster_records(iq.sc_tran);
+        create_sqlite_master();
+    }
+
+    if (trans_commit(&iq, iq.sc_tran, gbl_mynode)) {
+        logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
+               __LINE__);
+        abort();
+    }
+
+    unlock_schema_lk();
+
+    if (trans_commit_logical(&iq, iq.sc_logical_tran, gbl_mynode, 0, 1, NULL, 0,
+                             NULL, 0)) {
+        logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
+               __LINE__);
+        abort();
+    }
+
+    osql_postcommit_handle(&iq);
+
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+
+    return NULL;
+
+abort_sc:
+    logmsg(LOGMSG_ERROR, "%s: aborting schema change\n", __func__);
+    if (iq.sc_tran)
+        trans_abort(&iq, iq.sc_tran);
+    backout_schema_changes(&iq, parent_trans);
+    if (iq.sc_locked) {
+        unlock_schema_lk();
+        iq.sc_locked = 0;
+    }
+    if (parent_trans)
+        trans_abort(&iq, parent_trans);
+    if (iq.sc_logical_tran)
+        trans_abort_logical(&iq, iq.sc_logical_tran, NULL, 0, NULL, 0);
+    osql_postabort_handle(&iq);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+    return NULL;
 }

@@ -682,6 +682,7 @@ struct bdb_callback_tag {
     GETROOMFP getroom_rtn;
     REPFAILFP repfail_rtn;
     BDBAPPSOCKFP appsock_rtn;
+    BDBAPPSOCKFP admin_appsock_rtn;
     PRINTFP print_rtn;
     BDBELECTSETTINGSFP electsettings_rtn;
     BDBCATCHUPFP catchup_rtn;
@@ -1038,7 +1039,7 @@ enum {
     USER_TYPE_TEST = 4,
     USER_TYPE_ADD = 5,
     USER_TYPE_DEL = 6,
-    USER_TYPE_DECOM = 7,
+    USER_TYPE_DECOM_DEPRECATED = 7,
     USER_TYPE_ADD_DUMMY = 8,
     USER_TYPE_REPTRC = 9,
     USER_TYPE_RECONNECT = 10,
@@ -1069,7 +1070,7 @@ enum {
     USER_TYPE_PAGE_COMPACT,
 
     /* by hostname messages */
-    USER_TYPE_DECOM_NAME,
+    USER_TYPE_DECOM_NAME_DEPRECATED,
     USER_TYPE_ADD_NAME,
     USER_TYPE_DEL_NAME,
     USER_TYPE_TRANSFERMASTER_NAME,
@@ -1162,8 +1163,6 @@ char *bdb_trans(const char infile[], char outfile[]);
 void *mymalloc(size_t size);
 void myfree(void *ptr);
 void *myrealloc(void *ptr, size_t size);
-
-void bdb_get_txn_stats(bdb_state_type *bdb_state, int *txn_commits);
 
 int bdb_upgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done);
 int bdb_downgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done);
@@ -1819,10 +1818,10 @@ void add_dummy(bdb_state_type *);
 int bdb_add_dummy_llmeta(void);
 int bdb_have_ipu(bdb_state_type *bdb_state);
 
-typedef struct ack_info_t ack_info;
-void handle_tcp_timestamp(bdb_state_type *, ack_info *, char *to);
-void handle_tcp_timestamp_ack(bdb_state_type *, ack_info *);
-void handle_ping_timestamp(bdb_state_type *, ack_info *, char *to);
+struct ack_info_t;
+void handle_tcp_timestamp(bdb_state_type *, struct ack_info_t *, char *to);
+void handle_tcp_timestamp_ack(bdb_state_type *, struct ack_info_t *);
+void handle_ping_timestamp(bdb_state_type *, struct ack_info_t *, char *to);
 
 unsigned long long bdb_logical_tranid(void *tran);
 
@@ -1837,8 +1836,6 @@ int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_temp_table_destroy_lru(struct temp_table *tbl,
                                bdb_state_type *bdb_state, int *last,
                                int *bdberr);
-void wait_for_sc_to_stop(void);
-void allow_sc_to_run(void);
 int is_table_in_schema_change(const char *tbname, tran_type *tran);
 
 void bdb_temp_table_init(bdb_state_type *bdb_state);
@@ -1859,5 +1856,11 @@ const char *deadlock_policy_str(u_int32_t policy);
 int deadlock_policy_max();
 
 char *coherent_state_to_str(int state);
+
+char *bdb_coherent_state_string(const char *);
+
+/* ugly, but need to signal shutdown */
+int osql_process_message_decom(char *);
+void osql_net_exiting(void);
 
 #endif /* __bdb_int_h__ */

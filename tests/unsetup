@@ -69,9 +69,12 @@ core_all_nodes() {
         cat ${pidfl} | xargs kill -6 
     fi
 
-    for node in ${CLUSTER/$HOSTNAME/} ; do
-         pidfl=${TMPDIR}/${DBNAME}.pid
-         ssh -o StrictHostKeyChecking=no $node "cat ${pidfl} | xargs kill -6 " </dev/null
+    for node in ${CLUSTER} ; do
+        if [ $node == $HOSTNAME ] ; then
+            continue
+        fi
+        pidfl=${TMPDIR}/${DBNAME}.pid
+        ssh -o StrictHostKeyChecking=no $node "cat ${pidfl} | xargs kill -6 " </dev/null
     done
 }
 
@@ -90,7 +93,10 @@ cleanup_cluster() {
     fi
 
     local node
-    for node in ${CLUSTER/$HOSTNAME/}; do
+    for node in ${CLUSTER}; do
+        if [ $node == $HOSTNAME ] ; then
+            continue
+        fi
         dbport=`${TESTSROOTDIR}/tools/send_msg_port.sh -h $node "get comdb2/replication/${DBNAME}" ${pmux_port}`
         echo "deregistering $DBNAME (port $dbport) from $node pmux:$pmux_port"
         ssh -o StrictHostKeyChecking=no $node "${deregister_db_port}" < /dev/null

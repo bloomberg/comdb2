@@ -164,6 +164,7 @@ int net_register_netcmp(netinfo_type *netinfo_ptr, NETCMPFP func);
 int net_register_newnode(netinfo_type *netinfo_ptr, NEWNODEFP func);
 
 int net_register_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
+int net_register_admin_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
 
 /* register a callback routine that will be called to find out if net
  * connections should be allowed from a given node.  the callback
@@ -245,12 +246,9 @@ ssize_t net_udp_send(int udp_fd, netinfo_type *netinfo_ptr, const char *host,
 */
 
 /* send a decom message about node "decom_node" to all nodes */
-int net_send_decom_all(netinfo_type *netinfo_ptr, const char *decom_host);
+int net_send_decom_all(netinfo_type *netinfo_ptr, char *decom_host);
 
 int net_send_authcheck_all(netinfo_type *netinfo_ptr);
-
-/* tell all nodes to decom me */
-int net_send_decom_me_all(netinfo_type *netinfo_ptr);
 
 void destroy_netinfo(netinfo_type *netinfo_ptr);
 

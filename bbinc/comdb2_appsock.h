@@ -38,6 +38,7 @@ struct comdb2_appsock_arg {
     char *cmdline;
     int *keepsocket;
     int error; /* internal error code */
+    int admin;
 };
 typedef struct comdb2_appsock_arg comdb2_appsock_arg_t;
 

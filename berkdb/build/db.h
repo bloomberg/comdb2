@@ -1594,7 +1594,7 @@ struct __db {
 	 * so that we can undo an associate.
 	 */
 	int  (*stored_get) __P((DB *, DB_TXN *, DBT *, DBT *, u_int32_t));
-	int  (*stored_close) __P((DB *, DB_TXN *, u_int32_t));
+	int  (*stored_close) __P((DB *, u_int32_t));
 
 #define	DB_OK_BTREE	0x01
 #define	DB_OK_HASH	0x02
@@ -2878,7 +2878,7 @@ int __recover_logfile_pglogs(DB_ENV *, void *);
 //#################################### THREAD POOL FOR LOADING PAGES ASYNCHRNOUSLY (WELL NO CALLBACK YET.....) 
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn,
-    void *work, int queue_override, char *persistent_info);
+    void *work, int queue_override, char *persistent_info, uint32_t flags);
 
 
 typedef struct {

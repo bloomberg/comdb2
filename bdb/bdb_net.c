@@ -35,6 +35,7 @@
 #include <util.h>
 #include <gettimeofday_ms.h>
 
+#include <compat.h>
 #include "nodemap.h"
 #include "endian_core.h"
 #include "printformats.h"
@@ -61,76 +62,66 @@
 extern void fsnapf(FILE *, void *, int);
 extern int db_is_stopped(void);
 
-struct ack_info_t {
-    uint32_t hdrsz;
-    int32_t type;
-    uint32_t len; /* payload len */
-    int32_t from;
-    int32_t to;
-    int32_t fromlen;
-
-    /*
-    int32_t  dummy0;
-    uint64_t timestamp;
-    uint64_t seq;
-    */
-
-    /* To prevent double copying of payload, allocate enough
-    ** memory beyond every ack_info to hold the payload.
-    */
-};
-BB_COMPILE_TIME_ASSERT(ack_info, sizeof(ack_info) == (6 * sizeof(int32_t)));
-static int udp_send(bdb_state_type *, ack_info *, const char *host);
-
-/*
-** new_ack_info() allocates storage on the stack as its intended to be sent
-** inline. no need to free this storage.
-*/
-#define ack_info_from_host(info)                                               \
-    (char *)((uint8_t *)(info) + ((info)->hdrsz - (info)->fromlen))
-
-#define new_ack_info(ptr, payloadsz, fromhost)                                 \
-    do {                                                                       \
-        int __len = strlen(fromhost) + 1;                                      \
-        (ptr) = alloca(sizeof(ack_info) + payloadsz + __len);                  \
-        (ptr)->hdrsz = sizeof(ack_info) + __len;                               \
-        (ptr)->len = payloadsz;                                                \
-        (ptr)->fromlen = __len;                                                \
-        (ptr)->from = (ptr)->to = 0;                                           \
-        strcpy(ack_info_from_host(ptr), fromhost);                             \
-    } while (0)
-
-#define ack_info_data(info) (void *)((uint8_t *)(info) + (info)->hdrsz)
-
-#define ack_info_size(info) ((info)->hdrsz + (info)->len)
-
-/* Convert ack_info header into big endian */
-#define ack_info_from_cpu(info)                                                \
-    do {                                                                       \
-        (info)->hdrsz = htonl((info)->hdrsz);                                  \
-        (info)->type = htonl((info)->type);                                    \
-        (info)->len = htonl((info)->len);                                      \
-        (info)->from = htonl((info)->from);                                    \
-        (info)->to = htonl((info)->to);                                        \
-        (info)->fromlen = htonl((info)->fromlen);                              \
-    } while (0)
-
-#define ack_info_to_cpu(info)                                                  \
-    do {                                                                       \
-        (info)->hdrsz = ntohl((info)->hdrsz);                                  \
-        (info)->type = ntohl((info)->type);                                    \
-        (info)->len = ntohl((info)->len);                                      \
-        (info)->from = ntohl((info)->from);                                    \
-        (info)->to = ntohl((info)->to);                                        \
-        (info)->fromlen = ntohl((info)->fromlen);                              \
-    } while (0)
-
 static unsigned int sent_udp = 0;
 static unsigned int fail_udp = 0;
 
 static unsigned int recd_udp = 0;
 static unsigned int recl_udp = 0; /* problem with recv'd len */
 static unsigned int rect_udp = 0; /* problem with recv'd to */
+
+int bdb_udp_send(bdb_state_type *bdb_state, const char *to, size_t len,
+                 void *data)
+{
+    repinfo_type *repinfo = bdb_state->repinfo;
+    netinfo_type *netinfo = repinfo->netinfo;
+    ssize_t nsent = net_udp_send(repinfo->udp_fd, netinfo, to, len, data);
+    if (nsent < 0) {
+        if (nsent != -999) {
+            logmsgperror("udp_send:sendto");
+            logmsg(LOGMSG_ERROR, "sz:%zu, to:%s\n", len, to);
+        }
+        ++fail_udp;
+    } else {
+        ++sent_udp;
+    }
+    return nsent;
+}
+
+static int udp_send_hostname(bdb_state_type *bdb_state, ack_info *info,
+                             const char *to)
+{
+    size_t len = ack_info_size(info);
+    ack_info_from_cpu(info);
+    return bdb_udp_send(bdb_state, to, len, info);
+}
+
+udp_sender *udp_send_impl = udp_send_hostname;
+void set_udp_sender(udp_sender *s)
+{
+    udp_send_impl = s;
+}
+
+static int udp_send(bdb_state_type *bdb_state, ack_info *info, const char *to)
+{
+    return udp_send_impl(bdb_state, info, to);
+}
+
+static int udp_recv_hostname(ack_info *info, ssize_t *new_size)
+{
+    ack_info_to_cpu(info);
+    return *new_size;
+}
+
+udp_receiver *udp_recv_impl = udp_recv_hostname;
+void set_udp_receiver(udp_receiver *r)
+{
+    udp_recv_impl = r;
+}
+
+static int udp_recv(ack_info *i, ssize_t *new_size)
+{
+    return udp_recv_impl(i, new_size);
+}
 
 int gbl_ack_trace = 0;
 
@@ -240,30 +231,6 @@ char *print_addr(struct sockaddr_in *addr, char *buf)
         sprintf(buf, "%s:inet_ntop:%s", __func__, errbuf);
     }
     return buf;
-}
-
-static int udp_send(bdb_state_type *bdb_state, ack_info *info, const char *to)
-{
-    repinfo_type *repinfo = bdb_state->repinfo;
-    netinfo_type *netinfo = repinfo->netinfo;
-    size_t len = ack_info_size(info);
-
-    ack_info_from_cpu(info);
-    ssize_t nsent = net_udp_send(repinfo->udp_fd, netinfo, to, len, info);
-
-    if (nsent < 0) {
-        if (nsent != -999) {
-            logmsgperror("udp_send:sendto");
-            ack_info_to_cpu(info);
-            printf("sz:%zu, hdr:%d payload:%d type:%d from:me to:%s\n", len,
-                   info->hdrsz, info->len, info->type, to);
-        }
-        ++fail_udp;
-    } else {
-        ++sent_udp;
-    }
-
-    return nsent;
 }
 
 static int send_timestamp(bdb_state_type *bdb_state, const char *to, int type)
@@ -522,7 +489,10 @@ static void *udp_reader(void *arg)
         }
 
         ++recd_udp;
-        ack_info_to_cpu(info);
+
+        if (udp_recv(info, &nrecv) == 0) {
+            continue;
+        }
 
         if (ack_info_size(info) != nrecv) {
             fprintf(stderr, "%s:invalid read of %zd (header suggests: %u)\n",
@@ -676,6 +646,14 @@ void udp_summary(void)
            "udp packets received with len mismatch: %u\n"
            "udp packets received with destination mismatch: %u\n",
            sent_udp, fail_udp, recd_udp, recl_udp, rect_udp);
+}
+
+void udp_stats(unsigned int *in_sent_udp, unsigned int *in_fail_udp,
+               unsigned int *in_recd_udp)
+{
+    *in_sent_udp = sent_udp;
+    *in_fail_udp = fail_udp;
+    *in_recd_udp = recd_udp;
 }
 
 // Zero out all counters

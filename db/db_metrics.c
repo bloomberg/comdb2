@@ -54,6 +54,26 @@ struct comdb2_metrics_store {
     double concurrent_connections;
     int64_t ismaster;
     uint64_t num_sc_done;
+    int64_t last_checkpoint_ms;
+    int64_t total_checkpoint_ms;
+    int64_t checkpoint_count;
+    int64_t rcache_hits;
+    int64_t rcache_misses;
+    int64_t last_election_ms;
+    int64_t total_election_ms;
+    int64_t election_count;
+    int64_t last_election_time;
+    int64_t udp_sent;
+    int64_t udp_failed_send;
+    int64_t udp_received;
+    int64_t active_transactions;
+    int64_t maxactive_transactions;
+    int64_t total_commits;
+    int64_t total_aborts;
+    double sql_queue_time;
+    int64_t sql_queue_timeouts;
+    double handle_buf_queue_time;
+    int64_t denied_appsock_connections;
 };
 
 static struct comdb2_metrics_store stats;
@@ -120,6 +140,55 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.threads, NULL},
     {"num_sc_done", "Number of schema changes done", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.num_sc_done, NULL},
+    {"checkpoint_ms", "Time taken for last checkpoint", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.last_checkpoint_ms},
+    {"checkpoint_total_ms", "Total time taken for checkpoints",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.total_checkpoint_ms},
+    {"checkpoint_count", "Total number of checkpoints taken", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.checkpoint_count},
+    {"rcache_hits", "Count of root-page cache hits", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rcache_hits},
+    {"rcache_misses", "Count of root-page cache misses", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rcache_misses},
+    {"last_election_ms", "Time taken to resolve last election",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.last_election_ms, NULL},
+    {"total_election_ms", "Total time taken to resolve elections",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.total_election_ms, NULL},
+    {"election_count", "Total number of elections", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.election_count, NULL},
+    {"last_election_time", "Wallclock time last election completed",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.last_election_time, NULL},
+    {"udp_sent", "Number of udp packets sent", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.udp_sent, NULL},
+    {"udp_failed_send", "Number of failed udp sends", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.udp_failed_send, NULL},
+    {"udp_received", "Number of udp receives", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.udp_received, NULL},
+    {"active_transactions", "Number of active transactions", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.active_transactions, NULL},
+    {"max_active_transactions", "Maximum number of active transactions",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.maxactive_transactions, NULL},
+    {"total_commits", "Number of transaction commits", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.total_commits, NULL},
+    {"total_aborts", "Number of transaction aborts", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.total_aborts, NULL},
+    {"sql_queue_time", "Average ms spent waiting in sql queue",
+     STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, &stats.sql_queue_time,
+     NULL},
+    {"sql_queue_timeouts", "Number of sql items timed-out waiting on queue",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.sql_queue_timeouts, NULL},
+    {"handle_buf_queue_time", "Average ms spent waiting in handle-buf queue",
+     STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.handle_buf_queue_time, NULL},
+    {"denied_appsocks", "Number of denied appsock connections",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.denied_appsock_connections, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -246,6 +315,10 @@ int refresh_metrics(void)
     stats.service_time = time_metric_average(thedb->service_time);
     stats.queue_depth = time_metric_average(thedb->queue_depth);
     stats.concurrent_sql = time_metric_average(thedb->concurrent_queries);
+    stats.sql_queue_time = time_metric_average(thedb->sql_queue_time);
+    stats.sql_queue_timeouts = thdpool_get_timeouts(gbl_sqlengine_thdpool);
+    stats.handle_buf_queue_time =
+        time_metric_average(thedb->handle_buf_queue_time);
     stats.concurrent_connections = time_metric_average(thedb->connections);
     int master = bdb_whoismaster((bdb_state_type*) thedb->bdb_env) == gbl_mynode ? 1 : 0; 
     stats.ismaster = master;
@@ -256,7 +329,24 @@ int refresh_metrics(void)
                __LINE__);
         return 1;
     }
-
+    stats.last_checkpoint_ms = gbl_last_checkpoint_ms;
+    stats.total_checkpoint_ms = gbl_total_checkpoint_ms;
+    stats.checkpoint_count = gbl_checkpoint_count;
+    stats.rcache_hits = rcache_hits;
+    stats.rcache_misses = rcache_miss;
+    stats.last_election_ms = gbl_last_election_time_ms;
+    stats.total_election_ms = gbl_total_election_time_ms;
+    stats.election_count = gbl_election_count;
+    stats.last_election_time = gbl_election_time_completed;
+    unsigned int sent, failed_send, received;
+    udp_stats(&sent, &failed_send, &received);
+    stats.udp_sent = sent;
+    stats.udp_failed_send = failed_send;
+    stats.udp_received = received;
+    bdb_get_txn_stats(thedb->bdb_env, &stats.active_transactions,
+                      &stats.maxactive_transactions, &stats.total_commits,
+                      &stats.total_aborts);
+    stats.denied_appsock_connections = gbl_denied_appsock_connection_count;
     return 0;
 }
 
