@@ -243,7 +243,6 @@ static void openStatTable(
           skip4 = 1;
         }
       }else{
-        assert( i<ArraySize(aTable) );
         aRoot[i] = pStat->tnum;
         sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
         sqlite3VdbeChangeP5(v, 0);
