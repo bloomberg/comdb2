@@ -502,34 +502,6 @@ int comdb2ma_exit(void)
     return rc;
 }
 
-int comdb2ma_release(void)
-{
-    int i, rc;
-    comdb2ma curpos;
-
-    rc = COMDB2MA_LOCK(&root);
-    if (rc != 0)
-        return rc;
-
-    if (root.m == NULL)
-        rc = EPERM;
-    else {
-        /* release all lock-protected mspaces */
-        LISTC_FOR_EACH(&(root.list), curpos, lnk)
-        {
-            if (curpos->use_lock)
-                comdb2_malloc_trim(curpos, 0);
-        }
-    }
-
-    if (rc != 0)
-        COMDB2MA_UNLOCK(&root);
-    else
-        rc = COMDB2MA_UNLOCK(&root);
-
-    return rc;
-}
-
 int comdb2ma_stats(char *pattern, int verbose, int hr, comdb2ma_order_by ord,
                    comdb2ma_group_by grp, int toctrc)
 {
@@ -627,6 +599,43 @@ size_t comdb2_malloc_usable_size(void *ptr)
                ? 0
                : (dlmalloc_usable_size((void **)ptr + COMDB2MA_SENTINEL_OFS) -
                   COMDB2MA_OVERHEAD(COMDB2MA_ISDEBUG((void **)ptr)));
+}
+
+int comdb2ma_release(void)
+{
+    int i, rc;
+    comdb2ma curpos;
+
+    rc = COMDB2MA_LOCK(&root);
+    if (rc != 0)
+        return rc;
+
+    if (root.m == NULL)
+        rc = EPERM;
+    else {
+        /* release all lock-protected mspaces */
+        LISTC_FOR_EACH(&(root.list), curpos, lnk)
+        {
+            if (curpos->use_lock)
+                comdb2_malloc_trim(curpos, 0);
+        }
+    }
+
+    if (rc != 0)
+        COMDB2MA_UNLOCK(&root);
+    else
+        rc = COMDB2MA_UNLOCK(&root);
+
+#if !defined(USE_SYS_ALLOC) && defined(PER_THREAD_MALLOC)
+#if defined(M_GRANULARITY)
+#error "The function must be defined after comdb2ma_nice."
+#elif defined(M_TRIM_THRESHOLD)
+    extern int malloc_trim (size_t pad);
+    malloc_trim(0);
+#endif
+#endif
+
+    return rc;
 }
 // root$
 
