@@ -70,4 +70,17 @@ const char *metric_type(comdb2_metric_type type);
 /* Return how we keep the counter for this metric (C-string) */
 const char *metric_collection_type_string(comdb2_collection_type t);
 
+extern int64_t gbl_last_checkpoint_ms;
+extern int64_t gbl_total_checkpoint_ms;
+extern int gbl_checkpoint_count;
+
+extern uint32_t rcache_hits;
+extern uint32_t rcache_miss;
+
+extern time_t gbl_election_time_completed;
+extern uint64_t gbl_last_election_time_ms;
+extern uint64_t gbl_total_election_time_ms;
+extern uint64_t gbl_election_count;
+extern int64_t gbl_denied_appsock_connection_count;
+
 #endif /* _STATISTICS_H */

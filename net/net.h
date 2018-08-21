@@ -164,6 +164,7 @@ int net_register_netcmp(netinfo_type *netinfo_ptr, NETCMPFP func);
 int net_register_newnode(netinfo_type *netinfo_ptr, NEWNODEFP func);
 
 int net_register_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
+int net_register_admin_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
 
 /* register a callback routine that will be called to find out if net
  * connections should be allowed from a given node.  the callback

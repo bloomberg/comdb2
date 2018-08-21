@@ -37,6 +37,7 @@ const sqlite3_module systblLogicalOpsModule;
 
 int systblTypeSamplesInit(sqlite3 *db);
 int systblRepNetQueueStatInit(sqlite3 *db);
+int systblSqlpoolQueueInit(sqlite3 *db);
 int systblActivelocksInit(sqlite3 *db);
 int systblNetUserfuncsInit(sqlite3 *db);
 int systblClusterInit(sqlite3 *db);

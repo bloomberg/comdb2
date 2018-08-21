@@ -18,7 +18,6 @@
 
 typedef struct VdbeSorter VdbeSorter;
 
-
 #include "sql.h"
 #include "fdb_comm.h"
 #include "fdb_bend.h"
@@ -264,11 +263,9 @@ void free_cached_idx(uint8_t **cached_idx);
 static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush);
 
 int fdb_bend_trans_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg);
-int fdb_bend_trans_prepare(SBUF2 *sb, fdb_msg_t *msg,
-                             svc_callback_arg_t *arg);
+int fdb_bend_trans_prepare(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg);
 int fdb_bend_trans_commit(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg);
-int fdb_bend_trans_rollback(SBUF2 *sb, fdb_msg_t *msg,
-                              svc_callback_arg_t *arg);
+int fdb_bend_trans_rollback(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg);
 int fdb_bend_trans_rc(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg);
 int fdb_bend_cursor_open(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg);
 int fdb_bend_cursor_close(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg);
@@ -284,22 +281,26 @@ int fdb_bend_trans_hbeat(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg);
 
 /* matches FDB_MSG... enums */
 fdb_svc_callback_t callbacks[] = {
-    fdb_bend_trans_begin, fdb_bend_trans_prepare, fdb_bend_trans_commit,
-    fdb_bend_trans_rollback, fdb_bend_trans_rc,
+    fdb_bend_trans_begin,  fdb_bend_trans_prepare,
+    fdb_bend_trans_commit, fdb_bend_trans_rollback,
+    fdb_bend_trans_rc,
 
-    fdb_bend_cursor_open, fdb_bend_cursor_close, fdb_bend_cursor_find,
-    fdb_bend_cursor_find, fdb_bend_cursor_move, fdb_bend_cursor_move,
-    fdb_bend_cursor_move, fdb_bend_cursor_move,
+    fdb_bend_cursor_open,  fdb_bend_cursor_close,
+    fdb_bend_cursor_find,  fdb_bend_cursor_find,
+    fdb_bend_cursor_move,  fdb_bend_cursor_move,
+    fdb_bend_cursor_move,  fdb_bend_cursor_move,
 
-    fdb_bend_nop, fdb_bend_nop,
+    fdb_bend_nop,          fdb_bend_nop,
 
     fdb_bend_run_sql,
 
-    fdb_bend_insert, fdb_bend_delete, fdb_bend_update,
+    fdb_bend_insert,       fdb_bend_delete,
+    fdb_bend_update,
 
     fdb_bend_trans_hbeat,
 
-    fdb_bend_insert, fdb_bend_delete, fdb_bend_update,
+    fdb_bend_insert,       fdb_bend_delete,
+    fdb_bend_update,
 
     fdb_bend_index};
 
@@ -400,8 +401,9 @@ int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed sending fdbc cursor_open message rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed sending fdbc cursor_open message rc=%d\n", __func__,
+               rc);
         return rc;
     }
 
@@ -442,8 +444,9 @@ int fdb_send_close(fdb_msg_t *msg, char *cid, char *tid, int isuuid, int seq,
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed sending fdbc cursor_close message rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed sending fdbc cursor_close message rc=%d\n", __func__,
+               rc);
         return rc;
     }
 
@@ -551,7 +554,10 @@ done:
     return rc;
 }
 
-int fdb_msg_size(void) { return sizeof(fdb_msg_t); }
+int fdb_msg_size(void)
+{
+    return sizeof(fdb_msg_t);
+}
 
 int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags);
 
@@ -630,8 +636,8 @@ int fdb_recv_rc(fdb_msg_t *msg, fdb_tran_t *trans)
         trans->errstrlen = msg->rc.errstrlen;
     } else {
         if (msg->rc.errstr) {
-            logmsg(LOGMSG_ERROR, "%s: rc=%d but errror string present?\n", __func__,
-                    msg->rc.rc);
+            logmsg(LOGMSG_ERROR, "%s: rc=%d but errror string present?\n",
+                   __func__, msg->rc.rc);
             free(msg->rc.errstr);
         }
         trans->errstr = NULL;
@@ -645,9 +651,15 @@ int fdb_recv_rc(fdb_msg_t *msg, fdb_tran_t *trans)
     return trans->rc;
 }
 
-unsigned long long fdb_msg_genid(fdb_msg_t *msg) { return msg->dr.genid; }
+unsigned long long fdb_msg_genid(fdb_msg_t *msg)
+{
+    return msg->dr.genid;
+}
 
-int fdb_msg_datalen(fdb_msg_t *msg) { return msg->dr.datalen; }
+int fdb_msg_datalen(fdb_msg_t *msg)
+{
+    return msg->dr.datalen;
+}
 
 char *fdb_msg_data(fdb_msg_t *msg)
 {
@@ -999,24 +1011,25 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
         }
 #if WITH_SSL
         if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_SSL) {
-            rc = sbuf2fread((char*)&msg->co.ssl, 1, sizeof(msg->co.ssl), sb);
-            if (rc != sizeof(msg->co.ssl)) 
+            rc = sbuf2fread((char *)&msg->co.ssl, 1, sizeof(msg->co.ssl), sb);
+            if (rc != sizeof(msg->co.ssl))
                 return -1;
             msg->co.ssl = ntohl(msg->co.ssl);
-            /*fprintf(stderr, "Read ssl %d size %d\n", msg->co.ssl, sizeof(tmp));*/
-           
-            if (gbl_client_ssl_mode < SSL_ALLOW) 
+            /*fprintf(stderr, "Read ssl %d size %d\n", msg->co.ssl,
+             * sizeof(tmp));*/
+
+            if (gbl_client_ssl_mode < SSL_ALLOW)
                 return -1;
 
             rc = sbuf2putc(sb, 'Y');
-            if (rc<0)
+            if (rc < 0)
                 return -1;
             rc = sbuf2flush(sb);
-            if (rc<0)
+            if (rc < 0)
                 return -1;
             rc = sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL,
                               gbl_nid_dbname, NULL, 0, 1);
-            if (rc!= 1)
+            if (rc != 1)
                 return -1;
         }
 #else
@@ -1717,8 +1730,9 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     int isuuid;
     char prf[512];
 
-    snprintf(prf, sizeof(prf), "%llu%s%s", (unsigned long long) gettimeofday_ms(),
-             (prefix) ? " " : "", (prefix) ? prefix : "");
+    snprintf(prf, sizeof(prf), "%llu%s%s",
+             (unsigned long long)gettimeofday_ms(), (prefix) ? " " : "",
+             (prefix) ? prefix : "");
     prefix = prf;
 
     isuuid = msg->hd.type & FD_MSG_FLAGS_ISUUID;
@@ -1735,76 +1749,74 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_TRAN_ROLLBACK:
 
         logmsg(LOGMSG_USER, "XXXX: %s %s tid=%llx fl=%x lvl=%s\n", prefix,
-                __req_2_str(msg->hd.type), *(unsigned long long *)msg->tr.tid,
-                msg->tr.flags, __tran_2_str(msg->tr.lvl));
+               __req_2_str(msg->hd.type), *(unsigned long long *)msg->tr.tid,
+               msg->tr.flags, __tran_2_str(msg->tr.lvl));
         break;
 
     case FDB_MSG_TRAN_RC:
 
         logmsg(LOGMSG_USER, "XXXX: %s TRAN_RC tid=%llx rc=%d %s\n", prefix,
-                *(unsigned long long *)msg->rc.tid, msg->rc.rc,
-                (msg->rc.errstrlen > 0 && msg->rc.errstr) ? msg->rc.errstr
-                                                          : "");
+               *(unsigned long long *)msg->rc.tid, msg->rc.rc,
+               (msg->rc.errstrlen > 0 && msg->rc.errstr) ? msg->rc.errstr : "");
         break;
 
     case FDB_MSG_CURSOR_OPEN:
 
-        logmsg(LOGMSG_USER, 
-                "XXXX: %llu %s sb=%p CURSOR_OPEN cid=%llx tid=%llx fl=%x "
-                "rootpage=%d version=%d seq=%d SRC[%d, %s]\n",
-                t, prefix, sb, *(unsigned long long *)msg->co.cid,
-                *(unsigned long long *)msg->co.tid, msg->co.flags,
-                msg->co.rootpage, msg->co.version, msg->co.seq,
-                msg->co.srcpid,
-                (msg->co.srcname) ? msg->co.srcname : "(unknown)");
+        logmsg(LOGMSG_USER,
+               "XXXX: %llu %s sb=%p CURSOR_OPEN cid=%llx tid=%llx fl=%x "
+               "rootpage=%d version=%d seq=%d SRC[%d, %s]\n",
+               t, prefix, sb, *(unsigned long long *)msg->co.cid,
+               *(unsigned long long *)msg->co.tid, msg->co.flags,
+               msg->co.rootpage, msg->co.version, msg->co.seq, msg->co.srcpid,
+               (msg->co.srcname) ? msg->co.srcname : "(unknown)");
 
         break;
 
     case FDB_MSG_CURSOR_CLOSE:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_CLOSE cid=%llx\n", t, prefix,
-                *(unsigned long long *)msg->cc.cid);
+               *(unsigned long long *)msg->cc.cid);
         break;
 
     case FDB_MSG_CURSOR_FIRST:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_FIRST cid=%llx\n", t, prefix,
-                *(unsigned long long *)msg->cc.cid);
+               *(unsigned long long *)msg->cc.cid);
         break;
 
     case FDB_MSG_CURSOR_LAST:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_LAST cid=%llx\n", t, prefix,
-                *(unsigned long long *)msg->cc.cid);
+               *(unsigned long long *)msg->cc.cid);
         break;
 
     case FDB_MSG_CURSOR_NEXT:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_NEXT cid=%llx\n", t, prefix,
-                *(unsigned long long *)msg->cc.cid);
+               *(unsigned long long *)msg->cc.cid);
         break;
 
     case FDB_MSG_CURSOR_PREV:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_PREV cid=%llx\n", t, prefix,
-                *(unsigned long long *)msg->cc.cid);
+               *(unsigned long long *)msg->cc.cid);
         break;
 
     case FDB_MSG_DATA_ROW:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s DATA_ROW cid=%llx rc=%d genid=%llx "
-                        "datalen=%d datacpylen=%d\n",
-                t, prefix, *(unsigned long long *)msg->dr.cid, msg->dr.rc,
-                msg->dr.genid, msg->dr.datalen, msg->dr.datacopylen);
+                            "datalen=%d datacpylen=%d\n",
+               t, prefix, *(unsigned long long *)msg->dr.cid, msg->dr.rc,
+               msg->dr.genid, msg->dr.datalen, msg->dr.datacopylen);
         break;
 
     case FDB_MSG_CURSOR_FIND:
     case FDB_MSG_CURSOR_FIND_LAST:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s %s cid=%llx key[%d]=\"", t, prefix,
-                (msg->hd.type == FDB_MSG_CURSOR_FIND) ? "CURSOR_FIND"
-                                                      : "CURSOR_FIND_LAST",
-                *(unsigned long long *)msg->cf.cid, msg->cf.keylen);
+               (msg->hd.type == FDB_MSG_CURSOR_FIND) ? "CURSOR_FIND"
+                                                     : "CURSOR_FIND_LAST",
+               *(unsigned long long *)msg->cf.cid, msg->cf.keylen);
         fsnapf(stderr, msg->cf.key, msg->cf.keylen);
         logmsg(LOGMSG_USER, "\"\n");
 
@@ -1812,11 +1824,12 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
     case FDB_MSG_RUN_SQL:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s RUN_SQL cid=%llx version=%d flags=%x "
-                        "sqllen=%d sql=\"%s\" trim=\"%s\"\n",
-                t, prefix, *(unsigned long long *)msg->sq.cid, msg->sq.version,
-                msg->sq.flags, msg->sq.sqllen, msg->sq.sql,
-                (msg->sq.flags == FDB_RUN_SQL_TRIM) ? "yes" : "no");
+        logmsg(LOGMSG_USER,
+               "XXXX: %llu %s RUN_SQL cid=%llx version=%d flags=%x "
+               "sqllen=%d sql=\"%s\" trim=\"%s\"\n",
+               t, prefix, *(unsigned long long *)msg->sq.cid, msg->sq.version,
+               msg->sq.flags, msg->sq.sqllen, msg->sq.sql,
+               (msg->sq.flags == FDB_RUN_SQL_TRIM) ? "yes" : "no");
         break;
 
     case FDB_MSG_INSERT_PI:
@@ -1858,10 +1871,10 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_INDEX:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s INDEX cid=%llx rootp=%d version=%d "
-                        "genid=%llx is_delete=%d, ixnum=%d, ixlen=%d\n",
-                t, prefix, *(unsigned long long *)msg->ix.cid, msg->ix.rootpage,
-                msg->ix.version, msg->ix.genid, msg->ix.is_delete,
-                msg->ix.ixnum, msg->ix.ixlen);
+                            "genid=%llx is_delete=%d, ixnum=%d, ixlen=%d\n",
+               t, prefix, *(unsigned long long *)msg->ix.cid, msg->ix.rootpage,
+               msg->ix.version, msg->ix.genid, msg->ix.is_delete, msg->ix.ixnum,
+               msg->ix.ixlen);
         fsnapf(stderr, msg->ix.ix, msg->ix.ixlen);
         break;
 
@@ -1897,7 +1910,8 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
     rc = sbuf2fwrite((char *)&type, 1, sizeof(type), sb);
 
     if (rc != sizeof(type)) {
-        logmsg(LOGMSG_ERROR, "%s: failed to write header rc=%d\n", __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to write header rc=%d\n", __func__,
+               rc);
         return FDB_ERR_WRITE_IO;
     }
 
@@ -2005,7 +2019,8 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
         }
 #if WITH_SSL
         if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_SSL) {
-            /*fprintf(stderr, "Writing ssl %d size %d\n", msg->co.ssl, sizeof(tmp));*/
+            /*fprintf(stderr, "Writing ssl %d size %d\n", msg->co.ssl,
+             * sizeof(tmp));*/
             tmp = htonl(msg->co.ssl);
             rc = sbuf2fwrite((char *)&tmp, 1, sizeof(tmp), sb);
             if (rc != sizeof(tmp))
@@ -2542,7 +2557,8 @@ int fdb_bend_cursor_close(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
      */
     rc = fdb_svc_cursor_close(cid, arg->isuuid, (clnt) ? &clnt : NULL);
     if (rc < 0) {
-        logmsg(LOGMSG_ERROR, "%s: failed to close cursor rc=%d\n", __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to close cursor rc=%d\n", __func__,
+               rc);
     }
 
     return rc;
@@ -2571,8 +2587,8 @@ static enum svc_move_types move_type(int type)
 }
 
 int fdb_bend_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
-                        unsigned long long genid, char *data, int datalen,
-                        char *datacopy, int datacopylen, int ret, int isuuid)
+                      unsigned long long genid, char *data, int datalen,
+                      char *datacopy, int datacopylen, int ret, int isuuid)
 {
     int rc;
     fdb_msg_t lcl_msg;
@@ -2606,7 +2622,8 @@ int fdb_bend_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
     if (rc) {
         /* this happens natural for fractured streams */
         if (gbl_fdb_track)
-            logmsg(LOGMSG_USER, "%s: failed send row back, rc=%d\n", __func__, rc);
+            logmsg(LOGMSG_USER, "%s: failed send row back, rc=%d\n", __func__,
+                   rc);
     }
 
     return rc;
@@ -2633,7 +2650,7 @@ int fdb_bend_cursor_move(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     }
 
     rc = fdb_bend_send_row(sb, msg, NULL, genid, data, datalen, datacopy,
-                             datacopylen, rc, arg->isuuid);
+                           datacopylen, rc, arg->isuuid);
 
     return rc;
 }
@@ -2656,7 +2673,7 @@ int fdb_send_find(fdb_msg_t *msg, char *cid, int last, char *key, int keylen,
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed fdbc find%s rc=%d\n", __func__,
-                (last) ? "_last" : "", rc);
+               (last) ? "_last" : "", rc);
         return rc;
     }
 
@@ -2686,13 +2703,13 @@ int fdb_bend_cursor_find(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
         cid, keylen, key, msg->hd.type == FDB_MSG_CURSOR_FIND_LAST, &genid,
         &datalen, &data, &datacopy, &datacopylen, arg->isuuid);
     if (rc != IX_FND && rc != IX_NOTFND && rc != IX_PASTEOF && rc != IX_EMPTY) {
-        logmsg(LOGMSG_ERROR, "%s: failed to execute a cursor find rc=%d\n", __func__,
-                rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to execute a cursor find rc=%d\n",
+               __func__, rc);
         return rc;
     }
 
     rc = fdb_bend_send_row(sb, msg, NULL, genid, data, datalen, datacopy,
-                             datacopylen, rc, arg->isuuid);
+                           datacopylen, rc, arg->isuuid);
 
     return rc;
 }
@@ -2722,15 +2739,16 @@ int fdb_bend_run_sql(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
         /* this happens natural for fractured streams */
         if (gbl_fdb_track)
             logmsg(LOGMSG_USER, "%s: failed to dispatch request rc=%d \"%s\"\n",
-                    __func__, rc, sql);
+                   __func__, rc, sql);
         return -1;
     }
 
     end_localrpc = osql_log_time();
 
     if (gbl_time_fdb) {
-        logmsg(LOGMSG_USER, "=== DONE running remsql time %llu [%llu -> %llu] rc=%d\n",
-            end_localrpc - start_localrpc, start_localrpc, end_localrpc, rc);
+        logmsg(LOGMSG_USER,
+               "=== DONE running remsql time %llu [%llu -> %llu] rc=%d\n",
+               end_localrpc - start_localrpc, start_localrpc, end_localrpc, rc);
     }
 
     /* was there any error processing? */
@@ -2742,7 +2760,8 @@ int fdb_bend_run_sql(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
             strlen(clnt->fdb_state.err.errstr) + 1, clnt->fdb_state.err.errval,
             arg->isuuid);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: fdb_send_rc failed rc=%d\n", __func__, rc);
+            logmsg(LOGMSG_ERROR, "%s: fdb_send_rc failed rc=%d\n", __func__,
+                   rc);
         }
     }
 
@@ -2783,8 +2802,9 @@ int fdb_send_insert(fdb_msg_t *msg, char *cid, int version, int rootpage,
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed sending fdbc cursor_insert message rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed sending fdbc cursor_insert message rc=%d\n",
+               __func__, rc);
         goto done;
     }
 
@@ -2826,8 +2846,9 @@ int fdb_send_delete(fdb_msg_t *msg, char *cid, int version, int rootpage,
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed sending fdbc cursor_delete message rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed sending fdbc cursor_delete message rc=%d\n",
+               __func__, rc);
         goto done;
     }
 
@@ -2872,8 +2893,9 @@ int fdb_send_update(fdb_msg_t *msg, char *cid, int version, int rootpage,
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed sending fdbc cursor_update message rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed sending fdbc cursor_update message rc=%d\n",
+               __func__, rc);
         goto done;
     }
 
@@ -2916,8 +2938,9 @@ int fdb_send_index(fdb_msg_t *msg, char *cid, int version, int rootpage,
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed sending fdbc cursor_index  message rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed sending fdbc cursor_index  message rc=%d\n",
+               __func__, rc);
         goto done;
     }
 
@@ -3062,8 +3085,9 @@ int fdb_send_begin(fdb_msg_t *msg, fdb_tran_t *trans,
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed sending begin transaction message rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed sending begin transaction message rc=%d\n", __func__,
+               rc);
         return rc;
     }
 
@@ -3096,8 +3120,9 @@ int fdb_send_commit(fdb_msg_t *msg, fdb_tran_t *trans,
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed sending commit transaction message rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed sending commit transaction message rc=%d\n",
+               __func__, rc);
         return rc;
     }
 
@@ -3124,8 +3149,9 @@ int fdb_send_rollback(fdb_msg_t *msg, fdb_tran_t *trans,
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed sending commit transaction message rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed sending commit transaction message rc=%d\n",
+               __func__, rc);
         return rc;
     }
 
@@ -3159,8 +3185,9 @@ int fdb_send_rc(fdb_msg_t *msg, char *tid, int retrc, int errstrlen,
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed sending commit transaction message rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed sending commit transaction message rc=%d\n",
+               __func__, rc);
         return rc;
     }
 
@@ -3191,9 +3218,9 @@ int fdb_send_heartbeat(fdb_msg_t *msg, char *tid, int isuuid, SBUF2 *sb)
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
-        logmsg(LOGMSG_ERROR, 
-                "%s: failed sending heartbeat transaction message rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed sending heartbeat transaction message rc=%d\n",
+               __func__, rc);
         return rc;
     }
 
@@ -3230,7 +3257,8 @@ int fdb_bend_trans_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
             clnt->idxInsert = calloc(MAXINDEX, sizeof(uint8_t *));
             clnt->idxDelete = calloc(MAXINDEX, sizeof(uint8_t *));
             if (!clnt->idxInsert || !clnt->idxDelete) {
-                logmsg(LOGMSG_ERROR, "%s:%d malloc failed\n", __func__, __LINE__);
+                logmsg(LOGMSG_ERROR, "%s:%d malloc failed\n", __func__,
+                       __LINE__);
                 return -1;
             }
         }
@@ -3274,8 +3302,8 @@ int fdb_bend_trans_commit(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     /* send back the result */
     rc2 = fdb_send_rc(msg, tid, rc, errstrlen, errstr_if_any, arg->isuuid, sb);
     if (rc2) {
-        logmsg(LOGMSG_ERROR, "%s: sending rc error rc=%d rc2=%d\n", __func__, rc,
-                rc2);
+        logmsg(LOGMSG_ERROR, "%s: sending rc error rc=%d rc2=%d\n", __func__,
+               rc, rc2);
         if (!rc)
             rc = rc2;
     }
@@ -3283,8 +3311,7 @@ int fdb_bend_trans_commit(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     return rc;
 }
 
-int fdb_bend_trans_rollback(SBUF2 *sb, fdb_msg_t *msg,
-                              svc_callback_arg_t *arg)
+int fdb_bend_trans_rollback(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
     char *tid = msg->tr.tid;
     enum transaction_level lvl = msg->tr.lvl;
@@ -3607,8 +3634,6 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
     return rc;
 }
 
-
-
 static int _is_tablename_unique(const char *name)
 {
     int i;
@@ -3737,4 +3762,3 @@ int handle_alias_request(comdb2_appsock_arg_t *arg)
     arg->error = rc;
     return (rc) ? APPSOCK_RETURN_ERR : APPSOCK_RETURN_OK;
 }
-

@@ -371,6 +371,10 @@ extern int gbl_rowlocks;
 extern unsigned long long osql_log_time(void);
 extern int db_is_stopped();
 
+int64_t gbl_last_checkpoint_ms;
+int64_t gbl_total_checkpoint_ms;
+int gbl_checkpoint_count;
+
 void *checkpoint_thread(void *arg)
 {
     int rc;
@@ -436,6 +440,9 @@ void *checkpoint_thread(void *arg)
         bdb_state->checkpoint_start_time = 0;
         MEMORY_SYNC;
         ctrace("checkpoint (scheduled) took %d ms\n", end - start);
+        gbl_last_checkpoint_ms = (end - start);
+        gbl_total_checkpoint_ms += gbl_last_checkpoint_ms;
+        gbl_checkpoint_count++;
 
         BDB_RELLOCK();
 

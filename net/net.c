@@ -6029,7 +6029,14 @@ static void *accept_thread(void *arg)
 
         /* appsock reqs have a non-0 first byte */
         if (firstbyte > 0) {
-            if (firstbyte != sbuf2ungetc(firstbyte, sb)) {
+            int admin = 0;
+            APPSOCKFP *rtn = NULL;
+
+            if (firstbyte == '@') {
+                findpeer(new_fd, paddr, sizeof(paddr));
+                logmsg(LOGMSG_INFO, "Accepting admin user from %s\n", paddr);
+                admin = 1;
+            } else if (firstbyte != sbuf2ungetc(firstbyte, sb)) {
                 logmsg(LOGMSG_ERROR, "sbuf2ungetc failed %s:%d\n", __FILE__,
                         __LINE__);
                 sbuf2close(sb);
@@ -6037,7 +6044,13 @@ static void *accept_thread(void *arg)
             }
 
             /* call user specified app routine */
-            if (netinfo_ptr->appsock_rtn) {
+            if (admin && netinfo_ptr->admin_appsock_rtn) {
+                rtn = netinfo_ptr->admin_appsock_rtn;
+            } else if (netinfo_ptr->appsock_rtn) {
+                rtn = netinfo_ptr->appsock_rtn;
+            }
+
+            if (rtn) {
                 /* set up the watchlist system for this node */
                 watchlist_node = calloc(1, sizeof(watchlist_node_type));
                 if (!watchlist_node) {
@@ -6057,7 +6070,7 @@ static void *accept_thread(void *arg)
                 sbuf2setuserptr(sb, watchlist_node);
 
                 /* this doesn't read- it just farms this off to a thread */
-                (netinfo_ptr->appsock_rtn)(netinfo_ptr, sb);
+                (rtn)(netinfo_ptr, sb);
             }
 
             continue;
@@ -6657,6 +6670,12 @@ void destroy_netinfo(netinfo_type *netinfo_ptr)
     }
 
     /*Pthread_mutex_unlock(&(netinfo_ptr->lock));*/
+}
+
+int net_register_admin_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func)
+{
+    netinfo_ptr->admin_appsock_rtn = func;
+    return 0;
 }
 
 int net_register_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func)

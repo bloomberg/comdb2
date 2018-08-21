@@ -1214,12 +1214,18 @@ static int elect_random_timeout(void)
     return (timeout_ms * 1000);
 }
 
+time_t gbl_election_time_completed;
+uint64_t gbl_last_election_time_ms;
+uint64_t gbl_total_election_time_ms;
+uint64_t gbl_election_count;
+
 static void *elect_thread(void *args)
 {
     int rc, count, i;
     bdb_state_type *bdb_state;
     char *master_host, *old_master;
     int num;
+    int end, start;
     int num_connected;
     int node_not_up = 0;
     uint32_t newgen;
@@ -1266,6 +1272,7 @@ static void *elect_thread(void *args)
     logmsg(LOGMSG_INFO, "thread 0x%lx in election\n", pthread_self());
 
     bdb_state->repinfo->in_election = 1;
+    start = comdb2_time_epochms();
 
     Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
 
@@ -1419,6 +1426,11 @@ elect_again:
 #endif
 
 give_up:
+    end = comdb2_time_epochms();
+    gbl_election_time_completed = time(NULL);
+    gbl_last_election_time_ms = (end - start);
+    gbl_total_election_time_ms += gbl_last_election_time_ms;
+    gbl_election_count++;
 
     Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
     bdb_state->repinfo->in_election = 0;
@@ -4346,7 +4358,7 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
         memcpy(rcv->data, data, size);
 
         rc = thdpool_enqueue(gbl_pgcompact_thdpool, pg_compact_do_work_pp, rcv,
-                             0, NULL);
+                             0, NULL, 0);
 
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s %d: failed to thdpool_enqueue rc = %d.\n",
@@ -4701,7 +4713,8 @@ int enqueue_touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
     touch_pg *work = (touch_pg *)malloc(sizeof(touch_pg));
     work->mpf = mpf;
     work->pgno = pgno;
-    rc = thdpool_enqueue(gbl_udppfault_thdpool, touch_page_pp, work, 0, NULL);
+    rc =
+        thdpool_enqueue(gbl_udppfault_thdpool, touch_page_pp, work, 0, NULL, 0);
     return rc;
 }
 
@@ -4737,7 +4750,7 @@ int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
     qdata->pgno = pgno;
 
     rc = thdpool_enqueue(gbl_udppfault_thdpool, udppfault_do_work_pp, qdata, 0,
-                         NULL);
+                         NULL, 0);
 
     if (rc != 0) {
         free(qdata);

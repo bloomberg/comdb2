@@ -276,6 +276,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblActivelocksInit(db);
   if (rc == SQLITE_OK)
+    rc = systblSqlpoolQueueInit(db);
+  if (rc == SQLITE_OK)
     rc = systblNetUserfuncsInit(db);
   if (rc == SQLITE_OK)
     rc = systblClusterInit(db);

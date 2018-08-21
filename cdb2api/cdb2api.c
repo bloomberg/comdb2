@@ -856,6 +856,7 @@ struct cdb2_hndl {
     char **commands;
     int ack;
     int is_hasql;
+    int is_admin;
     int clear_snap_line;
     int debug_trace;
     int max_retries;
@@ -1857,7 +1858,8 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
                 hndl->dbname, hndl->type, hndl->policy, hndl->newsql_typestr);
     }
 
-    while ((fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum,
+    while (!hndl->is_admin &&
+           (fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum,
                                       NULL)) > 0) {
         if ((sb = sbuf2open(fd, 0)) == 0) {
             close(fd);
@@ -1882,6 +1884,8 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
             close(fd);
             return -1;
         }
+        if (hndl->is_admin)
+            sbuf2printf(sb, "@");
         sbuf2printf(sb, "newsql\n");
         sbuf2flush(sb);
     }
@@ -1914,7 +1918,8 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     int fd = sbuf2fileno(sb);
 
     int timeoutms = 10 * 1000;
-    if ((hndl->firstresponse &&
+    if (hndl->is_admin ||
+        (hndl->firstresponse &&
          (!hndl->lastresponse ||
           (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) ||
         (!hndl->firstresponse) || hndl->in_trans) {
@@ -3331,33 +3336,31 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     PRINT_RETURN_OK(rc);
 }
 
-static int is_hasql(const char *set_command, int *value)
+static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
 {
-    const char *p = &set_command[0];
+    const char *p = &set_command[sizeof("SET") - 1];
 
-    assert(strncasecmp(p, "set", 3) == 0);
+    p = cdb2_skipws(p);
 
-    while (*p && *p != ' ')
-        p++;
+    if (strncasecmp(p, "hasql", 5) == 0) {
+        p += sizeof("HASQL");
+        p = cdb2_skipws(p);
+        if (strncasecmp(p, "on", 2) == 0)
+            hndl->is_hasql = 1;
+        else
+            hndl->is_hasql = 0;
+        return;
+    }
 
-    while (*p && *p == ' ')
-        p++;
-
-    if (strncasecmp(p, "hasql", 5))
-        return 0;
-
-    while (*p && *p != ' ')
-        p++;
-
-    while (*p && *p == ' ')
-        p++;
-
-    if (!strncasecmp(p, "on", 2))
-        *value = 1;
-    else
-        *value = 0;
-
-    return 1;
+    if (strncasecmp(p, "admin", 5) == 0) {
+        p += sizeof("ADMIN");
+        p = cdb2_skipws(p);
+        if (strncasecmp(p, "on", 2) == 0)
+            hndl->is_admin = 1;
+        else
+            hndl->is_admin = 0;
+        return;
+    }
 }
 
 #if WITH_SSL
@@ -3559,10 +3562,8 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
         realloc(hndl->commands, sizeof(char *) * hndl->num_set_commands);
     hndl->commands[i] = malloc(strlen(sql) + 1);
     strcpy(hndl->commands[i], sql);
-    int hasql_val;
-    if (is_hasql(sql, &hasql_val)) {
-        hndl->is_hasql = hasql_val;
-    }
+
+    process_set_local(hndl, sql);
     return 0;
 }
 
@@ -4735,6 +4736,8 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     }
     sbuf2settimeout(ss, 5000, 5000);
     if (is_sockfd == 0) {
+        if (hndl->is_admin)
+            sbuf2printf(ss, "@");
         sbuf2printf(ss, "newsql\n");
         sbuf2flush(ss);
     } else {
@@ -4879,6 +4882,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
             close(fd);
             return -1;
         }
+        if (hndl->is_admin)
+            sbuf2printf(sb, "@");
         sbuf2printf(sb, "newsql\n");
         sbuf2flush(sb);
     } else {
@@ -5569,6 +5574,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->min_retries = MIN_RETRIES;
 
     hndl->env_tz = getenv("COMDB2TZ");
+    hndl->is_admin = (flags & CDB2_ADMIN);
 
     if (hndl->env_tz == NULL)
         hndl->env_tz = getenv("TZ");
