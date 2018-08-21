@@ -4426,7 +4426,7 @@ int cdb2_numcolumns(cdb2_hndl_tp *hndl)
 const char *cdb2_column_name(cdb2_hndl_tp *hndl, int col)
 {
     const char *ret;
-    if (hndl->firstresponse == NULL)
+    if ((hndl->firstresponse == NULL) || (hndl->firstresponse->value == NULL))
         ret = NULL;
     else
         ret = (const char *)hndl->firstresponse->value[col]->value.data;
@@ -4522,7 +4522,7 @@ const char *cdb2_errstr(cdb2_hndl_tp *hndl)
 int cdb2_column_type(cdb2_hndl_tp *hndl, int col)
 {
     int ret;
-    if (hndl->firstresponse == NULL)
+    if ((hndl->firstresponse == NULL) || (hndl->firstresponse->value == NULL))
         ret = 0;
     else
         ret = hndl->firstresponse->value[col]->type;
@@ -4535,14 +4535,14 @@ int cdb2_column_type(cdb2_hndl_tp *hndl, int col)
 
 int cdb2_column_size(cdb2_hndl_tp *hndl, int col)
 {
-    if (hndl->lastresponse == NULL)
+    if ((hndl->lastresponse == NULL) || (hndl->lastresponse->value == NULL))
         return -1;
     return hndl->lastresponse->value[col]->value.len;
 }
 
 void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
 {
-    if (hndl->lastresponse == NULL)
+    if ((hndl->lastresponse == NULL) || (hndl->lastresponse->value == NULL))
         return NULL;
     if (hndl->lastresponse->value[col]->value.len == 0 &&
         hndl->lastresponse->value[col]->has_isnull != 1 &&
