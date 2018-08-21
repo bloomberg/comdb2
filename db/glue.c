@@ -3688,16 +3688,6 @@ int broadcast_sc_ok(void)
     return send_to_all_nodes(NULL, 0, NET_CHECK_SC_OK, SCWAITTIME);
 }
 
-int broadcast_morestripe_and_open_all_dbs(int newdtastripe, int newblobstripe)
-{
-    struct net_morestripe_msg msg;
-    bzero(&msg, sizeof(msg));
-    msg.newdtastripe = newdtastripe;
-    msg.newblobstripe = newblobstripe;
-    return send_to_all_nodes(&msg, sizeof(msg), NET_MORESTRIPE_OPEN_DBS,
-                             MSGWAITTIME);
-}
-
 int broadcast_procedure_op(int op, const char *name, const char *param)
 {
     struct new_procedure_op_msg *msg;
@@ -3991,10 +3981,6 @@ int open_bdb_env(struct dbenv *dbenv)
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_CLOSE_ALL_DBS,
                                  "close_all_dbs", net_close_all_dbs))
-            return -1;
-        if (net_register_handler(dbenv->handle_sibling, NET_MORESTRIPE_OPEN_DBS,
-                                 "morestripe_and_open_all_dbs",
-                                 net_morestripe_and_open_all_dbs))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_CHECK_SC_OK,
                                  "check_sc_ok", net_check_sc_ok))
