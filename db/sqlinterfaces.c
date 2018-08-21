@@ -2166,15 +2166,18 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     return rc;
 }
 
-static int check_sql(struct sqlclntstate *clnt, int *sp)
+static int check_sql(struct sqlclntstate *clnt, int *sp, int *pragma)
 {
+    int tempPragma = 0;
     char buf[256];
     char *sql = clnt->sql;
     size_t len = sizeof("exec") - 1;
+    if (pragma == NULL) pragma = &tempPragma;
     if (strncasecmp(sql, "exec", len) == 0) {
         sql += len;
         if (isspace(*sql)) {
             *sp = 1;
+            *pragma = 0;
             return 0;
         }
     }
@@ -2182,8 +2185,13 @@ static int check_sql(struct sqlclntstate *clnt, int *sp)
     if (strncasecmp(sql, "pragma", len) == 0) {
         sql += len;
         if (isspace(*sql)) {
-            goto error;
+            if (*pragma) {
+                return 0;
+            } else {
+                goto error;
+            }
         }
+        *pragma = 0;
         return 0;
     }
     len = sizeof("create") - 1;
@@ -2191,11 +2199,13 @@ static int check_sql(struct sqlclntstate *clnt, int *sp)
         char *trigger = sql;
         trigger += len;
         if (!isspace(*trigger)) {
+            *pragma = 0;
             return 0;
         }
         trigger = skipws(trigger);
         len = sizeof("trigger") - 1;
         if (strncasecmp(trigger, "trigger", len) != 0) {
+            *pragma = 0;
             return 0;
         }
         trigger += len;
@@ -2203,6 +2213,7 @@ static int check_sql(struct sqlclntstate *clnt, int *sp)
             goto error;
         }
     }
+    *pragma = 0;
     return 0;
 
 error: /* pretend that a real prepare error occured */
@@ -2864,7 +2875,14 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 
     /* additional non-sqlite requests */
     int stored_proc = 0;
-    if ((rc = check_sql(clnt, &stored_proc)) != 0) {
+
+#if defined(SQLITE_DEBUG) || defined(COMDB2_ALLOW_SQLITE_PRAGMA)
+    int is_pragma = 1; /* allowed for debug builds, etc */
+    if ((rc = check_sql(clnt, &stored_proc, &is_pragma)) != 0)
+#else
+    if ((rc = check_sql(clnt, &stored_proc, 0)) != 0)
+#endif
+    {
         // TODO: set this: outrc = rc;
         return rc;
     }
@@ -2873,6 +2891,14 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         handle_stored_proc(thd, clnt);
         *outrc = 0;
         return 1;
+#if defined(SQLITE_DEBUG) || defined(COMDB2_ALLOW_SQLITE_PRAGMA)
+    } else if (is_pragma) {
+        /* currently, all PRAGMA requests, when allowed, are handled
+        ** by SQLite */
+        logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]", __FILE__,
+               __LINE__, __func__, clnt->sql);
+        return 0;
+#endif
     } else if (clnt->is_explain) { // only via newsql--cdb2api
         rdlock_schema_lk();
         sqlengine_prepare_engine(thd, clnt, 1);
