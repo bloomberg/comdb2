@@ -5554,6 +5554,8 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn, uint32_t lockid)
             stripes > 0) {
         gbl_dtastripe = stripes;
         gbl_blobstripe = blobstripe;
+        bdb_attr_set(thedb->bdb_attr, BDB_ATTR_DTASTRIPE, gbl_dtastripe);
+        bdb_attr_set(thedb->bdb_attr, BDB_ATTR_BLOBSTRIPE, gbl_blobstripe);
     }
 
     if (llmeta_load_tables(thedb, gbl_dbname, tran)) {
