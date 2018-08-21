@@ -813,6 +813,40 @@ static void partitionInfoFunc(
 }
 
 /*
+** Implementation of the comdb2_node_starttime() SQL function.
+*/
+static void comdb2NodeStartTimeFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+  extern int gbl_starttime;
+  dttz_t dt = {gbl_starttime, 0};
+  sqlite3_result_datetime(context, &dt, NULL);
+  //sqlite3_result_int64(context, gbl_starttime);
+}
+
+/*
+** Implementation of the comdb2_node_uptime() SQL function.
+** This returns the number of seconds this node has been up.
+** gbl_epoch_time variable is updated every second in watchdog_thread()
+*/
+static void comdb2NodeUptimeFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+  int comdb2_time_epoch(void);
+  extern int gbl_starttime;
+  extern int gbl_epoch_time;
+  sqlite3_result_int64(context, gbl_epoch_time - gbl_starttime);
+}
+
+
+
+/*
 ** Implementation of the last_insert_rowid() SQL function.  The return
 ** value is the same as the sqlite3_last_insert_rowid() API function.
 */
@@ -2209,6 +2243,8 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_port,       0, 0, 0, comdb2PortFunc),
     FUNCTION(comdb2_dbname,     0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost,0,0,0, comdb2PrevquerycostFunc),
+    FUNCTION(comdb2_node_uptime,0, 0, 0, comdb2NodeUptimeFunc),
+    FUNCTION(comdb2_node_starttime,0, 0, 0,comdb2NodeStartTimeFunc),
 #endif
 #ifdef SQLITE_ENABLE_UNKNOWN_SQL_FUNCTION
     FUNCTION(unknown,           -1, 0, 0, unknownFunc      ),
