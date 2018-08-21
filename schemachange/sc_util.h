@@ -19,6 +19,7 @@
 
 int close_all_dbs(void);
 int open_all_dbs(void);
+int open_all_dbs_tran(void *tran);
 int llmeta_get_dbnum_tran(void *tran, char *tablename, int *bdberr);
 int llmeta_get_dbnum(char *tablename, int *bdberr);
 char *get_temp_db_name(struct dbtable *db, char *prefix, char tmpname[]);

@@ -43,19 +43,46 @@ int do_alter_stripes_int(struct schema_change_type *s)
     int newdtastripe = s->newdtastripe;
     int newblobstripe = s->blobstripe;
     struct dbtable *db;
-    tran_type *tran = NULL;
+    tran_type *tran = NULL, *sc_logical_tran = NULL, *phys_tran;
     struct ireq iq = {0};
 
     wrlock_schema_lk();
 
-    /* STOP THREADS */
-    stop_threads(thedb);
-
-    /* CLOSE ALL TABLES */
-    if (close_all_dbs() != 0) exit(1);
-
     init_fake_ireq(thedb, &iq);
     iq.usedb = thedb->dbs[0];
+    iq.tranddl = 1;
+
+    rc = trans_start_logical_sc(&iq, &sc_logical_tran);
+    if (rc) {
+        fprintf(stderr, "morestripe: %d: trans_start rc %d\n", __LINE__,
+                rc);
+        unlock_schema_lk();
+        return SC_FAILED_TRANSACTION;
+    }
+
+    bdb_ltran_get_schema_lock(sc_logical_tran);
+
+    if ((phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
+        if (bdb_tran_abort(thedb->bdb_env, sc_logical_tran, &bdberr) != 0)
+            abort();
+        fprintf(stderr, "morestripe: %d: get_physical-tran returns NULL\n",
+                __LINE__);
+        unlock_schema_lk();
+        return SC_FAILED_TRANSACTION;
+    }
+
+    /* Get writelocks on all tables */
+    for (ii = 0; ii < thedb->num_dbs; ii++) {
+        db = thedb->dbs[ii];
+        if ((rc = bdb_lock_table_write(db->handle, phys_tran)) != 0) {
+            fprintf(stderr, "morestripe: couldn't acquire table writelocks\n");
+            unlock_schema_lk();
+            return SC_INTERNAL_ERROR;
+        }
+    }
+
+    unlock_schema_lk();
+    bdb_ltran_put_schema_lock(sc_logical_tran);
 
     /* RENAME BLOB FILES */
     if (newblobstripe && !gbl_blobstripe) {
@@ -64,8 +91,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
         if (rc) {
             fprintf(stderr, "morestripe: %d: trans_start rc %d\n", __LINE__,
                     rc);
-            unlock_schema_lk();
-            resume_threads(thedb);
             return SC_FAILED_TRANSACTION;
         }
 
@@ -78,8 +103,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
                                 "'%s' bdberr %d\n",
                         db->tablename, bdberr);
                 trans_abort(&iq, tran);
-                unlock_schema_lk();
-                resume_threads(thedb);
                 return SC_BDB_ERROR;
             }
 
@@ -91,7 +114,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
                         "morestripe: couldn't record genid for table '%s'\n",
                         db->tablename);
                 trans_abort(&iq, tran);
-                unlock_schema_lk();
                 resume_threads(thedb);
                 return SC_INTERNAL_ERROR;
             }
@@ -107,8 +129,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
         rc = trans_commit(&iq, tran, gbl_mynode);
         if (rc) {
             fprintf(stderr, "morestripe: couldn't commit rename trans\n");
-            unlock_schema_lk();
-            resume_threads(thedb);
             return SC_FAILED_TRANSACTION;
         }
     }
@@ -120,8 +140,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
         rc = bdb_create_stripes(db->handle, newdtastripe, newblobstripe,
                                 &bdberr);
         if (rc != 0) {
-            unlock_schema_lk();
-            resume_threads(thedb);
             fprintf(
                 stderr,
                 "morestripe: failed making extra stripes for table '%s': %d\n",
@@ -131,58 +149,25 @@ int do_alter_stripes_int(struct schema_change_type *s)
     }
     printf("Created new files OK\n");
 
-    rc = trans_start_sc(&iq, NULL, &tran);
-    if (rc) {
-        fprintf(stderr, "morestripe: %d: trans_start rc %d\n", __LINE__,
-                rc);
-        unlock_schema_lk();
-        resume_threads(thedb);
-        return SC_FAILED_TRANSACTION;
-    }
 
-    /* Get writelocks on all tables */
-    for (ii = 0; ii < thedb->num_dbs; ii++) {
-        db = thedb->dbs[ii];
-        if ((rc = bdb_lock_table_write(db->handle, tran)) != 0) {
-            fprintf(stderr, "morestripe: couldn't acquire table writelocks\n");
-            unlock_schema_lk();
-            resume_threads(thedb);
-            return SC_INTERNAL_ERROR;
-        }
-    }
+    bdb_set_global_stripe_info(NULL, newdtastripe, newblobstripe, &bdberr);
+    apply_new_stripe_settings(newdtastripe, newblobstripe);
 
-    /* After this point there is no backing out */
-    bdb_set_global_stripe_info(tran, newdtastripe, newblobstripe, &bdberr);
+    if (close_all_dbs() != 0) exit(1);
+    if (open_all_dbs() != 0) exit(1);
 
-    if ((rc = bdb_llog_scdone_tran(thedb->bdb_env, change_stripe, tran, NULL,
+    if ((rc = bdb_llog_scdone_tran(thedb->bdb_env, change_stripe, phys_tran, NULL,
                     &bdberr)) != 0) {
         fprintf(stderr, "morestripe: couldn't write scdone record\n");
-        unlock_schema_lk();
-        resume_threads(thedb);
         return SC_INTERNAL_ERROR;
     }
 
-    /* SET NEW STRIPE FACTORS */
-    apply_new_stripe_settings(newdtastripe, newblobstripe);
-
-    rc = trans_commit(&iq, tran, gbl_mynode);
+    rc = trans_commit(&iq, sc_logical_tran, gbl_mynode);
     if (rc) {
         fprintf(stderr, "morestripe: couldn't commit rename trans\n");
-        broadcast_resume_threads();
-        unlock_schema_lk();
-        resume_threads(thedb);
         return SC_FAILED_TRANSACTION;
     }
 
-    /* START THREADS */
-    unlock_schema_lk();
-
-    /* OPEN ALL TABLES */
-    if (open_all_dbs() != 0) exit(1);
-
-    resume_threads(thedb);
-
-    printf("\n");
     printf("MORESTRIPED SUCCESSFULLY\n");
     printf("New settings are: dtastripe %d blobstripe? %s\n", newdtastripe,
            newblobstripe ? "YES" : "NO");
