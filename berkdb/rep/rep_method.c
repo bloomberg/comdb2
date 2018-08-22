@@ -55,7 +55,7 @@ static int __rep_set_rep_transport __P((DB_ENV *, char *,
 	int (*)(DB_ENV *, const DBT *, const DBT *, const DB_LSN *,
 		char *, int, void *)));
 static int __rep_set_check_standalone __P((DB_ENV *, int (*)(DB_ENV *)));
-static int __rep_set_truncate_sc_callback __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *, uint32_t)));
+static int __rep_set_truncate_sc_callback __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *)));
 static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
 static int __rep_start __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
@@ -876,7 +876,7 @@ __rep_set_check_standalone(dbenv, f_check_standalone)
 static int
 __rep_set_truncate_sc_callback(dbenv, truncate_sc_callback)
 	DB_ENV *dbenv;
-	int (*truncate_sc_callback) __P((DB_ENV *, DB_LSN *lsn, uint32_t lockid));
+	int (*truncate_sc_callback) __P((DB_ENV *, DB_LSN *lsn));
 {
 	PANIC_CHECK(dbenv);
 	if (truncate_sc_callback == NULL) {

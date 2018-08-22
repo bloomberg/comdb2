@@ -6462,6 +6462,7 @@ restart:
 			if (ret == DB_LOCK_DEADLOCK) {
 				gbl_rep_trans_deadlocked++;
 				recovery_release_locks(dbenv, lockid);
+                lockid = DB_LOCK_INVALIDID;
 				goto restart;
 			}
 
@@ -6485,6 +6486,7 @@ restart:
 						goto err;
 					ret = online_apprec(dbenv, lsn, trunclsnp);
 					recovery_release_locks(dbenv, lockid);
+                    lockid = DB_LOCK_INVALIDID;
 					if (ret)
 						goto err;
 					goto restart;
@@ -6508,6 +6510,7 @@ restart:
 			if (ret == DB_LOCK_DEADLOCK) {
 				gbl_rep_trans_deadlocked++;
 				recovery_release_locks(dbenv, lockid);
+                lockid = DB_LOCK_INVALIDID;
 				goto restart;
 			}
 
@@ -6530,6 +6533,7 @@ restart:
 						goto err;
 					ret = online_apprec(dbenv, lsn, trunclsnp);
 					recovery_release_locks(dbenv, lockid);
+                    lockid = DB_LOCK_INVALIDID;
 					if (ret) goto err;
 					goto restart;
 				}
@@ -6552,6 +6556,7 @@ restart:
 			if (ret == DB_LOCK_DEADLOCK) {
 				gbl_rep_trans_deadlocked++;
 				recovery_release_locks(dbenv, lockid);
+                lockid = DB_LOCK_INVALIDID;
 				goto restart;
 			}
 
@@ -6574,6 +6579,7 @@ restart:
 						goto err;
 					ret = online_apprec(dbenv, lsn, trunclsnp);
 					recovery_release_locks(dbenv, lockid);
+                    lockid = DB_LOCK_INVALIDID;
 					if (ret) goto err;
 					goto restart;
 				}
@@ -6593,10 +6599,9 @@ restart:
 		lockid = DB_LOCK_INVALIDID;
 	}
 
+    /* The recovery function will get the schema lock */
     if (schema_lk_count && dbenv->truncate_sc_callback) {
-        wrlock_schema_lk();
-        dbenv->truncate_sc_callback(dbenv, trunclsnp, lockid);
-		unlock_schema_lk();
+        dbenv->truncate_sc_callback(dbenv, trunclsnp);
     }
 
 err:
