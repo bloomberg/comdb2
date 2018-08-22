@@ -1295,12 +1295,8 @@ static void analyzeOneTable(
     int addrRewind;               /* Address of "OP_Rewind iIdxCur" */
     int addrNextRow;              /* Address of "next_row:" */
     const char *zIdxName;         /* Name of the index */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
     int *aGotoChng;               /* Array of jump instruction addresses */
-    int addrGotoChng0;            /* Address of "Goto addr_chng_0" */
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     int nColTest;                 /* Number of columns to test for changes */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
     if( pOnlyIdx && pOnlyIdx!=pIdx ) continue;
     if( pIdx->pPartIdxWhere==0 ) needTableCnt = 0;
@@ -1312,6 +1308,7 @@ static void analyzeOneTable(
         break;
       }
     }
+    nColTest = nCol;
     aGotoChng = sqlite3DbMallocRaw(db, sizeof(int)*(nCol+1));
     if( aGotoChng==0 ) continue;
     if( !HasRowid(pTab) && IsPrimaryKeyIndex(pIdx) ){
@@ -1371,11 +1368,7 @@ static void analyzeOneTable(
     ** the regPrev array and a trailing rowid (the rowid slot is required
     ** when building a record to insert into the sample column of 
     ** the sqlite_stat4 table.  */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    pParse->nMem = MAX(pParse->nMem, regPrev+nCol);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pParse->nMem = MAX(pParse->nMem, regPrev+nColTest);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
     /* Open a read-only cursor on the index being analyzed. */
     assert( iDb==sqlite3SchemaToIndex(db, pIdx->pSchema) );
@@ -1429,12 +1422,7 @@ static void analyzeOneTable(
     addrRewind = sqlite3VdbeAddOp1(v, OP_Rewind, iIdxCur);
     VdbeCoverage(v);
     sqlite3VdbeAddOp2(v, OP_Integer, 0, regChng);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    addrGotoChng0 = sqlite3VdbeAddOp0(v, OP_Goto);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     addrNextRow = sqlite3VdbeCurrentAddr(v);
-
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
     if( nColTest>0 ){
       int endDistinctTest = sqlite3VdbeMakeLabel(v);
@@ -1620,7 +1608,6 @@ static void analyzeOneTable(
     if( !sqlite3_gbl_tunables.analyze_empty_tables ){
       sqlite3VdbeJumpHere(v, addrRewind);
     }
-    sqlite3DbFree(db, aGotoChng);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3VdbeJumpHere(v, addrRewind);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
