@@ -40,6 +40,7 @@ struct convert_record_data {
     void *unpack_dta_buf;
     void *unpack_old_dta_buf;
     void *blb_buf;
+    void *old_blb_buf;
     tran_type *trans;
     enum convert_scan_mode scanmode;
     int live, lastrrn, lasttime, outrc;

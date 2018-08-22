@@ -2724,7 +2724,8 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
                    const void *new_dta, unsigned long long ins_keys,
                    unsigned long long del_keys, int nd_len, const int *updCols,
                    blob_buffer_t *blobs, int deferredAdd,
-                   blob_buffer_t *del_idx_blobs, blob_buffer_t *add_idx_blobs);
+                   blob_buffer_t *del_idx_blobs, blob_buffer_t *add_idx_blobs,
+                   int verify_retry);
 
 int upd_new_record_add2indices(struct ireq *iq, void *trans,
                                unsigned long long newgenid, const void *new_dta,

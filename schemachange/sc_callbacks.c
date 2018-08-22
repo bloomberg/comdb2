@@ -507,7 +507,7 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
 
     rc = upd_new_record(iq, trans, oldgenid, old_dta, newgenid, new_dta,
                         ins_keys, del_keys, od_len, updCols, blobs, deferredAdd,
-                        oldblobs, newblobs);
+                        oldblobs, newblobs, 1);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         logmsg(LOGMSG_ERROR, "%s: rcode %d for update genid 0x%llx to 0x%llx\n",
