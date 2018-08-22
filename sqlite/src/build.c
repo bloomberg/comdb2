@@ -605,14 +605,6 @@ Table *sqlite3LocateTable(
       if( pMod && sqlite3VtabEponymousTableInit(pParse, pMod) ){
         return pMod->pEpoTab;
       }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if( pMod==0 && sqlite3_strnicmp(zName, "pragma_", 7)==0 ){
-        pMod = sqlite3PragmaVtabRegister(pParse->db, zName);
-      }
-      if( pMod && sqlite3VtabEponymousTableInit(pParse, pMod) ){
-        return pMod->pEpoTab;
-      }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
 #endif
     if( (flags & LOCATE_NOERR)==0 ){
