@@ -813,9 +813,9 @@ static void partitionInfoFunc(
 }
 
 /*
-** Implementation of the comdb2_node_starttime() SQL function.
+** Implementation of the comdb2_starttime() SQL function.
 */
-static void comdb2NodeStartTimeFunc(
+static void comdb2StartTimeFunc(
   sqlite3_context *context,
   int NotUsed,
   sqlite3_value **NotUsed2
@@ -827,11 +827,11 @@ static void comdb2NodeStartTimeFunc(
 }
 
 /*
-** Implementation of the comdb2_node_uptime() SQL function.
+** Implementation of the comdb2_uptime() SQL function.
 ** This returns the number of seconds this node has been up.
 ** gbl_epoch_time variable is updated every second in watchdog_thread()
 */
-static void comdb2NodeUptimeFunc(
+static void comdb2UptimeFunc(
   sqlite3_context *context,
   int NotUsed,
   sqlite3_value **NotUsed2
@@ -2242,8 +2242,8 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_port,       0, 0, 0, comdb2PortFunc),
     FUNCTION(comdb2_dbname,     0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost,0,0,0, comdb2PrevquerycostFunc),
-    FUNCTION(comdb2_node_uptime,0, 0, 0, comdb2NodeUptimeFunc),
-    FUNCTION(comdb2_node_starttime,0, 0, 0,comdb2NodeStartTimeFunc),
+    FUNCTION(comdb2_uptime,0, 0, 0, comdb2UptimeFunc),
+    FUNCTION(comdb2_starttime,0, 0, 0,comdb2StartTimeFunc),
 #endif
 #ifdef SQLITE_ENABLE_UNKNOWN_SQL_FUNCTION
     FUNCTION(unknown,           -1, 0, 0, unknownFunc      ),

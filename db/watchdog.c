@@ -173,7 +173,7 @@ static void *watchdog_thread(void *arg)
         sleep(1);
 
     while (!thedb->exiting) {
-        gbl_epoch_time = comdb2_time_epoch();
+        gbl_epoch_time = comdb2_time_epoch(); /* updated every second */
 
         if (!gbl_nowatch) {
             int stop_thds_time;
@@ -365,7 +365,9 @@ static void *watchdog_thread(void *arg)
            like deadlock detector */
         counter++;
 
-        sleep(1);
+        /* please don't change the amount of sleep here (1 second)
+           because we rely on gbl_epoch_time to be updated every second */
+        sleep(1); 
     }
     return NULL;
 }
