@@ -5512,30 +5512,48 @@ int reload_all_db_tran(tran_type *tran);
 int open_all_dbs_tran(void *tran);
 void delete_prepared_stmts(struct sqlthdstate *thd);
 
-int comdb2_reload_schemas(void *dbenv, void *inlsn, uint32_t lockid)
+/* This is for "online" logfile truncation across a schema-change */
+int comdb2_reload_schemas(void *dbenv, void *inlsn)
 {
     uint32_t tranlid = 0;
     uint64_t format;
     int bdberr = 0;
     int rlstate;
     int rc;
+    int ii;
     int table;
     int stripes, blobstripe;
+    int retries = 0;
     tran_type *tran;
+    struct dbtable *db;
     struct sql_thread *sqlthd;
     struct sqlthdstate *thd;
 
     logmsg(LOGMSG_INFO, "%s starting\n", __func__);
+    wrlock_schema_lk();
 
+retry_tran:
     tran = bdb_tran_begin_flags(thedb->bdb_env, NULL, &bdberr, 0);
     if (tran == NULL) {
         logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
         abort();
     }
 
-    if (lockid) {
-        bdb_get_tran_lockerid(tran, &tranlid);
-        bdb_set_tran_lockerid(tran, lockid);
+    for (ii = 0; ii < thedb->num_dbs; ii++) {
+        db = thedb->dbs[ii];
+        if ((rc = bdb_lock_table_write(db->handle, tran)) != 0) {
+            if (rc == BDBERR_DEADLOCK && retries < 10) {
+                retries++;
+                bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+                logmsg(LOGMSG_ERROR, "%s: got deadlock acquiring tablelocks\n",
+                        __func__);
+                goto retry_tran;
+            } else {
+                logmsg(LOGMSG_FATAL, "%s: got error %d acquiring tablelocks\n",
+                        __func__, rc);
+                abort();
+            }
+        }
     }
 
     /* Test this incrementally with all schema-change types */
@@ -5621,7 +5639,7 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn, uint32_t lockid)
 
     if (llmeta_load_tables_older_versions(thedb, tran)) {
         logmsg(LOGMSG_FATAL, "llmeta_load_tables_older_versions failed\n");
-        return -1;
+        abort();
     }
 
     load_dbstore_tableversion(thedb, tran);
@@ -5641,15 +5659,12 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn, uint32_t lockid)
 
     gbl_dbopen_gen++;
 
-    if (lockid)
-        bdb_set_tran_lockerid(tran, tranlid);
-
     if ((rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort returns %d\n", __func__,
-                rc);
+        logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort returns %d\n", __func__, rc);
         abort();
     }
 
+    unlock_schema_lk();
     return 0;
 }
 

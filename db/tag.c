@@ -6725,6 +6725,8 @@ void update_dbstore(struct dbtable *db)
     }
 
     bzero(db->dbstore, sizeof db->dbstore);
+    logmsg(LOGMSG_INFO, "%s table '%s' version %d\n", __func__, db->tablename,
+            db->version);
 
     for (int v = 1; v <= db->version; ++v) {
         char tag[MAXTAGLEN];
@@ -6741,6 +6743,10 @@ void update_dbstore(struct dbtable *db)
         }
 
         db->versmap[v] = (unsigned int *)get_tag_mapping(ver, ondisk);
+        if (db->versmap[v] == NULL)
+            abort();
+        logmsg(LOGMSG_INFO, "%s set table '%s' vers %d to %p\n", __func__,
+                db->tablename, v, db->versmap[v]);
         db->vers_compat_ondisk[v] = 1;
         if (SC_TAG_CHANGE ==
             compare_tag_int(ver, ondisk, NULL, 0 /*non-strict compliance*/))
@@ -6902,6 +6908,9 @@ void freedb_int(struct dbtable *db, struct dbtable *replace)
 {
     int i;
     int dbs_idx;
+
+    logmsg(LOGMSG_INFO, "%s being called\n", __func__);
+    cheap_stack_trace();
 
     dbs_idx = db->dbs_idx;
 

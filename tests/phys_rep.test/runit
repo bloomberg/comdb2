@@ -22,7 +22,8 @@ if [ -n "$PMUXPORT" ] ; then
     echo "portmux_port $PMUXPORT" >> $DEST_DBDIR/${destdb}.lrl
     echo "portmux_bind_path $pmux_socket" >> $DEST_DBDIR/${destdb}.lrl
 fi
-comdb2 $destdb -lrl $DEST_DBDIR/${destdb}.lrl -pidfile $DEST_DBDIR/${destdb}.pid &
+
+( timeout $TEST_TIMEOUT $COMDB2_EXE $destdb -lrl $DEST_DBDIR/${destdb}.lrl -pidfile $DEST_DBDIR/${destdb}.pid ) &
 
 out=
 while [[ "$out" != "1" ]]; do
