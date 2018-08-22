@@ -2288,6 +2288,8 @@ done:
            __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
            rec->dtafile, rec->dtastripe, rec->genid);
 
+    free_blob_status_data(&data->blbcopy);
+    bzero(data->freeblb, sizeof(data->freeblb));
     free_blob_status_data(&data->blb);
     bzero(data->wrblb, sizeof(data->wrblb));
 
@@ -2394,6 +2396,8 @@ done:
 
     free_blob_status_data(&data->blbcopy);
     bzero(data->freeblb, sizeof(data->freeblb));
+    free_blob_status_data(&data->blb);
+    bzero(data->wrblb, sizeof(data->wrblb));
 
     if (del_dta)
         free(del_dta);
@@ -2817,6 +2821,10 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         data->s->iq->sc_should_abort = 1;
         goto cleanup;
     }
+    bzero(data->freeblb, sizeof(data->freeblb));
+    bzero(data->wrblb, sizeof(data->wrblb));
+    bzero(&data->blb, sizeof(data->blb));
+    bzero(&data->blbcopy, sizeof(data->blbcopy));
     data->tagmap = get_tag_mapping(
         data->from->schema /*tbl .ONDISK tag schema*/,
         data->to->schema /*tbl .NEW..ONDISK schema */); // free tagmap only once
