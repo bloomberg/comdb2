@@ -4916,8 +4916,7 @@ clipper_usage:
             nicerc = comdb2ma_nice((ltok <= 0) ? 1 : toknum(tok, ltok));
             if (nicerc != 0) {
                 logmsg(LOGMSG_ERROR,
-                       "Failed to change mem niceness: rc = %d.\n",
-                       nicerc);
+                       "Failed to change mem niceness: rc = %d.\n", nicerc);
                 return 1;
             }
         } else if (tokcmp(tok, ltok, "release") == 0) {
