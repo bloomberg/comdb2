@@ -367,7 +367,7 @@ static void *watchdog_thread(void *arg)
 
         /* please don't change the amount of sleep here (1 second)
            because we rely on gbl_epoch_time to be updated every second */
-        sleep(1); 
+        sleep(1);
     }
     return NULL;
 }
