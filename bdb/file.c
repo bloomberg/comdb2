@@ -2100,8 +2100,7 @@ static char *prettysz(uint64_t s, char *b)
 extern int gbl_rowlocks;
 
 extern int comdb2_is_standalone(DB_ENV *dbenv);
-extern int comdb2_reload_schemas(DB_ENV *dbenv, DB_LSN *lsn, uint32_t lockid);
-extern int comdb2_close_schemas(DB_ENV *dbenv, DB_LSN *lsn, uint32_t lockid);
+extern int comdb2_reload_schemas(DB_ENV *dbenv, DB_LSN *lsn);
 
 int bdb_is_standalone(void *dbenv, void *in_bdb_state)
 {
