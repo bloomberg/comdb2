@@ -142,11 +142,16 @@ Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables,
 }
 
 // dynamic -> consumer
-void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc, Cdb2TrigTables *tbl)
+void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
+                         Cdb2TrigTables *tbl)
 {
-	TokenStr(spname, proc);
-	Q4SP(qname, spname);
+    char spname[MAX_SPNAME];
+    if (comdb2TokenToStr(proc, spname, sizeof(spname))) {
+        sqlite3ErrorMsg(parse, "Procedure name is too long");
+        return;
+    }
 
+	Q4SP(qname, spname);
 	if (getqueuebyname(qname)) {
 		sqlite3ErrorMsg(parse, "trigger already exists: %s", spname);
 		return;
@@ -212,12 +217,18 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc, Cdb2TrigTables 
 
 void comdb2DropTrigger(Parse *parse, Token *proc)
 {
-	TokenStr(spname, proc);
+    char spname[MAX_SPNAME];
+    if (comdb2TokenToStr(proc, spname, sizeof(spname))) {
+        sqlite3ErrorMsg(parse, "Procedure name is too long");
+        return;
+    }
+
 	Q4SP(qname, spname);
 	if (!getqueuebyname(qname)) {
 		sqlite3ErrorMsg(parse, "no such trigger: %s", spname);
 		return;
 	}
+
 	// trigger drop table:qname
 	struct schema_change_type *sc = new_schemachange_type();
 	sc->is_trigger = 1;
@@ -229,26 +240,28 @@ void comdb2DropTrigger(Parse *parse, Token *proc)
 }
 
 #define comdb2CreateFunc(parse, proc, pfx, type)                               \
-	do {                                                                   \
-		TokenStr(spname, proc);                                        \
-		if (comdb2LocateSP(parse, spname) != 0) {                      \
-			return;                                                \
-		}                                                              \
-		if (find_lua_##pfx##func(spname)) {                            \
-			sqlite3ErrorMsg(parse,                                 \
-					"lua " #type "func:%s already exists", \
-					spname);                               \
-			return;                                                \
-		}                                                              \
-		struct schema_change_type *sc = new_schemachange_type();       \
-		sc->is_##pfx##func = 1;                                        \
-		sc->addonly = 1;                                               \
-		strcpy(sc->spname, spname);                                    \
-		Vdbe *v = sqlite3GetVdbe(parse);                               \
-		comdb2prepareNoRows(                                           \
-		    v, parse, 0, sc, &comdb2SqlSchemaChange_tran,              \
-		    (vdbeFuncArgFree)&free_schema_change_type);                \
-	} while (0)
+    do {                                                                       \
+        char spname[MAX_SPNAME];                                               \
+        if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                  \
+            sqlite3ErrorMsg(parse, "Procedure name is too long");              \
+            return;                                                            \
+        }                                                                      \
+        if (comdb2LocateSP(parse, spname) != 0) {                              \
+            return;                                                            \
+        }                                                                      \
+        if (find_lua_##pfx##func(spname)) {                                    \
+            sqlite3ErrorMsg(parse, "lua " #type "func:%s already exists",      \
+                            spname);                                           \
+            return;                                                            \
+        }                                                                      \
+        struct schema_change_type *sc = new_schemachange_type();               \
+        sc->is_##pfx##func = 1;                                                \
+        sc->addonly = 1;                                                       \
+        strcpy(sc->spname, spname);                                            \
+        Vdbe *v = sqlite3GetVdbe(parse);                                       \
+        comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,      \
+                            (vdbeFuncArgFree)&free_schema_change_type);        \
+    } while (0)
 
 void comdb2CreateScalarFunc(Parse *parse, Token *proc)
 {
@@ -261,22 +274,24 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
 }
 
 #define comdb2DropFunc(parse, proc, pfx, type)                                 \
-	do {                                                                   \
-		TokenStr(spname, proc);                                        \
-		if (find_lua_##pfx##func(spname) == 0) {                       \
-			sqlite3ErrorMsg(parse, "no such lua " #type "func:%s", \
-					spname);                               \
-			return;                                                \
-		}                                                              \
-		struct schema_change_type *sc = new_schemachange_type();       \
-		sc->is_##pfx##func = 1;                                        \
-		sc->addonly = 0;                                               \
-		strcpy(sc->spname, spname);                                    \
-		Vdbe *v = sqlite3GetVdbe(parse);                               \
-		comdb2prepareNoRows(                                           \
-		    v, parse, 0, sc, &comdb2SqlSchemaChange_tran,              \
-		    (vdbeFuncArgFree)&free_schema_change_type);                \
-	} while (0)
+    do {                                                                       \
+        char spname[MAX_SPNAME];                                               \
+        if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                  \
+            sqlite3ErrorMsg(parse, "Procedure name is too long");              \
+            return;                                                            \
+        }                                                                      \
+        if (find_lua_##pfx##func(spname) == 0) {                               \
+            sqlite3ErrorMsg(parse, "no such lua " #type "func:%s", spname);    \
+            return;                                                            \
+        }                                                                      \
+        struct schema_change_type *sc = new_schemachange_type();               \
+        sc->is_##pfx##func = 1;                                                \
+        sc->addonly = 0;                                                       \
+        strcpy(sc->spname, spname);                                            \
+        Vdbe *v = sqlite3GetVdbe(parse);                                       \
+        comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,      \
+                            (vdbeFuncArgFree)&free_schema_change_type);        \
+    } while (0)
 
 void comdb2DropScalarFunc(Parse *parse, Token *proc)
 {

@@ -303,7 +303,7 @@
 (name='MAXTAGLEN', description='Maximum tag name length', value=64)
 (name='MAX_DBNAME_LENGTH', description='Maximum length of database name', value=64)
 (name='MAX_QUEUE_HITS_PER_TRANS', description='Maximum number of queues that Comdb2 efficiently remember per transaction', value=8)
-(name='MAX_SPNAME', description='Maximum length of stored procedure', value=32)
+(name='MAX_SPNAME', description='Maximum stored procedure name length', value=32)
 (name='MAX_SPVERSION_LEN', description='Maximum length of stored procedure version', value=80)
 (name='REPMAX', description='Maximum number of replicants', value=32)
 [SELECT * FROM comdb2_limits ORDER BY name] rc 0
