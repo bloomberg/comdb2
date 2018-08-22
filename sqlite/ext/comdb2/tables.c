@@ -262,8 +262,6 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_metrics", &systblMetricsModule, 0);
   if (rc == SQLITE_OK)
-    rc = sqlite3_create_module(db, "comdb2_fingerprints", &systblFingerprintsModule, 0);
-  if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_timeseries", &systblTimeseriesModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_repl_stats", &systblReplStatsModule, 0);
