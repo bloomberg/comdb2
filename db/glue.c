@@ -3330,7 +3330,7 @@ void net_close_db(void *hndl, void *uptr, char *fromnode, int usertype,
                   void *dtap, int dtalen)
 {
     int len, free_handle;
-    char table[MAXTABLELEN];
+    char table[MAXTABLELEN + 1];
     char *dta = (char *)dtap;
     struct dbtable *db;
     int bdberr;

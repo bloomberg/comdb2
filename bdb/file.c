@@ -3804,7 +3804,7 @@ void bdb_print_log_files(bdb_state_type *bdb_state)
     int rc;
     char **list;
     char **file;
-    char logname[200];
+    char logname[PATH_MAX];
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -3818,8 +3818,8 @@ void bdb_print_log_files(bdb_state_type *bdb_state)
     if (list != NULL) {
         for (file = list; *file != NULL; ++file) {
             logname[0] = '\0';
-            sprintf(logname, "%s/%s", bdb_state->txndir, *file);
-
+            snprintf(logname, sizeof(logname), "%s/%s", bdb_state->txndir,
+                     *file);
             logmsg(LOGMSG_USER, "%s\n", logname);
         }
 

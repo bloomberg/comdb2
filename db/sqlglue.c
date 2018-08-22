@@ -11716,7 +11716,7 @@ unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
     Mem *m = NULL;
     struct schema *sc;
     strbuf *sql;
-    char temp_newdb_name[MAXTABLELEN];
+    char temp_newdb_name[MAXTABLELEN + 1];
     int i, ixnum, len, rc;
 
     unsigned long long dirty_keys = 0ULL;
@@ -11761,7 +11761,8 @@ unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
 
     len = strlen(db->tablename);
     len = crc32c((uint8_t *)db->tablename, len);
-    snprintf(temp_newdb_name, MAXTABLELEN, "sc_alter_temp_%X", len);
+    snprintf(temp_newdb_name, sizeof(temp_newdb_name), "sc_alter_temp_%X",
+             len);
 
     for (ixnum = 0; ixnum < db->nix; ixnum++) {
         if (db->ixschema[ixnum]->where == NULL)

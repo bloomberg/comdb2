@@ -2616,7 +2616,7 @@ static int delete_synthetic_row(struct BtCursor *pCur, struct sql_thread *thd,
 
 typedef struct recgenid_key {
     int tablename_len;
-    char tablename[MAXTABLELEN];
+    char tablename[MAXTABLELEN + 1];
     int tableversion;
     unsigned long long genid;
 } recgenid_key_t;
@@ -2793,7 +2793,7 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
     bdb_state_type *bdb_state = thedb->bdb_env;
     struct temp_cursor *cur = osql->verify_cur;
-    char old_tablename[MAXTABLELEN];
+    char old_tablename[MAXTABLELEN + 1];
     recgenid_key_t key;
     void *packed_key = NULL;
     int packed_len = 0;

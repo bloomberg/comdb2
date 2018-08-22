@@ -600,7 +600,7 @@ struct bulk_import_data {
     unsigned long long index_genids[MAXINDEX];
     unsigned long long blob_genids[MAXBLOBS];
 
-    char table_name[MAXTABLELEN];
+    char table_name[MAXTABLELEN + 1];
 
     /* not check for equality in bulk_import_data_validate since it doesn't need
      * to be the same on all machines */

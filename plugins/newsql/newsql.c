@@ -1505,10 +1505,10 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     rc = ii + 1;
                 } else {
                     sqlite3Dequote(sqlstr);
-                    if (strlen(sqlstr) >= sizeof(clnt->user)) {
+                    if (strlen(sqlstr) > MAX_USERNAME_LEN) {
                         snprintf(err, sizeof(err),
                                  "set user: '%s' exceeds %zu characters",
-                                 sqlstr, sizeof(clnt->user) - 1);
+                                 sqlstr, MAX_USERNAME_LEN);
                         rc = ii + 1;
                     } else {
                         clnt->have_user = 1;
@@ -1526,10 +1526,10 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     rc = ii + 1;
                 } else {
                     sqlite3Dequote(sqlstr);
-                    if (strlen(sqlstr) >= sizeof(clnt->password)) {
+                    if (strlen(sqlstr) > MAX_PASSWORD_LEN) {
                         snprintf(err, sizeof(err),
                                  "set password: '%s' exceeds %zu characters",
-                                 sqlstr, sizeof(clnt->password) - 1);
+                                 sqlstr, MAX_PASSWORD_LEN);
                         rc = ii + 1;
                     } else {
                         clnt->have_password = 1;
@@ -1547,9 +1547,9 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     ++sqlstr;
                 }
                 *sqlstr = 0;
-                if ((sqlstr - spname) < MAX_SPNAME) {
-                    strncpy(clnt->spname, spname, MAX_SPNAME);
-                    clnt->spname[MAX_SPNAME] = '\0';
+                if ((sqlstr - spname) <= MAX_SPNAME) {
+                    strncpy(clnt->spname, spname, MAX_SPNAME + 1);
+                    clnt->spname[MAX_SPNAME + 1] = '\0';
                 } else {
                     rc = ii + 1;
                 }
@@ -1558,7 +1558,7 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 sqlstr = skipws(sqlstr);
                 int ver = strtol(sqlstr, &endp, 10);
                 if (*sqlstr == '\'' || *sqlstr == '"') { // looks like a str
-                    if (strlen(sqlstr) < MAX_SPVERSION_LEN) {
+                    if (strlen(sqlstr) <= MAX_SPVERSION_LEN) {
                         clnt->spversion.version_str = strdup(sqlstr);
                         sqlite3Dequote(clnt->spversion.version_str);
                     } else {

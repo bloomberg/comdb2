@@ -11,32 +11,32 @@ set password garbaj garbanj
 select * from test
 select * from comdb2_tablepermissions order by tablename
 
+set user 123456789012345678
+set password 12345678901234567890
+select * from test
+select * from comdb2_tablepermissions order by tablename
+
+set user 12345678901234567
+set password 12345678901234567890
+select * from test
+select * from comdb2_tablepermissions order by tablename
+
 set user 12345678901234567
 set password 1234567890123456789
 select * from test
 select * from comdb2_tablepermissions order by tablename
 
-set user 1234567890123456
-set password 1234567890123456789
+set user "123456789012345678"
+set password "12345678901234567890"
 select * from test
 select * from comdb2_tablepermissions order by tablename
 
-set user 1234567890123456
-set password 123456789012345678
+set user "12345678901234567"
+set password "12345678901234567890"
 select * from test
 select * from comdb2_tablepermissions order by tablename
 
 set user "12345678901234567"
 set password "1234567890123456789"
-select * from test
-select * from comdb2_tablepermissions order by tablename
-
-set user "1234567890123456"
-set password "1234567890123456789"
-select * from test
-select * from comdb2_tablepermissions order by tablename
-
-set user "1234567890123456"
-set password "123456789012345678"
 select * from test
 select * from comdb2_tablepermissions order by tablename

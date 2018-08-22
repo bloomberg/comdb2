@@ -55,8 +55,6 @@ enum transaction_level {
  * of appsock threads with small stacks. */
 
 #define MAX_HASH_SQL_LENGTH 8192
-#define MAX_USERNAME_LEN 17
-#define MAX_PASSWORD_LEN 19
 
 /* Static rootpages numbers. */
 enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
@@ -76,7 +74,7 @@ struct sqlthdstate {
     struct thr_handle *thr_self;
     sqlite3 *sqldb;
 
-    char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
+    char lastuser[MAX_USERNAME_LEN + 1]; // last user to use this sqlthd
     hash_t *stmt_caching_table; // statement cache table: caches vdbe engines
 
     LISTC_T(stmt_hash_entry_type) param_stmt_list;   // list of cached stmts
@@ -211,7 +209,7 @@ typedef dbtran_type trans_t;
 
 /* analyze sampled (previously misnamed compressed) idx */
 typedef struct {
-    char name[MAXTABLELEN];
+    char name[MAXTABLELEN + 1];
     int ixnum;
     struct temp_table *sampled_table;
     int sampling_pct;
@@ -519,12 +517,12 @@ struct sqlclntstate {
     struct query_effects log_effects;
 
     int have_user;
-    char user[MAX_USERNAME_LEN];
+    char user[MAX_USERNAME_LEN + 1];
     int is_x509_user; /* True if the user is retrieved
                          from a client certificate. */
 
     int have_password;
-    char password[MAX_PASSWORD_LEN];
+    char password[MAX_PASSWORD_LEN + 1];
 
     int no_transaction;
 
@@ -642,7 +640,7 @@ struct sqlclntstate {
 
 /* Query stats. */
 struct query_path_component {
-    char lcl_tbl_name[MAXTABLELEN];
+    char lcl_tbl_name[MAXTABLELEN + 1];
     char rmt_db[MAX_DBNAME_LENGTH];
     int ix;
     int nfind;

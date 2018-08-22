@@ -296,7 +296,7 @@ int local_replicant_log_delete_for_update(struct ireq *iq, void *trans, int rrn,
     long long id;
     struct dbtable *savedb;
     struct delop {
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         long long id;
     } delop;
     void *tmpbuf;
@@ -351,7 +351,7 @@ int local_replicant_log_delete(struct ireq *iq, void *trans, void *od_dta,
     long long id;
     struct dbtable *savedb;
     struct delop {
-        char table[MAXTABLELEN];
+        char table[MAXTABLELEN + 1];
         long long id;
     } delop;
     int rc;

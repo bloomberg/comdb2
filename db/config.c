@@ -952,7 +952,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
          */
         char *fname;
         char *tblname;
-        char tmpname[MAXTABLELEN];
+        char tmpname[MAXTABLELEN + 1];
 
         dbenv->dbs = realloc(dbenv->dbs,
                              (dbenv->num_dbs + 1) * sizeof(struct dbtable *));
