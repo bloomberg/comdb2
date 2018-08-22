@@ -338,7 +338,7 @@ static int completionNext(sqlite3_vtab_cursor *cur){
         break;
       }
       case COMPLETION_FUNCTIONS: {
-        static char *cfuncs[] = {"comdb2_version()", "table_version()", "partition_info()", "comdb2_host()", "comdb2_port()", "comdb2_dbname()", "comdb2_prevquerycost()", "sys.cmd.send()"};
+        static char *cfuncs[] = {"comdb2_version()", "table_version()", "partition_info()", "comdb2_host()", "comdb2_port()", "comdb2_dbname()", "comdb2_prevquerycost()", "comdb2_node_uptime()", "comdb2_node_starttime()", "sys.cmd.send()"};
         static int j = 0;
         if( pCur->j >= sizeof(cfuncs)/sizeof(char*)) {
           pCur->zCurrentRow = 0;

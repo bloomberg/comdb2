@@ -824,7 +824,6 @@ static void comdb2NodeStartTimeFunc(
   extern int gbl_starttime;
   dttz_t dt = {gbl_starttime, 0};
   sqlite3_result_datetime(context, &dt, NULL);
-  //sqlite3_result_int64(context, gbl_starttime);
 }
 
 /*
