@@ -1436,42 +1436,6 @@ static void analyzeOneTable(
 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    /*
-    **  next_row:
-    **   regChng = 0
-    **   if( idx(0) != regPrev(0) ) goto chng_addr_0
-    **   regChng = 1
-    **   if( idx(1) != regPrev(1) ) goto chng_addr_1
-    **   ...
-    **   regChng = N
-    **   goto chng_addr_N
-    */
-    addrNextRow = sqlite3VdbeCurrentAddr(v);
-    for(i=0; i<nCol; i++){
-      char *pColl = (char*)sqlite3LocateCollSeq(pParse, pIdx->azColl[i]);
-      sqlite3VdbeAddOp2(v, OP_Integer, i, regChng);
-      sqlite3VdbeAddOp3(v, OP_Column, iIdxCur, i, regTemp);
-      aGotoChng[i] = 
-      sqlite3VdbeAddOp4(v, OP_Ne, regTemp, 0, regPrev+i, pColl, P4_COLLSEQ);
-      sqlite3VdbeChangeP5(v, SQLITE_NULLEQ);
-      VdbeCoverage(v);
-    }
-    sqlite3VdbeAddOp2(v, OP_Integer, nCol, regChng);
-
-    /*
-    **  chng_addr_0:
-    **   regPrev(0) = idx(0)
-    **  chng_addr_1:
-    **   regPrev(1) = idx(1)
-    **  ...
-    */
-    sqlite3VdbeJumpHere(v, addrGotoChng0);
-    for(i=0; i<nCol; i++){
-      sqlite3VdbeJumpHere(v, aGotoChng[i]);
-      sqlite3VdbeAddOp3(v, OP_Column, iIdxCur, i, regPrev+i);
-    }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( nColTest>0 ){
       int endDistinctTest = sqlite3VdbeMakeLabel(v);
       int *aGotoChng;               /* Array of jump instruction addresses */
@@ -1525,7 +1489,6 @@ static void analyzeOneTable(
       sqlite3VdbeResolveLabel(v, endDistinctTest);
       sqlite3DbFree(db, aGotoChng);
     }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   
     /*
     **  chng_addr_N:
