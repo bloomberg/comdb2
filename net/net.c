@@ -5013,7 +5013,7 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
         rc = comdb2_gethostbyname(&name, addr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%d) %s(): ERROR gethostbyname '%s' FAILED\n",
-                    __func__, ii, rephostname);
+                    ii, __func__, rephostname);
         } else {
             if (gbl_verbose_net) {
                 host_node_printf(LOGMSG_USER, host_node_ptr,
