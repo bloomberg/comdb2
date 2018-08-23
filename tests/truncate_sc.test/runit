@@ -456,12 +456,19 @@ function assert_select_all_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="assert_select_all_rep"
-    if [[ "$physrep" != 0 ]]; then
-        sleep $repsleep
+    typeset tries=10
+    typeset good=0
+    while [[ "$physrep" != 0 && "$good" == "0" ]]; do
         typeset sal=$(select_all_int)
         typeset rep=$(select_all_rep)
-        [[ "$sal" != "$rep" ]] && failexit $func "rep has diverged"
-    fi
+        if [[ "$sal" != "$rep" ]] ; then
+            let tries=tries-1
+            [[ "$tries" == "0" ]] && failexit $func "rep has diverged"
+            sleep $repsleep
+        else
+            let good=1
+        fi
+    done
 }
 
 function select_all
@@ -660,8 +667,8 @@ function bulk_rebuild
     write_prompt $func "Creating t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
 
-    write_prompt $func "Inserting 100000 records"
-    bulk_insert_records t1 100000
+    write_prompt $func "Inserting 50000 records"
+    bulk_insert_records t1 50000
     bulk_rebuild_lsn_1=$(get_current_lsn)
     bulk_rebuild_sal_1=$(select_all)
 
