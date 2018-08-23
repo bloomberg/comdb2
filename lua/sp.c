@@ -501,10 +501,17 @@ static void pong(Lua L)
 {
     SP sp = getsp(L);
     struct sqlclntstate *clnt = sp->clnt;
-    if (read_response(clnt, RESPONSE_PING_PONG, NULL, 0) != 0) {
-        luaL_error(L, "client protocol error");
+    const char *err = NULL;
+    while (1) {
+        switch (read_response(clnt, RESPONSE_PING_PONG, NULL, 0)) {
+        case  0: sp->pingpong = 0; return;
+        case -1: if (check_retry_conditions(L, 0)) err = sp->error; break;
+        case -2: err = "client disconnect"; break;
+        case -3: err = "client protocol error"; break;
+        default: err = "failed reading event ack"; break;
+        }
     }
-    sp->pingpong = 0;
+    luaL_error(L, err);
 }
 
 static int dbtype_to_client_type(lua_dbtypes_t *t)
