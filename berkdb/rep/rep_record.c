@@ -6570,7 +6570,14 @@ restart:
         logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
         abort();
     }
+    logmsg(LOGMSG_INFO, "%s calling truncate with lsn [%d:%d]\n", __func__,
+            lsnp->file, lsnp->offset);
     ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
+
+    logmsg(LOGMSG_INFO, "%s finished truncate, trunclsnp is [%d:%d]\n", __func__,
+            trunclsnp->file, trunclsnp->offset);
+
+
     pthread_rwlock_unlock(&dbenv->recoverlk);
 
 	if (online) {

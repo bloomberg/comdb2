@@ -9041,6 +9041,9 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
     struct llmeta_file_type_dbname_csc2_vers_key vers_key;
     struct llmeta_file_type_dbname_csc2_vers_key new_vers_key;
 
+    logmsg(LOGMSG_INFO, "%s renaming from '%s' to '%s', version %d\n",
+            __func__, tblname, newtblname, ver);
+
     vers_key.file_type = LLMETA_CSC2;
     strncpy(vers_key.dbname, tblname, sizeof(vers_key.dbname));
     vers_key.dbname_len = strlen(vers_key.dbname) + 1;
@@ -9070,6 +9073,12 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
                        ver);
                 return rc;
             }
+            logmsg(LOGMSG_INFO, "%s added table '%s' (old table '%s') version "
+                    "%d\n", __func__, newtblname, tblname, ver);
+        } else {
+            logmsg(LOGMSG_INFO, "%s didn't find old table '%s' version %d (so "
+                    "not adding new-table '%s'??)\n", __func__, tblname, ver,
+                    newtblname);
         }
 
         rc = bdb_lite_exact_del(llmeta_bdb_state, trans, &key, bdberr);
