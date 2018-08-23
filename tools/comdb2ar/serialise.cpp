@@ -1302,27 +1302,6 @@ void serialise_database(
         // Now do data files
         if(!support_files_only) {
 
-            // Grab the checkpoint file, pretend its a logfile
-            std::string absfile;
-            std::cerr<<"Serializing checkpoint"<<std::endl;
-            makeabs(absfile, dbtxndir, "checkpoint");
-
-            FileInfo fi(FileInfo::LOG_FILE, absfile, dbdir);
-            if (copy_physical && !nonames)
-            {
-                if (is_changeable_file(fi.get_filename()))
-                {
-                    std::string somename = replace_dbname(repl_name, dbname,  
-                            fi.get_filename());
-                    std::cerr << "Replace support file " << fi.get_filename() <<
-                        " with " << somename << "\n";
-                    fi.set_filename(replace_dbname(repl_name, dbname, 
-                                fi.get_filename()));
-                }
-            }
-
-            serialise_file(fi);
-
             long long log_number(lowest_log);
             for(std::list<FileInfo>::iterator
                     it = data_files.begin();
