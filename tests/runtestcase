@@ -91,10 +91,12 @@ find_cores() {
 
     eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
     if [[ -n "$cr" ]] ; then
-        echo "Core file $HOSTNAME:${cr} copied to $DBDIR" > core_stacktrace.$HOSTNAME.txt
+        echo "Core file $HOSTNAME:${cr} copied to $DBDIR" > $DBDIR/core_stacktrace.$HOSTNAME.txt
         cp ${cr} $DBDIR
-        which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> core_stacktrace.$HOSTNAME.txt
+        which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $DBDIR/core_stacktrace.$HOSTNAME.txt
+        ln $COMDB2_EXE -t $DBDIR #make a hardlink of the executable as well
         echo $cr # this is the return value of the function
+        echo "    see $DBDIR/core_stacktrace.$HOSTNAME.txt"
     fi
 
 
@@ -113,10 +115,12 @@ find_cores() {
 
         eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
         if [[ -n "$cr" ]] ; then
-            echo "Core file $HOSTNAME:${cr} copied to $DBDIR" > core_stacktrace.$HOSTNAME.txt
+            echo "Core file $HOSTNAME:${cr} copied to $DBDIR" > $DBDIR/core_stacktrace.$HOSTNAME.txt
             cp ${cr} $DBDIR
-            which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> core_stacktrace.$HOSTNAME.txt
+            which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $DBDIR/core_stacktrace.$HOSTNAME.txt
+            ln $COMDB2_EXE -t $DBDIR #make a hardlink of the executable as well
             echo $cr # this is the return value of the function
+            echo "    see $DBDIR/core_stacktrace.$HOSTNAME.txt"
         fi
     fi
 
@@ -140,9 +144,11 @@ find_cores() {
         if [[ -n "$cr" ]] ; then
             local copy_core=$DBDIR/${node}.`basename $cr`
             scp -o StrictHostKeyChecking=no $node:${cr} $copy_core < /dev/null
-            echo "Core file $node:${cr} copied to $copy_core" > core_stacktrace.$node.txt
-            echo 'where' | gdb -q $COMDB2_EXE $copy_core &>> core_stacktrace.$node.txt
+            echo "Core file $node:${cr} copied to $copy_core" > $DBDIR/core_stacktrace.$node.txt
+            echo 'where' | gdb -q $COMDB2_EXE $copy_core &>> $DBDIR/core_stacktrace.$node.txt
+            ln $COMDB2_EXE -t $DBDIR #make a hardlink of the executable as well
             echo "$node:$cr" # this is the return value of the function
+            echo "    see $DBDIR/core_stacktrace.$node.txt"
         fi
     done
 }
@@ -189,7 +195,7 @@ cr=`find_cores`
 
 if [[ -n "$cr" ]] ; then
     echo "!$TESTCASE: failed with core dumped ($cr)"
-    echo "!$TESTCASE: failed with core dumped" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TESTDIR}/test.log
 elif [[ $rc -eq 124 ]] ; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TESTDIR}/test.log
