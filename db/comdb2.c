@@ -1244,7 +1244,7 @@ static void *purge_old_files_thread(void *arg)
 
 /* remove every file that contains ".csc2" anywhere in its name.
    this should be safe */
-int clear_csc2_files(void)
+static int clear_csc2_files(void)
 {
     char path[PATH_MAX] = {0};
     DIR *dirp = NULL;
@@ -1269,8 +1269,7 @@ int clear_csc2_files(void)
 
             if (ptr) {
                 int rc;
-                snprintf(fullfile, sizeof(fullfile), "%s/%s", path,
-                         dp->d_name);
+                snprintf(fullfile, sizeof(fullfile), "%s/%s", path, dp->d_name);
                 logmsg(LOGMSG_INFO, "removing csc2 file %s\n", fullfile);
                 rc = unlink(fullfile);
                 if (rc)

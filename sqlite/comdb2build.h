@@ -124,6 +124,6 @@ enum
 };
 
 void comdb2getkw(Parse* pParse, int reserved);
-int comdb2TokenToStr(Token *nm, char *buf, char len);
+int comdb2TokenToStr(Token *nm, char *buf, size_t len);
 
 #endif // COMDB2BUILD_H

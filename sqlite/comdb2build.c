@@ -131,15 +131,28 @@ int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             /* Make it part of user schema. */
             char userschema[MAXTABLELEN];
             int bdberr;
+            int bytes_written;
             bdb_state_type *bdb_state = thedb->bdb_env;
             if (bdb_tbl_access_userschema_get(bdb_state, NULL, thd->clnt->user, userschema, &bdberr) == 0) {
               if (userschema[0] == '\0') {
                 snprintf(dst, MAXTABLELEN, "%s", table_name);
               } else {
-                snprintf(dst, MAXTABLELEN, "%s@%s", table_name, userschema);
+                bytes_written = snprintf(dst, MAXTABLELEN, "%s@%s", table_name,
+                                         userschema);
+                if (bytes_written >= MAXTABLELEN) {
+                  rc = setError(pParse, SQLITE_MISUSE, "User-schema name is "
+                                                       "too long");
+                  goto cleanup;
+                }
               }
             } else {
-              snprintf(dst, MAXTABLELEN, "%s@%s", table_name, thd->clnt->user);
+              bytes_written = snprintf(dst, MAXTABLELEN, "%s@%s", table_name,
+                                       thd->clnt->user);
+              if (bytes_written >= MAXTABLELEN) {
+                rc = setError(pParse, SQLITE_MISUSE, "User-schema name is "
+                                                     "too long");
+                goto cleanup;
+              }
             }
         }
     } else {
@@ -1753,7 +1766,7 @@ clean:
     free(tablename);
 }
 
-void resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
+int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
                       size_t len)
 {
    struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -1767,20 +1780,33 @@ void resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
    {
        char userschema[MAXTABLELEN];
        int bdberr;
+       int bytes_written;
        bdb_state_type *bdb_state = thedb->bdb_env;
        if (bdb_tbl_access_userschema_get(bdb_state, NULL, thd->clnt->user,
                                          userschema, &bdberr) == 0) {
          if (userschema[0] == '\0') {
-           snprintf(tableName, len, "%s", p->zName);
+           bytes_written = snprintf(tableName, len, "%s", p->zName);
+           if (bytes_written >= len) {
+               return 1;
+           }
          } else {
-           snprintf(tableName, len, "%s@%s", p->zName, userschema);
+           bytes_written = snprintf(tableName, len, "%s@%s", p->zName,
+                                    userschema);
+           if (bytes_written >= len) {
+               return 1;
+           }
          }
        } else {
-         snprintf(tableName, len, "%s@%s", p->zName, thd->clnt->user);
+         bytes_written = snprintf(tableName, len, "%s@%s", p->zName,
+                                  thd->clnt->user);
+         if (bytes_written >= len) {
+             return 1;
+         }
        }
    } else {
        snprintf(tableName, len, "%s", p->zName);
    }
+   return 0;
 }
 
 
@@ -5065,7 +5091,7 @@ cleanup:
 }
 
 // Use create_string_from_token() to store the string on heap.
-int comdb2TokenToStr(Token *nm, char *buf, char len)
+int comdb2TokenToStr(Token *nm, char *buf, size_t len)
 {
     if (nm->n >= len)
         return 1;
