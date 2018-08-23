@@ -6606,7 +6606,7 @@ restart:
 		lockid = DB_LOCK_INVALIDID;
 	}
 
-    /* The recovery function will get the schema lock */
+    /* comdb2_reload_schemas will get the schema lock */
     if (schema_lk_count && dbenv->truncate_sc_callback) {
         dbenv->truncate_sc_callback(dbenv, trunclsnp);
     }
