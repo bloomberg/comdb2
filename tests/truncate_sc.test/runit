@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# Debug variable
-#debug=1
-
 [[ $debug == "1" ]] && set -x
 
 # Grab my database name.
@@ -30,7 +27,8 @@ function failexit
 {
     [[ $debug == "1" ]] && set -x
     typeset func="failexit"
-    write_prompt $func "Failed $1"
+    typeset f=$1
+    write_prompt $func "$f failed: $2"
     kill -9 $(cat $repdir/${repname}.pid)
     exit -1
 }
@@ -85,6 +83,27 @@ function insert_record
     $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "insert into $tbl values(1)" >/dev/null
 }
 
+
+function bulk_insert_records
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="insert_records"
+    typeset tbl=$1
+    typeset cnt=$2
+    typeset chunk=10000
+    j=0
+    while [[ $cnt -gt 0 ]]; do
+        if [[ $cnt -lt $chunk ]]; then
+            amt=$cnt
+        else
+            amt=$chunk
+        fi
+
+        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "insert into $tbl select * from generate_series(1, $amt)" >/dev/null
+        let cnt=$(( cnt - amt ))
+    done
+}
+
 function get_comdb2_columns
 {
     [[ $debug == "1" ]] && set -x
@@ -106,12 +125,12 @@ function assert_comdb2_columns
     typeset prev_cols=$1
     write_prompt $func "Assert comdb2_columns is the same"
     typeset curr_cols=$(get_comdb2_columns)
-    [[ "$prev_cols" != "$curr_cols" ]] && failexit "comdb2_columns changed"
+    [[ "$prev_cols" != "$curr_cols" ]] && failexit $func "comdb2_columns changed"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset phys_cols=$(get_comdb2_columns_rep)
         write_prompt $func "Assert comdb2_columns on phys-rep is the same"
-        [[ "$prev_cols" != "$phys_cols" ]] && failexit "phys-rep comdb2_columns changed"
+        [[ "$prev_cols" != "$phys_cols" ]] && failexit $func "phys-rep comdb2_columns changed"
     fi
 }
 
@@ -162,11 +181,11 @@ function assert_stripe
     typeset func="assert_stripe"
     write_prompt $func "Assert $1 stripes"
     typeset stp=$(get_dtastripe)
-    [[ "$1" == "$stp" ]] || failexit "Was expecting $1 stripes but have $stp"
+    [[ "$1" == "$stp" ]] || failexit $func "was expecting $1 stripes but have $stp"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(get_dtastripe_rep)
-        [[ "$1" == "$rep" ]] || failexit "Was expecting phys-rep $1 stripe but have $rep"
+        [[ "$1" == "$rep" ]] || failexit $func "was expecting phys-rep $1 stripe but have $rep"
     fi
 }
 
@@ -190,11 +209,11 @@ function verify_rowlocks
     typeset func="verify_rowlocks"
     typeset rlocks=$(get_rowlocks)
     write_prompt $func "Assert rowlocks is $1"
-    [[ "$1" == "$rlocks" ]] || failexit "Expected rowlocks to be $1 not $rlocks"
+    [[ "$1" == "$rlocks" ]] || failexit $func "expected rowlocks to be $1 not $rlocks"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(get_rowlocks_rep)
-        [[ "$1" == "$rep" ]] || failexit "Expected phys-rep rowlocks to have $1 stripes but have $rep"
+        [[ "$1" == "$rep" ]] || failexit $func "expected phys-rep rowlocks to have $1 stripes but have $rep"
     fi
 }
 
@@ -217,11 +236,11 @@ function assert_genid_format
     [[ $debug == "1" ]] && set -x
     typeset func="assert_genid_format"
     typeset fmt=$(get_genid_format)
-    [[ "$1" == "$fmt" ]] || failexit "Was expecting $1 genid_fmt is $fmt"
+    [[ "$1" == "$fmt" ]] || failexit $func "was expecting $1 genid_fmt is $fmt"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(get_genid_format_rep)
-        [[ "$1" == "$rep" ]] || failexit "Was expecting phys-rep genid_fmt $1 genid_fmt is $fmt"
+        [[ "$1" == "$rep" ]] || failexit $func "was expecting phys-rep genid_fmt $1 genid_fmt is $fmt"
     fi
 }
 
@@ -232,11 +251,11 @@ function assert_notable
     typeset tbl=$1
     write_prompt $func "Assert $tbl does not exist"
     chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl" 2>/dev/null)
-    [[ $? != 0 ]] || failexit "table $tbl still exists"
+    [[ $? != 0 ]] || failexit $func "table $tbl still exists"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
-        [[ $? != 0 ]] || failexit "table $tbl in rep still exists"
+        [[ $? != 0 ]] || failexit $func "table $tbl in rep still exists"
     fi
 }
 
@@ -261,11 +280,11 @@ function assert_stat_compr
     typeset prev_sc="$1"
     write_prompt $func "Assert stat compr is the same"
     typeset curr_sc=$(stat_compr)
-    [[ "$prev_sc" != "$curr_sc" ]] && failexit "stat compr changed"
+    [[ "$prev_sc" != "$curr_sc" ]] && failexit $func "stat compr changed"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         rep=$(stat_compr_rep)
-        [[ "$prev_sc" != "$rep" ]] && failexit "stat compr changed in rep"
+        [[ "$prev_sc" != "$rep" ]] && failexit $func "stat compr changed in rep"
     fi
 }
 
@@ -290,11 +309,11 @@ function assert_select_json_extract
     typeset prev_sp="$1"
     write_prompt $func "Assert select_json_extract is the same"
     typeset curr_sp=$(select_json_extract)
-    [[ "$prev_sp" != "$curr_sp" ]] && failexit "select_json_extract changed"
+    [[ "$prev_sp" != "$curr_sp" ]] && failexit $func "select_json_extract changed"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(select_json_extract_rep)
-        [[ "$prev_sp" != "$rep" ]] && failexit "select_json_extract in rep changed"
+        [[ "$prev_sp" != "$rep" ]] && failexit $func "select_json_extract in rep changed"
     fi
 }
 
@@ -319,11 +338,11 @@ function assert_select_myavg
     typeset prev_sp="$1"
     write_prompt $func "Assert select_myavg is the same"
     typeset curr_sp=$(select_myavg)
-    [[ "$prev_sp" != "$curr_sp" ]] && failexit "select_myavg changed"
+    [[ "$prev_sp" != "$curr_sp" ]] && failexit $func "select_myavg changed"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(select_myavg_rep)
-        [[ "$prev_sp" != "$rep" ]] && failexit "select_sp in rep changed"
+        [[ "$prev_sp" != "$rep" ]] && failexit $func "select_sp in rep changed"
     fi
 }
 
@@ -348,11 +367,11 @@ function assert_select_sp
     typeset prev_sp="$1"
     write_prompt $func "Assert select_sp is the same"
     typeset curr_sp=$(select_sp)
-    [[ "$prev_sp" != "$curr_sp" ]] && failexit "select_sp changed"
+    [[ "$prev_sp" != "$curr_sp" ]] && failexit $func "select_sp changed"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(select_sp_rep)
-        [[ "$prev_sp" != "$rep" ]] && failexit "select_sp in rep changed"
+        [[ "$prev_sp" != "$rep" ]] && failexit $func "select_sp in rep changed"
     fi
 }
 
@@ -377,11 +396,11 @@ function assert_select_t1
     typeset prev_rn="$1"
     write_prompt $func "Assert select_t1 procedure is the same"
     typeset curr_rn=$(select_t1)
-    [[ "$prev_rn" != "$curr_rn" ]] && failexit "return_number sp changed"
+    [[ "$prev_rn" != "$curr_rn" ]] && failexit $func "return_number sp changed"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(select_t1_rep)
-        [[ "$prev_rn" != "$rep" ]] && failexit "return_number sp changed in rep"
+        [[ "$prev_rn" != "$rep" ]] && failexit $func "return_number sp changed in rep"
     fi
 }
 
@@ -406,11 +425,11 @@ function assert_return_number
     typeset prev_rn="$1"
     write_prompt $func "Assert return_number is the same"
     typeset curr_rn=$(return_number)
-    [[ "$prev_rn" != "$curr_rn" ]] && failexit "return_number sp changed"
+    [[ "$prev_rn" != "$curr_rn" ]] && failexit $func "return_number sp changed"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(return_number_rep)
-        [[ "$prev_rn" != "$rep" ]] && failexit "return_number sp changed in rep"
+        [[ "$prev_rn" != "$rep" ]] && failexit $func "return_number sp changed in rep"
     fi
 }
 
@@ -423,13 +442,34 @@ function select_all_rep
     $CDB2SQL_EXE $repname --host localhost "select * from t3" 2>/dev/null
 }
 
+function select_all_int
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="select_all_int"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t1" 2>/dev/null
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t2" 2>/dev/null
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t3" 2>/dev/null
+}
+
+
+function assert_select_all_rep
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="assert_select_all_rep"
+    if [[ "$physrep" != 0 ]]; then
+        sleep $repsleep
+        typeset sal=$(select_all_int)
+        typeset rep=$(select_all_rep)
+        [[ "$sal" != "$rep" ]] && failexit $func "rep has diverged"
+    fi
+}
+
 function select_all
 {
     [[ $debug == "1" ]] && set -x
     typeset func="select_all"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t1" 2>/dev/null
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t2" 2>/dev/null
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t3" 2>/dev/null
+    assert_select_all_rep
+    select_all_int
 }
 
 function assert_select_all
@@ -439,11 +479,11 @@ function assert_select_all
     typeset prev_sa="$1"
     write_prompt $func "Assert select_all is the same"
     typeset curr_sa=$(select_all)
-    [[ "$prev_sa" != "$curr_sa" ]] && failexit "select_all changed"
+    [[ "$prev_sa" != "$curr_sa" ]] && failexit $func "select_all changed"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(select_all_rep)
-        [[ "$prev_sa" != "$rep" ]] && failexit "select_all changed in rep"
+        [[ "$prev_sa" != "$rep" ]] && failexit $func "select_all changed in rep"
     fi
 }
 
@@ -455,11 +495,11 @@ function assert_count
     typeset cnt=$2
     write_prompt $func "Assert count $tbl is $cnt"
     chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl" 2>/dev/null)
-    [[ "$chk" == "$cnt" ]] || failexit "count for $tbl is not $cnt"
+    [[ "$chk" == "$cnt" ]] || failexit $func "count for $tbl is not $cnt"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
-        [[ "$rep" == "$cnt" ]] || failexit "count for $tbl is not $cnt in rep"
+        [[ "$rep" == "$cnt" ]] || failexit $func "count for $tbl is not $cnt in rep"
     fi
 }
 
@@ -605,6 +645,50 @@ function truncate_tables
     assert_count t1 1
     assert_count t2 1
     assert_count t3 1
+
+    write_prompt $func "Truncating to before table creates"
+    truncate_log "$begin_lsn"
+    assert_notable t1
+    assert_notable t2
+    assert_notable t3
+}
+
+function bulk_rebuild
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="bulk_rebuild"
+    write_prompt $func "Creating t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+
+    write_prompt $func "Inserting 100000 records"
+    bulk_insert_records t1 100000
+    bulk_rebuild_lsn_1=$(get_current_lsn)
+    bulk_rebuild_sal_1=$(select_all)
+
+    write_prompt $func "Rebuilding t1 with blob"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 options rebuild { schema { int a blob b null=yes }} "
+    bulk_rebuild_lsn_2=$(get_current_lsn)
+    bulk_rebuild_sal_2=$(select_all)
+
+    write_prompt $func "Rebuilding t1 with cstring"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 options rebuild { schema { int a blob b null=yes cstring c[10] null=yes}} "
+    bulk_rebuild_lsn_3=$(get_current_lsn)
+    bulk_rebuild_sal_3=$(select_all)
+
+    write_prompt $func "Dropping t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+
+    write_prompt $func "Truncating to t1 with cstring"
+    truncate_log "$bulk_rebuild_lsn_3"
+    assert_select_all "$bulk_rebuild_sal_3"
+
+    write_prompt $func "Truncating to t1 with blob"
+    truncate_log "$bulk_rebuild_lsn_2"
+    assert_select_all "$bulk_rebuild_sal_2"
+
+    write_prompt $func "Truncating to t1 with int"
+    truncate_log "$bulk_rebuild_lsn_1"
+    assert_select_all "$bulk_rebuild_sal_1"
 
     write_prompt $func "Truncating to before table creates"
     truncate_log "$begin_lsn"
@@ -864,13 +948,13 @@ EOF
     sleep $repsleep
     write_prompt $func "Selecting json-extract from rep"
     lua_sfunc_rep_1=$(select_json_extract_rep)
-    [[ "$lua_sfunc_rep_1" != "$lua_sfunc_jse_1" ]] && failexit "rep json-extract output differs"
+    [[ "$lua_sfunc_rep_1" != "$lua_sfunc_jse_1" ]] && failexit $func "rep json-extract output differs"
 
 
     write_prompt $func "Dropping json_extract"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop lua scalar function json_extract"
     lua_sfunc_jse_2=$(select_json_extract)
-    [[ "$lua_sfunc_jse_2" == "$lua_sfunc_jse_1" ]] && failexit "dropped lua scalar returned same as active"
+    [[ "$lua_sfunc_jse_2" == "$lua_sfunc_jse_1" ]] && failexit $func "dropped lua scalar returned same as active"
     write_prompt $func "Truncating to json_extract create"
     truncate_log "$lua_sfunc_lsn_1"
     assert_select_json_extract "$lua_sfunc_jse_1"
@@ -973,7 +1057,7 @@ EOF
     lua_afunc_avg_1=$(select_myavg)
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop lua aggregate function myavg"
     lua_afunc_avg_2=$(select_myavg)
-    [[ "$lua_afunc_avg_2" == "$lua_afunc_avg_1" ]] && failexit "dropped lua aggregate returned same as active"
+    [[ "$lua_afunc_avg_2" == "$lua_afunc_avg_1" ]] && failexit $func "dropped lua aggregate returned same as active"
 
     write_prompt $func "Truncating to aggregate-function create"
     truncate_log "$lua_afunc_lsn_1"
@@ -1031,13 +1115,13 @@ function genid48
     insert_record t1
     genid48_lsn_2=$(get_current_lsn)
     genid48_fmt_2=$(get_genid_format)
-    [[ "$genid48_fmt_1" != "$genid48_fmt_2" ]] || failexit "Genid format did not change"
+    [[ "$genid48_fmt_1" != "$genid48_fmt_2" ]] || failexit $func "genid format did not change"
 
     write_prompt $func "Changing to genid48 genids"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put genid48 enable"
     insert_record t1
     genid48_fmt_3=$(get_genid_format)
-    [[ "$genid48_fmt_3" != "$genid48_fmt_2" ]] || failexit "Genid format did not change"
+    [[ "$genid48_fmt_3" != "$genid48_fmt_2" ]] || failexit $func "genid format did not change"
 
     write_prompt $func "Truncating to time-based genids"
     truncate_log "$genid48_lsn_2"
@@ -1068,12 +1152,12 @@ function rowlocks
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put rowlocks enable"
     rowlocks_lsn_2=$(get_current_lsn)
     rowlocks_rlk_2=$(get_rowlocks)
-    [[ "$rowlocks_rlk_1" != "$rowlocks_rlk_2" ]] || failexit "Rowlocks were not enabled"
+    [[ "$rowlocks_rlk_1" != "$rowlocks_rlk_2" ]] || failexit $func "rowlocks were not enabled"
 
     write_prompt $func "Disabling rowlocks"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put rowlocks disable"
     rowlocks_rlk_3=$(get_rowlocks)
-    [[ "$rowlocks_rlk_2" != "$rowlocks_rlk_3" ]] || failexit "Rowlocks were not disabled"
+    [[ "$rowlocks_rlk_2" != "$rowlocks_rlk_3" ]] || failexit $func "rowlocks were not disabled"
 
     write_prompt $func "Truncating to enabled rowlocks"
     truncate_log "$rowlocks_lsn_2"
@@ -1090,31 +1174,47 @@ function rowlocks
     assert_notable t3
 }
 
-if [[ "$physrep" == 1 ]] ; then
-    [[ "$dont_make_phys_rep" ]] || make_phys_rep
-    sleep $repsleep
-fi
+function setup
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="setup"
+    if [[ "$physrep" == 1 ]] ; then
+        [[ "$dont_make_phys_rep" ]] || make_phys_rep
+        sleep $repsleep
+    fi
 
-if [[ "$setup_sleep" -gt 0 ]]; then
-    write_prompt main "Sleeping for $setup_sleep"
-    sleep $setup_sleep
-fi
+    if [[ "$setup_sleep" -gt 0 ]]; then
+        write_prompt main "Sleeping for $setup_sleep"
+        sleep $setup_sleep
+    fi
+}
 
-add_tables
-drop_tables
-rename_tables
-truncate_tables
-alter_table_options
-luasp
-lua_afunc
-lua_sfunc
-morestripe
-genid48
-rowlocks
+function tear_down
+{
+    if [[ "$physrep" == 1 ]] ; then
+        kill -9 $(cat $repdir/${repname}.pid)
+    fi
+}
 
-if [[ "$physrep" == 1 ]] ; then
-    kill -9 $(cat $repdir/${repname}.pid)
-fi
+function run_tests
+{
+    add_tables
+    drop_tables
+    rename_tables
+    truncate_tables
+    alter_table_options
+    bulk_rebuild
+    luasp
+    lua_afunc
+    lua_sfunc
+    morestripe
+    genid48
+    rowlocks
+}
+
+setup
+run_tests
+tear_down
 
 # Not tested or supported (yet):
 # time-partitions
