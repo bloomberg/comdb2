@@ -1952,16 +1952,20 @@ void sqlite3DeleteIndexSamples(sqlite3 *db, Index *pIdx){
       IndexSample *p = &pIdx->aSample[j];
       sqlite3DbFree(db, p->p);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      sqlite3DbFree(db, p->anEq);
-      sqlite3DbFree(db, p->anLt);
-      sqlite3DbFree(db, p->anDLt);
+      sqlite3DbFree(db, p->anEq); p->anEq = 0;
+      sqlite3DbFree(db, p->anLt); p->anLt = 0;
+      sqlite3DbFree(db, p->anDLt); p->anDLt = 0;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    pIdx->nAlloc = 0;
-    sqlite3DbFree(db, pIdx->aAvgEq);
+    sqlite3DbFree(db, pIdx->aAvgEq); p->aAvgEq = 0;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3DbFree(db, pIdx->aSample);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    pIdx->nAlloc = 0;
+    pIdx->nSample = 0;
+    pIdx->aSample = 0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
   if( db && db->pnBytesFreed==0 ){
     pIdx->nSample = 0;
@@ -2257,7 +2261,7 @@ static int loadStat4(sqlite3 *db, const char *zDb){
       int i, bOom;
       int nSize = (nCol + 1) * sizeof(tRowcnt);
       if( nAlloc==0 ){
-        nAlloc = SQLITE_STAT4_SAMPLES;
+        nAlloc = MAX(pIdx->nSample, SQLITE_STAT4_SAMPLES);
         assert( pIdx->aAvgEq==0 );
         pIdx->aAvgEq = sqlite3DbMallocZero(db, nSize);
         if( pIdx->aAvgEq==0 ){
@@ -2296,7 +2300,7 @@ static int loadStat4(sqlite3 *db, const char *zDb){
 
     /* Find position for this sample */
     iPos = pIdx->nSample;
-    if( pIdx->nSample>0 ){
+    if( iPos>0 ){
       int x, cmp;
       int iPosGreater = iPos;
       int iPosSmaller = 0;
@@ -2343,7 +2347,7 @@ static int loadStat4(sqlite3 *db, const char *zDb){
         pIdx->aSample[iPos] = tmp;
       }
     }
-    assert( iPos>=0 && iPos<pIdx->nSample );
+    assert( iPos>=0 && iPos<pIdx->nAlloc );
     pSample = &pIdx->aSample[iPos];
     decodeIntArray((char*)sqlite3_column_text(pStmt,1),nCol,pSample->anEq,0,0);
     decodeIntArray((char*)sqlite3_column_text(pStmt,2),nCol,pSample->anLt,0,0);
@@ -2453,7 +2457,6 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
     sqlite3DeleteIndexSamples(db, pIdx);
-    pIdx->aSample = 0;
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     }else{
