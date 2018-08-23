@@ -11,7 +11,14 @@ include $(TESTSROOTDIR)/Makefile.common
 
 
 # List of disabled tests
-export DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
+DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
+
+ifeq ($(SKIPSSL), 1)
+SKIPS:=$(shell grep ssl *.test/lrl*  | grep 'ssl_client_mode VERIFY' | cut -f1 -d'/'| sort -u)
+DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
+endif
+
+export DISABLED_TESTS
 
 # List of all tests that need to run. This is essentially a list of all
 # non-disabled tests.
