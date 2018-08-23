@@ -78,6 +78,11 @@ static int systblPluginsDisconnect(sqlite3_vtab *pVtab)
 
 static int systblPluginsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 {
+    /* Do not allow non-OP users if authentication is enabled. */
+    int rc = comdb2CheckOpAccess();
+    if( rc!=SQLITE_OK )
+        return rc;
+
     systbl_plugins_cursor *cur = sqlite3_malloc(sizeof(systbl_plugins_cursor));
     if (cur == 0) {
         return SQLITE_NOMEM;

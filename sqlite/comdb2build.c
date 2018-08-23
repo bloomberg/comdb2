@@ -332,7 +332,7 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
     return comdb2prepareNoRows(v, pParse, int_arg, arg, func, freeFunc);
 }
 
-static int comdb2AuthenticateUserDDL(const char *tablename, Parse* pParse)
+static int comdb2AuthenticateUserDDL(const char *tablename)
 {
      struct sql_thread *thd = pthread_getspecific(query_info_key);
      bdb_state_type *bdb_state = thedb->bdb_env;
@@ -354,15 +354,20 @@ static int comdb2AuthenticateUserDDL(const char *tablename, Parse* pParse)
      return SQLITE_AUTH;
 }
 
+int comdb2CheckOpAccess(void) {
+    if (comdb2AuthenticateUserDDL(""))
+        return SQLITE_AUTH;
+    return SQLITE_OK;
+}
 
-int comdb2AuthenticateUserOp(Parse* pParse)
+static int comdb2AuthenticateUserOp(Parse* pParse)
 {
-     if (comdb2AuthenticateUserDDL("", pParse))
-         setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
-     else
-         return SQLITE_OK;
-
-     return SQLITE_AUTH;
+    int rc;
+    rc = comdb2CheckOpAccess();
+    if (rc != SQLITE_OK) {
+        setError(pParse, rc, "User does not have OP credentials");
+    }
+    return rc;
 }
 
 /* Only an op user can turn authentication on. */
@@ -546,7 +551,7 @@ static int authenticateSC(const char * table,  Parse *pParse)
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (username && strcmp(username+1, thd->clnt->user) == 0) {
         return 0;
-    } else if (comdb2AuthenticateUserDDL(table, pParse) == 0) {
+    } else if (comdb2AuthenticateUserDDL(table) == 0) {
         return 0;
     } else if (comdb2AuthenticateUserOp(pParse) == 0) {
         return 0;
@@ -1588,7 +1593,7 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
         goto clean_arg;
     }
 
-    if (comdb2AuthenticateUserDDL("", pParse))
+    if (comdb2AuthenticateUserDDL(""))
     {
         struct sql_thread *thd = pthread_getspecific(query_info_key);
         /* Check if its password change request */

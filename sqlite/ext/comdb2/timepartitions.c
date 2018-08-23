@@ -21,6 +21,7 @@
 #endif
 
 #include "views.h"
+#include "comdb2systbl.h"
 
 typedef struct timepart_cursor timepart_cursor;
 struct timepart_cursor {
@@ -66,6 +67,11 @@ static int timepartDisconnect(sqlite3_vtab *pVtab){
 /* cursor open */
 static int timepartOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   timepart_cursor *pCur;
+
+  /* Do not allow non-OP users if authentication is enabled. */
+  int rc = comdb2CheckOpAccess();
+  if( rc!=SQLITE_OK )
+      return rc;
 
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;

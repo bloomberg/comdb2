@@ -111,6 +111,11 @@ static int systblThreadPoolsDisconnect(sqlite3_vtab *pVtab)
 static int systblThreadPoolsOpen(sqlite3_vtab *p,
                                  sqlite3_vtab_cursor **ppCursor)
 {
+    /* Do not allow non-OP users if authentication is enabled. */
+    int rc = comdb2CheckOpAccess();
+    if( rc!=SQLITE_OK )
+        return rc;
+
     systbl_threadpools_cursor *cur =
         sqlite3_malloc(sizeof(systbl_threadpools_cursor));
     if (cur == 0) {

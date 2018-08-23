@@ -32,6 +32,7 @@
 #include "util.h"
 #include <bdb/bdb_int.h>
 #include "llog_ext.h"
+#include "comdb2systbl.h"
 
 /* Allocate maximum for unpacking */
 #define PACKED_MEMORY_SIZE (MAXBLOBLENGTH + 7)
@@ -119,6 +120,12 @@ static int logicalopsDisconnect(sqlite3_vtab *pVtab){
 
 static int logicalopsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   logicalops_cursor *pCur;
+
+  /* Do not allow non-OP users if authentication is enabled. */
+  int rc = comdb2CheckOpAccess();
+  if( rc!=SQLITE_OK )
+      return rc;
+
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));

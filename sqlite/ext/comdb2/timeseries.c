@@ -13,6 +13,7 @@
 #include "perf.h"
 #include "sqliteInt.h"
 #include "vdbeInt.h"
+#include "comdb2systbl.h"
 
 /* systbl_metrics_cursor is a subclass of sqlite3_vtab_cursor which
 ** serves as the underlying cursor to enumerate the rows in this
@@ -58,6 +59,11 @@ static int systblTimeseriesDisconnect(sqlite3_vtab *pVtab){
 
 static int systblTimeseriesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   systbl_metrics_cursor *pCur;
+
+  /* Do not allow non-OP users if authentication is enabled. */
+  int rc = comdb2CheckOpAccess();
+  if( rc!=SQLITE_OK )
+      return rc;
 
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
