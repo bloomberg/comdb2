@@ -18,6 +18,12 @@ SKIPS:=$(shell grep ssl *.test/lrl*  | grep 'ssl_client_mode VERIFY' | cut -f1 -
 DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
 endif
 
+ifeq ($(wildcard $(BUILDDIR)/tcl/libtclcdb2.so),)
+#if we have not compiled with tcl, skip tests that require tclcdb2
+SKIPS:=$(shell ls *.test/*.tcl | xargs grep 'package require tclcdb2' | cut -f1 -d'/' | sort -u)
+DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
+endif
+
 export DISABLED_TESTS
 
 # List of all tests that need to run. This is essentially a list of all
