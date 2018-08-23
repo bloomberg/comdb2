@@ -896,8 +896,7 @@ static int convert_record(struct convert_record_data *data)
         data->n_genids_changed++;
 
     int addflags = RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_CONSTRAINTS |
-                   RECFLAGS_NEW_SCHEMA | RECFLAGS_ADD_FROM_SC |
-                   RECFLAGS_KEEP_GENID;
+                   RECFLAGS_NEW_SCHEMA | RECFLAGS_KEEP_GENID;
 
     if (data->to->plan && gbl_use_plan) addflags |= RECFLAGS_NO_BLOBS;
 
@@ -2265,7 +2264,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
         data->n_genids_changed++;
 
     int addflags = RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_CONSTRAINTS |
-                   RECFLAGS_NEW_SCHEMA | RECFLAGS_ADD_FROM_SC |
+                   RECFLAGS_NEW_SCHEMA | RECFLAGS_ADD_FROM_SC_LOGICAL |
                    RECFLAGS_KEEP_GENID;
 
     char *tagname = ".NEW..ONDISK";
@@ -2290,10 +2289,16 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
             BLOCK2_ADDKL, /* opcode */
             0,            /* blkpos */
             addflags, 0);
+        if (rc == ERR_VERIFY) {
+            /* not an error if the row is already in the new btree */
+            rc = 0;
+            goto done;
+        }
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s:%d failed to add new record rc=%d %s\n",
                    __func__, __LINE__, rc,
                    errstat_get_str(&(data->iq.errstat)));
+            goto done;
         }
     }
 
@@ -2601,12 +2606,6 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
     if (rec->dtastripe < 0 || rec->dtastripe >= gbl_dtastripe) {
         logmsg(LOGMSG_ERROR, "%s:%d rec->dtastripe %d out of range\n", __func__,
                __LINE__, rc, rec->dtastripe);
-        return 0;
-    }
-    if (!data->sc_genids[rec->dtastripe]) {
-        /* A genid of zero is invalid.  So, if the schema change cursor is
-         * at genid zero it means pretty conclusively that it hasn't done
-         * anything yet so we cannot possibly be behind the cursor. */
         return 0;
     }
     if (!data->s->sc_convert_done[rec->dtastripe] &&

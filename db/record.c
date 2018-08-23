@@ -192,6 +192,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     size_t reclen = p_buf_rec_end - p_buf_rec;
     char *od_dta_tail = NULL;
     int od_len_tail;
+    unsigned long long vgenid = 0;
 
     *ixfailnum = -1;
 
@@ -519,10 +520,25 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
+    if ((flags & RECFLAGS_NEW_SCHEMA) &&
+        (flags & RECFLAGS_ADD_FROM_SC_LOGICAL) && (flags & RECFLAGS_KEEP_GENID))
+        vgenid = *genid;
+
     /*
      * Add the data record
      */
     if (!gbl_use_plan || !iq->usedb->plan || iq->usedb->plan->dta_plan == -1) {
+        if (vgenid) {
+            int bdberr;
+            rc = ix_check_genid(iq, trans, vgenid, &bdberr);
+            if (rc && bdberr == IX_FND) {
+                retrc = ERR_VERIFY;
+                ERR;
+            }
+            /* The row is not in new btree, proceed with the add */
+            vgenid = 0; // no need to verify again
+        }
+
         if (flags & RECFLAGS_KEEP_GENID) {
             assert(genid != 0);
             rc = dat_set(iq, trans, od_dta, od_len, *rrn, *genid);
@@ -609,6 +625,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (iq->osql_step_ix)
             gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
         for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
+            int isnullk = 0;
             int ixkeylen;
             char ixtag[MAXTAGLEN];
             char key[MAXKEYLEN];
@@ -665,9 +682,33 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             if (iq->osql_step_ix)
                 gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
 
+            isnullk = ix_isnullk(iq->usedb, key, ixnum);
+
+            if (vgenid && iq->usedb->ix_dupes[ixnum] == 0 && !isnullk) {
+                int fndrrn = 0;
+                unsigned long long fndgenid = 0LL;
+                rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, key, &fndrrn,
+                                         &fndgenid, NULL, NULL, 0, trans);
+                if (rc == IX_FND && fndgenid == *genid) {
+                    retrc = ERR_VERIFY;
+                    ERR;
+                }
+
+                /* The row is not in new btree, proceed with the add */
+                vgenid = 0; // no need to verify again
+            }
+
             /* add the key */
             rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
-                         od_len_tail, ix_isnullk(iq->usedb, key, ixnum));
+                         od_len_tail, isnullk);
+
+            if (vgenid && rc == IX_DUP) {
+                if (iq->usedb->ix_dupes[ixnum] || isnullk) {
+                    retrc = ERR_VERIFY;
+                    ERR;
+                }
+            }
+
             if (iq->debug) {
                 reqprintf(iq, "ix_addk IX %d LEN %u KEY ", ixnum, ixkeylen);
                 reqdumphex(iq, key, ixkeylen);

@@ -2651,7 +2651,7 @@ enum {
      * provided then it should be NULLed out.  In this mode all blobs for
      * the record that are non-NULL will be given. */
     RECFLAGS_DONT_SKIP_BLOBS = 128,
-    RECFLAGS_ADD_FROM_SC = 256,
+    RECFLAGS_ADD_FROM_SC_LOGICAL = 256,
     /* used for upgrade record */
     RECFLAGS_UPGRADE_RECORD = RECFLAGS_DYNSCHEMA_NULLS_ONLY |
                               RECFLAGS_KEEP_GENID | RECFLAGS_NO_TRIGGERS |
