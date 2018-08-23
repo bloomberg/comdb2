@@ -853,7 +853,6 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
     }
     struct schema_change_type* sc = new_schemachange_type();
     strcpy(sc->table, name);
-    sc->newcsc2 = malloc(proc->n);
     sc->addsp = 1;
     if (ver) {
         TokenStr(version, ver);
