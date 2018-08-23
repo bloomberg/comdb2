@@ -1958,7 +1958,7 @@ void sqlite3DeleteIndexSamples(sqlite3 *db, Index *pIdx){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    sqlite3DbFree(db, pIdx->aAvgEq); p->aAvgEq = 0;
+    sqlite3DbFree(db, pIdx->aAvgEq); pIdx->aAvgEq = 0;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3DbFree(db, pIdx->aSample);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
