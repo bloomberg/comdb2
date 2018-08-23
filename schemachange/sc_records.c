@@ -669,6 +669,16 @@ static int convert_record(struct convert_record_data *data)
              * a lock to the last page of the stripe.
              */
 
+            if (data->s->logical_livesc) {
+                data->s->sc_convert_done[data->stripe] = 1;
+                sc_printf(
+                    data->s,
+                    "[%s] finished converting stripe %d, last genid %llx\n",
+                    data->from->tablename, data->stripe,
+                    data->sc_genids[data->stripe]);
+                return 0;
+            }
+
             // AZ: determine what locks we hold at this time
             // bdb_dump_active_locks(data->to->handle, stdout);
             data->sc_genids[data->stripe] = -1ULL;
@@ -1286,6 +1296,11 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
             logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__, __LINE__);
             return -1;
         }
+        s->sc_convert_done = calloc(MAXDTASTRIPE, sizeof(int));
+        if (s->sc_convert_done == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__, __LINE__);
+            return -1;
+        }
         *thdData = data;
         bdb_get_commit_genid(thedb->bdb_env, &(thdData->start_lsn));
         thdData->stripe = -1;
@@ -1303,6 +1318,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
             sc_errf(s, "[%s] starting thread failed for logical redo\n",
                     s->table);
             s->logical_livesc = 0;
+            free(s->sc_convert_done);
             return -1;
         }
     } else {
@@ -2281,6 +2297,21 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
         }
     }
 
+    if (!is_dta_being_rebuilt(data->to->plan)) {
+        int bdberr;
+        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid,
+                                &bdberr);
+        if (rc != 0) {
+            if (bdberr == BDBERR_DEADLOCK)
+                rc = RC_INTERNAL_RETRY;
+            else {
+                logmsg(LOGMSG_ERROR, "%s:%d failed to set high genid rc=%d\n",
+                       __func__, __LINE__, rc);
+                rc = ERR_INTERNAL;
+            }
+        }
+    }
+
 done:
     logmsg(LOGMSG_INFO,
            "%s: [%s] redo lsn[%u:%u] type[ADD_DTA] rec->dtafile %d, "
@@ -2578,13 +2609,17 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
          * anything yet so we cannot possibly be behind the cursor. */
         return 0;
     }
-    if (is_genid_right_of_stripe_pointer(data->to->handle, rec->genid,
+    if (!data->s->sc_convert_done[rec->dtastripe] &&
+        is_genid_right_of_stripe_pointer(data->to->handle, rec->genid,
                                          data->sc_genids[rec->dtastripe])) {
         return 0;
     }
     switch (rec->type) {
     case DB_llog_undo_add_dta:
     case DB_llog_undo_add_dta_lk:
+        if (bdb_inplace_cmp_genids(data->to->handle, rec->genid,
+                                   data->sc_genids[rec->dtastripe]) == 0)
+            return 0;
         rc = live_sc_redo_add(data, logc, rec, logdta);
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -2872,6 +2907,8 @@ cleanup:
               "[%s] logical redo thread exiting, log cursor at [%u:%u]\n",
               data->s->table, pCur->curLsn.file, pCur->curLsn.offset);
     data->s->logical_livesc = 0;
+    free(data->s->sc_convert_done);
+    data->s->sc_convert_done = NULL;
     bdb_llog_cursor_close(pCur);
     free(data);
     return NULL;

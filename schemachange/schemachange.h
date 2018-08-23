@@ -182,7 +182,6 @@ struct schema_change_type {
                            future)*/
 
     int got_tablelock;
-    int logical_livesc;
     int sc_thd_failed;
     int schema_change;
 
@@ -191,6 +190,9 @@ struct schema_change_type {
     unsigned long long start_genid;
 
     int already_finalized;
+
+    int logical_livesc;
+    int *sc_convert_done;
 
     /*********************** temporary fields for sbuf packing
      * ************************/
