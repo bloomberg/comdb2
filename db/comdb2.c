@@ -5305,7 +5305,6 @@ int rename_db(struct dbtable *db, const char *newname)
     /* db */
     hash_del(thedb->db_hash, db);
     db->tablename = (char *)newname;
-    db->version = 0; /* reset, new table */
     hash_add(thedb->db_hash, db);
 
     pthread_rwlock_unlock(&thedb_lock);

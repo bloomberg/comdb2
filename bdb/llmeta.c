@@ -9041,7 +9041,7 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
     struct llmeta_file_type_dbname_csc2_vers_key vers_key;
     struct llmeta_file_type_dbname_csc2_vers_key new_vers_key;
 
-    logmsg(LOGMSG_INFO, "%s renaming from '%s' to '%s', version %d\n",
+    logmsg(LOGMSG_DEBUG, "%s renaming from '%s' to '%s', version %d\n",
             __func__, tblname, newtblname, ver);
 
     vers_key.file_type = LLMETA_CSC2;
@@ -9073,10 +9073,10 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
                        ver);
                 return rc;
             }
-            logmsg(LOGMSG_INFO, "%s added table '%s' (old table '%s') version "
+            logmsg(LOGMSG_DEBUG, "%s added table '%s' (old table '%s') version "
                     "%d\n", __func__, newtblname, tblname, ver);
         } else {
-            logmsg(LOGMSG_INFO, "%s didn't find old table '%s' version %d (so "
+            logmsg(LOGMSG_DEBUG, "%s didn't find old table '%s' version %d (so "
                     "not adding new-table '%s'??)\n", __func__, tblname, ver,
                     newtblname);
         }

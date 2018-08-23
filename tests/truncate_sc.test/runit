@@ -1116,6 +1116,6 @@ if [[ "$physrep" == 1 ]] ; then
     kill -9 $(cat $repdir/${repname}.pid)
 fi
 
-# Not supported:
+# Not tested or supported (yet):
 # time-partitions
 # queues
