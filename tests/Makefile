@@ -14,7 +14,7 @@ include $(TESTSROOTDIR)/Makefile.common
 DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
 
 ifeq ($(SKIPSSL), 1)
-SKIPS:=$(shell grep ssl *.test/lrl*  | grep 'ssl_client_mode VERIFY' | cut -f1 -d'/'| sort -u)
+SKIPS:=$(shell grep ssl *.test/lrl*  | grep 'ssl_client_mode VERIFY' | cut -f1 -d'/' | sort -u)
 DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
 endif
 
