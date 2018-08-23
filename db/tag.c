@@ -3081,6 +3081,7 @@ int vtag_to_ondisk_vermap(struct dbtable *db, uint8_t *rec, int *len, uint8_t ve
     if (db->versmap[ver] == NULL) { // not possible
         logmsg(LOGMSG_FATAL, "vtag_to_ondisk_vermap: db->versmap[%d] should NOT be null\n",
                ver);
+        bdb_flush(thedb->bdb_env, &rc);
         cheap_stack_trace();
         abort();
     }

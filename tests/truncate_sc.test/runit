@@ -77,6 +77,14 @@ function get_current_lsn
     $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1"
 }
 
+function insert_record
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="insert_records"
+    typeset tbl=$1
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "insert into $tbl values(1)" >/dev/null
+}
+
 function get_comdb2_columns
 {
     [[ $debug == "1" ]] && set -x
@@ -223,11 +231,11 @@ function assert_notable
     typeset func="assert_notable"
     typeset tbl=$1
     write_prompt $func "Assert $tbl does not exist"
-    chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl")
+    chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl" 2>/dev/null)
     [[ $? != 0 ]] || failexit "table $tbl still exists"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
-        rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl")
+        rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
         [[ $? != 0 ]] || failexit "table $tbl in rep still exists"
     fi
 }
@@ -258,6 +266,64 @@ function assert_stat_compr
         sleep $repsleep
         rep=$(stat_compr_rep)
         [[ "$prev_sc" != "$rep" ]] && failexit "stat compr changed in rep"
+    fi
+}
+
+function select_json_extract_rep
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="select_json_extract_rep"
+    $CDB2SQL_EXE $repname --host localhost "select json_extract(str, 'i') as i from strings" 2>/dev/null
+}
+
+function select_json_extract
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="select_json_extract"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select json_extract(str, 'i') as i from strings" 2>/dev/null
+}
+
+function assert_select_json_extract
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="assert_select_json_extract"
+    typeset prev_sp="$1"
+    write_prompt $func "Assert select_json_extract is the same"
+    typeset curr_sp=$(select_json_extract)
+    [[ "$prev_sp" != "$curr_sp" ]] && failexit "select_json_extract changed"
+    if [[ "$physrep" == 1 ]]; then
+        sleep $repsleep
+        typeset rep=$(select_json_extract_rep)
+        [[ "$prev_sp" != "$rep" ]] && failexit "select_json_extract in rep changed"
+    fi
+}
+
+function select_myavg_rep
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="select_myavg_rep"
+    $CDB2SQL_EXE $repname --host localhost "select myavg(i) from nums" 2>/dev/null
+}
+
+function select_myavg
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="select_myavg"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select myavg(i) from nums" 2>/dev/null
+}
+
+function assert_select_myavg
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="assert_select_myavg"
+    typeset prev_sp="$1"
+    write_prompt $func "Assert select_myavg is the same"
+    typeset curr_sp=$(select_myavg)
+    [[ "$prev_sp" != "$curr_sp" ]] && failexit "select_myavg changed"
+    if [[ "$physrep" == 1 ]]; then
+        sleep $repsleep
+        typeset rep=$(select_myavg_rep)
+        [[ "$prev_sp" != "$rep" ]] && failexit "select_sp in rep changed"
     fi
 }
 
@@ -352,18 +418,18 @@ function select_all_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="select_all_rep"
-    $CDB2SQL_EXE $repname --host localhost "select * from t1"
-    $CDB2SQL_EXE $repname --host localhost "select * from t2"
-    $CDB2SQL_EXE $repname --host localhost "select * from t3"
+    $CDB2SQL_EXE $repname --host localhost "select * from t1" 2>/dev/null
+    $CDB2SQL_EXE $repname --host localhost "select * from t2" 2>/dev/null
+    $CDB2SQL_EXE $repname --host localhost "select * from t3" 2>/dev/null
 }
 
 function select_all
 {
     [[ $debug == "1" ]] && set -x
     typeset func="select_all"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t1"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t2"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t3"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t1" 2>/dev/null
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t2" 2>/dev/null
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t3" 2>/dev/null
 }
 
 function assert_select_all
@@ -388,11 +454,11 @@ function assert_count
     typeset tbl=$1
     typeset cnt=$2
     write_prompt $func "Assert count $tbl is $cnt"
-    chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl")
+    chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl" 2>/dev/null)
     [[ "$chk" == "$cnt" ]] || failexit "count for $tbl is not $cnt"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
-        rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl")
+        rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
         [[ "$rep" == "$cnt" ]] || failexit "count for $tbl is not $cnt in rep"
     fi
 }
@@ -408,11 +474,11 @@ function add_tables
 
     write_prompt $func "Creating t1 and inserting three records"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
+    insert_record t1
     add_tables_lsn_1=$(get_current_lsn)
     add_tables_sal_1=$(select_all)
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(2)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(3)"
+    insert_record t1
+    insert_record t1
     assert_count t1 3
 
     write_prompt $func "Truncating t1 to one record"
@@ -431,13 +497,13 @@ function drop_tables
     typeset func="drop_tables"
     write_prompt $func "Creating t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
+    insert_record t1
     write_prompt $func "Creating t2"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t2(a int)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t2 values(1)"
+    insert_record t2
     write_prompt $func "Creating t3"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t3(a int)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t3 values(1)"
+    insert_record t3
     assert_count t1 1
     assert_count t2 1
     assert_count t3 1
@@ -471,7 +537,7 @@ function rename_tables
     typeset func="rename_tables"
     write_prompt $func "Creating t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
+    insert_record t1
     assert_count t1 1
     rename_lsn_1=$(get_current_lsn)
     rename_sal_1=$(select_all)
@@ -512,15 +578,15 @@ function truncate_tables
 
     write_prompt $func "Creating t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
+    insert_record t1
 
     write_prompt $func "Creating t2"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t2(a int)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t2 values(1)"
+    insert_record t2
 
     write_prompt $func "Creating t3"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t3(a int)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t3 values(1)"
+    insert_record t3
     assert_count t1 1
     assert_count t2 1
     assert_count t3 1
@@ -553,15 +619,15 @@ function alter_table_options
     typeset func="alter_table_options"
     write_prompt $func "Creating t1 with old options"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int) options odh off, ipu off, isc off, rec none, blobfield none"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
+    insert_record t1
 
     write_prompt $func "Creating t2 with old options"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t2(a int) options odh off, ipu off, isc off, rec none, blobfield none"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t2 values(1)"
+    insert_record t2
 
     write_prompt $func "Creating t3 with old options"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t3(a int) options odh off, ipu off, isc off, rec none, blobfield none"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t3 values(1)"
+    insert_record t3
     assert_count t1 1
     assert_count t2 1
     assert_count t3 1
@@ -650,7 +716,7 @@ function luasp
     typeset func="luasp"
     write_prompt $func "Creating t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int, b blob)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1, x'12')"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1, x'12')" >/dev/null
     luasp_lsn_1=$(get_current_lsn)
     luasp_sal_1=$(select_all)
     luasp_rtn_1=$(select_sp)
@@ -682,14 +748,14 @@ EOF
     luasp_rtn_3=$(return_number)
 
     write_prompt $func "Making v2 default sp"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - "put default procedure return_number 'v2'"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put default procedure return_number 'v2'"
     luasp_lsn_4=$(get_current_lsn)
     luasp_sal_4=$(select_all)
     luasp_ssp_4=$(select_sp)
     luasp_rtn_4=$(return_number)
 
     write_prompt $func "Dropping v1"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - "drop procedure return_number 'v1'"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop procedure return_number 'v1'"
     luasp_lsn_5=$(get_current_lsn)
     luasp_sal_5=$(select_all)
     luasp_ssp_5=$(select_sp)
@@ -773,13 +839,160 @@ EOF
     assert_notable t3
 }
 
+function lua_sfunc
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="lua_sfunc"
+    write_prompt $func "Create strings table"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table strings(str vutf8)"
+    write_prompt $func "Create json-extract sp"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF'
+create procedure json_extract {
+local function json_extract(json, field)
+    local tbl = db:json_to_table(json)
+        return tbl[field]
+end
+}$$
+EOF
+    write_prompt $func "Making json_extract a scalar sp"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create lua scalar function json_extract"
+    write_prompt $func "Inserting some records"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into strings(str) values ('{\"i\":10}')"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into strings(str) values ('{\"i\":20}')"
+    lua_sfunc_lsn_1=$(get_current_lsn)
+    lua_sfunc_jse_1=$(select_json_extract)
+    sleep $repsleep
+    write_prompt $func "Selecting json-extract from rep"
+    lua_sfunc_rep_1=$(select_json_extract_rep)
+    [[ "$lua_sfunc_rep_1" != "$lua_sfunc_jse_1" ]] && failexit "rep json-extract output differs"
+
+
+    write_prompt $func "Dropping json_extract"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop lua scalar function json_extract"
+    lua_sfunc_jse_2=$(select_json_extract)
+    [[ "$lua_sfunc_jse_2" == "$lua_sfunc_jse_1" ]] && failexit "dropped lua scalar returned same as active"
+    write_prompt $func "Truncating to json_extract create"
+    truncate_log "$lua_sfunc_lsn_1"
+    assert_select_json_extract "$lua_sfunc_jse_1"
+
+    write_prompt $func "Truncating to before sp create"
+    truncate_log "$begin_lsn"
+    assert_notable t1
+    assert_notable t2
+    assert_notable t3
+}
+
+function lua_afunc
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="lua_afunc"
+    write_prompt $func "Creating nums table"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table nums (i double)"
+    write_prompt $func "Creating gen function"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF'
+create procedure gen version 'sptest' {
+local function gen(tbl, a, b)
+    local stmt = db:prepare("insert into "..tbl.."(i) values(@a),(@b),(@c),(@d),(@e),(@f),(@g),(@h),(@i),(@j)")
+    local params = 10
+    local num = b - a + 1
+    local per_tran
+    if num > 1000 then
+        per_tran = 1000
+    else
+        per_tran = num
+    end
+    local loop = (b - a + 1) / per_tran
+    local per_loop = per_tran / params
+    local i = a
+    for j = 1, loop do
+        db:begin()
+        for k = 1, per_loop do
+            stmt:bind('a', i + 0)
+            stmt:bind('b', i + 1)
+            stmt:bind('c', i + 2)
+            stmt:bind('d', i + 3)
+            stmt:bind('e', i + 4)
+            stmt:bind('f', i + 5)
+            stmt:bind('g', i + 6)
+            stmt:bind('h', i + 7)
+            stmt:bind('i', i + 8)
+            stmt:bind('j', i + 9)
+            stmt:exec()
+            i = i + params
+        end
+        db:commit()
+    end
+end
+local function main(tbl, to, num_thds)
+    local from = 1
+    if tbl == nil then tbl = "nums" end
+    if to == nil then to = 100000 end
+    if num_thds == nil then num_thds = 10 end
+    local thds = {}
+    local a = from
+    local b = to / num_thds
+    for i = 1, num_thds do
+        table.insert(thds, db:create_thread(gen, tbl, a, a + b - 1))
+        a = a + b
+    end
+    for _,t in pairs(thds) do
+        t:join()
+    end
+end
+}$$
+EOF
+
+    write_prompt $func "Putting default version for gen"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put default procedure gen 'sptest'"
+    write_prompt $func "Creating myavg function"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<'EOF'
+create procedure myavg version 'sptest' {
+local agg = nil
+local function step(a)
+    if agg == nil then
+        agg = {}
+        agg.as = a
+        agg.n = 1
+    else
+        agg.as = agg.as + a
+        agg.n = agg.n + 1
+    end
+end
+
+local function final()
+    return agg.as / agg.n
+end
+}$$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put default procedure myavg 'sptest'"
+    write_prompt $func "Putting default for myavg"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create lua aggregate function myavg"
+    write_prompt $func "Exec gen and myavg"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "exec procedure gen()"
+    lua_afunc_lsn_1=$(get_current_lsn)
+    lua_afunc_avg_1=$(select_myavg)
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop lua aggregate function myavg"
+    lua_afunc_avg_2=$(select_myavg)
+    [[ "$lua_afunc_avg_2" == "$lua_afunc_avg_1" ]] && failexit "dropped lua aggregate returned same as active"
+
+    write_prompt $func "Truncating to aggregate-function create"
+    truncate_log "$lua_afunc_lsn_1"
+    assert_select_myavg "$lua_afunc_avg_1"
+
+    write_prompt $func "Truncating to before sp create"
+    truncate_log "$begin_lsn"
+    assert_notable t1
+    assert_notable t2
+    assert_notable t3
+}
+
 function morestripe
 {
     [[ $debug == "1" ]] && set -x
     typeset func="morestripe"
     write_prompt $func "Creating t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
+    insert_record t1
     morestripe_lsn_1=$(get_current_lsn)
     morestripe_sal_1=$(select_all)
     morestripe_stp_1=$(get_dtastripe)
@@ -809,20 +1022,20 @@ function genid48
     typeset func="genid48"
     write_prompt $func "Creating t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
+    insert_record t1
     genid48_lsn_1=$(get_current_lsn)
     genid48_fmt_1=$(get_genid_format)
 
     write_prompt $func "Changing to time-based genids"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put genid48 disable"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
+    insert_record t1
     genid48_lsn_2=$(get_current_lsn)
     genid48_fmt_2=$(get_genid_format)
     [[ "$genid48_fmt_1" != "$genid48_fmt_2" ]] || failexit "Genid format did not change"
 
     write_prompt $func "Changing to genid48 genids"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put genid48 enable"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
+    insert_record t1
     genid48_fmt_3=$(get_genid_format)
     [[ "$genid48_fmt_3" != "$genid48_fmt_2" ]] || failexit "Genid format did not change"
 
@@ -847,7 +1060,7 @@ function rowlocks
     typeset func="rowlocks"
     write_prompt $func "Creating t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)"
+    insert_record t1
     rowlocks_lsn_1=$(get_current_lsn)
     rowlocks_rlk_1=$(get_rowlocks)
 
@@ -878,8 +1091,13 @@ function rowlocks
 }
 
 if [[ "$physrep" == 1 ]] ; then
-    make_phys_rep
+    [[ "$dont_make_phys_rep" ]] || make_phys_rep
     sleep $repsleep
+fi
+
+if [[ "$setup_sleep" -gt 0 ]]; then
+    write_prompt main "Sleeping for $setup_sleep"
+    sleep $setup_sleep
 fi
 
 add_tables
@@ -888,16 +1106,16 @@ rename_tables
 truncate_tables
 alter_table_options
 luasp
+lua_afunc
+lua_sfunc
 morestripe
 genid48
 rowlocks
 
-#if [[ "$physrep" == 1 ]] ; then
-#    kill -9 $(cat $repdir/${repname}.pid)
-#fi
+if [[ "$physrep" == 1 ]] ; then
+    kill -9 $(cat $repdir/${repname}.pid)
+fi
 
 # Not supported:
 # time-partitions
 # queues
-# lua-sfunc
-# lua-afunc

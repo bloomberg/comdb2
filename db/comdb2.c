@@ -2036,8 +2036,14 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
 
         /* get schema version from llmeta */
         rc = bdb_get_csc2_highest(tran, tblnames[i], &ver, &bdberr);
-        if (rc)
+        if (rc) {
+            logmsg(LOGMSG_DEBUG, "%s get_csc2_highest for '%s' returns %d\n",
+                    __func__, tblnames[i], rc);
             break;
+        }
+
+        logmsg(LOGMSG_DEBUG, "%s got version %d for table '%s'\n", __func__,
+                ver, tblnames[i]);
 
         /* create latest version of db */
         rc = get_csc2_file_tran(tblnames[i], ver, &csc2text, NULL, tran);
@@ -5538,8 +5544,10 @@ int comdb2_close_schemas(void *dbenv, void *lsn, uint32_t lockid)
 int reload_all_db_tran(tran_type *tran);
 int open_all_dbs_tran(void *tran);
 void delete_prepared_stmts(struct sqlthdstate *thd);
+int reload_lua_sfuncs();
+int reload_lua_afuncs();
 
-/* This is for "online" logfile truncation across a schema-change */
+/* This is for online logfile truncation across a schema-change */
 int comdb2_reload_schemas(void *dbenv, void *inlsn)
 {
     uint32_t tranlid = 0;
@@ -5555,8 +5563,10 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn)
     struct dbtable *db;
     struct sql_thread *sqlthd;
     struct sqlthdstate *thd;
+    int *file = &(((int *)(inlsn))[0]);
+    int *offset = &(((int *)(inlsn))[1]);
 
-    logmsg(LOGMSG_INFO, "%s starting\n", __func__);
+    logmsg(LOGMSG_INFO, "%s starting for [%d:%d]\n", __func__, *file, *offset);
     wrlock_schema_lk();
 
 retry_tran:
@@ -5638,17 +5648,17 @@ retry_tran:
                 "table\n");
         abort();
     }
+    */
 
-    if (llmeta_load_lua_sfuncs()) {
+    if (reload_lua_sfuncs()) {
         logmsg(LOGMSG_FATAL, "could not load lua funcs from llmeta\n");
         abort();
     }
 
-    if (llmeta_load_lua_afuncs()) {
+    if (reload_lua_afuncs()) {
         logmsg(LOGMSG_FATAL, "could not load lua aggs from llmeta\n");
         abort();
     }
-    */
 
     if ((rc = db_finalize_and_sanity_checks(thedb)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: db_finalize_and_sanity_checks returns %d\n",
