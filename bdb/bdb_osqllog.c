@@ -4437,8 +4437,8 @@ static int create_logical_payload(bdb_llog_cursor *pCur, DB_LSN regop_lsn,
         return -1;
     }
 
-    if ((pCur->log = parse_log_for_shadows(bdb_state, logc, &lsn, 0,
-                                           &bdberr)) == NULL) {
+    if ((pCur->log = parse_log_for_snapisol(bdb_state, logc, &lsn, 0,
+                                            &bdberr)) == NULL) {
         logmsg(LOGMSG_DEBUG,
                "%s line %d parse_log_for_shadows failed for "
                "%d:%d\n",
