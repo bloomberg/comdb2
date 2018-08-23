@@ -4134,8 +4134,10 @@ const void *sqlite3BtreeDataFetch(BtCursor *pCur, u32 *pAmt)
 
     } else {
         if (pCur->ixnum == -1) {
+            *pAmt = pCur->dtabuflen;
             out = pCur->dtabuf;
         } else {
+            *pAmt = pCur->sqlrrnlen;
             out = pCur->sqlrrn;
         }
     }
@@ -5923,15 +5925,16 @@ int sqlite3BtreePayload(BtCursor *pCur, u32 offset, u32 amt, void *pBuf){
   int rc;
   const void *pSrc;
   u32 nSrc = 0;
-  u64 endOffset;
+  u64 nextOffset;
 
   pSrc = sqlite3BtreePayloadFetch(pCur, &nSrc);
   if( pSrc==0 ){
     rc = SQLITE_ERROR;
     goto done;
   }
-  endOffset = (u64)offset + amt;
-  if( endOffset>=nSrc ){
+  assert( nSrc>0 );
+  nextOffset = (u64)offset + amt;
+  if( nextOffset>nSrc ){
     rc = SQLITE_ERROR;
     goto done;
   }
