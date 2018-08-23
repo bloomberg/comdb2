@@ -2283,7 +2283,7 @@ static int loadStat4(sqlite3 *db, const char *zDb){
              (nAlloc - pIdx->nSample) * sizeof(IndexSample));
       /* TODO: Make this whole loop use one big malloc. */
       bOom = 0;
-      for(i=pIdx->nSample; i<pIdx->nAlloc; i++){
+      for(i=pIdx->nSample; i<nAlloc; i++){
         pIdx->aSample[i].anEq  = sqlite3DbMallocZero(db, nSize);
         if( pIdx->aSample[i].anEq==0 ){ bOom = 1; break; }
         pIdx->aSample[i].anLt  = sqlite3DbMallocZero(db, nSize);
