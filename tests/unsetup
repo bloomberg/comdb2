@@ -105,14 +105,15 @@ cleanup_cluster() {
             scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node/ < /dev/null &
             scp -r -o StrictHostKeyChecking=no $node:${TESTDIR}/var/log/cdb2/${DBNAME}* $DBDIR/$node/ < /dev/null &
         elif [ "$CLEANUPDBDIR" != "0" ] ; then 
-            ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.*" < /dev/null &
+            ssh -o StrictHostKeyChecking=no $node "rm -f ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.*" < /dev/null &
         fi
     done
     wait
 
     # the local node always has a copy of DBDIR even if not part of cluster
     if [ "$CLEANUPDBDIR" != "0" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
-        rm -rf ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*
+        rm -rf ${DBDIR}
+        rm -f ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*
         if [ "$CLEANUPDBDIR" == "2" ] ; then
             rm -f $TESTDIR/logs/${DBNAME}.* `ls $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
             rmdir ${TMPDIR}/cdb2 /${TMPDIR} 2> /dev/null
