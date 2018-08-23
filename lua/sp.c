@@ -426,10 +426,11 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
             return luabb_error(L, sp, sp->error);
         }
         switch (rc) {
-        case NET_SEND_FAIL_TIMEOUT:
-        case NET_SEND_FAIL_INVALIDNODE:
         case CDB2_TRIG_ASSIGNED_OTHER:
         case CDB2_TRIG_NOT_MASTER:
+        case NET_SEND_FAIL_INTERNAL:
+        case NET_SEND_FAIL_INVALIDNODE:
+        case NET_SEND_FAIL_TIMEOUT:
             if (retry) {
                 sleep(1);
                 break;
@@ -474,13 +475,15 @@ static void luabb_trigger_unregister(dbconsumer_t *q)
         --retry;
         rc = trigger_unregister_req(&q->info);
         switch (rc) {
-        case NET_SEND_FAIL_INTERNAL:
-        case NET_SEND_FAIL_TIMEOUT:
-        case NET_SEND_FAIL_INVALIDNODE:
         case CDB2_TRIG_NOT_MASTER:
-            // retry only if couldn't reach master
+        case NET_SEND_FAIL_INTERNAL:
+        case NET_SEND_FAIL_INVALIDNODE:
+        case NET_SEND_FAIL_TIMEOUT:
+            sleep(1);
             break;
-        default: retry = 0; break;
+        default:
+            retry = 0;
+            break;
         }
     } while (retry > 0);
     logmsg(LOGMSG_DEBUG, "%s rc:%d %s elect_cookie:%d trigger_cookie:0x%lx\n",
