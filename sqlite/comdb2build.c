@@ -332,7 +332,7 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
     return comdb2prepareNoRows(v, pParse, int_arg, arg, func, freeFunc);
 }
 
-int comdb2AuthenticateUserDDL(Vdbe* v, const char *tablename, Parse* pParse)
+static int comdb2AuthenticateUserDDL(const char *tablename, Parse* pParse)
 {
      struct sql_thread *thd = pthread_getspecific(query_info_key);
      bdb_state_type *bdb_state = thedb->bdb_env;
@@ -355,10 +355,9 @@ int comdb2AuthenticateUserDDL(Vdbe* v, const char *tablename, Parse* pParse)
 }
 
 
-int comdb2AuthenticateUserOp(Vdbe* v, Parse* pParse)
+int comdb2AuthenticateUserOp(Parse* pParse)
 {
-     char tablename[MAXTABLELEN] = {0};
-     if (comdb2AuthenticateUserDDL(v, tablename, pParse))
+     if (comdb2AuthenticateUserDDL("", pParse))
          setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
      else
          return SQLITE_OK;
@@ -367,10 +366,8 @@ int comdb2AuthenticateUserOp(Vdbe* v, Parse* pParse)
 }
 
 /* Only an op user can turn authentication on. */
-static int comdb2AuthenticateOpPassword(Vdbe* v, Parse* pParse)
+static int comdb2AuthenticateOpPassword(Parse* pParse)
 {
-     char tablename[MAXTABLELEN] = {0};
-
      struct sql_thread *thd = pthread_getspecific(query_info_key);
      bdb_state_type *bdb_state = thedb->bdb_env;
      int bdberr; 
@@ -385,8 +382,8 @@ static int comdb2AuthenticateOpPassword(Vdbe* v, Parse* pParse)
          }
          
          /* Check if the user is OP user. */
-         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, 
-             tablename, thd->clnt->user, &bdberr))
+         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, "", thd->clnt->user,
+                                   &bdberr))
              return SQLITE_AUTH;
          else
              return SQLITE_OK;
@@ -543,16 +540,15 @@ static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, int opt);
 
 /************************** Function definitions ****************************/
 
-int authenticateSC(const char * table,  Parse *pParse) 
+static int authenticateSC(const char * table,  Parse *pParse)
 {
-    Vdbe *v  = sqlite3GetVdbe(pParse);
     char *username = strstr(table, "@");
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (username && strcmp(username+1, thd->clnt->user) == 0) {
         return 0;
-    } else if (comdb2AuthenticateUserDDL(v, table, pParse) == 0) {
+    } else if (comdb2AuthenticateUserDDL(table, pParse) == 0) {
         return 0;
-    } else if (comdb2AuthenticateUserOp(v, pParse) == 0) {
+    } else if (comdb2AuthenticateUserOp(pParse) == 0) {
         return 0;
     }
     return -1;
@@ -874,7 +870,7 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
     char sp_version[MAX_SPVERSION_LEN];
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
-    if (comdb2AuthenticateUserOp(v, pParse))
+    if (comdb2AuthenticateUserOp(pParse))
         return;
 
     if (comdb2TokenToStr(nm, spname, sizeof(spname))) {
@@ -915,7 +911,7 @@ void comdb2DefaultProcedure(Parse *pParse, Token *nm, Token *ver, int str)
 
     Vdbe *v = sqlite3GetVdbe(pParse);
 
-    if (comdb2AuthenticateUserOp(v, pParse))
+    if (comdb2AuthenticateUserOp(pParse))
         return;
 
     if (comdb2TokenToStr(nm, spname, sizeof(spname))) {
@@ -955,7 +951,7 @@ void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
 
     Vdbe *v = sqlite3GetVdbe(pParse);
 
-    if (comdb2AuthenticateUserOp(v, pParse))
+    if (comdb2AuthenticateUserOp(pParse))
         return;
 
     if (comdb2TokenToStr(nm, spname, sizeof(spname))) {
@@ -1159,7 +1155,7 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
     int threads = GET_ANALYZE_THREAD(opt);
     int sum_threads = GET_ANALYZE_SUMTHREAD(opt);
   
-    if (comdb2AuthenticateUserOp(v, pParse))
+    if (comdb2AuthenticateUserOp(pParse))
         return;       
   
     if (threads > 0)
@@ -1193,7 +1189,7 @@ err:
 void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
-    if (comdb2AuthenticateUserOp(v, pParse))
+    if (comdb2AuthenticateUserOp(pParse))
         return;
 
     if (newscale < -1 || newscale > 100) {
@@ -1232,7 +1228,7 @@ clean_arg:
 void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
-    if (comdb2AuthenticateUserOp(v, pParse))
+    if (comdb2AuthenticateUserOp(pParse))
         return;
 
     if (enable != 0 && enable != 1) {
@@ -1331,7 +1327,7 @@ err:
 void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthreshold)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
-    if (comdb2AuthenticateUserOp(v, pParse))
+    if (comdb2AuthenticateUserOp(pParse))
         return;
 
     if (newthreshold < -1 || newthreshold > 100) {
@@ -1374,7 +1370,7 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
-    if (comdb2AuthenticateUserOp(v, pParse))
+    if (comdb2AuthenticateUserOp(pParse))
         return;       
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
@@ -1427,7 +1423,7 @@ void comdb2getAlias(Parse* pParse, Token* t1)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
-    if (comdb2AuthenticateUserOp(v, pParse))
+    if (comdb2AuthenticateUserOp(pParse))
         return;       
 
     setError(pParse, SQLITE_INTERNAL, "Not Implemented");
@@ -1440,7 +1436,7 @@ void comdb2grant(Parse* pParse, int revoke, int permission, Token* nm,Token* lnm
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
-    if (comdb2AuthenticateUserOp(v, pParse))
+    if (comdb2AuthenticateUserOp(pParse))
         return;  
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
@@ -1499,7 +1495,7 @@ void comdb2enableAuth(Parse* pParse, int on)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
-    if (comdb2AuthenticateOpPassword(v, pParse)) 
+    if (comdb2AuthenticateOpPassword(pParse))
     {
         setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
         return;
@@ -1592,7 +1588,7 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
         goto clean_arg;
     }
 
-    if (comdb2AuthenticateUserDDL(v, "", pParse))
+    if (comdb2AuthenticateUserDDL("", pParse))
     {
         struct sql_thread *thd = pthread_getspecific(query_info_key);
         /* Check if its password change request */
@@ -1616,7 +1612,7 @@ void comdb2deletePassword(Parse* pParse, Token* nm)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
-    if (comdb2AuthenticateUserOp(v, pParse))
+    if (comdb2AuthenticateUserOp(pParse))
     {
         setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
         return;
@@ -1816,7 +1812,7 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
 
-    if (comdb2AuthenticateUserOp(v, pParse))
+    if (comdb2AuthenticateUserOp(pParse))
         goto err;       
 
     if (retention < 2)
