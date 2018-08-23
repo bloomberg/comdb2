@@ -2267,7 +2267,7 @@ static int loadStat4(sqlite3 *db, const char *zDb){
       }else{
         nAlloc = pIdx->nSample * 2;
       }
-      assert( nAlloc>=nSample );
+      assert( nAlloc>=pIdx->nSample );
       pIdx->aSample = sqlite3DbRealloc(db, pIdx->aSample,
                                        nAlloc * sizeof(IndexSample));
       if( pIdx->aSample==0 ){
