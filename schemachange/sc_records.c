@@ -2175,7 +2175,6 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     if (pbrecs) {
         rc = reconstruct_blob_records(data, logc, pbrecs, logdta);
         bzero(data->wrblb, sizeof(data->wrblb));
-        blob_status_to_blob_buffer(&data->blb, data->wrblb);
     }
 
     if ((rc = logc->get(logc, &rec->lsn, logdta, DB_SET)) != 0) {
@@ -2266,6 +2265,9 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     int addflags = RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_CONSTRAINTS |
                    RECFLAGS_NEW_SCHEMA | RECFLAGS_ADD_FROM_SC_LOGICAL |
                    RECFLAGS_KEEP_GENID;
+
+    if (data->to->plan && gbl_use_plan)
+        addflags |= RECFLAGS_NO_BLOBS;
 
     char *tagname = ".NEW..ONDISK";
     uint8_t *p_tagname_buf = (uint8_t *)tagname;
