@@ -26,8 +26,8 @@ typedef struct DB_Connection {
 } DB_Connection;
 
 static DB_Connection **local_rep_dbs = NULL;
-static int cnct_len = 0;
-static int idx = 0;
+static size_t cnct_len = 0;
+static size_t idx = 0;
 static time_t retry_time = 3;
 
 static DB_Connection* get_connect(char* hostname);
@@ -124,7 +124,7 @@ static void* keep_in_sync(void* args)
 {
     /* vars for syncing */
     int rc;
-    int64_t gen;
+    volatile int64_t gen;
     struct timespec wait_spec;
     struct timespec remain_spec;
     // char* sql_cmd = "select * from comdb2_transaction_logs('{@file:@offset}')"; 
@@ -151,7 +151,7 @@ static void* keep_in_sync(void* args)
     info = get_last_lsn(thedb->bdb_env);
     prev_info = handle_truncation(repl_db, info);
     gen = prev_info.gen;
-    fprintf(stderr, "gen: %ld\n", gen);
+    fprintf(stderr, "gen: %lld\n", gen);
 
     while(do_repl)
     {
@@ -193,11 +193,12 @@ static void* keep_in_sync(void* args)
                 int64_t* rec_gen =  (int64_t *) cdb2_column_value(repl_db, 2);
                 if (rec_gen && *rec_gen > gen)
                 {
+                    int64_t new_gen = rec_gen;
                     logmsg(LOGMSG_WARN, "My master changed, do truncation!\n");
-                    fprintf(stderr, "gen: %ld, rec_gen: %ld\n", gen, *rec_gen);
+                    fprintf(stderr, "gen: %lld, rec_gen: %lld\n", gen, *rec_gen);
                     prev_info = handle_truncation(repl_db, info);
-                    gen = *rec_gen;
-
+                    gen = new_gen;
+                    fprintf(stderr, "new gen: %lld, prev_rec_gen: %u\n", gen, prev_info.gen);
                     broke_early = 1;
                     break;
                 }
@@ -209,7 +210,7 @@ static void* keep_in_sync(void* args)
             if ((!broke_early && rc != CDB2_OK_DONE ) || 
                     (broke_early && rc != CDB2_OK))
             {
-                logmsg(LOGMSG_ERROR, "Had an error or broke early %d\n", rc);
+                logmsg(LOGMSG_ERROR, "Had an error or replication was stopped%d\n", rc);
                 fprintf(stderr, "rc=%d\n", rc);
             }
 
@@ -269,7 +270,6 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     /* vars for 1 record */
     void* blob;
     int blob_len;
-    unsigned int gen;
     char* lsn, *token;
     int64_t rectype; 
     int64_t* timestamp;
@@ -382,8 +382,9 @@ static DB_Connection* get_rand_connect()
     size_t rand_idx;
 
     /* wait period */
-    long ratio = 1000000000;
-    long ns = retry_time * ratio / idx;
+    int64_t ratio = 1000000000;
+    int64_t ns = retry_time * ratio / idx;
+
     struct timespec wait_spec;
     struct timespec remain_spec;
 
