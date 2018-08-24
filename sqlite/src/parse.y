@@ -559,16 +559,12 @@ defer_subclause_opt(A) ::= defer_subclause(A).
 %type orconf {int}
 %type resolvetype {int}
 onconf(A) ::= .                              {A = OE_Default;}
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 onconf(A) ::= ON CONFLICT resolvetype(X).    {A = X;}
-%endif !SQLITE_BUILDING_FOR_COMDB2
 orconf(A) ::= .                              {A = OE_Default;}
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 orconf(A) ::= OR resolvetype(X).             {A = X;}
 resolvetype(A) ::= raisetype(A).
 resolvetype(A) ::= IGNORE.                   {A = OE_Ignore;}
 resolvetype(A) ::= REPLACE.                  {A = OE_Replace;}
-%endif !SQLITE_BUILDING_FOR_COMDB2
 
 ////////////////////////// The DROP TABLE /////////////////////////////////////
 //
@@ -1066,9 +1062,7 @@ upsert(A) ::= ON CONFLICT DO NOTHING.
 
 %type insert_cmd {int}
 insert_cmd(A) ::= INSERT orconf(R).   {A = R;}
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 insert_cmd(A) ::= REPLACE.            {A = OE_Replace;}
-%endif !SQLITE_BUILDING_FOR_COMDB2
 
 %type idlist_opt {IdList*}
 %destructor idlist_opt {sqlite3IdListDelete(pParse->db, $$);}
