@@ -95,7 +95,6 @@ add_library(sqlite
   src/update.c
   src/upsert.c
   src/utf.c
-  src/upsert.c
   src/util.c
   src/vdbe.c
   src/vdbeapi.c
