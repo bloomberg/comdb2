@@ -2253,7 +2253,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
           skipLikeAddr = sqlite3VdbeAddOp1(v, (x&1)?OP_IfNot:OP_If,(int)(x>>1));
         }
         VdbeCoverage(v);
-#endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_LIKE_DOESNT_MATCH_BLOBS) */
       }
 #ifdef WHERETRACE_ENABLED /* 0xffff */
       if( sqlite3WhereTrace ){

@@ -101,10 +101,10 @@ static const unsigned char aiClass[] = {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 /* Cx */   29,  1,  1,  1,  1,  1,  1,  1,  1,  1, 27, 27, 27, 27, 27, 27,
 /* Dx */   30,  1,  1,  1,  1,  1,  1,  1,  1,  1, 27, 27, 27, 27, 27, 27,
-#else /*  defined(SQLITE_BUILDING_FOR_COMDB2) */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /* Cx */   27,  1,  1,  1,  1,  1,  1,  1,  1,  1, 27, 27, 27, 27, 27, 27,
 /* Dx */   27,  1,  1,  1,  1,  1,  1,  1,  1,  1, 27, 27, 27, 27, 27, 27,
-#endif /*  defined(SQLITE_BUILDING_FOR_COMDB2) */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /* Ex */   27, 27,  1,  1,  1,  1,  1,  0,  1,  1, 27, 27, 27, 27, 27, 27,
 /* Fx */    3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 27, 27, 27, 27, 27, 27,
 #endif

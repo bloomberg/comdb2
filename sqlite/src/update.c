@@ -320,7 +320,7 @@ void sqlite3Update(
     if( chngKey || hasFK>1 ||
         (gbl_partial_indexes && pTab->hasPartIdx) /* pIdx->pPartIdxWhere */ ||
         (gbl_expressions_indexes && pTab->hasExprIdx) || pIdx==pPk ){
-#else
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( chngKey || hasFK>1 || pIdx->pPartIdxWhere || pIdx==pPk ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       reg = ++pParse->nMem;

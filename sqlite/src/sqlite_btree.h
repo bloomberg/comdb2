@@ -236,7 +236,7 @@ void sqlite3BtreeCursorHint(BtCursor*, int, ...);
 #define BTREE_CUR_WR 0x00000002
 
 int sqlite3BtreeCursor(
-  Vdbe*,                               /* COMDB2 MODIFICATION */
+  Vdbe*,                               /* The associated SQLite VM */
   Btree*,                              /* BTree containing table to open */
   int iTable,                          /* Index of root page */
   int wrFlag,                          /* 1 for writing.  0 for read-only */
@@ -312,8 +312,7 @@ u32 sqlite3BtreePayloadSize(BtCursor*);
 int sqlite3BtreeData(BtCursor*, u32 offset, u32 amt, void*);
 
 /*
-** COMDB2 MODIFICATION:
-**   extract the rrn:genid of the record pointed to by cursor as a string
+** Extract the rrn:genid of the record pointed to by cursor as a string.
 */
 int sqlite3BtreeRecordIDString(BtCursor *,
                                unsigned long long rowid,
@@ -396,7 +395,6 @@ void sqlite3BtreeCursorList(Btree*);
 # define sqlite3SchemaMutexHeld(X,Y,Z) 1
 #endif
 
-/* COMDB2 MODIFICATION */
 int sqlite3BtreeSetRecording(BtCursor *pCursor, int flag);
 
 #endif /* SQLITE_BTREE_H */

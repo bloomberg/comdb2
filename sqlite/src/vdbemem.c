@@ -2404,7 +2404,6 @@ int sqlite3VdbeMemDecimalfy(Mem *pMem)
       dec_ctx_init(&dfp_ctx, DEC_INIT_DECQUAD, gbl_decimal_rounding);
 
 
-      /* COMDB2 MODIFICATION. */
       sqlite3VdbeMemNulTerminate(pMem);
 
       ret = decQuadFromString( &pMem->du.tv.u.dec, pMem->z, &dfp_ctx);
