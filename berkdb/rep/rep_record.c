@@ -3780,6 +3780,7 @@ err:	if (dbc != NULL && (t_ret = __db_c_close(dbc)) != 0 && ret == 0) {
 }
 
 int gbl_time_rep_apply = 0;
+static pthread_mutex_t apply_lk = PTHREAD_MUTEX_INITIALIZER;
 
 static int
 __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
@@ -3797,9 +3798,11 @@ __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	int rc, now;
 	bbtime_t start = {0}, end = {0};
 
+    pthread_mutex_lock(&apply_lk);
 	getbbtime(&start);
 	rc = __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled);
 	getbbtime(&end);
+    pthread_mutex_unlock(&apply_lk);
 	usecs = diff_bbtime(&end, &start);
 	rep_apply_count++;
 	rep_apply_usc += usecs;
@@ -7573,12 +7576,14 @@ __rep_verify_match(dbenv, rp, savetime, online)
 	 * and we lost.  We must give up.
 	 */
 
+    pthread_mutex_lock(&apply_lk);
 	MUTEX_LOCK(dbenv, db_rep->db_mutexp);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	done = savetime != rep->timestamp;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	if (done) {
 		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
+        pthread_mutex_unlock(&apply_lk);
 		return (0);
 	}
 
@@ -7790,6 +7795,7 @@ errunlock:	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	gbl_passed_repverify = 1;
 
 err:
+    pthread_mutex_unlock(&apply_lk);
 
 	return (ret);
 }
