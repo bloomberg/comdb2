@@ -3464,10 +3464,7 @@ struct TriggerStep {
   ExprList *pExprList; /* SET clause for UPDATE */
   IdList *pIdList;     /* Column names for INSERT */
   Upsert *pUpsert;     /* Upsert clauses on an INSERT */
-<<<<<<< HEAD:sqlite/src/sqliteInt.h
   char *zSpan;         /* Original SQL text of this command */
-=======
->>>>>>> d05e43e33ee2bb9d63ca382bb2190ddcd7cf4f99:sqlite/sqliteInt.h
   TriggerStep *pNext;  /* Next in the link-list */
   TriggerStep *pLast;  /* Last element in link-list. Valid for 1st elem only */
 };
@@ -4112,13 +4109,8 @@ void sqlite3OpenTable(Parse*, int iCur, int iDb, Table*, int);
 #if defined(SQLITE_ENABLE_UPDATE_DELETE_LIMIT) && !defined(SQLITE_OMIT_SUBQUERY)
 Expr *sqlite3LimitWhere(Parse*,SrcList*,Expr*,ExprList*,Expr*,char*);
 #endif
-<<<<<<< HEAD:sqlite/src/sqliteInt.h
 void sqlite3DeleteFrom(Parse*, SrcList*, Expr*, ExprList*, Expr*);
 void sqlite3Update(Parse*, SrcList*, ExprList*,Expr*,int,ExprList*,Expr*,
-=======
-void sqlite3DeleteFrom(Parse*, SrcList*, Expr*, ExprList*, Expr*, Expr*);
-void sqlite3Update(Parse*, SrcList*, ExprList*,Expr*,int,ExprList*,Expr*,Expr*,
->>>>>>> d05e43e33ee2bb9d63ca382bb2190ddcd7cf4f99:sqlite/sqliteInt.h
                    Upsert*);
 WhereInfo *sqlite3WhereBegin(Parse*,SrcList*,Expr*,ExprList*,ExprList*,u16,int);
 void sqlite3WhereEnd(WhereInfo*);
@@ -4222,14 +4214,11 @@ int sqlite3GenerateIndexKey(Parse*, Index*, int, int, int, int*,Index*,int);
 void sqlite3ResolvePartIdxLabel(Parse*,int);
 void sqlite3GenerateConstraintChecks(Parse*,Table*,int*,int,int,int,int,
                                      u8,u8,int,int*,int*,Upsert*);
-<<<<<<< HEAD:sqlite/src/sqliteInt.h
 #ifdef SQLITE_ENABLE_NULL_TRIM
   void sqlite3SetMakeRecordP5(Vdbe*,Table*);
 #else
 # define sqlite3SetMakeRecordP5(A,B)
 #endif
-=======
->>>>>>> d05e43e33ee2bb9d63ca382bb2190ddcd7cf4f99:sqlite/sqliteInt.h
 void sqlite3CompleteInsertion(Parse*,Table*,int,int,int,int*,int,int,int);
 int sqlite3OpenTableAndIndices(Parse*, Table*, int, u8, int, u8*, int*, int*,
                                Upsert*);
@@ -4628,21 +4617,13 @@ const char *sqlite3JournalModename(int);
 #define sqlite3WithDelete(x,y)
 #endif
 #ifndef SQLITE_OMIT_UPSERT
-<<<<<<< HEAD:sqlite/src/sqliteInt.h
   Upsert *sqlite3UpsertNew(sqlite3*,ExprList*,Expr*,ExprList*,Expr*);
-=======
-  Upsert *sqlite3UpsertNew(sqlite3*,ExprList*,Expr*,ExprList*,Expr*,int);
->>>>>>> d05e43e33ee2bb9d63ca382bb2190ddcd7cf4f99:sqlite/sqliteInt.h
   void sqlite3UpsertDelete(sqlite3*,Upsert*);
   Upsert *sqlite3UpsertDup(sqlite3*,Upsert*);
   int sqlite3UpsertAnalyzeTarget(Parse*,SrcList*,Upsert*);
   void sqlite3UpsertDoUpdate(Parse*,Upsert*,Table*,Index*,int);
 #else
-<<<<<<< HEAD:sqlite/src/sqliteInt.h
 #define sqlite3UpsertNew(v,w,x,y,z) ((Upsert*)0)
-=======
-#define sqlite3UpsertNew(v,w,x,y,z,e) ((Upsert*)0)
->>>>>>> d05e43e33ee2bb9d63ca382bb2190ddcd7cf4f99:sqlite/sqliteInt.h
 #define sqlite3UpsertDelete(x,y)
 #define sqlite3UpsertDup(x,y)       ((Upsert*)0)
 #endif
