@@ -3359,9 +3359,6 @@ void sqlite3VdbeDelete(Vdbe *p){
     p->pNext->pPrev = p->pPrev;
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( p->explainTrace ){
-    free(p->explainTrace);
-  }
   if( p->tbls){
     sqlite3_free(p->tbls);
     p->tbls = NULL;

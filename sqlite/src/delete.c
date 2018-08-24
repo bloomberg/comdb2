@@ -534,8 +534,13 @@ void sqlite3DeleteFrom(
         iAddrOnce = sqlite3VdbeAddOp0(v, OP_Once); VdbeCoverage(v);
       }
       testcase( IsVirtual(pTab) );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
       sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, OPFLAG_FORDELETE,
                                  iTabCur, aToOpen, &iDataCur, &iIdxCur, 0);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+      sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, OPFLAG_FORDELETE,
+                                 iTabCur, aToOpen, &iDataCur, &iIdxCur);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       assert( pPk || IsVirtual(pTab) || iDataCur==iTabCur );
       assert( pPk || IsVirtual(pTab) || iIdxCur==iDataCur+1 );
       if( eOnePass==ONEPASS_MULTI ) sqlite3VdbeJumpHere(v, iAddrOnce);
