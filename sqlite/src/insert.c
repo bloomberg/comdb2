@@ -1150,6 +1150,7 @@ void sqlite3Insert(
     if( (gbl_partial_indexes && pTab->hasPartIdx) ||
         (gbl_expressions_indexes && pTab->hasExprIdx) ||
         (pUpsert && pUpsert->oeFlag != OE_Ignore)){
+      int idx;
       for(idx=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, idx++){
         sqlite3VdbeAddOp1(v, OP_Close, idx+iIdxCur);
       }
