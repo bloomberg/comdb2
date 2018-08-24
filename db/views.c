@@ -20,6 +20,7 @@
 #define VIEWS_DFT_PREEMPT_ROLL_SECS 1800
 #define VIEWS_DFT_ROLL_DELETE_LAG_SECS 5
 
+extern int gbl_is_physical_replicant;
 
 struct timepart_shard {
     char *tblname; /* name of the table covering the shard, can be an alias */
@@ -1170,7 +1171,7 @@ void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3,
     assert(arg3 == NULL);
 
     run = (!gbl_exit);
-    if(run && thedb->master != gbl_mynode)
+    if(run && thedb->master != gbl_mynode || gbl_is_physical_replicant)
         run = 0;
 
     if (run) {
@@ -1325,7 +1326,7 @@ void *_view_cron_phase2(uuid_t source_id, void *arg1, void *arg2, void *arg3,
     assert(arg3 == NULL);
 
     run = (!gbl_exit);
-    if(run && thedb->master != gbl_mynode)
+    if(run && thedb->master != gbl_mynode || gbl_is_physical_replicant)
         run = 0;
 
     if (run) {
@@ -1436,7 +1437,7 @@ void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
     }
 
     run = (!gbl_exit);
-    if(run && thedb->master != gbl_mynode)
+    if(run && thedb->master != gbl_mynode || gbl_is_physical_replicant)
         run = 0;
 
     if (run) {
@@ -1483,12 +1484,11 @@ static int _start_views_cron(void)
 {
     struct errstat xerr = {0};
 
-    if (timepart_sched)
-        abort();
-
-    timepart_sched =
-        cron_add_event(NULL, "timepart_cron", INT_MIN, timepart_cron_kickoff,
-                       NULL, NULL, NULL, NULL, &xerr);
+    if (!timepart_sched) {
+        timepart_sched =
+            cron_add_event(NULL, "timepart_cron", INT_MIN, timepart_cron_kickoff,
+                    NULL, NULL, NULL, NULL, &xerr);
+    }
 
     return (!timepart_sched) ? xerr.errval : VIEW_NOERR;
 }
@@ -2080,7 +2080,7 @@ int views_cron_restart(timepart_views_t *views)
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     BDB_READLOCK(__func__);
 
-    if(thedb->master == gbl_mynode) {
+    if(thedb->master == gbl_mynode && !gbl_is_physical_replicant) {
         /* queue all the events required for this */
         for(i=0;i<views->nviews; i++)
         {
