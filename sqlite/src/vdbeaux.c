@@ -5656,11 +5656,11 @@ void sqlite3VdbePreUpdateHook(
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 void comdb2SetRecording(Vdbe *v){ v->recording = 1; }
-void comdb2SetReplace(Vdbe *v){ v->oe_flag = OE_Replace; }
-void comdb2SetUpdate(Vdbe *v){ v->oe_flag = OE_Update; }
-void comdb2SetIgnore(Vdbe *v){ v->oe_flag = OE_Ignore; }
-void comdb2SetUpsertIdx(Vdbe *v, int idx){ v->upsert_idx = idx; }
-int comdb2UpsertIdx(Vdbe *v){ return v->upsert_idx; }
-int comdb2ForceVerify(Vdbe *v){ return v->oe_flag==OE_Replace || v->oe_flag==OE_Update; }
-int comdb2IgnoreFailure(Vdbe *v){ return v->oe_flag==OE_Ignore ? 1 : 0; }
+void comdb2SetReplace(Vdbe *v){ v->oeFlag = OE_Replace; }
+void comdb2SetUpdate(Vdbe *v){ v->oeFlag = OE_Update; }
+void comdb2SetIgnore(Vdbe *v){ v->oeFlag = OE_Ignore; }
+void comdb2SetUpsertIdx(Vdbe *v, int idx){ v->upsertIdx = idx; }
+int comdb2UpsertIdx(Vdbe *v){ return v->upsertIdx; }
+int comdb2ForceVerify(Vdbe *v){ return v->oeFlag==OE_Replace || v->oeFlag==OE_Update; }
+int comdb2IgnoreFailure(Vdbe *v){ return v->oeFlag==OE_Ignore ? 1 : 0; }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

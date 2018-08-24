@@ -555,6 +555,8 @@ struct Vdbe {
   char *explainTrace;
   int dtprec;             /* datetime precision - make it u32 to silence compiler */
   struct timespec tspec;  /* time of prepare, used for stable now() */
+  u8 oeFlag;              /* ON CONFLICT action */
+  u8 upsertIdx;           /* ON CONFLICT target */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

@@ -2916,6 +2916,9 @@ struct Upsert {
   int regData;              /* First register holding array of VALUES */
   int iDataCur;             /* Index of the data cursor */
   int iIdxCur;              /* Index of the first index cursor */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int oeFlag;               /* ON CONFLICT action flag */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
 /*
