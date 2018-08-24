@@ -400,6 +400,7 @@ int mark_schemachange_over_tran(const char *table, tran_type *tran)
     }
 
     bdb_delete_sc_seed(thedb->bdb_env, tran, table, &bdberr);
+    bdb_delete_sc_start_lsn(tran, table, &bdberr);
 
     if (bdb_set_in_schema_change(tran, table, NULL /*schema_change_data*/,
                                  0 /*schema_change_data_len*/, &bdberr) ||

@@ -236,11 +236,13 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
         /* get this stripe's newest genid and store it in sc_genids,
          * if we have been rebuilding the data files we can grab the genids
          * straight from there, otherwise we look in the llmeta table */
-        if (is_dta_being_rebuilt(db->plan))
+        if (is_dta_being_rebuilt(db->plan)) {
             rc = bdb_find_newest_genid(db->handle, NULL, stripe, rec, &dtalen,
                                        dtalen, &sc_genids[stripe], &ver,
                                        &bdberr);
-        else
+            if (rc == 1)
+                sc_genids[stripe] = 0ULL;
+        } else
             rc = bdb_get_high_genid(db->tablename, stripe, &sc_genids[stripe],
                                     &bdberr);
         if (rc < 0 || bdberr != BDBERR_NOERROR) {
@@ -1291,7 +1293,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     int outrc = 0;
 
     if (BDB_ATTR_GET(thedb->bdb_attr, SNAPISOL)) {
-        int rc = 0;
+        int rc = 0, bdberr = 0;
         struct convert_record_data *thdData =
             calloc(1, sizeof(struct convert_record_data));
         if (!thdData) {
@@ -1304,7 +1306,34 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
             return -1;
         }
         *thdData = data;
-        bdb_get_commit_genid(thedb->bdb_env, &(thdData->start_lsn));
+        if (s->resume) {
+            rc = bdb_get_sc_start_lsn(NULL, s->table, &(thdData->start_lsn),
+                                      &bdberr);
+            if (rc) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "%s:%d failed to restore start lsn, rc = %d, bdberr = %d\n",
+                    __func__, __LINE__, rc, bdberr);
+                return -1;
+            }
+        } else {
+            bdb_get_commit_genid(thedb->bdb_env, &(thdData->start_lsn));
+            if (thdData->start_lsn.file <= 1 ||
+                thdData->start_lsn.offset == 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed to get start lsn\n",
+                       __func__, __LINE__);
+                return -1;
+            }
+            rc = bdb_set_sc_start_lsn(NULL, s->table, &(thdData->start_lsn),
+                                      &bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to write start lsn to llmeta, rc = %d, "
+                       "bdberr = %d\n",
+                       __func__, __LINE__, rc, bdberr);
+                return -1;
+            }
+        }
         thdData->stripe = -1;
         sc_printf(s, "[%s] starting thread for logical live schema change\n",
                   s->table);
@@ -1430,7 +1459,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
     if (s->logical_livesc) {
         /* wait for logical redo thread */
-        while (s->hitLastCnt < 2)
+        while (!s->hitLastCnt)
             poll(NULL, 0, 200);
     }
 
@@ -1894,11 +1923,13 @@ static int unpack_blob_record(struct convert_record_data *data, void *blb_buf,
         memcpy(blb->blobptrs[blbix], data->odh.recptr, data->odh.length);
     }
 
-    printf("blob[%d], length %d\n", blbix, blb->bloblens[blbix]);
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG, "blob[%d], length %d\n", blbix, blb->bloblens[blbix]);
     if (blb->blobptrs[blbix])
         fsnapf(stdout, blb->blobptrs[blbix], blb->bloblens[blbix]);
     else
-        printf("NULL BLOB\n");
+        logmsg(LOGMSG_DEBUG, "NULL BLOB\n");
+#endif
 
     return 0;
 }
@@ -1950,11 +1981,13 @@ static int reconstruct_blob_records(struct convert_record_data *data,
         assert(rec->dtafile >= 1);
         blbix = rec->dtafile - 1;
 
-        logmsg(LOGMSG_INFO,
+#ifdef LOGICAL_LIVESC_DEBUG
+        logmsg(LOGMSG_DEBUG,
                "%s: [%s] redo lsn[%u:%u] type[%d] dtafile %d, "
                "datastripe %d, genid %llx\n",
                __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
                rec->type, rec->dtafile, rec->dtastripe, rec->genid);
+#endif
 
         switch (rec->type) {
         case DB_llog_undo_add_dta:
@@ -2235,8 +2268,11 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
         goto done;
     }
 
-    printf("dtalen %d\n", dtalen);
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG, "dtalen %d\n", dtalen);
     fsnapf(stdout, data->odh.recptr, dtalen);
+#endif
+
     data->iq.usedb = data->to;
 
     int usellmeta = 0;
@@ -2331,11 +2367,13 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     }
 
 done:
-    logmsg(LOGMSG_INFO,
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG,
            "%s: [%s] redo lsn[%u:%u] type[ADD_DTA] rec->dtafile %d, "
            "rec->datastripe %d, rec->genid %llx\n",
            __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
            rec->dtafile, rec->dtastripe, rec->genid);
+#endif
 
     free_blob_status_data(&data->blbcopy);
     bzero(data->freeblb, sizeof(data->freeblb));
@@ -2426,8 +2464,10 @@ static int live_sc_redo_delete(struct convert_record_data *data, DB_LOGC *logc,
         goto done;
     }
 
-    printf("dtalen %d\n", dtalen);
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG, "dtalen %d\n", dtalen);
     fsnapf(stdout, data->odh.recptr, dtalen);
+#endif
 
     data->iq.usedb = data->to;
     rc = del_new_record(&data->iq, data->trans, genid, -1ULL, data->odh.recptr,
@@ -2437,11 +2477,13 @@ static int live_sc_redo_delete(struct convert_record_data *data, DB_LOGC *logc,
         rc = 0;
     }
 done:
-    logmsg(LOGMSG_INFO,
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG,
            "%s: [%s] redo lsn[%u:%u] type[DEL_DTA] rec->dtafile %d, "
            "rec->datastripe %d, rec->genid %llx\n",
            __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
            rec->dtafile, rec->dtastripe, rec->genid);
+#endif
 
     free_blob_status_data(&data->blbcopy);
     bzero(data->freeblb, sizeof(data->freeblb));
@@ -2560,14 +2602,16 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
                __func__, __LINE__, rc);
         goto done;
     }
-    printf("%s:%d old dtalen %d\n", __func__, __LINE__, prevlen);
+
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG, "%s:%d old dtalen %d\n", __func__, __LINE__, prevlen);
     fsnapf(stdout, data->oldodh.recptr, prevlen);
-    printf("%s:%d new dtalen %d\n", __func__, __LINE__, updlen);
+    logmsg(LOGMSG_DEBUG, "%s:%d new dtalen %d\n", __func__, __LINE__, updlen);
     fsnapf(stdout, data->odh.recptr, updlen);
+#endif
 
     int updCols[MAXCOLUMNS + 1] = {0};
     updCols[0] = data->from->schema->nmembers;
-    printf("%s:%d updCols[0] = %d\n", __func__, __LINE__, updCols[0]);
     for (int i = 0; i < data->from->schema->nmembers; i++) {
         int blbix = data->from->schema->member[i].blob_index;
         if (blbix != -1 && !data->freeblb[blbix].exists &&
@@ -2575,26 +2619,25 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
             updCols[i + 1] = -1;
         else
             updCols[i + 1] = i;
-        printf("%s:%d updCols[%d] = %d\n", __func__, __LINE__, i + 1,
-               updCols[i + 1]);
     }
 
     data->iq.usedb = data->to;
     rc = upd_new_record(&data->iq, data->trans, oldgenid, data->oldodh.recptr,
                         genid, data->odh.recptr, -1ULL, -1ULL, updlen, updCols,
                         data->wrblb, 0, data->freeblb, data->wrblb, 0);
-    printf("%s:%d upd_new_record return %d\n", __func__, __LINE__, rc);
     if (rc == ERR_VERIFY || rc == IX_NOTFND) {
         /* not an error if we dont find it */
         rc = 0;
     }
 
 done:
-    logmsg(LOGMSG_INFO,
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG,
            "%s: [%s] redo lsn[%u:%u] type[UPD_DTA] rec->dtafile %d, "
            "rec->datastripe %d, rec->genid %llx, newgenid %llx\n",
            __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
            rec->dtafile, rec->dtastripe, rec->genid, genid);
+#endif
 
     free_blob_status_data(&data->blbcopy);
     bzero(data->freeblb, sizeof(data->freeblb));
@@ -2785,6 +2828,27 @@ again:
         }
     }
 
+    data->nrecs++;
+    if (data->nrecs %
+            BDB_ATTR_GET(thedb->bdb_attr, SC_LOGICAL_SAVE_LSN_EVERY_N) ==
+        0) {
+        int bdberr = 0;
+        rc = bdb_set_sc_start_lsn(data->trans, data->s->table, &(pCur->curLsn),
+                                  &bdberr);
+        if (rc != 0) {
+            if (bdberr == BDBERR_DEADLOCK)
+                rc = RC_INTERNAL_RETRY;
+            else {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "%s:%d failed to update start lsn, rc = %d, bdberr = %d\n",
+                    __func__, __LINE__, rc, bdberr);
+                rc = ERR_INTERNAL;
+            }
+            data->nrecs--;
+        }
+    }
+
 done:
     if (data->trans) {
         db_seqnum_type ss;
@@ -2843,6 +2907,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
 
     sc_printf(data->s, "[%s] logical redo starts at [%u:%u]\n", data->s->table,
               data->start_lsn.file, data->start_lsn.offset);
+    data->lasttime = comdb2_time_epoch();
     pCur->minLsn = data->start_lsn;
 
     data->rec = allocate_db_record(data->to->tablename, ".NEW..ONDISK");
@@ -2895,6 +2960,18 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             }
             assert(pCur->log == NULL /* i.e. consumed */);
             data->s->hitLastCnt = 0;
+        }
+        int now = comdb2_time_epoch();
+        int copy_sc_report_freq = gbl_sc_report_freq;
+        if (copy_sc_report_freq > 0 &&
+            now >= data->lasttime + copy_sc_report_freq) {
+            long long diff_nrecs = data->nrecs - data->prev_nrecs;
+            data->lasttime = now;
+            data->prev_nrecs = data->nrecs;
+            sc_printf(data->s,
+                      "[%s] logical redo transaction +%lld (%lld txn/s)\n",
+                      data->from->tablename, diff_nrecs,
+                      diff_nrecs / copy_sc_report_freq);
         }
         if (pCur->hitLast) {
             if (data->s->got_tablelock)

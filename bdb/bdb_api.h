@@ -1587,6 +1587,12 @@ int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
                        const char *table, int *bdberr);
 
+int bdb_get_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
+                         int *bdberr);
+int bdb_set_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
+                         int *bdberr);
+int bdb_delete_sc_start_lsn(tran_type *tran, const char *table, int *bdberr);
+
 enum {
     ACCESS_INVALID = 0,
     ACCESS_READ = 1,
