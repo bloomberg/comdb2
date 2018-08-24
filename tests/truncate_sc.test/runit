@@ -20,7 +20,7 @@ export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
 function write_prompt
 {
     typeset func=$1
-    echo "> [$func] $2"
+    echo "[$func] $2"
 }
 
 function failexit
