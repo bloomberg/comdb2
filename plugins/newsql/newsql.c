@@ -2325,7 +2325,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             cdb2__query__free_unpacked(((struct newsql_appdata *)clnt.appdata)->query, &pb_alloc);
             ((struct newsql_appdata *)clnt.appdata)->query = NULL;
         }
-        appdata->query = NULL;
         query = read_newsql_query(dbenv, &clnt, sb);
     }
 
