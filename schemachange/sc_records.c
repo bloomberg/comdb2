@@ -442,7 +442,8 @@ static int report_sc_progress(struct convert_record_data *data, int now)
 
 static int prepare_and_verify_newdb_record(struct convert_record_data *data,
                                            void *dta, int dtalen,
-                                           unsigned long long *dirty_keys)
+                                           unsigned long long *dirty_keys,
+                                           int leakcheck)
 {
     int rc = 0;
     int dta_needs_conversion = 1;
@@ -487,6 +488,8 @@ static int prepare_and_verify_newdb_record(struct convert_record_data *data,
     if (!data->s->force_rebuild && !data->s->use_old_blobs_on_rebuild &&
         ((gbl_partial_indexes && data->to->ix_partial) || data->to->ix_expr ||
          !gbl_use_plan || !data->to->plan || !data->to->plan->plan_blobs)) {
+        if (!leakcheck)
+            bzero(data->wrblb, sizeof(data->wrblb));
         for (int ii = 0; ii < data->to->numblobs; ii++) {
             int fromblobix = data->toblobs2fromblobs[ii];
             if (fromblobix >= 0 && data->blb.blobptrs[fromblobix] != NULL) {
@@ -875,7 +878,7 @@ static int convert_record(struct convert_record_data *data)
 
     unsigned long long dirty_keys = -1ULL;
 
-    rc = prepare_and_verify_newdb_record(data, dta, dtalen, &dirty_keys);
+    rc = prepare_and_verify_newdb_record(data, dta, dtalen, &dirty_keys, 1);
     if (rc) {
         sc_errf(data->s,
                 "failed to prepare and verify newdb record rc %d, rrn %d, "
@@ -1424,6 +1427,13 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         free(data.tagmap);
         data.tagmap = NULL;
     }
+
+    if (s->logical_livesc) {
+        /* wait for logical redo thread */
+        while (s->hitLastCnt < 2)
+            poll(NULL, 0, 200);
+    }
+
     return outrc;
 }
 
@@ -2175,6 +2185,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     if (pbrecs) {
         rc = reconstruct_blob_records(data, logc, pbrecs, logdta);
         bzero(data->wrblb, sizeof(data->wrblb));
+        blob_status_to_blob_buffer(&data->blb, data->wrblb);
     }
 
     if ((rc = logc->get(logc, &rec->lsn, logdta, DB_SET)) != 0) {
@@ -2244,7 +2255,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     unsigned long long dirty_keys = -1ULL;
 
     rc = prepare_and_verify_newdb_record(data, data->odh.recptr, dtalen,
-                                         &dirty_keys);
+                                         &dirty_keys, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR,
                "%s:%d failed to prepare and verify new record rc=%d\n",
@@ -2865,6 +2876,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         data->from->schema /*tbl .ONDISK tag schema*/,
         data->to->schema /*tbl .NEW..ONDISK schema */); // free tagmap only once
 
+    data->s->hitLastCnt = 0;
     while (1) {
         if (bdb_llog_cursor_next(pCur) != 0) {
             sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",
@@ -2882,11 +2894,13 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                 goto cleanup;
             }
             assert(pCur->log == NULL /* i.e. consumed */);
+            data->s->hitLastCnt = 0;
         }
         if (pCur->hitLast) {
             if (data->s->got_tablelock)
                 break;
             poll(NULL, 0, 100);
+            data->s->hitLastCnt++;
             continue;
         }
     }
