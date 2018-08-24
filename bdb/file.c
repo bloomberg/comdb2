@@ -7421,6 +7421,13 @@ char *oldfile_list_rem(int *lognum)
     return ret;
 }
 
+void oldfile_list_clear(void)
+{
+    Pthread_mutex_lock(&of_list_mtx);
+    list_tl = list_hd = 0;
+    Pthread_mutex_unlock(&of_list_mtx);
+}
+
 int oldfile_list_empty(void)
 {
     int ret = 1;
