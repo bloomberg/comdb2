@@ -193,7 +193,7 @@ static void* keep_in_sync(void* args)
                 int64_t* rec_gen =  (int64_t *) cdb2_column_value(repl_db, 2);
                 if (rec_gen && *rec_gen > gen)
                 {
-                    int64_t new_gen = rec_gen;
+                    int64_t new_gen = *rec_gen;
                     logmsg(LOGMSG_WARN, "My master changed, do truncation!\n");
                     fprintf(stderr, "gen: %lld, rec_gen: %lld\n", gen, *rec_gen);
                     prev_info = handle_truncation(repl_db, info);
