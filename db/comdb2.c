@@ -5518,6 +5518,7 @@ int open_all_dbs_tran(void *tran);
 void delete_prepared_stmts(struct sqlthdstate *thd);
 int reload_lua_sfuncs();
 int reload_lua_afuncs();
+void oldfile_list_clear(void);
 
 /* This is for online logfile truncation across a schema-change */
 int comdb2_reload_schemas(void *dbenv, void *inlsn)
@@ -5662,6 +5663,7 @@ retry_tran:
 
     create_sqlmaster_records(tran);
     create_sqlite_master();
+    oldfile_list_clear();
 
     gbl_dbopen_gen++;
 
