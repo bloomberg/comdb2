@@ -44,4 +44,9 @@ done
 
 exiting
 
+#test is successful so we can cleanup
+if [ "$CLEANUPDBDIR" != "0" ] ; then
+    rm -f ${TESTDIR}/var/log/cdb2/${NEWNAME}.* ${TESTDIR}/tmp/${NEWNAME}.* ${TMPDIR}/cdb2/${NEWNAME}.*
+fi
+
 echo Success

@@ -76,7 +76,7 @@ do
 done
 
 # cleanup since this was a successful run
-if [[ $RC -eq 0 ]] && [[ "$CLEANUPDBDIR" == "1" ]] ; then
+if [[ $RC -eq 0 ]] && [[ "$CLEANUPDBDIR" != "0" ]] ; then
     rm -rf $FILEPATH
 fi
 
