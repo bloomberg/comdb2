@@ -768,7 +768,7 @@ static void sampleInsert(Stat4Accum *p, Stat4Sample *pNew, int nEqZero){
         iMin = i;
       }
     }
-    /* >>>>>> COMDB2 MODIFICATION */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( iMin==-1 ){
       /* Number of records has increased N times (N > ~200%) since statInit(),
          however we don't know what N is. Assume that N is 2. It takes log3(N)
@@ -780,7 +780,7 @@ static void sampleInsert(Stat4Accum *p, Stat4Sample *pNew, int nEqZero){
       }
       goto find_new_min;
     }
-    /* <<<<<< COMDB2 MODIFICATION */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( iMin>=0 );
     p->iMin = iMin;
   }
@@ -2470,6 +2470,7 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
     sqlite3DeleteIndexSamples(db, pIdx);
+    pIdx->aSample = 0;
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     }else{
