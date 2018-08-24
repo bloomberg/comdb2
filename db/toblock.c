@@ -68,6 +68,7 @@
 #include "osqlblkseq.h"
 #include "localrep.h"
 #include "util.h"
+#include "tohex.h"
 #include "osqlcomm.h"
 #include "nodemap.h"
 #include <bdb_schemachange.h>
@@ -1094,7 +1095,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
            __func__, line, outrc, printkey, iq->snap_info.keylen,
            iq->snap_info.key);
     free(printkey);
-    
+
     /* If the latest commit is durable, then the blkseq commit must be durable.  
      * This can incorrectly report NOT_DURABLE but that's sane given that half 
      * the cluster is incoherent */
@@ -2355,15 +2356,6 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
     }
 
     javasp_trans_end(iq->jsph);
-
-    if (rc == 0) {
-        /* yes - there is no locking here so we could get inaccuracies.
-         * doesn't matter. */
-        gbl_sc_adds += iq->sc_adds;
-        gbl_sc_updates += iq->sc_updates;
-        gbl_sc_deletes += iq->sc_deletes;
-    }
-
     return rc;
 }
 
@@ -3157,7 +3149,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             (uint8_t *)p_buf_data, p_buf_data_end, nulls, blobs,
                             MAXBLOBS, &err.errcode, &err.ixnum, &addrrn, &genid,
                             -1ULL, hdr.opcode, opnum, /*blkpos*/
-                            addflags);
+                            addflags, 0);
             free_blob_buffers(blobs, MAXBLOBS);
             if (rc != 0) {
                 numerrs = 1;
@@ -3239,7 +3231,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             0,    /*maxblobs*/
                             &err.errcode, &err.ixnum, &addrrn, &genid, -1ULL,
                             hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY);
+                            RECFLAGS_DYNSCHEMA_NULLS_ONLY, 0);
             if (rc != 0) {
                 numerrs = 1;
                 BACKOUT;
@@ -3721,7 +3713,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             0,    /*maxblobs*/
                             &err.errcode, &err.ixnum, &addrrn, &genid, -1ULL,
                             hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY);
+                            RECFLAGS_DYNSCHEMA_NULLS_ONLY, 0);
 
             if (rc != 0) {
                 numerrs = 1;

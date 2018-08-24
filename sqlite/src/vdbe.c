@@ -5367,6 +5367,9 @@ case OP_InsertInt: {
   x.pKey = 0;
   rc = sqlite3BtreeInsert(pC->uc.pCursor, &x,
       (pOp->p5 & (OPFLAG_APPEND|OPFLAG_SAVEPOSITION)), seekResult
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      , (int) pOp->p5
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   );
   pC->deferredMoveto = 0;
   pC->cacheStatus = CACHE_STALE;
@@ -6119,6 +6122,9 @@ case OP_IdxInsert: {        /* in2 */
     rc = sqlite3BtreeInsert(pC->uc.pCursor, &x,
          (pOp->p5 & (OPFLAG_APPEND|OPFLAG_SAVEPOSITION)), 
         ((pOp->p5 & OPFLAG_USESEEKRESULT) ? pC->seekResult : 0)
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+         , (int) pOp->p5
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         );
     assert( pC->deferredMoveto==0 );
     pC->cacheStatus = CACHE_STALE;

@@ -24,6 +24,7 @@
 #include <netinet/in.h>
 #include <sbuf2.h>
 #include <cdb2_constants.h>
+#include <quantize.h>
 
 /*
   we have an int, but we only need a short for real ports.
@@ -163,6 +164,7 @@ int net_register_netcmp(netinfo_type *netinfo_ptr, NETCMPFP func);
 int net_register_newnode(netinfo_type *netinfo_ptr, NEWNODEFP func);
 
 int net_register_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
+int net_register_admin_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
 
 /* register a callback routine that will be called to find out if net
  * connections should be allowed from a given node.  the callback
@@ -244,12 +246,9 @@ ssize_t net_udp_send(int udp_fd, netinfo_type *netinfo_ptr, const char *host,
 */
 
 /* send a decom message about node "decom_node" to all nodes */
-int net_send_decom_all(netinfo_type *netinfo_ptr, const char *decom_host);
+int net_send_decom_all(netinfo_type *netinfo_ptr, char *decom_host);
 
 int net_send_authcheck_all(netinfo_type *netinfo_ptr);
-
-/* tell all nodes to decom me */
-int net_send_decom_me_all(netinfo_type *netinfo_ptr);
 
 void destroy_netinfo(netinfo_type *netinfo_ptr);
 
@@ -445,7 +444,9 @@ int net_throttle_wait(netinfo_type *netinfo_ptr);
 void net_enable_explicit_flush_trace(void);
 void net_disable_explicit_flush_trace(void);
 
-void kill_subnet(char *subnet);
+void kill_subnet(const char *subnet);
+void net_clipper(const char *subnet, int onoff);
+void net_subnet_status();
 
 void net_register_child_net(netinfo_type *netinfo_ptr,
                             netinfo_type *netinfo_child, int netnum,
@@ -453,4 +454,11 @@ void net_register_child_net(netinfo_type *netinfo_ptr,
 
 void net_disable_getservbyname(netinfo_type *netinfo_ptr);
 int net_get_port_by_service(const char *dbname);
+
+int64_t net_get_num_accepts(netinfo_type *netinfo_ptr);
+int64_t net_get_num_current_non_appsock_accepts(netinfo_type *netinfo_ptr);
+int64_t net_get_num_accept_timeouts(netinfo_type *netinfo_ptr);
+void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value);
+int net_get_conntime_dump_period(netinfo_type *netinfo_ptr);
+
 #endif

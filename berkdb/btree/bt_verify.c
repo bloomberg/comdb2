@@ -728,7 +728,8 @@ __bam_vrfy_inp(dbp, vdp, h, pgno, nentriesp, flags)
 
 			if (B_TYPE(bk) == B_OVERFLOW)
 				/* Make sure tlen is reasonable. */
-				if (bo->tlen > dbp->pgsize * vdp->last_pgno) {
+				if ((u_int64_t)bo->tlen >
+				    (u_int64_t)dbp->pgsize * (u_int64_t)vdp->last_pgno) {
 					isbad = 1;
 					EPRINT((dbenv,
 				"Page %lu: impossible tlen %lu, item %lu",

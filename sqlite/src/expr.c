@@ -1888,7 +1888,7 @@ static int exprNodeIsConstant(Walker *pWalker, Expr *pExpr){
       testcase( pExpr->op==TK_SELECT ); /* sqlite3SelectWalkFail() disallows */
       testcase( pExpr->op==TK_EXISTS ); /* sqlite3SelectWalkFail() disallows */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      testcase( pExpr->op==TK_SELECTV ); /* selectNodeIsConstant will disallow */
+      testcase( pExpr->op==TK_SELECTV ); /* sqlite3SelectWalkFail() disallows */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       return WRC_Continue;
   }

@@ -18,7 +18,7 @@ static const char revid[] = "$Id: xa_db.c,v 11.25 2003/04/24 14:47:36 bostic Exp
 #include "db_int.h"
 #include "dbinc/txn.h"
 
-static int __xa_close __P((DB *, DB_TXN *, u_int32_t));
+static int __xa_close __P((DB *, u_int32_t));
 static int __xa_cursor __P((DB *, DB_TXN *, DBC **, u_int32_t));
 static int __xa_del __P((DB *, DB_TXN *, DBT *, u_int32_t));
 static int __xa_get __P((DB *, DB_TXN *, DBT *, DBT *, u_int32_t));
@@ -27,7 +27,7 @@ static int __xa_open __P((DB *, DB_TXN *,
 static int __xa_put __P((DB *, DB_TXN *, DBT *, DBT *, u_int32_t));
 
 typedef struct __xa_methods {
-	int (*close) __P((DB *, DB_TXN *, u_int32_t));
+	int (*close) __P((DB *, u_int32_t));
 	int (*cursor) __P((DB *, DB_TXN *, DBC **, u_int32_t));
 	int (*del) __P((DB *, DB_TXN *, DBT *, u_int32_t));
 	int (*get) __P((DB *, DB_TXN *, DBT *, DBT *, u_int32_t));
@@ -145,19 +145,18 @@ __xa_del(dbp, txn, key, flags)
 }
 
 static int
-__xa_close(dbp, txn, flags)
+__xa_close(dbp, flags)
 	DB *dbp;
-	DB_TXN *txn;
 	u_int32_t flags;
 {
-	int (*real_close) __P((DB *, DB_TXN *, u_int32_t));
+	int (*real_close) __P((DB *, u_int32_t));
 
 	real_close = ((XA_METHODS *)dbp->xa_internal)->close;
 
 	__os_free(dbp->dbenv, dbp->xa_internal);
 	dbp->xa_internal = NULL;
 
-	return (real_close(dbp, txn, flags));
+	return (real_close(dbp, flags));
 }
 
 static int

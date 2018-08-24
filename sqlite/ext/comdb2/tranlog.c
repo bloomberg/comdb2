@@ -65,7 +65,7 @@ static int tranlogConnect(
   sqlite3_vtab *pNew;
   int rc;
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE x(minlsn hidden,maxlsn hidden, flags hidden,lsn,rectype,generation,timestamp,payload)");
+     "CREATE TABLE x(minlsn hidden,maxlsn hidden, flags hidden,lsn,rectype integer,generation integer,timestamp integer,payload)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -142,8 +142,14 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
           pCur->curLsn = pCur->minLsn;
           getflags = DB_SET;
       }
+
+      if (pCur->maxLsn.file == 0) {
+          if (pCur->flags & TRANLOG_FLAGS_DESCENDING) {
+              getflags = DB_LAST;
+          }
+      }
   } else {
-      getflags = DB_NEXT;
+      getflags = (pCur->flags & TRANLOG_FLAGS_DESCENDING) ? DB_PREV : DB_NEXT;
   }
 
   /* Special case for durable first requests: we need to know the lsn */
@@ -190,10 +196,12 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
   }
 
   if (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, getflags) != 0) {
-      if (getflags != DB_NEXT) {
+      if (getflags != DB_NEXT && getflags != DB_PREV) {
           return SQLITE_INTERNAL;
       }
-      if (pCur->flags & TRANLOG_FLAGS_BLOCK) {
+
+      if (pCur->flags & TRANLOG_FLAGS_BLOCK &&
+              !(pCur->flags & TRANLOG_FLAGS_DESCENDING)) {
           do {
               struct timespec ts;
               clock_gettime(CLOCK_REALTIME, &ts);
@@ -205,7 +213,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
               int sleepms = 100;
               while (bdb_the_lock_desired()) {
                   if (thd == NULL) {
-                      pthread_getspecific(query_info_key);
+                      thd = pthread_getspecific(query_info_key);
                   }
                   recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
                   sleepms*=2;
@@ -427,7 +435,7 @@ static int tranlogColumn(
         }
         break;
     case TRANLOG_COLUMN_LOG:
-        sqlite3_result_blob(ctx, &pCur->data.data, pCur->data.size, NULL);
+        sqlite3_result_blob(ctx, pCur->data.data, pCur->data.size, NULL);
         break;
   }
   return SQLITE_OK;

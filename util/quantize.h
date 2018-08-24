@@ -18,6 +18,8 @@
 #define __QUANTIZE_H_INCLUDED__
 /* module to generate distribution and count reports */
 
+#include <stdio.h>
+
 /* DISTRIBUTION TABLE */
 
 /* allocate new quantize struct */

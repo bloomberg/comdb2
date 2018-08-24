@@ -99,6 +99,7 @@ typedef long long tranid_t;
 #include <trigger.h>
 #include <cdb2_constants.h>
 #include <schema_lk.h>
+#include "perf.h"
 
 /* buffer offset, given base ptr & right ptr */
 #define BUFOFF(base, right) ((int)(((char *)right) - ((char *)base)))
@@ -512,13 +513,6 @@ enum RECORD_WRITE_TYPES {
     RECORD_WRITE_MAX = 3
 };
 
-enum deferred_option_level {
-   DEFERRED_SEND_COMMAND,
-   DEFERRED_LEGACY_DEFAULTS,
-
-   DEFERRED_OPTION_MAX
-};
-
 /* Raw stats, kept on a per origin machine basis.  This whole struct is
  * essentially an array of unsigneds.  Please don't add any other data
  * type as this allows us to easily sum it and diff it in a loop in reqlog.c.
@@ -698,7 +692,7 @@ struct dbtable {
     unsigned prev_blocktypcnt[BLOCK_MAXOPCODE];
     unsigned prev_blockosqltypcnt[MAX_OSQL_TYPES];
     unsigned prev_nsql;
-    /* counters for autoanalyze */
+    /* counters for writes to this table */
     unsigned write_count[RECORD_WRITE_MAX];
     unsigned saved_write_count[RECORD_WRITE_MAX];
     unsigned aa_saved_counter; // zeroed out at autoanalyze
@@ -766,6 +760,21 @@ struct dbtable {
     int sc_downgrading;
     unsigned long long *sc_genids; /* schemachange stripe pointers */
 
+    /* count the number of updates and deletes done by schemachange
+     * when behind the cursor.  This helps us know how many
+     * records we've really done (since every update behind the cursor
+     * effectively means we have to go back and do that record again). */
+    unsigned sc_adds;
+    unsigned sc_deletes;
+    unsigned sc_updates;
+
+    uint64_t sc_nrecs;
+    uint64_t sc_prev_nrecs;
+    /* boolean value set to nonzero if table rebuild is in progress */
+    uint8_t doing_conversion;
+    /* boolean value set to nonzero if table upgrade is in progress */
+    uint8_t doing_upgrade;
+
     unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
     unsigned int sqlcur_cur; /* count how many cursors where open in cur mode */
 
@@ -799,13 +808,6 @@ struct log_delete_state {
 struct coordinated_component {
     LINKC_T(struct coordinated_component) lnk;
     int dbnum;
-};
-
-struct deferred_option {
-    char *option;
-    int line;
-    int len;
-    LINKC_T(struct deferred_option) lnk;
 };
 
 struct lrlfile {
@@ -959,7 +961,6 @@ struct dbenv {
     unsigned prev_txns_aborted;
     int wait_for_N_nodes;
 
-    LISTC_T(struct deferred_option) deferred_options[DEFERRED_OPTION_MAX];
     LISTC_T(struct lrlfile) lrl_files;
 
     int incoh_notcoherent;
@@ -969,6 +970,13 @@ struct dbenv {
     /* locking for the queue system */
     pthread_mutex_t dbqueue_admin_lk;
     int dbqueue_admin_running;
+
+    struct time_metric* service_time;
+    struct time_metric* queue_depth;
+    struct time_metric* concurrent_queries;
+    struct time_metric* connections;
+    struct time_metric *sql_queue_time;
+    struct time_metric *handle_buf_queue_time;
 };
 
 extern struct dbenv *thedb;
@@ -1334,14 +1342,6 @@ struct ireq {
     /* more stats - number of retries done under this request */
     int retries;
 
-    /* count the number of updates and deletes done by this transaction in
-     * a live schema change behind the cursor.  This helps us know how many
-     * records we've really done (since every update behind the cursor
-     * effectively means we have to go back and do that record again). */
-    unsigned sc_adds;
-    unsigned sc_deletes;
-    unsigned sc_updates;
-
     int ixused;    /* what index was used? */
     int ixstepcnt; /* how many steps on that index? */
 
@@ -1358,6 +1358,7 @@ struct ireq {
     int osql_flags;
     int priority;
     int sqlhistory_len;
+    int tranddl;
 
     /* Client endian flags. */
     uint8_t client_endian;
@@ -1376,7 +1377,6 @@ struct ireq {
 
     bool sc_locked : 1;
     bool have_snap_info : 1;
-    bool tranddl : 1;
     bool sc_should_abort : 1;
 
     int written_row_count;
@@ -1615,11 +1615,6 @@ extern int gbl_init_single_meta;
 extern unsigned long long gbl_sc_genids[MAXDTASTRIPE];
 extern int gbl_sc_usleep;
 extern int gbl_sc_wrusleep;
-extern unsigned gbl_sc_adds;
-extern unsigned gbl_sc_updates;
-extern unsigned gbl_sc_deletes;
-extern long long gbl_sc_nrecs;
-extern long long gbl_sc_prev_nrecs;
 extern int gbl_sc_last_writer_time;
 extern int gbl_default_livesc;
 extern int gbl_default_plannedsc;
@@ -1762,6 +1757,8 @@ extern int gbl_compress_page_compact_log;
 extern unsigned int gbl_max_num_compact_pages_per_txn;
 extern char *gbl_dbdir;
 
+extern double gbl_cpupercent;
+
 /* init routines */
 int appsock_init(void);
 int thd_init(void);
@@ -1791,7 +1788,7 @@ const char *req2a(int opcode);
 int a2req(const char *s);
 
 /* request processing */
-void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb);
+void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int is_admin);
 void appsock_coalesce(struct dbenv *dbenv);
 void close_appsock(SBUF2 *sb);
 void thd_stats(void);
@@ -1800,6 +1797,7 @@ void thd_coalesce(struct dbenv *dbenv);
 void unlock_swapin(void);
 char *getorigin(struct ireq *iq);
 void thd_dump(void);
+int thd_queue_depth(void);
 
 enum comdb2_queue_types {
     REQ_WAITFT = 0,
@@ -2637,7 +2635,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                const uint8_t *p_buf_rec_end, const unsigned char fldnullmap[32],
                blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
                int *ixfailnum, int *rrn, unsigned long long *genid,
-               unsigned long long ins_keys, int opcode, int blkpos, int flags);
+               unsigned long long ins_keys, int opcode, int blkpos, int flags,
+               int rec_flags);
 
 int upgrade_record(struct ireq *iq, void *trans, unsigned long long vgenid,
                    uint8_t *p_buf_rec, const uint8_t *p_buf_rec_end,

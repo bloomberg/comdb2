@@ -396,6 +396,11 @@ int mark_schemachange_over_tran(const char *table, tran_type *tran)
     /* mark the schema change over */
     int bdberr;
 
+    if (tran && bdb_increment_num_sc_done(thedb->bdb_env, tran, &bdberr)) {
+        logmsg(LOGMSG_WARN, "could not increment num_sc_done\n");
+        return SC_BDB_ERROR;
+    }
+
     bdb_delete_sc_seed(thedb->bdb_env, tran, table, &bdberr);
 
     if (bdb_set_in_schema_change(tran, table, NULL /*schema_change_data*/,
@@ -1356,6 +1361,26 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
             }
         }
     }
+}
+
+/* return 1 if the table is only referenced by foreign key in the same table or
+ * it is not referenced at all, 0 otherwise
+ */
+int self_referenced_only(struct dbtable *db)
+{
+    int i, rc;
+    if (db->n_rev_constraints == 0)
+        return 1;
+
+    rc = 1;
+    for (i = 0; i < db->n_rev_constraints; i++) {
+        constraint_t *ct = db->rev_constraints[i];
+        if (strcasecmp(ct->lcltable->tablename, db->tablename)) {
+            rc = 0;
+            break;
+        }
+    }
+    return rc;
 }
 
 void change_schemas_recover(char *table)

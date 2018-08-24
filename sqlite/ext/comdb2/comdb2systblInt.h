@@ -12,6 +12,7 @@ const sqlite3_module systblConstraintsModule;
 const sqlite3_module systblTblSizeModule;
 const sqlite3_module systblSPsModule;
 const sqlite3_module systblUsersModule;
+const sqlite3_module systblQueuesModule;
 const sqlite3_module systblTablePermissionsModule;
 const sqlite3_module systblTriggersModule;
 const sqlite3_module systblKeywordsModule;
@@ -27,10 +28,18 @@ const sqlite3_module systblTimepartModule;
 const sqlite3_module systblTimepartShardsModule;
 const sqlite3_module systblTimepartEventsModule;
 const sqlite3_module systblTransactionLogsModule;
+const sqlite3_module systblMetricsModule;
+const sqlite3_module systblTimeseriesModule;
+const sqlite3_module systblReplStatsModule;
+const sqlite3_module systblActivelocksModule;
+const sqlite3_module systblLogicalOpsModule;
 
 int systblTypeSamplesInit(sqlite3 *db);
 int systblRepNetQueueStatInit(sqlite3 *db);
+int systblSqlpoolQueueInit(sqlite3 *db);
+int systblActivelocksInit(sqlite3 *db);
 int systblNetUserfuncsInit(sqlite3 *db);
+int systblClusterInit(sqlite3 *db);
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")

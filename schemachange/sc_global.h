@@ -45,13 +45,6 @@ extern int gbl_sc_last_writer_time;
 
 /* updates/deletes done behind the cursor since schema change started */
 extern pthread_mutex_t gbl_sc_lock;
-extern int doing_conversion;
-extern int doing_upgrade;
-extern unsigned gbl_sc_adds;
-extern unsigned gbl_sc_updates;
-extern unsigned gbl_sc_deletes;
-extern long long gbl_sc_nrecs;
-extern long long gbl_sc_prev_nrecs; /* nrecs since last report */
 extern int gbl_sc_report_freq;      /* seconds between reports */
 extern int gbl_sc_abort;
 extern int gbl_sc_resume_start;

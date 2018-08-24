@@ -106,7 +106,7 @@ int main( int argc, char **argv)
     
       lineno++;
 
-      if(line[0] == '\n')
+      if(line[0] == '\n' || line[0] == '#')
          continue;
       id = parse_line( line, &query);
       if (id<0)

@@ -38,7 +38,6 @@
 #include "bdb_net.h"
 
 #include <assert.h>
-/*#include "protobuf/sqlresponse.pb-c.h"*/
 
 #define SIZEOF_SEQNUM (10 * sizeof(int))
 struct seqnum_t;
@@ -91,7 +90,8 @@ enum {
     BDB_CALLBACK_SCABORT,
     BDB_CALLBACK_UNDOSHADOW,
     BDB_CALLBACK_NODE_IS_DOWN,
-    BDB_CALLBACK_SERIALCHECK
+    BDB_CALLBACK_SERIALCHECK,
+    BDB_CALLBACK_ADMIN_APPSOCK,
 };
 
 enum { BDB_REPFAIL_NET, BDB_REPFAIL_TIMEOUT, BDB_REPFAIL_RMTBDB };
@@ -1706,6 +1706,11 @@ void bdb_set_commit_genid(bdb_state_type *bdb_state, unsigned long long context,
 unsigned long long bdb_gen_commit_genid(bdb_state_type *bdb_state,
                                         const void *plsn, uint32_t generation);
 
+int bdb_increment_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
+                              int *bdberr);
+int bdb_get_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
+                        unsigned long long *num, int *bdberr);
+
 void udp_ping_ip(bdb_state_type *, char *ip);
 void udp_ping_all(bdb_state_type *);
 void udp_ping(bdb_state_type *, char *to);
@@ -1719,6 +1724,8 @@ netinfo_type *get_rep_netinfo(bdb_state_type *);
 
 void udp_summary(void);
 void udp_reset(netinfo_type *);
+void udp_stats(unsigned int *sent_udp, unsigned int *fail_udp,
+               unsigned int *recd_udp);
 
 extern struct thdpool *gbl_udppfault_thdpool;
 int udppfault_thdpool_init(void);
@@ -1759,8 +1766,8 @@ void bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum);
 
 void bdb_replace_handle(bdb_state_type *parent, int ix, bdb_state_type *handle);
 
-int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
-                          int64_t *waits);
+int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks, int64_t *waits, 
+                          int64_t *requests);
 
 int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
                            int64_t *bpool_misses);
@@ -2000,6 +2007,9 @@ int bdb_latest_commit_is_durable(void *bdb_state);
 int bdb_is_standalone(void *dbenv, void *in_bdb_state);
 int bdb_valid_lease(void *bdb_state);
 
+void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
+                       int64_t *maxactive, int64_t *commits, int64_t *aborts);
+
 uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
 
 typedef struct bias_info bias_info;
@@ -2035,5 +2045,35 @@ int bdb_process_each_table_idx_entry(bdb_state_type *bdb_state, tran_type *tran,
 
 int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                             int *bdberr);
+
+/* Return per-node replication wait and net usage. */
+#ifndef HOST_NAME_MAX
+#define HOST_NAME_MAX 64
+#endif
+typedef struct repl_wait_and_net_use {
+    char host[HOST_NAME_MAX];
+    unsigned long long bytes_written;
+    unsigned long long bytes_read;
+    unsigned long long throttle_waits;
+    unsigned long long reorders;
+    double avg_wait_over_10secs;
+    double max_wait_over_10secs;
+    double avg_wait_over_1min;
+    double max_wait_over_1min;
+} repl_wait_and_net_use_t;
+repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(bdb_state_type *bdb_state, int *pnnodes);
+
+
+struct cluster_info {
+    char *host;
+    int64_t port;
+    char *is_master;
+    char *coherent_state;
+};
+
+int bdb_fill_cluster_info(void **data, int *num_nodes);
+
+void wait_for_sc_to_stop(void);
+void allow_sc_to_run(void);
 
 #endif

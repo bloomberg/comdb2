@@ -271,6 +271,7 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 [exec procedure dup()] failed with rc -206 add key constraint duplicate key 'I' on table 'dup' index 0
 (version='sptest')
 (version='sptest')
+(version='sptest')
 (rows deleted=500)
 (name='audit', type='trigger', tbl_name='foraudit', event='add', col='i')
 (name='audit', type='trigger', tbl_name='foraudit', event='del', col='i')
@@ -322,6 +323,7 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (name='close', version='sptest', client_versioned='Y', default='Y')
 (name='commitsp', version='1', client_versioned='N', default='Y')
 (name='cons', version='sptest', client_versioned='Y', default='Y')
+(name='cons_with_tid', version='sptest', client_versioned='Y', default='Y')
 (name='dup', version='1', client_versioned='N', default='Y')
 (name='gen', version='sptest', client_versioned='Y', default='Y')
 (name='hexarg', version='sptest', client_versioned='Y', default='Y')
@@ -741,6 +743,7 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (name='close', version='sptest', client_versioned='Y', default='Y')
 (name='commitsp', version='1', client_versioned='N', default='Y')
 (name='cons', version='sptest', client_versioned='Y', default='Y')
+(name='cons_with_tid', version='sptest', client_versioned='Y', default='Y')
 (name='dup', version='1', client_versioned='N', default='Y')
 (name='gen', version='sptest', client_versioned='Y', default='Y')
 (name='hexarg', version='sptest', client_versioned='Y', default='Y')

@@ -11,6 +11,7 @@ set(src
   cheapstub.c
   comdb2_pthread_create.c
   comdb2file.c
+  compat.c
   ctrace.c
   debug_switches.c
   flibc.c
@@ -23,10 +24,12 @@ set(src
   misc.c
   nodemap.c
   object_pool.c
+  perf.c
   plhash.c
   pool.c
   pooltest.c
   portmuxusr.c
+  quantize.c
   queue.c
   queuetest.c
   roll_file.c
@@ -43,12 +46,16 @@ set(src
   thread_malloc.c
   thread_util.c
   timers.c
+  tohex.c
   utilmisc.c
   walkback.c
   xstring.c
 )
 if(WITH_SSL)
   list(APPEND src ssl_support.c)
+endif()
+if(COMDB2_LEGACY_DEFAULTS)
+  add_definitions(-DLEGACY_DEFAULTS)
 endif()
 add_library(util ${src})
 include_directories(

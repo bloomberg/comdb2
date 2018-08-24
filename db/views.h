@@ -291,7 +291,7 @@ int views_validate_view(timepart_views_t *views, timepart_view_t *view, struct e
  * Check if a name is a shard 
  *
  */
-int timepart_is_shard(const char *name, int lock);
+int timepart_is_shard(const char *name, int lock, char **viewname);
 
 /** 
  * Check if a name is a timepart
@@ -384,6 +384,12 @@ void timepart_systable_next_shard(int *piTimepartId, int *piRowid);
  *
  */
 int timepart_get_num_views(void);
+
+/**
+ * Get number of shards
+ *
+ */
+int timepart_get_num_shards(const char *view_name);
 
 /**
  * Open/close the event queue

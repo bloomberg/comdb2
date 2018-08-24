@@ -131,10 +131,40 @@ set all_graphs {
            {opt E {or nil + -} {loop /digit nil}}}
      {line \"0x\" {loop /hexdigit nil}}
   }
+
   insert-stmt {
     stack
        {line {opt with-clause}
           INSERT INTO
+       }
+       {line {optx /db-name .} /qualified-table-name
+             {optx ( {loop /column-name ,} )}}
+       {line
+           {or
+             {line VALUES {loop {line ( {loop expr ,} )} ,}}
+             select-stmt
+           }
+           {opt upsert-clause}
+       }
+  }
+
+  upsert-clause {
+      stack
+      {line ON CONFLICT {opt (index-column-list) WHERE expr }
+      }
+      {line DO
+          {or
+              {line NOTHING}
+              {line REPLACE}
+              {line UPDATE SET {loop {line /column-name = expr} ,} {optx WHERE expr}}
+          }
+      }
+  }
+
+  replace-stmt {
+    stack
+       {line {opt with-clause}
+          REPLACE INTO
        }
        {line {optx /db-name .} /qualified-table-name
              {optx ( {loop /column-name ,} )}}
@@ -143,6 +173,7 @@ set all_graphs {
          select-stmt
        }
   }
+
   select-stmt {
    stack
      {opt {line WITH {opt RECURSIVE} {loop common-table-expression ,}}}

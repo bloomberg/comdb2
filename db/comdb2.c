@@ -108,6 +108,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "fdb_fend.h"
 #include "fdb_bend.h"
 #include <flibc.h>
+#include "perf.h"
 
 #include <autoanalyze.h>
 #include <sqlglue.h>
@@ -126,6 +127,9 @@ void berk_memp_sync_alarm_ms(int);
 #include <cdb2_constants.h>
 #include <bb_oscompat.h>
 #include <schemachange.h>
+#include "comdb2_atomic.h"
+#include "metrics.h"
+
 
 #define tokdup strndup
 
@@ -733,13 +737,13 @@ int gbl_mifid2_datetime_range = 1;
 int gbl_early_verify = 1;
 
 int gbl_bbenv;
+extern int gbl_legacy_defaults;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
 int free_gbl_tunables();
 int register_db_tunables(struct dbenv *tbl);
 
-int init_plugins(void);
 int destroy_plugins(void);
 void register_plugin_tunables(void);
 int install_static_plugins(void);
@@ -1355,17 +1359,42 @@ static void free_sqlite_table(struct dbenv *dbenv)
  */
 void clean_exit(void)
 {
-    int rc;
+    int alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
 
-    thedb->exiting = 1;
+    /* this defaults to 5 minutes */
+    alarm(alarmtime);
+
+    /* dont let any new requests come in.  we're going to go non-coherent
+       here in a second, so letting new reads in would be bad. */
+    no_new_requests(thedb);
+
+    wait_for_sc_to_stop();
+
+#   if 0
+    if (bdb_is_an_unconnected_master(thedb->dbs[0]->handle)) {
+        wait_for_sc_to_stop(); /* single node, need to stop SC */
+        logmsg(LOGMSG_INFO, "This was standalone\n");
+    } else {
+        /* hand over masterness to a new candidate if we're the master. */
+        bdb_transfermaster(thedb->dbs[0]->handle);
+    }
+#   endif
+
+    /* let the lower level start advertising high lsns to go non-coherent
+       - dont hang the master waiting for sync replication to an exiting
+       node. */
+    bdb_exiting(thedb->dbs[0]->handle);
+
     stop_threads(thedb);
-    logmsg(LOGMSG_INFO, "stopping db engine...\n");
+    flush_db();
 
+#   if 0
     /* TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
       them to quit.
     */
     if (!gbl_create_mode)
         sleep(4);
+#   endif
 
     cleanup_q_vars();
     cleanup_switches();
@@ -1380,7 +1409,7 @@ void clean_exit(void)
         logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
     }
 
-    rc = backend_close(thedb);
+    int rc = backend_close(thedb);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
     }
@@ -2430,6 +2459,13 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     dbenv->master = NULL; /*no known master at this point.*/
     dbenv->errstaton = 1; /* ON */
 
+    dbenv->handle_buf_queue_time = time_metric_new("handle_buf_time_in_queue");
+    dbenv->sql_queue_time = time_metric_new("sql_time_in_queue");
+    dbenv->service_time = time_metric_new("service_time");
+    dbenv->queue_depth = time_metric_new("queue_depth");
+    dbenv->concurrent_queries = time_metric_new("concurrent_queries");
+    dbenv->connections = time_metric_new("connections");
+
     return dbenv;
 }
 
@@ -3009,7 +3045,7 @@ static void load_dbstore_tableversion(struct dbenv *dbenv)
     }
 }
 
-int init_sqlite_tables(struct dbenv *dbenv)
+static int init_sqlite_tables(struct dbenv *dbenv)
 {
     int rc;
     rc = init_sqlite_table(dbenv, "sqlite_stat1");
@@ -3152,6 +3188,9 @@ static int init(int argc, char **argv)
     pthread_attr_init(&gbl_pthread_attr);
     pthread_attr_setstacksize(&gbl_pthread_attr, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&gbl_pthread_attr, PTHREAD_CREATE_DETACHED);
+
+    /* Initialize the statistics. */
+    init_metrics();
 
     rc = pthread_key_create(&comdb2_open_key, NULL);
     if (rc) {
@@ -3523,22 +3562,19 @@ static int init(int argc, char **argv)
 
     /* get/set the table names from llmeta */
     if (gbl_create_mode) {
-       if (init_sqlite_tables(thedb))
-          return -1;
-
-        /* schemas are stored in the meta table after the backend is fully
-         * opened below */
-    }
-    /* if we are using low level meta table and this isn't the create pass,
-     * we shouldn't see any table definitions in the lrl. they should have
-     * been removed during initialization */
-    else if (thedb->num_dbs != 0) {
-        logmsg(LOGMSG_FATAL, "lrl contains table definitions, they should not be "
-                        "present after the database has been created\n");
+        if (!gbl_legacy_defaults)
+            if (init_sqlite_tables(thedb))
+                return -1;
+    } else if (thedb->num_dbs != 0) {
+        /* if we are using low level meta table and this isn't the create
+         * pass, we shouldn't see any table definitions in the lrl. they
+         * should have been removed during initialization */
+        logmsg(LOGMSG_FATAL, "lrl contains table definitions, they should not "
+                             "be present after the database has been "
+                             "created\n");
         return -1;
-    }
-    /* we will load the tables from the llmeta table */
-    else {
+    } else {
+        /* we will load the tables from the llmeta table */
         int waitfileopen =
             bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAY_FILE_OPEN);
         if (waitfileopen) {
@@ -3952,9 +3988,8 @@ void reset_calls_per_sec(void);
 int throttle_lim = 10000;
 int cpu_throttle_threshold = 100000;
 
-#if 0
-void *pq_thread(void *);
-#endif
+double gbl_cpupercent;
+
 
 void *statthd(void *p)
 {
@@ -4016,6 +4051,13 @@ void *statthd(void *p)
     uint64_t last_report_bpool_hits = 0;
     uint64_t last_report_bpool_misses = 0;
 
+    int64_t conns=0, conn_timeouts=0, curr_conns = 0;
+    int64_t last_conns=0, last_conn_timeouts=0, last_curr_conns=0; 
+    int64_t diff_conns=0, diff_conn_timeouts=0, diff_curr_conns=0; 
+    int64_t last_report_conns = 0;
+    int64_t last_report_conn_timeouts = 0;
+    int64_t last_report_curr_conns=0;
+
     struct reqlogger *statlogger = NULL;
     struct bdb_thread_stats last_bdb_stats = {0};
     struct bdb_thread_stats cur_bdb_stats;
@@ -4031,6 +4073,8 @@ void *statthd(void *p)
     char hdr_fmt[] = "DIFF REQUEST STATS FOR DB %d '%s'\n";
     int have_scon_header = 0;
     int have_scon_stats = 0;
+
+    extern int active_appsock_conns;
 
     dbenv = p;
 
@@ -4050,10 +4094,14 @@ void *statthd(void *p)
         nretries = n_retries;
         vreplays = gbl_verify_tran_replays;
 
+        conns = net_get_num_accepts(thedb->handle_sibling);
+        curr_conns = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
+        conn_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
+
         bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
                                (int64_t *)&bpool_misses);
 
-        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
+        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits, NULL);
         diff_deadlocks = ndeadlocks - last_ndeadlocks;
         diff_lockwaits = nlockwaits - last_nlockwaits;
 
@@ -4068,6 +4116,9 @@ void *statthd(void *p)
         diff_ncommit_time = ncommit_time - last_ncommit_time;
         diff_bpool_hits = bpool_hits - last_bpool_hits;
         diff_bpool_misses = bpool_misses - last_bpool_misses;
+        diff_conns = conns - last_conns;
+        diff_curr_conns = curr_conns - last_curr_conns;
+        diff_conn_timeouts = conn_timeouts - last_conn_timeouts;
 
         last_qtrap = nqtrap;
         last_fstrap = nfstrap;
@@ -4082,13 +4133,17 @@ void *statthd(void *p)
         last_ncommit_time = ncommit_time;
         last_bpool_hits = bpool_hits;
         last_bpool_misses = bpool_misses;
+        last_conns = conns;
+        last_curr_conns = curr_conns;
+        last_conn_timeouts = conn_timeouts;
 
         have_scon_header = 0;
         have_scon_stats = 0;
 
         if (diff_qtrap || diff_nsql || diff_newsql || diff_nsql_steps ||
             diff_fstrap || diff_vreplays || diff_bpool_hits ||
-            diff_bpool_misses || diff_ncommit_time) {
+            diff_bpool_misses || diff_ncommit_time ||
+            diff_conns || diff_conn_timeouts || diff_curr_conns) {
             if (gbl_report) {
                 logmsg(LOGMSG_USER, "diff");
                 have_scon_header = 1;
@@ -4117,6 +4172,12 @@ void *statthd(void *p)
                     logmsg(LOGMSG_USER, " cache_hits %lu", diff_bpool_hits);
                 if (diff_bpool_misses)
                     logmsg(LOGMSG_USER, " cache_misses %lu", diff_bpool_misses);
+                if (diff_conns)
+                    logmsg(LOGMSG_USER, " connects %lld", diff_conns);
+                if (diff_curr_conns)
+                    logmsg(LOGMSG_USER, " current_connects %lld", diff_curr_conns);
+                if (diff_conn_timeouts)
+                    logmsg(LOGMSG_USER, " connect_timeouts %lld", diff_conn_timeouts);
                 have_scon_stats = 1;
             }
         }
@@ -4125,6 +4186,10 @@ void *statthd(void *p)
 
         if (have_scon_stats)
             logmsg(LOGMSG_USER, "\n");
+
+        extern void update_cpu_percent(void);
+        if (count % 5 == 0)
+            update_cpu_percent();
 
         if (!gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();
@@ -4323,6 +4388,14 @@ void *statthd(void *p)
                     lastlsnbytes = curlsnbytes;
                 }
 
+                if (conns - last_report_conns || curr_conns - last_report_curr_conns) {
+                   reqlog_logf(statlogger, REQL_INFO, "connections %lld timeouts %lld current_connections %lld\n", 
+                         conns - last_report_conns,
+                         conn_timeouts - last_report_conn_timeouts,
+                         curr_conns - last_report_curr_conns);
+                }
+
+
                 reqlog_diffstat_dump(statlogger);
 
                 count = 0;
@@ -4342,6 +4415,10 @@ void *statthd(void *p)
 
                 last_report_ncommits = ncommits;
                 last_report_ncommit_time = ncommit_time;
+
+                last_report_conns = conns;
+                last_report_conn_timeouts = conn_timeouts;
+                last_report_curr_conns = curr_conns;
 
                 osql_comm_diffstat(statlogger, NULL);
                 strbuf_free(logstr);
@@ -4369,6 +4446,15 @@ void *statthd(void *p)
 
         if (gbl_repscore)
             bdb_show_reptimes_compact(thedb->bdb_env);
+
+
+        /* Push out old metrics */
+        time_metric_purge_old(thedb->handle_buf_queue_time);
+        time_metric_purge_old(thedb->sql_queue_time);
+        time_metric_purge_old(thedb->service_time);
+        time_metric_purge_old(thedb->queue_depth);
+        time_metric_purge_old(thedb->concurrent_queries);
+        time_metric_purge_old(thedb->connections);
 
         ++count;
         sleep(1);
@@ -4587,26 +4673,26 @@ static void register_all_int_switches()
                         &gbl_verify_rep_log_records);
     register_int_switch(
         "enable_osql_logging",
-        "Log every osql packet received in a special file, per iq\n",
+        "Log every osql packet received in a special file, per iq",
         &gbl_enable_osql_logging);
     register_int_switch("enable_osql_longreq_logging",
-                        "Log untruncated osql strings\n",
+                        "Log untruncated osql strings",
                         &gbl_enable_osql_longreq_logging);
     register_int_switch(
         "check_sparse_files",
-        "When allocating a page, check that we aren't creating a sparse file\n",
+        "When allocating a page, check that we aren't creating a sparse file",
         &gbl_check_sparse_files);
     register_int_switch(
         "core_on_sparse_file",
-        "Generate a core if we catch berkeley creating a sparse file\n",
+        "Generate a core if we catch berkeley creating a sparse file",
         &gbl_core_on_sparse_file);
     register_int_switch(
         "check_sqlite_numeric_types",
-        "Report if our numeric conversion disagrees with SQLite's\n",
+        "Report if our numeric conversion disagrees with SQLite's",
         &gbl_report_sqlite_numeric_conversion_errors);
     register_int_switch(
         "use_fastseed_for_comdb2_seqno",
-        "Use fastseed instead of context for comdb2_seqno unique values\n",
+        "Use fastseed instead of context for comdb2_seqno unique values",
         &gbl_use_fastseed_for_comdb2_seqno);
     register_int_switch(
         "disable_stable_for_ipu",
@@ -4795,9 +4881,10 @@ static void register_all_int_switches()
                         &gbl_extended_sql_debug_trace);
     register_int_switch("dump_fsql_response", "Dump fsql out messages",
                         &gbl_dump_fsql_response);
-    register_int_switch("large_str_idx_find",
-                        "Allow index search using out or range strings",
-                        &gbl_large_str_idx_find);
+    register_int_switch(
+        "large_str_idx_find",
+        "Allow index search using out-of-range strings or bytearrays",
+        &gbl_large_str_idx_find);
     register_int_switch("fingerprint_queries",
                         "Compute fingerprint for SQL queries",
                         &gbl_fingerprint_queries);
@@ -4983,12 +5070,6 @@ int main(int argc, char **argv)
 
     init_debug_switches();
 
-    /* Initialize the plugin sub-system. */
-    if ((init_plugins())) {
-        logmsg(LOGMSG_FATAL, "Failed to initialize plugin sub-system");
-        exit(1);
-    }
-
     /* Initialize plugin tunables. */
     register_plugin_tunables();
 
@@ -5103,9 +5184,8 @@ int main(int argc, char **argv)
     if (comdb2ma_stats_cron() != 0)
         abort();
 
-    process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
-                             deferred_do_commands);
-    clear_deferred_options(thedb, DEFERRED_SEND_COMMAND);
+    process_deferred_options(thedb, deferred_do_commands);
+    clear_deferred_options();
 
     // db started - disable recsize kludge so
     // new schemachanges won't allow broken size.

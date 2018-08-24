@@ -34,6 +34,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 
+#include "comdb2.h"
 #include "types.h"
 #include "endian_core.h"
 #include "flibc.h"
@@ -51,6 +52,7 @@
 #include "debug_switches.h"
 #include "logmsg.h"
 #include "util.h"
+#include "tohex.h"
 
 struct thr_handle;
 struct reqlogger *thrman_get_reqlogger(struct thr_handle *thr);
@@ -873,24 +875,6 @@ TYPES_INLINE int validate_pstr(const char *s, int lim)
     }
 
     return 0;
-}
-
-/* pstr2 strings are not supposed to be "sniffed" to learn about their length.
-   there is an out of band length that goes along with them. */
-TYPES_INLINE int pstr2lenlim(const char *s, int lim)
-{
-
-#if 0
-    int len=0;
-    /* now check the remaining string to make sure it has no invalid chars */
-    while (*s && len < lim) {
-        s++;
-        len++;
-    }
-    return len;
-#endif
-
-    return lim;
 }
 
 TYPES_INLINE int pstrlenlim(const char *s, int lim)
@@ -3294,14 +3278,12 @@ TYPES_INLINE int CLIENT_PSTR2_to_CLIENT_CSTR(
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    int len;
     *outdtsz = 0;
-    len = pstr2lenlim(in, inlen);
-    if (len < 0 || len >= outlen)
+    if (inlen < 0 || inlen >= outlen)
         return -1;
     memset(out, 0, outlen);
-    strncpy(out, in, len);
-    *outdtsz = len;
+    strncpy(out, in, inlen);
+    *outdtsz = inlen;
     return 0;
 }
 
@@ -3364,14 +3346,12 @@ TYPES_INLINE int CLIENT_PSTR2_to_CLIENT_PSTR(
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    int len;
     *outdtsz = 0;
-    len = pstr2lenlim(in, inlen);
-    if (len == -1 || len > outlen)
+    if (inlen == -1 || inlen > outlen)
         return -1;
     memset(out, ' ', outlen);
     *outdtsz = outlen;
-    strncpy(out, in, len);
+    strncpy(out, in, inlen);
     return 0;
 }
 
@@ -3380,13 +3360,11 @@ TYPES_INLINE int CLIENT_PSTR2_to_CLIENT_PSTR2(
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    int len;
     *outdtsz = 0;
-    len = pstr2lenlim(in, inlen);
-    if (len == -1 || len > outlen)
+    if (inlen == -1 || inlen > outlen)
         return -1;
-    *outdtsz = len;
-    strncpy(out, in, len);
+    *outdtsz = inlen;
+    strncpy(out, in, inlen);
     return 0;
 }
 
@@ -4194,24 +4172,23 @@ TYPES_INLINE int CLIENT_PSTR2_to_SERVER_BCSTR(
     if (rc != 0)
         return -1;
 
-    int len = pstr2lenlim(in, inlen);
-    const int olen = len; // original len
-    if (len == -1)
+    const int olen = inlen; // original len
+    if (inlen == -1)
         return -1;
 
     uint8_t hdr = 0;
     bset(&hdr, data_bit);
-    if (len > outlen - 1) {
+    if (inlen > outlen - 1) {
         if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
-            len = outlen - 1;
+            inlen = outlen - 1;
         } else {
             return -1;
         }
     }
-    ++len;
-    set_data_int(out, in, len, hdr);
-    memset(out + len, 0, outlen - len);
-    *outdtsz = len;
+    ++inlen;
+    set_data_int(out, in, inlen, hdr);
+    memset(out + inlen, 0, outlen - inlen);
+    *outdtsz = inlen;
 
     if (olen > outlen - 1) {
         // Can't just set truncate bit
@@ -4222,7 +4199,7 @@ TYPES_INLINE int CLIENT_PSTR2_to_SERVER_BCSTR(
         // Walk backwards and increment first byte not 0xff
         if (inopts->step == 1) {
             uint8_t *a = (uint8_t *)out;
-            uint8_t *b = a + len - 1;
+            uint8_t *b = a + inlen - 1;
             while (b > a) {
                 if (*b != 0xff) {
                     ++(*b);
@@ -4248,11 +4225,31 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_BYTEARRAY(
     if (innull) {
         set_null(out, outlen);
     } else {
-        int rc;
+        int rc, olen = inlen;
+        if (inlen > outlen - 1) {
+            if (inopts && (inopts->flags & FLD_CONV_TRUNCATE)) {
+                inlen = outlen - 1;
+            } else {
+                return -1;
+            }
+        }
         rc = bytearray_copy(in, inlen, inopts, inblob, ((char *)out) + 1,
                             outlen - 1, outdtsz, outopts, outblob);
         if (-1 == rc)
             return -1;
+        if (olen > outlen - 1 && inopts->step == 1) {
+            uint8_t *a = ((uint8_t *)out);
+            uint8_t *b = a + inlen;
+            while (b > a) {
+                if (*b != 0xff) {
+                    ++(*b);
+                    break;
+                }
+                --b;
+            }
+            if (b == a)
+                bset(out, truncate_bit);
+        }
         /* set data bit */
         set_data(out, in, 1);
         (*outdtsz)++;
@@ -9404,12 +9401,12 @@ int make_order_decimal32(server_decimal32_t *pdec32)
     return 0;
 }
 
-int unmake_order_decimal32(server_decimal32_t *pdec32, char *decimals,
-                           int *exponent)
+static int unmake_order_decimal32(server_decimal32_t *pdec32, char *decimals,
+                                  int *exponent)
 {
     int adj_exp = 0;
     int i;
-    char exp;
+    signed char exp;
 
     exp = pdec32->exp;
 
@@ -9490,7 +9487,7 @@ int unmake_order_decimal32(server_decimal32_t *pdec32, char *decimals,
     return 0;
 }
 
-int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
+static int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
 {
     short adj_exp;
     int i;
@@ -9558,7 +9555,8 @@ int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
     return 0;
 }
 
-int dec64_exponent_is_outrageous(server_decimal64_t *pdec64, char *decimals)
+static int dec64_exponent_is_outrageous(server_decimal64_t *pdec64,
+                                        char *decimals)
 {
     /* 0 decimals were able to insert exponents > 15, missing for %16=0 the mark
      * that it is a new format */
@@ -9586,8 +9584,8 @@ int dec64_exponent_is_outrageous(server_decimal64_t *pdec64, char *decimals)
     return 0;
 }
 
-int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
-                           int *exponent)
+static int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
+                                  int *exponent)
 {
     comdb2_int2 tmp;
     int2b exp;
@@ -9708,7 +9706,7 @@ int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
     return 0;
 }
 
-int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
+static int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
 {
     short adj_exp;
     int i;
@@ -9778,8 +9776,8 @@ int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
     return 0;
 }
 
-int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
-                            int *exponent)
+static int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
+                                   int *exponent)
 {
     comdb2_int2 tmp;
     int2b exp;
@@ -9977,7 +9975,7 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
     decDoubleFromPacked(dn, exponent, (uint8_t *)decimals);
 }
 
-void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
+static void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
 {
     char decimals[DECQUAD_PACKED_COEF];
     int exponent;

@@ -107,8 +107,6 @@ struct blocksql_tran {
 };
 
 typedef struct oplog_key {
-    unsigned long long rqid;
-    uuid_t uuid;
     unsigned long long seq;
 } oplog_key_t;
 
@@ -142,18 +140,6 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
     oplog_key_t *k2 = (oplog_key_t *)key2;
 #endif
     int cmp;
-
-    if (k1->rqid < k2->rqid) {
-        return -1;
-    }
-
-    if (k1->rqid > k2->rqid) {
-        return 1;
-    }
-
-    cmp = comdb2uuidcmp(k1->uuid, k2->uuid);
-    if (cmp)
-        return cmp;
 
     if (k1->seq < k2->seq) {
         return -1;
@@ -230,6 +216,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     tran->dowait = 1;
 
     iq->timings.req_received = osql_log_time();
+    iq->tranddl = 0;
     /*printf("Set req_received=%llu\n", iq->timings.req_received);*/
 
     tran->num++;
@@ -387,10 +374,9 @@ int osql_bplog_schemachange(struct ireq *iq)
             rc = ERR_NOMASTER;
         } else {
             sc_set_running(sc->table, 0, iq->sc_seed, NULL, 0);
-            int sc_rc = sc->sc_rc;
-            free_schema_change_type(sc);
-            if (sc_rc)
+            if (sc->sc_rc)
                 rc = ERR_SC;
+            free_schema_change_type(sc);
         }
         sc = iq->sc;
     }
@@ -662,16 +648,16 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     int type = 0;
     buf_get(&type, sizeof(type), rpl, rpl + rplen);
-    if (type == OSQL_SCHEMACHANGE) sess->iq->tranddl = 1;
+    if (type == OSQL_SCHEMACHANGE)
+        sess->iq->tranddl++;
 
 #if 0
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
 
-    key.rqid = rqid;
     key.seq = seq;
-    comdb2uuidcpy(key.uuid, uuid);
+    assert (sess->rqid == rqid);
 
     /* add the op into the temporary table */
     if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
@@ -712,15 +698,14 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     }
 
 #if 0 
-   printf("%s: rqid=%llx Saving op type=%d\n", __func__, key.rqid, ntohl(*((int*)rpl)));
+   printf("%s: rqid=%llx Saving op type=%d\n", __func__, rqid, ntohl(*((int*)rpl)));
 #endif
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
     if (rc_op) {
-        logmsg(LOGMSG_ERROR, 
-            "%s: fail to put oplog rqid=%llx (%lld) seq=%llu rc=%d bdberr=%d\n",
-            __func__, key.rqid, key.rqid, key.seq, rc_op, bdberr);
+        logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
+               __func__, key.seq, rc_op, bdberr);
     } else if (gbl_osqlpfault_threads) {
         osql_page_prefault(rpl, rplen, &(tran->last_db),
                            &(osql_session_get_ireq(sess)->osql_step_ix), rqid,
@@ -1089,7 +1074,6 @@ static int process_this_session(
 
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     unsigned long long rqid = osql_sess_getrqid(sess);
-    oplog_key_t *key = NULL;
     oplog_key_t key_next, key_crt;
     char *data = NULL;
     int datalen = 0;
@@ -1108,36 +1092,23 @@ static int process_this_session(
 
     iq->queryid = osql_sess_queryid(sess);
 
-    key = (oplog_key_t *)malloc(sizeof(oplog_key_t));
-    if (!key) {
-        logmsg(LOGMSG_ERROR, "%s: unable to allocated %zu bytes\n", __func__,
-               sizeof(oplog_key_t));
-        return -1;
-    }
-
-    key->rqid = rqid;
-    key->seq = 0;
-    osql_sess_getuuid(sess, key->uuid);
     osql_sess_getuuid(sess, uuid);
-    key_next = key_crt = *key;
 
-    if (key->rqid != OSQL_RQID_USE_UUID)
-        reqlog_set_rqid(iq->reqlogger, &key->rqid, sizeof(unsigned long long));
+    if (rqid != OSQL_RQID_USE_UUID)
+        reqlog_set_rqid(iq->reqlogger, &rqid, sizeof(unsigned long long));
     else
         reqlog_set_rqid(iq->reqlogger, uuid, sizeof(uuid));
     reqlog_set_event(iq->reqlogger, "txn");
 
     /* go through each record */
-    rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
-                                   bdberr);
-    if(rc != IX_FND)
-        free(key);
+    rc = bdb_temp_table_first(thedb->bdb_env, dbc, bdberr);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
         reqlog_set_error(iq->reqlogger, "bdb_temp_table_first failed", rc);
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_first failed rc=%d bdberr=%d\n",
                 __func__, rc, *bdberr);
         return rc;
     }
+    key_next = key_crt = *(oplog_key_t *)bdb_temp_table_key(dbc);
 
     if (rc == IX_NOTFND) {
         comdb2uuidstr(uuid, us);
@@ -1185,22 +1156,6 @@ static int process_this_session(
         if (!rc) {
             /* are we still on the same rqid */
             key_next = *(oplog_key_t *)bdb_temp_table_key(dbc);
-            if (key_next.rqid != key_crt.rqid) {
-                /* done with the current transaction*/
-                break;
-            }
-            if (key_crt.rqid == OSQL_RQID_USE_UUID) {
-                if (comdb2uuidcmp(key_crt.uuid, key_next.uuid)) {
-                    /* done with the current transaction*/
-                    break;
-                }
-            } else {
-                if (key_next.rqid != key_crt.rqid) {
-                    /* done with the current transaction*/
-                    break;
-                }
-            }
-
             /* check correct sequence; this is an attempt to
                catch dropped packets - not that we would do that purposely */
             if (key_next.seq != key_crt.seq + 1) {
@@ -1517,4 +1472,131 @@ int sql_cancelled_transaction(struct ireq *iq)
     destroy_ireq(thedb, iq);
 
     return rc;
+}
+
+int backout_schema_changes(struct ireq *iq, tran_type *tran);
+void *osql_commit_timepart_resuming_sc(void *p)
+{
+    struct ireq iq;
+    struct schema_change_type *sc_pending = (struct schema_change_type *)p;
+    struct schema_change_type *sc;
+    tran_type *parent_trans = NULL;
+    int error = 0;
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    init_fake_ireq(thedb, &iq);
+    iq.tranddl = 1;
+    iq.sc = sc = sc_pending;
+    sc_pending = NULL;
+    while (sc != NULL) {
+        pthread_mutex_lock(&sc->mtx);
+        sc->nothrevent = 1;
+        pthread_mutex_unlock(&sc->mtx);
+        iq.sc = sc->sc_next;
+        if (sc->sc_rc == SC_COMMIT_PENDING) {
+            sc->sc_next = sc_pending;
+            sc_pending = sc;
+        } else {
+            logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__, sc->table,
+                   sc->sc_rc);
+            sc_set_running(sc->table, 0, 0, NULL, 0);
+            free_schema_change_type(sc);
+            error = 1;
+        }
+        sc = iq.sc;
+    }
+    iq.sc_pending = sc_pending;
+    iq.sc_locked = 0;
+    iq.osql_flags |= OSQL_FLAGS_SCDONE;
+    iq.sc_tran = NULL;
+    iq.sc_logical_tran = NULL;
+
+    if (error) {
+        logmsg(LOGMSG_ERROR, "%s: Aborting schema change because of errors\n",
+               __func__);
+        goto abort_sc;
+    }
+
+    if (trans_start_logical_sc(&iq, &(iq.sc_logical_tran))) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to start schema change transaction\n", __func__,
+               __LINE__);
+        goto abort_sc;
+    }
+
+    if ((parent_trans = bdb_get_physical_tran(iq.sc_logical_tran)) == NULL) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to start schema change transaction\n", __func__,
+               __LINE__);
+        goto abort_sc;
+    }
+
+    if (trans_start(&iq, parent_trans, &(iq.sc_tran))) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to start schema change transaction\n", __func__,
+               __LINE__);
+        goto abort_sc;
+    }
+
+    iq.sc = iq.sc_pending;
+    while (iq.sc != NULL) {
+        if (!iq.sc_locked) {
+            /* Lock schema from now on before we finalize any schema changes
+             * and hold on to the lock until the transaction commits/aborts.
+             */
+            wrlock_schema_lk();
+            iq.sc_locked = 1;
+        }
+        if (iq.sc->db)
+            iq.usedb = iq.sc->db;
+        if (finalize_schema_change(&iq, iq.sc_tran)) {
+            logmsg(LOGMSG_ERROR, "%s: failed to finalize '%s'\n", __func__,
+                   iq.sc->table);
+            goto abort_sc;
+        }
+        iq.usedb = NULL;
+        iq.sc = iq.sc->sc_next;
+    }
+
+    if (iq.sc_pending) {
+        create_sqlmaster_records(iq.sc_tran);
+        create_sqlite_master();
+    }
+
+    if (trans_commit(&iq, iq.sc_tran, gbl_mynode)) {
+        logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
+               __LINE__);
+        abort();
+    }
+
+    unlock_schema_lk();
+
+    if (trans_commit_logical(&iq, iq.sc_logical_tran, gbl_mynode, 0, 1, NULL, 0,
+                             NULL, 0)) {
+        logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
+               __LINE__);
+        abort();
+    }
+
+    osql_postcommit_handle(&iq);
+
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+
+    return NULL;
+
+abort_sc:
+    logmsg(LOGMSG_ERROR, "%s: aborting schema change\n", __func__);
+    if (iq.sc_tran)
+        trans_abort(&iq, iq.sc_tran);
+    backout_schema_changes(&iq, parent_trans);
+    if (iq.sc_locked) {
+        unlock_schema_lk();
+        iq.sc_locked = 0;
+    }
+    if (parent_trans)
+        trans_abort(&iq, parent_trans);
+    if (iq.sc_logical_tran)
+        trans_abort_logical(&iq, iq.sc_logical_tran, NULL, 0, NULL, 0);
+    osql_postabort_handle(&iq);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+    return NULL;
 }

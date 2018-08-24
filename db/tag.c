@@ -40,6 +40,7 @@
 
 #include <netinet/in.h>
 #include "util.h"
+#include "tohex.h"
 #include <plhash.h>
 #include "tag.h"
 #include "types.h"
@@ -1114,7 +1115,7 @@ static void dumpval(char *buf, int type, int len)
             logmsg(LOGMSG_USER, "\"%.*s\"", slen, buf);
             break;
         case CLIENT_PSTR2:
-            slen = pstr2lenlim(buf, len);
+            slen = len;
             logmsg(LOGMSG_USER, "\"%.*s\"", slen, buf);
             break;
         case CLIENT_BYTEARRAY:
@@ -7117,7 +7118,6 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     transfer_db_settings(db, newdb);
     restore_constraint_pointers(db, newdb);
     free_db_and_replace(db, newdb);
-    fix_constraint_pointers(db, newdb);
 
     bdb_close_only(old_bdb_handle, &bdberr);
     /* swap the handle in place */
@@ -7127,9 +7127,11 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
                 bdberr);
     db->handle = old_bdb_handle;
 
+    replace_db_idx(db, foundix);
+    fix_constraint_pointers(db, newdb);
+
     memset(newdb, 0xff, sizeof(struct dbtable));
     free(newdb);
-    replace_db_idx(db, foundix);
     fix_lrl_ixlen_tran(tran);
     free(csc2);
     free(new_bdb_handle);

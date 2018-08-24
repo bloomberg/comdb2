@@ -46,15 +46,6 @@
 #include "intern_strings.h"
 #include "bdb_schemachange.h"
 
-#define MAXRECSZ (17 * 1024)
-#define MAXKEYSZ (1024)
-
-#define MAXTABLES 4096
-#define MAXIX 64
-#define NIL -1
-#define MAXDTAFILES 16 /* primary data file + 15 blobs files */
-#define MAXSTRIPE 16   /* max stripe factor */
-
 /* Some additional error codes, chosen not to conflict with system codes
  * or with berkdb error codes.  Use bdb_strerror() to decode. */
 #define DB_ODH_CORRUPT (-40000)    /* On disk header corrupt */
@@ -691,6 +682,7 @@ struct bdb_callback_tag {
     GETROOMFP getroom_rtn;
     REPFAILFP repfail_rtn;
     BDBAPPSOCKFP appsock_rtn;
+    BDBAPPSOCKFP admin_appsock_rtn;
     PRINTFP print_rtn;
     BDBELECTSETTINGSFP electsettings_rtn;
     BDBCATCHUPFP catchup_rtn;
@@ -813,13 +805,13 @@ struct bdb_state_tag {
     signed char numdtafiles;
 
     /* the berkeley db btrees underlying this "table" */
-    DB *dbp_data[MAXDTAFILES][MAXSTRIPE]; /* the data files.  dbp_data[0] is
+    DB *dbp_data[MAXDTAFILES][MAXDTASTRIPE]; /* the data files. dbp_data[0] is
                                      the primary data file which would contain
                                      the record.  higher files are extra data
                                      aka the blobs.  in blobstripe mode the
                                      blob files are striped too, otherwise
                                      they are not. */
-    DB *dbp_ix[MAXIX];                    /* handle for the ixN files */
+    DB *dbp_ix[MAXINDEX];                    /* handle for the ixN files */
 
     pthread_key_t tid_key;
 
@@ -832,14 +824,15 @@ struct bdb_state_tag {
     char *dir;          /* directory the files go in (/bb/data /bb/data2) */
     int lrl;            /* Logical Record Length (0 = variable) */
     short numix;        /* number of indexes */
-    short ixlen[MAXIX]; /* size of each index */
-    signed char ixdta[MAXIX]; /* does this index contain the dta? */
+    short ixlen[MAXINDEX];            /* size of each index */
+    signed char ixdta[MAXINDEX];      /* does this index contain the dta? */
+    signed char ixcollattr[MAXINDEX]; /* does this index contain the column
+                                         attributes? */
+    signed char ixnulls[MAXINDEX];    /*does this index contain any columns that
+                                         allow nulls?*/
+    signed char ixdups[MAXINDEX];     /* 1 if ix allows dupes, else 0 */
     signed char
-        ixcollattr[MAXIX]; /* does this index contain the column attributes? */
-    signed char ixnulls
-        [MAXIX]; /*does this index contain any columns that allow nulls?*/
-    signed char ixdups[MAXIX];   /* 1 if ix allows dupes, else 0 */
-    signed char ixrecnum[MAXIX]; /* 1 if we turned on recnum mode for btrees */
+        ixrecnum[MAXINDEX]; /* 1 if we turned on recnum mode for btrees */
 
     short keymaxsz; /* size of the keymax buffer */
 
@@ -1046,7 +1039,7 @@ enum {
     USER_TYPE_TEST = 4,
     USER_TYPE_ADD = 5,
     USER_TYPE_DEL = 6,
-    USER_TYPE_DECOM = 7,
+    USER_TYPE_DECOM_DEPRECATED = 7,
     USER_TYPE_ADD_DUMMY = 8,
     USER_TYPE_REPTRC = 9,
     USER_TYPE_RECONNECT = 10,
@@ -1077,7 +1070,7 @@ enum {
     USER_TYPE_PAGE_COMPACT,
 
     /* by hostname messages */
-    USER_TYPE_DECOM_NAME,
+    USER_TYPE_DECOM_NAME_DEPRECATED,
     USER_TYPE_ADD_NAME,
     USER_TYPE_DEL_NAME,
     USER_TYPE_TRANSFERMASTER_NAME,
@@ -1170,8 +1163,6 @@ char *bdb_trans(const char infile[], char outfile[]);
 void *mymalloc(size_t size);
 void myfree(void *ptr);
 void *myrealloc(void *ptr, size_t size);
-
-void bdb_get_txn_stats(bdb_state_type *bdb_state, int *txn_commits);
 
 int bdb_upgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done);
 int bdb_downgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done);
@@ -1639,7 +1630,8 @@ DBC *get_cursor_for_cursortran_flags(cursor_tran_t *curtran, DB *db,
 int bdb_bdblock_debug_enabled(void);
 
 int bdb_reconstruct_add(bdb_state_type *state, DB_LSN *startlsn, void *key,
-                        int keylen, void *data, int datalen, int *p_outlen);
+                        int keylen, void *data, int datalen, int *p_dtalen,
+                        int *p_keylen);
 int bdb_reconstruct_delete(bdb_state_type *state, DB_LSN *startlsn, int *page,
                            int *index, void *key, int keylen, void *data,
                            int datalen, int *outdatalen);
@@ -1650,8 +1642,9 @@ int bdb_reconstruct_key_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
                                void **diff, int *offset, int *difflen);
 
 int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
-                                   void *allcd, int allcd_sz, int *offset,
-                                   int *outlen, int *outpage, int *outidx);
+                                   void *origd, int *origd_sz, void *newd,
+                                   int *newd_sz, int *offset, int *outpage,
+                                   int *outidx);
 
 unsigned long long get_id(bdb_state_type *bdb_state);
 
@@ -1731,8 +1724,11 @@ int release_locks_for_logical_transaction_object(bdb_state_type *bdb_state,
                                                  tran_type *tran, int *bdberr);
 
 extern int bdb_reconstruct_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
-                                  int *page, int *index, void *key, int keylen,
-                                  void *data, int datalen);
+                                  int *page, int *index, void *prevkey,
+                                  int *prevkeylen, void *prevdata,
+                                  int *prevdatalen, void *newkey,
+                                  int *newkeylen, void *newdata,
+                                  int *newdatalen);
 
 int tran_allocate_rlptr(tran_type *tran, DBT **ptr, DB_LOCK **lptr);
 int tran_deallocate_pop(tran_type *tran, int count);
@@ -1822,10 +1818,10 @@ void add_dummy(bdb_state_type *);
 int bdb_add_dummy_llmeta(void);
 int bdb_have_ipu(bdb_state_type *bdb_state);
 
-typedef struct ack_info_t ack_info;
-void handle_tcp_timestamp(bdb_state_type *, ack_info *, char *to);
-void handle_tcp_timestamp_ack(bdb_state_type *, ack_info *);
-void handle_ping_timestamp(bdb_state_type *, ack_info *, char *to);
+struct ack_info_t;
+void handle_tcp_timestamp(bdb_state_type *, struct ack_info_t *, char *to);
+void handle_tcp_timestamp_ack(bdb_state_type *, struct ack_info_t *);
+void handle_ping_timestamp(bdb_state_type *, struct ack_info_t *, char *to);
 
 unsigned long long bdb_logical_tranid(void *tran);
 
@@ -1840,8 +1836,6 @@ int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_temp_table_destroy_lru(struct temp_table *tbl,
                                bdb_state_type *bdb_state, int *last,
                                int *bdberr);
-void wait_for_sc_to_stop(void);
-void allow_sc_to_run(void);
 int is_table_in_schema_change(const char *tbname, tran_type *tran);
 
 void bdb_temp_table_init(bdb_state_type *bdb_state);
@@ -1862,5 +1856,11 @@ const char *deadlock_policy_str(u_int32_t policy);
 int deadlock_policy_max();
 
 char *coherent_state_to_str(int state);
+
+char *bdb_coherent_state_string(const char *);
+
+/* ugly, but need to signal shutdown */
+int osql_process_message_decom(char *);
+void osql_net_exiting(void);
 
 #endif /* __bdb_int_h__ */

@@ -65,9 +65,20 @@ undone.
 
 ## Changing data
 
-### INSERT
+### INSERT/REPLACE
+
+**Insert:**
 
 ![INSERT](images/insert-stmt.gif)
+
+**Replace:**
+
+![REPLACE](images/replace-stmt.gif)
+
+**Upsert clause:**
+
+![UPSERT CLAUSE](images/upsert-clause.gif)
+
 
 The ```INSERT``` statement comes in two basic forms. The first form (with the "VALUES" keyword) creates a single new 
 row in an existing table. If no column-list is specified then the number of values must be the same as the number 

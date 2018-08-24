@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
 
 dbnm=$1
 cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output.txt 2>&1
@@ -12,18 +15,26 @@ set readonly on
 select * from t order by id limit 4
 EOF
 
-df=`diff output.txt reqoutput.txt`
-if [ $? -ne 0 ] ; then
-    echo "  ^^^^^^^^^^^^"
-    echo "The above testcase (${testcase}) has failed!!!"
-    echo " "
-    echo "Use 'diff <expected-output> <my-output>' to see why:"
-    echo "> diff ${PWD}/output.txt ${PWD}/reqoutput.txt"
-    echo " "
-    diff output.txt reqoutput.txt
-    echo " "
-    exit 1
-fi 
+check_diff()
+{
+    local f1=$1
+    local f2=$2
+
+    diff $f1 $f2 &> df.out
+    if [ $? -ne 0 ] ; then
+        echo "  ^^^^^^^^^^^^"
+        echo "The above testcase (${testcase}) has failed!!!"
+        echo " "
+        echo "Use 'diff <expected-output> <my-output>' to see why:"
+        echo "> diff ${PWD}/$f1 ${PWD}/$f2"
+        echo " "
+        cat df.out
+        echo " "
+        exit 1
+    fi 
+}
+
+check_diff output.txt reqoutput.txt
 
 cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output2.txt 2>&1
 set readonly on
@@ -31,17 +42,20 @@ insert into t values (1)
 update t set id=id+1 limit 1
 EOF
 
-df=`diff output2.txt reqoutput2.txt`
-if [ $? -ne 0 ] ; then
-    echo "  ^^^^^^^^^^^^"
-    echo "The above testcase (${testcase}) has failed!!!"
-    echo " "
-    echo "Use 'diff <expected-output> <my-output>' to see why:"
-    echo "> diff ${PWD}/output2.txt ${PWD}/reqoutput2.txt"
-    echo " "
-    diff output2.txt reqoutput2.txt
-    echo " "
-    exit 1
-fi 
+check_diff output2.txt reqoutput2.txt
+
+cluster=`$CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+for node in $cluster ; do 
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm --host $node 'exec procedure sys.cmd.send("readonly")'
+done
+
+echo try to write to db
+
+cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output3.txt 2>&1
+insert into t values (1)
+update t set id=id+1 limit 1
+EOF
+
+check_diff output3.txt reqoutput3.txt
 
 echo "Success"

@@ -38,6 +38,12 @@
 
 struct BtCursor;
 
+/* Flags that attach with OSQL_INSREC. */
+enum osql_rec_flags {
+    OSQL_FORCE_VERIFY = 1 << 0,
+    OSQL_IGNORE_FAILURE = 1 << 1,
+};
+
 struct schema_change_type; // TODO fix there is a cyclicinlclude
                            /**
                             *
@@ -55,7 +61,7 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd);
  *
  */
 int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-                int nData, blob_buffer_t *blobs, int maxblobs);
+                int nData, blob_buffer_t *blobs, int maxblobs, int flags);
 
 /**
  * Process a sqlite insert row request
@@ -65,7 +71,8 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
  *
  */
 int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-                int nData, int *updCols, blob_buffer_t *blobs, int maxblobs);
+                int nData, int *updCols, blob_buffer_t *blobs, int maxblobs,
+                int flags);
 
 /**
  * Process a sqlite clear table request

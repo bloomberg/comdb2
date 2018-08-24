@@ -33,6 +33,7 @@
 #include "net_types.h"
 #include "cdb2_constants.h"
 #include "logmsg.h"
+#include "quantize.h"
 
 enum {
     /* Flags for write_list() */
@@ -44,11 +45,13 @@ enum {
     WRITE_MSG_INORDER = 32
 };
 
+#define HOSTNAME_LEN 16
+
 typedef struct {
-    char fromhost[16];
+    char fromhost[HOSTNAME_LEN];
     int fromport;
     int fromnode;
-    char tohost[16];
+    char tohost[HOSTNAME_LEN];
     int toport;
     int tonode;
     int type;
@@ -121,8 +124,6 @@ typedef struct {
     unsigned long long reorders;
 } stats_type;
 
-#define HOSTNAME_LEN 16
-
 struct host_node_tag {
     int fd;
     SBUF2 *sb;
@@ -171,7 +172,6 @@ struct host_node_tag {
     unsigned dedupe_count;
 
     struct in_addr addr;
-    int addr_len;
     int distress; /* if this is set, do not report any errors, we know we're
                     looping trying to get a successful read_message_header
 
@@ -279,6 +279,7 @@ struct netinfo_struct {
     NEWNODEFP *new_node_rtn;
     pthread_attr_t pthread_attr_detach;
     APPSOCKFP *appsock_rtn;
+    APPSOCKFP *admin_appsock_rtn;
     HELLOFP *hello_rtn;
     int accept_thread_created;
     int heartbeat_send_time;
@@ -337,6 +338,17 @@ struct netinfo_struct {
     QSTATENQUEFP *qstat_enque_rtn;
     QSTATCLEARFP *qstat_clear_rtn;
     QSTATFREEFP *qstat_free_rtn;
+
+    struct quantize *conntime_all;
+    struct quantize *conntime_periodic;
+    int64_t num_accepts;
+    int64_t num_accept_timeouts;
+    int conntime_dump_period;
+
+
+    /* An appsock routine may or may not close the connection.
+       Therefore we can only reliably keep track of non-appsock connections. */
+    int num_current_non_appsock_accepts;
 };
 
 typedef struct ack_state_struct {

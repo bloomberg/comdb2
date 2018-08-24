@@ -85,10 +85,9 @@ Installing (from source or a package) creates a directory structure like this:
 │   ├── libcdb2api.a
 │   ├── libcdb2api.so
 └── var
-    └── cdb2
-        ├── databases
-        └── logs
-
+    ├── cdb2
+    └── logs
+        └── cdb2
 ```
 
 A quick overview:
@@ -99,5 +98,5 @@ A quick overview:
 | ```etc/cdb2/config/comdb2.lrl```   | Global database tunables, applies to all databases |
 | ```etc/cdb2/config/comdb2.d```     | Global database config files, settings in all *.lrl files in this directory apply to all databases |
 | ```include/``` and ```lib/```        | headers and libraries |
-| ```var/cdb2/databases/``` | Default location for databases. Every database gets a subdirectory at create time. |
-| ```var/cdb2/logs/``` | Default location for database informational log files |
+| ```var/cdb2/``` | Default location for databases. Every database gets a subdirectory at create time. |
+| ```var/logs/cdb2/``` | Default location for database informational log files |

@@ -642,7 +642,7 @@ static int SQLITE_TCLAPI btree_insert(
 
   sqlite3_mutex_enter(pCur->pBtree->db->mutex);
   sqlite3BtreeEnter(pCur->pBtree);
-  rc = sqlite3BtreeInsert(pCur, &x, 0, 0);
+  rc = sqlite3BtreeInsert(pCur, &x, 0, 0, 0);
   sqlite3BtreeLeave(pCur->pBtree);
   sqlite3_mutex_leave(pCur->pBtree->db->mutex);
 

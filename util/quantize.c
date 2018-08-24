@@ -34,7 +34,7 @@ struct quantize {
     int *cnts;
     char *units_name;
     long long sumval;
-    int numvals;
+    long long numvals;
     int maxval;
     int minval;
 };
@@ -53,6 +53,8 @@ struct quantize *quantize_new(int step, int qmax, char *units_name)
     q->numvals = 0;
     q->maxval = 0;
     q->minval = 0;
+    /* preallocate this so wwe can always safely look at the histogram */
+    q->cnts=(int*)calloc(q->qnum+1,sizeof(int));
     return q;
 }
 
@@ -100,8 +102,6 @@ void quantize(struct quantize *q, int val)
     if (bkt > q->qnum)
         bkt = q->qnum;
     cnt = q->cnts;
-    if (cnt == 0)
-        cnt = q->cnts = (int *)calloc(q->qnum + 1, sizeof(int));
     cnt[bkt]++;
     /* for keeping average */
     if (val < 0) {

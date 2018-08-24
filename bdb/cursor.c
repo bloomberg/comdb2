@@ -92,6 +92,7 @@ as long as there was a successful move in the past
 #include <plhash.h>
 #include "logmsg.h"
 #include "util.h"
+#include "tohex.h"
 
 #include "genid.h"
 #define MERGE_DEBUG (0)
@@ -706,7 +707,8 @@ bdb_cursor_ifn_t *bdb_cursor_open(
         }
     }
 
-    if (type == BDB_OPEN_REAL || type == BDB_OPEN_BOTH) {
+    if (type == BDB_OPEN_REAL || type == BDB_OPEN_BOTH ||
+        type == BDB_OPEN_BOTH_CREATE) {
         cur->rl = bdb_berkdb_open(cur, BERKDB_REAL, maxdta, maxkey, bdberr);
         if (!cur->rl) {
             logmsg(LOGMSG_ERROR, "%s: fail to create index berkdb\n", __func__);
@@ -722,14 +724,16 @@ bdb_cursor_ifn_t *bdb_cursor_open(
 
     /* we only open if there is already one (we'll open when we insert, if any)
      */
-    if (type == BDB_OPEN_SHAD || type == BDB_OPEN_BOTH) {
+    if (type == BDB_OPEN_SHAD || type == BDB_OPEN_BOTH ||
+        type == BDB_OPEN_BOTH_CREATE) {
         int openhow = BERKDB_SHAD;
 
         /* Always create cur->sd for non-page order snapisol or you can lose
          * data in cursor_move_merge. */
         if (cur->shadow_tran &&
             (cur->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-             cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE))
+             cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE ||
+             type == BDB_OPEN_BOTH_CREATE))
             openhow = BERKDB_SHAD_CREATE;
 
         /* open the cursor now */
@@ -3359,7 +3363,7 @@ static int bdb_remove_logfile_fileid_pglogs(bdb_state_type *bdb_state,
     filenum = last_logfile;
     Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
-    for (; filenum >= first_filenum; --filenum) {
+    for (; filenum && filenum >= first_filenum; --filenum) {
         struct logfile_pglogs_entry *l_entry;
         Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
         l_entry = retrieve_logfile_pglogs(filenum, 0);
@@ -4190,6 +4194,7 @@ static int bdb_cursor_find_last_dup(bdb_cursor_ifn_t *pcur_ifn, void *key,
 
         if (rc == IX_EMPTY)
             return IX_EMPTY;
+
     } else if (rc == IX_FND) {
         if (!dirLeft) {
             /* we are going Right because we got here from SeekGT,
@@ -7550,7 +7555,7 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
     buf = NULL;
 #endif
 
-    for (; filenum >= first_filenum; --filenum) {
+    for (; filenum && filenum >= first_filenum; --filenum) {
         struct logfile_pglogs_entry *l_entry;
         Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
         l_entry = retrieve_logfile_pglogs(filenum, 0);

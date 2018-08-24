@@ -176,8 +176,8 @@ static void adjust_version(int changed, struct scinfo *scinfo,
         ++newdb->version;
     } else if (ondisk_changed == SC_NO_CHANGE /* nothing changed ondisk */
                && changed == SC_TAG_CHANGE    /* plan says it did change */
-               && newdb->version == 0 && newdb->plan->dta_plan == -1 &&
-               newdb->plan->plan_convert == 1) {
+               && newdb->version == 0 && newdb->plan &&
+               newdb->plan->dta_plan == -1 && newdb->plan->plan_convert == 1) {
         ++newdb->version;
     }
 }
@@ -444,7 +444,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
     pthread_mutex_unlock(&csc2_subsystem_mtx);
 
-    if (verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
+    if ((iq == NULL || iq->tranddl <= 1) &&
+        verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
         backout(newdb);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
@@ -558,12 +559,12 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
      * that doesn't require rebuilding anything. */
     if ((!newdb->plan || newdb->plan->plan_convert) ||
         changed == SC_CONSTRAINT_CHANGE) {
-        doing_conversion = 1;
+        db->doing_conversion = 1;
         if (!s->live)
             gbl_readonly_sc = 1;
         rc = convert_all_records(db, newdb, newdb->sc_genids, s);
         if (rc == 1) rc = 0;
-        doing_conversion = 0;
+        db->doing_conversion = 0;
     } else
         rc = 0;
 
@@ -579,11 +580,12 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     if (s->convert_sleep > 0) {
-        sc_printf(s, "Sleeping after conversion for %d...\n", s->convert_sleep);
+        sc_printf(s, "[%s] Sleeping after conversion for %d...\n",
+                  db->tablename, s->convert_sleep);
         logmsg(LOGMSG_INFO, "Sleeping after conversion for %d...\n",
                s->convert_sleep);
         sleep(s->convert_sleep);
-        sc_printf(s, "...slept for %d\n", s->convert_sleep);
+        sc_printf(s, "[%s] ...slept for %d\n", db->tablename, s->convert_sleep);
     }
 
     if (rc && rc != SC_MASTER_DOWNGRADE) {
@@ -627,6 +629,12 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     int olddb_bthashsz;
 
     iq->usedb = db;
+
+    if (iq && iq->tranddl > 1 &&
+        verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
+        sc_errf(s, "error verifying constraints\n");
+        goto backout;
+    }
 
     if (get_db_bthash_tran(db, &olddb_bthashsz, transac) != 0)
         olddb_bthashsz = 0;
@@ -823,7 +831,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 backout:
     live_sc_off(db);
     backout_constraint_pointers(newdb, db);
-    delete_temp_table(iq, newdb);
     change_schemas_recover(/*s->table*/ db->tablename);
 
     logmsg(LOGMSG_WARN,
@@ -877,9 +884,9 @@ int do_upgrade_table_int(struct schema_change_type *s)
 
     reset_sc_stat();
 
-    doing_upgrade = 1;
+    db->doing_upgrade = 1;
     rc = upgrade_all_records(db, db->sc_genids, s);
-    doing_upgrade = 0;
+    db->doing_upgrade = 0;
 
     if (stopsc)
         rc = SC_MASTER_DOWNGRADE;

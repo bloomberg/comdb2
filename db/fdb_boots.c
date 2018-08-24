@@ -362,7 +362,7 @@ static int _discover_remote_db_nodes(const char *dbname, const char *class,
     }
 
     rc = cdb2_open(&db, "comdb2db", "default", 0);
-    if (!db) {
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s: can't talk to metadb rc %d %s\n", __func__, rc,
                 cdb2_errstr(db));
         cdb2_close(db);

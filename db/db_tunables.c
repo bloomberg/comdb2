@@ -28,6 +28,8 @@
 #include "analyze.h"
 #include "intern_strings.h"
 #include "portmuxapi.h"
+#include "config.h"
+#include "net.h"
 
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512
@@ -185,6 +187,11 @@ extern int gbl_master_req_waitms;
 extern int gbl_print_net_queue_size;
 extern int gbl_commit_delay_trace;
 extern int gbl_elect_priority_bias;
+extern int gbl_abort_on_reconstruct_failure;
+extern int gbl_rand_elect_timeout;
+extern int gbl_rand_elect_min_ms;
+extern int gbl_rand_elect_max_ms;
+extern int gbl_handle_buf_add_latency_ms;
 
 extern long long sampling_threshold;
 
@@ -239,6 +246,11 @@ static char *name = NULL;
 static int ctrace_gzip;
 
 int gbl_ddl_cascade_drop = 1;
+extern int gbl_queuedb_genid_filename;
+
+extern int gbl_timeseries_metrics;
+extern int gbl_metric_maxpoints;
+extern int gbl_metric_maxage;
 
 /*
   =========================================================
@@ -623,6 +635,23 @@ static int broken_max_rec_sz_update(void *context, void *value)
     logmsg(LOGMSG_INFO, "Allow db to start with max record size of %d\n",
            COMDB2_MAX_RECORD_SIZE + gbl_broken_max_rec_sz);
     return 0;
+}
+
+
+static int netconndumptime_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    int val = *(int *)value;
+    net_set_conntime_dump_period(thedb->handle_sibling, val);
+    return 0;
+}
+
+static void *netconndumptime_value(void *context)
+{
+    static char val[64];
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    sprintf(val, "%d", net_get_conntime_dump_period(thedb->handle_sibling));
+    return val;
 }
 
 const char *deadlock_policy_str(int policy);
@@ -1326,7 +1355,7 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
 
     if (!(t = hash_find_readonly(gbl_tunables->hash, &tok))) {
         /* Do not warn in READEARLY phase. */
-        if ((flags & READEARLY == 0)) {
+        if ((flags & READEARLY) == 0) {
             logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", tok);
         }
         return TUNABLE_ERR_INVALID_TUNABLE;
@@ -1427,3 +1456,4 @@ const char *tunable_error(comdb2_tunable_err code)
     }
     return "????";
 }
+

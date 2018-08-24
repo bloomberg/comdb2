@@ -226,6 +226,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_users", &systblUsersModule, 0);
   if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_queues", &systblQueuesModule, 0);
+  if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_tablepermissions", &systblTablePermissionsModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_triggers", &systblTriggersModule, 0);
@@ -258,11 +260,25 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_transaction_logs", &systblTransactionLogsModule, 0);
   if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_metrics", &systblMetricsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_timeseries", &systblTimeseriesModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_repl_stats", &systblReplStatsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_logical_operations", &systblLogicalOpsModule, 0);
+  if (rc == SQLITE_OK)
     rc = systblTypeSamplesInit(db);
   if (rc == SQLITE_OK)
     rc = systblRepNetQueueStatInit(db);
   if (rc == SQLITE_OK)
+    rc = systblActivelocksInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblSqlpoolQueueInit(db);
+  if (rc == SQLITE_OK)
     rc = systblNetUserfuncsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblClusterInit(db);
 #endif
   return rc;
 }

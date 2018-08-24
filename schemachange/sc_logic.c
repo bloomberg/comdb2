@@ -175,6 +175,7 @@ static int master_downgrading(struct schema_change_type *s)
             sbuf2printf(s->sb, "!Master node downgrading - new master will "
                                "resume schemachange\n");
             sbuf2close(s->sb);
+            s->sb = NULL;
         }
         logmsg(
             LOGMSG_WARN,
@@ -623,11 +624,92 @@ void *sc_resuming_watchdog(void *p)
     return NULL;
 }
 
+struct timepart_sc_resuming {
+    char *viewname;
+    struct schema_change_type *s;
+    int nshards;
+};
+
+void *osql_commit_timepart_resuming_sc(void *p);
+static int process_tpt_sc_hash(void *obj, void *arg)
+{
+    struct timepart_sc_resuming *tpt_sc = (struct timepart_sc_resuming *)obj;
+    pthread_t tid;
+    logmsg(LOGMSG_INFO, "%s: processing view '%s'\n", __func__,
+           tpt_sc->viewname);
+    pthread_create(&tid, &gbl_pthread_attr_detached,
+                   osql_commit_timepart_resuming_sc, tpt_sc->s);
+    free(tpt_sc);
+    return 0;
+}
+
+static int verify_sc_resumed_for_shard(const char *shardname,
+                                       timepart_sc_arg_t *arg)
+{
+    struct schema_change_type *sc = NULL;
+    int rc;
+    assert(arg->s);
+    sc = arg->s;
+    while (sc) {
+        /* already resumed */
+        if (strcasecmp(shardname, sc->table) == 0)
+            return 0;
+        sc = sc->sc_next;
+    }
+
+    /* start a new sc for shard that was not already resumed */
+    struct schema_change_type *new_sc = clone_schemachange_type(arg->s);
+    strncpy0(new_sc->table, shardname, sizeof(new_sc->table));
+    new_sc->iq = NULL;
+    new_sc->tran = NULL;
+    new_sc->resume = 0;
+    new_sc->nothrevent = 0;
+    new_sc->finalize = 0;
+
+    /* put new_sc to linked list */
+    new_sc->sc_next = arg->s;
+    arg->s = new_sc;
+
+    logmsg(LOGMSG_INFO, "Restarting schema change for view '%s' shard '%s'\n",
+           arg->view_name, new_sc->table);
+    rc = start_schema_change(new_sc);
+    if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
+        logmsg(LOGMSG_ERROR, "%s: failed to restart shard '%s', rc %d\n",
+               __func__, shardname, rc);
+        /* osql_commit_timepart_resuming_sc will check rc */
+        new_sc->sc_rc = rc;
+    }
+    return 0;
+}
+
+static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
+{
+    int rc = 0;
+    struct timepart_sc_resuming *tpt_sc = (struct timepart_sc_resuming *)obj;
+
+    /* all shards resumed */
+    if (tpt_sc->nshards >= timepart_get_num_shards(tpt_sc->viewname))
+        return 0;
+
+    timepart_sc_arg_t sc_arg = {0};
+    sc_arg.view_name = tpt_sc->viewname;
+    sc_arg.s = tpt_sc->s;
+    /* start new sc for shards that were not resumed */
+    timepart_foreach_shard(tpt_sc->viewname, verify_sc_resumed_for_shard,
+                           &sc_arg, 0);
+    assert(sc_arg.s != tpt_sc->s);
+    tpt_sc->s = sc_arg.s;
+    return 0;
+}
+
 int resume_schema_change(void)
 {
     int i;
     int rc;
     int scabort = 0;
+    char *abort_filename = NULL;
+    int is_shard = 0;
+    char *viewname = NULL;
 
     /* if we're not the master node then we can't do schema change! */
     if (thedb->master != gbl_mynode) {
@@ -639,6 +721,21 @@ int resume_schema_change(void)
 
     /* if a schema change is currently running don't try to resume one */
     sc_set_running(NULL, 0, 0, NULL, 0);
+
+    hash_t *tpt_sc_hash =
+        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
+                       offsetof(struct timepart_sc_resuming, viewname), 0);
+    if (!tpt_sc_hash) {
+        logmsg(LOGMSG_FATAL, "%s: ran out of memory\n", __func__);
+        abort();
+    }
+
+    /* Give operators a chance to prevent a schema change from resuming. */
+    abort_filename = comdb2_location("marker", "%s.scabort", thedb->envname);
+    if (access(abort_filename, F_OK) == 0) {
+        scabort = 1;
+        logmsg(LOGMSG_INFO, "%s: found '%s'\n", __func__, abort_filename);
+    }
 
     pthread_mutex_lock(&sc_resuming_mtx);
     sc_resuming = NULL;
@@ -667,11 +764,8 @@ int resume_schema_change(void)
 
             s = new_schemachange_type();
             if (!s) {
-                logmsg(LOGMSG_ERROR,
-                       "resume_schema_change: ran out of memory\n");
-                free(packed_sc_data);
-                pthread_mutex_unlock(&sc_resuming_mtx);
-                return -1;
+                logmsg(LOGMSG_FATAL, "%s: ran out of memory\n", __func__);
+                abort();
             }
 
             if (unpack_schema_change_type(s, packed_sc_data,
@@ -680,40 +774,21 @@ int resume_schema_change(void)
                            "from the low level meta table\n");
                 free(packed_sc_data);
                 free(s);
-                pthread_mutex_unlock(&sc_resuming_mtx);
-                return -1;
+                continue;
             }
 
             free(packed_sc_data);
 
-            /* Give operators a chance to prevent a schema change from resuming.
-             */
-            char *abort_filename =
-                comdb2_location("marker", "%s.scabort", thedb->envname);
-            if (access(abort_filename, F_OK) == 0) {
+            if (scabort) {
                 rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename,
                                               NULL, 0, &bdberr);
                 if (rc)
                     logmsg(LOGMSG_ERROR,
                            "Failed to cancel resuming schema change %d %d\n",
                            rc, bdberr);
-                else
-                    scabort = 1;
-            }
-
-            if (scabort) {
-                logmsg(LOGMSG_WARN, "Cancelling schema change\n");
-                rc = unlink(abort_filename);
-                if (rc)
-                    logmsg(LOGMSG_ERROR, "Can't delete abort marker file %s - "
-                                         "future sc may abort\n",
-                           abort_filename);
-                free(abort_filename);
                 free(s);
-                pthread_mutex_unlock(&sc_resuming_mtx);
-                return 0;
+                continue; /* unmark all ongoing schema changes */
             }
-            free(abort_filename);
 
             if (s->fulluprecs || s->partialuprecs) {
                 logmsg(LOGMSG_DEBUG,
@@ -741,10 +816,19 @@ int resume_schema_change(void)
                    __func__, s->rqid, us, s->table, s->addonly, s->drop_table,
                    s->fastinit, s->alteronly);
 
+            is_shard = 0;
             if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
                 s->rqid == 0 && comdb2uuid_is_zero(s->uuid)) {
                 s->resume = SC_RESUME;
-                s->finalize = 1; /* finalize at the end of resume */
+                if (unlikely(timepart_is_shard(s->table, 1, &viewname))) {
+                    logmsg(LOGMSG_INFO,
+                           "Resuming schema change for view '%s' shard '%s'\n",
+                           viewname, s->table);
+                    s->finalize = 0;
+                    is_shard = 1;
+                } else {
+                    s->finalize = 1; /* finalize at the end of resume */
+                }
             } else {
                 s->resume = SC_NEW_MASTER_RESUME;
                 s->finalize = 0; /* wait for resubmit of bplog */
@@ -755,8 +839,32 @@ int resume_schema_change(void)
             /* start the schema change back up */
             rc = start_schema_change(s);
             if (rc != SC_OK && rc != SC_ASYNC) {
-                pthread_mutex_unlock(&sc_resuming_mtx);
-                return -1;
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to resume schema change for table '%s'\n",
+                       __func__, s->table);
+                free_schema_change_type(s);
+                continue;
+            } else if (is_shard) {
+                struct timepart_sc_resuming *tpt_sc = NULL;
+                tpt_sc = hash_find(tpt_sc_hash, &viewname);
+                if (tpt_sc == NULL) {
+                    /* not found */
+                    tpt_sc = calloc(1, sizeof(struct timepart_sc_resuming));
+                    if (!tpt_sc) {
+                        logmsg(LOGMSG_FATAL, "%s: ran out of memory\n",
+                               __func__);
+                        abort();
+                    }
+                    tpt_sc->viewname = viewname;
+                    tpt_sc->s = s;
+                    tpt_sc->nshards = 1;
+                    hash_add(tpt_sc_hash, tpt_sc);
+                } else {
+                    /* linked list of all shards for the same view */
+                    s->sc_next = tpt_sc->s;
+                    tpt_sc->s = s;
+                    tpt_sc->nshards++;
+                }
             } else if (s->finalize == 0) {
                 s->sc_next = sc_resuming;
                 sc_resuming = s;
@@ -766,12 +874,29 @@ int resume_schema_change(void)
 
     if (sc_resuming) {
         pthread_t tid;
-        rc = pthread_create(&tid, NULL, sc_resuming_watchdog, NULL);
+        rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                            sc_resuming_watchdog, NULL);
         if (rc)
             logmsg(LOGMSG_ERROR, "%s: failed to start sc_resuming_watchdog\n",
                    __FILE__);
     }
     pthread_mutex_unlock(&sc_resuming_mtx);
+
+    hash_for(tpt_sc_hash, verify_sc_resumed_for_all_shards, NULL);
+    hash_for(tpt_sc_hash, process_tpt_sc_hash, NULL);
+    hash_free(tpt_sc_hash);
+
+    if (scabort) {
+        logmsg(LOGMSG_WARN, "Cancelling schema change\n");
+        rc = unlink(abort_filename);
+        if (rc)
+            logmsg(LOGMSG_ERROR,
+                   "Can't delete abort marker file %s - future sc may abort\n",
+                   abort_filename);
+    }
+
+    free(abort_filename);
+
     return 0;
 }
 
@@ -955,7 +1080,7 @@ int delete_temp_table(struct ireq *iq, struct dbtable *newdb)
     struct dbtable *usedb_sav;
 
     usedb_sav = iq->usedb;
-    iq->usedb = newdb;
+    iq->usedb = NULL;
     rc = trans_start(iq, NULL, &tran);
     if (rc) {
         sc_errf(s, "%d: trans_start rc %d\n", __LINE__, rc);

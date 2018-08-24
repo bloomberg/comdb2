@@ -263,6 +263,7 @@ void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
 
     /* Make it fake */
     iq->dbenv = dbenv;
+    iq->use_handle = dbenv->bdb_env;
     iq->is_fake = 1;
     iq->helper_thread = -1;
 }
@@ -1054,12 +1055,6 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
     /*fall through to default*/
     default:
         logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_delkey return unhandled rc %d\n", bdberr);
-        while (1) {
-            logmsg(LOGMSG_ERROR,
-                   "Thread %x got delete key error - send lockstat.\n",
-                   (int)pthread_self());
-            sleep(5);
-        }
         return ERR_INTERNAL;
     }
 }
@@ -3025,7 +3020,17 @@ static int appsock_callback(void *bdb_handle, SBUF2 *sb)
     struct dbenv *dbenv;
 
     dbenv = bdb_get_usr_ptr(bdb_handle);
-    appsock_handler_start(dbenv, sb);
+    appsock_handler_start(dbenv, sb, 0);
+
+    return 0;
+}
+
+static int admin_appsock_callback(void *bdb_handle, SBUF2 *sb)
+{
+    struct dbenv *dbenv;
+
+    dbenv = bdb_get_usr_ptr(bdb_handle);
+    appsock_handler_start(dbenv, sb, 1);
 
     return 0;
 }
@@ -3914,6 +3919,8 @@ int open_bdb_env(struct dbenv *dbenv)
                      getroom_callback);
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_APPSOCK,
                      appsock_callback);
+    bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_ADMIN_APPSOCK,
+                     admin_appsock_callback);
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_PRINT,
                      (BDB_CALLBACK_FP)vctrace);
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_ELECTSETTINGS,
@@ -4444,9 +4451,6 @@ int backend_close(struct dbenv *dbenv)
     if (dbenv->timepart_views) {
         views_signal(dbenv->timepart_views);
     }
-
-    /* offloading sql goes here */
-    osql_net_exiting();
 
     return bdb_close_env(dbenv->bdb_env);
 }
@@ -5589,7 +5593,7 @@ retry:
         } else if (bdberr == BDBERR_FETCH_DTA) {
             return IX_NOTFND;
         }
-        return map_unhandled_bdb_rcode("bdb_queue_get", bdberr, 0);
+        return map_unhandled_bdb_rcode("bdb_queue_walk", bdberr, 0);
     }
     return rc;
 }

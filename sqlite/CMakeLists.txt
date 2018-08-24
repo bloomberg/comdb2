@@ -9,10 +9,12 @@ add_library(sqlite
   ext/comdb2/appsock_handlers.c
   ext/comdb2/columns.c
   ext/comdb2/constraints.c
+  ext/comdb2/cluster.c
   ext/comdb2/keycomponents.c
   ext/comdb2/keys.c
   ext/comdb2/keywords.c
   ext/comdb2/limits.c
+  ext/comdb2/metrics.c
   ext/comdb2/opcode_handlers.c
   ext/comdb2/plugins.c
   ext/comdb2/procedures.c
@@ -24,12 +26,18 @@ add_library(sqlite
   ext/comdb2/triggers.c
   ext/comdb2/tunables.c
   ext/comdb2/users.c
+  ext/comdb2/queues.c
   ext/comdb2/tranlog.c
+  ext/comdb2/activelocks.c
+  ext/comdb2/logicalops.c
   ext/comdb2/clientstats.c
   ext/comdb2/ezsystables.c
-  ext/comdb2/typesamples.c 
+  ext/comdb2/typesamples.c
   ext/comdb2/repnetqueue.c
   ext/comdb2/netuserfunc.c
+  ext/comdb2/timeseries.c
+  ext/comdb2/repl_stats.c
+  ext/comdb2/sqlpoolqueue.c
   ext/misc/completion.c
   ext/misc/json1.c
   ext/expert/sqlite3expert.c
@@ -85,6 +93,7 @@ add_library(sqlite
   src/treeview.c
   src/trigger.c
   src/update.c
+  src/upsert.c
   src/utf.c
   src/upsert.c
   src/util.c
@@ -177,4 +186,4 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}
 )
-add_dependencies(sqlite mem protobuf)
+add_dependencies(sqlite mem protobuf bdb)

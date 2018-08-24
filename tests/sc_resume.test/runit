@@ -100,7 +100,7 @@ function get_sc_seed
         failexit "sending stat to new master $master"
     fi
 
-    scseed=`grep "Schema change in progress with seed" stat1.out | awk '{print $7}'`
+    scseed=`grep "Schema change in progress" stat1.out | awk '{print $10}'`
     if [ "x$scseed" == "x" ] ; then
         failexit "scseed is empty"
     fi
@@ -363,7 +363,8 @@ if [ -n "$CLUSTER" ] ; then
     # Only valid for clustered: make sure that the current schema is the t1_1.csc2
     assert_schema t1 t1_1.csc2
 else 
-    assert_sc_status 0
+    #single node, not always valid that: assert_sc_status 0
+    echo "single node, do nothing"
 fi
 
 echo "wait for sc and insert commands above to return"

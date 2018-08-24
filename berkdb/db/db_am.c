@@ -33,7 +33,7 @@ static const char revid[] = "$Id: db_am.c,v 11.112 2003/09/13 19:23:42 bostic Ex
 
 static int __db_append_primary __P((DBC *, DBT *, DBT *));
 static int __db_secondary_get __P((DB *, DB_TXN *, DBT *, DBT *, u_int32_t));
-static int __db_secondary_close __P((DB *, DB_TXN *, u_int32_t));
+static int __db_secondary_close __P((DB *, u_int32_t));
 
 #ifdef DEBUG
 static int __db_cprint_item __P((DBC *));
@@ -974,9 +974,8 @@ __db_secondary_get(sdbp, txn, skey, data, flags)
  *	a primary that is updating.
  */
 static int
-__db_secondary_close(sdbp, txn, flags)
+__db_secondary_close(sdbp, flags)
 	DB *sdbp;
-	DB_TXN *txn;
 	u_int32_t flags;
 {
 	DB *primary;
@@ -1007,7 +1006,7 @@ __db_secondary_close(sdbp, txn, flags)
 	 * sdbp->close is this function;  call the real one explicitly if
 	 * need be.
 	 */
-	return (doclose ? __db_close(sdbp, txn, flags) : 0);
+	return (doclose ? __db_close(sdbp, NULL, flags) : 0);
 }
 
 /*

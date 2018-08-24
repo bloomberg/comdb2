@@ -616,51 +616,19 @@ void bdb_clear_logfile_pglogs_stat();
 void bdb_osql_trn_clients_status();
 void bdb_newsi_mempool_stat();
 
-void *handle_exit_thd(void *arg) 
+static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
+static void *clean_exit_thd(void *unused)
 {
-    logmsg(LOGMSG_WARN, "DB requested exit...\n");
-    static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&exiting_lock);
-    if( gbl_exit ) {
+    if (gbl_exit) {
         pthread_mutex_unlock(&exiting_lock);
         return NULL;
     }
     gbl_exit = 1;
     pthread_mutex_unlock(&exiting_lock);
 
-    struct dbenv *dbenv = arg;
-    int qid, alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
-
-    /* this defaults to 5 minutes */
-    alarm(alarmtime);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
-
-    if (bdb_is_an_unconnected_master(dbenv->dbs[0]->handle)) {
-        logmsg(LOGMSG_INFO, "This was standalone\n");
-        wait_for_sc_to_stop(); /* single node, need to stop SC */
-    }
-    else {
-        /* hand over masterness to a new candidate if we're the master. */
-        bdb_transfermaster(dbenv->dbs[0]->handle);
-    }
-
-    /* dont let any new requests come in.  we're going to go non-coherent
-       here in a second, so letting new reads in would be bad. */
-    no_new_requests(dbenv);
-
-    /* let the lower level start advertising high lsns to go non-coherent
-       - dont hang the master waiting for sync replication to an exiting
-       node. */
-    bdb_exiting(dbenv->dbs[0]->handle);
-
-    /* XXX this should probably have a timeout */
-    stop_threads(thedb);
-    allow_sc_to_run();
-
-    flush_db();
     clean_exit();
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
-
     return NULL;
 }
 
@@ -689,7 +657,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     }
 
     if (tokcmp(tok, ltok, "exit") == 0) {
-        logmsg(LOGMSG_USER, "requesting exit...\n");
+        logmsg(LOGMSG_USER, "requested exit...\n");
 
         pthread_t thread_id;
         pthread_attr_t thd_attr;
@@ -698,8 +666,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
-        int rc = pthread_create(&thread_id, &thd_attr, handle_exit_thd,
-                                (void *)dbenv);
+        int rc = pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
         if (rc != 0) {
             logmsgperror("create exit thread: pthread_create");
             exit(1);
@@ -728,7 +695,36 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         tokcpy0(tok, ltok, subnet, sizeof(subnet));
         logmsg(LOGMSG_INFO, "Killling subnet %s\n", subnet);
         kill_subnet(subnet);
-    } else if (tokcmp(tok, ltok, "fdbdebg") == 0) {
+    }
+    else if(tokcmp(tok,ltok, "netclipper")==0)
+    {
+        int flag;
+        char *subnet;
+        tok=segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+clipper_usage:
+            logmsg(LOGMSG_USER, "Usage: netclipper disable|enable subnet\n");
+            return -1;
+        }
+        if (tokcmp(tok, ltok, "disable")==0)
+        {
+            flag = 1;   
+        }
+        else if (tokcmp(tok, ltok, "enable")==0)
+        {
+            flag = 0;
+        }
+        else 
+            goto clipper_usage;
+
+        tok=segtok(line, lline, &st, &ltok);
+        if (ltok == 0) 
+            goto clipper_usage;
+        subnet = tokdup(tok, ltok);  
+        net_clipper(subnet, flag);
+        free(subnet);
+    }
+    else if (tokcmp(tok, ltok, "fdbdebg") == 0) {
         extern int gbl_fdb_track;
 
         int dbgflag;
@@ -1987,6 +1983,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                    dbenv->txns_committed, dbenv->txns_aborted, txns_applied,
                    n_retries, gbl_verify_tran_replays, rep_retry, max_retries);
 
+            extern int gbl_epoch_time;
+            extern int gbl_starttime;
+            logmsg(LOGMSG_USER, "uptime                  %ds\n",
+                   gbl_epoch_time - gbl_starttime);
             logmsg(LOGMSG_USER, "readonly                %c\n", gbl_readonly ? 'Y' : 'N');
             logmsg(LOGMSG_USER, "num sql queries         %u\n", gbl_nsql);
             logmsg(LOGMSG_USER, "num new sql queries     %u\n", gbl_nnewsql);
@@ -2230,29 +2230,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         if (rc != 0)
             return -1;
     } else if (tokcmp(tok, ltok, "bdbrem") == 0) {
-        int num;
-        char *host;
-        char *s;
-        const char *realhost;
-
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_USER, "Expected host name\n");
-            return -1;
-        }
-        host = tokdup(tok, ltok);
-
-        realhost = bdb_find_net_host(thedb->bdb_env, host);
-        if (realhost == NULL) {
-            logmsg(LOGMSG_ERROR, "WARNING: don't know about %s.\n", host);
-            free(host);
-            return -1;
-        }
-        free(host);
-
-        host = intern(realhost);
-        net_send_decom_all(thedb->handle_sibling, host);
-        osql_process_message_decom(host);
+        backend_cmd(dbenv, line, llinesav, stsav);
     } else if (tokcmp(tok, ltok, "electtime") == 0) {
         int num;
 

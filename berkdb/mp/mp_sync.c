@@ -238,9 +238,13 @@ mempsync_thd(void *p)
 			break;
 		}
 		/* latch the lsn */
+		pthread_mutex_unlock(&mempsync_lk);
+		BDB_READLOCK("mempsync_thd");
+		pthread_mutex_lock(&mempsync_lk);
 		lsn = mempsync_lsn;
 		sync_lsn = lsn;
 		pthread_mutex_unlock(&mempsync_lk);
+		BDB_RELLOCK();
 
 		/*
 		 * When we do parallel recovery, there are "commit" records
@@ -290,20 +294,20 @@ mempsync_thd(void *p)
 			/* For the reference:  sync_lsn is the lsn of the txn_ckp in the log,
 			 * as provided by mempsync_sync_out_of_band(); 
 			 * Not sure if it safe to sync beyond ckp->ckp_lsn all the way to ckp lsn though */
-            rc = __log_flush_pp(dbenv, &sync_lsn);
+            BDB_READLOCK("mempsync_thd_ckp");
+            rc = __log_flush_pp(dbenv, NULL);
             if ((rc = __log_cursor(dbenv, &logc)) != 0)
                 goto err;
 
             memset(&data_dbt, 0, sizeof(data_dbt));
             data_dbt.flags = DB_DBT_REALLOC;
 
-            BDB_READLOCK("mempsync_thd_ckp");
             if ((rc = __log_c_get(logc, &sync_lsn, &data_dbt, DB_SET)) == 0) {
                 __txn_updateckp(dbenv, &sync_lsn);
                 __os_free(dbenv, data_dbt.data);
             }
-            BDB_RELLOCK();
             __log_c_close(logc);
+            BDB_RELLOCK();
 
 		} else {
 err:
@@ -1402,7 +1406,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 					pthread_mutex_unlock(&pt->lk);
 					
 					t_ret = thdpool_enqueue(trickle_thdpool,
-					    trickle_do_work, range, 0, NULL);
+					    trickle_do_work, range, 0, NULL, 0);
 					if (t_ret) {
 						pt->nwaits++;
 						poll(NULL, 0, 10);
@@ -1444,7 +1448,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 				pthread_mutex_unlock(&pt->lk);
 
 				t_ret = thdpool_enqueue(trickle_thdpool,
-				    trickle_do_work, range, 0, NULL);
+				    trickle_do_work, range, 0, NULL, 0);
 				if (t_ret) {
 					pt->nwaits++;
 					poll(NULL, 0, 10);

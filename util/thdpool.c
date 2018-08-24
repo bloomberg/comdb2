@@ -57,15 +57,6 @@ extern int gbl_throttle_sql_overload_dump_sec;
 extern int thdpool_alarm_on_queing(int len);
 extern int gbl_disable_exit_on_thread_error;
 
-struct workitem {
-    void *work;
-    thdpool_work_fn work_fn;
-    int queue_time_ms;
-    LINKC_T(struct workitem) linkv;
-    int available;
-    char *persistent_info;
-};
-
 struct thd {
     pthread_t tid;
     arch_tid archtid;
@@ -104,6 +95,7 @@ struct thdpool {
 
     thdpool_thdinit_fn init_fn;
     thdpool_thddelt_fn delt_fn;
+    thdpool_thddque_fn dque_fn;
 
     unsigned minnthd;   /* desired number of threads */
     unsigned maxnthd;   /* max threads - queue after this point */
@@ -276,6 +268,20 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     return pool;
 }
 
+void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn foreach_fn,
+                     void *user)
+{
+    LOCK(&pool->mutex)
+    {
+        struct workitem *item;
+        LISTC_FOR_EACH(&pool->queue, item, linkv)
+        {
+            (foreach_fn)(pool, item, user);
+        }
+    }
+    UNLOCK(&pool->mutex);
+}
+
 void thdpool_set_exit(struct thdpool *pool) { pool->exit_on_create_fail = 1; }
 
 void thdpool_set_linger(struct thdpool *pool, unsigned lingersecs)
@@ -337,6 +343,11 @@ void thdpool_set_init_fn(struct thdpool *pool, thdpool_thdinit_fn init_fn)
 void thdpool_set_delt_fn(struct thdpool *pool, thdpool_thddelt_fn delt_fn)
 {
     pool->delt_fn = delt_fn;
+}
+
+void thdpool_set_dque_fn(struct thdpool *pool, thdpool_thddque_fn dque_fn)
+{
+    pool->dque_fn = dque_fn;
 }
 
 void thdpool_set_wait(struct thdpool *pool, int wait) { pool->wait = wait; }
@@ -566,6 +577,8 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
             if (thd->pool->maxqueueagems > 0 &&
                 comdb2_time_epochms() - work->queue_time_ms >
                     thd->pool->maxqueueagems) {
+                if (thd->pool->dque_fn)
+                    thd->pool->dque_fn(thd->pool, next, 1);
                 if (next->persistent_info) {
                     free(next->persistent_info);
                     next->persistent_info = NULL;
@@ -576,13 +589,14 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
                 continue;
             }
 
+            if (thd->pool->dque_fn)
+                thd->pool->dque_fn(thd->pool, next, 0);
             memcpy(work, next, sizeof(*work));
             pool_relablk(thd->pool->pool, next);
             thd->pool->num_dequeued++;
             thd->work.persistent_info = next->persistent_info;
             return 1;
         }
-
         return 0;
     }
 }
@@ -734,9 +748,11 @@ thread_exit:
 }
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info)
+                    int queue_override, char *persistent_info, uint32_t flags)
 {
     static time_t last_dump = 0;
+    int enqueue_front = (flags & THDPOOL_ENQUEUE_FRONT);
+    int force_dispatch = (flags & THDPOOL_FORCE_DISPATCH);
     time_t crt_dump;
     size_t mem_sz;
     extern comdb2bma blobmem;
@@ -786,7 +802,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
      * work item to the new thread. */
     again:
         thd = listc_rtl(&pool->freelist);
-        if (!thd && (pool->maxnthd == 0 ||
+        if (!thd && (force_dispatch || pool->maxnthd == 0 ||
                      listc_size(&pool->thdlist) < pool->maxnthd)) {
             int rc;
 
@@ -856,10 +872,9 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             thd->on_freelist = 0;
             pool->num_passed++;
         } else {
-            /* queue work */
             if (listc_size(&pool->queue) >= pool->maxqueue) {
                 if (queue_override &&
-                    (!pool->maxqueueoverride ||
+                    (enqueue_front || !pool->maxqueueoverride ||
                      listc_size(&pool->queue) <
                          (pool->maxqueue + pool->maxqueueoverride))) {
                     if (thdpool_alarm_on_queing(listc_size(&pool->queue))) {
@@ -934,7 +949,10 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                 return -1;
             }
             pool->num_enqueued++;
-            listc_abl(&pool->queue, item);
+            if (enqueue_front)
+                listc_atl(&pool->queue, item);
+            else
+                listc_abl(&pool->queue, item);
 
             if (listc_size(&pool->queue) > pool->peakqueue) {
                 pool->peakqueue = listc_size(&pool->queue);
@@ -1099,4 +1117,9 @@ int thdpool_unlock(struct thdpool *pool)
 struct thdpool *thdpool_next_pool(struct thdpool *pool)
 {
     return (pool) ? pool->lnk.next : 0;
+}
+
+int thdpool_get_queue_depth(struct thdpool *pool)
+{
+    return pool->queue.count;
 }

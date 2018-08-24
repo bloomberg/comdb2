@@ -54,6 +54,8 @@ if(WITH_TCL)
   find_package(Tcl REQUIRED)
 endif()
 
+option(COMDB2_LEGACY_DEFAULTS "Legacy defaults without lrl override" OFF)
+
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(prefix /opt/bb)
   if(DEFINED ENV{COMDB2_ROOT})
@@ -63,8 +65,13 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX ${prefix} CACHE PATH ${helpstring} FORCE)
 endif()
 
+if(NOT DEFINED COMDB2_ROOT)
+    set(COMDB2_ROOT ${CMAKE_INSTALL_PREFIX})
+endif()
+set(COMDB2_ROOT ${COMDB2_ROOT} CACHE PATH "Directory for runtime files" FORCE)
+
 add_definitions(
-  -DCOMDB2_ROOT=${CMAKE_INSTALL_PREFIX}
+  -DCOMDB2_ROOT=${COMDB2_ROOT}
   -DCOMDB2_VERSION="2"
   -D_FILE_OFFSET_BITS=64
 )
@@ -99,13 +106,12 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   add_definitions(-D_DARWIN_C_SOURCE -D_XOPEN_SOURCE=600)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL AIX)
   add_definitions(-D_IBM_SOURCE)
-  #-qxflag=dircache:71,256 ??  #-bmaxdata:0xb0000000/dsa ??
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -qlanglvl=extc99 -qcpluscmt -qtls -qdfp -Wl,-bmaxdata:0xb0000000/dsa")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -qcpluscmt -qtls -qdfp -qchars=signed -Wl,-bmaxdata:0xb0000000/dsa")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lthread -lpthread")
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL SunOS)
   add_definitions(-D_SUN_SOURCE -D_POSIX_PTHREAD_SEMANTICS)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -errfmt=error -mt=yes -fma=fused -xmemalign=8i -xc99=all")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -errfmt=error -mt=yes -fma=fused -xmemalign=8i")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lsocket -lnsl -lresolv -lpthread")
 endif()
@@ -132,7 +138,7 @@ if(WITH_TCL)
   add_subdirectory(tcl)
 endif()
 add_subdirectory(tools)
-add_subdirectory(plugin)
+add_subdirectory(plugins)
 add_subdirectory(db)
 add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
 

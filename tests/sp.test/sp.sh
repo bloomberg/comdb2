@@ -724,6 +724,8 @@ create procedure audit version 'sptest' {$(cat audit.lua)}\$\$
 put default procedure audit 'sptest' 
 create procedure cons version 'sptest' {$(cat cons.lua)}\$\$
 put default procedure cons 'sptest'
+create procedure cons_with_tid version 'sptest' {$(cat cons_with_tid.lua)}\$\$
+put default procedure cons_with_tid 'sptest'
 create lua trigger audit on (table foraudit for insert and update and delete)
 create lua consumer cons on (table foraudit for insert and update and delete)
 EOF

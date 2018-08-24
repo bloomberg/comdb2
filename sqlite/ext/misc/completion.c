@@ -308,9 +308,10 @@ static int completionNext(sqlite3_vtab_cursor *cur){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       case COMPLETION_FUNCTIONS: {
         static char *cfuncs[] = {
-          "comdb2_version()",       "table_version()", "partition_info()",
-          "comdb2_host()",          "comdb2_port()",   "comdb2_dbname()",
-          "comdb2_prevquerycost()", "sys.cmd.send()"
+          "comdb2_version()",        "table_version()",    "partition_info()",
+          "comdb2_host()",           "comdb2_port()",      "comdb2_dbname()",
+          "comdb2_prevquerycost()",  "sys.cmd.send()",     "partition_info()",
+          "comdb2_uptime()",         "comdb2_starttime()"
         };
         static int j = 0;
         if( pCur->j >= sizeof(cfuncs)/sizeof(char*)) {

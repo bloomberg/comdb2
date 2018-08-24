@@ -86,22 +86,26 @@ fi
 if [[ $debug -eq 1 ]]; then
     set +x
     export PATH="$paths:${PATH}"
+    SETENV="${PWD}/setenv.sh "
     RUNTEST="${PWD}/runtest.sh "
     echo "Once db is ready, please run: $RUNTEST"
     echo "#!/usr/bin/env bash" > $RUNTEST
+    echo "#!/usr/bin/env bash" > $SETENV
     #echo "set +x"  >> $RUNTEST
     for env in $vars; do
-        echo "export $env=\"${!env}\"" >> $RUNTEST
+        echo "export $env=\"${!env}\"" >> $SETENV
     done
-    echo "export PATH=${paths}"':${PATH}' >> $RUNTEST
-    [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $RUNTEST
-    [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $RUNTEST
+    echo "export PATH=${paths}"':${PATH}' >> $SETENV
+    [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $SETENV
+    [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $SETENV
+    echo ". $SETENV" >> $RUNTEST
     echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/" >> $RUNTEST
     echo "./runit ${DBNAME} \$1 " >> $RUNTEST
     echo "echo; echo; echo;" >> $RUNTEST
     echo "${TESTSROOTDIR}/unsetup" >> $RUNTEST
     echo
     echo
+    chmod +x $SETENV
     chmod +x $RUNTEST
 fi
 
@@ -180,6 +184,7 @@ for csc2 in $(ls *.csc2 2>/dev/null); do
 done >> ${LRL}
 
 mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
+cd $DBDIR >/dev/null
 
 PARAMS="$DBNAME --no-global-lrl"
 
@@ -238,7 +243,6 @@ check_db_port_running_node() {
 #fi
 
 # start it
-cd $DBDIR >/dev/null
 if [[ -z "$CLUSTER" ]]; then
 
     if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
@@ -280,13 +284,19 @@ else
 
     i=0
     declare -a pids
-    for node in ${CLUSTER/$HOSTNAME/}; do
-        cat $ARFILE | ssh $SSH_OPT $node "$COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $TESTDIR/logs/${DBNAME}.${node}.copy &
+    for node in ${CLUSTER}; do
+        if [ $node == $HOSTNAME ] ; then
+            continue
+        fi
+        cat $ARFILE | ssh $SSH_OPT $node "cd ${DBDIR}; $COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $TESTDIR/logs/${DBNAME}.${node}.copy &
         pids[$i]=$!
         let i=i+1
     done
     i=0
-    for node in ${CLUSTER/$HOSTNAME/}; do
+    for node in ${CLUSTER}; do
+        if [ $node == $HOSTNAME ] ; then
+            continue
+        fi
         wait ${pids[$i]}
         if [[ $? -ne 0 ]]; then
             echo "FAILED: copying ${LRL} ${node}: see $TESTDIR/logs/${DBNAME}.${node}.copy"

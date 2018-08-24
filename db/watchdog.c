@@ -93,7 +93,7 @@ static pthread_t gbl_watchdog_kill_tid;
 static pthread_mutex_t gbl_watchdog_kill_mutex;
 
 static int gbl_nowatch = 1; /* start off disabled */
-static int gbl_watchdog_time;
+static int gbl_watchdog_time; /* last timestamp when things were ok */
 
 static pthread_attr_t gbl_pthread_joinable_attr;
 
@@ -138,7 +138,7 @@ void watchdog_cancel_alarm(void)
     pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
 }
 
-int gbl_epoch_time;
+int gbl_epoch_time; /* db has been up gbl_epoch_time - gbl_starttime seconds */
 
 static void *watchdog_thread(void *arg)
 {
@@ -169,16 +169,13 @@ static void *watchdog_thread(void *arg)
     pthread_attr_setdetachstate(&gbl_pthread_joinable_attr,
                                 PTHREAD_CREATE_JOINABLE);
 
-    while (!gbl_ready) {
-        sleep(10);
-    }
-
-    while (!thedb->exiting) {
+    while (!gbl_ready)
         sleep(1);
 
-        gbl_epoch_time = comdb2_time_epoch();
+    while (!thedb->exiting) {
+        gbl_epoch_time = comdb2_time_epoch(); /* updated every second */
 
-        if (!gbl_nowatch && !thedb->exiting) {
+        if (!gbl_nowatch) {
             int stop_thds_time;
 
             its_bad = 0;
@@ -367,6 +364,10 @@ static void *watchdog_thread(void *arg)
            tasks,
            like deadlock detector */
         counter++;
+
+        /* please don't change the amount of sleep here (1 second)
+           because we rely on gbl_epoch_time to be updated every second */
+        sleep(1);
     }
     return NULL;
 }

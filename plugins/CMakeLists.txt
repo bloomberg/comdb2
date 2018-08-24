@@ -1,4 +1,4 @@
-# Include all the sub-directories under ${PROJECT_SOURCE_DIR}/plugin.
+# Include all the sub-directories under ${PROJECT_SOURCE_DIR}/plugins.
 
 # -DCOMDB2_PLUGIN_TYPE=(preferred|static|dynamic)
 # preferred : Use the type specified in plugins's CMakeLists.txt
@@ -9,23 +9,24 @@ set(COMDB2_PLUGIN_TYPE "preferred" CACHE STRING
   "Plugin type (preferred, static, dynamic)")
 
 # Base directory for all plugin sources.
-set(PLUGIN_BASE_DIR "${PROJECT_SOURCE_DIR}/plugin")
+set(PLUGIN_BASE_DIR "${PROJECT_SOURCE_DIR}/plugins")
 
 # Clear the list of static plugin libraries from cache.
 unset(PLUGIN_LIBRARIES CACHE)
 
-# List all plugin directories
-file(GLOB files RELATIVE ${PLUGIN_BASE_DIR} ${PLUGIN_BASE_DIR}/*)
+add_subdirectory(logdelete)
+add_subdirectory(newsql)
+add_subdirectory(remsql)
+add_subdirectory(repopnewlrl)
 
-foreach(file ${files})
-  if(IS_DIRECTORY ${PLUGIN_BASE_DIR}/${file})
-    add_subdirectory(${file})
-  endif()
-endforeach()
+set(COMDB2_EXTRA_PLUGINS ${EXTRA_PLUGINS} CACHE PATH "Path to additional plugins")
+if (COMDB2_EXTRA_PLUGINS)
+  include(${COMDB2_EXTRA_PLUGINS}/CMakeLists.txt)
+endif()
 
 # Generate the all_static plugins.h header file. It contains the necessary
 # code to list & install all the statically linked plugins.
-set(PLUGIN_INCLUDE_FILE "${PROJECT_BINARY_DIR}/plugin/all_static_plugins.h")
+set(PLUGIN_INCLUDE_FILE "${PROJECT_BINARY_DIR}/plugins/all_static_plugins.h")
 
 file(WRITE ${PLUGIN_INCLUDE_FILE}
   "/* WARNING: auto-generated file, do not edit. */\n"
