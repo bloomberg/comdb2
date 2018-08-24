@@ -72,7 +72,15 @@ function get_current_lsn
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_current_lsn"
-    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1"
+    typeset tries=10
+    r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1")
+    while [[ -z "$r" ]]; do
+        let tries=tries-1
+        [[ "$tries" == "0" ]] && failexit $func "Failed to query lsn"
+        sleep 1
+        r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1")
+    done
+    echo "$r"
 }
 
 function insert_record
@@ -82,7 +90,6 @@ function insert_record
     typeset tbl=$1
     $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "insert into $tbl values(1)" >/dev/null
 }
-
 
 function bulk_insert_records
 {
@@ -487,7 +494,6 @@ function select_all_int
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t3" 2>/dev/null
 }
 
-
 function assert_select_all_rep
 {
     [[ $debug == "1" ]] && set -x
@@ -546,7 +552,7 @@ function assert_count
     fi
 }
 
-# Get begin-lsn and master
+write_prompt main "Getting current lsn and master"
 begin_lsn=$(get_current_lsn)
 master=$(get_master)
 
@@ -1320,5 +1326,6 @@ setup
 run_tests
 tear_down
 
-# Not tested or supported (yet):
+# Not tested or supported:
 # queues
+# bulkimport
