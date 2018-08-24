@@ -539,8 +539,13 @@ void sqlite3Update(
       if( eOnePass==ONEPASS_MULTI && (nIdx-(aiCurOnePass[1]>=0))>0 ){
         addrOnce = sqlite3VdbeAddOp0(v, OP_Once); VdbeCoverage(v);
       }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, iBaseCur,
+                                 aToOpen, 0, 0, 0);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, iBaseCur,
                                  aToOpen, 0, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( addrOnce ) sqlite3VdbeJumpHere(v, addrOnce);
     }
   
