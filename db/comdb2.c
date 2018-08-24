@@ -5620,6 +5620,12 @@ retry_tran:
         abort();
     }
 
+    if (llmeta_load_timepart(thedb)) {
+        logmsg(LOGMSG_ERROR, "could not load time partitions\n");
+        pthread_rwlock_unlock(&schema_lk);
+        return -1;
+    }
+
     if ((rc = bdb_get_rowlocks_state(&rlstate, tran, &bdberr)) != 0) {
         logmsg(LOGMSG_ERROR, "Get rowlocks llmeta failed, rc=%d bdberr=%d\n",
                 rc, bdberr);
@@ -5630,7 +5636,6 @@ retry_tran:
         case LLMETA_ROWLOCKS_ENABLED:
         case LLMETA_ROWLOCKS_ENABLED_MASTER_ONLY:
             gbl_rowlocks = 1;
-            gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
             gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
         case LLMETA_ROWLOCKS_DISABLED:
             gbl_rowlocks = 0;
@@ -5641,14 +5646,6 @@ retry_tran:
 
     bdb_get_genid_format(&format, &bdberr);
     bdb_genid_set_format(thedb->bdb_env, format);
-
-    /*
-    if (llmeta_load_queues(thedb)) {
-        logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
-                "table\n");
-        abort();
-    }
-    */
 
     if (reload_lua_sfuncs()) {
         logmsg(LOGMSG_FATAL, "could not load lua funcs from llmeta\n");

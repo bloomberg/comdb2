@@ -217,6 +217,42 @@ function verify_rowlocks
     fi
 }
 
+function get_partition_start_time
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="get_partition_start_time"
+    perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+60)'
+}
+
+function get_time_partitions_rep
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="get_time_partitions_rep"
+    $CDB2SQL_EXE -tabs $repname --host localhost "exec procedure sys.cmd.send('partitions')"
+}
+
+function get_time_partitions
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="get_time_partitions"
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send('partitions')"
+}
+
+function assert_time_partitions
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="assert_time_partitions"
+    typeset prev_tp="$1"
+    write_prompt $func "Assert 'partitions' is the same"
+    typeset curr_tp=$(get_time_partitions)
+    [[ "$prev_tp" != "$curr_tp" ]] && failext $func "time-partitions have changed"
+    if [[ "$physrep" == 1 ]]; then
+        sleep $repsleep
+        typeset rep=$(get_time_partitions_rep)
+        [[ "$prev_tp" != "$rep" ]] && failexit $func "time-partitions changed in rep"
+    fi
+}
+
 function get_genid_format_rep
 {
     [[ $debug == "1" ]] && set -x
@@ -794,7 +830,7 @@ function alter_table_options
     assert_count t2 1
     assert_count t3 1
 
-    write_prompt $func "Truncating to before table creates"
+    write_prompt $func "Truncating to before table create"
     truncate_log "$begin_lsn"
     assert_notable t1
     assert_notable t2
@@ -1181,6 +1217,66 @@ function rowlocks
     assert_notable t3
 }
 
+function time_partitions
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="time_partitions"
+    write_prompt $func "Creating t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)" >/dev/null
+    time_partitions_lsn_1=$(get_current_lsn)
+    time_partitions_all_1=$(select_all)
+    time_partitions_par_1=$(get_time_partitions)
+
+    write_prompt $func "Make t1 a time-partitioned table"
+    starttime=$(get_partition_start_time)
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create time partition on t1 as testpartition period 'test2min' retention 2 start '$starttime'"
+    time_partitions_lsn_2=$(get_current_lsn)
+    time_partitions_all_2=$(select_all)
+    time_partitions_par_2=$(get_time_partitions)
+
+    write_prompt $func "Insert 1000 records"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into testpartition select * from generate_series(1, 1000)"
+    time_partitions_lsn_3=$(get_current_lsn)
+    time_partitions_all_3=$(select_all)
+    time_partitions_par_3=$(get_time_partitions)
+
+    write_prompt $func "Schema-change testpartition"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table testpartition add b blob"
+    time_partitions_lsn_4=$(get_current_lsn)
+    time_partitions_all_4=$(select_all)
+    time_partitions_par_4=$(get_time_partitions)
+
+    write_prompt $func "Inserting into new schema"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into testpartition select * from generate_series(1, 1000)" >/dev/null
+
+    write_prompt $func "Truncating to after schema-change"
+    truncate_log "$time_partitions_lsn_4"
+    assert_select_all "$time_partitions_all_4"
+    assert_time_partitions "$time_partitions_par_4"
+
+    write_prompt $func "Truncating to before schema-change"
+    truncate_log "$time_partitions_lsn_3"
+    assert_select_all "$time_partitions_all_3"
+    assert_time_partitions "$time_partitions_par_3"
+
+    write_prompt $func "Truncating to before insert"
+    truncate_log "$time_partitions_lsn_2"
+    assert_select_all "$time_partitions_all_2"
+    assert_time_partitions "$time_partitions_par_2"
+
+    write_prompt $func "Truncating to before partition"
+    truncate_log "$time_partitions_lsn_1"
+    assert_select_all "$time_partitions_all_1"
+    assert_time_partitions "$time_partitions_par_1"
+
+    write_prompt $func "Truncating to before table create"
+    truncate_log "$begin_lsn"
+    assert_notable t1
+    assert_notable t2
+    assert_notable t3
+}
+
 function setup
 {
     [[ $debug == "1" ]] && set -x
@@ -1217,6 +1313,7 @@ function run_tests
     morestripe
     genid48
     rowlocks
+    time_partitions
 }
 
 setup
@@ -1224,5 +1321,4 @@ run_tests
 tear_down
 
 # Not tested or supported (yet):
-# time-partitions
 # queues
