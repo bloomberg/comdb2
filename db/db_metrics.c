@@ -74,6 +74,9 @@ struct comdb2_metrics_store {
     int64_t sql_queue_timeouts;
     double handle_buf_queue_time;
     int64_t denied_appsock_connections;
+    int64_t minimum_truncation_file;
+    int64_t minimum_truncation_offset;
+    int64_t minimum_truncation_timestamp;
 };
 
 static struct comdb2_metrics_store stats;
@@ -189,6 +192,15 @@ comdb2_metric gbl_metrics[] = {
     {"denied_appsocks", "Number of denied appsock connections",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.denied_appsock_connections, NULL},
+    {"minimum_truncation_file", "Minimum truncation file",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.minimum_truncation_file, NULL},
+    {"minimum_truncation_offset", "Minimum truncation offset",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.minimum_truncation_offset, NULL},
+    {"minimum_truncation_timestamp", "Minimum truncation timestamp",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.minimum_truncation_timestamp, NULL}
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -238,6 +250,8 @@ int refresh_metrics(void)
     int rc;
     const struct bdb_thread_stats *pstats;
     extern int active_appsock_conns;
+    int min_file, min_offset;
+    int32_t min_timestamp;
     int bdberr;
 
     /* Check whether the server is exiting. */
@@ -347,6 +361,10 @@ int refresh_metrics(void)
                       &stats.maxactive_transactions, &stats.total_commits,
                       &stats.total_aborts);
     stats.denied_appsock_connections = gbl_denied_appsock_connection_count;
+    bdb_min_truncate(thedb->bdb_env, &min_file, &min_offset, &min_timestamp);
+    stats.minimum_truncation_file = min_file;
+    stats.minimum_truncation_offset = min_offset;
+    stats.minimum_truncation_timestamp = min_timestamp;
     return 0;
 }
 
