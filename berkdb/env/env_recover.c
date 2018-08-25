@@ -293,11 +293,13 @@ __db_find_recovery_start_if_enabled(dbenv, outlsn)
 
 /* Walk forward in the log until the first debug record */
 static int
-__db_find_earliest_recover_point(dbenv, outlsn)
+__db_find_earliest_recover_point_after_file(dbenv, outlsn, file)
 	DB_ENV *dbenv;
 	DB_LSN *outlsn;
+    int file;
 {
 	int ret = 0;
+    int flags = DB_FIRST;
 	DB_LOGC *logc = NULL;
 	u_int32_t type;
 	DB_LSN lsn, start_lsn = {0};
@@ -309,10 +311,17 @@ __db_find_earliest_recover_point(dbenv, outlsn)
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
 		goto err;
 
-	for (ret = __log_c_get(logc, &lsn, &rec, DB_FIRST);
+    if (file > 0) {
+        lsn.file = file;
+        lsn.offset = 28;
+        if (0 == __log_c_get(logc, &lsn, &rec, DB_SET))
+            flags = DB_SET;
+    }
+
+	for (ret = __log_c_get(logc, &lsn, &rec, flags);
 			ret == 0; ret = __log_c_get(logc, &lsn, &rec, DB_NEXT)) {
 		LOGCOPY_32(&type, rec.data);
-		if (type == DB___db_debug) {
+		if (type == DB___db_debug && lsn.file >= file) {
 			int optype = 0;
 			if((ret = __db_debug_read(dbenv, rec.data, &debug_args)) != 0)
 				goto err;
@@ -511,6 +520,75 @@ __db_find_recovery_start(dbenv, outlsn)
 	return __db_find_recovery_start_int(dbenv, outlsn, NULL);
 }
 
+int
+__dbenv_min_truncate_lsn_timestamp(dbenv, lowfile, outlsn, outtime)
+	DB_ENV *dbenv;
+    int lowfile;
+	DB_LSN *outlsn;
+    int32_t *outtime;
+{
+    DB_LSN earliest_dbreg, lsn, prev_lsn = {0};
+    DB_LOGC *logc = NULL;
+	DBT data = {0};
+    int32_t prev_time;
+	__txn_ckp_args *ckp_args = NULL;
+    int ret, found_checkpoint = 0;
+
+    if ((ret = __db_find_earliest_recover_point_after_file(dbenv,
+                    &earliest_dbreg, lowfile)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s couldn't find earliest recover-point\n",
+                __func__);
+        goto done;
+    }
+
+	if ((ret = __txn_getckp(dbenv, &lsn)) != 0)
+        goto done;
+
+	if (IS_ZERO_LSN(lsn))
+		logmsg(LOGMSG_WARN, "last_ckp lsn is 0:0\n");
+
+	if ((ret = __log_cursor(dbenv, &logc)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s couldn't get a log-cursor\n",
+                __func__);
+        goto done;
+    }
+
+	while (found_checkpoint == 0 && (ret = 
+                __log_c_get(logc, &lsn, &data, DB_SET)) == 0) {
+		if ((ret = __txn_ckp_read(dbenv, data.data, &ckp_args)) != 0) {
+            ckp_args = NULL;
+            goto done;
+        }
+		if (log_compare(&earliest_dbreg, &ckp_args->ckp_lsn) > 0) {
+            if (prev_lsn.file == 0) {
+                logmsg(LOGMSG_ERROR, "%s can't find earliest recovery point\n",
+                        __func__);
+                goto done;
+            }
+			__os_free(dbenv, ckp_args);
+            ckp_args = NULL;
+			*outlsn = prev_lsn;
+            *outtime = prev_time;
+            found_checkpoint = 1;
+		} else {
+            prev_lsn = lsn;
+            prev_time = ckp_args->timestamp;
+            lsn = ckp_args->last_ckp;
+            if (IS_ZERO_LSN(lsn))
+                break;
+            __os_free(dbenv, ckp_args);
+            ckp_args = NULL;
+        }
+	}
+
+done:
+	if (ckp_args != NULL)
+		__os_free(dbenv, ckp_args);
+    if (logc != NULL)
+        __log_c_close(logc);
+    return (ret != 0) ? ret : !found_checkpoint;
+}
+
 int __rep_check_applied_lsns(DB_ENV * dbenv, LSN_COLLECTION * lc,
     int inrecovery);
 
@@ -616,6 +694,8 @@ void log_recovery_progress(int stage, int progress)
 		logmsg(LOGMSG_WARN, " %d%%", progress);
 	}
 }
+
+
 
 
 /*
@@ -946,7 +1026,8 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		if (!IS_ZERO_LSN(dbenv->recovery_start_lsn)) {
 			first_lsn = dbenv->recovery_start_lsn;
 		} else if (start_recovery_at_dbregs) {
-			ret = __db_find_earliest_recover_point(dbenv, &first_lsn);
+			ret = __db_find_earliest_recover_point_after_file(dbenv,
+                    &first_lsn, 0);
 			if (ret) {
 				__db_err(dbenv,
 						"__db_find_recovery_start_int rc %d\n", ret);
