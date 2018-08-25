@@ -329,8 +329,6 @@ __db_find_earliest_recover_point_after_file(dbenv, outlsn, file)
 			__os_free(dbenv, debug_args);
 			if (optype == 2) {
 				start_lsn = lsn;
-				fprintf(stderr, "%s: fullrecovery starting at lsn %u:%u\n", 
-						__func__, lsn.file, lsn.offset);
 				break;
 			}
 		}

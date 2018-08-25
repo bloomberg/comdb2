@@ -106,7 +106,6 @@ function bulk_insert_records
         else
             amt=$chunk
         fi
-
         $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "insert into $tbl select * from generate_series(1, $amt)" >/dev/null
         let cnt=$(( cnt - amt ))
     done
@@ -116,14 +115,7 @@ function get_comdb2_columns
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_comdb2_columns"
-    typeset tries=$total_tries
     r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select * from comdb2_columns")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to get comdb2_columns"
-        sleep 1
-        r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select * from comdb2_columns")
-    done
     echo "$r"
 }
 
@@ -131,14 +123,7 @@ function get_comdb2_columns_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_comdb2_columns_rep"
-    typeset tries=$total_tries
     r=$($CDB2SQL_EXE --tabs $repname --host localhost "select * from comdb2_columns")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to get comdb2 columns from rep"
-        sleep 1
-    r=$($CDB2SQL_EXE --tabs $repname --host localhost "select * from comdb2_columns")
-    done
     echo "$r"
 }
 
@@ -152,9 +137,15 @@ function assert_comdb2_columns
     [[ "$prev_cols" != "$curr_cols" ]] && failexit $func "comdb2_columns changed"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
+        typeset tries=$total_tries
         typeset phys_cols=$(get_comdb2_columns_rep)
         write_prompt $func "Assert comdb2_columns on phys-rep is the same"
-        [[ "$prev_cols" != "$phys_cols" ]] && failexit $func "phys-rep comdb2_columns changed"
+        while [[ "$phys_cols" != "$prev_cols" ]]; do
+            let tries=tries-1
+            [[ "$tries" == "0" ]] && failexit $func "phys-rep comdb2_columns changed"
+            sleep 1
+            phys_cols=$(get_comdb2_columns_rep)
+        done
     fi
 }
 
@@ -189,14 +180,7 @@ function get_dtastripe
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_dtastripe"
-    typeset tries=$total_tries
     r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_tunables where name='dtastripe'")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to get dtastripe"
-        sleep 1
-        r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_tunables where name='dtastripe'")
-    done
     echo "$r"
 }
 
@@ -204,14 +188,7 @@ function get_dtastripe_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_dtastripe_rep"
-    typeset tries=$total_tries
     r=$($CDB2SQL_EXE -tabs $repname --host localhost "select value from comdb2_tunables where name='dtastripe'")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to get dtastripe from rep"
-        sleep 1
-        r=$($CDB2SQL_EXE -tabs $repname --host localhost "select value from comdb2_tunables where name='dtastripe'")
-    done
     echo "$r"
 }
 
@@ -221,11 +198,17 @@ function assert_stripe
     typeset func="assert_stripe"
     write_prompt $func "Assert $1 stripes"
     typeset stp=$(get_dtastripe)
-    [[ "$1" == "$stp" ]] || failexit $func "was expecting $1 stripes but have $stp"
+    [[ "$1" != "$stp" ]] && failexit $func "was expecting $1 stripes but have $stp"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
+        typeset tries=$total_tries
         typeset rep=$(get_dtastripe_rep)
-        [[ "$1" == "$rep" ]] || failexit $func "was expecting phys-rep $1 stripe but have $rep"
+        while [[ "$1" != "$rep" ]] ; do 
+            let tries=tries-1
+            [[ "$tries" == 0 ]] && failexit $func "was expecting phys-rep $1 stripe but have $rep"
+            sleep 1
+            rep=$(get_dtastripe_rep)
+        done
     fi
 }
 
@@ -235,12 +218,6 @@ function get_rowlocks
     typeset func="get_rowlocks"
     typeset tries=$total_tries
     r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"stat\")" | egrep "rowlocks is")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to get rowlocks info"
-        sleep 1
-        r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"stat\")" | egrep "rowlocks is")
-    done
     echo "$r"
 }
 
@@ -249,12 +226,6 @@ function get_rowlocks_rep
     [[ $debug == "1" ]] && set -x
     typeset func="get_rowlocks_rep"
     r=$($CDB2SQL_EXE -tabs $repname --host localhost "exec procedure sys.cmd.send(\"stat\")" | egrep "rowlocks is")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to get rowlocks info"
-        sleep 1
-        r=$($CDB2SQL_EXE -tabs $repname --host localhost "exec procedure sys.cmd.send(\"stat\")" | egrep "rowlocks is")
-    done
     echo "$r"
 }
 
@@ -264,11 +235,17 @@ function verify_rowlocks
     typeset func="verify_rowlocks"
     typeset rlocks=$(get_rowlocks)
     write_prompt $func "Assert rowlocks is $1"
-    [[ "$1" == "$rlocks" ]] || failexit $func "expected rowlocks to be $1 not $rlocks"
+    [[ "$1" != "$rlocks" ]] && failexit $func "expected rowlocks to be $1 not $rlocks"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(get_rowlocks_rep)
-        [[ "$1" == "$rep" ]] || failexit $func "expected phys-rep rowlocks to have $1 stripes but have $rep"
+        typeset tries=$total_tries
+        while [[ "$1" != "$rep" ]]; do
+            let tries=tries-1
+            [[ "$tries" == 0 ]] && failexit $func "expected phys-rep rowlocks to have $1 stripes but have $rep"
+            sleep 1
+            rep=$(get_rowlocks_rep)
+        done
     fi
 }
 
@@ -283,14 +260,7 @@ function get_time_partitions_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_time_partitions_rep"
-    typeset tries=$total_tries
     r=$($CDB2SQL_EXE -tabs $repname --host localhost "exec procedure sys.cmd.send('partitions')")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to get time_partitions_rep"
-        sleep 1
-        r=$($CDB2SQL_EXE -tabs $repname --host localhost "exec procedure sys.cmd.send('partitions')")
-    done
     echo "$r"
 }
 
@@ -298,14 +268,7 @@ function get_time_partitions
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_time_partitions"
-    typeset tries=$total_tries
     r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send('partitions')")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to get time_partitions"
-        sleep 1
-        r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send('partitions')")
-    done
     echo "$r"
 }
 
@@ -316,11 +279,23 @@ function assert_time_partitions
     typeset prev_tp="$1"
     write_prompt $func "Assert 'partitions' is the same"
     typeset curr_tp=$(get_time_partitions)
-    [[ "$prev_tp" != "$curr_tp" ]] && failext $func "time-partitions have changed"
+    typeset tries=$total_tries
+    while [[ "$prev_tp" != "$curr_tp" ]] ; do
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "time-partitions have changed"
+        sleep 1
+        curr_tp=$(get_time_partitions)
+    done
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
+        typeset tries=$total_tries
         typeset rep=$(get_time_partitions_rep)
-        [[ "$prev_tp" != "$rep" ]] && failexit $func "time-partitions changed in rep"
+        while [[ "$prev_tp" != "$rep" ]] ; do
+            let tries=tries-1
+            [[ "$tries" == "0" ]] && failexit $func "time-partitions changed in rep"
+            sleep 1
+            rep=$(get_time_partitions_rep)
+        done
     fi
 }
 
@@ -328,14 +303,7 @@ function get_genid_format_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_genid_format_rep"
-    typeset tries=$total_tries
     r=$($CDB2SQL_EXE -tabs $repname --host localhost "exec procedure sys.cmd.send(\"bdb bdbstate\")" | egrep genid_format | egrep -v child)
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to get genid_format from replicant"
-        sleep 1
-        r=$($CDB2SQL_EXE -tabs $repname --host localhost "exec procedure sys.cmd.send(\"bdb bdbstate\")" | egrep genid_format | egrep -v child)
-    done
     echo "$r"
 }
 
@@ -343,14 +311,7 @@ function get_genid_format
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_genid_format"
-    typeset tries=$total_tries
     r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"bdb bdbstate\")" | egrep genid_format | egrep -v child)
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to get genid_format"
-        sleep 1
-        r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"bdb bdbstate\")" | egrep genid_format | egrep -v child)
-    done
     echo "$r"
 }
 
@@ -359,11 +320,17 @@ function assert_genid_format
     [[ $debug == "1" ]] && set -x
     typeset func="assert_genid_format"
     typeset fmt=$(get_genid_format)
-    [[ "$1" == "$fmt" ]] || failexit $func "was expecting $1 genid_fmt is $fmt"
+    [[ "$1" != "$fmt" ]] && failexit $func "was expecting $1 genid_fmt is $fmt"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
+        typeset tries=$total_tries
         typeset rep=$(get_genid_format_rep)
-        [[ "$1" == "$rep" ]] || failexit $func "was expecting phys-rep genid_fmt $1 genid_fmt is $fmt"
+        while [[ "$1" != "$rep" ]] ; do 
+            let tries=tries-1
+            [[ "$tries" == "0" ]] && failexit $func "was expecting phys-rep genid_fmt $1 genid_fmt is $fmt"
+            sleep 1
+            rep=$(get_genid_format_rep)
+        done
     fi
 }
 
@@ -374,11 +341,19 @@ function assert_notable
     typeset tbl=$1
     write_prompt $func "Assert $tbl does not exist"
     chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl" 2>/dev/null)
-    [[ $? != 0 ]] || failexit $func "table $tbl still exists"
+    [[ $? == 0 ]] && failexit $func "table $tbl still exists"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
-        [[ $? != 0 ]] || failexit $func "table $tbl in rep still exists"
+        r=$?
+        typeset tries=$total_tries
+        while [[ $r == 0 ]]; do
+            let tries=tries-1
+            [[ "$tries" == 0 ]] && failexit $func "table $tbl in rep still exists"
+            sleep 1
+            rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
+            r=$?
+        done
     fi
 }
 
@@ -386,14 +361,7 @@ function stat_compr_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="stat_compr_rep"
-    typeset tries=$total_tries
     r=$($CDB2SQL_EXE -tabs $repname --host localhost "exec procedure sys.cmd.send('stat compr')")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to get stat_compr from rep"
-        sleep 1
-        r=$($CDB2SQL_EXE -tabs $repname --host localhost "exec procedure sys.cmd.send('stat compr')")
-    done
     echo "$r"
 }
 
@@ -401,14 +369,7 @@ function stat_compr
 {
     [[ $debug == "1" ]] && set -x
     typeset func="stat_compr"
-    typeset tries=$total_tries
     r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send('stat compr')")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to get stat_compr"
-        sleep 1
-        r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send('stat compr')")
-    done
     echo "$r"
 }
 
@@ -423,7 +384,13 @@ function assert_stat_compr
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         rep=$(stat_compr_rep)
-        [[ "$prev_sc" != "$rep" ]] && failexit $func "stat compr changed in rep"
+        typeset tries=$total_tries
+        while [[ "$prev_sc" != "$rep" ]] ; do 
+            let tries=tries-1
+            [[ "$tries" == 0 ]] && failexit $func "stat compr changed in rep"
+            sleep 1
+            rep=$(stat_compr_rep)
+        done
     fi
 }
 
@@ -431,14 +398,7 @@ function select_json_extract_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="select_json_extract_rep"
-    typeset tries=$total_tries
     r=$($CDB2SQL_EXE $repname --host localhost "select json_extract(str, 'i') as i from strings" 2>/dev/null)
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to select json_extrace"
-        sleep 1
-        r=$($CDB2SQL_EXE $repname --host localhost "select json_extract(str, 'i') as i from strings" 2>/dev/null)
-    done
     echo "$r"
 }
 
@@ -446,14 +406,7 @@ function select_json_extract
 {
     [[ $debug == "1" ]] && set -x
     typeset func="select_json_extract"
-    typeset tries=$total_tries
     r=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select json_extract(str, 'i') as i from strings" 2>/dev/null)
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to select json_extrace"
-        sleep 1
-        r=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select json_extract(str, 'i') as i from strings" 2>/dev/null)
-    done
     echo "$r"
 }
 
@@ -468,7 +421,13 @@ function assert_select_json_extract
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(select_json_extract_rep)
-        [[ "$prev_sp" != "$rep" ]] && failexit $func "select_json_extract in rep changed"
+        typeset tries=$total_tries
+        while [[ "$prev_sp" != "$rep" ]] ; do 
+            let tries=tries-1
+            [[ "$tries" == 0 ]] && failexit $func "select_json_extract in rep changed"
+            sleep 1
+            rep=$(select_json_extract_rep)
+        done
     fi
 }
 
@@ -478,12 +437,6 @@ function select_myavg_rep
     typeset func="select_myavg_rep"
     typeset tries=$total_tries
     r=$($CDB2SQL_EXE $repname --host localhost "select myavg(i) from nums" 2>/dev/null)
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to select myavg_rep"
-        sleep 1
-        r=$($CDB2SQL_EXE $repname --host localhost "select myavg(i) from nums" 2>/dev/null)
-    done
     echo "$r"
 }
 
@@ -493,12 +446,6 @@ function select_myavg
     typeset func="select_myavg"
     typeset tries=$total_tries
     r=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select myavg(i) from nums" 2>/dev/null)
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to select myavg"
-        sleep 1
-        r=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select myavg(i) from nums" 2>/dev/null)
-    done
     echo "$r"
 }
 
@@ -511,9 +458,15 @@ function assert_select_myavg
     typeset curr_sp=$(select_myavg)
     [[ "$prev_sp" != "$curr_sp" ]] && failexit $func "select_myavg changed"
     if [[ "$physrep" == 1 ]]; then
+        typeset tries=$total_tries
         sleep $repsleep
         typeset rep=$(select_myavg_rep)
-        [[ "$prev_sp" != "$rep" ]] && failexit $func "select_sp in rep changed"
+        while [[ "$prev_sp" != "$rep" ]] ; do 
+            let tries=tries-1
+            [[ "$tries" == "0" ]] && failexit $func "select_myavg in rep changed"
+            sleep 1
+            rep=$(select_myavg_rep)
+        done
     fi
 }
 
@@ -523,12 +476,6 @@ function select_sp_rep
     typeset func="select_sp_rep"
     typeset tries=$total_tries
     r=$($CDB2SQL_EXE $repname --host localhost "select * from comdb2_procedures")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to select procedures from rep"
-        sleep 1
-        r=$($CDB2SQL_EXE $repname --host localhost "select * from comdb2_procedures")
-    done
     echo "$r"
 }
 
@@ -536,13 +483,8 @@ function select_sp
 {
     [[ $debug == "1" ]] && set -x
     typeset func="select_sp"
+    typeset tries=$total_tries
     r=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from comdb2_procedures")
-    while [[ $? -ne 0 ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to select procedures"
-        sleep 1
-        r=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from comdb2_procedures")
-    done
     echo "$r"
 }
 
@@ -551,13 +493,20 @@ function assert_select_sp
     [[ $debug == "1" ]] && set -x
     typeset func="assert_select_sp"
     typeset prev_sp="$1"
+    typeset rep=$(select_sp_rep)
+    typeset tries=$total_tries
     write_prompt $func "Assert select_sp is the same"
     typeset curr_sp=$(select_sp)
-    [[ "$prev_sp" != "$curr_sp" ]] && failexit $func "select_sp changed"
+    [[ "$prev_sp" != "$curr_sp" ]] && failexit $func "Failed to run select_sp from rep"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
-        typeset rep=$(select_sp_rep)
-        [[ "$prev_sp" != "$rep" ]] && failexit $func "select_sp in rep changed"
+        tries=$total_tries
+        rep=$(select_sp_rep)
+        while [[ "$rep" != "$prev_sp" ]]; do
+            let tries=tries-1
+            [[ "$tries" == "0" ]] && failexit $func "Failed to run select_t1 from rep"
+            rep=$(select_sp_rep)
+        done
     fi
 }
 
@@ -567,12 +516,6 @@ function select_t1_rep
     typeset func="select_t1_rep"
     typeset tries=$total_tries
     r=$($CDB2SQL_EXE $repname --host localhost "exec procedure select_t1()")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to run select_t1 from rep"
-        sleep 1
-        r=$($CDB2SQL_EXE $repname --host localhost "exec procedure select_t1()")
-    done
     echo "$r"
 }
 
@@ -582,12 +525,6 @@ function select_t1
     typeset func="select_t1"
     typeset tries=$total_tries
     r=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "exec procedure select_t1()")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to run select_t1 from rep"
-        sleep 1
-        r=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "exec procedure select_t1()")
-    done
     echo "$r"
 }
 
@@ -618,12 +555,6 @@ function return_number_rep
     typeset func="return_number_rep"
     typeset tries=$total_tries
     r=$($CDB2SQL_EXE $repname --host localhost "exec procedure return_number()")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to return_number on rep"
-        sleep 1
-        r=$($CDB2SQL_EXE $repname --host localhost "exec procedure return_number()")
-    done
     echo "$r"
 }
 
@@ -633,12 +564,6 @@ function return_number
     typeset func="return_number"
     typeset tries=$total_tries
     r=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "exec procedure return_number()")
-    while [[ -z "$r" ]]; do
-        let tries=tries-1
-        [[ "$tries" == "0" ]] && failexit $func "Failed to return_number"
-        sleep 1
-        r=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "exec procedure return_number()")
-    done
     echo "$r"
 }
 
@@ -653,7 +578,13 @@ function assert_return_number
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(return_number_rep)
-        [[ "$prev_rn" != "$rep" ]] && failexit $func "return_number sp changed in rep"
+        typeset tries=$total_tries
+        while [[ "$prev_rn" != "$rep" ]] ; do 
+            let tries=tries-1
+            [[ "$tries" == 0 ]] && failexit $func "return_number sp changed in rep"
+            sleep 1
+            rep=$(return_number_rep)
+        done
     fi
 }
 
@@ -681,13 +612,14 @@ function assert_select_all_rep
     typeset func="assert_select_all_rep"
     typeset tries=$total_tries
     typeset good=0
+    [[ "$physrep" != 0 ]] && sleep $repsleep
     while [[ "$physrep" != 0 && "$good" == "0" ]]; do
         typeset sal=$(select_all_int)
         typeset rep=$(select_all_rep)
         if [[ "$sal" != "$rep" ]] ; then
             let tries=tries-1
             [[ "$tries" == "0" ]] && failexit $func "rep has diverged"
-            sleep $repsleep
+            sleep 1
         else
             let good=1
         fi
@@ -712,8 +644,14 @@ function assert_select_all
     [[ "$prev_sa" != "$curr_sa" ]] && failexit $func "select_all changed"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
+        typeset tries=$total_tries
         typeset rep=$(select_all_rep)
-        [[ "$prev_sa" != "$rep" ]] && failexit $func "select_all changed in rep"
+        while [[ "$prev_sa" != "$rep" ]] ; do 
+            let tries=tries-1
+            [[ "$tries" == 0 ]] && failexit $func "select_all changed in rep"
+            sleep 1
+            rep=$(select_all_rep)
+        done
     fi
 }
 
@@ -725,11 +663,17 @@ function assert_count
     typeset cnt=$2
     write_prompt $func "Assert count $tbl is $cnt"
     chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl" 2>/dev/null)
-    [[ "$chk" == "$cnt" ]] || failexit $func "count for $tbl is not $cnt"
+    [[ "$chk" != "$cnt" ]] && failexit $func "count for $tbl is not $cnt"
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
-        rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
-        [[ "$rep" == "$cnt" ]] || failexit $func "count for $tbl is not $cnt in rep"
+        typeset tries=$total_tries
+        typeset rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
+        while [[ "$rep" != "$cnt" ]] ; do 
+            let tries=tries-1
+            [[ "$tries" == 0 ]] && failexit $func "count for $tbl is not $cnt in rep"
+            sleep 1
+            rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
+        done
     fi
 }
 
@@ -1345,13 +1289,13 @@ function genid48
     insert_record t1
     genid48_lsn_2=$(get_current_lsn)
     genid48_fmt_2=$(get_genid_format)
-    [[ "$genid48_fmt_1" != "$genid48_fmt_2" ]] || failexit $func "genid format did not change"
+    [[ "$genid48_fmt_1" == "$genid48_fmt_2" ]] && failexit $func "genid format did not change"
 
     write_prompt $func "Changing to genid48 genids"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put genid48 enable"
     insert_record t1
     genid48_fmt_3=$(get_genid_format)
-    [[ "$genid48_fmt_3" != "$genid48_fmt_2" ]] || failexit $func "genid format did not change"
+    [[ "$genid48_fmt_3" == "$genid48_fmt_2" ]] && failexit $func "genid format did not change"
 
     write_prompt $func "Truncating to time-based genids"
     truncate_log "$genid48_lsn_2"
@@ -1380,14 +1324,15 @@ function rowlocks
 
     write_prompt $func "Enabling rowlocks"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put rowlocks enable"
+    sleep $sleeptime
     rowlocks_lsn_2=$(get_current_lsn)
     rowlocks_rlk_2=$(get_rowlocks)
-    [[ "$rowlocks_rlk_1" != "$rowlocks_rlk_2" ]] || failexit $func "rowlocks were not enabled"
+    [[ "$rowlocks_rlk_1" == "$rowlocks_rlk_2" ]] && failexit $func "rowlocks were not enabled"
 
     write_prompt $func "Disabling rowlocks"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put rowlocks disable"
     rowlocks_rlk_3=$(get_rowlocks)
-    [[ "$rowlocks_rlk_2" != "$rowlocks_rlk_3" ]] || failexit $func "rowlocks were not disabled"
+    [[ "$rowlocks_rlk_2" == "$rowlocks_rlk_3" ]] && failexit $func "rowlocks were not disabled"
 
     write_prompt $func "Truncating to enabled rowlocks"
     truncate_log "$rowlocks_lsn_2"
@@ -1488,11 +1433,12 @@ function tear_down
 
 function run_some_tests
 {
-    luasp
-    lua_afunc
-    lua_sfunc
-    morestripe
-    genid48
+    rowlocks
+    time_partitions
+    rowlocks
+    time_partitions
+    rowlocks
+    time_partitions
     rowlocks
     time_partitions
 }
@@ -1514,8 +1460,8 @@ function run_tests
     time_partitions
 }
 
-#setup
 #run_tests
+setup
 run_some_tests
 tear_down
 

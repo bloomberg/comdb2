@@ -1166,14 +1166,11 @@ static void *purge_old_files_thread(void *arg)
     while (!db_is_stopped()) {
         /* even though we only add files to be deleted on the master,
          * don't try to delete files, ever, if you're a replicant */
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_mynode || gbl_is_physical_replicant) {
             sleep(empty_pause);
             continue;
         }
         if (db_is_stopped())
-            continue;
-
-        if (gbl_is_physical_replicant)
             continue;
 
         if (!bdb_have_unused_files() && gbl_master_changed_oldfiles) {
@@ -5597,7 +5594,7 @@ retry_tran:
     if (llmeta_load_timepart(thedb)) {
         logmsg(LOGMSG_ERROR, "could not load time partitions\n");
         pthread_rwlock_unlock(&schema_lk);
-        return -1;
+        abort();
     }
 
     if ((rc = bdb_get_rowlocks_state(&rlstate, tran, &bdberr)) != 0) {
