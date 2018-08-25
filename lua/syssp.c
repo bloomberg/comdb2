@@ -252,6 +252,8 @@ static int db_comdb_verify(Lua L) {
     return 1;
 }
 
+int bdb_min_truncate(bdb_state_type *bdb_state, int *file, int *offset,
+        int *timestamp);
 
 static int db_comdb_truncate_log(Lua L) {
     SP sp = getsp(L);
@@ -265,15 +267,33 @@ static int db_comdb_truncate_log(Lua L) {
     }
 
     int rc, file, offset; 
+    int min_file, min_offset;
   
     if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
         // db_verify_table_callback(L, "Usage: truncate_log(\"{<file>:<offset>}\")");
         return luaL_error(L, 
                 "Usage: truncate_log(\"{<file>:<offset>}\"). Input not valid.");
     }
+
+    logdelete_lock();
+    bdb_min_truncate(thedb->bdb_env, &min_file, &min_offset, NULL);
+
+    if (min_file == 0) {
+        logdelete_unlock();
+        return luaL_error(L, "Log is not truncatable");
+    }
+
+    if (file < min_file || (file == min_file && 
+                offset < min_offset)) {
+        logdelete_unlock();
+        return luaL_error(L, 
+                "Minimum truncate lsn is {%d:%d}", min_file, min_offset);
+    }
     logmsg(LOGMSG_USER, "applying log from lsn {%u:%u}\n", file, offset);
 
-    if ((rc = truncate_log(file, offset, 1)) != 0)
+    rc = truncate_log(file, offset, 1);
+    logdelete_unlock();
+    if (rc != 0)
     {
         if (rc == -1)
             return luaL_error(L, "Can only truncate from master node");
@@ -288,6 +308,7 @@ static int db_comdb_truncate_time(Lua L) {
     SP sp = getsp(L);
     sp->max_num_instructions = 1000000; //allow large number of steps
     time_t time;
+    int32_t min_time;
     int rc;
     if (lua_isnumber(L, 1))
     {
@@ -298,9 +319,23 @@ static int db_comdb_truncate_time(Lua L) {
         return luaL_error(L, "Usage: truncate_time(<time>), "
                 "where time is epoch time");
     }
+
+    logdelete_lock();
+    bdb_min_truncate(thedb->bdb_env, NULL, NULL, &min_time);
+
+    if (time < min_time)
+    {
+        logdelete_unlock();
+        return luaL_error(L, "Minimum truncate timestamp is %d\n",
+                min_time);
+    }
+
     logmsg(LOGMSG_USER, "Finding earliest log before stated time: %ld.\n", time);
 
-    if ((rc = truncate_timestamp(time)) != 0)
+    rc = truncate_timestamp(time);
+    logdelete_unlock();
+
+    if (rc != 0)
     {
         if (rc == -1)
             return luaL_error(L, "Can only truncate from master node");
