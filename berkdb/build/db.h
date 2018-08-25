@@ -2037,6 +2037,7 @@ struct __db_env {
                 void*, int));
     size_t (*get_log_header_size) __P((DB_ENV*)); 
     int (*rep_verify_match) __P((DB_ENV *, unsigned int, unsigned int, int));
+    int (*min_truncate_lsn_timestamp) __P((DB_ENV *, int file, DB_LSN *outlsn, int32_t *timestamp));
 
 	/*
 	 * Currently, the verbose list is a bit field with room for 32
