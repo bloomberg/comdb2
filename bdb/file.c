@@ -3311,7 +3311,7 @@ int32_t gbl_min_truncate_timestamp;
 
 static pthread_rwlock_t min_trunc_lk = PTHREAD_RWLOCK_INITIALIZER;
 
-int bdb_calc_min_truncate(bdb_state_type *bdb_state)
+static int bdb_calc_min_truncate(bdb_state_type *bdb_state)
 {
     DB_LSN lsn;
     int rc;
