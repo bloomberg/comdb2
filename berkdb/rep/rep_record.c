@@ -3040,8 +3040,12 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	 */
     if (gbl_is_physical_replicant && cmp != 0)
     {
-        fprintf(stderr, "error in local repl\n");
-        abort();
+        static uint32_t count=0;
+        count++;
+        logmsg(LOGMSG_INFO, "%s out-of-order lsn [%d][%d] instead of [%d][%d], "
+                "count %u\n", __func__, rp->lsn.file, rp->lsn.offset,
+                lp->ready_lsn.file, lp->ready_lsn.offset, count);
+        goto done;
     }
     
 	if (cmp == 0) {
