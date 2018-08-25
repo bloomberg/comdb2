@@ -15,6 +15,7 @@
 #include <logmsg.h>
 #include <parse_lsn.h>
 #include <truncate_log.h>
+#include <bdb_api.h>
 #include <phys_rep.h>
 
 
@@ -242,9 +243,6 @@ static int db_comdb_verify(Lua L) {
 
     return 1;
 }
-
-int bdb_min_truncate(bdb_state_type *bdb_state, int *file, int *offset,
-        int *timestamp);
 
 static int db_comdb_truncate_log(Lua L) {
     SP sp = getsp(L);
