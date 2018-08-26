@@ -11,7 +11,6 @@
 
 extern bdb_state_type *bdb_state;
 
-int send_truncate_log_msg(bdb_state_type *bdb_state, int file, int offset);
 int matchable_log_type(int rectype);
 
 LOG_INFO get_last_lsn(bdb_state_type* bdb_state)
@@ -238,7 +237,6 @@ int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file,
 {
     extern int gbl_online_recovery;
     extern int gbl_is_physical_replicant;
-    void *dummy_add_thread(void *arg);
     DB_LSN trunc_lsn;
     char* msg = "truncate log";
     int online = gbl_online_recovery;
