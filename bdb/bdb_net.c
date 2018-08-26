@@ -973,8 +973,7 @@ void *send_truncate(void *arg)
             USER_TYPE_TRUNCATE_LOG, t->buf, sizeof(DB_LSN), 1, timeout);
     pthread_mutex_lock(t->lk);
     *t->count = *t->count - 1;
-    if (rc == NET_SEND_FAIL_TIMEOUT)
-        *t->timeout = 1;
+    if (rc) *t->timeout = 1;
     pthread_cond_signal(t->cd);
     pthread_mutex_unlock(t->lk);
     return NULL;
@@ -1044,7 +1043,7 @@ int send_truncate_log_msg(bdb_state_type *bdb_state, int file, int offset)
     }
 
     free(trunc);
-    return 0;
+    return timeout;
 }
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
