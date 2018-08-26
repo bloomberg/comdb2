@@ -233,10 +233,12 @@ int apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset,
     return dbenv->apply_log(dbenv, file, offset, rectype, blob, blob_len);
 }
 
-extern int gbl_online_recovery;
 int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file, 
         unsigned int offset, uint32_t flags)
 {
+    extern int gbl_online_recovery;
+    extern int gbl_is_physical_replicant;
+    void *dummy_add_thread(void *arg);
     DB_LSN trunc_lsn;
     char* msg = "truncate log";
     int online = gbl_online_recovery;
@@ -258,8 +260,14 @@ int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file,
         logmsg(LOGMSG_ERROR, "rep_verify_match failed\n");
     }
 
-    if (flags && bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
+    if (flags && bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
         send_truncate_log_msg(bdb_state, file, offset);
+        if (!gbl_is_physical_replicant) {
+            pthread_t tid;
+            pthread_create(&tid, &(bdb_state->pthread_attr_detach),
+                    dummy_add_thread, bdb_state);
+        }
+    }
 
     BDB_RELLOCK();
 
