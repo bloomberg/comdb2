@@ -1431,18 +1431,6 @@ function tear_down
     fi
 }
 
-function run_some_tests
-{
-    rowlocks
-    time_partitions
-    rowlocks
-    time_partitions
-    rowlocks
-    time_partitions
-    rowlocks
-    time_partitions
-}
-
 function run_tests
 {
     add_tables
@@ -1460,9 +1448,8 @@ function run_tests
     time_partitions
 }
 
-#run_tests
 setup
-run_some_tests
+run_tests
 tear_down
 
 # Not tested or supported:
