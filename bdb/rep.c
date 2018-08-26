@@ -471,12 +471,6 @@ static inline void set_coherent_state(bdb_state_type *bdb_state,
     }
 }
 
-void bdb_disable_watcher(void *inbdbstate, int howlong)
-{
-    bdb_state_type *bdb_state = (bdb_state_type *)inbdbstate;
-    bdb_state->repinfo->disable_watcher = comdb2_time_epoch() + howlong;
-}
-
 void bdb_transfermaster_tonode(bdb_state_type *bdb_state, char *tohost)
 {
     const char *hostlist[REPMAX];
@@ -5078,6 +5072,7 @@ int request_delaymore(void *bdb_state_in)
 
 void *watcher_thread(void *arg)
 {
+    extern int gbl_comdb2_reload_schemas;
     bdb_state_type *bdb_state;
     char *master_host = db_eid_invalid;
     int i;
@@ -5126,7 +5121,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while (!db_is_stopped()) {
+    while (!db_is_stopped() || gbl_comdb2_reload_schemas) {
         time_now = comdb2_time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 
@@ -5139,6 +5134,11 @@ void *watcher_thread(void *arg)
                 diff = 60;
             logmsg(LOGMSG_WARN, "watcher thread pausing for %d second\n", diff);
             sleep(diff);
+        }
+
+        if (gbl_comdb2_reload_schemas) {
+            sleep (1);
+            continue;
         }
 
         i++;
