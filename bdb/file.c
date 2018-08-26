@@ -2101,6 +2101,7 @@ extern int gbl_rowlocks;
 
 extern int comdb2_is_standalone(DB_ENV *dbenv);
 extern int comdb2_reload_schemas(DB_ENV *dbenv, DB_LSN *lsn);
+extern int comdb2_replicated_truncate(DB_ENV *dbenv, DB_LSN *lsn);
 
 int bdb_is_standalone(void *dbenv, void *in_bdb_state)
 {
@@ -2371,6 +2372,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     dbenv->set_check_standalone(dbenv, comdb2_is_standalone);
     dbenv->set_truncate_sc_callback(dbenv, comdb2_reload_schemas);
+    dbenv->set_rep_truncate_callback(dbenv, comdb2_replicated_truncate);
 
     /* Register logical start and commit functions */
     dbenv->set_logical_start(dbenv, berkdb_start_logical);

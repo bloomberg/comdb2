@@ -194,6 +194,7 @@ extern int gbl_rand_elect_max_ms;
 extern int gbl_handle_buf_add_latency_ms;
 extern int gbl_osql_send_startgen;
 extern int gbl_instrument_dblist;
+extern int gbl_replicated_truncate_timeout;
 
 extern long long sampling_threshold;
 

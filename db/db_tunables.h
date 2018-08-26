@@ -1449,4 +1449,10 @@ REGISTER_TUNABLE("instrument_dblist",
                  TUNABLE_BOOLEAN, &gbl_instrument_dblist, READONLY, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("replicated_truncate_timeout",
+                 "Time master will block waiting for replicated truncate.  "
+                 "(Default: 60)", TUNABLE_INTEGER, 
+                 &gbl_replicated_truncate_timeout, NULL, NULL, NULL, NULL,
+                 NULL);
+
 #endif /* _DB_TUNABLES_H */

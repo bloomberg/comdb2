@@ -955,16 +955,49 @@ out:
     return rc;
 }
 
+typedef struct truncate_info
+{
+    pthread_t tid;
+    bdb_state_type *bdb_state;
+    const char *host;
+    char *buf;
+    pthread_mutex_t *lk;
+    pthread_cond_t *cd;
+    int *count;
+    int *timeout;
+} truncate_info_t;
+
+int gbl_replicated_truncate_timeout = 60;
+
+void *send_truncate(void *arg)
+{
+    truncate_info_t *t = (truncate_info_t *)arg;
+    int rc;
+    int timeout = gbl_replicated_truncate_timeout * 1000;
+    rc = net_send_message(t->bdb_state->repinfo->netinfo, t->host,
+            USER_TYPE_TRUNCATE_LOG, t->buf, sizeof(DB_LSN), 1, timeout);
+    pthread_mutex_lock(t->lk);
+    *t->count = *t->count - 1;
+    if (rc == NET_SEND_FAIL_TIMEOUT)
+        *t->timeout = 1;
+    pthread_cond_signal(t->cd);
+    pthread_mutex_unlock(t->lk);
+    return NULL;
+}
+
 int send_truncate_log_msg(bdb_state_type *bdb_state, int file, int offset)
 {
     int rc;
     int i;
     const char *hostlist[REPMAX];
     int count = 0;
+    int timeout = 0;
     DB_LSN trunc_lsn;
     char buf[sizeof(DB_LSN)];
     uint8_t *p_buf;
     uint8_t *p_buf_end;
+    pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+    pthread_cond_t cd = PTHREAD_COND_INITIALIZER;
 
     if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
         return 0;
@@ -978,10 +1011,44 @@ int send_truncate_log_msg(bdb_state_type *bdb_state, int file, int offset)
     db_lsn_type_put(&trunc_lsn, p_buf, p_buf_end);
 
     count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
+    truncate_info_t *trunc = calloc(sizeof(truncate_info_t), count);
+    pthread_mutex_lock(&lk);
+
     for (i = 0; i < count; i++) {
-        net_send(bdb_state->repinfo->netinfo, hostlist[i],
-                USER_TYPE_TRUNCATE_LOG, p_buf, sizeof(DB_LSN), 0);
+        truncate_info_t *t = &trunc[i];
+        t->bdb_state = bdb_state;
+        t->host = hostlist[i];
+        t->buf = p_buf;
+        t->lk = &lk;
+        t->cd = &cd;
+        t->count = &count;
+        t->timeout = &timeout;
+        if (rc = pthread_create(&t->tid, NULL, send_truncate, t)) {
+            logmsg(LOGMSG_FATAL, "%s: pthread_create returns %d\n", __func__,
+                    rc);
+            exit(1);
+        }
     }
+
+    int iter = 0;
+    while (count > 0) {
+        struct timespec now;
+        rc = clock_gettime(CLOCK_REALTIME, &now);
+        now.tv_sec += 1;
+        pthread_cond_timedwait(&cd, &lk, &now);
+        iter++;
+        if (iter > 1) {
+            logmsg(LOGMSG_ERROR, "Waiting for distributed truncate [%d:%d]\n",
+                    file, offset);
+        }
+    }
+
+    for (i = 0; i < count; i++) {
+        truncate_info_t *t = &trunc[i];
+        pthread_join(t->tid, NULL);
+    }
+
+    free(trunc);
     return 0;
 }
 

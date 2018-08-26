@@ -9080,7 +9080,7 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
                     "%d\n", __func__, newtblname, tblname, ver);
         } else {
             logmsg(LOGMSG_DEBUG, "%s didn't find old table '%s' version %d (so "
-                    "not adding new-table '%s'??)\n", __func__, tblname, ver,
+                    "not adding new-table '%s'?)\n", __func__, tblname, ver,
                     newtblname);
         }
 
