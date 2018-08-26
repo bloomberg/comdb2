@@ -5516,11 +5516,11 @@ void delete_prepared_stmts(struct sqlthdstate *thd);
 int reload_lua_sfuncs();
 int reload_lua_afuncs();
 void oldfile_list_clear(void);
+int gbl_comdb2_reload_schemas = 0;
 
 /* This is for online logfile truncation across a schema-change */
 int comdb2_reload_schemas(void *dbenv, void *inlsn)
 {
-    extern void bdb_disable_watcher(void *bdb_state, int howlong);
     extern int gbl_watcher_thread_ran;
     uint32_t tranlid = 0;
     uint64_t format;
@@ -5538,8 +5538,8 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn)
     int *file = &(((int *)(inlsn))[0]);
     int *offset = &(((int *)(inlsn))[1]);
 
+    gbl_comdb2_reload_schemas = 1;
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d]\n", __func__, *file, *offset);
-    bdb_disable_watcher(thedb->bdb_env, 20);
     wrlock_schema_lk();
 
 retry_tran:
@@ -5674,6 +5674,7 @@ retry_tran:
 
     gbl_watcher_thread_ran = comdb2_time_epoch();
     unlock_schema_lk();
+    gbl_comdb2_reload_schemas = 0;
     return 0;
 }
 
