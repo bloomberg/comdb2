@@ -5517,7 +5517,8 @@ void delete_prepared_stmts(struct sqlthdstate *thd);
 int reload_lua_sfuncs();
 int reload_lua_afuncs();
 void oldfile_list_clear(void);
-int gbl_comdb2_reload_schemas = 0;
+void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func,
+        int line);
 
 int comdb2_replicated_truncate(void *dbenv, void *inlsn)
 {
@@ -5526,13 +5527,12 @@ int comdb2_replicated_truncate(void *dbenv, void *inlsn)
 
     if (thedb->master == gbl_mynode && !gbl_is_physical_replicant) {
         send_truncate_log_msg(thedb->bdb_env, *file, *offset);
-        void *dummy_add_thread(void *arg);
-        pthread_t tid;
-        pthread_create(&tid, &gbl_pthread_attr, dummy_add_thread,
-                thedb->bdb_env);
+        call_for_election_and_lose(thedb->bdb_env, __func__, __LINE__);
     }
     return 0;
 }
+
+int gbl_comdb2_reload_schemas = 0;
 
 /* This is for online logfile truncation across a schema-change */
 int comdb2_reload_schemas(void *dbenv, void *inlsn)
