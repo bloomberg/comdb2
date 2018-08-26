@@ -473,6 +473,12 @@ static inline void set_coherent_state(bdb_state_type *bdb_state,
     }
 }
 
+void bdb_disable_watcher(void *inbdbstate, int howlong)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)inbdbstate;
+    bdb_state->repinfo->disable_watcher = comdb2_time_epoch() + howlong;
+}
+
 void bdb_transfermaster_tonode(bdb_state_type *bdb_state, char *tohost)
 {
     const char *hostlist[REPMAX];
