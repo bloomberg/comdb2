@@ -157,9 +157,11 @@ static int get_row_lock_dta_minlk(bdb_state_type *bdb_state, DBC *dbcp,
                                      rlk, lkname, BDB_LOCK_WRITE);
 }
 
+extern int gbl_is_physical_replicant;
+
 int add_snapisol_logging(bdb_state_type *bdb_state)
 {
-    if (bdb_state->attr->snapisol && !gbl_rowlocks) {
+    if (bdb_state->attr->snapisol && !gbl_rowlocks && !gbl_is_physical_replicant) {
         return 1;
     } else {
         return 0;
@@ -1462,7 +1464,6 @@ int ll_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
 
 extern int gbl_rowlocks;
 extern int gbl_fullrecovery;
-extern int gbl_is_physical_replicant;
 
 int ll_checkpoint(bdb_state_type *bdb_state, int force)
 {
