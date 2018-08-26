@@ -2500,6 +2500,8 @@ struct __db_env {
 	int (*check_standalone)(DB_ENV *);
 	int (*set_truncate_sc_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn)));
 	int (*truncate_sc_callback)(DB_ENV *, DB_LSN *lsn);
+	int (*set_rep_truncate_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn)));
+	int (*rep_truncate_callback)(DB_ENV *, DB_LSN *lsn);
 
 	/* Trigger/consumer signalling support */
 	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,

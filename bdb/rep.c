@@ -4650,8 +4650,8 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
                     trunc_lsn.offset);
             truncate_log_lock(bdb_state, trunc_lsn.file, trunc_lsn.offset, 0);
         }
+        net_ack_message(ack_handle, 0);
         break;
-
 
     default:
 #if 0 

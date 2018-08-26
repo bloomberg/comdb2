@@ -1145,9 +1145,10 @@ static void *purge_old_blkseq_thread(void *arg)
     return NULL;
 }
 
+extern int gbl_is_physical_replicant;
+
 static void *purge_old_files_thread(void *arg)
 {
-    extern int gbl_is_physical_replicant;
     struct dbenv *dbenv = (struct dbenv *)arg;
     int rc;
     tran_type *trans;
@@ -5521,6 +5522,21 @@ int reload_lua_afuncs();
 void oldfile_list_clear(void);
 int gbl_comdb2_reload_schemas = 0;
 
+int comdb2_replicated_truncate(void *dbenv, void *inlsn)
+{
+    int *file = &(((int *)(inlsn))[0]);
+    int *offset = &(((int *)(inlsn))[1]);
+
+    if (thedb->master == gbl_mynode && !gbl_is_physical_replicant) {
+        send_truncate_log_msg(thedb->bdb_env, *file, *offset);
+        void *dummy_add_thread(void *arg);
+        pthread_t tid;
+        pthread_create(&tid, &gbl_pthread_attr, dummy_add_thread,
+                thedb->bdb_env);
+    }
+    return 0;
+}
+
 /* This is for online logfile truncation across a schema-change */
 int comdb2_reload_schemas(void *dbenv, void *inlsn)
 {
@@ -5544,7 +5560,6 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn)
     gbl_comdb2_reload_schemas = 1;
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d]\n", __func__, *file, *offset);
     wrlock_schema_lk();
-
 retry_tran:
     tran = bdb_tran_begin_flags(thedb->bdb_env, NULL, &bdberr, 0);
     if (tran == NULL) {
@@ -5677,6 +5692,7 @@ retry_tran:
 
     gbl_watcher_thread_ran = comdb2_time_epoch();
     unlock_schema_lk();
+
     gbl_comdb2_reload_schemas = 0;
     return 0;
 }
