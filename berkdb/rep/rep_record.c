@@ -6399,9 +6399,14 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	u_int32_t lockcnt;
 	int do_truncate = 0;
 	u_int32_t lockid = DB_LOCK_INVALIDID;
+	DB_REP *db_rep;
+	REP *rep;
 	__txn_regop_args *txnrec;
 	__txn_regop_gen_args *txngenrec;
 	__txn_regop_rowlocks_args *txnrlrec;
+
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
 
 	/* Figure out if we are backing out any commited transactions. */
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
@@ -6598,9 +6603,12 @@ restart:
 	}
 
     /* comdb2_reload_schemas will get the schema lock */
-    if (schema_lk_count && dbenv->truncate_sc_callback) {
+    if (schema_lk_count && dbenv->truncate_sc_callback)
         dbenv->truncate_sc_callback(dbenv, trunclsnp);
-    }
+
+    /* Tell replicants to truncate */
+    if (F_ISSET(rep, REP_F_MASTER) && dbenv->rep_truncate_callback)
+        dbenv->rep_truncate_callback(dbenv, trunclsnp);
 
 err:
     if (have_recover_lk)
