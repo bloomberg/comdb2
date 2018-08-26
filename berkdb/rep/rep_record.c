@@ -6409,6 +6409,7 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	DB_LOGC *logc;
 	DBT *lock_dbt = NULL;
 	int ret, t_ret, undo, count=0;
+    int have_recover_lk = 0;
 	int found_scdone = 0;
 	int recover_at_commit = 1;
     int schema_lk_count = 0;
@@ -6429,6 +6430,13 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 
 	if (dbenv->recovery_start_callback)
 		dbenv->recovery_start_callback(dbenv);
+
+    if ((ret = pthread_rwlock_wrlock(&dbenv->recoverlk)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__,
+                ret);
+        abort();
+    }
+    have_recover_lk = 1;
 
 restart:
 	lockid = DB_LOCK_INVALIDID;
@@ -6594,10 +6602,6 @@ restart:
 		}
 	}
 
-    if ((ret = pthread_rwlock_wrlock(&dbenv->recoverlk)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
-        abort();
-    }
     logmsg(LOGMSG_INFO, "%s calling truncate with lsn [%d:%d]\n", __func__,
             lsnp->file, lsnp->offset);
     ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
@@ -6607,6 +6611,7 @@ restart:
 
 
     pthread_rwlock_unlock(&dbenv->recoverlk);
+    have_recover_lk = 0;
 
 	if (online) {
 		recovery_release_locks(dbenv, lockid);
@@ -6619,6 +6624,9 @@ restart:
     }
 
 err:
+    if (have_recover_lk)
+        pthread_rwlock_unlock(&dbenv->recoverlk);
+
 	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
 

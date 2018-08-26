@@ -1462,6 +1462,7 @@ int ll_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
 
 extern int gbl_rowlocks;
 extern int gbl_fullrecovery;
+extern int gbl_is_physical_replicant;
 
 int ll_checkpoint(bdb_state_type *bdb_state, int force)
 {
@@ -1471,8 +1472,9 @@ int ll_checkpoint(bdb_state_type *bdb_state, int force)
     int bdberr;
 
     if (gbl_rowlocks &&
+        !gbl_is_physical_replicant &&
         (gbl_fullrecovery ||
-         bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)) {
+        (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost))) {
 
         /* Grab current lsn first */
         __log_txn_lsn(bdb_state->dbenv, &curlsn, NULL, NULL);
