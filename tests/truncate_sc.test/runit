@@ -132,12 +132,19 @@ function assert_comdb2_columns
     [[ $debug == "1" ]] && set -x
     typeset func="assert_comdb2_columns"
     typeset prev_cols=$1
+    typeset tries=$total_tries
     write_prompt $func "Assert comdb2_columns is the same"
     typeset curr_cols=$(get_comdb2_columns)
-    [[ "$prev_cols" != "$curr_cols" ]] && failexit $func "comdb2_columns changed"
+    while [[ "$prev_cols" != "$curr_cols" ]] ; do 
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "comdb2_columns changed"
+        sleep 1
+        curr_cols=$(get_comdb2_columns)
+    done
+
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
-        typeset tries=$total_tries
+        tries=$total_tries
         typeset phys_cols=$(get_comdb2_columns_rep)
         write_prompt $func "Assert comdb2_columns on phys-rep is the same"
         while [[ "$phys_cols" != "$prev_cols" ]]; do
@@ -197,8 +204,14 @@ function assert_stripe
     [[ $debug == "1" ]] && set -x
     typeset func="assert_stripe"
     write_prompt $func "Assert $1 stripes"
+    typeset tries=$total_tries
     typeset stp=$(get_dtastripe)
-    [[ "$1" != "$stp" ]] && failexit $func "was expecting $1 stripes but have $stp"
+    while [[ "$1" != "$stp" ]] ; do 
+        let tries=tries-1
+        [[ "$tries" == 0 ]] &&  failexit $func "was expecting $1 stripes but have $stp"
+        sleep 1
+        stp=$(get_dtastripe)
+    done
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset tries=$total_tries
@@ -233,13 +246,19 @@ function verify_rowlocks
 {
     [[ $debug == "1" ]] && set -x
     typeset func="verify_rowlocks"
+    typeset tries=$total_tries
     typeset rlocks=$(get_rowlocks)
     write_prompt $func "Assert rowlocks is $1"
-    [[ "$1" != "$rlocks" ]] && failexit $func "expected rowlocks to be $1 not $rlocks"
+    while [[ "$1" != "$rlocks" ]] ; do 
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "expected rowlocks to be $1 not $rlocks"
+        sleep 1
+        rlocks=$(get_rowlocks)
+    done
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(get_rowlocks_rep)
-        typeset tries=$total_tries
+        tries=$total_tries
         while [[ "$1" != "$rep" ]]; do
             let tries=tries-1
             [[ "$tries" == 0 ]] && failexit $func "expected phys-rep rowlocks to have $1 stripes but have $rep"
@@ -319,8 +338,14 @@ function assert_genid_format
 {
     [[ $debug == "1" ]] && set -x
     typeset func="assert_genid_format"
+    typeset tries=$total_tries
     typeset fmt=$(get_genid_format)
-    [[ "$1" != "$fmt" ]] && failexit $func "was expecting $1 genid_fmt is $fmt"
+    while [[ "$1" != "$fmt" ]] ; do 
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "was expecting $1 genid_fmt is $fmt"
+        sleep 1
+        fmt=$(get_genid_format)
+    done
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset tries=$total_tries
@@ -339,14 +364,22 @@ function assert_notable
     [[ $debug == "1" ]] && set -x
     typeset func="assert_notable"
     typeset tbl=$1
+    typeset tries=$total_tries
     write_prompt $func "Assert $tbl does not exist"
     chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl" 2>/dev/null)
-    [[ $? == 0 ]] && failexit $func "table $tbl still exists"
+    r=$?
+    while [[ $r == 0 ]] ; do 
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "table $tbl still exists"
+        sleep 1
+        chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl" 2>/dev/null)
+        r=$?
+    done
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
+        tries=$total_tries
         rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
         r=$?
-        typeset tries=$total_tries
         while [[ $r == 0 ]]; do
             let tries=tries-1
             [[ "$tries" == 0 ]] && failexit $func "table $tbl in rep still exists"
@@ -379,12 +412,18 @@ function assert_stat_compr
     typeset func="assert_stat_compr"
     typeset prev_sc="$1"
     write_prompt $func "Assert stat compr is the same"
+    typeset tries=$total_tries
     typeset curr_sc=$(stat_compr)
-    [[ "$prev_sc" != "$curr_sc" ]] && failexit $func "stat compr changed"
+    while [[ "$prev_sc" != "$curr_sc" ]] ; do 
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "stat compr changed"
+        sleep 1
+        curr_sc=$(stat_compr)
+    done
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         rep=$(stat_compr_rep)
-        typeset tries=$total_tries
+        tries=$total_tries
         while [[ "$prev_sc" != "$rep" ]] ; do 
             let tries=tries-1
             [[ "$tries" == 0 ]] && failexit $func "stat compr changed in rep"
@@ -416,8 +455,14 @@ function assert_select_json_extract
     typeset func="assert_select_json_extract"
     typeset prev_sp="$1"
     write_prompt $func "Assert select_json_extract is the same"
+    typeset tries=$total_tries
     typeset curr_sp=$(select_json_extract)
-    [[ "$prev_sp" != "$curr_sp" ]] && failexit $func "select_json_extract changed"
+    while [[ "$prev_sp" != "$curr_sp" ]] ; do 
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "select_json_extract changed"
+        sleep 1
+        curr_sp=$(select_json_extract)
+    done
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(select_json_extract_rep)
@@ -455,8 +500,14 @@ function assert_select_myavg
     typeset func="assert_select_myavg"
     typeset prev_sp="$1"
     write_prompt $func "Assert select_myavg is the same"
+    typeset tries=$total_tries
     typeset curr_sp=$(select_myavg)
-    [[ "$prev_sp" != "$curr_sp" ]] && failexit $func "select_myavg changed"
+    while [[ "$prev_sp" != "$curr_sp" ]] ; do 
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "select_myavg changed"
+        sleep 1
+        curr_sp=$(select_myavg)
+    done
     if [[ "$physrep" == 1 ]]; then
         typeset tries=$total_tries
         sleep $repsleep
@@ -497,7 +548,12 @@ function assert_select_sp
     typeset tries=$total_tries
     write_prompt $func "Assert select_sp is the same"
     typeset curr_sp=$(select_sp)
-    [[ "$prev_sp" != "$curr_sp" ]] && failexit $func "Failed to run select_sp from rep"
+    while [[ "$prev_sp" != "$curr_sp" ]] ; do 
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "Failed to run select_sp from rep"
+        sleep 1
+        curr_sp=$(select_sp)
+    done
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         tries=$total_tries
@@ -536,9 +592,15 @@ function assert_select_t1
     typeset prev_rn="$1"
     write_prompt $func "Assert select_t1 procedure is the same"
     typeset curr_rn=$(select_t1)
-    [[ "$prev_rn" != "$curr_rn" ]] && failexit $func "return_number sp changed"
+    while [[ "$prev_rn" != "$curr_rn" ]] ; do 
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "return_number sp changed"
+        sleep 1
+        curr_rn=$(select_t1)
+    done
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
+        tries=$total_tries
         typeset rep=$(select_t1_rep)
         while [[ "$prev_rn" != "$rep" ]]; do
             let tries=tries-1
@@ -572,9 +634,15 @@ function assert_return_number
     [[ $debug == "1" ]] && set -x
     typeset func="assert_return_number"
     typeset prev_rn="$1"
+    typeset tries=$total_tries
     write_prompt $func "Assert return_number is the same"
     typeset curr_rn=$(return_number)
-    [[ "$prev_rn" != "$curr_rn" ]] && failexit $func "return_number sp changed"
+    while [[ "$prev_rn" != "$curr_rn" ]] ; do 
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "return_number sp changed"
+        sleep 1
+        curr_rn=$(return_number)
+    done
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset rep=$(return_number_rep)
@@ -639,12 +707,18 @@ function assert_select_all
     [[ $debug == "1" ]] && set -x
     typeset func="assert_select_all"
     typeset prev_sa="$1"
+    typeset tries=$total_tries
     write_prompt $func "Assert select_all is the same"
     typeset curr_sa=$(select_all)
-    [[ "$prev_sa" != "$curr_sa" ]] && failexit $func "select_all changed"
+    while [[ "$prev_sa" != "$curr_sa" ]] ; do 
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "select_all changed"
+        sleep 1
+        curr_sa=$(select_all)
+    done
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
-        typeset tries=$total_tries
+        tries=$total_tries
         typeset rep=$(select_all_rep)
         while [[ "$prev_sa" != "$rep" ]] ; do 
             let tries=tries-1
@@ -661,9 +735,15 @@ function assert_count
     typeset func="assert_count"
     typeset tbl=$1
     typeset cnt=$2
+    typeset tries=$total_tries
     write_prompt $func "Assert count $tbl is $cnt"
     chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl" 2>/dev/null)
-    [[ "$chk" != "$cnt" ]] && failexit $func "count for $tbl is not $cnt"
+    while [[ "$chk" != "$cnt" ]] ; do 
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit $func "count for $tbl is not $cnt"
+        sleep 1
+        chk=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl" 2>/dev/null)
+    done
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset tries=$total_tries
