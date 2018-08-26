@@ -127,6 +127,22 @@ function get_comdb2_columns_rep
     echo "$r"
 }
 
+function create_table
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="create_table"
+    typeset tries=$total_tries
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table $1(a int)"
+    r=$?
+    while [[ "$r" != 0 ]]; do
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit "failed to create table  $1"
+        sleep 1
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table $1(a int)"
+        r=$?
+    done
+}
+
 function assert_comdb2_columns
 {
     [[ $debug == "1" ]] && set -x
@@ -767,7 +783,7 @@ function add_tables
     typeset func="add_tables"
 
     write_prompt $func "Creating t1 and inserting three records"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    create_table t1
     insert_record t1
     add_tables_lsn_1=$(get_current_lsn)
     add_tables_sal_1=$(select_all)
@@ -790,13 +806,13 @@ function drop_tables
     [[ $debug == "1" ]] && set -x
     typeset func="drop_tables"
     write_prompt $func "Creating t1"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    create_table t1
     insert_record t1
     write_prompt $func "Creating t2"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t2(a int)"
+    create_table t2
     insert_record t2
     write_prompt $func "Creating t3"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t3(a int)"
+    create_table t3
     insert_record t3
     assert_count t1 1
     assert_count t2 1
@@ -830,7 +846,7 @@ function rename_tables
     [[ $debug == "1" ]] && set -x
     typeset func="rename_tables"
     write_prompt $func "Creating t1"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    create_table t1
     insert_record t1
     assert_count t1 1
     rename_lsn_1=$(get_current_lsn)
@@ -871,15 +887,15 @@ function truncate_tables
     typeset func="truncate_tables"
 
     write_prompt $func "Creating t1"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    create_table t1
     insert_record t1
 
     write_prompt $func "Creating t2"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t2(a int)"
+    create_table t2
     insert_record t2
 
     write_prompt $func "Creating t3"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t3(a int)"
+    create_table t3
     insert_record t3
     assert_count t1 1
     assert_count t2 1
@@ -912,7 +928,7 @@ function bulk_rebuild
     [[ $debug == "1" ]] && set -x
     typeset func="bulk_rebuild"
     write_prompt $func "Creating t1"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    create_table t1
 
     write_prompt $func "Inserting 50000 records"
     bulk_insert_records t1 50000
@@ -1329,7 +1345,7 @@ function morestripe
     [[ $debug == "1" ]] && set -x
     typeset func="morestripe"
     write_prompt $func "Creating t1"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    create_table t1
     insert_record t1
     morestripe_lsn_1=$(get_current_lsn)
     morestripe_sal_1=$(select_all)
@@ -1359,7 +1375,7 @@ function genid48
     [[ $debug == "1" ]] && set -x
     typeset func="genid48"
     write_prompt $func "Creating t1"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    create_table t1
     insert_record t1
     genid48_lsn_1=$(get_current_lsn)
     genid48_fmt_1=$(get_genid_format)
@@ -1397,7 +1413,7 @@ function rowlocks
     [[ $debug == "1" ]] && set -x
     typeset func="rowlocks"
     write_prompt $func "Creating t1"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    create_table t1
     insert_record t1
     rowlocks_lsn_1=$(get_current_lsn)
     rowlocks_rlk_1=$(get_rowlocks)
@@ -1434,7 +1450,7 @@ function time_partitions
     [[ $debug == "1" ]] && set -x
     typeset func="time_partitions"
     write_prompt $func "Creating t1"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    create_table t1
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1)" >/dev/null
     time_partitions_lsn_1=$(get_current_lsn)
     time_partitions_all_1=$(select_all)
