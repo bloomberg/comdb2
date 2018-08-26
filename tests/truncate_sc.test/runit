@@ -184,6 +184,7 @@ function truncate_log
     [[ $debug == "1" ]] && set -x
     typeset func="truncate_log"
     typeset lsn="$1"
+    typeset master=$(get_master)
     write_prompt $func "Truncating to $lsn"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$lsn\")"
     typeset newlsn=$(get_current_lsn)
@@ -195,6 +196,7 @@ function morestripe_command
 {
     [[ $debug == "1" ]] && set -x
     typeset func="morestripe_command"
+    typeset master=$(get_master)
     $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send(\"morestripe $1\")"
     sleep $sleeptime
 }
@@ -775,7 +777,6 @@ function assert_count
 
 write_prompt main "Getting current lsn and master"
 begin_lsn=$(get_current_lsn)
-master=$(get_master)
 
 function add_tables
 {
@@ -827,13 +828,13 @@ function drop_tables
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t3"
 
     write_prompt $func "Truncating to before table drops"
-    master=$(get_master)
     truncate_log "$drop_tables_lsn"
     assert_count t1 1
     assert_count t2 1
     assert_count t3 1
 
     write_prompt $func "Truncating to before table creates"
+    master=$(get_master)
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$begin_lsn\")"
     sleep $sleeptime
     assert_notable t1
