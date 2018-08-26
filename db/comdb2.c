@@ -5523,6 +5523,7 @@ void oldfile_list_clear(void);
 /* This is for online logfile truncation across a schema-change */
 int comdb2_reload_schemas(void *dbenv, void *inlsn)
 {
+    extern int gbl_watcher_thread_ran;
     uint32_t tranlid = 0;
     uint64_t format;
     int bdberr = 0;
@@ -5672,6 +5673,7 @@ retry_tran:
         abort();
     }
 
+    gbl_watcher_thread_ran = comdb2_time_epoch();
     unlock_schema_lk();
     return 0;
 }
