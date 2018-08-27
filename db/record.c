@@ -2278,6 +2278,10 @@ err:
     return retrc;
 }
 
+int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
+                             const void *old_dta, unsigned long long ins_keys,
+                             blob_buffer_t *blobs, int maxblobs,
+                             const char *from, int rebuild, int convert);
 /*
  * Update a single record in the new table as part of a live schema
  * change.  This code is called to add to indices only, adding to
@@ -2295,6 +2299,13 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
 
     if (!iq->usedb)
         return ERR_BADREQ;
+
+    int rebuild = iq->usedb->plan && iq->usedb->plan->dta_plan;
+    rc = verify_record_constraint(
+        iq, iq->usedb, trans, new_dta, ins_keys, blobs, MAXBLOBS,
+        use_new_tag ? ".NEW..ONDISK" : ".ONDISK", rebuild, 1);
+    if (rc)
+        return ERR_CONSTR;
 
     /* Add all keys */
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {

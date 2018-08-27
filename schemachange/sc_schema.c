@@ -32,12 +32,12 @@ static int should_skip_constraint_for_index(struct dbtable *db, int ixnum, int n
 }
 
 int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
-                             void *old_dta, unsigned long long ins_keys,
+                             const void *old_dta, unsigned long long ins_keys,
                              blob_buffer_t *blobs, int maxblobs,
                              const char *from, int rebuild, int convert)
 {
     int rc;
-    void *od_dta;
+    const void *od_dta;
     void *new_dta = NULL;
     struct convert_failure reason;
     struct ireq ruleiq;
