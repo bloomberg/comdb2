@@ -242,8 +242,7 @@ int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file,
     int online = gbl_online_recovery;
 
     if (flags && bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
-        logmsg(LOGMSG_ERROR, "Can only issue truncate from master node\n");
-        return -1;
+        return send_truncate_to_master(bdb_state, file, offset);
     }
 
     /* have to get lock for recovery */
