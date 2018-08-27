@@ -969,37 +969,17 @@ typedef struct truncate_info
 
 int gbl_replicated_truncate_timeout = 60;
 
-void *send_truncate(void *arg)
+int send_truncate_to_master(bdb_state_type *bdb_state, int file, int offset)
 {
-    truncate_info_t *t = (truncate_info_t *)arg;
-    int rc;
-    int timeout = gbl_replicated_truncate_timeout * 1000;
-    rc = net_send_message(t->bdb_state->repinfo->netinfo, t->host,
-            USER_TYPE_TRUNCATE_LOG, t->buf, sizeof(DB_LSN), 1, timeout);
-    pthread_mutex_lock(t->lk);
-    *t->count = *t->count - 1;
-    if (rc) *t->timeout = 1;
-    pthread_cond_signal(t->cd);
-    pthread_mutex_unlock(t->lk);
-    return NULL;
-}
-
-int send_truncate_log_msg(bdb_state_type *bdb_state, int file, int offset)
-{
-    int rc;
-    int i;
-    const char *hostlist[REPMAX];
-    int count = 0;
-    int timeout = 0;
-    DB_LSN trunc_lsn;
+    int timeout = gbl_replicated_truncate_timeout * 1000, rc;
     char buf[sizeof(DB_LSN)];
-    uint8_t *p_buf;
-    uint8_t *p_buf_end;
-    pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
-    pthread_cond_t cd = PTHREAD_COND_INITIALIZER;
+    DB_LSN trunc_lsn;
+    u_int8_t *p_buf, *p_buf_end;
 
-    if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
+    if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+        logmsg(LOGMSG_ERROR, "%s: I am the master\n", __func__);
         return 0;
+    }
 
     trunc_lsn.file = file;
     trunc_lsn.offset = offset;
@@ -1009,46 +989,11 @@ int send_truncate_log_msg(bdb_state_type *bdb_state, int file, int offset)
 
     db_lsn_type_put(&trunc_lsn, p_buf, p_buf_end);
 
-    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-    truncate_info_t *trunc = calloc(sizeof(truncate_info_t), count);
-    pthread_mutex_lock(&lk);
+    rc = net_send_message(bdb_state->repinfo->netinfo,
+            bdb_state->repinfo->master_host, USER_TYPE_TRUNCATE_LOG,
+            p_buf, sizeof(DB_LSN), 1, timeout);
 
-    for (i = 0; i < count; i++) {
-        truncate_info_t *t = &trunc[i];
-        t->bdb_state = bdb_state;
-        t->host = hostlist[i];
-        t->buf = p_buf;
-        t->lk = &lk;
-        t->cd = &cd;
-        t->count = &count;
-        t->timeout = &timeout;
-        if (rc = pthread_create(&t->tid, NULL, send_truncate, t)) {
-            logmsg(LOGMSG_FATAL, "%s: pthread_create returns %d\n", __func__,
-                    rc);
-            exit(1);
-        }
-    }
-
-    int iter = 0;
-    while (count > 0) {
-        struct timespec now;
-        rc = clock_gettime(CLOCK_REALTIME, &now);
-        now.tv_sec += 1;
-        pthread_cond_timedwait(&cd, &lk, &now);
-        iter++;
-        if (iter > 1) {
-            logmsg(LOGMSG_ERROR, "Waiting for distributed truncate [%d:%d]\n",
-                    file, offset);
-        }
-    }
-
-    for (i = 0; i < count; i++) {
-        truncate_info_t *t = &trunc[i];
-        pthread_join(t->tid, NULL);
-    }
-
-    free(trunc);
-    return timeout;
+    return rc;
 }
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,

@@ -168,6 +168,7 @@ extern int gbl_verbose_repdups;
 extern int gbl_apply_thread_pollms;
 extern int gbl_warn_queue_latency_threshold;
 extern int gbl_req_all_threshold;
+extern int gbl_req_all_time_threshold;
 extern int gbl_req_delay_count_threshold;
 extern int gbl_rep_verify_always_grab_writelock;
 extern int gbl_rep_verify_will_recover_trace;
