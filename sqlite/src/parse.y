@@ -1074,6 +1074,10 @@ upsert(A) ::= ON CONFLICT DO NOTHING.
 %ifdef SQLITE_BUILDING_FOR_COMDB2
               { A = sqlite3UpsertNew(pParse->db,0,0,0,0); A->oeFlag = OE_Ignore; }
 %endif SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+upsert(A) ::= ON CONFLICT DO REPLACE.
+              { A = sqlite3UpsertNew(pParse->db,0,0,0,0); A->oeFlag = OE_Replace; }
+%endif SQLITE_BUILDING_FOR_COMDB2
 
 %type insert_cmd {int}
 insert_cmd(A) ::= INSERT orconf(R).   {A = R;}
