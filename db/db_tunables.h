@@ -1294,6 +1294,13 @@ REGISTER_TUNABLE("req_all_threshold",
                  "this amount or more.  (Default: 10000000)",
                  TUNABLE_INTEGER, &gbl_req_all_threshold,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("req_all_time_threshold",
+                 "Use req_all if a replicant hasn't updated its "
+                 "lsn in more than this many ms.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_req_all_time_threshold,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("fill_throttle",
                  "Throttle fill-reqs to once per fill-throttle ms.  "
                  "(Default: 500ms)",
@@ -1448,11 +1455,5 @@ REGISTER_TUNABLE("instrument_dblist",
                  "Extended dblist-trace in berkley.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_instrument_dblist, READONLY, NULL, NULL,
                  NULL, NULL);
-
-REGISTER_TUNABLE("replicated_truncate_timeout",
-                 "Time master will block waiting for replicated truncate.  "
-                 "(Default: 60)", TUNABLE_INTEGER, 
-                 &gbl_replicated_truncate_timeout, NULL, NULL, NULL, NULL,
-                 NULL);
 
 #endif /* _DB_TUNABLES_H */

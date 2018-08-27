@@ -2186,6 +2186,15 @@ uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state)
     return mygen;
 }
 
+void master_increment_gen(bdb_state_type *bdb_state)
+{
+    uint32_t mygen;
+    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
+    bdb_state->dbenv->rep_set_gen(bdb_state->dbenv, mygen+(20+(rand()%20)));
+    bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_MASTER);
+    bdb_add_dummy_llmeta();
+}
+
 /* Called by the master to periodically broadcast the durable lsn.  The
  * algorithm: sort lsns of all nodes (including master's).  The durable lsn will
  * be in the (n/2)th spot.  We can only make claims about durability for things
@@ -3117,6 +3126,9 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     /* short ciruit if we are waiting on lsn 0:0  */
     if ((seqnum->lsn.file == 0) && (seqnum->lsn.offset == 0))
         return 0;
+
+    logmsg(LOGMSG_DEBUG, "%s waiting for %s\n", __func__, lsn_to_str(str,
+                &(seqnum->lsn)));
 
     begin_time = comdb2_time_epochms();
 

@@ -88,6 +88,7 @@ int gbl_max_logput_queue = 100000;
 int gbl_apply_thread_pollms = 100;
 int last_fill = 0;
 int gbl_req_all_threshold = 10000000;
+int gbl_req_all_time_threshold = 0;
 int gbl_req_delay_count_threshold = 5;
 int gbl_getlock_latencyms = 0;
 extern int request_delaymore(void *bdb_state);
@@ -458,7 +459,8 @@ static void *apply_thread(void *arg)
 	uint32_t more_behind_count = 0;
 	LOG *lp;
 	DB_LOG *dblp;
-	DB_LSN master_lsn, my_lsn, first_repdb_lsn;
+	DB_LSN master_lsn, my_lsn, my_last_lsn, first_repdb_lsn;
+    int last_lsn_change_time;
 	DB_ENV *dbenv = (DB_ENV *)arg;
 	struct queued_log *q, obj;
 	struct timespec ts;
@@ -543,6 +545,8 @@ static void *apply_thread(void *arg)
 				static unsigned long long count = 0;
 				int now;
 
+                logmsg(LOGMSG_DEBUG, "%s: applying [%d:%d]\n", __func__, q->rp->lsn.file,
+                        q->rp->lsn.offset);
 				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
 				pthread_mutex_unlock(&rep_candidate_lock);
 				if (ret == 0 || ret == DB_REP_ISPERM) {
@@ -597,6 +601,10 @@ static void *apply_thread(void *arg)
 					}
 				}
 			} else {
+                logmsg(LOGMSG_DEBUG, "%s: dropping [%d:%d], rep->gen=%d "
+                        "rec-gen=%d\n", __func__, q->rp->lsn.file,
+                        q->rp->lsn.offset, rep->gen, q->gen);
+
 				pthread_mutex_unlock(&rep_candidate_lock);
 				ret = 0;
 			}
@@ -636,6 +644,11 @@ static void *apply_thread(void *arg)
 
 		/* IMPORTANT: backup if beyond the end of the logfile */
 		my_lsn.offset -= lp->len;
+
+        if (log_compare(&my_lsn, &my_last_lsn)) {
+            my_last_lsn = my_lsn;
+            last_lsn_change_time = comdb2_time_epochms();
+        }
 
 		/* Delay more if we are falling further behind */
 		bytes_behind = subtract_lsn(dbenv->app_private, &master_lsn, &my_lsn);
@@ -710,8 +723,17 @@ static void *apply_thread(void *arg)
 			continue;
 		}
 
-		if ((gbl_req_all_threshold && (bytes_behind > gbl_req_all_threshold)) ||
-				IS_ZERO_LSN(first_repdb_lsn)) {
+        int request_all_records = 0;
+        if (gbl_req_all_threshold && (bytes_behind > gbl_req_all_threshold) ||
+                IS_ZERO_LSN(first_repdb_lsn))
+            request_all_records = 1;
+
+        if (gbl_req_all_time_threshold && (comdb2_time_epochms() - 
+                    last_lsn_change_time) > gbl_req_all_time_threshold) {
+            request_all_records = 1;
+        }
+
+		if (request_all_records) {
 			/* Request all records from the master */
 			if ((ret = __rep_send_message(dbenv, master_eid,
 							REP_ALL_REQ, &my_lsn, NULL, 0,
@@ -4488,7 +4510,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	void *pglogs = NULL;
 	u_int32_t keycnt = 0;
 
-
+    logmsg(LOGMSG_DEBUG, "%s processing [%d:%d]\n", __func__, maxlsn.file,
+            maxlsn.offset);
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
