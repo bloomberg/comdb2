@@ -670,9 +670,9 @@ keys
 [CREATE TABLE t1(i INT, b BLOB(100) DEFAULT 'xxxxx')] failed with rc 240 Error at line   4: CANNOT SPECIFY LOAD/STORE OPTIONS FOR BLOB/DATE FIELDS
 (rows inserted=1)
 (i=1, f1=1.100000, f2=1.100000, f3=1.100000)
-[CREATE TABLE t6(i INT, KEY COMDB2_PK(i))] failed with rc -3 Invalid key name 'COMDB2_PK'.
-[CREATE TABLE t6(i INT, j INT, KEY 'dup'(i), KEY 'dup'(j))] failed with rc -3 Index 'dup' already exists.
-[CREATE TABLE t6(i INT, j INT, KEY 'xxxx'(i), UNIQUE 'xxxx'(j))] failed with rc -3 Index 'xxxx' already exists.
+[CREATE TABLE t6(i INT, DUPLICATE COMDB2_PK(i))] failed with rc -3 Invalid key name 'COMDB2_PK'.
+[CREATE TABLE t6(i INT, j INT, DUPLICATE 'dup'(i), DUPLICATE 'dup'(j))] failed with rc -3 Index 'dup' already exists.
+[CREATE TABLE t6(i INT, j INT, DUPLICATE 'xxxx'(i), UNIQUE 'xxxx'(j))] failed with rc -3 Index 'xxxx' already exists.
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t1', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
@@ -781,8 +781,8 @@ keys
 ')
 [CREATE TABLE t1(i INT UNIQUE ASC)] failed with rc -3 near "ASC": syntax error
 [CREATE TABLE t1(i INT UNIQUE DESC)] failed with rc -3 near "DESC": syntax error
-[CREATE TABLE t1(i INT KEY ASC)] failed with rc -3 near "ASC": syntax error
-[CREATE TABLE t1(i INT KEY DESC)] failed with rc -3 near "DESC": syntax error
+[CREATE TABLE t1(i INT DUPLICATE ASC)] failed with rc -3 near "ASC": syntax error
+[CREATE TABLE t1(i INT DUPLICATE DESC)] failed with rc -3 near "DESC": syntax error
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t3', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
@@ -846,7 +846,7 @@ keys
 ')
 (type='index', name='$$KEY_3FDDB096_3FDDB096', tbl_name='t5', rootpage=13, sql='create index "$$KEY_3FDDB096_3FDDB096" on "t5" ("j" DESC, "i");', csc2=NULL)
 [CREATE TABLE t1(unique INT UNIQUE)] failed with rc -3 near "unique": syntax error
-[CREATE TABLE t1(key INT KEY)] failed with rc -3 near "key": syntax error
+[CREATE TABLE t1(key INT DUPLICATE)] failed with rc -3 near "key": syntax error
 (tablename='t1', columnname='unique', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='key', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t1', keyname='$KEY_A513E531', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')

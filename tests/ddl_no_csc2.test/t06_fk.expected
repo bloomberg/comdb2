@@ -235,9 +235,9 @@ keys
 	}
 ')
 ("add self-referenced bad 1"='add self-referenced bad 1')
-[create table s (i int key, j int key, constraint sfk foreign key (k) references s(i))] failed with rc -3 Unknown column 'k'.
+[create table s (i int duplicate, j int duplicate, constraint sfk foreign key (k) references s(i))] failed with rc -3 Unknown column 'k'.
 ("add self-referenced bad 2"='add self-referenced bad 2')
-[create table s (i int key, j int key, constraint sfk foreign key (j) references s(k))] failed with rc -3 A matching key for the FOREIGN KEY was not found in the parent (referenced) table 's'.
+[create table s (i int duplicate, j int duplicate, constraint sfk foreign key (j) references s(k))] failed with rc -3 A matching key for the FOREIGN KEY was not found in the parent (referenced) table 's'.
 ("add self-referenced good"='add self-referenced good')
 (name='s', csc2='schema
 	{

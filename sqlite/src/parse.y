@@ -269,7 +269,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   ADD AGGREGATE ALIAS ANALYZEEXPERT ANALYZESQLITE AUTHENTICATION
   BLOBFIELD BULKIMPORT
   CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COVERAGE CRLE
-  DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DRYRUN
+  DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DRYRUN DUPLICATE
   ENABLE FUNCTION GENID48 GET GRANT IPU ISC KW LUA LZ4 NONE
   ODH OFF OP OPTION OPTIONS
   PAGEORDER PASSWORD PERIOD PROCEDURE PUT
@@ -434,7 +434,7 @@ ccons ::= UNIQUE onconf(R).      {
     comdb2AddIndex(pParse, 0, 0, R, 0, 0, 0, SQLITE_SO_ASC,
                    SQLITE_IDXTYPE_UNIQUE, 0);
 }
-ccons ::= KEY onconf(R).         {
+ccons ::= DUPLICATE onconf(R).   {
     comdb2AddIndex(pParse, 0, 0, R, 0, 0, 0, SQLITE_SO_ASC,
                    SQLITE_IDXTYPE_DUPKEY, 0);
 }
@@ -1477,6 +1477,9 @@ cmd ::= createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
 
 %type uniqueflag {int}
 uniqueflag(A) ::= UNIQUE.  {A = OE_Abort;}
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+uniqueflag(A) ::= DUPLICATE. {A = OE_None;}
+%endif SQLITE_BUILDING_FOR_COMDB2
 uniqueflag(A) ::= .        {A = OE_None;}
 
 // The eidlist non-terminal (Expression Id List) generates an ExprList
