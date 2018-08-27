@@ -172,6 +172,11 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
     if ((rc = access_control_check_sql_write(pCur, thd)))
         return rc;
 
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
+        rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+        if (rc != SQLITE_OK) return rc;
+    }
+
     rc = osql_delidx(pCur, thd, 0);
     if (rc != SQLITE_OK)
         return rc;
@@ -241,6 +246,11 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if ((rc = access_control_check_sql_write(pCur, thd)))
         return rc;
 
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
+        rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+        if (rc != SQLITE_OK) return rc;
+    }
+
     rc = osql_insidx(pCur, thd, 0);
     if (rc != SQLITE_OK)
         return rc;
@@ -277,6 +287,11 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if ((rc = access_control_check_sql_write(pCur, thd)))
         return rc;
+
+    if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
+        rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+        if (rc != SQLITE_OK) return rc;
+    }
 
     rc = osql_delidx(pCur, thd, 1);
     if (rc != SQLITE_OK)
@@ -1101,21 +1116,18 @@ static int osql_send_delrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
 
     do {
-        rc = osql_send_usedb_logic(pCur, thd, nettype);
-        if (rc == SQLITE_OK) {
-            rc = osql_send_delrec(
-                osql->host, osql->rqid, osql->uuid, pCur->genid,
-                (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys
-                                                              : -1ULL,
-                nettype, osql->logsb);
-        }
+        rc = osql_send_delrec(
+            osql->host, osql->rqid, osql->uuid, pCur->genid,
+            (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys
+                                                          : -1ULL,
+            nettype, osql->logsb);
         RESTART_SOCKSQL;
     } while (restarted && rc == 0);
 
     return rc;
 }
 
-static int osql_send_updstat_logic(struct BtCursor *pCur,
+static inline int osql_send_updstat_logic(struct BtCursor *pCur,
                                    struct sql_thread *thd, char *pData,
                                    int nData, int nStat, int nettype)
 {
@@ -1211,14 +1223,11 @@ static int osql_send_insrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
 
     do {
-        rc = osql_send_usedb_logic(pCur, thd, nettype);
-        if (rc == SQLITE_OK) {
-            rc = osql_send_insrec(
-                osql->host, osql->rqid, osql->uuid, pCur->genid,
-                (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->ins_keys
-                                                              : -1ULL,
-                pData, nData, nettype, osql->logsb, flags);
-        }
+        rc = osql_send_insrec(
+            osql->host, osql->rqid, osql->uuid, pCur->genid,
+            (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->ins_keys
+                                                          : -1ULL,
+            pData, nData, nettype, osql->logsb, flags);
         RESTART_SOCKSQL;
     } while (restarted && rc == 0);
 
@@ -1352,17 +1361,13 @@ static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
 
     do {
-        rc = osql_send_usedb_logic(pCur, thd, nettype);
-        if (rc == SQLITE_OK) {
-
-            rc = osql_send_updrec(
-                osql->host, osql->rqid, osql->uuid, pCur->genid,
-                (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->ins_keys
-                                                              : -1ULL,
-                (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys
-                                                              : -1ULL,
-                pData, nData, nettype, osql->logsb);
-        }
+        rc = osql_send_updrec(
+            osql->host, osql->rqid, osql->uuid, pCur->genid,
+            (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->ins_keys
+                                                          : -1ULL,
+            (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys
+                                                          : -1ULL,
+            pData, nData, nettype, osql->logsb);
         RESTART_SOCKSQL;
     } while (restarted && rc == 0);
 

@@ -2017,7 +2017,6 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
     osqlstate_t *osql = &clnt->osql;
     unsigned long long *seq = NULL;
-    int *updCols = NULL;
     int rc = 0;
     unsigned long long genid = 0;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
@@ -2061,6 +2060,7 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             return SQLITE_TOOBIG;
         }
 
+        int *updCols = NULL;
         rc = process_local_shadtbl_updcols(clnt, tbl, &updCols, bdberr, *seq);
         if (rc)
             return SQLITE_INTERNAL;
@@ -2081,7 +2081,6 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
         if (updCols) {
             free(updCols);
-            updCols = NULL;
         }
 
         rc = osql_send_updrec(osql->host, osql->rqid, osql->uuid, genid,
