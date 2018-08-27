@@ -203,6 +203,9 @@ static Keyword aKeywordTable[] = {
   { "DISTINCT",         "TK_DISTINCT",     ALWAYS                 },
   { "DO",               "TK_DO",           UPSERT                 },
   { "DROP",             "TK_DROP",         ALWAYS                 },
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  { "DUPLICATE",        "TK_DUPLICATE",    ALWAYS                 },
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   { "END",              "TK_END",          ALWAYS                 },
   { "EACH",             "TK_EACH",         TRIGGER                },
   { "ELSE",             "TK_ELSE",         ALWAYS                 },
