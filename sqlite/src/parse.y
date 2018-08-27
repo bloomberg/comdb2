@@ -527,7 +527,7 @@ tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
 tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
   comdb2AddIndex(pParse, &I, X, 0, W, BW, AW, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE, O);
 }
-tcons ::= KEY nm_opt(I) LP sortlist(X) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
+tcons ::= DUPLICATE nm_opt(I) LP sortlist(X) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
   comdb2AddIndex(pParse, &I, X, 0, W, BW, AW, SQLITE_SO_ASC, SQLITE_IDXTYPE_DUPKEY, O);
 }
 tcons ::= constraint_opt FOREIGN KEY LP eidlist(FA) RP
