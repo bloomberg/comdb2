@@ -265,18 +265,18 @@ static void *watchdog_thread(void *arg)
 
                     /* try to create a thread */
                     rc = pthread_create(&dummy_tid, &gbl_pthread_joinable_attr,
-                            dummy_thread, thedb);
+                                        dummy_thread, thedb);
                     if (rc) {
                         logmsg(LOGMSG_WARN, "watchdog: Can't create thread\n");
                         its_bad_slow = its_bad = 1;
                     } else {
                         rc = pthread_join(dummy_tid, NULL);
                         if (rc) {
-                            logmsg(LOGMSG_WARN, "watchdog: Can't join thread\n");
+                            logmsg(LOGMSG_WARN,
+                                   "watchdog: Can't join thread\n");
                             its_bad_slow = its_bad = 1;
                         }
                     }
-
 
                     if (!coherent && master > 0 && master != gbl_mynode) {
                         bdb_get_cur_lsn_str(thedb->bdb_env, &curlsnbytes,
@@ -287,22 +287,22 @@ static void *watchdog_thread(void *arg)
                         if (!lastlsnbytes) {
                             lastlsnbytes = curlsnbytes;
                             master_lastlsnbytes = master_curlsnbytes;
-                        } 
-                        /* time for deadlock test; 
+                        }
+                        /* time for deadlock test;
                            for now we ignore master progress */
                         else if (lastlsnbytes == curlsnbytes &&
-                                /* earth did not moved in the meantime */
-                                master_curlsnbytes > curlsnbytes &&
-                                master_lastlsnbytes > curlsnbytes) {
-                                /* we were behind last run, we are still
-                                   behind and we did not move: DEADLOCK */
+                                 /* earth did not moved in the meantime */
+                                 master_curlsnbytes > curlsnbytes &&
+                                 master_lastlsnbytes > curlsnbytes) {
+                            /* we were behind last run, we are still
+                               behind and we did not move: DEADLOCK */
 
-                                logmsg(LOGMSG_WARN, 
-                                        "watchdog: DATABASE MAKES NO PROGRESS; "
-                                        "DEADLOCK ALERT %s %s!\n",
-                                        curlsn, master_curlsn);
-                                its_bad = 1;
-                                its_bad_slow = 1;
+                            logmsg(LOGMSG_WARN,
+                                   "watchdog: DATABASE MAKES NO PROGRESS; "
+                                   "DEADLOCK ALERT %s %s!\n",
+                                   curlsn, master_curlsn);
+                            its_bad = 1;
+                            its_bad_slow = 1;
                         }
                     }
                 }
