@@ -1135,9 +1135,6 @@ static const Mem *columnNullValue(void){
         /* .pScopyFrom = */ (Mem*)0,
         /* .mScopyFlags= */ 0,
 #endif
-#ifdef SQLITE_DEBUG_COLUMNCACHE
-        /* .iTabColHash= */ 0,
-#endif
       };
   return &nullMem;
 }

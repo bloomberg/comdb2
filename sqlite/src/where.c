@@ -828,7 +828,6 @@ static void constructAutomaticIndex(
   VdbeComment((v, "for %s", pTable->zName));
 
   /* Fill the automatic index with content */
-  sqlite3ExprCachePush(pParse);
   pTabItem = &pWC->pWInfo->pTabList->a[pLevel->iFrom];
   if( pTabItem->fg.viaCoroutine ){
     int regYield = pTabItem->regReturn;
@@ -865,7 +864,6 @@ static void constructAutomaticIndex(
   sqlite3VdbeChangeP5(v, SQLITE_STMTSTATUS_AUTOINDEX);
   sqlite3VdbeJumpHere(v, addrTop);
   sqlite3ReleaseTempReg(pParse, regRecord);
-  sqlite3ExprCachePop(pParse);
   
   /* Jump here when skipping the initialization */
   sqlite3VdbeJumpHere(v, addrInit);
@@ -4128,7 +4126,11 @@ static int wherePathSolver(WhereInfo *pWInfo, LogEst nRowEst){
                 pWInfo, nRowEst, nOrderBy, isOrdered
             );
           }
-          rCost = sqlite3LogEstAdd(rUnsorted, aSortCost[isOrdered]);
+          /* TUNING:  Add a small extra penalty (5) to sorting as an
+          ** extra encouragment to the query planner to select a plan
+          ** where the rows emerge in the correct order without any sorting
+          ** required. */
+          rCost = sqlite3LogEstAdd(rUnsorted, aSortCost[isOrdered]) + 5;
 
           WHERETRACE(0x002,
               ("---- sort cost=%-3d (%d/%d) increases cost %3d to %-3d\n",
@@ -5156,7 +5158,6 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
   /* Generate loop termination code.
   */
   VdbeModuleComment((v, "End WHERE-core"));
-  sqlite3ExprCacheClear(pParse);
   for(i=pWInfo->nLevel-1; i>=0; i--){
     int addr;
     pLevel = &pWInfo->a[i];

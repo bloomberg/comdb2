@@ -688,21 +688,26 @@ multiselect_op(A) ::= UNION(OP).             {A = @OP; /*A-overwrites-OP*/}
 multiselect_op(A) ::= UNION ALL.             {A = TK_ALL;}
 multiselect_op(A) ::= EXCEPT|INTERSECT(OP).  {A = @OP; /*A-overwrites-OP*/}
 %endif SQLITE_OMIT_COMPOUND_SELECT
+
 oneselect(A) ::= SELECT distinct(D) selcollist(W) from(X) where_opt(Y)
                  groupby_opt(P) having_opt(Q) 
-%ifndef SQLITE_OMIT_WINDOWFUNC
-                 windowdefn_opt(R)
-%endif
                  orderby_opt(Z) limit_opt(L). {
   A = sqlite3SelectNew(pParse,W,X,Y,P,Q,Z,D,L);
-#ifndef SQLITE_OMIT_WINDOWFUNC
+}
+%ifndef SQLITE_OMIT_WINDOWFUNC
+oneselect(A) ::= SELECT distinct(D) selcollist(W) from(X) where_opt(Y)
+                 groupby_opt(P) having_opt(Q) window_clause(R)
+                 orderby_opt(Z) limit_opt(L). {
+  A = sqlite3SelectNew(pParse,W,X,Y,P,Q,Z,D,L);
   if( A ){
     A->pWinDefn = R;
   }else{
     sqlite3WindowListDelete(pParse->db, R);
   }
-#endif /* SQLITE_OMIT_WINDOWFUNC */
 }
+%endif
+
+
 oneselect(A) ::= values(A).
 
 %type values {Select*}
@@ -710,7 +715,7 @@ oneselect(A) ::= values(A).
 values(A) ::= VALUES LP nexprlist(X) RP. {
   A = sqlite3SelectNew(pParse,X,0,0,0,0,0,SF_Values,0);
 }
-values(A) ::= values(A) COMMA LP exprlist(Y) RP. {
+values(A) ::= values(A) COMMA LP nexprlist(Y) RP. {
   Select *pRight, *pLeft = A;
   pRight = sqlite3SelectNew(pParse,Y,0,0,0,0,0,SF_Values|SF_MultiValue,0);
   if( ALWAYS(pLeft) ) pLeft->selFlags &= ~SF_MultiValue;
@@ -1195,30 +1200,28 @@ expr(A) ::= CAST LP expr(E) AS typetoken(T) RP. {
   sqlite3ExprAttachSubtrees(pParse->db, A, E, 0);
 }
 %endif  SQLITE_OMIT_CAST
-expr(A) ::= id(X) LP distinct(D) exprlist(Y) RP 
+
+
+expr(A) ::= id(X) LP distinct(D) exprlist(Y) RP. {
+  A = sqlite3ExprFunction(pParse, Y, &X, D);
+}
+expr(A) ::= id(X) LP STAR RP. {
+  A = sqlite3ExprFunction(pParse, 0, &X, 0);
+}
+
 %ifndef SQLITE_OMIT_WINDOWFUNC
-  over_opt(Z)
-%endif
-. {
-  if( Y && Y->nExpr>pParse->db->aLimit[SQLITE_LIMIT_FUNCTION_ARG] ){
-    sqlite3ErrorMsg(pParse, "too many arguments on function %T", &X);
-  }
-  A = sqlite3ExprFunction(pParse, Y, &X);
-  if( D==SF_Distinct && A ){
-    A->flags |= EP_Distinct;
-  }
+expr(A) ::= id(X) LP distinct(D) exprlist(Y) RP over_clause(Z). {
+  A = sqlite3ExprFunction(pParse, Y, &X, D);
   sqlite3WindowAttach(pParse, A, Z);
 }
-expr(A) ::= id(X) LP STAR RP
-%ifndef SQLITE_OMIT_WINDOWFUNC
-  over_opt(Z)
-%endif
-. {
-  A = sqlite3ExprFunction(pParse, 0, &X);
+expr(A) ::= id(X) LP STAR RP over_clause(Z). {
+  A = sqlite3ExprFunction(pParse, 0, &X, 0);
   sqlite3WindowAttach(pParse, A, Z);
 }
+%endif
+
 term(A) ::= CTIME_KW(OP). {
-  A = sqlite3ExprFunction(pParse, 0, &OP);
+  A = sqlite3ExprFunction(pParse, 0, &OP, 0);
 }
 
 expr(A) ::= LP nexprlist(X) COMMA expr(Y) RP. {
@@ -1252,7 +1255,7 @@ expr(A) ::= expr(A) likeop(OP) expr(Y).  [LIKE_KW]  {
   OP.n &= 0x7fffffff;
   pList = sqlite3ExprListAppend(pParse,0, Y);
   pList = sqlite3ExprListAppend(pParse,pList, A);
-  A = sqlite3ExprFunction(pParse, pList, &OP);
+  A = sqlite3ExprFunction(pParse, pList, &OP, 0);
   if( bNot ) A = sqlite3PExpr(pParse, TK_NOT, A, 0);
   if( A ) A->flags |= EP_InfixFunc;
 }
@@ -1263,7 +1266,7 @@ expr(A) ::= expr(A) likeop(OP) expr(Y) ESCAPE expr(E).  [LIKE_KW]  {
   pList = sqlite3ExprListAppend(pParse,0, Y);
   pList = sqlite3ExprListAppend(pParse,pList, A);
   pList = sqlite3ExprListAppend(pParse,pList, E);
-  A = sqlite3ExprFunction(pParse, pList, &OP);
+  A = sqlite3ExprFunction(pParse, pList, &OP, 0);
   if( bNot ) A = sqlite3PExpr(pParse, TK_NOT, A, 0);
   if( A ) A->flags |= EP_InfixFunc;
 }
@@ -2327,8 +2330,8 @@ window(A) ::= LP part_opt(X) orderby_opt(Y) frame_opt(Z) RP. {
   }
 }
 
-part_opt(A) ::= PARTITION BY exprlist(X). { A = X; }
-part_opt(A) ::= .                         { A = 0; }
+part_opt(A) ::= PARTITION BY nexprlist(X). { A = X; }
+part_opt(A) ::= .                          { A = 0; }
 
 frame_opt(A) ::= .                             { 
   A = sqlite3WindowAlloc(pParse, TK_RANGE, TK_UNBOUNDED, 0, TK_CURRENT, 0);
@@ -2353,20 +2356,18 @@ frame_bound(A) ::= expr(X) PRECEDING.   { A.eType = TK_PRECEDING; A.pExpr = X; }
 frame_bound(A) ::= CURRENT ROW.         { A.eType = TK_CURRENT  ; A.pExpr = 0; }
 frame_bound(A) ::= expr(X) FOLLOWING.   { A.eType = TK_FOLLOWING; A.pExpr = X; }
 
-%type windowdefn_opt {Window*}
-%destructor windowdefn_opt {sqlite3WindowListDelete(pParse->db, $$);}
-windowdefn_opt(A) ::= . { A = 0; }
-windowdefn_opt(A) ::= WINDOW windowdefn_list(B). { A = B; }
+%type window_clause {Window*}
+%destructor window_clause {sqlite3WindowListDelete(pParse->db, $$);}
+window_clause(A) ::= WINDOW windowdefn_list(B). { A = B; }
 
-%type over_opt {Window*}
-%destructor over_opt {sqlite3WindowDelete(pParse->db, $$);}
-over_opt(A) ::= . { A = 0; }
-over_opt(A) ::= filter_opt(W) OVER window(Z). {
+%type over_clause {Window*}
+%destructor over_clause {sqlite3WindowDelete(pParse->db, $$);}
+over_clause(A) ::= filter_opt(W) OVER window(Z). {
   A = Z;
   assert( A!=0 );
   A->pFilter = W;
 }
-over_opt(A) ::= filter_opt(W) OVER nm(Z). {
+over_clause(A) ::= filter_opt(W) OVER nm(Z). {
   A = (Window*)sqlite3DbMallocZero(pParse->db, sizeof(Window));
   if( A ){
     A->zName = sqlite3DbStrNDup(pParse->db, Z.z, Z.n);

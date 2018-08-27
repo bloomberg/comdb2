@@ -1073,7 +1073,7 @@ static void disconnectAllVtab(sqlite3 *db){
   sqlite3BtreeEnterAll(db);
   for(i=0; i<db->nDb; i++){
     Schema *pSchema = db->aDb[i].pSchema;
-    if( db->aDb[i].pSchema ){
+    if( pSchema ){
       for(p=sqliteHashFirst(&pSchema->tblHash); p; p=sqliteHashNext(p)){
         Table *pTab = (Table *)sqliteHashData(p);
         if( IsVirtual(pTab) ) sqlite3VtabDisconnect(db, pTab);
@@ -4364,11 +4364,29 @@ int sqlite3_snapshot_open(
     iDb = sqlite3FindDbName(db, zDb);
     if( iDb==0 || iDb>1 ){
       Btree *pBt = db->aDb[iDb].pBt;
-      if( 0==sqlite3BtreeIsInReadTrans(pBt) ){
-        rc = sqlite3PagerSnapshotOpen(sqlite3BtreePager(pBt), pSnapshot);
+      if( sqlite3BtreeIsInTrans(pBt)==0 ){
+        Pager *pPager = sqlite3BtreePager(pBt);
+        int bUnlock = 0;
+        if( sqlite3BtreeIsInReadTrans(pBt) ){
+          if( db->nVdbeActive==0 ){
+            rc = sqlite3PagerSnapshotCheck(pPager, pSnapshot);
+            if( rc==SQLITE_OK ){
+              bUnlock = 1;
+              rc = sqlite3BtreeCommit(pBt);
+            }
+          }
+        }else{
+          rc = SQLITE_OK;
+        }
+        if( rc==SQLITE_OK ){
+          rc = sqlite3PagerSnapshotOpen(pPager, pSnapshot);
+        }
         if( rc==SQLITE_OK ){
           rc = sqlite3BtreeBeginTrans(pBt, 0, 0);
-          sqlite3PagerSnapshotOpen(sqlite3BtreePager(pBt), 0);
+          sqlite3PagerSnapshotOpen(pPager, 0);
+        }
+        if( bUnlock ){
+          sqlite3PagerSnapshotUnlock(pPager);
         }
       }
     }

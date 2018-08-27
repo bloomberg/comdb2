@@ -235,14 +235,6 @@ int sqlite3VdbeAddOp3(Vdbe *p, int op, int p1, int p2, int p3){
 #endif
 #ifdef SQLITE_DEBUG
   if( p->db->flags & SQLITE_VdbeAddopTrace ){
-    int jj, kk;
-    Parse *pParse = p->pParse;
-    for(jj=kk=0; jj<pParse->nColCache; jj++){
-      struct yColCache *x = pParse->aColCache + jj;
-      printf(" r[%d]={%d:%d}", x->iReg, x->iTable, x->iColumn);
-      kk++;
-    }
-    if( kk ) printf("\n");
     sqlite3VdbePrintOp(0, i, &p->aOp[i]);
     test_addop_breakpoint();
   }
@@ -366,7 +358,7 @@ int sqlite3VdbeExplainParent(Parse *pParse){
 void sqlite3VdbeExplain(Parse *pParse, u8 bPush, const char *zFmt, ...){
   if( pParse->explain==2 ){
     char *zMsg;
-    Vdbe *v = pParse->pVdbe;
+    Vdbe *v;
     va_list ap;
     int iThis;
     va_start(ap, zFmt);
@@ -486,19 +478,6 @@ void sqlite3VdbeResolveLabel(Vdbe *v, int x){
     p->aLabel[j] = v->nOp;
   }
 }
-
-#ifdef SQLITE_COVERAGE_TEST
-/*
-** Return TRUE if and only if the label x has already been resolved.
-** Return FALSE (zero) if label x is still unresolved.
-**
-** This routine is only used inside of testcase() macros, and so it
-** only exists when measuring test coverage.
-*/
-int sqlite3VdbeLabelHasBeenResolved(Vdbe *v, int x){
-  return v->pParse->aLabel && v->pParse->aLabel[ADDR(x)]>=0;
-}
-#endif /* SQLITE_COVERAGE_TEST */
 
 /*
 ** Mark the VDBE as one that can only be run one time.
@@ -1776,9 +1755,6 @@ static void initMemArray(Mem *p, int N, sqlite3 *db, u16 flags){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_DEBUG
     p->pScopyFrom = 0;
-#endif
-#ifdef SQLITE_DEBUG_COLUMNCACHE
-    p->iTabColHash = 0;
 #endif
     p++;
   }

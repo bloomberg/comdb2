@@ -385,17 +385,6 @@
 # undef NDEBUG
 #endif
 
-/* SQLITE_DEBUG_COLUMNCACHE is synomous with SQLITE_DEBUG.  The 
-** SQLITE_DEBUG_COLUMNCACHE symbol only exists to provide a convenient
-** way to search for all code that deals with verifying correct behavior
-** of the column cache.
-*/
-#ifdef SQLITE_DEBUG
-# define SQLITE_DEBUG_COLUMNCACHE 1
-#else
-# undef SQLIT_DEBUG_COLUMNCACHE
-#endif
-
 /*
 ** Enable SQLITE_ENABLE_EXPLAIN_COMMENTS if SQLITE_DEBUG is turned on.
 */
@@ -834,7 +823,8 @@ typedef INT16_TYPE LogEst;
 # if defined(__SIZEOF_POINTER__)
 #   define SQLITE_PTRSIZE __SIZEOF_POINTER__
 # elif defined(i386)     || defined(__i386__)   || defined(_M_IX86) ||    \
-       defined(_M_ARM)   || defined(__arm__)    || defined(__x86)
+       defined(_M_ARM)   || defined(__arm__)    || defined(__x86)   ||    \
+      (defined(__TOS_AIX__) && !defined(__64BIT__))
 #   define SQLITE_PTRSIZE 4
 # else
 #   define SQLITE_PTRSIZE 8
@@ -875,7 +865,7 @@ typedef INT16_TYPE LogEst;
 # if defined(i386)     || defined(__i386__)   || defined(_M_IX86) ||    \
      defined(__x86_64) || defined(__x86_64__) || defined(_M_X64)  ||    \
      defined(_M_AMD64) || defined(_M_ARM)     || defined(__x86)   ||    \
-     defined(__arm__)
+     defined(__arm__)  || defined(_M_ARM64)
 #   define SQLITE_BYTEORDER    1234
 # elif defined(sparc)    || defined(__ppc__)
 #   define SQLITE_BYTEORDER    4321
@@ -1634,7 +1624,7 @@ struct sqlite3 {
 ** selectively disable various optimizations.
 */
 #define SQLITE_QueryFlattener 0x0001   /* Query flattening */
-#define SQLITE_ColumnCache    0x0002   /* Column cache */
+                          /*  0x0002   available for reuse */
 #define SQLITE_GroupByOrder   0x0004   /* GROUPBY cover of ORDERBY */
 #define SQLITE_FactorOutConst 0x0008   /* Constant factoring */
 #define SQLITE_DistinctOpt    0x0010   /* DISTINCT using indexes */
@@ -3106,13 +3096,6 @@ struct AutoincInfo {
 };
 
 /*
-** Size of the column cache
-*/
-#ifndef SQLITE_N_COLCACHE
-# define SQLITE_N_COLCACHE 10
-#endif
-
-/*
 ** At least one instance of the following structure is created for each
 ** trigger that may be fired while parsing an INSERT, UPDATE or DELETE
 ** statement. All such objects are stored in the linked list headed at
@@ -3201,7 +3184,6 @@ struct Parse {
   u8 hasCompound;      /* Need to invoke convertCompoundSelectToSubquery() */
   u8 okConstFactor;    /* OK to factor out constants */
   u8 disableLookaside; /* Number of times lookaside has been disabled */
-  u8 nColCache;        /* Number of entries in aColCache[] */
   int nRangeReg;       /* Size of the temporary register block */
   int iRangeReg;       /* First register in temporary register block */
   int nErr;            /* Number of errors seen */
@@ -3211,8 +3193,6 @@ struct Parse {
   int szOpAlloc;       /* Bytes of memory space allocated for Vdbe.aOp[] */
   int iSelfTab;        /* Table associated with an index on expr, or negative
                        ** of the base register during check-constraint eval */
-  int iCacheLevel;     /* ColCache valid when aColCache[].iLevel<=iCacheLevel */
-  int iCacheCnt;       /* Counter used to generate aColCache[].lru values */
   int nLabel;          /* Number of labels used */
   int *aLabel;         /* Space to hold the labels */
   ExprList *pConstExpr;/* Constant expressions */
@@ -3242,17 +3222,9 @@ struct Parse {
   ** Fields above must be initialized to zero.  The fields that follow,
   ** down to the beginning of the recursive section, do not need to be
   ** initialized as they will be set before being used.  The boundary is
-  ** determined by offsetof(Parse,aColCache).
+  ** determined by offsetof(Parse,aTempReg).
   **************************************************************************/
 
-  struct yColCache {
-    int iTable;           /* Table cursor number */
-    i16 iColumn;          /* Table column number */
-    u8 tempReg;           /* iReg is a temp register that needs to be freed */
-    int iLevel;           /* Nesting level */
-    int iReg;             /* Reg with value of this column. 0 means none. */
-    int lru;              /* Least recently used entry has the smallest value */
-  } aColCache[SQLITE_N_COLCACHE];  /* One for each column cache entry */
   int aTempReg[8];        /* Holding area for temporary registers */
   Token sNameToken;       /* Token with unqualified schema object name */
 
@@ -3320,7 +3292,7 @@ static int GET_CURSOR_RECORDING(Parse *p, int i){
 /*
 ** Sizes and pointers of various parts of the Parse object.
 */
-#define PARSE_HDR_SZ offsetof(Parse,aColCache) /* Recursive part w/o aColCache*/
+#define PARSE_HDR_SZ offsetof(Parse,aTempReg) /* Recursive part w/o aColCache*/
 #define PARSE_RECURSE_SZ offsetof(Parse,sLastToken)    /* Recursive part */
 #define PARSE_TAIL_SZ (sizeof(Parse)-PARSE_RECURSE_SZ) /* Non-recursive part */
 #define PARSE_TAIL(X) (((char*)(X))+PARSE_RECURSE_SZ)  /* Pointer to tail */
@@ -3981,7 +3953,7 @@ void sqlite3ExprAttachSubtrees(sqlite3*,Expr*,Expr*,Expr*);
 Expr *sqlite3PExpr(Parse*, int, Expr*, Expr*);
 void sqlite3PExprAddSelect(Parse*, Expr*, Select*);
 Expr *sqlite3ExprAnd(sqlite3*,Expr*, Expr*);
-Expr *sqlite3ExprFunction(Parse*,ExprList*, Token*);
+Expr *sqlite3ExprFunction(Parse*,ExprList*, Token*, int);
 void sqlite3ExprAssignVarNumber(Parse*, Expr*, u32);
 void sqlite3ExprDelete(sqlite3*, Expr*);
 ExprList *sqlite3ExprListAppend(Parse*,ExprList*,Expr*);
@@ -4128,15 +4100,8 @@ int sqlite3WhereOkOnePass(WhereInfo*, int*);
 #define ONEPASS_MULTI    2        /* ONEPASS is valid for multiple rows */
 void sqlite3ExprCodeLoadIndexColumn(Parse*, Index*, int, int, int);
 int sqlite3ExprCodeGetColumn(Parse*, Table*, int, int, int, u8);
-void sqlite3ExprCodeGetColumnToReg(Parse*, Table*, int, int, int);
 void sqlite3ExprCodeGetColumnOfTable(Vdbe*, Table*, int, int, int);
 void sqlite3ExprCodeMove(Parse*, int, int, int);
-void sqlite3ExprCacheStore(Parse*, int, int, int);
-void sqlite3ExprCachePush(Parse*);
-void sqlite3ExprCachePop(Parse*);
-void sqlite3ExprCacheRemove(Parse*, int, int);
-void sqlite3ExprCacheClear(Parse*);
-void sqlite3ExprCacheAffinityChange(Parse*, int, int);
 void sqlite3ExprCode(Parse*, Expr*, int);
 void sqlite3ExprCodeCopy(Parse*, Expr*, int);
 void sqlite3ExprCodeFactorable(Parse*, Expr*, int);

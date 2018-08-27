@@ -256,7 +256,6 @@ void sqlite3FinishCoding(Parse *pParse){
   /* Get the VDBE program ready for execution
   */
   if( v && pParse->nErr==0 && !db->mallocFailed ){
-    assert( pParse->iCacheLevel==0 );  /* Disables and re-enables match */
     /* A minimum of one cursor is required if autoincrement is used
     *  See ticket [a696379c1f08866] */
     if( pParse->pAinc!=0 && pParse->nTab==0 ) pParse->nTab = 1;
@@ -3092,8 +3091,10 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
     if( isView || (iDb==1 && !bDropTable) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3BeginWriteOperation(pParse, 1, iDb);
-    sqlite3ClearStatTables(pParse, iDb, "tbl", pTab->zName);
-    sqlite3FkDropTable(pParse, pName, pTab);
+    if( !isView ){
+      sqlite3ClearStatTables(pParse, iDb, "tbl", pTab->zName);
+      sqlite3FkDropTable(pParse, pName, pTab);
+    }
     sqlite3CodeDropTable(pParse, pTab, iDb, isView);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     }else{
