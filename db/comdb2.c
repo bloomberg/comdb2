@@ -2018,6 +2018,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         int ver;
         int bdberr;
 
+        logmsg(LOGMSG_INFO, "%s loading table '%s'\n", __func__, tblnames[i]);
         /* if db number matches parent database db number then
          * table name must match parent database name.  otherwise
          * we get mysterious failures to receive qtraps (setting
@@ -5545,18 +5546,23 @@ void delete_prepared_stmts(struct sqlthdstate *thd);
 int reload_lua_sfuncs();
 int reload_lua_afuncs();
 void oldfile_list_clear(void);
-void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func,
-        int line);
 
 int comdb2_replicated_truncate(void *dbenv, void *inlsn)
 {
     int *file = &(((int *)(inlsn))[0]);
     int *offset = &(((int *)(inlsn))[1]);
 
+    logmsg(LOGMSG_INFO, "%s starting for [%d:%d]\n", __func__, *file, *offset);
     if (thedb->master == gbl_mynode && !gbl_is_physical_replicant) {
-        send_truncate_log_msg(thedb->bdb_env, *file, *offset);
-        call_for_election_and_lose(thedb->bdb_env, __func__, __LINE__);
+        /* We've asked the replicants to truncate their log files.  Now we are
+         * incrementing the generation number without an election and writing a
+         * record.  The higher-gen write ensures that this node will remain
+         * master after an election.  */
+        master_increment_gen(thedb->bdb_env);
     }
+
+    logmsg(LOGMSG_INFO, "%s complete [%d:%d]\n", __func__, *file, *offset);
+
     return 0;
 }
 
@@ -5717,6 +5723,7 @@ retry_tran:
 
     gbl_watcher_thread_ran = comdb2_time_epoch();
     unlock_schema_lk();
+    logmsg(LOGMSG_INFO, "%s complete [%d:%d]\n", __func__, *file, *offset);
 
     gbl_comdb2_reload_schemas = 0;
     return 0;
