@@ -1733,7 +1733,11 @@ void sqlite3GenerateConstraintChecks(
       sqlite3TableAffinity(v, pTab, regNewData+1);
       bAffinityDone = 1;
     }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( pUpIdx==pIdx && overrideError!=OE_Ignore ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pUpIdx==pIdx ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       addrUniqueOk = sAddr.upsertBtm;
       upsertBypass = sqlite3VdbeGoto(v, 0);
       VdbeComment((v, "Skip upsert subroutine"));
