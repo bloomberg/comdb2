@@ -125,4 +125,10 @@ if [[ $target_count != $cnt ]]; then
     echo "Wrong count expected $(($nrecs + $morerecs)) got $target_count"
     exit 1
 fi
+
+# cleanup since this was a successful run
+if [ "$CLEANUPDBDIR" != "0" ] ; then
+    rm -rf ${LOCTMPDIR}
+fi
+
 exit 0

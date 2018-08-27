@@ -90,7 +90,11 @@ fi
 echo "At start had $atstart fds, during run had $atrun fds, gone at end"
 
 #delete testdb{i} dir now that test is successful
-for i in $(seq 1 10); do 
-    rm -rf testdb${i}
-done
+if [ "$CLEANUPDBDIR" != "0" ] ; then
+    for i in $(seq 1 10); do 
+        rm -rf testdb${i}
+        rm -f ${TESTDIR}/var/log/cdb2/testdb${i}.* ${TESTDIR}/tmp/testdb${i}.* ${TMPDIR}/cdb2/testdb${i}.*
+    done
+fi
+
 exit 0
