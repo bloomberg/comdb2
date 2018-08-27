@@ -1955,7 +1955,11 @@ void sqlite3GenerateConstraintChecks(
         break;
       }
     }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( pUpIdx==pIdx && overrideError!=OE_Ignore ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pUpIdx==pIdx ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3VdbeJumpHere(v, upsertBypass);
     }else{
       sqlite3VdbeResolveLabel(v, addrUniqueOk);
