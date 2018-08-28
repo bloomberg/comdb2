@@ -4468,6 +4468,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     bdb_state_type *bdb_state;
     int node = 0;
     int on_off = 0;
+    uint32_t gen;
     lsn_cmp_type lsn_cmp;
     int in_rep_process_message;
     DB_LSN cur_lsn;
@@ -4761,6 +4762,20 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
             truncate_log_lock(bdb_state, trunc_lsn.file, trunc_lsn.offset, 0);
         }
         net_ack_message(ack_handle, 0);
+        break;
+    case USER_TYPE_IGNORE_GEN:
+        p_buf = (uint8_t *)dta;
+        p_buf_end = ((uint8_t *)dta + dtalen);
+
+        if ((buf_get(&gen, sizeof(gen), p_buf, p_buf_end)) == NULL) {
+            logmsg(LOGMSG_ERROR, "%s %d: failed to get ignore-gen\n", __func__,
+                    __LINE__);
+        } else {
+            logmsg(LOGMSG_ERROR, "%s: ignoring generation %u for truncate\n",
+                    __func__, gen);
+            bdb_state->dbenv->rep_set_ignore_gen(bdb_state->dbenv, gen);
+        }
+
         break;
 
     default:
