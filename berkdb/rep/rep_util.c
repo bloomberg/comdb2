@@ -334,12 +334,12 @@ __rep_set_gen(dbenv, func, line, gen)
  * __rep_set_ignore_gen --
  *  Exposed as a utility function to help with distributed truncate.
  *
- * PUBLIC: void __rep_set_ignore_gen __P((DB_ENV *, int gen));
+ * PUBLIC: void __rep_set_ignore_gen __P((DB_ENV *, uint32_t gen));
  */
 void
 __rep_set_ignore_gen(dbenv, gen)
 	DB_ENV *dbenv;
-	int gen;
+	uint32_t gen;
 {
 	DB_REP *db_rep;
 	REP *rep;
@@ -354,12 +354,12 @@ __rep_set_ignore_gen(dbenv, gen)
  * __rep_set_gen_pp --
  *  Exposed as a utility function to help with distributed truncate.
  *
- * PUBLIC: void __rep_set_gen_pp __P((DB_ENV *, int gen));
+ * PUBLIC: void __rep_set_gen_pp __P((DB_ENV *, uint32_t gen));
  */
 void
 __rep_set_gen_pp(dbenv, gen)
 	DB_ENV *dbenv;
-	int gen;
+	uint32_t gen;
 {
     __rep_set_gen(dbenv, __func__, __LINE__, gen);
 }
