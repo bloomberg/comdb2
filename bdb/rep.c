@@ -4672,7 +4672,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
             logmsg(LOGMSG_ERROR, "%s %d: failed to get ignore-gen\n", __func__,
                     __LINE__);
         } else {
-            logmsg(LOGMSG_ERROR, "%s: ignoring generation %u for truncate\n",
+            logmsg(LOGMSG_INFO, "%s: ignoring generation %u for truncate\n",
                     __func__, gen);
             bdb_state->dbenv->rep_set_ignore_gen(bdb_state->dbenv, gen);
         }
