@@ -2493,6 +2493,8 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_TRUNCATE_LOG,
                          "truncate_log", berkdb_receive_msg);
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_IGNORE_GEN,
+                         "ignore_gen", berkdb_receive_msg);
     /* register our net library appsock wedge.  this lets us return
        the usr ptr containing the bdb state to the caller instead
        of the netinfo pointer */

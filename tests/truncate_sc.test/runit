@@ -1585,7 +1585,7 @@ function run_tests
     rowlocks
     # I think there's a general problem with schema-changes in time-partitions
     # Change this test to NOT do a schema-change.  I will come back to this.
-    time_partitions_nosc
+    #time_partitions_nosc
 }
 
 setup

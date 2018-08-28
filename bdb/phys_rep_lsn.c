@@ -251,21 +251,8 @@ int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file,
     } else {
         BDB_WRITELOCK(msg);
     }
-
-    if (bdb_state->dbenv->rep_verify_match(bdb_state->dbenv, file, offset, online))
-    {
-        logmsg(LOGMSG_ERROR, "rep_verify_match failed\n");
-    }
-
-    if (flags && bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
-        send_truncate_log_msg(bdb_state, file, offset);
-        if (!gbl_is_physical_replicant) {
-            pthread_t tid;
-            pthread_create(&tid, &(bdb_state->pthread_attr_detach),
-                    dummy_add_thread, bdb_state);
-        }
-    }
-
+    send_ignore_gen(bdb_state);
+    bdb_state->dbenv->rep_verify_match(bdb_state->dbenv, file, offset, online);
     BDB_RELLOCK();
 
     return 0;
