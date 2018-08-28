@@ -7735,7 +7735,6 @@ __rep_verify_match(dbenv, rp, savetime, online)
         MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
     }
 
-    pthread_mutex_lock(&apply_lk);
 	if ((ret = __rep_dorecovery(dbenv, &rp->lsn, &trunclsn, online)) != 0) {
         pthread_mutex_unlock(&apply_lk);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
@@ -7744,7 +7743,6 @@ __rep_verify_match(dbenv, rp, savetime, online)
 		F_CLR(rep, REP_F_READY);
 		goto errunlock;
 	}
-    pthread_mutex_unlock(&apply_lk);
 
 	ctrace("%s truncated log from [%d:%d] to [%d:%d]\n",
 		__func__, prevlsn.file, prevlsn.offset, trunclsn.file,
