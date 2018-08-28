@@ -970,7 +970,7 @@ int send_ignore_gen(bdb_state_type *bdb_state)
     p_buf_end = buf + sizeof(uint32_t);
     buf_put(&gen, sizeof(uint32_t), p_buf, p_buf_end);
     count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-    logmsg(LOGMSG_USER, "%s sending ignore generation %u to cluster\n",
+    logmsg(LOGMSG_INFO, "%s sending ignore generation %u to cluster\n",
             __func__, gen);
     for (i = 0; i < count; i++) {
         net_send(bdb_state->repinfo->netinfo, hostlist[i], USER_TYPE_IGNORE_GEN,
