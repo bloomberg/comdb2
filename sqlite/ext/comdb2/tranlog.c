@@ -243,7 +243,7 @@ static inline void tranlog_lsn_to_str(char *st, DB_LSN *lsn)
 
 static inline int parse_lsn(const char *lsnstr, DB_LSN *lsn)
 {
-    int file, offset;
+    unsigned int file, offset;
 
     if (char_to_lsn(lsnstr, &file, &offset)) {
         return -1;
@@ -305,10 +305,13 @@ static u_int32_t get_generation_from_ckp_record(char *data)
 
 u_int64_t get_timestamp_from_matchable_record(char *data)
 {
-    int64_t rectype = 0;
+    u_int32_t rectype = 0;
+    u_int32_t dood = 0;
     if (data)
     {
         LOGCOPY_32(&rectype, data); 
+        dood = *(uint32_t *)(data);
+        fprintf(stderr, "rec: %ld, dood: %ld\n", rectype, dood);
     }
     else
     {
