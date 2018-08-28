@@ -473,13 +473,32 @@ static int db_comdb_stop_replication(Lua L)
     return 1;
 }
 
-static int db_comdb_register_preplicant(Lua L)
+static int db_comdb_register_replicant(Lua L)
 {
     if (gbl_is_physical_replicant)
     {
         return luaL_error(L, "This database cannot assign physical replicants");
     }
     
+    if (!lua_isstring(L, 1) || !lua_isstring(L, 2) || !lua_isstring(L, 3))
+    {
+        return luaL_error(L, 
+                "Usage: register_replicant(\"<dbname>\", "
+                "\"<hostname>\", "
+                "\"{<file>:<offset>}\"). "
+                "LSN not valid.");
+    }
+
+    int rc;
+    char* lsnstr = (char *) lua_tostring(L, 3);
+    unsigned int file, offset; 
+  
+    if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
+        return luaL_error(L, 
+                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
+                "LSN not valid.");
+    }
+
     return 1;
 }
 
@@ -495,7 +514,7 @@ static const luaL_Reg sys_funcs[] = {
     { "apply_log", db_comdb_apply_log },
     { "start_replication", db_comdb_start_replication },
     { "stop_replication", db_comdb_stop_replication },
-    { "register_preplicant", db_comdb_register_preplicant },
+    { "register_replicant", db_comdb_register_replicant },
     { NULL, NULL }
 }; 
 
@@ -635,9 +654,19 @@ static struct sp_source syssps[] = {
     }
     /* allow replication assignment */
     ,{
-        "sys.cmd.register_preplicant",
+        "sys.cmd.register_replicant",
         "local function main(dbname, machname, lsn)\n"
-        "sys.register_preplicant()\n"
+            /* create db if necessary */
+            "db:exec('create table if not exists comdb2_rep_list "
+            "{ schema "
+                "{ "
+                    "int group "
+                    "vutf8 dbname "
+                    "vutf8 machname "
+                    "longlong timestamp "
+                "} "
+            "}')\n"
+            "sys.register_replicant(dbname, machname, lsn)\n"
         "end\n"
     }
 };
