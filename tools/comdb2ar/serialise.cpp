@@ -401,8 +401,8 @@ std::string replace_dbname(const std::string& replaceWith, const std::string& db
 bool is_changeable_file(const std::string& filepath)
 {
     std::string changeable[] = {
-        ".llmeta.dta",
-        ".metadata.dta",
+        /* ".llmeta.dta", */
+        /* ".metadata.dta", */
         ".service",
         ".txn",
         "_file_vers_map",
@@ -421,6 +421,33 @@ bool is_changeable_file(const std::string& filepath)
 
 }
 
+bool is_double_copy(const std::string& filepath)
+{
+
+    std::string changeable[] = {
+        ".llmeta.dta",
+        ".metadata.dta"
+    };
+
+    for (auto chg : changeable)
+    {
+        if (filepath.find(chg) != std::string::npos)
+            return true;
+    }
+    return false;
+
+}
+
+void replace_file_name(FileInfo fi, const std::string& repl_name,
+        const std::string& dbname)
+{
+    std::string somename = replace_dbname(repl_name, dbname,  
+            fi.get_filename());
+    std::cerr << "Replace " << fi.get_filename() <<
+        " with " << somename << "\n";
+    fi.set_filename(replace_dbname(repl_name, dbname, 
+                fi.get_filename())); 
+}
 
 static void serialise_log_files(
         const std::string& dbtxndir,
@@ -465,12 +492,12 @@ static void serialise_log_files(
         {
             if (is_changeable_file(fi.get_filename()))
             {
-                std::string somename = replace_dbname(repl_name, dbname,  
-                        fi.get_filename());
-                std::cerr << "Replace " << fi.get_filename() <<
-                    " with " << somename << "\n";
-                fi.set_filename(somename);
+                replace_file_name(fi, repl_name, dbname);
             }
+            else if (is_double_copy(fi.get_filename()))
+            {
+                std::cerr << "TODO: here!" << "\n";
+            }_
         }
 
         serialise_file(fi);
@@ -1257,12 +1284,7 @@ void serialise_database(
                 {
                     if (is_changeable_file(fi.get_filename()))
                     {
-                        std::string somename = replace_dbname(repl_name, dbname,  
-                                fi.get_filename());
-                        std::cerr << "Replace " << fi.get_filename() <<
-                            " with " << somename << "\n";
-                        fi.set_filename(replace_dbname(repl_name, dbname, 
-                                    fi.get_filename()));
+                        replace_file_name(fi, repl_name, dbname);
                     }
                 }
 
@@ -1283,12 +1305,7 @@ void serialise_database(
                 {
                     if (is_changeable_file(fi.get_filename()))
                     {
-                        std::string somename = replace_dbname(repl_name, dbname,  
-                                fi.get_filename());
-                        std::cerr << "Replace optional file " << fi.get_filename() <<
-                            " with " << somename << "\n";
-                        fi.set_filename(replace_dbname(repl_name, dbname, 
-                                    fi.get_filename()));
+                        replace_file_name(fi, repl_name, dbname);
                     }
                 }
 
@@ -1322,14 +1339,9 @@ void serialise_database(
                 // change names if necessary
                 if (copy_physical && !nonames)
                 {
-                    if (is_changeable_file(it->get_filename()))
+                    if (is_changeable_file(fi.get_filename()))
                     {
-                        std::string somename = replace_dbname(repl_name, dbname,  
-                                it->get_filename());
-                        std::cerr << "Replace " << it->get_filename() <<
-                            " with " << somename << "\n";
-                        it->set_filename(replace_dbname(repl_name, dbname, 
-                                    it->get_filename()));
+                        replace_file_name(*it, repl_name, dbname)
                     }
                 }
 

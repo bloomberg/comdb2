@@ -278,7 +278,7 @@ static int db_comdb_truncate_log(Lua L) {
         if (rc == -1)
             return luaL_error(L, "Can only truncate from master node");
         else
-            return luaL_error(L, "Couldn't truncate to timestamp %ld", time);
+            return luaL_error(L, "Couldn't truncate to lsn {%u:%u}", file, offset);
     }
 
     return 1;
