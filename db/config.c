@@ -1579,6 +1579,13 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
 
     if (!gbl_create_mode) {
         read_cmd_line_tunables(dbenv);
+
+        /* usenames is not supported with physical replication */
+        if (gbl_is_physical_replicant && !gbl_nonames)
+        {
+            logmsg(LOGMSG_ERROR, "Cannot start a physical replicant under usenames\n");
+            return 1;
+        }
     }
 
     return 0;

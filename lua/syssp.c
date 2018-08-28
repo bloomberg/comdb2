@@ -483,6 +483,16 @@ static int db_comdb_stop_replication(Lua L)
     return 1;
 }
 
+static int db_comdb_register_preplicant(Lua L)
+{
+    if (gbl_is_physical_replicant)
+    {
+        return luaL_error(L, "This database cannot assign physical replicants");
+    }
+    
+    return 1;
+}
+
 static const luaL_Reg sys_funcs[] = {
     { "cluster", db_cluster },
     { "comdbg_tables", db_comdbg_tables },
@@ -495,6 +505,7 @@ static const luaL_Reg sys_funcs[] = {
     { "apply_log", db_comdb_apply_log },
     { "start_replication", db_comdb_start_replication },
     { "stop_replication", db_comdb_stop_replication },
+    { "register_preplicant", db_comdb_register_preplicant },
     { NULL, NULL }
 }; 
 
@@ -630,6 +641,13 @@ static struct sp_source syssps[] = {
         "sys.cmd.stop_replication",
         "local function main()\n"
         "sys.stop_replication()\n"
+        "end\n"
+    }
+    /* allow replication assignment */
+    ,{
+        "sys.cmd.register_preplicant",
+        "local function main(dbname, machname, lsn)\n"
+        "sys.register_preplicant()\n"
         "end\n"
     }
 };
