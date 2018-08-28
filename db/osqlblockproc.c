@@ -637,7 +637,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         return 0;
     }
 
-    struct ireq *iq = osql_session_get_ireq(sess);;
+    struct ireq *iq = osql_session_get_ireq(sess);
     int rc = 0, rc_op = 0;
     oplog_key_t key = {0};
     int rpl_len = 0;
