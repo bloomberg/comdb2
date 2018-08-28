@@ -3168,8 +3168,7 @@ out:
 
 static void handle_sqlite_error(struct sqlthdstate *thd,
                                 struct sqlclntstate *clnt,
-                                struct sql_state *rec, 
-                                int rc)
+                                struct sql_state *rec, int rc)
 {
     reqlog_set_event(thd->logger, "sql"); /* set before error */
     reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
