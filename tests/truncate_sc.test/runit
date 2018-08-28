@@ -14,7 +14,7 @@ export comdb2ar=${COMDB2AR_EXE}
 export myhost=$(hostname)
 export physrep=1
 export replive=1
-export total_tries=10
+export total_tries=40
 export replog=$repdir/log.txt
 export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
 
