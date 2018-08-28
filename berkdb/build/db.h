@@ -2502,8 +2502,8 @@ struct __db_env {
 	int (*truncate_sc_callback)(DB_ENV *, DB_LSN *lsn);
 	int (*set_rep_truncate_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn)));
 	int (*rep_truncate_callback)(DB_ENV *, DB_LSN *lsn);
-    int (*rep_set_gen)(DB_ENV *, uint32_t gen);
-    int (*rep_set_ignore_gen)(DB_ENV *, uint32_t gen);
+    void (*rep_set_gen)(DB_ENV *, uint32_t gen);
+    void (*rep_set_ignore_gen)(DB_ENV *, uint32_t gen);
 
 	/* Trigger/consumer signalling support */
 	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,
