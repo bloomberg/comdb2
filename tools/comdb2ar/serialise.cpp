@@ -401,8 +401,8 @@ std::string replace_dbname(const std::string& replaceWith, const std::string& db
 bool is_changeable_file(const std::string& filepath)
 {
     std::string changeable[] = {
-        /* ".llmeta.dta", */
-        /* ".metadata.dta", */
+        ".llmeta.dta",
+        ".metadata.dta",
         ".service",
         ".txn",
         "_file_vers_map",
@@ -410,23 +410,6 @@ bool is_changeable_file(const std::string& filepath)
         ".blkseq.dta",
         ".blkseq.freerec",
         ".blkseq.ix0"
-    };
-
-    for (auto chg : changeable)
-    {
-        if (filepath.find(chg) != std::string::npos)
-            return true;
-    }
-    return false;
-
-}
-
-bool is_double_copy(const std::string& filepath)
-{
-
-    std::string changeable[] = {
-        ".llmeta.dta",
-        ".metadata.dta"
     };
 
     for (auto chg : changeable)
@@ -494,10 +477,6 @@ static void serialise_log_files(
             {
                 replace_file_name(fi, repl_name, dbname);
             }
-            else if (is_double_copy(fi.get_filename()))
-            {
-                std::cerr << "TODO: here!" << "\n";
-            }_
         }
 
         serialise_file(fi);
@@ -777,16 +756,23 @@ void serialise_database(
     parse_lrl_file(lrlpath, &dbname, &dbdir, &support_files,
             &table_names, &queue_names, &nonames, &has_cluster_info);
 
+    // Ignore lrl names setting if we know better
+    if (!dbdir.empty() && !dbname.empty()) {
+        nonames = check_usenames(dbname, dbdir, nonames);
+    }
+
+    if (copy_physical && !nonames)
+    {
+        std::ostringstream ss;
+        ss << "Cannot copy a physical replicant under master that has usenames";
+        throw Error(ss);
+    }
+
     /* update found parsed info if making a physical replicant */
     if (copy_physical)
     {
         create_lrl_file(lrlpath, repl_name, dbname, repl_from_hostnames);
         templrlpath = lrlpath;
-    }
-
-    // Ignore lrl names setting if we know better
-    if (!dbdir.empty() && !dbname.empty()) {
-        nonames = check_usenames(dbname, dbdir, nonames);
     }
 
     // Create the directory for incremental backups if needed
@@ -1345,9 +1331,9 @@ void serialise_database(
                 // change names if necessary
                 if (copy_physical && !nonames)
                 {
-                    if (is_changeable_file(fi.get_filename()))
+                    if (is_changeable_file(it->get_filename()))
                     {
-                        replace_file_name(*it, repl_name, dbname)
+                        replace_file_name(*it, repl_name, dbname);
                     }
                 }
 
