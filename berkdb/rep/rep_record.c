@@ -2993,7 +2993,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
         int now;
         count++;
         if ((now = time(NULL)) - lastpr) {
-            logmsg(LOGMSG_ERROR, "%s: ignoring lsn [%d:%d] gen %d on truncate, "
+            logmsg(LOGMSG_INFO, "%s: ignoring lsn [%d:%d] gen %d on truncate, "
                     "count=%u\n", __func__, rp->lsn.file, rp->lsn.offset, rp->gen,
                     count);
             lastpr=now;
