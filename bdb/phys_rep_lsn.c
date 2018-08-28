@@ -141,14 +141,14 @@ int find_log_timestamp(bdb_state_type* bdb_state, time_t time,
         } while(!matchable_log_type(rectype));
 
         my_time = get_timestamp_from_matchable_record(logrec.data);
-        logmsg(LOGMSG_USER, "My ts is %ld, {%u:%u}\n", my_time,
+        logmsg(LOGMSG_USER, "My ts is %lld, {%u:%u}\n", my_time,
                 rec_lsn.file, rec_lsn.offset); 
 
         if (logrec.data)
             free(logrec.data);
     } while(time < my_time);
 
-    logmsg(LOGMSG_USER, "My ts is %ld, {%u:%u}\n", my_time,
+    logmsg(LOGMSG_USER, "My ts is %lld, {%u:%u}\n", my_time,
             rec_lsn.file, rec_lsn.offset); 
 
     *file = rec_lsn.file;
@@ -253,7 +253,10 @@ int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file,
         BDB_WRITELOCK(msg);
     }
 
-    bdb_state->dbenv->rep_verify_match(bdb_state->dbenv, file, offset, online);
+    if (bdb_state->dbenv->rep_verify_match(bdb_state->dbenv, file, offset, online))
+    {
+        logmsg(LOGMSG_ERROR, "rep_verify_match failed\n");
+    }
 
     if (flags && bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
         send_truncate_log_msg(bdb_state, file, offset);
