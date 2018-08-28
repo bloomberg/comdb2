@@ -2987,6 +2987,20 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	max_lsn_dbtp = NULL;
 	bzero(&max_lsn, sizeof(max_lsn));
 
+    if (rep->ignore_gen >= rp->gen) {
+        static uint32_t count=0;
+        static time_t lastpr = 0;
+        int now;
+        count++;
+        if ((now = time(NULL)) - lastpr) {
+            logmsg(LOGMSG_ERROR, "%s: ignoring lsn [%d:%d] gen %d on truncate, "
+                    "count=%u\n", __func__, rp->lsn.file, rp->lsn.offset, rp->gen,
+                    count);
+            lastpr=now;
+        }
+        return 0;
+    }
+
 	if (gbl_verify_rep_log_records && rec->size >= HDR_NORMAL_SZ)
 		LOGCOPY_32(&rectype, rec->data);
 
@@ -3060,6 +3074,8 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	 * That said, I really don't want to do db operations holding the
 	 * log mutex, so the synchronization here is tricky.
 	 */
+    /* TODO: return a message telling the physical replicant to go 
+     * into matching mode */
     if (gbl_is_physical_replicant && cmp != 0)
     {
         static uint32_t count=0;
@@ -6452,7 +6468,7 @@ restart:
 
 	count++;
 	if (online && ((ret = __lock_id(dbenv, &lockid)) != 0)) {
-		logmsg(LOGMSG_FATAL, "%s could not acquire lockid\n");
+		logmsg(LOGMSG_FATAL, "%s could not acquire lockid\n", __func__);
 		abort();
 	}
 
@@ -7687,13 +7703,16 @@ __rep_verify_match(dbenv, rp, savetime, online)
         MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
     }
 
+    pthread_mutex_lock(&apply_lk);
 	if ((ret = __rep_dorecovery(dbenv, &rp->lsn, &trunclsn, online)) != 0) {
+        pthread_mutex_unlock(&apply_lk);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
         if (!online)
             rep->in_recovery = 0;
 		F_CLR(rep, REP_F_READY);
 		goto errunlock;
 	}
+    pthread_mutex_unlock(&apply_lk);
 
 	ctrace("%s truncated log from [%d:%d] to [%d:%d]\n",
 		__func__, prevlsn.file, prevlsn.offset, trunclsn.file,

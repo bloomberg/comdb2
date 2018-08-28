@@ -27,6 +27,7 @@ typedef struct __rep {
 	u_int32_t	egen;		/* Replication election generation. */
 	u_int32_t	gen;		/* Replication generation number. */
 	u_int32_t	recover_gen;	/* Last generation number in log. */
+    u_int32_t   ignore_gen;  /* Enforce coordination on distributed truncate */
     u_int32_t   committed_gen;  /* Last generation number written to a commit record */
     DB_LSN      committed_lsn;  /* Last committed-lsn */
 	int		asites;		/* Space allocated for sites. */
