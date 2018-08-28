@@ -3168,8 +3168,12 @@ out:
 
 static void handle_sqlite_error(struct sqlthdstate *thd,
                                 struct sqlclntstate *clnt,
-                                struct sql_state *rec)
+                                struct sql_state *rec, 
+                                int rc)
 {
+    reqlog_set_event(thd->logger, "sql"); /* set before error */
+    reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
+
     if (thd->sqlthd)
         thd->sqlthd->nmove = thd->sqlthd->nfind = thd->sqlthd->nwrite =
             thd->sqlthd->ntmpread = thd->sqlthd->ntmpwrite = 0;
@@ -3241,7 +3245,6 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
                                   struct sqlclntstate *clnt)
 {
     int rc;
-    int fast_error;
     struct errstat err = {0};
     struct sql_state rec = {0};
     rec.sql = clnt->sql;
@@ -3252,24 +3255,26 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
 
         /* get an sqlite engine */
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
-        if (rc == SQLITE_SCHEMA_REMOTE)
+        if (rc == SQLITE_SCHEMA_REMOTE) {
             continue;
-        if (rc) {
+        } else if (rc) {
             int irc = errstat_get_rc(&err);
             /* certain errors are saved, in that case we don't send anything */
             if (irc == ERR_PREPARE)
                 write_response(clnt, RESPONSE_ERROR_PREPARE, err.errstr, 0);
             else if (irc == ERR_PREPARE_RETRY)
                 write_response(clnt, RESPONSE_ERROR_PREPARE_RETRY, err.errstr, 0);
-            goto errors;
-        }
 
-        /* run the engine */
-        fast_error = 0;
+            handle_sqlite_error(thd, clnt, &rec, rc);
+            break;
+        }
 
         if (clnt->statement_query_effects)
             reset_query_effects(clnt);
 
+        int fast_error = 0;
+
+        /* run the engine */
         rc = run_stmt(thd, clnt, &rec, &fast_error, &err);
         if (rc) {
             int irc = errstat_get_rc(&err);
@@ -3279,8 +3284,10 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
                 send_run_error(clnt, errstat_get_str(&err), CDB2ERR_CONV_FAIL);
                 break;
             }
-            if (fast_error)
-                goto errors;
+            if (fast_error) {
+                handle_sqlite_error(thd, clnt, &rec, rc);
+                break;
+            }
         }
 
         if (rc == SQLITE_SCHEMA_REMOTE) {
@@ -3289,16 +3296,8 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
 
     } while (rc == SQLITE_SCHEMA_REMOTE);
 
-done:
     sqlite_done(thd, clnt, &rec, rc);
-
     return rc;
-
-errors:
-    reqlog_set_event(thd->logger, "sql"); /* set before error */
-    reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
-    handle_sqlite_error(thd, clnt, &rec);
-    goto done;
 }
 
 static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
