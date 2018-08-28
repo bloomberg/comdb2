@@ -158,6 +158,10 @@ int check_index(struct ireq *iq, void *trans, int ixnum,
         return 1;
     }
 
+    if (ix_isnullk(iq->usedb, key, ixnum)) {
+        return 0;
+    }
+
     rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, key, &fndrrn, &fndgenid,
                              NULL, NULL, 0, trans);
     if (rc == IX_FND) {
