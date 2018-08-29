@@ -247,14 +247,25 @@ INSERT INTO t1(i) VALUES (1);
 SELECT * FROM t1;
 DROP TABLE t1;
 
-CREATE TABLE t1(i INT, j INT, DUPLICATE(i,j), DUPLICATE (j,i))$$
-CREATE TABLE t2(i INT, j INT, DUPLICATE 'dup1'(i,j), DUPLICATE dup2(j,i))$$
+CREATE TABLE t1(i INT, j INT)$$
+CREATE INDEX t1_ij ON t1(i, j)$$
+CREATE INDEX t1_ji ON t1(j, i)$$
+CREATE TABLE t2(i INT, j INT)$$
+CREATE INDEX 'dup1' ON t2(i, j)$$
+CREATE INDEX dup2 ON t2(j, i)$$
 CREATE TABLE t3(i INT, j INT, UNIQUE(i,j), UNIQUE(j,i))$$
 CREATE TABLE t4(i INT, j INT, UNIQUE 'uniq1'(i,j), UNIQUE 'uniq2'(j,i))$$
-CREATE TABLE t5(i INT UNIQUE, j INT, DUPLICATE(i,j), UNIQUE(i,j), DUPLICATE dup_key(i,j), UNIQUE 'unique_key'(j,i))$$
-CREATE TABLE t6(i INT, DUPLICATE COMDB2_PK(i)) $$
-CREATE TABLE t6(i INT, j INT, DUPLICATE 'dup'(i), DUPLICATE 'dup'(j)) $$
-CREATE TABLE t6(i INT, j INT, DUPLICATE 'xxxx'(i), UNIQUE 'xxxx'(j)) $$
+CREATE TABLE t5(i INT UNIQUE, j INT, UNIQUE(i,j), UNIQUE 'unique_key'(j,i))$$
+CREATE INDEX t5_ij ON t5(i, j)$$
+CREATE INDEX dup_key ON t5(i, j)$$
+CREATE TABLE t6(i INT) $$
+CREATE INDEX COMDB2_PK ON t6(i)$$
+CREATE TABLE t6(i INT, j INT) $$
+CREATE INDEX 'dup' ON t6(i)$$
+CREATE INDEX 'dup' ON t6(j)$$
+CREATE TABLE t6(i INT, j INT) $$
+CREATE INDEX 'xxxx' ON t6(i)$$
+CREATE UNIQUE INDEX 'xxxx' ON t6(j)$$
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
@@ -272,13 +283,13 @@ DROP TABLE t1;
 
 CREATE TABLE t1(i INT UNIQUE ASC) $$
 CREATE TABLE t1(i INT UNIQUE DESC) $$
-CREATE TABLE t1(i INT DUPLICATE ASC) $$
-CREATE TABLE t1(i INT DUPLICATE DESC) $$
 CREATE TABLE t1(i INT PRIMARY KEY ASC) $$
 CREATE TABLE t2(i INT PRIMARY KEY DESC) $$
 CREATE TABLE t3(i INT UNIQUE) $$
-CREATE TABLE t4(i INT DUPLICATE) $$
-CREATE TABLE t5(i INT, j INT, DUPLICATE(j DESC, i ASC)) $$
+CREATE TABLE t4(i INT) $$
+CREATE INDEX t4_i ON t4(i)$$
+CREATE TABLE t5(i INT, j INT) $$
+CREATE INDEX t5_ji ON t5(j DESC, i ASC)$$
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
@@ -290,9 +301,7 @@ DROP TABLE t4;
 DROP TABLE t5;
 
 CREATE TABLE t1(unique INT UNIQUE) $$
-CREATE TABLE t1(key INT DUPLICATE) $$
 CREATE TABLE t1('unique' INT UNIQUE) $$
-CREATE TABLE t2('key' INT DUPLICATE) $$
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
@@ -307,7 +316,8 @@ CREATE TABLE t4(i INT, j INT, FOREIGN KEY (i, j) REFERENCES t1(i, j)) $$
 CREATE TABLE t5(i INT, j INT, FOREIGN KEY (i DESC, j) REFERENCES t1(i DESC, j)) $$
 CREATE TABLE t6(i INT, j INT, FOREIGN KEY (i, j DESC) REFERENCES t1(i, j DESC)) $$
 CREATE TABLE t7(i INT, j INT, FOREIGN KEY (i DESC, j DESC) REFERENCES t1(i DESC, j DESC)) $$
-CREATE TABLE t8(i INT, DUPLICATE idx1 (i DESC), FOREIGN KEY (i DESC) REFERENCES t1(i DESC)) $$
+CREATE TABLE t8(i INT, FOREIGN KEY (i DESC) REFERENCES t1(i DESC)) $$
+CREATE INDEX idx1 ON t8(i DESC) $$
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
