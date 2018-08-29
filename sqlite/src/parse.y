@@ -269,7 +269,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   ADD AGGREGATE ALIAS ANALYZEEXPERT ANALYZESQLITE AUTHENTICATION
   BLOBFIELD BULKIMPORT
   CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COVERAGE CRLE
-  DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DRYRUN DUPLICATE
+  DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DRYRUN
   ENABLE FUNCTION GENID48 GET GRANT IPU ISC KW LUA LZ4 NONE
   ODH OFF OP OPTION OPTIONS
   PAGEORDER PASSWORD PERIOD PROCEDURE PUT
@@ -434,10 +434,6 @@ ccons ::= UNIQUE onconf(R).      {
     comdb2AddIndex(pParse, 0, 0, R, 0, 0, 0, SQLITE_SO_ASC,
                    SQLITE_IDXTYPE_UNIQUE, 0);
 }
-ccons ::= DUPLICATE onconf(R).   {
-    comdb2AddIndex(pParse, 0, 0, R, 0, 0, 0, SQLITE_SO_ASC,
-                   SQLITE_IDXTYPE_DUPKEY, 0);
-}
 constraint_opt ::= CONSTRAINT.       { pParse->constraintName.n = 0; } 
 constraint_opt ::= CONSTRAINT nm(X). { pParse->constraintName = X; }
 ccons ::= constraint_opt REFERENCES nm(T) LP eidlist(TA) RP refargs(R).
@@ -526,9 +522,6 @@ tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
 }
 tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
   comdb2AddIndex(pParse, &I, X, 0, W, BW, AW, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE, O);
-}
-tcons ::= DUPLICATE nm_opt(I) LP sortlist(X) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
-  comdb2AddIndex(pParse, &I, X, 0, W, BW, AW, SQLITE_SO_ASC, SQLITE_IDXTYPE_DUPKEY, O);
 }
 tcons ::= constraint_opt FOREIGN KEY LP eidlist(FA) RP
           REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
@@ -1477,9 +1470,6 @@ cmd ::= createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
 
 %type uniqueflag {int}
 uniqueflag(A) ::= UNIQUE.  {A = OE_Abort;}
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-uniqueflag(A) ::= DUPLICATE. {A = OE_None;}
-%endif SQLITE_BUILDING_FOR_COMDB2
 uniqueflag(A) ::= .        {A = OE_None;}
 
 // The eidlist non-terminal (Expression Id List) generates an ExprList
