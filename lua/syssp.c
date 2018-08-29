@@ -490,7 +490,7 @@ static int db_comdb_register_replicant(Lua L)
         return luaL_error(L, "This database cannot assign physical replicants");
     }
     
-    if (!lua_isstring(L, 1) || !lua_isstring(L, 2) || !lua_isstring(L, 3))
+    if (!lua_isstring(L, 1))
     {
         return luaL_error(L, 
                 "Usage: register_replicant(\"<dbname>\", "
@@ -500,12 +500,14 @@ static int db_comdb_register_replicant(Lua L)
     }
 
     int rc;
-    char* lsnstr = (char *) lua_tostring(L, 3);
+    char* lsnstr = (char *) lua_tostring(L, 1);
     unsigned int file, offset; 
   
     if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
         return luaL_error(L, 
-                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
+                "Usage: register_replicant(\"<dbname>\", "
+                "\"<hostname>\", "
+                "\"{<file>:<offset>}\"). "
                 "LSN not valid.");
     }
 
@@ -662,21 +664,83 @@ static struct sp_source syssps[] = {
         "sys.stop_replication()\n"
         "end\n"
     }
+
     /* allow replication assignment */
     ,{
         "sys.cmd.register_replicant",
-        "local function main(dbname, machname, lsn)\n"
+        "local function main(r_dbname, r_machname, lsn)\n"
             /* create db if necessary */
-            "db:exec('create table if not exists comdb2_rep_list "
-            "{ schema "
-                "{ "
-                    "int group "
-                    "vutf8 dbname "
-                    "vutf8 machname "
-                    "longlong timestamp "
-                "} "
-            "}')\n"
-            "sys.register_replicant(dbname, machname, lsn)\n"
+            /* "db:exec('create table if not exists comdb2_rep_list " */
+            /* "{ schema " */
+            /*     "{ " */
+            /*         "int tier " */
+            /*         "vutf8 dbname " */
+            /*         "vutf8 machname " */
+            /*         "vutf8 lsn[100] " */
+            /*         "longlong timestamp " */
+            /*     "} " */
+            /* "}')\n" */
+            /* error checking */
+            "if type(r_dbname) ~= 'string' or type(r_machname) ~= 'string' then "
+                "error('First 2 arguments must be a string') end\n"
+            "sys.register_replicant(lsn)\n"
+            "local qr, rc = db:prepare('select * from comdb2_rep_list "
+                    "where dbname = @r_dbname and machname = @r_machname')\n"
+            "qr:bind('r_dbname', r_dbname)\n"
+            "qr:bind('r_machname', r_machname)\n"
+            "qr:exec()\n"
+
+            "local row\n"
+            "if qr then\n"
+                "row = qr:fetch()\n"
+            "end\n"
+            /* find if dbname is in the list, if so, refresh. if not, assign tier */
+            "local my_tier = 0\n"
+            "local my_time = os.time()\n"
+            "if row then "
+                "my_tier = row.tier\n"
+                "qr, rc = db:prepare('update comdb2_rep_list set timestamp = @t, "
+                        "lsn = @lsn "
+                        "where dbname = @r_dbname and machname = @r_machname')\n"
+                "qr:bind('t', my_time)\n"
+                "qr:bind('lsn', lsn)"
+                "qr:bind('r_dbname', r_dbname)\n"
+                "qr:bind('r_machname', r_machname)\n"
+                "qr:exec()\n"
+            "else\n"
+                "qr, rc = db:exec('select count(*) as rec_count from comdb2_rep_list')\n"
+                "row = qr:fetch()\n"
+                "local num_db = row.rec_count\n"
+                "if num_db < 1 then "
+                    "my_tier = 1 "
+                "else "
+                    "my_tier = 2 "
+                "end\n"
+                
+                "qr, rc = db:prepare('insert into comdb2_rep_list(tier, dbname, "
+                        "machname, lsn, timestamp) values(@tr, @dnm, @mnm, @lsn, "
+                        "@ts)')\n"
+                "qr:bind('tr', my_tier)\n"
+                "qr:bind('dnm', r_dbname)\n"
+                "qr:bind('mnm', r_machname)\n"
+                "qr:bind('lsn', lsn)\n"
+                "qr:bind('ts', my_time)\n"
+                "qr:exec()\n"
+            "end\n"
+
+            /* once given tier, we can query */
+            "qr, rc = db:prepare('select * from comdb2_rep_list "
+                    "where tier < @my_tier order by tier desc')\n"
+            "qr:bind('my_tier', my_tier)\n"
+            "qr:exec()\n"
+
+            "row = qr:fetch()\n"
+            "while row do\n"
+            /* what's wrong with this line?? */
+                "db:emit(row)\n"
+                "row = qr:fetch()\n"
+            "end\n"
+
         "end\n"
     }
 };
