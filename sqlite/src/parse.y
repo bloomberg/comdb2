@@ -434,8 +434,7 @@ ccons ::= UNIQUE onconf(R).      {
     comdb2AddIndex(pParse, 0, 0, R, 0, 0, 0, SQLITE_SO_ASC,
                    SQLITE_IDXTYPE_UNIQUE, 0);
 }
-constraint_opt ::= CONSTRAINT nm(X). { pParse->constraintName = X; }
-ccons ::= constraint_opt REFERENCES nm(T) LP eidlist(TA) RP refargs(R).
+ccons ::= REFERENCES nm(T) LP eidlist(TA) RP refargs(R).
                                  {comdb2CreateForeignKey(pParse,0,&T,TA,R);}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
@@ -522,7 +521,7 @@ tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
 tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
   comdb2AddIndex(pParse, &I, X, 0, W, BW, AW, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE, O);
 }
-tcons ::= constraint_opt FOREIGN KEY LP eidlist(FA) RP
+tcons ::= FOREIGN KEY LP eidlist(FA) RP
           REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
   comdb2CreateForeignKey(pParse, FA, &T, TA, R);
   comdb2DeferForeignKey(pParse, D);
