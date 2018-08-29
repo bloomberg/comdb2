@@ -600,8 +600,9 @@ int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, 
     return 0;
 }
 
+
 const char *osql_reqtype_str(int type)
-{
+{   
     assert(0 < type && type < MAX_OSQL_TYPES);
     // copied from enum OSQL_RPL_TYPE
     static const char *typestr[] = {
@@ -660,6 +661,7 @@ void no_such_tbl_error(const char * tablename, unsigned long long rqid,
         logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
     }
 }
+
 
 /**
  * Inserts the op in the iq oplog

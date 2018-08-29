@@ -279,5 +279,12 @@ function runtest
 
 runtest
 
+
+#test is successful so we can cleanup
+if [ "$CLEANUPDBDIR" != "0" ] ; then
+    rm -rf $DBDIR
+    rm -f ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.* ${TESTDIR}/tmp/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*
+fi
+
 echo "Success"
 exit 0

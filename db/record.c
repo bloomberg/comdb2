@@ -158,6 +158,10 @@ int check_index(struct ireq *iq, void *trans, int ixnum,
         return 1;
     }
 
+    if (ix_isnullk(iq->usedb, key, ixnum)) {
+        return 0;
+    }
+
     rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, key, &fndrrn, &fndgenid,
                              NULL, NULL, 0, trans);
     if (rc == IX_FND) {
@@ -368,7 +372,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     if (!(flags & RECFLAGS_NO_BLOBS) &&
         (rc = check_blob_buffers(iq, blobs, maxblobs, iq->usedb->tablename, tag,
-                           dbname_schema, record, fldnullmap)) != 0) {
+                                 dbname_schema, record, fldnullmap)) != 0) {
         reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
         reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
                   "no blobs flags with blob buffers");

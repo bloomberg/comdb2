@@ -155,7 +155,6 @@ static void *watchdog_thread(void *arg)
     uint64_t lastlsnbytes = 0, curlsnbytes;
     char master_lastlsn[63] = "", master_curlsn[64];
     uint64_t master_lastlsnbytes = 0, master_curlsnbytes;
-    char *master;
     int sockpool_timeout;
 
     rc = pthread_mutex_init(&gbl_watchdog_kill_mutex, NULL);
@@ -173,7 +172,7 @@ static void *watchdog_thread(void *arg)
         sleep(1);
 
     while (!thedb->exiting) {
-        gbl_epoch_time = comdb2_time_epoch(); /* updated every second */
+        gbl_epoch_time = comdb2_time_epoch();
 
         if (!gbl_nowatch) {
             int stop_thds_time;
@@ -188,27 +187,12 @@ static void *watchdog_thread(void *arg)
             }
 
             /* try to malloc something */
-            ptr = malloc(128 * 1024);
+            ptr = calloc(1, 128 * 1024);
             if (!ptr) {
-                logmsg(LOGMSG_WARN, "watchdog: Can't malloc\n");
+                logmsg(LOGMSG_WARN, "watchdog: Can't allocate memory\n");
                 its_bad = 1;
             }
-
             free(ptr);
-
-            /* try to create a thread */
-            rc = pthread_create(&dummy_tid, &gbl_pthread_joinable_attr,
-                                dummy_thread, thedb);
-            if (rc) {
-                logmsg(LOGMSG_WARN, "watchdog: Can't create thread\n");
-                its_bad = 1;
-            } else {
-                rc = pthread_join(dummy_tid, NULL);
-                if (rc) {
-                    logmsg(LOGMSG_WARN, "watchdog: Can't join thread\n");
-                    its_bad = 1;
-                }
-            }
 
             /* try to get a file descriptor */
             fd = open("/", O_RDONLY);
@@ -274,10 +258,25 @@ static void *watchdog_thread(void *arg)
                    if this is not the case, it means I am deadlock
                    we run this for each 10 iterations of watchdog
                  */
-                master = thedb->master;
                 if (counter % 10 == 0) {
+                    char *master = thedb->master;
                     /* testing slow event time */
                     its_bad_slow = 0;
+
+                    /* try to create a thread */
+                    rc = pthread_create(&dummy_tid, &gbl_pthread_joinable_attr,
+                                        dummy_thread, thedb);
+                    if (rc) {
+                        logmsg(LOGMSG_WARN, "watchdog: Can't create thread\n");
+                        its_bad_slow = its_bad = 1;
+                    } else {
+                        rc = pthread_join(dummy_tid, NULL);
+                        if (rc) {
+                            logmsg(LOGMSG_WARN,
+                                   "watchdog: Can't join thread\n");
+                            its_bad_slow = its_bad = 1;
+                        }
+                    }
 
                     if (!coherent && master > 0 && master != gbl_mynode) {
                         bdb_get_cur_lsn_str(thedb->bdb_env, &curlsnbytes,
@@ -288,27 +287,22 @@ static void *watchdog_thread(void *arg)
                         if (!lastlsnbytes) {
                             lastlsnbytes = curlsnbytes;
                             master_lastlsnbytes = master_curlsnbytes;
-                        } else {
+                        }
+                        /* time for deadlock test;
+                           for now we ignore master progress */
+                        else if (lastlsnbytes == curlsnbytes &&
+                                 /* earth did not moved in the meantime */
+                                 master_curlsnbytes > curlsnbytes &&
+                                 master_lastlsnbytes > curlsnbytes) {
+                            /* we were behind last run, we are still
+                               behind and we did not move: DEADLOCK */
 
-                            /* time for deadlock test;
-                               for now we ignore master progress
-                             */
-                            if (lastlsnbytes == curlsnbytes) {
-                                /* earth did not moved in the meantime */
-                                if (master_curlsnbytes > curlsnbytes &&
-                                    master_lastlsnbytes > curlsnbytes) {
-                                    /* we were behind last run, we are still
-                                       behind
-                                       and we did not move: DEADLOCK */
-
-                                    logmsg(LOGMSG_WARN, 
-                                        "watchdog: DATABASE MAKES NO PROGRESS; "
-                                        "DEADLOCK ALERT %s %s!\n",
-                                        curlsn, master_curlsn);
-                                    its_bad = 1;
-                                    its_bad_slow = 1;
-                                }
-                            }
+                            logmsg(LOGMSG_WARN,
+                                   "watchdog: DATABASE MAKES NO PROGRESS; "
+                                   "DEADLOCK ALERT %s %s!\n",
+                                   curlsn, master_curlsn);
+                            its_bad = 1;
+                            its_bad_slow = 1;
                         }
                     }
                 }
@@ -361,12 +355,9 @@ static void *watchdog_thread(void *arg)
         }
 
         /* we use counter to downsample the run events for lower frequence
-           tasks,
-           like deadlock detector */
+           tasks, like deadlock detector */
         counter++;
 
-        /* please don't change the amount of sleep here (1 second)
-           because we rely on gbl_epoch_time to be updated every second */
         sleep(1);
     }
     return NULL;

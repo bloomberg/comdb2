@@ -325,7 +325,7 @@ if [ $success != 1 ] ; then
     failexit "replayed.txt content is not the same as original.txt"
 fi
 
-if [ "$CLEANUPDBDIR" == "1" ] ; then
+if [ "$CLEANUPDBDIR" != "0" ] ; then
     #delete files now that test is successful
     rm orig.txt replayed.txt sqlreplay.out
 fi
