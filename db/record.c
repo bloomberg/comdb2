@@ -536,7 +536,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
      * Add the data record
      */
     if (!gbl_use_plan || !iq->usedb->plan || iq->usedb->plan->dta_plan == -1) {
-        if (flags & RECFLAGS_KEEP_GENID || *genid != 0)
+        if (flags & RECFLAGS_KEEP_GENID)
             rc = dat_set(iq, trans, od_dta, od_len, *rrn, *genid);
         else
             rc = dat_add(iq, trans, od_dta, od_len, genid, rrn);
@@ -1432,7 +1432,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     if (iq->debug) {
-        if (flags & RECFLAGS_KEEP_GENID)
+        if (flags & RECFLAGS_UPGRADE_RECORD)
             reqprintf(iq, "dat_upgrade RRN %d VGENID 0x%llx RC %d", rrn, vgenid,
                       rc);
         else
