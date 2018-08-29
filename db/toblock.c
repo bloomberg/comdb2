@@ -5069,6 +5069,7 @@ backout:
     if (gbl_verbose_toblock_backouts)
         logmsg(LOGMSG_ERROR, "Backing out, rc=%d outrc=%d from line %d\n", rc,
                outrc, fromline);
+    reqlog_set_error(iq->reqlogger, "Eror Processing", rc);
 
     backed_out = 1;
 
