@@ -327,12 +327,12 @@ enum BLOCK_OPS {
    type will identify if there is a new record and type the new record is *
 */
 enum OSQL_RPL_TYPE {
-    OSQL_RPLINV = 0, /* not used */
+    OSQL_RPLINV = 0,
     OSQL_DONE = 1,
     OSQL_USEDB = 2,
     OSQL_DELREC = 3,
     OSQL_INSREC = 4,
-    OSQL_CLRTBL = 5, /* not used in R7 */
+    OSQL_CLRTBL = 5,
     OSQL_QBLOB = 6,
     OSQL_UPDREC = 7,
     OSQL_XERR = 8,
@@ -1156,7 +1156,7 @@ typedef struct snap_uid {
     char key[MAX_SNAP_KEY_LEN]; /* cnonce */
 } snap_uid_t;
 
-enum { SNAP_UID_LENGTH = 8 + 4 + (4 * 5) + 4 + 64};
+enum { SNAP_UID_LENGTH = 8 + 4 + (4 * 5) + 4 + 64 };
 
 /*
    lrl tunables that control this:

@@ -3317,6 +3317,7 @@ int osql_comm_is_done(char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
     }
     switch (type) {
     case OSQL_USEDB:
+    case OSQL_GENID:
     case OSQL_INSREC:
     case OSQL_INSERT:
     case OSQL_INSIDX:
@@ -3874,8 +3875,6 @@ int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         upd_uuid_rpl.hd.type = send_dk ? OSQL_UPDATE : OSQL_UPDREC;
         comdb2uuidcpy(upd_uuid_rpl.hd.uuid, uuid);
         upd_uuid_rpl.dt.genid = genid;
-        int stripe = get_dtafile_from_genid(genid);
-        //printf("AZ: Upd sending genid 0x%llx, stripe=%d\n", genid, stripe);
         upd_uuid_rpl.dt.ins_keys = ins_keys;
         upd_uuid_rpl.dt.del_keys = del_keys;
         upd_uuid_rpl.dt.nData = nData;
@@ -4121,8 +4120,6 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         ins_uuid_rpl.hd.type = send_dk ? OSQL_INSERT : OSQL_INSREC;
         comdb2uuidcpy(ins_uuid_rpl.hd.uuid, uuid);
         ins_uuid_rpl.dt.seq = genid;
-        int stripe = get_dtafile_from_genid(genid);
-        //printf("AZ: Ins sending genid 0x%llx, stripe=%d\n", genid, stripe);
         ins_uuid_rpl.dt.dk = dirty_keys;
         ins_uuid_rpl.dt.flags = flags;
         ins_uuid_rpl.dt.nData = nData;

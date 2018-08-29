@@ -33,7 +33,7 @@
 extern int g_osql_max_trans;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
-extern int gbl_reorder_blkseq_no_deadlock;
+extern int gbl_reorder_socksql_no_deadlock;
 
 typedef struct blob_key {
     unsigned long long seq; /* tbl->seq identifying the owning row */
@@ -1680,7 +1680,7 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                 ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
                 return SQLITE_TOOBIG;
             }
-            if (gbl_reorder_blkseq_no_deadlock) {
+            if (gbl_reorder_socksql_no_deadlock) {
                 rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, genid,
                         osql_nettype, osql->logsb, OSQL_GENID);
             }
@@ -1961,7 +1961,7 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
         if (rc != IX_FND) {
 
-            if (gbl_reorder_blkseq_no_deadlock) {
+            if (gbl_reorder_socksql_no_deadlock) {
                 rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, 0,
                         osql_nettype, osql->logsb, OSQL_GENID);
             }
@@ -2070,7 +2070,7 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             return SQLITE_TOOBIG;
         }
 
-        if (gbl_reorder_blkseq_no_deadlock) {
+        if (gbl_reorder_socksql_no_deadlock) {
             rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, genid,
                         osql_nettype, osql->logsb, OSQL_GENID);
         }

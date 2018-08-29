@@ -638,7 +638,8 @@ const char *osql_reqtype_str(int type)
 }
 
 
-void no_such_tbl_error(const char * tablename, unsigned long long rqid, char * host) {
+void no_such_tbl_error(const char * tablename, unsigned long long rqid,
+                       const char * host) {
     sorese_info_t sorese_info = {0};
     struct errstat generr = {0};
 

@@ -57,7 +57,7 @@
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
-extern int gbl_reorder_blkseq_no_deadlock;
+extern int gbl_reorder_socksql_no_deadlock;
 
 int gbl_survive_n_master_swings = 600;
 int gbl_master_retry_poll_ms = 100;
@@ -178,7 +178,7 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
         if (rc != SQLITE_OK) return rc;
     }
 
-    if (gbl_reorder_blkseq_no_deadlock) {
+    if (gbl_reorder_socksql_no_deadlock) {
         osqlstate_t *osql = &thd->clnt->osql;
         rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, pCur->genid,
                 NET_OSQL_SOCK_RPL, osql->logsb, OSQL_GENID);
@@ -258,7 +258,7 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         if (rc != SQLITE_OK) return rc;
     }
 
-    if (gbl_reorder_blkseq_no_deadlock) {
+    if (gbl_reorder_socksql_no_deadlock) {
         osqlstate_t *osql = &thd->clnt->osql;
         rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, 0,
                 NET_OSQL_SOCK_RPL, osql->logsb, OSQL_GENID);
@@ -310,7 +310,7 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         if (rc != SQLITE_OK) return rc;
     }
 
-    if (gbl_reorder_blkseq_no_deadlock) {
+    if (gbl_reorder_socksql_no_deadlock) {
         osqlstate_t *osql = &thd->clnt->osql;
         rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, pCur->genid,
                 NET_OSQL_SOCK_RPL, osql->logsb, OSQL_GENID);
@@ -533,7 +533,7 @@ retry:
     else
         flags = 0;
 
-    if (gbl_reorder_blkseq_no_deadlock) 
+    if (gbl_reorder_socksql_no_deadlock) 
         bset(&flags, OSQL_FLAGS_REORDER_ON);
 
     /* send request to blockprocessor */
