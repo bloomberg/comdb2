@@ -92,11 +92,15 @@ struct Keyword {
 #else
 #  define EXPLAIN    0x00000100
 #endif
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#  define FKEY       0x00000200
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_OMIT_FOREIGN_KEY
 #  define FKEY       0
 #else
 #  define FKEY       0x00000200
 #endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_OMIT_PRAGMA
 #  define PRAGMA     0
 #else
