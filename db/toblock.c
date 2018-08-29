@@ -110,20 +110,6 @@ extern int gbl_prefault_udp;
     } while (0);
 #endif
 
-/* I got really, really fed up of seeing this everywhere so I made it a
- * macro.  Since this is a macro, use with caution. -- Sam J */
-#define BACKOUT_BLOCK_FREE_SCHEMA_OP_ERR(rcode, blockerrcode, ii)              \
-    rc = (rcode);                                                              \
-    err.blockop_num = ii;                                                      \
-    err.errcode = (blockerrcode);                                              \
-    err.ixnum = -1;                                                            \
-    numerrs = 1;                                                               \
-    free_dynamic_schema(iq->usedb->tablename, dynschema);                      \
-    dynschema = NULL;                                                          \
-    goto backout
-#define BACKOUT_BLOCK_FREE_SCHEMA_OP(rcode, ii)                                \
-    BACKOUT_BLOCK_FREE_SCHEMA_OP_ERR((rcode), OP_FAILED_BAD_REQUEST, ii)
-
 static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int datalen, unsigned int line);

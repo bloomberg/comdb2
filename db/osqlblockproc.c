@@ -637,9 +637,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         return 0;
     }
 
-    struct ireq *iq;
+    struct ireq *iq = osql_session_get_ireq(sess);
     int rc = 0, rc_op = 0;
-    oplog_key_t key;
+    oplog_key_t key = {0};
     int rpl_len = 0;
     struct errstat *xerr;
     int bdberr;
@@ -649,7 +649,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     int type = 0;
     buf_get(&type, sizeof(type), rpl, rpl + rplen);
     if (type == OSQL_SCHEMACHANGE)
-        sess->iq->tranddl++;
+        iq->tranddl++;
 
 #if 0
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
@@ -749,7 +749,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         osql_sess_lock(sess);
         osql_sess_lock_complete(sess);
         if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
-            iq = osql_session_get_ireq(sess);
             osql_session_set_ireq(sess, NULL);
             osql_sess_set_dispatched(sess, 1);
             rc = handle_buf_sorese(thedb, iq, debug);
@@ -1075,8 +1074,6 @@ static int process_this_session(
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     unsigned long long rqid = osql_sess_getrqid(sess);
     oplog_key_t key_next, key_crt;
-    char *data = NULL;
-    int datalen = 0;
     int countops = 0;
     int lastrcv = 0;
     int rc = 0, rc_out = 0;
@@ -1118,8 +1115,8 @@ static int process_this_session(
 
     while (!rc && !rc_out) {
 
-        data = bdb_temp_table_data(dbc);
-        datalen = bdb_temp_table_datasize(dbc);
+        char *data = bdb_temp_table_data(dbc);
+        int datalen = bdb_temp_table_datasize(dbc);
 
         if (bdb_lock_desired(thedb->bdb_env)) {
             logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
