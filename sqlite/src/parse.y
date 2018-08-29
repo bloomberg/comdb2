@@ -434,7 +434,7 @@ ccons ::= UNIQUE onconf(R).      {
     comdb2AddIndex(pParse, 0, 0, R, 0, 0, 0, SQLITE_SO_ASC,
                    SQLITE_IDXTYPE_UNIQUE, 0);
 }
-constraint_opt ::= CONSTRAINT.       { pParse->constraintName.n = 0; } 
+constraint_opt ::= .                 { pParse->constraintName.n = 0; } 
 constraint_opt ::= CONSTRAINT nm(X). { pParse->constraintName = X; }
 ccons ::= constraint_opt REFERENCES nm(T) LP eidlist(TA) RP refargs(R).
                                  {comdb2CreateForeignKey(pParse,0,&T,TA,R);}
