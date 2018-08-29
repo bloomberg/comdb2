@@ -604,7 +604,6 @@ const char *osql_reqtype_str(int type)
         "DELIDX",
         "INSIDX",
         "DBQ_CONSUME_UUID",
-        "GENID",
     };
     return typestr[type];
 }

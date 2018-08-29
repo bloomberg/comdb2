@@ -1116,8 +1116,8 @@ static int osql_send_delrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
 }
 
 static inline int osql_send_updstat_logic(struct BtCursor *pCur,
-                                   struct sql_thread *thd, char *pData,
-                                   int nData, int nStat, int nettype)
+                                          struct sql_thread *thd, char *pData,
+                                          int nData, int nStat, int nettype)
 {
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
@@ -1838,4 +1838,3 @@ int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
     }
     return rc;
 }
-
