@@ -519,8 +519,8 @@ tcons ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
 tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
   comdb2AddPrimaryKey(pParse, X, R, I, 0);
 }
-tcons ::= UNIQUE LP sortlist(X) RP onconf(R) with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
-  comdb2AddIndex(pParse, 0, X, R, W, BW, AW, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE, O);
+tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP onconf(R) with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
+  comdb2AddIndex(pParse, &I, X, R, W, BW, AW, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE, O);
 }
 tcons ::= FOREIGN KEY LP eidlist(FA) RP
           REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
