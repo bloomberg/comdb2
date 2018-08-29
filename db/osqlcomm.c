@@ -6883,7 +6883,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             sbuf2printf(logsb, "\n] -> ");
         }
 
-        int addflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_KEEP_GENID;
+        int addflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY;
+        if (newgenid != 0) 
+            addflags |= RECFLAGS_KEEP_GENID;
+
         if (osql_get_delayed(iq) == 0 && iq->usedb->n_constraints == 0 &&
             gbl_goslow == 0) {
             addflags |= RECFLAGS_NO_CONSTRAINTS;
