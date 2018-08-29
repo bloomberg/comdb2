@@ -592,6 +592,10 @@ int bdb_cmp_genids(unsigned long long a, unsigned long long b);
 int bdb_inplace_cmp_genids(bdb_state_type *bdb_state, unsigned long long g1,
                            unsigned long long g2);
 
+/* using the bdb_state object, return the updateid for this genid */
+int get_updateid_from_genid(bdb_state_type *bdb_state,
+                            unsigned long long genid);
+
 /* Retrieve the participant stripe id which is encoded in the genid.
  * Return codes:
  *    -1    there are no bits allocated for participant stripe id

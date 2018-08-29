@@ -2730,7 +2730,8 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
 int upd_new_record_add2indices(struct ireq *iq, void *trans,
                                unsigned long long newgenid, const void *new_dta,
                                int nd_len, unsigned long long ins_keys,
-                               int use_new_tag, blob_buffer_t *blobs);
+                               int use_new_tag, blob_buffer_t *blobs,
+                               int verify);
 
 void blob_status_to_blob_buffer(blob_status_t *bs, blob_buffer_t *bf);
 int save_old_blobs(struct ireq *iq, void *trans, const char *tag, const void *record,
@@ -3303,6 +3304,8 @@ void osql_checkboard_check_down_nodes(char *host);
  */
 int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
                    int *bdberr);
+int ix_check_update_genid(struct ireq *iq, void *trans,
+                          unsigned long long genid, int *bdberr);
 
 int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
                    unsigned long long genid);

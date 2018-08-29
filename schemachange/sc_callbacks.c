@@ -350,7 +350,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
 
     rc = upd_new_record_add2indices(iq, trans, newgenid, new_dta,
                                     usedb->sc_to->lrl, ins_keys, 1,
-                                    add_idx_blobs);
+                                    add_idx_blobs, 0);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         logmsg(LOGMSG_ERROR,

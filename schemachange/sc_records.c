@@ -929,7 +929,32 @@ static int convert_record(struct convert_record_data *data)
             0,            /* blkpos */
             addflags, 0);
 
-        if (rc) goto err;
+        if (data->s->logical_livesc && rc == IX_DUP) {
+            DB_LSN now = {0};
+            bdb_get_commit_genid(thedb->bdb_env, &now);
+            if (now.file <= 1 && now.offset == 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed to get current lsn\n",
+                       __func__, __LINE__);
+                rc = ERR_INTERNAL;
+                goto err;
+            }
+
+            /* wait for logical redo thread to catch up */
+            pthread_mutex_lock(&data->s->livesc_mtx);
+            if (log_compare(data->s->curLsn, &now) < 0)
+                rc = RC_INTERNAL_RETRY;
+            pthread_mutex_unlock(&data->s->livesc_mtx);
+            if (rc == RC_INTERNAL_RETRY) {
+                logmsg(LOGMSG_INFO,
+                       "%s: got DUP on genid %llx, stripe %d, waiting for "
+                       "logical redo to catch up at [%u:%u]\n",
+                       __func__, ngenid, data->stripe, now.file, now.offset);
+                poll(NULL, 0, 100);
+            }
+        }
+
+        if (rc)
+            goto err;
     }
 
     /* if we have been rebuilding the data files we're gonna
@@ -1018,9 +1043,10 @@ err: /*if (is_schema_change_doomed())*/
             reqerrstr(data->s->iq, ERR_SC,
                       "Error adding record rc %d rrn %d genid 0x%llx", rc, rrn,
                       genid);
-        sc_errf(data->s, "Error adding record rcode %d opfailcode %d "
-                         "ixfailnum %d rrn %d genid 0x%llx\n",
-                rc, opfailcode, ixfailnum, rrn, genid);
+        sc_errf(data->s,
+                "Error adding record rcode %d opfailcode %d "
+                "ixfailnum %d rrn %d genid 0x%llx, stripe %d\n",
+                rc, opfailcode, ixfailnum, rrn, genid, data->stripe);
         return -2;
     }
 
@@ -1318,7 +1344,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
             }
         } else {
             bdb_get_commit_genid(thedb->bdb_env, &(thdData->start_lsn));
-            if (thdData->start_lsn.file <= 1 ||
+            if (thdData->start_lsn.file <= 1 &&
                 thdData->start_lsn.offset == 0) {
                 logmsg(LOGMSG_ERROR, "%s:%d failed to get start lsn\n",
                        __func__, __LINE__);
@@ -1457,11 +1483,9 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         data.tagmap = NULL;
     }
 
-    if (s->logical_livesc) {
-        /* wait for logical redo thread */
-        while (!s->hitLastCnt)
-            poll(NULL, 0, 200);
-    }
+    /* wait for logical redo thread */
+    while (s->logical_livesc && !s->hitLastCnt)
+        poll(NULL, 0, 200);
 
     return outrc;
 }
@@ -2622,9 +2646,22 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
     }
 
     data->iq.usedb = data->to;
-    rc = upd_new_record(&data->iq, data->trans, oldgenid, data->oldodh.recptr,
-                        genid, data->odh.recptr, -1ULL, -1ULL, updlen, updCols,
-                        data->wrblb, 0, data->freeblb, data->wrblb, 0);
+
+    if (!data->s->sc_convert_done[rec->dtastripe] &&
+        is_genid_right_of_stripe_pointer(data->to->handle, genid,
+                                         data->sc_genids[rec->dtastripe])) {
+        rc = del_new_record(&data->iq, data->trans, oldgenid, -1ULL,
+                            data->oldodh.recptr, data->freeblb, 0);
+    } else {
+        rc = upd_new_record(&data->iq, data->trans, oldgenid,
+                            data->oldodh.recptr, genid, data->odh.recptr, -1ULL,
+                            -1ULL, updlen, updCols, data->wrblb, 0,
+                            data->freeblb, data->wrblb, 0);
+        if (rc == ERR_VERIFY || rc == IX_NOTFND) {
+            rc = del_new_record(&data->iq, data->trans, oldgenid, -1ULL,
+                                data->oldodh.recptr, data->freeblb, 0);
+        }
+    }
     if (rc == ERR_VERIFY || rc == IX_NOTFND) {
         /* not an error if we dont find it */
         rc = 0;
@@ -2889,6 +2926,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     int rc = 0;
     bdb_llog_cursor llog_cur = {0};
     bdb_llog_cursor *pCur = &llog_cur;
+    DB_LSN curLsn = {0};
 
     if (data->isThread)
         thread_started("logical redo thread");
@@ -2942,6 +2980,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         data->to->schema /*tbl .NEW..ONDISK schema */); // free tagmap only once
 
     data->s->hitLastCnt = 0;
+    data->s->curLsn = &curLsn;
     while (1) {
         if (bdb_llog_cursor_next(pCur) != 0) {
             sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",
@@ -2961,6 +3000,9 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             assert(pCur->log == NULL /* i.e. consumed */);
             data->s->hitLastCnt = 0;
         }
+        pthread_mutex_lock(&data->s->livesc_mtx);
+        curLsn = pCur->curLsn;
+        pthread_mutex_unlock(&data->s->livesc_mtx);
         int now = comdb2_time_epoch();
         int copy_sc_report_freq = gbl_sc_report_freq;
         if (copy_sc_report_freq > 0 &&
@@ -2996,9 +3038,12 @@ cleanup:
         hash_free(data->blob_hash);
 
     sc_printf(data->s,
-              "[%s] logical redo thread exiting, log cursor at [%u:%u]\n",
-              data->s->table, pCur->curLsn.file, pCur->curLsn.offset);
+              "[%s] logical redo thread exiting, log cursor at [%u:%u], redid "
+              "%lld txns\n",
+              data->s->table, pCur->curLsn.file, pCur->curLsn.offset,
+              data->nrecs);
     data->s->logical_livesc = 0;
+    data->s->curLsn = NULL;
     free(data->s->sc_convert_done);
     data->s->sc_convert_done = NULL;
     bdb_llog_cursor_close(pCur);

@@ -195,6 +195,9 @@ struct schema_change_type {
     unsigned int hitLastCnt;
     int got_tablelock;
 
+    pthread_mutex_t livesc_mtx; /* mutex for logical redo */
+    void *curLsn;
+
     /*********************** temporary fields for sbuf packing
      * ************************/
     /*********************** not needed for anything else
