@@ -17,7 +17,7 @@ set password 'foo_password'
 
 ### Certificate-based Authentication
 
-A comdb2 session can also be authenticated by setting the client certificate using [set user](sql.html#set-sslcert) and [set password](sql.html#set-sslkey), just after opening the connection.
+A comdb2 session can also be authenticated by setting the client certificate/key using [set ssl_cert](sql.html#set-ssl_cert) and [set ssl_key](sql.html#set-ssl_key), just after opening the connection.
 
 ```sql
 set ssl_cert /path/to/certificate

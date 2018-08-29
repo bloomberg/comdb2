@@ -1421,6 +1421,22 @@ elect_again:
 
         if (master_host == bdb_state->repinfo->myhost) {
             logmsg(LOGMSG_INFO, "elect_thread: we won the election\n");
+            /* Upgrade here if we are the only participant.  Otherwise,
+             * defer upgrade until process_berkdb */
+            if (elect_count == 1) {
+                rc = bdb_upgrade(bdb_state, newgen, &done);
+                print(bdb_state, "back from bdb_upgrade%s\n",
+                        (!done) ? " (nop)" : "");
+                if (rc != 0) {
+                    logmsg(LOGMSG_FATAL, "bdb_upgrade returned bad rcode %d\n", rc);
+                    exit(1);
+                }
+                Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
+                bdb_state->repinfo->in_election = 0;
+                Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
+                bdb_thread_event(bdb_state, 0);
+                return NULL;
+            }
         }
     }
 #endif
