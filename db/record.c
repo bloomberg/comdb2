@@ -368,8 +368,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     reclen = expected_dat_len;
 
     if (!(flags & RECFLAGS_NO_BLOBS) &&
-        check_blob_buffers(iq, blobs, maxblobs, iq->usedb->tablename, tag,
-                           dbname_schema, record, fldnullmap) != 0) {
+        (rc = check_blob_buffers(iq, blobs, maxblobs, iq->usedb->tablename, tag,
+                                 dbname_schema, record, fldnullmap)) != 0) {
         reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
         reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
                   "no blobs flags with blob buffers");
