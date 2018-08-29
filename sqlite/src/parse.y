@@ -515,27 +515,28 @@ nm_opt(A) ::= nm(X). {A = X;}
 %type with_opt {int}
 with_opt(A) ::= OPTION DATACOPY. {A = 1;}
 with_opt(A) ::= . {A = 0;}
+tcons ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
 tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
   comdb2AddPrimaryKey(pParse, X, R, I, 0);
 }
-tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
-  comdb2AddIndex(pParse, &I, X, 0, W, BW, AW, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE, O);
-}
-tcons ::= FOREIGN KEY LP eidlist(FA) RP
-          REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
-  comdb2CreateForeignKey(pParse, FA, &T, TA, R);
-  comdb2DeferForeignKey(pParse, D);
+tcons ::= UNIQUE LP sortlist(X) RP onconf(R) with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
+  comdb2AddIndex(pParse, 0, X, R, W, BW, AW, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE, O);
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
 tcons ::= CHECK LP expr(E) RP onconf.
                                  {sqlite3AddCheckConstraint(pParse,E);}
+%endif !SQLITE_BUILDING_FOR_COMDB2
 tcons ::= FOREIGN KEY LP eidlist(FA) RP
           REFERENCES nm(T) eidlist_opt(TA) refargs(R) defer_subclause_opt(D). {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    comdb2CreateForeignKey(pParse, FA, &T, TA, R);
+    comdb2DeferForeignKey(pParse, D);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3CreateForeignKey(pParse, FA, &T, TA, R);
     sqlite3DeferForeignKey(pParse, D);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
-%endif !SQLITE_BUILDING_FOR_COMDB2
 
 %type defer_subclause_opt {int}
 defer_subclause_opt(A) ::= .                    {A = 0;}
