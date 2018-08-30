@@ -2982,6 +2982,14 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     data->s->hitLastCnt = 0;
     data->s->curLsn = &curLsn;
     while (1) {
+        if (gbl_sc_abort || data->from->sc_abort || data->s->sc_thd_failed ||
+            (data->s->iq && data->s->iq->sc_should_abort)) {
+            sc_errf(data->s,
+                    "[%s] Stoping work on logical redo because we are told to "
+                    "abort\n",
+                    data->s->table);
+            goto cleanup;
+        }
         if (bdb_llog_cursor_next(pCur) != 0) {
             sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",
                       data->s->table, pCur->curLsn.file, pCur->curLsn.offset);
@@ -3042,11 +3050,14 @@ cleanup:
               "%lld txns\n",
               data->s->table, pCur->curLsn.file, pCur->curLsn.offset,
               data->nrecs);
-    data->s->logical_livesc = 0;
+
     data->s->curLsn = NULL;
+    bdb_llog_cursor_close(pCur);
+
     free(data->s->sc_convert_done);
     data->s->sc_convert_done = NULL;
-    bdb_llog_cursor_close(pCur);
+    data->s->logical_livesc = 0;
+
     free(data);
     return NULL;
 }

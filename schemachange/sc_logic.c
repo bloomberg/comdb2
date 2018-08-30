@@ -1281,8 +1281,12 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
         wrlock_schema_lk();
         iq->sc_locked = 1;
     }
+    iq->sc_should_abort = 1;
     s = iq->sc = iq->sc_pending;
     while (s != NULL) {
+        while (s->logical_livesc) {
+            usleep(200);
+        }
         if (s->addonly) {
             if (s->addonly == SC_DONE_ADD)
                 delete_db(s->tablename);
