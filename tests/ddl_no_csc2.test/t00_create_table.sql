@@ -376,7 +376,6 @@ SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 
 SELECT '---------------------------------- PART #50 ----------------------------------' AS part;
 DROP TABLE t1;
-DROP TABLE t2;
 
 SELECT '---------------------------------- PART #51 ----------------------------------' AS part;
 CREATE TABLE t1(i INT, j INT)$$
@@ -421,6 +420,7 @@ SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT '---------------------------------- PART #56 ----------------------------------' AS part;
 DROP TABLE t2;
 DROP TABLE t3;
+DROP TABLE t4;
 DROP TABLE t1;
 
 SELECT '---------------------------------- PART #57 ----------------------------------' AS part;
