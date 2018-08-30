@@ -6065,8 +6065,6 @@ int ix_check_update_genid(struct ireq *iq, void *trans,
                 rc = 1;
             else
                 rc = 0;
-            printf("%s: return rc=%d genid %llx, foundgenid %llx\n", __func__,
-                   rc, genid, foundgenid);
             return rc;
         } else if (rc < 0) {
             logmsg(LOGMSG_ERROR, "%s: failed to get next genid, rc = %d\n",

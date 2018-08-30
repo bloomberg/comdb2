@@ -2774,8 +2774,12 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         }
 
         /* remap delete not found to retry */
-        if (rc == IX_NOTFND && verify_retry)
-            rc = RC_INTERNAL_RETRY;
+        if (rc == IX_NOTFND) {
+            if (verify_retry)
+                rc = RC_INTERNAL_RETRY;
+            else
+                rc = ERR_VERIFY;
+        }
 
         if (rc != 0) {
             if (rc != IX_NOTFND)
@@ -3016,8 +3020,12 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
         }
 
         /* remap delete not found to retry */
-        if (rc == IX_NOTFND && verify_retry)
-            rc = RC_INTERNAL_RETRY;
+        if (rc == IX_NOTFND) {
+            if (verify_retry)
+                rc = RC_INTERNAL_RETRY;
+            else
+                rc = ERR_VERIFY;
+        }
 
         if (rc != 0) {
             retrc = rc;
