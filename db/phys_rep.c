@@ -25,18 +25,23 @@ typedef struct DB_Connection {
     time_t last_failed;   // when was the last time a connection failed
 } DB_Connection;
 
-static DB_Connection **local_rep_dbs = NULL;
-static size_t cnct_len = 0;
-static size_t idx = 0;
+static DB_Connection ***local_rep_dbs = NULL;
+static size_t tiers = 0;
+static size_t curr_tier = 0;
+static size_t tier_len = 0;
+static size_t* cnct_len = NULL;
+static size_t* cnct_idx = NULL;
+
 static time_t retry_time = 3;
 
+/* forward declarations */
 static DB_Connection* get_connect(char* hostname);
-static int insert_connect(char* hostname);
+static int insert_connect(char* hostname, size_t tier);
 static void delete_connect(DB_Connection* cnct);
 static LOG_INFO handle_record();
 static void failed_connect();
-static void find_new_repl_db();
-static DB_Connection* get_rand_connect();
+static int find_new_repl_db();
+static DB_Connection* get_rand_connect(size_t tier);
 static void* keep_in_sync(void* args);
 
 static pthread_t sync_thread;
@@ -55,6 +60,7 @@ int gbl_deferred_phys_flag = 0;
 /* externs here */
 extern struct dbenv* thedb;
 extern int sc_ready(void);
+extern char gbl_dbname[];
 
 /* external API */
 int set_repl_db_name(char* name)
@@ -68,9 +74,9 @@ int set_repl_db_name(char* name)
     return rc;
 }
 
-int add_replicant_host(char *hostname) 
+int add_replicant_host(char *hostname, size_t tier) 
 {
-    return insert_connect(hostname);
+    return insert_connect(hostname, tier);
 }
 
 int remove_replicant_host(char *hostname) {
@@ -87,13 +93,23 @@ void cleanup_hosts()
 {
     DB_Connection* cnct;
 
-    for (int i = 0; i < idx; i++)
+    for (int i = 0; i < tiers; i++)
     {
-        cnct = local_rep_dbs[i];
-        delete_connect(cnct);
+        for (int j = 0; j < cnct_idx[i]; j++)
+        {
+            cnct = local_rep_dbs[i][j];
+            delete_connect(cnct);
+            local_rep_dbs[i][j] = NULL;
+        }
+        free(local_rep_dbs[i]);
+        local_rep_dbs[i] = NULL;
     }
 
     free(repl_db_name);
+    repl_db_name = NULL;
+
+    free(local_rep_dbs);
+    local_rep_dbs = NULL;
 
     cdb2_close(repl_db);
 }
@@ -145,13 +161,14 @@ static void* keep_in_sync(void* args)
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
 
     /* get a fresh db connection */
-    find_new_repl_db();
-
-    /* do truncation to start fresh */
-    info = get_last_lsn(thedb->bdb_env);
-    prev_info = handle_truncation(repl_db, info);
-    gen = prev_info.gen;
-    fprintf(stderr, "gen: %lld\n", gen);
+    if (find_new_repl_db() == 0)
+    {
+        /* do truncation to start fresh */
+        info = get_last_lsn(thedb->bdb_env);
+        prev_info = handle_truncation(repl_db, info);
+        gen = prev_info.gen;
+        fprintf(stderr, "gen: %lld\n", gen);
+    }
 
     while(do_repl)
     {
@@ -195,10 +212,10 @@ static void* keep_in_sync(void* args)
                 {
                     int64_t new_gen = *rec_gen;
                     logmsg(LOGMSG_WARN, "My master changed, do truncation!\n");
-                    fprintf(stderr, "gen: %lld, rec_gen: %lld\n", gen, *rec_gen);
+                    /* fprintf(stderr, "gen: %lld, rec_gen: %lld\n", gen, *rec_gen); */
                     prev_info = handle_truncation(repl_db, info);
                     gen = new_gen;
-                    fprintf(stderr, "new gen: %lld, prev_rec_gen: %u\n", gen, prev_info.gen);
+                    /* fprintf(stderr, "new gen: %lld, prev_rec_gen: %u\n", gen, prev_info.gen); */
                     broke_early = 1;
                     break;
                 }
@@ -339,14 +356,39 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
 }
 
 
-static void find_new_repl_db()
+static int find_new_repl_db()
 {
     int rc;
     DB_Connection* cnct;
 
+    size_t sql_len = 200;
+    char* get_tier[sql_len];
+    LOG_INFO info = get_last_lsn(thedb->bdb_env);
+
+    /* TODO: Change this from local host to gbl_mynode */
+    rc = snprintf(get_tier, sql_len, "exec procedure " 
+        "sys.cmd.register_replicant('%s', '%s', '{%u:%u}')", 
+        gbl_dbname, "localhost", info.file, info.offset);
+
+    if (rc < 0 || rc >= sql_len)
+        logmsg(LOGMSG_ERROR, "lua call buffer is not long enough!\n");
+
+    {
+        struct timespec wait_spec;
+        struct timespec remain_spec;
+        wait_spec.tv_sec = 1;
+        wait_spec.tv_nsec = 0;
+
+        while (do_repl && rc = cdb2_run_statemnt(repl_db, get_tier) != CDB2_OK)
+        {
+            logmsg(LOGMSG_ERROR, "Couldn't query the database\n");
+            nanosleep(&wait_spec, &remain_spec);
+        }
+    }
+
     while(do_repl)
     {
-        cnct = get_rand_connect();
+        cnct = get_rand_connect(curr_tier);
 
         if ((rc = cdb2_open(&repl_db, repl_db_name, 
                         cnct->hostname, CDB2_DIRECT_CPU)) == 0)
@@ -359,12 +401,14 @@ static void find_new_repl_db()
             cnct->is_up = 1;
             curr_cnct = cnct;
 
-            break;
+            return 0;
         }
 
         logmsg(LOGMSG_WARN, "Couldn't connect to %s\n", cnct->hostname);
     }
 
+    logmsg(LOGMSG_WARN, "Stopping replication\n");
+    return -1;
 }
 
 static void failed_connect()
@@ -376,14 +420,21 @@ static void failed_connect()
     find_new_repl_db();
 }
 
-static DB_Connection* get_rand_connect()
+/* TODO: not 2D arrary aweare */
+static DB_Connection* get_rand_connect(size_t tier)
 {
+    if (tier > tiers)
+    {
+        logmsg(LOGMSG_ERROR, "Attempted to access tier not assigned\n");
+        return NULL;
+    }
+
     DB_Connection* cnct;
     size_t rand_idx;
 
     /* wait period */
     int64_t ratio = 1000000000;
-    int64_t ns = retry_time * ratio / idx;
+    int64_t ns = retry_time * ratio / cnct_idx[tier];
 
     struct timespec wait_spec;
     struct timespec remain_spec;
@@ -391,19 +442,19 @@ static DB_Connection* get_rand_connect()
     wait_spec.tv_sec = ns / ratio;
     wait_spec.tv_nsec = ns % ratio;
 
-    rand_idx = rand() % idx;
-    cnct = local_rep_dbs[rand_idx];
+    rand_idx = rand() % cnct_idx[tier];
+    cnct = local_rep_dbs[tier][rand_idx];
 
     while(cnct->last_failed + retry_time > time(NULL))
     {
         logmsg(LOGMSG_WARN, "Timeout for %s\n", cnct->hostname);
         nanosleep(&wait_spec, &remain_spec);
 
-        rand_idx = rand() % idx;
-        cnct = local_rep_dbs[rand_idx];
+        rand_idx = rand() % cnct_idx[tier];
+        cnct = local_rep_dbs[tier][rand_idx];
     }
 
-    return local_rep_dbs[rand_idx];
+    return cnct;
 }
 
 /* data struct implementation */
@@ -411,55 +462,110 @@ static DB_Connection* get_connect(char* hostname)
 {
     DB_Connection* cnct; 
 
-    for (int i = 0; i < idx; i++) 
+    for (int i = 0; i < tiers; i++) 
     {
-        cnct = local_rep_dbs[i];
-
-        if (strcmp(cnct->hostname, hostname) == 0) 
+        for (int j = 0; j < cnct_idx[i]; j++)
         {
-            return cnct;
+            cnct = local_rep_dbs[i][j];
+
+            if (strcmp(cnct->hostname, hostname) == 0) 
+            {
+                return cnct;
+            }
         }
     }
 
     return NULL;
 }
 
-static int insert_connect(char* hostname)
+static int insert_connect(char* hostname, size_t tier)
 {
-    if (idx >= cnct_len)
+    if (cnct_len == NULL)
+    {
+        tier_len = 4;
+        cnct_len = calloc(tier_len, sizeof(*cnct_len));
+        cnct_idx = calloc(tier_len, sizeof(*cnct_idx));
+        /* populate our 2D array */
+        local_rep_dbs = malloc(tier_len * sizeof(*local_rep_dbs));
+    }
+
+    if (tier >= tier_len)
+    {
+        size_t old_tier_len = tier_len;
+
+        if (tier_len > 1024)
+        {
+            logmsg(LOGMSG_ERROR, "Please keep tier sizes manageable (tier < 1024).\n");
+            return 1;
+        }
+
+        while (tier_len <= tier)
+        {
+            tier_len *= 2;
+        }
+        /* update our max tier */ 
+        tiers = tier;
+
+        DB_Connection*** temp_cnct = 
+            realloc(local_rep_dbs, tier_len * sizeof(*local_rep_dbs));
+        size_t* tmp_len = realloc(cnct_len, tier_len * sizeof(*cnct_len));
+        size_t* tmp_idx = realloc(cnct_idx, tier_len * sizeof(*cnct_idx));
+
+        if (temp_cnct)
+        {
+            local_rep_dbs = temp_cnct;
+            cnct_len = tmp_len;
+            cnct_idx = tmp_idx;
+        }
+        else
+        {
+            logmsg(LOGMSG_ERROR, "Failed to realloc hostnames");
+            return -1;
+        }
+
+
+        for (int i = old_tier_len; i < tier_len; i++)
+        {
+            cnct_len[i] = 0;
+            cnct_idx[i] = 0;
+        }
+    }
+
+    if (cnct_idx[tier] >= cnct_len[tier])
     {
         // on initialize
-        if (!local_rep_dbs)
+        if (cnct_len[tier] == 0)
         {
-            cnct_len = 4;
-            local_rep_dbs = malloc(cnct_len * sizeof(DB_Connection*));
+            cnct_len[tier] = 4;
+            
+            local_rep_dbs[tier] = malloc(cnct_len[tier] * sizeof(**local_rep_dbs));
         }
         else 
         {
-            cnct_len *= 2;
-            DB_Connection** temp = realloc(local_rep_dbs, 
-                    cnct_len * sizeof(*local_rep_dbs));
+            cnct_len[tier] *= 2;
+            DB_Connection** temp = realloc(local_rep_dbs[tier], 
+                    cnct_len[tier] * sizeof(**local_rep_dbs));
 
             if (temp) 
             {
-                local_rep_dbs = temp; 
+                local_rep_dbs[tier] = temp; 
             }
             else 
             {
                 logmsg(LOGMSG_ERROR, "Failed to realloc hostnames");
-                return -1;
+                return -2;
             }
         }
 
     }
 
-    DB_Connection* cnct = malloc(sizeof(DB_Connection));
+    DB_Connection* cnct = malloc(sizeof(*cnct));
     cnct->hostname = hostname;
     cnct->last_cnct = 0;
     cnct->last_failed = 0;
     cnct->is_up = 1;
 
-    local_rep_dbs[idx++] = cnct;
+    local_rep_dbs[tier][cnct_idx[tier]++] = cnct;
 
     return 0;
 }
@@ -467,5 +573,6 @@ static int insert_connect(char* hostname)
 static void delete_connect(DB_Connection* cnct)
 {
     free(cnct->hostname);
+    cnct->hostname = NULL;
     free(cnct);
 }
