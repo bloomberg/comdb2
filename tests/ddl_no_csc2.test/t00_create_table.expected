@@ -1082,12 +1082,19 @@ constraints
 		"$KEY_D133A66E" -> <"t1":"T1_IJ2"> 
 	}
 ')
-(type='index', name='$IDX1_D133A66E', tbl_name='t8', rootpage=22, sql='create index "$IDX1_D133A66E" on "t8" ("i" DESC);', csc2=NULL)
-[CREATE TABLE t4(i INT, FOREIGN KEY (i) REFERENCES t1(i) CONSTRAINT "mycons3")] failed with rc -3 near ")": syntax error
+(type='index', name='$$KEY_D133A66E_D133A66E', tbl_name='t8', rootpage=22, sql='create index "$$KEY_D133A66E_D133A66E" on "t8" ("i" DESC);', csc2=NULL)
+(type='index', name='$IDX1_D133A66E', tbl_name='t8', rootpage=23, sql='create index "$IDX1_D133A66E" on "t8" ("i" DESC);', csc2=NULL)
+(part='---------------------------------- PART #53 ----------------------------------')
+(part='---------------------------------- PART #54 ----------------------------------')
+(part='---------------------------------- PART #55 ----------------------------------')
 (name='mycons1', tablename='t2', keyname='$KEY_A44A20B', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (name='mycons2', tablename='t3', keyname='$KEY_37248BBB', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', tablename='t4', keyname='$KEY_850457AB', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(part='---------------------------------- PART #56 ----------------------------------')
+(part='---------------------------------- PART #57 ----------------------------------')
 (rows inserted=1)
 [CREATE TABLE t2 AS SELECT * FROM t1] failed with rc -3 near "AS": syntax error
+(part='---------------------------------- PART #58 ----------------------------------')
 [CREATE TABLE t1(i INT (100))] failed with rc -3 Invalid type specified.
 (csc2='schema
 	{
