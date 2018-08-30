@@ -1264,7 +1264,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
 
         /* open db connections */
         while (ltok) {
-            if (add_replicant_host(tokdup(tok, ltok)) != 0)
+            if (add_replicant_host(tokdup(tok, ltok), 0) != 0)
             {
                 logmsg(LOGMSG_ERROR, "Failed to insert hostname %.*s\n", ltok, tok);
             }
