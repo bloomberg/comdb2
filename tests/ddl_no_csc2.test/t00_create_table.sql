@@ -192,19 +192,19 @@ SELECT '---------------------------------- PART #23 ----------------------------
 CREATE TABLE t4(b blob(0)) $$
 CREATE TABLE t5(b blob(-100)) $$
 
-SELECT '---------------------------------- PART #25 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #24 ----------------------------------' AS part;
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 
-SELECT '---------------------------------- PART #26 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #25 ----------------------------------' AS part;
 DROP TABLE t1;
 DROP TABLE t3;
 DROP TABLE t4;
 DROP TABLE t5;
 
-SELECT '---------------------------------- PART #27 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #26 ----------------------------------' AS part;
 CREATE TABLE t1(i INT PRIMARY KEY) $$
 CREATE TABLE t2(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1) $$
 CREATE TABLE t2(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i)) $$
@@ -216,90 +216,90 @@ CREATE TABLE t6(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i) ON DELETE SE
 CREATE TABLE t6(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i) ON DELETE RESTRICT) $$
 CREATE TABLE t6(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i) ON DELETE junk) $$
 
-SELECT '---------------------------------- PART #28 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #27 ----------------------------------' AS part;
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 
-SELECT '---------------------------------- PART #29 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #28 ----------------------------------' AS part;
 DROP TABLE t5;
 DROP TABLE t4;
 DROP TABLE t3;
 DROP TABLE t2;
 DROP TABLE t1;
 
-SELECT '---------------------------------- PART #30 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #29 ----------------------------------' AS part;
 CREATE TABLE t1(i INT NULL, PRIMARY KEY(i)) $$
 CREATE TABLE t2(i INT NULL PRIMARY KEY) $$
 CREATE TABLE t3(i INT NULL, j INT NOT NULL, PRIMARY KEY(i, j)) $$
 
-SELECT '---------------------------------- PART #31 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #30 ----------------------------------' AS part;
 INSERT INTO t1 VALUES(NULL);
 INSERT INTO t2 VALUES(NULL);
 INSERT INTO t3 VALUES(1, NULL);
 INSERT INTO t3 VALUES(NULL, 1);
 INSERT INTO t3 VALUES(NULL, NULL);
 
-SELECT '---------------------------------- PART #32 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #31 ----------------------------------' AS part;
 SELECT COUNT(*)=0 FROM t1;
 SELECT COUNT(*)=0 FROM t2;
 SELECT COUNT(*)=0 FROM t3;
 
-SELECT '---------------------------------- PART #33 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #32 ----------------------------------' AS part;
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 
-SELECT '---------------------------------- PART #34 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #33 ----------------------------------' AS part;
 DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
 
-SELECT '---------------------------------- PART #35 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #34 ----------------------------------' AS part;
 # Some tests for quoted default values for columns.
 CREATE TABLE t1(i INT, j INT DEFAULT '1') $$
 INSERT INTO t1(i) VALUES (1);
 SELECT * FROM t1;
 DROP TABLE t1;
 
-SELECT '---------------------------------- PART #36 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #35 ----------------------------------' AS part;
 CREATE TABLE t1(i INT, j INT DEFAULT "1") $$
 INSERT INTO t1(i) VALUES (1);
 SELECT * FROM t1;
 DROP TABLE t1;
 
-SELECT '---------------------------------- PART #37 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #36 ----------------------------------' AS part;
 CREATE TABLE t1(i INT, c CHAR(100) DEFAULT 0) $$
 INSERT INTO t1(i) VALUES (1);
 SELECT * FROM t1;
 DROP TABLE t1;
 
-SELECT '---------------------------------- PART #38 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #37 ----------------------------------' AS part;
 CREATE TABLE t1(i INT, c CHAR(100) DEFAULT 'foo') $$
 INSERT INTO t1(i) VALUES (1);
 SELECT * FROM t1;
 DROP TABLE t1;
 
-SELECT '---------------------------------- PART #39 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #38 ----------------------------------' AS part;
 CREATE TABLE t1(i INT, d DATETIME DEFAULT 'CURRENT_TIMESTAMP') $$
 INSERT INTO t1(i) VALUES (1);
 INSERT INTO t1(i) VALUES (2);
 SELECT COUNT(*) = 2 FROM t1;
 DROP TABLE t1;
 
-SELECT '---------------------------------- PART #40 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #39 ----------------------------------' AS part;
 CREATE TABLE t1(i INT, d INTERVALDS DEFAULT '1 11:11:11.111') $$
 CREATE TABLE t1(i INT, b BLOB(100) DEFAULT 'xxxxx') $$
 
-SELECT '---------------------------------- PART #41 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #40 ----------------------------------' AS part;
 CREATE TABLE t1(i INT, f1 FLOAT DEFAULT '1.1', f2 FLOAT DEFAULT "1.1" ,f3 FLOAT DEFAULT 1.1) $$
 INSERT INTO t1(i) VALUES (1);
 SELECT * FROM t1;
 DROP TABLE t1;
 
-SELECT '---------------------------------- PART #42 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #41 ----------------------------------' AS part;
 CREATE TABLE t1(i INT, j INT)$$
 CREATE INDEX t1_ij ON t1(i, j)
 CREATE INDEX t1_ji ON t1(j, i)
@@ -319,13 +319,13 @@ CREATE INDEX 'dup' ON t7(j)
 CREATE INDEX 'xxxx' ON t7(i)
 CREATE UNIQUE INDEX 'xxxx' ON t7(j)
 
-SELECT '---------------------------------- PART #43 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #42 ----------------------------------' AS part;
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 
-SELECT '---------------------------------- PART #44 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #43 ----------------------------------' AS part;
 DROP TABLE t1;
 DROP TABLE t2
 DROP TABLE t3;
@@ -334,13 +334,13 @@ DROP TABLE t5;
 DROP TABLE t6;
 DROP TABLE t7;
 
-SELECT '---------------------------------- PART #45 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #44 ----------------------------------' AS part;
 CREATE TABLE t1(c1 CHAR(2), c2 CSTRING(2), c3 VARCHAR(2), c4 TEXT) $$
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 DROP TABLE t1;
 
-SELECT '---------------------------------- PART #46 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #45 ----------------------------------' AS part;
 CREATE TABLE t1(i INT UNIQUE ASC) $$
 CREATE TABLE t1(i INT UNIQUE DESC) $$
 CREATE TABLE t1(i INT PRIMARY KEY ASC) $$
@@ -351,34 +351,34 @@ CREATE INDEX t4_i ON t4(i)
 CREATE TABLE t5(i INT, j INT) $$
 CREATE INDEX t5_ji ON t5(j DESC, i ASC)
 
-SELECT '---------------------------------- PART #47 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #46 ----------------------------------' AS part;
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 
-SELECT '---------------------------------- PART #48 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #47 ----------------------------------' AS part;
 DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
 DROP TABLE t4;
 DROP TABLE t5;
 
-SELECT '---------------------------------- PART #49 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #48 ----------------------------------' AS part;
 CREATE TABLE t1(unique INT UNIQUE) $$
 CREATE TABLE t1('unique' INT UNIQUE) $$
 
-SELECT '---------------------------------- PART #50 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #49 ----------------------------------' AS part;
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 
-SELECT '---------------------------------- PART #51 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #50 ----------------------------------' AS part;
 DROP TABLE t1;
 DROP TABLE t2;
 
-SELECT '---------------------------------- PART #52 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #51 ----------------------------------' AS part;
 CREATE TABLE t1(i INT, j INT)$$
 CREATE INDEX t1_ij1 on t1(i, j);
 CREATE INDEX t1_ij2 on t1(i DESC, j ASC);
@@ -393,13 +393,13 @@ CREATE TABLE t7(i INT, j INT, FOREIGN KEY (i DESC, j DESC) REFERENCES t1(i DESC,
 CREATE TABLE t8(i INT, FOREIGN KEY (i DESC) REFERENCES t1(i DESC)) $$
 CREATE INDEX idx1 ON t8(i DESC)
 
-SELECT '---------------------------------- PART #53 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #52 ----------------------------------' AS part;
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 
-SELECT '---------------------------------- PART #54 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #53 ----------------------------------' AS part;
 DROP TABLE t2;
 DROP TABLE t3;
 DROP TABLE t4;
@@ -409,28 +409,28 @@ DROP TABLE t7;
 DROP TABLE t8;
 DROP TABLE t1;
 
-SELECT '---------------------------------- PART #55 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #54 ----------------------------------' AS part;
 CREATE TABLE t1(i INT PRIMARY KEY)$$
 CREATE TABLE t2(i INT CONSTRAINT mycons1 REFERENCES t1(i)) $$
 CREATE TABLE t3(i INT, CONSTRAINT 'mycons2' FOREIGN KEY (i) REFERENCES t1(i)) $$
 CREATE TABLE t4(i INT, FOREIGN KEY (i) REFERENCES t1(i) CONSTRAINT "mycons3") $$
 
-SELECT '---------------------------------- PART #56 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #55 ----------------------------------' AS part;
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
 
-SELECT '---------------------------------- PART #57 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #56 ----------------------------------' AS part;
 DROP TABLE t2;
 DROP TABLE t3;
 DROP TABLE t1;
 
-SELECT '---------------------------------- PART #58 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #57 ----------------------------------' AS part;
 # CTAS is currently not supported.
 CREATE TABLE t1(i INT) $$
 INSERT INTO t1 VALUES(1);
 CREATE TABLE t2 AS SELECT * FROM t1 $$
 DROP TABLE t1;
 
-SELECT '---------------------------------- PART #59 ----------------------------------' AS part;
+SELECT '---------------------------------- PART #58 ----------------------------------' AS part;
 CREATE TABLE t1(i INT (100))$$
 CREATE TABLE t1(v VARCHAR (100))$$
 CREATE TABLE t2(v VARCHAR      (100)    )$$
