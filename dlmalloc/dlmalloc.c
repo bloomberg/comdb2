@@ -5185,6 +5185,27 @@ size_t mspace_max_footprint(mspace msp) {
   return result;
 }
 
+void mspace_for_each_chunk(mspace msp, void (*cb) (void*, void *), void *arg) {
+  mstate m = (mstate)msp;
+  if (!ok_magic(m)) {
+    USAGE_ERROR_ACTION(m,m);
+    return;
+  }
+  if (!PREACTION(m)) {
+    check_malloc_state(m);
+    msegmentptr s = &m->seg;
+    while (s != 0) {
+      mchunkptr q = align_as_chunk(s->base);
+      while (segment_holds(s, q) && q != m->top && q->head != FENCEPOST_HEAD) {
+        if (cinuse(q))
+          (*cb)(chunk2mem(q), arg);
+        q = next_chunk(q);
+      }
+      s = s->next;
+    }
+    POSTACTION(m);
+  }
+}
 
 #if !NO_MALLINFO
 struct mallinfo mspace_mallinfo(mspace msp) {
