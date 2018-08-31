@@ -1755,43 +1755,72 @@ cmd ::= ANALYZE nm(X) dbnm(Y).  {sqlite3Analyze(pParse, &X, &Y);}
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 %type dryrun {int}
 dryrun(D) ::= DRYRUN.  {D=1;}
-dryrun(D) ::= . {D=0;}
+dryrun(D) ::= .        {D=0;}
+
+alter_comma ::= COMMA. {pParse->constraintName.n = 0;}
+
+tconspk ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
+  comdb2AddPrimaryKey(pParse, X, R, I, 0);
+}
+
+tconsfk ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
+tconsfk ::= FOREIGN KEY LP eidlist(FA) RP REFERENCES nm(T)
+            LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
+  comdb2CreateForeignKey(pParse, FA, &T, TA, R);
+  comdb2DeferForeignKey(pParse, D);
+}
+
+cmd ::= alter_table_csc2.
+cmd ::= alter_table alter_table_action_list. {comdb2AlterTableEnd(pParse);}
+
+alter_table ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) . {
+  comdb2AlterTableStart(pParse,&Y,&Z,D);
+}
+
+alter_table_csc2 ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
+  comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,D);
+}
+
+alter_table_add_column ::= ADD kwcolumn_opt columnname carglist.
+alter_table_drop_column ::= DROP kwcolumn_opt nm(Y). {
+  comdb2DropColumn(pParse, &Y);
+}
+
+alter_table_add_pk ::= ADD tconspk.
+alter_table_drop_pk ::= DROP PRIMARY KEY. {
+  comdb2DropPrimaryKey(pParse);
+}
+
+alter_table_add_fk ::= ADD tconsfk.
+alter_table_drop_fk ::= DROP FOREIGN KEY nm(Y). {
+  comdb2DropForeignKey(pParse, &Y);
+}
+
+alter_table_add_index ::= ADD uniqueflag(U) INDEX nm(I) LP sortlist(X) RP
+                          with_opt(O) where_opt(W). {
+  comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, (U == OE_Abort) ?
+                 SQLITE_IDXTYPE_UNIQUE : SQLITE_IDXTYPE_DUPKEY, O);
+}
+alter_table_drop_index ::= DROP INDEX nm(I). {
+  comdb2AlterDropIndex(pParse, &I);
+}
+
+alter_table_action ::= alter_table_add_column.
+alter_table_action ::= alter_table_drop_column.
+alter_table_action ::= alter_table_add_pk.
+alter_table_action ::= alter_table_drop_pk.
+alter_table_action ::= alter_table_add_fk.
+alter_table_action ::= alter_table_drop_fk.
+alter_table_action ::= alter_table_add_index.
+alter_table_action ::= alter_table_drop_index.
+
+alter_table_action_list ::= .
+alter_table_action_list ::= alter_table_action.
+alter_table_action_list ::= alter_table_action_list alter_comma alter_table_action.
+
 cmd ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
   comdb2WriteTransaction(pParse);
   sqlite3AlterRenameTable(pParse,&X,&Y,D);
-}
-cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
-  comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,D);
-}
-cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) ADD COLUMNKW nm(X) typetoken(W). {
-  comdb2AlterTableStart(pParse,&Y,&Z,D);
-  comdb2AddColumn(pParse, &X, &W);
-  comdb2AlterTableEnd(pParse);
-}
-cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) DROP COLUMNKW nm(X). {
-  comdb2AlterTableStart(pParse,&Y,&Z,D);
-  comdb2DropColumn(pParse, &X);
-  comdb2AlterTableEnd(pParse);
-}
-cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) ADD PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
-  comdb2AlterTableStart(pParse,&Y,&Z,D);
-  comdb2AddPrimaryKey(pParse, X, R, I, 0);
-  comdb2AlterTableEnd(pParse);
-}
-cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) DROP PRIMARY KEY. {
-  comdb2AlterTableStart(pParse,&Y,&Z,D);
-  comdb2DropPrimaryKey(pParse);
-  comdb2AlterTableEnd(pParse);
-}
-cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) ADD FOREIGN KEY nm_opt LP eidlist(FA) RP REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(DS). {
-  comdb2AlterTableStart(pParse,&Y,&Z,D);
-  comdb2CreateForeignKey(pParse, FA, &T, TA, R);
-  comdb2DeferForeignKey(pParse, DS);
-}
-cmd ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) DROP FOREIGN KEY nm(X). {
-  comdb2AlterTableStart(pParse,&Y,&Z,D);
-  comdb2DropForeignKey(pParse, &X);
-  comdb2AlterTableEnd(pParse);
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
@@ -1807,9 +1836,9 @@ add_column_fullname ::= fullname(X). {
   disableLookaside(pParse);
   sqlite3AlterBeginAddColumn(pParse, X);
 }
+%endif !SQLITE_BUILDING_FOR_COMDB2
 kwcolumn_opt ::= .
 kwcolumn_opt ::= COLUMNKW.
-%endif !SQLITE_BUILDING_FOR_COMDB2
 %endif  SQLITE_OMIT_ALTERTABLE
 
 //////////////////////// CREATE VIRTUAL TABLE ... /////////////////////////////
