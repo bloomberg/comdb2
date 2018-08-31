@@ -795,7 +795,7 @@ static bool init(std::vector<std::pair<int, int>> port_ranges)
         syslog(LOG_INFO, "%s free port range %d - %d\n", __func__, range.first,
                range.second);
 #endif
-        for (int s = range.first; s < range.second; ++s) {
+        for (int s = range.first; s <= range.second; ++s) {
             free_ports.insert(s);
         }
     }
