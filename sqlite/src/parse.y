@@ -1777,7 +1777,8 @@ alter_table ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) . {
   comdb2AlterTableStart(pParse,&Y,&Z,D);
 }
 
-alter_table_csc2 ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
+alter_table_csc2 ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O)
+                     NOSQL(C). {
   comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,D);
 }
 
@@ -1798,7 +1799,7 @@ alter_table_drop_fk ::= DROP FOREIGN KEY nm(Y). {
 
 alter_table_add_index ::= ADD uniqueflag(U) INDEX nm(I) LP sortlist(X) RP
                           with_opt(O) where_opt(W). {
-  comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, (U == OE_Abort) ?
+  comdb2AddIndex(pParse, &I, X, 0, &W, 0, 0, SQLITE_SO_ASC, (U == OE_Abort) ?
                  SQLITE_IDXTYPE_UNIQUE : SQLITE_IDXTYPE_DUPKEY, O);
 }
 alter_table_drop_index ::= DROP INDEX nm(I). {
@@ -1814,7 +1815,7 @@ alter_table_action ::= alter_table_drop_fk.
 alter_table_action ::= alter_table_add_index.
 alter_table_action ::= alter_table_drop_index.
 
-alter_table_action_list ::= .
+alter_table_action_list ::= DO NOTHING.
 alter_table_action_list ::= alter_table_action.
 alter_table_action_list ::= alter_table_action_list alter_comma alter_table_action.
 
