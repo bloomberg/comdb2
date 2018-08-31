@@ -49,7 +49,7 @@ SELECT COUNT(*)=1 AS result FROM t1
 DROP TABLE t1;
 
 CREATE TABLE t1(i INT NULL, j INT) $$
-CREATE INDEX t1_i ON t1(i) $$
+CREATE INDEX t1_i ON t1(i)
 SELECT csc2 FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 INSERT INTO t1 values(1,1);
 INSERT INTO t1 values(1,1);
@@ -59,7 +59,7 @@ SELECT COUNT(*)=4 AS result FROM t1
 DROP TABLE t1;
 
 CREATE TABLE t1(i INT NOT NULL, j INT) $$
-CREATE INDEX t1_i ON t1(i) $$
+CREATE INDEX t1_i ON t1(i)
 SELECT csc2 FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 INSERT INTO t1 values(1,1);
 INSERT INTO t1 values(1,1);

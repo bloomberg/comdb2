@@ -1,14 +1,14 @@
 CREATE TABLE t1(i INT, j INT)$$
-CREATE INDEX idx1 ON t1(i, j)$$
-CREATE INDEX idx2 ON t1(i DESC, j ASC)$$
-CREATE INDEX idx3 ON t1(i ASC, j DESC)$$
-CREATE INDEX idx4 ON t1(i DESC, j DESC)$$
+CREATE INDEX idx1 ON t1(i, j)
+CREATE INDEX idx2 ON t1(i DESC, j ASC)
+CREATE INDEX idx3 ON t1(i ASC, j DESC)
+CREATE INDEX idx4 ON t1(i DESC, j DESC)
 CREATE TABLE t2(i INT PRIMARY KEY)$$
 CREATE TABLE t3(i INT REFERENCES t1(i DESC)) $$
 CREATE TABLE t4(i INT, j INT, FOREIGN KEY (i, j) REFERENCES t1(i, j)) $$
 CREATE TABLE t5(i INT UNIQUE, j INT, UNIQUE(i,j), UNIQUE 'unique_key'(j,i))$$
-CREATE INDEX t5_ij ON t5(i, j)$$
-CREATE INDEX dup_key ON t5(i, j)$$
+CREATE INDEX t5_ij ON t5(i, j)
+CREATE INDEX dup_key ON t5(i, j)
 CREATE TABLE t1_copy like t1 $$
 CREATE TABLE t2_copy like t2 $$
 CREATE TABLE t3_copy like t3 $$

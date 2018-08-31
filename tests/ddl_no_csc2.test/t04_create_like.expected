@@ -1,6 +1,6 @@
 [CREATE TABLE t6_copy like t6] failed with rc -3 Table 't6' not found.
-(name='t1_copy', COUNT(*)=2)
-(name='t2_copy', COUNT(*)=2)
-(name='t3_copy', COUNT(*)=2)
-(name='t4_copy', COUNT(*)=2)
-(name='t5_copy', COUNT(*)=2)
+(name='t1', COUNT(*)=2)
+(name='t2', COUNT(*)=2)
+(name='t3', COUNT(*)=2)
+(name='t4', COUNT(*)=2)
+(name='t5', COUNT(*)=2)

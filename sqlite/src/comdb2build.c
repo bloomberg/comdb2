@@ -3948,7 +3948,7 @@ static void comdb2AddIndexInt(
         if (key->where == 0)
             goto oom;
 
-        snprintf(key->where, where_sz, "%s %s", "where", where_clause);
+        snprintf(key->where, where_sz, "%s", where_clause);
     }
 
     /*
