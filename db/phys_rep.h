@@ -7,8 +7,7 @@ int gbl_is_physical_replicant;
 unsigned int gbl_deferred_phys_update;
 extern int gbl_deferred_phys_flag;
 
-int set_repl_db_name(char* host_db);
-int add_replicant_host(char *hostname, size_t tier);
+int add_replicant_host(char *hostname, char *dbname, size_t tier);
 int remove_replicant_host(char *hostname);
 void cleanup_hosts();
 int start_replication();
