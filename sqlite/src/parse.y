@@ -1757,14 +1757,16 @@ cmd ::= ANALYZE nm(X) dbnm(Y).  {sqlite3Analyze(pParse, &X, &Y);}
 dryrun(D) ::= DRYRUN.  {D=1;}
 dryrun(D) ::= .        {D=0;}
 
+constraint_opt ::= .                 { pParse->constraintName.n = 0; }
+constraint_opt ::= CONSTRAINT nm(X). { pParse->constraintName = X; }
+
 alter_comma ::= COMMA. {pParse->constraintName.n = 0;}
 
 tconspk ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
   comdb2AddPrimaryKey(pParse, X, R, I, 0);
 }
 
-tconsfk ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
-tconsfk ::= FOREIGN KEY LP eidlist(FA) RP REFERENCES nm(T)
+tconsfk ::= constraint_opt FOREIGN KEY LP eidlist(FA) RP REFERENCES nm(T)
             LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
   comdb2CreateForeignKey(pParse, FA, &T, TA, R);
   comdb2DeferForeignKey(pParse, D);
