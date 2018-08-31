@@ -2943,8 +2943,9 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     }
     data->iq.reqlogger = thrman_get_reqlogger(thr_self);
 
-    sc_printf(data->s, "[%s] logical redo starts at [%u:%u]\n", data->s->table,
-              data->start_lsn.file, data->start_lsn.offset);
+    sc_printf(data->s, "[%s] logical redo %s at [%u:%u]\n", data->s->table,
+              data->s->resume ? "resumes" : "starts", data->start_lsn.file,
+              data->start_lsn.offset);
     data->lasttime = comdb2_time_epoch();
     pCur->minLsn = data->start_lsn;
 

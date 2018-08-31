@@ -2782,7 +2782,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         }
 
         if (rc != 0) {
-            if (rc != IX_NOTFND)
+            if (rc != ERR_VERIFY)
                 logmsg(LOGMSG_ERROR,
                        "upd_new_record oldgenid 0x%llx ix_delk -> "
                        "ix%d, rc=%d failed\n",
