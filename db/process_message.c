@@ -4915,8 +4915,8 @@ clipper_usage:
             tok = segtok(line, lline, &st, &ltok);
             nicerc = comdb2ma_nice((ltok <= 0) ? 1 : toknum(tok, ltok));
             if (nicerc != 0) {
-                fprintf(stderr, "Failed to change mem niceness: rc = %d.\n",
-                        nicerc);
+                logmsg(LOGMSG_ERROR,
+                       "Failed to change mem niceness: rc = %d.\n", nicerc);
                 return 1;
             }
         } else if (tokcmp(tok, ltok, "release") == 0) {
@@ -4926,6 +4926,51 @@ clipper_usage:
             if (ltok != 0)
                 gbl_memstat_freq = toknum(tok, ltok);
            logmsg(LOGMSG_USER, "auto report memstat every %d seconds\n", gbl_memstat_freq);
+#ifndef COMDB2MA_OMIT_DEBUG
+        } else if (tokcmp(tok, ltok, "debug") == 0) {
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok <= 0) {
+                comdb2ma_debug_show_config();
+            } else if (tokcmp(tok, ltok, "dump") == 0) {
+                char *name;
+                int unsafe = 0;
+                tok = segtok(line, lline, &st, &ltok);
+                if (ltok <= 0) {
+                    logmsg(LOGMSG_ERROR, "Requires an argument.\n");
+                    return 1;
+                }
+                name = tokdup(tok, ltok);
+                tok = segtok(line, lline, &st, &ltok);
+                if (ltok > 0)
+                    unsafe = !!toknum(tok, ltok);
+                comdb2ma_debug_dump(name, unsafe);
+                free(name);
+            } else if (tokcmp(tok, ltok, "on") == 0) {
+                char *name;
+                tok = segtok(line, lline, &st, &ltok);
+                if (ltok <= 0) {
+                    logmsg(LOGMSG_ERROR, "Requires an argument.\n");
+                    return 1;
+                }
+                name = tokdup(tok, ltok);
+                comdb2ma_debug_on(name);
+                free(name);
+            } else if (tokcmp(tok, ltok, "off") == 0) {
+                char *name;
+                tok = segtok(line, lline, &st, &ltok);
+                if (ltok <= 0) {
+                    logmsg(LOGMSG_ERROR, "Requires an argument.\n");
+                    return 1;
+                }
+                name = tokdup(tok, ltok);
+                comdb2ma_debug_off(name);
+                free(name);
+            } else if (tokcmp(tok, ltok, "start") == 0) {
+                comdb2ma_debug_start();
+            } else if (tokcmp(tok, ltok, "stop") == 0) {
+                comdb2ma_debug_stop();
+            }
+#endif
         } else {
             while (ltok != 0) {
                 if (tokcmp(tok, ltok, "verbose") == 0)

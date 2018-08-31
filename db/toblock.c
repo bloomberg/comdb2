@@ -4770,6 +4770,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             err.errcode = errout;
             err.ixnum = ixout;
             numerrs = 1;
+            reqlog_set_error(iq->reqlogger, "Delayed Key Adds", rc);
             BACKOUT;
         }
 
@@ -4788,6 +4789,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             err.errcode = verror;
             err.ixnum = -1;
             numerrs = 1;
+            reqlog_set_error(iq->reqlogger, "Verify Del Constraints", rc);
             BACKOUT;
         }
         if (iq->debug)
@@ -4803,6 +4805,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             err.errcode = verror;
             err.ixnum = -1;
             numerrs = 1;
+            reqlog_set_error(iq->reqlogger, "Verify Add Constraints", rc);
             BACKOUT;
         }
 
@@ -5070,6 +5073,8 @@ backout:
         logmsg(LOGMSG_ERROR, "Backing out, rc=%d outrc=%d from line %d\n", rc,
                outrc, fromline);
 
+    if (!reqlog_get_error_code(iq->reqlogger))
+        reqlog_set_error(iq->reqlogger, "Error Processing", rc);
     backed_out = 1;
 
     /* We don't have to prove serializability here, but if we have both a 

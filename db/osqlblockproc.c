@@ -571,50 +571,43 @@ int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, 
     return 0;
 }
 
+
 const char *osql_reqtype_str(int type)
-{
-    switch (type) {
-    case OSQL_RPLINV:
-        return "rplinv";
-    case OSQL_DONE:
-        return "done";
-    case OSQL_USEDB:
-        return "usedb";
-    case OSQL_DELREC:
-        return "delrec";
-    case OSQL_INSREC:
-        return "insrec";
-    case OSQL_CLRTBL:
-        return "clrtbl";
-    case OSQL_QBLOB:
-        return "qblob";
-    case OSQL_UPDREC:
-        return "updrec";
-    case OSQL_XERR:
-        return "xerr";
-    case OSQL_UPDCOLS:
-        return "updcols";
-    case OSQL_DONE_STATS:
-        return "done_stats";
-    case OSQL_DBGLOG:
-        return "dbglog";
-    case OSQL_RECGENID:
-        return "recgenid";
-    case OSQL_UPDSTAT:
-        return "updstat";
-    case OSQL_EXISTS:
-        return "exists";
-    case OSQL_INSERT:
-        return "insert";
-    case OSQL_DELETE:
-        return "delete";
-    case OSQL_UPDATE:
-        return "update";
-    case OSQL_SCHEMACHANGE: return "schemachange";
-    default:
-        return "???";
-    }
+{   
+    assert(0 < type && type < MAX_OSQL_TYPES);
+    // copied from enum OSQL_RPL_TYPE
+    static const char *typestr[] = {
+        "RPLINV",
+        "DONE",
+        "USEDB",
+        "DELREC",
+        "INSREC",
+        "CLRTBL",
+        "QBLOB",
+        "UPDREC",
+        "XERR",
+        "UPDCOLS",
+        "DONE_STATS",
+        "DBGLOG",
+        "RECGENID",
+        "UPDSTAT",
+        "EXISTS",
+        "SERIAL",
+        "SELECTV",
+        "DONE_SNAP",
+        "SCHEMACHANGE",
+        "BPFUNC",
+        "DBQ_CONSUME",
+        "DELETE",
+        "INSERT",
+        "UPDATE",
+        "DELIDX",
+        "INSIDX",
+        "DBQ_CONSUME_UUID",
+    };
+    return typestr[type];
 }
+
 
 /**
  * Inserts the op in the iq oplog
