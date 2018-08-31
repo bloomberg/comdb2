@@ -1329,7 +1329,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
 
     } else if (tokcmp(tok, ltok, "replicate_from") == 0) {
         /* replicate_from <db_name> [dbs to query] */
-        logmsg(LOGMSG_WARN, "I'm a replicator\n");
+        logmsg(LOGMSG_WARN, "I'm a replicant\n");
         gbl_is_physical_replicant = 1;
 
         tok = segtok(line, len, &st, &ltok);
@@ -1339,12 +1339,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             logmsg(LOGMSG_ERROR, "Must specify a database to replicate to\n");
             return -1;
         }
-        /* setup a host db connection */
-        if (set_repl_db_name(tokdup(tok, ltok))) 
-        {
-            logmsg(LOGMSG_ERROR, "Couldn't open a db connection\n");
-            return -1;
-        }
+        /* setup a cluster db name */
+        char* cluster_name = tokdup(tok, ltok);
 
         tok = segtok(line, len, &st, &ltok);
         if (ltok == 0) {
@@ -1354,11 +1350,13 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
 
         /* open db connections */
         while (ltok) {
-            if (add_replicant_host(tokdup(tok, ltok), 0) != 0)
+            char *tmp_tok = tokdup(tok, ltok);
+            if (add_replicant_host(tmp_tok, cluster_name, 0) != 0)
             {
                 logmsg(LOGMSG_ERROR, "Failed to insert hostname %.*s\n", ltok, tok);
             }
             tok = segtok(line, len, &st, &ltok);
+            free(tmp_tok);
         }
 
         start_replication(); 
