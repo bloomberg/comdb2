@@ -413,7 +413,7 @@ test_comdb2_with_port()
     t=0
     started=0
     while [[ $t -lt $start_timeout ]] && [[ $started -eq 0 ]] ; do
-        $CDB2SQL_EXE -v --cdb2cfg $CDB2_CONFIG $DBNAME --host localhost:$((PMUXPORTSTART-1)) "select 1" > sel.out 2>&1
+        $CDB2SQL_EXE -v --cdb2cfg $CDB2_CONFIG $DBNAME --host localhost:$MYPORT "select 1" > sel.out 2>&1
         if [[ $? == 0 ]]; then
             started=1
         else
@@ -454,10 +454,11 @@ runtest()
     test_comdb2_with_port $((PMUXPORTEND-1))
     local name="comdb2/replication/$DBNAME"
     ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
-    cat $((PMUXPORTEND-1)) > reg.expected
-    if ! diff reg.expected reg.out ; then
-        failexit "differing reg.expected reg.out"
+    echo $((PMUXPORTEND-1)) > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
     fi
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del $name" ${COMDB2_PMUX_PORT} &> get.out
 
     echo start comdb2 and request a port that is not on pmux range
     test_comdb2_with_port $((PMUXPORTSTART-1))
