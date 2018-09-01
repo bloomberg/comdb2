@@ -160,7 +160,8 @@ EOF
         failexit "differing help.expected help.out"
     fi
 
-    #---------- stat should show empty list
+    #----------
+    echo stat should show empty list
     ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat.out
     cat <<EOF > stat.expected
 free ports: 90
@@ -170,7 +171,8 @@ EOF
         failexit "differing stat.expected stat.out"
     fi
 
-    #---------- register name first time
+    #----------
+    echo register name first time
     name="comdb2/replication/dummynameforadatabase12345678901234567890"
     ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> reg.out
     echo $PMUXPORTSTART > reg.expected
@@ -178,7 +180,8 @@ EOF
         failexit "differing reg.expected reg.out"
     fi
 
-    #---------- make sure name has port $PMUXPORTSTART
+    #----------
+    echo make sure name has port $PMUXPORTSTART
     ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
     echo $PMUXPORTSTART > get.expected
     if ! diff get.expected get.out ; then
@@ -210,7 +213,8 @@ EOF
         failexit "differing stat.expected stat.out"
     fi
 
-    #--- port $((PMUXPORTSTART-1)) is out of the range this pmux is allowed to assign
+    #----------
+    echo port $((PMUXPORTSTART-1)) is out of the range this pmux is allowed to assign
     ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name $((PMUXPORTSTART-1))" ${COMDB2_PMUX_PORT} &> use.out
     echo "-1" > use.expected
     if ! diff use.expected use.out ; then
@@ -218,14 +222,16 @@ EOF
     fi
 
 
-    #---------- register name again
+    #---------- 
+    echo register name again
     ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> reg.out
     echo $PMUXPORTSTART > reg.expected
     if ! diff reg.expected reg.out ; then
         failexit "differing reg.expected reg.out"
     fi
 
-    #---------- make sure name has port $PMUXPORTSTART
+    #---------- 
+    echo make sure name has port $PMUXPORTSTART
     ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
     echo $PMUXPORTSTART > get.expected
     if ! diff get.expected get.out ; then
@@ -234,7 +240,8 @@ EOF
 
 
 
-    #---------- this is in use by $name so use of this port should fail with -1
+    #---------- 
+    echo this is in use by $name so use of this port should fail with -1
     name2="comdb2/replication/another_dummy_name"
     ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name2 $PMUXPORTSTART" ${COMDB2_PMUX_PORT} &> use.out
     echo "-1" > use.expected
@@ -242,7 +249,8 @@ EOF
         failexit "differing use.expected use.out"
     fi
 
-    #---------- $name should now use next port
+    #----------
+    echo $name should now use next port
     ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name $((PMUXPORTSTART+1))" ${COMDB2_PMUX_PORT} &> use.out
     echo 0 > use.expected
     if ! diff use.expected use.out ; then
@@ -257,7 +265,8 @@ EOF
     fi
 
 
-    #---------- $PMUXPORTEND is valid to use
+    #---------- 
+    echo $PMUXPORTEND is valid to use
     ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name $PMUXPORTEND" ${COMDB2_PMUX_PORT} &> use.out
     echo 0 > use.expected
     if ! diff use.expected use.out ; then
@@ -266,14 +275,13 @@ EOF
 
     #----------
     ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
-    cat <<EOF > get.expected
-$PMUXPORTEND
-EOF
+    echo $PMUXPORTEND > get.expected
     if ! diff get.expected get.out ; then
         failexit "differing get.expected get.out"
     fi
 
-    #---------- only one port registered
+    #----------
+    echo only one port registered
     ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat3.out
     cat <<EOF > stat3.expected
 free ports: 89
@@ -284,18 +292,17 @@ EOF
     fi
 
 
-    #---------- what will be next port? next available is $PMUXPORTSTART
+    #----------
+    echo what will be next port? next available is $PMUXPORTSTART
     ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name2" ${COMDB2_PMUX_PORT} &> use.out
-    echo 0 > use.expected
+    echo $PMUXPORTSTART > use.expected
     if ! diff use.expected use.out ; then
         failexit "differing use.expected use.out"
     fi
 
     #----------
     ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name2" ${COMDB2_PMUX_PORT} &> get.out
-    cat <<EOF > get.expected
-$PMUXPORTSTART
-EOF
+    echo $PMUXPORTSTART > get.expected
     if ! diff get.expected get.out ; then
         failexit "differing get.expected get.out"
     fi
@@ -303,7 +310,7 @@ EOF
     #----------
     ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat4.out
     cat <<EOF > stat4.expected
-free ports: 89
+free ports: 88
 $name2 -> $PMUXPORTSTART
 $name -> $PMUXPORTEND
 EOF
@@ -440,22 +447,23 @@ runtest()
 
     sleep 2
 
-    #start comdb2 and request a port that is in pmux range
-#    test_comdb2_with_port $((PMUXPORTEND-1))
-#    local name="comdb2/replication/$DBNAME"
-#    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
-#cat <<EOF > reg.expected
-#$((PMUXPORTEND-1))
-#EOF
-#    if ! diff reg.expected reg.out ; then
-#        failexit "differing reg.expected reg.out"
-#    fi
-#
-#    #start comdb2 and request a port that is not on pmux range
-#    test_comdb2_with_port $((PMUXPORTSTART-1))
-#    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
-#
-#    sleep 2
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT}
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "range" ${COMDB2_PMUX_PORT}
+
+    echo start comdb2 and request a port that is in pmux range
+    test_comdb2_with_port $((PMUXPORTEND-1))
+    local name="comdb2/replication/$DBNAME"
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    cat $((PMUXPORTEND-1)) > reg.expected
+    if ! diff reg.expected reg.out ; then
+        failexit "differing reg.expected reg.out"
+    fi
+
+    echo start comdb2 and request a port that is not on pmux range
+    test_comdb2_with_port $((PMUXPORTSTART-1))
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+
+    sleep 2
     test_rte
     test_basic_actions
 

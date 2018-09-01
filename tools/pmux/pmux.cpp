@@ -74,6 +74,7 @@ static long open_max;
 static bool foreground_mode = false;
 static std::unique_ptr<pmux_store> pmux_store;
 static std::vector<struct in_addr> local_addresses(5);
+static std::vector<std::pair<int, int>> port_ranges;
 
 struct connection {
     int fd;
@@ -396,8 +397,7 @@ static int use_port(const char *svc, int port)
         if (usedport == port)
             return 0;
 
-        syslog(LOG_ERR, "%s -- not using port, not on free list:%d\n", svc,
-                port);
+        syslog(LOG_ERR, "%s -- port %d not on free list:\n", svc, port);
         return -1;
     } else {
         // was the service using a different port before?  remove that mapping
@@ -660,11 +660,15 @@ again:
         for (auto it : active_services) {
             conn_printf(c, "%s\n", it.c_str());
         }
-    } else if (strcmp(cmd, "exit") == 0) {
-        if (c.writable) {
-            return 1;
-        } else {
-            disallowed_write(c, cmd);
+    } else if (strcmp(cmd, "active") == 0) {
+        std::lock_guard<std::mutex> l(active_services_mutex);
+        conn_printf(c, "%d\n", active_services.size());
+        for (auto it : active_services) {
+            conn_printf(c, "%s\n", it.c_str());
+        }
+    } else if (strcmp(cmd, "range") == 0) {
+        for (auto &range : port_ranges) {
+            conn_printf(c, "%d:%d\n", range.first, range.second);
         }
     } else if (strcmp(cmd, "help") == 0) {
         conn_printf(c, "get [/echo] service     : discover port for service\n"); 
@@ -929,7 +933,6 @@ int main(int argc, char **argv)
     const char *cluster = "prod";
     const char *dbname = "pmuxdb";
     std::vector<int> listen_ports = {5105};
-    std::vector<std::pair<int, int>> port_ranges{{19000, 19999}};
     bool default_ports = true;
     bool default_range = true;
     enum store_mode { MODE_NONE, MODE_LOCAL, MODE_COMDB2DB };
@@ -937,6 +940,8 @@ int main(int argc, char **argv)
     std::pair<int, int> custom_range;
     int c;
     struct sockaddr_un serv_addr;
+    port_ranges = {{19000, 19999}}; // default range
+
     while ((c = getopt(argc, argv, "hc:d:b:p:r:lnf")) != -1) {
         switch (c) {
         case 'h':

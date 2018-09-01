@@ -3295,7 +3295,8 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
         }
         netinfo_ptr->portmux_register_time = comdb2_time_epoch();
     }
-    else { /* manually specified port in lrl */
+    else if (netinfo_ptr->portmux_register_time == 0) {
+        /*if not already done, set to manually specified port in lrl */
         portmux_use(app, service, instance, myportnum);
         netinfo_ptr->portmux_register_time = comdb2_time_epoch();
     }
