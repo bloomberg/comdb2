@@ -58,7 +58,6 @@ int gbl_pmux_route_enabled = 1;
 #define PORTMUX_SET_NO_LINGER() 1
 #define PORTMUX_USE_ECHO_GET() 1
 #define PORTMUX_USE_REFACTORED_GET() 1
-#define PORTMUX_VALIDATE_NAMES() 1
 #define PORTMUX_DENAGLE() 1
 /* Controls if calls to portmux_poll() are directed to portmux_poll_v() */
 #define PORTMUX_USE_POLL_V() 1
@@ -160,18 +159,17 @@ static int remaining_timeoutms(int startms, int timeoutms)
 }
 
 static int portmux_cmd(const char *cmd, const char *app, const char *service,
-                       const char *instance, char *post)
+                       const char *instance, const char *post)
 {
     char name[strlen(app) + strlen(service) + strlen(instance) + 3 +
               MAX_DBNAME_LENGTH];
     char res[32];
     SBUF2 *ss;
-    int rc, fd, port;
+    int rc, fd;
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name))
         return -1;
-    if (PORTMUX_VALIDATE_NAMES())
-        portmux_validate_name(name, __func__);
+    portmux_validate_name(name, __func__);
     fd = tcpconnecth("localhost", get_portmux_port(), 0);
     if (fd < 0)
         return -1;
@@ -184,27 +182,26 @@ static int portmux_cmd(const char *cmd, const char *app, const char *service,
     sbuf2printf(ss, "%s %s%s\n", cmd, name, post);
     res[0] = 0;
     sbuf2gets(res, sizeof(res), ss);
-    if (res[0] == 0) {
-        sbuf2close(ss);
+    sbuf2close(ss);
+
+    if (res[0] == 0)
         return -1;
-    }
-    port = atoi(res);
+    int port = atoi(res);
     if (port <= 0)
         port = -1;
-    sbuf2close(ss);
     return port;
 }
 
-int portmux_use(const char *app, const char *service, const char *instance,
+inline int portmux_use(const char *app, const char *service, const char *instance,
                 int port)
 {
-    char portstr[20];
+    char portstr[10];
     snprintf(portstr, sizeof(portstr), " %d", port);
     return portmux_cmd("use", app, service, instance, portstr);
 }
 
 /* returns port number, or -1 for error*/
-int portmux_register(const char *app, const char *service, const char *instance)
+inline int portmux_register(const char *app, const char *service, const char *instance)
 {
     return portmux_cmd("reg", app, service, instance, "");
 }
@@ -219,8 +216,7 @@ int portmux_deregister(const char *app, const char *service,
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name))
         return -1;
-    if (PORTMUX_VALIDATE_NAMES())
-        portmux_validate_name(name, __func__);
+    portmux_validate_name(name, __func__);
     fd = tcpconnecth("localhost", get_portmux_port(), 0);
     if (fd < 0)
         return -1;
@@ -232,12 +228,11 @@ int portmux_deregister(const char *app, const char *service,
     sbuf2printf(ss, "del %s\n", name);
     res[0] = 0;
     sbuf2gets(res, sizeof(res), ss);
+    sbuf2close(ss);
     if (res[0] == 0) {
-        sbuf2close(ss);
         return -1;
     }
     rc = atoi(res);
-    sbuf2close(ss);
     return rc;
 }
 
@@ -249,8 +244,7 @@ static int portmux_get_int(const struct in_addr *in, const char *remote_host,
     int rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name))
         return -1;
-    if (PORTMUX_VALIDATE_NAMES())
-        portmux_validate_name(name, __func__);
+    portmux_validate_name(name, __func__);
 
     int fd;
     if (in) {
@@ -349,7 +343,7 @@ int portmux_get(const char *remote_host, const char *app, const char *service,
     char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
-    int rc, fd, port;
+    int rc, fd;
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name))
         return -1;
@@ -365,14 +359,13 @@ int portmux_get(const char *remote_host, const char *app, const char *service,
     sbuf2printf(ss, "get %s\n", name);
     res[0] = 0;
     sbuf2gets(res, sizeof(res), ss);
+    sbuf2close(ss);
     if (res[0] == 0) {
-        sbuf2close(ss);
         return -1;
     }
-    port = atoi(res);
+    int port = atoi(res);
     if (port <= 0)
         port = -1;
-    sbuf2close(ss);
     return port;
 }
 
@@ -386,7 +379,7 @@ int portmux_geti(struct in_addr in, const char *app, const char *service,
     char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
-    int rc, fd, port;
+    int rc, fd;
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name))
         return -1;
@@ -404,14 +397,13 @@ int portmux_geti(struct in_addr in, const char *app, const char *service,
     sbuf2printf(ss, "get %s\n", name);
     res[0] = 0;
     sbuf2gets(res, sizeof(res), ss);
+    sbuf2close(ss);
     if (res[0] == 0) {
-        sbuf2close(ss);
         return -1;
     }
-    port = atoi(res);
+    int port = atoi(res);
     if (port <= 0)
         port = -1;
-    sbuf2close(ss);
     return port;
 }
 
@@ -446,8 +438,7 @@ static int portmux_register_route(const char *app, const char *service,
     if (rc < 1 || rc >= sizeof(name)) {
         return -1;
     }
-    if (PORTMUX_VALIDATE_NAMES())
-        portmux_validate_name(name, __func__);
+    portmux_validate_name(name, __func__);
 
     /*get a unix socket to tell stuff about us*/
     rc = snprintf(sock_name, sizeof(sock_name), "/tmp/pmux_%s_%s_%s_%d.socket",

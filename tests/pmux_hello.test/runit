@@ -168,12 +168,22 @@ free ports: 90
 EOF
 
     if ! diff stat.expected stat.out ; then
-        failexit "differing stat.expected stat.out"
+        failexit "differing stat.expected stat.out: stat should be empty"
     fi
+
+    name="comdb2/replication/dummynameforadatabase12345678901234567890"
+
+    #----------
+    echo getting a non existent entry
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    echo "-1" > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
 
     #----------
     echo register name first time
-    name="comdb2/replication/dummynameforadatabase12345678901234567890"
     ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> reg.out
     echo $PMUXPORTSTART > reg.expected
     if ! diff reg.expected reg.out ; then
@@ -210,15 +220,31 @@ EOF
     #----------
     ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat.out
     if ! diff stat.expected stat.out ; then
-        failexit "differing stat.expected stat.out"
+        failexit "differing stat.expected stat.out: stat should be empty"
     fi
 
+    #---------- 
+    echo register name again
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> reg.out
+    echo $PMUXPORTSTART > reg.expected
+    if ! diff reg.expected reg.out ; then
+        failexit "differing reg.expected reg.out"
+    fi
+
+
     #----------
-    echo port $((PMUXPORTSTART-1)) is out of the range this pmux is allowed to assign
+    echo use a port outside of range of pmux, should fail and clear previous entry
+    echo NOTE: port $((PMUXPORTSTART-1)) is OUT OF THE RANGE this pmux is allowed to assign
     ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name $((PMUXPORTSTART-1))" ${COMDB2_PMUX_PORT} &> use.out
     echo "-1" > use.expected
     if ! diff use.expected use.out ; then
         failexit "differing use.expected use.out"
+    fi
+
+    #----------
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat.out
+    if ! diff stat.expected stat.out ; then
+        failexit "differing stat.expected stat.out: stat should be empty"
     fi
 
 
@@ -250,7 +276,7 @@ EOF
     fi
 
     #----------
-    echo $name should now use next port
+    echo $name should now use next port: start+1
     ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name $((PMUXPORTSTART+1))" ${COMDB2_PMUX_PORT} &> use.out
     echo 0 > use.expected
     if ! diff use.expected use.out ; then
@@ -399,8 +425,9 @@ test_comdb2_with_port()
     echo "portmux_port ${COMDB2_PMUX_PORT}" > $DBLRL
     echo "portmux_bind_path /tmp/pmux.${COMDB2_PMUX_PORT} " >> $DBLRL
     echo "port localhost $MYPORT" >> $DBLRL
-    echo "net_portmux_register_interval 0" >> $DBLRL
+    echo "net_portmux_register_interval 1" >> $DBLRL
     echo "dir $DBDIR " >> $DBLRL
+
     df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${DBLRL}
     ${COMDB2_EXE} $DBNAME --create --lrl $DBLRL
 
@@ -422,6 +449,14 @@ test_comdb2_with_port()
         fi
         let t=t+1
     done
+    sleep 2
+    $CDB2SQL_EXE -v --cdb2cfg $CDB2_CONFIG $DBNAME default "select 1" > sel.out 2>&1
+
+    sleep 2
+    kill -0 $dbpid
+    if [[ $? != 0 ]]; then
+        failexit "${FUNCNAME[0]} test failed: db not up"
+    fi
 
     kill -9 $dbpid
 
@@ -458,7 +493,6 @@ runtest()
     if ! diff get.expected get.out ; then
         failexit "differing get.expected get.out"
     fi
-    ${TESTSROOTDIR}/tools/send_msg_port.sh "del $name" ${COMDB2_PMUX_PORT} &> get.out
 
     echo start comdb2 and request a port that is not on pmux range
     test_comdb2_with_port $((PMUXPORTSTART-1))

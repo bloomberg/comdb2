@@ -396,13 +396,14 @@ static int use_port(const char *svc, int port)
          * fine */
         if (usedport == port)
             return 0;
+        else // service was using a different port before so remove that mapping
+            dealloc_port(svc);
 
         syslog(LOG_ERR, "%s -- port %d not on free list:\n", svc, port);
         return -1;
-    } else {
-        // was the service using a different port before?  remove that mapping
-        if (usedport != -1)
-            dealloc_port(svc);
+    } else if (usedport != -1) {
+        // service was using a different port before so remove that mapping
+        dealloc_port(svc);
     }
     free_ports.erase(i);
 

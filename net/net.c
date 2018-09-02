@@ -3278,6 +3278,11 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
     netinfo_ptr->ischild = ischild;
     netinfo_ptr->use_getservbyname = use_getservbyname;
 
+    if (myportnum > 0 && !ischild) {
+        /* manually specified port in lrl */
+        netinfo_ptr->port_from_lrl = 1;
+    }
+
     if (myportnum <= 0 && !ischild && !fake) {
         if (netinfo_ptr->use_getservbyname) {
             myportnum = net_get_port_by_service(instance);
@@ -3293,11 +3298,6 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
         } else {
             portmux_use(app, service, instance, myportnum);
         }
-        netinfo_ptr->portmux_register_time = comdb2_time_epoch();
-    }
-    else if (netinfo_ptr->portmux_register_time == 0) {
-        /*if not already done, set to manually specified port in lrl */
-        portmux_use(app, service, instance, myportnum);
         netinfo_ptr->portmux_register_time = comdb2_time_epoch();
     }
 
@@ -3420,7 +3420,7 @@ fail:
     return NULL;
 }
 
-netinfo_type *create_netinfo_fake(void)
+inline netinfo_type *create_netinfo_fake(void)
 {
     char myhostname[HOSTNAME_LEN] = "fakehost";
     int myportnum = -1;
@@ -3432,7 +3432,7 @@ netinfo_type *create_netinfo_fake(void)
                               instance, 1, 0, 0, 0);
 }
 
-netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
+inline netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
                              char app[], char service[], char instance[],
                              int ischild, int use_getservbyname)
 {
@@ -3440,7 +3440,7 @@ netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
                               instance, 0, 0, ischild, use_getservbyname);
 }
 
-netinfo_type *create_netinfo_offload(char myhostname[], int myportnum, int myfd,
+inline netinfo_type *create_netinfo_offload(char myhostname[], int myportnum, int myfd,
                                      char app[], char service[],
                                      char instance[])
 {
@@ -6220,17 +6220,22 @@ static void *heartbeat_check_thread(void *arg)
         if (netinfo_ptr->portmux_register_interval > 0 &&
             ((now = comdb2_time_epoch()) - netinfo_ptr->portmux_register_time) >
                 netinfo_ptr->portmux_register_interval) {
-            int myport = portmux_register(
-                netinfo_ptr->app, netinfo_ptr->service, netinfo_ptr->instance);
-            /* What on earth should i do?  Abort maybe?  i'm already using the
-             * old port,
-             * and sockpool has it cached everywhere .. */
-            if (myport != netinfo_ptr->myport && myport > 0) {
+            int pport;
+            if (netinfo_ptr->port_from_lrl)
+                pport = portmux_use(netinfo_ptr->app, netinfo_ptr->service,
+                                    netinfo_ptr->instance, netinfo_ptr->myport);
+            else
+                pport = portmux_register(netinfo_ptr->app, netinfo_ptr->service,
+                                         netinfo_ptr->instance);
+
+            if (pport != netinfo_ptr->myport && pport > 0) {
+                /* What on earth should i do?  Abort maybe?  i'm already using the
+                 * old port, and sockpool has it cached everywhere .. */
                 logmsg(LOGMSG_FATAL, "Portmux returned a different port for %s %s %s?  ",
                         netinfo_ptr->app, netinfo_ptr->service,
                         netinfo_ptr->instance);
                 logmsg(LOGMSG_FATAL, "Oldport=%d, returned-port=%d\n",
-                        netinfo_ptr->myport, myport);
+                        netinfo_ptr->myport, pport);
                 abort();
             }
             netinfo_ptr->portmux_register_time = now;
