@@ -76,6 +76,9 @@ int log_sync_time_save;
 
 int stopsc = 0; /* stop schemachange, so it can resume */
 
+pthread_mutex_t sc_logical_redo_lwm_mtx = PTHREAD_MUTEX_INITIALIZER;
+volatile unsigned int sc_logical_redo_lwm = 0;
+
 inline int is_dta_being_rebuilt(struct scplan *plan)
 {
     if (!plan) return 1;
@@ -245,6 +248,10 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
             hash_clear(sc_tables);
             hash_free(sc_tables);
             sc_tables = NULL;
+
+            pthread_mutex_lock(&sc_logical_redo_lwm_mtx);
+            sc_logical_redo_lwm = 0;
+            pthread_mutex_unlock(&sc_logical_redo_lwm_mtx);
         }
     }
     ctrace("sc_set_running(table=%s running=%d seed=0x%llx): "
@@ -390,4 +397,21 @@ int is_table_in_schema_change(const char *tbname, tran_type *tran)
         return rc;
     }
     return 0;
+}
+
+void sc_set_logical_redo_lwm(unsigned int file)
+{
+    pthread_mutex_lock(&sc_logical_redo_lwm_mtx);
+    if (!sc_logical_redo_lwm || file < sc_logical_redo_lwm)
+        sc_logical_redo_lwm = file;
+    pthread_mutex_unlock(&sc_logical_redo_lwm_mtx);
+}
+
+unsigned int sc_get_logical_redo_lwm()
+{
+    unsigned int lwm;
+    pthread_mutex_lock(&sc_logical_redo_lwm_mtx);
+    lwm = sc_logical_redo_lwm;
+    pthread_mutex_unlock(&sc_logical_redo_lwm_mtx);
+    return lwm;
 }

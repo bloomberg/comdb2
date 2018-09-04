@@ -1360,6 +1360,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                 return -1;
             }
         }
+        sc_set_logical_redo_lwm(thdData->start_lsn.file);
         thdData->stripe = -1;
         sc_printf(s, "[%s] starting thread for logical live schema change\n",
                   s->table);
@@ -2883,7 +2884,8 @@ again:
                 rc = ERR_INTERNAL;
             }
             data->nrecs--;
-        }
+        } else
+            sc_set_logical_redo_lwm(pCur->curLsn.file);
     }
 
 done:
