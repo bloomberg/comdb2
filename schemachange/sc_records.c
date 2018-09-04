@@ -1936,6 +1936,15 @@ static int unpack_blob_record(struct convert_record_data *data, void *blb_buf,
     blb->bloblens[blbix] = data->odh.length;
     blb->bloboffs[blbix] = 0;
     blb->blobptrs[blbix] = NULL;
+    if (blb->blobptrs[blbix]) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d attempted to overwrite blob data that is currently in "
+               "use, which would leak memory and shouldn't ever happen.\n",
+               __func__, __LINE__);
+        if (unpackbuf)
+            free(unpackbuf);
+        return -1;
+    }
     if (unpackbuf) {
         blb->blobptrs[blbix] = data->odh.recptr;
     } else if (data->odh.length) {
@@ -1989,9 +1998,6 @@ static int reconstruct_blob_records(struct convert_record_data *data,
             return -1;
         }
     }
-
-    free_blob_status_data(&data->blb);
-    free_blob_status_data(&data->blbcopy);
 
     LISTC_FOR_EACH(&pbrecs->recs, rec, lnk)
     {
@@ -2538,6 +2544,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
     int prevlen = 0, updlen = 0;
     llog_undo_upd_dta_args *upd_dta = NULL;
     llog_undo_upd_dta_lk_args *upd_dta_lk = NULL;
+    int do_blob = 0;
 
     brecs.genid = rec->genid;
     pbrecs = hash_find(data->blob_hash, &brecs);
@@ -2549,10 +2556,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
                    __LINE__, rc);
             goto done;
         }
-        bzero(data->freeblb, sizeof(data->freeblb));
-        blob_status_to_blob_buffer(&data->blbcopy, data->freeblb);
-        bzero(data->wrblb, sizeof(data->wrblb));
-        blob_status_to_blob_buffer(&data->blb, data->wrblb);
+        do_blob = 1;
     }
 
     if ((rc = logc->get(logc, &rec->lsn, logdta, DB_SET)) != 0) {
@@ -2586,6 +2590,25 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
         dtafile = upd_dta->dtafile;
         dtastripe = upd_dta->dtastripe;
         dtalen = upd_dta->old_dta_len;
+    }
+
+    brecs.genid = genid;
+    pbrecs = hash_find(data->blob_hash, &brecs);
+    if (pbrecs) {
+        rc = reconstruct_blob_records(data, logc, pbrecs, logdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d failed to reconstruct blob records rc %d\n", __func__,
+                   __LINE__, rc);
+            goto done;
+        }
+        do_blob = 1;
+    }
+    if (do_blob) {
+        bzero(data->freeblb, sizeof(data->freeblb));
+        bzero(data->wrblb, sizeof(data->wrblb));
+        blob_status_to_blob_buffer(&data->blbcopy, data->freeblb);
+        blob_status_to_blob_buffer(&data->blb, data->wrblb);
     }
 
     if (0 == bdb_inplace_cmp_genids(data->from->handle, oldgenid, genid)) {

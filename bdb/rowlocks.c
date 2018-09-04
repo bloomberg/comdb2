@@ -921,22 +921,14 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
                 ov = addrem_rec->hdr.data;
             }
 
-            if (B_TYPE(kd) == B_OVERFLOW) {
-                if (LOG_SWAPPED()) {
-                    M_16_SWAP(ov->unused1);
-                    M_32_SWAP(ov->pgno);
-                    M_32_SWAP(ov->tlen);
-                }
-                off = ov->tlen;
-                if (ovlen)
-                    *ovlen = ov->tlen;
-            } else if (B_TYPE(kd) == B_KEYDATA) {
+            if (addrem_rec->opcode == DB_ADD_DUP &&
+                (kd == NULL || B_TYPE(kd) == 0)) {
                 if (ovcur && ovlen && *ovlen > 0)
-                    assert(*ovlen >= kd->len);
+                    assert(*ovlen >= addrem_rec->dbt.size);
                 if (ovcur)
-                    memcpy(ovcur, kd->data, kd->len);
+                    memcpy(ovcur, addrem_rec->dbt.data, addrem_rec->dbt.size);
                 if (ovlen)
-                    *ovlen = kd->len;
+                    *ovlen = addrem_rec->dbt.size;
                 if (outpage)
                     *outpage = addrem_rec->pgno;
                 if (outidx)
@@ -944,7 +936,32 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
                 off = 0;
                 foundit = 1;
                 __os_free(bdb_state->dbenv, addrem_rec);
-                break;
+            } else {
+                if (B_TYPE(kd) == B_OVERFLOW) {
+                    if (LOG_SWAPPED()) {
+                        M_16_SWAP(ov->unused1);
+                        M_32_SWAP(ov->pgno);
+                        M_32_SWAP(ov->tlen);
+                    }
+                    off = ov->tlen;
+                    if (ovlen)
+                        *ovlen = ov->tlen;
+                } else if (B_TYPE(kd) == B_KEYDATA) {
+                    if (ovcur && ovlen && *ovlen > 0)
+                        assert(*ovlen >= kd->len);
+                    if (ovcur)
+                        memcpy(ovcur, kd->data, kd->len);
+                    if (ovlen)
+                        *ovlen = kd->len;
+                    if (outpage)
+                        *outpage = addrem_rec->pgno;
+                    if (outidx)
+                        *outidx = addrem_rec->indx;
+                    off = 0;
+                    foundit = 1;
+                    __os_free(bdb_state->dbenv, addrem_rec);
+                    break;
+                }
             }
         }
 

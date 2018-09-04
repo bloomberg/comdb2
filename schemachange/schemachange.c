@@ -838,6 +838,17 @@ int live_sc_post_update(struct ireq *iq, void *trans,
     return rc;
 }
 
+int live_sc_disable_inplace_blobs(struct ireq *iq)
+{
+    int rc = 0;
+    pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
+    if (iq->usedb->sc_from == iq->usedb && iq->usedb->sc_live_logical &&
+        iq->usedb->sc_to->ix_blob)
+        rc = 1;
+    pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
+    return rc;
+}
+
 /**********************************************************************/
 /* I ORIGINALLY REMOVED THIS, THEN MERGING I SAW IT BACK IN COMDB2.C
     I AM LEAVING IT IN HERE FOR NOW (GOTTA ASK MARK)               */

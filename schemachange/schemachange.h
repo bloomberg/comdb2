@@ -332,6 +332,9 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
 int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
                              unsigned long long newgenid, const void *od_dta,
                              unsigned long long ins_keys, int od_len);
+
+int live_sc_disable_inplace_blobs(struct ireq *iq);
+
 int add_schema_change_tables();
 
 extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);
