@@ -36,7 +36,7 @@ ifeq ($(MAKECMDGOALS),)
 TOTAL=$(words $(ALL_TESTS) )     # if no targets passed, will do ALL_TESTS
 endif
 
-all: init basicops all_tests
+all: generated_tests init basicops all_tests
 
 init:
 	@mkdir -p ${TESTDIR}
@@ -76,6 +76,10 @@ showparams:
 
 $(patsubst %.test,%,$(shell ls -d *.test)): basicops
 
+
+generated_tests:
+	$(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
+
 %: %.test
 	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
 	@cp -r $< $(TESTDIR)/
@@ -107,5 +111,5 @@ testtotalclean: $(patsubst %.test,%.clean,$(shell ls -d *.test))
 clean: testclean
 
 testclean:
-	@rm -rf test_[0-9]* $(TESTDIR)/
+	@rm -rf test_[0-9]* $(TESTDIR)/ *_generated.test/
 	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf $(TESTSROOTDIR)/test_[0-9]* $(TESTDIR)/' < /dev/null;)
