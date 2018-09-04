@@ -177,26 +177,34 @@ inline int get_osql_maxthrottle_sec(void)
     return gbl_osql_max_throttle_sec;
 }
 
+
+
 /**
- * Process a sqlite index delete request
- * Index is provided by thd->clnt->idxDelete
- * Returns SQLITE_OK if successful.
- *
+ * Process the actual sending of the delrec
  */
-static inline int osql_delidx(struct BtCursor *pCur, struct sql_thread *thd)
+int send_osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
 {
-    int rc = 0;
+    int rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+    if (rc != SQLITE_OK) return rc;
 
-    if (!gbl_expressions_indexes || !pCur->db->ix_expr)
-        return SQLITE_OK;
+    if (gbl_expressions_indexes && pCur->db->ix_expr) {
+        rc = osql_send_delidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+        if (rc != SQLITE_OK) {
+            logmsg(LOGMSG_ERROR,
+                    "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                    __LINE__, __func__, rc);
+            return rc;
+        }
+    }
 
-    rc = osql_send_delidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+    rc = osql_send_delrec_logic(pCur, thd, NET_OSQL_SOCK_RPL);
     if (rc) {
         logmsg(LOGMSG_ERROR,
                 "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
                 __LINE__, __func__, rc);
+        return rc;
     }
-    return rc;
+    return SQLITE_OK;
 }
 
 /**
@@ -216,19 +224,7 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         do {
-            rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
-            if (rc != SQLITE_OK) return rc;
-
-            rc = osql_delidx(pCur, thd);
-            if (rc != SQLITE_OK) return rc;
-
-            rc = osql_send_delrec_logic(pCur, thd, NET_OSQL_SOCK_RPL);
-            if (rc) {
-                logmsg(LOGMSG_ERROR,
-                        "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
-                        __LINE__, __func__, rc);
-                return rc;
-            }
+            rc = send_osql_delrec(pCur, thd);
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
     }
@@ -256,25 +252,41 @@ inline int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd,
 }
 
 /**
- * Process a sqlite index insert request
- * Index is provided by thd->clnt->idxInsert
- * Returns SQLITE_OK if successful.
- *
+ * Process the sending part for insrec
  */
-int osql_insidx(struct BtCursor *pCur, struct sql_thread *thd)
+int send_osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
+        int nData, blob_buffer_t *blobs, int maxblobs, int flags) 
 {
-    int rc = 0;
+    int rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+    if (rc != SQLITE_OK) return rc;
 
-    if (!gbl_expressions_indexes || !pCur->db->ix_expr)
-        return SQLITE_OK;
+    if (gbl_expressions_indexes && pCur->db->ix_expr) {
+        rc = osql_send_insidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+        if (rc != SQLITE_OK) {
+            logmsg(LOGMSG_ERROR,
+                    "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                    __LINE__, __func__, rc);
+            return rc;
+        }
+    }
 
-    rc = osql_send_insidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+    rc = osql_send_qblobs_logic(pCur, thd, NULL, blobs, NET_OSQL_SOCK_RPL);
+    if (rc != SQLITE_OK) {
+        logmsg(LOGMSG_ERROR,
+                "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                __LINE__, __func__, rc);
+        return rc;
+    }
+
+    rc = osql_send_insrec_logic(pCur, thd, pData, nData, NET_OSQL_SOCK_RPL,
+            flags);
     if (rc) {
         logmsg(LOGMSG_ERROR,
                 "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
                 __LINE__, __func__, rc);
+        return rc;
     }
-    return rc;
+    return SQLITE_OK;
 }
 
 /**
@@ -295,28 +307,8 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         do {
-            rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
-            if (rc != SQLITE_OK) return rc;
-
-            rc = osql_insidx(pCur, thd);
-            if (rc != SQLITE_OK) return rc;
-
-            rc = osql_send_qblobs_logic(pCur, thd, NULL, blobs, NET_OSQL_SOCK_RPL);
-            if (rc != SQLITE_OK) {
-                logmsg(LOGMSG_ERROR,
-                        "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
-                        __LINE__, __func__, rc);
-                return rc;
-            }
-
-            rc = osql_send_insrec_logic(pCur, thd, pData, nData, NET_OSQL_SOCK_RPL,
-                    flags);
-            if (rc) {
-                logmsg(LOGMSG_ERROR,
-                        "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
-                        __LINE__, __func__, rc);
-                return rc;
-            }
+            rc = send_osql_insrec(pCur, thd, pData, nData, blobs, 
+                                  maxblobs, flags);
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
     }
@@ -330,6 +322,66 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK) return rc;
 
     return osql_save_insrec(pCur, thd, pData, nData, flags);
+}
+
+
+/**
+ * process the sending of updrec
+ */
+int send_osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
+                int nData, int *updCols, blob_buffer_t *blobs, int maxblobs,
+                int flags) 
+{
+    int rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+    if (rc != SQLITE_OK) return rc;
+
+    if (gbl_expressions_indexes && pCur->db->ix_expr) {
+        rc = osql_send_delidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+        if (rc != SQLITE_OK) {
+            logmsg(LOGMSG_ERROR,
+                    "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                    __LINE__, __func__, rc);
+            return rc;
+        }
+
+        rc = osql_send_insidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+        if (rc != SQLITE_OK) {
+            logmsg(LOGMSG_ERROR,
+                    "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                    __LINE__, __func__, rc);
+            return rc;
+        }
+    }
+
+    rc = osql_send_qblobs_logic(pCur, thd, updCols, blobs, NET_OSQL_SOCK_RPL);
+    if (rc != SQLITE_OK) {
+        logmsg(LOGMSG_ERROR,
+                "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                __LINE__, __func__, rc);
+        return rc;
+    }
+
+    if (updCols) {
+        osqlstate_t *osql = &thd->clnt->osql;
+        rc = osql_send_updcols(osql->host, osql->rqid, osql->uuid, pCur->genid,
+                NET_OSQL_SOCK_RPL, &updCols[1], updCols[0], osql->logsb);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                    "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                    __LINE__, __func__, rc);
+            return rc;
+        }
+    }
+
+    rc = osql_send_updrec_logic(pCur, thd, pData, nData, NET_OSQL_SOCK_RPL,
+            flags);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+                "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                __LINE__, __func__, rc);
+        return rc;
+    }
+    return SQLITE_OK;
 }
 
 /**
@@ -352,44 +404,9 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         do {
-            rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
-            if (rc != SQLITE_OK) return rc;
+            rc = send_osql_updrec(pCur, thd, pData, nData, updCols, 
+                                  blobs, maxblobs, flags);
 
-            rc = osql_delidx(pCur, thd);
-            if (rc != SQLITE_OK) return rc;
-
-            rc = osql_insidx(pCur, thd);
-            if (rc != SQLITE_OK) return rc;
-
-            rc = osql_send_qblobs_logic(pCur, thd, updCols, blobs, NET_OSQL_SOCK_RPL);
-            if (rc != SQLITE_OK) {
-                logmsg(LOGMSG_ERROR,
-                        "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
-                        __LINE__, __func__, rc);
-                return rc;
-            }
-
-            if (updCols) {
-
-                osqlstate_t *osql = &thd->clnt->osql;
-                rc = osql_send_updcols(osql->host, osql->rqid, osql->uuid, pCur->genid,
-                        NET_OSQL_SOCK_RPL, &updCols[1], updCols[0], osql->logsb);
-                if (rc) {
-                    logmsg(LOGMSG_ERROR,
-                           "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
-                           __LINE__, __func__, rc);
-                    return rc;
-                }
-            }
-
-            rc = osql_send_updrec_logic(pCur, thd, pData, nData, NET_OSQL_SOCK_RPL,
-                    flags);
-            if (rc) {
-                logmsg(LOGMSG_ERROR,
-                        "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
-                        __LINE__, __func__, rc);
-                return rc;
-            }
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
     }
@@ -1183,6 +1200,13 @@ static inline int osql_send_updstat_logic(struct BtCursor *pCur,
     return rc;
 }
 
+
+/**
+ * Process a sqlite index insert request
+ * Index is provided by thd->clnt->idxInsert
+ * Returns SQLITE_OK if successful.
+ *
+ */
 int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype)
 {
@@ -1210,6 +1234,13 @@ int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
     return rc;
 }
 
+
+/**
+ * Process a sqlite index delete request
+ * Index is provided by thd->clnt->idxDelete
+ * Returns SQLITE_OK if successful.
+ *
+ */
 int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                            int nettype)
 {
