@@ -26,17 +26,24 @@ endif
 
 export DISABLED_TESTS
 
+ifeq ($(MAKECMDGOALS),)
+DOALL=1
+else ifeq ($(MAKECMDGOALS),all)
+DOALL=1
+endif
+
 # List of all tests that need to run. This is essentially a list of all
 # non-disabled tests.
 export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
     $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh)))
 
+
 TOTAL=$(words $(MAKECMDGOALS) )  # targets passed to make
-ifeq ($(MAKECMDGOALS),)
+ifeq ($(DOALL),1)
 TOTAL=$(words $(ALL_TESTS) )     # if no targets passed, will do ALL_TESTS
 endif
 
-all: generated_tests init basicops all_tests
+all: init basicops all_tests
 
 init:
 	@mkdir -p ${TESTDIR}
@@ -74,11 +81,13 @@ showparams:
 	@echo CDB2_SQLREPLAY_EXE=${CDB2_SQLREPLAY_EXE}
 	@echo PMUX_EXE=${PMUX_EXE}
 
-$(patsubst %.test,%,$(shell ls -d *.test)): basicops
+
+$(patsubst %.test,%,$(ALL_TESTS)): basicops
 
 
 generated_tests:
 	$(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
+
 
 %: %.test
 	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
