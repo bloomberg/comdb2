@@ -182,7 +182,7 @@ inline int get_osql_maxthrottle_sec(void)
 /**
  * Process the actual sending of the delrec
  */
-int send_osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
+static int send_osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
 {
     int rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK) return rc;
@@ -222,6 +222,10 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
     if ((rc = access_control_check_sql_write(pCur, thd)))
         return rc;
 
+    /* limit transaction*/
+    if ((rc = check_osql_capacity(thd)))
+        return rc;
+
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         do {
             rc = send_osql_delrec(pCur, thd);
@@ -254,8 +258,9 @@ inline int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd,
 /**
  * Process the sending part for insrec
  */
-int send_osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-        int nData, blob_buffer_t *blobs, int maxblobs, int flags) 
+static int send_osql_insrec(struct BtCursor *pCur, struct sql_thread *thd,
+                            char *pData, int nData, blob_buffer_t *blobs,
+                            int maxblobs, int flags) 
 {
     int rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK) return rc;
@@ -279,7 +284,7 @@ int send_osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     }
 
     rc = osql_send_insrec_logic(pCur, thd, pData, nData, NET_OSQL_SOCK_RPL,
-            flags);
+                                flags);
     if (rc) {
         logmsg(LOGMSG_ERROR,
                 "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
@@ -305,6 +310,10 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if ((rc = access_control_check_sql_write(pCur, thd)))
         return rc;
 
+    /* limit transaction*/
+    if ((rc = check_osql_capacity(thd)))
+        return rc;
+
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         do {
             rc = send_osql_insrec(pCur, thd, pData, nData, blobs, 
@@ -328,9 +337,9 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 /**
  * process the sending of updrec
  */
-int send_osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-                int nData, int *updCols, blob_buffer_t *blobs, int maxblobs,
-                int flags) 
+static int send_osql_updrec(struct BtCursor *pCur, struct sql_thread *thd,
+                            char *pData, int nData, int *updCols,
+                            blob_buffer_t *blobs, int maxblobs, int flags) 
 {
     int rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK) return rc;
@@ -400,6 +409,10 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     int rc = 0;
 
     if ((rc = access_control_check_sql_write(pCur, thd)))
+        return rc;
+
+    /* limit transaction*/
+    if ((rc = check_osql_capacity(thd)))
         return rc;
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
@@ -1171,10 +1184,6 @@ static inline int osql_send_delrec_logic(struct BtCursor *pCur,
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
 
-    /* limit transaction*/
-    if ((rc = check_osql_capacity(thd)))
-        return rc;
-
     return osql_send_delrec(
         osql->host, osql->rqid, osql->uuid, pCur->genid,
         (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys
@@ -1216,7 +1225,7 @@ int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
     int rc = 0;
     int i;
 
-    /* limit transaction*/
+    /* limit transaction -- AZ: should this be still here? */
     if ((rc = check_osql_capacity(thd)))
         return rc;
 
@@ -1250,7 +1259,7 @@ int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
     int rc = 0;
     int i;
 
-    /* limit transaction*/
+    /* limit transaction -- AZ: should this be still here? */
     if ((rc = check_osql_capacity(thd)))
         return rc;
 
@@ -1278,10 +1287,6 @@ static inline int osql_send_insrec_logic(
     osqlstate_t *osql = &clnt->osql;
     int restarted;
     int rc = 0;
-
-    /* limit transaction*/
-    if ((rc = check_osql_capacity(thd)))
-        return rc;
 
     rc = osql_send_insrec(
             osql->host, osql->rqid, osql->uuid, pCur->genid,
@@ -1355,9 +1360,6 @@ static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
     osqlstate_t *osql = &clnt->osql;
     int restarted = 0;
     int rc = 0;
-
-    if ((rc = check_osql_capacity(thd)))
-        return rc;
 
     rc = osql_send_updrec(
             osql->host, osql->rqid, osql->uuid, pCur->genid,
