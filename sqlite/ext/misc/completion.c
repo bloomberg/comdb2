@@ -125,11 +125,7 @@ static int completionConnect(
 #define COMPLETION_COLUMN_PHASE     3  /* ePhase - used for debugging only */
 
   rc = sqlite3_declare_vtab(db,
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
       "CREATE TABLE x("
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-      "CREATE TABLE comdb2_completion("
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       "  candidate TEXT,"
       "  prefix TEXT HIDDEN,"
       "  wholeline TEXT HIDDEN,"
@@ -307,11 +303,18 @@ static int completionNext(sqlite3_vtab_cursor *cur){
       }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       case COMPLETION_FUNCTIONS: {
+        /* NOTE: Please keep this list of functions sorted. */
         static char *cfuncs[] = {
-          "comdb2_version()",        "table_version()",    "partition_info()",
-          "comdb2_host()",           "comdb2_port()",      "comdb2_dbname()",
-          "comdb2_prevquerycost()",  "sys.cmd.send()",     "partition_info()",
-          "comdb2_uptime()",         "comdb2_starttime()"
+          "comdb2_dbname()",
+          "comdb2_host()",
+          "comdb2_port()",
+          "comdb2_prevquerycost()",
+          "comdb2_starttime()",
+          "comdb2_uptime()",
+          "comdb2_version()",
+          "partition_info()",
+          "sys.cmd.send()",
+          "table_version()",
         };
         static int j = 0;
         if( pCur->j >= sizeof(cfuncs)/sizeof(char*)) {
@@ -319,6 +322,7 @@ static int completionNext(sqlite3_vtab_cursor *cur){
           pCur->ePhase = COMPLETION_EOF;
         }else{
           pCur->zCurrentRow = cfuncs[pCur->j++];
+          pCur->szRow = strlen(pCur->zCurrentRow);
         }
         iCol = -1;
         break;
