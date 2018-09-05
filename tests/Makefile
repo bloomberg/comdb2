@@ -26,10 +26,14 @@ endif
 
 export DISABLED_TESTS
 
-ifeq ($(MAKECMDGOALS),)
-DOALL=1
+ifeq ($(MAKECMDGOALS),)  # targets passed to make
+DOALL=1                  # if no targets passed, will do ALL_TESTS
 else ifeq ($(MAKECMDGOALS),all)
 DOALL=1
+endif
+
+ifeq ($(DOALL),1)
+$(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
 endif
 
 # List of all tests that need to run. This is essentially a list of all
@@ -38,9 +42,9 @@ export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
     $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh)))
 
 
-TOTAL=$(words $(MAKECMDGOALS) )  # targets passed to make
+TOTAL=$(words $(MAKECMDGOALS) )
 ifeq ($(DOALL),1)
-TOTAL=$(words $(ALL_TESTS) )     # if no targets passed, will do ALL_TESTS
+TOTAL=$(words $(ALL_TESTS) )
 endif
 
 all: init basicops all_tests
@@ -82,12 +86,15 @@ showparams:
 	@echo PMUX_EXE=${PMUX_EXE}
 
 
+
+%_generated: basicops %_generated.test 
+
+%_generated.test:
+	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
+	@cp -r $< $(TESTDIR)/
+	@$(MAKE) -skC $(TESTDIR)/$<
+
 $(patsubst %.test,%,$(ALL_TESTS)): basicops
-
-
-generated_tests:
-	$(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
-
 
 %: %.test
 	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
@@ -102,6 +109,9 @@ generated_tests:
 
 %.tool: %.test
 	+$(MAKE) -C $(patsubst %.tool,%,$<) tool
+
+generated_tests:
+	$(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
 
 stop:
 	@./stopall
