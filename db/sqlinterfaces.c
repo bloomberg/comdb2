@@ -3462,9 +3462,9 @@ check_version:
             thd->analyze_gen = gbl_analyze_gen;
             int rc = sqlite3_open_serial("db", &thd->sqldb, thd);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d\n", __func__,
-                        rc);
-                thd->sqldb = NULL;
+                logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d: %s\n", __func__,
+                       rc, sqlite3_errmsg(thd->sqldb));
+                sqlite3_close_serial(&thd->sqldb);
                 /* there is no really way forward, grab core */
                 abort();
             }
@@ -3575,9 +3575,9 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
         /* open sqlite db without copying rootpages */
         rc = sqlite3_open_serial("db", &thd->sqldb, thd);
         if (unlikely(rc != 0)) {
-            logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d\n", __func__,
-                   rc);
-            thd->sqldb = NULL;
+            logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d: %s\n", __func__,
+                   rc, sqlite3_errmsg(thd->sqldb));
+            sqlite3_close_serial(&thd->sqldb);
         } else {
             /* setting gen to -1 so real SQLs will reopen vm */
             thd->dbopen_gen = -1;
