@@ -3,20 +3,20 @@
 export debug=1
 [[ $debug == 1 ]] && set -x
 
-export dbname=$1
+export DBNAME=$1
 
-LOCTMPDIR=$TMPDIR/$dbname
+LOCTMPDIR=$TMPDIR/$DBNAME
 mkdir $LOCTMPDIR
 
-if [[ -z "$dbname" ]] ; then
-  echo dbname missing
+if [[ -z "$DBNAME" ]] ; then
+  echo DBNAME missing
   exit 1
 fi
 
 function getmaster {
     r=1
     while [[ $r != 0 ]]; do 
-        x=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+        x=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
         r=$?
     done
     echo $x
@@ -33,7 +33,7 @@ fi
 function failexit
 {
     [[ $debug == 1 ]] && set -x
-    ${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${dbname}_restore " ${pmux_port}
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${DBNAME}_restore " ${pmux_port}
     echo "Failed $1"
     exit -1
 }
@@ -42,27 +42,27 @@ function force_checkpoint {
   [[ $debug == 1 ]] && set -x
 
   if [[ -n "${CLUSTER}" ]]; then
-      ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\"" < /dev/null
-      ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('pushnext')\"" < /dev/null
+      ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME local \"exec procedure sys.cmd.send('pushnext')\"" < /dev/null
+      ssh $master "${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME local \"exec procedure sys.cmd.send('pushnext')\"" < /dev/null
       for node in ${CLUSTER} ; do 
-          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('flush')\"" < /dev/null
-          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('bdb logstat')\"" < /dev/null
+          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME local \"exec procedure sys.cmd.send('flush')\"" < /dev/null
+          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME local \"exec procedure sys.cmd.send('bdb logstat')\"" < /dev/null
       done
   else
-      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('pushnext')"
-      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('pushnext')"
-      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
-      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('pushnext')"
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('pushnext')"
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('flush')"
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('bdb logstat')"
   fi
   sleep 10
   if [[ -n "${CLUSTER}" ]]; then
       for node in ${CLUSTER} ; do 
-          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('flush')\"" < /dev/null
-          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('bdb logstat')\"" < /dev/null
+          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME local \"exec procedure sys.cmd.send('flush')\"" < /dev/null
+          ssh $node "${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME local \"exec procedure sys.cmd.send('bdb logstat')\"" < /dev/null
       done
   else
-      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
-      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('flush')"
+      ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('bdb logstat')"
   fi
   sleep 10
 }
@@ -73,9 +73,9 @@ function make_base {
   basename=${LOCTMPDIR}/backups/t1-1_base.tar
   backuplist+=(t1-1_base.tar)
   if [[ -n "${CLUSTER}" ]]; then
-      ssh $machine "$COMDB2AR_EXE c -I create -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $basename < /dev/null
+      ssh $machine "$COMDB2AR_EXE c -I create -b ${LOCTMPDIR}/increment ${DBDIR}/${DBNAME}.lrl" > $basename < /dev/null
   else
-      $COMDB2AR_EXE c -I create -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
+      $COMDB2AR_EXE c -I create -b ${LOCTMPDIR}/increment ${DBDIR}/${DBNAME}.lrl > $basename
   fi
   echo "~~~~~~~~~~"
   echo $basename
@@ -91,9 +91,9 @@ function make_backup {
   backuplist+=($backupname)
   backuploc=${LOCTMPDIR}/backups/${backupname}
   if [[ -n "${CLUSTER}" ]]; then
-      ssh $machine "$COMDB2AR_EXE c -I inc -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $backuploc < /dev/null
+      ssh $machine "$COMDB2AR_EXE c -I inc -b ${LOCTMPDIR}/increment ${DBDIR}/${DBNAME}.lrl" > $backuploc < /dev/null
   else
-      $COMDB2AR_EXE c -I inc -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
+      $COMDB2AR_EXE c -I inc -b ${LOCTMPDIR}/increment ${DBDIR}/${DBNAME}.lrl > $backuploc
   fi
   echo "~~~~~~~~~~"
   echo ${LOCTMPDIR}/backups/${backupname}
@@ -118,39 +118,39 @@ function test_restoredb {
 
   echo $restorecmd
   $restorecmd | $COMDB2AR_EXE x -x $COMDB2_EXE -I restore ${LOCTMPDIR}/restore/ ${LOCTMPDIR}/restore || failexit "Restore Failed"
-  egrep -v "cluster nodes" ${LOCTMPDIR}/restore/${dbname}.lrl > ${LOCTMPDIR}/restore/${dbname}.single.lrl
+  egrep -v "cluster nodes" ${LOCTMPDIR}/restore/${DBNAME}.lrl > ${LOCTMPDIR}/restore/${DBNAME}.single.lrl
 
   # Rename some files
-  mv ${LOCTMPDIR}/restore/${dbname}.txn ${LOCTMPDIR}/restore/${dbname}_restore.txn
-  mv ${LOCTMPDIR}/restore/${dbname}.llmeta.dta ${LOCTMPDIR}/restore/${dbname}_restore.llmeta.dta
-  mv ${LOCTMPDIR}/restore/${dbname}.metadata.dta ${LOCTMPDIR}/restore/${dbname}_restore.metadata.dta
-  mv ${LOCTMPDIR}/restore/${dbname}_file_vers_map ${LOCTMPDIR}/restore/${dbname}_restore_file_vers_map
+  mv ${LOCTMPDIR}/restore/${DBNAME}.txn ${LOCTMPDIR}/restore/${DBNAME}_restore.txn
+  mv ${LOCTMPDIR}/restore/${DBNAME}.llmeta.dta ${LOCTMPDIR}/restore/${DBNAME}_restore.llmeta.dta
+  mv ${LOCTMPDIR}/restore/${DBNAME}.metadata.dta ${LOCTMPDIR}/restore/${DBNAME}_restore.metadata.dta
+  mv ${LOCTMPDIR}/restore/${DBNAME}_file_vers_map ${LOCTMPDIR}/restore/${DBNAME}_restore_file_vers_map
 
   echo "~~~~~~~~~~"
-  $COMDB2_EXE ${dbname}_restore --lrl ${LOCTMPDIR}/restore/${dbname}.single.lrl -pidfile ${TMPDIR}/${dbname}_restore.pid &
+  $COMDB2_EXE ${DBNAME}_restore --lrl ${LOCTMPDIR}/restore/${DBNAME}.single.lrl -pidfile ${TMPDIR}/${DBNAME}_restore.pid &
   # wait for db to launch
   count=0
-  ${CDB2SQL_EXE} ${dbname}_restore local "select 1" > ./sqloutput 2>&1
+  ${CDB2SQL_EXE} ${DBNAME}_restore local "select 1" > ./sqloutput 2>&1
   sqloutput=$(cat ./sqloutput)
   while [ "$sqloutput" != "(1=1)" -a $count -le 30 ]; do
       sleep 1
       let count=count+1
-      ${CDB2SQL_EXE} ${dbname}_restore local "select 1" > ./sqloutput 2>&1
+      ${CDB2SQL_EXE} ${DBNAME}_restore local "select 1" > ./sqloutput 2>&1
       sqloutput=$(cat ./sqloutput)
   done
 
   if [ $count -ge 30 ] ; then
-    kill -9 $(cat ${TMPDIR}/${dbname}_restore.pid)
+    kill -9 $(cat ${TMPDIR}/${DBNAME}_restore.pid)
     failexit "DB Startup exceeded"
   fi
   echo " "
 
-  ${CDB2SQL_EXE} -f $1 ${dbname}_restore local > ${testname}.output 2>&1
+  ${CDB2SQL_EXE} -f $1 ${DBNAME}_restore local > ${testname}.output 2>&1
   cat ${testname}.output
   diff ${testname}.expected ${testname}.output
   rc=$?
-  echo shutting down ${dbname}_restore
-  kill -9 $(cat ${TMPDIR}/${dbname}_restore.pid)
+  echo shutting down ${DBNAME}_restore
+  kill -9 $(cat ${TMPDIR}/${DBNAME}_restore.pid)
 
   if [[ $rc -ne 0 ]] ; then
     echo "  ^^^^^^^^^^^^"
@@ -169,21 +169,21 @@ function resetdb {
   rm -rf ${LOCTMPDIR}/backups ${LOCTMPDIR}/restore ${LOCTMPDIR}/increment
   mkdir -p ${LOCTMPDIR}/backups ${LOCTMPDIR}/restore ${LOCTMPDIR}/increment
 
-  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "DROP TABLE t1"
+  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "DROP TABLE t1"
   force_checkpoint
   make_base
-  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "CREATE TABLE t1  { `cat t1.csc2 ` }" || failexit "create failed"
+  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "CREATE TABLE t1  { `cat t1.csc2 ` }" || failexit "create failed"
   force_checkpoint
   make_backup t1-2_create_table
 }
 
-${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "DROP TABLE load"
-${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "CREATE TABLE load  { `cat load.csc2 ` }" || failexit "create failed"
+${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "DROP TABLE load"
+${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "CREATE TABLE load  { `cat load.csc2 ` }" || failexit "create failed"
 
 # BASIC FUNCTIONALITY TEST
 resetdb
 for statement in `ls t1-*.stmt`; do
-  ${CDB2SQL_EXE} ${CDB2_OPTIONS} -f $statement $dbname default
+  ${CDB2SQL_EXE} ${CDB2_OPTIONS} -f $statement $DBNAME default
   force_checkpoint
   make_backup $statement
 done
@@ -203,20 +203,22 @@ done
 # PUSH NEXT TEST FOR RECOVERY WITH LOG HOLES
 resetdb
 for i in $(seq 1 10); do
-  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('pushnext')"
+  ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('pushnext')"
   # Need to sleep briefly so that multiple pushnext's aren't processed as the same one
   sleep 2
 done
-${CDB2SQL_EXE} ${CDB2_OPTIONS} -f t1-3_insert.stmt $dbname default
+${CDB2SQL_EXE} ${CDB2_OPTIONS} -f t1-3_insert.stmt $DBNAME default
 make_backup push_next_inserts
 copy_to_local
 test_restoredb t2.req 2
 
+${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${DBNAME}_restore " ${pmux_port}
+
 # cleanup since this was a successful run
-if [ "$CLEANUPDBDIR" == "1" ] ; then
-    rm -rf ${LOCTMPDIR}/backups ${LOCTMPDIR}/restore ${LOCTMPDIR}/increment
+if [ "$CLEANUPDBDIR" != "0" ] ; then
+    rm -rf ${LOCTMPDIR} ${DBNAME}_restore
+    rm -f ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}_restore.* ${TESTDIR}/tmp/${DBNAME}_restore.* ${TMPDIR}/cdb2/${DBNAME}_restore.*
 fi
 
-${TESTSROOTDIR}/tools/send_msg_port.sh "del comdb2/replication/${dbname}_restore " ${pmux_port}
 echo "Test Successful"
 exit 0

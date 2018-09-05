@@ -32,6 +32,9 @@
 #include "switches.h"
 #include "logmsg.h"
 
+#include <mem_uncategorized.h>
+#include <mem_override.h>
+
 static pool_t *pool;
 static hash_t *hash;
 static pthread_mutex_t lock;

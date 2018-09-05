@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <alloca.h>
 #include <epochlib.h>
 #include "sql.h"
 #include "osqlshadtbl.h"
@@ -2017,7 +2018,6 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
     osqlstate_t *osql = &clnt->osql;
     unsigned long long *seq = NULL;
-    int *updCols = NULL;
     int rc = 0;
     unsigned long long genid = 0;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
@@ -2061,6 +2061,7 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             return SQLITE_TOOBIG;
         }
 
+        int *updCols = NULL;
         rc = process_local_shadtbl_updcols(clnt, tbl, &updCols, bdberr, *seq);
         if (rc)
             return SQLITE_INTERNAL;
@@ -2081,7 +2082,6 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
         if (updCols) {
             free(updCols);
-            updCols = NULL;
         }
 
         rc = osql_send_updrec(osql->host, osql->rqid, osql->uuid, genid,
@@ -2621,29 +2621,21 @@ typedef struct recgenid_key {
     unsigned long long genid;
 } recgenid_key_t;
 
+#define RECGENID_KEY_PACKED_LEN(k)                                             \
+    (sizeof((k).tablename_len) + (k).tablename_len +                           \
+     sizeof((k).tableversion) + sizeof((k).genid))
+
 #ifdef _AIX
 #pragma options align = full
 #else
 #pragma pack() /* return to normal alignment */
 #endif
 
-static void *pack_recgenid_key(recgenid_key_t *key, int *outlen)
+static void *pack_recgenid_key(recgenid_key_t *key, uint8_t *buf, size_t len)
 {
-    int len = 0;
-    uint8_t *buf = NULL;
     uint8_t *buf_end;
     uint8_t *ret = NULL;
 
-    len += sizeof(key->tablename_len);
-    len += key->tablename_len;
-    len += sizeof(key->tableversion);
-    len += sizeof(key->genid);
-
-    buf = malloc(len);
-    if (buf == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc size %d\n", __func__, len);
-        return NULL;
-    }
     ret = buf;
     buf_end = buf + len;
 
@@ -2658,11 +2650,8 @@ static void *pack_recgenid_key(recgenid_key_t *key, int *outlen)
         logmsg(LOGMSG_ERROR,
                "%s: size of date written did not match precomputed size\n",
                __func__);
-        free(ret);
         return NULL;
     }
-
-    *outlen = len;
     return ret;
 }
 
@@ -2695,8 +2684,7 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     int bdberr = 0;
     shad_tbl_t *tbl = NULL;
     recgenid_key_t key;
-    void *packed_key = NULL;
-    int packed_len = 0;
+    uint8_t *packed_key = NULL;
 
     /*create a common verify */
     if (!osql->verify_tbl) {
@@ -2720,7 +2708,9 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     key.tableversion = pCur->db->tableversion;
     key.genid = genid;
 
-    packed_key = pack_recgenid_key(&key, &packed_len);
+    packed_key = alloca(RECGENID_KEY_PACKED_LEN(key));
+    packed_key =
+        pack_recgenid_key(&key, packed_key, RECGENID_KEY_PACKED_LEN(key));
     if (packed_key == NULL) {
         logmsg(LOGMSG_ERROR,
                "%s: error packing record genid key for table \'%s\'\n",
@@ -2731,7 +2721,8 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     /*printf("RECGENID SAVING %d : %llx\n", pCur->tblnum, genid);*/
 
     rc = bdb_temp_table_put(thedb->bdb_env, osql->verify_tbl, packed_key,
-                            packed_len, NULL, 0, NULL, &bdberr);
+                            RECGENID_KEY_PACKED_LEN(key), NULL, 0, NULL,
+                            &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: fail to save genid %llx\n", __func__, genid);
         return -1;
@@ -2748,8 +2739,7 @@ int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
     int bdberr = 0;
     recgenid_key_t key;
     struct temp_cursor *cur = NULL;
-    void *packed_key = NULL;
-    int packed_len = 0;
+    uint8_t *packed_key = NULL;
 
     if (!osql->verify_tbl) return 0;
 
@@ -2763,7 +2753,9 @@ int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
     key.tableversion = pCur->db->tableversion;
     key.genid = genid;
 
-    packed_key = pack_recgenid_key(&key, &packed_len);
+    packed_key = alloca(RECGENID_KEY_PACKED_LEN(key));
+    packed_key =
+        pack_recgenid_key(&key, packed_key, RECGENID_KEY_PACKED_LEN(key));
     if (packed_key == NULL) {
         logmsg(LOGMSG_ERROR,
                "%s: error packing record genid key for table \'%s\'\n",
@@ -2772,7 +2764,7 @@ int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
     }
 
     rc = bdb_temp_table_find(thedb->bdb_env, osql->verify_cur, packed_key,
-                             packed_len, NULL, &bdberr);
+                             RECGENID_KEY_PACKED_LEN(key), NULL, &bdberr);
 
     if (rc < 0) {
         logmsg(LOGMSG_ERROR, "%s: temp table find failed\n", __func__);

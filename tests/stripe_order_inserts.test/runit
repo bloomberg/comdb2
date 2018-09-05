@@ -152,12 +152,12 @@ for i in `seq 1 $N` ; do
 done > entry_counts.out
 
 
-call_unsetup 1
-trap - INT EXIT
-
 zeros=`grep "entries:0" entry_counts.out | wc -l`
 assertres "$zeros" "$((N-1))"
 other=`grep "entries:16" entry_counts.out | wc -l`
 assertres "$other" "1"
+
+call_unsetup 1
+trap - INT EXIT
 
 echo "Success"

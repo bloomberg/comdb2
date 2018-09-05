@@ -571,50 +571,43 @@ int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, 
     return 0;
 }
 
+
 const char *osql_reqtype_str(int type)
-{
-    switch (type) {
-    case OSQL_RPLINV:
-        return "rplinv";
-    case OSQL_DONE:
-        return "done";
-    case OSQL_USEDB:
-        return "usedb";
-    case OSQL_DELREC:
-        return "delrec";
-    case OSQL_INSREC:
-        return "insrec";
-    case OSQL_CLRTBL:
-        return "clrtbl";
-    case OSQL_QBLOB:
-        return "qblob";
-    case OSQL_UPDREC:
-        return "updrec";
-    case OSQL_XERR:
-        return "xerr";
-    case OSQL_UPDCOLS:
-        return "updcols";
-    case OSQL_DONE_STATS:
-        return "done_stats";
-    case OSQL_DBGLOG:
-        return "dbglog";
-    case OSQL_RECGENID:
-        return "recgenid";
-    case OSQL_UPDSTAT:
-        return "updstat";
-    case OSQL_EXISTS:
-        return "exists";
-    case OSQL_INSERT:
-        return "insert";
-    case OSQL_DELETE:
-        return "delete";
-    case OSQL_UPDATE:
-        return "update";
-    case OSQL_SCHEMACHANGE: return "schemachange";
-    default:
-        return "???";
-    }
+{   
+    assert(0 < type && type < MAX_OSQL_TYPES);
+    // copied from enum OSQL_RPL_TYPE
+    static const char *typestr[] = {
+        "RPLINV",
+        "DONE",
+        "USEDB",
+        "DELREC",
+        "INSREC",
+        "CLRTBL",
+        "QBLOB",
+        "UPDREC",
+        "XERR",
+        "UPDCOLS",
+        "DONE_STATS",
+        "DBGLOG",
+        "RECGENID",
+        "UPDSTAT",
+        "EXISTS",
+        "SERIAL",
+        "SELECTV",
+        "DONE_SNAP",
+        "SCHEMACHANGE",
+        "BPFUNC",
+        "DBQ_CONSUME",
+        "DELETE",
+        "INSERT",
+        "UPDATE",
+        "DELIDX",
+        "INSIDX",
+        "DBQ_CONSUME_UUID",
+    };
+    return typestr[type];
 }
+
 
 /**
  * Inserts the op in the iq oplog
@@ -637,9 +630,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         return 0;
     }
 
-    struct ireq *iq;
+    struct ireq *iq = osql_session_get_ireq(sess);
     int rc = 0, rc_op = 0;
-    oplog_key_t key;
+    oplog_key_t key = {0};
     int rpl_len = 0;
     struct errstat *xerr;
     int bdberr;
@@ -649,7 +642,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     int type = 0;
     buf_get(&type, sizeof(type), rpl, rpl + rplen);
     if (type == OSQL_SCHEMACHANGE)
-        sess->iq->tranddl++;
+        iq->tranddl++;
 
 #if 0
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
@@ -749,7 +742,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         osql_sess_lock(sess);
         osql_sess_lock_complete(sess);
         if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
-            iq = osql_session_get_ireq(sess);
             osql_session_set_ireq(sess, NULL);
             osql_sess_set_dispatched(sess, 1);
             rc = handle_buf_sorese(thedb, iq, debug);
@@ -1075,8 +1067,6 @@ static int process_this_session(
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     unsigned long long rqid = osql_sess_getrqid(sess);
     oplog_key_t key_next, key_crt;
-    char *data = NULL;
-    int datalen = 0;
     int countops = 0;
     int lastrcv = 0;
     int rc = 0, rc_out = 0;
@@ -1118,8 +1108,8 @@ static int process_this_session(
 
     while (!rc && !rc_out) {
 
-        data = bdb_temp_table_data(dbc);
-        datalen = bdb_temp_table_datasize(dbc);
+        char *data = bdb_temp_table_data(dbc);
+        int datalen = bdb_temp_table_datasize(dbc);
 
         if (bdb_lock_desired(thedb->bdb_env)) {
             logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",

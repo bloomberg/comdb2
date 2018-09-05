@@ -298,7 +298,9 @@ static int bdb_prim_updkey_genid_int(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     bdb_maybe_use_genid_for_key(bdb_state, &dbt_key, key, ixnum, genid, isnull, &pKeyMaxBuf);
-    assert(!bdb_keycontainsgenid(bdb_state, ixnum) || 0 == bdb_inplace_cmp_genids(bdb_state, oldgenid, genid));
+
+    assert(!bdb_keycontainsgenid(bdb_state, ixnum) || !isnull ||
+           0 == bdb_inplace_cmp_genids(bdb_state, oldgenid, genid));
 
     rc = ll_key_upd(bdb_state, tran, bdb_state->name, oldgenid, genid, dbt_key.data, ixnum,
                     dbt_key.size, dta, dtalen);

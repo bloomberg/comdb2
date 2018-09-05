@@ -780,8 +780,6 @@ enum {
         OSQLCOMM_UUID_RPL_TYPE_LEN + OSQLCOMM_DEL_TYPE_LEN
 };
 
-enum { OSQLCOMM_SERIAL_TYPE_LEN = 4 + 4 + 4 + 4 };
-
 BB_COMPILE_TIME_ASSERT(osqlcomm_del_uuid_rpl_type_len,
                        sizeof(osql_del_uuid_rpl_t) ==
                            OSQLCOMM_OSQL_DEL_UUID_RPL_TYPE_LEN);
@@ -801,6 +799,8 @@ static uint8_t *osqlcomm_del_uuid_rpl_type_put(osql_del_uuid_rpl_t *p_del_rpl,
 
     return p_buf;
 }
+
+enum { OSQLCOMM_SERIAL_TYPE_LEN = 4 + 4 + 4 + 4 };
 
 BB_COMPILE_TIME_ASSERT(osqlcomm_serial_type_len,
                        sizeof(osql_serial_t) == OSQLCOMM_SERIAL_TYPE_LEN);
