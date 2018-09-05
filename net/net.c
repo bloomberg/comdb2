@@ -3433,16 +3433,16 @@ inline netinfo_type *create_netinfo_fake(void)
 }
 
 inline netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
-                             char app[], char service[], char instance[],
-                             int ischild, int use_getservbyname)
+                                    char app[], char service[], char instance[],
+                                    int ischild, int use_getservbyname)
 {
     return create_netinfo_int(myhostname, myportnum, myfd, app, service,
                               instance, 0, 0, ischild, use_getservbyname);
 }
 
-inline netinfo_type *create_netinfo_offload(char myhostname[], int myportnum, int myfd,
-                                     char app[], char service[],
-                                     char instance[])
+inline netinfo_type *create_netinfo_offload(char myhostname[], int myportnum,
+                                            int myfd, char app[],
+                                            char service[], char instance[])
 {
     return create_netinfo_int(myhostname, myportnum, myfd, app, service,
                               instance, 0, 1, 1, 0);
@@ -6229,13 +6229,13 @@ static void *heartbeat_check_thread(void *arg)
                                          netinfo_ptr->instance);
 
             if (pport != netinfo_ptr->myport && pport > 0) {
-                /* What on earth should i do?  Abort maybe?  i'm already using the
-                 * old port, and sockpool has it cached everywhere .. */
+                /* What on earth should i do?  Abort maybe?  i'm already using
+                 * the old port, and sockpool has it cached everywhere .. */
                 logmsg(LOGMSG_FATAL, "Portmux returned a different port for %s %s %s?  ",
                         netinfo_ptr->app, netinfo_ptr->service,
                         netinfo_ptr->instance);
                 logmsg(LOGMSG_FATAL, "Oldport=%d, returned-port=%d\n",
-                        netinfo_ptr->myport, pport);
+                       netinfo_ptr->myport, pport);
                 abort();
             }
             netinfo_ptr->portmux_register_time = now;

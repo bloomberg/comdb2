@@ -192,16 +192,17 @@ static int portmux_cmd(const char *cmd, const char *app, const char *service,
     return port;
 }
 
-inline int portmux_use(const char *app, const char *service, const char *instance,
-                int port)
+inline int portmux_use(const char *app, const char *service,
+                       const char *instance, int port)
 {
-    char portstr[10];
+    char portstr[20];
     snprintf(portstr, sizeof(portstr), " %d", port);
     return portmux_cmd("use", app, service, instance, portstr);
 }
 
 /* returns port number, or -1 for error*/
-inline int portmux_register(const char *app, const char *service, const char *instance)
+inline int portmux_register(const char *app, const char *service,
+                            const char *instance)
 {
     return portmux_cmd("reg", app, service, instance, "");
 }
