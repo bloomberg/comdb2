@@ -26,15 +26,14 @@ endif
 
 export DISABLED_TESTS
 
-ifeq ($(MAKECMDGOALS),)  # targets passed to make
-DOALL=1                  # if no targets passed, will do ALL_TESTS
-else ifeq ($(MAKECMDGOALS),all)
-DOALL=1
-endif
-
-ifeq ($(DOALL),1)
+ifeq ($(MAKECMDGOALS),all)  # targets passed to make
 $(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
 endif
+
+ifeq ($(MAKECMDGOALS),)
+$(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
+endif
+
 
 # List of all tests that need to run. This is essentially a list of all
 # non-disabled tests.
@@ -43,7 +42,10 @@ export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
 
 
 TOTAL=$(words $(MAKECMDGOALS) )
-ifeq ($(DOALL),1)
+ifeq ($(MAKECMDGOALS),all)
+TOTAL=$(words $(ALL_TESTS) )
+endif
+ifeq ($(MAKECMDGOALS),)
 TOTAL=$(words $(ALL_TESTS) )
 endif
 
@@ -73,6 +75,7 @@ basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" TESTSROOTDIR="${TESTSROOTDIR}" COMDB2_EXE=${COMDB2_EXE} CDB2SQL_EXE=${CDB2SQL_EXE} COMDB2AR_EXE=${COMDB2AR_EXE} PMUX_EXE=${PMUX_EXE} PMUXPORT=${PMUXPORT} ${TESTSROOTDIR}/tools/copy_files_to_cluster.sh > ${TESTDIR}/copy_files_to_cluster.log 2>&1 || echo "exit 1 copy_files_to_cluster failed" )
 
 showparams: 
+	@echo MAKECMDGOALS=${MAKECMDGOALS}
 	@echo TESTSROOTDIR=${TESTSROOTDIR}
 	@echo SRCHOME=${SRCHOME}
 	@echo TESTID=${TESTID}
