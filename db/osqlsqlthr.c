@@ -1182,8 +1182,6 @@ static inline int osql_send_delrec_logic(struct BtCursor *pCur,
 {
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
-    int rc = 0;
-
     return osql_send_delrec(
         osql->host, osql->rqid, osql->uuid, pCur->genid,
         (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys
@@ -1221,7 +1219,6 @@ int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
 {
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
-    int restarted;
     int rc = 0;
     int i;
 
@@ -1255,7 +1252,6 @@ int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
 {
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
-    int restarted;
     int rc = 0;
     int i;
 
@@ -1285,15 +1281,11 @@ static inline int osql_send_insrec_logic(
 
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
-    int restarted;
-    int rc = 0;
-
-    rc = osql_send_insrec(
+    return osql_send_insrec(
             osql->host, osql->rqid, osql->uuid, pCur->genid,
             (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->ins_keys
             : -1ULL,
             pData, nData, nettype, osql->logsb, flags);
-    return rc;
 }
 
 
@@ -1304,7 +1296,6 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, struct sql_thread *thd,
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
-    int restarted;
     int i;
     int idx;
     int ncols;
@@ -1336,7 +1327,7 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                      pCur->genid, nettype, NULL, -2,
                                      osql->logsb);
                 if (rc)
-                    break;
+                    break; /* TODO: should we not return here? */
                 continue;
             }
         }
@@ -1351,24 +1342,20 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, struct sql_thread *thd,
     return rc;
 }
 
-static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
-                                  char *pData, int nData, int nettype,
-                                  int flags)
+static inline int osql_send_updrec_logic(
+        struct BtCursor *pCur, struct sql_thread *thd, char *pData, int nData, 
+        int nettype, int flags)
 {
 
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
-    int restarted = 0;
-    int rc = 0;
-
-    rc = osql_send_updrec(
+    return osql_send_updrec(
             osql->host, osql->rqid, osql->uuid, pCur->genid,
             (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->ins_keys
             : -1ULL,
             (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys
             : -1ULL,
             pData, nData, nettype, osql->logsb);
-    return rc;
 }
 
 static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
