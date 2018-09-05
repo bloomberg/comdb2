@@ -205,6 +205,8 @@ const sqlite3_module systblTablesModule = {
 /* This initializes this table but also a bunch of other schema tables
 ** that fall under the similar use. */
 #ifdef SQLITE_BUILDING_FOR_COMDB2
+extern int sqlite3CompletionVtabInit(sqlite3 *);
+
 int comdb2SystblInit(
   sqlite3 *db
 ){
@@ -247,8 +249,13 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_opcode_handlers",
                                &systblOpcodeHandlersModule, 0);
-  if (rc == SQLITE_OK)
-    rc = sqlite3_create_module(db, "comdb2_completion", &completionModule, 0);
+  if (rc == SQLITE_OK){
+    rc = sqlite3CompletionVtabInit(db);
+    if (rc == SQLITE_OK){
+      rc = sqlite3_exec(db,
+           "ALTER TABLE completion RENAME TO comdb2_completion;", 0, 0, 0);
+    }
+  }
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_clientstats", &systblClientStatsModule, 0);
   if (rc == SQLITE_OK)
