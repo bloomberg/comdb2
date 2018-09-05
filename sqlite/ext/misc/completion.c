@@ -536,7 +536,11 @@ static sqlite3_module completionModule = {
 int sqlite3CompletionVtabInit(sqlite3 *db){
   int rc = SQLITE_OK;
 #ifndef SQLITE_OMIT_VIRTUALTABLE
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  rc = sqlite3_create_module(db, "comdb2_completion", &completionModule, 0);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = sqlite3_create_module(db, "completion", &completionModule, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
   return rc;
 }

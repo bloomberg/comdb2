@@ -251,11 +251,6 @@ int comdb2SystblInit(
                                &systblOpcodeHandlersModule, 0);
   if (rc == SQLITE_OK){
     rc = sqlite3CompletionVtabInit(db);
-    if (rc == SQLITE_OK){
-      /* NOTE: Must ignore result here in case it's already been renamed. */
-      sqlite3_exec(db,
-           "ALTER TABLE completion RENAME TO comdb2_completion;", 0, 0, 0);
-    }
   }
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_clientstats", &systblClientStatsModule, 0);
