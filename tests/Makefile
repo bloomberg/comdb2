@@ -26,14 +26,15 @@ endif
 
 export DISABLED_TESTS
 
-ifeq ($(MAKECMDGOALS),all)  # targets passed to make
-$(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
+DOALL:=0
+
+ifeq ($(subst all,,$(MAKECMDGOALS)),) #if cmdgoals empty or 'all'
+DOALL:=1
 endif
 
-ifeq ($(MAKECMDGOALS),)
+ifeq ($(DOALL),1)
 $(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
 endif
-
 
 # List of all tests that need to run. This is essentially a list of all
 # non-disabled tests.
@@ -42,10 +43,7 @@ export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
 
 
 TOTAL=$(words $(MAKECMDGOALS) )
-ifeq ($(MAKECMDGOALS),all)
-TOTAL=$(words $(ALL_TESTS) )
-endif
-ifeq ($(MAKECMDGOALS),)
+ifeq ($(DOALL),1)
 TOTAL=$(words $(ALL_TESTS) )
 endif
 
@@ -76,6 +74,7 @@ basicops: basicops_nokey
 
 showparams: 
 	@echo MAKECMDGOALS=${MAKECMDGOALS}
+	@echo DOALL=${DOALL}
 	@echo TESTSROOTDIR=${TESTSROOTDIR}
 	@echo SRCHOME=${SRCHOME}
 	@echo TESTID=${TESTID}
