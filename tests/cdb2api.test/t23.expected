@@ -1,2 +1,2 @@
-(selectid=0, order=0, from=0, detail='SCAN TABLE t3 AS v (917504 rows)')
+(selectid=0, order=0, from=0, detail='SCAN TABLE t3 AS v (~917504 rows)')
 (selectid=0, order=0, from=0, detail='USE TEMP B-TREE FOR ORDER BY')
