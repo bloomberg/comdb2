@@ -716,6 +716,7 @@
 (name='sc_delay_verify_error', description='', type='INTEGER', value='100', read_only='N')
 (name='sc_done_same_tran', description='Write scdone record in the same logical transaction as DDLs.', type='BOOLEAN', value='ON', read_only='N')
 (name='sc_force_delay', description='Force schemachange to delay after every record inserted - to have sc backoff.', type='BOOLEAN', value='OFF', read_only='N')
+(name='sc_logical_save_lsn_every_n', description='Save schema change redo lsn to llmeta every n-th transactions.', type='INTEGER', value='10', read_only='N')
 (name='sc_no_rebuild_thr_sleep', description='Sleep this many microsec when conversion threads count is at max.', type='INTEGER', value='10', read_only='N')
 (name='sc_restart_sec', description='Delay restarting schema change for this many seconds after startup/new master election.', type='INTEGER', value='0', read_only='N')
 (name='sc_resume_autocommit', description='Always resume autocommit schemachange if possible.', type='BOOLEAN', value='ON', read_only='N')
