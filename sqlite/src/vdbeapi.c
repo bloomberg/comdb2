@@ -795,13 +795,11 @@ end_of_step:
   ** contains the value that would be returned if sqlite3_finalize() 
   ** were called on statement p.
   */
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   assert( rc==SQLITE_ROW  || rc==SQLITE_DONE   || rc==SQLITE_ERROR 
        || (rc&0xff)==SQLITE_BUSY || rc==SQLITE_MISUSE
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-       || rc==SQLITE_ABORT || rc==SQLITE_TOOBIG || rc==SQLITE_ACCESS
-       || rc==SQLITE_SCHEMA_REMOTE
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   );
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( (p->rc!=SQLITE_ROW && p->rc!=SQLITE_DONE) || p->rc==p->rcApp );
   if( (p->prepFlags & SQLITE_PREPARE_SAVESQL)!=0 
    && rc!=SQLITE_ROW 
