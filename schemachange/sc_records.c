@@ -2176,6 +2176,14 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                            __func__, __LINE__, rc);
                     goto error;
                 }
+            } else if (0 == bdb_inplace_cmp_genids(data->from->handle, oldgenid,
+                                                   genid)) {
+                if ((rc = unpack_blob_record(data, data->blb_buf, updlen,
+                                             &data->blb, blbix)) != 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d error unpacking buf rc=%d\n",
+                           __func__, __LINE__, rc);
+                    goto error;
+                }
             } else {
                 /* old_blb_buf has the new blob */
                 if ((rc = unpack_blob_record(data, data->old_blb_buf, prevlen,
