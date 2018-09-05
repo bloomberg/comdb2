@@ -98,11 +98,17 @@ select name, csc2 from sqlite_master where name = "e"
 select name, csc2 from sqlite_master where name = "m"
 
 select "add self-referenced bad 1"
-create table s (i int duplicate, j int duplicate, constraint sfk foreign key (k) references s(i)) $$
+create table s (i int, j int, constraint sfk foreign key (k) references s(i)) $$
+create index s1_i on s(i);
+create index s1_j on s(j);
 select "add self-referenced bad 2"
-create table s (i int duplicate, j int duplicate, constraint sfk foreign key (j) references s(k)) $$
+create table s (i int, j int, constraint sfk foreign key (j) references s(k)) $$
+create index s2_i on s(i);
+create index s2_j on s(j);
 select "add self-referenced good"
-create table s (i int duplicate, j int duplicate, constraint sfk foreign key (j) references s(i)) $$
+create table s (i int, j int, constraint sfk foreign key (j) references s(i)) $$
+create index s3_i on s(i);
+create index s3_j on s(j);
 select name, csc2 from sqlite_master where name = "s"
 select "truncate self-referenced"
 truncate s
