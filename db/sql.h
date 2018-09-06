@@ -262,7 +262,11 @@ void currange_free(CurRange *cr);
 struct stored_proc;
 struct lua_State;
 
-enum early_verify_error { EARLY_ERR_VERIFY = 1, EARLY_ERR_SELECTV = 2 };
+enum early_verify_error {
+    EARLY_ERR_VERIFY = 1,
+    EARLY_ERR_SELECTV = 2,
+    EARLY_ERR_GENCHANGE = 3
+};
 #define FINGERPRINTSZ 16
 
 enum {

@@ -4620,6 +4620,9 @@ done:
     return rc;
 }
 
+extern int gbl_early_verify;
+extern int gbl_osql_send_startgen;
+
 /*
  ** Commit the transaction currently in progress.
  **
@@ -4762,6 +4765,11 @@ int sqlite3BtreeCommit(Btree *pBt)
     case TRANLEVEL_SOSQL:
         if (gbl_selectv_rangechk)
             rc = selectv_range_commit(clnt);
+        if (gbl_early_verify && !clnt->early_retry &&
+                gbl_osql_send_startgen) {
+            if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
+                clnt->early_retry = EARLY_ERR_GENCHANGE;
+        }
         if (rc || clnt->early_retry) {
             int irc = 0;
             irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
@@ -4778,6 +4786,10 @@ int sqlite3BtreeCommit(Btree *pBt)
                 clnt->osql.xerr.errval = ERR_CONSTR;
                 errstat_cat_str(&(clnt->osql.xerr),
                                 "constraints error, no genid");
+            } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
+                clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+                errstat_cat_str(&(clnt->osql.xerr),
+                                "verify error on master swing");
             }
             if (clnt->early_retry) {
                 clnt->early_retry = 0;
@@ -5345,7 +5357,6 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     }
 
     /* verification error if not found */
-    extern int gbl_early_verify;
     if (gbl_early_verify && (bias == OP_NotExists || bias == OP_NotFound) &&
         *pRes != 0) {
         verify = 1;
