@@ -898,7 +898,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
     return 0;
 }
 
-static void snapshot_as_of(struct sqlclntstate *clnt)
+static int snapshot_as_of(struct sqlclntstate *clnt)
 {
     int epoch = 0;
     if (strlen(clnt->sql) > 6)
@@ -907,9 +907,11 @@ static void snapshot_as_of(struct sqlclntstate *clnt)
     if (epoch < 0) {
         /* overload this for now */
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_WRONG_STATE);
+        return -1;
     } else {
         clnt->snapshot = epoch;
     }
+    return 0;
 }
 
 /**
@@ -944,17 +946,20 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
         } else {
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                     SQLENG_PRE_STRT_STATE);
+
+            upd_snapshot(clnt);
+            if (snapshot_as_of(clnt))
+                return;
+
             clnt->in_client_trans = 1;
 
-            assert(clnt->ddl_tables == NULL && clnt->dml_tables == NULL);
+            assert(clnt->ddl_tables == NULL && clnt->dml_tables == NULL &&
+                   clnt->ddl_contexts == NULL);
             clnt->ddl_tables = hash_init_strcase(0);
             clnt->dml_tables = hash_init_strcase(0);
             clnt->ddl_contexts = hash_init_user(
                 (hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                 offsetof(struct clnt_ddl_context, name), 0);
-
-            upd_snapshot(clnt);
-            snapshot_as_of(clnt);
         }
     } else if (!strncasecmp(clnt->sql, "commit", 6)) {
         clnt->snapshot = 0;
