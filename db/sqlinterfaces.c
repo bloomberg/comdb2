@@ -906,6 +906,7 @@ static int snapshot_as_of(struct sqlclntstate *clnt)
 
     if (epoch < 0) {
         /* overload this for now */
+        clnt->had_errors = 1;
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_WRONG_STATE);
         return -1;
     } else {
