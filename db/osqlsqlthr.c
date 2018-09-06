@@ -63,10 +63,10 @@ int gbl_master_retry_poll_ms = 100;
 
 static int osql_send_usedb_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                  int nettype);
-static int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
-                           int nettype);
-static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
-                           int nettype);
+static int osql_send_delidx_logic(struct BtCursor *pCur,
+                                  struct sqlclntstate *clnt, int nettype);
+static int osql_send_insidx_logic(struct BtCursor *pCur,
+                                  struct sqlclntstate *clnt, int nettype);
 static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
                                   int *updCols, blob_buffer_t *blobs,
                                   int nettype);
@@ -180,7 +180,7 @@ static int send_osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
     if (rc != SQLITE_OK) return rc;
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
-        rc = osql_send_delidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+        rc = osql_send_delidx_logic(pCur, thd->clnt, NET_OSQL_SOCK_RPL);
         if (rc != SQLITE_OK) {
             logmsg(LOGMSG_ERROR,
                     "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
@@ -264,7 +264,7 @@ static int send_osql_insrec(struct BtCursor *pCur, struct sql_thread *thd,
     if (rc != SQLITE_OK) return rc;
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
-        rc = osql_send_insidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+        rc = osql_send_insidx_logic(pCur, thd->clnt, NET_OSQL_SOCK_RPL);
         if (rc != SQLITE_OK) {
             logmsg(LOGMSG_ERROR,
                     "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
@@ -348,7 +348,7 @@ static int send_osql_updrec(struct BtCursor *pCur, struct sql_thread *thd,
     if (rc != SQLITE_OK) return rc;
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
-        rc = osql_send_delidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+        rc = osql_send_delidx_logic(pCur, thd->clnt, NET_OSQL_SOCK_RPL);
         if (rc != SQLITE_OK) {
             logmsg(LOGMSG_ERROR,
                     "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
@@ -356,7 +356,7 @@ static int send_osql_updrec(struct BtCursor *pCur, struct sql_thread *thd,
             return rc;
         }
 
-        rc = osql_send_insidx_logic(pCur, thd, NET_OSQL_SOCK_RPL);
+        rc = osql_send_insidx_logic(pCur, thd->clnt, NET_OSQL_SOCK_RPL);
         if (rc != SQLITE_OK) {
             logmsg(LOGMSG_ERROR,
                     "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
@@ -1211,17 +1211,12 @@ static inline int osql_send_updstat_logic(struct BtCursor *pCur,
  * Returns SQLITE_OK if successful.
  *
  */
-static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
-                                  int nettype)
+static int osql_send_insidx_logic(struct BtCursor *pCur,
+                                  struct sqlclntstate *clnt, int nettype)
 {
-    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int i;
-
-    /* limit transaction -- AZ: should this be still here? */
-    if ((rc = check_osql_capacity(thd)))
-        return rc;
 
     for (i = 0; i < pCur->db->nix; i++) {
         /* only send add keys when told */
@@ -1244,17 +1239,12 @@ static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
  * Returns SQLITE_OK if successful.
  *
  */
-static int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
-                           int nettype)
+static int osql_send_delidx_logic(struct BtCursor *pCur,
+                                  struct sqlclntstate *clnt, int nettype)
 {
-    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int i;
-
-    /* limit transaction -- AZ: should this be still here? */
-    if ((rc = check_osql_capacity(thd)))
-        return rc;
 
     for (i = 0; i < pCur->db->nix; i++) {
         /* only send delete keys when told */
