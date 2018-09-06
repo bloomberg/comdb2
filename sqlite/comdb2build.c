@@ -2836,6 +2836,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
                 if (idx_cols.a[i].pExpr == 0)
                     goto oom;
 
+                idx_cols.a[i].pExpr->op = TK_ID;
                 idx_cols.a[i].pExpr->u.zToken = child_idx_column->name;
                 idx_cols.a[i].zName = child_idx_column->name;
                 if (child_idx_column->flags & INDEX_ORDER_DESC) {
@@ -3901,7 +3902,23 @@ static void comdb2AddIndexInt(
         }
 
     } else {
-        for (int i = 0; i < pList->nExpr; i++) {
+        struct ExprList_item *pListItem;
+        int i;
+
+        /* Validate the index column list. */
+        sqlite3ExprListCheckLength(pParse, pList, "index");
+        for (i = 0, pListItem = pList->a; i < pList->nExpr; i++, pListItem++) {
+            /* TODO: Index on expression is currently not supported
+             * in DDL syntax. */
+            if ((pListItem->pExpr->op != TK_ID) &&
+                (pListItem->pExpr->op != TK_STRING)) {
+                pParse->rc = SQLITE_ERROR;
+                sqlite3ErrorMsg(pParse, "Invalid index column list");
+                goto cleanup;
+            }
+        }
+
+        for (i = 0; i < pList->nExpr; i++) {
             idx_column =
                 comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_index_column));
             if (idx_column == 0)

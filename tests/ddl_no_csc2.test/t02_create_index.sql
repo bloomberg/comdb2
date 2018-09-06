@@ -65,3 +65,9 @@ CREATE INDEX idx1 ON t1(i) WHERE i > 1;
 CREATE INDEX idx2 ON t1(i) WHERE (i > 1);
 SELECT * FROM sqlite_master WHERE name = 't1';
 DROP TABLE t1;
+
+CREATE TABLE t1(i INT) $$
+CREATE INDEX idx1 ON t1(i+i)
+CREATE INDEX idx1 ON t1(where i > 1)
+CREATE INDEX idx1 ON t1(wherei > 1)
+DROP TABLE t1;
