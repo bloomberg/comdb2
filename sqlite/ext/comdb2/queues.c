@@ -24,7 +24,6 @@
 #include <string.h>
 
 #include "comdb2.h"
-#include "dbqueue.h"
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
 
@@ -80,22 +79,31 @@ static int systblQueuesDisconnect(sqlite3_vtab *pVtab){
   return SQLITE_OK;
 }
 
-static void get_stats(struct systbl_queues_cursor *pCur) {
-  const struct bdb_queue_stats *bdbstats;
-  struct consumer_stat stats[MAXCONSUMERS];
+static int get_stats(struct systbl_queues_cursor *pCur) {
+  struct consumer_stat stats[MAXCONSUMERS] = {0};
   unsigned long long depth = 0;
-  bzero(stats, sizeof(stats));
-  dbqueue_get_stats(thedb->qdbs[pCur->last_qid], 1, 1, &bdbstats, stats);
-  strcpy(pCur->queue_name, thedb->qdbs[pCur->last_qid ]->tablename);
-  strcpy(pCur->spname, thedb->qdbs[pCur->last_qid ]->consumers[0]->procedure_name);
-  for (int i = 0; i<MAXCONSUMERS; i++) {
-      depth += stats[i].depth;
+  char *spname = NULL;
+
+  dbqueuedb_get_name(thedb->qdbs[pCur->last_qid], &spname);
+  strcpy(pCur->queue_name, thedb->qdbs[pCur->last_qid]->tablename);
+  strcpy(pCur->spname, spname);
+  free(spname);
+
+  int rc = dbqueuedb_get_stats(thedb->qdbs[pCur->last_qid], stats);
+  if (rc) {
+      /* TODO: signal error? */
   }
+  for (int consumern = 0; consumern < MAXCONSUMERS; consumern++) {
+      if (stats[consumern].has_stuff)
+          depth += stats[consumern].depth;
+  }
+
   pCur->depth = depth;
   if (stats[0].epoch)
       pCur->age  = comdb2_time_epoch() - stats[0].epoch;
   else
       pCur->age  = 0;
+  return 0;
 }
 
 

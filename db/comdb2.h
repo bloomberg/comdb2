@@ -2558,11 +2558,13 @@ void dbqueuedb_admin(struct dbenv *dbenv);
 int dbqueuedb_add_consumer(struct dbtable *db, int consumer, const char *method,
                          int noremove);
 int consumer_change(const char *queuename, int consumern, const char *method);
-void dbqueuedb_wake_all_consumers(struct dbtable *db, int force);
-void dbqueuedb_wake_all_consumers_all_queues(struct dbenv *dbenv, int force);
-void dbqueuedb_stop_consumers(struct dbtable *db);
-void dbqueuedb_restart_consumers(struct dbtable *db);
+int dbqueuedb_wake_all_consumers(struct dbtable *db, int force);
+int dbqueuedb_wake_all_consumers_all_queues(struct dbenv *dbenv, int force);
+int dbqueuedb_stop_consumers(struct dbtable *db);
+int dbqueuedb_restart_consumers(struct dbtable *db);
 int dbqueuedb_check_consumer(const char *method);
+int dbqueuedb_get_name(struct dbtable *db, char **spname);
+int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats);
 
 /* Resource manager */
 void initresourceman(const char *newlrlname);

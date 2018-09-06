@@ -4,6 +4,10 @@
 #include <unistd.h>
 #include <poll.h>
 
+/* Wrapper for queue consumers. Core db code calls these, which then find
+ * the first consumer plugin that knows how to handle the request, and dispatch
+ * to it. */
+
 int dbqueuedb_add_consumer(struct dbtable *db, int consumern, const char *method,
                            int noremove) {
 
@@ -17,6 +21,7 @@ int dbqueuedb_add_consumer(struct dbtable *db, int consumern, const char *method
     return -1;
 }
 
+/* This gets called for all plugins, not just the first */
 void dbqueuedb_admin(struct dbenv *dbenv) {
     comdb2_queue_consumer_t *handler; 
     for (int i = 0; i < CONSUMER_TYPE_LAST; i++) {
@@ -31,8 +36,9 @@ int dbqueuedb_check_consumer(const char *method) {
 
     for (int i = 0; i < CONSUMER_TYPE_LAST; i++) {
         handler = thedb->queue_consumer_handlers[i];
-        if (handler && handler->handles_method(method))
+        if (handler && handler->handles_method(method)) {
             return handler->check_consumer(method);
+        }
     }
     return -1;
 }
@@ -53,45 +59,89 @@ void dbqueuedb_coalesce(struct dbenv *dbenv) {
     }
 }
 
-void dbqueuedb_restart_consumers(struct dbtable *db) {
+int dbqueuedb_restart_consumers(struct dbtable *db) {
     int type;
     comdb2_queue_consumer_t *handler; 
 
     for (int i = 0; i < CONSUMER_TYPE_LAST; i++) {
         handler = thedb->queue_consumer_handlers[i];
-        if (handler)
-            handler->restart_consumers(db);
+        if (handler) {
+            int rc = handler->restart_consumers(db);
+            if (rc == 0)
+                return 0;
+        }
     }
+    return -1;
 }
 
-void dbqueuedb_stop_consumers(struct dbtable *db) {
+int dbqueuedb_stop_consumers(struct dbtable *db) {
     comdb2_queue_consumer_t *handler; 
 
     for (int i = 0; i < CONSUMER_TYPE_LAST; i++) {
         handler = thedb->queue_consumer_handlers[i];
-        if (handler)
-            handler->stop_consumers(db);
+        if (handler) {
+            int rc = handler->stop_consumers(db);
+            if (rc == 0)
+                return 0;
+        }
     }
+    return -1;
 }
 
-void dbqueuedb_wake_all_consumers(struct dbtable *db, int force) {
+int dbqueuedb_wake_all_consumers(struct dbtable *db, int force) {
     comdb2_queue_consumer_t *handler; 
 
     for (int i = 0; i < CONSUMER_TYPE_LAST; i++) {
         handler = thedb->queue_consumer_handlers[i];
-        if (handler)
-            handler->wake_all_consumers(db, force);
+        if (handler) {
+            int rc = handler->wake_all_consumers(db, force);
+            if (rc == 0)
+                return 0;
+        }
     }
+    return -1;
 }
 
-void dbqueuedb_wake_all_consumers_all_queues(struct dbenv *dbenv, int force) {
+int dbqueuedb_wake_all_consumers_all_queues(struct dbenv *dbenv, int force) {
     comdb2_queue_consumer_t *handler; 
 
     for (int i = 0; i < CONSUMER_TYPE_LAST; i++) {
         handler = thedb->queue_consumer_handlers[i];
-        if (handler)
-            handler->wake_all_consumers_all_queues(dbenv, force);
+        if (handler) {
+            int rc = handler->wake_all_consumers_all_queues(dbenv, force);
+            if (rc == 0)
+                return 0;
+        }
     }
+    return -1;
+}
+
+int dbqueuedb_get_name(struct dbtable *db, char **spname) {
+    comdb2_queue_consumer_t *handler; 
+
+    for (int i = 0; i < CONSUMER_TYPE_LAST; i++) {
+        handler = thedb->queue_consumer_handlers[i];
+        if (handler) {
+            int rc = handler->get_name(db, spname);
+            if (rc == 0)
+                return 0;
+        }
+    }
+    return -1;
+}
+
+int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats) {
+    comdb2_queue_consumer_t *handler; 
+
+    for (int i = 0; i < CONSUMER_TYPE_LAST; i++) {
+        handler = thedb->queue_consumer_handlers[i];
+        if (handler) {
+            int rc = handler->get_stats(db, stats);
+            if (rc == 0)
+                return 0;
+        }
+    }
+    return -1;
 }
 
 int 

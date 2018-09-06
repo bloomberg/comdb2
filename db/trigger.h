@@ -11,6 +11,13 @@ struct consumer_base {
     int type;
 };
 
+struct consumer_stat {
+    int has_stuff;
+    size_t first_item_length;
+    time_t epoch;
+    int depth;
+};
+
 struct comdb2_queue_consumer {
     int type;
     int (*add_consumer)(struct dbtable *db, int consumern, const char *method, int noremove);
@@ -18,11 +25,13 @@ struct comdb2_queue_consumer {
     int (*check_consumer)(const char *method);
     enum consumer_t (*consumer_type)(struct consumer *c);
     void (*coalesce)(struct dbenv *dbenv);
-    void (*restart_consumers)(struct dbtable *db);
-    void (*stop_consumers)(struct dbtable *db);
-    void (*wake_all_consumers)(struct dbtable *db, int force);
-    void (*wake_all_consumers_all_queues)(struct dbenv *dbenv, int force);
+    int (*restart_consumers)(struct dbtable *db);
+    int (*stop_consumers)(struct dbtable *db);
+    int (*wake_all_consumers)(struct dbtable *db, int force);
+    int (*wake_all_consumers_all_queues)(struct dbenv *dbenv, int force);
     int (*handles_method)(const char *method);
+    int (*get_name)(struct dbtable *db, char **spname);
+    int (*get_stats)(struct dbtable *db, struct consumer_stat *stat);
 };
 typedef struct comdb2_queue_consumer comdb2_queue_consumer_t;
 

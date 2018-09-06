@@ -1,13 +1,25 @@
 struct comdb2_plugin @PLUGIN_SYM@[] = {
     {
-        "dbqueuedb",                    /* Plugin identifier */
-        "dbqueuedb plugin",             /* Plugin description */
+        "queuelua",                   /* Plugin identifier */
+        "lua queue consumer",           /* Plugin description */
         COMDB2_PLUGIN_QUEUE_CONSUMER, /* Plugin type */
         1,                            /* Plugin version */
         1,                            /* Plugin interface version */
         0,                            /* Plugin flags */
-        dbqueuedb_plugin_init,          /* Initialization function */
+        NULL,                         /* Initialization function */
         NULL,                         /* Destroy function */
-        &dbqueuedb_plugin               /* Plugin-specific data */
+        &dbqueuedb_plugin_lua         /* Plugin-specific data */
     },
+    {
+        "queuedynlua",                /* Plugin identifier */
+        "dynamic lua queue consumer", /* Plugin description */
+        COMDB2_PLUGIN_QUEUE_CONSUMER, /* Plugin type */
+        1,                            /* Plugin version */
+        1,                            /* Plugin interface version */
+        0,                            /* Plugin flags */
+        NULL,                         /* Initialization function */
+        NULL,                         /* Destroy function */
+        &dbqueuedb_plugin_dynlua               /* Plugin-specific data */
+    },
+
     {0, 0, 0, 0, 0, 0, 0, 0, 0}};
