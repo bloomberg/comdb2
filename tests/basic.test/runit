@@ -222,9 +222,9 @@ cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.se
 if `echo $cluster | grep $HOSTNAME > /dev/null` ; then
     # if localhost is part of cluster, try local as cluster parameter
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm local "select comdb2_host()"`
-    assertres $res $lclhst
+    assertres $res $HOSTNAME
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm @localhost "select comdb2_host()"`
-    assertres $res $lclhst
+    assertres $res $HOSTNAME
 fi
 
 for node in $cluster ; do

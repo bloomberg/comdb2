@@ -79,7 +79,7 @@ check_executables_for_cluster()
     which $COPYCOMDB2_EXE  > /dev/null || failexit "$COPYCOMDB2_EXE not in path"
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then
-            if [ $CREATE == 1 ] ; then
+            if [ $CREATEDB == "1" ] ; then
                 ls $DBDIR &> /dev/null && failexit "$DBDIR already exists, please clean up before attempting to start"
             fi
             which $COMDB2_EXE > /dev/null || failexit "$COMDB2_EXE not in path"
