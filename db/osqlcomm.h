@@ -191,6 +191,8 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
                              struct errstat *xerr, int type, SBUF2 *logsb,
                              struct client_query_stats *query_stats,
                              snap_uid_t *snap_info);
+int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
+                             uint32_t start_gen, int type, SBUF2 *logsb);
 
 /**
  * Send decomission for osql net

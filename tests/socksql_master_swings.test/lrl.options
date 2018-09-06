@@ -9,6 +9,7 @@ logmsg level debug
 set_repinfo_master_trace on
 extended_sql_debug_trace on
 setattr WAIT_FOR_SEQNUM_TRACE 1
+osql_send_startgen on
 dump_blkseq on
 extended_sql_debug_trace on
 nowatch

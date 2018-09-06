@@ -278,6 +278,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
             break;
         }
         nq = 0;
+        clnt->start_gen = bdb_get_rep_gen(thedb->bdb_env);
         LISTC_FOR_EACH(&osql->history->lst, item, lnk)
         {
             restore_stmt(clnt, item);
